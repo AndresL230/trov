@@ -86,10 +86,14 @@ describe("artifacts — library", () => {
     expect(html).not.toMatch(/undefined|NaN|\[object/);
   });
 
-  it("thumbnails per kind: html/svg framed from the raw route in an empty sandbox, image as an image, text as the excerpt, pdf as its icon", () => {
+  it("thumbnails per kind: html framed from the raw route at its latest version with scripts (never same-origin), svg in an empty sandbox, image as an image, text as the excerpt, pdf as its icon", () => {
     const html = artifactsView(props("artifacts"));
-    expect(html).toContain('src="/raw/a/google-signin-design@v3" sandbox="" tabindex="-1" loading="lazy"');
+    expect(html).toContain('src="/raw/a/google-signin-design@v3" sandbox="allow-scripts" tabindex="-1" loading="lazy"');
     expect(html).not.toContain("srcdoc");
+    expect(html).not.toContain("allow-same-origin");
+    const withSvg = props("artifacts");
+    withSvg.ui.list = { status: "ok", data: [summary("logo-mark", { kind: "svg", current_version: 2 })] };
+    expect(artifactsView(withSvg)).toContain('src="/raw/a/logo-mark@v2" sandbox="" tabindex="-1" loading="lazy"');
     expect(html).toContain('<img src="/raw/a/login-mock@v1"');
     expect(html).toContain("Auth audit\nFindings");
     expect(html).toContain("PDF · 2.00 MB");

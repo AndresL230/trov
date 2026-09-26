@@ -401,8 +401,15 @@ export function libraryRows(p: ArtProps): ArtifactSummaryDTO[] {
 function thumb(a: ArtifactSummaryDTO): string {
   const raw = rawUrl(a.slug, a.current_version);
   if (a.kind === "html" || a.kind === "svg") {
-    // sandbox="" — no scripts, no same-origin: a thumbnail can do nothing.
-    return `<iframe title="${attr(a.title)} preview" src="${attr(raw)}" sandbox="" tabindex="-1" loading="lazy" style="position:absolute;top:0;left:0;width:400%;height:400%;border:0;transform:scale(.25);transform-origin:0 0;pointer-events:none;background:#fff"></iframe>`;
+    // Never same-origin. An html page may run its scripts — the same opaque-origin
+    // `allow-scripts` sandbox the viewer uses, under the raw route's CSP (no network, no
+    // forms) — because a page that renders WITH JavaScript (a flattened Claude Design
+    // export) otherwise previews as its unrendered template. An svg renders without
+    // script, so its frame stays `sandbox=""`: it can do nothing. No allow-modals, no
+    // top navigation, pointer-events off; its `canopy:height` posts are ignored (main.ts
+    // only resizes `.art-frame` iframes).
+    const sandbox = a.kind === "html" ? "allow-scripts" : "";
+    return `<iframe title="${attr(a.title)} preview" src="${attr(raw)}" sandbox="${sandbox}" tabindex="-1" loading="lazy" referrerpolicy="no-referrer" style="position:absolute;top:0;left:0;width:400%;height:400%;border:0;transform:scale(.25);transform-origin:0 0;pointer-events:none;background:#fff"></iframe>`;
   }
   if (a.kind === "image") {
     return `<img src="${attr(raw)}" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">`;
