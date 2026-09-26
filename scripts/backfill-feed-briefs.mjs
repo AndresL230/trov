@@ -14,7 +14,7 @@
 // a brief an agent (or an earlier run) already wrote.
 //
 // Run order (prod):
-//   1. Apply migration 0034_feed_brief first: `npm run db:migrate:remote`.
+//   1. Apply migration 0034_feed_brief_artifact_cap first: `npm run db:migrate:remote`.
 //   2. Dry run a sample and SHOW IT TO THE OWNER before writing anything:
 //        CLOUDFLARE_ACCOUNT_ID=6a5f361bfafdb29f00faf0c49dd1a240 node scripts/backfill-feed-briefs.mjs --limit 10
 //   3. Once approved, write:

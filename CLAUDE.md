@@ -118,9 +118,9 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `ticket_links.locked`, and the `github-webhook` system person — see "Tickets mirrored from GitHub issues"], then
   `0033_ticket_testing_rank` [REBUILDS `tickets` + `ticket_events` (SQLite cannot alter a CHECK) to admit the
   `testing` status and add `tickets.board_rank`; under `defer_foreign_keys`, carrying each AUTOINCREMENT counter
-  over so a deleted ticket's number is never reissued — see "The ticket board" below], then `0034_feed_brief`
-  [`feed.brief` — see "The feed brief" below], then `0035_artifact_text_cap` [REBUILDS `artifact_versions` to
-  raise its text CHECK to 768000 bytes, the 750 KB `ARTIFACT_TEXT_CAP`]).
+  over so a deleted ticket's number is never reissued — see "The ticket board" below], then
+  `0034_feed_brief_artifact_cap` [`feed.brief` — see "The feed brief" below — and REBUILDS `artifact_versions`
+  to raise its text CHECK to 768000 bytes, the 750 KB `ARTIFACT_TEXT_CAP`]).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
@@ -237,7 +237,7 @@ ticket that merely links an issue never does. `toggle_assignee` is the one write
 counterpart (design D3): assignment is the data the lane rule is built on, so after filing it is
 cookie-only, forever.
 
-**The feed brief** (`0034_feed_brief`, spec `docs/superpowers/specs/2026-09-26-feed-brief-design.md`). A
+**The feed brief** (`0034_feed_brief_artifact_cap`, spec `docs/superpowers/specs/2026-09-26-feed-brief-design.md`). A
 feed entry has two readers. `summary` is the one-line title; `brief` (optional, 1–2 plain sentences,
 `FEED_BRIEF_MAX` = 280 characters, over it is a validation error that writes nothing) is the problem solved
 in product words, for PEOPLE; `body` is the agent record. The Feed screen's header switch **For reading**

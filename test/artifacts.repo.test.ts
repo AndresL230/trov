@@ -133,7 +133,7 @@ describe("createPage (text)", () => {
     expect(await all(DB(), `SELECT id FROM artifact_pages`)).toHaveLength(1);
   });
 
-  it("the migration's CHECKs hold: content XOR r2_key, text ≤ the cap (0035), ratified ⇔ ratified_*", async () => {
+  it("the migration's CHECKs hold: content XOR r2_key, text ≤ the cap (0034), ratified ⇔ ratified_*", async () => {
     const a = await mkText();
     await expect(run(DB(), `INSERT INTO artifact_versions (page_id, version_no, content, r2_key, size_bytes, content_type, sha256, created_by, created_at) VALUES (?, 9, 'x', 'k', 1, 't', ?, 'a', 't')`, a.id, "0".repeat(64))).rejects.toThrow();
     await expect(run(DB(), `INSERT INTO artifact_versions (page_id, version_no, content, size_bytes, content_type, sha256, created_by, created_at) VALUES (?, 9, 'x', ?, 't', ?, 'a', 't')`, a.id, ARTIFACT_TEXT_CAP + 1, "0".repeat(64))).rejects.toThrow();

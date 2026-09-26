@@ -5,7 +5,7 @@
 // all of it. No imports — the SPA reads these as values (the *-core.ts rule).
 
 // ── vocabulary (must match the CHECK constraints in 0030_artifacts.sql; the text
-//    cap's CHECK was rebuilt by 0035_artifact_text_cap.sql) ──────────────────
+//    cap's CHECK was rebuilt by 0034_feed_brief_artifact_cap.sql) ──────────────────
 
 export const ARTIFACT_TEXT_KINDS = ["html", "markdown", "svg", "mermaid"] as const;
 export const ARTIFACT_BINARY_KINDS = ["image", "pdf", "file"] as const;
@@ -29,7 +29,7 @@ export const isBinaryKind = (k: string): k is ArtifactBinaryKind => (ARTIFACT_BI
 
 // ── caps ─────────────────────────────────────────────────────────────────────
 
-/** Text kinds: UTF-8 bytes of the content, stored in D1 (750 KB; the CHECK in 0035_artifact_text_cap.sql matches). */
+/** Text kinds: UTF-8 bytes of the content, stored in D1 (750 KB; the CHECK in 0034_feed_brief_artifact_cap.sql matches). */
 export const ARTIFACT_TEXT_CAP = 750 * 1024;
 /**
  * Agent reads (`artifact_get`, `query`) inline a text version's content only up to this many

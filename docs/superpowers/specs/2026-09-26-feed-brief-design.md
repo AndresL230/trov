@@ -17,7 +17,7 @@ The skill update this needs is also the moment to fix a related agent-context co
 
 ### Data and contract
 
-- Migration `0034_feed_brief`: `ALTER TABLE feed ADD COLUMN brief TEXT` (nullable). No FTS change — the
+- Migration `0034_feed_brief_artifact_cap` (one file for both parts): `ALTER TABLE feed ADD COLUMN brief TEXT` (nullable). No FTS change — the
   brief restates the summary and body, which are already indexed.
 - `FeedEntry` (`shared/contract.ts`) gains `brief: z.string().trim().min(1).max(280).optional()`. Over 280
   characters is a validation error: nothing is written, the caller sees the message and resends. It is
@@ -78,7 +78,7 @@ The skill update this needs is also the moment to fix a related agent-context co
 
 ### Rollout order
 
-The Worker writes `feed.brief`, and a 500–750 KB artifact needs the rebuilt CHECK, so **`0034` and `0035`
+The Worker writes `feed.brief`, and a 500–750 KB artifact needs the rebuilt CHECK, so **`0034_feed_brief_artifact_cap`
 must be applied to prod before the merge deploys** (`npm run db:migrate:remote`). Then merge, then the
 backfill.
 
@@ -90,7 +90,7 @@ backfill.
 reads the constant (the repository, the HTTP body limit `JSON_BODY_MAX`, the From-URL fetch cap), and the
 existing tests are written against the constant, so they follow. Well inside D1's 2 MB per-value limit.
 But 0030 mirrored the old cap in a CHECK on `artifact_versions` (`size_bytes <= 512000`), and SQLite cannot
-alter a CHECK, so `0035_artifact_text_cap` rebuilds the table (the 0033 pattern) with `<= 768000`.
+alter a CHECK, so the same migration rebuilds the table (the 0033 pattern) with `<= 768000`.
 Agents still create text artifacts by passing `content` inline — no text upload path (decided: not needed).
 
 ### Inline threshold for agent reads

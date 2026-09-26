@@ -1,6 +1,14 @@
--- Artifacts: the text cap goes from 500 KB to 750 KB (2026-09-26, feat/feed-brief;
+-- Two changes from feat/feed-brief (spec: docs/superpowers/specs/2026-09-26-feed-brief-design.md).
+
+-- ── 1. The feed brief ─────────────────────────────────────────────────────────
+-- A feed entry's BRIEF: 1–2 plain sentences (≤ 280 characters) on the problem the work
+-- solved, written for people. The Feed's "For reading" view shows the summary + brief;
+-- "For agents" keeps the full body. NULL for an entry written without one (every entry
+-- before this migration, until the one-off scripts/backfill-feed-briefs.mjs fills it).
+ALTER TABLE feed ADD COLUMN brief TEXT;
+
+-- ── 2. Artifacts: the text cap goes from 500 KB to 750 KB (2026-09-26, feat/feed-brief;
 -- spec: docs/superpowers/specs/2026-09-26-feed-brief-design.md, Part 2).
--- (0034 is feed_brief, on the same branch — so this is 0035.)
 --
 -- `ARTIFACT_TEXT_CAP` (shared/artifacts-core.ts) is 750 * 1024 = 768000 UTF-8 bytes.
 -- 0030 mirrored the old cap in a CHECK on artifact_versions

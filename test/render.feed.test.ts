@@ -165,10 +165,12 @@ describe("Feed — one Filter menu, the view switch at the far right", () => {
     expect(html).not.toContain('data-fm-pop="feed"'); // closed
   });
 
-  it("the For reading / For agents switch is the header's last control", () => {
+  it("the For reading / For agents switch sits just before the theme toggle, which stays rightmost", () => {
     const html = render(feedState([feedRow()]));
     const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-    expect(header.lastIndexOf('data-act="setFeedView"')).toBeGreaterThan(header.indexOf('data-act="cycleTheme"'));
+    const sw = header.lastIndexOf('data-act="setFeedView"');
+    expect(sw).toBeGreaterThan(header.indexOf('data-hover-menu="feed"'));
+    expect(header.indexOf('data-act="cycleTheme"')).toBeGreaterThan(sw);
   });
 
   it("the menu's badge counts the active filters", () => {
