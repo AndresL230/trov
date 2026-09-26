@@ -55,6 +55,8 @@ export interface FilterMenuProps {
   /** Popover anchoring: stretch across the positioned parent, or hang from the right edge. */
   align: "stretch" | "right";
   ariaLabel: string;
+  /** A Filter button on its own (the Feed), not the right half of a search box: full corners, no overlap. */
+  standalone?: boolean;
 }
 
 const ROW_H = 32;
@@ -86,7 +88,7 @@ export function filterMenu(p: FilterMenuProps): string {
   const anyFilter = p.activeCount > 0;
   const rowBase = "display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:0 10px;border-radius:7px;font-size:12.5px;font-weight:500;";
 
-  const button = `<button data-act="fmToggle" data-arg="${attr(p.id)}" aria-haspopup="dialog" aria-expanded="${p.open}" class="cnpy-ghostbtn fm-btn" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;border-radius:0 7px 7px 0;margin-left:-1px;height:100%;padding:0 11px 0 12px;white-space:nowrap;border:1px solid var(--border-strong);${p.open ? "color:var(--fg);background:var(--hover)" : "color:var(--fg-70)"}">
+  const button = `<button data-act="fmToggle" data-arg="${attr(p.id)}" aria-haspopup="dialog" aria-expanded="${p.open}" class="cnpy-ghostbtn fm-btn" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;${p.standalone ? "border-radius:7px" : "border-radius:0 7px 7px 0;margin-left:-1px"};height:100%;padding:0 11px 0 12px;white-space:nowrap;border:1px solid var(--border-strong);${p.open ? "color:var(--fg);background:var(--hover)" : "color:var(--fg-70)"}">
     ${FILTER_ICON}Filter
     ${p.activeCount ? `<span style="font-family:var(--label);font-size:10.5px;font-weight:600;min-width:18px;height:18px;line-height:18px;padding:0 5px;border-radius:6px;text-align:center;color:var(--accent-fg);background:var(--accent)">${p.activeCount}</span>` : ""}
     ${CARET}

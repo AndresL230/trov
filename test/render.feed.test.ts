@@ -58,14 +58,11 @@ describe("Feed — handle text carries the mapped person's color", () => {
     expect(html).toContain("@AndresL230");
   });
 
-  it("the author filter chip for that person also carries their color", () => {
-    const html = render(feedState([feedRow()]));
+  it("the Filter menu's Author option for that person carries their color", () => {
+    const html = render({ ...feedState([feedRow()]), feedFilterOpen: true });
     expect(html).toContain('data-act="setAuthor" data-arg="AndresL230"');
-    // The achip button and the feed row both contribute var(--p-moss) occurrences;
-    // isolate the header controls to confirm the filter chip itself is colored.
-    const headerStart = html.indexOf("<header");
-    const headerEnd = html.indexOf("</header>");
-    const headerHtml = html.slice(headerStart, headerEnd);
+    const headerHtml = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+    expect(headerHtml).toContain('data-fm-pop="feed"');
     expect(headerHtml).toContain("var(--p-moss)");
   });
 
@@ -155,5 +152,35 @@ describe("Feed — For reading / For agents", () => {
     expect(reading).toContain('data-act="setFeedView" data-arg="agents" aria-pressed="false"');
     const agents = render(feedState([row], "agents"));
     expect(agents).toContain('data-act="setFeedView" data-arg="agents" aria-pressed="true"');
+  });
+});
+
+describe("Feed — one Filter menu, the view switch at the far right", () => {
+  it("the header has no author chips or selects — a closed Filter button stands in for them", () => {
+    const header = (h: string) => h.slice(h.indexOf("<header"), h.indexOf("</header>"));
+    const html = header(render(feedState([feedRow()])));
+    expect(html).toContain('data-hover-menu="feed"');
+    expect(html).not.toContain("cnpy-achip");
+    expect(html).not.toContain("<select");
+    expect(html).not.toContain('data-fm-pop="feed"'); // closed
+  });
+
+  it("the For reading / For agents switch is the header's last control", () => {
+    const html = render(feedState([feedRow()]));
+    const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+    expect(header.lastIndexOf('data-act="setFeedView"')).toBeGreaterThan(header.indexOf('data-act="cycleTheme"'));
+  });
+
+  it("the menu's badge counts the active filters", () => {
+    const html = render({ ...feedState([feedRow()]), feedAuthor: "AndresL230", feedRange: "7d" });
+    expect(html).toMatch(/Filter\s*<span[^>]*>2<\/span>/);
+  });
+
+  it("Time narrows the loaded rows client-side", () => {
+    const old = feedRow({ id: 2, summary: "an old entry", created_at: "2020-01-01T00:00:00Z" });
+    const fresh = feedRow({ id: 3, summary: "a fresh entry", created_at: new Date().toISOString() });
+    const html = render({ ...feedState([fresh, old]), feedRange: "7d" });
+    expect(html).toContain("a fresh entry");
+    expect(html).not.toContain("an old entry");
   });
 });

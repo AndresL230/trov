@@ -14,6 +14,7 @@ import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, handleTag, swatches, type OnboardState } from "./people";
 import type { DashboardData, MyWorkPr, MyWorkTodo, MyWorkTicket } from "@shared/dashboard";
 import { TAGS } from "@shared/vocabulary";
+import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { REPO_URL } from "./github";
@@ -108,6 +109,8 @@ export interface AppState {
   /** The Feed's lens: "reading" = title + brief (for people), "agents" = the full body. Saved per browser. */
   feedView: FeedView;
   feedAuthor: string;
+  feedFilterOpen: boolean;
+  feedFilterCat: FeedFilterCat;
   feedTag: string;
   feedRange: string;
   feed: Loadable<FeedRow[]>;
@@ -319,7 +322,7 @@ export function initialState(): AppState {
     navOpen: { ...NAV_CLOSED },
     repo: { status: "idle", data: null },
     repoTab: "overview", repoRange: "7d", repoProductEnv: null, repoDriftOpen: false, repoFetchedAt: null, repoSample: false, repoPoll: null,
-    feedView: "reading", feedAuthor: "all", feedTag: "all", feedRange: "all",
+    feedView: "reading", feedFilterOpen: false, feedFilterCat: "author", feedAuthor: "all", feedTag: "all", feedRange: "all",
     feed: { status: "idle", data: [] },
     mywork: { status: "idle", data: null },
     feedAuthors: [],
@@ -648,40 +651,16 @@ function header(s: AppState): string {
   // dark = "show the moon icon" — true for any non-light theme (dark + midnight).
   const dark = resolved(s) !== "light";
 
-  const authorFiltered = s.feedAuthor !== "all";
-  const authorFilterLabel = authorFiltered ? `${s.feedAuthor}'s activity` : "";
-
-  const filterChip = s.screen === "feed" && authorFiltered
-    ? `<div style="display:flex;align-items:center;gap:7px;padding:4px 6px 4px 10px;border:1px solid var(--accent);color:var(--accent);border-radius:999px;font-size:12px;font-weight:500;background:var(--accent-soft)">${authorFilterLabel}<button data-act="clearAuthor" class="cnpy-xbtn" style="width:16px;height:16px;display:grid;place-items:center;border-radius:50%;color:var(--accent)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 5l14 14M19 5 5 19"></path></svg></button></div>`
-    : "";
-
-  // Author chips are derived from the authors actually present in the feed (captured on
-  // the unfiltered load), not a hardcoded people list. Active chip is styled inline
-  // because the login set is dynamic (the old `[data-author=…] .a-<login>` CSS can't match).
-  const achip = (key: string, labelHtml: string): string => {
-    const active = s.feedAuthor === key;
-    const activeStyle = active ? "border-color:var(--accent);color:var(--accent);background:var(--accent-soft)" : "";
-    return `<button data-act="setAuthor" data-arg="${attr(key)}" class="cnpy-achip" style="${activeStyle}">${labelHtml}</button>`;
-  };
-  const authorChips = [achip("all", "All"), ...s.feedAuthors.map((a) => achip(a, handleTag(personFor(s, a), a, 12)))].join("");
-
+  // Feed chrome: ONE Filter menu (author · tag · time — the shared filter-menu, no
+  // search box), then the For reading / For agents switch at the header's far right.
   const fvTabStyle = (k: FeedView) => `padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;color:${s.feedView === k ? "var(--fg)" : "var(--fg-55)"};background:${s.feedView === k ? "var(--hover)" : "transparent"}`;
-  const feedViewSwitch = `<div role="group" aria-label="Feed view" style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px;margin-right:6px">
+  const feedViewSwitch = s.screen === "feed" ? `<div role="group" aria-label="Feed view" style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px">
       ${(["reading", "agents"] as const).map((k) => `<button data-act="setFeedView" data-arg="${k}" aria-pressed="${s.feedView === k}" style="${fvTabStyle(k)}">${k === "reading" ? "For reading" : "For agents"}</button>`).join("")}
-    </div>`;
-  const feedControls = s.screen === "feed" ? `<div style="display:flex;align-items:center;gap:6px">
-      ${feedViewSwitch}
-      <span style="font-size:11px;color:var(--fg-40);text-transform:uppercase;letter-spacing:.08em;margin-right:2px">Author</span>
-      ${authorChips}
-      <div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>
-      <select data-act="setTag" class="cnpy-select">
-        <option value="all"${s.feedTag === "all" ? " selected" : ""}>All tags</option>
-        ${TAGS.map((t) => `<option value="${t}"${s.feedTag === t ? " selected" : ""}>${t}</option>`).join("")}
-      </select>
-      <select data-act="setRange" class="cnpy-select">
-        ${["all:All time", "24h:Last 24h", "7d:Last 7 days"].map((o) => { const [v, l] = o.split(":"); return `<option value="${v}"${s.feedRange === v ? " selected" : ""}>${l}</option>`; }).join("")}
-      </select>
     </div>` : "";
+  const feedMenu = s.screen === "feed" ? feedFilterMenu(s) : null;
+  const feedControls = feedMenu
+    ? `<div style="position:relative;display:flex;align-items:stretch;height:32px">${filterMenuBackdrop(feedMenu)}${filterMenu(feedMenu)}</div>`
+    : "";
 
   // The Technical / Product space is picked from the sidebar's Docs sub-pages, so the
   // header carries only New doc (it had a second copy of the same switcher).
@@ -757,10 +736,9 @@ function header(s: AppState): string {
     <div style="display:flex;align-items:center;gap:12px;min-width:0">
       ${art ? art.title : title}
       ${art ? art.crumb : crumb}
-      ${filterChip}
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex:none">
-      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${themeBtn}
+      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${themeBtn}${feedViewSwitch}
     </div>
   </header>`;
 }
@@ -783,6 +761,50 @@ function feedBody(body: string | null): string {
 }
 
 export type FeedView = "reading" | "agents";
+export type FeedFilterCat = "author" | "tag" | "range";
+export const FEED_FILTER_CATS: readonly FeedFilterCat[] = ["author", "tag", "range"];
+const FEED_RANGES: [string, string][] = [["all", "All time"], ["24h", "Last 24 hours"], ["7d", "Last 7 days"]];
+const RANGE_MS: Record<string, number> = { "24h": 86_400_000, "7d": 7 * 86_400_000 };
+
+/** Author and tag filter server-side (a refetch); the time range narrows the loaded rows. */
+export function feedRows(s: AppState, now = Date.now()): FeedRow[] {
+  const span = RANGE_MS[s.feedRange];
+  return span ? s.feed.data.filter((e) => now - Date.parse(e.created_at) <= span) : s.feed.data;
+}
+
+/** The Feed's Filter menu. Counts only on Time — the one group narrowed client-side,
+ *  counted over what the server returned; author/tag counts would lie once filtered. */
+function feedFilterMenu(s: AppState): FilterMenuProps {
+  const shown = feedRows(s).length;
+  const active = (s.feedAuthor !== "all" ? 1 : 0) + (s.feedTag !== "all" ? 1 : 0) + (s.feedRange !== "all" ? 1 : 0);
+  const now = Date.now();
+  return {
+    id: "feed", open: s.feedFilterOpen, opening: s.fmOpening === "feed", cat: s.feedFilterCat, activeCount: active,
+    showLabel: `Show ${shown} ${shown === 1 ? "entry" : "entries"}`, clearAct: "feedFilterClear",
+    align: "right", ariaLabel: "Filter the feed", standalone: true,
+    groups: [
+      {
+        key: "author", label: "Author", value: s.feedAuthor, none: "all",
+        options: [
+          { v: "all", l: "Everyone", act: "setAuthor", arg: "all" },
+          ...s.feedAuthors.map((a) => ({ v: a, l: `@${a}`, act: "setAuthor", arg: a, lead: personChip(personFor(s, a), 18, a) })),
+        ],
+      },
+      {
+        key: "tag", label: "Tag", value: s.feedTag, none: "all",
+        options: [["all", "All tags"] as [string, string], ...TAGS.map((t): [string, string] => [t, t])]
+          .map(([v, l]) => ({ v, l, act: "setTag", arg: v, mono: v !== "all" })),
+      },
+      {
+        key: "range", label: "Time", value: s.feedRange, none: "all",
+        options: FEED_RANGES.map(([v, l]) => ({
+          v, l, act: "setRange", arg: v,
+          n: RANGE_MS[v] ? s.feed.data.filter((e) => now - Date.parse(e.created_at) <= RANGE_MS[v]).length : s.feed.data.length,
+        })),
+      },
+    ],
+  };
+}
 
 /** The "For reading" line under the title: the entry's brief, plain text. An entry
  *  written without one (older plugin, not yet backfilled) shows the title alone. */
@@ -795,7 +817,7 @@ function feedView(s: AppState): string {
   if (s.feed.status === "loading" && s.feed.data.length === 0) return wrapFeed(notice("Loading feed&hellip;"));
   if (s.feed.status === "error") return wrapFeed(notice("Couldn't load the feed."));
 
-  const cards = s.feed.data.map((e) => {
+  const cards = feedRows(s).map((e) => {
     const artifacts = feedArtifacts(e.artifacts);
     const artifactRow = artifacts.length
       ? `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">
@@ -821,7 +843,7 @@ function feedView(s: AppState): string {
     </div>`;
   }).join("");
 
-  const empty = s.feed.status === "ok" && s.feed.data.length === 0 ? notice("No entries match this filter.") : "";
+  const empty = s.feed.status === "ok" && feedRows(s).length === 0 ? notice("No entries match this filter.") : "";
   return wrapFeed(`<div class="cnpy-stagger">${cards}</div>${empty}`);
 }
 

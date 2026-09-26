@@ -7,7 +7,7 @@ import "./canopy.css";
 import { openLightbox, closeLightbox } from "./lightbox";
 import {
   render, initialState, firstDocForSpace, docReaderHtml, connectSnippet, CONNECT_CLIENTS, browserConnectCommand,
-  type AppState, type Screen, type ConnectClient,
+  FEED_FILTER_CATS, type AppState, type Screen, type ConnectClient, type FeedFilterCat,
 } from "./render";
 import {
   getFeed, listDocs, getDoc, search, getRoadmap, getMyDashboard, getRepoDashboard,
@@ -210,6 +210,7 @@ function rerender(): void {
   state.repoPoll = repoPollFor(state.repoPoll, state.view === "app" && state.screen === "repo");
   // The queue's filter menu left open never survives leaving the queue.
   if (state.screen !== "tickets") state.qFilterOpen = false;
+  if (state.screen !== "feed") state.feedFilterOpen = false;
   // Entering a group's pages opens its sub-page list, and leaving folds it again —
   // unless the person opened or closed it by hand, which sticks (and is what persists).
   const group = state.view === "app" ? navGroupOf(state.screen) : null;
@@ -2222,9 +2223,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       persist("canopy.feedView", arg);
       break;
     case "setAuthor": state.feedAuthor = arg ?? "all"; loadFeed(); return;
-    case "clearAuthor": state.feedAuthor = "all"; loadFeed(); return;
-    case "setTag": state.feedTag = value ?? "all"; loadFeed(); return;
-    case "setRange": state.feedRange = value ?? "all"; break;
+    case "setTag": state.feedTag = arg ?? value ?? "all"; loadFeed(); return;
+    case "setRange": state.feedRange = arg ?? value ?? "all"; break;
+    case "feedFilterClear": {
+      const refetch = state.feedAuthor !== "all" || state.feedTag !== "all";
+      state.feedAuthor = "all"; state.feedTag = "all"; state.feedRange = "all";
+      if (refetch) { loadFeed(); return; }
+      break;
+    }
 
     // ── Review (wired: real proposals + draft ADR reads, real verdict writes) ──
     case "reviewSelect": if (arg) state.reviewSel = arg; break;
@@ -2916,6 +2922,10 @@ const FILTER_MENUS: Record<string, FilterMenuSpec> = {
   prompt: {
     isOpen: () => state.promptFilterOpen, setOpen: (v) => { state.promptFilterOpen = v; }, cat: () => state.promptFilterCat,
     setCat: (k) => { if (k !== "tag" && k !== "sort") return false; state.promptFilterCat = k; return true; },
+  },
+  feed: {
+    isOpen: () => state.feedFilterOpen, setOpen: (v) => { state.feedFilterOpen = v; }, cat: () => state.feedFilterCat,
+    setCat: (k) => { if (!(FEED_FILTER_CATS as readonly string[]).includes(k)) return false; state.feedFilterCat = k as FeedFilterCat; return true; },
   },
   queue: {
     isOpen: () => state.qFilterOpen, setOpen: (v) => { state.qFilterOpen = v; }, cat: () => state.qFilterCat,
