@@ -9,13 +9,12 @@
 import { z } from "zod";
 import {
   ARTIFACT_AREAS, ARTIFACT_BINARY_KINDS, ARTIFACT_KINDS, ARTIFACT_LINK_TYPES, ARTIFACT_STATUSES,
-  ARTIFACT_TEXT_KINDS, ARTIFACT_VISIBILITIES,
+  ARTIFACT_SUMMARY_MAX, ARTIFACT_TEXT_KINDS, ARTIFACT_VISIBILITIES,
 } from "./artifacts-core";
 
 export * from "./artifacts-core";
 
 export const ARTIFACT_TITLE_MAX = 200;
-export const ARTIFACT_SUMMARY_MAX = 500;
 export const ARTIFACT_FILENAME_MAX = 255;
 /** "owner/repo" (GitHub's own character set) or the empty string. */
 export const ARTIFACT_REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;

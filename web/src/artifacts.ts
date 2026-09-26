@@ -27,7 +27,7 @@ import { renderMarkdown, sanitizeSvg } from "./markdown";
 import { collapsedLineDiff } from "./diff";
 import type { PersonColor } from "@shared/rows";
 import {
-  ARTIFACT_KINDS, ARTIFACT_AREAS, ARTIFACT_STATUSES, ARTIFACT_TEXT_EXT,
+  ARTIFACT_KINDS, ARTIFACT_AREAS, ARTIFACT_STATUSES, ARTIFACT_TEXT_EXT, ARTIFACT_SUMMARY_MAX,
   artifactCap, isBinaryKind, isTextKind, kindForFilename, claudeOnlyHits, isBundledExport, canRatify, parseSlugVersion,
   type ArtifactKind, type ArtifactStatus, type ArtifactVisibility, type ArtifactLinkType,
   type ArtifactSummaryDTO, type ArtifactDetailDTO, type ArtifactVersionDTO, type ArtifactDiffDTO,
@@ -72,6 +72,19 @@ export interface ArtCreate {
   urlErr: string | null;
   submitting: boolean;
 }
+/** The viewer's New version dialog: edit the shown version's text, or upload a replacement file.
+ *  `base` is the version the edit started from (the one on screen); `original` its text, so an
+ *  untouched edit cannot be sent. */
+export interface ArtNewVersion {
+  tab: "edit" | "file";
+  base: number;
+  original: string;
+  text: string;
+  file: ArtFile | null;
+  fileErr: string | null;
+  summary: string;
+  submitting: boolean;
+}
 export interface ArtUi {
   /** The library's list, loaded unfiltered (the popover counts every option). */
   list: ArtSlice<ArtifactSummaryDTO[]>;
@@ -95,6 +108,8 @@ export interface ArtUi {
   attachOpen: boolean;
   attachQ: string;
   attachPick: number | null;
+  /** The New version dialog, open when non-null. */
+  nv: ArtNewVersion | null;
   c: ArtCreate;
 }
 export function initialArtCreate(): ArtCreate {
@@ -107,7 +122,7 @@ export function initialArtUi(): ArtUi {
   return {
     list: IDLE(), details: {}, diffs: {}, ticketArts: {}, attachTickets: IDLE(), busy: false,
     q: "", f: { ...NO_FILTERS }, filterOpen: false, filterCat: "area",
-    verMenu: false, dotMenu: false, ratifyOpen: false, attachOpen: false, attachQ: "", attachPick: null,
+    verMenu: false, dotMenu: false, ratifyOpen: false, attachOpen: false, attachQ: "", attachPick: null, nv: null,
     c: initialArtCreate(),
   };
 }
@@ -252,6 +267,26 @@ export function canSubmitCreate(c: ArtCreate): boolean {
   if (!c.title.trim() || bytes === 0 || bytes > artifactCap(c.kind) || c.submitting) return false;
   if (isBinaryKind(c.kind)) return c.tab === "file" && !!c.file?.blob;
   return true;
+}
+
+/** The New version dialog's text (the edit box, or a text file); "" for a binary file. */
+export function nvText(nv: ArtNewVersion): string {
+  return nv.tab === "edit" ? nv.text : nv.file?.text ?? "";
+}
+/** Bytes the New version dialog would send (the file's own size for an upload). */
+export function nvBytes(nv: ArtNewVersion): number {
+  if (nv.tab === "file") return nv.file ? nv.file.size : 0;
+  return new TextEncoder().encode(nv.text).length;
+}
+/** Sendable: something to send, under the kind's cap, and — for an edit — actually changed. A
+ *  binary page only takes a file. (An edit of an OLDER version back to its own text is a restore,
+ *  so "unchanged" only means "unchanged from the LATEST" there — the server still dedupes.) */
+export function canSubmitNv(nv: ArtNewVersion, kind: ArtifactKind, latestNo: number): boolean {
+  const bytes = nvBytes(nv);
+  if (nv.submitting || bytes === 0 || bytes > artifactCap(kind)) return false;
+  if (isBinaryKind(kind)) return nv.tab === "file" && !!nv.file?.blob;
+  if (nv.tab === "file") return nv.file?.text != null;
+  return nv.text !== nv.original || nv.base !== latestNo;
 }
 
 /**
@@ -671,6 +706,7 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
     <span style="flex:1 1 120px;min-width:0;padding-left:4px;font-family:var(--sans);font-size:11px;color:var(--fg-55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.host)}/#artifacts/${esc(d.slug)}/v${ver.version_no}</span>
     <div role="group" aria-label="Status" style="display:inline-flex;align-items:center;gap:1px;border:1px solid var(--border);border-radius:8px;padding:2px;background:var(--bg);flex:none">${statusSeg}</div>
     <span style="width:1px;height:18px;background:var(--border);flex:none"></span>
+    <button data-act="artNvOpen" title="${isBinaryKind(d.kind) ? "Upload a replacement file" : `Edit v${ver.version_no} or upload a replacement`}" class="cnpy-ghostbtn" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap;flex:none">${I.plus(12)}New version</button>
     <button data-act="artOpenTab" title="Open in new tab" aria-label="Open in new tab" class="cnpy-iconbtn" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55);flex:none">${I.ext()}</button>
     <div style="position:relative;flex:none">
       <button data-act="artDotMenu" title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded="${ui.dotMenu}" class="cnpy-iconbtn" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55)">${I.dots()}</button>
@@ -822,6 +858,37 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
   </div>`;
 }
 
+/** Under the content, on the create form AND the New version dialog: the size bar against the kind's
+ *  cap, the over-the-cap notice, and the two warn-never-block notices (claude.ai-only calls, a bundled
+ *  Claude Design export that must be flattened). */
+function contentChecks(text: string, bytes: number, kind: ArtifactKind): string {
+  const cap = artifactCap(kind);
+  const binary = isBinaryKind(kind);
+  const over = bytes > cap;
+  const hits = binary ? [] : claudeOnlyHits(text);
+  const bundled = !binary && isBundledExport(text);
+  return `<div style="display:flex;align-items:center;gap:12px;margin-top:12px">
+    <div style="flex:1;height:4px;border-radius:4px;background:var(--hover);overflow:hidden"><div style="height:100%;width:${Math.min(100, (bytes / cap) * 100).toFixed(1)}%;background:${over ? "var(--red)" : "var(--accent)"};transition:width .3s ease"></div></div>
+    <span style="font-family:var(--label);font-size:11px;font-weight:600;white-space:nowrap;color:${over ? "var(--red)" : "var(--fg-40)"}">${fmtKB(bytes)} / ${capLabel(kind)}</span>
+  </div>
+  ${over ? `<div style="display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding:11px 14px;border:1px solid color-mix(in srgb,var(--red) 40%,transparent);background:color-mix(in srgb,var(--red) 8%,transparent);border-radius:9px;font-size:12.5px;color:var(--fg-70);line-height:1.5">
+    ${I.alert()}<div><strong style="font-weight:600;color:var(--red)">Over the ${capLabel(kind)} cap.</strong> This content is ${fmtKB(bytes)}. ${binary ? "Compress or split the file, then try again." : "Split it into smaller pages or strip inlined assets, then try again."}</div>
+  </div>` : ""}
+  ${hits.length ? `<div style="display:flex;align-items:flex-start;gap:14px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:9px">
+    <span style="font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;${tagTint("var(--amber)")};border-radius:5px;padding:3px 7px;flex:none">CLAUDE.AI ONLY</span>
+    <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.55">
+      This page calls features that only exist inside claude.ai. Canopy renders artifacts in a sandbox with no network, so these calls will fail and parts of the page may render empty. You can still upload it.
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${hits.map((h) => `<code style="font-family:var(--code);font-size:11px;color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent);border:1px solid var(--border);border-radius:5px;padding:1.5px 6px">${esc(h)}</code>`).join("")}</div>
+    </div>
+  </div>` : ""}
+  ${bundled ? `<div style="display:flex;align-items:flex-start;gap:14px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:9px">
+    <span style="font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;${tagTint("var(--amber)")};border-radius:5px;padding:3px 7px;flex:none">FLATTEN FIRST</span>
+    <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.55">
+      This is a bundled Claude Design export (a hi-fi clickable prototype). It loads its scripts from blob: URLs and compiles code at runtime, which Canopy's sandbox blocks, so it will render blank. Flatten it first, with every script inline and no eval, then upload that. You can still upload it as is.
+    </div>
+  </div>` : ""}`;
+}
+
 // ── 4 · create ───────────────────────────────────────────────────────────────
 
 function createView(p: ArtProps): string {
@@ -830,9 +897,6 @@ function createView(p: ArtProps): string {
   const text = createText(c);
   const cap = artifactCap(c.kind);
   const binary = isBinaryKind(c.kind);
-  const over = bytes > cap;
-  const hits = binary ? [] : claudeOnlyHits(text);
-  const bundled = !binary && isBundledExport(text);
   const canSubmit = canSubmitCreate(c);
   const label = (t: string) => `<label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">${t}</label>`;
   const inputSt = "width:100%;height:40px;padding:0 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:14px;outline:none";
@@ -908,26 +972,7 @@ function createView(p: ArtProps): string {
           <div style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px">${tabs}</div>
         </div>
         ${source}
-        <div style="display:flex;align-items:center;gap:12px;margin-top:12px">
-          <div style="flex:1;height:4px;border-radius:4px;background:var(--hover);overflow:hidden"><div style="height:100%;width:${Math.min(100, (bytes / cap) * 100).toFixed(1)}%;background:${over ? "var(--red)" : "var(--accent)"};transition:width .3s ease"></div></div>
-          <span style="font-family:var(--label);font-size:11px;font-weight:600;white-space:nowrap;color:${over ? "var(--red)" : "var(--fg-40)"}">${fmtKB(bytes)} / ${capLabel(c.kind)}</span>
-        </div>
-        ${over ? `<div style="display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding:11px 14px;border:1px solid color-mix(in srgb,var(--red) 40%,transparent);background:color-mix(in srgb,var(--red) 8%,transparent);border-radius:9px;font-size:12.5px;color:var(--fg-70);line-height:1.5">
-          ${I.alert()}<div><strong style="font-weight:600;color:var(--red)">Over the ${capLabel(c.kind)} cap.</strong> This content is ${fmtKB(bytes)}. ${binary ? "Compress or split the file, then try again." : "Split it into smaller pages or strip inlined assets, then try again."}</div>
-        </div>` : ""}
-        ${hits.length ? `<div style="display:flex;align-items:flex-start;gap:14px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:9px">
-          <span style="font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;${tagTint("var(--amber)")};border-radius:5px;padding:3px 7px;flex:none">CLAUDE.AI ONLY</span>
-          <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.55">
-            This page calls features that only exist inside claude.ai. Canopy renders artifacts in a sandbox with no network, so these calls will fail and parts of the page may render empty. You can still upload it.
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${hits.map((h) => `<code style="font-family:var(--code);font-size:11px;color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent);border:1px solid var(--border);border-radius:5px;padding:1.5px 6px">${esc(h)}</code>`).join("")}</div>
-          </div>
-        </div>` : ""}
-        ${bundled ? `<div style="display:flex;align-items:flex-start;gap:14px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:9px">
-          <span style="font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;${tagTint("var(--amber)")};border-radius:5px;padding:3px 7px;flex:none">FLATTEN FIRST</span>
-          <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.55">
-            This is a bundled Claude Design export (a hi-fi clickable prototype). It loads its scripts from blob: URLs and compiles code at runtime, which Canopy's sandbox blocks, so it will render blank. Flatten it first, with every script inline and no eval, then upload that. You can still upload it as is.
-          </div>
-        </div>` : ""}
+        ${contentChecks(text, bytes, c.kind)}
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:22px;flex-wrap:wrap">
           <span style="flex:1;min-width:180px;font-size:12px;color:var(--fg-40)">Uploads as v1, ${c.vis === "private" ? "private draft." : "draft, visible to the org."}</span>
           <button data-act="goArtifacts" class="cnpy-outlinebtn" style="${OUTLINE_BTN}">Cancel</button>
@@ -957,7 +1002,7 @@ function notFoundView(p: ArtProps): string {
 // ── dialogs (ratify, attach) ─────────────────────────────────────────────────
 
 export function artifactsDialogs(p: ArtProps): string {
-  if (p.screen !== "artifact" || p.route.diff || !(p.ui.ratifyOpen || p.ui.attachOpen)) return "";
+  if (p.screen !== "artifact" || p.route.diff || !(p.ui.ratifyOpen || p.ui.attachOpen || p.ui.nv)) return "";
   const d = routeDetail(p)?.data;
   if (!d) return "";
   const vno = d.version.version_no;
@@ -965,6 +1010,8 @@ export function artifactsDialogs(p: ArtProps): string {
     <div style="position:fixed;inset:0;z-index:61;display:grid;place-items:center;padding:16px;pointer-events:none">
       <div role="dialog" aria-modal="true" aria-label="${label}" style="pointer-events:auto;width:min(${w}px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;border:1px solid var(--border-strong);border-radius:14px;background:var(--bg);box-shadow:0 20px 60px rgba(0,0,0,.45);animation:cnpy-pop .2s ease both">${inner}</div>
     </div>`;
+
+  if (p.ui.nv) return shell(820, newVersionDialog(p, d, p.ui.nv), "New version");
 
   if (p.ui.ratifyOpen) {
     const me = who(p, p.me);
@@ -1018,6 +1065,60 @@ export function artifactsDialogs(p: ArtProps): string {
     </div>`, "Attach to a ticket");
 }
 
+/** The New version dialog's body: Edit (the shown version's text, text kinds only) or Upload file,
+ *  a summary, the same size / claude.ai / flatten checks as the create form, and what saving does. */
+function newVersionDialog(p: ArtProps, d: ArtifactDetailDTO, nv: ArtNewVersion): string {
+  const binary = isBinaryKind(d.kind);
+  const latestNo = d.current_version;
+  const next = latestNo + 1;
+  const text = nvText(nv);
+  const bytes = nvBytes(nv);
+  const ok = canSubmitNv(nv, d.kind, latestNo);
+  const ext = isTextKind(d.kind) ? `.${ARTIFACT_TEXT_EXT[d.kind]}` : d.kind === "pdf" ? ".pdf" : d.kind === "image" ? "png, jpeg, gif or webp" : "any file";
+  const tabs = ([["edit", `Edit v${nv.base}`], ["file", "Upload file"]] as const).map(([k, l]) => {
+    const off = binary && k === "edit";
+    return `<button data-act="artNvTab" data-arg="${k}"${off ? ` aria-disabled="true" title="A ${d.kind} artifact is replaced by uploading a file"` : ""} style="${segSt(nv.tab === k, off)}">${l}</button>`;
+  }).join("");
+
+  const source = nv.tab === "edit"
+    ? `<textarea data-act="artNvText" data-field="artNvText" class="cnpy-input cnpy-scroll" spellcheck="false" aria-label="Content" style="width:100%;height:min(46vh,440px);resize:vertical;padding:12px 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-family:var(--code);font-size:12px;line-height:1.6;outline:none;white-space:pre">${esc(nv.text)}</textarea>
+      ${nv.base !== latestNo ? `<div style="font-size:12px;color:var(--fg-55);margin-top:7px">Starting from v${nv.base}, an older version. Saving it makes this text the latest again.</div>` : ""}`
+    : !nv.file
+      ? `<div data-art-drop="nv" style="border:1px dashed var(--border-strong);border-radius:11px;padding:48px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
+          ${I.upload()}
+          <div style="font-size:14px;font-weight:600;color:var(--fg-70)">Drop the replacement here</div>
+          <div style="font-size:12.5px;color:var(--fg-40)">A ${d.kind} artifact · ${esc(ext)} up to ${capLabel(d.kind)}</div>
+          <label class="cnpy-outlinebtn" style="margin-top:12px;${OUTLINE_BTN};padding:6px 14px;cursor:pointer">Choose file<input type="file" data-art-file="nv" style="display:none"></label>
+        </div>
+        ${nv.fileErr ? `<div style="font-size:12px;color:var(--red);margin-top:7px">${esc(nv.fileErr)}</div>` : ""}`
+      : `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+          <span style="width:30px;height:30px;border-radius:6px;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55);flex:none">${binary ? I.kind(d.kind, 14) : I.file()}</span>
+          <span style="flex:1;min-width:0"><span style="display:block;font-family:var(--label);font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nv.file.name)}</span><span style="display:block;font-size:11.5px;color:var(--fg-40);margin-top:1px">${fmtKB(nv.file.size)} · replaces v${latestNo}</span></span>
+          <button data-act="artNvRemoveFile" class="cnpy-mutelink" style="font-size:12px;font-weight:500;color:var(--fg-40)">Remove</button>
+        </div>`;
+
+  const after = d.status === "ratified" ? `The page becomes published, and v${next} needs ratifying again.` : d.status === "draft" ? "The page becomes published." : "The page stays published.";
+  return `<div style="padding:22px 24px 0">
+      <div style="${EYEBROW};margin-bottom:8px">New version · v${next}</div>
+      <div style="font-size:17px;font-weight:600;letter-spacing:-0.01em">${esc(d.title)}</div>
+    </div>
+    <div class="cnpy-scroll" data-scroll-keep="artNv" style="flex:1;min-height:0;overflow-y:auto;padding:16px 24px 4px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+        <label style="font-size:13px;font-weight:500">Content</label>
+        <div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px">${tabs}</div>
+      </div>
+      ${source}
+      ${contentChecks(text, bytes, d.kind)}
+      <label style="display:block;font-size:13px;font-weight:500;margin:18px 0 8px">What changed <span style="font-weight:400;color:var(--fg-40)">(optional)</span></label>
+      <input data-act="artNvSummary" data-field="artNvSummary" class="cnpy-input" value="${attr(nv.summary)}" maxlength="${ARTIFACT_SUMMARY_MAX}" placeholder="Flattened the export so it renders in Canopy" style="width:100%;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;outline:none">
+    </div>
+    <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:16px 24px 20px;border-top:1px solid var(--border);margin-top:16px;flex-wrap:wrap">
+      <span style="flex:1;min-width:200px;font-size:12px;color:var(--fg-40)">Saves as v${next}. ${after}</span>
+      <button data-act="artCloseDialogs" class="cnpy-outlinebtn" style="${OUTLINE_BTN}">Cancel</button>
+      <button data-act="artNvSubmit" class="${ok ? "cnpy-accentbtn" : ""}" style="${primarySt(ok)}">${nv.submitting ? "Saving…" : `Save v${next}`}</button>
+    </div>`;
+}
+
 // ── the ticket detail's Artifacts block ──────────────────────────────────────
 
 /** The ticket detail's Artifacts section (the prototype's ticket screen): every
@@ -1053,6 +1154,7 @@ export type ArtWrite =
   | { op: "ratify"; slug: string; version: number; flash: string }
   | { op: "link"; slug: string; target_type: ArtifactLinkType; target_ref: string; flash: string }
   | { op: "create"; fields: { title: string; kind: ArtifactKind; area: string; repo: string; visibility: ArtifactVisibility; summary: string }; content: string | null; file: Blob | null; filename: string | null; links: { target_type: ArtifactLinkType; target_ref: string }[] }
+  | { op: "version"; slug: string; body: { content: string; summary: string } | { file: Blob; filename: string; summary: string } }
   | { op: "fetchUrl"; url: string };
 
 export type ArtEffect =
@@ -1120,7 +1222,10 @@ export function artifactsAct(
     case "artVerMenu": ui.verMenu = !ui.verMenu; ui.dotMenu = false; return null;
     case "artDotMenu": ui.dotMenu = !ui.dotMenu; ui.verMenu = false; return null;
     case "artCloseMenus": closeMenus(); return null;
-    case "artCloseDialogs": ui.ratifyOpen = false; ui.attachOpen = false; return null;
+    case "artCloseDialogs":
+      ui.ratifyOpen = false; ui.attachOpen = false;
+      if (!ui.nv?.submitting) ui.nv = null;
+      return null;
     case "artVis": {
       if (!d || ui.busy) return null;
       if (d.visibility === "private") return { write: { op: "patch", slug: d.slug, body: { visibility: "org" }, flash: "Published to the org" } };
@@ -1165,6 +1270,35 @@ export function artifactsAct(
       if (!d) return null;
       closeMenus();
       return { openUrl: d.raw_url || rawUrl(d.slug, d.version.version_no) };
+
+    // new version (the viewer's dialog)
+    case "artNvOpen": {
+      if (!d) return null;
+      closeMenus();
+      const text = isTextKind(d.kind) ? d.content ?? "" : "";
+      ui.nv = {
+        tab: isBinaryKind(d.kind) ? "file" : "edit", base: d.version.version_no, original: text, text,
+        file: null, fileErr: null, summary: "", submitting: false,
+      };
+      return null;
+    }
+    case "artNvTab":
+      if (!ui.nv || !d || (arg !== "edit" && arg !== "file") || (arg === "edit" && isBinaryKind(d.kind))) return null;
+      ui.nv.tab = arg;
+      return null;
+    case "artNvText": if (ui.nv) ui.nv.text = value ?? ""; return null;
+    case "artNvSummary": if (ui.nv) ui.nv.summary = value ?? ""; return null;
+    case "artNvRemoveFile": if (ui.nv) { ui.nv.file = null; ui.nv.fileErr = null; } return null;
+    case "artNvSubmit": {
+      const nv = ui.nv;
+      if (!d || !nv || !canSubmitNv(nv, d.kind, d.current_version)) return null;
+      const summary = nv.summary.trim().slice(0, ARTIFACT_SUMMARY_MAX);
+      const body = isBinaryKind(d.kind)
+        ? { file: nv.file!.blob!, filename: nv.file!.name, summary }
+        : { content: nvText(nv), summary };
+      nv.submitting = true;
+      return { write: { op: "version", slug: d.slug, body } };
+    }
 
     // create
     case "artCTitle": ui.c.title = value ?? ""; return null;
@@ -1236,4 +1370,16 @@ export function artAcceptFile(ui: ArtUi, file: ArtFile): void {
   ui.c.tab = "file";
   ui.c.kind = kindForFilename(file.name);
   if (!ui.c.title) ui.c.title = file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
+}
+
+/** A picked/dropped file → the New version dialog. The page's kind is fixed, so the file must sit on
+ *  the same side of it: text (read as text) for a text page, the bytes for a binary one. */
+export function artAcceptNvFile(ui: ArtUi, kind: ArtifactKind, file: ArtFile): void {
+  if (!ui.nv) return;
+  const fits = isBinaryKind(kind) ? !!file.blob : file.text !== null;
+  ui.nv.tab = "file";
+  ui.nv.file = fits ? file : null;
+  ui.nv.fileErr = fits ? null
+    : isTextKind(kind) ? `A ${kind} artifact is replaced by a .${ARTIFACT_TEXT_EXT[kind]} file, not ${file.name}.`
+      : `A ${kind} artifact is replaced by a ${kind} file, not ${file.name}.`;
 }

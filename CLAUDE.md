@@ -1050,7 +1050,11 @@ An artifact is one self-contained page an agent or person produced (a design pag
 PDF, file), stored and versioned in Canopy and linked to the work it came from. Knowledge › **Artifacts** in the
 SPA (`#artifacts`, `#artifacts/new`, `#artifacts/<slug>[/v<n>|@v<n>]`, `#artifacts/<slug>/diff/<a>..<b>` —
 `web/src/artifacts.ts`, ported from the Claude Design `Canopy Artifacts.dc.html`, decoded copy in
-`docs/superpowers/specs/artifacts-prototype/`), plus an Artifacts block on the ticket detail. The contract for
+`docs/superpowers/specs/artifacts-prototype/`), plus an Artifacts block on the ticket detail. The viewer's
+**New version** dialog (`newVersionDialog`, over `POST /api/artifacts/:slug/versions`) edits the SHOWN version's
+text (text kinds; from an older version that is a restore) or uploads a replacement file on the page's own side
+(text / binary — `artAcceptNvFile` refuses the other), with the create form's size / claude.ai / flatten checks
+(`contentChecks`); an unchanged save is the API's `unchanged` no-op. The contract for
 agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy` / `artifacts` skills).
 
 - **Kinds and storage**: text kinds `html` / `markdown` / `svg` / `mermaid` (≤ 500 KB of UTF-8, the `content`
@@ -1104,7 +1108,7 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy
   End-to-end check against a live `wrangler dev`: `scripts/e2e/artifacts-agent.mjs` (start dev with
   `--var PUBLIC_ORIGIN:<its URL>`, or the script refuses the production-origin upload/download URLs).
 - **Deferred on purpose**: external share links, per-person sharing, a raw-content subdomain, PDF text extraction
-  for search, a UI for uploading a new version of an existing artifact (the API supports it).
+  for search.
 
 ## Doc images — uploaded, content-addressed, gate-checked (spec: `docs/superpowers/specs/2026-09-24-doc-images-design.md`)
 
