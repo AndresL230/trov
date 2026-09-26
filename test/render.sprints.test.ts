@@ -83,7 +83,7 @@ function detail(o: Partial<SprintDetail> & { id: number; label: string }): Sprin
 const spTicket = (o: Partial<SprintTicketRow> & { id: number; title: string; depth: 0 | 1 }): SprintTicketRow => ({
   body: "", category: "bug", priority: "normal", status: "submitted", requester: "meilin",
   parent_id: null, sprint_id: 3, created_at: ago(2 * D), updated_at: ago(D),
-  source: "canopy", source_ref: null, source_author: null, source_updated_at: null, assignees: [], ...o,
+  source: "canopy", source_ref: null, source_author: null, source_updated_at: null, board_rank: null, assignees: [], ...o,
 });
 
 const resource = (o: Partial<SprintResourceView> = {}): SprintResourceView => ({

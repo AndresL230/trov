@@ -20,7 +20,7 @@ import {
   getNotificationSettings, putNotificationSettings, listNotificationOutbox, testSendNotification, type PrefsWrite,
   listMcpTokens, revokeMcpToken, listOAuthGrants, revokeOAuthGrant,
   listPersons, listInvites, createInvite, revokeInvite, resendInvite, updateMe, unlinkIdentity, renameHandle,
-  listTickets, getTicket, getTicketBadge, createTicket, transitionTicket, toggleTicketAssignee,
+  listTickets, getTicket, getTicketBadge, createTicket, transitionTicket, moveTicket, toggleTicketAssignee,
   addTicketLink, editTicket, removeTicketLink, setTicketSprint, setTicketParent, addTicketComment, listSprints,
   getSprint, createSprint, setSprintActive, addSprintResource,
   type TicketDetail,
@@ -40,10 +40,11 @@ import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, type Route } from "./hash";
 import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
 import {
-  TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES,
+  TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
   type TicketCategory, type TicketPriority, type TicketStatus,
 } from "@shared/tickets-core";
 import { decodeReviewId } from "./triage-map";
+import { QUEUE_FILTER_CATS, type QueueFilterCat } from "./tickets";
 import { initialOnboard } from "./people";
 import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX } from "./mentions";
 import { PERSON_COLORS, type PersonColor } from "@shared/rows";
@@ -197,13 +198,16 @@ let lastNavGroup: NavGroup | null = null;
 let autoOpened: NavGroup | null = null;
 
 function rerender(): void {
+  // A board drag holds the DOM: swapping <main> would drop the card mid-drag.
+  // The held paint runs when the drag ends (clearBoardDrag).
+  if (boardDrag) { rerenderHeld = true; return; }
   // The "Poll now" result is session-only and belongs to the Repo screen: leaving
   // it (any route, or signing out) clears it, and an in-flight poll's answer is
   // then dropped on arrival (runRepoPoll checks it is still the one polling).
   // Switching between the Repo TABS keeps it — the strip renders on all five.
   state.repoPoll = repoPollFor(state.repoPoll, state.view === "app" && state.screen === "repo");
-  // A queue filter dropdown left open never survives leaving the queue.
-  if (state.screen !== "tickets") state.qMenu = null;
+  // The queue's filter menu left open never survives leaving the queue.
+  if (state.screen !== "tickets") state.qFilterOpen = false;
   // Entering a group's pages opens its sub-page list, and leaving folds it again —
   // unless the person opened or closed it by hand, which sticks (and is what persists).
   const group = state.view === "app" ? navGroupOf(state.screen) : null;
@@ -976,12 +980,19 @@ function loadIdentityTasksIfNeeded(): void {
 // refetch it too (never locally patch a row — the server is the shape of truth),
 // hence the seq guard: a slow earlier response must not overwrite a fresher one.
 let ticketsSeq = 0;
+/** The queue has landed at least once this session. */
+let ticketsLanded = false;
 function loadTickets(): void {
   const seq = ++ticketsSeq;
-  state.tickets = { status: "loading", data: state.tickets.data };
+  // Every filter change, drag and write REFETCHES the queue. Once it has landed, a
+  // refetch keeps the board on screen as it is and swaps the rows in when they
+  // arrive: flipping to "loading" made the screen unsettled, so the landing replayed
+  // the whole entrance (and an empty result showed "Loading the queue…") — every
+  // move read as a page reload.
+  if (!ticketsLanded) state.tickets = { status: "loading", data: state.tickets.data };
   rerender();
   listTickets({ seg: state.qSeg, assignee: state.qAssignee, category: state.qCategory })
-    .then((rows) => { if (seq !== ticketsSeq) return; state.tickets = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== ticketsSeq) return; state.tickets = { status: "ok", data: rows }; ticketsLanded = true; rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== ticketsSeq) return;
@@ -1821,24 +1832,70 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "queueSeg":
       if (arg === "open" || arg === "closed" || arg === "all") { state.qSeg = arg; loadTickets(); }
       return;
-    // The queue's two filter dropdowns (tickets.ts `queueDropdown`): the trigger
-    // toggles its menu, a row picks by data-arg.
-    case "queueMenu":
-      state.qMenu = (arg === "assignee" || arg === "category") && state.qMenu !== arg ? arg : null;
-      break;
+    // The queue's filter menu (tickets.ts `queueFilterMenu`, the shared filter-menu
+    // registry opens/closes it): Assignee and Category refetch — the server filters
+    // them — Priority, Sprint and the search box narrow the loaded rows.
     case "queueAssignee": {
-      const v = arg ?? value;
-      state.qMenu = null;
-      if (v === "anyone" || v === "me" || v === "unassigned") { state.qAssignee = v; loadTickets(); }
+      const v = arg ?? value ?? "";
+      // "@<handle>" = one person: fetch everyone's (`anyone`), narrow client-side.
+      if (v.startsWith("@") && v.length > 1) {
+        state.qPerson = v.slice(1);
+        if (state.qAssignee !== "anyone") { state.qAssignee = "anyone"; loadTickets(); return; }
+        break;
+      }
+      if (v === "anyone" || v === "me" || v === "unassigned") {
+        state.qPerson = "";
+        if (state.qAssignee !== v) { state.qAssignee = v; loadTickets(); return; }
+      }
       break;
     }
     case "queueCategory": {
       const v = arg ?? value ?? "all";
-      state.qMenu = null;
       if (v !== "all" && !(TICKET_CATEGORIES as readonly string[]).includes(v)) break;
       state.qCategory = v as TicketCategory | "all";
       loadTickets();
       break;
+    }
+    case "queuePriority":
+      if (arg === "all" || (TICKET_PRIORITIES as readonly string[]).includes(arg ?? "")) state.qPrio = arg as TicketPriority | "all";
+      break;
+    case "queueSprint": if (arg) state.qSprint = arg; break;
+    case "queueFilterClear": {
+      const refetch = state.qAssignee !== "anyone" || state.qCategory !== "all";
+      state.qAssignee = "anyone"; state.qCategory = "all"; state.qPrio = "all"; state.qSprint = "all"; state.qPerson = "";
+      if (refetch) { loadTickets(); return; }
+      break;
+    }
+    case "queueQ": state.qQ = value ?? ""; break;
+    case "queueClearQ": state.qQ = ""; break;
+    // A board card dropped on another column (the drag listeners below): the
+    // SAME transition the detail screen's status menu sends. The card moves at
+    // once — the refetch that follows replaces it with the server's truth, and a
+    // refused move (the server's 409) snaps it back.
+    case "queueDrop": {
+      // `<id>:<status>:<after id or "">` — the card and the slot it was dropped
+      // into. It lands there at once, placed by the SAME `placeInColumn` the Worker
+      // uses; the refetch that follows replaces it with the server's truth, and a
+      // refused move (the server's 409) puts it back.
+      const [idStr, to, afterStr] = (arg ?? "").split(":");
+      const id = Number(idStr);
+      const afterId = afterStr ? Number(afterStr) : null;
+      const t = state.tickets.data.find((r) => r.id === id);
+      if (!t || !(TICKET_STATUSES as readonly string[]).includes(to)) return;
+      const next = to as TicketStatus;
+      if (next !== t.status && !canTransition(t.status, next)) return;
+      const column = state.tickets.data.filter((r) => r.status === next && r.id !== id);
+      const { rank, renumber } = placeInColumn(column, afterId);
+      state.tickets = {
+        ...state.tickets,
+        data: state.tickets.data.map((r) =>
+          r.id === id ? { ...r, status: next, board_rank: rank } : renumber?.has(r.id) ? { ...r, board_rank: renumber.get(r.id) as number } : r),
+      };
+      rerender();
+      moveTicket(id, next, afterId)
+        .then(() => { loadTickets(); loadTicketBadge(); if (next !== t.status) flash(`#${id} moved to ${TICKET_STATUS_LABEL[next]}`); })
+        .catch((e) => { ticketErr(e); loadTickets(); });
+      return;
     }
     case "queueTable": state.qView = "table"; break;
     case "queueBoard": state.qView = "board"; break;
@@ -1916,7 +1973,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "ticketAsgMenu": state.asgMenu = !state.asgMenu; state.sprMenu = false; state.relMenu = false; state.lkMenu = null; state.stMenu = null; break;
     case "ticketSprintMenu": state.sprMenu = !state.sprMenu; state.asgMenu = false; state.relMenu = false; state.lkMenu = null; state.stMenu = null; break;
     case "ticketRelMenu": state.relMenu = !state.relMenu; state.asgMenu = false; state.sprMenu = false; state.lkMenu = null; state.stMenu = null; break;
-    case "closeTicketMenus": state.asgMenu = false; state.sprMenu = false; state.relMenu = false; state.lkMenu = null; state.stMenu = null; state.qMenu = null; break;
+    case "closeTicketMenus": state.asgMenu = false; state.sprMenu = false; state.relMenu = false; state.lkMenu = null; state.stMenu = null; break;
     // Assignment is immediate and reversible — no confirm step (design call #7).
     case "ticketAsgAdd": {
       const id = state.ticketId;
@@ -2806,6 +2863,10 @@ const FILTER_MENUS: Record<string, FilterMenuSpec> = {
     isOpen: () => state.promptFilterOpen, setOpen: (v) => { state.promptFilterOpen = v; }, cat: () => state.promptFilterCat,
     setCat: (k) => { if (k !== "tag" && k !== "sort") return false; state.promptFilterCat = k; return true; },
   },
+  queue: {
+    isOpen: () => state.qFilterOpen, setOpen: (v) => { state.qFilterOpen = v; }, cat: () => state.qFilterCat,
+    setCat: (k) => { if (!(QUEUE_FILTER_CATS as readonly string[]).includes(k)) return false; state.qFilterCat = k as QueueFilterCat; return true; },
+  },
 };
 const FM_CLOSE_MS = 130;
 let fmClosing: string | null = null;
@@ -2923,10 +2984,21 @@ mount.addEventListener("pointerout", (e) => {
   cancelHoverClose();
   hoverCloseTimer = setTimeout(() => { hoverCloseTimer = null; closeFilterMenu(id); }, 200);
 });
-// Escape closes an open filter menu (and the ticket queue's filter dropdowns).
+// `data-hover-blur` (the ticket queue's search + Filter pair): once a MOUSE leaves
+// it, it lets go — the search box drops its focus (and so its selected outline),
+// keeping whatever was typed. The filter menu inside closes on its own hover rule.
+mount.addEventListener("pointerout", (e) => {
+  if (e.pointerType !== "mouse") return;
+  const box = (e.target as Element).closest<HTMLElement>("[data-hover-blur]");
+  if (!box) return;
+  const to = e.relatedTarget as Element | null;
+  if (to && box.contains(to)) return;
+  const focused = document.activeElement;
+  if (focused instanceof HTMLElement && box.contains(focused)) focused.blur();
+});
+// Escape closes an open filter menu.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (state.qMenu) { state.qMenu = null; rerender(); }
   for (const [id, spec] of Object.entries(FILTER_MENUS)) if (spec.isOpen()) closeFilterMenu(id);
 });
 
@@ -2958,6 +3030,191 @@ mount.addEventListener("change", (e) => {
   if (el instanceof HTMLInputElement && el.dataset.act && el.dataset.commit) {
     dispatch(`${el.dataset.act}Commit`, el.dataset.arg ?? null, el.value);
   }
+});
+
+// ── the ticket board's drag (tickets.ts `boardCard` / `boardView`) ───────────
+// POINTER-driven, not HTML5 drag-and-drop: the browser's native drag image is a
+// shrunken, translucent snapshot the page cannot size. Instead:
+//  • the card lifts out — a full-size clone (`.cnpy-tghost`), held straight, follows the pointer,
+//    and the card itself is replaced by a SLOT (`.cnpy-tslot`) the same height;
+//  • the slot follows the pointer through the columns, and the cards around it
+//    slide apart to make room (FLIP: measure, move the slot, animate each card
+//    from where it was) — the gap is exactly where the card will land;
+//  • on release the clone glides into the slot, then the move is written
+//    (`queueDrop` → `move_ticket`, which saves the position).
+// A press becomes a drag only past DRAG_SLOP px, so a click still opens the
+// ticket, and the click a real drag's release fires is swallowed. The columns
+// themselves are NOT highlighted (the owner's call): the slot says where the card
+// goes. A column the status machine refuses (`canTransition`, the table the server
+// enforces) takes no slot — it goes home — and a release there explains why.
+// Rerenders are held for the whole drag (the DOM IS the drag state).
+// Mouse and pen only: on touch a press on the board must still scroll it.
+const DRAG_SLOP = 5;
+const SLIDE_MS = 160;
+let boardDrag: { id: number; from: TicketStatus; blocked: TicketStatus | null } | null = null;
+let rerenderHeld = false;
+interface BoardPress {
+  card: HTMLElement; id: number; from: TicketStatus; x: number; y: number;
+  dx: number; dy: number; ghost: HTMLElement | null; slot: HTMLElement | null;
+  /** Where the card started: its list and the visible card after it. */
+  homeList: HTMLElement | null; homeNext: HTMLElement | null;
+  settling: boolean;
+}
+let boardPress: BoardPress | null = null;
+let swallowClick = false;
+const listOf = (col: Element) => col.querySelector<HTMLElement>(".cnpy-stagger");
+/** The cards that take part in a column's layout (not the lifted one). */
+const liveCards = (list: Element | null) =>
+  list ? Array.from(list.children).filter((el): el is HTMLElement => el instanceof HTMLElement && el.classList.contains("cnpy-tcard") && !el.classList.contains("is-lifted")) : [];
+/** The first live card after `el` in its list (null = the end). */
+function nextLive(el: Element): HTMLElement | null {
+  for (let n = el.nextElementSibling; n; n = n.nextElementSibling) {
+    if (n instanceof HTMLElement && n.classList.contains("cnpy-tcard") && !n.classList.contains("is-lifted")) return n;
+  }
+  return null;
+}
+function prevLive(el: Element): HTMLElement | null {
+  for (let n = el.previousElementSibling; n; n = n.previousElementSibling) {
+    if (n instanceof HTMLElement && n.classList.contains("cnpy-tcard") && !n.classList.contains("is-lifted")) return n;
+  }
+  return null;
+}
+/** Move the slot to `list` before `ref` (null = the end), sliding every card
+ *  it displaces from where it was to where it lands. */
+function moveSlot(slot: HTMLElement, list: HTMLElement, ref: HTMLElement | null): void {
+  if (slot.parentElement === list && nextLive(slot) === ref) return;
+  const lists = new Set<HTMLElement>([list]);
+  if (slot.parentElement instanceof HTMLElement) lists.add(slot.parentElement);
+  const cards = [...lists].flatMap((l) => liveCards(l));
+  const before = new Map(cards.map((c) => [c, c.getBoundingClientRect().top]));
+  list.insertBefore(slot, ref);
+  if (reducedMotion()) return;
+  for (const c of cards) {
+    const dy = (before.get(c) ?? 0) - c.getBoundingClientRect().top;
+    if (Math.abs(dy) < 0.5) continue;
+    c.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: SLIDE_MS, easing: "cubic-bezier(.2,.7,.2,1)" });
+  }
+  slot.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SLIDE_MS });
+}
+function clearBoardDrag(): void {
+  const p = boardPress;
+  p?.slot?.remove();
+  p?.card.classList.remove("is-lifted");
+  document.querySelector(".cnpy-tghost")?.remove();
+  document.documentElement.classList.remove("cnpy-grabbing");
+  boardPress = null;
+  boardDrag = null;
+  if (rerenderHeld) { rerenderHeld = false; rerender(); }
+}
+function startBoardDrag(p: BoardPress): void {
+  const r = p.card.getBoundingClientRect();
+  p.dx = p.x - r.left;
+  p.dy = p.y - r.top;
+  const ghost = p.card.cloneNode(true) as HTMLElement;
+  ghost.classList.add("cnpy-tghost");
+  ghost.removeAttribute("data-act");
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.style.width = `${r.width}px`;
+  ghost.style.height = `${r.height}px`;
+  ghost.style.left = `${r.left}px`;
+  ghost.style.top = `${r.top}px`;
+  // Inside the app's theme root, so the card's colors resolve exactly as on the board.
+  (mount.firstElementChild ?? document.body).appendChild(ghost);
+  p.ghost = ghost;
+  const slot = document.createElement("div");
+  slot.className = "cnpy-tslot";
+  slot.style.height = `${r.height}px`;
+  p.homeList = p.card.parentElement;
+  p.homeNext = nextLive(p.card);
+  p.card.parentElement?.insertBefore(slot, p.card);
+  p.card.classList.add("is-lifted");
+  p.slot = slot;
+  boardDrag = { id: p.id, from: p.from, blocked: null };
+  document.documentElement.classList.add("cnpy-grabbing");
+}
+mount.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0 || e.pointerType === "touch") return;
+  const card = (e.target as Element | null)?.closest?.<HTMLElement>("[data-tdrag]");
+  if (!card || boardPress) return;
+  boardPress = {
+    card, id: Number(card.dataset.tdrag), from: card.dataset.status as TicketStatus,
+    x: e.clientX, y: e.clientY, dx: 0, dy: 0, ghost: null, slot: null, homeList: null, homeNext: null, settling: false,
+  };
+});
+document.addEventListener("pointermove", (e) => {
+  const p = boardPress;
+  if (!p || p.settling) return;
+  if (!p.ghost) {
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_SLOP) return;
+    startBoardDrag(p);
+  }
+  e.preventDefault();                                   // no text selection mid-drag
+  const { ghost, slot } = p;
+  if (!ghost || !slot || !boardDrag) return;
+  ghost.style.left = `${e.clientX - p.dx}px`;
+  ghost.style.top = `${e.clientY - p.dy}px`;
+  const col = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-tdrop]") ?? null;
+  const st = (col?.dataset.tdrop ?? null) as TicketStatus | null;
+  const ok = st !== null && (st === p.from || canTransition(p.from, st));
+  boardDrag.blocked = st !== null && !ok ? st : null;
+  const list = col && ok ? listOf(col) : null;
+  if (list) {
+    // The slot goes before the first card whose middle is below the pointer.
+    const ref = liveCards(list).find((c) => { const b = c.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; }) ?? null;
+    moveSlot(slot, list, ref);
+  } else if (boardDrag.blocked && p.homeList) {
+    moveSlot(slot, p.homeList, p.homeNext);             // refused column: the gap goes home
+  }
+});
+function endBoardDrag(commit: boolean): void {
+  const p = boardPress;
+  if (!p || p.settling) return;
+  if (!p.ghost || !p.slot || !boardDrag) { boardPress = null; return; }   // a plain click: let it open the ticket
+  swallowClick = true;                                  // the click this release fires is not an "open"
+  setTimeout(() => { swallowClick = false; }, 0);
+  const { id, from, blocked } = boardDrag;
+  const slot = p.slot;
+  const to = (slot.closest<HTMLElement>("[data-tdrop]")?.dataset.tdrop ?? from) as TicketStatus;
+  const after = prevLive(slot);
+  const unmoved = to === from && slot.parentElement === p.homeList && nextLive(slot) === p.homeNext;
+  const finish = () => {
+    clearBoardDrag();
+    if (!commit) return;
+    if (blocked) {
+      const legal = TICKET_STATUSES.filter((s) => canTransition(from, s)).map((s) => TICKET_STATUS_LABEL[s]);
+      flash(`${TICKET_STATUS_LABEL[from]} can't move to ${TICKET_STATUS_LABEL[blocked]} — only to ${legal.join(" or ")}`);
+      return;
+    }
+    if (!unmoved) dispatch("queueDrop", `${id}:${to}:${after?.dataset.arg ?? ""}`, null);
+  };
+  if (!commit || reducedMotion()) { finish(); return; }
+  // Glide the lifted card into its slot, then commit.
+  p.settling = true;
+  const s = slot.getBoundingClientRect();
+  const g = p.ghost.getBoundingClientRect();
+  const anim = p.ghost.animate(
+    [{ transform: "none" }, { transform: `translate(${s.left - g.left}px, ${s.top - g.top}px)`, boxShadow: "none" }],
+    { duration: 150, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" }
+  );
+  anim.onfinish = finish;
+  anim.oncancel = finish;
+}
+document.addEventListener("pointerup", () => endBoardDrag(true));
+document.addEventListener("pointercancel", () => endBoardDrag(false));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && boardPress?.ghost) endBoardDrag(false); });
+mount.addEventListener("click", (e) => {
+  if (!swallowClick) return;
+  swallowClick = false;
+  e.stopPropagation();
+  e.preventDefault();
+}, true);
+// A board card is a div (so it can drag): Enter / Space open it, like a button.
+mount.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const card = e.target as HTMLElement | null;
+  if (!card?.classList?.contains("cnpy-tcard")) return;
+  e.preventDefault();
+  dispatch(card.dataset.act ?? "", card.dataset.arg ?? null, null);
 });
 
 // The new-artifact form's file picker and drop zone (a file has no string value to dispatch).

@@ -3,6 +3,7 @@ import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, 
 import type { ArtifactKind, ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
 import type { TicketListItem, TicketDetail, TicketRef, TicketSeg, TicketAssigneeFilter, TicketCategory } from "@shared/tickets";
+import { OPEN_STATUSES, OPEN_STATUS_SQL, TICKET_STATUSES } from "@shared/tickets-core";
 import { type DB, first, all, ph, fanOut } from "../db";
 // The sprint read model lives next to the sprint writers; `query()` borrows its
 // progress RULE so the assembled sprint body and the Roadmap can never disagree.
@@ -187,9 +188,9 @@ export async function list_identity_tasks(db: DB): Promise<IdentityTaskWithSampl
 
 /** The `seg` filter: Open = not yet resolved by a person. */
 const SEG_STATUSES: Record<TicketSeg, readonly string[]> = {
-  open: ["submitted", "in_progress"],
+  open: OPEN_STATUSES,
   closed: ["done", "declined"],
-  all: ["submitted", "in_progress", "done", "declined"],
+  all: TICKET_STATUSES,
 };
 
 export interface TicketListFilter {
@@ -316,7 +317,7 @@ export async function ticket_badge(db: DB): Promise<number> {
   const row = await first<{ n: number }>(
     db,
     `SELECT COUNT(*) AS n FROM tickets t
-      WHERE t.status IN ('submitted', 'in_progress') AND t.source = 'canopy'
+      WHERE t.status IN ${OPEN_STATUS_SQL} AND t.source = 'canopy'
         AND NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.ticket_id = t.id)`
   );
   return row?.n ?? 0;

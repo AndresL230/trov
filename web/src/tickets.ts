@@ -15,7 +15,7 @@
 
 import {
   legalMoves, isOpenStatus, TICKET_STATUSES, TICKET_STATUS_LABEL, TICKET_CATEGORIES, TICKET_PRIORITIES,
-  sourceIssueNumber,
+  sourceIssueNumber, boardOrder, OPEN_STATUSES,
   type TicketStatus, type TicketCategory, type TicketPriority, type TicketSource,
 } from "@shared/tickets-core";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter } from "@shared/tickets";
@@ -25,6 +25,7 @@ import { esc, attr, relTime, primaryBtn, WORK_SHELL, DETAIL_SHELL } from "./ui";
 import { personChip } from "./people";
 import { renderMarkdown } from "./markdown";
 import { mentionCandidates, mentionPickerTop, COMMENT_BOX } from "./mentions";
+import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
 
 // ── shared atoms ─────────────────────────────────────────────────────────────
 
@@ -39,6 +40,7 @@ function ticketPillStyle(status: TicketStatus): string {
     `${CHIP_BASE}color:${c};border:1px solid color-mix(in srgb,${c} 45%,transparent);background:color-mix(in srgb,${c} 12%,transparent)`;
   if (status === "in_progress") return tint("var(--accent)");
   if (status === "submitted") return tint("var(--blue)");
+  if (status === "testing") return tint("var(--amber)");
   if (status === "done") return `${CHIP_BASE}color:var(--fg-55);border:1px solid var(--border-strong)`;
   return `${CHIP_BASE}color:var(--red);border:1px solid color-mix(in srgb,var(--red) 35%,transparent);opacity:.75`;
 }
@@ -79,7 +81,6 @@ export function sourceChip(t: { source: TicketSource; source_ref: string | null 
   const n = sourceIssueNumber(t.source_ref);
   return tagChip(n !== null ? `GitHub #${n}` : "GitHub", { size: 9.5, pad: "1px 6px" });
 }
-const sprintTag = (label: string) => tagChip(label);
 
 /** Short age from an ISO timestamp: "42m" / "6h" / "3d" (the design's `age()`).
  *  Distinct from ui.relTime, which is the "…ago" form used for timestamps. */
@@ -118,9 +119,9 @@ function assigneeLabel(handles: string[], persons: PersonSummary[]): string {
 
 /** The statuses a segment covers — also the board's columns, in this order. */
 export const SEG_STATUSES: Record<TicketSeg, TicketStatus[]> = {
-  open: ["submitted", "in_progress"],
+  open: [...OPEN_STATUSES],
   closed: ["done", "declined"],
-  all: ["submitted", "in_progress", "done", "declined"],
+  all: [...TICKET_STATUSES],
 };
 
 /** Design call #6 — "needs attention" = unassigned AND `submitted` (Triage). Rendered as the
@@ -159,7 +160,8 @@ const TABLE_COLS = "minmax(0,2.4fr) 1.15fr .75fr .7fr 1fr 1.05fr .5fr";
 // ── the queue ────────────────────────────────────────────────────────────────
 
 export interface QueueProps {
-  /** The rows to show — already filtered server-side by seg / assignee / category. */
+  /** The rows the server returned — already filtered by seg / assignee / category.
+   *  Search, priority and sprint narrow them further here (`queueRows`). */
   tickets: TicketListItem[];
   /** Sprint order drives the table's group order (BACKLOG is always appended last). */
   sprints: SprintView[];
@@ -170,11 +172,23 @@ export interface QueueProps {
   view: "table" | "board";
   /** Unassigned + open across the WHOLE queue (= the sidebar badge), not this page. */
   unassignedCount: number;
-  /** Which filter dropdown is open (null / absent = neither). */
-  menu?: QueueMenu | null;
+  /** The search box (client-side, over the loaded rows). */
+  q?: string;
+  priority?: "all" | TicketPriority;
+  /** "all", "backlog", or a sprint id as a string. */
+  sprint?: string;
+  /** One person's tickets (a handle; "" = nobody picked). The server's assignee
+   *  filter knows only anyone / me / unassigned, so this narrows client-side over
+   *  an `anyone` fetch. */
+  person?: string;
+  /** The shared filter menu (web/src/filter-menu.ts). */
+  filterOpen?: boolean;
+  filterCat?: QueueFilterCat;
+  fmOpening?: string | null;
 }
 
-export type QueueMenu = "assignee" | "category";
+export const QUEUE_FILTER_CATS = ["assignee", "category", "priority", "sprint"] as const;
+export type QueueFilterCat = (typeof QUEUE_FILTER_CATS)[number];
 
 const ASSIGNEE_OPTIONS: [TicketAssigneeFilter, string][] = [
   ["anyone", "Any assignee"],
@@ -182,46 +196,106 @@ const ASSIGNEE_OPTIONS: [TicketAssigneeFilter, string][] = [
   ["unassigned", "Unassigned"],
 ];
 
-/**
- * A queue filter dropdown. NOT a native <select>: its option list is the browser's
- * own popup, which ignores the theme (a light OS list over a dark app). The trigger
- * keeps `.cnpy-select`'s look (border, chevron); the list is the same menu the
- * ticket screens already use for status / assignee / sprint (MENU_BOX, a check on
- * the current row), closed by its backdrop, Escape, or a pick.
- */
-function queueDropdown(id: QueueMenu, act: string, label: string, options: readonly (readonly [string, string])[], value: string, open: boolean): string {
-  const current = options.find(([v]) => v === value)?.[1] ?? options[0][1];
-  const row = "display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 10px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap";
-  const menu = open
-    ? `${MENU_BACKDROP}<div role="listbox" aria-label="${attr(label)}" style="${MENU_BOX};left:0;right:auto;min-width:100%;width:max-content">${options.map(([v, l]) =>
-        `<button role="option" aria-selected="${v === value}" data-act="${act}" data-arg="${attr(v)}" class="${MENU_ROW_CLASS}" style="${row};color:${v === value ? "var(--fg)" : "var(--fg-70)"}">${checkMark(v === value)}${esc(l)}</button>`).join("")}</div>`
-    : "";
-  return `<div style="position:relative;display:inline-flex">
-    <button data-act="queueMenu" data-arg="${id}" aria-haspopup="listbox" aria-expanded="${open}" aria-label="${attr(label)}: ${attr(current)}" class="cnpy-select" style="text-align:left;white-space:nowrap${open ? ";border-color:var(--border-strong);color:var(--fg)" : ""}">${esc(current)}</button>${menu}
-  </div>`;
+const cap = (x: string) => x.charAt(0).toUpperCase() + x.slice(1);
+
+/** Does a ticket sit in the picked sprint filter? "backlog" = no sprint. */
+function inSprint(t: TicketListItem, sprint: string): boolean {
+  if (sprint === "all") return true;
+  if (sprint === "backlog") return t.sprint_id === null;
+  return String(t.sprint_id) === sprint;
 }
 
-function filterRow(p: QueueProps): string {
-  const segs: [TicketSeg, string][] = [["open", "Open"], ["closed", "Closed"], ["all", "All"]];
-  const segment = `<div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px">${segs.map(([k, label]) =>
+/** The rows the queue shows: the server's rows narrowed by the client-side
+ *  filters (priority, sprint) and the search box — title, #number, the
+ *  requester, the assignees, the sprint, the category, the source issue. */
+export function queueRows(p: QueueProps): TicketListItem[] {
+  const q = (p.q ?? "").trim().toLowerCase();
+  const prio = p.priority ?? "all";
+  const sprint = p.sprint ?? "all";
+  const who = (p.person ?? "").toLowerCase();
+  return p.tickets
+    .filter((t) => !who || t.assignees.some((h) => h.toLowerCase() === who))
+    .filter((t) => prio === "all" || t.priority === prio)
+    .filter((t) => inSprint(t, sprint))
+    .filter((t) => {
+      if (!q) return true;
+      const people = [t.requester, ...t.assignees].map((h) => `${h} ${nameOf(p.persons, h)}`).join(" ");
+      return `#${t.id} ${t.title} ${people} ${t.sprint_label ?? "backlog"} ${t.category} ${t.source_ref ?? ""}`.toLowerCase().includes(q);
+    });
+}
+
+/** The queue's filter menu: Assignee and Category refetch (server-side), Priority
+ *  and Sprint narrow the loaded rows. Counts only where they are honest — the
+ *  two client-side groups, counted over what the server returned. */
+function queueFilterMenu(p: QueueProps, shown: number): FilterMenuProps {
+  const prio = p.priority ?? "all";
+  const sprint = p.sprint ?? "all";
+  const person = p.person ?? "";
+  const active = (p.assignee !== "anyone" || person ? 1 : 0) + (p.category !== "all" ? 1 : 0) + (prio !== "all" ? 1 : 0) + (sprint !== "all" ? 1 : 0);
+  const sprintOpts: [string, string][] = [["all", "Any sprint"], ...p.sprints.map((sp): [string, string] => [String(sp.id), sp.label]), ["backlog", "Backlog"]];
+  return {
+    id: "queue", open: !!p.filterOpen, opening: p.fmOpening === "queue", cat: p.filterCat ?? "assignee", activeCount: active,
+    showLabel: `Show ${shown} ${shown === 1 ? "ticket" : "tickets"}`, clearAct: "queueFilterClear",
+    align: "stretch", ariaLabel: "Filter tickets",
+    groups: [
+      {
+        // A person is `@<handle>`, one list with the three modes. Their counts are
+        // honest only over an `anyone` fetch, so they show only then.
+        key: "assignee", label: "Assignee", value: person ? `@${person}` : p.assignee, none: "anyone",
+        options: [
+          ...ASSIGNEE_OPTIONS.map(([v, l]) => ({ v, l, act: "queueAssignee", arg: v })),
+          ...[...p.persons].sort((a, b) => (a.name || a.handle).localeCompare(b.name || b.handle)).map((pp) => ({
+            v: `@${pp.handle}`, l: pp.name || pp.handle, act: "queueAssignee", arg: `@${pp.handle}`,
+            lead: personChip(pp, 18, pp.handle),
+            n: p.assignee === "anyone" ? p.tickets.filter((t) => t.assignees.some((h) => h.toLowerCase() === pp.handle.toLowerCase())).length : undefined,
+          })),
+        ],
+      },
+      {
+        key: "category", label: "Category", value: p.category, none: "all",
+        options: [["all", "All categories"] as [string, string], ...TICKET_CATEGORIES.map((c): [string, string] => [c, cap(c)])]
+          .map(([v, l]) => ({ v, l, act: "queueCategory", arg: v })),
+      },
+      {
+        key: "priority", label: "Priority", value: prio, none: "all",
+        options: [["all", "Any priority"] as [string, string], ...[...TICKET_PRIORITIES].reverse().map((x): [string, string] => [x, cap(x)])]
+          .map(([v, l]) => ({ v, l, act: "queuePriority", arg: v, n: v === "all" ? p.tickets.length : p.tickets.filter((t) => t.priority === v).length })),
+      },
+      {
+        key: "sprint", label: "Sprint", value: sprint, none: "all",
+        options: sprintOpts.map(([v, l]) => ({ v, l, act: "queueSprint", arg: v, n: p.tickets.filter((t) => inSprint(t, v)).length })),
+      },
+    ],
+  };
+}
+
+/** The toolbar: the Artifacts library's search + Filter pair, then the
+ *  Open / Closed / All switch, then the count. */
+function filterRow(p: QueueProps, shown: number): string {
+  const segs: [TicketSeg, string][] = [["all", "All"], ["open", "Open"], ["closed", "Closed"]];
+  const segment = `<div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px;height:34px;box-sizing:border-box">${segs.map(([k, label]) =>
     `<button data-act="queueSeg" data-arg="${k}" class="${segClass(p.seg === k)}" style="${segBtnStyle(p.seg === k)}">${label}</button>`).join("")}</div>`;
 
-  const assigneeSelect = queueDropdown("assignee", "queueAssignee", "Assignee", ASSIGNEE_OPTIONS, p.assignee, p.menu === "assignee");
-  const categorySelect = queueDropdown("category", "queueCategory", "Category",
-    [["all", "All categories"], ...TICKET_CATEGORIES.map((c): [string, string] => [c, c.charAt(0).toUpperCase() + c.slice(1)])],
-    p.category, p.menu === "category");
+  const menu = queueFilterMenu(p, shown);
+  const q = p.q ?? "";
+  const search = `<div data-hover-blur style="position:relative;display:flex;align-items:stretch;flex:1 1 260px;max-width:480px;min-width:0;height:34px">
+      <div class="cnpy-search" style="flex:1;min-width:0;padding:0 11px;border-radius:7px 0 0 7px;border-color:var(--border-strong)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+        <input data-act="queueQ" data-field="queueQ" class="cnpy-search-in" style="font-size:12.5px" placeholder="Search by title, #number or person" aria-label="Search tickets" value="${attr(q)}" autocomplete="off" spellcheck="false">
+        ${q ? `<button data-act="queueClearQ" aria-label="Clear search" class="cnpy-xbtn" style="width:16px;height:16px;display:grid;place-items:center;color:var(--fg-40);flex:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>` : ""}
+      </div>
+      ${filterMenuBackdrop(menu)}
+      ${filterMenu(menu)}
+    </div>`;
 
   // "N shown · M unassigned" — M is the org-wide unassigned+open count (the same
   // number as the sidebar badge), NOT the filtered page's.
-  const count = `${p.tickets.length} shown · ${p.unassignedCount} unassigned`;
+  const count = `${shown} shown · ${p.unassignedCount} unassigned`;
 
-  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 4px">
+  return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 4px">
+    ${search}
     ${segment}
-    <span style="width:1px;height:20px;background:var(--border);margin:0 6px"></span>
-    ${assigneeSelect}
-    ${categorySelect}
-    <span style="flex:1"></span>
-    <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap">${esc(count)}</span>
+    <span style="font-size:12px;color:var(--fg-40);white-space:nowrap;margin-left:auto;flex:none">${esc(count)}</span>
   </div>`;
 }
 
@@ -309,44 +383,69 @@ function tableView(p: QueueProps): string {
   return `${head}${groups}${empty}`;
 }
 
+/** A board card — the plain one: the title, then #number · priority (only when
+ *  it is not normal) · the assignees. Everything else is one click away.
+ *  Open tickets drag between columns (main.ts's pointer-driven board drag); a
+ *  resolved one stays put, since done / declined are terminal. */
 function boardCard(t: TicketListItem, persons: PersonSummary[]): string {
-  const asgStyle = t.assignees.length ? "color:var(--fg-70)" : "color:var(--fg-55);font-style:italic";
-  return `<button data-act="openTicket" data-arg="${t.id}" class="cnpy-card${needsAttention(t) ? NEEDS_ATTENTION_CLASS : ""}" style="display:block;width:100%;text-align:left;padding:12px 13px;border-radius:11px;border:1px solid var(--border);margin-bottom:8px;transition:all .12s ease">
-    <div style="font-size:13.5px;font-weight:600;letter-spacing:-0.005em;line-height:1.4;color:var(--fg)">${esc(t.title)}</div>
-    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:9px">${categoryChip(t.category)}${priorityChip(t.priority)}${t.sprint_label ? sprintTag(t.sprint_label) : ""}${sourceChip(t)}</div>
-    <div style="display:flex;align-items:center;gap:7px;margin-top:11px;padding-top:10px;border-top:1px solid var(--border)">
-      ${avatarStack(t.assignees, persons)}
-      <span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${asgStyle}">${esc(assigneeLabel(t.assignees, persons))}</span>
-      <span style="font-size:11px;color:var(--fg-40);font-family:var(--label);margin-left:auto;flex:none">${esc(age(t.created_at))}</span>
+  const canMove = legalMoves(t.status).length > 0;
+  const prio = t.priority === "normal" ? ""
+    : `<span style="font-size:11.5px;font-weight:${t.priority === "high" ? "600;color:var(--fg)" : "500;color:var(--fg-40)"}">${t.priority === "high" ? "High" : "Low"}</span>`;
+  const sep = `<span style="color:var(--fg-40);font-size:11.5px">·</span>`;
+  const asg = t.assignees.length
+    ? avatarStack(t.assignees, persons, 18)
+    : `<span style="font-size:11.5px;color:var(--fg-40);font-style:italic">Unassigned</span>`;
+  return `<div role="button" tabindex="0" data-act="openTicket" data-arg="${t.id}"${canMove ? ` data-tdrag="${t.id}" data-status="${t.status}"` : ""} aria-label="${attr(`#${t.id} ${t.title}`)}" class="cnpy-tcard cnpy-card${needsAttention(t) ? NEEDS_ATTENTION_CLASS : ""}" style="display:block;width:100%;text-align:left;padding:11px 12px;border-radius:10px;border:1px solid var(--border);margin-bottom:8px;cursor:${canMove ? "grab" : "pointer"}">
+    <div style="font-size:13.5px;font-weight:600;letter-spacing:-0.005em;line-height:1.4;color:var(--fg);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${esc(t.title)}</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:9px;min-height:18px">
+      <span style="font-size:11.5px;color:var(--fg-40)">#${t.id}</span>
+      ${prio ? `${sep}${prio}` : ""}
+      ${sourceMark(t)}
+      <span style="margin-left:auto;display:flex;align-items:center">${asg}</span>
     </div>
-  </button>`;
+  </div>`;
 }
 
-function boardView(p: QueueProps): string {
+/** A mirrored ticket's quiet marker on a board card: the GitHub mark, with
+ *  "GitHub #214" as its tooltip and accessible name — most of the queue is
+ *  mirrored, so a chip on every card would be noise. Native: nothing. */
+function sourceMark(t: TicketListItem): string {
+  if (t.source !== "github") return "";
+  const n = sourceIssueNumber(t.source_ref);
+  const label = n !== null ? `GitHub #${n}` : "GitHub";
+  return `<span title="${attr(label)}" aria-label="${attr(label)}" style="display:inline-flex;color:var(--fg-40)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.87-1.37-3.87-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"></path></svg></span>`;
+}
+
+function boardView(p: QueueProps, rows: TicketListItem[]): string {
   const statuses = SEG_STATUSES[p.seg];
   const cols = statuses.map((st) => {
-    const cards = p.tickets.filter((t) => t.status === st);
-    const headColor = st === "in_progress" ? "color:var(--accent)" : st === "submitted" ? "color:var(--blue)" : "color:var(--fg-40)";
+    // A column is in its saved board order (`boardOrder`, tickets-core — the order
+    // `move_ticket` places into), not the table's newest-first.
+    const cards = rows.filter((t) => t.status === st).sort(boardOrder);
+    const headColor = st === "in_progress" ? "color:var(--accent)" : st === "submitted" ? "color:var(--blue)" : st === "testing" ? "color:var(--amber)" : "color:var(--fg-40)";
     const empty = cards.length === 0
-      ? `<div style="border:1px dashed var(--border);border-radius:11px;padding:16px;text-align:center;font-size:12px;color:var(--fg-40)">Nothing here</div>`
+      ? `<div class="cnpy-tdrop-empty" style="border:1px dashed var(--border);border-radius:10px;padding:16px;text-align:center;font-size:12px;color:var(--fg-40)">Nothing here</div>`
       : "";
-    return `<div style="min-width:0">
+    // The whole column (down to the grid's floor) is the drop target.
+    return `<div data-tdrop="${st}" class="cnpy-tcol" style="min-width:0;display:flex;flex-direction:column;border-radius:12px;padding:0 6px 6px;margin:0 -6px">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding-bottom:9px;border-bottom:1px solid var(--border-strong);margin-bottom:10px">
         <span style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;white-space:nowrap;${headColor}">${esc(TICKET_STATUS_LABEL[st].toUpperCase())}</span>
-        <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap;flex:none">${cards.length}</span>
+        <span style="font-size:12px;color:var(--fg-40);white-space:nowrap;flex:none">${cards.length}</span>
       </div>
       <div class="cnpy-stagger">${cards.map((t) => boardCard(t, p.persons)).join("")}</div>
       ${empty}
+      <div style="flex:1;min-height:40px"></div>
     </div>`;
   }).join("");
-  return `<div style="display:grid;gap:14px;align-items:start;margin-top:12px;grid-template-columns:repeat(${Math.max(statuses.length, 1)},minmax(0,1fr))">${cols}</div>`;
+  return `<div style="display:grid;gap:14px;align-items:stretch;margin-top:12px;min-height:calc(100vh - 190px);grid-template-columns:repeat(${Math.max(statuses.length, 1)},minmax(0,1fr))">${cols}</div>`;
 }
 
-/** The whole queue screen: filter row + Table or Board. */
+/** The whole queue screen: toolbar + Board or Table. */
 export function queueView(p: QueueProps): string {
+  const rows = queueRows(p);
   return `<div style="${WORK_SHELL}">
-    ${filterRow(p)}
-    ${p.view === "board" ? boardView(p) : tableView(p)}
+    ${filterRow(p, rows.length)}
+    ${p.view === "board" ? boardView(p, rows) : tableView({ ...p, tickets: rows })}
   </div>`;
 }
 

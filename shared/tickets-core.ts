@@ -14,11 +14,12 @@
 // (`transition_ticket`), the MCP reads, and the detail screen's transition buttons
 // all read the same table.
 
-// ── controlled vocabulary (must match the CHECK constraints in 0024_tickets.sql) ─
+// ── controlled vocabulary (must match the CHECK constraints in 0024_tickets.sql,
+//    and for statuses 0033_ticket_testing_rank.sql) ─
 
 export const TICKET_CATEGORIES = ["bug", "request", "question", "access", "other"] as const;
 export const TICKET_PRIORITIES = ["low", "normal", "high"] as const;
-export const TICKET_STATUSES = ["submitted", "in_progress", "done", "declined"] as const;
+export const TICKET_STATUSES = ["submitted", "in_progress", "testing", "done", "declined"] as const;
 export const TICKET_LINK_KINDS = ["github", "figma", "plain"] as const;
 /** Where a ticket came from (0032): filed in Canopy, or mirrored from a GitHub issue. */
 export const TICKET_SOURCES = ["canopy", "github"] as const;
@@ -36,19 +37,23 @@ export function sourceIssueNumber(sourceRef: string | null | undefined): number 
 }
 
 // ── the status machine (ONE definition, enforced everywhere) ─────────────────
-// A status is SET by a person, from the status control itself — there are no
-// accept/reject action buttons, and assignment never implies a status (an
-// assignee is assigned, full stop). The table is what the control may offer:
+// A status is SET by a person, from the status control itself — or by dragging
+// the card on the board — there are no accept/reject action buttons, and
+// assignment never implies a status (an assignee is assigned, full stop).
 //
-// submitted   → in_progress | declined
-// in_progress → done | declined | submitted     (declined WITHOUT going back first)
-// done, declined are terminal — a resolved ticket is not re-opened.
+// The board moves freely (the owner's call, 2026-09-26): any OPEN status —
+// submitted, in_progress, testing — may move to any other status, Triage straight
+// to Done included. Testing (0033) is an optional step between In progress and
+// Done, not a gate. done, declined are terminal — a resolved ticket is not
+// re-opened by a person (a mirrored ticket still reopens with its GitHub issue,
+// through the mirror's own writer).
 //
 // The order here is the pipeline's, which is the order the control lists them in.
 
 export const TICKET_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
-  submitted: ["in_progress", "declined"],
-  in_progress: ["done", "declined", "submitted"],
+  submitted: ["in_progress", "testing", "done", "declined"],
+  in_progress: ["testing", "done", "declined", "submitted"],
+  testing: ["done", "in_progress", "declined", "submitted"],
   done: [],
   declined: [],
 };
@@ -71,11 +76,72 @@ export function legalMoves(status: TicketStatus): TicketStatus[] {
 export const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
   submitted: "Triage",
   in_progress: "In progress",
+  testing: "Testing",
   done: "Done",
   declined: "Declined",
 };
 
-/** Open = the `seg=open` segment = not yet resolved by a person. */
+/** The OPEN statuses — the `seg=open` segment, "not yet resolved by a person".
+ *  The SQL readers spell the same set as `OPEN_STATUS_SQL`. */
+export const OPEN_STATUSES = ["submitted", "in_progress", "testing"] as const;
+export const OPEN_STATUS_SQL = "('submitted','in_progress','testing')";
+
 export function isOpenStatus(s: TicketStatus): boolean {
-  return s === "submitted" || s === "in_progress";
+  return (OPEN_STATUSES as readonly string[]).includes(s);
+}
+
+// ── the board's order (0033 `tickets.board_rank`) ────────────────────────────
+// Each board column is ordered by a saved position, set only by dragging a card.
+// A ticket with NO position (NULL — every ticket before its first drag, a new
+// ticket, a ticket moved by the status menu, MCP or the GitHub mirror) sits at the
+// TOP of its column, newest-updated first; the positioned ones follow in rank
+// order. The Worker's `move_ticket` and the board read this ONE comparator and
+// place with the ONE `placeInColumn` below, so an optimistic drop lands where
+// the server will put it.
+
+export interface BoardOrderKey {
+  id: number;
+  board_rank: number | null;
+  updated_at: string;
+}
+
+export function boardOrder(a: BoardOrderKey, b: BoardOrderKey): number {
+  const an = a.board_rank === null, bn = b.board_rank === null;
+  if (an !== bn) return an ? -1 : 1;
+  if (!an && a.board_rank !== b.board_rank) return (a.board_rank as number) - (b.board_rank as number);
+  if (a.updated_at !== b.updated_at) return a.updated_at < b.updated_at ? 1 : -1;
+  return b.id - a.id;
+}
+
+/** Spacing between renumbered positions, so later drops have room to split. */
+export const BOARD_RANK_STEP = 1024;
+
+/**
+ * Where a card dropped into `column` right after `afterId` (null = the top) goes.
+ * `column` is the target column WITHOUT the moved card, in any order. Returns the
+ * card's new rank and, when the column had to be renumbered first (it holds a
+ * NULL position, or two neighbours are too close to split), the new rank of every
+ * other card — the caller writes those too. An `afterId` not in the column means
+ * the top.
+ */
+export function placeInColumn(column: BoardOrderKey[], afterId: number | null): { rank: number; renumber: Map<number, number> | null } {
+  let col = [...column].sort(boardOrder);
+  let renumber: Map<number, number> | null = null;
+  const respace = () => {
+    renumber = new Map(col.map((t, i) => [t.id, (i + 1) * BOARD_RANK_STEP]));
+    col = col.map((t) => ({ ...t, board_rank: (renumber as Map<number, number>).get(t.id) as number }));
+  };
+  if (col.some((t) => t.board_rank === null)) respace();
+  const at = afterId === null ? 0 : col.findIndex((t) => t.id === afterId) + 1;   // -1 + 1 = 0: the top
+  const between = () => {
+    const prev = col[at - 1]?.board_rank ?? null;
+    const next = col[at]?.board_rank ?? null;
+    if (prev === null && next === null) return BOARD_RANK_STEP;
+    if (prev === null) return (next as number) - BOARD_RANK_STEP;
+    if (next === null) return prev + BOARD_RANK_STEP;
+    return next - prev > 1e-6 ? (prev + next) / 2 : null;
+  };
+  let rank = between();
+  if (rank === null) { respace(); rank = between() as number; }
+  return { rank, renumber };
 }

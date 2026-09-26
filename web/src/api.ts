@@ -369,6 +369,10 @@ export function createTicket(body: TicketCreate): TicketWrite {
 export function transitionTicket(id: number, to: TicketDetail["status"]): TicketWrite {
   return ticketWrite(`/tickets/${id}/status`, { to });
 }
+/** A board drop: column (status) + the card it lands right after (null = the top). */
+export function moveTicket(id: number, to: TicketDetail["status"], afterId: number | null): TicketWrite {
+  return ticketWrite(`/tickets/${id}/move`, { to, after_id: afterId });
+}
 export function toggleTicketAssignee(id: number, login: string, on: boolean): TicketWrite {
   return ticketWrite(`/tickets/${id}/assignees`, { login, on });
 }

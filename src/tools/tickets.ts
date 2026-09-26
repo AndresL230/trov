@@ -20,9 +20,9 @@
 // is the one table, shared with the SPA.
 
 import type { TicketCreate, TicketEdit, TicketStatus } from "@shared/tickets";
-import { canTransition, parseTicketLink } from "@shared/tickets";
+import { canTransition, parseTicketLink, placeInColumn } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
-import { type DB, first, run, nowIso } from "../db";
+import { type DB, first, all, run, nowIso } from "../db";
 import { getPerson, RESERVED_HANDLES } from "../auth/persons";
 
 /**
@@ -160,7 +160,43 @@ export async function transition_ticket(db: DB, id: number, to: TicketStatus, ac
     `INSERT INTO ticket_events (ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?)`,
     id, who, t.status, to, now
   );
-  await run(db, `UPDATE tickets SET status = ?, updated_at = ? WHERE id = ?`, to, now, id);
+  // A move that is not a board drop clears the card's position: it lands at the
+  // TOP of its new column (`boardOrder`), where a person will see it.
+  await run(db, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ? WHERE id = ?`, to, now, id);
+}
+
+/**
+ * A board drop: move a ticket to column `to` (a status) right after `afterId`
+ * (null = the top), in one write. A status change must be legal per
+ * `canTransition` and appends the same history row as `transition_ticket`; a drop
+ * back into its own column only reorders. The position comes from the ONE
+ * `placeInColumn` the board uses for its optimistic drop, over the WHOLE column —
+ * so a filtered board places relative to what the person saw, and the hidden cards
+ * keep their order. When the column had to be renumbered, every renumbered row is
+ * written in the same batch.
+ */
+export async function move_ticket(db: DB, id: number, to: TicketStatus, afterId: number | null, actor: string): Promise<void> {
+  const t = await getTicketRow(db, id);
+  const who = await requirePerson(db, actor);
+  if (to !== t.status && !canTransition(t.status, to)) {
+    throw new TicketError("conflict", `illegal transition: ${t.status} → ${to}`);
+  }
+  const column = await all<{ id: number; board_rank: number | null; updated_at: string }>(
+    db,
+    `SELECT id, board_rank, updated_at FROM tickets WHERE status = ? AND id != ?`,
+    to, id
+  );
+  const { rank, renumber } = placeInColumn(column, afterId);
+  const now = nowIso();
+  const stmts: D1PreparedStatement[] = [];
+  for (const [rid, r] of renumber ?? []) stmts.push(db.prepare(`UPDATE tickets SET board_rank = ? WHERE id = ?`).bind(r, rid));
+  if (to !== t.status) {
+    stmts.push(db.prepare(`INSERT INTO ticket_events (ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .bind(id, who, t.status, to, now));
+  }
+  stmts.push(db.prepare(`UPDATE tickets SET status = ?, board_rank = ?, updated_at = ? WHERE id = ?`).bind(to, rank, now, id));
+  // D1 caps a batch well above a board column; chunk anyway so a huge Done column never trips it.
+  for (let i = 0; i < stmts.length; i += 100) await db.batch(stmts.slice(i, i + 100));
 }
 
 /**

@@ -203,8 +203,9 @@ describe("the shared rules still bite over MCP", () => {
   it("an illegal transition is a conflict that writes nothing", async () => {
     const id = await ticketFor("andres", ["andres"]);
     const before = await snapshot(id);
-    // submitted → done is not in the one shared table (tickets-core.ts).
-    const err = failed(await callTool("andres", "transition_ticket", { id, to: "done" }));
+    // submitted → submitted is not in the one shared table (tickets-core.ts) —
+    // every OPEN status may go anywhere ELSE, so a no-op move is the illegal one.
+    const err = failed(await callTool("andres", "transition_ticket", { id, to: "submitted" }));
     expect(err.code).toBe("conflict");
     expect(await snapshot(id)).toEqual(before);
   });

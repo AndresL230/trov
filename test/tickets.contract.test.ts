@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   TICKET_TRANSITIONS, TICKET_STATUS_LABEL, TICKET_STATUSES,
-  canTransition, legalMoves, isOpenStatus, parseTicketLink,
+  canTransition, legalMoves, isOpenStatus, parseTicketLink, placeInColumn, boardOrder, BOARD_RANK_STEP,
   TicketCreate, TicketTransition, TicketAssigneeToggle, TicketLinkAdd,
   TicketSprintSet, TicketParentSet, TicketCommentAdd,
   TicketSeg, TicketAssigneeFilter, TicketRow, TicketEventRow,
@@ -15,30 +15,22 @@ import {
 // Deliberately NOT derived from TICKET_TRANSITIONS: this table is the spec, and
 // a test that reads the constant it is checking cannot fail when the constant
 // changes. All 4x4 = 16 ordered pairs, including every self-transition.
-const EXPECTED_TRANSITIONS: ReadonlyArray<readonly [TicketStatus, TicketStatus, boolean]> = [
-  ["submitted", "submitted", false],
-  ["submitted", "in_progress", true],   // Start
-  ["submitted", "done", false],         // never straight to done
-  ["submitted", "declined", true],      // Decline
-  ["in_progress", "submitted", true],   // Back
-  ["in_progress", "in_progress", false],
-  ["in_progress", "done", true],        // Done
-  ["in_progress", "declined", true],    // declined straight from in progress
-  ["done", "submitted", false],         // terminal
-  ["done", "in_progress", false],
-  ["done", "done", false],
-  ["done", "declined", false],
-  ["declined", "submitted", false],     // terminal
-  ["declined", "in_progress", false],
-  ["declined", "done", false],
-  ["declined", "declined", false],
-];
+// The board moves freely (2026-09-26): every OPEN status → every other status;
+// done and declined stay terminal. Written out pair by pair on purpose.
+const OPEN = ["submitted", "in_progress", "testing"] as const;
+const EXPECTED_TRANSITIONS: ReadonlyArray<readonly [TicketStatus, TicketStatus, boolean]> =
+  (["submitted", "in_progress", "testing", "done", "declined"] as const).flatMap((from) =>
+    (["submitted", "in_progress", "testing", "done", "declined"] as const).map((to) =>
+      [from, to, (OPEN as readonly string[]).includes(from) && from !== to] as const));
 
 describe("ticket status machine", () => {
-  it("canTransition matches the spec for all 16 from→to pairs", () => {
+  it("canTransition matches the spec for all 25 from→to pairs", () => {
     // The table must actually be exhaustive over the status vocabulary.
-    expect(EXPECTED_TRANSITIONS.length).toBe(16);
-    expect(TICKET_STATUSES.length).toBe(4);
+    expect(EXPECTED_TRANSITIONS.length).toBe(25);
+    expect(TICKET_STATUSES.length).toBe(5);
+    // The two moves the owner asked for by name.
+    expect(canTransition("submitted", "done")).toBe(true);
+    expect(canTransition("in_progress", "testing")).toBe(true);
     const covered = new Set(EXPECTED_TRANSITIONS.map(([f, t]) => `${f}>${t}`));
     for (const from of TICKET_STATUSES) {
       for (const to of TICKET_STATUSES) {
@@ -52,23 +44,25 @@ describe("ticket status machine", () => {
   });
 
   it("legalMoves returns exactly the allowed targets per status, in pipeline order", () => {
-    expect(legalMoves("submitted")).toEqual(["in_progress", "declined"]);
-    expect(legalMoves("in_progress")).toEqual(["done", "declined", "submitted"]);
+    expect(legalMoves("submitted")).toEqual(["in_progress", "testing", "done", "declined"]);
+    expect(legalMoves("in_progress")).toEqual(["testing", "done", "declined", "submitted"]);
+    expect(legalMoves("testing")).toEqual(["done", "in_progress", "declined", "submitted"]);
     expect(legalMoves("done")).toEqual([]);
     expect(legalMoves("declined")).toEqual([]);
   });
 
   it("legalMoves hands back a copy — a caller cannot mutate the transition table", () => {
-    const moves = legalMoves("submitted");
-    moves.push("done");
-    expect(legalMoves("submitted")).toEqual(["in_progress", "declined"]);
-    expect(TICKET_TRANSITIONS.submitted).toEqual(["in_progress", "declined"]);
-    expect(canTransition("submitted", "done")).toBe(false);
+    const moves = legalMoves("done");
+    moves.push("submitted");
+    expect(legalMoves("done")).toEqual([]);
+    expect(TICKET_TRANSITIONS.done).toEqual([]);
+    expect(canTransition("done", "submitted")).toBe(false);
   });
 
-  it("isOpenStatus splits the queue into open (submitted, in_progress) and closed", () => {
+  it("isOpenStatus splits the queue into open (submitted, in_progress, testing) and closed", () => {
     expect(isOpenStatus("submitted")).toBe(true);
     expect(isOpenStatus("in_progress")).toBe(true);
+    expect(isOpenStatus("testing")).toBe(true);
     expect(isOpenStatus("done")).toBe(false);
     expect(isOpenStatus("declined")).toBe(false);
   });
@@ -77,9 +71,45 @@ describe("ticket status machine", () => {
     expect(TICKET_STATUS_LABEL).toEqual({
       submitted: "Triage",
       in_progress: "In progress",
+      testing: "Testing",
       done: "Done",
       declined: "Declined",
     });
+  });
+});
+
+// ── the board's saved order ──────────────────────────────────────────────────
+describe("placeInColumn / boardOrder", () => {
+  const k = (id: number, board_rank: number | null, updated_at = "2026-09-01T00:00:00Z") => ({ id, board_rank, updated_at });
+
+  it("puts unpositioned cards first (newest first), then ranked cards by rank", () => {
+    const col = [k(1, 2048), k(2, null, "2026-09-01T00:00:00Z"), k(3, 1024), k(4, null, "2026-09-05T00:00:00Z")];
+    expect([...col].sort(boardOrder).map((t) => t.id)).toEqual([4, 2, 3, 1]);
+  });
+
+  it("splits the gap between two ranked neighbours, with no renumbering", () => {
+    const r = placeInColumn([k(1, 1024), k(2, 2048)], 1);
+    expect(r).toEqual({ rank: 1536, renumber: null });
+    expect(placeInColumn([k(1, 1024), k(2, 2048)], null).rank).toBe(0);          // the top
+    expect(placeInColumn([k(1, 1024), k(2, 2048)], 2).rank).toBe(3072);          // the end
+    expect(placeInColumn([], null)).toEqual({ rank: BOARD_RANK_STEP, renumber: null });
+  });
+
+  it("renumbers a column holding unpositioned cards in its CURRENT visible order first", () => {
+    const col = [k(1, 1024), k(2, null, "2026-09-01T00:00:00Z"), k(3, null, "2026-09-09T00:00:00Z")];
+    const { rank, renumber } = placeInColumn(col, 2);                             // visible: 3, 2, 1
+    expect(renumber && Object.fromEntries(renumber)).toEqual({ 3: 1024, 2: 2048, 1: 3072 });
+    expect(rank).toBe(2560);                                                     // between 2 and 1
+  });
+
+  it("renumbers when two neighbours are too close to split", () => {
+    const { rank, renumber } = placeInColumn([k(1, 1), k(2, 1 + 1e-9)], 1);
+    expect(renumber && Object.fromEntries(renumber)).toEqual({ 1: 1024, 2: 2048 });
+    expect(rank).toBe(1536);
+  });
+
+  it("an after id that is not in the column means the top", () => {
+    expect(placeInColumn([k(1, 1024)], 999).rank).toBe(0);
   });
 });
 
@@ -255,7 +285,7 @@ describe("ticket payload schemas", () => {
       id: 1, title: "t", body: "b", category: "bug", priority: "high", status: "in_progress",
       requester: "meilin", parent_id: null, sprint_id: null,
       created_at: "2026-09-01T00:00:00Z", updated_at: "2026-09-02T00:00:00Z",
-      source: "canopy", source_ref: null, source_author: null, source_updated_at: null,
+      source: "canopy", source_ref: null, source_author: null, source_updated_at: null, board_rank: null,
     };
     expect(TicketRow.parse(row)).toEqual(row);
     expect(TicketRow.safeParse({ ...row, source: "jira" }).success).toBe(false);

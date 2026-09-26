@@ -22,6 +22,7 @@ import {
 export {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUSES, TICKET_LINK_KINDS, TICKET_SOURCES,
   TICKET_TRANSITIONS, sourceIssueNumber, canTransition, legalMoves, TICKET_STATUS_LABEL, isOpenStatus,
+  OPEN_STATUSES, OPEN_STATUS_SQL, boardOrder, placeInColumn, BOARD_RANK_STEP,
 } from "./tickets-core";
 
 export const TicketCategory = z.enum(TICKET_CATEGORIES);
@@ -57,6 +58,9 @@ export const TicketRow = z.object({
   source_ref: z.string().nullable(),         // "owner/repo#n"
   source_author: z.string().nullable(),      // raw GitHub login — NOT a handle
   source_updated_at: z.string().nullable(),  // issue.updated_at of the last applied delivery
+  // 0033 — the card's saved position in its board column (set only by a drag);
+  // NULL = no position, which sorts at the top (`boardOrder`, tickets-core).
+  board_rank: z.number().nullable(),
 });
 
 export const TicketAssigneeRow = z.object({
@@ -139,6 +143,8 @@ export const TicketCreate = z.object({
 });
 
 export const TicketTransition = z.object({ to: TicketStatus });
+/** A board drop: the column (status) and the card it lands right after (null = the top). */
+export const TicketMove = z.object({ to: TicketStatus, after_id: z.number().int().positive().nullable() });
 /** Edit the title and/or body. Both optional here (the MCP tool spreads `.shape`);
  *  the writer refuses a patch that changes neither. */
 export const TicketEdit = z.object({
@@ -153,6 +159,7 @@ export const TicketCommentAdd = z.object({ body: z.string().trim().min(1) });
 
 export type TicketCreate = z.infer<typeof TicketCreate>;
 export type TicketTransition = z.infer<typeof TicketTransition>;
+export type TicketMove = z.infer<typeof TicketMove>;
 export type TicketEdit = z.infer<typeof TicketEdit>;
 export type TicketAssigneeToggle = z.infer<typeof TicketAssigneeToggle>;
 export type TicketLinkAdd = z.infer<typeof TicketLinkAdd>;

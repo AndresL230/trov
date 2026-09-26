@@ -48,7 +48,7 @@ export interface MyWorkTicket {
   body: string; // the ticket's description, rendered as escaped prose (never markdown)
   category: TicketCategory;
   priority: TicketPriority;
-  status: Extract<TicketStatus, "submitted" | "in_progress">;
+  status: Extract<TicketStatus, "submitted" | "in_progress" | "testing">;
   requester: string; // person handle who filed it
   sprint: { id: number; label: string } | null; // null = Backlog
   updatedAt: string;

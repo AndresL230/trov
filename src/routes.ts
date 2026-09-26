@@ -13,12 +13,12 @@ import { ingestDocProposal, recordBatch } from "./consumer";
 import { runBackfill, isFinalBackfillBatch } from "./tools/backfill";
 import { get_doc, list_docs, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
 import {
-  create_ticket, edit_ticket, transition_ticket, toggle_assignee, add_ticket_link, remove_ticket_link,
+  create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link,
   set_ticket_sprint, set_ticket_parent, add_ticket_comment,
   TicketError, TICKET_ERROR_STATUS,
 } from "./tools/tickets";
 import {
-  TicketCreate, TicketEdit, TicketTransition, TicketAssigneeToggle, TicketLinkAdd,
+  TicketCreate, TicketEdit, TicketTransition, TicketMove, TicketAssigneeToggle, TicketLinkAdd,
   TicketSprintSet, TicketParentSet, TicketCommentAdd, TicketSeg, TicketAssigneeFilter, TicketCategory,
 } from "@shared/tickets";
 import { promote_doc, ratify_adr, reject_doc_version, reject_adr, resolve_triage, assign_triage, map_identity, type AssignType } from "./tools/writes";
@@ -642,6 +642,22 @@ app.post("/tickets/:id/status", async (c) => {
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
     await transition_ticket(c.env.DB, id, parsed.data.to, c.get("principal").handle);
+    return ticketDetailResponse(c, id);
+  } catch (e) {
+    return ticketFail(c, e);
+  }
+});
+
+// A board drop (the queue's Board view): status and position in one write —
+// `move_ticket`. Cookie-only, like every ticket route; agents move a ticket with
+// the MCP `transition_ticket`, which leaves it at the top of its new column.
+app.post("/tickets/:id/move", async (c) => {
+  const id = ticketId(c);
+  if (id === null) return c.json({ error: "invalid id" }, 400);
+  const parsed = TicketMove.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
+  try {
+    await move_ticket(c.env.DB, id, parsed.data.to, parsed.data.after_id, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);

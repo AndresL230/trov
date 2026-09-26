@@ -121,10 +121,14 @@ If the call came back with a `code`, say what it means and what the person shoul
 One table, shared with the web UI and the server — this skill never invents a move:
 
 ```
-submitted    → in_progress | declined
-in_progress  → done | declined | submitted
+submitted    → in_progress | testing | done | declined
+in_progress  → testing | done | declined | submitted
+testing      → done | in_progress | declined | submitted
 done, declined  — TERMINAL. A resolved ticket is not re-opened.
 ```
+
+Any OPEN status (`submitted` / `in_progress` / `testing`) may move to any other; `testing` is an
+optional step between In progress and Done, not a gate. `seg=open` covers all three.
 
 Nesting is exactly **one level**: `set_ticket_parent` fails as a `conflict` if the parent already has
 a parent, the child already has a parent, the child is resolved, or the child has sub-tickets of its

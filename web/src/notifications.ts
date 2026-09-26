@@ -64,7 +64,7 @@ function emailRow(p: NotifSettingsProps, email: string | null): string {
     : `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px">
         <div style="min-width:0">
           <div style="font-size:13.5px;font-weight:500">Digest address</div>
-          <div style="font-size:13px;color:var(--fg-70);${LABEL};margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(email)}</div>
+          <div style="font-size:13px;color:var(--fg-70);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(email)}</div>
         </div>
         <button data-act="emailStartEdit" class="cnpy-ghostbtn" style="flex:none;padding:7px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500">Edit</button>
       </div>`;
@@ -131,7 +131,7 @@ export function unsubscribeView(p: { email: string | null; pending: boolean; err
     ? "One moment."
     : p.error
     ? esc(p.error)
-    : `No more digests will be sent${p.email ? ` to <span style="${LABEL};font-size:12.5px">${esc(p.email)}</span>` : ""}. Nothing else about your account changed.`;
+    : `No more digests will be sent${p.email ? ` to <span style="font-weight:500">${esc(p.email)}</span>` : ""}. Nothing else about your account changed.`;
   return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px;background:var(--bg);color:var(--fg)">
     <div style="width:400px;max-width:100%">
       <div style="display:flex;align-items:center;justify-content:center;gap:11px;margin-bottom:36px">

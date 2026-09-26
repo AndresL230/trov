@@ -96,7 +96,7 @@ function activeSub(p: SidebarProps, g: NavGroup): string | null {
 
 function subPages(p: SidebarProps, g: NavGroup): { key: string; label: string }[] {
   switch (g) {
-    case "tickets": return [{ key: "queue", label: "Queue" }, { key: "board", label: "Board" }, { key: "new", label: "New ticket" }];
+    case "tickets": return [{ key: "board", label: "Board" }, { key: "queue", label: "Table" }, { key: "new", label: "New ticket" }];
     case "roadmap": return [{ key: "narrative", label: "Narrative" }, { key: "timeline", label: "Timeline" }];
     case "repo": return REPO_TABS.map(([key, label]) => ({ key, label }));
     case "docs": return p.docSpaces;
