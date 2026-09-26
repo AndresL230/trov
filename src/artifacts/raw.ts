@@ -14,10 +14,7 @@
 // `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`,
 // `Cache-Control: private`, and a CSP — the html/svg one lets an HTML artifact run its
 // inline script and CDN libraries but reach nothing (`connect-src 'none'`, no forms, no
-// base), the binary one allows nothing at all. `blob:` scripts are allowed because a
-// Claude Design "bundled page" export unpacks its scripts (React included) into blob:
-// URLs and loads them by src; that grants nothing 'unsafe-inline' does not already (a
-// page can always insert an inline script of its own). The SPA frames html with
+// base), the binary one allows nothing at all. The SPA frames html with
 // `sandbox="allow-scripts"` and NEVER `allow-same-origin`, so the document runs at an
 // opaque origin despite being served from this one.
 //
@@ -36,7 +33,7 @@ import { ArtifactError, ARTIFACT_NOT_FOUND, readRaw, type ArtifactRaw } from "..
 import { artifactErrorResponse } from "./http";
 
 export const RAW_CSP_ACTIVE =
-  "default-src 'none'; script-src 'unsafe-inline' blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
+  "default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
   "style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; " +
   "img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; " +
   // `sandbox` in the CSP itself: a raw html/svg opened TOP-LEVEL ("Open in new tab", a pasted

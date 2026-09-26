@@ -1084,7 +1084,7 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy
   {handle, page, version, exp} keyed from COOKIE_SECRET with its own purpose label, 5 minutes, reusable, the
   page's visibility RE-CHECKED at download, exact stored bytes as an attachment with `sandbox` CSP).
 - **Raw route** `GET /raw/a/:slug[@v<n>|/v<n>]` (`src/artifacts/raw.ts`, session cookie) is what the SPA frames:
-  html/svg get the active CSP (inline scripts, `blob:` scripts — a Claude Design bundled export loads its own that way — and the two CDNs, `connect-src 'none'`) PLUS `sandbox allow-scripts`,
+  html/svg get the active CSP (inline scripts + the two CDNs, `connect-src 'none'`) PLUS `sandbox allow-scripts`,
   so an artifact opened in its own tab still runs at an opaque origin; image/pdf/file get
   `default-src 'none'; frame-ancestors 'self'`; always nosniff, `X-Frame-Options: SAMEORIGIN`,
   `Cache-Control: private`; html alone gets the injected `canopy:height` postMessage script (never on
