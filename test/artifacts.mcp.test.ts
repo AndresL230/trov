@@ -200,6 +200,19 @@ describe("CLAUDE_ONLY_MARKERS warnings — warn, never reject", () => {
     const clean = await call(ME, "artifact_update", { slug: "auth-flow", content: "<p>plain</p>", summary: "clean" });
     expect(clean.body.warnings).toEqual([]);
   });
+
+  it("a bundled Claude Design export warns to flatten it, and the write still lands", async () => {
+    const bundled = `<html><body><script>/* loader */</script><script type="__bundler/manifest">{}</script></body></html>`;
+    const c = await call(ME, "upload_asset", textArgs({ title: "Restyle", kind: "html", content: bundled }));
+    expect(c.isError).toBe(false);
+    expect(c.body.version).toBe(1);
+    expect(c.body.warnings).toHaveLength(1);
+    expect(c.body.warnings[0]).toContain("bundled Claude Design export");
+    expect(c.body.warnings[0]).toContain("flatten");
+
+    const flat = await call(ME, "artifact_update", { slug: "restyle", content: "<html><body><script>render()</script></body></html>", summary: "flattened" });
+    expect(flat.body.warnings).toEqual([]);
+  });
 });
 
 // ── binary ───────────────────────────────────────────────────────────────────

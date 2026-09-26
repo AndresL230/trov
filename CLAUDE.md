@@ -1084,7 +1084,7 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy
   {handle, page, version, exp} keyed from COOKIE_SECRET with its own purpose label, 5 minutes, reusable, the
   page's visibility RE-CHECKED at download, exact stored bytes as an attachment with `sandbox` CSP).
 - **Raw route** `GET /raw/a/:slug[@v<n>|/v<n>]` (`src/artifacts/raw.ts`, session cookie) is what the SPA frames:
-  html/svg get the active CSP (inline scripts, `blob:` scripts — a Claude Design bundled export loads its own that way — and the two CDNs, `connect-src 'none'`) PLUS `sandbox allow-scripts`,
+  html/svg get the active CSP (inline scripts + the two CDNs, `connect-src 'none'`) PLUS `sandbox allow-scripts`,
   so an artifact opened in its own tab still runs at an opaque origin; image/pdf/file get
   `default-src 'none'; frame-ancestors 'self'`; always nosniff, `X-Frame-Options: SAMEORIGIN`,
   `Cache-Control: private`; html alone gets the injected `canopy:height` postMessage script (never on
@@ -1093,7 +1093,9 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy
 - **MCP** (every principal, `src/tools/artifacts-agent.ts`): `artifact_list`, `artifact_get` (text content inline;
   for every kind a `download_url` + `sha256` + `size_bytes` to verify), `upload_asset` / `artifact_update`
   (text inline; binary returns an absolute `upload_url` the agent PUTs to). All carry `warnings` (never a
-  rejection) for `window.claude` / `window.storage` / `api.anthropic.com`. `query` has an `artifact` type
+  rejection) for `window.claude` / `window.storage` / `api.anthropic.com`, and for a bundled Claude Design
+  export (`isBundledExport` — its `blob:` scripts and `new Function` are refused by the raw CSP, so it must be
+  flattened; the web create screen shows the same warning as FLATTEN FIRST). `query` has an `artifact` type
   (draft → `draft`, published/ratified → `live`; private only to the author — `query()` takes a viewer);
   `get_ticket` lists the ticket's visible artifacts; `record_session` and `/ingest` accept `artifact_links`,
   applied after the batch as direct writes (`recordBatch` in `src/consumer.ts`).

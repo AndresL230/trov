@@ -11,7 +11,8 @@
 //   • absolute links — `url` (the SPA page `<origin>/#artifacts/<slug>`), an absolute
 //     `upload_url` for the binary PUT, an absolute `raw_url`;
 //   • `warnings: string[]` on EVERY result — non-empty when text content calls into
-//     something only claude.ai provides (`CLAUDE_ONLY_MARKERS`). A warning, never a
+//     something only claude.ai provides (`CLAUDE_ONLY_MARKERS`) or is a bundled Claude
+//     Design export that must be flattened (`isBundledExport`). A warning, never a
 //     rejection: the write has already happened;
 //   • the input split between the text path (content / old_str+new_str) and the
 //     binary path (size_bytes + sha256 → a single-use, 5-minute upload URL).
@@ -28,7 +29,7 @@ import {
 import { downloadFilename, mintDownloadToken } from "../artifacts/download";
 import { mintDocImageUpload } from "./doc-images";
 import {
-  claudeOnlyHits, isBinaryKind, isTextKind, parseSlugVersion,
+  claudeOnlyHits, isBinaryKind, isBundledExport, isTextKind, parseSlugVersion,
   type ArtifactArea, type ArtifactDetailDTO, type ArtifactKind, type ArtifactLinkInput, type ArtifactLinkType,
   type ArtifactStatus, type ArtifactTextKind, type ArtifactVisibility,
 } from "@shared/artifacts";
@@ -52,12 +53,20 @@ const pageUrl = (ctx: ArtifactAgentCtx, slug: string): string => `${ctx.origin}/
 const absolute = (ctx: ArtifactAgentCtx, path: string): string => `${ctx.origin}${path}`;
 const bad = (m: string): ArtifactError => new ArtifactError("bad_request", m);
 
-/** One warning per CLAUDE_ONLY_MARKERS hit in text content. [] for binary / null content. */
+/** One warning per CLAUDE_ONLY_MARKERS hit in text content, plus one for a bundled Claude Design
+ *  export. [] for binary / null content. */
 export function artifactWarnings(content: string | null | undefined): string[] {
   if (typeof content !== "string") return [];
-  return claudeOnlyHits(content).map(
+  const warnings = claudeOnlyHits(content).map(
     (m) => `content references \`${m}\`, which only exists inside claude.ai — it will not work in Canopy's viewer`
   );
+  if (isBundledExport(content)) {
+    warnings.push(
+      "content is a bundled Claude Design export: it loads its scripts from blob: URLs and compiles code at runtime, " +
+        "which Canopy's viewer blocks, so it will render blank — flatten it (every script inline, no eval) and add a new version"
+    );
+  }
+  return warnings;
 }
 
 const BINARY_FIELDS = ["size_bytes", "sha256", "content_type", "filename"] as const;
