@@ -18,7 +18,7 @@ const YOU = "raw-teammate";
 
 // The spec's CSPs, spelled out literally (not imported) so a drift in src/ fails here.
 const CSP_ACTIVE =
-  "default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
+  "default-src 'none'; script-src 'unsafe-inline' blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
   "style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; " +
   "img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts";
 const CSP_PASSIVE = "default-src 'none'; frame-ancestors 'self'";
