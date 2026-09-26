@@ -21,7 +21,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 import {
   artifactsView, artifactsHeader, artifactsDialogs, artifactsAct, libraryRows, parseArtLink, createBytes,
-  ticketArtifactsBlock, artAcceptFile, artFileName, detailKey, diffKey, initialArtUi, ART_ROUTE_NONE,
+  ticketArtifactsBlock, artAcceptFile, artAcceptNvFile, artFileName, detailKey, diffKey, initialArtUi, ART_ROUTE_NONE,
   type ArtProps, type ArtUi, type ArtRoute, type ArtScreen,
 } from "../web/src/artifacts";
 import { render, initialState } from "../web/src/render";
@@ -292,6 +292,76 @@ describe("artifacts — reducer", () => {
     expect(artifactsAct(p.ui, ctx(p), "artOpen", "a-page", null)).toEqual({ nav: { screen: "artifact", route: { slug: "a-page", v: null, diff: null } } });
     const d = props("artifact", { slug: "a-page", v: null, diff: { a: 1, b: 3 } });
     expect(artifactsAct(d.ui, ctx(d), "artDiffA", "a-page", "2", )).toEqual({ nav: { screen: "artifact", route: { slug: "a-page", v: null, diff: { a: 2, b: 3 } } } });
+  });
+});
+
+// ── new version ──────────────────────────────────────────────────────────────
+
+describe("artifacts — new version", () => {
+  it("the toolbar opens an editor seeded with the shown version; an untouched edit can't be saved", () => {
+    const p = viewer(detail("auth-flow", "html"));
+    expect(artifactsView(p)).toContain('data-act="artNvOpen"');
+    expect(artifactsAct(p.ui, ctx(p), "artNvOpen", null, null)).toBeNull();
+    const dlg = artifactsDialogs(p);
+    expect(dlg).toContain("New version · v4");
+    expect(dlg).toContain("&lt;h1&gt;hi&lt;/h1&gt;</textarea>");
+    expect(dlg).toContain("Save v4");
+    expect(artifactsAct(p.ui, ctx(p), "artNvSubmit", null, null)).toBeNull();
+
+    artifactsAct(p.ui, ctx(p), "artNvText", null, "<h1>hello</h1>");
+    artifactsAct(p.ui, ctx(p), "artNvSummary", null, "  Say hello  ");
+    expect(artifactsAct(p.ui, ctx(p), "artNvSubmit", null, null)).toEqual({
+      write: { op: "version", slug: "auth-flow", body: { content: "<h1>hello</h1>", summary: "Say hello" } },
+    });
+    expect(p.ui.nv?.submitting).toBe(true);
+    // A second click while saving does nothing, and the dialog can't be dismissed mid-save.
+    expect(artifactsAct(p.ui, ctx(p), "artNvSubmit", null, null)).toBeNull();
+    artifactsAct(p.ui, ctx(p), "artCloseDialogs", null, null);
+    expect(p.ui.nv).not.toBeNull();
+  });
+
+  it("from an older version the untouched text is a restore, and says so", () => {
+    const p = viewer(detail("auth-flow", "html", {}, 3, 1), 1);
+    artifactsAct(p.ui, ctx(p), "artNvOpen", null, null);
+    expect(artifactsDialogs(p)).toContain("Starting from v1, an older version.");
+    expect(artifactsAct(p.ui, ctx(p), "artNvSubmit", null, null)).toMatchObject({ write: { op: "version", body: { content: "<h1>hi</h1>" } } });
+  });
+
+  it("a replacement file must sit on the page's side (text / binary); a bundled export warns to flatten", () => {
+    const p = viewer(detail("auth-flow", "html"));
+    artifactsAct(p.ui, ctx(p), "artNvOpen", null, null);
+    artifactsAct(p.ui, ctx(p), "artNvTab", "file", null);
+    expect(artifactsDialogs(p)).toContain('data-art-drop="nv"');
+    artAcceptNvFile(p.ui, "html", { name: "shot.png", size: 10, text: null, blob: new Blob([new Uint8Array(10)]) });
+    expect(p.ui.nv?.file).toBeNull();
+    expect(artifactsDialogs(p)).toContain("replaced by a .html file, not shot.png");
+
+    const bundled = `<html><script type="__bundler/manifest">{}</script></html>`;
+    artAcceptNvFile(p.ui, "html", { name: "export.html", size: bundled.length, text: bundled, blob: null });
+    expect(artifactsDialogs(p)).toContain("FLATTEN FIRST");
+    expect(artifactsAct(p.ui, ctx(p), "artNvSubmit", null, null)).toMatchObject({ write: { op: "version", body: { content: bundled, summary: "" } } });
+  });
+
+  it("a binary page offers only an upload and sends the file multipart", () => {
+    const p = viewer(detail("login-mock", "image", { content: null }));
+    artifactsAct(p.ui, ctx(p), "artNvOpen", null, null);
+    expect(p.ui.nv?.tab).toBe("file");
+    artifactsAct(p.ui, ctx(p), "artNvTab", "edit", null);
+    expect(p.ui.nv?.tab).toBe("file");
+    const blob = new Blob([new Uint8Array(2048)], { type: "image/png" });
+    artAcceptNvFile(p.ui, "image", { name: "mock-v2.png", size: 2048, text: null, blob });
+    const fx = artifactsAct(p.ui, ctx(p), "artNvSubmit", null, null) as { write: { op: string; body: { file: Blob; filename: string } } };
+    expect(fx.write.op).toBe("version");
+    expect(fx.write.body.file).toBe(blob);
+    expect(fx.write.body.filename).toBe("mock-v2.png");
+  });
+
+  it("over the cap can't be saved", () => {
+    const p = viewer(detail("auth-flow", "html"));
+    artifactsAct(p.ui, ctx(p), "artNvOpen", null, null);
+    artifactsAct(p.ui, ctx(p), "artNvText", null, "x".repeat(500 * 1024 + 1));
+    expect(artifactsDialogs(p)).toContain("Over the 500 KB cap.");
+    expect(artifactsAct(p.ui, ctx(p), "artNvSubmit", null, null)).toBeNull();
   });
 });
 

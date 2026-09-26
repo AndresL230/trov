@@ -24,7 +24,7 @@ import {
   addTicketLink, editTicket, removeTicketLink, setTicketSprint, setTicketParent, addTicketComment, listSprints,
   getSprint, createSprint, setSprintActive, addSprintResource,
   type TicketDetail,
-  listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, addArtifactLink, fetchArtifactUrl,
+  listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
   listHandoffs, getHandoff, listPrompts, getPrompt, getPromptVersions,
   createHandoff, claimHandoff, expireHandoff, savePrompt, setPromptTags, publishPrompt, proposeDoc,
   Unauthorized, NotFound, ApiError,
@@ -54,8 +54,8 @@ import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
 import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo";
 import { isRepoTab, REPO_RANGES, type RepoRange } from "@shared/repo";
 import {
-  artifactsAct, artAcceptFile, renderPendingMermaid, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
-  type ArtScreen, type ArtEffect, type ArtWrite, type ArtRoute, type ArtFilterKey,
+  artifactsAct, artAcceptFile, artAcceptNvFile, renderPendingMermaid, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
+  type ArtScreen, type ArtEffect, type ArtWrite, type ArtRoute, type ArtFilterKey, type ArtFile,
 } from "./artifacts";
 import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 
@@ -220,12 +220,20 @@ function rerender(): void {
   const field = active?.getAttribute?.("data-field") ?? null;
   let selStart = 0;
   let selEnd = 0;
+  let fieldScroll = 0;
   // Textareas carry a caret too (the new-ticket description, the comment box),
-  // so they are captured/restored exactly like inputs.
+  // so they are captured/restored exactly like inputs — and their own scroll, so
+  // typing deep in a long one (the New version editor) doesn't jump it to the top.
   if (field && (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)) {
     selStart = active.selectionStart ?? 0;
     selEnd = active.selectionEnd ?? 0;
+    fieldScroll = active.scrollTop;
   }
+  // A scroll box that holds the focused field and names itself `data-scroll-keep` (a dialog's
+  // body) keeps its position across the swap too.
+  const keepBox = field ? active?.closest?.<HTMLElement>("[data-scroll-keep]") ?? null : null;
+  const keepName = keepBox?.getAttribute("data-scroll-keep") ?? null;
+  const keepTop = keepBox?.scrollTop ?? 0;
   // The swap below discards the main scroll pane; keep its position when the
   // screen is unchanged so a button low on a long screen doesn't jump to the top.
   const scroll = captureScroll(mount, state.screen);
@@ -245,6 +253,11 @@ function rerender(): void {
     if (el && el !== document.activeElement) {
       el.focus();
       try { el.setSelectionRange(selStart, selEnd); } catch { /* non-text input */ }
+      el.scrollTop = fieldScroll;
+    }
+    if (keepName) {
+      const box = mount.querySelector<HTMLElement>(`[data-scroll-keep="${keepName}"]`);
+      if (box) box.scrollTop = keepTop;
     }
   }
   // Deferred scroll-to-heading: fires once the reader for the target doc has
@@ -1261,6 +1274,7 @@ function goArt(screen: ArtScreen, route: ArtRoute = ART_ROUTE_NONE): void {
   state.screen = screen;
   state.artRoute = route;
   state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false; state.art.filterOpen = false;
+  state.art.nv = null;
   loadArtifactsIfNeeded(true);
   document.getElementById("cnpy-main")?.scrollTo(0, 0);
 }
@@ -1319,6 +1333,26 @@ function runArtWrite(w: ArtWrite): void {
     rerender();
     return;
   }
+  if (w.op === "version") {
+    addArtifactVersion(w.slug, w.body)
+      .then((res) => {
+        const r = res as { unchanged?: boolean; version_no?: number };
+        state.art.nv = null;
+        // Land on the latest (the new version): refreshArt drops every other cached version and
+        // refetches the one the route names, keeping the old body on screen until it lands.
+        state.artRoute = { slug: w.slug, v: null, diff: null };
+        refreshArt(w.slug);
+        flash(r.unchanged ? "No change: identical to the latest version" : `Saved v${r.version_no ?? ""}`.trim());
+      })
+      .catch((e) => {
+        if (e instanceof Unauthorized) { unauth(e); return; }
+        if (state.art.nv) state.art.nv.submitting = false;
+        if (e instanceof NotFound) { state.art.nv = null; refreshArt(w.slug); flash("This artifact isn't available anymore"); return; }
+        flash(e instanceof ApiError ? `Couldn't save the version (${e.message})` : "Couldn't save the version");
+      });
+    rerender();
+    return;
+  }
   state.art.busy = true;
   rerender();
   const req = w.op === "patch" ? patchArtifact(w.slug, w.body)
@@ -1362,19 +1396,28 @@ function runArtEffect(fx: ArtEffect): void {
   }
   rerender();
 }
-/** A picked or dropped file for the new-artifact form. The kind follows the
- *  extension (kindForFilename): a binary kind keeps the File for the multipart
- *  upload; a text kind is read as text (past 3 MB only the first 200 KB — enough
- *  to preview; the cap check uses the file's real size, so it can't be sent). */
-function readArtFile(file: File | undefined | null): void {
+/** A picked or dropped file for the new-artifact form, or (`"nv"`) the viewer's New
+ *  version dialog. The kind follows the extension (kindForFilename): a binary kind
+ *  keeps the File for the multipart upload; a text kind is read as text (past 3 MB
+ *  only the first 200 KB — enough to preview; the cap check uses the file's real
+ *  size, so it can't be sent). The dialog's page kind is fixed, and
+ *  artAcceptNvFile refuses a file from the other side of it. */
+function readArtFile(file: File | undefined | null, target: "create" | "nv" = "create"): void {
   if (!file) return;
-  if (isBinaryKind(kindForFilename(file.name))) {
-    artAcceptFile(state.art, { name: file.name, size: file.size, text: null, blob: file });
+  const accept = (f: ArtFile) => {
+    if (target === "create") artAcceptFile(state.art, f);
+    else {
+      const d = state.art.details[detailKey(state.artRoute.slug ?? "", state.artRoute.v)]?.data;
+      if (d) artAcceptNvFile(state.art, d.kind, f);
+    }
     rerender();
+  };
+  if (isBinaryKind(kindForFilename(file.name))) {
+    accept({ name: file.name, size: file.size, text: null, blob: file });
     return;
   }
   const r = new FileReader();
-  r.onload = () => { artAcceptFile(state.art, { name: file.name, size: file.size, text: String(r.result ?? ""), blob: null }); rerender(); };
+  r.onload = () => accept({ name: file.name, size: file.size, text: String(r.result ?? ""), blob: null });
   r.readAsText(file.size > 3 * 1024 * 1024 ? file.slice(0, 200 * 1024) : file);
 }
 // A framed HTML artifact reports its height (the raw route injects the script):
@@ -3221,18 +3264,21 @@ mount.addEventListener("keydown", (e) => {
   dispatch(card.dataset.act ?? "", card.dataset.arg ?? null, null);
 });
 
-// The new-artifact form's file picker and drop zone (a file has no string value to dispatch).
+// The new-artifact form's and the New version dialog's file picker and drop zone (a file has
+// no string value to dispatch). `data-art-file="nv"` / `data-art-drop="nv"` mark the dialog's.
+const artFileTarget = (el: Element, attrName: string): "create" | "nv" => (el.getAttribute(attrName) === "nv" ? "nv" : "create");
 mount.addEventListener("change", (e) => {
   const el = e.target as HTMLElement;
-  if (el instanceof HTMLInputElement && el.type === "file" && el.hasAttribute("data-art-file")) readArtFile(el.files?.[0]);
+  if (el instanceof HTMLInputElement && el.type === "file" && el.hasAttribute("data-art-file")) readArtFile(el.files?.[0], artFileTarget(el, "data-art-file"));
 });
 mount.addEventListener("dragover", (e) => {
   if ((e.target as Element | null)?.closest?.("[data-art-drop]")) e.preventDefault();
 });
 mount.addEventListener("drop", (e) => {
-  if (!(e.target as Element | null)?.closest?.("[data-art-drop]")) return;
+  const zone = (e.target as Element | null)?.closest?.("[data-art-drop]");
+  if (!zone) return;
   e.preventDefault();
-  readArtFile(e.dataTransfer?.files[0]);
+  readArtFile(e.dataTransfer?.files[0], artFileTarget(zone, "data-art-drop"));
 });
 // Enter in an input that names a `data-enter` act dispatches it (the artifact form's Link field).
 mount.addEventListener("keydown", (e) => {

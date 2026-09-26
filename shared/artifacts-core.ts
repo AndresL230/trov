@@ -42,6 +42,9 @@ export const ARTIFACT_UPLOAD_TTL_MS = 5 * 60 * 1000;
 /** How long an agent's signed download URL (`artifact_get`'s `download_url`) stays valid. Reusable within it. */
 export const ARTIFACT_DOWNLOAD_TTL_MS = 5 * 60 * 1000;
 
+/** A version summary's length limit (the zod schema enforces it; the SPA's input caps at it). */
+export const ARTIFACT_SUMMARY_MAX = 500;
+
 /** Warn (never reject) when text content calls into features only claude.ai has. */
 export const CLAUDE_ONLY_MARKERS = ["window.claude", "window.storage", "api.anthropic.com"] as const;
 export const claudeOnlyHits = (text: string): string[] => CLAUDE_ONLY_MARKERS.filter((m) => text.includes(m));
