@@ -1096,10 +1096,14 @@ function newVersionDialog(p: ArtProps, d: ArtifactDetailDTO, nv: ArtNewVersion):
   const bytes = nvBytes(nv);
   const ok = canSubmitNv(nv, d.kind, latestNo);
   const ext = isTextKind(d.kind) ? `.${ARTIFACT_TEXT_EXT[d.kind]}` : d.kind === "pdf" ? ".pdf" : d.kind === "image" ? "png, jpeg, gif or webp" : "any file";
-  const tabs = ([["edit", `Edit v${nv.base}`], ["file", "Upload file"]] as const).map(([k, l]) => {
-    const off = binary && k === "edit";
-    return `<button data-act="artNvTab" data-arg="${k}"${off ? ` aria-disabled="true" title="A ${d.kind} artifact is replaced by uploading a file"` : ""} style="${segSt(nv.tab === k, off)}">${l}</button>`;
-  }).join("");
+  // Edit is text-only: on a binary page it is shown but locked.
+  const tabs = segmented({
+    id: "art-nv-source", ariaLabel: "New version source", act: "artNvTab", value: nv.tab, size: "sm",
+    options: ([["edit", `Edit v${nv.base}`], ["file", "Upload file"]] as const).map(([k, l]) => {
+      const off = binary && k === "edit";
+      return { value: k, label: l, ...(off ? { locked: true, title: `A ${d.kind} artifact is replaced by uploading a file` } : {}) };
+    }),
+  });
 
   const source = nv.tab === "edit"
     ? `<textarea data-act="artNvText" data-field="artNvText" class="cnpy-input cnpy-scroll" spellcheck="false" aria-label="Content" style="width:100%;height:min(46vh,440px);resize:vertical;padding:12px 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-family:var(--code);font-size:12px;line-height:1.6;outline:none;white-space:pre">${esc(nv.text)}</textarea>
@@ -1126,7 +1130,7 @@ function newVersionDialog(p: ArtProps, d: ArtifactDetailDTO, nv: ArtNewVersion):
     <div class="cnpy-scroll" data-scroll-keep="artNv" style="flex:1;min-height:0;overflow-y:auto;padding:16px 24px 4px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px">
         <label style="font-size:13px;font-weight:500">Content</label>
-        <div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px">${tabs}</div>
+        ${tabs}
       </div>
       ${source}
       ${contentChecks(text, bytes, d.kind)}

@@ -26,6 +26,7 @@ import {
 } from "../web/src/artifacts";
 import { render, initialState } from "../web/src/render";
 import type { ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactVersionDTO, ArtifactKind, ArtifactDiffDTO } from "@shared/artifacts-core";
+import { ARTIFACT_TEXT_CAP } from "@shared/artifacts-core";
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -363,8 +364,8 @@ describe("artifacts — new version", () => {
   it("over the cap can't be saved", () => {
     const p = viewer(detail("auth-flow", "html"));
     artifactsAct(p.ui, ctx(p), "artNvOpen", null, null);
-    artifactsAct(p.ui, ctx(p), "artNvText", null, "x".repeat(500 * 1024 + 1));
-    expect(artifactsDialogs(p)).toContain("Over the 500 KB cap.");
+    artifactsAct(p.ui, ctx(p), "artNvText", null, "x".repeat(ARTIFACT_TEXT_CAP + 1));
+    expect(artifactsDialogs(p)).toContain("Over the 750 KB cap.");
     expect(artifactsAct(p.ui, ctx(p), "artNvSubmit", null, null)).toBeNull();
   });
 });
