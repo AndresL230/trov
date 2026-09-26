@@ -1,6 +1,6 @@
 import type { DocRow, DocVersionRow, FeedRow, AdrRow, NeedsTriageRow, SprintRow, PlanRow, EventRow, IdentityTaskRow, TicketRow, TicketLinkRow, TicketCommentRow, TicketEventRow } from "@shared/rows";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
-import type { ArtifactKind, ArtifactStatus } from "@shared/artifacts";
+import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
 import type { TicketListItem, TicketDetail, TicketRef, TicketSeg, TicketAssigneeFilter, TicketCategory } from "@shared/tickets";
 import { OPEN_STATUSES, OPEN_STATUS_SQL, TICKET_STATUSES } from "@shared/tickets-core";
@@ -380,15 +380,19 @@ interface ArtifactHydrateRow {
 // area / repo, the latest version's summary, and the content: markdown / mermaid
 // raw, html / svg as their visible text (`ftsBody` — the raw markup is one
 // artifact_get away), binary kinds a one-line description (no bytes over query).
+// Text over ARTIFACT_INLINE_MAX (the stored UTF-8 size) is a pointer line too, the
+// same rule as artifact_get's `content_omitted`.
 function assembleArtifactBody(a: ArtifactHydrateRow): string {
   const head = [
     `Status: ${a.status} · v${a.current_version}`,
     `Kind: ${a.kind} · Area: ${a.area}${a.repo ? ` · Repo: ${a.repo}` : ""}`,
   ];
   if (a.summary) head.push(`Summary: ${a.summary}`);
-  const body = a.content !== null
-    ? ftsBody(a.kind, a.content)
-    : `(${a.kind} file · ${a.content_type} · ${a.size_bytes} bytes — read it with artifact_get)`;
+  const body = a.content === null
+    ? `(${a.kind} file · ${a.content_type} · ${a.size_bytes} bytes — read it with artifact_get)`
+    : a.size_bytes > ARTIFACT_INLINE_MAX
+      ? `(${a.kind} · ${a.size_bytes} bytes — too large to inline; read it with artifact_get)`
+      : ftsBody(a.kind, a.content);
   return `${head.join("\n")}\n\n${body}`;
 }
 
@@ -709,9 +713,9 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
       if (!f) continue;
       a = {
         type: "feed", id: String(f.id), title: f.summary, section: null, space: null,
-        body: f.body ?? "", authority: "live", current_version: null, pending_version: null,
+        body: f.brief ? `Brief: ${f.brief}\n\n${f.body ?? ""}` : f.body ?? "", authority: "live", current_version: null, pending_version: null,
         staged_body: null, confidence: null, updated_at: f.created_at, updated_by: f.author,
-        score: c.score, snippet: c.snippet || browseSnippet(f.body),
+        score: c.score, snippet: c.snippet || browseSnippet(f.brief ?? f.body),
       };
     } else if (c.type === "decision") {
       const adr = adrMap.get(c.key);

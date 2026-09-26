@@ -10,7 +10,7 @@ allowed-tools: mcp__canopy__artifact_list, mcp__canopy__artifact_get, mcp__canop
 
 An **artifact** is a versioned page the team keeps in Canopy next to its tickets and sprints: an
 `html` page (a mockup, a prototype), a `markdown` spec, an `svg` or `mermaid` diagram (text kinds,
-≤ 500 KB), or an `image`, `pdf` or `file` (binary, ≤ 10 MB). Each has a `slug`, versions `v1…vN`, and a
+≤ 750 KB), or an `image`, `pdf` or `file` (binary, ≤ 10 MB). Each has a `slug`, versions `v1…vN`, and a
 status: `draft` → `published` → `ratified`. **Only `ratified` is team-confirmed**; `draft` and
 `published` are one person's word — say which when you rely on one.
 
@@ -52,8 +52,10 @@ If several match, list them (title · kind · status · vN) and ask which one.
 ### 2. Read it
 
 `mcp__canopy__artifact_get { slug }` (`slug@v3` or `version` for an older one). Text kinds return
-`content` inline — for a markdown spec or a mermaid diagram that is usually all you need. Every kind
-also returns:
+`content` inline — for a markdown spec or a mermaid diagram that is usually all you need. **Over 64 KB
+it is not inlined**: `content` is `null` and `content_omitted: true` — pull the file (step 3) and grep /
+read slices of it. Pass `include_content: true` only when you genuinely need the whole text in context.
+Every kind also returns:
 
 - `download_url` — absolute, **signed for you, reusable for 5 minutes** (`download_expires_at`), no
   header needed. Expired → HTTP 410: call `artifact_get` again for a fresh one.
@@ -86,8 +88,8 @@ artifacts by accident). A file the person asked to place in the source tree is t
 | Kind | Do |
 |---|---|
 | `html` | Save it (step 3) and serve that folder: `python3 -m http.server 8000 --bind 127.0.0.1 --directory .canopy/artifacts/<slug>`, then give the person `http://127.0.0.1:8000/v<n>.html` (or open the file directly). Stop the server when done. It may load CDN scripts/fonts; offline, those parts won't render. |
-| `markdown` | Read `content`; render or quote it. Implement against it. |
-| `mermaid` | Read `content`; paste it into a ```` ```mermaid ```` block or a renderer the repo already has. |
+| `markdown` | Read `content` (or, if `content_omitted`, the pulled file); render or quote it. Implement against it. |
+| `mermaid` | Read `content` (or the pulled file); paste it into a ```` ```mermaid ```` block or a renderer the repo already has. |
 | `svg` | Save it and open it, or inline it where it belongs. |
 | `image` / `pdf` / `file` | Save it (step 3) and use it as the asset it is — reference the path, read the PDF. |
 

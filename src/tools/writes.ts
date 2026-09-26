@@ -16,14 +16,15 @@ const humanizeSlug = (slug: string): string =>
 
 export async function append_feed(
   db: DB,
-  entry: { author: string; summary: string; body?: string; artifacts?: unknown; tags?: string[] }
+  entry: { author: string; summary: string; brief?: string; body?: string; artifacts?: unknown; tags?: string[] }
 ): Promise<number> {
   const created_at = nowIso();
   const res = await run(
     db,
-    `INSERT INTO feed (author, summary, body, artifacts, created_at) VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO feed (author, summary, brief, body, artifacts, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
     entry.author,
     entry.summary,
+    entry.brief ?? null,
     entry.body ?? null,
     entry.artifacts !== undefined ? JSON.stringify(entry.artifacts) : null,
     created_at

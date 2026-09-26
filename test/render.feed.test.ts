@@ -27,6 +27,7 @@ function feedRow(overrides: Partial<FeedRow> = {}): FeedRow {
     id: 1,
     author: "AndresL230",
     summary: "Shipped the colored-handle change.",
+    brief: null,
     body: null,
     artifacts: null,
     created_at: "2026-09-14T10:00:00Z",
@@ -34,10 +35,11 @@ function feedRow(overrides: Partial<FeedRow> = {}): FeedRow {
   };
 }
 
-function feedState(rows: FeedRow[]): ReturnType<typeof initialState> {
+function feedState(rows: FeedRow[], feedView: "reading" | "agents" = "agents"): ReturnType<typeof initialState> {
   const s = initialState();
   return {
     ...s,
+    feedView,
     view: "app",
     screen: "feed",
     me: { handle: "alice", name: "Alice", avatar_url: null, color: "stone", identities: [], org: "SaplingLearn", admin: false },
@@ -102,5 +104,56 @@ describe("Feed — entries are markdown", () => {
   it("an empty or whitespace body renders no container", () => {
     expect(render(feedState([feedRow({ body: null })]))).not.toContain("cnpy-feed-body");
     expect(render(feedState([feedRow({ body: "   " })]))).not.toContain("cnpy-feed-body");
+  });
+});
+
+describe("Feed — For reading / For agents", () => {
+  const row = feedRow({
+    summary: "Shipped: document indexing retries on its own",
+    brief: "Uploaded course documents no longer silently fail to reach the tutor — indexing now retries & admins can see anything stuck.",
+    body: "**What** a long agent record",
+    artifacts: JSON.stringify({ prs: ["https://github.com/SaplingLearn/Sapling/pull/658"], commits: [], issues: [482] }),
+  });
+
+  it("defaults to For reading", () => {
+    expect(initialState().feedView).toBe("reading");
+  });
+
+  it("For reading shows the title, the brief and the chips — never the body", () => {
+    const html = render(feedState([row], "reading"));
+    expect(html).toContain("Shipped: document indexing retries on its own");
+    expect(html).toContain('class="cnpy-feed-brief"');
+    expect(html).toContain("indexing now retries &amp; admins can see anything stuck."); // escaped, plain text
+    expect(html).not.toContain("cnpy-feed-body");
+    expect(html).not.toContain("a long agent record");
+    expect(html).toContain("cnpy-issuechip");
+  });
+
+  it("For agents shows the full body and not the brief", () => {
+    const html = render(feedState([row], "agents"));
+    expect(html).toContain("cnpy-feed-body");
+    expect(html).toContain("a long agent record");
+    expect(html).not.toContain("cnpy-feed-brief");
+  });
+
+  it("an entry with no brief reads as its title alone", () => {
+    const html = render(feedState([feedRow({ brief: null, body: "**What** body" })], "reading"));
+    expect(html).toContain("Shipped the colored-handle change.");
+    expect(html).not.toContain("cnpy-feed-brief");
+    expect(html).not.toContain("cnpy-feed-body");
+  });
+
+  it("XSS: the brief is escaped text", () => {
+    const html = render(feedState([feedRow({ brief: "<img src=x onerror=1>" })], "reading"));
+    expect(html).not.toContain("<img src=x onerror=1>");
+    expect(html).toContain("&lt;img src=x onerror=1&gt;");
+  });
+
+  it("the header switch marks the active view", () => {
+    const reading = render(feedState([row], "reading"));
+    expect(reading).toContain('data-act="setFeedView" data-arg="reading" aria-pressed="true"');
+    expect(reading).toContain('data-act="setFeedView" data-arg="agents" aria-pressed="false"');
+    const agents = render(feedState([row], "agents"));
+    expect(agents).toContain('data-act="setFeedView" data-arg="agents" aria-pressed="true"');
   });
 });

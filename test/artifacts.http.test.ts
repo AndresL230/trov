@@ -531,7 +531,7 @@ describe("fetchArtifactUrl", () => {
     expect(four.calls).toHaveLength(4);
   });
 
-  it("caps the read at 500 KB (declared or streamed) → too_large", async () => {
+  it("caps the read at ARTIFACT_TEXT_CAP (750 KB) (declared or streamed) → too_large", async () => {
     const declared = stub(() => new Response("x", { headers: { "content-type": "text/plain", "content-length": String(ARTIFACT_TEXT_CAP + 1) } }));
     await expect(fetchArtifactUrl("https://example.com/a", declared.f)).rejects.toMatchObject({ code: "too_large", status: 413 });
     let pulled = 0;

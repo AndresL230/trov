@@ -223,7 +223,7 @@ const I = {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 export const fmtKB = (b: number): string => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(2)} MB` : `${(b / 1024).toFixed(1)} KB`);
-export const capLabel = (k: ArtifactKind): string => (isBinaryKind(k) ? "10 MB" : "500 KB");
+export const capLabel = (k: ArtifactKind): string => (isBinaryKind(k) ? "10 MB" : "750 KB");
 export const slugifyTitle = (t: string): string => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 const sameHandle = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
@@ -919,7 +919,7 @@ function createView(p: ArtProps): string {
       ? `<div data-art-drop style="border:1px dashed var(--border-strong);border-radius:11px;padding:56px 24px;text-align:center;min-height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
           ${I.upload()}
           <div style="font-size:14px;font-weight:600;color:var(--fg-70)">Drop one file here</div>
-          <div style="font-size:12.5px;color:var(--fg-40)">.html, .md, .svg or .mmd up to 500 KB · images, PDFs and other files up to 10 MB</div>
+          <div style="font-size:12.5px;color:var(--fg-40)">.html, .md, .svg or .mmd up to 750 KB · images, PDFs and other files up to 10 MB</div>
           <label class="cnpy-outlinebtn" style="margin-top:12px;${OUTLINE_BTN};padding:6px 14px;cursor:pointer">Choose file<input type="file" data-art-file style="display:none"></label>
         </div>`
       : `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">

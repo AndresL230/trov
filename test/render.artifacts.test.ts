@@ -8,7 +8,7 @@
  * sanitizer; image/pdf/file from the raw route); the reducer's gates hold and its
  * writes come out as effects (PATCH status / visibility, POST ratify, POST links,
  * the create body — JSON for text, multipart for binary); and the caps are
- * per-kind (500 KB text, 10 MB binary).
+ * per-kind (750 KB text, 10 MB binary).
  */
 import { describe, it, expect, vi } from "vitest";
 
@@ -415,7 +415,7 @@ describe("artifacts — new artifact", () => {
     const p = props("artifactnew");
     const html = artifactsView(p);
     for (const k of ["html", "markdown", "svg", "mermaid", "image", "pdf", "file"]) expect(html).toContain(`data-act="artCKind" data-arg="${k}"`);
-    expect(html).toContain("/ 500 KB");
+    expect(html).toContain("/ 750 KB");
     artifactsAct(p.ui, ctx(p), "artCKind", "pdf", null);
     expect(p.ui.c.tab).toBe("file");
     expect(artifactsView(p)).toContain("/ 10 MB");
@@ -427,8 +427,8 @@ describe("artifacts — new artifact", () => {
   it("blocks an upload over the text cap and warns on claude.ai-only calls", () => {
     const p = props("artifactnew");
     p.ui.c.title = "Big";
-    p.ui.c.paste = "x".repeat(500 * 1024 + 1);
-    expect(artifactsView(p)).toContain("Over the 500 KB cap.");
+    p.ui.c.paste = "x".repeat(750 * 1024 + 1);
+    expect(artifactsView(p)).toContain("Over the 750 KB cap.");
     expect(artifactsAct(p.ui, ctx(p), "artCSubmit", null, null)).toBeNull();
     p.ui.c.paste = "<script>window.claude.complete('x')</script>";
     expect(artifactsView(p)).toContain("CLAUDE.AI ONLY");

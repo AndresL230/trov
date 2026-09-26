@@ -48,7 +48,7 @@ The skill update this needs is also the moment to fix a related agent-context co
   short lists are allowed, and anything longer is linked (doc, ADR, PR), not pasted. The gate does not
   reject a long body — a hard cap would bounce a whole session's batch.
 - `summary` stays one line, ≤ 100 characters, type-word first. It is the title in both views.
-- Worked examples updated to include a brief. Plugin version bump (0.6.3 → 0.7.0).
+- Worked examples updated to include a brief. Plugin version bump (0.6.3 → 0.6.5).
 
 ### The Feed screen (`web/src/render.ts`, `web/src/main.ts`)
 
@@ -78,8 +78,9 @@ The skill update this needs is also the moment to fix a related agent-context co
 
 ### Rollout order
 
-The Worker writes `feed.brief`, so **`0034` must be applied to prod before the merge deploys**
-(`npm run db:migrate:remote`). Then merge, then the backfill.
+The Worker writes `feed.brief`, and a 500–750 KB artifact needs the rebuilt CHECK, so **`0034` and `0035`
+must be applied to prod before the merge deploys** (`npm run db:migrate:remote`). Then merge, then the
+backfill.
 
 ## Part 2 — artifacts: a 750 KB cap, and big text is not inlined to agents
 
@@ -88,6 +89,8 @@ The Worker writes `feed.brief`, so **`0034` must be applied to prod before the m
 `ARTIFACT_TEXT_CAP` (`shared/artifacts-core.ts`) goes from `500 * 1024` to `750 * 1024`. Every enforcement
 reads the constant (the repository, the HTTP body limit `JSON_BODY_MAX`, the From-URL fetch cap), and the
 existing tests are written against the constant, so they follow. Well inside D1's 2 MB per-value limit.
+But 0030 mirrored the old cap in a CHECK on `artifact_versions` (`size_bytes <= 512000`), and SQLite cannot
+alter a CHECK, so `0035_artifact_text_cap` rebuilds the table (the 0033 pattern) with `<= 768000`.
 Agents still create text artifacts by passing `content` inline — no text upload path (decided: not needed).
 
 ### Inline threshold for agent reads

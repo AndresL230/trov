@@ -54,6 +54,7 @@ export interface FeedRow {
   id: number;
   author: string;
   summary: string;
+  brief: string | null;
   body: string | null;
   artifacts: string | null;
   created_at: string;

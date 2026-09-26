@@ -113,9 +113,11 @@ Never present `staged_pending` / `unpromoted` / `draft` content as established f
 ## Writing (agents stage, humans confirm)
 
 Agents stage through the gate via MCP: **`append_feed`**, **`propose_doc_update`**. (A feed entry
-has a fixed size and one of six typed structures — `Shipped:` / `Decision:` / `Triage:` / `Status:` /
-`Finding:` / `Incident:` — see the `record-session` skill's "Feed entry format"; it applies to
-`append_feed` exactly as it does to `record_session`.) The gate reconciles
+is a one-line `summary`, a `brief` — 1–2 plain sentences, ≤ 280 characters, on the problem solved, which
+is all people see in the Feed's default "For reading" view — and a `body`, the agent record, in one of
+six typed structures — `Shipped:` / `Decision:` / `Triage:` / `Status:` / `Finding:` / `Incident:` —
+see the `record-session` skill's "Feed entry format"; it applies to `append_feed` exactly as it does to
+`record_session`.) The gate reconciles
 every write — it de-duplicates no-op proposals, tags each doc change `new` / `edit` / `rewrite`, and
 routes out-of-vocab or low-confidence entries to Triage. A doc may embed **images**, but only ones
 uploaded to Canopy: `upload_asset { destination: "doc", sha256, size_bytes, content_type }` → PUT the
@@ -171,7 +173,7 @@ comments recognizable.
 ### Artifacts — the artifact contract
 
 Artifacts are versioned pages the team keeps next to its tickets and sprints: `html`, `markdown`,
-`svg`, `mermaid` (text, ≤ 500 KB, sent inline) and `image`, `pdf`, `file` (≤ 10 MB, uploaded). The
+`svg`, `mermaid` (text, ≤ 750 KB, sent inline) and `image`, `pdf`, `file` (≤ 10 MB, uploaded). The
 whole contract — kinds, caps, statuses, permissions, the upload flow with a `curl` example, the raw
 route — is **`docs/artifact-contract.md`**; read it before your first artifact write. In short:
 

@@ -69,6 +69,8 @@ const state: AppState = initialState();
 try {
   const t = localStorage.getItem("canopy.theme");
   if (t === "dark" || t === "light" || t === "midnight" || t === "system") state.theme = t;
+  const fv = localStorage.getItem("canopy.feedView");
+  if (fv === "reading" || fv === "agents") state.feedView = fv;
   const pv = localStorage.getItem("canopy.promptView");
   if (pv === "raw" || pv === "rendered") state.promptView = pv;
   const c = localStorage.getItem("canopy.collapsed");
@@ -2214,6 +2216,11 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       break;
 
     // feed filters
+    case "setFeedView":
+      if (arg !== "reading" && arg !== "agents") return;
+      state.feedView = arg;
+      persist("canopy.feedView", arg);
+      break;
     case "setAuthor": state.feedAuthor = arg ?? "all"; loadFeed(); return;
     case "clearAuthor": state.feedAuthor = "all"; loadFeed(); return;
     case "setTag": state.feedTag = value ?? "all"; loadFeed(); return;

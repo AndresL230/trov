@@ -13,6 +13,7 @@ import { consumeUploadToken, createPage, sha256Hex, mintUploadToken } from "../s
 import { create_ticket } from "../src/tools/tickets";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { app } from "../src/routes";
+import { ARTIFACT_INLINE_MAX } from "@shared/artifacts";
 
 const ME = "arti-author";
 const YOU = "arti-teammate";
@@ -172,8 +173,59 @@ describe("text artifacts", () => {
   });
 
   it("a text cap breach is too_large", async () => {
-    const r = await call(ME, "upload_asset", textArgs({ content: "x".repeat(500 * 1024 + 1) }));
+    const r = await call(ME, "upload_asset", textArgs({ content: "x".repeat(750 * 1024 + 1) }));
     expect(r.body.code).toBe("too_large");
+  });
+});
+
+// ── inline threshold (ARTIFACT_INLINE_MAX) ───────────────────────────────────
+
+describe("artifact_get / query — big text is not inlined", () => {
+  const big = "# Big\n\n" + "yak ".repeat(ARTIFACT_INLINE_MAX / 4); // > ARTIFACT_INLINE_MAX bytes
+  const atMax = "a".repeat(ARTIFACT_INLINE_MAX); // exactly the threshold: still inlined
+
+  it("omits a text body over 64 KB by default, keeping download_url / sha256 / size_bytes", async () => {
+    await call(ME, "upload_asset", textArgs({ title: "Big spec", content: big }));
+    const g = await call(ME, "artifact_get", { slug: "big-spec" });
+    expect(g.isError).toBe(false);
+    expect(g.body.content).toBeNull();
+    expect(g.body.content_omitted).toBe(true);
+    expect(g.body.size_bytes).toBe(new TextEncoder().encode(big).length);
+    expect(g.body.sha256).toBe(await sha256Hex(new TextEncoder().encode(big)));
+    expect(g.body.download_url).toMatch(/^https:\/\/canopy\.test\/api\/artifacts\/download\//);
+    expect(g.text.length).toBeLessThan(ARTIFACT_INLINE_MAX);
+  });
+
+  it("inlines a body of exactly 64 KB, and a big one with include_content: true", async () => {
+    await call(ME, "upload_asset", textArgs({ title: "At max", content: atMax }));
+    const small = await call(ME, "artifact_get", { slug: "at-max" });
+    expect(small.body.content).toBe(atMax);
+    expect(small.body.content_omitted).toBe(false);
+
+    await call(ME, "upload_asset", textArgs({ title: "Big spec", content: big }));
+    const full = await call(ME, "artifact_get", { slug: "big-spec", include_content: true });
+    expect(full.body.content).toBe(big);
+    expect(full.body.content_omitted).toBe(false);
+  });
+
+  it("an omitted body still carries warnings computed over the full text", async () => {
+    const html = `<html><body>${"<p>filler</p>".repeat(ARTIFACT_INLINE_MAX / 10)}<script>window.claude.complete("x")</script></body></html>`;
+    await call(ME, "upload_asset", textArgs({ title: "Big page", kind: "html", content: html }));
+    const g = await call(ME, "artifact_get", { slug: "big-page" });
+    expect(g.body.content_omitted).toBe(true);
+    expect(g.body.warnings).toHaveLength(1);
+    expect(g.body.warnings[0]).toContain("window.claude");
+  });
+
+  it("query's assembled body is a pointer line over the threshold, the text under it", async () => {
+    await call(ME, "upload_asset", textArgs({ title: "Gnu big", content: "gnu " + big }));
+    await call(ME, "upload_asset", textArgs({ title: "Gnu small", content: "gnu small body" }));
+    const r = await call(ME, "query", { q: "gnu", types: ["artifact"] });
+    const byId = Object.fromEntries(r.body.primary.map((h: { id: string; body: string }) => [h.id, h.body]));
+    const size = new TextEncoder().encode("gnu " + big).length;
+    expect(byId["gnu-big"]).toContain(`(markdown · ${size} bytes — too large to inline; read it with artifact_get)`);
+    expect(byId["gnu-big"]).not.toContain("yak yak");
+    expect(byId["gnu-small"]).toContain("gnu small body");
   });
 });
 

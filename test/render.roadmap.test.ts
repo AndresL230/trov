@@ -274,6 +274,7 @@ function feedRow(overrides: Partial<FeedRow> = {}): FeedRow {
     id: 1,
     author: "AndresL230",
     summary: "shipped a thing",
+    brief: null,
     body: null,
     artifacts: null,
     created_at: "2026-07-07T09:00:00Z",

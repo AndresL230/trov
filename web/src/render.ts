@@ -105,6 +105,8 @@ export interface AppState {
   repoSample: boolean;
   /** The admin's last "Poll now" on the Usage tab. Session-only, never persisted; cleared on leaving the Repo screen. */
   repoPoll: RepoPollState | null;
+  /** The Feed's lens: "reading" = title + brief (for people), "agents" = the full body. Saved per browser. */
+  feedView: FeedView;
   feedAuthor: string;
   feedTag: string;
   feedRange: string;
@@ -317,7 +319,7 @@ export function initialState(): AppState {
     navOpen: { ...NAV_CLOSED },
     repo: { status: "idle", data: null },
     repoTab: "overview", repoRange: "7d", repoProductEnv: null, repoDriftOpen: false, repoFetchedAt: null, repoSample: false, repoPoll: null,
-    feedAuthor: "all", feedTag: "all", feedRange: "all",
+    feedView: "reading", feedAuthor: "all", feedTag: "all", feedRange: "all",
     feed: { status: "idle", data: [] },
     mywork: { status: "idle", data: null },
     feedAuthors: [],
@@ -663,7 +665,12 @@ function header(s: AppState): string {
   };
   const authorChips = [achip("all", "All"), ...s.feedAuthors.map((a) => achip(a, handleTag(personFor(s, a), a, 12)))].join("");
 
+  const fvTabStyle = (k: FeedView) => `padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;color:${s.feedView === k ? "var(--fg)" : "var(--fg-55)"};background:${s.feedView === k ? "var(--hover)" : "transparent"}`;
+  const feedViewSwitch = `<div role="group" aria-label="Feed view" style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px;margin-right:6px">
+      ${(["reading", "agents"] as const).map((k) => `<button data-act="setFeedView" data-arg="${k}" aria-pressed="${s.feedView === k}" style="${fvTabStyle(k)}">${k === "reading" ? "For reading" : "For agents"}</button>`).join("")}
+    </div>`;
   const feedControls = s.screen === "feed" ? `<div style="display:flex;align-items:center;gap:6px">
+      ${feedViewSwitch}
       <span style="font-size:11px;color:var(--fg-40);text-transform:uppercase;letter-spacing:.08em;margin-right:2px">Author</span>
       ${authorChips}
       <div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>
@@ -775,6 +782,15 @@ function feedBody(body: string | null): string {
   return `<div class="cnpy-md cnpy-feed-body" style="font-size:13px;color:var(--fg-55);line-height:1.6;margin-top:6px">${renderMarkdown(body)}</div>`;
 }
 
+export type FeedView = "reading" | "agents";
+
+/** The "For reading" line under the title: the entry's brief, plain text. An entry
+ *  written without one (older plugin, not yet backfilled) shows the title alone. */
+function feedBrief(brief: string | null): string {
+  if (!brief || !brief.trim()) return "";
+  return `<div class="cnpy-feed-brief" style="font-size:13.5px;color:var(--fg-70);line-height:1.6;margin-top:5px">${esc(brief)}</div>`;
+}
+
 function feedView(s: AppState): string {
   if (s.feed.status === "loading" && s.feed.data.length === 0) return wrapFeed(notice("Loading feed&hellip;"));
   if (s.feed.status === "error") return wrapFeed(notice("Couldn't load the feed."));
@@ -791,7 +807,7 @@ function feedView(s: AppState): string {
         <div style="margin-top:1px">${personChip(personFor(s, e.author), 30, e.author)}</div>
         <div style="flex:1;min-width:0">
           <div class="cnpy-md-inline" style="font-size:14px;font-weight:500;line-height:1.5;letter-spacing:-0.005em">${renderMarkdownInline(e.summary)}</div>
-          ${feedBody(e.body)}
+          ${s.feedView === "reading" ? feedBrief(e.brief) : feedBody(e.body)}
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px">
             <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55)">${handleTag(personFor(s, e.author), e.author)}</div>
             <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 5px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="11" rx="2"></rect><path d="M12 8V4M8 13h.01M16 13h.01"></path></svg>agent</span>

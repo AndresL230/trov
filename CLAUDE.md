@@ -118,7 +118,9 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `ticket_links.locked`, and the `github-webhook` system person — see "Tickets mirrored from GitHub issues"], then
   `0033_ticket_testing_rank` [REBUILDS `tickets` + `ticket_events` (SQLite cannot alter a CHECK) to admit the
   `testing` status and add `tickets.board_rank`; under `defer_foreign_keys`, carrying each AUTOINCREMENT counter
-  over so a deleted ticket's number is never reissued — see "The ticket board" below]).
+  over so a deleted ticket's number is never reissued — see "The ticket board" below], then `0034_feed_brief`
+  [`feed.brief` — see "The feed brief" below], then `0035_artifact_text_cap` [REBUILDS `artifact_versions` to
+  raise its text CHECK to 768000 bytes, the 750 KB `ARTIFACT_TEXT_CAP`]).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
@@ -234,6 +236,16 @@ follows its OWN source issue's close and reopen (see "Tickets mirrored from GitH
 ticket that merely links an issue never does. `toggle_assignee` is the one writer with NO MCP
 counterpart (design D3): assignment is the data the lane rule is built on, so after filing it is
 cookie-only, forever.
+
+**The feed brief** (`0034_feed_brief`, spec `docs/superpowers/specs/2026-09-26-feed-brief-design.md`). A
+feed entry has two readers. `summary` is the one-line title; `brief` (optional, 1–2 plain sentences,
+`FEED_BRIEF_MAX` = 280 characters, over it is a validation error that writes nothing) is the problem solved
+in product words, for PEOPLE; `body` is the agent record. The Feed screen's header switch **For reading**
+(default; title + brief + artifact chips, no body — an entry with no brief is title-only) / **For agents**
+(the full body) is client-side, saved per browser as `canopy.feedView`. `get_feed` returns both, and
+`query`'s assembled feed body leads with `Brief: …`. The `record-session` skill always writes a brief; the
+body's soft target is ~2,500 characters. Pre-0034 entries were filled once by
+`scripts/backfill-feed-briefs.mjs` (local, Gemini, dry run by default, `--apply` only `WHERE brief IS NULL`).
 
 ## Read side — FTS5 query engine
 
@@ -1057,7 +1069,7 @@ text (text kinds; from an older version that is a restore) or uploads a replacem
 (`contentChecks`); an unchanged save is the API's `unchanged` no-op. The contract for
 agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy` / `artifacts` skills).
 
-- **Kinds and storage**: text kinds `html` / `markdown` / `svg` / `mermaid` (≤ 500 KB of UTF-8, the `content`
+- **Kinds and storage**: text kinds `html` / `markdown` / `svg` / `mermaid` (≤ 750 KB of UTF-8, the `content`
   column in D1) and binary kinds `image` (png/jpeg/gif/webp only) / `pdf` / `file` (≤ 10 MB, R2 bucket
   `ARTIFACTS_BUCKET` at `artifacts/<sha256>`, put with R2's own `sha256` check). `0030_artifacts`:
   `artifact_pages` / `artifact_versions` (exactly one of `content` / `r2_key`) / `artifact_links` /
@@ -1079,7 +1091,7 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy
   author, status, sprint, ticket, q), get `?v=`, create (JSON text / multipart binary), PATCH, add version
   (content or `old_str`/`new_str`, which must match exactly once; multipart for binary), links add/remove,
   diff, ratify, `upload-url`, and `POST /api/artifacts/fetch` (the From-URL tab: `src/artifacts/fetch-url.ts`,
-  https only, private/loopback/link-local literals refused, every redirect hop re-checked, 5 s, 500 KB, text
+  https only, private/loopback/link-local literals refused, every redirect hop re-checked, 5 s, 750 KB, text
   only, nothing stored — a Worker cannot resolve DNS first, so rebinding is out of its reach).
 - **Two token-authenticated routes sit in `src/index.ts` BEFORE the session-gated app** (like `/u/`): the upload
   `PUT /api/artifacts/upload/:token` (`src/artifacts/upload.ts`: single use, 5 minutes, bound to principal /
@@ -1094,8 +1106,10 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy
   `Cache-Control: private`; html alone gets the injected `canopy:height` postMessage script (never on
   `?download=1`). The SPA frames html as `<iframe src="/raw/…" sandbox="allow-scripts">` — never `srcdoc`, never
   `allow-same-origin` — and inlines svg ONLY through `sanitizeSvg` (DOMPurify, `web/src/markdown.ts`).
-- **MCP** (every principal, `src/tools/artifacts-agent.ts`): `artifact_list`, `artifact_get` (text content inline;
-  for every kind a `download_url` + `sha256` + `size_bytes` to verify), `upload_asset` / `artifact_update`
+- **MCP** (every principal, `src/tools/artifacts-agent.ts`): `artifact_list`, `artifact_get` (text content inline
+  up to `ARTIFACT_INLINE_MAX` = 64 KB — over it `content: null` + `content_omitted: true` unless
+  `include_content: true`, and `query`'s assembled body is a one-line pointer instead; `warnings` still see
+  the full text; for every kind a `download_url` + `sha256` + `size_bytes` to verify), `upload_asset` / `artifact_update`
   (text inline; binary returns an absolute `upload_url` the agent PUTs to). All carry `warnings` (never a
   rejection) for `window.claude` / `window.storage` / `api.anthropic.com`, and for a bundled Claude Design
   export (`isBundledExport` — its `blob:` scripts and `new Function` are refused by the raw CSP, so it must be

@@ -32,6 +32,27 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<{ 
 }
 
 describe("registered MCP append_feed tool carries prs/commits through the gate", () => {
+  it("stores the brief beside the body", async () => {
+    const brief = "Tutor answers no longer vanish mid-turn — the reply finishes instead of asking students to retry.";
+    const res = await callTool("append_feed", { summary: "Shipped: textless turns finish", brief, body: "**What** long record", tags: ["api"] });
+    expect(JSON.parse(res.text).outcome).toBe("written");
+    const [row] = await all<FeedRow>(env.DB, `SELECT * FROM feed`);
+    expect(row.brief).toBe(brief);
+    expect(row.body).toBe("**What** long record");
+  });
+
+  it("a brief over 280 characters is refused and nothing is written", async () => {
+    const res = await callTool("append_feed", { summary: "too long", brief: "x".repeat(281), tags: ["api"] });
+    expect(res.isError).toBe(true);
+    expect((await all<FeedRow>(env.DB, `SELECT * FROM feed`)).length).toBe(0);
+  });
+
+  it("an entry without a brief stores NULL", async () => {
+    await callTool("append_feed", { summary: "no brief", tags: ["api"] });
+    const [row] = await all<FeedRow>(env.DB, `SELECT * FROM feed`);
+    expect(row.brief).toBeNull();
+  });
+
   it("round-trips prs/commits/issues into the stored feed artifacts json", async () => {
     const res = await callTool("append_feed", {
       summary: "shipped",
