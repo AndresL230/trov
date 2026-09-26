@@ -360,6 +360,16 @@ describe("artifacts — new artifact", () => {
     expect(artifactsView(p)).toContain("CLAUDE.AI ONLY");
   });
 
+  it("warns that a bundled Claude Design export must be flattened, and still lets it upload", () => {
+    const p = props("artifactnew");
+    p.ui.c.title = "Restyle";
+    p.ui.c.paste = `<html><body><script>/* loader */</script><script type="__bundler/manifest">{}</script></body></html>`;
+    expect(artifactsView(p)).toContain("FLATTEN FIRST");
+    expect(artifactsAct(p.ui, ctx(p), "artCSubmit", null, null)).not.toBeNull();
+    p.ui.c.paste = "<html><body><script>render()</script></body></html>";
+    expect(artifactsView(p)).not.toContain("FLATTEN FIRST");
+  });
+
   it("a picked file sets the kind from its extension; a binary one is sent multipart", () => {
     const p = props("artifactnew");
     const blob = new Blob([new Uint8Array(2048)], { type: "image/png" });

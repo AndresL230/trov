@@ -92,7 +92,10 @@ truncated }`.
 `upload_url`, `download_url` and `raw_url` are absolute too. **Every result carries `warnings: string[]`** — non-empty when text content calls into
 something only claude.ai provides (`window.claude`, `window.storage`, `api.anthropic.com`). That is a
 warning, never a rejection: the write has already happened, and the page will not work in Canopy's
-viewer until you remove the call.
+viewer until you remove the call. It is also non-empty for a **bundled Claude Design export** (the hi-fi
+clickable ones, marked by `<script type="__bundler/manifest">`): its loader unpacks its scripts into
+`blob:` URLs and its runtime compiles code with `new Function`, and the viewer's CSP allows neither, so
+the page renders blank. Flatten it before uploading: every script inline (or from cdnjs / jsdelivr), no eval.
 
 Also: `query` searches artifacts (type `artifact`, id = the slug; private pages only for their author),
 `get_ticket` lists the pages linked to a ticket that you can see (`artifacts: [{ slug, title, kind,

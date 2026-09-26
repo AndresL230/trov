@@ -1093,7 +1093,9 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy
 - **MCP** (every principal, `src/tools/artifacts-agent.ts`): `artifact_list`, `artifact_get` (text content inline;
   for every kind a `download_url` + `sha256` + `size_bytes` to verify), `upload_asset` / `artifact_update`
   (text inline; binary returns an absolute `upload_url` the agent PUTs to). All carry `warnings` (never a
-  rejection) for `window.claude` / `window.storage` / `api.anthropic.com`. `query` has an `artifact` type
+  rejection) for `window.claude` / `window.storage` / `api.anthropic.com`, and for a bundled Claude Design
+  export (`isBundledExport` — its `blob:` scripts and `new Function` are refused by the raw CSP, so it must be
+  flattened; the web create screen shows the same warning as FLATTEN FIRST). `query` has an `artifact` type
   (draft → `draft`, published/ratified → `live`; private only to the author — `query()` takes a viewer);
   `get_ticket` lists the ticket's visible artifacts; `record_session` and `/ingest` accept `artifact_links`,
   applied after the batch as direct writes (`recordBatch` in `src/consumer.ts`).

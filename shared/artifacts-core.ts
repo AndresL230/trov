@@ -46,6 +46,12 @@ export const ARTIFACT_DOWNLOAD_TTL_MS = 5 * 60 * 1000;
 export const CLAUDE_ONLY_MARKERS = ["window.claude", "window.storage", "api.anthropic.com"] as const;
 export const claudeOnlyHits = (text: string): string[] => CLAUDE_ONLY_MARKERS.filter((m) => text.includes(m));
 
+/** Warn (never reject) on a Claude Design BUNDLED export (the hi-fi clickable ones): its loader unpacks
+ *  its scripts into blob: URLs and its runtime compiles code with `new Function`, both refused by the
+ *  raw route's CSP, so it renders blank until flattened (every script inline, no eval). */
+export const BUNDLED_EXPORT_MARKER = 'type="__bundler/manifest"';
+export const isBundledExport = (text: string): boolean => text.includes(BUNDLED_EXPORT_MARKER);
+
 // ── file-type rules ──────────────────────────────────────────────────────────
 
 /** Extension → kind, for the file tab and the MCP binary path. Unknown → "file". */

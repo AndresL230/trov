@@ -28,7 +28,7 @@ import { collapsedLineDiff } from "./diff";
 import type { PersonColor } from "@shared/rows";
 import {
   ARTIFACT_KINDS, ARTIFACT_AREAS, ARTIFACT_STATUSES, ARTIFACT_TEXT_EXT,
-  artifactCap, isBinaryKind, isTextKind, kindForFilename, claudeOnlyHits, canRatify, parseSlugVersion,
+  artifactCap, isBinaryKind, isTextKind, kindForFilename, claudeOnlyHits, isBundledExport, canRatify, parseSlugVersion,
   type ArtifactKind, type ArtifactStatus, type ArtifactVisibility, type ArtifactLinkType,
   type ArtifactSummaryDTO, type ArtifactDetailDTO, type ArtifactVersionDTO, type ArtifactDiffDTO,
 } from "@shared/artifacts-core";
@@ -832,6 +832,7 @@ function createView(p: ArtProps): string {
   const binary = isBinaryKind(c.kind);
   const over = bytes > cap;
   const hits = binary ? [] : claudeOnlyHits(text);
+  const bundled = !binary && isBundledExport(text);
   const canSubmit = canSubmitCreate(c);
   const label = (t: string) => `<label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">${t}</label>`;
   const inputSt = "width:100%;height:40px;padding:0 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:14px;outline:none";
@@ -919,6 +920,12 @@ function createView(p: ArtProps): string {
           <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.55">
             This page calls features that only exist inside claude.ai. Canopy renders artifacts in a sandbox with no network, so these calls will fail and parts of the page may render empty. You can still upload it.
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${hits.map((h) => `<code style="font-family:var(--code);font-size:11px;color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent);border:1px solid var(--border);border-radius:5px;padding:1.5px 6px">${esc(h)}</code>`).join("")}</div>
+          </div>
+        </div>` : ""}
+        ${bundled ? `<div style="display:flex;align-items:flex-start;gap:14px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:9px">
+          <span style="font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;${tagTint("var(--amber)")};border-radius:5px;padding:3px 7px;flex:none">FLATTEN FIRST</span>
+          <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.55">
+            This is a bundled Claude Design export (a hi-fi clickable prototype). It loads its scripts from blob: URLs and compiles code at runtime, which Canopy's sandbox blocks, so it will render blank. Flatten it first, with every script inline and no eval, then upload that. You can still upload it as is.
           </div>
         </div>` : ""}
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:22px;flex-wrap:wrap">
