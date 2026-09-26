@@ -410,7 +410,7 @@ input, select { font-family: inherit; }
 .cnpy-seg { position:relative; display:inline-flex; align-items:center; gap:2px; padding:3px; border:1px solid var(--border); border-radius:9px; flex:none; isolation:isolate; }
 .cnpy-seg--fill { display:flex; }
 .cnpy-seg--fill > .cnpy-seg-btn { flex:1 1 0; }
-.cnpy-seg-btn { position:relative; z-index:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:5px 12px; border-radius:7px; font-size:12.5px; font-weight:500; white-space:nowrap; color:var(--fg-55); transition:color .15s ease, background-color .15s ease; }
+.cnpy-seg-btn { position:relative; z-index:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:5px 12px; border-radius:7px; font-size:12.5px; font-weight:500; white-space:nowrap; color:var(--fg-55); transition:color .15s ease; }
 .cnpy-seg--sm > .cnpy-seg-btn { padding:4px 12px; font-size:12px; }
 .cnpy-seg--xs { padding:2px; gap:1px; border-radius:8px; }
 .cnpy-seg--xs > .cnpy-seg-btn { height:22px; padding:0 9px; border-radius:6px; font-size:11.5px; }
@@ -424,6 +424,8 @@ input, select { font-family: inherit; }
 .cnpy-seg-btn.is-on { color:var(--fg); background:var(--hover); }
 .cnpy-seg-btn.is-on[data-tone="accent"] { color:var(--accent); background:var(--accent-soft); }
 .cnpy-seg-btn:disabled { color:var(--fg-40); opacity:.55; cursor:not-allowed; }
+/* Once the indicator is placed the picked button's own fill goes at once — never faded
+   (a fading fill under the sliding indicator reads as two selections). */
 .cnpy-seg.is-live > .cnpy-seg-btn.is-on { background:transparent; }
 .cnpy-seg-ind { position:absolute; z-index:0; top:0; left:0; width:0; height:0; border-radius:7px; background:var(--hover); opacity:0; pointer-events:none; }
 .cnpy-seg--xs > .cnpy-seg-ind { border-radius:6px; }
