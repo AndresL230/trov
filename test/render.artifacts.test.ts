@@ -564,3 +564,48 @@ describe("artifacts — in the app shell", () => {
     expect(artifactsView(p)).not.toContain("<img src=x");
   });
 });
+
+// ── segmented switches — the shared `segmented()` component ──────────────────
+
+describe("artifacts — segmented switches", () => {
+  /** The `.cnpy-seg` group carrying `data-seg="<id>"`, up to its closing </div>. */
+  const segOf = (html: string, id: string): string => {
+    const at = html.indexOf(`data-seg="${id}"`);
+    expect(at).toBeGreaterThan(-1);
+    return html.slice(html.lastIndexOf("<div", at), html.indexOf("</div>", at) + 6);
+  };
+
+  it("the viewer's status switch: xs, every option keeps its act, ratified is the accent option with the shield", () => {
+    const seg = segOf(artifactsView(viewer(detail("a", "html"))), "art-status");
+    expect(seg).toContain('class="cnpy-seg cnpy-seg--xs"');
+    expect(seg).toContain('aria-label="Status"');
+    expect(seg).toMatch(/class="cnpy-seg-btn is-on" data-act="artStatus" data-arg="published" aria-pressed="true">Published</);
+    expect(seg).toContain('data-act="artStatus" data-arg="draft" aria-pressed="false">Draft<');
+    expect(seg).toMatch(/data-act="artStatus" data-arg="ratified" data-tone="accent" aria-pressed="false" title="Ratify v3"><svg[^]*<\/svg>Ratified</);
+  });
+
+  it("a ratified option that cannot be ratified is locked — no act, disabled, with its hint", () => {
+    const seg = segOf(artifactsView(viewer(detail("a", "html", { status: "draft" }))), "art-status");
+    expect(seg).not.toContain('data-arg="ratified"');
+    expect(seg).toMatch(/<button type="button" class="cnpy-seg-btn" disabled data-tone="accent" aria-pressed="false" title="[^"]+">/);
+    expect(seg).toContain('data-act="artStatus" data-arg="published"');
+  });
+
+  it("the create form's Kind, Visibility and Content source are segmented switches with their acts", () => {
+    const p = props("artifactnew");
+    const html = artifactsView(p);
+    const kind = segOf(html, "art-create-kind");
+    for (const k of ["html", "markdown", "svg", "mermaid", "image", "pdf", "file"]) expect(kind).toContain(`data-act="artCKind" data-arg="${k}"`);
+    const vis = segOf(html, "art-create-vis");
+    expect(vis).toMatch(/class="cnpy-seg-btn is-on" data-act="artCVis" data-arg="org" aria-pressed="true">Org</);
+    expect(vis).toContain('data-act="artCVis" data-arg="private" aria-pressed="false">Private<');
+    expect(segOf(html, "art-create-source")).toContain('data-act="artCTab" data-arg="url"');
+    // A binary kind locks Paste and From URL (text kinds only).
+    artifactsAct(p.ui, ctx(p), "artCKind", "pdf", null);
+    const src = segOf(artifactsView(p), "art-create-source");
+    expect(src).not.toContain('data-arg="paste"');
+    expect(src).not.toContain('data-arg="url"');
+    expect((src.match(/disabled aria-pressed="false" title="Text kinds only"/g) ?? []).length).toBe(2);
+    expect(src).toMatch(/class="cnpy-seg-btn is-on" data-act="artCTab" data-arg="file"/);
+  });
+});

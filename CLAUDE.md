@@ -1162,6 +1162,14 @@ patcher leaves alone. A sub-page list the app opened on entry folds again on lea
 sticks and is what persists (`canopy.navOpen`). Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
+**Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, Roadmap tabs, the queue's
+Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, form segments. Never
+hand-roll a segment group. Its picked fill is ONE indicator that slides between options: `rerender()` swaps
+`<main>`, so `syncSegments` (run after every paint, and without a slide on resize / font load) remembers each
+switch's indicator box by its stable `id` and plays the slide old → new (FLIP); a switch new to the screen
+does not slide in. Sizes `md` (header) / `sm` / `xs`, plus `cnpy-seg--bar` (a 34px toolbar row) and
+`cnpy-seg--wrap`. Two-state colored toggles (an artifact's visibility) and chip pickers are other idioms.
+
 Screen entrances are `[data-enter]` (set by `markEnter()` in `main.ts` only when the route changed or the
 screen's main read landed — never on a keystroke). `--enter-t` is a NEGATIVE animation-delay, so a rerender
 mid-entrance joins the animation where the old DOM left off. Hooks: `.cnpy-rise` + `--i`, `.cnpy-stagger`

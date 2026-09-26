@@ -328,8 +328,8 @@ describe("newSprintPanel", () => {
     // Inline styles can't express `:hover`; the class is what canopy.css hooks,
     // and `is-on` is what keeps the hover off the chip that is already picked.
     const html = newSprintPanel({ ...NS, open: true, urgency: "high", lead: "sanaok", domain: "tickets" }, PERSONS);
-    expect(html).toContain('data-act="nsUrg" data-arg="high" class="cnpy-segbtn is-on"');
-    expect(html).toContain('data-act="nsUrg" data-arg="low" class="cnpy-segbtn"');
+    expect(html).toContain('<button type="button" class="cnpy-seg-btn is-on" data-act="nsUrg" data-arg="high" aria-pressed="true"');
+    expect(html).toContain('<button type="button" class="cnpy-seg-btn" data-act="nsUrg" data-arg="low" aria-pressed="false"');
     expect(html).toContain('data-act="nsLead" data-arg="sanaok" class="cnpy-pickchip is-on"');
     expect(html).toContain('data-act="nsLead" data-arg="jose-a" class="cnpy-pickchip"');
     expect(html).toContain('data-act="nsDom" data-arg="tickets" class="cnpy-pickchip is-on"');
@@ -338,11 +338,10 @@ describe("newSprintPanel", () => {
 
   it("marks the urgency segment that is selected", () => {
     const html = newSprintPanel({ ...NS, open: true, urgency: "high" }, PERSONS);
-    // The window has to clear the opening tag, class attribute and all.
-    const high = html.slice(html.indexOf('data-act="nsUrg" data-arg="high"'), html.indexOf('data-act="nsUrg" data-arg="high"') + 220);
-    const low = html.slice(html.indexOf('data-act="nsUrg" data-arg="low"'), html.indexOf('data-act="nsUrg" data-arg="low"') + 220);
-    expect(high).toContain("background:var(--hover)");
-    expect(low).not.toContain("background:var(--hover)");
+    // The shared segmented() switch: the pick carries `is-on` + aria-pressed.
+    expect(html).toContain('data-seg="ns-urgency"');
+    expect(html).toContain('class="cnpy-seg-btn is-on" data-act="nsUrg" data-arg="high" aria-pressed="true"');
+    expect(html).not.toContain('class="cnpy-seg-btn is-on" data-act="nsUrg" data-arg="low"');
   });
 
   it("every text field carries data-field so the caret survives a rerender", () => {

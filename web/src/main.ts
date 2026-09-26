@@ -5,6 +5,7 @@
 
 import "./canopy.css";
 import { openLightbox, closeLightbox } from "./lightbox";
+import { syncSegments } from "./segmented";
 import {
   render, initialState, firstDocForSpace, docReaderHtml, connectSnippet, CONNECT_CLIENTS, browserConnectCommand,
   FEED_FILTER_CATS, type AppState, type Screen, type ConnectClient, type FeedFilterCat,
@@ -241,6 +242,7 @@ function rerender(): void {
   // screen is unchanged so a button low on a long screen doesn't jump to the top.
   const scroll = captureScroll(mount, state.screen);
   paint(mount, render(state));
+  syncSegments(mount);
   restoreScroll(mount, scroll, state.screen);
   markEnter();
   if (pendingFlash) {
@@ -3060,6 +3062,10 @@ mount.addEventListener("pointerout", (e) => {
   const focused = document.activeElement;
   if (focused instanceof HTMLElement && box.contains(focused)) focused.blur();
 });
+// A switch's option widths change with the viewport and once the web fonts land: re-place
+// every indicator where it sits, without a slide.
+window.addEventListener("resize", () => syncSegments(mount, { instant: true }));
+void document.fonts?.ready.then(() => syncSegments(mount, { instant: true }));
 // Escape closes an open filter menu.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;

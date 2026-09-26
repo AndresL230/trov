@@ -15,6 +15,7 @@ import { initialOnboard, onboardView, personChip, handleTag, swatches, type Onbo
 import type { DashboardData, MyWorkPr, MyWorkTodo, MyWorkTicket } from "@shared/dashboard";
 import { TAGS } from "@shared/vocabulary";
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
+import { segmented } from "./segmented";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { REPO_URL } from "./github";
@@ -653,10 +654,10 @@ function header(s: AppState): string {
 
   // Feed chrome: ONE Filter menu (author · tag · time — the shared filter-menu, no
   // search box), then the For reading / For agents switch at the header's far right.
-  const fvTabStyle = (k: FeedView) => `padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;color:${s.feedView === k ? "var(--fg)" : "var(--fg-55)"};background:${s.feedView === k ? "var(--hover)" : "transparent"}`;
-  const feedViewSwitch = s.screen === "feed" ? `<div role="group" aria-label="Feed view" style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px">
-      ${(["reading", "agents"] as const).map((k) => `<button data-act="setFeedView" data-arg="${k}" aria-pressed="${s.feedView === k}" style="${fvTabStyle(k)}">${k === "reading" ? "For reading" : "For agents"}</button>`).join("")}
-    </div>` : "";
+  const feedViewSwitch = s.screen === "feed" ? segmented({
+    id: "feed-view", ariaLabel: "Feed view", act: "setFeedView", value: s.feedView, inertOn: true,
+    options: [{ value: "reading", label: "For reading" }, { value: "agents", label: "For agents" }],
+  }) : "";
   const feedMenu = s.screen === "feed" ? feedFilterMenu(s) : null;
   const feedControls = feedMenu
     ? `<div style="position:relative;display:flex;align-items:stretch;height:32px">${filterMenuBackdrop(feedMenu)}${filterMenu(feedMenu)}</div>`
@@ -671,14 +672,17 @@ function header(s: AppState): string {
     `<button data-act="${act}" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease">${PLUS_ICON}${label}</button>`;
   const newControls = s.screen === "handoffs" ? accentNew("newHandoff", "New handoff") : s.screen === "prompts" ? accentNew("newPrompt", "New prompt") : "";
 
-  const rmTabStyle = (k: string) => `display:flex;align-items:center;gap:7px;padding:5px 13px;border-radius:7px;font-size:12.5px;font-weight:500;color:${s.roadmapTab === k ? "var(--fg)" : "var(--fg-55)"};background:${s.roadmapTab === k ? "var(--hover)" : "transparent"}`;
   const overdueCount = s.screen === "roadmap" && s.roadmap.status === "ok"
     ? roadmapEnriched(s.roadmap.data.sprints, s.confirmedSprints).overdueCount
     : 0;
-  const roadmapControls = s.screen === "roadmap" ? `<div style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px">
-      <button data-act="roadmapNarrative" style="${rmTabStyle("narrative")}">Narrative</button>
-      <button data-act="roadmapTimeline" style="${rmTabStyle("timeline")}">Timeline${overdueCount ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:1px"></span>` : ""}</button>
-    </div>` : "";
+  const roadmapControls = s.screen === "roadmap" ? segmented({
+    id: "roadmap-tab", ariaLabel: "Roadmap view", act: "", value: s.roadmapTab,
+    options: [
+      { value: "narrative", label: "Narrative", act: "roadmapNarrative", arg: "" },
+      { value: "timeline", label: "Timeline", act: "roadmapTimeline", arg: "",
+        trail: overdueCount ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:1px"></span>` : "" },
+    ],
+  }) : "";
 
   // ADMIN-only, My Work screen: trigger the server-side GitHub backfill. Rendered
   // only when /auth/me returned admin:true (outline button, promote-class action).
@@ -695,11 +699,13 @@ function header(s: AppState): string {
 
   // Queue chrome (the `tickets` screen only): the Table / Board toggle in the
   // Roadmap tab idiom, plus the header's submit button.
-  const qTabStyle = (k: "table" | "board") => `display:flex;align-items:center;gap:6px;padding:5px 13px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;color:${s.qView === k ? "var(--fg)" : "var(--fg-55)"};background:${s.qView === k ? "var(--hover)" : "transparent"}`;
-  const queueControls = s.screen === "tickets" ? `<div style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px">
-      <button data-act="queueBoard" style="${qTabStyle("board")}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="16" rx="1.5"></rect><rect x="14" y="4" width="6" height="10" rx="1.5"></rect></svg>Board</button>
-      <button data-act="queueTable" style="${qTabStyle("table")}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>Table</button>
-    </div>
+  const queueControls = s.screen === "tickets" ? `${segmented({
+    id: "queue-view", ariaLabel: "Queue view", act: "", value: s.qView,
+    options: [
+      { value: "board", label: "Board", act: "queueBoard", arg: "", icon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="16" rx="1.5"></rect><rect x="14" y="4" width="6" height="10" rx="1.5"></rect></svg>` },
+      { value: "table", label: "Table", act: "queueTable", arg: "", icon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>` },
+    ],
+  })}
     <button data-act="newTicket" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Submit a ticket</button>` : "";
 
   const themeBtn = `<button data-act="cycleTheme" title="Toggle theme" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
@@ -1696,10 +1702,10 @@ export function connectModal(s: Pick<AppState, "connect" | "connectClient" | "co
   } else if (!m.token) {
     body = `<div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--fg-55);padding:18px 0 8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="animation:cnpy-spin .8s linear infinite"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>Creating a token for this connection&hellip;</div>`;
   } else {
-    const tabs = CONNECT_CLIENTS.map(({ id, label }) => {
-      const on = s.connectClient === id;
-      return `<button ${on ? "" : `data-act="connectClient" data-arg="${id}"`} aria-pressed="${on}" style="padding:5px 11px;border-radius:7px;font-size:12.5px;font-weight:500;color:${on ? "var(--fg)" : "var(--fg-55)"};background:${on ? "var(--hover)" : "transparent"};border:1px solid ${on ? "var(--border-strong)" : "transparent"}">${label}</button>`;
-    }).join("");
+    const tabs = segmented({
+      id: "connect-client", ariaLabel: "Client", act: "connectClient", value: s.connectClient, inertOn: true,
+      options: CONNECT_CLIENTS.map(({ id, label }) => ({ value: id, label })),
+    });
     const token = m.token;
     // EVERY client's snippet (and note) is rendered, stacked in one grid cell, and
     // only the chosen one is visible: the box is always as tall as the tallest, so a

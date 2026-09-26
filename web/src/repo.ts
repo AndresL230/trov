@@ -21,6 +21,7 @@ import {
 import type { Loadable } from "./render";
 import { esc, attr, statusBadge } from "./ui";
 import { personChip } from "./people";
+import { segmented } from "./segmented";
 
 export interface RepoProps {
   tab: RepoTab;
@@ -738,11 +739,11 @@ function productSection(p: RepoProps, i: number): string {
   }
   const shown = productEnvOf(envs, p.productEnv);
   const seg = envs.length > 1
-    ? `<div class="repo-seg" role="group" aria-label="Environment" style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px;min-width:0;max-width:100%;overflow-x:auto">${envs.map((e) => {
-        const on = e === shown;
-        // The one already showing takes no action: pressing it again must not replay the cross-fade.
-        return `<button ${on ? "" : `data-act="repoProductEnv" `}data-arg="${attr(e.name)}" aria-pressed="${on}" style="padding:4px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;color:${on ? "var(--fg)" : "var(--fg-55)"};background:${on ? "var(--hover)" : "transparent"}">${esc(e.name)}</button>`;
-      }).join("")}</div>`
+    // The one already showing takes no action (inertOn): pressing it again must not replay the cross-fade.
+    ? segmented({
+        id: "repo-product-env", ariaLabel: "Environment", act: "repoProductEnv", value: shown.name, size: "sm", inertOn: true,
+        options: envs.map((e) => ({ value: e.name, label: e.name })),
+      })
     : `<span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-70)">${esc(shown.name)}</span>`;
   const aside = `<div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px 14px;min-width:0"><span style="font-size:11px;color:var(--fg-40)">reported by the app · counts over ${esc(p.range)}</span>${seg}</div>`;
   return `<div style="${TOP};min-width:0">
@@ -842,8 +843,10 @@ export function errorShare(requests: string | undefined, errors: string | undefi
 
 function usageTab(p: RepoProps): string {
   const usageLive = okData(p, (d) => d.usage) !== null;
-  const ranges = `<div class="repo-seg" style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px">${REPO_RANGES.map((r) =>
-    `<button data-act="repoRange" data-arg="${r}" aria-pressed="${p.range === r}" style="padding:4px 12px;border-radius:7px;font-size:12px;font-weight:500;font-family:var(--label);color:${p.range === r ? "var(--fg)" : "var(--fg-55)"};background:${p.range === r ? "var(--hover)" : "transparent"}">${r}</button>`).join("")}</div>`;
+  const ranges = segmented({
+    id: "repo-range", ariaLabel: "Range", act: "repoRange", value: p.range, size: "sm",
+    options: REPO_RANGES.map((r) => ({ value: r, label: r })),
+  });
 
   const usage = sec(p, (d) => d.usage, { nc: "No usage captured yet. Requests and error rate come from the hourly Cloudflare analytics poll (CF_ANALYTICS_TOKEN and CF_ANALYTICS_ACCOUNT_ID); active users come from the app's own metrics endpoint (SAPLING_METRICS_TOKEN). Both need an environment in REPO_ENVIRONMENTS.", empty: "No current usage reading — the hourly polls have gone quiet.", lines: 4 }, (u) =>
     `<div class="repo-swap" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${u[p.range].map(usageEnv).join("")}</div>`);

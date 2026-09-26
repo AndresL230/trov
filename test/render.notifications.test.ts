@@ -49,10 +49,10 @@ describe("emailNotificationsSection", () => {
 
   it("marks the resolved cadence as the active segment", () => {
     const view = emailNotificationsSection({ prefs: prefs(), loading: false, error: null, emailEditing: false, emailDraft: "" });
-    const weekly = view.slice(view.indexOf('data-arg="my_work:weekly"'), view.indexOf('data-arg="my_work:weekly"') + 200);
-    const daily = view.slice(view.indexOf('data-arg="my_work:daily"'), view.indexOf('data-arg="my_work:daily"') + 200);
-    expect(weekly).toContain("background:var(--hover)");
-    expect(daily).not.toContain("background:var(--hover)");
+    // The shared segmented() switch, one per kind (a unique, stable id each).
+    expect(view).toContain('data-seg="cadence-my_work"');
+    expect(view).toContain('class="cnpy-seg-btn is-on" data-act="setKindCadence" data-arg="my_work:weekly" aria-pressed="true"');
+    expect(view).toContain('class="cnpy-seg-btn" data-act="setKindCadence" data-arg="my_work:daily" aria-pressed="false"');
   });
 
   it("dims the list and checks the switch when unsubscribed", () => {

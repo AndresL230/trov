@@ -15,6 +15,7 @@ import { collapsedLineDiff } from "./diff";
 import { unifiedDiff } from "./review";
 import { primaryStyle } from "./handoffs";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
+import { segmented } from "./segmented";
 
 const personOf = (persons: PersonSummary[], h: string): PersonSummary | null =>
   persons.find((p) => p.handle.toLowerCase() === h.toLowerCase()) ?? null;
@@ -300,7 +301,6 @@ export function slugState(ed: PromptDraft, taken: string[]): { ok: boolean; take
 
 export interface PromptEditorProps { draft: PromptDraft | null; takenSlugs: string[] }
 
-const segStyle = (on: boolean) => `padding:4px 14px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;color:${on ? "var(--fg)" : "var(--fg-55)"};background:${on ? "var(--hover)" : "transparent"}`;
 const FIELD = "border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);outline:none";
 
 export function promptEditorView(p: PromptEditorProps): string {
@@ -349,9 +349,10 @@ export function promptEditorView(p: PromptEditorProps): string {
         </div>
         ${suggest.length ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px">${suggest.map((t) => `<button data-act="edTagAdd" data-arg="${attr(t)}" class="cnpy-pickchip" style="padding:3px 9px;border-radius:7px;font-size:11.5px;font-weight:500;border:1px solid var(--border);color:var(--fg-55);font-family:var(--label);white-space:nowrap">+ ${esc(t)}</button>`).join("")}</div>` : ""}
         <label style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Status</label>
-        <div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px">
-          ${(["draft", "staged", "published"] as const).map((k) => `<button data-act="edStatus" data-arg="${k}" class="cnpy-segbtn${ed.status === k ? " is-on" : ""}" style="${segStyle(ed.status === k)}">${k[0].toUpperCase()}${k.slice(1)}</button>`).join("")}
-        </div>
+        ${segmented({
+          id: "ed-status", ariaLabel: "Status", act: "edStatus", value: ed.status,
+          options: (["draft", "staged", "published"] as const).map((k) => ({ value: k, label: `${k[0].toUpperCase()}${k.slice(1)}` })),
+        })}
         <div style="font-size:11.5px;color:var(--fg-40);margin-top:8px">${help}</div>
         <label style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">What changed <span style="font-weight:400;color:var(--fg-40)">— optional</span></label>
         <input data-act="edSummary" data-field="edSummary" value="${attr(ed.summary)}" class="cnpy-input" placeholder="One line for the version history" style="width:100%;height:38px;padding:0 12px;${FIELD};font-size:12.5px">

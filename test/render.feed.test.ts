@@ -147,11 +147,14 @@ describe("Feed — For reading / For agents", () => {
   });
 
   it("the header switch marks the active view", () => {
+    // The shared segmented switch: the picked option is inert (no act), the other dispatches.
     const reading = render(feedState([row], "reading"));
-    expect(reading).toContain('data-act="setFeedView" data-arg="reading" aria-pressed="true"');
+    expect(reading).toContain('data-seg="feed-view"');
+    expect(reading).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">For reading/);
     expect(reading).toContain('data-act="setFeedView" data-arg="agents" aria-pressed="false"');
     const agents = render(feedState([row], "agents"));
-    expect(agents).toContain('data-act="setFeedView" data-arg="agents" aria-pressed="true"');
+    expect(agents).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">For agents/);
+    expect(agents).toContain('data-act="setFeedView" data-arg="reading" aria-pressed="false"');
   });
 });
 
@@ -168,7 +171,7 @@ describe("Feed — one Filter menu, the view switch at the far right", () => {
   it("the For reading / For agents switch sits just before the theme toggle, which stays rightmost", () => {
     const html = render(feedState([feedRow()]));
     const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-    const sw = header.lastIndexOf('data-act="setFeedView"');
+    const sw = header.indexOf('data-seg="feed-view"');
     expect(sw).toBeGreaterThan(header.indexOf('data-hover-menu="feed"'));
     expect(header.indexOf('data-act="cycleTheme"')).toBeGreaterThan(sw);
   });

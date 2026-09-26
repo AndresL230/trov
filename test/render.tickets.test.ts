@@ -655,10 +655,8 @@ describe("newTicketView", () => {
       expect(chip).not.toContain(on);
     }
     // Normal is the selected priority segment.
-    const normal = html.slice(html.indexOf('data-act="ntPriority" data-arg="normal"'), html.indexOf(">Normal<"));
-    expect(normal).toContain("color:var(--fg);background:var(--hover)");
-    const low = html.slice(html.indexOf('data-act="ntPriority" data-arg="low"'), html.indexOf(">Low<"));
-    expect(low).toContain("color:var(--fg-55);background:transparent");
+    expect(html).toContain('class="cnpy-seg-btn is-on" data-act="ntPriority" data-arg="normal" aria-pressed="true"');
+    expect(html).toContain('class="cnpy-seg-btn" data-act="ntPriority" data-arg="low" aria-pressed="false"');
     // The sprint picker reads Backlog; Unassigned is the selected assignee chip.
     expect(html).toContain('data-act="ntSprintMenu"');
     expect(html).toContain(">Backlog</span>");
@@ -1118,8 +1116,9 @@ describe("hover classes — menu rows, pick chips, segments", () => {
     const html = queueView(queueProps({
       tickets: [ticket({ id: 1, title: "Row", sprint_id: 12 })], sprints: [s12], seg: "open",
     }));
-    expect(html).toContain('data-act="queueSeg" data-arg="open" class="cnpy-segbtn is-on"');
-    expect(html).toContain('data-act="queueSeg" data-arg="closed" class="cnpy-segbtn"');
+    expect(html).toContain('data-seg="queue-seg"');
+    expect(html).toContain('class="cnpy-seg-btn is-on" data-act="queueSeg" data-arg="open" aria-pressed="true"');
+    expect(html).toContain('class="cnpy-seg-btn" data-act="queueSeg" data-arg="closed" aria-pressed="false"');
     expect(html).toContain('data-act="openSprint" data-arg="12" title="Open sprint screen" class="cnpy-grouplink"');
   });
 
@@ -1127,8 +1126,8 @@ describe("hover classes — menu rows, pick chips, segments", () => {
     const html = newTicketView(formProps({ category: "bug", sprintId: 12, assignees: ["meilin"], sprints: [s12] }));
     expect(html).toContain('data-act="ntCategory" data-arg="bug" class="cnpy-pickchip is-on"');
     expect(html).toContain('data-act="ntCategory" data-arg="access" class="cnpy-pickchip"');
-    expect(html).toContain('data-act="ntPriority" data-arg="normal" class="cnpy-segbtn is-on"');
-    expect(html).toContain('data-act="ntPriority" data-arg="high" class="cnpy-segbtn"');
+    expect(html).toContain('class="cnpy-seg-btn is-on" data-act="ntPriority" data-arg="normal"');
+    expect(html).toContain('class="cnpy-seg-btn" data-act="ntPriority" data-arg="high"');
     // Sprint is picked from the shared menu now, so its rows carry the menu-row
     // hover class rather than the chip one.
     const open = newTicketView(formProps({ category: "bug", sprintId: 12, assignees: ["meilin"], sprints: [s12], sprMenu: true }));

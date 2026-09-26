@@ -23,6 +23,7 @@ import type { PersonSummary } from "./api";
 import { esc, attr, DETAIL_SHELL } from "./ui";
 import { personChip } from "./people";
 import { renderMarkdown } from "./markdown";
+import { segmented } from "./segmented";
 import { ticketPill, priorityChip, age, avatarStack, tagChip } from "./tickets";
 
 // ── atoms ────────────────────────────────────────────────────────────────────
@@ -180,14 +181,11 @@ export interface NewSprintState {
 const NS_LABEL = "display:block;font-size:12.5px;font-weight:500;margin-bottom:7px";
 const NS_INPUT =
   "width:100%;height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:8px;background:transparent;color:var(--fg);font-size:13px;outline:none";
-const segStyle = (on: boolean) =>
-  `padding:4px 13px;border-radius:7px;font-size:12px;font-weight:500;color:${on ? "var(--fg);background:var(--hover)" : "var(--fg-55);background:transparent"}`;
 const chipStyle = (on: boolean) =>
   `padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid ${on ? "var(--accent);color:var(--accent);background:var(--accent-soft)" : "var(--border);color:var(--fg-55);background:transparent"}`;
-/** The hover layer's hooks (canopy.css), exactly as the ticket form uses them:
- *  the picked chip/segment is painted inline and carries `is-on`, so the hover
- *  rule only firms up the ones that are NOT the current choice. */
-const segClass = (on: boolean) => `cnpy-segbtn${on ? " is-on" : ""}`;
+/** The chip hover hook (canopy.css), exactly as the ticket form uses it: the
+ *  picked chip is painted inline and carries `is-on`, so the hover rule only firms
+ *  up the ones that are NOT the current choice. (Urgency is the shared `segmented()`.) */
 const chipClass = (on: boolean) => `cnpy-pickchip${on ? " is-on" : ""}`;
 
 /**
@@ -202,8 +200,10 @@ export function newSprintPanel(s: NewSprintState, persons: PersonSummary[]): str
   if (!s.open) return "";
   const canCreate = s.name.trim().length > 0;
 
-  const urgSegs = SPRINT_URGENCIES.map((u) =>
-    `<button data-act="nsUrg" data-arg="${u}" class="${segClass(s.urgency === u)}" style="${segStyle(s.urgency === u)}">${u.charAt(0).toUpperCase() + u.slice(1)}</button>`).join("");
+  const urgSeg = segmented({
+    id: "ns-urgency", ariaLabel: "Urgency", act: "nsUrg", value: s.urgency, size: "sm",
+    options: SPRINT_URGENCIES.map((u) => ({ value: u, label: u.charAt(0).toUpperCase() + u.slice(1) })),
+  });
 
   const leadChips = persons.map((p) =>
     `<button data-act="nsLead" data-arg="${attr(p.handle)}" class="${chipClass(s.lead === p.handle)}" style="display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 6px;border-radius:7px;font-size:12.5px;font-weight:500;transition:all .12s ease;border:1px solid ${s.lead === p.handle ? "var(--accent);color:var(--accent);background:var(--accent-soft)" : "var(--border);color:var(--fg-55);background:transparent"}">${personChip(p, 20, p.handle)}${esc(p.name || p.handle)}</button>`).join("");
@@ -231,7 +231,7 @@ export function newSprintPanel(s: NewSprintState, persons: PersonSummary[]): str
     <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;margin-top:15px;align-items:end">
       <div>
         <label style="${NS_LABEL}">Urgency</label>
-        <div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px">${urgSegs}</div>
+        ${urgSeg}
       </div>
       <div style="min-width:0">
         <label style="${NS_LABEL}">Due date</label>

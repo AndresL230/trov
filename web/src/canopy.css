@@ -404,9 +404,33 @@ input, select { font-family: inherit; }
    chip keeps its accent border — only the unpicked ones firm up on hover. */
 .cnpy-pickchip { transition:border-color .12s ease, color .12s ease; }
 .cnpy-pickchip:not(.is-on):hover { border-color:var(--border-strong) !important; color:var(--fg-70) !important; }
-/* Segmented controls (queue segment / priority / urgency): the ON segment owns
-   the `--hover` fill, so an unpicked segment brightens its label instead. */
-.cnpy-segbtn:not(.is-on):hover { color:var(--fg) !important; }
+/* The segmented switch (web/src/segmented.ts) — every "pick one of a few" control. One
+   indicator slides under the picked option (syncSegments places it after each paint);
+   before it is placed, the picked button carries the fill itself. */
+.cnpy-seg { position:relative; display:inline-flex; align-items:center; gap:2px; padding:3px; border:1px solid var(--border); border-radius:9px; flex:none; isolation:isolate; }
+.cnpy-seg--fill { display:flex; }
+.cnpy-seg--fill > .cnpy-seg-btn { flex:1 1 0; }
+.cnpy-seg-btn { position:relative; z-index:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:5px 12px; border-radius:7px; font-size:12.5px; font-weight:500; white-space:nowrap; color:var(--fg-55); transition:color .15s ease, background-color .15s ease; }
+.cnpy-seg--sm > .cnpy-seg-btn { padding:4px 12px; font-size:12px; }
+.cnpy-seg--xs { padding:2px; gap:1px; border-radius:8px; }
+.cnpy-seg--xs > .cnpy-seg-btn { height:22px; padding:0 9px; border-radius:6px; font-size:11.5px; }
+/* A long option list (an artifact's seven kinds) wraps on a narrow screen; the indicator
+   follows the picked option onto its row (syncSegments tracks y as well as x). */
+.cnpy-seg--wrap { flex-wrap:wrap; max-width:100%; }
+/* In a 34px toolbar row (the queue's search + Filter): match its height. */
+.cnpy-seg--bar { height:34px; box-sizing:border-box; padding:2px; }
+.cnpy-seg--bar > .cnpy-seg-btn { height:100%; padding-top:0; padding-bottom:0; }
+.cnpy-seg-btn:not(.is-on):not(:disabled):hover { color:var(--fg); }
+.cnpy-seg-btn.is-on { color:var(--fg); background:var(--hover); }
+.cnpy-seg-btn.is-on[data-tone="accent"] { color:var(--accent); background:var(--accent-soft); }
+.cnpy-seg-btn:disabled { color:var(--fg-40); opacity:.55; cursor:not-allowed; }
+.cnpy-seg.is-live > .cnpy-seg-btn.is-on { background:transparent; }
+.cnpy-seg-ind { position:absolute; z-index:0; top:0; left:0; width:0; height:0; border-radius:7px; background:var(--hover); opacity:0; pointer-events:none; }
+.cnpy-seg--xs > .cnpy-seg-ind { border-radius:6px; }
+.cnpy-seg-ind[data-tone="accent"] { background:var(--accent-soft); }
+.cnpy-seg.is-live > .cnpy-seg-ind { opacity:1; }
+.cnpy-seg-ind.is-sliding { transition:transform .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1), height .28s cubic-bezier(.3,.7,.2,1), background-color .2s ease; }
+@media (prefers-reduced-motion: reduce) { .cnpy-seg-ind.is-sliding { transition:none; } }
 /* The queue group header's "Open sprint →". */
 .cnpy-grouplink { transition:color .12s ease, background .12s ease; border-radius:6px; }
 .cnpy-grouplink:hover { color:var(--fg) !important; background:var(--hover); }
@@ -544,8 +568,6 @@ input, select { font-family: inherit; }
 .repo-quiet { color:inherit; transition:color .12s ease; }
 .repo-quiet:hover { color:var(--fg); }
 .repo-textbtn:hover { text-decoration:underline; text-underline-offset:3px; }
-.repo-seg button { transition:background .15s ease, color .15s ease; }
-.repo-seg button:hover { color:var(--fg-70); }
 .repo-shimmer { animation:cnpy-shimmer 1.4s ease infinite; }
 .repo-pulse { animation:cnpy-pulse 1.8s ease-out infinite; }
 
@@ -786,6 +808,13 @@ input, select { font-family: inherit; }
 [data-cnpy-theme] *,
 [data-cnpy-theme] *::before,
 [data-cnpy-theme] *::after { border-radius:0 !important; }
+/* The segmented switch (segmented.ts). */
+[data-cnpy-theme] .cnpy-seg { border-radius:calc(9px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-seg--xs { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-seg-btn,
+[data-cnpy-theme] .cnpy-seg-ind { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-seg--xs > .cnpy-seg-btn,
+[data-cnpy-theme] .cnpy-seg--xs > .cnpy-seg-ind { border-radius:calc(6px * var(--corner-scale)) !important; }
 /* canopy.css classes, by the radius each declares above. */
 [data-cnpy-theme] .cnpy-kbd,
 [data-cnpy-theme] .cnpy-treechev { border-radius:calc(4px * var(--corner-scale)) !important; }
