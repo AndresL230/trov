@@ -167,6 +167,8 @@ const SHELL = "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px
 const PANEL = "border:1px solid var(--border);border-radius:14px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)";
 const MENU = "background:var(--bg);border:1px solid var(--border-strong);border-radius:11px;box-shadow:0 14px 38px rgba(0,0,0,.3)";
 const OUTLINE_BTN = "padding:7px 15px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)";
+/** The toast shown when the author makes a page private (it replaced a standing banner). */
+const PRIVATE_NOTE = "Only you can see this artifact. Teammates who open the link get a not-found page until you publish it to the org.";
 const ACCENT_BTN = "padding:7px 15px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap";
 
 const segSt = (on: boolean, off = false): string => `padding:4px 14px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;${on ? "color:var(--fg);background:var(--hover)" : off ? "color:var(--fg-40);opacity:.5;cursor:not-allowed;background:transparent" : "color:var(--fg-55);background:transparent"}`;
@@ -433,7 +435,7 @@ function libraryView(p: ArtProps): string {
           ${av(au, 20)}
           <span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:48px;flex:0 1 auto">${esc(au.name)}</span>
           <span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-55);border:1px solid var(--border);border-radius:5px;padding:2px 6px;white-space:nowrap;flex:none">${esc(a.area)}</span>
-          ${a.visibility === "private" ? `<span style="${tint("var(--amber)")}">PRIVATE</span>` : ""}
+          ${a.visibility === "private" ? `<span style="${tint("var(--purple)")}">PRIVATE</span>` : ""}
           <span style="font-size:11.5px;color:var(--fg-40);margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto">${esc(relTime(a.updated_at))}</span>
         </div>
       </div>
@@ -609,20 +611,21 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
   const cmpBase = isLatest ? versions[versions.length - 2] : ver;
   const vArg = (n: number) => (n === latestNo ? d.slug : `${d.slug}@v${n}`);
 
-  const privBanner = isPriv && mine ? banner("PRIVATE", tagTint("var(--amber)"),
-    `Only you can see this artifact. Teammates who open the link get a not-found page until you <strong style="font-weight:600;color:var(--fg)">publish it to the org</strong>.`,
-    `<button data-act="artPublish" class="cnpy-accentbtn" style="display:inline-flex;align-items:center;gap:7px;${ACCENT_BTN};padding:7px 14px;flex:none">${I.people(14)}Publish to org</button>`) : "";
   const oldBanner = !isLatest ? banner(`V${ver.version_no}`, tagTint("var(--blue)"),
     `You're viewing an <strong style="font-weight:600;color:var(--fg)">older version</strong> from ${esc(relTime(ver.created_at))}. The latest is v${latestNo}.`,
     `<button data-act="artDiff" data-arg="${attr(`${d.slug}:${ver.version_no}..${latestNo}`)}" class="cnpy-link" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--fg-55);white-space:nowrap;flex:none">Compare with v${latestNo}</button>
      <button data-act="artOpen" data-arg="${attr(d.slug)}" class="cnpy-link" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--accent);white-space:nowrap;flex:none">View latest${I.arrow()}</button>`) : "";
 
-  // The visibility switch: only the author may make an org artifact private.
+  // The visibility switch: only the author may make an org artifact private. Both states
+  // are colored — org green, private purple — so "Org" never reads as switched off.
+  // Both labels share one grid cell (the idle one hidden), so the chip is always as wide as the
+  // longer label and flipping it never changes its size.
   const gated = !isPriv && !mine;
-  const visSwitch = `<button data-act="artVis" role="switch" aria-checked="${isPriv}" title="${gated ? "Only the author can make this private" : isPriv ? "Publish to the org" : "Make private"}" class="${gated ? "" : "cnpy-ghostbtn"}" style="display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 6px 0 11px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap;border:1px solid ${isPriv ? "color-mix(in srgb,var(--amber) 45%,transparent);color:var(--amber);background:color-mix(in srgb,var(--amber) 10%,transparent)" : "var(--border);color:var(--fg-70)"};${gated ? "opacity:.6;cursor:not-allowed" : ""}">
+  const tone = isPriv ? "var(--purple)" : "var(--green)";
+  const visSwitch = `<button data-act="artVis" role="switch" aria-checked="${isPriv}" title="${gated ? "Only the author can make this private" : isPriv ? "Publish to the org" : "Make private"}" class="${gated ? "" : "cnpy-ghostbtn"}" style="display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 6px 0 11px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap;border:1px solid color-mix(in srgb,${tone} 45%,transparent);color:${tone};background:color-mix(in srgb,${tone} 10%,transparent);${gated ? "opacity:.6;cursor:not-allowed" : ""}">
     ${isPriv ? I.lock() : I.people()}
-    <span>${isPriv ? "Private" : "Visible to org"}</span>
-    <span style="position:relative;width:30px;height:18px;border-radius:999px;flex:none;transition:background .18s ease;background:${isPriv ? "var(--amber)" : "var(--border-strong)"}"><span style="position:absolute;top:2px;left:${isPriv ? 14 : 2}px;width:14px;height:14px;border-radius:999px;background:var(--bg);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .18s cubic-bezier(.4,0,.2,1)"></span></span>
+    <span style="display:grid;text-align:center">${(["Private", "Org"] as const).map((l) => `<span style="grid-area:1/1${(l === "Private") === isPriv ? "" : ";visibility:hidden"}"${(l === "Private") === isPriv ? "" : ' aria-hidden="true"'}>${l}</span>`).join("")}</span>
+    <span style="position:relative;width:30px;height:18px;border-radius:999px;flex:none;transition:background .18s ease;background:${tone}"><span style="position:absolute;top:2px;left:${isPriv ? 14 : 2}px;width:14px;height:14px;border-radius:999px;background:var(--bg);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .18s cubic-bezier(.4,0,.2,1)"></span></span>
   </button>`;
 
   const verMenu = ui.verMenu ? `<div data-act="artCloseMenus" style="position:fixed;inset:0;z-index:29"></div>
@@ -641,7 +644,9 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
 
   const statusSeg = ARTIFACT_STATUSES.map((k) => {
     const on = d.status === k;
-    const locked = (k === "ratified" && !on && !canRat) || (ui.busy && !on);
+    // Not dimmed while a write is in flight (that flashed the row on every switch) — the
+    // reducer already ignores a click while busy.
+    const locked = k === "ratified" && !on && !canRat;
     const st = `display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:500;white-space:nowrap;transition:all .12s ease;${on ? (k === "ratified" ? "color:var(--accent);background:var(--accent-soft)" : "color:var(--fg);background:var(--hover)") : locked ? "color:var(--fg-40);opacity:.55;cursor:not-allowed" : "color:var(--fg-55)"}`;
     const title = k === "ratified" && !on && !canRat ? hint || "Publish before ratifying" : k === "ratified" && !on ? `Ratify v${ver.version_no}` : k === "ratified" && on ? hint : "";
     return `<button data-act="artStatus" data-arg="${k}" title="${attr(title)}" aria-pressed="${on}" class="${on || locked ? "" : "cnpy-segbtn"}" style="${st}">${k === "ratified" ? I.shield() : ""}${k[0].toUpperCase() + k.slice(1)}</button>`;
@@ -663,7 +668,7 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
       </button>
       ${verMenu}
     </div>
-    <span style="flex:1 1 120px;min-width:0;padding-left:4px;font-family:var(--label);font-size:11px;color:var(--fg-55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.host)}/#artifacts/${esc(d.slug)}/v${ver.version_no}</span>
+    <span style="flex:1 1 120px;min-width:0;padding-left:4px;font-family:var(--sans);font-size:11px;color:var(--fg-55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.host)}/#artifacts/${esc(d.slug)}/v${ver.version_no}</span>
     <div role="group" aria-label="Status" style="display:inline-flex;align-items:center;gap:1px;border:1px solid var(--border);border-radius:8px;padding:2px;background:var(--bg);flex:none">${statusSeg}</div>
     <span style="width:1px;height:18px;background:var(--border);flex:none"></span>
     <button data-act="artOpenTab" title="Open in new tab" aria-label="Open in new tab" class="cnpy-iconbtn" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55);flex:none">${I.ext()}</button>
@@ -714,7 +719,7 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
   const links = [...tix, ...spr, ...gh];
 
   return `<div data-screen-label="Artifact viewer" style="${SHELL}">
-    ${privBanner}${oldBanner}
+    ${oldBanner}
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px 24px;flex-wrap:wrap">
       <div style="min-width:0;flex:1 1 380px"><h1 style="font-size:29px;font-weight:650;letter-spacing:-0.022em;line-height:1.16;margin:0;text-wrap:pretty">${esc(d.title)}</h1></div>
       <div style="padding-top:3px">${visSwitch}</div>
@@ -873,7 +878,7 @@ function createView(p: ArtProps): string {
         <div>
           ${label("Title")}
           <input data-act="artCTitle" data-field="artCTitle" class="cnpy-input" value="${attr(c.title)}" placeholder="e.g. Google sign-in design page" style="${inputSt}">
-          <div style="font-family:var(--label);font-size:11px;color:var(--fg-40);margin-top:7px">${esc(p.host)}/#artifacts/${esc(slugifyTitle(c.title) || "…")}</div>
+          <div style="font-family:var(--sans);font-size:11px;color:var(--fg-40);margin-top:7px">${esc(p.host)}/#artifacts/${esc(slugifyTitle(c.title) || "…")}</div>
         </div>
         <div>${label("Kind")}${seg(ARTIFACT_KINDS.map((k) => `<button data-act="artCKind" data-arg="${k}" class="cnpy-segbtn${c.kind === k ? " is-on" : ""}" style="${segSt(c.kind === k)}">${k}</button>`).join(""))}</div>
         <div>${label("Area")}<div style="display:flex;gap:6px;flex-wrap:wrap">${ARTIFACT_AREAS.map((k) => `<button data-act="artCArea" data-arg="${k}" class="cnpy-pickchip${c.area === k ? " is-on" : ""}" style="${chipSt(c.area === k)}">${k}</button>`).join("")}</div></div>
@@ -936,7 +941,7 @@ function notFoundView(p: ArtProps): string {
         <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">This artifact isn't available.</div>
         <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55;text-wrap:pretty">It doesn't exist, or it's private to its author. If someone sent you this link, ask them to publish it to the org.</div>
       </div>
-      <div style="font-family:var(--label);font-size:12px;color:var(--fg-55);padding:7px 12px;border:1px solid var(--border);border-radius:9px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.host)}/#artifacts/${esc(p.route.slug ?? "")}</div>
+      <div style="font-family:var(--sans);font-size:12px;color:var(--fg-55);padding:7px 12px;border:1px solid var(--border);border-radius:9px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.host)}/#artifacts/${esc(p.route.slug ?? "")}</div>
       <button data-act="goArtifacts" class="cnpy-outlinebtn" style="width:100%;padding:11px 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:13.5px;font-weight:500">Back to Artifacts</button>
     </div>
   </div>`;
@@ -1037,7 +1042,7 @@ export function ticketArtifactsBlock(slice: ArtSlice<ArtifactSummaryDTO[]> | und
 
 /** A write main.ts performs against /api/artifacts, then refreshes what it touched. */
 export type ArtWrite =
-  | { op: "patch"; slug: string; body: { status?: "draft" | "published"; visibility?: ArtifactVisibility }; flash: string }
+  | { op: "patch"; slug: string; body: { status?: "draft" | "published"; visibility?: ArtifactVisibility }; flash: string; flashMs?: number }
   | { op: "ratify"; slug: string; version: number; flash: string }
   | { op: "link"; slug: string; target_type: ArtifactLinkType; target_ref: string; flash: string }
   | { op: "create"; fields: { title: string; kind: ArtifactKind; area: string; repo: string; visibility: ArtifactVisibility; summary: string }; content: string | null; file: Blob | null; filename: string | null; links: { target_type: ArtifactLinkType; target_ref: string }[] }
@@ -1109,14 +1114,11 @@ export function artifactsAct(
     case "artDotMenu": ui.dotMenu = !ui.dotMenu; ui.verMenu = false; return null;
     case "artCloseMenus": closeMenus(); return null;
     case "artCloseDialogs": ui.ratifyOpen = false; ui.attachOpen = false; return null;
-    case "artPublish":
-      if (!d || ui.busy || d.visibility !== "private") return null;
-      return { write: { op: "patch", slug: d.slug, body: { visibility: "org" }, flash: "Published to the org" } };
     case "artVis": {
       if (!d || ui.busy) return null;
       if (d.visibility === "private") return { write: { op: "patch", slug: d.slug, body: { visibility: "org" }, flash: "Published to the org" } };
       if (!sameHandle(d.author_id, ctx.me)) return null;
-      return { write: { op: "patch", slug: d.slug, body: { visibility: "private" }, flash: "Now private to you" } };
+      return { write: { op: "patch", slug: d.slug, body: { visibility: "private" }, flash: PRIVATE_NOTE, flashMs: 3000 } };
     }
     case "artStatus": {
       if (!d || ui.busy) return null;

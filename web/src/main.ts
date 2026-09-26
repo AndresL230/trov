@@ -1330,7 +1330,7 @@ function runArtWrite(w: ArtWrite): void {
       if (w.op === "ratify") state.art.ratifyOpen = false;
       if (w.op === "link") { state.art.attachOpen = false; state.art.attachPick = null; }
       refreshArt(w.slug);
-      flash(w.flash);
+      flash(w.flash, "flashMs" in w ? w.flashMs : undefined);
     })
     .catch((e) => {
       state.art.busy = false;
@@ -1392,10 +1392,14 @@ window.addEventListener("message", (e) => {
   }
 });
 
-function flash(msg: string): void {
+function flash(msg: string, ms = 2200): void {
+  const at = Date.now();
   state.toast = msg;
+  state.toastAt = at;
+  state.toastMs = ms;
   rerender();
-  setTimeout(() => { state.toast = null; rerender(); }, 2200);
+  // Only clear the toast this call put up — a newer flash keeps its own full time.
+  setTimeout(() => { if (state.toastAt === at) { state.toast = null; rerender(); } }, ms);
 }
 
 // Drives a (possibly multi-batch) Sync GitHub run: the backend caps AI calls

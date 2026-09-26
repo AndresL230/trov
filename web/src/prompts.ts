@@ -91,7 +91,7 @@ function promptCard(x: PromptSummary, persons: PersonSummary[]): string {
       <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(x.title)}</div>
       ${promptBadge(x.status)}
     </div>
-    <div style="font-family:var(--label);font-size:11px;color:var(--fg-40);margin-top:3px">${esc(x.slug)}</div>
+    <div style="font-family:var(--sans);font-size:11px;color:var(--fg-40);margin-top:3px">${esc(x.slug)}</div>
     <div style="font-size:12.5px;color:var(--fg-55);margin-top:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%">${esc(x.excerpt)}</div>
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:12px">${x.tags.map(tagPill).join("")}</div>
     <div style="flex:1"></div>
@@ -227,7 +227,7 @@ export function promptDetailView(p: PromptDetailProps): string {
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
       <div style="flex:1 1 340px;min-width:0">
         <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">${esc(x.title)}</h2>
-        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:8px;font-size:12px;color:var(--fg-55)"><span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55);white-space:nowrap">${esc(x.slug)}</span></div>
+        <div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:8px;font-size:12px;color:var(--fg-55)"><span style="font-family:var(--sans);font-size:11.5px;color:var(--fg-55);white-space:nowrap">${esc(x.slug)}</span></div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex:none;padding-top:2px;flex-wrap:wrap">
         ${staged ? `<button data-act="promptPublish" data-arg="${staged.version}" class="cnpy-accentbtn" style="${primaryStyle(true)}">Publish v${staged.version}</button>` : ""}
@@ -328,8 +328,8 @@ export function promptEditorView(p: PromptEditorProps): string {
           ${ed.slugTouched ? `<button data-act="edResetSlug" class="cnpy-mutelink" style="font-size:11.5px;font-weight:500;color:var(--fg-40)">Reset to title</button>` : `<span style="font-size:11.5px;color:var(--fg-40)">— from the title; edit to pin it</span>`}
         </div>
         <div style="display:flex;align-items:center;border:1px solid var(--border-strong);border-radius:9px;background:var(--bg);overflow:hidden">
-          <span style="font-family:var(--label);font-size:13px;color:var(--fg-40);padding-left:12px;white-space:nowrap">prompts/</span>
-          <input data-act="edSlug" data-field="edSlug" value="${attr(ed.slug)}" class="cnpy-input" autocomplete="off" spellcheck="false" maxlength="60" style="flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--fg);font-size:13px;padding:10px 12px 10px 2px;font-family:var(--label)">
+          <span style="font-family:var(--sans);font-size:13px;color:var(--fg-40);padding-left:12px;white-space:nowrap">prompts/</span>
+          <input data-act="edSlug" data-field="edSlug" value="${attr(ed.slug)}" class="cnpy-input" autocomplete="off" spellcheck="false" maxlength="60" style="flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--fg);font-size:13px;padding:10px 12px 10px 2px;font-family:var(--sans)">
           <span style="font-family:var(--label);font-size:11px;padding:0 12px;white-space:nowrap;color:${slugColor}">${slugStatus}</span>
         </div>
         <label style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Body <span style="font-weight:400;color:var(--fg-40)">— write <span style="font-family:var(--label)">{{name}}</span> for anything the caller fills in</span></label>
