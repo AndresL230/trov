@@ -205,9 +205,8 @@ describe("artifacts — viewer chrome", () => {
     expect(html).toContain("/#artifacts/google-signin-design/v1");
   });
 
-  it("the author sees the private banner; the not-found page answers a 404", () => {
-    expect(artifactsView(viewer(detail("mine", "html", { visibility: "private", status: "draft" })))).toContain("Only you can see this artifact.");
-    expect(artifactsView(viewer(detail("theirs", "html", { visibility: "private", author_id: "someone" })))).not.toContain("Only you can see this artifact.");
+  it("a private page carries no standing banner; the not-found page answers a 404", () => {
+    expect(artifactsView(viewer(detail("mine", "html", { visibility: "private", status: "draft" })))).not.toContain("Only you can see this artifact.");
     const p = props("artifact", view("nope"));
     p.ui.details[detailKey("nope", null)] = { status: "missing", data: null };
     expect(artifactsView(p)).toContain("This artifact isn't available.");
@@ -266,9 +265,9 @@ describe("artifacts — reducer", () => {
     const theirs = viewer(detail("a", "html", { author_id: "Jose-Gael-Cruz-Lopez" }));
     expect(artifactsAct(theirs.ui, ctx(theirs), "artVis", null, null)).toBeNull();
     const mine = viewer(detail("a", "html"));
-    expect(artifactsAct(mine.ui, ctx(mine), "artVis", null, null)).toMatchObject({ write: { op: "patch", body: { visibility: "private" } } });
+    expect(artifactsAct(mine.ui, ctx(mine), "artVis", null, null)).toMatchObject({ write: { op: "patch", body: { visibility: "private" }, flash: expect.stringContaining("Only you can see this artifact."), flashMs: 3000 } });
     const priv = viewer(detail("a", "html", { visibility: "private" }));
-    expect(artifactsAct(priv.ui, ctx(priv), "artPublish", null, null)).toMatchObject({ write: { op: "patch", body: { visibility: "org" }, flash: "Published to the org" } });
+    expect(artifactsAct(priv.ui, ctx(priv), "artVis", null, null)).toMatchObject({ write: { op: "patch", body: { visibility: "org" }, flash: "Published to the org" } });
   });
 
   it("attaches a ticket once, as a POST link", () => {
