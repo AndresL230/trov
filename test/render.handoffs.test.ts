@@ -91,8 +91,9 @@ describe("prompts", () => {
     // exercised in the browser instead.)
     const body = "## Steps\n\n- read `src/mcp.ts`";
     const raw = promptDetailView({ ...props, prompt: { ...detail, body }, versions: [v(3, "staged")] });
-    expect(raw).toContain('data-act="promptBoxView" data-arg="raw" class="cnpy-segbtn is-on" aria-pressed="true"');
-    expect(raw).toContain('data-act="promptBoxView" data-arg="rendered" class="cnpy-segbtn" aria-pressed="false"');
+    expect(raw).toContain('<button type="button" class="cnpy-seg-btn is-on" data-act="promptBoxView" data-arg="raw" aria-pressed="true"');
+    expect(raw).toContain('<button type="button" class="cnpy-seg-btn" data-act="promptBoxView" data-arg="rendered" aria-pressed="false"');
+    expect(raw).toContain('data-seg="prompt-view"');
     expect(raw).toContain("## Steps"); // the source, escaped, in the mono block
     expect(handoffDetailView({ status: "ok", handoff: h({ body: "x", prompt: { title: "t", body } }), me: "AndresL230", persons, expireArm: false, promptView: "raw" }))
       .toContain('data-act="promptBoxView" data-arg="rendered"');

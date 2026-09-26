@@ -27,12 +27,12 @@ const versionCount = async (slug: string) =>
 
 describe("1 · per-kind caps", () => {
   // 2-byte and 4-byte UTF-8: a string's .length is NOT its byte count.
-  const atCap2 = "é".repeat(ARTIFACT_TEXT_CAP / 2);          // 512000 bytes, 256000 chars
-  const overCap2 = atCap2 + "a";                              // 512001 bytes
-  const atCap4 = "😀".repeat(ARTIFACT_TEXT_CAP / 4);          // 512000 bytes, 256000 UTF-16 units
-  const overCap4 = "😀".repeat(ARTIFACT_TEXT_CAP / 4 - 1) + "abcde"; // 512001 bytes, far fewer chars than the cap
+  const atCap2 = "é".repeat(ARTIFACT_TEXT_CAP / 2);          // 768000 bytes, 384000 chars
+  const overCap2 = atCap2 + "a";                              // 768001 bytes
+  const atCap4 = "😀".repeat(ARTIFACT_TEXT_CAP / 4);          // 768000 bytes, 384000 UTF-16 units
+  const overCap4 = "😀".repeat(ARTIFACT_TEXT_CAP / 4 - 1) + "abcde"; // 768001 bytes, far fewer chars than the cap
 
-  it("text: create at exactly 500 KB (multi-byte) is 201 with size_bytes = the cap; +1 byte is 413", async () => {
+  it("text: create at exactly the 750 KB cap (multi-byte) is 201 with size_bytes = the cap; +1 byte is 413", async () => {
     const me = await cookieFor(ME);
     for (const [i, content] of [atCap2, atCap4].entries()) {
       const p = await createText(me, { title: `At cap ${i}`, content });
@@ -57,10 +57,10 @@ describe("1 · per-kind caps", () => {
     const over = await wf("/api/artifacts/grow/versions", jsonInit("POST", { content: overCap4 }, me));
     expect(over.status).toBe(413);
     // an old_str edit whose RESULT lands exactly on the cap, then one byte over it
-    await wf("/api/artifacts/grow/versions", jsonInit("POST", { content: "é".repeat(ARTIFACT_TEXT_CAP / 2 - 1) + "X" }, me)); // 511999 bytes
-    const edit1 = await wf("/api/artifacts/grow/versions", jsonInit("POST", { old_str: "X", new_str: "XY" }, me)); // 512000
+    await wf("/api/artifacts/grow/versions", jsonInit("POST", { content: "é".repeat(ARTIFACT_TEXT_CAP / 2 - 1) + "X" }, me)); // 767999 bytes
+    const edit1 = await wf("/api/artifacts/grow/versions", jsonInit("POST", { old_str: "X", new_str: "XY" }, me)); // 768000
     expect(edit1.status).toBe(201);
-    const edit2 = await wf("/api/artifacts/grow/versions", jsonInit("POST", { old_str: "Y", new_str: "YZ" }, me)); // 512001
+    const edit2 = await wf("/api/artifacts/grow/versions", jsonInit("POST", { old_str: "Y", new_str: "YZ" }, me)); // 768001
     expect(edit2.status).toBe(413);
     expect(await versionCount("grow")).toBe(4);
   });

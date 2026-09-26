@@ -112,6 +112,7 @@ export async function ingestFeedEntry(db: DB, entry: FeedEntry, author: string, 
   const id = await append_feed(db, {
     author,
     summary: entry.summary,
+    brief: entry.brief,
     body: entry.body,
     artifacts: entry.artifacts,
     tags: entry.tags,

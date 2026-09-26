@@ -26,6 +26,7 @@ import { personChip } from "./people";
 import { renderMarkdown } from "./markdown";
 import { mentionCandidates, mentionPickerTop, COMMENT_BOX } from "./mentions";
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
+import { segmented } from "./segmented";
 
 // ── shared atoms ─────────────────────────────────────────────────────────────
 
@@ -136,15 +137,12 @@ export function needsAttention(t: { assignees: string[]; status: TicketStatus })
  *  says it quietly enough, in both the table rows and the board cards. */
 const NEEDS_ATTENTION_CLASS = " cnpy-attn";
 
-const segBtnStyle = (on: boolean) =>
-  `padding:4px 14px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;color:${on ? "var(--fg);background:var(--hover)" : "var(--fg-55);background:transparent"}`;
 const chipStyle = (on: boolean) =>
   `padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid ${on ? "var(--accent);color:var(--accent);background:var(--accent-soft)" : "var(--border);color:var(--fg-55);background:transparent"}`;
-/** The hover layer's hooks for the two pick idioms (canopy.css). The state above
- *  is painted inline, so `is-on` is what tells the hover rule which chips and
- *  segments to leave alone — an unpicked one firms its border / brightens its
- *  label, the current pick keeps its accent. */
-const segClass = (on: boolean) => `cnpy-segbtn${on ? " is-on" : ""}`;
+/** The hover layer's hook for the chip pick idiom (canopy.css). The state above
+ *  is painted inline, so `is-on` is what tells the hover rule which chips to leave
+ *  alone — an unpicked one firms its border, the current pick keeps its accent.
+ *  (Segments are the shared `segmented()` switch.) */
 const chipClass = (on: boolean) => `cnpy-pickchip${on ? " is-on" : ""}`;
 /** Every dropdown/picker row shares ONE hover class (`.cnpy-menurow`), and the
  *  keyboard-active row reuses the same fill through `.is-active`. */
@@ -273,8 +271,10 @@ function queueFilterMenu(p: QueueProps, shown: number): FilterMenuProps {
  *  Open / Closed / All switch, then the count. */
 function filterRow(p: QueueProps, shown: number): string {
   const segs: [TicketSeg, string][] = [["all", "All"], ["open", "Open"], ["closed", "Closed"]];
-  const segment = `<div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px;height:34px;box-sizing:border-box">${segs.map(([k, label]) =>
-    `<button data-act="queueSeg" data-arg="${k}" class="${segClass(p.seg === k)}" style="${segBtnStyle(p.seg === k)}">${label}</button>`).join("")}</div>`;
+  const segment = segmented({
+    id: "queue-seg", ariaLabel: "Ticket status", act: "queueSeg", value: p.seg, size: "sm", className: "cnpy-seg--bar",
+    options: segs.map(([value, label]) => ({ value, label })),
+  });
 
   const menu = queueFilterMenu(p, shown);
   const q = p.q ?? "";
@@ -489,8 +489,10 @@ export function newTicketView(p: NewTicketProps): string {
   const catChips = TICKET_CATEGORIES.map((c) =>
     `<button data-act="ntCategory" data-arg="${c}" class="${chipClass(p.category === c)}" style="${chipStyle(p.category === c)};font-family:var(--label)">${c}</button>`).join("");
 
-  const prioSegs = TICKET_PRIORITIES.map((v) =>
-    `<button data-act="ntPriority" data-arg="${v}" class="${segClass(p.priority === v)}" style="${segBtnStyle(p.priority === v)}">${v.charAt(0).toUpperCase() + v.slice(1)}</button>`).join("");
+  const prioSeg = segmented({
+    id: "nt-priority", ariaLabel: "Priority", act: "ntPriority", value: p.priority,
+    options: TICKET_PRIORITIES.map((v) => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) })),
+  });
 
   // One picker, not a chip per sprint: the roadmap carries a dozen-plus sprints
   // with long labels, which crammed the rail and overflowed the card.
@@ -524,7 +526,7 @@ export function newTicketView(p: NewTicketProps): string {
           <label style="${FIELD_LABEL}">Category</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap">${catChips}</div>
           <label style="${FIELD_LABEL};margin:20px 0 8px">Priority</label>
-          <div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px">${prioSegs}</div>
+          ${prioSeg}
           <label style="${FIELD_LABEL};margin:20px 0 8px">Sprint</label>
           ${sprintPicker}
           <label style="${FIELD_LABEL};margin:20px 0 8px">Assignees <span style="font-weight:400;color:var(--fg-40)">— optional</span></label>

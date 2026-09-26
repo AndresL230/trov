@@ -11,6 +11,7 @@ import type { FeedEntry } from "@shared/contract";
  */
 export function feedEntryFromMcpArgs(args: {
   summary: string;
+  brief?: string;
   body?: string;
   tags?: string[];
   prs?: string[];
@@ -19,6 +20,7 @@ export function feedEntryFromMcpArgs(args: {
 }): FeedEntry {
   return {
     summary: args.summary,
+    ...(args.brief !== undefined ? { brief: args.brief } : {}),
     body: args.body ?? "",
     tags: args.tags ?? [],
     artifacts: {

@@ -14,6 +14,8 @@ import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, handleTag, swatches, type OnboardState } from "./people";
 import type { DashboardData, MyWorkPr, MyWorkTodo, MyWorkTicket } from "@shared/dashboard";
 import { TAGS } from "@shared/vocabulary";
+import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
+import { segmented } from "./segmented";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { REPO_URL } from "./github";
@@ -105,7 +107,11 @@ export interface AppState {
   repoSample: boolean;
   /** The admin's last "Poll now" on the Usage tab. Session-only, never persisted; cleared on leaving the Repo screen. */
   repoPoll: RepoPollState | null;
+  /** The Feed's lens: "reading" = title + brief (for people), "agents" = the full body. Saved per browser. */
+  feedView: FeedView;
   feedAuthor: string;
+  feedFilterOpen: boolean;
+  feedFilterCat: FeedFilterCat;
   feedTag: string;
   feedRange: string;
   feed: Loadable<FeedRow[]>;
@@ -317,7 +323,7 @@ export function initialState(): AppState {
     navOpen: { ...NAV_CLOSED },
     repo: { status: "idle", data: null },
     repoTab: "overview", repoRange: "7d", repoProductEnv: null, repoDriftOpen: false, repoFetchedAt: null, repoSample: false, repoPoll: null,
-    feedAuthor: "all", feedTag: "all", feedRange: "all",
+    feedView: "reading", feedFilterOpen: false, feedFilterCat: "author", feedAuthor: "all", feedTag: "all", feedRange: "all",
     feed: { status: "idle", data: [] },
     mywork: { status: "idle", data: null },
     feedAuthors: [],
@@ -646,35 +652,16 @@ function header(s: AppState): string {
   // dark = "show the moon icon" — true for any non-light theme (dark + midnight).
   const dark = resolved(s) !== "light";
 
-  const authorFiltered = s.feedAuthor !== "all";
-  const authorFilterLabel = authorFiltered ? `${s.feedAuthor}'s activity` : "";
-
-  const filterChip = s.screen === "feed" && authorFiltered
-    ? `<div style="display:flex;align-items:center;gap:7px;padding:4px 6px 4px 10px;border:1px solid var(--accent);color:var(--accent);border-radius:999px;font-size:12px;font-weight:500;background:var(--accent-soft)">${authorFilterLabel}<button data-act="clearAuthor" class="cnpy-xbtn" style="width:16px;height:16px;display:grid;place-items:center;border-radius:50%;color:var(--accent)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 5l14 14M19 5 5 19"></path></svg></button></div>`
+  // Feed chrome: ONE Filter menu (author · tag · time — the shared filter-menu, no
+  // search box), then the For reading / For agents switch at the header's far right.
+  const feedViewSwitch = s.screen === "feed" ? segmented({
+    id: "feed-view", ariaLabel: "Feed view", act: "setFeedView", value: s.feedView, inertOn: true,
+    options: [{ value: "reading", label: "For reading" }, { value: "agents", label: "For agents" }],
+  }) : "";
+  const feedMenu = s.screen === "feed" ? feedFilterMenu(s) : null;
+  const feedControls = feedMenu
+    ? `<div style="position:relative;display:flex;align-items:stretch;height:32px">${filterMenuBackdrop(feedMenu)}${filterMenu(feedMenu)}</div>`
     : "";
-
-  // Author chips are derived from the authors actually present in the feed (captured on
-  // the unfiltered load), not a hardcoded people list. Active chip is styled inline
-  // because the login set is dynamic (the old `[data-author=…] .a-<login>` CSS can't match).
-  const achip = (key: string, labelHtml: string): string => {
-    const active = s.feedAuthor === key;
-    const activeStyle = active ? "border-color:var(--accent);color:var(--accent);background:var(--accent-soft)" : "";
-    return `<button data-act="setAuthor" data-arg="${attr(key)}" class="cnpy-achip" style="${activeStyle}">${labelHtml}</button>`;
-  };
-  const authorChips = [achip("all", "All"), ...s.feedAuthors.map((a) => achip(a, handleTag(personFor(s, a), a, 12)))].join("");
-
-  const feedControls = s.screen === "feed" ? `<div style="display:flex;align-items:center;gap:6px">
-      <span style="font-size:11px;color:var(--fg-40);text-transform:uppercase;letter-spacing:.08em;margin-right:2px">Author</span>
-      ${authorChips}
-      <div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>
-      <select data-act="setTag" class="cnpy-select">
-        <option value="all"${s.feedTag === "all" ? " selected" : ""}>All tags</option>
-        ${TAGS.map((t) => `<option value="${t}"${s.feedTag === t ? " selected" : ""}>${t}</option>`).join("")}
-      </select>
-      <select data-act="setRange" class="cnpy-select">
-        ${["all:All time", "24h:Last 24h", "7d:Last 7 days"].map((o) => { const [v, l] = o.split(":"); return `<option value="${v}"${s.feedRange === v ? " selected" : ""}>${l}</option>`; }).join("")}
-      </select>
-    </div>` : "";
 
   // The Technical / Product space is picked from the sidebar's Docs sub-pages, so the
   // header carries only New doc (it had a second copy of the same switcher).
@@ -685,14 +672,17 @@ function header(s: AppState): string {
     `<button data-act="${act}" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease">${PLUS_ICON}${label}</button>`;
   const newControls = s.screen === "handoffs" ? accentNew("newHandoff", "New handoff") : s.screen === "prompts" ? accentNew("newPrompt", "New prompt") : "";
 
-  const rmTabStyle = (k: string) => `display:flex;align-items:center;gap:7px;padding:5px 13px;border-radius:7px;font-size:12.5px;font-weight:500;color:${s.roadmapTab === k ? "var(--fg)" : "var(--fg-55)"};background:${s.roadmapTab === k ? "var(--hover)" : "transparent"}`;
   const overdueCount = s.screen === "roadmap" && s.roadmap.status === "ok"
     ? roadmapEnriched(s.roadmap.data.sprints, s.confirmedSprints).overdueCount
     : 0;
-  const roadmapControls = s.screen === "roadmap" ? `<div style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px">
-      <button data-act="roadmapNarrative" style="${rmTabStyle("narrative")}">Narrative</button>
-      <button data-act="roadmapTimeline" style="${rmTabStyle("timeline")}">Timeline${overdueCount ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:1px"></span>` : ""}</button>
-    </div>` : "";
+  const roadmapControls = s.screen === "roadmap" ? segmented({
+    id: "roadmap-tab", ariaLabel: "Roadmap view", act: "", value: s.roadmapTab,
+    options: [
+      { value: "narrative", label: "Narrative", act: "roadmapNarrative", arg: "" },
+      { value: "timeline", label: "Timeline", act: "roadmapTimeline", arg: "",
+        trail: overdueCount ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:1px"></span>` : "" },
+    ],
+  }) : "";
 
   // ADMIN-only, My Work screen: trigger the server-side GitHub backfill. Rendered
   // only when /auth/me returned admin:true (outline button, promote-class action).
@@ -709,11 +699,13 @@ function header(s: AppState): string {
 
   // Queue chrome (the `tickets` screen only): the Table / Board toggle in the
   // Roadmap tab idiom, plus the header's submit button.
-  const qTabStyle = (k: "table" | "board") => `display:flex;align-items:center;gap:6px;padding:5px 13px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;color:${s.qView === k ? "var(--fg)" : "var(--fg-55)"};background:${s.qView === k ? "var(--hover)" : "transparent"}`;
-  const queueControls = s.screen === "tickets" ? `<div style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px">
-      <button data-act="queueBoard" style="${qTabStyle("board")}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="16" rx="1.5"></rect><rect x="14" y="4" width="6" height="10" rx="1.5"></rect></svg>Board</button>
-      <button data-act="queueTable" style="${qTabStyle("table")}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>Table</button>
-    </div>
+  const queueControls = s.screen === "tickets" ? `${segmented({
+    id: "queue-view", ariaLabel: "Queue view", act: "", value: s.qView,
+    options: [
+      { value: "board", label: "Board", act: "queueBoard", arg: "", icon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="16" rx="1.5"></rect><rect x="14" y="4" width="6" height="10" rx="1.5"></rect></svg>` },
+      { value: "table", label: "Table", act: "queueTable", arg: "", icon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>` },
+    ],
+  })}
     <button data-act="newTicket" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Submit a ticket</button>` : "";
 
   const themeBtn = `<button data-act="cycleTheme" title="Toggle theme" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
@@ -750,10 +742,9 @@ function header(s: AppState): string {
     <div style="display:flex;align-items:center;gap:12px;min-width:0">
       ${art ? art.title : title}
       ${art ? art.crumb : crumb}
-      ${filterChip}
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex:none">
-      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${themeBtn}
+      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${feedViewSwitch}${themeBtn}
     </div>
   </header>`;
 }
@@ -775,11 +766,64 @@ function feedBody(body: string | null): string {
   return `<div class="cnpy-md cnpy-feed-body" style="font-size:13px;color:var(--fg-55);line-height:1.6;margin-top:6px">${renderMarkdown(body)}</div>`;
 }
 
+export type FeedView = "reading" | "agents";
+export type FeedFilterCat = "author" | "tag" | "range";
+export const FEED_FILTER_CATS: readonly FeedFilterCat[] = ["author", "tag", "range"];
+const FEED_RANGES: [string, string][] = [["all", "All time"], ["24h", "Last 24 hours"], ["7d", "Last 7 days"]];
+const RANGE_MS: Record<string, number> = { "24h": 86_400_000, "7d": 7 * 86_400_000 };
+
+/** Author and tag filter server-side (a refetch); the time range narrows the loaded rows. */
+export function feedRows(s: AppState, now = Date.now()): FeedRow[] {
+  const span = RANGE_MS[s.feedRange];
+  return span ? s.feed.data.filter((e) => now - Date.parse(e.created_at) <= span) : s.feed.data;
+}
+
+/** The Feed's Filter menu. Counts only on Time — the one group narrowed client-side,
+ *  counted over what the server returned; author/tag counts would lie once filtered. */
+function feedFilterMenu(s: AppState): FilterMenuProps {
+  const shown = feedRows(s).length;
+  const active = (s.feedAuthor !== "all" ? 1 : 0) + (s.feedTag !== "all" ? 1 : 0) + (s.feedRange !== "all" ? 1 : 0);
+  const now = Date.now();
+  return {
+    id: "feed", open: s.feedFilterOpen, opening: s.fmOpening === "feed", cat: s.feedFilterCat, activeCount: active,
+    showLabel: `Show ${shown} ${shown === 1 ? "entry" : "entries"}`, clearAct: "feedFilterClear",
+    align: "right", ariaLabel: "Filter the feed", standalone: true,
+    groups: [
+      {
+        key: "author", label: "Author", value: s.feedAuthor, none: "all",
+        options: [
+          { v: "all", l: "Everyone", act: "setAuthor", arg: "all" },
+          ...s.feedAuthors.map((a) => ({ v: a, l: `@${a}`, act: "setAuthor", arg: a, lead: personChip(personFor(s, a), 18, a) })),
+        ],
+      },
+      {
+        key: "tag", label: "Tag", value: s.feedTag, none: "all",
+        options: [["all", "All tags"] as [string, string], ...TAGS.map((t): [string, string] => [t, t])]
+          .map(([v, l]) => ({ v, l, act: "setTag", arg: v, mono: v !== "all" })),
+      },
+      {
+        key: "range", label: "Time", value: s.feedRange, none: "all",
+        options: FEED_RANGES.map(([v, l]) => ({
+          v, l, act: "setRange", arg: v,
+          n: RANGE_MS[v] ? s.feed.data.filter((e) => now - Date.parse(e.created_at) <= RANGE_MS[v]).length : s.feed.data.length,
+        })),
+      },
+    ],
+  };
+}
+
+/** The "For reading" line under the title: the entry's brief, plain text. An entry
+ *  written without one (older plugin, not yet backfilled) shows the title alone. */
+function feedBrief(brief: string | null): string {
+  if (!brief || !brief.trim()) return "";
+  return `<div class="cnpy-feed-brief" style="font-size:13.5px;color:var(--fg-70);line-height:1.6;margin-top:5px">${esc(brief)}</div>`;
+}
+
 function feedView(s: AppState): string {
   if (s.feed.status === "loading" && s.feed.data.length === 0) return wrapFeed(notice("Loading feed&hellip;"));
   if (s.feed.status === "error") return wrapFeed(notice("Couldn't load the feed."));
 
-  const cards = s.feed.data.map((e) => {
+  const cards = feedRows(s).map((e) => {
     const artifacts = feedArtifacts(e.artifacts);
     const artifactRow = artifacts.length
       ? `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border)">
@@ -791,7 +835,7 @@ function feedView(s: AppState): string {
         <div style="margin-top:1px">${personChip(personFor(s, e.author), 30, e.author)}</div>
         <div style="flex:1;min-width:0">
           <div class="cnpy-md-inline" style="font-size:14px;font-weight:500;line-height:1.5;letter-spacing:-0.005em">${renderMarkdownInline(e.summary)}</div>
-          ${feedBody(e.body)}
+          ${s.feedView === "reading" ? feedBrief(e.brief) : feedBody(e.body)}
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px">
             <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55)">${handleTag(personFor(s, e.author), e.author)}</div>
             <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 5px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="11" rx="2"></rect><path d="M12 8V4M8 13h.01M16 13h.01"></path></svg>agent</span>
@@ -805,7 +849,7 @@ function feedView(s: AppState): string {
     </div>`;
   }).join("");
 
-  const empty = s.feed.status === "ok" && s.feed.data.length === 0 ? notice("No entries match this filter.") : "";
+  const empty = s.feed.status === "ok" && feedRows(s).length === 0 ? notice("No entries match this filter.") : "";
   return wrapFeed(`<div class="cnpy-stagger">${cards}</div>${empty}`);
 }
 
@@ -1658,10 +1702,10 @@ export function connectModal(s: Pick<AppState, "connect" | "connectClient" | "co
   } else if (!m.token) {
     body = `<div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--fg-55);padding:18px 0 8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="animation:cnpy-spin .8s linear infinite"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>Creating a token for this connection&hellip;</div>`;
   } else {
-    const tabs = CONNECT_CLIENTS.map(({ id, label }) => {
-      const on = s.connectClient === id;
-      return `<button ${on ? "" : `data-act="connectClient" data-arg="${id}"`} aria-pressed="${on}" style="padding:5px 11px;border-radius:7px;font-size:12.5px;font-weight:500;color:${on ? "var(--fg)" : "var(--fg-55)"};background:${on ? "var(--hover)" : "transparent"};border:1px solid ${on ? "var(--border-strong)" : "transparent"}">${label}</button>`;
-    }).join("");
+    const tabs = segmented({
+      id: "connect-client", ariaLabel: "Client", act: "connectClient", value: s.connectClient, inertOn: true,
+      options: CONNECT_CLIENTS.map(({ id, label }) => ({ value: id, label })),
+    });
     const token = m.token;
     // EVERY client's snippet (and note) is rendered, stacked in one grid cell, and
     // only the chosen one is visible: the box is always as tall as the tallest, so a

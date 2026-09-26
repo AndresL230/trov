@@ -5,6 +5,7 @@
 
 import { esc, attr, WORK_SHELL } from "./ui";
 import { primaryStyle } from "./handoffs";
+import { segmented } from "./segmented";
 
 export interface NewDocDraft {
   title: string; body: string; space: string; section: string; summary: string;
@@ -25,7 +26,6 @@ export interface NewDocProps {
 }
 
 const FIELD = "border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);outline:none";
-const segStyle = (on: boolean) => `padding:4px 14px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;color:${on ? "var(--fg)" : "var(--fg-55)"};background:${on ? "var(--hover)" : "transparent"}`;
 const pickStyle = (on: boolean) => `padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid ${on ? "var(--accent)" : "var(--border)"};color:${on ? "var(--accent)" : "var(--fg-55)"};background:${on ? "var(--accent-soft)" : "transparent"}`;
 
 export function newDocView(p: NewDocProps): string {
@@ -54,7 +54,7 @@ export function newDocView(p: NewDocProps): string {
       </div>
       <div style="min-width:0;border-left:1px solid var(--border);padding-left:26px">
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Space</label>
-        <div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px">${p.spaces.map((s) => `<button data-act="ndSpace" data-arg="${attr(s.key)}" class="cnpy-segbtn${d.space === s.key ? " is-on" : ""}" style="${segStyle(d.space === s.key)}">${esc(s.label)}</button>`).join("")}</div>
+        ${segmented({ id: "nd-space", ariaLabel: "Space", act: "ndSpace", value: d.space, options: p.spaces.map((s) => ({ value: s.key, label: s.label })) })}
         <label style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Section</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap">${sections.map((s) => `<button data-act="ndSection" data-arg="${attr(s)}" class="cnpy-pickchip${d.section === s ? " is-on" : ""}" style="${pickStyle(d.section === s)}">${esc(s)}</button>`).join("")}</div>
         <label style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Summary <span style="font-weight:400;color:var(--fg-40)">— optional</span></label>

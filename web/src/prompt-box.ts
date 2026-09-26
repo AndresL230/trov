@@ -7,6 +7,7 @@
 
 import { esc, attr } from "./ui";
 import { renderMarkdown } from "./markdown";
+import { segmented } from "./segmented";
 
 const MONO_EYEBROW = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap";
 export const COPY_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>`;
@@ -31,12 +32,11 @@ export type PromptView = "raw" | "rendered";
 /** The act the Raw / Rendered switch dispatches (arg: the view). */
 export const PROMPT_VIEW_ACT = "promptBoxView";
 
-const segStyle = (on: boolean) =>
-  `padding:2px 9px;border-radius:5px;font-size:11px;font-weight:500;white-space:nowrap;transition:all .12s ease;color:${on ? "var(--fg)" : "var(--fg-55)"};background:${on ? "var(--hover)" : "transparent"}`;
 function viewSwitch(view: PromptView): string {
-  const btn = (k: PromptView, label: string) =>
-    `<button data-act="${PROMPT_VIEW_ACT}" data-arg="${k}" class="cnpy-segbtn${view === k ? " is-on" : ""}" aria-pressed="${view === k}" style="${segStyle(view === k)}">${label}</button>`;
-  return `<div role="group" aria-label="Prompt view" style="display:inline-flex;align-items:center;gap:1px;border:1px solid var(--border);border-radius:7px;padding:1px;flex:none">${btn("raw", "Raw")}${btn("rendered", "Rendered")}</div>`;
+  return segmented({
+    id: "prompt-view", ariaLabel: "Prompt view", act: PROMPT_VIEW_ACT, value: view, size: "xs",
+    options: [{ value: "raw", label: "Raw" }, { value: "rendered", label: "Rendered" }],
+  });
 }
 
 const argAttr = (arg?: string) => (arg === undefined ? "" : ` data-arg="${attr(arg)}"`);

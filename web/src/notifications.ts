@@ -6,11 +6,10 @@ import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 import { esc, attr } from "./ui";
 import { maintSectionHeader, maintEmpty } from "./maintenance";
+import { segmented } from "./segmented";
 
 const LABEL = "font-family:var(--label)";
 const cadCap = (c: Cadence): string => (c === "off" ? "Off" : c.charAt(0).toUpperCase() + c.slice(1));
-const segStyle = (on: boolean): string =>
-  `padding:4px 12px;border-radius:7px;font-size:12px;font-weight:500;color:${on ? "var(--fg)" : "var(--fg-55)"};background:${on ? "var(--hover)" : "transparent"};transition:all .12s ease`;
 const trackStyle = (on: boolean): string =>
   `width:36px;height:21px;border-radius:999px;border:1px solid ${on ? "var(--accent)" : "var(--border-strong)"};background:${on ? "var(--accent)" : "transparent"};position:relative;flex:none;padding:0;transition:all .15s ease;display:inline-block`;
 const knobStyle = (on: boolean): string =>
@@ -72,9 +71,10 @@ function emailRow(p: NotifSettingsProps, email: string | null): string {
 }
 
 function kindRow(k: PrefsView["kinds"][number]): string {
-  const segs = k.allowedCadences
-    .map((c) => `<button data-act="setKindCadence" data-arg="${attr(`${k.id}:${c}`)}" style="${segStyle(c === k.cadence)}">${cadCap(c)}</button>`)
-    .join("");
+  const segs = segmented({
+    id: `cadence-${k.id}`, ariaLabel: `${k.label} cadence`, act: "setKindCadence", value: k.cadence, size: "sm",
+    options: k.allowedCadences.map((c) => ({ value: c, label: cadCap(c), arg: `${k.id}:${c}` })),
+  });
   const marker = k.inherited
     ? `<span style="font-size:10px;font-weight:600;${LABEL};letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:2px 6px">ORG DEFAULT</span>`
     : `<button data-act="resetKind" data-arg="${attr(k.id)}" style="font-size:11.5px;font-weight:500;color:var(--accent);text-decoration:underline;text-underline-offset:3px;padding:0">Reset to default</button>`;
@@ -85,7 +85,7 @@ function kindRow(k: PrefsView["kinds"][number]): string {
     </div>
     <div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap-reverse;gap:7px 12px;flex:none;max-width:60%">
       ${marker}
-      <div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px">${segs}</div>
+      ${segs}
     </div>
   </div>`;
 }

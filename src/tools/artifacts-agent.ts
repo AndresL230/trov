@@ -29,7 +29,7 @@ import {
 import { downloadFilename, mintDownloadToken } from "../artifacts/download";
 import { mintDocImageUpload } from "./doc-images";
 import {
-  claudeOnlyHits, isBinaryKind, isBundledExport, isTextKind, parseSlugVersion,
+  ARTIFACT_INLINE_MAX, claudeOnlyHits, isBinaryKind, isBundledExport, isTextKind, parseSlugVersion,
   type ArtifactArea, type ArtifactDetailDTO, type ArtifactKind, type ArtifactLinkInput, type ArtifactLinkType,
   type ArtifactStatus, type ArtifactTextKind, type ArtifactVisibility,
 } from "@shared/artifacts";
@@ -210,6 +210,11 @@ export type AgentGetResult = ArtifactDetailDTO & {
   download_filename: string;
   /** SHA-256 (hex) of THIS version's bytes — what the download must hash to. */
   sha256: string;
+  /**
+   * true when a text version over ARTIFACT_INLINE_MAX came back with `content: null` because
+   * `include_content` was not true — fetch `download_url` instead. false on every other result.
+   */
+  content_omitted: boolean;
 };
 
 /**
@@ -218,8 +223,14 @@ export type AgentGetResult = ArtifactDetailDTO & {
  * `sha256` + `size_bytes` at the top level so the agent can verify what it downloaded.
  * NOTE: top-level `size_bytes` is the REQUESTED version's here (the library DTO's is the
  * latest's) — identical unless an older version was asked for.
+ * A text version over ARTIFACT_INLINE_MAX bytes is NOT inlined unless `include_content: true`
+ * (`content: null`, `content_omitted: true`): a tool result lands whole in the agent's context,
+ * and the file is one `download_url` away. `warnings` are computed over the full text either way.
  */
-export async function agentArtifactGet(ctx: ArtifactAgentCtx, input: { slug: string; version?: number }): Promise<AgentGetResult> {
+export async function agentArtifactGet(
+  ctx: ArtifactAgentCtx,
+  input: { slug: string; version?: number; include_content?: boolean },
+): Promise<AgentGetResult> {
   const parsed = parseSlugVersion(String(input.slug ?? "").trim());
   if (!parsed) throw new ArtifactError("not_found", "not_found");
   if (input.version !== undefined && parsed.version !== null && input.version !== parsed.version) {
@@ -228,11 +239,14 @@ export async function agentArtifactGet(ctx: ArtifactAgentCtx, input: { slug: str
   const d = await getPage(ctx.db, parsed.slug, input.version ?? parsed.version, ctx.handle);
   const v = d.version;
   const filename = await versionFilename(ctx.db, d.id, v.version_no);
+  const omit = isTextKind(d.kind) && typeof d.content === "string" && v.size_bytes > ARTIFACT_INLINE_MAX && input.include_content !== true;
   const dl = ctx.downloadSecret
     ? await mintDownloadToken(ctx.downloadSecret, { handle: ctx.handle, page_id: d.id, version_no: v.version_no })
     : null;
   return {
     ...d,
+    content: omit ? null : d.content,
+    content_omitted: omit,
     size_bytes: v.size_bytes,
     sha256: v.sha256,
     raw_url: absolute(ctx, d.raw_url),

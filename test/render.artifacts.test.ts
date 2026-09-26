@@ -8,7 +8,7 @@
  * sanitizer; image/pdf/file from the raw route); the reducer's gates hold and its
  * writes come out as effects (PATCH status / visibility, POST ratify, POST links,
  * the create body — JSON for text, multipart for binary); and the caps are
- * per-kind (500 KB text, 10 MB binary).
+ * per-kind (750 KB text, 10 MB binary).
  */
 import { describe, it, expect, vi } from "vitest";
 
@@ -26,6 +26,7 @@ import {
 } from "../web/src/artifacts";
 import { render, initialState } from "../web/src/render";
 import type { ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactVersionDTO, ArtifactKind, ArtifactDiffDTO } from "@shared/artifacts-core";
+import { ARTIFACT_TEXT_CAP } from "@shared/artifacts-core";
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -86,10 +87,14 @@ describe("artifacts — library", () => {
     expect(html).not.toMatch(/undefined|NaN|\[object/);
   });
 
-  it("thumbnails per kind: html/svg framed from the raw route in an empty sandbox, image as an image, text as the excerpt, pdf as its icon", () => {
+  it("thumbnails per kind: html framed from the raw route at its latest version with scripts (never same-origin), svg in an empty sandbox, image as an image, text as the excerpt, pdf as its icon", () => {
     const html = artifactsView(props("artifacts"));
-    expect(html).toContain('src="/raw/a/google-signin-design@v3" sandbox="" tabindex="-1" loading="lazy"');
+    expect(html).toContain('src="/raw/a/google-signin-design@v3" sandbox="allow-scripts" tabindex="-1" loading="lazy"');
     expect(html).not.toContain("srcdoc");
+    expect(html).not.toContain("allow-same-origin");
+    const withSvg = props("artifacts");
+    withSvg.ui.list = { status: "ok", data: [summary("logo-mark", { kind: "svg", current_version: 2 })] };
+    expect(artifactsView(withSvg)).toContain('src="/raw/a/logo-mark@v2" sandbox="" tabindex="-1" loading="lazy"');
     expect(html).toContain('<img src="/raw/a/login-mock@v1"');
     expect(html).toContain("Auth audit\nFindings");
     expect(html).toContain("PDF · 2.00 MB");
@@ -359,8 +364,8 @@ describe("artifacts — new version", () => {
   it("over the cap can't be saved", () => {
     const p = viewer(detail("auth-flow", "html"));
     artifactsAct(p.ui, ctx(p), "artNvOpen", null, null);
-    artifactsAct(p.ui, ctx(p), "artNvText", null, "x".repeat(500 * 1024 + 1));
-    expect(artifactsDialogs(p)).toContain("Over the 500 KB cap.");
+    artifactsAct(p.ui, ctx(p), "artNvText", null, "x".repeat(ARTIFACT_TEXT_CAP + 1));
+    expect(artifactsDialogs(p)).toContain("Over the 750 KB cap.");
     expect(artifactsAct(p.ui, ctx(p), "artNvSubmit", null, null)).toBeNull();
   });
 });
@@ -411,7 +416,7 @@ describe("artifacts — new artifact", () => {
     const p = props("artifactnew");
     const html = artifactsView(p);
     for (const k of ["html", "markdown", "svg", "mermaid", "image", "pdf", "file"]) expect(html).toContain(`data-act="artCKind" data-arg="${k}"`);
-    expect(html).toContain("/ 500 KB");
+    expect(html).toContain("/ 750 KB");
     artifactsAct(p.ui, ctx(p), "artCKind", "pdf", null);
     expect(p.ui.c.tab).toBe("file");
     expect(artifactsView(p)).toContain("/ 10 MB");
@@ -423,8 +428,8 @@ describe("artifacts — new artifact", () => {
   it("blocks an upload over the text cap and warns on claude.ai-only calls", () => {
     const p = props("artifactnew");
     p.ui.c.title = "Big";
-    p.ui.c.paste = "x".repeat(500 * 1024 + 1);
-    expect(artifactsView(p)).toContain("Over the 500 KB cap.");
+    p.ui.c.paste = "x".repeat(750 * 1024 + 1);
+    expect(artifactsView(p)).toContain("Over the 750 KB cap.");
     expect(artifactsAct(p.ui, ctx(p), "artCSubmit", null, null)).toBeNull();
     p.ui.c.paste = "<script>window.claude.complete('x')</script>";
     expect(artifactsView(p)).toContain("CLAUDE.AI ONLY");
@@ -558,5 +563,50 @@ describe("artifacts — in the app shell", () => {
     const p = props("artifacts");
     p.ui.list.data![0].title = `<img src=x onerror=alert(1)>`;
     expect(artifactsView(p)).not.toContain("<img src=x");
+  });
+});
+
+// ── segmented switches — the shared `segmented()` component ──────────────────
+
+describe("artifacts — segmented switches", () => {
+  /** The `.cnpy-seg` group carrying `data-seg="<id>"`, up to its closing </div>. */
+  const segOf = (html: string, id: string): string => {
+    const at = html.indexOf(`data-seg="${id}"`);
+    expect(at).toBeGreaterThan(-1);
+    return html.slice(html.lastIndexOf("<div", at), html.indexOf("</div>", at) + 6);
+  };
+
+  it("the viewer's status switch: xs, every option keeps its act, ratified is the accent option with the shield", () => {
+    const seg = segOf(artifactsView(viewer(detail("a", "html"))), "art-status");
+    expect(seg).toContain('class="cnpy-seg cnpy-seg--xs"');
+    expect(seg).toContain('aria-label="Status"');
+    expect(seg).toMatch(/class="cnpy-seg-btn is-on" data-act="artStatus" data-arg="published" aria-pressed="true">Published</);
+    expect(seg).toContain('data-act="artStatus" data-arg="draft" aria-pressed="false">Draft<');
+    expect(seg).toMatch(/data-act="artStatus" data-arg="ratified" data-tone="accent" aria-pressed="false" title="Ratify v3"><svg[^]*<\/svg>Ratified</);
+  });
+
+  it("a ratified option that cannot be ratified is locked — no act, disabled, with its hint", () => {
+    const seg = segOf(artifactsView(viewer(detail("a", "html", { status: "draft" }))), "art-status");
+    expect(seg).not.toContain('data-arg="ratified"');
+    expect(seg).toMatch(/<button type="button" class="cnpy-seg-btn" disabled data-tone="accent" aria-pressed="false" title="[^"]+">/);
+    expect(seg).toContain('data-act="artStatus" data-arg="published"');
+  });
+
+  it("the create form's Kind, Visibility and Content source are segmented switches with their acts", () => {
+    const p = props("artifactnew");
+    const html = artifactsView(p);
+    const kind = segOf(html, "art-create-kind");
+    for (const k of ["html", "markdown", "svg", "mermaid", "image", "pdf", "file"]) expect(kind).toContain(`data-act="artCKind" data-arg="${k}"`);
+    const vis = segOf(html, "art-create-vis");
+    expect(vis).toMatch(/class="cnpy-seg-btn is-on" data-act="artCVis" data-arg="org" aria-pressed="true">Org</);
+    expect(vis).toContain('data-act="artCVis" data-arg="private" aria-pressed="false">Private<');
+    expect(segOf(html, "art-create-source")).toContain('data-act="artCTab" data-arg="url"');
+    // A binary kind locks Paste and From URL (text kinds only).
+    artifactsAct(p.ui, ctx(p), "artCKind", "pdf", null);
+    const src = segOf(artifactsView(p), "art-create-source");
+    expect(src).not.toContain('data-arg="paste"');
+    expect(src).not.toContain('data-arg="url"');
+    expect((src.match(/disabled aria-pressed="false" title="Text kinds only"/g) ?? []).length).toBe(2);
+    expect(src).toMatch(/class="cnpy-seg-btn is-on" data-act="artCTab" data-arg="file"/);
   });
 });

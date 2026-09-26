@@ -8,8 +8,14 @@ export const Session = z.object({
   skill_version: z.string(),
 });
 
+/** The Feed's "For reading" line: 1–2 sentences on the problem solved, for people. */
+export const FEED_BRIEF_MAX = 280;
+
 export const FeedEntry = z.object({
   summary: z.string(),
+  // Optional so an older plugin keeps working (its entry reads title-only); over the
+  // cap is a validation error — nothing is written, the writer resends.
+  brief: z.string().trim().min(1).max(FEED_BRIEF_MAX).optional(),
   body: z.string(),
   tags: z.array(z.string()),
   artifacts: z.object({

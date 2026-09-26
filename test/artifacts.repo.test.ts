@@ -119,7 +119,7 @@ describe("createPage (text)", () => {
     expect(fts).toEqual([{ title: "Auth flow", description: "first cut", body: "# Auth\n\nsessions" }]);
   });
 
-  it("refuses a bad area / kind / repo / empty title, and text over the 500 KB cap (413); exactly the cap is fine", async () => {
+  it("refuses a bad area / kind / repo / empty title, and text over the 750 KB cap (413); exactly the cap is fine", async () => {
     expect((await errOf(createPage(DB(), { title: "x", kind: "markdown", content: "c", area: "nope" as "ui" }, ME))).code).toBe("bad_request");
     expect((await errOf(createPage(DB(), { title: "x", kind: "docx" as "markdown", content: "c", area: "ui" }, ME))).code).toBe("bad_request");
     expect((await errOf(createPage(DB(), { title: "x", kind: "markdown", content: "c", area: "ui", repo: "not a repo" }, ME))).code).toBe("bad_request");
@@ -133,10 +133,10 @@ describe("createPage (text)", () => {
     expect(await all(DB(), `SELECT id FROM artifact_pages`)).toHaveLength(1);
   });
 
-  it("the migration's CHECKs hold: content XOR r2_key, text ≤ 512000, ratified ⇔ ratified_*", async () => {
+  it("the migration's CHECKs hold: content XOR r2_key, text ≤ the cap (0034), ratified ⇔ ratified_*", async () => {
     const a = await mkText();
     await expect(run(DB(), `INSERT INTO artifact_versions (page_id, version_no, content, r2_key, size_bytes, content_type, sha256, created_by, created_at) VALUES (?, 9, 'x', 'k', 1, 't', ?, 'a', 't')`, a.id, "0".repeat(64))).rejects.toThrow();
-    await expect(run(DB(), `INSERT INTO artifact_versions (page_id, version_no, content, size_bytes, content_type, sha256, created_by, created_at) VALUES (?, 9, 'x', 512001, 't', ?, 'a', 't')`, a.id, "0".repeat(64))).rejects.toThrow();
+    await expect(run(DB(), `INSERT INTO artifact_versions (page_id, version_no, content, size_bytes, content_type, sha256, created_by, created_at) VALUES (?, 9, 'x', ?, 't', ?, 'a', 't')`, a.id, ARTIFACT_TEXT_CAP + 1, "0".repeat(64))).rejects.toThrow();
     await expect(run(DB(), `UPDATE artifact_pages SET status = 'ratified' WHERE id = ?`, a.id)).rejects.toThrow();
     await expect(run(DB(), `UPDATE artifact_pages SET ratified_by = 'x' WHERE id = ?`, a.id)).rejects.toThrow();
   });

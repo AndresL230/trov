@@ -11,7 +11,7 @@
 //     link-local / IPv4-mapped / IPv4-compatible / NAT64 refused;
 //   • `redirect: "manual"` — every hop (≤ 3) is re-checked HERE before it is followed;
 //   • one `AbortSignal.timeout(5000)` across all hops;
-//   • at most 500 KB of body is read — past that the stream is cancelled and the call
+//   • at most 750 KB of body is read — past that the stream is cancelled and the call
 //     refused (413), never buffered;
 //   • text content types only.
 // Workers cannot resolve DNS before `fetch`, so a public name that RESOLVES to a private
@@ -175,7 +175,7 @@ async function readCapped(res: Response): Promise<Uint8Array> {
 /**
  * Fetch `url` under the guard and return it as an `ArtifactFetchDTO` (nothing is stored).
  * Throws `FetchUrlError`: bad_request (refused address / scheme / type, too many
- * redirects), too_large (> 500 KB), bad_gateway (network error, timeout, non-2xx).
+ * redirects), too_large (> 750 KB, ARTIFACT_TEXT_CAP), bad_gateway (network error, timeout, non-2xx).
  */
 export async function fetchArtifactUrl(url: string, fetchImpl: typeof fetch = fetch): Promise<ArtifactFetchDTO> {
   let current = checkFetchUrl(url);

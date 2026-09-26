@@ -4,7 +4,8 @@
 // DTOs. `shared/artifacts.ts` builds the zod request schemas on top and re-exports
 // all of it. No imports — the SPA reads these as values (the *-core.ts rule).
 
-// ── vocabulary (must match the CHECK constraints in 0030_artifacts.sql) ──────
+// ── vocabulary (must match the CHECK constraints in 0030_artifacts.sql; the text
+//    cap's CHECK was rebuilt by 0034_feed_brief_artifact_cap.sql) ──────────────────
 
 export const ARTIFACT_TEXT_KINDS = ["html", "markdown", "svg", "mermaid"] as const;
 export const ARTIFACT_BINARY_KINDS = ["image", "pdf", "file"] as const;
@@ -28,8 +29,14 @@ export const isBinaryKind = (k: string): k is ArtifactBinaryKind => (ARTIFACT_BI
 
 // ── caps ─────────────────────────────────────────────────────────────────────
 
-/** Text kinds: UTF-8 bytes of the content, stored in D1. */
-export const ARTIFACT_TEXT_CAP = 500 * 1024;
+/** Text kinds: UTF-8 bytes of the content, stored in D1 (750 KB; the CHECK in 0034_feed_brief_artifact_cap.sql matches). */
+export const ARTIFACT_TEXT_CAP = 750 * 1024;
+/**
+ * Agent reads (`artifact_get`, `query`) inline a text version's content only up to this many
+ * UTF-8 bytes; above it the content is omitted and the agent fetches `download_url` instead
+ * (or passes `include_content: true` to artifact_get when it truly needs the whole text).
+ */
+export const ARTIFACT_INLINE_MAX = 64 * 1024;
 /** Binary kinds: bytes of the file, stored in R2 under `artifacts/<sha256>`. */
 export const ARTIFACT_BINARY_CAP = 10 * 1024 * 1024;
 export const artifactCap = (k: ArtifactKind): number => (isTextKind(k) ? ARTIFACT_TEXT_CAP : ARTIFACT_BINARY_CAP);

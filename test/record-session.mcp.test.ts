@@ -63,7 +63,7 @@ function fullPayload(sessionId: string) {
   return {
     session: { id: sessionId, author: "client-spoofed-NOT-the-author", ended_at: "2026-06-29T00:00:00Z", skill_version: "2.0" },
     feed_entries: [
-      { summary: "shipped record_session", body: "the agent path", tags: ["infra"], artifacts: { prs: ["99"], commits: ["deadbeef"], issues: [7] } },
+      { summary: "shipped record_session", brief: "Agents can now record a whole session in one step.", body: "the agent path", tags: ["infra"], artifacts: { prs: ["99"], commits: ["deadbeef"], issues: [7] } },
     ],
     doc_proposals: [
       { slug: "agent-path", section: "reference", title: "Agent Path", body: "the bearer agent write path", change_summary: "init", confidence: "high" },
@@ -92,6 +92,7 @@ describe("record_session MCP tool — the real bearer-only agent write path", ()
     // client-supplied session.author.
     const feed = await all<FeedRow>(env.DB, `SELECT * FROM feed`);
     expect(feed.map((f) => f.author)).toEqual(["bearer-agent"]);
+    expect(feed[0].brief).toBe("Agents can now record a whole session in one step.");
 
     const versions = await all<DocVersionRow>(env.DB, `SELECT * FROM doc_versions`);
     expect(versions).toHaveLength(1);

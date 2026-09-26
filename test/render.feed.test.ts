@@ -27,6 +27,7 @@ function feedRow(overrides: Partial<FeedRow> = {}): FeedRow {
     id: 1,
     author: "AndresL230",
     summary: "Shipped the colored-handle change.",
+    brief: null,
     body: null,
     artifacts: null,
     created_at: "2026-09-14T10:00:00Z",
@@ -34,10 +35,11 @@ function feedRow(overrides: Partial<FeedRow> = {}): FeedRow {
   };
 }
 
-function feedState(rows: FeedRow[]): ReturnType<typeof initialState> {
+function feedState(rows: FeedRow[], feedView: "reading" | "agents" = "agents"): ReturnType<typeof initialState> {
   const s = initialState();
   return {
     ...s,
+    feedView,
     view: "app",
     screen: "feed",
     me: { handle: "alice", name: "Alice", avatar_url: null, color: "stone", identities: [], org: "SaplingLearn", admin: false },
@@ -56,14 +58,11 @@ describe("Feed — handle text carries the mapped person's color", () => {
     expect(html).toContain("@AndresL230");
   });
 
-  it("the author filter chip for that person also carries their color", () => {
-    const html = render(feedState([feedRow()]));
+  it("the Filter menu's Author option for that person carries their color", () => {
+    const html = render({ ...feedState([feedRow()]), feedFilterOpen: true });
     expect(html).toContain('data-act="setAuthor" data-arg="AndresL230"');
-    // The achip button and the feed row both contribute var(--p-moss) occurrences;
-    // isolate the header controls to confirm the filter chip itself is colored.
-    const headerStart = html.indexOf("<header");
-    const headerEnd = html.indexOf("</header>");
-    const headerHtml = html.slice(headerStart, headerEnd);
+    const headerHtml = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+    expect(headerHtml).toContain('data-fm-pop="feed"');
     expect(headerHtml).toContain("var(--p-moss)");
   });
 
@@ -102,5 +101,91 @@ describe("Feed — entries are markdown", () => {
   it("an empty or whitespace body renders no container", () => {
     expect(render(feedState([feedRow({ body: null })]))).not.toContain("cnpy-feed-body");
     expect(render(feedState([feedRow({ body: "   " })]))).not.toContain("cnpy-feed-body");
+  });
+});
+
+describe("Feed — For reading / For agents", () => {
+  const row = feedRow({
+    summary: "Shipped: document indexing retries on its own",
+    brief: "Uploaded course documents no longer silently fail to reach the tutor — indexing now retries & admins can see anything stuck.",
+    body: "**What** a long agent record",
+    artifacts: JSON.stringify({ prs: ["https://github.com/SaplingLearn/Sapling/pull/658"], commits: [], issues: [482] }),
+  });
+
+  it("defaults to For reading", () => {
+    expect(initialState().feedView).toBe("reading");
+  });
+
+  it("For reading shows the title, the brief and the chips — never the body", () => {
+    const html = render(feedState([row], "reading"));
+    expect(html).toContain("Shipped: document indexing retries on its own");
+    expect(html).toContain('class="cnpy-feed-brief"');
+    expect(html).toContain("indexing now retries &amp; admins can see anything stuck."); // escaped, plain text
+    expect(html).not.toContain("cnpy-feed-body");
+    expect(html).not.toContain("a long agent record");
+    expect(html).toContain("cnpy-issuechip");
+  });
+
+  it("For agents shows the full body and not the brief", () => {
+    const html = render(feedState([row], "agents"));
+    expect(html).toContain("cnpy-feed-body");
+    expect(html).toContain("a long agent record");
+    expect(html).not.toContain("cnpy-feed-brief");
+  });
+
+  it("an entry with no brief reads as its title alone", () => {
+    const html = render(feedState([feedRow({ brief: null, body: "**What** body" })], "reading"));
+    expect(html).toContain("Shipped the colored-handle change.");
+    expect(html).not.toContain("cnpy-feed-brief");
+    expect(html).not.toContain("cnpy-feed-body");
+  });
+
+  it("XSS: the brief is escaped text", () => {
+    const html = render(feedState([feedRow({ brief: "<img src=x onerror=1>" })], "reading"));
+    expect(html).not.toContain("<img src=x onerror=1>");
+    expect(html).toContain("&lt;img src=x onerror=1&gt;");
+  });
+
+  it("the header switch marks the active view", () => {
+    // The shared segmented switch: the picked option is inert (no act), the other dispatches.
+    const reading = render(feedState([row], "reading"));
+    expect(reading).toContain('data-seg="feed-view"');
+    expect(reading).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">For reading/);
+    expect(reading).toContain('data-act="setFeedView" data-arg="agents" aria-pressed="false"');
+    const agents = render(feedState([row], "agents"));
+    expect(agents).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">For agents/);
+    expect(agents).toContain('data-act="setFeedView" data-arg="reading" aria-pressed="false"');
+  });
+});
+
+describe("Feed — one Filter menu, the view switch at the far right", () => {
+  it("the header has no author chips or selects — a closed Filter button stands in for them", () => {
+    const header = (h: string) => h.slice(h.indexOf("<header"), h.indexOf("</header>"));
+    const html = header(render(feedState([feedRow()])));
+    expect(html).toContain('data-hover-menu="feed"');
+    expect(html).not.toContain("cnpy-achip");
+    expect(html).not.toContain("<select");
+    expect(html).not.toContain('data-fm-pop="feed"'); // closed
+  });
+
+  it("the For reading / For agents switch sits just before the theme toggle, which stays rightmost", () => {
+    const html = render(feedState([feedRow()]));
+    const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+    const sw = header.indexOf('data-seg="feed-view"');
+    expect(sw).toBeGreaterThan(header.indexOf('data-hover-menu="feed"'));
+    expect(header.indexOf('data-act="cycleTheme"')).toBeGreaterThan(sw);
+  });
+
+  it("the menu's badge counts the active filters", () => {
+    const html = render({ ...feedState([feedRow()]), feedAuthor: "AndresL230", feedRange: "7d" });
+    expect(html).toMatch(/Filter\s*<span[^>]*>2<\/span>/);
+  });
+
+  it("Time narrows the loaded rows client-side", () => {
+    const old = feedRow({ id: 2, summary: "an old entry", created_at: "2020-01-01T00:00:00Z" });
+    const fresh = feedRow({ id: 3, summary: "a fresh entry", created_at: new Date().toISOString() });
+    const html = render({ ...feedState([fresh, old]), feedRange: "7d" });
+    expect(html).toContain("a fresh entry");
+    expect(html).not.toContain("an old entry");
   });
 });

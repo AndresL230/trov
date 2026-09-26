@@ -5,9 +5,10 @@
 
 import "./canopy.css";
 import { openLightbox, closeLightbox } from "./lightbox";
+import { syncSegments } from "./segmented";
 import {
   render, initialState, firstDocForSpace, docReaderHtml, connectSnippet, CONNECT_CLIENTS, browserConnectCommand,
-  type AppState, type Screen, type ConnectClient,
+  FEED_FILTER_CATS, type AppState, type Screen, type ConnectClient, type FeedFilterCat,
 } from "./render";
 import {
   getFeed, listDocs, getDoc, search, getRoadmap, getMyDashboard, getRepoDashboard,
@@ -69,6 +70,8 @@ const state: AppState = initialState();
 try {
   const t = localStorage.getItem("canopy.theme");
   if (t === "dark" || t === "light" || t === "midnight" || t === "system") state.theme = t;
+  const fv = localStorage.getItem("canopy.feedView");
+  if (fv === "reading" || fv === "agents") state.feedView = fv;
   const pv = localStorage.getItem("canopy.promptView");
   if (pv === "raw" || pv === "rendered") state.promptView = pv;
   const c = localStorage.getItem("canopy.collapsed");
@@ -208,6 +211,7 @@ function rerender(): void {
   state.repoPoll = repoPollFor(state.repoPoll, state.view === "app" && state.screen === "repo");
   // The queue's filter menu left open never survives leaving the queue.
   if (state.screen !== "tickets") state.qFilterOpen = false;
+  if (state.screen !== "feed") state.feedFilterOpen = false;
   // Entering a group's pages opens its sub-page list, and leaving folds it again —
   // unless the person opened or closed it by hand, which sticks (and is what persists).
   const group = state.view === "app" ? navGroupOf(state.screen) : null;
@@ -238,6 +242,7 @@ function rerender(): void {
   // screen is unchanged so a button low on a long screen doesn't jump to the top.
   const scroll = captureScroll(mount, state.screen);
   paint(mount, render(state));
+  syncSegments(mount);
   restoreScroll(mount, scroll, state.screen);
   markEnter();
   if (pendingFlash) {
@@ -2214,10 +2219,20 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       break;
 
     // feed filters
+    case "setFeedView":
+      if (arg !== "reading" && arg !== "agents") return;
+      state.feedView = arg;
+      persist("canopy.feedView", arg);
+      break;
     case "setAuthor": state.feedAuthor = arg ?? "all"; loadFeed(); return;
-    case "clearAuthor": state.feedAuthor = "all"; loadFeed(); return;
-    case "setTag": state.feedTag = value ?? "all"; loadFeed(); return;
-    case "setRange": state.feedRange = value ?? "all"; break;
+    case "setTag": state.feedTag = arg ?? value ?? "all"; loadFeed(); return;
+    case "setRange": state.feedRange = arg ?? value ?? "all"; break;
+    case "feedFilterClear": {
+      const refetch = state.feedAuthor !== "all" || state.feedTag !== "all";
+      state.feedAuthor = "all"; state.feedTag = "all"; state.feedRange = "all";
+      if (refetch) { loadFeed(); return; }
+      break;
+    }
 
     // ── Review (wired: real proposals + draft ADR reads, real verdict writes) ──
     case "reviewSelect": if (arg) state.reviewSel = arg; break;
@@ -2910,6 +2925,10 @@ const FILTER_MENUS: Record<string, FilterMenuSpec> = {
     isOpen: () => state.promptFilterOpen, setOpen: (v) => { state.promptFilterOpen = v; }, cat: () => state.promptFilterCat,
     setCat: (k) => { if (k !== "tag" && k !== "sort") return false; state.promptFilterCat = k; return true; },
   },
+  feed: {
+    isOpen: () => state.feedFilterOpen, setOpen: (v) => { state.feedFilterOpen = v; }, cat: () => state.feedFilterCat,
+    setCat: (k) => { if (!(FEED_FILTER_CATS as readonly string[]).includes(k)) return false; state.feedFilterCat = k as FeedFilterCat; return true; },
+  },
   queue: {
     isOpen: () => state.qFilterOpen, setOpen: (v) => { state.qFilterOpen = v; }, cat: () => state.qFilterCat,
     setCat: (k) => { if (!(QUEUE_FILTER_CATS as readonly string[]).includes(k)) return false; state.qFilterCat = k as QueueFilterCat; return true; },
@@ -3043,6 +3062,10 @@ mount.addEventListener("pointerout", (e) => {
   const focused = document.activeElement;
   if (focused instanceof HTMLElement && box.contains(focused)) focused.blur();
 });
+// A switch's option widths change with the viewport and once the web fonts land: re-place
+// every indicator where it sits, without a slide.
+window.addEventListener("resize", () => syncSegments(mount, { instant: true }));
+void document.fonts?.ready.then(() => syncSegments(mount, { instant: true }));
 // Escape closes an open filter menu.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;

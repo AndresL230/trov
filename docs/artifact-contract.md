@@ -10,7 +10,7 @@ in `shared/artifacts-core.ts` — if this page and that file disagree, the file 
 
 | Kind | Stored | Cap | How you send it |
 |---|---|---|---|
-| `html` · `markdown` · `svg` · `mermaid` | text, in D1 | 500 KB (UTF-8 bytes) | inline `content` |
+| `html` · `markdown` · `svg` · `mermaid` | text, in D1 | 750 KB (UTF-8 bytes) | inline `content` |
 | `image` (png / jpeg / gif / webp) · `pdf` · `file` | bytes, in R2 at `artifacts/<sha256>` | 10 MB | a signed upload URL (below) |
 
 A page's kind never changes. A `file` that claims an active type (`text/html`, `image/svg+xml`,
@@ -71,9 +71,14 @@ doc instead of creating a page; see "Doc images" at the end. (This tool was `art
   Content identical to the latest version writes nothing and returns `unchanged: true`.
 - Binary pages: `size_bytes` + `sha256` → `{ id, slug, url, upload_url, expires_at, warnings }`.
 
-**`artifact_get`** `{ slug, version? }` — `slug` may carry a version (`slug@v3` or `slug/v3`); default
-the latest. Returns the page's metadata, versions and links; for text kinds `content` is that version's
-text, for binary kinds `content` is `null`. For **every** kind it also returns, for the requested version:
+**`artifact_get`** `{ slug, version?, include_content? }` — `slug` may carry a version (`slug@v3` or
+`slug/v3`); default the latest. Returns the page's metadata, versions and links; for text kinds `content`
+is that version's text, for binary kinds `content` is `null`. A text version **over 64 KB**
+(`ARTIFACT_INLINE_MAX`) is not inlined unless `include_content: true`: `content` is `null` and
+`content_omitted` is `true` — fetch `download_url` and grep / read slices of the file instead.
+`content_omitted` is `false` on every other result; `warnings` are computed over the full text either way.
+`query`'s assembled artifact body follows the same rule (a one-line pointer to `artifact_get`).
+For **every** kind it also returns, for the requested version:
 
 - `download_url` — absolute and signed for you: a plain `GET` returns the file (see *Downloading*).
   `download_expires_at` says when it stops working (5 minutes).

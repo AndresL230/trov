@@ -23,6 +23,7 @@
 
 import { esc, attr, relTime } from "./ui";
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
+import { segmented } from "./segmented";
 import { renderMarkdown, sanitizeSvg } from "./markdown";
 import { collapsedLineDiff } from "./diff";
 import type { PersonColor } from "@shared/rows";
@@ -186,7 +187,6 @@ const OUTLINE_BTN = "padding:7px 15px;border-radius:8px;border:1px solid var(--b
 const PRIVATE_NOTE = "Only you can see this artifact. Teammates who open the link get a not-found page until you publish it to the org.";
 const ACCENT_BTN = "padding:7px 15px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap";
 
-const segSt = (on: boolean, off = false): string => `padding:4px 14px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;${on ? "color:var(--fg);background:var(--hover)" : off ? "color:var(--fg-40);opacity:.5;cursor:not-allowed;background:transparent" : "color:var(--fg-55);background:transparent"}`;
 const chipSt = (on: boolean): string => `padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid ${on ? "var(--accent);color:var(--accent);background:var(--accent-soft)" : "var(--border);color:var(--fg-55);background:transparent"}`;
 const primarySt = (on: boolean): string => (on
   ? "background:var(--accent);color:var(--accent-fg);border:1px solid transparent;cursor:pointer"
@@ -223,7 +223,7 @@ const I = {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 export const fmtKB = (b: number): string => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(2)} MB` : `${(b / 1024).toFixed(1)} KB`);
-export const capLabel = (k: ArtifactKind): string => (isBinaryKind(k) ? "10 MB" : "500 KB");
+export const capLabel = (k: ArtifactKind): string => (isBinaryKind(k) ? "10 MB" : "750 KB");
 export const slugifyTitle = (t: string): string => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 const sameHandle = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
@@ -401,8 +401,15 @@ export function libraryRows(p: ArtProps): ArtifactSummaryDTO[] {
 function thumb(a: ArtifactSummaryDTO): string {
   const raw = rawUrl(a.slug, a.current_version);
   if (a.kind === "html" || a.kind === "svg") {
-    // sandbox="" — no scripts, no same-origin: a thumbnail can do nothing.
-    return `<iframe title="${attr(a.title)} preview" src="${attr(raw)}" sandbox="" tabindex="-1" loading="lazy" style="position:absolute;top:0;left:0;width:400%;height:400%;border:0;transform:scale(.25);transform-origin:0 0;pointer-events:none;background:#fff"></iframe>`;
+    // Never same-origin. An html page may run its scripts — the same opaque-origin
+    // `allow-scripts` sandbox the viewer uses, under the raw route's CSP (no network, no
+    // forms) — because a page that renders WITH JavaScript (a flattened Claude Design
+    // export) otherwise previews as its unrendered template. An svg renders without
+    // script, so its frame stays `sandbox=""`: it can do nothing. No allow-modals, no
+    // top navigation, pointer-events off; its `canopy:height` posts are ignored (main.ts
+    // only resizes `.art-frame` iframes).
+    const sandbox = a.kind === "html" ? "allow-scripts" : "";
+    return `<iframe title="${attr(a.title)} preview" src="${attr(raw)}" sandbox="${sandbox}" tabindex="-1" loading="lazy" referrerpolicy="no-referrer" style="position:absolute;top:0;left:0;width:400%;height:400%;border:0;transform:scale(.25);transform-origin:0 0;pointer-events:none;background:#fff"></iframe>`;
   }
   if (a.kind === "image") {
     return `<img src="${attr(raw)}" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">`;
@@ -677,15 +684,20 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
       <button ${many && cmpBase ? `data-act="artDiff" data-arg="${attr(`${d.slug}:${cmpBase.version_no}..${latestNo}`)}"` : "disabled"} role="menuitem" class="cnpy-menurow" style="display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 10px;border-radius:7px;font-size:12.5px;font-weight:500;color:${many ? "var(--fg-70)" : "var(--fg-40)"};cursor:${many ? "pointer" : "default"}">${I.compare()}${many && cmpBase ? `Compare v${cmpBase.version_no} → v${latestNo}` : "Only one version"}</button>
     </div>` : "";
 
-  const statusSeg = ARTIFACT_STATUSES.map((k) => {
-    const on = d.status === k;
-    // Not dimmed while a write is in flight (that flashed the row on every switch) — the
-    // reducer already ignores a click while busy.
-    const locked = k === "ratified" && !on && !canRat;
-    const st = `display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:500;white-space:nowrap;transition:all .12s ease;${on ? (k === "ratified" ? "color:var(--accent);background:var(--accent-soft)" : "color:var(--fg);background:var(--hover)") : locked ? "color:var(--fg-40);opacity:.55;cursor:not-allowed" : "color:var(--fg-55)"}`;
-    const title = k === "ratified" && !on && !canRat ? hint || "Publish before ratifying" : k === "ratified" && !on ? `Ratify v${ver.version_no}` : k === "ratified" && on ? hint : "";
-    return `<button data-act="artStatus" data-arg="${k}" title="${attr(title)}" aria-pressed="${on}" class="${on || locked ? "" : "cnpy-segbtn"}" style="${st}">${k === "ratified" ? I.shield() : ""}${k[0].toUpperCase() + k.slice(1)}</button>`;
-  }).join("");
+  // The status switch — the shared segmented control. The picked option keeps its act (the
+  // reducer ignores a same-status click). Not dimmed while a write is in flight (that flashed
+  // the row on every switch) — the reducer already ignores a click while busy.
+  const statusSeg = segmented({
+    id: "art-status", ariaLabel: "Status", act: "artStatus", value: d.status, size: "xs",
+    options: ARTIFACT_STATUSES.map((k) => {
+      const on = d.status === k;
+      const title = k === "ratified" && !on && !canRat ? hint || "Publish before ratifying" : k === "ratified" && !on ? `Ratify v${ver.version_no}` : k === "ratified" && on ? hint : "";
+      return {
+        value: k, label: k[0].toUpperCase() + k.slice(1), title: title || undefined,
+        ...(k === "ratified" ? { icon: I.shield(), tone: "accent" as const, locked: !on && !canRat } : {}),
+      };
+    }),
+  });
 
   const dotMenu = ui.dotMenu ? `<div data-act="artCloseMenus" style="position:fixed;inset:0;z-index:29"></div>
     <div role="menu" style="position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:210px;${MENU};padding:5px;animation:cnpy-pop .14s ease both">
@@ -704,7 +716,7 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
       ${verMenu}
     </div>
     <span style="flex:1 1 120px;min-width:0;padding-left:4px;font-family:var(--sans);font-size:11px;color:var(--fg-55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.host)}/#artifacts/${esc(d.slug)}/v${ver.version_no}</span>
-    <div role="group" aria-label="Status" style="display:inline-flex;align-items:center;gap:1px;border:1px solid var(--border);border-radius:8px;padding:2px;background:var(--bg);flex:none">${statusSeg}</div>
+    ${statusSeg}
     <span style="width:1px;height:18px;background:var(--border);flex:none"></span>
     <button data-act="artNvOpen" title="${isBinaryKind(d.kind) ? "Upload a replacement file" : `Edit v${ver.version_no} or upload a replacement`}" class="cnpy-ghostbtn" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap;flex:none">${I.plus(12)}New version</button>
     <button data-act="artOpenTab" title="Open in new tab" aria-label="Open in new tab" class="cnpy-iconbtn" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55);flex:none">${I.ext()}</button>
@@ -900,7 +912,6 @@ function createView(p: ArtProps): string {
   const canSubmit = canSubmitCreate(c);
   const label = (t: string) => `<label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">${t}</label>`;
   const inputSt = "width:100%;height:40px;padding:0 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:14px;outline:none";
-  const seg = (items: string) => `<div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px;flex-wrap:wrap">${items}</div>`;
   const preview = text.length > 6000 ? text.slice(0, 6000) + "\n…" : text;
   const prePreview = (mt: number) => `<pre class="cnpy-scroll" style="margin:${mt}px 0 0;flex:1;min-height:280px;max-height:420px;overflow:auto;padding:12px 13px;border:1px solid var(--border);border-radius:9px;font-family:var(--code);font-size:12px;line-height:1.6;color:var(--fg-55);white-space:pre">${esc(preview)}</pre>`;
 
@@ -912,7 +923,7 @@ function createView(p: ArtProps): string {
       ? `<div data-art-drop style="border:1px dashed var(--border-strong);border-radius:11px;padding:56px 24px;text-align:center;min-height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">
           ${I.upload()}
           <div style="font-size:14px;font-weight:600;color:var(--fg-70)">Drop one file here</div>
-          <div style="font-size:12.5px;color:var(--fg-40)">.html, .md, .svg or .mmd up to 500 KB · images, PDFs and other files up to 10 MB</div>
+          <div style="font-size:12.5px;color:var(--fg-40)">.html, .md, .svg or .mmd up to 750 KB · images, PDFs and other files up to 10 MB</div>
           <label class="cnpy-outlinebtn" style="margin-top:12px;${OUTLINE_BTN};padding:6px 14px;cursor:pointer">Choose file<input type="file" data-art-file style="display:none"></label>
         </div>`
       : `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
@@ -930,10 +941,14 @@ function createView(p: ArtProps): string {
       ${c.urlFetched ? prePreview(12) : ""}`;
   }
 
-  const tabs = ([["paste", "Paste"], ["file", "Upload file"], ["url", "From URL"]] as const).map(([k, l]) => {
-    const off = binary && k !== "file";
-    return `<button data-act="artCTab" data-arg="${k}"${off ? ` aria-disabled="true" title="Text kinds only"` : ""} style="display:flex;align-items:center;gap:7px;padding:5px 14px;border-radius:7px;font-size:12.5px;font-weight:500;color:${c.tab === k ? "var(--fg)" : off ? "var(--fg-40)" : "var(--fg-55)"};background:${c.tab === k ? "var(--hover)" : "transparent"};${off ? "opacity:.5;cursor:not-allowed" : ""}">${l}</button>`;
-  }).join("");
+  // Paste and From URL are text-only: with a binary kind they are shown but locked.
+  const tabs = segmented({
+    id: "art-create-source", ariaLabel: "Content source", act: "artCTab", value: c.tab, size: "sm",
+    options: ([["paste", "Paste"], ["file", "Upload file"], ["url", "From URL"]] as const).map(([k, l]) => {
+      const off = binary && k !== "file";
+      return { value: k, label: l, ...(off ? { locked: true, title: "Text kinds only" } : {}) };
+    }),
+  });
 
   return `<div data-screen-label="New artifact" style="${SHELL}">
     <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">New artifact</h2>
@@ -945,14 +960,20 @@ function createView(p: ArtProps): string {
           <input data-act="artCTitle" data-field="artCTitle" class="cnpy-input" value="${attr(c.title)}" placeholder="e.g. Google sign-in design page" style="${inputSt}">
           <div style="font-family:var(--sans);font-size:11px;color:var(--fg-40);margin-top:7px">${esc(p.host)}/#artifacts/${esc(slugifyTitle(c.title) || "…")}</div>
         </div>
-        <div>${label("Kind")}${seg(ARTIFACT_KINDS.map((k) => `<button data-act="artCKind" data-arg="${k}" class="cnpy-segbtn${c.kind === k ? " is-on" : ""}" style="${segSt(c.kind === k)}">${k}</button>`).join(""))}</div>
+        <div>${label("Kind")}${segmented({
+          id: "art-create-kind", ariaLabel: "Kind", act: "artCKind", value: c.kind, size: "sm", className: "cnpy-seg--wrap",
+          options: ARTIFACT_KINDS.map((k) => ({ value: k, label: k })),
+        })}</div>
         <div>${label("Area")}<div style="display:flex;gap:6px;flex-wrap:wrap">${ARTIFACT_AREAS.map((k) => `<button data-act="artCArea" data-arg="${k}" class="cnpy-pickchip${c.area === k ? " is-on" : ""}" style="${chipSt(c.area === k)}">${k}</button>`).join("")}</div></div>
         <div>
           ${label("Repo")}
           <select data-act="artCRepo" class="cnpy-select" style="width:100%;height:40px;font-size:13.5px;border-color:var(--border-strong);color:var(--fg)">${ARTIFACT_REPOS.map((r) => `<option value="${r}"${c.repo === r ? " selected" : ""}>${r}</option>`).join("")}</select>
         </div>
         <div>
-          ${label("Visibility")}${seg((["org", "private"] as const).map((k) => `<button data-act="artCVis" data-arg="${k}" class="cnpy-segbtn${c.vis === k ? " is-on" : ""}" style="${segSt(c.vis === k)}">${k === "org" ? "Org" : "Private"}</button>`).join(""))}
+          ${label("Visibility")}${segmented({
+            id: "art-create-vis", ariaLabel: "Visibility", act: "artCVis", value: c.vis, size: "sm",
+            options: [{ value: "org", label: "Org" }, { value: "private", label: "Private" }],
+          })}
           <div style="font-size:12px;color:var(--fg-40);margin-top:7px;line-height:1.5">${c.vis === "org" ? "Everyone in SaplingLearn can open it once it's uploaded." : "Only you can open it. Teammates who follow the link see a not-found page until you publish."}</div>
         </div>
         <div>
@@ -969,7 +990,7 @@ function createView(p: ArtProps): string {
       <div style="border-left:1px solid var(--border);padding-left:34px;min-width:0;display:flex;flex-direction:column">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px">
           <label style="font-size:13px;font-weight:500">Content</label>
-          <div style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px">${tabs}</div>
+          ${tabs}
         </div>
         ${source}
         ${contentChecks(text, bytes, c.kind)}
@@ -1075,10 +1096,14 @@ function newVersionDialog(p: ArtProps, d: ArtifactDetailDTO, nv: ArtNewVersion):
   const bytes = nvBytes(nv);
   const ok = canSubmitNv(nv, d.kind, latestNo);
   const ext = isTextKind(d.kind) ? `.${ARTIFACT_TEXT_EXT[d.kind]}` : d.kind === "pdf" ? ".pdf" : d.kind === "image" ? "png, jpeg, gif or webp" : "any file";
-  const tabs = ([["edit", `Edit v${nv.base}`], ["file", "Upload file"]] as const).map(([k, l]) => {
-    const off = binary && k === "edit";
-    return `<button data-act="artNvTab" data-arg="${k}"${off ? ` aria-disabled="true" title="A ${d.kind} artifact is replaced by uploading a file"` : ""} style="${segSt(nv.tab === k, off)}">${l}</button>`;
-  }).join("");
+  // Edit is text-only: on a binary page it is shown but locked.
+  const tabs = segmented({
+    id: "art-nv-source", ariaLabel: "New version source", act: "artNvTab", value: nv.tab, size: "sm",
+    options: ([["edit", `Edit v${nv.base}`], ["file", "Upload file"]] as const).map(([k, l]) => {
+      const off = binary && k === "edit";
+      return { value: k, label: l, ...(off ? { locked: true, title: `A ${d.kind} artifact is replaced by uploading a file` } : {}) };
+    }),
+  });
 
   const source = nv.tab === "edit"
     ? `<textarea data-act="artNvText" data-field="artNvText" class="cnpy-input cnpy-scroll" spellcheck="false" aria-label="Content" style="width:100%;height:min(46vh,440px);resize:vertical;padding:12px 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-family:var(--code);font-size:12px;line-height:1.6;outline:none;white-space:pre">${esc(nv.text)}</textarea>
@@ -1105,7 +1130,7 @@ function newVersionDialog(p: ArtProps, d: ArtifactDetailDTO, nv: ArtNewVersion):
     <div class="cnpy-scroll" data-scroll-keep="artNv" style="flex:1;min-height:0;overflow-y:auto;padding:16px 24px 4px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px">
         <label style="font-size:13px;font-weight:500">Content</label>
-        <div style="display:inline-flex;align-items:center;gap:2px;border:1px solid var(--border);border-radius:9px;padding:2px">${tabs}</div>
+        ${tabs}
       </div>
       ${source}
       ${contentChecks(text, bytes, d.kind)}

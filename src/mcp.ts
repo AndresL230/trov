@@ -24,7 +24,7 @@ import { repoEnvironments } from "./repo/config";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoTab } from "@shared/repo";
 import { ingestFeedEntry, ingestDocProposal, recordBatch } from "./consumer";
 import { feedEntryFromMcpArgs } from "./mcp-args";
-import { IngestPayload, QueryType } from "@shared/contract";
+import { FEED_BRIEF_MAX, IngestPayload, QueryType } from "@shared/contract";
 import { ArtifactError } from "./tools/artifacts";
 import {
   agentUploadAsset, agentArtifactUpdate, agentArtifactGet, agentArtifactList, artifactsForTicket, artifactOrigin,
@@ -120,22 +120,23 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "append_feed",
-    "Append a feed entry through the vocabulary gate (an out-of-vocab tag routes the entry to needs_triage). Optional prs/commits/issues record the artifacts (PR urls, commit shas, GitHub issue numbers) this session observed.",
+    "Append a feed entry through the vocabulary gate (an out-of-vocab tag routes the entry to needs_triage). `summary` is the one-line title. `brief` is what PEOPLE read in the Feed: 1–2 plain sentences (≤ 280 characters) on the problem solved and who it helps — no file names, PR/issue numbers or jargon. `body` is the full record agents read (what changed, why, evidence, follow-ups). Optional prs/commits/issues record the artifacts (PR urls, commit shas, GitHub issue numbers) this session observed.",
     {
       summary: z.string(),
+      brief: z.string().trim().min(1).max(FEED_BRIEF_MAX).optional(),
       body: z.string().optional(),
       tags: z.array(z.string()).optional(),
       prs: z.array(z.string()).optional(),
       commits: z.array(z.string()).optional(),
       issues: z.array(z.number()).optional(),
     },
-    async ({ summary, body, tags, prs, commits, issues }) =>
+    async ({ summary, brief, body, tags, prs, commits, issues }) =>
       // Thin adapter: feedEntryFromMcpArgs shapes the args into a FeedEntry
       // (carrying prs/commits/issues), then the gate decides write-vs-triage.
       runTool(() =>
         ingestFeedEntry(
           env.DB,
-          feedEntryFromMcpArgs({ summary, body, tags, prs, commits, issues }),
+          feedEntryFromMcpArgs({ summary, brief, body, tags, prs, commits, issues }),
           principal.handle,
           ephemeralLedger()
         )
@@ -387,7 +388,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
     "upload_asset",
     "Put something into Canopy: an ARTIFACT page, or an IMAGE for a doc. `destination` picks which (default \"artifact\").\n\n" +
       "destination \"doc\" — an image a doc embeds. Pass `sha256` (hex, `shasum -a 256 img.png`), `size_bytes` and `content_type` (image/png | image/jpeg | image/gif | image/webp; ≤ 10 MB); `kind` may be omitted (it is always image) and page fields (title, area, …) are refused. → { destination, ref: \"/img/<sha256>\", markdown, sha256, uploaded }. uploaded: true = that exact image is already stored, nothing to PUT. Otherwise also { upload_url, expires_at }: PUT the exact bytes (single use, 5 minutes, e.g. `curl -X PUT --data-binary @img.png -H \"Content-Type: image/png\" \"<upload_url>\"`). THEN reference it in the doc body as `![what it shows](/img/<sha256>)` and propose the doc (propose_doc_update / record_session). The doc gate REFUSES a body whose image is not uploaded yet, and any other image source (an external URL, a data: URI) — upload first, then propose. Images are immutable: a new picture is a new sha256.\n\n" +
-      "destination \"artifact\" (default) — create an artifact page (v1, status draft): a rendered HTML page, markdown doc, SVG, mermaid diagram, image, PDF or file the team keeps and versions. Needs `title`, `kind`, `area`, `repo`, `visibility`. Text kinds (html | markdown | svg | mermaid; ≤ 500 KB): pass `content` → { id, slug, url, version }. Binary kinds (image | pdf | file; ≤ 10 MB): pass `size_bytes` and `sha256`, NOT content → { id, slug, url, upload_url, expires_at }; then PUT the exact bytes to upload_url (single use, 5 minutes) — the page does not exist to anyone until that PUT lands. `area` is one of auth | architecture | infra | api | ui | data; `repo` is owner/repo or \"\"; `visibility` org (the whole org) or private (only you). Optional `links` ([{target_type: ticket|sprint|pr|issue, target_ref}]) and `summary`. You author it; a PERSON ratifies it on the web — there is no ratify tool. Contract: docs/artifact-contract.md.\n\n" +
+      "destination \"artifact\" (default) — create an artifact page (v1, status draft): a rendered HTML page, markdown doc, SVG, mermaid diagram, image, PDF or file the team keeps and versions. Needs `title`, `kind`, `area`, `repo`, `visibility`. Text kinds (html | markdown | svg | mermaid; ≤ 750 KB): pass `content` → { id, slug, url, version }. Binary kinds (image | pdf | file; ≤ 10 MB): pass `size_bytes` and `sha256`, NOT content → { id, slug, url, upload_url, expires_at }; then PUT the exact bytes to upload_url (single use, 5 minutes) — the page does not exist to anyone until that PUT lands. `area` is one of auth | architecture | infra | api | ui | data; `repo` is owner/repo or \"\"; `visibility` org (the whole org) or private (only you). Optional `links` ([{target_type: ticket|sprint|pr|issue, target_ref}]) and `summary`. You author it; a PERSON ratifies it on the web — there is no ratify tool. Contract: docs/artifact-contract.md.\n\n" +
       "Every result has `warnings` — non-empty when artifact content calls something only claude.ai has (window.claude, window.storage, api.anthropic.com); the page is still created.",
     {
       destination: z.enum(["artifact", "doc"]).optional(),
@@ -420,8 +421,8 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "artifact_get",
-    "Read one artifact: metadata (title, kind, area, repo, author, status draft | published | ratified, visibility, versions, links, ratified_version) plus, for text kinds, `content` of the requested version (binary kinds: `content` is null). To get the FILE — any kind, binary included — use `download_url`: absolute, signed for you, reusable for 5 minutes (`download_expires_at`), no header needed: `curl -fsSL \"$download_url\" -o <path>` returns the exact stored bytes as an attachment named `download_filename`. Verify it against `sha256` / `size_bytes` (this version's; `shasum -a 256 <path>`). Expired → HTTP 410: call artifact_get again. `raw_url` is the browser view (signed-in session only — it does not take your bearer). `slug` may name a version (`slug@v3` or `slug/v3`), or pass `version`; default the latest. `url` is the page in the Canopy web app — share that when a person just wants the link. `warnings` flags claude.ai-only calls in the content. Only `ratified` is team-confirmed; draft / published are one person's word. An unknown, private-to-someone-else or not-yet-uploaded slug is { error: \"not_found\", code: \"not_found\" }.",
-    { slug: z.string().min(1), version: z.number().int().min(1).optional() },
+    "Read one artifact: metadata (title, kind, area, repo, author, status draft | published | ratified, visibility, versions, links, ratified_version) plus, for text kinds, `content` of the requested version (binary kinds: `content` is null). A text version over 64 KB is NOT inlined: `content` is null and `content_omitted` is true — pull it with `download_url` and grep / read the slices you need, or pass `include_content: true` only when you genuinely need the whole text in context (`content_omitted` is false on every other result). To get the FILE — any kind, binary included — use `download_url`: absolute, signed for you, reusable for 5 minutes (`download_expires_at`), no header needed: `curl -fsSL \"$download_url\" -o <path>` returns the exact stored bytes as an attachment named `download_filename`. Verify it against `sha256` / `size_bytes` (this version's; `shasum -a 256 <path>`). Expired → HTTP 410: call artifact_get again. `raw_url` is the browser view (signed-in session only — it does not take your bearer). `slug` may name a version (`slug@v3` or `slug/v3`), or pass `version`; default the latest. `url` is the page in the Canopy web app — share that when a person just wants the link. `warnings` flags claude.ai-only calls in the content. Only `ratified` is team-confirmed; draft / published are one person's word. An unknown, private-to-someone-else or not-yet-uploaded slug is { error: \"not_found\", code: \"not_found\" }.",
+    { slug: z.string().min(1), version: z.number().int().min(1).optional(), include_content: z.boolean().optional() },
     async (input) => runTool(() => agentArtifactGet(artifactCtx, input)),
   );
 
