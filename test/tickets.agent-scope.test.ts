@@ -119,8 +119,8 @@ describe("every refusal leaves D1 untouched", () => {
 
   it("an assignee's ILLEGAL move is still a conflict that writes nothing", async () => {
     const id = await ticketFor("andres", ["andres"]);
-    // submitted → done is not in the table; the shared rule still bites on this path.
-    await refusesAndWritesNothing(id, "conflict", () => agentTransitionTicket(env.DB, ENV, id, "done", "andres"));
+    // submitted → submitted is not in the table; the shared rule still bites on this path.
+    await refusesAndWritesNothing(id, "conflict", () => agentTransitionTicket(env.DB, ENV, id, "submitted", "andres"));
   });
 });
 

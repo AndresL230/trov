@@ -30,7 +30,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 import { render, initialState, type AppState } from "../web/src/render";
 import {
-  queueView, newTicketView, ticketDetailView, relCandidates, queueGroups,
+  queueView, queueRows, newTicketView, ticketDetailView, relCandidates, queueGroups,
   ticketPill, priorityChip, age, avatarStack, SEG_STATUSES,
   type QueueProps, type NewTicketProps, type TicketDetailProps,
 } from "../web/src/tickets";
@@ -68,7 +68,7 @@ function ticket(o: Partial<TicketListItem> & { id: number; title: string }): Tic
   return {
     body: "", category: "bug", priority: "normal", status: "submitted", requester: "meilin",
     parent_id: null, sprint_id: null, created_at: ago(2 * H), updated_at: ago(1 * H),
-    source: "canopy", source_ref: null, source_author: null, source_updated_at: null,
+    source: "canopy", source_ref: null, source_author: null, source_updated_at: null, board_rank: null,
     assignees: [], link_count: 0, sub_count: 0, sprint_label: null,
     ...o,
   };
@@ -79,7 +79,7 @@ function detail(o: Partial<TicketDetail> & { id: number; title: string }): Ticke
     body: "Something is broken.", category: "bug", priority: "normal", status: "submitted",
     requester: "meilin", parent_id: null, sprint_id: null,
     created_at: ago(2 * H), updated_at: ago(1 * H),
-    source: "canopy", source_ref: null, source_author: null, source_updated_at: null,
+    source: "canopy", source_ref: null, source_author: null, source_updated_at: null, board_rank: null,
     assignees: [], links: [], comments: [], events: [], parent: null, children: [], sprint: null,
     ...o,
   };
@@ -241,7 +241,7 @@ describe("header — titles, breadcrumb, queue chrome", () => {
     // queue must still render (everything folds into BACKLOG) AND admit that the
     // sprint grouping is missing, rather than looking like a filter swallowed rows.
     const html = render(appState({
-      screen: "tickets",
+      screen: "tickets", qView: "table",
       tickets: { status: "ok", data: [ticket({ id: 1, title: "Orphaned row", sprint_id: 12, sprint_label: "Sprint 12" })] },
       sprints: { status: "error", data: [], error: "boom" },
     }));
@@ -406,39 +406,95 @@ describe("queueView — the footer count", () => {
   });
 });
 
-describe("queueView — the filter row", () => {
-  it("renders the segment and the two filter dropdowns — themed menus, not native selects", () => {
+describe("queueView — the toolbar", () => {
+  it("renders the search box, the Filter menu and the All / Open / Closed switch — no native selects", () => {
     const html = queueView(queueProps({ seg: "closed", assignee: "me", category: "bug" }));
-    expect(html).toContain('data-act="queueSeg" data-arg="open"');
-    expect(html).toContain('data-act="queueSeg" data-arg="closed"');
-    expect(html).toContain('data-act="queueSeg" data-arg="all"');
-    // No native <select>: its popup is the OS list, which ignores the theme.
+    for (const k of ["all", "open", "closed"]) expect(html).toContain(`data-act="queueSeg" data-arg="${k}"`);
+    expect(html.indexOf('data-arg="all"')).toBeLessThan(html.indexOf('data-arg="open"'));   // All leads
     expect(html).not.toContain("<select");
-    // Closed, each trigger shows the CURRENT value and no list.
-    expect(html).toContain('data-act="queueMenu" data-arg="assignee"');
-    expect(html).toContain('data-act="queueMenu" data-arg="category"');
-    expect(html).toContain(">Assigned to me</button>");
-    expect(html).toContain(">Bug</button>");
-    expect(html).not.toContain('role="listbox"');
+    expect(html).toContain('data-act="queueQ" data-field="queueQ"');
+    expect(html).toContain('data-act="fmToggle" data-arg="queue"');
+    // Two server-side filters are set: the badge on the Filter button says so.
+    expect(html).toMatch(/Filter\s*<span[^>]*>2<\/span>/);
+    expect(html).not.toContain('role="dialog"');
   });
 
-  it("an open dropdown lists every option, checks the current one, and has a backdrop", () => {
-    const asg = queueView(queueProps({ assignee: "me", menu: "assignee" }));
-    expect(asg).toContain('role="listbox" aria-label="Assignee"');
+  it("the open menu offers Assignee, Category, Priority and Sprint, and checks the current values", () => {
+    const html = queueView(queueProps({
+      assignee: "me", category: "bug", filterOpen: true, filterCat: "assignee",
+      sprints: [sprint({ id: 12, label: "Sprint 12" })],
+    }));
+    expect(html).toContain('role="dialog" aria-label="Filter tickets"');
+    for (const k of ["assignee", "category", "priority", "sprint"]) expect(html).toContain(`data-fm-cat="${k}"`);
     for (const [v, l] of [["anyone", "Any assignee"], ["me", "Assigned to me"], ["unassigned", "Unassigned"]]) {
-      expect(asg).toMatch(new RegExp(`data-act="queueAssignee" data-arg="${v}"[^>]*>.*${l}</button>`));
+      expect(html).toMatch(new RegExp(`data-act="queueAssignee" data-arg="${v}"[^>]*>[\\s\\S]*?${l}`));
     }
-    expect(asg).toContain('aria-selected="true" data-act="queueAssignee" data-arg="me"');
-    expect(asg).toContain('data-act="closeTicketMenus"');
+    for (const c of ["all", "bug", "request", "question", "access", "other"]) {
+      expect(html).toContain(`data-act="queueCategory" data-arg="${c}"`);
+    }
+    expect(html).toContain('data-act="queueSprint" data-arg="12"');
+    expect(html).toContain('data-act="queueSprint" data-arg="backlog"');
+    expect(html).toContain('data-act="queuePriority" data-arg="high"');
+    expect(html).toContain('data-act="fmClose" data-arg="queue"');           // the backdrop
+  });
 
-    const cat = queueView(queueProps({ category: "bug", menu: "category" }));
-    expect(cat).toContain('data-act="queueCategory" data-arg="all"');
-    for (const c of ["bug", "request", "question", "access", "other"]) {
-      expect(cat).toContain(`data-act="queueCategory" data-arg="${c}"`);
-    }
-    expect(cat).toContain('aria-selected="true" data-act="queueCategory" data-arg="bug"');
-    // Only the open one renders its list.
-    expect(cat).not.toContain('data-act="queueAssignee"');
+  it("search narrows by title, #number and person; priority and sprint narrow client-side", () => {
+    const rows = [
+      ticket({ id: 7, title: "Fix login", priority: "high", sprint_id: 12, sprint_label: "Sprint 12" }),
+      ticket({ id: 8, title: "Add export", assignees: ["andres"] }),
+      ticket({ id: 9, title: "Other thing", priority: "low" }),
+    ];
+    const titles = (o: Partial<QueueProps>) => queueRows(queueProps({ tickets: rows, ...o })).map((t) => t.id);
+    expect(titles({ q: "login" })).toEqual([7]);
+    expect(titles({ q: "#8" })).toEqual([8]);
+    expect(titles({ q: "andres" })).toEqual([8]);
+    expect(titles({ priority: "low" })).toEqual([9]);
+    expect(titles({ sprint: "12" })).toEqual([7]);
+    expect(titles({ sprint: "backlog" })).toEqual([8, 9]);
+    expect(queueView(queueProps({ tickets: rows, q: "login" }))).toContain("1 shown · 0 unassigned");
+  });
+});
+
+describe("queueView — the Assignee filter names people", () => {
+  const rows = [
+    ticket({ id: 1, title: "A", assignees: ["meilin"] }),
+    ticket({ id: 2, title: "B", assignees: ["meilin", "jose-a"] }),
+    ticket({ id: 3, title: "C" }),
+  ];
+
+  it("lists every person after the three modes, sorted by name, with their counts", () => {
+    const html = queueView(queueProps({ tickets: rows, filterOpen: true, filterCat: "assignee" }));
+    const order = ["anyone", "me", "unassigned", "@jose-a", "@meilin", "@sanaok"]
+      .map((v) => html.indexOf(`data-act="queueAssignee" data-arg="${v}"`));
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(html).toMatch(/data-arg="@meilin"[\s\S]*?Meilin Zhao[\s\S]*?>2<\/span>/);
+  });
+
+  it("a picked person narrows the rows, checks their row and lights the Filter badge", () => {
+    expect(queueRows(queueProps({ tickets: rows, person: "jose-a" })).map((t) => t.id)).toEqual([2]);
+    const html = queueView(queueProps({ tickets: rows, person: "meilin", filterOpen: true, filterCat: "assignee" }));
+    expect(html).toContain("2 shown");
+    expect(html).toMatch(/Filter\s*<span[^>]*>1<\/span>/);
+    expect(html).toMatch(/data-arg="@meilin"[^>]*style="[^"]*color:var\(--fg\)"/);
+  });
+
+  it("hides the per-person counts when the fetch is not `anyone` (they would undercount)", () => {
+    const html = queueView(queueProps({ tickets: rows, assignee: "me", filterOpen: true, filterCat: "assignee" }));
+    expect(html).not.toMatch(/data-arg="@meilin"[\s\S]*?Meilin Zhao<\/span>\s*<span[^>]*>\d+<\/span>/);
+  });
+});
+
+describe("queueView — the board card drags", () => {
+  it("an open card is draggable with its status; a resolved one is not", () => {
+    const html = queueView(queueProps({
+      view: "board", seg: "all",
+      tickets: [ticket({ id: 1, title: "S" }), ticket({ id: 2, title: "D", status: "done" })],
+    }));
+    expect(html).toContain('data-tdrag="1" data-status="submitted"');
+    expect(html).not.toContain('draggable="true"');   // pointer-driven, never the browser's drag image
+    expect(html).not.toContain('data-tdrag="2"');
+    for (const st of ["submitted", "in_progress", "done", "declined"]) expect(html).toContain(`data-tdrop="${st}"`);
   });
 });
 
@@ -450,13 +506,13 @@ describe("queueView — board columns follow the segment", () => {
     ticket({ id: 4, title: "X", status: "declined" }),
   ];
   const columnLabels = (html: string) =>
-    (html.match(/letter-spacing:\.08em;white-space:nowrap;color:var\(--(?:accent|blue|fg-40)\)">([A-Z ]+)</g) ?? [])
+    (html.match(/letter-spacing:\.08em;white-space:nowrap;color:var\(--(?:accent|blue|amber|fg-40)\)">([A-Z ]+)</g) ?? [])
       .map((m) => m.replace(/.*">/, "").replace(/<$/, ""));
 
-  it("open → TRIAGE + IN PROGRESS", () => {
+  it("open → TRIAGE + IN PROGRESS + TESTING", () => {
     const html = queueView(queueProps({ tickets: rows, view: "board", seg: "open" }));
-    expect(columnLabels(html)).toEqual(["TRIAGE", "IN PROGRESS"]);
-    expect(SEG_STATUSES.open).toEqual(["submitted", "in_progress"]);
+    expect(columnLabels(html)).toEqual(["TRIAGE", "IN PROGRESS", "TESTING"]);
+    expect(SEG_STATUSES.open).toEqual(["submitted", "in_progress", "testing"]);
   });
 
   it("closed → DONE + DECLINED", () => {
@@ -464,10 +520,22 @@ describe("queueView — board columns follow the segment", () => {
     expect(columnLabels(html)).toEqual(["DONE", "DECLINED"]);
   });
 
-  it("all → four columns in status order", () => {
+  it("all → five columns in status order, Testing between In progress and Done", () => {
     const html = queueView(queueProps({ tickets: rows, view: "board", seg: "all" }));
-    expect(columnLabels(html)).toEqual(["TRIAGE", "IN PROGRESS", "DONE", "DECLINED"]);
-    expect(html).toContain("grid-template-columns:repeat(4,minmax(0,1fr))");
+    expect(columnLabels(html)).toEqual(["TRIAGE", "IN PROGRESS", "TESTING", "DONE", "DECLINED"]);
+    expect(html).toContain("grid-template-columns:repeat(5,minmax(0,1fr))");
+  });
+
+  it("orders a column by saved position: unpositioned (newest first) on top, then by rank", () => {
+    const col = [
+      ticket({ id: 11, title: "Ranked 2", status: "testing", board_rank: 2048 }),
+      ticket({ id: 12, title: "Loose old", status: "testing", updated_at: "2026-09-01T00:00:00Z" }),
+      ticket({ id: 13, title: "Ranked 1", status: "testing", board_rank: 1024 }),
+      ticket({ id: 14, title: "Loose new", status: "testing", updated_at: "2026-09-20T00:00:00Z" }),
+    ];
+    const html = queueView(queueProps({ tickets: col, view: "board", seg: "all" }));
+    const order = [...html.matchAll(/data-tdrag="(\d+)"/g)].map((m) => Number(m[1]));
+    expect(order).toEqual([14, 12, 13, 11]);
   });
 
   it("colors the headers per the design and shows a dashed placeholder for an empty column", () => {
@@ -476,7 +544,7 @@ describe("queueView — board columns follow the segment", () => {
     expect(html).toContain("color:var(--accent)\">IN PROGRESS");
     expect(html).toContain("border:1px dashed var(--border)");
     expect(html).toContain("Nothing here");
-    expect(html.match(/Nothing here/g)?.length).toBe(1);   // only IN PROGRESS is empty
+    expect(html.match(/Nothing here/g)?.length).toBe(2);   // IN PROGRESS and TESTING are empty
   });
 
   it("renders no table header in board mode (and vice versa)", () => {
@@ -710,23 +778,21 @@ describe("ticketDetailView — the status control (design call #7)", () => {
     expect(html).not.toContain("Back to submitted");
   });
 
-  it("offers submitted → in progress | declined, with the current status ticked", () => {
+  it("offers every other status from Triage — straight to Done included — with the current one ticked", () => {
     const html = ticketDetailView(props("submitted", "rail"));
-    expect(html).toContain('data-act="ticketStatus" data-arg="in_progress"');
-    expect(html).toContain('data-act="ticketStatus" data-arg="declined"');
-    expect(html).not.toContain('data-act="ticketStatus" data-arg="done"');
+    for (const st of ["in_progress", "testing", "done", "declined"]) expect(html).toContain(`data-act="ticketStatus" data-arg="${st}"`);
     // The current status is listed but inert (a ticked row, not a button).
     expect(html).not.toContain('data-act="ticketStatus" data-arg="submitted"');
     expect(html).toContain("color:var(--accent)");
-    expect(html.match(/data-act="ticketStatus" /g)?.length).toBe(2);
+    expect(html.match(/data-act="ticketStatus" /g)?.length).toBe(4);
   });
 
-  it("offers in progress → done | declined | submitted — declining no longer needs a trip back", () => {
-    const html = ticketDetailView(props("in_progress", "rail"));
-    expect(html).toContain('data-act="ticketStatus" data-arg="done"');
-    expect(html).toContain('data-act="ticketStatus" data-arg="declined"');
-    expect(html).toContain('data-act="ticketStatus" data-arg="submitted"');
-    expect(html.match(/data-act="ticketStatus" /g)?.length).toBe(3);
+  it("offers Testing from In progress, and every other status from Testing", () => {
+    const prog = ticketDetailView(props("in_progress", "rail"));
+    for (const st of ["testing", "done", "declined", "submitted"]) expect(prog).toContain(`data-act="ticketStatus" data-arg="${st}"`);
+    const test = ticketDetailView(props("testing", "rail"));
+    for (const st of ["done", "in_progress", "declined", "submitted"]) expect(test).toContain(`data-act="ticketStatus" data-arg="${st}"`);
+    expect(test).toContain("TESTING");
   });
 
   it("renders a terminal status as a plain pill — no control, nothing to set", () => {

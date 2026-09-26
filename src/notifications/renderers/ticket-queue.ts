@@ -12,8 +12,8 @@ const TOP = 5;
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 const pad = (s: string, w: number) => s.padEnd(w);
 
-/** Status pill tones mirror the app's `ticketPill` (design call #5): submitted blue, in progress green, done muted, declined red-ish. */
-const STATUS_TONE: Record<TicketStatus, ChipTone> = { submitted: "blue", in_progress: "green", done: "muted", declined: "amber" };
+/** Status pill tones mirror the app's `ticketPill` (design call #5): submitted blue, in progress green, testing accent (the email has no amber-as-testing; amber is declined here), done muted, declined red-ish. */
+const STATUS_TONE: Record<TicketStatus, ChipTone> = { submitted: "blue", in_progress: "green", testing: "accent", done: "muted", declined: "amber" };
 
 /**
  * Short age, the design's `age()` — "42m" / "6h" / "3d". Measured against the

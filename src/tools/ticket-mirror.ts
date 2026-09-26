@@ -206,7 +206,7 @@ async function forceStatus(db: DB, id: number, from: TicketStatus, to: TicketSta
   await db.batch([
     db.prepare(`INSERT INTO ticket_events (ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?)`)
       .bind(id, MIRROR_ACTOR, from, to, now),
-    db.prepare(`UPDATE tickets SET status = ?, updated_at = ?, source_updated_at = ? WHERE id = ?`).bind(to, now, sourceUpdatedAt, id),
+    db.prepare(`UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ?, source_updated_at = ? WHERE id = ?`).bind(to, now, sourceUpdatedAt, id),
   ]);
 }
 

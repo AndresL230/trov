@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { app } from "../src/routes";
 import { all, first, run, nowIso } from "../src/db";
 import type { TicketDetail, TicketListItem, TicketStatus } from "@shared/tickets";
-import { TICKET_STATUSES, TICKET_TRANSITIONS } from "@shared/tickets";
+import { TICKET_STATUSES, TICKET_TRANSITIONS, boardOrder } from "@shared/tickets";
 import { cookieFor, seedPerson } from "./helpers/persons";
 
 // ── harness ──────────────────────────────────────────────────────────────────
@@ -326,6 +326,70 @@ describe("GET /tickets/badge", () => {
   });
 });
 
+// ── POST /tickets/:id/move (a board drop: status + saved position) ──────────
+
+const columnOrder = async (cookie: string, status: TicketStatus): Promise<number[]> => {
+  const res = await get("/tickets?seg=all", cookie);
+  const rows = (await json<{ tickets: TicketListItem[] }>(res)).tickets.filter((t) => t.status === status);
+  return rows.sort(boardOrder).map((t) => t.id);
+};
+
+describe("POST /tickets/:id/move", () => {
+  it("moves Triage straight to Testing at the dropped spot, and records the history row", async () => {
+    const cookie = await cookieFor("andres");
+    const a = await createTicket(cookie, { title: "A" });
+    const b = await createTicket(cookie, { title: "B" });
+    const c = await createTicket(cookie, { title: "C" });
+    await post(`/tickets/${a.id}/move`, cookie, { to: "testing", after_id: null });
+    await post(`/tickets/${b.id}/move`, cookie, { to: "testing", after_id: a.id });
+    const res = await post(`/tickets/${c.id}/move`, cookie, { to: "testing", after_id: a.id });   // between A and B
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect((await json<WriteEnvelope>(res)).ticket.status).toBe("testing");
+    expect(await columnOrder(cookie, "testing")).toEqual([a.id, c.id, b.id]);
+    expect((await eventsOf(c.id)).at(-1)).toEqual({ actor: "andres", from_status: "submitted", to_status: "testing" });
+  });
+
+  it("reorders within a column without a history row", async () => {
+    const cookie = await cookieFor("andres");
+    const a = await createTicket(cookie, { title: "A" });
+    const b = await createTicket(cookie, { title: "B" });
+    // Unpositioned: newest first → [b, a]. Drop b after a.
+    expect(await columnOrder(cookie, "submitted")).toEqual([b.id, a.id]);
+    await post(`/tickets/${b.id}/move`, cookie, { to: "submitted", after_id: a.id });
+    expect(await columnOrder(cookie, "submitted")).toEqual([a.id, b.id]);
+    expect(await eventsOf(b.id)).toHaveLength(1);                     // just the opening row
+  });
+
+  it("refuses a move out of a terminal status with 409 and writes nothing", async () => {
+    const cookie = await cookieFor("andres");
+    const t = await createTicket(cookie, { title: "Closed" });
+    await forceStatus(t.id, "done");
+    const res = await post(`/tickets/${t.id}/move`, cookie, { to: "testing", after_id: null });
+    expect(res.status).toBe(409);
+    const row = await first<{ status: string; board_rank: number | null }>(env.DB, `SELECT status, board_rank FROM tickets WHERE id = ?`, t.id);
+    expect(row).toEqual({ status: "done", board_rank: null });
+  });
+
+  it("a status-menu move clears the saved position — the card goes to the top of its new column", async () => {
+    const cookie = await cookieFor("andres");
+    const a = await createTicket(cookie, { title: "A" });
+    const b = await createTicket(cookie, { title: "B" });
+    await post(`/tickets/${a.id}/move`, cookie, { to: "in_progress", after_id: null });
+    await post(`/tickets/${b.id}/move`, cookie, { to: "in_progress", after_id: a.id });
+    await post(`/tickets/${b.id}/status`, cookie, { to: "testing" });
+    await post(`/tickets/${b.id}/status`, cookie, { to: "in_progress" });
+    expect(await columnOrder(cookie, "in_progress")).toEqual([b.id, a.id]);
+    expect((await first<{ r: number | null }>(env.DB, `SELECT board_rank AS r FROM tickets WHERE id = ?`, b.id))?.r).toBeNull();
+  });
+
+  it("rejects a malformed body with 400", async () => {
+    const cookie = await cookieFor("andres");
+    const t = await createTicket(cookie, { title: "X" });
+    expect((await post(`/tickets/${t.id}/move`, cookie, { to: "limbo", after_id: null })).status).toBe(400);
+    expect((await post(`/tickets/${t.id}/move`, cookie, { to: "testing" })).status).toBe(400);
+  });
+});
+
 // ── POST /tickets/:id/status (the transition table, over the wire) ───────────
 
 describe("POST /tickets/:id/status", () => {
@@ -334,9 +398,8 @@ describe("POST /tickets/:id/status", () => {
 
     const legal: Array<[TicketStatus, TicketStatus]> = [];
     for (const from of TICKET_STATUSES) for (const to of TICKET_TRANSITIONS[from]) legal.push([from, to]);
-    // submitted→in_progress, submitted→declined, in_progress→done,
-    // in_progress→declined, in_progress→submitted
-    expect(legal.length).toBe(5);
+    // Every OPEN status (submitted, in_progress, testing) → each of the other four.
+    expect(legal.length).toBe(12);
 
     for (const [from, to] of legal) {
       const t = await createTicket(cookie, { title: `${from} to ${to}` });
@@ -367,8 +430,9 @@ describe("POST /tickets/:id/status", () => {
         if (!TICKET_TRANSITIONS[from].includes(to)) illegal.push([from, to]);
       }
     }
-    // 16 pairs minus the 5 legal ones — and every status contributes at least one.
-    expect(illegal.length).toBe(11);
+    // 25 pairs minus the 12 legal ones — and every status contributes at least one
+    // (an open status: itself; done / declined: everything).
+    expect(illegal.length).toBe(13);
     for (const status of TICKET_STATUSES) expect(illegal.some(([f]) => f === status)).toBe(true);
 
     for (const [from, to] of illegal) {

@@ -312,6 +312,20 @@ input, select { font-family: inherit; }
    WHOLE marker: the 2px inset left rule that tickets.ts used to add inline was
    dropped at the owner's request — no box-shadow, no left border here either. */
 .cnpy-attn { background:color-mix(in srgb,var(--accent) 4%,transparent); }
+/* The ticket board's drag (main.ts). The columns stay as they are — the lifted
+   card and the slot the other cards slide around already say a drag is on. */
+.cnpy-tcard[data-tdrag] { user-select:none; -webkit-user-select:none; }
+.cnpy-tcard.is-lifted { display:none !important; }   /* the card carries an inline display */
+/* Where the held card will land: the gap the other cards slide apart for. */
+.cnpy-tslot { margin-bottom:8px; border-radius:10px; border:1px dashed color-mix(in srgb,var(--accent) 55%,transparent); background:color-mix(in srgb,var(--accent) 6%,transparent); }
+.cnpy-tcol:has(.cnpy-tslot) .cnpy-tdrop-empty { display:none; }
+/* The held card: a full-size clone that follows the pointer (never the browser's
+   shrunken drag image). Lifted with a shadow, held straight. Its radius is a CLASS
+   rule (in the corners block): setting its size from script re-serialises the
+   style attribute as "border-radius: 10px", which the inline-radius selectors no
+   longer match. */
+.cnpy-tghost { position:fixed; z-index:1000; margin:0 !important; pointer-events:none; box-sizing:border-box; background:var(--bg); border-color:var(--border-strong) !important; box-shadow:0 18px 40px rgba(0,0,0,.35); cursor:grabbing; }
+.cnpy-grabbing, .cnpy-grabbing * { cursor:grabbing !important; }
 @media (max-width:860px) {
   .cnpy-nt-grid, .cnpy-td-grid, .cnpy-sprint-grid { grid-template-columns:1fr !important; }
   .cnpy-nt-grid > div + div, .cnpy-td-grid > div + div, .cnpy-sprint-grid > div + div { border-left:none !important; padding-left:0 !important; }
@@ -800,6 +814,8 @@ input, select { font-family: inherit; }
 [data-cnpy-theme] .cnpy-md img,
 [data-cnpy-theme] .cnpy-md-img,
 [data-cnpy-theme] .cnpy-sw { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-tslot,
+[data-cnpy-theme] .cnpy-tghost { border-radius:calc(10px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-titem,
 [data-cnpy-theme] .cnpy-code,
 [data-cnpy-theme] .cnpy-md pre { border-radius:calc(11px * var(--corner-scale)) !important; }

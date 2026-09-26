@@ -8,7 +8,7 @@ import type { FeedRow, DocRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColo
 import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
-import { queueView, newTicketView, ticketDetailView, ticketPill, priorityChip, type StatusMenuAnchor, type QueueMenu } from "./tickets";
+import { queueView, newTicketView, ticketDetailView, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
 import { sprintCard, newSprintPanel, newSprintToggle, sprintScreen } from "./sprints";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, handleTag, swatches, type OnboardState } from "./people";
@@ -185,7 +185,14 @@ export interface AppState {
   qCategory: TicketCategory | "all";
   qView: "table" | "board";
   /** The queue's open filter dropdown (null = none). */
-  qMenu: QueueMenu | null;
+  qQ: string;
+  qPrio: "all" | TicketPriority;
+  /** "all", "backlog", or a sprint id. */
+  qSprint: string;
+  /** One assignee's tickets (a handle, "" = none) — client-side, over an `anyone` fetch. */
+  qPerson: string;
+  qFilterOpen: boolean;
+  qFilterCat: QueueFilterCat;
   // New-ticket form fields (the design's f* state).
   fTitle: string;
   /** null = nothing picked, which files as `other`. */
@@ -359,7 +366,8 @@ export function initialState(): AppState {
     ticketDetail: { status: "idle", data: null },
     ticketId: null,
     ticketBadge: 0,
-    qSeg: "open", qAssignee: "anyone", qCategory: "all", qView: "table", qMenu: null,
+    qSeg: "all", qAssignee: "anyone", qCategory: "all", qView: "board",
+    qQ: "", qPrio: "all", qSprint: "all", qPerson: "", qFilterOpen: false, qFilterCat: "assignee",
     fTitle: "", fCat: null, fPrio: "normal", fDesc: "", fAsgs: [], fLink: "", fSpr: null,
     commentDraft: "", mention: null, commentHeight: null, linkDraft: "",
     lkOpen: false, tdEdit: null, asgMenu: false, sprMenu: false, relMenu: false, lkMenu: null, stMenu: null,
@@ -698,8 +706,8 @@ function header(s: AppState): string {
   // Roadmap tab idiom, plus the header's submit button.
   const qTabStyle = (k: "table" | "board") => `display:flex;align-items:center;gap:6px;padding:5px 13px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;color:${s.qView === k ? "var(--fg)" : "var(--fg-55)"};background:${s.qView === k ? "var(--hover)" : "transparent"}`;
   const queueControls = s.screen === "tickets" ? `<div style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px">
-      <button data-act="queueTable" style="${qTabStyle("table")}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>Table</button>
       <button data-act="queueBoard" style="${qTabStyle("board")}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="6" height="16" rx="1.5"></rect><rect x="14" y="4" width="6" height="10" rx="1.5"></rect></svg>Board</button>
+      <button data-act="queueTable" style="${qTabStyle("table")}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>Table</button>
     </div>
     <button data-act="newTicket" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Submit a ticket</button>` : "";
 
@@ -2005,7 +2013,13 @@ function ticketsScreen(s: AppState): string {
     category: s.qCategory,
     view: s.qView,
     unassignedCount: s.ticketBadge,
-    menu: s.qMenu,
+    q: s.qQ,
+    priority: s.qPrio,
+    sprint: s.qSprint,
+    person: s.qPerson,
+    filterOpen: s.qFilterOpen,
+    filterCat: s.qFilterCat,
+    fmOpening: s.fmOpening,
   });
 }
 

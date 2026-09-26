@@ -172,7 +172,7 @@ export function repoControls(p: RepoProps): string {
   const envs = okData(p, (d) => d.environments) ?? [];
   const pills = envs.map((e) => {
     const c = TONE[e.tone];
-    return `<span title="${attr(`${e.name} — ${e.pill.toLowerCase()}`)}" style="display:inline-flex;align-items:center;gap:7px;font-family:var(--label);font-size:11px;white-space:nowrap;color:var(--fg-70)"><span class="repo-envdot${e.tone === "good" || e.tone === "neutral" ? "" : " repo-pulse"}" style="--c:${c};width:7px;height:7px;border-radius:50%;background:${c};box-shadow:0 0 0 3px color-mix(in srgb,${c} 16%,transparent)"></span>${esc(e.name)}</span>`;
+    return `<span title="${attr(`${e.name} — ${e.pill.toLowerCase()}`)}" style="display:inline-flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;color:var(--fg-70)"><span class="repo-envdot${e.tone === "good" || e.tone === "neutral" ? "" : " repo-pulse"}" style="--c:${c};width:7px;height:7px;border-radius:50%;background:${c};box-shadow:0 0 0 3px color-mix(in srgb,${c} 16%,transparent)"></span>${esc(e.name)}</span>`;
   }).join("");
   const busy = p.repo.status === "loading";
   // "Poll now" sits beside the refresh icon on EVERY tab and in every state of
@@ -263,7 +263,7 @@ function overviewTab(p: RepoProps): string {
     rows.map((h) => {
       const c = h.up ? "var(--green)" : "var(--red)";
       return `<div style="display:grid;grid-template-columns:84px minmax(0,1fr) 110px 90px;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)">
-        <span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-70)">${esc(h.env)}</span>
+        <span style="font-size:12.5px;font-weight:600;color:var(--fg-70)">${esc(h.env)}</span>
         <a href="${attr(safeUrl(h.url))}" target="_blank" rel="noopener" class="repo-link" style="font-family:var(--label);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg-55)">${esc(h.url.replace(/^https?:\/\//, ""))}</a>
         <span style="display:inline-flex;align-items:center;gap:7px;font-family:var(--label);font-size:11px;font-weight:600;color:${c}"><span style="width:7px;height:7px;border-radius:50%;background:${c}"></span>${h.up ? "UP" : "DOWN"}</span>
         <span style="font-family:var(--label);font-size:12px;color:var(--fg-55);text-align:right">${h.ms} ms</span>
@@ -741,7 +741,7 @@ function productSection(p: RepoProps, i: number): string {
     ? `<div class="repo-seg" role="group" aria-label="Environment" style="display:flex;align-items:center;gap:3px;padding:3px;border:1px solid var(--border);border-radius:9px;min-width:0;max-width:100%;overflow-x:auto">${envs.map((e) => {
         const on = e === shown;
         // The one already showing takes no action: pressing it again must not replay the cross-fade.
-        return `<button ${on ? "" : `data-act="repoProductEnv" `}data-arg="${attr(e.name)}" aria-pressed="${on}" style="padding:4px 12px;border-radius:7px;font-size:12px;font-weight:500;font-family:var(--label);white-space:nowrap;color:${on ? "var(--fg)" : "var(--fg-55)"};background:${on ? "var(--hover)" : "transparent"}">${esc(e.name)}</button>`;
+        return `<button ${on ? "" : `data-act="repoProductEnv" `}data-arg="${attr(e.name)}" aria-pressed="${on}" style="padding:4px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;color:${on ? "var(--fg)" : "var(--fg-55)"};background:${on ? "var(--hover)" : "transparent"}">${esc(e.name)}</button>`;
       }).join("")}</div>`
     : `<span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-70)">${esc(shown.name)}</span>`;
   const aside = `<div style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px 14px;min-width:0"><span style="font-size:11px;color:var(--fg-40)">reported by the app · counts over ${esc(p.range)}</span>${seg}</div>`;

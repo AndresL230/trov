@@ -1,5 +1,6 @@
 import type { DashboardData, MyWorkPr, MyWorkTodo, MyWorkTicket } from "@shared/dashboard";
 import type { EventRow, PersonRow } from "@shared/rows";
+import { OPEN_STATUS_SQL } from "@shared/tickets-core";
 import { type DB, all, first } from "../db";
 import { getPerson, listIdentities } from "../auth/persons";
 import { isIssueGone } from "./issue-gone";
@@ -200,7 +201,7 @@ export async function listAssignedTickets(db: DB, handle: string, limit = TICKET
        FROM tickets t
        JOIN ticket_assignees a ON a.ticket_id = t.id AND a.login = ? COLLATE NOCASE
        LEFT JOIN sprints s ON s.id = t.sprint_id
-      WHERE t.status IN ('submitted', 'in_progress') AND t.source = 'canopy'
+      WHERE t.status IN ${OPEN_STATUS_SQL} AND t.source = 'canopy'
       ORDER BY t.updated_at DESC, t.id DESC
       LIMIT ${Math.trunc(limit)}`,
     handle

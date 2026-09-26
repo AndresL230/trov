@@ -173,7 +173,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
   // org's queue is how an agent orients before it does anything.
   server.tool(
     "list_tickets",
-    "Read-only: the org's ticket queue. Tickets are Canopy D1 rows the whole org files into (ADR-007, amended): a ticket may LINK to GitHub or Figma work, and may be SOURCED from a GitHub issue, but is never the issue itself. A mirrored ticket has source 'github' and source_ref 'owner/repo#n'; its title/body/assignees were copied at import and are Canopy's since, while closing or reopening the issue on GitHub closes or reopens it. Its source link is locked (never removable). Filter with seg ('open' = submitted + in_progress, the default / 'closed' = done + declined / 'all'), assignee ('anyone' default, 'me' = you, the bearer principal, 'unassigned') and category. Newest-updated first; each row carries its assignees, link/sub-ticket counts and sprint label. Reading is unscoped: you see the whole org's queue. WRITING is scoped to your own lane — see create_ticket and transition_ticket.",
+    "Read-only: the org's ticket queue. Tickets are Canopy D1 rows the whole org files into (ADR-007, amended): a ticket may LINK to GitHub or Figma work, and may be SOURCED from a GitHub issue, but is never the issue itself. A mirrored ticket has source 'github' and source_ref 'owner/repo#n'; its title/body/assignees were copied at import and are Canopy's since, while closing or reopening the issue on GitHub closes or reopens it. Its source link is locked (never removable). Filter with seg ('open' = submitted + in_progress + testing, the default / 'closed' = done + declined / 'all'), assignee ('anyone' default, 'me' = you, the bearer principal, 'unassigned') and category. Newest-updated first; each row carries its assignees, link/sub-ticket counts and sprint label. Reading is unscoped: you see the whole org's queue. WRITING is scoped to your own lane — see create_ticket and transition_ticket.",
     {
       seg: TicketSeg.optional(),
       assignee: TicketAssigneeFilter.optional(),
@@ -259,7 +259,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "transition_ticket",
-    "Move a ticket's status. SCOPED: only on a ticket already assigned to you, else `forbidden` and nothing is written. Legal moves are the one shared table — submitted → in_progress | declined; in_progress → done | declined | submitted; done and declined are TERMINAL (an illegal move is `conflict`, and writes nothing, not even history). `done`/`declined` resolve the ticket for the whole org and cannot be undone, so confirm with the person first. Appends a ticket_events row attributed to you.",
+    "Move a ticket's status. SCOPED: only on a ticket already assigned to you, else `forbidden` and nothing is written. Legal moves are the one shared table — any OPEN status (submitted, in_progress, testing) may move to any other status; done and declined are TERMINAL (an illegal move is `conflict`, and writes nothing, not even history). `done`/`declined` resolve the ticket for the whole org and cannot be undone, so confirm with the person first. Appends a ticket_events row attributed to you.",
     { id: z.number(), ...TicketTransition.shape },
     async ({ id, to }) => runTool(async () => {
       await agentTransitionTicket(env.DB, env, id, to, principal.handle);

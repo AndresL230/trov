@@ -115,7 +115,10 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `artifact_links` / `artifact_upload_tokens` / `artifacts_fts` — see "Artifacts" below], then `0031_doc_images`
   [`doc_images` / `doc_image_upload_tokens` — see "Doc images" below], then `0032_ticket_source`
   [`tickets.source` / `source_ref` (partial UNIQUE) / `source_author` / `source_updated_at`,
-  `ticket_links.locked`, and the `github-webhook` system person — see "Tickets mirrored from GitHub issues"]).
+  `ticket_links.locked`, and the `github-webhook` system person — see "Tickets mirrored from GitHub issues"], then
+  `0033_ticket_testing_rank` [REBUILDS `tickets` + `ticket_events` (SQLite cannot alter a CHECK) to admit the
+  `testing` status and add `tickets.board_rank`; under `defer_foreign_keys`, carrying each AUTOINCREMENT counter
+  over so a deleted ticket's number is never reissued — see "The ticket board" below]).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
@@ -192,13 +195,34 @@ like `promote_doc` / `ratify_adr` / `complete_sprint` always have been: the plan
 (agent-proposed content), add it to the gate — never a second ingestion surface; authored/computed writes
 stay direct in the promote class.
 
-**Tickets are the largest authored-write surface** (`src/tools/tickets.ts`, twelve session-cookie routes in
-`routes.ts`): `create_ticket` (opening `ticket_events` row) / `edit_ticket` (title and/or body) / `transition_ticket` / `toggle_assignee` /
+**Tickets are the largest authored-write surface** (`src/tools/tickets.ts`, thirteen session-cookie routes in
+`routes.ts`): `create_ticket` (opening `ticket_events` row) / `edit_ticket` (title and/or body) / `transition_ticket` / `move_ticket` (a board drop) / `toggle_assignee` /
 `add_ticket_link` / `remove_ticket_link` / `set_ticket_sprint` / `set_ticket_parent` / `add_ticket_comment`. There is no vocab
 gate, no confidence, no staged state. Every write bumps `tickets.updated_at` (the queue's sort key); the
 status machine is `canTransition` in `shared/tickets-core.ts` (re-exported by `shared/tickets.ts`) and is
 never re-declared server-side; an illegal move or a nesting-rule break is a 409 that writes nothing;
 tickets nest exactly ONE level (`set_ticket_parent`'s four rejections).
+
+**The ticket board** (the queue's DEFAULT view, `web/src/tickets.ts` `boardView`; the Table is the other).
+Statuses are `submitted` (Triage) / `in_progress` / `testing` / `done` / `declined` — `testing` (0033) is an
+optional step, not a gate. The board moves FREELY (the owner's call, 2026-09-26): any OPEN status —
+`OPEN_STATUSES`, spelled `OPEN_STATUS_SQL` in every SQL reader (My Work, the badge, the Repo tile, `seg=open`) —
+may move to any other, Triage straight to Done included; `done` / `declined` stay terminal. Each column is in
+a SAVED order, `tickets.board_rank`, written only by a drag: `POST /tickets/:id/move {to, after_id}` →
+`move_ticket` sets status AND position in one batch (a status change appends the same history row as
+`transition_ticket`; a same-column drop only reorders). NULL = no position = the TOP of the column,
+newest-updated first — every ticket before its first drag, a new ticket, and any status move that is not a
+drop (`transition_ticket` and the mirror's `forceStatus` both write `board_rank = NULL`, so a ticket moved by
+the status menu, MCP or GitHub surfaces on top). The comparator `boardOrder` and the placement
+`placeInColumn` (`shared/tickets-core.ts`) are ONE definition shared by the Worker and the SPA's optimistic
+drop: a column holding a NULL is renumbered in its visible order first (`BOARD_RANK_STEP` apart), and so is
+one whose neighbours are too close to split. The drag is POINTER-driven (`web/src/main.ts`), never HTML5
+drag-and-drop — the browser's drag image is a shrunken snapshot the page cannot size: a full-size clone
+follows the pointer, a slot the other cards slide around (FLIP) marks where it will land, rerenders are
+HELD for the whole drag, and the click a drag's release fires is swallowed. Mouse and pen only — touch
+scrolls. The queue's search box and Filter menu (Assignee incl. any one person, Category, Priority, Sprint)
+are the Artifacts library's; Assignee (anyone / me / unassigned) and Category filter server-side, a person,
+Priority, Sprint and search narrow the loaded rows (`queueRows`).
 
 **The writer is a PERSON — over a cookie, or over their own bearer token.** Seven of those writers are also
 MCP tools (`src/tools/tickets-agent.ts`, the read side below), scoped so an agent writes only inside its

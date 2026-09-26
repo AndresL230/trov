@@ -16,7 +16,7 @@ this file. Everything that actually has to hold is enforced by the Worker, where
 | You may write only to tickets **already assigned to you** | Which category/priority to default to |
 | Assignment is impossible after filing (no `toggle_assignee` tool) | Whether to self-assign at filing |
 | Deleting or completing a sprint needs the person's confirmation | Which sprint a new ticket lands in |
-| The status machine (`submitted → in_progress → done`…) | Which of those moves the skill will *offer* |
+| The status machine (`submitted → in_progress → testing → done`…) | Which of those moves the skill will *offer* |
 | Nesting is exactly one level | A prefix on agent-written comments |
 | Handles must resolve to a real person | Whether to confirm before writing |
 
