@@ -2107,12 +2107,19 @@ function myWorkView(s: AppState): string {
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   // The design's composition: Tickets (only when you have some) and Needs your
-  // review lead at 7/5; Your sessions and Repo follow; the library closes. Review
-  // ALWAYS holds its place — a clear queue reads clear there, never moves.
+  // review lead at 7/5; Your sessions and Repo follow; the library closes. A CLEAR
+  // review queue (loaded, empty) is always shown — never dropped — but steps out of
+  // the lead pair to sit beside Repo: Tickets 7 | Sessions 5 (or Sessions alone), then
+  // Repo 7 | Needs your review 5.
   const hasTickets = dLoad !== "ok" || degraded || tickets.length > 0;
-  const order = [hasTickets ? "tickets" : "", "review", "sessions", "repo"].filter(Boolean);
+  const reviewClear = reviewLoad === "ok" && reviewItems.length === 0;
   const strips = ["library"];
-  const span = mwSpans(order, strips);
+  const order = reviewClear
+    ? [hasTickets ? "tickets" : "", "sessions", "repo", "review"].filter(Boolean)
+    : [hasTickets ? "tickets" : "", "review", "sessions", "repo"].filter(Boolean);
+  const span = reviewClear
+    ? { ...(hasTickets ? { tickets: 7, sessions: 5 } : { sessions: 12 }), repo: 7, review: 5, library: 12 }
+    : mwSpans(order, strips);
   const tile: Record<string, () => string> = {
     tickets: () => ticketsTile({ load: dLoad, rows: tickets, total: ticketsTotal, expanded: s.mwExpanded.tickets }, degraded, span.tickets, dueOf),
     review: () => reviewTile(reviewItems, reviewLoad, span.review),
