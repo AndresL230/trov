@@ -30,7 +30,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 import { render, initialState, type AppState } from "../web/src/render";
 import {
-  queueView, queueRows, newTicketView, ticketDetailView, relCandidates, queueGroups,
+  queueView, queueRows, newTicketView, ticketDetailView, ticketDeleteModal, relCandidates, queueGroups,
   ticketPill, priorityChip, age, avatarStack, SEG_STATUSES,
   type QueueProps, type NewTicketProps, type TicketDetailProps,
 } from "../web/src/tickets";
@@ -1391,5 +1391,24 @@ describe("mirrored ticket history", () => {
     const html = ticketDetailView(detailProps(d));
     expect(html).toContain(">GitHub</span>");
     expect(html).not.toContain(">github-webhook</span>");
+  });
+});
+
+describe("ticketDetailView — delete", () => {
+  it("offers Delete ticket on a native ticket, never on one mirrored from GitHub", () => {
+    const native = ticketDetailView(detailProps(detail({ id: 1, title: "T" })));
+    expect(native).toContain('data-act="ticketDeleteArm"');
+    expect(native).toContain('aria-controls="ticket-delete-confirm"');
+    const mirrored = ticketDetailView(detailProps(detail({ id: 2, title: "M", source: "github", source_ref: "SaplingLearn/sapling#666" })));
+    expect(mirrored).not.toContain("ticketDeleteArm");
+  });
+
+  it("the confirm names the ticket, says it can't be undone, and mentions sub-tickets that stay", () => {
+    const html = ticketDeleteModal(detail({ id: 7, title: "Old idea", children: [{ id: 8, title: "k", status: "submitted" }] as TicketDetail["children"] }), false);
+    expect(html).toContain('role="alertdialog"');
+    expect(html).toContain("Delete #7 “Old idea”?");
+    expect(html).toContain("can&#39;t be undone");
+    expect(html).toContain("sub-ticket stays");
+    expect(html).toContain('data-confirm-act="ticketDelete"');
   });
 });

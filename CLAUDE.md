@@ -220,9 +220,13 @@ like `promote_doc` / `ratify_adr` / `complete_sprint` always have been: the plan
 (agent-proposed content), add it to the gate — never a second ingestion surface; authored/computed writes
 stay direct in the promote class.
 
-**Tickets are the largest authored-write surface** (`src/tools/tickets.ts`, thirteen session-cookie routes in
+**Tickets are the largest authored-write surface** (`src/tools/tickets.ts`, fourteen session-cookie routes in
 `routes.ts`): `create_ticket` (opening `ticket_events` row) / `edit_ticket` (title and/or body) / `transition_ticket` / `move_ticket` (a board drop) / `toggle_assignee` /
-`add_ticket_link` / `remove_ticket_link` / `set_ticket_sprint` / `set_ticket_parent` / `add_ticket_comment`. There is no vocab
+`add_ticket_link` / `remove_ticket_link` / `set_ticket_sprint` / `set_ticket_parent` / `add_ticket_comment` /
+`delete_ticket` (`POST /tickets/:id/delete`, any signed-in member, NEVER MCP: a HARD delete in one `db.batch` —
+assignees, links, comments, history and `artifact_links` rows go with it, sub-tickets are detached, the number is
+never reissued; a ticket MIRRORED from a GitHub issue is a 403, since the mirror would only re-create it; on screen
+"Delete ticket" at the bottom of the rail, native tickets only, through the shared confirmation modal). There is no vocab
 gate, no confidence, no staged state. Every write bumps `tickets.updated_at` (the queue's sort key); the
 status machine is `canTransition` in `shared/tickets-core.ts` (re-exported by `shared/tickets.ts`) and is
 never re-declared server-side; an illegal move or a nesting-rule break is a 409 that writes nothing;

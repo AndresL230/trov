@@ -28,6 +28,7 @@ import { renderMarkdown } from "./markdown";
 import { mentionCandidates, mentionPickerTop, COMMENT_BOX } from "./mentions";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
+import { dangerTrigger, confirmModal } from "./confirm";
 
 // ── shared atoms ─────────────────────────────────────────────────────────────
 
@@ -587,6 +588,8 @@ export interface TicketDetailProps {
   artifactsBlock?: string;
   /** The title/body editor's drafts while editing; null (or absent) = reading. */
   edit?: { title: string; body: string } | null;
+  /** The delete confirm is open (render.ts puts `ticketDeleteModal` at the root). */
+  deleteArm?: boolean;
 }
 
 /**
@@ -1040,7 +1043,19 @@ export function ticketDetailView(p: TicketDetailProps): string {
         ${assigneeRail(p)}
         ${sprintRail(p)}
         ${relationsRail(p)}
+        ${t.source === "canopy" ? `<div>${dangerTrigger({ label: "Delete ticket", act: "ticketDeleteArm", armed: p.deleteArm === true, controls: "ticket-delete-confirm" })}</div>` : ""}
       </div>
     </div>
   </div>`;
+}
+
+/** The ticket's delete confirmation modal. Only a native ticket gets one — a
+ *  mirrored ticket has no Delete (the server 403s it): it follows its GitHub issue. */
+export function ticketDeleteModal(t: Pick<TicketDetail, "id" | "title" | "children">, busy: boolean): string {
+  const kids = t.children.length;
+  return confirmModal({
+    id: "ticket-delete-confirm", title: `Delete #${t.id} “${t.title}”?`,
+    body: `Its comments, links and history are deleted with it, and this can't be undone.${kids ? ` Its ${kids === 1 ? "sub-ticket stays" : `${kids} sub-tickets stay`}, without a parent.` : ""}`,
+    confirmAct: "ticketDelete", cancelAct: "ticketDeleteCancel", busy,
+  });
 }

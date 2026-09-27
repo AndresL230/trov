@@ -410,6 +410,10 @@ export function addTicketLink(id: number, raw: string): TicketWrite {
 export function removeTicketLink(id: number, linkId: number): TicketWrite {
   return ticketWrite(`/tickets/${id}/links/${linkId}/remove`);
 }
+/** Hard-delete a native ticket (a mirrored one is a 403). */
+export function deleteTicket(id: number): Promise<{ ok: true; id: number; title: string; detached: number }> {
+  return postJson<{ ok: true; id: number; title: string; detached: number }>(`/tickets/${id}/delete`);
+}
 export function setTicketSprint(id: number, sprintId: number | null): TicketWrite {
   return ticketWrite(`/tickets/${id}/sprint`, { sprint_id: sprintId });
 }

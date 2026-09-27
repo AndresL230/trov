@@ -13,7 +13,7 @@ import { ingestDocProposal, recordBatch } from "./consumer";
 import { runBackfill, isFinalBackfillBatch } from "./tools/backfill";
 import { get_doc, list_docs, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
 import {
-  create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link,
+  create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link, delete_ticket,
   set_ticket_sprint, set_ticket_parent, add_ticket_comment,
   TicketError, TICKET_ERROR_STATUS,
 } from "./tools/tickets";
@@ -776,6 +776,18 @@ app.post("/tickets/:id/links/:linkId/remove", async (c) => {
   try {
     await remove_ticket_link(c.env.DB, id, linkId);
     return ticketDetailResponse(c, id);
+  } catch (e) {
+    return ticketFail(c, e);
+  }
+});
+
+// Delete a ticket (session-gated, any member — no adminGate). A HARD delete; a
+// ticket mirrored from a GitHub issue is a 403, left in place. See delete_ticket.
+app.post("/tickets/:id/delete", async (c) => {
+  const id = ticketId(c);
+  if (id === null) return c.json({ error: "invalid id" }, 400);
+  try {
+    return c.json({ ok: true, ...(await delete_ticket(c.env.DB, id)) });
   } catch (e) {
     return ticketFail(c, e);
   }

@@ -8,7 +8,7 @@ import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow
 import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
-import { queueView, newTicketView, ticketDetailView, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
+import { queueView, newTicketView, ticketDetailView, ticketDeleteModal, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
 import { sprintCard, newSprintPanel, sprintScreen, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline } from "./timeline";
@@ -262,6 +262,9 @@ export interface AppState {
   lkOpen: boolean;
   /** The ticket detail's title/description editor drafts; null = not editing. */
   tdEdit: { title: string; body: string } | null;
+  /** The ticket page's delete confirm is open / its write is in flight. */
+  tdDeleteArm: boolean;
+  tdDeleteBusy: boolean;
   asgMenu: boolean;
   sprMenu: boolean;
   relMenu: boolean;
@@ -434,7 +437,7 @@ export function initialState(): AppState {
     qQ: "", qPrio: "all", qSprint: "all", qPerson: "", qFilterOpen: false, qFilterCat: "assignee",
     fTitle: "", fCat: null, fPrio: "normal", fDesc: "", fAsgs: [], fLink: "", fSpr: null,
     commentDraft: "", mention: null, commentHeight: null, linkDraft: "",
-    lkOpen: false, tdEdit: null, asgMenu: false, sprMenu: false, relMenu: false, lkMenu: null, stMenu: null,
+    lkOpen: false, tdEdit: null, tdDeleteArm: false, tdDeleteBusy: false, asgMenu: false, sprMenu: false, relMenu: false, lkMenu: null, stMenu: null,
     sprints: { status: "idle", data: [] },
     sprintDetail: { status: "idle", data: null },
     sprintId: null,
@@ -2245,6 +2248,7 @@ function ticketDetailScreen(s: AppState): string {
     stMenu: s.stMenu,
     artifactsBlock: ticketArtifactsBlock(s.art.ticketArts[slice.data.id]),
     edit: s.tdEdit,
+    deleteArm: s.tdDeleteArm,
   });
 }
 
@@ -2387,5 +2391,6 @@ export function render(s: AppState): string {
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
+    ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}
   </div>`;
 }
