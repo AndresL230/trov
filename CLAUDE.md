@@ -333,7 +333,7 @@ still out shows the longest cached PREFIX's still-matching hits plus "Searching�
 strip — selection is a background fill. ↑/↓ move (a first press before the pause shows the results), Enter opens the selected row — or, typed
 faster than the panel shows, goes straight to the Search screen with the text; Tab / ⌘Enter = the Search
 screen with the query, Esc closes. A pick runs the existing acts (`openTicket`, `openDocFrom`, `openSprint`,
-`artOpen`, `openPrompt`, `openHandoff`, `goFeed`, a person → the queue filtered to them; a decision, which has
+`artOpen`, `openPrompt`, `openHandoff`, `goFeed`, a person → their profile (`#people/<handle>`, the role as the context line); a decision, which has
 no screen, → the Search screen on its title).
 
 **MCP ticket/sprint reads are unscoped; the writes are not** — `src/mcp.ts` registers `list_tickets`
@@ -510,6 +510,15 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   write of any kind. Its description, `create_ticket`'s and the `tickets` / `canopy` skills tell an agent to read
   it before choosing `assignees`, and that a null is unknown, never to be guessed.
 - `scripts/seed/reset.mjs` seeds a role + responsibilities for the six dev/test persons.
+- **On screen** (`web/src/profile.ts`, `web/src/avatar.ts`): `#people` — the directory (a card per person, a
+  search over name / handle / role; People in the sidebar's Workspace section) — and `#people/<handle>`, the profile
+  (avatar, role, admin badge, joined, GitHub; open tickets, recent sessions, docs owned). Own profile → "Edit
+  profile" opens Settings; an ADMIN on someone else's gets the inline role + responsibilities editor, the one place
+  another person's responsibilities appear. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in
+  the browser before the POST — so a GIF loses its animation), removes one (shown only for an `/avatar/` URL), and
+  edits role + responsibilities (disabled until the profile read lands, so a save never blanks unread text). A
+  profile opens from quick search's person hits, the ticket rail's people, Feed authors and Maintenance › People.
+  A `personChip` whose image fails to load shows the initials under it.
 
 ## Roadmap & My Work — authored plan + stored projections, no live GitHub at render
 
