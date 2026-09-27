@@ -157,8 +157,9 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), flipped by a `segmented()` switch;
   `<v>` is `0.N` or `unreleased`; the old `#releases/patches` opens the newest release's patches. Static `RELEASES`
   data (`0.N` per milestone, newest first) plus a pure renderer. **Every shipped PR adds its lines to the top
-  "Unreleased" entry** (highlights / heads-up in product words, deploy steps in `ops`, patch lines ending `(#N)`
-  to link the PR); the header comment says how to cut a version.
+  entry** (highlights / heads-up in product words, deploy steps in `ops`, patch lines ending `(#N)` to link the
+  PR) — and since a merge to `main` deploys, the PR that merges also CUTS "Unreleased" into the next `0.N`, so
+  main never shows a shipped batch as unreleased; the header comment says how.
 - `.claude/skills/` — Claude Code skills: `canopy`, `load-context`, `record-session`, `tickets`, and the
   roadmap/my-work skills `read-plan`, `update-plan`, `my-work`. Described in the Working memory section
   above. (Symlinks into `plugins/canopy/skills/` — one source of truth.)

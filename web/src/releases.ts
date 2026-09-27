@@ -19,9 +19,11 @@
 //     may name files, routes and migrations; `code` in backticks; end a line with
 //     `(#123)` to link that pull request on GitHub (github.com/SaplingLearn/canopy).
 //   • `prs`        — the pull requests the release carries (listed on the patch notes).
-// When the batch deploys, turn "Unreleased" into the next version: set `version` to
-// the next `0.N`, `date` to the merge day (YYYY-MM-DD), drop `unreleased`, and start a
-// fresh "Unreleased" entry above it. Newest first; dates never increase down the list
+// A merge to `main` IS a production deploy, so the PR that merges a batch also cuts it:
+// set `version` to the next `0.N`, `date` to the merge day (YYYY-MM-DD) and drop
+// `unreleased` — main never carries an "Unreleased" entry. A small follow-up with too
+// little for its own 3–6 highlights adds its patch lines (and PR) to the newest version
+// instead. Newest first; dates never increase down the list
 // (test/releases.test.ts checks the order, unique versions, and that every release has
 // highlights).
 //
@@ -69,13 +71,12 @@ export const prUrl = (n: number): string => `${CANOPY_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
   {
-    version: "Unreleased",
+    version: "0.15",
     date: "2026-09-26",
-    unreleased: true,
     title: "My Work tiles, a Roadmap timeline, one card look",
     headline: "My Work becomes five tiles, the Roadmap gets a calendar, search answers from the sidebar as you type, and every screen shares one card style.",
     highlights: [
-      "My Work is five tiles: Tickets for you, Needs your review, Your sessions (your recent feed entries and handoffs left for you), Repo (drift, CI, deploys and PRs) and Your library (docs you own, artifacts published this week, queued handoffs).",
+      "My Work is five tiles: Tickets for you, Needs your review, Your sessions (your recent feed entries and handoffs left for you), Repo (PRs, CI and deploys) and Your library (docs you own, artifacts published this week, queued handoffs).",
       "The Roadmap's Narrative sits in two columns with a side panel, and a new Timeline tab draws every sprint on a calendar from its start to its due date. New sprint is in the header, and reloading keeps the tab you were on.",
       "Sprints have real start dates: the New sprint panel uses date pickers, a start can't be after the due date, and a sprint counts as overdue from the day after it is due, the same on every screen.",
       "Beside the Feed: This week (entries per day, who posted and the top tags, each a click to filter) and Waiting on review.",
@@ -91,7 +92,7 @@ export const RELEASES: Release[] = [
     ],
     patches: {
       added: [
-        "`web/src/mywork.ts`: the My Work bento — Tickets for you, Needs your review, Your sessions, Repo (Drift / CI / Deploys / PRs tabs) and the Your library strip",
+        "`web/src/mywork.ts`: the My Work bento — Tickets for you, Needs your review, Your sessions, Repo (PRs / CI / Deploys tabs, PRs by default) and the Your library strip",
         "`web/src/timeline.ts`: Roadmap › Timeline as a Gantt graph — In progress / Upcoming / Done lanes, a today line, an Unscheduled list",
         "`GET /feed/stats?days=&tz=` (`src/tools/feed-stats.ts`, `shared/feed-stats.ts`) behind the Feed's This week box; Waiting on review reads the boot-loaded Review queue",
         "`asideColumns` in `web/src/ui.ts`: the two-column page with a sticky 360px aside, shared by Roadmap › Narrative and the Feed",
@@ -112,6 +113,8 @@ export const RELEASES: Release[] = [
         "Get Started and the landing page describe the new screens; screenshots recaptured in dark and light, plus Timeline, search and What's new figures",
       ],
       changed: [
+        "My Work's Repo tile: PRs · CI · Deploys, opening on PRs; the environment-named drift tab is gone — drift stays on the Repo dashboard (#85)",
+        "Review: a drafted decision's Proposed record card drops its green left edge (#85)",
         "Light theme palette from the Claude Design `Canopy Restyled.dc.html` (cool neutral grey, indigo accent)",
         "`--label` is Geist everywhere except the sidebar, which keeps Archivo Narrow",
         "Roadmap: New sprint in the header; `#roadmap/timeline` in the URL; the rail's Narrative / Timeline sub-pages removed",
@@ -124,11 +127,14 @@ export const RELEASES: Release[] = [
       fixed: [
         "`npm run dev` served stale or missing assets after a web rebuild; the watch keeps old bundles (`--emptyOutDir false`)",
         "A multi-word FTS query whose last word got stem-shortened alternatives came back empty; the terms are now joined with an explicit AND",
+        "My Work › Your library: a narrow cell's header link (Queued handoffs' \"Handoffs →\") ran past the tile's edge and was clipped; the header row now wraps the link under its title (#85)",
+        "What's new still tagged this release Unreleased after it deployed; it is v0.15, and the merging PR now cuts the version (#85)",
       ],
       removed: [
         "The Midnight theme and its Get Started screenshots",
       ],
     },
+    prs: [84, 85],
   },
   {
     version: "0.14",

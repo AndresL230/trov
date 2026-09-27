@@ -178,8 +178,8 @@ describe("reviewTile", () => {
 
 describe("repoTile", () => {
   it("says not connected rather than showing a zero", () => {
-    const repo = { repo: "SaplingLearn/sapling", environments: { status: "not_connected" }, drift: { status: "not_connected" } } as unknown as Parameters<typeof repoTile>[0];
-    const html = repoTile(repo, "ok", "drift", 6);
+    const repo = { repo: "SaplingLearn/sapling", environments: { status: "not_connected" }, prs: { status: "not_connected" } } as unknown as Parameters<typeof repoTile>[0];
+    const html = repoTile(repo, "ok", "prs", 6);
     expect(html).toContain("Not connected yet");
     expect(html).not.toMatch(/>0</);
   });
@@ -222,15 +222,19 @@ describe("repoTile", () => {
   });
 
   it("labels the sample set as sample data; live data carries no tag", () => {
-    const drift = { status: "ok", data: { head: "main", base: "production", ahead: 2, behind: 0, groups: [] } };
-    expect(repoTile(dash({ sample: true, drift }), "ok", "drift", 6)).toContain("Sample data");
-    expect(repoTile(dash({ drift }), "ok", "drift", 6)).not.toContain("Sample data");
+    const prs = { status: "ok", data: { openCount: 1, rows: [pr(1, "review")] } };
+    expect(repoTile(dash({ sample: true, prs }), "ok", "prs", 6)).toContain("Sample data");
+    expect(repoTile(dash({ prs }), "ok", "prs", 6)).not.toContain("Sample data");
   });
 
   it("switches views through the segmented control", () => {
     const html = repoTile(null, "pending", "ci", 6);
     expect(html).toContain('data-seg="mw-repo"');
-    expect(html).toContain('data-act="mwRepoTab" data-arg="drift"');
+    // PRs first, then CI and Deploys — no drift (environment-named) option.
+    const labels = [...html.matchAll(/class="cnpy-seg-btn[^"]*"[^>]*>([^<]+)<\/button>/g)].map((m) => m[1]);
+    expect(labels).toEqual(["PRs", "CI", "Deploys"]);
+    expect(html).toContain('data-act="mwRepoTab" data-arg="prs"');
+    expect(html).not.toContain('data-arg="drift"');
     expect(html).toContain("Loading");
   });
 });
