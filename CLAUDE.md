@@ -533,8 +533,9 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   Escape close it, and one's OWN card links to Settings (photo, name). Role + responsibilities are edited in ONE place: Maintenance › People, where
   an admin's "Edit role" opens `personRoleEditor` (`web/src/maintenance.ts`) under that row, filled from the
   person's profile read. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in the browser before
-  the POST — so a GIF loses its animation) and removes one (shown only for an `/avatar/` URL); it has no role or
-  responsibilities field. A `personChip` whose image fails to load shows the initials under it.
+  the POST — so a GIF loses its animation) and removes one (shown only for an `/avatar/` URL) — both from a small
+  menu the AVATAR opens (`.cnpy-avbtn`: a camera veil on hover / focus, a spinner while a write is in flight, when
+  it won't open; Escape closes, ↑/↓ move); it has no role or responsibilities field. A `personChip` whose image fails to load shows the initials under it.
 
 ## Roadmap & My Work — authored plan + stored projections, no live GitHub at render
 

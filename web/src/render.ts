@@ -361,6 +361,8 @@ export interface AppState {
   personSaving: boolean;
   /** A photo upload or removal in flight. */
   avatarBusy: "upload" | "remove" | null;
+  /** Settings › Profile: the photo menu the avatar opens (upload / change / remove). */
+  avatarMenu: boolean;
 }
 
 /** Sync GitHub modal state: "starting" from the click until the first batch
@@ -486,6 +488,7 @@ export function initialState(): AppState {
     personEdit: null,
     personSaving: false,
     avatarBusy: null,
+    avatarMenu: false,
   };
 }
 
@@ -1767,20 +1770,39 @@ export function profileSection(s: AppState): string {
   })() : `<div style="font-size:12px;color:var(--fg-40);margin-top:8px">Handle ${me ? handleTag({ handle, color: me.color }, handle, 12) : handleTag(null, handle, 12)} <button data-act="handleEdit" class="cnpy-mutelink" style="font-size:11.5px;color:var(--fg-55);text-decoration:underline;text-underline-offset:2px;margin-left:6px">Change</button></div>`;
   // The avatar spans the label + the 40px field exactly: 16px line + 8px gap + 40px = 64px.
   const FIELD_LABEL = "display:block;font-size:13px;line-height:16px;font-weight:500;margin-bottom:8px";
-  // The photo: a hidden file input the "Upload photo" button clicks (main.ts downsizes the
-  // pick to a 512px square before it is sent), and "Remove photo" only over an UPLOADED one.
+  // The photo: the avatar IS the control. It opens a small menu — Upload (Change, over an
+  // uploaded one), Remove only over an UPLOADED one, and the accepted types as a footnote —
+  // over a hidden file input (main.ts downsizes the pick to a 512px square before it is
+  // sent). A veil with a camera says so on hover / focus / while open; while a write is in
+  // flight a spinner sits in its place and the menu won't open (aria-disabled, so the
+  // button keeps its focus — the reducer ignores the click).
   const busy = s.avatarBusy;
-  const photoBtn = "display:inline-flex;align-items:center;gap:6px;padding:0 12px;height:30px;border-radius:8px;font-size:12px;font-weight:500;white-space:nowrap";
-  const photoRow = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px">
+  const uploaded = isUploadedAvatar(me?.avatar_url);
+  const open = s.avatarMenu && !busy;
+  const row = "display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 10px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap";
+  const menu = open ? `<div data-act="avatarMenuClose" style="position:fixed;inset:0;z-index:29"></div>
+      <div role="menu" aria-label="Profile photo" data-avatar-menu class="cnpy-avmenu" style="position:absolute;top:calc(100% + 6px);left:0;z-index:30;width:212px;background:var(--bg);border:1px solid var(--border-strong);border-radius:11px;padding:5px;box-shadow:0 14px 38px rgba(0,0,0,.38)">
+        <button role="menuitem" data-act="avatarPick" class="cnpy-menurow" style="${row};color:var(--fg-70)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:none" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m17 8-5-5-5 5"></path><path d="M12 3v12"></path></svg>${uploaded ? "Change photo" : "Upload photo"}</button>
+        ${uploaded ? `<button role="menuitem" data-act="avatarRemove" class="cnpy-menurow" style="${row};color:var(--red)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:none" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path></svg>Remove photo</button>` : ""}
+        <div style="height:1px;background:var(--border);margin:5px 4px"></div>
+        <div style="padding:4px 10px 5px;font-size:11px;line-height:1.45;color:var(--fg-40)">Square crop · PNG, JPEG, WebP, GIF</div>
+      </div>` : "";
+  const camera = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg>`;
+  const spinner = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="animation:cnpy-spin .8s linear infinite"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"></path></svg>`;
+  const label = busy === "upload" ? "Uploading photo…" : busy === "remove" ? "Removing photo…" : "Profile photo options";
+  const photo = `<div style="position:relative;flex:none">
       <input type="file" data-avatar-file accept="${attr(AVATAR_TYPES.join(","))}" hidden tabindex="-1" aria-hidden="true" />
-      <button data-act="avatarPick" class="cnpy-outlinebtn" ${busy ? "disabled " : ""}style="${photoBtn};border:1px solid var(--border-strong);color:var(--fg-70);${busy ? "opacity:.6;cursor:default" : ""}">${busy === "upload" ? "Uploading…" : "Upload photo"}</button>
-      ${isUploadedAvatar(me?.avatar_url) ? `<button data-act="avatarRemove" class="cnpy-ghostbtn" ${busy ? "disabled " : ""}style="${photoBtn};border:1px solid var(--border);color:var(--fg-55);${busy ? "opacity:.6;cursor:default" : ""}">${busy === "remove" ? "Removing…" : "Remove photo"}</button>` : ""}
-      <span style="font-size:11.5px;color:var(--fg-40)">Cropped to a square · PNG, JPEG, WebP or GIF</span>
+      <button data-act="avatarMenu" class="cnpy-avbtn${busy ? " is-busy" : ""}" aria-label="${label}" aria-haspopup="menu" aria-expanded="${open ? "true" : "false"}"${busy ? ' aria-disabled="true" aria-busy="true"' : ""} style="position:relative;display:block;padding:0;border-radius:50%;overflow:hidden">
+        ${personChip(me ? { handle, name: s.displayName || me.name, color: me.color, avatar_url: me.avatar_url } : null, 64, handle || "?")}
+        <span class="cnpy-avbtn-veil" aria-hidden="true">${busy ? spinner : camera}</span>
+      </button>
+      <span class="cnpy-avbtn-badge" aria-hidden="true" style="border-radius:50%"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg></span>
+      ${menu}
     </div>`;
   return `<section class="cnpy-tile cnpy-surface">
     <div style="${SECTION_LABEL}">Profile</div>
     <div style="display:flex;align-items:flex-start;gap:14px">
-      ${personChip(me ? { handle, name: s.displayName || me.name, color: me.color, avatar_url: me.avatar_url } : null, 64, handle || "?")}
+      ${photo}
       <div style="flex:1;min-width:0">
         <label style="${FIELD_LABEL}">Display name</label>
         <div style="display:flex;gap:10px">
@@ -1790,7 +1812,6 @@ export function profileSection(s: AppState): string {
         ${handleRow}
       </div>
     </div>
-    ${photoRow}
     <div style="margin-top:20px"><label style="${FIELD_LABEL}">Your color</label>${swatches("setMyColor", me?.color ?? "stone", true)}</div>
   </section>`;
 }

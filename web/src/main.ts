@@ -244,6 +244,7 @@ function rerender(): void {
   // The queue's filter menu left open never survives leaving the queue.
   if (state.screen !== "tickets") state.qFilterOpen = false;
   if (state.screen !== "feed") state.feedFilterOpen = false;
+  if (state.screen !== "settings") state.avatarMenu = false;
   // Entering a group's pages opens its sub-page list, and leaving folds it again —
   // unless the person opened or closed it by hand, which sticks (and is what persists).
   const group = state.view === "app" ? navGroupOf(state.screen) : null;
@@ -3305,11 +3306,29 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     // ── Settings › Profile: the photo ────────────────────────────────────────
-    case "avatarPick": if (!state.avatarBusy) mount.querySelector<HTMLInputElement>("[data-avatar-file]")?.click(); return;
+    // The avatar opens its menu (not while a write is in flight); focus moves to the first row.
+    case "avatarMenu":
+      if (state.avatarBusy) return;
+      state.avatarMenu = !state.avatarMenu;
+      if (state.avatarMenu) pendingFlash = ".cnpy-avmenu";
+      rerender();
+      if (state.avatarMenu) mount.querySelector<HTMLElement>('[data-avatar-menu] [role="menuitem"]')?.focus();
+      return;
+    case "avatarMenuClose": state.avatarMenu = false; break;
+    // Close the menu FIRST, then click the fresh input: the paint swaps <main>, and a
+    // `change` on a detached input never reaches the mount's listener.
+    case "avatarPick":
+      if (state.avatarBusy) return;
+      state.avatarMenu = false;
+      rerender();
+      mount.querySelector<HTMLInputElement>("[data-avatar-file]")?.click();
+      return;
     case "avatarRemove":
       if (state.avatarBusy) return;
+      state.avatarMenu = false;
       state.avatarBusy = "remove";
       rerender();
+      mount.querySelector<HTMLElement>(".cnpy-avbtn")?.focus();
       removeAvatar()
         .then((r) => { setMyAvatar(r.avatar_url); flash("Photo removed"); })
         .catch((e) => { state.avatarBusy = null; writeErr(e, "Couldn't remove the photo"); });
@@ -3787,7 +3806,25 @@ mount.addEventListener("keydown", (e) => {
   dispatch(card.dataset.act ?? "", card.dataset.arg ?? null, null);
 });
 
-// Settings › Profile's photo picker (a hidden input the "Upload photo" button clicks).
+// Settings › Profile's photo menu: Escape closes it and hands focus back to the avatar;
+// ↑/↓ (and Home/End) move between its rows. Tab leaves it, like the other menus.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !state.avatarMenu || state.view !== "app") return;
+  state.avatarMenu = false;
+  rerender();
+  mount.querySelector<HTMLElement>(".cnpy-avbtn")?.focus();
+});
+mount.addEventListener("keydown", (e) => {
+  const menu = (e.target as Element | null)?.closest?.<HTMLElement>("[data-avatar-menu]");
+  if (!menu || !["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+  e.preventDefault();
+  const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1
+    : (at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+  items[next]?.focus();
+});
+// Settings › Profile's photo picker (a hidden input the menu's "Upload photo" row clicks).
 mount.addEventListener("change", (e) => {
   const el = e.target as HTMLElement;
   if (!(el instanceof HTMLInputElement) || el.type !== "file" || !el.hasAttribute("data-avatar-file")) return;
