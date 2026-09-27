@@ -105,6 +105,7 @@ export const RELEASES: Release[] = [
         "`personChip` draws the initials under the photo; a photo that fails to load is dropped for the session (one capture-phase `error` listener), so it falls back to initials instead of a broken image (#89)",
         "Quick search: a person hit opens their person card, with their role as the context line (was the queue filtered to them) (#89)",
         "The ticket rail's requester and assignees, the Feed's authors and Maintenance › People's rows open the person card; Maintenance › People shows each role and, for admins, Edit role — the one role + responsibilities editor (#89)",
+        "Every name or photo opens the person card — the ticket queue (table rows and board cards), sprints and the Timeline's lead, handoffs, prompts, artifacts, docs, Review, Unplaced, the Repo dashboard's contributors and activity, the Feed's review box and Settings › Account — as one photo + name chip (`personLink`) where both fit; a card or row that opens something else is a container with its own click target laid over it (`ui.ts` `hitArea`), so a person is never a button inside a button (#89)",
         "Repo dashboard: PR authors and contributors show their avatar photo (#89)",
         "Sidebar: no selected fill on the account chip while Settings is open or on hover — only its gear turns (#89)",
       ],

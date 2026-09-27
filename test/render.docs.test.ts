@@ -68,3 +68,21 @@ describe("Docs spaces — picked from the sidebar, a fixed two-tab set", () => {
     expect((html.match(/data-arg="docs:/g) ?? []).length).toBe(2);
   });
 });
+
+describe("Docs — a doc's people open their person card", () => {
+  it("the header's photo and @handle and each version row's chip are buttons; an unknown handle stays plain", async () => {
+    const { docReaderHtml } = await import("../web/src/render");
+    const v = (version: number, by: string) => ({ id: version, slug: "a-doc", version, body: "b", summary: `v${version}`, status: "promoted" as const, confidence: null, created_at: "2026-07-01T00:00:00Z", created_by: by, content_hash: null, base_version: null, change_kind: null, low_confidence: 0 });
+    const s = {
+      ...docsState([doc()]), docSlug: "a-doc", showHistory: true,
+      persons: { status: "ok" as const, data: [{ handle: "meilin", name: "Meilin Zhao", color: "rose" as const, avatar_url: null, role: null }] },
+      docDetail: { status: "ok" as const, data: { doc: doc({ updated_by: "meilin" }), versions: [v(2, "meilin"), v(1, "ghost")] } },
+    };
+    const html = docReaderHtml(s);
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="meilin" class="cnpy-personav"/);
+    expect(html).toMatch(/Updated by <button data-act="openPerson" data-arg="meilin" class="cnpy-personlink"/);
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="meilin" class="cnpy-personchip"/);
+    expect(html).not.toContain('data-act="openPerson" data-arg="ghost"');
+    expect(html).toContain("@ghost");
+  });
+});

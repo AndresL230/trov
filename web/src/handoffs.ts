@@ -6,8 +6,8 @@
 import type { HandoffView, HandoffStatus } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
 import type { PersonSummary } from "./api";
-import { esc, attr, relTime, surface, WORK_SHELL } from "./ui";
-import { personChip } from "./people";
+import { esc, attr, relTime, surface, WORK_SHELL, hitArea, HITBOX } from "./ui";
+import { personChip, personLink, personNameLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
 
@@ -29,8 +29,6 @@ export function anyoneAvatar(size: number): string {
 const personOf = (persons: PersonSummary[], h: string): PersonSummary | null =>
   persons.find((p) => p.handle.toLowerCase() === h.toLowerCase()) ?? null;
 const nameOf = (persons: PersonSummary[], h: string): string => personOf(persons, h)?.name || h;
-const avatarOf = (persons: PersonSummary[], h: string, size: number): string =>
-  h === "anyone" ? anyoneAvatar(size) : personChip(personOf(persons, h), size, h);
 
 const MONO_EYEBROW = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap";
 
@@ -68,6 +66,8 @@ export interface HandoffsListProps {
   persons: PersonSummary[];
 }
 
+/** One inbox row: a `hitArea` row, so the other party's photo and name open their person
+ *  card while the rest opens the handoff. */
 function listRow(h: HandoffView, p: HandoffsListProps): string {
   const sent = h.sender.toLowerCase() === p.me.toLowerCase();
   const other = sent ? h.recipient : h.sender;
@@ -77,13 +77,16 @@ function listRow(h: HandoffView, p: HandoffsListProps): string {
     ? `<span class="cnpy-hrow-chip" style="font-family:var(--label);font-size:9.5px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 6px;white-space:nowrap;flex:none">+ prompt</span>`
     : "";
   const when = relTime(pending ? h.created_at : (h.claimed_at ?? h.created_at));
-  return `<button data-act="openHandoff" data-arg="${h.id}" class="cnpy-trow cnpy-hrow${pending ? " cnpy-attn" : ""}" style="display:grid;grid-template-columns:minmax(0,2.6fr) minmax(0,1.1fr) minmax(0,1.3fr) auto 64px;gap:12px;align-items:center;width:100%;text-align:left;padding:12px 16px;border-bottom:1px solid var(--border);transition:background .12s ease">
+  return `<div class="cnpy-trow cnpy-hrow${pending ? " cnpy-attn" : ""} ${HITBOX}" style="display:grid;grid-template-columns:minmax(0,2.6fr) minmax(0,1.1fr) minmax(0,1.3fr) auto 64px;gap:12px;align-items:center;width:100%;text-align:left;padding:12px 16px;border-bottom:1px solid var(--border);transition:background .12s ease">
     <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-40);flex:none">#${h.id}</span><span style="${titleSt}">${esc(firstLine(h.body))}</span>${promptChip}</div>
-    <div class="cnpy-hrow-who" style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40);flex:none;width:32px">${sent ? "TO" : "FROM"}</span>${avatarOf(p.persons, other, 20)}<span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(other === "anyone" ? "Anyone" : nameOf(p.persons, other))}</span></div>
+    <div class="cnpy-hrow-who" style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40);flex:none;width:32px">${sent ? "TO" : "FROM"}</span>${other === "anyone"
+      ? `${anyoneAvatar(20)}<span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Anyone</span>`
+      : personLink(personOf(p.persons, other), other, 20, nameOf(p.persons, other), "min-width:0;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap")}</div>
     <div class="cnpy-hrow-ref" style="min-width:0"><div style="font-family:var(--label);font-size:11.5px;font-weight:500;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.context.branch)}</div><div style="font-family:var(--label);font-size:10px;color:var(--fg-40);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.context.repo)}</div></div>
     <div>${handoffPill(h.status)}</div>
     <div style="font-size:11.5px;color:var(--fg-40);text-align:right;font-family:var(--label);white-space:nowrap">${esc(when)}</div>
-  </button>`;
+    ${hitArea("openHandoff", String(h.id), `#${h.id} ${firstLine(h.body)}`)}
+  </div>`;
 }
 
 const sectionHead = (label: string, count: number, top = false): string =>
@@ -139,6 +142,8 @@ export function handoffDetailView(p: HandoffDetailProps): string {
   const c = h.context;
   const pending = h.status === "pending";
   const who = (x: string | null) => (!x ? "" : x.toLowerCase() === p.me.toLowerCase() ? "You" : x === "anyone" ? "Anyone" : nameOf(p.persons, x));
+  // A name opens that person's card ("You" opens your own); "Anyone" is no one.
+  const whoLink = (x: string | null) => (!x || x === "anyone" ? esc(who(x)) : personNameLink(personOf(p.persons, x), who(x)));
   const lines = h.body.split("\n");
   const fi = lines.findIndex((l) => l.trim());
   const rest = lines.slice(fi + 1).join("\n").trim();
@@ -164,8 +169,9 @@ export function handoffDetailView(p: HandoffDetailProps): string {
     ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:3px">${c.files.map((f) => `<div style="font-family:var(--label);font-size:11px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f)}</div>`).join("")}</div>`
     : "";
 
+  // Markup, not text: the claimer's name is a button.
   const statusLine = h.status === "claimed"
-    ? `Claimed by ${who(h.claimed_by)} ${relTime(h.claimed_at)}${h.claimed_by_session ? ` · ${h.claimed_by_session}` : ""}`
+    ? `Claimed by ${whoLink(h.claimed_by)} ${esc(relTime(h.claimed_at))}${h.claimed_by_session ? ` · ${esc(h.claimed_by_session)}` : ""}`
     : pending ? "Waiting for a session to claim it" : "Expired unclaimed";
 
   return shell(`
@@ -175,7 +181,7 @@ export function handoffDetailView(p: HandoffDetailProps): string {
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--fg-55)">
           ${handoffPill(h.status)}
           <span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-40)">#${h.id}</span>
-          <span style="white-space:nowrap">${esc(who(h.sender))} → ${esc(who(h.recipient))}</span>
+          <span style="white-space:nowrap">${whoLink(h.sender)} → ${whoLink(h.recipient)}</span>
           <span style="color:var(--fg-40);white-space:nowrap">· ${esc(relTime(h.created_at))}</span>
         </div>
       </div>
@@ -202,7 +208,7 @@ export function handoffDetailView(p: HandoffDetailProps): string {
     </div>
 
     <div style="margin-top:36px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:12px">
-      <span style="color:var(--fg-40)">${esc(statusLine)}</span>
+      <span style="color:var(--fg-40)">${statusLine}</span>
       <div style="display:flex;align-items:center;gap:16px">
         ${pending ? `<button data-act="handoffExpire" data-arg="${h.id}" class="cnpy-mutelink" style="font-size:12px;font-weight:500;white-space:nowrap;color:${p.expireArm ? "var(--red)" : "var(--fg-55)"}">${p.expireArm ? "Click again to expire" : "Expire"}</button>` : ""}
       </div>

@@ -22,8 +22,8 @@ import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter } fr
 import type { SprintView } from "@shared/sprints";
 import { sprintDatesLabel } from "@shared/sprints-core";
 import type { PersonSummary } from "./api";
-import { esc, attr, relTime, primaryBtn, WORK_SHELL, DETAIL_SHELL, SURFACE, surface } from "./ui";
-import { personChip, personLink, personAvatarLink } from "./people";
+import { esc, attr, relTime, primaryBtn, WORK_SHELL, DETAIL_SHELL, SURFACE, surface, hitArea, HITBOX } from "./ui";
+import { personChip, personLink, personAvatarLink, personNameLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { mentionCandidates, mentionPickerTop, COMMENT_BOX } from "./mentions";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
@@ -114,21 +114,20 @@ const nameOf = (persons: PersonSummary[], handle: string): string =>
 /** The person a name may link to — a known person, never the GitHub mirror's system handle. */
 const linkable = (persons: PersonSummary[], handle: string): PersonSummary | null =>
   handle === MIRROR_HANDLE ? null : person(persons, handle);
-/** A name in the rail: a link to their profile when the handle is a known person (never the
- *  GitHub mirror's system handle), else plain text. `style` is the text's own. */
+/** A name in the rail: a link to their person card when the handle is a known person (never
+ *  the GitHub mirror's system handle), else plain text. `style` is the text's own. */
 function personName(persons: PersonSummary[], handle: string, label: string, style: string): string {
-  const pp = person(persons, handle);
-  return pp && handle !== MIRROR_HANDLE
-    ? `<button data-act="openPerson" data-arg="${attr(pp.handle)}" class="cnpy-personlink" title="${attr(`${pp.name || pp.handle}'s profile`)}" style="${style};text-align:left;padding:0">${esc(label)}</button>`
-    : `<span style="${style}">${esc(label)}</span>`;
+  return personNameLink(linkable(persons, handle), label, style);
 }
 const firstNameOf = (persons: PersonSummary[], handle: string): string => nameOf(persons, handle).split(" ")[0];
 
 /** Avatar row — the design's `asgAvs` (-7px overlap, ring in the page background). The
- *  corners layer in canopy.css lays them side by side instead (`.cnpy-avstack`). */
-export function avatarStack(handles: string[], persons: PersonSummary[], size = 20): string {
+ *  corners layer in canopy.css lays them side by side instead (`.cnpy-avstack`). `linked`:
+ *  each known person's photo is its own button to their card — for a stack that is not
+ *  itself inside a button (a `hitArea` card, the sprint card); an unknown handle stays plain. */
+export function avatarStack(handles: string[], persons: PersonSummary[], size = 20, linked = false): string {
   return `<div class="cnpy-avstack" style="display:flex;flex:none">${handles.map((h, i) =>
-    `<span style="display:flex;flex:none;border-radius:50%;box-shadow:0 0 0 2px var(--bg);${i > 0 ? "margin-left:-7px;" : ""}z-index:${9 - i}">${personChip(person(persons, h), size, h)}</span>`
+    `<span style="display:flex;flex:none;border-radius:50%;box-shadow:0 0 0 2px var(--bg);${i > 0 ? "margin-left:-7px;" : ""}z-index:${9 - i}">${linked ? personAvatarLink(linkable(persons, h), h, size) : personChip(person(persons, h), size, h)}</span>`
   ).join("")}</div>`;
 }
 
@@ -323,20 +322,22 @@ function relationChip(t: TicketListItem): string {
 }
 
 /** A table row: no hairline of its own — the hover fill marks a row, and one hairline
- *  between sprint groups is the only rule inside the body. */
+ *  between sprint groups is the only rule inside the body. A `hitArea` row, so the
+ *  requester and each assignee's photo open their person card while the rest opens the ticket. */
 function tableRow(t: TicketListItem, persons: PersonSummary[]): string {
   const attn = needsAttention(t);
   const asgText = assigneeLabel(t.assignees, persons);
   const asgStyle = t.assignees.length ? "color:var(--fg-70)" : "color:var(--fg-55);font-style:italic";
-  return `<button data-act="openTicket" data-arg="${t.id}" class="cnpy-trow${attn ? NEEDS_ATTENTION_CLASS : ""}" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;align-items:center;width:100%;text-align:left;padding:11px 20px;transition:background .12s ease">
+  return `<div class="cnpy-trow${attn ? NEEDS_ATTENTION_CLASS : ""} ${HITBOX}" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;align-items:center;width:100%;text-align:left;padding:11px 20px;transition:background .12s ease">
     <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="min-width:0;font-size:13.5px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>${relationChip(t)}${sourceChip(t)}</div>
-    <div style="display:flex;align-items:center;gap:7px;min-width:0">${personChip(person(persons, t.requester), 20, t.requester)}<span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nameOf(persons, t.requester))}</span></div>
+    <div style="display:flex;min-width:0">${personLink(linkable(persons, t.requester), t.requester, 20, nameOf(persons, t.requester), "min-width:0;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap")}</div>
     <div>${tableCategory(t.category)}</div>
     <div>${tablePriority(t.priority)}</div>
     <div>${ticketPill(t.status)}</div>
-    <div style="display:flex;align-items:center;gap:7px;min-width:0">${avatarStack(t.assignees, persons)}<span style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${asgStyle}">${esc(asgText)}</span></div>
+    <div style="display:flex;align-items:center;gap:7px;min-width:0">${avatarStack(t.assignees, persons, 20, true)}<span style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${asgStyle}">${esc(asgText)}</span></div>
     <div style="font-size:11.5px;color:var(--fg-40);text-align:right;font-family:var(--label)">${esc(age(t.created_at))}</div>
-  </button>`;
+    ${hitArea("openTicket", String(t.id), `#${t.id} ${t.title}`)}
+  </div>`;
 }
 
 interface QueueGroup {
@@ -409,16 +410,18 @@ function tableView(p: QueueProps): string {
 /** A board card — the plain one: the title, then #number · priority (only when
  *  it is not normal) · the assignees. Everything else is one click away.
  *  Every card drags between columns (main.ts's pointer-driven board drag) —
- *  a resolved ticket moves back as freely as an open one. */
+ *  a resolved ticket moves back as freely as an open one. A `hitArea` card: a press
+ *  anywhere still drags it, a click opens the ticket, and a click on an assignee's
+ *  photo opens their person card. */
 function boardCard(t: TicketListItem, persons: PersonSummary[]): string {
   const canMove = legalMoves(t.status).length > 0;
   const prio = t.priority === "normal" ? ""
     : `<span style="font-size:11.5px;font-weight:${t.priority === "high" ? "600;color:var(--fg)" : "500;color:var(--fg-40)"}">${t.priority === "high" ? "High" : "Low"}</span>`;
   const sep = `<span style="color:var(--fg-40);font-size:11.5px">·</span>`;
   const asg = t.assignees.length
-    ? avatarStack(t.assignees, persons, 18)
+    ? avatarStack(t.assignees, persons, 18, true)
     : `<span style="font-size:11.5px;color:var(--fg-40);font-style:italic">Unassigned</span>`;
-  return `<div role="button" tabindex="0" data-act="openTicket" data-arg="${t.id}"${canMove ? ` data-tdrag="${t.id}" data-status="${t.status}"` : ""} aria-label="${attr(`#${t.id} ${t.title}`)}" class="cnpy-tcard ${SURFACE} cnpy-card${needsAttention(t) ? NEEDS_ATTENTION_CLASS : ""}" style="display:block;width:100%;text-align:left;padding:11px 12px;margin-bottom:8px;cursor:${canMove ? "grab" : "pointer"}">
+  return `<div${canMove ? ` data-tdrag="${t.id}" data-status="${t.status}"` : ""} class="cnpy-tcard ${SURFACE} cnpy-card${needsAttention(t) ? NEEDS_ATTENTION_CLASS : ""} ${HITBOX}" style="display:block;width:100%;text-align:left;padding:11px 12px;margin-bottom:8px;cursor:${canMove ? "grab" : "pointer"}">
     <div style="font-size:13.5px;font-weight:600;letter-spacing:-0.005em;line-height:1.4;color:var(--fg);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${esc(t.title)}</div>
     <div style="display:flex;align-items:center;gap:6px;margin-top:9px;min-height:18px">
       <span style="font-size:11.5px;color:var(--fg-40)">#${t.id}</span>
@@ -426,6 +429,7 @@ function boardCard(t: TicketListItem, persons: PersonSummary[]): string {
       ${sourceMark(t)}
       <span style="margin-left:auto;display:flex;align-items:center">${asg}</span>
     </div>
+    ${hitArea("openTicket", String(t.id), `#${t.id} ${t.title}`)}
   </div>`;
 }
 

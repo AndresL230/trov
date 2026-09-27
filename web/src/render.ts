@@ -13,7 +13,7 @@ import { sprintCard, newSprintPanel, sprintScreen, nextSprintId } from "./sprint
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
-import { initialOnboard, onboardView, personChip, personAvatarLink, handleTag, swatches, type OnboardState } from "./people";
+import { initialOnboard, onboardView, personChip, personLink, personAvatarLink, handleTag, handleLink, swatches, type OnboardState } from "./people";
 import { personCardModal } from "./profile";
 import { AVATAR_TYPES } from "@shared/people";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
@@ -29,7 +29,7 @@ import { releasesScreen, findRelease, type ReleasePage } from "./releases";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { REPO_URL } from "./github";
-import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote } from "./ui";
+import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
 import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab, type PersonEditDraft } from "./maintenance";
@@ -502,7 +502,7 @@ export function reviewProps(s: AppState): ReviewProps {
   return {
     items: reviewItemsFromReads(s.proposals.data, s.draftAdrs.data).map((it) => {
       const p = personFor(s, it.agent);
-      return p ? { ...it, agentColor: p.color, agentAvatar: p.avatar_url } : it;
+      return p ? { ...it, agentColor: p.color, agentAvatar: p.avatar_url, agentHandle: p.handle, agentName: p.name } : it;
     }),
     filter: s.reviewFilter,
     selectedId: s.reviewSel,
@@ -951,15 +951,17 @@ function feedReviewBox(s: AppState): string {
   const decisions = items.length - proposals;
   const split = [proposals ? plural(proposals, "proposal") : "", decisions ? plural(decisions, "decision") : ""].filter(Boolean).join(", ");
   const count = `<div style="font-size:13px;color:var(--fg-55);padding:0 18px 10px;margin-top:-2px"><span style="color:var(--fg);font-weight:500;font-variant-numeric:tabular-nums">${items.length}</span> waiting · ${split}</div>`;
-  const rows = items.slice(0, FEED_REVIEW_LIMIT).map((it) => `<button data-act="mwOpenReview" data-arg="${attr(it.id)}" class="mw-row" style="display:block;width:100%;text-align:left;padding:9px 18px;border-top:1px solid var(--border);font-size:13px">
+  // `hitArea` rows: the proposer's handle opens their person card, the rest the review item.
+  const rows = items.slice(0, FEED_REVIEW_LIMIT).map((it) => `<div class="mw-row ${HITBOX}" style="display:block;width:100%;text-align:left;padding:9px 18px;border-top:1px solid var(--border);font-size:13px">
       <span style="display:block;color:var(--fg);font-weight:500;line-height:1.45;overflow-wrap:anywhere">${esc(it.title)}</span>
       <span style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:3px;font-size:12px;color:var(--fg-40)">
         <span style="width:7px;height:7px;border-radius:50%;background:${it.badgeColor};flex:none"></span>
         <span style="color:var(--fg-55)">${it.kind === "decision" ? "Decision" : "Proposal"}</span>
-        <span>·</span>${handleTag(personFor(s, it.agent), it.agent, 11.5)}
+        <span>·</span>${handleLink(personFor(s, it.agent), it.agent, 11.5)}
         <span>·</span><span style="white-space:nowrap">${esc(it.time)}</span>
       </span>
-    </button>`).join("");
+      ${hitArea("mwOpenReview", it.id, it.title)}
+    </div>`).join("");
   return wrap(`${count}${rows}`);
 }
 
@@ -1025,12 +1027,9 @@ function feedBrief(brief: string | null): string {
   return `<div class="cnpy-feed-brief" style="font-size:13.5px;color:var(--fg-70);line-height:1.6;margin-top:5px">${esc(brief)}</div>`;
 }
 
-/** A feed entry's `@author`: a link to their profile when the author is a known person. */
+/** A feed entry's `@author`: a link to their person card when the author is a known person. */
 function feedAuthorTag(s: AppState, author: string): string {
-  const p = personFor(s, author);
-  return p
-    ? `<button data-act="openPerson" data-arg="${attr(p.handle)}" class="cnpy-personlink" title="${attr(`${p.name || p.handle}'s profile`)}" style="padding:0">${handleTag(p, author)}</button>`
-    : handleTag(null, author);
+  return handleLink(personFor(s, author), author);
 }
 
 function feedView(s: AppState): string {
@@ -1178,7 +1177,7 @@ export function docReaderHtml(s: AppState): string {
       ${versions.map((v) => `<div style="display:flex;align-items:center;gap:12px;padding:9px 11px;border-radius:7px">
         <span style="font-family:var(--label);font-size:12px;font-weight:600;color:var(--fg);width:26px">v${v.version}</span>
         <span style="flex:1;font-size:12.5px;color:var(--fg-70)">${esc(v.summary ?? "")}</span>
-        <span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-40)">${personChip(personFor(s, v.created_by), 16, v.created_by)}${handleTag(personFor(s, v.created_by), v.created_by, 11)} · ${relTime(v.created_at)}</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-40)">${personLink(personFor(s, v.created_by), v.created_by, 16, { html: handleTag(personFor(s, v.created_by), v.created_by, 11) }, "", 6)} · ${relTime(v.created_at)}</span>
         ${v.version === doc.current_version ? `<span style="font-size:9.5px;font-weight:600;font-family:var(--label);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);background:var(--accent-soft);border-radius:4px;padding:2px 6px">PROMOTED</span>` : ""}
       </div>`).join("")}
     </div>` : "";
@@ -1189,8 +1188,8 @@ export function docReaderHtml(s: AppState): string {
     <h1 style="font-size:29px;font-weight:650;letter-spacing:-0.022em;line-height:1.16;margin:0">${esc(doc.title)}</h1>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:15px;padding-bottom:17px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--fg-55)">
-        ${personChip(doc.updated_by ? personFor(s, doc.updated_by) : null, 24, doc.updated_by ?? "?")}
-        <span>Updated by ${doc.updated_by ? handleTag(personFor(s, doc.updated_by), doc.updated_by) : ""} · ${relTime(doc.updated_at)}</span>
+        ${personAvatarLink(doc.updated_by ? personFor(s, doc.updated_by) : null, doc.updated_by ?? "?", 24)}
+        <span>Updated by ${doc.updated_by ? handleLink(personFor(s, doc.updated_by), doc.updated_by) : ""} · ${relTime(doc.updated_at)}</span>
       </div>
       <button data-act="toggleHistory" class="cnpy-ghostbtn" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:7px;padding:5px 11px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v6h6"></path><path d="M3.5 9a9 9 0 1 0 2.3-3.3L3 9"></path><path d="M12 8v4l3 2"></path></svg>Version history</button>
     </div>
@@ -1412,7 +1411,7 @@ function roadmapAside(s: AppState): string {
       : "";
     return `<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:9px 18px;border-top:1px solid var(--border);font-size:13px">
       <span style="font-size:12px;color:var(--fg-40);padding-top:1px;white-space:nowrap">${relTime(e.created_at).replace(/ ago$/, "")}</span>
-      <span style="color:var(--fg-70);line-height:1.5;min-width:0;overflow-wrap:anywhere">${handleTag(personFor(s, e.author), e.author, 11.5)} <span class="cnpy-md-inline">${renderMarkdownInline(e.summary)}</span>${chips.length ? `<span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${shown.map(ghChip).join("")}${more}</span>` : ""}</span>
+      <span style="color:var(--fg-70);line-height:1.5;min-width:0;overflow-wrap:anywhere">${handleLink(personFor(s, e.author), e.author, 11.5)} <span class="cnpy-md-inline">${renderMarkdownInline(e.summary)}</span>${chips.length ? `<span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${shown.map(ghChip).join("")}${more}</span>` : ""}</span>
     </div>`;
   }).join("");
   const happenings = `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Roadmap · Recent happenings">
@@ -1840,7 +1839,7 @@ export function accountSection(s: AppState): string {
     <div style="${SECTION_LABEL}">Account</div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
       <div style="min-width:0">
-        <div style="font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Signed in as ${me ? handleTag({ handle: me.handle, color: me.color }, me.handle, 13) : ""}</div>
+        <div style="font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Signed in as ${me ? handleLink({ handle: me.handle, name: me.name, color: me.color }, me.handle, 13) : ""}</div>
         <div style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--green);margin-top:4px"><span style="width:6px;height:6px;border-radius:50%;background:var(--green)"></span>${viaGithub ? `Member of <b>${esc(me?.org ?? "")}</b>` : "Signed in with Google"}</div>
       </div>
       <button data-act="signOut" class="cnpy-signout" style="flex:none;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500">Sign out</button>

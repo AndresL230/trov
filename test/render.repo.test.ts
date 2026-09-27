@@ -1257,3 +1257,31 @@ describe("repo — the range selector is the shared segmented switch", () => {
     expect(html).not.toContain("repo-seg\"");
   });
 });
+
+describe("repoView — people open their person card", () => {
+  const persons = [{ handle: "priya", name: "Priya", color: "plum" as const, avatar_url: null, role: null }];
+  const person = (login: string, handle: string | null = login): RepoPerson => ({ login, handle, name: null, color: handle ? "plum" : null });
+
+  it("a known contributor is one chip; a bot, an unmapped login and sample data stay plain", () => {
+    const data = live({ contributors: { status: "ok", data: [
+      { person: person("priya"), pushes: 3, merged: 1, reviews: 0 },
+      { person: person("dependabot[bot]", null), pushes: 1, merged: 0, reviews: 0 },
+    ] } });
+    const html = repoView(props({ tab: "planning", repo: { status: "ok", data }, persons }));
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="priya" class="cnpy-personchip"/);
+    expect((html.match(/data-act="openPerson"/g) ?? []).length).toBe(1);
+    expect(repoView(props({ tab: "planning", repo: { status: "ok", data }, persons, sample: true }))).not.toContain('data-act="openPerson"');
+  });
+
+  it("an activity line's known actor is a name button BESIDE the event's link, never inside it", () => {
+    const at = new Date().toISOString();
+    const data = live({ activity: { status: "ok", data: [
+      { kind: "merge", actor: person("priya"), text: "merged #12", url: "https://github.com/o/r/pull/12", at },
+      { kind: "push", actor: person("stranger", null), text: "pushed 2 commits", url: "https://github.com/o/r/commits", at },
+    ] } });
+    const html = repoView(props({ tab: "ci", repo: { status: "ok", data }, persons }));
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="priya" class="cnpy-personlink"[^>]*>priya<\/button> <a href="https:\/\/github.com\/o\/r\/pull\/12"/);
+    expect(html).toContain(">stranger pushed 2 commits</a>");
+    expect(html).not.toMatch(/<a [^>]*>[^<]*<button/);
+  });
+});

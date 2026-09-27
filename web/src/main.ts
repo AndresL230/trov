@@ -3852,14 +3852,6 @@ mount.addEventListener("click", (e) => {
   e.stopPropagation();
   e.preventDefault();
 }, true);
-// A board card is a div (so it can drag): Enter / Space open it, like a button.
-mount.addEventListener("keydown", (e) => {
-  if (e.key !== "Enter" && e.key !== " ") return;
-  const card = e.target as HTMLElement | null;
-  if (!card?.classList?.contains("cnpy-tcard")) return;
-  e.preventDefault();
-  dispatch(card.dataset.act ?? "", card.dataset.arg ?? null, null);
-});
 
 // Settings › Profile's photo menu: Escape closes it and hands focus back to the avatar;
 // ↑/↓ (and Home/End) move between its rows. Tab leaves it, like the other menus.

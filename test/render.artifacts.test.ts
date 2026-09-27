@@ -723,7 +723,7 @@ describe("artifacts — surface cards", () => {
 
   it("library cards are clickable surfaces that keep their rise, with no inline card chrome", () => {
     const html = artifactsView(props("artifacts"));
-    expect((html.match(/class="cnpy-surface cnpy-card cnpy-rise" style="--i:\d+;padding:0;display:flex/g) ?? []).length).toBe(5);
+    expect((html.match(/class="cnpy-surface cnpy-card cnpy-rise cnpy-hitbox" style="--i:\d+;padding:0;display:flex/g) ?? []).length).toBe(5);
     expect(html).not.toContain(OLD_TINT);
     expect(html).not.toContain("border-radius:14px");
   });
@@ -773,5 +773,24 @@ describe("artifacts — surface cards", () => {
     expect(surfaces(dlg)).toBe(1);
     expect(dlg).not.toContain(OLD_TINT);
     expect(dlg).not.toContain("background:var(--bg);box-shadow");
+  });
+});
+
+describe("artifacts — people open their person card", () => {
+  const persons = [{ handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null, role: null }];
+
+  it("a library card's author is one chip over the card's hit area; an unknown author is plain", () => {
+    const html = artifactsView(props("artifacts", ART_ROUTE_NONE, { persons }));
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="AndresL230" class="cnpy-personchip"/);
+    expect(html).toContain('<button data-act="artOpen" data-arg="rfc-pdf" class="cnpy-hit" aria-label="rfc pdf"></button>');
+    expect(html).not.toContain('data-act="openPerson" data-arg="Jose-Gael-Cruz-Lopez"');
+  });
+
+  it("the viewer's AUTHOR row is a chip, and UPDATED / RATIFIED name their person as a button", () => {
+    const d = detail("x", "html", { ratified_version: 3, ratified_by: "AndresL230", ratified_at: T0, status: "ratified" });
+    const html = artifactsView(viewer(d, null, { persons }));
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="AndresL230" class="cnpy-personchip"[^>]*>.*Andres <span[^>]*>@AndresL230<\/span>/s);
+    expect(html).toMatch(/by <button data-act="openPerson" data-arg="AndresL230" class="cnpy-personlink"[^>]*>@AndresL230<\/button><\/span>/);
+    expect((html.match(/class="cnpy-personlink"[^>]*>@AndresL230</g) ?? []).length).toBe(2);
   });
 });

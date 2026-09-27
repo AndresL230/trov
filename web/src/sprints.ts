@@ -20,8 +20,8 @@ import type {
 } from "@shared/sprints";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import type { PersonSummary } from "./api";
-import { esc, attr, DETAIL_SHELL, SURFACE, surface } from "./ui";
-import { personChip } from "./people";
+import { esc, attr, DETAIL_SHELL, SURFACE, surface, hitArea, HITBOX } from "./ui";
+import { personChip, personLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { segmented } from "./segmented";
 import { ticketPill, priorityChip, age, avatarStack, tagChip } from "./tickets";
@@ -75,10 +75,11 @@ export function sprintTags(sp: Pick<SprintView, "urgency" | "due" | "domain">): 
   return tags.join("");
 }
 
-/** The lead block: avatar + first name + " · lead". Hidden (empty) with no lead. */
+/** The lead block: avatar + first name + " · lead", one chip that opens the lead's person
+ *  card. Hidden (empty) with no lead. */
 function leadBlock(lead: string | null, persons: PersonSummary[]): string {
   if (!lead) return "";
-  return `<span style="display:inline-flex;align-items:center;gap:6px;flex:none">${personChip(person(persons, lead), 18, lead)}<span style="font-size:11px;font-weight:500;color:var(--fg-55);white-space:nowrap">${esc(firstNameOf(persons, lead))} · lead</span></span>`;
+  return `<span style="display:inline-flex;flex:none">${personLink(person(persons, lead), lead, 18, `${firstNameOf(persons, lead)} · lead`, "font-size:11px;font-weight:500;color:var(--fg-55);white-space:nowrap", 6)}</span>`;
 }
 
 const NEXT_UP_STYLE =
@@ -181,7 +182,7 @@ export function sprintCard(sp: SprintView, persons: PersonSummary[], opts: Sprin
     <span style="font-size:11.5px;color:var(--fg-40);font-family:var(--label)">${esc(dateNote)}</span>
     ${bar}
     <div style="display:flex;align-items:center;gap:10px;margin-top:11px;padding-top:10px;border-top:1px solid var(--border)">
-      ${avatarStack(sp.members, persons)}
+      ${avatarStack(sp.members, persons, 20, true)}
       <span style="flex:1"></span>
       <button data-act="openSprint" data-arg="${sp.id}" class="cnpy-link" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--accent);white-space:nowrap">Open sprint<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
     </div>
@@ -331,14 +332,15 @@ function resourceRow(lk: SprintResourceView): string {
  * category + status across the top, the title (two lines at most), then who has
  * it, its priority and its age along the bottom. The order is still roots-then-
  * children, and a sub-ticket names its parent ("↳ sub-ticket of #N") since a grid
- * cannot show nesting by indent. A closed ticket (done / declined) is dimmed.
+ * cannot show nesting by indent. A closed ticket (done / declined) is dimmed. A
+ * `hitArea` card, so an assignee's photo opens their person card.
  */
 function sprintTicketCard(t: SprintTicketRow, persons: PersonSummary[]): string {
   const closed = t.status === "done" || t.status === "declined";
   const who = t.assignees.length > 0
-    ? avatarStack(t.assignees, persons, 20)
+    ? avatarStack(t.assignees, persons, 20, true)
     : `<span style="font-size:11.5px;font-style:italic;color:var(--fg-40)">Unassigned</span>`;
-  return `<button data-act="openTicket" data-arg="${t.id}" class="cnpy-tcard ${SURFACE}" style="display:flex;flex-direction:column;gap:10px;min-width:0;min-height:132px;text-align:left;padding:14px 15px 13px;${closed ? "opacity:.6;" : ""}">
+  return `<div class="cnpy-tcard ${SURFACE} ${HITBOX}" style="display:flex;flex-direction:column;gap:10px;min-width:0;min-height:132px;text-align:left;padding:14px 15px 13px;${closed ? "opacity:.6;" : ""}">
     <div style="display:flex;align-items:center;gap:8px;width:100%;min-width:0">
       <span style="font-family:var(--label);font-size:11px;color:var(--fg-40);flex:none">#${t.id}</span>
       ${tagChip(t.category)}
@@ -353,7 +355,8 @@ function sprintTicketCard(t: SprintTicketRow, persons: PersonSummary[]): string 
       <span style="margin-left:auto;flex:none">${priorityChip(t.priority)}</span>
       <span style="font-size:11.5px;color:var(--fg-40);font-family:var(--label);flex:none">${esc(age(t.created_at))}</span>
     </div>
-  </button>`;
+    ${hitArea("openTicket", String(t.id), `#${t.id} ${t.title}`)}
+  </div>`;
 }
 
 export interface SprintScreenProps {
@@ -414,7 +417,7 @@ export function sprintScreen(p: SprintScreenProps): string {
 
   const members = sp.members.length > 0
     ? `<div style="display:flex;flex-direction:column;gap:6px">${sp.members.map((h) =>
-        `<div style="display:flex;align-items:center;gap:9px;padding:4px 0">${personChip(person(p.persons, h), 22, h)}<span style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nameOf(p.persons, h))}</span></div>`).join("")}</div>`
+        `<div style="display:flex;min-width:0;padding:4px 0">${personLink(person(p.persons, h), h, 22, nameOf(p.persons, h), "min-width:0;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis", 9)}</div>`).join("")}</div>`
     : "";
 
   const resources = sp.resources.length > 0
@@ -455,7 +458,7 @@ export function sprintScreen(p: SprintScreenProps): string {
           ${prop("URGENCY", sprintTags({ urgency: sp.urgency, due: null, domain: null }))}
           ${prop("DOMAIN", sp.domain ? tag(sp.domain.toUpperCase(), tint("var(--blue)")) : `<span style="${PROP_CHIP}">—</span>`)}
           ${prop("LEAD", sp.lead
-            ? `<div style="display:flex;align-items:center;gap:7px;min-width:0">${personChip(person(p.persons, sp.lead), 20, sp.lead)}<span style="font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nameOf(p.persons, sp.lead))}</span></div>`
+            ? `<div style="display:flex;min-width:0">${personLink(person(p.persons, sp.lead), sp.lead, 20, nameOf(p.persons, sp.lead), "min-width:0;font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}</div>`
             : `<span style="font-size:12.5px;color:var(--fg-40)">Unassigned</span>`)}
         </div>
         <div style="${RAIL_EYEBROW};margin:22px 0 8px">Assignees</div>

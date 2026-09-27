@@ -451,9 +451,10 @@ describe("sprintScreen", () => {
       persons: PERSONS, resourceDraft: "",
     });
     expect(html).toContain("grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr))");
-    const root = html.slice(html.indexOf('data-arg="10"'), html.indexOf('data-arg="11"'));
-    const child = html.slice(html.indexOf('data-arg="11"'));
-    expect(root).toContain('class="cnpy-tcard cnpy-surface"');
+    // Each box is a `hitArea` card: its open-ticket button is its LAST child.
+    const root = html.slice(html.indexOf('class="cnpy-tcard'), html.indexOf('data-arg="10"'));
+    const child = html.slice(html.indexOf('data-arg="10"'), html.indexOf('data-arg="11"'));
+    expect(root).toContain('class="cnpy-tcard cnpy-surface cnpy-hitbox"');
     expect(root.slice(0, root.indexOf(">"))).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
     expect(root.slice(0, root.indexOf(">"))).not.toContain("border-radius");
     expect(root).not.toContain("↳");
@@ -461,6 +462,7 @@ describe("sprintScreen", () => {
     // children render AFTER their root, and each box opens its ticket
     expect(html.indexOf('data-arg="10"')).toBeLessThan(html.indexOf('data-arg="11"'));
     expect(html.match(/data-act="openTicket"/g)).toHaveLength(2);
+    expect(html).toContain('<button data-act="openTicket" data-arg="10" class="cnpy-hit" aria-label="#10 Root ticket"></button>');
   });
 
   it("stacks the assignee avatars on a ticket box, and says Unassigned when nobody is on it (design 514)", () => {
@@ -474,10 +476,11 @@ describe("sprintScreen", () => {
       }),
       persons: PERSONS, resourceDraft: "",
     });
-    const withAvs = html.slice(html.indexOf('data-arg="10"'), html.indexOf('data-arg="11"'));
-    const without = html.slice(html.indexOf('data-arg="11"'));
-    // the same overlapping stack the queue and the sprint card use
-    expect(withAvs).toContain(avatarStack(["meilin", "sanaok"], PERSONS, 20));
+    const withAvs = html.slice(html.indexOf('class="cnpy-tcard'), html.indexOf('data-arg="10"'));
+    const without = html.slice(html.indexOf('data-arg="10"'), html.indexOf('data-arg="11"'));
+    // the same overlapping stack the queue and the sprint card use — each photo its own person-card button
+    expect(withAvs).toContain(avatarStack(["meilin", "sanaok"], PERSONS, 20, true));
+    expect(withAvs).toMatch(/<button data-act="openPerson" data-arg="meilin" class="cnpy-personav"/);
     expect(withAvs).toContain("margin-left:-7px");
     expect(without).not.toContain("margin-left:-7px");
     expect(without).toContain("Unassigned");
@@ -682,5 +685,21 @@ describe("nextSprintId / NEXT UP — exactly one card", () => {
     // …and it is the soonest one (S3)
     const at = html.indexOf(">NEXT UP<");
     expect(html.lastIndexOf(">S3<", at)).toBeGreaterThan(html.lastIndexOf(">S2<", at));
+  });
+});
+
+describe("sprint people open their person card", () => {
+  it("the Roadmap card's lead is one chip and each member's photo a button", () => {
+    const html = sprintCard(sprint({ id: 3, label: "S", lead: "sanaok", members: ["meilin"] }), PERSONS);
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="sanaok" class="cnpy-personchip"[^>]*>.*Sana · lead<\/span><\/button>/s);
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="meilin" class="cnpy-personav"/);
+  });
+
+  it("the sprint screen's LEAD and Assignees rail are chips; an unknown handle stays plain", () => {
+    const html = sprintScreen({ detail: detail({ id: 3, label: "S", lead: "jose-a", members: ["meilin", "ghost"] }), persons: PERSONS, resourceDraft: "" });
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="jose-a" class="cnpy-personchip"/);
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="meilin" class="cnpy-personchip"/);
+    expect(html).not.toContain('data-act="openPerson" data-arg="ghost"');
+    expect(html).toContain(">ghost</span>");
   });
 });

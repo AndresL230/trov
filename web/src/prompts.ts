@@ -9,8 +9,8 @@ import { detectVars } from "@shared/handoffs";
 import { TAGS } from "@shared/vocabulary";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import type { PersonSummary } from "./api";
-import { esc, attr, relTime, statusBadge, surface, WORK_SHELL } from "./ui";
-import { personChip, handleTag } from "./people";
+import { esc, attr, relTime, statusBadge, surface, WORK_SHELL, hitArea, HITBOX } from "./ui";
+import { personLink, handleTag } from "./people";
 import { collapsedLineDiff } from "./diff";
 import { unifiedDiff } from "./review";
 import { primaryStyle } from "./handoffs";
@@ -86,9 +86,11 @@ function promptFilterMenu(p: PromptLibraryProps): FilterMenuProps {
   };
 }
 
+/** A library card: a `hitArea` card, so the author's photo and handle open their person card
+ *  while the rest opens the prompt. */
 function promptCard(x: PromptSummary, persons: PersonSummary[]): string {
   const au = personOf(persons, x.author);
-  return `<button data-act="openPrompt" data-arg="${attr(x.slug)}" class="cnpy-surface cnpy-card" style="display:flex;flex-direction:column;text-align:left;width:100%;min-width:0;padding:16px 18px">
+  return `<div class="cnpy-surface cnpy-card ${HITBOX}" style="display:flex;flex-direction:column;text-align:left;width:100%;min-width:0;padding:16px 18px">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;width:100%">
       <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(x.title)}</div>
       ${promptBadge(x.status)}
@@ -98,13 +100,13 @@ function promptCard(x: PromptSummary, persons: PersonSummary[]): string {
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:12px">${x.tags.map(tagPill).join("")}</div>
     <div style="flex:1"></div>
     <div style="display:flex;align-items:center;gap:7px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border);width:100%">
-      ${personChip(au, 18, x.author)}
-      ${handleTag(au, x.author, 11.5)}
+      ${personLink(au, x.author, 18, { html: handleTag(au, x.author, 11.5) }, "")}
       <span style="font-size:12px;color:var(--fg-40)">·</span>
       <span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-55)">v${x.version}</span>
       <span style="font-size:11.5px;color:var(--fg-40);margin-left:auto;white-space:nowrap">${esc(relTime(x.updated_at))}</span>
     </div>
-  </button>`;
+    ${hitArea("openPrompt", x.slug, x.title)}
+  </div>`;
 }
 
 export function promptLibraryView(p: PromptLibraryProps): string {
@@ -267,7 +269,7 @@ export function promptDetailView(p: PromptDetailProps): string {
         </div>
         <div>
           ${railHead("Author")}
-          <div style="display:flex;align-items:center;gap:10px;height:34px">${personChip(au, 24, x.author)}<span style="flex:1;min-width:0"><span style="display:block;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(au?.name || x.author)}</span>${handleTag(au, x.author, 11)}</span></div>
+          <div style="display:flex;align-items:center;height:34px;min-width:0">${personLink(au, x.author, 24, { html: `<span style="display:block;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(au?.name || x.author)}</span>${handleTag(au, x.author, 11)}` }, "flex:1;min-width:0", 10)}</div>
         </div>
         <div>
           ${railHead("Tags")}
