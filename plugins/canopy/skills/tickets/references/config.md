@@ -14,7 +14,7 @@ this file. Everything that actually has to hold is enforced by the Worker, where
 | Enforced by the Worker (binding on every bearer) | Expressed here (advisory) |
 |---|---|
 | You may write only to tickets **already assigned to you** | Which category/priority to default to |
-| Assignment is impossible after filing (no `toggle_assignee` tool) | Whether to self-assign at filing |
+| After filing, only an admin, the requester or an assignee may (re)assign (`assign_ticket`) | Whether to self-assign at filing |
 | Deleting or completing a sprint needs the person's confirmation | Which sprint a new ticket lands in |
 | The status machine (`submitted → in_progress → testing → done`…) | Which of those moves the skill will *offer* |
 | Nesting is exactly one level | A prefix on agent-written comments |
@@ -33,7 +33,7 @@ All optional. Unknown keys are ignored.
 | `default_category` | `other` | Category for tickets the agent files when the person didn't say. One of `bug` / `request` / `question` / `access` / `other`. |
 | `default_priority` | `normal` | Same, for priority: `low` / `normal` / `high`. |
 | `landing_sprint` | `backlog` | Where a filed ticket lands: `backlog` (no sprint), `active` (the one sprint currently in progress — if two are, ask), or a sprint id. |
-| `self_assign_on_create` | `true` | Whether the agent puts its own principal on tickets it files. **This is the lever on the one escalation the design has**: a self-assigned ticket is in the agent's lane, so it can later resolve it. Set `false` on a team that wants a person to pick up everything, including what an agent filed. |
+| `self_assign_on_create` | `true` | Whether the agent puts its own principal on tickets it files. **This is the lever on the one escalation the design has**: a self-assigned ticket is in the agent's lane, so it can later resolve it. Set `false` on a team that wants a person to pick up everything, including what an agent filed. (As the ticket's requester the agent could still add itself later with `assign_ticket` — the skill never does that unasked.) |
 | `offer_transitions` | `all` | Which moves the skill proposes. `all`, or `start-only` (`submitted → in_progress` and nothing else — a team that wants people to close things). Advisory. |
 | `comment_prefix` | *(none)* | Prepended to every comment the agent posts, e.g. `[via claude]`. Canopy stores **no** provenance on a write, so this is the only thing that makes an agent's comment recognizable in the ticket history. |
 | `require_confirmation` | `true` | Show the one-line diff and wait before any write. `done` / `declined` and `complete_sprint` are **always** confirmed regardless of this setting — they resolve work for the whole org. |

@@ -8,14 +8,23 @@
 //
 //   An agent writes only inside its principal's own lane. A ticket write over MCP
 //   is permitted exactly when the bearer principal is already an assignee of that
-//   ticket. Filing a new ticket is the one unscoped write.
+//   ticket. Filing a new ticket is the one unscoped write, and assigning one has
+//   a rule of its own (below).
 //
 // Why assignment is the boundary (design D2): the queue already states "this is
 // yours" by assigning it, by hand, in the web UI. Scoping to that needs no new
-// concept, no new column and no new screen — and it is why there is deliberately
-// NO `toggle_assignee` here (design D3). An agent that could edit the assignee
-// list could edit its own permissions; assignment stays a human act, reachable
-// only through `create_ticket`'s `assignees` at filing time.
+// concept, no new column and no new screen.
+//
+// Assignment itself (issue #90, 2026-09-27 — reversing design D3, which kept it a
+// human act reachable only through `create_ticket`'s `assignees`). D3 stood on
+// "an agent that could edit the assignee list could edit its own permissions".
+// The lane cannot scope assignment — assignment is how a ticket gets INTO a lane —
+// so `assign_ticket` is scoped to the people who could already hand the ticket to
+// someone: an ADMIN (a lead distributing work), the ticket's REQUESTER (routing
+// their own ticket) or a CURRENT ASSIGNEE (handing it on). That still leaves an
+// unrelated agent unable to put itself — or anyone — on someone else's ticket;
+// the escalation left open is the requester adding themselves, which D10 already
+// accepts at filing time.
 //
 // The bearer token IS the person (design D1), so inside that lane the parity with
 // the ticket screen is total — `done` and `declined` included. The fourth tickets
@@ -37,11 +46,12 @@ import { type DB, first } from "../db";
 import {
   TicketError,
   create_ticket, edit_ticket, transition_ticket, add_ticket_comment, add_ticket_link,
-  set_ticket_sprint, set_ticket_parent,
+  set_ticket_sprint, set_ticket_parent, toggle_assignee, requirePerson,
 } from "./tickets";
 import type { TicketCreate, TicketEdit, TicketStatus } from "@shared/tickets";
 
-/** The scoped verbs. `create_ticket` is absent on purpose — it is the unscoped write. */
+/** The lane-scoped verbs. `create_ticket` is absent on purpose — it is the unscoped
+ *  write — and so is `assign_ticket`, which has its own rule (assertTicketAssignable). */
 export type AgentVerb =
   | "edit_ticket"
   | "transition_ticket"
@@ -87,21 +97,44 @@ export async function assertTicketWritable(
     handle,
   );
   if (!(mine?.n ?? 0)) {
-    throw new TicketError("forbidden", `ticket ${id} is not assigned to you — assignment is done by a person in the web UI`);
+    throw new TicketError("forbidden", `ticket ${id} is not assigned to you — an admin, its requester or one of its assignees can add you (assign_ticket, or the web UI)`);
   }
 }
 
-// ── the seven wrappers: assert, then delegate ──────────────────────────────────
+/**
+ * The assignment rule, in one function (issue #90) — NOT the lane: see the header.
+ *
+ * Throws `not_found` for an unknown ticket (FIRST, as above), then `forbidden`
+ * unless the handle is an admin, the ticket's requester or one of its current
+ * assignees. Handles compare COLLATE NOCASE, like the lane.
+ */
+export async function assertTicketAssignable(db: DB, env: Env, id: number, handle: string): Promise<void> {
+  const t = await first<{ requester: number; assignee: number }>(
+    db,
+    `SELECT requester = ?1 COLLATE NOCASE AS requester,
+            EXISTS (SELECT 1 FROM ticket_assignees WHERE ticket_id = tickets.id AND login = ?1 COLLATE NOCASE) AS assignee
+       FROM tickets WHERE id = ?2`,
+    handle,
+    id,
+  );
+  if (!t) throw new TicketError("not_found", `no such ticket: ${id}`);
+
+  if (isAdmin(env, handle) || t.requester || t.assignee) return;
+  throw new TicketError("forbidden", `ticket ${id} can be (re)assigned only by an admin, its requester or one of its assignees`);
+}
+
+// ── the eight wrappers: assert, then delegate ──────────────────────────────────
 //
 // Each is one line of scope and one line of work. `src/mcp.ts` imports ONLY from
 // this module for ticket writes, so a verb cannot reach the MCP surface without
-// passing through the assertion above.
+// passing through one of the assertions above.
 
 /**
  * File a ticket — THE ONE UNSCOPED WRITE (design D2). It asserts nothing because
  * there is no ticket yet to be assigned to anyone.
  *
- * `input.assignees` is the only agent-reachable assignment in Canopy (design D3).
+ * `input.assignees` is the one assignment an agent makes without a rule to pass
+ * (after filing, `assign_ticket` is scoped by assertTicketAssignable).
  * An agent MAY name its own principal there and thereby unlock every scoped verb
  * on the ticket it just filed (design D10, accepted): every field it could later
  * change it could have set here, and the ticket is one it opened. That is the
@@ -162,4 +195,31 @@ export async function agentSetTicketParent(db: DB, env: Env, parentId: number, c
   await assertTicketWritable(db, env, parentId, actor, "set_ticket_parent");
   await assertTicketWritable(db, env, childId, actor, "set_ticket_parent");
   await set_ticket_parent(db, parentId, childId);
+}
+
+/**
+ * Add (`on: true`) or remove (`on: false`) one assignee — scoped by
+ * assertTicketAssignable, not the lane. Delegates to the web's `toggle_assignee`,
+ * so handle validation (an unknown or RESERVED handle is `bad_request`) and the
+ * write are the ticket screen's own. It never touches status, exactly like the
+ * web picker, and writes no history row: `ticket_events` audits status moves only.
+ *
+ * Idempotent WITHOUT a write: adding someone already on the ticket, or removing
+ * someone who is not, returns having written nothing — not even the `updated_at`
+ * bump the web writer makes on every toggle, so a repeated call never reorders the
+ * queue. The handle is still validated on that path, so a typo is never a silent
+ * success. A mirrored ticket's assignees are Canopy's after import, so this works
+ * on those too.
+ */
+export async function agentAssignTicket(db: DB, env: Env, id: number, login: string, on: boolean, actor: string): Promise<void> {
+  await assertTicketAssignable(db, env, id, actor);
+  const handle = await requirePerson(db, login);
+  const has = await first<{ n: number }>(
+    db,
+    `SELECT COUNT(*) AS n FROM ticket_assignees WHERE ticket_id = ? AND login = ? COLLATE NOCASE`,
+    id,
+    handle,
+  );
+  if (Boolean(has?.n) === on) return;
+  await toggle_assignee(db, id, handle, on);
 }

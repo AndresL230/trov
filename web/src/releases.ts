@@ -79,9 +79,9 @@ export const RELEASES: Release[] = [
       "Click anyone's name — on a ticket, in the Feed, in search or in Maintenance › People — to see their card: their photo, name, role, when they joined and their GitHub.",
       "Upload your own photo in Settings › Profile. It's cropped to a square and shows everywhere your avatar does; remove it to go back to your GitHub or Google picture.",
       "Everyone has a role, shown on their card. Admins set it, with each person's responsibilities, in Maintenance › People. Responsibilities aren't shown anywhere: agents read them when deciding whom to assign work.",
-      "Names lead to profiles: a person in search, a requester or assignee on a ticket, and an author in the Feed each open that person's profile.",
       "Tickets you filed in Canopy can be deleted from the ticket page (tickets mirrored from GitHub can't), after a confirmation.",
       "In Maintenance › Identity, discard a GitHub login that isn't on the team — outside contributors stop showing up there, even when they open another pull request, and Undo brings one back.",
+      "Agents can now assign and unassign people on existing tickets — when the person they work for is an admin, the ticket's requester or already on it. Tickets mirrored from GitHub included.",
     ],
     headsUp: [
       "Opening Settings no longer lights up the account chip at the bottom of the sidebar as if it were a selected row.",
@@ -98,6 +98,7 @@ export const RELEASES: Release[] = [
         "Settings › Profile: Upload photo / Remove photo (`web/src/avatar.ts` centre-crops to a 512px square and encodes WebP, else PNG, before upload) (#89)",
         "Tickets: `POST /tickets/:id/delete` hard-deletes a native ticket (any member, never MCP; a ticket mirrored from GitHub is a 403); Delete ticket in the rail, through the confirmation modal (#89)",
         "Maintenance › Identity: `POST /identity-tasks/:login/discard` / `restore` — a soft, sticky discard (`identity_tasks.status = 'discarded'` + `resolved_at` / `resolved_by`, no migration; the login's PK keeps it from being re-raised, its events are still captured); a Discard on each card, a \"Discarded @login · Undo\" toast, and an \"N discarded\" list with Restore; `GET /identity-tasks` adds `discarded` (#89)",
+        "MCP `assign_ticket { id, login, on }` (issue #90): adds or removes one assignee over the web's `toggle_assignee`, scoped to an admin, the ticket's requester or a current assignee (`assertTicketAssignable`); idempotent with no write, never changes status; the `tickets` / `canopy` skills and `create_ticket`'s description say so (#89)",
       ],
       changed: [
         "`personChip` draws the initials under the photo; a photo that fails to load is dropped for the session (one capture-phase `error` listener), so it falls back to initials instead of a broken image (#89)",
