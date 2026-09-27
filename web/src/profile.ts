@@ -36,29 +36,48 @@ export interface PersonCardProps {
   self: boolean;
 }
 
+// The card's structure: a header (photo beside name, handle and the admin badge), then
+// labelled property rows like the ticket rail's (ROLE · JOINED · GITHUB — a row whose value
+// is not known yet reads "—", so the card never changes height when the detail lands), then
+// one's own "Edit" action in a footer.
+const PROP_ROW = "display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center;min-height:32px";
+const PROP_LABEL = "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40)";
+const PROP_VALUE = "min-width:0;font-size:13px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+const NONE = `<span style="color:var(--fg-40)">—</span>`;
+
 /** The modal: a root-level `data-overlay` — backdrop (a click closes) + the centered card. */
 export function personCardModal(p: PersonCardProps): string {
   const x = p.person;
   const d = p.detail && p.detail.handle.toLowerCase() === x.handle.toLowerCase() ? p.detail : null;
   const name = x.name || x.handle;
-  const meta: string[] = [];
-  if (d?.admin) meta.push(statusBadge("ADMIN", "var(--accent)"));
-  const joined = d ? joinedLabel(d.joined) : "";
-  if (joined) meta.push(`<span style="white-space:nowrap">${esc(joined)}</span>`);
-  if (d?.github) {
-    meta.push(`<a href="https://github.com/${encodeURIComponent(d.github)}" target="_blank" rel="noopener noreferrer" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:5px;color:var(--fg-55);text-decoration:none;white-space:nowrap">${GH_SVG}<span style="font-family:var(--label)">${esc(d.github)}</span></a>`);
-  }
+  const joined = d ? joinedLabel(d.joined).replace(/^Joined /, "") : "";
+  const github = d?.github
+    ? `<a href="https://github.com/${encodeURIComponent(d.github)}" target="_blank" rel="noopener noreferrer" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;max-width:100%;color:var(--fg);text-decoration:none">${GH_SVG}<span style="font-family:var(--label);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.github)}</span></a>`
+    : d ? `<span style="color:var(--fg-40)">Not linked</span>` : NONE;
+  const row = (label: string, value: string) => `<div style="${PROP_ROW}"><div style="${PROP_LABEL}">${label}</div><div style="${PROP_VALUE}">${value}</div></div>`;
   return `<div data-overlay="person-card" class="cnpy-cmodal">
     <div data-act="personCardClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
     <div class="cnpy-cmodal-wrap">
-      <div id="person-card" role="dialog" aria-modal="true" aria-labelledby="person-card-t" tabindex="-1" data-person-card class="cnpy-surface cnpy-cmodal-box cnpy-personcard" style="position:relative;text-align:center;padding:26px 22px 22px">
-        <button data-act="personCardClose" aria-label="Close" title="Close" class="cnpy-iconbtn" style="position:absolute;top:10px;right:10px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${CLOSE_SVG}</button>
-        <div style="display:flex;justify-content:center">${personChip(x, 88, x.handle)}</div>
-        <div id="person-card-t" style="margin-top:14px;font-size:19px;font-weight:600;letter-spacing:-0.015em;line-height:1.3;overflow-wrap:anywhere">${esc(name)}</div>
-        <div style="display:flex;justify-content:center;margin-top:6px">${handleTag(x, x.handle, 12.5)}</div>
-        <div style="margin-top:10px;font-size:14px;color:${x.role ? "var(--fg-70)" : "var(--fg-40)"}">${x.role ? esc(x.role) : "No role yet"}</div>
-        ${meta.length ? `<div style="display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:6px 14px;margin-top:14px;font-size:12px;color:var(--fg-40)">${meta.join("")}</div>` : ""}
-        ${p.self ? `<button data-act="goSettings" class="cnpy-outlinebtn" style="margin-top:18px;padding:7px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">Edit your photo and name</button>` : ""}
+      <div id="person-card" role="dialog" aria-modal="true" aria-labelledby="person-card-t" tabindex="-1" data-person-card class="cnpy-surface cnpy-cmodal-box cnpy-personcard" style="position:relative;width:min(380px, 100%);padding:0">
+        <button data-act="personCardClose" aria-label="Close" title="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${CLOSE_SVG}</button>
+        <div style="display:flex;align-items:center;gap:16px;padding:22px 52px 18px 22px">
+          ${personChip(x, 64, x.handle)}
+          <div style="min-width:0;flex:1">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0">
+              <div id="person-card-t" style="min-width:0;font-size:18px;font-weight:600;letter-spacing:-0.015em;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>
+              ${d?.admin ? `<span style="flex:none">${statusBadge("ADMIN", "var(--accent)")}</span>` : ""}
+            </div>
+            <div style="margin-top:5px">${handleTag(x, x.handle, 12)}</div>
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding:8px 22px ${p.self ? "8px" : "14px"}">
+          ${row("ROLE", x.role ? esc(x.role) : `<span style="color:var(--fg-40)">No role yet</span>`)}
+          ${row("JOINED", joined ? esc(joined) : NONE)}
+          ${row("GITHUB", github)}
+        </div>
+        ${p.self ? `<div style="border-top:1px solid var(--border);padding:12px 22px 14px;display:flex;justify-content:flex-end">
+          <button data-act="goSettings" class="cnpy-outlinebtn" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">Edit photo and name</button>
+        </div>` : ""}
       </div>
     </div>
   </div>`;

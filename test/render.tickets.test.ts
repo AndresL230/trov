@@ -1046,11 +1046,12 @@ describe("ticketDetailView — the thread", () => {
     })));
     expect(html).not.toContain("<b>hi</b>");
     expect(html).toContain("&lt;b&gt;hi&lt;/b&gt;");
-    // Both resolving forms become the accent chip carrying the person's FIRST name.
-    const chip = (first: string) =>
-      `<span style="color:var(--accent);font-weight:600;background:var(--accent-soft);border-radius:4px;padding:0 4px">@${first}</span>`;
-    expect(html).toContain(chip("Meilin"));   // @meilin → handle match
-    expect(html).toContain(chip("Sana"));     // @Sana   → first-name match
+    // Both resolving forms become the accent chip carrying the person's FIRST name — a button
+    // that opens that person's card, like the photo and name beside the comment.
+    const chip = (handle: string, first: string) =>
+      new RegExp(`<button data-act="openPerson" data-arg="${handle}" class="cnpy-mention"[^>]*>@${first}</button>`);
+    expect(html).toMatch(chip("meilin", "Meilin"));   // @meilin → handle match
+    expect(html).toMatch(chip("sanaok", "Sana"));     // @Sana   → first-name match
     // A non-member stays plain: the literal text is there and it is NOT chipped.
     expect(html).toContain("@nobody");
     expect(html).not.toContain(chip("nobody"));
@@ -1410,5 +1411,25 @@ describe("ticketDetailView — delete", () => {
     expect(html).toContain("can&#39;t be undone");
     expect(html).toContain("sub-ticket stays");
     expect(html).toContain('data-confirm-act="ticketDelete"');
+  });
+});
+
+describe("ticketDetailView — people are clickable chips", () => {
+  it("the requester, each assignee and each history actor are ONE photo + name button; a comment's photo, name and @mention each open the card", () => {
+    const html = ticketDetailView(detailProps(detail({
+      id: 1, title: "T", requester: "meilin", assignees: ["sanaok"],
+      comments: [comment({ author: "meilin", body: "ping @Sana" })],
+    })));
+    // Photo INSIDE the button, name beside it: one chip.
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="meilin" class="cnpy-personchip"[^>]*><div class="cnpy-av/);
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="sanaok" class="cnpy-personchip"[^>]*><div class="cnpy-av/);
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="meilin" class="cnpy-personav"/);
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="sanaok" class="cnpy-mention"/);
+  });
+
+  it("the GitHub mirror's system handle is never a button", () => {
+    const html = ticketDetailView(detailProps(detail({ id: 2, title: "M", requester: "github-webhook", source: "github", source_ref: "SaplingLearn/sapling#1", source_author: "outsider" })));
+    expect(html).not.toContain('data-arg="github-webhook"');
+    expect(html).toContain("@outsider");
   });
 });

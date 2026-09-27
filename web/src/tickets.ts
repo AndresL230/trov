@@ -23,7 +23,7 @@ import type { SprintView } from "@shared/sprints";
 import { sprintDatesLabel } from "@shared/sprints-core";
 import type { PersonSummary } from "./api";
 import { esc, attr, relTime, primaryBtn, WORK_SHELL, DETAIL_SHELL, SURFACE, surface } from "./ui";
-import { personChip } from "./people";
+import { personChip, personLink, personAvatarLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { mentionCandidates, mentionPickerTop, COMMENT_BOX } from "./mentions";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
@@ -111,6 +111,9 @@ function person(persons: PersonSummary[], handle: string): PersonSummary | null 
 }
 const nameOf = (persons: PersonSummary[], handle: string): string =>
   person(persons, handle)?.name || (handle === MIRROR_HANDLE ? "GitHub" : handle);
+/** The person a name may link to — a known person, never the GitHub mirror's system handle. */
+const linkable = (persons: PersonSummary[], handle: string): PersonSummary | null =>
+  handle === MIRROR_HANDLE ? null : person(persons, handle);
 /** A name in the rail: a link to their profile when the handle is a known person (never the
  *  GitHub mirror's system handle), else plain text. `style` is the text's own. */
 function personName(persons: PersonSummary[], handle: string, label: string, style: string): string {
@@ -629,7 +632,8 @@ function mentionize(text: string, persons: PersonSummary[]): string {
   return esc(text).replace(/@([A-Za-z0-9_-]+)/g, (whole, name: string) => {
     const handle = known.get(name.toLowerCase());
     if (!handle) return whole;
-    return `<span style="color:var(--accent);font-weight:600;background:var(--accent-soft);border-radius:4px;padding:0 4px">@${esc(firstNameOf(persons, handle))}</span>`;
+    // A mention is a name too: it opens that person's card, like the photo and name beside a comment.
+    return `<button data-act="openPerson" data-arg="${attr(handle)}" class="cnpy-mention" title="${attr(nameOf(persons, handle))}" style="display:inline;font:inherit;color:var(--accent);font-weight:600;background:var(--accent-soft);border-radius:4px;padding:0 4px;cursor:pointer">@${esc(firstNameOf(persons, handle))}</button>`;
   });
 }
 
@@ -846,9 +850,9 @@ function threadBlock(p: TicketDetailProps): string {
     rows.push({
       ts: new Date(c.created_at).getTime(),
       html: `<div style="display:flex;align-items:flex-start;gap:11px;padding:14px 0;border-bottom:1px solid var(--border)">
-        <div style="margin-top:1px">${personChip(person(p.persons, c.author), 26, c.author)}</div>
+        <div style="margin-top:1px">${personAvatarLink(linkable(p.persons, c.author), c.author, 26)}</div>
         <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:7px"><span style="font-size:12.5px;font-weight:600;white-space:nowrap">${esc(nameOf(p.persons, c.author))}</span><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">${esc(relTime(c.created_at))}</span></div>
+          <div style="display:flex;align-items:center;gap:7px">${personName(p.persons, c.author, nameOf(p.persons, c.author), "font-size:12.5px;font-weight:600;white-space:nowrap;color:var(--fg)")}<span style="font-size:11px;color:var(--fg-40);white-space:nowrap">${esc(relTime(c.created_at))}</span></div>
           <div style="font-size:13px;line-height:1.6;color:var(--fg-70);margin-top:4px">${mentionize(c.body, p.persons)}</div>
         </div>
       </div>`,
@@ -864,7 +868,7 @@ function threadBlock(p: TicketDetailProps): string {
       ts: new Date(ev.created_at).getTime(),
       html: `<div style="display:flex;align-items:center;gap:9px;padding:8px 0 8px 8px;border-bottom:1px solid var(--border)">
         <span style="width:6px;height:6px;border-radius:50%;background:var(--border-strong);flex:none;margin:0 6px"></span>
-        <span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-55);white-space:nowrap">${esc(ev.actor === MIRROR_HANDLE ? "GitHub" : ev.actor)}</span>
+        ${personLink(linkable(p.persons, ev.actor), ev.actor, 16, ev.actor === MIRROR_HANDLE ? "GitHub" : nameOf(p.persons, ev.actor), "font-size:12px;font-weight:600;color:var(--fg-70);white-space:nowrap")}
         <span style="font-size:12px;color:var(--fg-40);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(move)}</span>
         <span style="font-size:11px;color:var(--fg-40);margin-left:auto;flex:none;white-space:nowrap">${esc(relTime(ev.created_at))}</span>
       </div>`,
@@ -910,8 +914,7 @@ function assigneeRail(p: TicketDetailProps): string {
     : "";
   const list = assigned.length
     ? assigned.map((h) => `<div style="display:flex;align-items:center;gap:10px;height:34px">
-        ${personChip(person(p.persons, h), 24, h)}
-        <span style="flex:1;min-width:0;display:flex">${personName(p.persons, h, nameOf(p.persons, h), "min-width:0;font-size:13px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}</span>
+        <span style="flex:1;min-width:0;display:flex">${personLink(linkable(p.persons, h), h, 24, nameOf(p.persons, h), "min-width:0;font-size:13px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}</span>
         <button data-act="ticketAsgRemove" data-arg="${attr(h)}" title="Remove" class="cnpy-iconbtn" style="flex:none;${ICON_BTN};opacity:.45"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
       </div>`).join("")
     : `<div style="display:flex;align-items:center;gap:10px;height:34px">
@@ -1044,7 +1047,7 @@ export function ticketDetailView(p: TicketDetailProps): string {
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">STATUS</div><div style="min-width:0">${statusControl(t.status, p.stMenu === "rail", "rail")}</div></div>
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">CATEGORY</div><div>${categoryChip(t.category)}</div></div>
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">PRIORITY</div><div>${priorityChip(t.priority)}</div></div>
-          <div style="${PROP_ROW}"><div style="${PROP_LABEL}">REQUESTER</div><div style="display:flex;align-items:center;gap:7px;min-width:0">${personChip(person(p.persons, t.requester), 20, t.requester)}${personName(p.persons, t.requester, t.requester === MIRROR_HANDLE && t.source_author ? `@${t.source_author}` : nameOf(p.persons, t.requester), "min-width:0;font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}</div></div>
+          <div style="${PROP_ROW}"><div style="${PROP_LABEL}">REQUESTER</div><div style="display:flex;min-width:0">${personLink(linkable(p.persons, t.requester), t.requester, 20, t.requester === MIRROR_HANDLE && t.source_author ? `@${t.source_author}` : nameOf(p.persons, t.requester), "min-width:0;font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}</div></div>
           ${sourceRow(t)}
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">OPENED</div><div style="font-size:12.5px;color:var(--fg-70);white-space:nowrap">${esc(relTime(t.created_at))}</div></div>
         </div>

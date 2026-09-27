@@ -54,6 +54,26 @@ export function personChip(p: { handle: string; name?: string | null; color: Per
   return `<div class="cnpy-av" title="${attr(p.name ?? p.handle)}" style="--c:var(--p-${p.color});position:relative;width:${size}px;height:${size}px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:${font}px;font-weight:600;color:#fff;flex:none;overflow:hidden">${esc(initialsOfName(p.name, p.handle))}${img}</div>`;
 }
 
+/** A person's photo and name as ONE chip: the whole thing is the button that opens their
+ *  person card (`openPerson`), and it lights up as one on hover. `person` null (an unknown
+ *  handle, or the GitHub mirror's system handle) renders the same two pieces as plain,
+ *  unclickable content, so the layout never shifts. `textStyle` is the name's own. */
+export function personLink(person: { handle: string; name?: string | null; color: PersonColor; avatar_url?: string | null } | null, fallback: string, size: number, label: string, textStyle: string): string {
+  const inner = `${personChip(person, size, fallback)}<span style="${textStyle}">${esc(label)}</span>`;
+  const box = "display:inline-flex;align-items:center;gap:7px;min-width:0;max-width:100%";
+  return person
+    ? `<button data-act="openPerson" data-arg="${attr(person.handle)}" class="cnpy-personchip" title="${attr(person.name || person.handle)}" style="${box};text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px">${inner}</button>`
+    : `<span style="${box}">${inner}</span>`;
+}
+
+/** A person's photo on its own, clickable like their name (the Feed's and a comment's
+ *  avatar column). Plain when the person is unknown. */
+export function personAvatarLink(person: { handle: string; name?: string | null; color: PersonColor; avatar_url?: string | null } | null, fallback: string, size: number): string {
+  return person
+    ? `<button data-act="openPerson" data-arg="${attr(person.handle)}" class="cnpy-personav" title="${attr(person.name || person.handle)}" aria-label="${attr(`${person.name || person.handle} — person card`)}" style="display:flex;padding:0;border-radius:50%">${personChip(person, size, fallback)}</button>`
+    : personChip(person, size, fallback);
+}
+
 export function swatches(act: string, selected: PersonColor, compact = false): string {
   return `<div role="radiogroup" style="display:grid;grid-template-columns:repeat(${compact ? 10 : 5},1fr);gap:${compact ? 4 : 10}px">${COLOR_NAMES.map((c) =>
     `<button type="button" role="radio" aria-checked="${c === selected}" data-act="${attr(act)}" data-arg="${c}" class="cnpy-sw${c === selected ? " is-on" : ""}${compact ? " compact" : ""}" style="--c:var(--p-${c})"><i></i><span>${c}</span></button>`).join("")}</div>`;

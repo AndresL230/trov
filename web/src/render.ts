@@ -13,7 +13,7 @@ import { sprintCard, newSprintPanel, sprintScreen, nextSprintId } from "./sprint
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
-import { initialOnboard, onboardView, personChip, handleTag, swatches, type OnboardState } from "./people";
+import { initialOnboard, onboardView, personChip, personAvatarLink, handleTag, swatches, type OnboardState } from "./people";
 import { personCardModal } from "./profile";
 import { AVATAR_TYPES } from "@shared/people";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
@@ -1038,7 +1038,7 @@ function feedView(s: AppState): string {
       : "";
     return `<div${surface("padding:16px 18px;margin-bottom:12px", { hover: true })}>
       <div style="display:flex;align-items:flex-start;gap:12px">
-        <div style="margin-top:1px">${personChip(personFor(s, e.author), 30, e.author)}</div>
+        <div style="margin-top:1px">${personAvatarLink(personFor(s, e.author), e.author, 30)}</div>
         <div style="flex:1;min-width:0">
           <div class="cnpy-md-inline" style="font-size:14px;font-weight:500;line-height:1.5;letter-spacing:-0.005em">${renderMarkdownInline(e.summary)}</div>
           ${s.feedView === "reading" ? feedBrief(e.brief) : feedBody(e.body)}

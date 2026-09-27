@@ -787,6 +787,14 @@ input, select { font-family: inherit; }
 @media (max-width:640px) { .cnpy-profile-opt { display:none; } }
 /* A person's name that opens their profile (the ticket rail, the feed, Maintenance › People). */
 .cnpy-personlink { cursor:pointer; text-underline-offset:2px; }
+/* A person's photo + name as one chip (people.ts `personLink`): the pair lights up together. */
+.cnpy-personchip { cursor:pointer; transition:background .12s ease; }
+.cnpy-personchip:hover { background:var(--hover); }
+.cnpy-personchip:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.cnpy-personav { cursor:pointer; transition:transform .12s ease, opacity .12s ease; }
+.cnpy-personav:hover { opacity:.85; }
+.cnpy-personav:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.cnpy-mention:hover { text-decoration:underline; text-underline-offset:2px; }
 .cnpy-personlink:hover, .cnpy-maint-person:hover > span > span:first-child { text-decoration:underline; text-underline-offset:2px; }
 .cnpy-accentbtn { transition:filter .12s ease, transform .12s ease; }
 .cnpy-accentbtn:hover { filter:brightness(1.06); }

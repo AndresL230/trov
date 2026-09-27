@@ -205,19 +205,21 @@ describe("the person card (a click on a name — there is no People screen)", ()
     expect(html).toContain('class="cnpy-cmodal"');
     expect(html).toContain('role="dialog" aria-modal="true" aria-labelledby="person-card-t"');
     expect(html).toContain('src="/avatar/abc"');
-    expect(html).toContain("width:88px");
+    expect(html).toContain("width:64px");
     expect(html).toContain(">Priya Natarajan</div>");
+    // Structured: labelled property rows, each "—" until the detail lands (so the card keeps its height).
+    for (const label of ["ROLE", "JOINED", "GITHUB"]) expect(html).toContain(`>${label}</div>`);
     expect(html).toContain("@priya");
     expect(html).toContain("Backend engineer");
     // The backdrop and × close it; nothing else is on it before the detail read lands.
     expect(html.match(/data-act="personCardClose"/g)?.length).toBe(2);
-    expect(html).not.toContain("Joined");
+    expect(html).not.toContain("Jun 2026");
     expect(html).not.toContain("github.com");
   });
 
   it("the detail read adds joined, GitHub and the admin badge — for the same person only", () => {
     const html = card(profile({ admin: true }));
-    expect(html).toContain(joinedLabel("2026-06-03T10:00:00Z"));
+    expect(html).toContain(joinedLabel("2026-06-03T10:00:00Z").replace("Joined ", ""));
     expect(html).toContain('href="https://github.com/priya-n"');
     expect(html).toContain("ADMIN");
     // A stale detail for someone else never decorates this card.
