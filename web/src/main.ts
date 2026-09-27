@@ -35,7 +35,7 @@ import {
 } from "./api";
 import { handoffAsPrompt, blankHandoff, docDraftFromHandoff, type NewHandoffDraft } from "./handoffs";
 import { normalizeTags, type HandoffView } from "@shared/handoffs";
-import { selectedUnplacedId } from "./maintenance";
+import { selectedUnplacedId, personEditChanged } from "./maintenance";
 import { ASSIGN_OPTIONS } from "./triage-map";
 import { draftFromPrompt, blankPromptDraft, slugify, tagOptions } from "./prompts";
 import { blankDoc, defaultSection } from "./newdoc";
@@ -280,6 +280,7 @@ function rerender(): void {
   syncFavicon(resolvedTheme(), mount.querySelector("[data-cnpy-theme]"));
   restoreScroll(mount, scroll, state.screen);
   markEnter();
+  syncRoleEdit();
   if (pendingFlash) {
     for (const el of Array.from(mount.querySelectorAll(pendingFlash))) el.classList.add("cnpy-flash");
     pendingFlash = null;
@@ -1707,6 +1708,47 @@ function confirmOut(then: () => void): void {
   setTimeout(then, CONFIRM_OUT_MS);
 }
 
+// ── Maintenance › People: the role editor's open / close motion ──────────────
+// The editor lives in <main>, which every rerender swaps — a keystroke in it builds a NEW
+// element, and a CSS animation on it would replay from the start. So, like the screen
+// entrance (`markEnter`), the motion is keyed on TIME, not on the element: `syncRoleEdit`
+// runs after every paint and marks the editor (and its row) `data-anim` only while its
+// open / close is still inside ROLE_EDIT_MS, with a NEGATIVE delay (`--re-t`) so a
+// rerender mid-way joins the animation where the old element left off. Past the window
+// the element renders plain (open, or collapsed under canopy.css `[data-roleedit="out"]`).
+// A closed editor lingers as `state.personEditOut` for its exit, then drops out.
+const ROLE_EDIT_MS = 200;
+let roleEditInAt = -Infinity;
+let roleEditOutAt = -Infinity;
+
+function syncRoleEdit(): void {
+  const now = performance.now();
+  for (const el of Array.from(mount.querySelectorAll<HTMLElement>("[data-roleedit]"))) {
+    const elapsed = now - (el.dataset.roleedit === "out" ? roleEditOutAt : roleEditInAt);
+    if (elapsed >= ROLE_EDIT_MS) continue;
+    el.setAttribute("data-anim", "");
+    el.style.setProperty("--re-t", `${-Math.round(elapsed)}ms`);
+  }
+}
+
+/** Close the role editor: it collapses under its row (instantly under reduced motion) and,
+ *  with `refocus`, focus goes back to that row's Edit role button. */
+function closePersonEdit(refocus: boolean): void {
+  const ed = state.personEdit;
+  if (!ed) return;
+  state.personEdit = null;
+  state.personSaving = false;
+  if (reducedMotion()) state.personEditOut = null;
+  else {
+    state.personEditOut = ed;
+    const at = (roleEditOutAt = performance.now());
+    setTimeout(() => { if (roleEditOutAt === at && state.personEditOut) { state.personEditOut = null; rerender(); } }, ROLE_EDIT_MS);
+  }
+  rerender();
+  // The button carries a data-field, so every rerender until the exit ends keeps its focus.
+  if (refocus) mount.querySelector<HTMLElement>(`[data-field="personEditBtn:${cssEscape(ed.handle)}"]`)?.focus({ preventScroll: true });
+}
+
 // Drives a (possibly multi-batch) Sync GitHub run: the backend caps AI calls
 // per invocation (src/tools/backfill.ts's summaryBudgetExhausted), so this
 // keeps calling adminBackfill(batch, of) while a budget was exhausted, updating
@@ -2020,35 +2062,48 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "personCardClose": state.personCard = null; break;
     // Maintenance › People (admin): "Edit role" opens the role + responsibilities editor under
     // that person's row — the one place either is edited. Responsibilities come from the
-    // person's profile read (an admin's read carries them); the editor waits for it.
+    // person's profile read (an admin's read carries them); the editor waits for it, as a
+    // disabled skeleton of itself. Opening a second person's closes the first (it collapses
+    // while the new one expands); see `syncRoleEdit` for how the motion survives rerenders.
     case "personEditOpen": {
-      if (!arg || state.me?.admin !== true) return;
+      if (!arg || state.me?.admin !== true || state.personSaving) return;
       const handle = arg;
-      state.personEdit = { handle, draft: null };
-      state.personSaving = false;
+      if (state.personEdit) closePersonEdit(false);
+      state.personEdit = { handle, draft: null, base: null };
+      roleEditInAt = performance.now();
       rerender();
       getPersonProfile(handle)
         .then((pr) => {
           if (state.personEdit?.handle !== handle) return;
-          state.personEdit = { handle, draft: { role: pr.role ?? "", responsibilities: pr.responsibilities ?? "" } };
+          const base = { role: pr.role ?? "", responsibilities: pr.responsibilities ?? "" };
+          state.personEdit = { handle, draft: base, base };
           rerender();
-          mount.querySelector<HTMLInputElement>('[data-field="personRole"]')?.focus();
+          // Focus Role unless the admin has already moved on to something else.
+          const at = document.activeElement;
+          if (!at || at === document.body || at.getAttribute("data-field") === `personEditBtn:${handle}`) {
+            mount.querySelector<HTMLInputElement>('[data-field="personRole"]')?.focus({ preventScroll: true });
+          }
         })
-        .catch((e) => { if (state.personEdit?.handle === handle) state.personEdit = null; writeErr(e, "Couldn't load that person's role"); });
+        .catch((e) => { if (state.personEdit?.handle === handle) closePersonEdit(true); writeErr(e, "Couldn't load that person's role"); });
+      // Once it has opened, bring the whole editor into view (a row low on the page).
+      setTimeout(() => {
+        if (state.personEdit?.handle !== handle) return;
+        mount.querySelector(".cnpy-roleedit[data-roleedit=\"in\"]")?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+      }, ROLE_EDIT_MS);
       return;
     }
-    case "personEditCancel": state.personEdit = null; break;
+    case "personEditCancel": if (!state.personSaving) closePersonEdit(true); return;
     case "personRoleDraft": if (state.personEdit?.draft) state.personEdit = { ...state.personEdit, draft: { ...state.personEdit.draft, role: value ?? "" } }; break;
     case "personRespDraft": if (state.personEdit?.draft) state.personEdit = { ...state.personEdit, draft: { ...state.personEdit.draft, responsibilities: value ?? "" } }; break;
     case "personEditSave": {
       const ed = state.personEdit;
-      if (!ed?.draft || state.personSaving) return;
+      if (!ed?.draft || state.personSaving || !personEditChanged(ed.draft, ed.base)) return;
       state.personSaving = true;
       rerender();
       updatePersonProfile(ed.handle, { role: ed.draft.role.trim() || null, responsibilities: ed.draft.responsibilities.trim() || null })
         .then((fresh) => {
           state.personSaving = false;
-          if (state.personEdit?.handle === ed.handle) state.personEdit = null;
+          if (state.personEdit?.handle === ed.handle) closePersonEdit(true);
           if (state.personDetail.data?.handle.toLowerCase() === fresh.handle.toLowerCase()) state.personDetail = { status: "ok", data: fresh };
           flash(`Saved ${fresh.name || fresh.handle}'s role`);
           loadPersons();
@@ -3979,6 +4034,26 @@ mount.addEventListener("keydown", (e) => {
     const p = state.promptDetail.data?.prompt;
     const first = p ? tagOptions(p.tags, state.promptList.data.flatMap((x) => x.tags), state.promptTagDraft)[0] : undefined;
     if (first) dispatch("promptTagAdd", first.tag, null);
+  }
+});
+// ── Maintenance › People's role editor: Enter in Role, ⌘/Ctrl+Enter in either field saves
+// (a Save that has nothing to save does nothing); Escape — in the editor, or on its row's
+// Edit role button — cancels, and focus goes back to that button.
+mount.addEventListener("keydown", (e) => {
+  if (!state.personEdit || state.personCard || e.isComposing) return;
+  const t = e.target as Element | null;
+  const inEditor = !!t?.closest?.('.cnpy-roleedit[data-roleedit="in"]');
+  if (e.key === "Escape" && (inEditor || t?.closest?.('.cnpy-prow-edit[aria-expanded="true"]'))) {
+    e.preventDefault();
+    dispatch("personEditCancel", null, null);
+    return;
+  }
+  if (e.key !== "Enter" || !inEditor || e.repeat) return;
+  const field = t?.getAttribute("data-field");
+  const mod = e.metaKey || e.ctrlKey;
+  if ((field === "personRole" && !e.shiftKey) || (field === "personResp" && mod)) {
+    e.preventDefault();
+    dispatch("personEditSave", null, null);
   }
 });
 // Escape closes the expanded handoff prompt (the filter menus close in their own listener).

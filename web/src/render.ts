@@ -356,8 +356,12 @@ export interface AppState {
   /** That person's `GET /api/people/:handle` (joined, GitHub, admin) — the card paints without it. */
   personDetail: Loadable<PersonProfile | null>;
   /** Maintenance › People: the admin's open role + responsibilities editor (one person;
-   *  `draft` null while that person's profile read is in flight); null = closed. */
-  personEdit: { handle: string; draft: PersonEditDraft | null } | null;
+   *  `draft` null while that person's profile read is in flight, `base` what it returned);
+   *  null = closed. */
+  personEdit: { handle: string; draft: PersonEditDraft | null; base: PersonEditDraft | null } | null;
+  /** The editor just closed (or replaced by another person's), rendered collapsing under its
+   *  row until its exit is over; always null under prefers-reduced-motion. */
+  personEditOut: { handle: string; draft: PersonEditDraft | null; base: PersonEditDraft | null } | null;
   personSaving: boolean;
   /** A photo upload or removal in flight. */
   avatarBusy: "upload" | "remove" | null;
@@ -484,6 +488,7 @@ export function initialState(): AppState {
     personCard: null,
     personDetail: { status: "idle", data: null },
     personEdit: null,
+    personEditOut: null,
     personSaving: false,
     avatarBusy: null,
   };
@@ -2220,6 +2225,7 @@ function maintenanceScreen(s: AppState): string {
     me: s.me?.handle ?? null,
     canInvite: admin,
     edit: admin && s.personEdit ? { ...s.personEdit, saving: s.personSaving } : null,
+    editOut: admin && s.personEditOut ? { ...s.personEditOut, saving: false } : null,
   }) + (admin
     ? notificationsMaintenanceSections({
         policy: s.notifPolicy.data,

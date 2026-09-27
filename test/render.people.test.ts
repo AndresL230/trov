@@ -8,7 +8,7 @@ vi.mock("../web/src/markdown", () => ({
   sanitizeSvg: (s: string) => s,
 }));
 
-import { peopleSection, personRoleEditor } from "../web/src/maintenance";
+import { peopleSection, personRoleEditor, personEditChanged, type PersonEditView } from "../web/src/maintenance";
 import { profileSection, accountSection, tokenListBody, initialState, render, isUploadedAvatar } from "../web/src/render";
 import { peopleFromPersons } from "../web/src/triage-map";
 import { handleTag, personChip, markAvatarFailed, AVATAR_IMG_CLASS } from "../web/src/people";
@@ -331,19 +331,83 @@ describe("Maintenance › People — role and the admin's Edit role", () => {
     expect(member).not.toContain('data-act="personEditOpen"');
   });
 
+  const loaded = { role: "Backend", responsibilities: SECRET };
+  const view = (over: Partial<PersonEditView> = {}): PersonEditView => ({ handle: "priya", draft: loaded, base: loaded, saving: false, ...over });
+  const section = { persons: dir, invites: [], inviteDraft: "", loading: false, error: null, me: "AndresL230" };
+
   it("an admin's open editor sits under that row — the one place role and responsibilities are edited", () => {
-    const base = { persons: dir, invites: [], inviteDraft: "", loading: false, error: null, me: "AndresL230" };
-    const open = peopleSection({ ...base, edit: { handle: "PRIYA", draft: { role: "Backend", responsibilities: SECRET }, saving: false } });
+    const open = peopleSection({ ...section, edit: view({ handle: "PRIYA" }) });
     expect(open).toContain(SECRET);
     expect(open).toContain('data-act="personRoleDraft"');
     expect(open).toContain(`maxlength="${ROLE_MAX}"`);
     expect(open).toContain(`maxlength="${RESPONSIBILITIES_MAX}"`);
+    expect(open).toContain("Never shown in the app");
     expect(open).toContain("agents read it when deciding whom to assign work");
     expect(open).toContain('data-act="personEditCancel" data-arg="priya"');   // the row's button now closes it
+    expect(open).toContain('aria-expanded="true"');
     expect(open.indexOf(SECRET)).toBeGreaterThan(open.indexOf('data-arg="priya"'));
-    // Loading, saving, and a non-admin never sees it whatever state says.
-    expect(personRoleEditor("Priya", null, false)).toContain("Loading Priya");
-    expect(personRoleEditor("Priya", { role: "", responsibilities: "" }, true)).toContain("Saving…");
-    expect(peopleSection({ ...base, canInvite: false, edit: { handle: "priya", draft: { role: "", responsibilities: SECRET }, saving: false } })).not.toContain(SECRET);
+    // The row and its editor are one block: the row is marked, and the editor follows it.
+    expect(open).toMatch(/class="cnpy-prow" data-roleedit="in"[\s\S]*data-arg="priya"[\s\S]*class="cnpy-roleedit" data-roleedit="in"/);
+    // Only Priya's row is open; Andres's keeps a plain row and a closed button.
+    expect(open.match(/data-roleedit="in"/g)).toHaveLength(2);
+    expect(open).toContain('data-act="personEditOpen" data-arg="AndresL230"');
+    // Labelled fields, the helper tied to the textarea, and the counter.
+    expect(open).toContain('<label for="person-role"');
+    expect(open).toContain('<label for="person-resp"');
+    expect(open).toContain('aria-describedby="person-resp-help"');
+    expect(open).toContain(`${SECRET.length} / ${RESPONSIBILITIES_MAX}`);
+    // The Edit role button keeps focus across rerenders (data-field) — close returns focus to it.
+    expect(open).toContain('data-field="personEditBtn:priya"');
+    // A non-admin never sees it, whatever state says.
+    expect(peopleSection({ ...section, canInvite: false, edit: view() })).not.toContain(SECRET);
+    expect(peopleSection({ ...section, canInvite: false, editOut: view() })).not.toContain(SECRET);
+  });
+
+  it("Save waits for a change (compared trimmed) and reads Saving… while the write runs", () => {
+    const save = (html: string) => html.match(/<button data-act="personEditSave"[^>]*>[^<]*<\/button>/)?.[0] ?? "";
+    expect(personEditChanged(loaded, loaded)).toBe(false);
+    expect(personEditChanged({ ...loaded, role: "  Backend " }, loaded)).toBe(false);
+    expect(personEditChanged({ ...loaded, role: "Frontend" }, loaded)).toBe(true);
+    expect(personEditChanged(null, loaded)).toBe(false);
+    expect(save(personRoleEditor("Priya", view()))).toContain(" disabled");
+    const changed = save(personRoleEditor("Priya", view({ draft: { ...loaded, responsibilities: "Owns billing" } })));
+    expect(changed).not.toContain("disabled");
+    expect(changed).toContain("cnpy-accentbtn");
+    const saving = save(personRoleEditor("Priya", view({ draft: { ...loaded, role: "x" }, saving: true })));
+    expect(saving).toContain("disabled");
+    expect(saving).toContain("Saving…");
+  });
+
+  it("loading is the same form, disabled and shimmering — nothing moves when the draft lands", () => {
+    const loading = personRoleEditor("Priya", view({ draft: null, base: null }));
+    const ready = personRoleEditor("Priya", view());
+    expect(loading).toContain('aria-busy="true"');
+    expect(loading).toContain("Loading…");
+    expect(loading).toContain("cnpy-roleedit-skel");
+    expect(loading).not.toContain(SECRET);
+    expect(loading.match(/<input[^>]*disabled/)).not.toBeNull();
+    expect(loading.match(/<textarea[^>]*disabled/)).not.toBeNull();
+    // Same controls with the same fixed heights in both states.
+    const heights = (h: string) => Array.from(h.matchAll(/<(input|textarea)[^>]*height:(\d+)px/g)).map((m) => `${m[1]}:${m[2]}`);
+    expect(heights(loading)).toEqual(heights(ready));
+    expect(heights(ready)).toEqual(["input:36", "textarea:128"]);
+    expect(ready).not.toContain("cnpy-roleedit-skel");
+    expect(ready).not.toContain("aria-busy");
+  });
+
+  it("a closing editor is an inert picture under its row: no ids, acts or fields for the new one to collide with", () => {
+    const both = peopleSection({ ...section, edit: view({ handle: "AndresL230", draft: null, base: null }), editOut: view() });
+    const at = both.indexOf('class="cnpy-roleedit" data-roleedit="out" inert');
+    expect(at).toBeGreaterThan(-1);
+    const out = both.slice(at);
+    expect(both).toMatch(/class="cnpy-prow" data-roleedit="out"/);
+    // Exactly ONE live Role box, and it is the opening editor's.
+    expect(both.match(/data-field="personRole"/g)).toHaveLength(1);
+    expect(both.match(/id="person-role"/g)).toHaveLength(1);
+    const ghost = out.slice(0, out.indexOf("</textarea>"));
+    expect(ghost).not.toContain("data-field=");
+    expect(ghost).not.toContain("data-act=");
+    // Priya's row button is closed again while her editor collapses.
+    expect(both).toContain('data-act="personEditOpen" data-arg="priya"');
   });
 });
