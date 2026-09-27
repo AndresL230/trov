@@ -709,7 +709,7 @@ input, select { font-family: inherit; }
    (it spans the page when the bento folds). The list has no fixed height and no scroller:
    it shows its first rows and a "Show all N" (render.ts `grantListBody`). */
 .cnpy-set-mcp { container:cnpy-mcp / inline-size; }
-.cnpy-mcp-body { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; margin-top:16px; }
+.cnpy-mcp-body { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; margin-top:20px; }
 @container cnpy-mcp (min-width:620px) {
   .cnpy-mcp-body { grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:32px; }
 }

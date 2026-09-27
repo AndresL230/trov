@@ -109,6 +109,15 @@ describe("Settings › MCP access — the browser sign-in, then Connected apps",
     for (const line of PLUGIN_INSTALL.split("\n")) expect(html).toContain(line);
   });
 
+  it("the heading sits as far above the content as every other tile's (14px), and the steps 20px under the intro", () => {
+    const html = mcpAccessSection(base);
+    // The heading row (label + the by-hand link) carries the 14px the other tiles' labels do.
+    expect(html).toMatch(/<div style="display:flex;align-items:baseline;[^"]*margin-bottom:14px">\s*<div style="[^"]*margin-bottom:14px;margin-bottom:0">MCP access</);
+    const settings = render({ ...initialState(), view: "app" as const, screen: "settings" as const, me: ME });
+    for (const t of ["Profile", "Account", "Appearance"]) expect(settings).toMatch(new RegExp(`margin-bottom:14px">${t}<`));
+    expect(css).toMatch(/\.cnpy-mcp-body \{[^}]*margin-top:20px;/);
+  });
+
   it("the by-hand setup is a MODAL: the tile carries only a quiet link that opens a dialog, never the command", () => {
     const tile = mcpAccessSection(base);
     expect(tile).toMatch(/<button data-act="mcpSetupOpen" data-mcp-setup-trigger aria-haspopup="dialog" class="cnpy-mutelink"[^>]*>Set it up without the plugin/);
