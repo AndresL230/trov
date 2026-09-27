@@ -14,13 +14,15 @@ import type { PersonColor } from "@shared/rows";
 import { esc, attr } from "./ui";
 import { personChip, handleTag } from "./people";
 
-/** The nav entries that own a sub-page list. Roadmap and Tickets have none: their
- *  switches are in the screen header (Roadmap's Narrative / Timeline, removed from the
- *  rail 2026-09-26; Tickets' Board / Table and Submit a ticket, removed 2026-09-27). */
-export const NAV_GROUPS = ["repo", "docs", "maintenance"] as const;
+/** The nav entries that own a sub-page list. Roadmap, Tickets and Maintenance have none:
+ *  their switches are in the screen header (Roadmap's Narrative / Timeline, removed from
+ *  the rail 2026-09-26; Tickets' Board / Table and Submit a ticket, removed 2026-09-27;
+ *  Maintenance's Unplaced / Identity / People, removed 2026-09-27). A stored
+ *  `canopy.navOpen` naming a retired group is simply not read back (main.ts). */
+export const NAV_GROUPS = ["repo", "docs"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 export type NavOpen = Record<NavGroup, boolean>;
-export const NAV_CLOSED: NavOpen = { repo: false, docs: false, maintenance: false };
+export const NAV_CLOSED: NavOpen = { repo: false, docs: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
 export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases";
@@ -49,7 +51,6 @@ export interface SidebarProps {
   repoTab: RepoTab;
   docSpace: string;
   docSpaces: { key: string; label: string }[];
-  maintTab: "unplaced" | "identity" | "people";
   counts: { review: number; maintenance: number; tickets: number; handoffs: number; prompts: number };
   me: { handle: string; name: string | null; color: PersonColor; avatar_url?: string | null } | null;
   displayName: string;
@@ -92,7 +93,6 @@ function activeSub(p: SidebarProps, g: NavGroup): string | null {
   switch (g) {
     case "repo": return p.screen === "repo" ? p.repoTab : null;
     case "docs": return p.screen === "docs" ? p.docSpace : null;
-    case "maintenance": return p.screen === "maintenance" ? p.maintTab : null;
   }
 }
 
@@ -100,7 +100,6 @@ function subPages(p: SidebarProps, g: NavGroup): { key: string; label: string }[
   switch (g) {
     case "repo": return REPO_TABS.map(([key, label]) => ({ key, label }));
     case "docs": return p.docSpaces;
-    case "maintenance": return [{ key: "unplaced", label: "Unplaced" }, { key: "identity", label: "Identity" }, { key: "people", label: "People" }];
   }
 }
 

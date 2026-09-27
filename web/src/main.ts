@@ -35,7 +35,7 @@ import {
 } from "./api";
 import { handoffAsPrompt, blankHandoff, docDraftFromHandoff, type NewHandoffDraft } from "./handoffs";
 import { normalizeTags, type HandoffView } from "@shared/handoffs";
-import { selectedUnplacedId, personEditChanged } from "./maintenance";
+import { selectedUnplacedId, personEditChanged, MAINT_TABS, type MaintTab } from "./maintenance";
 import { ASSIGN_OPTIONS } from "./triage-map";
 import { draftFromPrompt, blankPromptDraft, slugify, tagOptions } from "./prompts";
 import { blankDoc, defaultSection } from "./newdoc";
@@ -93,6 +93,7 @@ try {
   const c = localStorage.getItem("canopy.collapsed");
   if (c) state.collapsed = c === "1";
   const open = JSON.parse(localStorage.getItem("canopy.navOpen") ?? "{}") as Record<string, unknown>;
+  // Only live groups are read, so a retired one's key (tickets, maintenance) is ignored.
   for (const g of NAV_GROUPS) if (typeof open[g] === "boolean") state.navOpen[g] = open[g] as boolean;
 } catch { /* localStorage unavailable, or a hand-edited value */ }
 
@@ -2030,7 +2031,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const [g, page = ""] = (arg ?? "").split(":");
       if (g === "repo") { if (!isRepoTab(page)) return; state.screen = "repo"; state.repoTab = page; loadRepoIfNeeded(); return; }
       if (g === "docs") { state.screen = "docs"; dispatch("setDocSpace", page, null); loadDocsIfNeeded(); return; }
-      if (g === "maintenance") { dispatch("goMaintenance", page, null); return; }
       return;
     }
     // Uncontrolled: the box holds its own text; each keystroke feeds the search
@@ -2621,6 +2621,13 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.maintDiscardArm = false;
       loadNeedsTriageIfNeeded(); loadIdentityTasksIfNeeded(); loadFeedIfNeeded(); loadNotifAdminIfNeeded(); loadInvitesIfAdmin();
       return;
+    // The header's tab switch: entering Maintenance already loaded every tab, so a switch
+    // is ONE rerender — goMaintenance's several would each rebuild the switch and cut its slide.
+    case "setMaintTab":
+      if (!(MAINT_TABS as readonly string[]).includes(arg ?? "")) return;
+      state.maintTab = arg as MaintTab;
+      state.maintDiscardArm = false;
+      break;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
     case "goSettings": state.screen = "settings"; state.personCard = null; state.unsub.preview = false; state.grantRevokeArm = null; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;

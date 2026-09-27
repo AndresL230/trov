@@ -489,6 +489,61 @@ describe("maintenanceView — Identity tab", () => {
   });
 });
 
+describe("Maintenance — the header's tab switch (the sidebar has no sub-page list)", () => {
+  /** The `.cnpy-seg` group carrying `data-seg="maint-tab"`, up to its closing </div>. */
+  const seg = (html: string) => {
+    const at = html.indexOf('data-seg="maint-tab"');
+    return at < 0 ? "" : html.slice(at, html.indexOf("</div>", at));
+  };
+  const triage = (id: number) => ({ id, raw: "{}", reason: "low_confidence", source_author: null, resolved: 0, created_at: "2026-09-27T00:00:00Z", resolved_at: null, resolved_by: null, resolution: null, assigned_ref: null }) as never;
+  const task = (login: string) => ({ login, first_seen: "2026-09-27T00:00:00Z", status: "pending", resolved_at: null, resolved_by: null, sample: [] }) as never;
+  const app = (over: Partial<ReturnType<typeof initialState>> = {}) => render({
+    ...initialState(), view: "app", screen: "maintenance",
+    me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: true },
+    needsTriage: { status: "ok", data: [triage(1), triage(2), triage(3)] },
+    identityTasks: { status: "ok", data: [task("mk-dev2")] },
+    ...over,
+  });
+  const header = (html: string) => html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+
+  it("offers Unplaced · Identity · People in the header, the current tab pressed and inert", () => {
+    const sw = seg(header(app({ maintTab: "identity" })));
+    expect(sw).toContain('aria-label="Maintenance tab"');
+    expect(sw.match(/class="cnpy-seg-btn/g)?.length).toBe(3);
+    expect(sw.indexOf(">Unplaced<")).toBeLessThan(sw.indexOf(">Identity<"));
+    expect(sw.indexOf(">Identity<")).toBeLessThan(sw.indexOf(">People<"));
+    // The picked tab dispatches nothing; the other two switch it (setMaintTab — one rerender).
+    expect(sw).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">Identity/);
+    expect(sw).not.toContain('data-arg="identity"');
+    expect(sw).toContain('data-act="setMaintTab" data-arg="unplaced" aria-pressed="false"');
+    expect(sw).toContain('data-act="setMaintTab" data-arg="people" aria-pressed="false"');
+    expect(mainSrc).toMatch(/case "setMaintTab":[\s\S]{0,200}state\.maintTab = arg as MaintTab;[\s\S]{0,80}break;/);
+  });
+
+  it("carries the sidebar's count badges: unplaced items and pending identity tasks, none on People", () => {
+    const sw = seg(header(app()));
+    expect(sw).toMatch(/>Unplaced<span class="cnpy-badge" data-n="3">3<\/span><\/button>/);
+    expect(sw).toMatch(/>Identity<span class="cnpy-badge" data-n="1">1<\/span><\/button>/);
+    expect(sw).toMatch(/>People<\/button>/);
+    // An empty queue keeps the badge (a stable tree) and data-n="0" hides it.
+    const clear = seg(header(app({ needsTriage: { status: "ok", data: [] } })));
+    expect(clear).toContain('<span class="cnpy-badge" data-n="0">0</span>');
+  });
+
+  it("the tabs are peers: a plain title on every tab, no back button and no › crumb", () => {
+    for (const maintTab of ["unplaced", "identity", "people"] as const) {
+      const h = header(app({ maintTab }));
+      expect(h, maintTab).toContain(">Maintenance</h1>");
+      expect(h, maintTab).not.toContain('<button data-act="goMaintenance" style=');
+      expect(h, maintTab).not.toContain("›");
+    }
+  });
+
+  it("appears only on Maintenance", () => {
+    expect(render({ ...initialState(), view: "app", screen: "review" })).not.toContain('data-seg="maint-tab"');
+  });
+});
+
 describe("maintenanceView — surface cards", () => {
   it("Unplaced and Identity each sit in ONE surface card, rows hairline-divided inside", () => {
     for (const tab of ["unplaced", "identity"] as const) {

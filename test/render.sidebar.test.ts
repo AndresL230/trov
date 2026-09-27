@@ -16,7 +16,6 @@ function props(over: Partial<SidebarProps> = {}): SidebarProps {
     screen: "mywork", collapsed: false, navOpen: { ...NAV_CLOSED },
     qView: "table", roadmapTab: "timeline", repoTab: "overview", docSpace: "technical",
     docSpaces: [{ key: "technical", label: "Technical" }, { key: "product", label: "Product" }],
-    maintTab: "unplaced",
     counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 },
     me: { handle: "jose-a", name: "Jose Alvarez", color: "moss" }, displayName: "Jose Alvarez", logo: "<svg></svg>",
     ...over,
@@ -31,13 +30,13 @@ describe("sidebar — structure is stable across every state", () => {
     const base = skeleton(sidebarView(props()));
     const variants: Partial<SidebarProps>[] = [
       { collapsed: true },
-      { navOpen: { repo: true, docs: true, maintenance: true } },
+      { navOpen: { repo: true, docs: true } },
       { screen: "repo", repoTab: "ci" },
       { screen: "ticketdetail" },
       { counts: { review: 3, maintenance: 2, tickets: 9, handoffs: 2, prompts: 1 } },
       { screen: "settings" },
       { screen: "handoff" },
-      { screen: "maintenance", maintTab: "people" },
+      { screen: "maintenance" },
       { screen: "releases" },
     ];
     for (const v of variants) expect(skeleton(sidebarView(props(v))), JSON.stringify(v)).toBe(base);
@@ -60,17 +59,27 @@ describe("sidebar — groups and order (the design's five sections)", () => {
   it("offers only sub-pages that go somewhere", () => {
     const html = sidebarView(props());
     for (const arg of [
-      "repo:overview", "repo:code", "repo:ci", "repo:usage", "repo:planning", "docs:technical", "docs:product",
-      "maintenance:unplaced", "maintenance:identity", "maintenance:people"]) {
+      "repo:overview", "repo:code", "repo:ci", "repo:usage", "repo:planning", "docs:technical", "docs:product"]) {
       expect(html).toContain(`data-act="navSub" data-arg="${arg}"`);
     }
-    expect((html.match(/data-act="navSub"/g) ?? []).length).toBe(10);
-    // Roadmap and Tickets have no sub-pages in the rail (their switches are in the
-    // screen header) — and no chevron.
-    for (const g of ["roadmap", "tickets"]) {
+    expect((html.match(/data-act="navSub"/g) ?? []).length).toBe(7);
+    // Roadmap, Tickets and Maintenance have no sub-pages in the rail (their switches
+    // are in the screen header) — and no chevron.
+    for (const g of ["roadmap", "tickets", "maintenance"]) {
       expect(html).not.toContain(`data-arg="${g}:`);
       expect(html).not.toContain(`data-act="navToggle" data-arg="${g}"`);
     }
+  });
+
+  it("Maintenance is a plain row with its count badge — no chevron, no sub-page list", () => {
+    const html = sidebarView(props({ screen: "maintenance", counts: { review: 0, maintenance: 4, tickets: 0, handoffs: 0, prompts: 0 } }));
+    const row = html.slice(html.indexOf('class="cnpy-navrow n-maintenance'), html.indexOf(">Help<"));
+    expect(row).toContain('class="cnpy-navrow n-maintenance is-active"');
+    expect(row).toContain('<span class="cnpy-lbl cnpy-badge" data-n="4">4</span>');
+    expect(row).not.toContain("cnpy-chev");
+    expect(row).not.toContain("cnpy-sub");
+    // Only Repo and Docs still own a sub-page list.
+    expect((html.match(/class="cnpy-sub" /g) ?? []).length).toBe(2);
   });
 
   it("has no Search nav row — search is the box at the top of the rail", () => {
@@ -96,11 +105,11 @@ describe("sidebar — active state", () => {
   });
 
   it("marks the sub-page in view, and none on a child screen", () => {
-    const docs = sidebarView(props({ screen: "maintenance", maintTab: "people" }));
-    expect(docs).toContain('data-arg="maintenance:people" class="cnpy-sub-i is-active" aria-current="page"');
-    expect(docs).not.toContain('data-arg="maintenance:identity" class="cnpy-sub-i is-active"');
-    // Tickets has no rail sub-pages, so no ticket screen lights one up.
-    for (const screen of ["tickets", "ticketdetail", "newticket"]) {
+    const docs = sidebarView(props({ screen: "docs", docSpace: "product" }));
+    expect(docs).toContain('data-arg="docs:product" class="cnpy-sub-i is-active" aria-current="page"');
+    expect(docs).not.toContain('data-arg="docs:technical" class="cnpy-sub-i is-active"');
+    // Tickets and Maintenance have no rail sub-pages, so none of their screens lights one up.
+    for (const screen of ["tickets", "ticketdetail", "newticket", "maintenance"]) {
       expect(sidebarView(props({ screen }))).not.toContain("cnpy-sub-i is-active");
     }
 
@@ -112,7 +121,7 @@ describe("sidebar — active state", () => {
   it("navGroupOf names the group a screen's pages belong to", () => {
     expect(navGroupOf("newticket")).toBeNull();
     expect(navGroupOf("repo")).toBe("repo");
-    expect(navGroupOf("maintenance")).toBe("maintenance");
+    expect(navGroupOf("maintenance")).toBeNull();
     expect(navGroupOf("feed")).toBeNull();
   });
 });

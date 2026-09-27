@@ -227,9 +227,13 @@ input, select { font-family: inherit; }
 .cnpy-nav-t { white-space:nowrap; flex:1; min-width:0; text-align:left; }
 [data-collapsed="1"] .cnpy-nav-i { padding:9px 0 9px 13.5px; }
 
-/* ONE count badge for every sidebar entry: a quiet pill that brightens on the active row. */
+/* ONE count badge for every sidebar entry (and the Maintenance tab switch): a quiet pill
+   that brightens on the active row / the picked tab. */
 .cnpy-badge { font-family:var(--label); font-size:11px; font-weight:600; flex:none; min-width:18px; height:18px; line-height:18px; padding:0 6px; border-radius:999px; text-align:center; color:var(--fg-55); background:var(--hover); box-shadow:inset 0 0 0 1px var(--border); }
-.cnpy-navrow.is-active .cnpy-badge { color:var(--fg); box-shadow:inset 0 0 0 1px var(--border-strong); }
+.cnpy-navrow.is-active .cnpy-badge, .cnpy-seg-btn.is-on > .cnpy-badge { color:var(--fg); box-shadow:inset 0 0 0 1px var(--border-strong); }
+/* In a switch the pill never makes its tab taller than a tab without one (the indicator
+   would change height as it slides). */
+.cnpy-seg-btn > .cnpy-badge { margin:-1px 0; }
 /* Rows without a chevron reserve its 30px (24 wide + 6 margin), so every count sits in one column. */
 [data-collapsed="0"] .cnpy-navrow:not(:has(> .cnpy-chev)) .cnpy-nav-i { padding-right:41px; }
 .cnpy-badge[data-n="0"], .cnpy-dot[data-n="0"] { display:none; }

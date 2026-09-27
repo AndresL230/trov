@@ -32,7 +32,7 @@ import { REPO_URL } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
-import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab, type PersonEditDraft } from "./maintenance";
+import { maintenanceView, maintTabSwitch, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab, type PersonEditDraft } from "./maintenance";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
@@ -687,7 +687,6 @@ function sidebar(s: AppState): string {
     repoTab: s.repoTab,
     docSpace: s.docSpace,
     docSpaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })),
-    maintTab: s.maintTab,
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).
     counts: { review: counts.review, maintenance: counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: s.promptList.data.filter((p) => p.status === "staged").length },
     me: s.me ? { handle: s.me.handle, name: s.me.name, color: s.me.color, avatar_url: s.me.avatar_url } : null,
@@ -713,7 +712,6 @@ function headerCrumb(s: AppState): string {
     return ed.mode === "new" ? "New prompt" : `${ed.mode === "edit" ? "Edit" : "New version"} · ${ed.title}`;
   }
   if (s.screen === "newdoc") return "New doc";
-  if (s.screen === "maintenance") return s.maintTab === "identity" ? "Identity" : s.maintTab === "people" ? "People" : "";
   if (s.screen === "ticketdetail") return s.ticketDetail.data?.title ?? "";
   if (s.screen === "sprint") {
     return s.sprintDetail.data?.label ?? s.sprints.data.find((sp) => sp.id === s.sprintId)?.label ?? "";
@@ -796,6 +794,12 @@ function header(s: AppState): string {
   })}
     <button data-act="newTicket" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Submit a ticket</button>` : "";
 
+  // Maintenance chrome: the Unplaced / Identity / People switch (the tabs are peers, so
+  // the title stays a plain title — no back button, no crumb).
+  const maintControls = s.screen === "maintenance"
+    ? maintTabSwitch(s.maintTab, { unplaced: s.needsTriage.data.length, identity: s.identityTasks.data.length })
+    : "";
+
   const themeBtn = `<button data-act="cycleTheme" title="Toggle theme" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
       ${dark
         ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`
@@ -808,14 +812,12 @@ function header(s: AppState): string {
   // the design's single `back` handler).
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
     || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
-    || (s.screen === "maintenance" && s.maintTab !== "unplaced")
     || (s.screen === "releases" && s.releaseVersion !== null);
   // The act the title's back button fires: each child screen returns to its own parent.
   const backAct = s.screen === "handoff" || s.screen === "newhandoff" ? "goHandoffs"
     : s.screen === "prompt" ? "goPrompts"
     : s.screen === "promptedit" ? "edCancel"
     : s.screen === "newdoc" ? "goDocs"
-    : s.screen === "maintenance" ? "goMaintenance"
     : s.screen === "releases" ? "goReleases"
     : "ticketsBack";
   const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : child
@@ -838,7 +840,7 @@ function header(s: AppState): string {
       ${art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${feedViewSwitch}${themeBtn}
+      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${maintControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${feedViewSwitch}${themeBtn}
     </div>
   </header>`;
 }

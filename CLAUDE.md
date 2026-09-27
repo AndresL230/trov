@@ -1231,7 +1231,8 @@ issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source 
 Ported from the Claude Design project `2c8cfa50`: **Handoffs** (Workspace; `#handoffs`, `#handoffs/new`,
 `#handoffs/<id>` — `web/src/handoffs.ts`), **Prompt Library** (Knowledge; `#prompts`, `#prompts/new`,
 `#prompts/<slug>`, `#prompts/<slug>/edit|version` — `web/src/prompts.ts`), **Docs › New doc** (`#docs/new`) and
-the tabbed **Maintenance** (Unplaced / Identity / People; the admin email-notification sections sit under People).
+the tabbed **Maintenance** (Unplaced / Identity / People — `#maintenance[/identity|/people]`, switched by a
+`segmented()` in its header, not the sidebar; the admin email-notification sections sit under People).
 Storage is `0028_handoffs_prompts` (`handoffs` with an INTEGER id rendered `#12`, `context` JSON
 `{ repo, branch, task, done[], next[], files[] }`, an inline prompt that is both-or-neither, `expires_at` =
 created + 7 days; `prompts` / `prompt_versions`; standalone `prompts_fts` over slug/title/description/body/tags
@@ -1415,11 +1416,13 @@ animates (`data-collapsed`, `.cnpy-sub[data-open]`, `.is-active`, `data-n="0"` h
 node conditionally there swaps it out from under its own animation — `test/render.sidebar.test.ts` pins the
 element tree across every state. `data-keep` marks a script-owned node (the collapsed-rail tooltip) the
 patcher leaves alone. A sub-page list the app opened on entry folds again on leaving; one opened by hand
-sticks and is what persists (`canopy.navOpen`). Below 900px the rail renders collapsed (`state.narrow`)
+sticks and is what persists (`canopy.navOpen`). Only **Repo** and **Docs** own a sub-page list (`NAV_GROUPS`);
+Roadmap, Tickets and Maintenance are plain rows whose switches sit in their screen header, and a stored
+`canopy.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
 **Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, Roadmap tabs, the queue's
-Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, form segments. Never
+Board/Table and All/Open/Closed, Maintenance's Unplaced / Identity / People (`maintTabSwitch`, with the rail's count badges), Repo ranges and environments, an artifact's status, form segments. Never
 hand-roll a segment group. Its picked fill is ONE indicator that slides between options: `rerender()` swaps
 `<main>`, so `syncSegments` (run after every paint, and without a slide on resize / font load) remembers each
 switch's indicator box by its stable `id` and plays the slide old → new (FLIP); a switch new to the screen
