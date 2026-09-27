@@ -347,6 +347,7 @@ async function linkIdsByPage(db: DB, pageIds: number[]): Promise<Map<number, { t
 const toSummary = (r: SummaryRow, ids: { ticket_ids: number[]; sprint_ids: number[] }): ArtifactSummaryDTO => ({
   id: r.id, slug: r.slug, title: r.title, kind: r.kind, area: r.area, repo: r.repo, author_id: r.author_id,
   status: r.status, visibility: r.visibility, current_version: r.current_version, updated_at: r.updated_at,
+  published_at: r.published_at ?? null,
   size_bytes: r.v_size, excerpt: r.v_excerpt, ticket_ids: ids.ticket_ids, sprint_ids: ids.sprint_ids,
 });
 
@@ -520,20 +521,29 @@ export interface ArtifactSearchHit {
 export async function searchArtifacts(db: DB, q: string, viewer: string, limit = 20): Promise<ArtifactSearchHit[]> {
   const match = buildMatch(q ?? "");
   if (!match) return [];
+  const { results } = await searchArtifactsStmt(db, match, viewer, limit).all<ArtifactSearchHit>();
+  return results ?? [];
+}
+
+/**
+ * The same ranked, visibility-checked FTS read as ONE prepared statement, over a
+ * caller-built FTS5 `match` expression — so the quick search (src/tools/quick-search.ts)
+ * can put it in its single `db.batch` without re-stating the visibility rule.
+ * `liveOnly` drops drafts (the human, live-only reading `/search` applies).
+ */
+export function searchArtifactsStmt(db: DB, match: string, viewer: string, limit = 20, liveOnly = false): D1PreparedStatement {
   const n = Math.max(1, Math.min(100, Math.floor(limit) || 20));
-  return all<ArtifactSearchHit>(
-    db,
+  return db.prepare(
     `SELECT p.id, p.slug, p.title, p.kind, p.status, p.visibility, p.author_id, p.current_version, p.updated_at,
             artifacts_fts.description AS description,
             bm25(artifacts_fts, 1.0, 5.0, 1.0, 1.0) AS rank,
             snippet(artifacts_fts, -1, '', '', '…', 12) AS snippet
        FROM artifacts_fts
        JOIN artifact_pages p ON p.id = CAST(artifacts_fts.page_id AS INTEGER)
-      WHERE artifacts_fts MATCH ? AND p.current_version > 0 AND ${VISIBLE_SQL}
+      WHERE artifacts_fts MATCH ? AND p.current_version > 0 AND ${VISIBLE_SQL}${liveOnly ? ` AND p.status <> 'draft'` : ""}
       ORDER BY rank
-      LIMIT ${n}`,
-    match, viewer
-  );
+      LIMIT ${n}`
+  ).bind(match, viewer);
 }
 
 // ── writes ───────────────────────────────────────────────────────────────────
@@ -576,8 +586,9 @@ async function currentSha(db: DB, p: ArtifactPageRow): Promise<string | null> {
 /**
  * Append a version to an existing page (or land v1 on a version-0 binary page), in ONE
  * batch: the version row, the page's current_version/status/updated_at, the FTS row.
- * The first real version keeps the page's status (draft); any later one publishes it
- * and clears ratified_*. Same sha256 as the current version → nothing written.
+ * The first real version keeps the page's status (draft); any later one publishes it,
+ * clears ratified_* and stamps `published_at` (the new version IS a new publication).
+ * Same sha256 as the current version → nothing written.
  */
 async function writeVersion(db: DB, p: ArtifactPageRow, v: VersionPayload, who: string): Promise<ArtifactVersionResult> {
   if ((await currentSha(db, p)) === v.sha256) {
@@ -596,9 +607,10 @@ async function writeVersion(db: DB, p: ArtifactPageRow, v: VersionPayload, who: 
         `UPDATE artifact_pages SET current_version = ?, status = ?, updated_at = ?,
                 ratified_version = CASE WHEN ? = 'ratified' THEN ratified_version END,
                 ratified_by      = CASE WHEN ? = 'ratified' THEN ratified_by END,
-                ratified_at      = CASE WHEN ? = 'ratified' THEN ratified_at END
+                ratified_at      = CASE WHEN ? = 'ratified' THEN ratified_at END,
+                published_at     = CASE WHEN ? = 'published' THEN ? ELSE published_at END
           WHERE id = ? AND current_version = ?`
-      ).bind(next, status, now, status, status, status, p.id, p.current_version),
+      ).bind(next, status, now, status, status, status, status, now, p.id, p.current_version),
       db.prepare(`DELETE FROM artifacts_fts WHERE page_id = ?`).bind(String(p.id)),
       ftsInsert(db, "?", String(p.id), p.title, v.summary, ftsBody(p.kind, v.content)),
     ]);
@@ -747,6 +759,8 @@ export async function addBinaryVersion(
  * PATCH a page: title / area / repo by anyone who can read it; `visibility: "private"`
  * by its AUTHOR only (else forbidden); private → org also moves draft → published;
  * `status` draft ⇄ published (from ratified, clearing ratified_*). Ratify is `ratify`.
+ * `published_at` (0035): → draft clears it; a page that ends published/ratified keeps its
+ * stamp, or gets `now` when it had none (draft → published).
  */
 export async function patchPage(db: DB, slug: string, input: PatchArtifactInput, who: string): Promise<ArtifactDetailDTO> {
   const p = await loadPage(db, slug, who);
@@ -772,9 +786,10 @@ export async function patchPage(db: DB, slug: string, input: PatchArtifactInput,
       `UPDATE artifact_pages SET title = ?, area = ?, repo = ?, visibility = ?, status = ?,
               ratified_version = CASE WHEN ? = 'ratified' THEN ratified_version END,
               ratified_by      = CASE WHEN ? = 'ratified' THEN ratified_by END,
-              ratified_at      = CASE WHEN ? = 'ratified' THEN ratified_at END
+              ratified_at      = CASE WHEN ? = 'ratified' THEN ratified_at END,
+              published_at     = CASE WHEN ? = 'draft' THEN NULL ELSE COALESCE(published_at, ?) END
         WHERE id = ?`
-    ).bind(title, area, repo, visibility, status, status, status, status, p.id),
+    ).bind(title, area, repo, visibility, status, status, status, status, status, nowIso(), p.id),
   ];
   if (title !== p.title) stmts.push(db.prepare(`UPDATE artifacts_fts SET title = ? WHERE page_id = ?`).bind(title, String(p.id)));
   await db.batch(stmts);

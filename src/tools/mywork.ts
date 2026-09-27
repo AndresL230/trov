@@ -18,7 +18,7 @@ const PR_LIMIT = 6;
 const TODO_LIMIT = 6;
 const TICKET_LIMIT = 6;
 
-const EMPTY = (degraded: boolean): MyWork => ({ person: null, previousActivity: [], todo: [], tickets: [], degraded });
+const EMPTY = (degraded: boolean): MyWork => ({ person: null, previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded });
 
 // Priority is parsed from a leading "[P0]"–"[P3]" tag on the issue title; the
 // tag is stripped from the displayed title.
@@ -172,12 +172,31 @@ interface AssignedTicketRow {
   category: MyWorkTicket["category"];
   priority: MyWorkTicket["priority"];
   status: MyWorkTicket["status"];
+  source: MyWorkTicket["source"];
   requester: string;
   sprint_id: number | null;
   sprint_label: string | null;
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * Which tickets an assigned-ticket read covers. `"canopy"` = NATIVE tickets only
+ * (the ticket-queue digest's rule: a ticket mirrored from a GitHub issue (0032) is
+ * that issue, which the digest's readers already know about); `"all"` = native AND
+ * mirrored (My Work's rule since the redesign: the screen renders no issue list, so
+ * a mirrored ticket's only way onto it is as a ticket).
+ */
+export type AssignedTicketSources = "all" | "canopy";
+export interface AssignedTicketOpts { limit?: number; sources?: AssignedTicketSources }
+
+// The shared FROM/WHERE of the list and its count, so the two can never disagree.
+// (The sprint LEFT JOIN is on a primary key, so it never changes the count.)
+const assignedFrom = (sources: AssignedTicketSources): string =>
+  `FROM tickets t
+       JOIN ticket_assignees a ON a.ticket_id = t.id AND a.login = ? COLLATE NOCASE
+       LEFT JOIN sprints s ON s.id = t.sprint_id
+      WHERE t.status IN ${OPEN_STATUS_SQL}${sources === "canopy" ? " AND t.source = 'canopy'" : ""}`;
 
 /**
  * The OPEN tickets `handle` is an assignee of, most recently updated first.
@@ -189,19 +208,16 @@ interface AssignedTicketRow {
  * `getPerson` — a caller spelling the handle in another case must not be told
  * "nothing assigned to you" while holding half the queue.
  * Closed tickets (`done` / `declined`) never appear — My Work is what is open.
- * NATIVE tickets only (`source = 'canopy'`): a ticket mirrored from a GitHub issue
- * (0032) is already on the To-do card as that issue, and must not appear twice.
- * The ticket-queue digest reuses this read, so the email inherits the same rule.
+ * `sources` defaults to `"canopy"` (NATIVE only) — the ticket-queue digest's rule,
+ * which reuses this read. My Work passes `"all"`.
  */
-export async function listAssignedTickets(db: DB, handle: string, limit = TICKET_LIMIT): Promise<MyWorkTicket[]> {
+export async function listAssignedTickets(db: DB, handle: string, opts: AssignedTicketOpts = {}): Promise<MyWorkTicket[]> {
+  const limit = opts.limit ?? TICKET_LIMIT;
   const rows = await all<AssignedTicketRow>(
     db,
-    `SELECT t.id, t.title, t.body, t.category, t.priority, t.status, t.requester,
+    `SELECT t.id, t.title, t.body, t.category, t.priority, t.status, t.source, t.requester,
             t.sprint_id, s.title AS sprint_label, t.created_at, t.updated_at
-       FROM tickets t
-       JOIN ticket_assignees a ON a.ticket_id = t.id AND a.login = ? COLLATE NOCASE
-       LEFT JOIN sprints s ON s.id = t.sprint_id
-      WHERE t.status IN ${OPEN_STATUS_SQL} AND t.source = 'canopy'
+       ${assignedFrom(opts.sources ?? "canopy")}
       ORDER BY t.updated_at DESC, t.id DESC
       LIMIT ${Math.trunc(limit)}`,
     handle
@@ -213,11 +229,18 @@ export async function listAssignedTickets(db: DB, handle: string, limit = TICKET
     category: r.category,
     priority: r.priority,
     status: r.status,
+    source: r.source,
     requester: r.requester,
     sprint: r.sprint_id !== null && r.sprint_label !== null ? { id: r.sprint_id, label: r.sprint_label } : null,
     updatedAt: r.updated_at,
     createdAt: r.created_at,
   }));
+}
+
+/** How many tickets `listAssignedTickets` would list with no cap — the same rule, counted. */
+export async function countAssignedTickets(db: DB, handle: string, sources: AssignedTicketSources = "canopy"): Promise<number> {
+  const row = await first<{ n: number }>(db, `SELECT COUNT(*) AS n ${assignedFrom(sources)}`, handle);
+  return row?.n ?? 0;
 }
 
 /**
@@ -239,10 +262,13 @@ export async function getMyWork(db: DB, handle: string): Promise<MyWork> {
     // Tickets are keyed on the person HANDLE, not on a GitHub login, so they are
     // read BEFORE the identity fork: a Google-only person (no github identity)
     // has no PRs and no assigned issues but can still own half the queue.
-    const tickets = await listAssignedTickets(db, me.handle);
+    // ALL sources: the screen shows no issue list any more, so a mirrored ticket
+    // (0032) reaches My Work only as a ticket. `ticketsTotal` is the uncapped count.
+    const tickets = await listAssignedTickets(db, me.handle, { sources: "all" });
+    const ticketsTotal = await countAssignedTickets(db, me.handle, "all");
 
     const logins = (await listIdentities(db, handle)).filter((i) => i.provider === "github").map((i) => i.subject);
-    if (logins.length === 0) return { person: me.name ?? me.handle, previousActivity: [], todo: [], tickets, degraded: false };
+    if (logins.length === 0) return { person: me.name ?? me.handle, previousActivity: [], todo: [], tickets, ticketsTotal, degraded: false };
 
     const prRows = await all<PrEventJoinRow>(
       db,
@@ -258,7 +284,7 @@ export async function getMyWork(db: DB, handle: string): Promise<MyWork> {
     const previousActivity: MyWorkPr[] = prRows.map(toMyWorkPr);
     const todo = await listOpenAssignedIssues(db, logins);
 
-    return { person: me.name ?? me.handle, previousActivity, todo: todo.slice(0, TODO_LIMIT), tickets, degraded: false };
+    return { person: me.name ?? me.handle, previousActivity, todo: todo.slice(0, TODO_LIMIT), tickets, ticketsTotal, degraded: false };
   } catch {
     return EMPTY(true);
   }

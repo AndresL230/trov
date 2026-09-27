@@ -4,7 +4,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildCanopyMcpServer } from "../src/mcp";
 import { all, first } from "../src/db";
-import type { SprintRow, PlanRow } from "@shared/rows";
+import type { SprintRow, PlanRow, PlanVersionRow } from "@shared/rows";
+import { PLAN_NARRATIVE_MAX } from "@shared/sprints";
 
 // ADMIN_LOGINS binds "admin-user" in vitest.config.ts — this login clears isAdmin().
 const AUTHOR = "admin-user";
@@ -77,6 +78,40 @@ describe("registered MCP update_plan tool", () => {
     });
     expect(res.isError).toBeTruthy();
     expect(await all<SprintRow>(env.DB, `SELECT * FROM sprints`)).toHaveLength(0);
+  });
+});
+
+describe("registered MCP update_plan tool — the narrative cap", () => {
+  it("a narrative of exactly the cap writes", async () => {
+    const narrative = "x".repeat(PLAN_NARRATIVE_MAX);
+    const res = await callTool(AUTHOR, "update_plan", { narrative });
+    expect(res.isError).toBeFalsy();
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    expect(plan?.narrative).toBe(narrative);
+  });
+
+  it("one over the cap is refused naming the cap and the length, and nothing is written", async () => {
+    const res = await callTool(AUTHOR, "update_plan", {
+      narrative: "x".repeat(PLAN_NARRATIVE_MAX + 1),
+      sprints: [{ label: "Should not land", due: "2026-08-01", status: "upcoming" }],
+    });
+    expect(res.isError).toBeTruthy();
+    expect(res.text).toContain(`${PLAN_NARRATIVE_MAX + 1} characters`);
+    expect(res.text).toContain(`the cap is ${PLAN_NARRATIVE_MAX}`);
+
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    expect(plan?.narrative).toBe("");
+    expect(plan?.current_version).toBe(0);
+    expect(await all<PlanVersionRow>(env.DB, `SELECT * FROM plan_versions`)).toHaveLength(0);
+    expect(await all<SprintRow>(env.DB, `SELECT * FROM sprints`)).toHaveLength(0);
+  });
+
+  it("the tool's description states the cap up front", async () => {
+    const { tools } = await withClient(AUTHOR, (client) => client.listTools());
+    const tool = tools.find((t) => t.name === "update_plan")!;
+    expect(tool.description).toContain(`${PLAN_NARRATIVE_MAX} characters`);
+    const narrative = (tool.inputSchema.properties as Record<string, { description?: string }>).narrative;
+    expect(narrative.description).toContain(`${PLAN_NARRATIVE_MAX} characters`);
   });
 });
 

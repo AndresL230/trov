@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { all, run, nowIso } from "../src/db";
 import { ingestEvent } from "../src/consumer";
 import { storePrSummary, storeIssueSummary, type Summarizer, type PrSummary, type IssueSummary } from "../src/tools/summarize";
-import { getMyWork } from "../src/tools/mywork";
+import { getMyWork, listAssignedTickets, countAssignedTickets } from "../src/tools/mywork";
 import { create_ticket, transition_ticket } from "../src/tools/tickets";
 import type { TicketCreate } from "@shared/tickets";
 import { seedPerson } from "./helpers/persons";
@@ -204,7 +204,7 @@ describe("getMyWork — unmapped login", () => {
     await ingestEvent(env.DB, ev, "github-webhook");
 
     const work = await getMyWork(env.DB, "stranger");
-    expect(work).toEqual({ person: null, previousActivity: [], todo: [], tickets: [], degraded: false });
+    expect(work).toEqual({ person: null, previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false });
 
     const rows = await all<EventRow>(env.DB, `SELECT * FROM events`);
     expect(rows).toHaveLength(1); // captured, never dropped
@@ -216,7 +216,7 @@ describe("getMyWork — person with no GitHub identity (e.g. Google-only)", () =
     await seedPerson("priya", { name: "Priya", github: false });
 
     const work = await getMyWork(env.DB, "priya");
-    expect(work).toEqual({ person: "Priya", previousActivity: [], todo: [], tickets: [], degraded: false });
+    expect(work).toEqual({ person: "Priya", previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false });
   });
 });
 
@@ -410,6 +410,21 @@ describe("getMyWork — tickets assigned to me", () => {
     const work = await getMyWork(env.DB, "dev");
     expect(work.tickets).toHaveLength(6);
     expect(work.tickets.map((t) => t.title)).toEqual(["T8", "T7", "T6", "T5", "T4", "T3"]);
+    // The list is capped; the count is not — "6 open" must never be said of 8.
+    expect(work.ticketsTotal).toBe(8);
+  });
+
+  it("ticketsTotal counts only OPEN tickets assigned to me, and matches the list when uncapped", async () => {
+    await seedPerson("dev", { name: "Dev" });
+    await seedPerson("meilin", { name: "Meilin Zhao", github: false });
+    await create_ticket(env.DB, mk({ title: "Open", assignees: ["dev"] }), "dev");
+    const closed = await create_ticket(env.DB, mk({ title: "Closed", assignees: ["dev"] }), "dev");
+    await transition_ticket(env.DB, closed, "declined", "dev");
+    await create_ticket(env.DB, mk({ title: "Theirs", assignees: ["meilin"] }), "meilin");
+    const work = await getMyWork(env.DB, "dev");
+    expect(work.tickets.map((t) => t.title)).toEqual(["Open"]);
+    expect(work.ticketsTotal).toBe(1);
+    expect(work.tickets[0].source).toBe("canopy");
   });
 
   it("matches the assignee handle case-INSENSITIVELY, like persons.handle and getPerson", async () => {
@@ -435,5 +450,26 @@ describe("getMyWork — tickets assigned to me", () => {
     expect(work.tickets.map((t) => t.title)).toEqual(["Access request"]);
     expect(work.previousActivity).toEqual([]);
     expect(work.todo).toEqual([]);
+  });
+});
+
+// ── sources: My Work lists mirrored tickets too; the digest's default does not ──
+describe("listAssignedTickets — sources", () => {
+  it("defaults to NATIVE only (the digest's rule); `all` adds mirrored tickets, and the count follows the same rule", async () => {
+    await seedPerson("dev", { name: "Dev" });
+    const native = await create_ticket(env.DB, { title: "Native", body: "", category: "other", priority: "normal", assignees: ["dev"] }, "dev");
+    const mirrored = await create_ticket(env.DB, { title: "Mirrored", body: "", category: "other", priority: "normal", assignees: ["dev"] }, "dev");
+    await run(env.DB, `UPDATE tickets SET source = 'github', source_ref = 'o/r#9' WHERE id = ?`, mirrored);
+
+    expect((await listAssignedTickets(env.DB, "dev")).map((t) => t.id)).toEqual([native]);
+    expect(await countAssignedTickets(env.DB, "dev")).toBe(1);
+    const all_ = await listAssignedTickets(env.DB, "dev", { sources: "all" });
+    expect(all_.map((t) => t.id).sort()).toEqual([native, mirrored].sort());
+    expect(all_.find((t) => t.id === mirrored)!.source).toBe("github");
+    expect(await countAssignedTickets(env.DB, "dev", "all")).toBe(2);
+
+    const work = await getMyWork(env.DB, "dev");
+    expect(work.tickets.map((t) => t.title).sort()).toEqual(["Mirrored", "Native"]);
+    expect(work.ticketsTotal).toBe(2);
   });
 });

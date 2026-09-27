@@ -8,7 +8,7 @@
 //   2. capture every figure:  node scripts/capture-guide.mjs  (first creates the sample
 //      artifacts in fixtures/dev/artifacts.json when the local store has none)
 //
-// Writes web/public/guide/<name>-<theme>.png for each surface × theme (dark/light/midnight),
+// Writes web/public/guide/<name>-<theme>.png for each surface × theme (dark/light),
 // so the guide can show the variant matching the viewer's active theme. Override the target
 // dir with CANOPY_SHOT_DIR, the base URL with CANOPY_URL, or the theme list with
 // CANOPY_THEMES (comma-separated). `node scripts/capture-guide.mjs docs search` captures
@@ -21,7 +21,7 @@ import { chromium } from "playwright";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.CANOPY_URL ?? "http://localhost:8787";
 const OUT_DIR = process.env.CANOPY_SHOT_DIR ?? join(HERE, "..", "web", "public", "guide");
-const THEMES = (process.env.CANOPY_THEMES ?? "dark,light,midnight").split(",").map((t) => t.trim()).filter(Boolean);
+const THEMES = (process.env.CANOPY_THEMES ?? "dark,light").split(",").map((t) => t.trim()).filter(Boolean);
 
 // Forge the dev session cookie the same way scripts/dev-cookie.mjs does, so the SPA's
 // same-origin fetches are authed even if DEV_LOGIN weren't set.

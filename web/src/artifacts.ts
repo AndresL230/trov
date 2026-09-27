@@ -21,8 +21,8 @@
 // touches the DOM or the network; what it cannot do itself (navigate, write,
 // toast, download, open a tab, copy) it returns as an effect for main.ts.
 
-import { esc, attr, relTime } from "./ui";
-import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
+import { esc, attr, relTime, surface } from "./ui";
+import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
 import { renderMarkdown, sanitizeSvg } from "./markdown";
 import { collapsedLineDiff } from "./diff";
@@ -180,7 +180,6 @@ const NEUTRAL = CHIP + "color:var(--fg-55);border:1px solid var(--border-strong)
 const MONO_VAL = "font-family:var(--label);font-size:11.5px;color:var(--fg-70)";
 const EYEBROW = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)";
 const SHELL = "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
-const PANEL = "border:1px solid var(--border);border-radius:14px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)";
 const MENU = "background:var(--bg);border:1px solid var(--border-strong);border-radius:11px;box-shadow:0 14px 38px rgba(0,0,0,.3)";
 const OUTLINE_BTN = "padding:7px 15px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)";
 /** The toast shown when the author makes a page private (it replaced a standing banner). */
@@ -452,21 +451,16 @@ function libraryView(p: ArtProps): string {
 
 
   const toolbar = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 4px">
-    <div style="position:relative;display:flex;align-items:stretch;flex:1 1 260px;max-width:480px;min-width:0;height:34px">
-      <div class="cnpy-search" style="flex:1;min-width:0;padding:0 11px;border-radius:7px 0 0 7px;border-color:var(--border-strong)">
-        ${I.search()}
-        <input data-act="artQ" data-field="artQ" class="cnpy-search-in" style="font-size:12.5px" placeholder="Search by title, area, kind or ticket" value="${attr(ui.q)}" autocomplete="off" spellcheck="false">
-        ${ui.q ? `<button data-act="artClearQ" aria-label="Clear search" class="cnpy-xbtn" style="width:16px;height:16px;display:grid;place-items:center;color:var(--fg-40);flex:none">${I.x()}</button>` : ""}
-      </div>
-      ${filterMenuBackdrop(menu)}
-      ${filterMenu(menu)}
-    </div>
+    ${searchFilterBar({
+      search: { act: "artQ", field: "artQ", value: ui.q, placeholder: "Search by title, area, kind or ticket", clearAct: "artClearQ" },
+      menu,
+    })}
     <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap;margin-left:auto;flex:none">${rows.length} shown · ${all.length} total</span>
   </div>`;
 
   const card = (a: ArtifactSummaryDTO, i: number): string => {
     const au = who(p, a.author_id);
-    return `<button data-act="artOpen" data-arg="${attr(a.slug)}" class="cnpy-card cnpy-rise" style="--i:${i};border:1px solid var(--border);border-radius:14px;padding:0;background:color-mix(in srgb,var(--fg) 2.5%,transparent);display:flex;flex-direction:column;height:100%;width:100%;text-align:left;cursor:pointer;overflow:hidden">
+    return `<button data-act="artOpen" data-arg="${attr(a.slug)}"${surface(`--i:${i};padding:0;display:flex;flex-direction:column;height:100%;width:100%;text-align:left;cursor:pointer;overflow:hidden`, { hover: true, cls: "cnpy-rise" })}>
       <div style="position:relative;height:160px;border-bottom:1px solid var(--border);overflow:hidden;background:var(--bg);flex:none">
         ${thumb(a)}
         <div style="position:absolute;left:0;right:0;bottom:0;height:36px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none"></div>
@@ -627,7 +621,7 @@ function contentBlock(p: ArtProps, d: ArtifactDetailDTO): string {
     default: {
       const name = artFileName(d.slug, d.kind, ver);
       return `<div style="display:grid;place-items:center;padding:48px 24px;background:var(--bg)">
-        <div style="display:flex;align-items:center;gap:14px;width:min(480px,100%);padding:14px 16px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+        <div style="display:flex;align-items:center;gap:14px;width:min(480px,100%);padding:14px 16px;border:1px solid var(--border);border-radius:10px">
           <span style="width:36px;height:36px;border-radius:8px;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55);flex:none">${I.kind(d.kind, 16)}</span>
           <span style="flex:1;min-width:0"><span style="display:block;font-family:var(--label);font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</span><span style="display:block;font-size:11.5px;color:var(--fg-40);margin-top:2px">${esc(fmtKB(ver.size_bytes))}${ver.content_type ? ` · ${esc(ver.content_type)}` : ""}</span></span>
           <button data-act="artDownload" class="cnpy-accentbtn" style="display:inline-flex;align-items:center;gap:7px;${ACCENT_BTN};flex:none">${I.download()}Download</button>
@@ -773,22 +767,22 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
       <div style="padding-top:3px">${visSwitch}</div>
     </div>
 
-    <div style="margin-top:22px;border:1px solid var(--border-strong);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+    <div${surface("margin-top:22px;border-color:var(--border-strong)")}>
       ${toolbar}
-      <div style="border-radius:0 0 11px 11px;overflow:hidden">${contentBlock(p, d)}</div>
+      <div style="border-radius:0 0 10px 10px;overflow:hidden">${contentBlock(p, d)}</div>
     </div>
 
     <div data-screen-label="Artifact details" class="art-bento" style="display:grid;gap:14px;margin-top:18px">
-      <div class="art-b-props" style="${PANEL};padding:16px 18px;min-width:0">
+      <div${surface("padding:16px 18px;min-width:0", { cls: "art-b-props" })}>
         <div style="display:flex;align-items:center;height:24px;margin-bottom:8px"><div style="${EYEBROW}">Properties</div></div>
         ${props}
       </div>
-      <div class="art-b-links" style="${PANEL};padding:16px 18px;min-width:0">
+      <div${surface("padding:16px 18px;min-width:0", { cls: "art-b-links" })}>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;height:24px;margin-bottom:8px">
           <div style="${EYEBROW}">Linked work</div>
           <button data-act="artAttachOpen" title="Attach to ticket" class="cnpy-iconbtn" style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:6px;font-size:11.5px;font-weight:500;color:var(--fg-55)">${I.plus(12)}Attach ticket</button>
         </div>
-        ${links.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">${links.join("")}</div>` : `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0 4px">Nothing linked yet.</div>`}
+        ${links.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(200px,100%),1fr));gap:8px">${links.join("")}</div>` : `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0 4px">Nothing linked yet.</div>`}
       </div>
     </div>
   </div>`;
@@ -811,7 +805,7 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
   const opts = (sel: number) => versions.map((x) => `<option value="${x.version_no}"${x.version_no === sel ? " selected" : ""}>v${x.version_no} · ${esc(relTime(x.created_at))}</option>`).join("");
   const side = (x: ArtifactVersionDTO | undefined, n: number, tag: string, color: string) => {
     const w = x ? who(p, x.created_by) : null;
-    return `<div style="border:1px solid var(--border);border-radius:11px;padding:12px 14px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+    return `<div${surface("padding:12px 14px")}>
       <div style="display:flex;align-items:center;gap:8px"><span style="${CHIP}color:${color};border:1px solid color-mix(in srgb,${color} 38%,transparent)">${tag}</span><span style="font-family:var(--label);font-size:12px;font-weight:600">v${n}</span></div>
       ${x && w ? `<div style="font-size:13px;color:var(--fg-70);margin-top:7px">${esc(x.summary || "No summary")}</div>
       <div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:var(--fg-40)">${av(w, 16)}<span style="font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-${w.color})">@${esc(w.handle)}</span> · ${esc(relTime(x.created_at))}</div>` : `<div style="font-size:13px;color:var(--fg-40);margin-top:7px">No such version.</div>`}
@@ -829,26 +823,26 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
   else if (text) {
     body = rows.length === 0 || rows.every((x) => x.t === "ctx")
       ? `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">These versions are identical.</div>`
-      : `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;padding:8px 0;margin-top:18px">${rows.map((x) => {
+      : `<div${surface("overflow:hidden;padding:8px 0;margin-top:18px")}>${rows.map((x) => {
         const pre = x.t === "del" ? "−" : x.t === "add" ? "+" : "";
         const preColor = x.t === "del" ? "var(--red)" : x.t === "add" ? "var(--green)" : "var(--fg-40)";
         return `<div style="display:flex;${lineSt(x.t)}"><span style="display:inline-block;width:18px;flex:none;color:${preColor}">${pre}</span><span style="min-width:0">${esc(x.t === "ellipsis" ? "⋯ " + x.text : x.text || " ")}</span></div>`;
       }).join("")}</div>`;
   } else if (d.kind === "image") {
-    const pane = (x: typeof dd.a, tag: string) => `<figure style="margin:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg)">
+    const pane = (x: typeof dd.a, tag: string) => `<figure${surface("margin:0;overflow:hidden")}>
       <div style="display:grid;place-items:center;padding:18px;min-height:220px"><img src="${attr(x.raw_url || rawUrl(d.slug, x.version_no))}" alt="${attr(`${d.title} v${x.version_no}`)}" style="display:block;max-width:100%;height:auto"></div>
       <figcaption style="padding:8px 12px;border-top:1px solid var(--border);font-family:var(--label);font-size:11px;color:var(--fg-55)">${tag} · v${x.version_no} · ${esc(fmtKB(x.size_bytes))}</figcaption>
     </figure>`;
-    body = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:18px">${pane(dd.a, "BASE")}${pane(dd.b, "COMPARED")}</div>`;
+    body = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:10px;margin-top:18px">${pane(dd.a, "BASE")}${pane(dd.b, "COMPARED")}</div>`;
   } else {
     const meta = (x: typeof dd.a) => `<div style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 10px;font-size:12.5px">
       <span style="${EYEBROW};font-size:10px">SIZE</span><span style="color:var(--fg-70)">${esc(fmtKB(x.size_bytes))}</span>
       <span style="${EYEBROW};font-size:10px">TYPE</span><span style="${MONO_VAL}">${esc(x.content_type || "—")}</span>
       <span style="${EYEBROW};font-size:10px">SHA-256</span><span style="${MONO_VAL};overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${attr(x.sha256)}">${esc(x.sha256.slice(0, 16))}…</span>
     </div>`;
-    body = `<div style="border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-top:18px">
+    body = `<div${surface("padding:16px 18px;margin-top:18px")}>
       <div style="font-size:12.5px;color:var(--fg-55);margin-bottom:14px">${dd.a.sha256 === dd.b.sha256 ? "Both versions are the same file." : `A ${d.kind === "pdf" ? "PDF" : "file"} can't be compared line by line — here is what changed.`}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px">${meta(dd.a)}${meta(dd.b)}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:18px">${meta(dd.a)}${meta(dd.b)}</div>
     </div>`;
   }
 
@@ -865,7 +859,7 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
       <span style="flex:1"></span>
       <button data-act="artOpen" data-arg="${attr(openArg)}" class="cnpy-ghostbtn" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:7px;padding:5px 11px;white-space:nowrap">Open v${pair.b}</button>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:18px">${side(va, pair.a, "BASE", "var(--red)")}${side(vb, pair.b, "COMPARED", "var(--green)")}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:10px;margin-top:18px">${side(va, pair.a, "BASE", "var(--red)")}${side(vb, pair.b, "COMPARED", "var(--green)")}</div>
     ${body}
   </div>`;
 }
@@ -926,7 +920,7 @@ function createView(p: ArtProps): string {
           <div style="font-size:12.5px;color:var(--fg-40)">.html, .md, .svg or .mmd up to 750 KB · images, PDFs and other files up to 10 MB</div>
           <label class="cnpy-outlinebtn" style="margin-top:12px;${OUTLINE_BTN};padding:6px 14px;cursor:pointer">Choose file<input type="file" data-art-file style="display:none"></label>
         </div>`
-      : `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+      : `<div${surface("display:flex;align-items:center;gap:12px;padding:12px 14px")}>
           <span style="width:30px;height:30px;border-radius:6px;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55);flex:none">${binary ? I.kind(c.kind, 14) : I.file()}</span>
           <span style="flex:1;min-width:0"><span style="display:block;font-family:var(--label);font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.file.name)}</span><span style="display:block;font-size:11.5px;color:var(--fg-40);margin-top:1px">${fmtKB(c.file.size)} · ${c.kind}${c.file.size > cap ? " · over the cap" : ""}</span></span>
           <button data-act="artCRemoveFile" class="cnpy-mutelink" style="font-size:12px;font-weight:500;color:var(--fg-40)">Remove</button>
@@ -1008,7 +1002,7 @@ function createView(p: ArtProps): string {
 
 function notFoundView(p: ArtProps): string {
   return `<div data-screen-label="Artifact not found" style="display:flex;justify-content:center;padding:80px 24px">
-    <div style="width:420px;max-width:100%;border:1px solid var(--border);border-radius:14px;padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center">
+    <div${surface("width:420px;max-width:100%;padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center")}>
       <div style="width:52px;height:52px;border-radius:14px;background:var(--hover);display:grid;place-items:center;color:var(--fg-55)">${svg(22, 1.7, `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="m9.5 12.5 5 5M14.5 12.5l-5 5"></path>`)}</div>
       <div>
         <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">This artifact isn't available.</div>
@@ -1029,7 +1023,7 @@ export function artifactsDialogs(p: ArtProps): string {
   const vno = d.version.version_no;
   const shell = (w: number, inner: string, label: string) => `<div data-act="artCloseDialogs" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);animation:cnpy-fade .14s ease"></div>
     <div style="position:fixed;inset:0;z-index:61;display:grid;place-items:center;padding:16px;pointer-events:none">
-      <div role="dialog" aria-modal="true" aria-label="${label}" style="pointer-events:auto;width:min(${w}px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;border:1px solid var(--border-strong);border-radius:14px;background:var(--bg);box-shadow:0 20px 60px rgba(0,0,0,.45);animation:cnpy-pop .2s ease both">${inner}</div>
+      <div role="dialog" aria-modal="true" aria-label="${label}"${surface(`pointer-events:auto;width:min(${w}px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;border:1px solid var(--border-strong);box-shadow:0 20px 60px rgba(0,0,0,.45);animation:cnpy-pop .2s ease both`)}>${inner}</div>
     </div>`;
 
   if (p.ui.nv) return shell(820, newVersionDialog(p, d, p.ui.nv), "New version");
@@ -1116,7 +1110,7 @@ function newVersionDialog(p: ArtProps, d: ArtifactDetailDTO, nv: ArtNewVersion):
           <label class="cnpy-outlinebtn" style="margin-top:12px;${OUTLINE_BTN};padding:6px 14px;cursor:pointer">Choose file<input type="file" data-art-file="nv" style="display:none"></label>
         </div>
         ${nv.fileErr ? `<div style="font-size:12px;color:var(--red);margin-top:7px">${esc(nv.fileErr)}</div>` : ""}`
-      : `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+      : `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px">
           <span style="width:30px;height:30px;border-radius:6px;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55);flex:none">${binary ? I.kind(d.kind, 14) : I.file()}</span>
           <span style="flex:1;min-width:0"><span style="display:block;font-family:var(--label);font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nv.file.name)}</span><span style="display:block;font-size:11.5px;color:var(--fg-40);margin-top:1px">${fmtKB(nv.file.size)} · replaces v${latestNo}</span></span>
           <button data-act="artNvRemoveFile" class="cnpy-mutelink" style="font-size:12px;font-weight:500;color:var(--fg-40)">Remove</button>

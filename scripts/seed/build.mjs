@@ -33,8 +33,10 @@ export function buildSeedStatements(fx) {
 
   for (const d of fx.docs?.docs ?? []) {
     s.push(
-      `INSERT INTO docs (slug, section, space, title, body, current_version, updated_at, updated_by) VALUES (` +
-        `${q(d.slug)}, ${q(d.section)}, ${q(d.space ?? "canopy")}, ${q(d.title)}, ${q(d.body)}, ${num(d.current_version)}, ${q(d.updated_at)}, ${q(d.updated_by)})`
+      // owner (0035): the fixture's own, else the first version's author, else updated_by — the migration's backfill rule.
+      `INSERT INTO docs (slug, section, space, title, body, current_version, updated_at, updated_by, owner) VALUES (` +
+        `${q(d.slug)}, ${q(d.section)}, ${q(d.space ?? "canopy")}, ${q(d.title)}, ${q(d.body)}, ${num(d.current_version)}, ${q(d.updated_at)}, ${q(d.updated_by)}, ` +
+        `${q(d.owner ?? [...(d.versions ?? [])].sort((a, b) => a.version - b.version)[0]?.created_by ?? d.updated_by)})`
     );
     for (const v of d.versions ?? []) {
       s.push(
@@ -79,8 +81,8 @@ export function buildSeedStatements(fx) {
     );
     for (const sp of rm.sprints ?? []) {
       s.push(
-        `INSERT INTO sprints (id, title, description, summary, phase, dates, target_date, status, urgency, lead, domain, github_ref, created_at, created_by, updated_at) VALUES (` +
-          `${num(sp.id)}, ${q(sp.title)}, ${q(sp.description)}, ${q(sp.summary)}, ${q(sp.phase)}, ${q(sp.dates)}, ${q(sp.target_date)}, ${q(sp.status)}, ${q(sp.urgency ?? "normal")}, ${q(sp.lead)}, ${q(sp.domain)}, ${q(sp.github_ref)}, ${q(sp.created_at)}, ${q(sp.created_by)}, ${q(sp.updated_at)})`
+        `INSERT INTO sprints (id, title, description, summary, phase, dates, start_date, target_date, status, urgency, lead, domain, github_ref, created_at, created_by, updated_at) VALUES (` +
+          `${num(sp.id)}, ${q(sp.title)}, ${q(sp.description)}, ${q(sp.summary)}, ${q(sp.phase)}, ${q(sp.dates)}, ${q(sp.start_date)}, ${q(sp.target_date)}, ${q(sp.status)}, ${q(sp.urgency ?? "normal")}, ${q(sp.lead)}, ${q(sp.domain)}, ${q(sp.github_ref)}, ${q(sp.created_at)}, ${q(sp.created_by)}, ${q(sp.updated_at)})`
       );
       if (sp.progress) {
         s.push(
@@ -191,9 +193,11 @@ export function buildSeedStatements(fx) {
     const versions = p.versions ?? [];
     const latest = versions[versions.length - 1];
     s.push(
-      `INSERT INTO prompts (slug, title, description, tags, author, current_version, created_at, updated_at) VALUES (` +
+      // use_count / last_used_ago_min (0035) are optional fixture fields: absent = never used.
+      `INSERT INTO prompts (slug, title, description, tags, author, current_version, created_at, updated_at, use_count, last_used_at) VALUES (` +
         `${q(p.slug)}, ${q(p.title)}, ${q(p.description ?? "")}, ${jsonLit(p.tags ?? [])}, ${q(p.author)}, ${num(latest?.version)}, ` +
-        `${q(agoIso(versions[0]?.created_ago_min))}, ${q(agoIso(p.updated_ago_min))})`
+        `${q(agoIso(versions[0]?.created_ago_min))}, ${q(agoIso(p.updated_ago_min))}, ${num(p.use_count ?? 0)}, ` +
+        `${p.last_used_ago_min == null ? "NULL" : q(agoIso(p.last_used_ago_min))})`
     );
     for (const v of versions) {
       s.push(

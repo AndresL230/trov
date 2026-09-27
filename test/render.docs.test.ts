@@ -27,6 +27,7 @@ function doc(overrides: Partial<DocRow> = {}): DocRow {
     updated_at: "2026-07-01T00:00:00Z",
     updated_by: "agent",
     space: "technical",
+    owner: "agent",
     ...overrides,
   };
 }

@@ -117,6 +117,12 @@ describe("unsubscribeView", () => {
   it("shows a pending state while the flip is in flight", () => {
     expect(unsubscribeView({ email: null, pending: true, error: null })).toContain("Turning email off");
   });
+  it("the confirmation card is the shared surface, not an inline bordered box", () => {
+    const v = unsubscribeView({ email: "jose@sapling.dev", pending: false, error: null });
+    expect(v).toContain('class="cnpy-surface"');
+    expect(v).not.toContain("border-radius:14px");
+    expect(v).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
+  });
 });
 
 describe("notificationsMaintenanceSections", () => {

@@ -9,6 +9,7 @@
 // product's words:
 //   row.title       ↔ view.label
 //   row.target_date ↔ view.due
+//   row.start_date  ↔ view.start    (0035)
 //   row.status      → view.active   (derived: status === 'in_progress')
 // Everything that crosses the wire as a REQUEST body (`SprintCreate`,
 // `SprintActiveSet`, `SprintResourceAdd`) and the `update_plan` MCP input use the
@@ -24,6 +25,7 @@ import { z } from "zod";
 import type { TicketRow } from "./tickets";
 import {
   SPRINT_URGENCIES, SPRINT_DOMAINS, SPRINT_STATUSES, SPRINT_RESOURCE_KINDS,
+  PLAN_NARRATIVE_MAX, planNarrativeProblem, sprintDateProblem, sprintDatesProblem,
 } from "./sprints-core";
 
 // ── controlled vocabulary (must match the CHECK constraints in 0025_sprints.sql) ─
@@ -34,7 +36,11 @@ import {
 
 export {
   SPRINT_URGENCIES, SPRINT_DOMAINS, SPRINT_STATUSES, SPRINT_RESOURCE_KINDS,
+  PLAN_NARRATIVE_MAX, planNarrativeProblem,
+  isoDayKey, localDayKey, sprintDueState,
+  isIsoCalendarDate, normalizeSprintDate, sprintDateProblem, sprintDatesProblem, sprintDatesLabel,
 } from "./sprints-core";
+export type { SprintDueState } from "./sprints-core";
 
 export const SprintUrgency = z.enum(SPRINT_URGENCIES);
 export const SprintDomain = z.enum(SPRINT_DOMAINS);
@@ -64,6 +70,7 @@ export const SprintRow = z.object({
   urgency: SprintUrgency,                   // NOT NULL DEFAULT 'normal' — 0025
   lead: z.string().nullable(),              // person handle — 0025
   domain: SprintDomain.nullable(),          // 0025
+  start_date: z.string().nullable(),        // the DTO's `start`; YYYY-MM-DD or NULL — 0035
 });
 
 export const SprintResourceRow = z.object({
@@ -109,7 +116,8 @@ export interface SprintView {
   summary: string | null;
   description: string | null;     // markdown
   phase: string | null;
-  dates: string | null;
+  dates: string | null;           // free-text label the plan authored ("Sep 8 – 19"); display only
+  start: string | null;           // = row.start_date (0035); YYYY-MM-DD, null when not set
   due: string | null;             // = row.target_date; null when unscheduled ('')
   status: SprintStatus;
   active: boolean;                // derived: status === 'in_progress'
@@ -147,17 +155,69 @@ export type SprintDetail = SprintView & {
 
 // ── payloads (request bodies; the routes validate with these) ────────────────
 
+/**
+ * The plan narrative as the `update_plan` input takes it: trimmed, at most
+ * PLAN_NARRATIVE_MAX characters. Over the cap is a validation error naming the cap
+ * and the actual length; `write_plan` applies the same rule for every other caller.
+ */
+export const PlanNarrative = z.string().trim().superRefine((narrative, ctx) => {
+  const problem = planNarrativeProblem(narrative);
+  if (problem) ctx.addIssue({ code: "custom", message: problem });
+});
+
+/**
+ * One sprint date as a request field: absent / null / "" = not set, otherwise a real
+ * calendar day written YYYY-MM-DD (`sprintDateProblem`, the ONE rule in
+ * ./sprints-core). Trimmed. The start <= due check spans two fields, so it lives on
+ * the OBJECT (`sprintDatesRefine`) — each schema that takes both applies it.
+ */
+export const sprintDateField = (field: "start" | "due") =>
+  z.string().trim().superRefine((value, ctx) => {
+    const problem = sprintDateProblem(field, value);
+    if (problem) ctx.addIssue({ code: "custom", message: problem });
+  });
+
+/** The cross-field half: `start <= due` when both are set (the fields' own shape is checked on each). */
+export const sprintDatesRefine = (v: { start?: string | null; due?: string | null }, ctx: z.RefinementCtx): void => {
+  const problem = sprintDatesProblem(v);
+  if (problem) ctx.addIssue({ code: "custom", message: problem, path: ["start"] });
+};
+
 export const SprintCreate = z.object({
   label: z.string().min(1),                       // the only required field
-  dates: z.string().nullable().optional(),
+  dates: z.string().nullable().optional(),        // free-text display label; optional
   summary: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
   urgency: SprintUrgency.default("normal"),
-  due: z.string().nullable().optional(),          // absent/null = unscheduled
+  start: sprintDateField("start").nullable().optional(), // YYYY-MM-DD; absent/null/"" = not set
+  due: sprintDateField("due").nullable().optional(),     // YYYY-MM-DD; absent/null/"" = unscheduled
   lead: z.string().nullable().optional(),
   domain: SprintDomain.nullable().optional(),
   phase: z.string().nullable().optional(),
-});
+}).superRefine(sprintDatesRefine);
+
+/**
+ * One sprint entry of the `update_plan` MCP input (DTO vocabulary). `due` is REQUIRED
+ * but may be "" (unscheduled); `start` is optional — absent keeps the stored start on
+ * an update, null or "" clears it. Both must be real YYYY-MM-DD days, `start <= due`.
+ * `write_plan` re-checks the same rule (against the STORED start when `start` is
+ * absent) before its first write, for every caller.
+ */
+export const PlanSprintEntry = z.object({
+  id: z.number().int().optional(),
+  label: z.string(),
+  summary: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  phase: z.string().nullable().optional(),
+  dates: z.string().nullable().optional(),
+  start: sprintDateField("start").nullable().optional(),
+  due: sprintDateField("due"),
+  status: SprintStatus,
+  urgency: SprintUrgency.optional(),
+  lead: z.string().nullable().optional(),
+  domain: SprintDomain.nullable().optional(),
+  github_ref: z.union([z.number(), z.array(z.number())]).nullable().optional(),
+}).superRefine(sprintDatesRefine);
 
 export const SprintActiveSet = z.object({ active: z.boolean() });
 export const SprintResourceAdd = z.object({ raw: z.string().min(1) });
@@ -192,6 +252,7 @@ export function toSprintView(
     description: row.description,
     phase: row.phase,
     dates: row.dates,
+    start: row.start_date ?? null,
     due: row.target_date === "" ? null : row.target_date,
     status: row.status,
     active: sprintActive(row),

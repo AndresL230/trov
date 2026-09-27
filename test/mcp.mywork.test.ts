@@ -100,8 +100,9 @@ describe("registered MCP get_my_work tool", () => {
     const data = JSON.parse(res.text);
     expect(data.tickets).toHaveLength(1);
     expect(data.tickets[0]).toMatchObject({
-      title: "Laptop won't join the VPN", category: "access", status: "submitted", requester: "meilin", sprint: null,
+      title: "Laptop won't join the VPN", category: "access", status: "submitted", source: "canopy", requester: "meilin", sprint: null,
     });
+    expect(data.ticketsTotal).toBe(1);
   });
 });
 

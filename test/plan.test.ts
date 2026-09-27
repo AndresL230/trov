@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { write_plan, get_plan } from "../src/tools/plan";
 import { all, first, run } from "../src/db";
-import type { SprintRow, PlanVersionRow } from "@shared/rows";
+import type { SprintRow, PlanVersionRow, PlanRow } from "@shared/rows";
+import { PLAN_NARRATIVE_MAX } from "@shared/sprints";
+import { SprintError } from "../src/tools/sprints";
 import { upsertProgress } from "../src/tools/progress";
 
 const AUTHOR = "admin";
@@ -293,5 +295,92 @@ describe("get_plan", () => {
     await run(env.DB, `DELETE FROM plan`);
     const view = await get_plan(env.DB);
     expect(view).toMatchObject({ narrative: "", version: 0, updated_at: null, updated_by: null, sprints: [] });
+  });
+});
+
+describe("write_plan — the narrative cap (PLAN_NARRATIVE_MAX)", () => {
+  // Seed a version-1 plan with one sprint, so "nothing written" is observable on
+  // every table the write touches.
+  async function seed() {
+    const r = await write_plan(
+      env.DB,
+      { narrative: "seeded", sprints: [{ label: "Seeded", due: "2026-08-01", status: "upcoming" }] },
+      AUTHOR
+    );
+    return r.sprints[0].id;
+  }
+  async function snapshot() {
+    return {
+      plan: await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`),
+      versions: await all<PlanVersionRow>(env.DB, `SELECT * FROM plan_versions ORDER BY version`),
+      sprints: await all<SprintRow>(env.DB, `SELECT * FROM sprints ORDER BY id`),
+    };
+  }
+
+  it("a narrative of exactly the cap writes", async () => {
+    await seed();
+    const narrative = "x".repeat(PLAN_NARRATIVE_MAX);
+    const r = await write_plan(env.DB, { narrative, sprints: [] }, AUTHOR);
+    expect(r.version).toBe(2);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    expect(plan?.narrative).toBe(narrative);
+  });
+
+  it("the length is counted after trim, and the trimmed narrative is what is stored", async () => {
+    const narrative = "x".repeat(PLAN_NARRATIVE_MAX);
+    await write_plan(env.DB, { narrative: `\n  ${narrative}  \n`, sprints: [] }, AUTHOR);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    expect(plan?.narrative).toBe(narrative);
+    const v = await first<PlanVersionRow>(env.DB, `SELECT * FROM plan_versions WHERE version = 1`);
+    expect(v?.narrative).toBe(narrative);
+  });
+
+  it("one over the cap is refused naming the cap and the length — plan, plan_versions and sprints unchanged", async () => {
+    const id = await seed();
+    const before = await snapshot();
+
+    const err = await write_plan(
+      env.DB,
+      {
+        narrative: "x".repeat(PLAN_NARRATIVE_MAX + 1),
+        // A sprint edit and a sprint create ride the refused call: neither may land.
+        sprints: [
+          { id, label: "Renamed", due: "2026-09-01", status: "done" },
+          { label: "Brand new", due: "2026-09-02", status: "upcoming" },
+        ],
+      },
+      AUTHOR
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SprintError);
+    expect((err as SprintError).code).toBe("bad_request");
+    expect((err as Error).message).toContain(`${PLAN_NARRATIVE_MAX + 1} characters`);
+    expect((err as Error).message).toContain(`the cap is ${PLAN_NARRATIVE_MAX}`);
+
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it("an unknown sprint id is refused before anything is written, too", async () => {
+    const id = await seed();
+    const before = await snapshot();
+    await expect(
+      write_plan(
+        env.DB,
+        {
+          narrative: "fits",
+          sprints: [
+            { id, label: "Renamed", due: "2026-09-01", status: "done" },
+            { id: 999, label: "X", due: "2026-08-01", status: "upcoming" },
+          ],
+        },
+        AUTHOR
+      )
+    ).rejects.toThrow("no such sprint: 999");
+    expect(await snapshot()).toEqual(before);
+  });
+
+  it("a narrative already stored over the cap still reads whole — the cap is a write rule only", async () => {
+    const long = "y".repeat(PLAN_NARRATIVE_MAX * 4);
+    await run(env.DB, `UPDATE plan SET narrative = ? WHERE id = 1`, long);
+    expect((await get_plan(env.DB)).narrative).toBe(long);
   });
 });

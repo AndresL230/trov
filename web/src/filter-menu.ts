@@ -55,7 +55,8 @@ export interface FilterMenuProps {
   /** Popover anchoring: stretch across the positioned parent, or hang from the right edge. */
   align: "stretch" | "right";
   ariaLabel: string;
-  /** A Filter button on its own (the Feed), not the right half of a search box: full corners, no overlap. */
+  /** A Filter button on its own (the Feed): its own border and full corners. Without it
+   *  the button is the right half of `searchFilterBar` — borderless, the bar draws the box. */
   standalone?: boolean;
 }
 
@@ -65,6 +66,8 @@ const ROW_GAP = 1;
 const MAX_ROWS = 9;
 const FILTER_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16"></path><path d="M7 12h10"></path><path d="M10 18h4"></path></svg>`;
 const CARET = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true" style="opacity:.7"><path d="m6 9 6 6 6-6"></path></svg>`;
+const SEARCH_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>`;
+const CLEAR_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
 const CHECK = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.6" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>`;
 
 /**
@@ -88,7 +91,7 @@ export function filterMenu(p: FilterMenuProps): string {
   const anyFilter = p.activeCount > 0;
   const rowBase = "display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:0 10px;border-radius:7px;font-size:12.5px;font-weight:500;";
 
-  const button = `<button data-act="fmToggle" data-arg="${attr(p.id)}" aria-haspopup="dialog" aria-expanded="${p.open}" class="cnpy-ghostbtn fm-btn" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;${p.standalone ? "border-radius:7px" : "border-radius:0 7px 7px 0;margin-left:-1px"};height:100%;padding:0 11px 0 12px;white-space:nowrap;border:1px solid var(--border-strong);${p.open ? "color:var(--fg);background:var(--hover)" : "color:var(--fg-70)"}">
+  const button = `<button data-act="fmToggle" data-arg="${attr(p.id)}" aria-haspopup="dialog" aria-expanded="${p.open}" class="cnpy-ghostbtn fm-btn" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;${p.standalone ? "border-radius:7px;border:1px solid var(--border-strong)" : "border-radius:0 7px 7px 0;border:none"};height:100%;padding:0 11px 0 12px;white-space:nowrap;${p.open ? "color:var(--fg);background:var(--hover)" : "color:var(--fg-70)"}">
     ${FILTER_ICON}Filter
     ${p.activeCount ? `<span style="font-family:var(--label);font-size:10.5px;font-weight:600;min-width:18px;height:18px;line-height:18px;padding:0 5px;border-radius:6px;text-align:center;color:var(--accent-fg);background:var(--accent)">${p.activeCount}</span>` : ""}
     ${CARET}
@@ -129,6 +132,46 @@ export function filterMenu(p: FilterMenuProps): string {
   </div>`;
 
   return `<div data-hover-menu="${attr(p.id)}" style="display:flex">${button}${pop}</div>`;
+}
+
+export interface SearchFilterBarProps {
+  search: {
+    /** The input's `data-act` and `data-field` (rerender() restores focus + caret by the field). */
+    act: string;
+    field: string;
+    value: string;
+    placeholder: string;
+    ariaLabel?: string;
+    /** A clear (×) button's `data-act`, shown while there is a query. Omit for none. */
+    clearAct?: string;
+  };
+  /** The Filter menu on the right. Rendered NOT `standalone`. */
+  menu: FilterMenuProps;
+  /** `data-hover-blur`: a mouse leaving the bar drops the input's focus (main.ts). */
+  hoverBlur?: boolean;
+}
+
+/**
+ * Search + Filter as ONE control: one bordered field (`.cnpy-sfbar`) holding the
+ * search icon and input on the left and the Filter button on the right, split by a
+ * hairline. Every screen with the pair (the ticket queue, the Artifacts library, the
+ * Prompt Library) renders it through here, so they cannot drift apart. The bar is the
+ * popover's positioned parent, so a `stretch` menu spans the whole control; the
+ * click-outside backdrop sits beside the hover wrapper, never inside it.
+ */
+export function searchFilterBar(p: SearchFilterBarProps): string {
+  const q = p.search;
+  const menu = { ...p.menu, standalone: false };
+  return `<div class="cnpy-sfbar"${p.hoverBlur ? " data-hover-blur" : ""}>
+      <div class="cnpy-sfbar-q">
+        ${SEARCH_ICON}
+        <input data-act="${attr(q.act)}" data-field="${attr(q.field)}" class="cnpy-search-in" style="font-size:12.5px" placeholder="${attr(q.placeholder)}"${q.ariaLabel ? ` aria-label="${attr(q.ariaLabel)}"` : ""} value="${attr(q.value)}" autocomplete="off" spellcheck="false">
+        ${q.clearAct && q.value ? `<button data-act="${attr(q.clearAct)}" aria-label="Clear search" class="cnpy-xbtn" style="width:16px;height:16px;display:grid;place-items:center;color:var(--fg-40);flex:none">${CLEAR_ICON}</button>` : ""}
+      </div>
+      <span class="cnpy-sfbar-div" aria-hidden="true"></span>
+      ${filterMenuBackdrop(menu)}
+      ${filterMenu(menu)}
+    </div>`;
 }
 
 /** Row pitch the highlight moves by (canopy.css reads it as `--fm-step`). */

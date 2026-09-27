@@ -46,7 +46,10 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
 - `npm test` — Vitest against a real Miniflare D1 (the source of truth for "is it green").
 - `npm run typecheck` — `tsc` over worker + web (does NOT run in `npm test`; run it too).
 - `npm run build:web` — Vite build of the web SPA into `web/dist`.
-- `npm run dev` — build web, then `wrangler dev`. `npm run deploy` — build web, then `wrangler deploy`.
+- `npm run dev` — build web, then `wrangler dev` with a `vite build --watch` beside it (`npm run watch:web`), so a
+  web change is live on a plain page reload — no rebuild, no restart. The watch keeps old hashed bundles
+  (`--emptyOutDir false`): emptying `web/dist` under a running `wrangler dev` is what made it serve stale or
+  404 assets. `npm run deploy` — build web, then `wrangler deploy`.
 - `npm run db:create` / `db:migrate:local` / `db:migrate:remote` — D1 provisioning + migrations.
 - Run one test file: `npx vitest run test/<file>.test.ts`.
 
@@ -120,7 +123,14 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `testing` status and add `tickets.board_rank`; under `defer_foreign_keys`, carrying each AUTOINCREMENT counter
   over so a deleted ticket's number is never reissued — see "The ticket board" below], then
   `0034_feed_brief_artifact_cap` [`feed.brief` — see "The feed brief" below — and REBUILDS `artifact_versions`
-  to raise its text CHECK to 768000 bytes, the 750 KB `ARTIFACT_TEXT_CAP`]).
+  to raise its text CHECK to 768000 bytes, the 750 KB `ARTIFACT_TEXT_CAP`], then `0035_library_and_sprint_dates`
+  (ONE migration for the 2026-09-26 redesign batch — developed as 0035 + 0036, consolidated before production;
+  two marked parts) — PART A [`docs.owner`, `artifact_pages.published_at`, `prompts.use_count` / `last_used_at` —
+  each backfilled — and `prompts_fts_au` narrowed to the indexed columns so a use bump never rewrites the FTS
+  row; the data behind My Work's library strip], PART B [`sprints.start_date` (nullable `YYYY-MM-DD`, the DTO's
+  `start`), backfilled CONSERVATIVELY from `dates` — only a label that BEGINS with an ISO date or "<month> <day>"
+  with no year, against an ISO `target_date` (the year before only for a range crossing New Year); anything else
+  stays NULL and the Timeline still parses `dates`. Nothing else is rewritten — legacy non-ISO `target_date`s stay]).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
@@ -137,6 +147,13 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   reopens the same page as the `site` screen (`#site`): its nav swaps Sign in for "Back to the app", which
   returns to the route the logo was clicked from; `#site` is never stashed as a sign-in return-to. `web/src/landing-motion.ts`
   plays its scroll reveals; played keys live in `state.landingSeen` so a rerender never replays them.
+  `web/src/releases.ts` is Help › **What's new**: `#releases` a grid of release cards; each release has TWO pages,
+  `#releases/<v>` (release notes — for USERS: no PRs, no migrations) and `#releases/<v>/patches` (patch notes — for
+  builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), flipped by a `segmented()` switch;
+  `<v>` is `0.N` or `unreleased`; the old `#releases/patches` opens the newest release's patches. Static `RELEASES`
+  data (`0.N` per milestone, newest first) plus a pure renderer. **Every shipped PR adds its lines to the top
+  "Unreleased" entry** (highlights / heads-up in product words, deploy steps in `ops`, patch lines ending `(#N)`
+  to link the PR); the header comment says how to cut a version.
 - `.claude/skills/` — Claude Code skills: `canopy`, `load-context`, `record-session`, `tickets`, and the
   roadmap/my-work skills `read-plan`, `update-plan`, `my-work`. Described in the Working memory section
   above. (Symlinks into `plugins/canopy/skills/` — one source of truth.)
@@ -243,7 +260,16 @@ feed entry has two readers. `summary` is the one-line title; `brief` (optional, 
 in product words, for PEOPLE; `body` is the agent record. The Feed screen's header switch **For reading**
 (default; title + brief + artifact chips, no body — an entry with no brief is title-only) / **For agents**
 (the full body) is client-side, saved per browser as `canopy.feedView`. `get_feed` returns both, and
-`query`'s assembled feed body leads with `Brief: …`. The `record-session` skill always writes a brief; the
+`query`'s assembled feed body leads with `Brief: …`. The Feed screen has the Roadmap Narrative's two columns — ONE shared
+helper, `asideColumns` (`web/src/ui.ts`; CSS `.cnpy-cols-page` / `.cnpy-cols` / `.cnpy-cols-aside`: a 360px aside,
+sticky at the page's own top padding `--cols-pad-top`, one column under an 880px page; not the sidebar's
+`.cnpy-aside`) — with a two-box aside: **This week**, over `GET /feed/stats?days=7&tz=<minutes east of UTC>`
+(`src/tools/feed-stats.ts`, DTO `shared/feed-stats.ts`; session cookie; `days` 1–30, `tz` ±840, else 400; a
+failed read is 503 `{ error }`, never a 500): `{ days: [{date, count}], total, people, topTags, topAuthors }`
+over the WHOLE team in the viewer's LOCAL days (UTC when `tz` is absent), every day listed so a zero is a
+true zero — two statements, loaded on entering the Feed, never on a filter change; its tag and author chips
+apply the Feed's own `setTag` / `setAuthor` filter; and **Waiting on review**, the Review queue from the
+boot-loaded proposals + draft ADRs as `reviewHeadsFromReads` heads (no diff), each row `mwOpenReview`. The `record-session` skill always writes a brief; the
 body's soft target is ~2,500 characters. Pre-0034 entries were filled once by
 `scripts/backfill-feed-briefs.mjs` (local, Gemini, dry run by default, `--apply` only `WHERE brief IS NULL`).
 
@@ -260,6 +286,41 @@ standalone `roadmap_fts` over the plan narrative + sprints (refs `plan` / `sprin
 `ticket_badge` are the queue's read projections (no N+1 — grouped queries keyed by ticket id). The
 assembled `sprint` body's `Progress: closed/total` line uses the SAME `sprintProgress` rule as the
 Roadmap (tickets + cache), never the cache alone.
+
+**The "search everything" dropdown — `GET /search/quick`** (`src/tools/quick-search.ts`, DTO
+`shared/quick-search.ts`, panel `web/src/quicksearch.ts`; session cookie, NEVER MCP). As a person types in
+the sidebar box it returns `{ result: { q, groups: [{ type, hits }] } }` — per type the top `limit` (default 4,
+max 8) hits, each a title + short plain fields (`snippet` / `status` / `by` / `at`, a person's `color`) the panel
+composes into ONE context line; never a body. Groups, in order: `ticket` (tickets_fts + an exact `#12` / `12`
+id), `doc`, `decision`, `sprint` (roadmap_fts), `artifact`, `prompt` (prompts_fts), `handoff`, `person`, `feed`.
+**Visibility — the human, live-only reading of `/search`**: a never-promoted doc and a non-ratified decision are
+withheld; artifacts go through `searchArtifactsStmt` (`src/tools/artifacts.ts`, the ONE visibility rule —
+another person's private page and an un-uploaded page never appear) with drafts dropped; a prompt only once
+it has a PUBLISHED version (its context is the description, not the body); handoffs only the viewer's own —
+left for them, left for anyone, or sent by them — pending or claimed (the inbox boxes' union); reserved
+system handles never appear as people. **Speed**: a query under 2 characters (or with nothing matchable)
+returns no groups WITHOUT touching D1 (the Screens list is static, client-side); otherwise every lookup is a
+LIMITed statement and all of them go in ONE `db.batch` (one D1 round trip). FTS input is rebuilt by
+`buildPrefixMatch` — word tokens only, each quoted and PREFIX-matched (`"tok"*`), so typed operators/quotes
+are inert (never a 500); porter stems a prefix term too, so the last token also tries itself 1–2 characters
+shorter (`searchi` → `search*`) to match past its stem. Handoffs and people are not FTS: a LIKE (literal —
+`%`/`_` escaped) over the viewer's handoffs (a scan of a small table, NOCASE like `listHandoffs`) and over
+`persons` (tiny). Measured against `wrangler dev` (local D1, 15 queries × 7 runs, in-page fetch): p50 ≈ 12
+ms, p95 ≈ 28 ms, max ≈ 60 ms. A failure answers 200 with empty groups + `degraded: true`. **The panel**
+lives on `<body>`, outside the app mount (like the lightbox, carrying `data-cnpy-theme`), so rerenders never
+touch it and the sidebar's pinned tree is unchanged; `rerender()` calls `qs.sync()` to re-anchor/re-theme it.
+Rail expanded: it hangs under the sidebar box (≈ 340–380px wide), which stays the input. Rail collapsed or
+narrow: ⌘K / the icon open a centered palette (≤ 480px) with its own input. **It never reshapes under a
+keystroke**: results paint only after a 1 s PAUSE in typing (what is shown stays put until then; ⌘K and a
+refocus paint at once); opening, closing and every height change animate (~200 ms, off under reduced motion).
+Behind the pause: the request starts 120 ms after a keystroke, the in-flight one is aborted on every
+keystroke, a 40-entry LRU (60 s TTL) answers repeats with no fetch, and a pause that passes with the answer
+still out shows the longest cached PREFIX's still-matching hits plus "Searching…". One-line rows, no accent
+strip — selection is a background fill. ↑/↓ move (a first press before the pause shows the results), Enter opens the selected row — or, typed
+faster than the panel shows, goes straight to the Search screen with the text; Tab / ⌘Enter = the Search
+screen with the query, Esc closes. A pick runs the existing acts (`openTicket`, `openDocFrom`, `openSprint`,
+`artOpen`, `openPrompt`, `openHandoff`, `goFeed`, a person → the queue filtered to them; a decision, which has
+no screen, → the Search screen on its title).
 
 **MCP ticket/sprint reads are unscoped; the writes are not** — `src/mcp.ts` registers `list_tickets`
 (`seg` / `assignee` where `me` = the bearer principal / `category`), `get_ticket`, `list_sprints` and
@@ -278,7 +339,7 @@ of its `commits` AND only the first `DRIFT_GROUP_LIMIT` (20) groups travel, with
 beside GitHub's own `ahead` / `behind`; with it, every group and its commits. A section's STATUS is never
 touched — `not_connected` / `empty` pass through, never coerced to zeros — and the tool's description says
 the same of a `null` INSIDE an `ok` section (`usage[].requests`, a `product` value, `contributors[].reviews`,
-`ciFailures.rate`, a delta): unknown, never zero, with `usage[].seen` saying whether the source ever
+`ciFailures.rate`, `prs.openCount`, a delta): unknown, never zero, with `usage[].seen` saying whether the source ever
 reported. A projection throw is the degraded empty payload, not an MCP error. The view is per-call and only
 serialized — it SHARES structure with the projection, it is not a deep copy. Output: `{ repo, generatedAt,
 degraded, tab, range, sections }`.
@@ -396,6 +457,9 @@ it also grants that GitHub account sign-in as the mapped person, not just attrib
 route yet; fix a wrong mapping by deleting the `identities` row with `wrangler d1 execute`. `ADMIN_LOGINS`
 holds handles — list the new handle there before an admin renames (`POST /auth/me/handle` 403s otherwise).
 Every `recorded_by` / `created_by` / `user_id` is a handle. Migrated GitHub users kept their login as handle.
+`docs.owner` (0035) is one too — the proposer of a doc's FIRST version, set once at creation and never
+overwritten by edits or promotions (`updated_by` is the last promoter) — listed in `HANDLE_COLUMNS`; there is no
+route to change it yet.
 
 ## Roadmap & My Work — authored plan + stored projections, no live GitHub at render
 
@@ -405,10 +469,28 @@ non-destructively into `plan` (singleton narrative) + `plan_versions` snapshots 
 the `sprints` table. **Sprints ARE the old milestones, renamed in place by 0025** — same rows, same
 ids, plus `dates` / `summary` / `urgency` / `lead` / `domain` alongside the pre-existing `description`
 (now rendered as markdown) and `phase`. Sprint `done` is admin-set here, never event-inferred.
+**ONE overdue rule**: `sprintDueState(due, now)` in `shared/sprints-core.ts` — a sprint is due all of its
+(local) due day and overdue from the day AFTER, "due this week" = today through 7 days out — read by the sprint
+cards, the Roadmap's header dot / Now box / single NEXT UP (`nextSprintId`), the Timeline and My Work's ticket due dates.
+The narrative is short — `PLAN_NARRATIVE_MAX` = 800 characters after trim (`shared/sprints-core.ts`),
+enforced in the `update_plan` input schema AND at the top of `write_plan`, before its first write (so over
+it, or an unknown sprint id, writes nothing: no plan row, no version, no sprint); a longer narrative
+already stored still reads whole.
 
 **Two vocabularies, one seam** (`shared/sprints.ts`): the DB keeps its column names, the DTO speaks the
-product's words — `row.title` ↔ `view.label`, `row.target_date` ↔ `view.due`, and `active` is DERIVED
-(`status === 'in_progress'`), never stored. `update_plan`'s input and every sprint route body use the
+product's words — `row.title` ↔ `view.label`, `row.target_date` ↔ `view.due`, `row.start_date` ↔ `view.start`
+(0035), and `active` is DERIVED (`status === 'in_progress'`), never stored. **ONE sprint-date rule**
+(`sprintDatesProblem` in `shared/sprints-core.ts`, zod-free): `start` and `due` are each unset (null / "") or a
+REAL calendar day written `YYYY-MM-DD` ("Oct 17", `2026-02-30` refused), and `start <= due` when both are set —
+enforced by `SprintCreate` (`POST /sprints`, which answers the rule's message as its 400 `error`, and MCP
+`create_sprint`), `PlanSprintEntry` (`update_plan`), `create_sprint` and `write_plan` themselves (before the first
+write; an update that omits `start` is checked against the STORED one), and the New sprint panel before it
+submits. A refusal writes nothing. READS never validate, so a legacy non-ISO due still reads (Unscheduled on the
+Timeline). `dates` is now only a display label: `sprintDatesLabel` (same file) shows the real span when a start
+is set, else `dates` — used by the sprint card, the sprint screen, the queue's sprint groups and the artifact
+sprint picker. The New sprint panel has native `<input type="date">` Start / Due (`.cnpy-date` sets
+`color-scheme` per theme) and no free-text Dates field; the Timeline draws from `start`, else parses `dates`,
+else the dashed two-week estimate. `update_plan`'s input and every sprint route body use the
 DTO vocabulary; only `src/tools/` speaks columns. `GET /roadmap` and MCP `get_roadmap` read `get_plan`:
 narrative + `sprints: SprintView[]` in target-date order, each with `progress: {closed, total, pct}`.
 No live GitHub, no per-user token.
@@ -427,9 +509,19 @@ numbers) resolved against `GITHUB_REPO` — only by those two writers, never at 
 **My Work** (`GET /me/dashboard`, MCP `get_my_work` → `getMyWork`) is a D1-only projection over captured
 events AND over the ticket queue: three separate lists — `previousActivity` (summarized merged/closed PRs
 where the person is the subject, 5 most recent), `todo` (their open assigned issues, 5 most recently
-updated, each carrying its own stored summary), and `tickets` (their OPEN assigned NATIVE tickets — a
-mirrored ticket is already on the To-do as its issue — 5 most recently updated, with the sprint label) — built from `events` (+ `pr_summaries`, `issue_summaries`, `persons`,
-`identities`) and from `tickets` + `ticket_assignees`, no live GitHub.
+updated, each carrying its own stored summary), and `tickets` (their OPEN assigned tickets of BOTH sources —
+`listAssignedTickets(…, { sources: "all" })`, each carrying `source`, since the screen renders no issue list
+any more and a mirrored ticket reaches it only as a ticket — 6 most recently updated, with the sprint label,
+plus `ticketsTotal`, the UNCAPPED count of that same rule, which the "N open" figure and the greeting use) —
+built from `events` (+ `pr_summaries`, `issue_summaries`, `persons`, `identities`) and from `tickets` +
+`ticket_assignees`, no live GitHub. `todo` / `previousActivity` stay in the DTO for MCP `get_my_work`, where
+a mirrored ticket's issue can therefore appear in both `todo` and `tickets` (`source: "github"` says so).
+The SCREEN (`web/src/mywork.ts`, composed by `myWorkView`) reads its other tiles off their own slices: Your
+sessions off `mwSessions` (`GET /feed?author=<me>&limit=3` — never the Feed screen's filtered `feed`), Docs
+you own off `mwDocs` (`GET /docs?fields=meta`, no bodies, stubs at `current_version = 0` skipped), the review
+tile off `reviewHeadsFromReads` (no diff), and every handoff count — Your sessions' pills and the library's
+Queued handoffs cell (count + the newest, opened, never claimed from here) — off `handoffsForMe`, the ONE
+definition the sidebar badge uses too (pending, recipient = me, self-sent included, `anyone` excluded).
 `person` resolves via the github `identities` row (`resolvePersonForLogin`, see Identity above); an
 unmapped login yields an empty EVENT projection (`degraded:false`) — but the ticket list is read BEFORE the
 identity fork and is keyed on the person HANDLE (`COLLATE NOCASE`, like `persons.handle`), so a person with
@@ -549,7 +641,11 @@ zero open PRs would otherwise never earn one. Until it exists the Overview reads
 tickets (a live ticket count with a net 7-day delta from `ticket_events`) and the Code tab reads Closed
 unmerged, instead of lying with "Open PRs: 0" off one webhook delivery, and the PR list stays the
 merged/closed list from `events`; once it flips, Open PRs / Awaiting review replace them (Open tickets
-leaves the Overview) and the list includes open PRs with their own head branch. The 14-day bars are MERGE
+leaves the Overview) and the list includes open PRs with their own head branch. **`prs` is `{ rows,
+openCount }`**: `rows` is the capped list (8), `openCount` the Overview's own "Open PRs" figure (one
+definition, `prsNow`) — `null` until `prCaptured`, never a count of `rows`; a known count with no recent rows
+is still `ok` (My Work's Repo tile reads "Open PRs not captured yet — showing recent merged/closed" on `null`,
+and tags `repo.sample` data "Sample data"). The 14-day bars are MERGE
 bars until a `push` row exists in the trailing 14-day window (not "ever"), then COMMIT bars; the Commits
 tile replaces Issues opened on that same condition, and Active branches replaces Issues closed once a
 `branches` snapshot exists. A week-over-week DELTA is a further, independent gate: `recordingSince(db, kind)`
@@ -561,7 +657,9 @@ need `recordingSince('pr') <= weekAgo`, the Commits tile `recordingSince('push')
 runs is a day capture was not running, not a green day. The failures LIST is NOT gated (those rows are
 facts, and `empty` would render "No CI failures this week", itself false); rate and trend share the SAME
 seven UTC calendar-day buckets, and a `null` rate draws no percentage and no sparkline, just "A 7-day rate
-appears after a week of captured runs." `ciFailures` itself is `not_connected` until a `run` row has ever
+appears after a week of captured runs." `rate` is a PERCENTAGE (3.5 = 3.5%). `rows` is capped at 5;
+**`RepoCiFailures.total`** counts every failed/timed-out run in the same window, and every "N failures" reads
+it, never `rows.length`. `ciFailures` itself is `not_connected` until a `run` row has ever
 been captured; it does not consult `REPO_ENVIRONMENTS`. Backfilled `push` rows (one synthetic count-1 row PER
 COMMIT) are excluded from the activity feed and the contributors' `P` tally — a 40-commit backfill would
 otherwise read as 40 feed lines and P=40 — but still count toward the Commits tile and the bars; bots are
@@ -1012,9 +1110,10 @@ issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source 
 - **The lock**: the source link is inserted `locked = 1`; `remove_ticket_link` (the ONLY link delete path —
   there is deliberately no trigger, the harness truncates `ticket_links`) refuses it with 403 and the UI
   shows a lock with no Remove row. Everything else stays writable.
-- **No double counting**: `listAssignedTickets` (My Work + the ticketq digest's own half), `ticket_badge`,
-  the digest's unassigned half and the Repo dashboard's Open tickets tile read `source = 'canopy'`; sprint
-  progress counts both. `deleted` / `transferred` are captured issue actions, and every open-issue reader
+- **No double counting**: `listAssignedTickets` with its DEFAULT `sources: "canopy"` (the ticketq digest's
+  own half), `ticket_badge`, the digest's unassigned half and the Repo dashboard's Open tickets tile read
+  `source = 'canopy'`; sprint progress counts both, and so does My Work (`sources: "all"` — its screen no
+  longer shows the To-do issue list, so the mirrored ticket is the ONE place that work appears there). `deleted` / `transferred` are captured issue actions, and every open-issue reader
   (My Work's To-do, array-ref progress, the Repo dashboard's open issues) treats them as no longer open
   (`src/tools/issue-gone.ts`).
 - **`github-webhook`** is a reserved handle with a `persons` row (seeded by 0032 AND `reset.mjs`, which
@@ -1043,7 +1142,11 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
 - **Prompts** (`src/tools/prompts.ts`): every save appends a version; the latest version's status/body ARE the
   prompt's. `savePrompt(…, via)` — a person (`via: "human"`, the cookie route) saves draft/staged/published and
   may rename the slug (both tables, one batch); an agent (`via: "agent"`, MCP `save_prompt`) is FORCED to
-  `staged` and may not rename. Publishing a staged version and retagging are session-cookie only.
+  `staged` and may not rename. Publishing a staged version and retagging are session-cookie only. **Usage**
+  (0035): `use_count` / `last_used_at` (on `PromptSummary` / `PromptDetail`) are bumped by ONE conditional UPDATE
+  in `recordPromptUse` — from MCP `get_prompt` (every principal) and `POST /api/prompts/:slug/used` (the web Copy
+  button; 404 unknown slug, 503 on a D1 failure, never a 500); a use is not an edit, so `updated_at` stays, and
+  `GET /api/prompts?sort=used` lists the most used first.
 - **Routes** (session cookie, `{ error }` on failure): `GET /api/handoffs?box=mine|me|anyone|sent`,
   `GET /api/handoffs/:id`, `POST /api/handoffs`, `POST /api/handoffs/:id/claim`, `POST /api/handoffs/:id/expire`,
   `GET /api/prompts?q&tags&sort`, `GET /api/prompts/:slug`, `GET /api/prompts/:slug/versions`, `POST /api/prompts`,
@@ -1084,6 +1187,10 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy
   a missing slug are ONE byte-identical not-found on every surface (HTTP, raw, MCP, query, list) — pinned by
   `test/artifacts.security-access.test.ts`. Slugs are one namespace, so allocating `<slug>-2` does reveal that a
   hidden page with that title exists (never its content or author) — a known, accepted leak.
+- **`published_at`** (0035, on both DTOs) is when the CURRENT published content went live: stamped on draft →
+  published (PATCH or private → org) and by every later version (it auto-publishes), kept by a PATCH that leaves
+  the page published, cleared to NULL on → draft, untouched by ratify; pre-0035 pages carry their current
+  version's `created_at` (a v1 published by PATCH never recorded when, so that is a lower bound).
 - **Ratify is the human confirm gate**: `POST /api/artifacts/:slug/ratify {version}`, session cookie only, only
   the LATEST version of a `published` page, and it refuses any request carrying an `Authorization` header. There
   is NO MCP ratify tool.

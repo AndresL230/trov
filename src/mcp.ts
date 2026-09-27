@@ -13,7 +13,7 @@ import { TicketError } from "./tools/tickets";
 import {
   SprintError, create_sprint, set_sprint_active, complete_sprint, add_sprint_resource, delete_sprint,
 } from "./tools/sprints";
-import { SprintCreate } from "@shared/sprints";
+import { SprintCreate, PlanNarrative, PlanSprintEntry, PLAN_NARRATIVE_MAX } from "@shared/sprints";
 import {
   agentCreateTicket, agentEditTicket, agentTransitionTicket, agentAddTicketComment,
   agentAddTicketLink, agentSetTicketSprint, agentSetTicketParent,
@@ -37,7 +37,7 @@ import { write_plan, get_plan, type PlanWrite } from "./tools/plan";
 import {
   listHandoffs, getHandoff, createHandoff, claimHandoff, expireHandoff, handoffAsTask, HandoffCreateInput, HandoffError,
 } from "./tools/handoffs";
-import { listPrompts, getPrompt, savePrompt, PromptSaveInput, PromptError } from "./tools/prompts";
+import { listPrompts, getPrompt, recordPromptUse, savePrompt, PromptSaveInput, PromptError } from "./tools/prompts";
 import { detectVars, fillVars, firstLine, type HandoffView } from "@shared/handoffs";
 
 const asText = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }] });
@@ -199,7 +199,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "list_sprints",
-    "Read-only: every sprint in roadmap order. Sprints are the roadmap's containers — a sprint holds tickets, and its `progress` is its TICKETS only (closed/total/pct, where closed = done + declined). The GitHub issues behind a sprint are a separate `issues` field, the cached closed/total from its github_ref (null when it has no cache row); no live GitHub at read time. Each carries label, summary, phase, dates, due, status/active, urgency, lead, domain and members (the handles assigned to its tickets). Sprint writes (create_sprint / set_sprint_active / complete_sprint / add_sprint_resource / delete_sprint) are open to every principal; only the bulk plan write update_plan is admin-only.",
+    "Read-only: every sprint in roadmap order. Sprints are the roadmap's containers — a sprint holds tickets, and its `progress` is its TICKETS only (closed/total/pct, where closed = done + declined). The GitHub issues behind a sprint are a separate `issues` field, the cached closed/total from its github_ref (null when it has no cache row); no live GitHub at read time. Each carries label, summary, phase, dates (a free-text label), start and due (YYYY-MM-DD or null), status/active, urgency, lead, domain and members (the handles assigned to its tickets). Sprint writes (create_sprint / set_sprint_active / complete_sprint / add_sprint_resource / delete_sprint) are open to every principal; only the bulk plan write update_plan is admin-only.",
     {},
     async () => runTool(() => list_sprints(env.DB)),
   );
@@ -310,7 +310,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "get_my_work",
-    "Your personal My Work projection from captured GitHub events (no live GitHub): previous-activity (your 5 most recent summarized merged/closed PRs) and to-do (your open assigned issues). Read-only.",
+    "Your personal My Work projection (D1 only, no live GitHub): previous-activity (your most recent summarized merged/closed PRs), to-do (your open assigned GitHub issues), and tickets (your open assigned tickets, native AND mirrored from GitHub issues — `source: \"github\"` marks a mirrored one, whose issue may also be in to-do; capped, with `ticketsTotal` the full count). Read-only.",
     {},
     async () => runTool(() => getMyWork(env.DB, principal.handle))
   );
@@ -332,7 +332,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
   // (POST /admin/backfill) stay session-cookie + admin routes, NEVER MCP tools.
   server.tool(
     "get_repo_dashboard",
-    "The Repo dashboard for the org's main repository: environments and deploys, CI, code activity, usage (requests, errors, hosting, active users), the app's product metrics, and planning — read from Canopy's own database, never live GitHub. Every section is `ok`, `empty` (connected, nothing to show) or `not_connected` (never captured): treat anything not `ok` as unknown, never as zero. The same holds INSIDE an `ok` section: a `null` figure (`usage[].requests` / `errorRate` / `users`, a `product` value, `contributors[].reviews`, `ciFailures.rate`, a `null` or empty delta, a `null` sha or checks) is unknown / not captured — never zero — and `usage[].seen` says whether that source has EVER reported (`null` + not seen = not connected; `null` + seen = no recent reading). Optional `tab` (overview | code | ci | usage | planning) returns only the sections that tab shows; `range` (24h | 7d | 30d, default 7d) picks the one view the usage / cloudflare / product sections return; `include_trends` (default false) adds the sparkline `trend` arrays and the full drift breakdown — without it `drift.groups` is the first 20 groups, each with a `commitCount` instead of its commits, and `drift.groupCount` is the full number; with `include_trends: true` every group is returned with its commits. Leave it off unless you need the series. Returns { repo, generatedAt, degraded, tab, range, sections }; `degraded: true` means a database read failed and the sections fell back. Read-only and safe to call freely.",
+    "The Repo dashboard for the org's main repository: environments and deploys, CI, code activity, usage (requests, errors, hosting, active users), the app's product metrics, and planning — read from Canopy's own database, never live GitHub. Every section is `ok`, `empty` (connected, nothing to show) or `not_connected` (never captured): treat anything not `ok` as unknown, never as zero. The same holds INSIDE an `ok` section: a `null` figure (`usage[].requests` / `errorRate` / `users`, a `product` value, `contributors[].reviews`, `ciFailures.rate`, `prs.openCount` (open PRs not captured yet), a `null` or empty delta, a `null` sha or checks) is unknown / not captured — never zero — and `usage[].seen` says whether that source has EVER reported (`null` + not seen = not connected; `null` + seen = no recent reading). Optional `tab` (overview | code | ci | usage | planning) returns only the sections that tab shows; `range` (24h | 7d | 30d, default 7d) picks the one view the usage / cloudflare / product sections return; `include_trends` (default false) adds the sparkline `trend` arrays and the full drift breakdown — without it `drift.groups` is the first 20 groups, each with a `commitCount` instead of its commits, and `drift.groupCount` is the full number; with `include_trends: true` every group is returned with its commits. Leave it off unless you need the series. Returns { repo, generatedAt, degraded, tab, range, sections }; `degraded: true` means a database read failed and the sections fell back. Read-only and safe to call freely.",
     {
       tab: z.enum(Object.keys(REPO_TAB_SECTIONS) as [RepoTab, ...RepoTab[]]).optional(),
       range: z.enum(REPO_RANGES).optional(),
@@ -455,7 +455,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "create_sprint",
-    "Create a sprint. It lands INACTIVE and unscheduled — status 'upcoming', phase 'Unscheduled' unless you pass one, and no `due` stores an empty target date that reads back as due: null (those sort last on the Roadmap). `label` is the sprint name; `lead` is a person handle. Which TICKETS are in the sprint is not set here — that is set_ticket_sprint. Direct promote-class write, not staged.",
+    "Create a sprint. It lands INACTIVE and unscheduled — status 'upcoming', phase 'Unscheduled' unless you pass one, and no `due` stores an empty target date that reads back as due: null (those sort last on the Roadmap). `start` and `due` are real calendar days written YYYY-MM-DD, start on or before due — anything else (\"Oct 17\", 2026-02-30) is refused and nothing is written. `dates` is only an optional free-text display label. `label` is the sprint name; `lead` is a person handle. Which TICKETS are in the sprint is not set here — that is set_ticket_sprint. Direct promote-class write, not staged.",
     SprintCreate.shape,
     async (input) => runTool(() => create_sprint(env.DB, SprintCreate.parse(input), principal.handle)),
   );
@@ -587,9 +587,11 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "get_prompt",
-    "Read a library prompt by slug, with its {{variables}} filled from `vars`. The response lists `variables` (every one the prompt uses) and `unfilled` (the ones still left as {{placeholders}}) — ASK the person for any unfilled value instead of guessing it. Read-only.",
+    "Read a library prompt by slug, with its {{variables}} filled from `vars`. The response lists `variables` (every one the prompt uses) and `unfilled` (the ones still left as {{placeholders}}) — ASK the person for any unfilled value instead of guessing it. Each call counts as one USE of the prompt (`use_count` / `last_used_at`, which the library's most-used sort reads); it changes nothing else.",
     { slug: z.string(), vars: z.record(z.string(), z.string()).optional() },
     async ({ slug, vars }) => runTool(async () => {
+      // One conditional UPDATE: counts this call once, and writes nothing for an unknown slug.
+      await recordPromptUse(env.DB, slug);
       const p = await getPrompt(env.DB, slug);
       if (!p) throw new PromptError("not_found", "prompt not found");
       const variables = detectVars(p.body);
@@ -614,23 +616,14 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
   if (isAdmin(env, principal.handle)) {
     server.tool(
       "update_plan",
-      "ADMIN plan write: replace the roadmap narrative and create/update sprints (including status 'done') in one direct, non-destructively versioned write — same authored-write class as promote, NOT the ingestion gate. Sprints not listed are untouched. `label` is the sprint name and `due` its target date. Which tickets are IN a sprint is set from the Tickets UI, not here. Use via the update-plan skill.",
+      `ADMIN plan write: replace the roadmap narrative and create/update sprints (including status 'done') in one direct, non-destructively versioned write — same authored-write class as promote, NOT the ingestion gate. Sprints not listed are untouched. \`label\` is the sprint name, \`start\` its start date and \`due\` its target date — each a real calendar day written YYYY-MM-DD (\`due\` may be "" for unscheduled; \`start\` omitted keeps the stored one, null clears it), start on or before due, else the whole call is refused and nothing is written. \`dates\` is only a free-text display label. Which tickets are IN a sprint is set from the Tickets UI, not here. The narrative is SHORT — 2–3 sentences up to two short paragraphs (Now / Next / Later), at most ${PLAN_NARRATIVE_MAX} characters after trimming; leave out sprint-by-sprint detail, issue lists, dated status logs and ops steps (the sprints and the timeline carry those). Over the cap the whole call is refused and nothing is written — plan, versions and sprints alike. The narrative is always a full replacement, so an over-cap narrative already stored must be shortened, not resent. Use via the update-plan skill.`,
       {
-        narrative: z.string(),
-        sprints: z.array(z.object({
-          id: z.number().int().optional(),
-          label: z.string(),
-          summary: z.string().nullable().optional(),
-          description: z.string().nullable().optional(),
-          phase: z.string().nullable().optional(),
-          dates: z.string().nullable().optional(),
-          due: z.string(),
-          status: z.enum(["upcoming", "in_progress", "done"]),
-          urgency: z.enum(["low", "normal", "high"]).optional(),
-          lead: z.string().nullable().optional(),
-          domain: z.enum(["notifications", "tickets", "gate", "feed", "search", "infra"]).nullable().optional(),
-          github_ref: z.union([z.number(), z.array(z.number())]).nullable().optional(),
-        })).default([]),
+        narrative: PlanNarrative.describe(
+          `The whole roadmap narrative (markdown), replacing the current one. SHORT: 2–3 sentences to two short paragraphs — what is happening now, next, later — at most ${PLAN_NARRATIVE_MAX} characters after trimming. No sprint-by-sprint detail; the sprints and the timeline carry it.`
+        ),
+        // One entry per sprint (shared/sprints.ts `PlanSprintEntry`): `due` and `start`
+        // are real YYYY-MM-DD days (or "" / null), start <= due — the ONE sprint-date rule.
+        sprints: z.array(PlanSprintEntry).default([]),
       },
       async (input) => runTool(() => write_plan(env.DB, input as PlanWrite, principal.handle))
     );

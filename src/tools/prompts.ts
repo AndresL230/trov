@@ -45,8 +45,10 @@ export type PromptSaveInput = z.infer<typeof PromptSaveInput>;
 interface PromptRow {
   slug: string; title: string; description: string; tags: string; author: string;
   current_version: number; updated_at: string; status: PromptStatus | null; body: string | null;
+  use_count: number; last_used_at: string | null;
 }
-const SELECT = `SELECT p.slug, p.title, p.description, p.tags, p.author, p.current_version, p.updated_at, v.status, v.body
+const SELECT = `SELECT p.slug, p.title, p.description, p.tags, p.author, p.current_version, p.updated_at, v.status, v.body,
+    p.use_count, p.last_used_at
   FROM prompts p LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version`;
 
 function tagsOf(json: string): string[] {
@@ -56,20 +58,30 @@ function toDetail(r: PromptRow): PromptDetail {
   return {
     slug: r.slug, title: r.title, description: r.description, tags: tagsOf(r.tags), author: r.author,
     version: r.current_version, status: r.status ?? "draft", updated_at: r.updated_at, body: r.body ?? "",
+    use_count: r.use_count ?? 0, last_used_at: r.last_used_at ?? null,
   };
 }
 const toSummary = (d: PromptDetail): PromptSummary => ({
   slug: d.slug, title: d.title, tags: d.tags, author: d.author, version: d.version, status: d.status, updated_at: d.updated_at, excerpt: firstLine(d.body),
+  use_count: d.use_count, last_used_at: d.last_used_at,
 });
 
+/** ORDER BY for each sort. `used` = most used first; ties (incl. never used) by last use, then recency. */
+const ORDER: Record<PromptSort, string> = {
+  updated_desc: `p.updated_at DESC`,
+  updated_asc: `p.updated_at ASC`,
+  used: `p.use_count DESC, p.last_used_at IS NULL, p.last_used_at DESC, p.updated_at DESC, p.slug ASC`,
+};
+
 /** The library: `q` is an FTS5 match over slug / title / description / body / tags
- *  (ranked by bm25, title weighted), `tags` are ANDed, then sorted by recency. */
+ *  (ranked by bm25, title weighted), `tags` are ANDed, then sorted by `sort`
+ *  (default recency; `used` = most used first). */
 export async function listPrompts(db: DB, opts: { q?: string; tags?: string[]; sort?: PromptSort } = {}): Promise<PromptSummary[]> {
   const match = buildMatch(opts.q ?? "");
-  const dir = opts.sort === "updated_asc" ? "ASC" : "DESC";
+  const order = ORDER[opts.sort ?? "updated_desc"] ?? ORDER.updated_desc;
   const rows = match
-    ? await all<PromptRow>(db, `${SELECT} JOIN prompts_fts f ON f.slug = p.slug WHERE prompts_fts MATCH ? ORDER BY p.updated_at ${dir}`, match)
-    : await all<PromptRow>(db, `${SELECT} ORDER BY p.updated_at ${dir}`);
+    ? await all<PromptRow>(db, `${SELECT} JOIN prompts_fts f ON f.slug = p.slug WHERE prompts_fts MATCH ? ORDER BY ${order}`, match)
+    : await all<PromptRow>(db, `${SELECT} ORDER BY ${order}`);
   const want = normalizeTags(opts.tags ?? []);
   return rows.map(toDetail).filter((p) => want.every((t) => p.tags.includes(t))).map(toSummary);
 }
@@ -77,6 +89,18 @@ export async function listPrompts(db: DB, opts: { q?: string; tags?: string[]; s
 export async function getPrompt(db: DB, slug: string): Promise<PromptDetail | null> {
   const r = await first<PromptRow>(db, `${SELECT} WHERE p.slug = ?`, slug);
   return r ? toDetail(r) : null;
+}
+
+/**
+ * Record one USE of a prompt (0035): `use_count + 1`, `last_used_at = now`, in ONE
+ * conditional UPDATE — so a call counts exactly once and an unknown slug writes nothing
+ * and returns false. Callers: MCP `get_prompt` (every principal) and the session-cookie
+ * `POST /api/prompts/:slug/used` (the web Copy button). Does NOT touch `updated_at`
+ * (a use is not an edit) nor the FTS index (0035 narrowed its update trigger).
+ */
+export async function recordPromptUse(db: DB, slug: string): Promise<boolean> {
+  const res = await run(db, `UPDATE prompts SET use_count = use_count + 1, last_used_at = ? WHERE slug = ?`, nowIso(), slug);
+  return (res.meta.changes ?? 0) > 0;
 }
 
 /** Every version, newest first. */

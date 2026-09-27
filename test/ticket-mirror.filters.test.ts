@@ -42,16 +42,18 @@ async function deliver(payload: ReturnType<typeof issueDelivery>): Promise<void>
 const native = (title: string, assignees: string[] = []) =>
   create_ticket(env.DB, TicketCreate.parse({ title, assignees }), "meilin");
 
-describe("My Work shows a mirrored issue ONCE", () => {
-  it("the assigned issue is on the To-do card and NOT also in the tickets list; a native ticket still is", async () => {
+describe("My Work lists a mirrored ticket as a ticket", () => {
+  it("the screen renders no issue list, so the mirrored ticket is in `tickets` (marked `source: github`) beside the native one", async () => {
     await deliver(issueDelivery("assigned", 214, { assignees: ["AndresL230"] }));
     await native("Native one", ["AndresL230"]);
     // The mirror did create an assigned, open ticket for the issue…
     expect(await first(env.DB, `SELECT status FROM tickets WHERE source = 'github'`)).toEqual({ status: "in_progress" });
 
     const mw = await getMyWork(env.DB, "AndresL230");
+    // `todo` stays in the DTO for MCP's get_my_work; the SCREEN reads `tickets`.
     expect(mw.todo.map((t) => t.number)).toEqual([214]);
-    expect(mw.tickets.map((t) => t.title)).toEqual(["Native one"]);
+    expect(mw.tickets.map((t) => [t.title, t.source]).sort()).toEqual([["Issue 214", "github"], ["Native one", "canopy"]]);
+    expect(mw.ticketsTotal).toBe(2);
   });
 });
 

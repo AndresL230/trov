@@ -3,7 +3,7 @@
 // Review through POST /api/docs/propose (the same gate). A handoff's "Promote to
 // doc" opens this form prefilled, with a FROM HANDOFF banner. Purely presentational.
 
-import { esc, attr, WORK_SHELL } from "./ui";
+import { esc, attr, surface, WORK_SHELL } from "./ui";
 import { primaryStyle } from "./handoffs";
 import { segmented } from "./segmented";
 
@@ -36,7 +36,7 @@ export function newDocView(p: NewDocProps): string {
   const sections = p.sections.includes(d.section) || !d.section ? p.sections : [...p.sections, d.section];
   const can = !!d.title.trim() && !!d.body.trim();
   const fromBanner = d.from !== null
-    ? `<div style="border:1px solid var(--border);border-left:2px solid var(--accent);border-radius:9px;padding:11px 15px;margin-bottom:16px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
+    ? `<div class="cnpy-surface" style="border-left:2px solid var(--accent);padding:11px 15px;margin-bottom:16px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
       <div style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--accent);flex:none">FROM HANDOFF</div>
       <div style="font-size:12.5px;color:var(--fg-70);flex:1">Prefilled from handoff #${d.from}. Edit anything before staging.</div>
       <button data-act="openHandoff" data-arg="${d.from}" class="cnpy-link" style="font-size:12.5px;font-weight:500;color:var(--accent)">Open handoff</button>
@@ -44,7 +44,7 @@ export function newDocView(p: NewDocProps): string {
     : "";
   return `<div data-screen-label="New doc" style="${WORK_SHELL}">
   ${fromBanner}
-  <div style="border:1px solid var(--border);border-radius:13px;padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)">
+  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)")}>
     <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
       <div style="min-width:0;display:flex;flex-direction:column">
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Title</label>

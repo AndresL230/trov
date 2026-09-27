@@ -140,10 +140,22 @@ describe("repoView — section states", () => {
   });
 });
 
+describe("repoView — the panel is a surface", () => {
+  it("every tab sits in ONE surface panel, with no inline card border / radius / tint left on it", () => {
+    for (const [tab] of REPO_TABS) {
+      const html = repoView(props({ tab, repo: { status: "ok", data: repoSample() }, sample: true }));
+      expect(html, tab).toMatch(/class="repo-panel cnpy-surface" style="display:flex;flex-direction:column;overflow:hidden"/);
+      expect(html.match(/cnpy-surface/g)?.length, tab).toBe(1);
+      expect(html, tab).not.toContain("border-radius:16px");
+      expect(html, tab).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
+    }
+  });
+});
+
 describe("repoView — live content", () => {
   it("escapes captured titles and refuses a non-http URL", () => {
     const data = live({
-      prs: { status: "ok", data: [{ number: 7, title: `<img src=x onerror=1>`, url: "javascript:alert(1)", author: { login: "x", handle: null, name: null, color: null }, branch: "→ main", state: "merged", checks: null, at: new Date().toISOString() }] },
+      prs: { status: "ok", data: { openCount: null, rows: [{ number: 7, title: `<img src=x onerror=1>`, url: "javascript:alert(1)", author: { login: "x", handle: null, name: null, color: null }, branch: "→ main", state: "merged", checks: null, at: new Date().toISOString() }] } },
     });
     const html = repoView(props({ tab: "code", repo: { status: "ok", data } }));
     expect(html).toContain("&lt;img src=x onerror=1&gt;");
@@ -193,11 +205,17 @@ describe("repoView — live content", () => {
       number: 1, title: "PR", url: "https://github.com/o/r/pull/1",
       author: { login: "x", handle: null, name: null, color: null }, branch: "feat/x", state, checks: null, at: new Date().toISOString(),
     });
-    const open = live({ prs: { status: "ok", data: [prRow("review")] } });
+    const open = live({ prs: { status: "ok", data: { openCount: 1, rows: [prRow("review")] } } });
     expect(repoView(props({ tab: "code", repo: { status: "ok", data: open } }))).toContain("Pull requests — open &amp; recent");
 
-    const closed = live({ prs: { status: "ok", data: [prRow("merged")] } });
+    const closed = live({ prs: { status: "ok", data: { openCount: null, rows: [prRow("merged")] } } });
     expect(repoView(props({ tab: "code", repo: { status: "ok", data: closed } }))).toContain("Pull requests — recently closed");
+  });
+
+  it("a known open count with no recent rows says so instead of 'not captured'", () => {
+    const html = repoView(props({ tab: "code", repo: { status: "ok", data: live({ prs: { status: "ok", data: { openCount: 1, rows: [] } } }) } }));
+    expect(html).toContain("No pull requests updated in the last 90 days.");
+    expect(html).not.toMatch(/undefined|NaN/);
   });
 
   it("draws one bar per day and scales them to the busiest", () => {
@@ -365,7 +383,7 @@ describe("repoView — live content", () => {
   // percentage and the sparkline both describe seven days, so neither may be
   // drawn — but the failures themselves are facts and stay listed.
   it("a CI block with no 7-day rate yet shows no percentage, no sparkline, and says why", () => {
-    const data = live({ ciFailures: { status: "ok", data: { rate: null, trend: [], rows: [
+    const data = live({ ciFailures: { status: "ok", data: { rate: null, trend: [], total: 1, rows: [
       { workflow: "e2e (browser lane)", branch: "main", job: "e2e · run suite", at: new Date().toISOString(), url: "https://github.com/o/r/actions/runs/3" },
     ] } } });
     const html = repoView(props({ tab: "ci", repo: { status: "ok", data } }));
@@ -377,11 +395,20 @@ describe("repoView — live content", () => {
   });
 
   it("shows the rate and the sparkline once a week of runs is captured", () => {
-    const data = live({ ciFailures: { status: "ok", data: { rate: 6.7, trend: [4, 9, 6, 3, 11, 8, 5], rows: [] } } });
+    const data = live({ ciFailures: { status: "ok", data: { rate: 6.7, trend: [4, 9, 6, 3, 11, 8, 5], rows: [], total: 0 } } });
     const html = repoView(props({ tab: "ci", repo: { status: "ok", data } }));
     expect(html).toContain("6.7%");
     expect(html).toContain("repo-spark");
     expect(html).not.toContain("A 7-day rate appears");
+    expect(html).toContain("No CI failures this week.");
+  });
+
+  it("says how many failures the capped list stands for", () => {
+    const row = { workflow: "e2e", branch: "main", job: "suite", at: new Date().toISOString(), url: "https://github.com/o/r/actions/runs/3" };
+    const data = live({ ciFailures: { status: "ok", data: { rate: 12.5, trend: [1, 2, 3, 4, 5, 6, 7], rows: Array(5).fill(row), total: 12 } } });
+    const html = repoView(props({ tab: "ci", repo: { status: "ok", data } }));
+    expect(html).toContain("Latest 5 of 12 failures this week.");
+    expect(html).not.toContain("No CI failures this week.");
   });
 
   it("labels each deploy strip with its environment AND its half", () => {
@@ -1064,7 +1091,7 @@ describe("Poll now — the Repo top bar, every tab", () => {
     const poll = done({ ...NOT, github: { written: 12, unchanged: 240, failed: [] } });
     for (const tab of TABS) {
       const html = view({ tab, poll });
-      expect(html, tab).toMatch(/class="repo-panel"[^>]*><div class="repo-poll-strip"/);
+      expect(html, tab).toMatch(/class="repo-panel cnpy-surface"[^>]*><div class="repo-poll-strip"/);
       expect(stripText(html), tab).toContain("GitHub — 12 new · 240 unchanged");
       expect(html, tab).toContain('data-act="repoPollDismiss"');
     }

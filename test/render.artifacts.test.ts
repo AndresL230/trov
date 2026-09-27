@@ -28,6 +28,20 @@ import { render, initialState } from "../web/src/render";
 import type { ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactVersionDTO, ArtifactKind, ArtifactDiffDTO } from "@shared/artifacts-core";
 import { ARTIFACT_TEXT_CAP } from "@shared/artifacts-core";
 
+/** The one `.cnpy-sfbar` (search + Filter) element in `html`, balanced by its divs — or null. */
+function sfbar(html: string): string | null {
+  const start = html.indexOf('<div class="cnpy-sfbar"');
+  if (start < 0 || html.indexOf('<div class="cnpy-sfbar"', start + 1) >= 0) return null;
+  const re = /<div\b|<\/div>/g;
+  re.lastIndex = start;
+  let depth = 0;
+  for (let m = re.exec(html); m; m = re.exec(html)) {
+    depth += m[0] === "</div>" ? -1 : 1;
+    if (depth === 0) return html.slice(start, m.index + 6);
+  }
+  return null;
+}
+
 // ── fixtures ─────────────────────────────────────────────────────────────────
 
 const T0 = "2026-09-20T10:00:00.000Z";
@@ -37,7 +51,7 @@ function ver(n: number, over: Partial<ArtifactVersionDTO> = {}): ArtifactVersion
 function summary(slug: string, over: Partial<ArtifactSummaryDTO> = {}): ArtifactSummaryDTO {
   return {
     id: 1, slug, title: slug.replace(/-/g, " "), kind: "html", area: "ui", repo: "SaplingLearn/canopy", author_id: "AndresL230",
-    status: "published", visibility: "org", current_version: 1, updated_at: T0, size_bytes: 1200, excerpt: null,
+    status: "published", visibility: "org", current_version: 1, updated_at: T0, published_at: T0, size_bytes: 1200, excerpt: null,
     ticket_ids: [], sprint_ids: [], ...over,
   };
 }
@@ -126,6 +140,18 @@ describe("artifacts — library", () => {
     expect(html).toContain("Sprint 14");
     expect(html).toContain('data-fm-panel="area" class="fm-panel">');
     expect(html).toContain('data-fm-panel="kind" class="fm-panel" hidden>');
+  });
+
+  it("search and Filter are ONE combined control: the input and the Filter toggle inside a single .cnpy-sfbar", () => {
+    const p = props("artifacts");
+    p.ui.q = "auth";
+    const bar = sfbar(artifactsView(p));
+    expect(bar).not.toBeNull();
+    expect(bar).toContain('data-act="artQ" data-field="artQ"');
+    expect(bar).toContain('placeholder="Search by title, area, kind or ticket"');
+    expect(bar).toContain('data-act="artClearQ"');
+    expect(bar).toContain('data-act="fmToggle" data-arg="art"');
+    expect(bar).not.toContain('class="cnpy-search"');
   });
 
   it("the filter menu opens on hover and its categories switch on hover", () => {
@@ -608,5 +634,64 @@ describe("artifacts — segmented switches", () => {
     expect(src).not.toContain('data-arg="url"');
     expect((src.match(/disabled aria-pressed="false" title="Text kinds only"/g) ?? []).length).toBe(2);
     expect(src).toMatch(/class="cnpy-seg-btn is-on" data-act="artCTab" data-arg="file"/);
+  });
+});
+
+describe("artifacts — surface cards", () => {
+  const OLD_TINT = "color-mix(in srgb,var(--fg) 2.5%";
+  const surfaces = (html: string): number => (html.match(/class="cnpy-surface[ "]/g) ?? []).length;
+
+  it("library cards are clickable surfaces that keep their rise, with no inline card chrome", () => {
+    const html = artifactsView(props("artifacts"));
+    expect((html.match(/class="cnpy-surface cnpy-card cnpy-rise" style="--i:\d+;padding:0;display:flex/g) ?? []).length).toBe(5);
+    expect(html).not.toContain(OLD_TINT);
+    expect(html).not.toContain("border-radius:14px");
+  });
+
+  it("the viewer's content card (strong edge kept) and both detail panels are surfaces; a file card inside the content is not", () => {
+    const html = artifactsView(viewer(detail("x", "html")));
+    expect(html).toContain('class="cnpy-surface" style="margin-top:22px;border-color:var(--border-strong)"');
+    expect(html).toContain('class="cnpy-surface art-b-props" style="padding:16px 18px;min-width:0"');
+    expect(html).toContain('class="cnpy-surface art-b-links" style="padding:16px 18px;min-width:0"');
+    expect(html).not.toContain(OLD_TINT);
+    const file = artifactsView(viewer(detail("f", "file", { content: null })));
+    expect(surfaces(file)).toBe(3);
+    expect(file).not.toContain(OLD_TINT);
+  });
+
+  it("the diff: version cards and the comparison body are surfaces", () => {
+    const pd = (kind: ArtifactKind, a: string | null, b: string | null): ArtProps => {
+      const p = props("artifact", { slug: "x", v: null, diff: { a: 1, b: 2 } });
+      p.ui.details[detailKey("x", null)] = { status: "ok", data: detail("x", kind, {}, 2) };
+      p.ui.diffs[diffKey("x", 1, 2)] = { status: "ok", data: { kind, a: { ...ver(1), content: a, raw_url: "/raw/a/x@v1" }, b: { ...ver(2), content: b, raw_url: "/raw/a/x@v2" } } };
+      return p;
+    };
+    const text = artifactsView(pd("markdown", "a\nb", "a\nB"));
+    expect(surfaces(text)).toBe(3); // two version cards + the line diff
+    expect(text).not.toContain(OLD_TINT);
+    expect(surfaces(artifactsView(pd("image", null, null)))).toBe(4); // + two image panes
+    expect(surfaces(artifactsView(pd("pdf", null, null)))).toBe(3);
+  });
+
+  it("the not-found card, a picked file on the create form, and the dialogs are surfaces", () => {
+    const nf = props("artifact", view("nope"));
+    nf.ui.details[detailKey("nope", null)] = { status: "missing", data: null };
+    expect(artifactsView(nf)).toContain('class="cnpy-surface" style="width:420px;max-width:100%;padding:34px;');
+
+    const c = props("artifactnew");
+    artAcceptFile(c.ui, { name: "mock.png", size: 2048, text: null, blob: new Blob([new Uint8Array(2048)], { type: "image/png" }) });
+    const form = artifactsView(c);
+    expect(form).toContain('class="cnpy-surface" style="display:flex;align-items:center;gap:12px;padding:12px 14px"');
+    expect(form).not.toContain(OLD_TINT);
+
+    const p = viewer(detail("login-mock", "image", { content: null }));
+    artifactsAct(p.ui, ctx(p), "artNvOpen", null, null);
+    artAcceptNvFile(p.ui, "image", { name: "mock-v2.png", size: 2048, text: null, blob: new Blob([new Uint8Array(2048)], { type: "image/png" }) });
+    const dlg = artifactsDialogs(p);
+    // The floating layer keeps its strong edge and deep shadow; the picked file inside it is NOT a second surface.
+    expect(dlg).toMatch(/role="dialog"[^>]*class="cnpy-surface" style="[^"]*border:1px solid var\(--border-strong\);box-shadow:0 20px 60px/);
+    expect(surfaces(dlg)).toBe(1);
+    expect(dlg).not.toContain(OLD_TINT);
+    expect(dlg).not.toContain("background:var(--bg);box-shadow");
   });
 });

@@ -102,7 +102,7 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["identities", "person"], ["identities", "linked_by"],
   ["sessions", "person"], ["mcp_tokens", "person"],
   ["feed", "author"],
-  ["docs", "updated_by"], ["doc_versions", "created_by"],
+  ["docs", "updated_by"], ["docs", "owner"], ["doc_versions", "created_by"],
   ["adrs", "created_by"],
   // Sprints (0025 renamed the table in place; `lead` is new there).
   ["sprints", "created_by"], ["sprints", "lead"],

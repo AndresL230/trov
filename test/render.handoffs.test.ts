@@ -1,10 +1,24 @@
 // Handoffs + Prompt Library + New doc — the ported views over the real API shapes
 // (numeric handoff ids rendered `#12`, the write affordances each screen offers).
 import { describe, it, expect } from "vitest";
-import { handoffsView, handoffDetailView, handoffAsPrompt, docDraftFromHandoff } from "../web/src/handoffs";
-import { promptDetailView, promptLibraryView, filterPrompts } from "../web/src/prompts";
+import { handoffsView, handoffDetailView, handoffAsPrompt, docDraftFromHandoff, newHandoffView, blankHandoff } from "../web/src/handoffs";
+import { promptDetailView, promptLibraryView, filterPrompts, promptEditorView, blankPromptDraft } from "../web/src/prompts";
 import { newDocView, blankDoc } from "../web/src/newdoc";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion } from "../shared/handoffs";
+
+/** The one `.cnpy-sfbar` (search + Filter) element in `html`, balanced by its divs — or null. */
+function sfbar(html: string): string | null {
+  const start = html.indexOf('<div class="cnpy-sfbar"');
+  if (start < 0 || html.indexOf('<div class="cnpy-sfbar"', start + 1) >= 0) return null;
+  const re = /<div\b|<\/div>/g;
+  re.lastIndex = start;
+  let depth = 0;
+  for (let m = re.exec(html); m; m = re.exec(html)) {
+    depth += m[0] === "</div>" ? -1 : 1;
+    if (depth === 0) return html.slice(start, m.index + 6);
+  }
+  return null;
+}
 
 const persons = [
   { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null },
@@ -62,7 +76,7 @@ describe("new doc — the FROM HANDOFF banner", () => {
 });
 
 describe("prompts", () => {
-  const detail: PromptDetail = { slug: "lint", title: "Lint", description: "", tags: ["ui"], author: "Darkest-Teddy", version: 3, status: "staged", updated_at: "2026-09-23T10:00:00Z", body: "Lint {{path}}." };
+  const detail: PromptDetail = { slug: "lint", title: "Lint", description: "", tags: ["ui"], author: "Darkest-Teddy", version: 3, status: "staged", updated_at: "2026-09-23T10:00:00Z", body: "Lint {{path}}.", use_count: 0, last_used_at: null };
   const v = (version: number, status: PromptVersion["status"]): PromptVersion => ({ version, status, author: "Darkest-Teddy", created_at: "2026-09-20T10:00:00Z", summary: "s", body: "b" });
   const props = { status: "ok" as const, prompt: detail, persons, knownTags: [], diffVersion: null, tagMenu: false, tagDraft: "", promptView: "raw" as const };
 
@@ -76,7 +90,7 @@ describe("prompts", () => {
     const handoff = handoffDetailView({ status: "ok", handoff: h({ body: "Quiz agent still fails.", prompt: { title: "Fix it", body: "Step 1." } }), me: "AndresL230", persons, expireArm: false, promptView: "raw" });
     // One component: same class, same copy + expand icon buttons, same raw mono body.
     for (const html of [page, handoff]) {
-      expect(html).toContain('class="cnpy-promptbox"');
+      expect(html).toContain('class="cnpy-promptbox cnpy-surface"');
       expect(html).toContain('title="Copy prompt"');
       expect(html).toContain('title="Expand"');
     }
@@ -99,8 +113,23 @@ describe("prompts", () => {
       .toContain('data-act="promptBoxView" data-arg="rendered"');
   });
 
+  it("the library's search and Filter are ONE combined control (.cnpy-sfbar)", () => {
+    const lib = { status: "ok" as const, prompts: [], q: "sse", tag: null, sort: "updated_desc" as const, persons, filterCat: "tag" as const, fmOpening: null, filterOpen: false };
+    const bar = sfbar(promptLibraryView(lib));
+    expect(bar).not.toBeNull();
+    expect(bar).toContain('data-act="promptQuery" data-field="promptQuery"');
+    expect(bar).toContain('placeholder="Search titles, slugs and bodies"');
+    expect(bar).toContain('value="sse"');
+    expect(bar).toContain('data-act="fmToggle" data-arg="prompt"');
+    expect(bar).not.toContain("data-hover-blur");
+    // The open popover hangs from the bar too; its backdrop sits outside the hover wrapper.
+    const open = sfbar(promptLibraryView({ ...lib, filterOpen: true }))!;
+    expect(open).toContain('data-fm-pop="prompt"');
+    expect(open.indexOf('data-act="fmClose" data-arg="prompt" style="position:fixed')).toBeLessThan(open.indexOf('data-hover-menu="prompt"'));
+  });
+
   it("the library's filter is the shared filter menu, with Tag AND Sort", () => {
-    const s = (slug: string, tags: string[]): PromptSummary => ({ slug, title: slug, tags, author: "a", version: 1, status: "published", updated_at: "2026-09-01T00:00:00Z", excerpt: "x" });
+    const s = (slug: string, tags: string[]): PromptSummary => ({ slug, title: slug, tags, author: "a", version: 1, status: "published", updated_at: "2026-09-01T00:00:00Z", excerpt: "x", use_count: 0, last_used_at: null });
     const lib = { status: "ok" as const, prompts: [s("a", ["api"]), s("b", ["ui"])], q: "", tag: null, sort: "updated_desc" as const, persons, filterCat: "tag" as const, fmOpening: null };
     const closed = promptLibraryView({ ...lib, filterOpen: false });
     expect(closed).toContain('data-hover-menu="prompt"');
@@ -117,9 +146,55 @@ describe("prompts", () => {
   });
 
   it("filters the library by text and tag without a description field", () => {
-    const s = (slug: string, tags: string[]): PromptSummary => ({ slug, title: slug, tags, author: "a", version: 1, status: "published", updated_at: "2026-09-01T00:00:00Z", excerpt: "x" });
+    const s = (slug: string, tags: string[]): PromptSummary => ({ slug, title: slug, tags, author: "a", version: 1, status: "published", updated_at: "2026-09-01T00:00:00Z", excerpt: "x", use_count: 0, last_used_at: null });
     const list = [s("sse-review", ["api"]), s("mdx-lint", ["ui"])];
     expect(filterPrompts(list, "sse", null, "updated_desc").map((p) => p.slug)).toEqual(["sse-review"]);
     expect(filterPrompts(list, "", "ui", "updated_desc").map((p) => p.slug)).toEqual(["mdx-lint"]);
+  });
+});
+
+// The surface card (canopy.css `.cnpy-surface`) replaced each screen's hand-rolled bordered,
+// 2.5%-tinted card: the class owns background, hairline, radius and shadow.
+describe("surface cards — handoffs, prompts, new doc", () => {
+  const OLD_TINT = "color-mix(in srgb,var(--fg) 2.5%";
+  const OLD_CARD = /border:1px solid var\(--border\);border-radius:1[1-3]px/;
+  const summary = (slug: string): PromptSummary => ({ slug, title: slug, tags: [], author: "a", version: 1, status: "published", updated_at: "2026-09-01T00:00:00Z", excerpt: "x", use_count: 0, last_used_at: null });
+
+  it("the handoff inbox's row container and the detail's Where-it-stands panel are surfaces", () => {
+    const list = handoffsView({ status: "ok", handoffs: [h()], me: "AndresL230", persons });
+    expect(list).toContain('class="cnpy-surface" style="overflow:hidden;margin-top:10px"');
+    expect(list).not.toMatch(OLD_CARD);
+    const detail = handoffDetailView({ status: "ok", handoff: h({ body: "Quiz agent still fails." }), me: "AndresL230", persons, expireArm: false, promptView: "raw" });
+    expect(detail).toContain('class="cnpy-surface" style="flex:1 1 290px;min-width:0;padding:18px 20px"');
+    expect(detail).not.toContain(OLD_TINT);
+    expect(detail).not.toMatch(OLD_CARD);
+  });
+
+  it("the prompt box is a surface; its body keeps the faint text well inside", () => {
+    const detail = handoffDetailView({ status: "ok", handoff: h({ body: "x", prompt: { title: "t", body: "b" } }), me: "AndresL230", persons, expireArm: false, promptView: "raw" });
+    expect(detail).toMatch(/class="cnpy-promptbox cnpy-surface" style="position:relative;flex:1;display:flex;flex-direction:column;margin-top:0px;overflow:hidden"/);
+    // The one remaining 2.5% tint is the scroll well under the header, not a card background.
+    expect(detail.split(OLD_TINT).length - 1).toBe(1);
+    expect(detail).toContain(`class="cnpy-scroll" style="flex:1 1 0;min-height:180px;min-width:0;overflow:auto;background:${OLD_TINT},transparent)"`);
+  });
+
+  it("the prompt library's cards are clickable surfaces", () => {
+    const lib = promptLibraryView({ status: "ok", prompts: [summary("a"), summary("b")], q: "", tag: null, sort: "updated_desc", persons, filterCat: "tag", fmOpening: null, filterOpen: false });
+    expect((lib.match(/data-act="openPrompt" data-arg="[ab]" class="cnpy-surface cnpy-card"/g) ?? []).length).toBe(2);
+    expect(lib).not.toMatch(OLD_CARD);
+  });
+
+  it("the three form cards (prompt editor, new handoff, new doc) are surfaces", () => {
+    const FORM = 'class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)"';
+    const editor = promptEditorView({ draft: blankPromptDraft(), takenSlugs: [] });
+    const handoff = newHandoffView({ draft: blankHandoff(), me: "AndresL230", persons });
+    const doc = newDocView({ draft: { ...blankDoc("technical", ""), from: 12 }, spaces: [{ key: "technical", label: "Technical" }], sections: ["reference"] });
+    for (const html of [editor, handoff, doc]) {
+      expect(html).toContain(FORM);
+      expect(html).not.toMatch(OLD_CARD);
+      expect(html).not.toContain(OLD_TINT);
+    }
+    // The FROM HANDOFF banner is a surface that keeps its accent edge.
+    expect(doc).toContain('class="cnpy-surface" style="border-left:2px solid var(--accent);padding:11px 15px;');
   });
 });

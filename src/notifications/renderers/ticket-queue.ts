@@ -63,13 +63,14 @@ async function unassignedTickets(db: DB): Promise<UnassignedRow[]> {
 /**
  * ticketq — the org's ticket queue, in two halves: what is unclaimed (submitted
  * with no assignees) and what is on the recipient's own plate (assigned to them,
- * not done/declined). The second half reuses `listAssignedTickets`, the same
- * read My Work renders, so the email and the app can never disagree. Pure read;
- * null when both halves are empty.
+ * not done/declined). The second half reuses `listAssignedTickets`, the read My
+ * Work renders, with its DEFAULT `sources: "canopy"` — native tickets only, so a
+ * mirrored ticket (already a GitHub issue) is never mailed twice; My Work lists
+ * both sources. Pure read; null when both halves are empty.
  */
 async function render(db: DB, handle: string, window: Window): Promise<Section | null> {
   const unassigned = await unassignedTickets(db);
-  const mine = await listAssignedTickets(db, handle);
+  const mine = await listAssignedTickets(db, handle, { sources: "canopy" });
   if (unassigned.length === 0 && mine.length === 0) return null;
 
   const html: string[] = [];

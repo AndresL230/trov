@@ -95,6 +95,13 @@ export interface RepoPr {
   checks: "pass" | "fail" | "run" | null;
   at: string;
 }
+/** The PR list (`rows`, at most 8 — the latest state per PR touched in 90 days,
+ *  merged/closed included) and the REAL open-PR count beside it. `openCount` is
+ *  the Overview's "Open PRs" figure (one definition: every PR whose latest
+ *  captured state is draft/review), published only once the `prs_reconciled`
+ *  marker exists; `null` before that = unknown, never 0 — and `rows` is then
+ *  the merged/closed list from `events`. Never count open PRs from `rows`. */
+export interface RepoPrList { rows: RepoPr[]; openCount: number | null }
 export interface RepoBranch { name: string; at: string; ahead: number; behind: number; stale: boolean }
 /** `head` is the branch every row's ahead/behind was compared against (the
  *  first configured environment's branch). It is a stored snapshot, so one
@@ -112,7 +119,16 @@ export interface RepoCiFailure { workflow: string; branch: string; job: string; 
  *  just a day capture was not running, not a green day. `rate: null` (and an
  *  empty `trend`) means "not enough capture yet"; `rows` are the failures
  *  themselves, facts, and are always listed. */
-export interface RepoCiFailures { rate: number | null; trend: number[]; rows: RepoCiFailure[] }
+export interface RepoCiFailures {
+  /** A PERCENTAGE (3.5 = 3.5%), one decimal. */
+  rate: number | null;
+  trend: number[];
+  /** The newest failures only — capped (5). */
+  rows: RepoCiFailure[];
+  /** Every failed/timed-out run in the same 7-day window as `rows` — the count
+   *  to show, since `rows` is capped. */
+  total: number;
+}
 /** `delta` is `""` until the window holds ≥2 points whose first and last are
  *  ≥7 days apart (see `windowDelta` in `src/tools/repo.ts`) — a single
  *  reading, or two readings less than a week apart, cannot support a trend
@@ -215,7 +231,7 @@ export interface RepoDashboard {
 
   codeStats: RepoSection<RepoCodeStat[]>;
   bars: RepoSection<RepoBars>;
-  prs: RepoSection<RepoPr[]>;
+  prs: RepoSection<RepoPrList>;
   branches: RepoSection<RepoBranches>;
 
   deploys: RepoSection<RepoDeployRow[]>;

@@ -29,15 +29,24 @@ export function diffEntries(promotedBody: string, stagedBody: string): { t: "ctx
   return collapsedLineDiff(promotedBody, stagedBody).map((r) => ({ t: r.t, s: r.text }));
 }
 
+/** The fields a one-line listing of a review item needs (My Work's tile, the Feed's
+ *  "Waiting on review") — no diff, no summary, so it is cheap enough to build on every
+ *  paint. The full ReviewItem below spreads it, so the two can never disagree on id,
+ *  badge or who staged it (`agent`). */
+export type ReviewHead = Pick<ReviewItem, "id" | "kind" | "title" | "badge" | "badgeColor" | "time" | "agent">;
+
+function proposalHead(p: StagedProposal): ReviewHead {
+  return { id: `doc:${p.slug}@${p.version}`, kind: "proposal", title: p.title, badge: "STAGED", badgeColor: "var(--amber)", time: relTime(p.created_at), agent: p.author };
+}
+function adrHead(a: AdrRow): ReviewHead {
+  return { id: `adr:${a.id}`, kind: "decision", title: a.title, badge: "DRAFT", badgeColor: "var(--blue)", time: relTime(a.created_at), agent: a.created_by };
+}
+
 export function proposalReviewItem(p: StagedProposal): ReviewItem {
   const stale = p.base_version !== null && p.base_version < p.current_version;
   return {
-    id: `doc:${p.slug}@${p.version}`,
-    kind: "proposal",
+    ...proposalHead(p),
     eyebrow: `PROPOSAL · ${p.space.toUpperCase()} / ${p.section.toUpperCase()}`,
-    badge: "STAGED",
-    badgeColor: "var(--amber)",
-    title: p.title,
     summary: p.summary ?? excerpt(p.stagedBody),
     agent: p.author,
     agentInitials: initialsOf(p.author),
@@ -60,12 +69,8 @@ export function adrReviewItem(a: AdrRow): ReviewItem {
     { h: "Rationale", p: a.rationale },
   ].filter((s): s is { h: string; p: string } => s.p !== null && s.p.trim() !== "");
   return {
-    id: `adr:${a.id}`,
-    kind: "decision",
+    ...adrHead(a),
     eyebrow: `DECISION · ADR-${String(a.id).padStart(3, "0")}`,
-    badge: "DRAFT",
-    badgeColor: "var(--blue)",
-    title: a.title,
     summary: a.decision ? firstSentence(a.decision) : "",
     agent: a.created_by,
     agentInitials: initialsOf(a.created_by),
@@ -74,14 +79,24 @@ export function adrReviewItem(a: AdrRow): ReviewItem {
   };
 }
 
-/** The Review queue: both reads merged, newest first (ISO strings compare lexically). */
-export function reviewItemsFromReads(proposals: StagedProposal[], adrs: AdrRow[]): ReviewItem[] {
+/** Both reads merged, newest first (ISO strings compare lexically). */
+function newestFirst<T>(proposals: StagedProposal[], adrs: AdrRow[], p: (x: StagedProposal) => T, a: (x: AdrRow) => T): T[] {
   const merged = [
-    ...proposals.map((p) => ({ at: p.created_at, item: proposalReviewItem(p) })),
-    ...adrs.map((a) => ({ at: a.created_at, item: adrReviewItem(a) })),
+    ...proposals.map((x) => ({ at: x.created_at, item: p(x) })),
+    ...adrs.map((x) => ({ at: x.created_at, item: a(x) })),
   ];
   merged.sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
   return merged.map((m) => m.item);
+}
+
+/** The Review queue: both reads merged, newest first — with each proposal's diff. */
+export function reviewItemsFromReads(proposals: StagedProposal[], adrs: AdrRow[]): ReviewItem[] {
+  return newestFirst(proposals, adrs, proposalReviewItem, adrReviewItem);
+}
+
+/** The same queue in the same order as ReviewHeads — NO diff (My Work's tile). */
+export function reviewHeadsFromReads(proposals: StagedProposal[], adrs: AdrRow[]): ReviewHead[] {
+  return newestFirst(proposals, adrs, proposalHead, adrHead);
 }
 
 // ── synthesized-id codec (write buttons decode back to route params) ─────────

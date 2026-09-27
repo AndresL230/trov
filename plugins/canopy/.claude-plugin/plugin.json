@@ -1,7 +1,7 @@
 {
   "name": "canopy",
   "description": "Canopy — the team's shared context store. Bundles the orient→work→record skills (canopy, load-context, record-session), the personal my-work view, the ticket-queue skill (tickets), the admin plan skills (read-plan, update-plan), session handoffs (handoff), the Prompt Library (prompts) and artifact pages — find, download, spin up, publish (artifacts) — and auto-wires the Canopy MCP server. Connects by browser sign-in: run /mcp and choose Authenticate.",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "author": {
     "name": "SaplingLearn",
     "url": "https://github.com/SaplingLearn"

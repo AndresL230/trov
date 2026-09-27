@@ -20,12 +20,13 @@ import {
 } from "@shared/tickets-core";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter } from "@shared/tickets";
 import type { SprintView } from "@shared/sprints";
+import { sprintDatesLabel } from "@shared/sprints-core";
 import type { PersonSummary } from "./api";
-import { esc, attr, relTime, primaryBtn, WORK_SHELL, DETAIL_SHELL } from "./ui";
+import { esc, attr, relTime, primaryBtn, WORK_SHELL, DETAIL_SHELL, SURFACE, surface } from "./ui";
 import { personChip } from "./people";
 import { renderMarkdown } from "./markdown";
 import { mentionCandidates, mentionPickerTop, COMMENT_BOX } from "./mentions";
-import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
+import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
 
 // ── shared atoms ─────────────────────────────────────────────────────────────
@@ -278,15 +279,10 @@ function filterRow(p: QueueProps, shown: number): string {
 
   const menu = queueFilterMenu(p, shown);
   const q = p.q ?? "";
-  const search = `<div data-hover-blur style="position:relative;display:flex;align-items:stretch;flex:1 1 260px;max-width:480px;min-width:0;height:34px">
-      <div class="cnpy-search" style="flex:1;min-width:0;padding:0 11px;border-radius:7px 0 0 7px;border-color:var(--border-strong)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
-        <input data-act="queueQ" data-field="queueQ" class="cnpy-search-in" style="font-size:12.5px" placeholder="Search by title, #number or person" aria-label="Search tickets" value="${attr(q)}" autocomplete="off" spellcheck="false">
-        ${q ? `<button data-act="queueClearQ" aria-label="Clear search" class="cnpy-xbtn" style="width:16px;height:16px;display:grid;place-items:center;color:var(--fg-40);flex:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>` : ""}
-      </div>
-      ${filterMenuBackdrop(menu)}
-      ${filterMenu(menu)}
-    </div>`;
+  const search = searchFilterBar({
+    search: { act: "queueQ", field: "queueQ", value: q, placeholder: "Search by title, #number or person", ariaLabel: "Search tickets", clearAct: "queueClearQ" },
+    menu, hoverBlur: true,
+  });
 
   // "N shown · M unassigned" — M is the org-wide unassigned+open count (the same
   // number as the sidebar badge), NOT the filtered page's.
@@ -306,11 +302,12 @@ function relationChip(t: TicketListItem): string {
   return "";
 }
 
-function tableRow(t: TicketListItem, persons: PersonSummary[]): string {
+/** `last` = the table's final row: no hairline under it, since the surface's own edge closes the list. */
+function tableRow(t: TicketListItem, persons: PersonSummary[], last = false): string {
   const attn = needsAttention(t);
   const asgText = assigneeLabel(t.assignees, persons);
   const asgStyle = t.assignees.length ? "color:var(--fg-70)" : "color:var(--fg-55);font-style:italic";
-  return `<button data-act="openTicket" data-arg="${t.id}" class="cnpy-trow${attn ? NEEDS_ATTENTION_CLASS : ""}" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;align-items:center;width:100%;text-align:left;padding:12px 10px;border-bottom:1px solid var(--border);transition:background .12s ease">
+  return `<button data-act="openTicket" data-arg="${t.id}" class="cnpy-trow${attn ? NEEDS_ATTENTION_CLASS : ""}" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;align-items:center;width:100%;text-align:left;padding:12px 10px;${last ? "" : "border-bottom:1px solid var(--border);"}transition:background .12s ease">
     <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="min-width:0;font-size:13.5px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>${relationChip(t)}${sourceChip(t)}</div>
     <div style="display:flex;align-items:center;gap:7px;min-width:0">${personChip(person(persons, t.requester), 20, t.requester)}<span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nameOf(persons, t.requester))}</span></div>
     <div>${categoryChip(t.category)}</div>
@@ -341,7 +338,7 @@ export function queueGroups(tickets: TicketListItem[], sprints: SprintView[]): Q
   const defs: QueueGroup[] = sprints.map((sp) => ({
     key: sp.id,
     label: sp.label.toUpperCase(),
-    dates: sp.dates ?? sp.due ?? "",
+    dates: sprintDatesLabel(sp) ?? sp.due ?? "",   // real start/due first, then the authored label
     active: sp.active,
     rows: tickets.filter((t) => t.sprint_id === sp.id),
   }));
@@ -360,7 +357,7 @@ function groupHeader(g: QueueGroup): string {
     ? `<button data-act="openSprint" data-arg="${g.key}" title="Open sprint screen" class="cnpy-grouplink" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500;color:var(--fg-55);white-space:nowrap;flex:none;padding:2px 6px">Open sprint →</button>`
     : "";
   const meta = `<span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40);white-space:nowrap">${esc(g.dates)}${g.active ? `<span style="color:var(--accent)"> · ACTIVE</span>` : ""}</span>`;
-  return `<div style="display:flex;align-items:center;gap:9px;padding:18px 10px 8px">
+  return `<div class="cnpy-tgrp" style="display:flex;align-items:center;gap:9px;padding:18px 10px 8px">
     <span style="width:7px;height:7px;border-radius:50%;flex:none;background:${g.active ? "var(--accent)" : "var(--border-strong)"}"></span>
     <span style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;white-space:nowrap;color:${g.active ? "var(--accent)" : "var(--fg-55)"}">${esc(g.label)}</span>
     ${meta}
@@ -371,16 +368,21 @@ function groupHeader(g: QueueGroup): string {
 }
 
 function tableView(p: QueueProps): string {
-  const head = `<div style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;padding:12px 10px 8px;border-bottom:1px solid var(--border-strong);font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">
+  const head = `<div class="cnpy-thead" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;padding:12px 10px 8px;border-bottom:1px solid var(--border-strong);font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">
     <div>TITLE</div><div>OPENED BY</div><div>CATEGORY</div><div>PRIORITY</div><div>STATUS</div><div>ASSIGNEE</div><div style="text-align:right">AGE</div>
   </div>`;
-  const groups = queueGroups(p.tickets, p.sprints)
-    .map((g) => `<div class="cnpy-stagger">${groupHeader(g)}${g.rows.map((t) => tableRow(t, p.persons)).join("")}</div>`)
+  const all = queueGroups(p.tickets, p.sprints);
+  const groups = all
+    .map((g, gi) => `<div class="cnpy-stagger">${groupHeader(g)}${g.rows.map((t, ri) =>
+      tableRow(t, p.persons, gi === all.length - 1 && ri === g.rows.length - 1)).join("")}</div>`)
     .join("");
   const empty = p.tickets.length === 0
     ? `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">Nothing in this view.</div>`
     : "";
-  return `${head}${groups}${empty}`;
+  // The table is ONE surface; its rows stay hairline-divided inside it, and a
+  // row's hover fill runs to the surface's edges (overflow clips the corners). Narrow
+  // (`.cnpy-ttable`, a container query in canopy.css) each row reflows into a small card.
+  return `<div${surface("margin-top:8px;overflow:hidden", { cls: "cnpy-ttable" })}>${head}${groups}${empty}</div>`;
 }
 
 /** A board card — the plain one: the title, then #number · priority (only when
@@ -395,7 +397,7 @@ function boardCard(t: TicketListItem, persons: PersonSummary[]): string {
   const asg = t.assignees.length
     ? avatarStack(t.assignees, persons, 18)
     : `<span style="font-size:11.5px;color:var(--fg-40);font-style:italic">Unassigned</span>`;
-  return `<div role="button" tabindex="0" data-act="openTicket" data-arg="${t.id}"${canMove ? ` data-tdrag="${t.id}" data-status="${t.status}"` : ""} aria-label="${attr(`#${t.id} ${t.title}`)}" class="cnpy-tcard cnpy-card${needsAttention(t) ? NEEDS_ATTENTION_CLASS : ""}" style="display:block;width:100%;text-align:left;padding:11px 12px;border-radius:10px;border:1px solid var(--border);margin-bottom:8px;cursor:${canMove ? "grab" : "pointer"}">
+  return `<div role="button" tabindex="0" data-act="openTicket" data-arg="${t.id}"${canMove ? ` data-tdrag="${t.id}" data-status="${t.status}"` : ""} aria-label="${attr(`#${t.id} ${t.title}`)}" class="cnpy-tcard ${SURFACE} cnpy-card${needsAttention(t) ? NEEDS_ATTENTION_CLASS : ""}" style="display:block;width:100%;text-align:left;padding:11px 12px;margin-bottom:8px;cursor:${canMove ? "grab" : "pointer"}">
     <div style="font-size:13.5px;font-weight:600;letter-spacing:-0.005em;line-height:1.4;color:var(--fg);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden">${esc(t.title)}</div>
     <div style="display:flex;align-items:center;gap:6px;margin-top:9px;min-height:18px">
       <span style="font-size:11.5px;color:var(--fg-40)">#${t.id}</span>
@@ -437,7 +439,9 @@ function boardView(p: QueueProps, rows: TicketListItem[]): string {
       <div style="flex:1;min-height:40px"></div>
     </div>`;
   }).join("");
-  return `<div style="display:grid;gap:14px;align-items:stretch;margin-top:12px;min-height:calc(100vh - 190px);grid-template-columns:repeat(${Math.max(statuses.length, 1)},minmax(0,1fr))">${cols}</div>`;
+  // `.cnpy-board`: under a tablet's width the columns keep a readable width and the board
+  // scrolls sideways inside itself, a column per snap (canopy.css).
+  return `<div class="cnpy-board" style="display:grid;gap:14px;align-items:stretch;margin-top:12px;min-height:calc(100vh - 190px);grid-template-columns:repeat(${Math.max(statuses.length, 1)},minmax(0,1fr))">${cols}</div>`;
 }
 
 /** The whole queue screen: toolbar + Board or Table. */
@@ -512,7 +516,7 @@ export function newTicketView(p: NewTicketProps): string {
     .join("");
 
   return `<div style="${WORK_SHELL}">
-    <div style="border:1px solid var(--border);border-radius:13px;padding:26px 28px;display:flex;flex-direction:column;min-height:${CARD_MIN_H}">
+    <div${surface(`padding:26px 28px;display:flex;flex-direction:column;min-height:${CARD_MIN_H}`)}>
       <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
         <div style="min-width:0;display:flex;flex-direction:column">
           <label style="${FIELD_LABEL}">Title</label>
@@ -864,7 +868,7 @@ function threadBlock(p: TicketDetailProps): string {
       <div style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap;flex:none">${t.comments.length} ${t.comments.length === 1 ? "comment" : "comments"}</div>
     </div>
     <div style="flex:1;min-height:0">${rows.map((r) => r.html).join("")}</div>
-    <div style="position:relative;border:1px solid var(--border);border-radius:11px;padding:12px;margin-top:16px;flex:none">
+    <div${surface("position:relative;padding:12px;margin-top:16px;flex:none")}>
       <div style="position:relative">
         ${textarea}
         ${mentionPicker(p, boxHeight)}

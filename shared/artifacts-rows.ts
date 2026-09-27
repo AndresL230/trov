@@ -21,6 +21,8 @@ export interface ArtifactPageRow {
   created_at: string;
   /** created_at of the latest version — the library's sort key. */
   updated_at: string;
+  /** When the current published content went live (0035); NULL while draft. Ratify leaves it. */
+  published_at: string | null;
 }
 
 export interface ArtifactVersionRow {

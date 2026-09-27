@@ -9,7 +9,7 @@
 //   • In-page links are `siteJump` buttons, not `#how` anchors: the URL hash is
 //     the app's route AND the sign-in return-to (an email deep link must survive
 //     a visit to the landing page), so the landing never writes it.
-//   • The theme toggle is the app's `cycleTheme` (Light → Dark → Midnight) and
+//   • The theme toggle is the app's `cycleTheme` (Light ⇄ Dark) and
 //     reads the app's theme, instead of the canvas's own light/dark store.
 //   • Sign in lives ONLY in the nav (top right); the hero keeps the canvas's CTAs.
 //   • Motion (not in the canvas): the mockups act out the product. Elements carry
@@ -56,7 +56,7 @@ const MONO_EYEBROW = "font-family:var(--label);font-size:11px;font-weight:600;le
 const H2 = "margin:0;font-size:clamp(28px, 3.4vw, 38px);font-weight:650;letter-spacing:-0.025em";
 const LEDE = "margin:14px 0 0;max-width:560px;font-size:15.5px;line-height:1.6;color:var(--fg-70);text-wrap:pretty";
 const section = (top = 150) => `max-width:1120px;margin:0 auto;padding:${top}px 24px 0`;
-const MOCK = "flex:1.3 1 400px;min-width:0;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);overflow:hidden";
+const MOCK = "flex:1.3 1 400px;min-width:0;border:1px solid var(--border);border-radius:12px;box-shadow:var(--lift-shadow);overflow:hidden";
 
 /** A label-face status pill; `c` is a color var name (green / amber / blue / red). */
 function pill(text: string, c: string, size = "8.5px", pad = "1.5px 5px"): string {
@@ -95,7 +95,7 @@ function tourRow(key: string, eyebrow: string, title: string, body: string, mock
 function nav(dark: boolean, signedIn: boolean): string {
   const link = (arg: string, label: string) => `<button data-act="siteJump" data-arg="${arg}" class="site-navlink">${label}</button>`;
   return `<nav class="site-nav" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
-    <div style="max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
+    <div class="site-navin" style="max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
       <button data-act="siteJump" data-arg="top" style="display:flex;align-items:center;gap:9px;padding:0;color:var(--fg)">
         ${mark(20)}
         <span style="font-size:16.5px;font-weight:650;letter-spacing:-0.01em">Canopy</span>
@@ -151,7 +151,7 @@ function hero(): string {
       </div>
     </div>
 
-    <div ${rv("hero-mock", "rv-lift")} style="margin:72px auto 0;max-width:1060px;text-align:left;border:1px solid var(--border-strong);border-radius:13px;background:var(--bg);box-shadow:var(--shadow);overflow:hidden;${at(MOCK_IN)}">
+    <div ${rv("hero-mock", "rv-lift")} style="margin:72px auto 0;max-width:1060px;text-align:left;border:1px solid var(--border-strong);border-radius:13px;background:var(--bg);box-shadow:var(--lift-shadow);overflow:hidden;${at(MOCK_IN)}">
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border)">
         ${dot}${dot}${dot}
         <span style="margin:0 auto;font-family:var(--label);font-size:11px;color:var(--fg-40);border:1px solid var(--border);border-radius:6px;padding:3px 14px">canopy.saplinglearn.com/review</span>
@@ -221,7 +221,7 @@ function hero(): string {
               </div>
             </div>
           </div>
-          <div class="site-toast" role="presentation" style="position:absolute;right:20px;bottom:20px;display:flex;align-items:center;gap:10px;padding:10px 14px 10px 12px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);box-shadow:var(--shadow);font-size:12px;${at(TOAST)}">
+          <div class="site-toast" role="presentation" style="position:absolute;right:20px;bottom:20px;display:flex;align-items:center;gap:10px;padding:10px 14px 10px 12px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);box-shadow:var(--lift-shadow);font-size:12px;${at(TOAST)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.4" style="flex:none"><path d="M20 6 9 17l-5-5"></path></svg>
             <span><span style="font-weight:600">Deploy process</span> <span style="color:var(--fg-55)">is live as v5</span></span>
             <span style="font-family:var(--sans);font-size:10.5px;color:var(--fg-40)">@maya</span>
@@ -239,7 +239,7 @@ function problem(): string {
       <p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:var(--fg-70);text-wrap:pretty">${body}</p>
     </div>`;
   return `<section style="max-width:1120px;margin:0 auto;padding:130px 24px 0">
-    <div ${rv("problem", "rv-static")} style="display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:16px">
+    <div ${rv("problem", "rv-static")} style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:16px">
       ${card(0, "Agents start every session cold.", "They re-derive conventions and guess at decisions the team already made.")}
       ${card(1, "Wikis rot.", "Writing back is a chore nobody does after the work ships.")}
       ${card(2, "Unchecked agent docs spread mistakes.", "One confident error gets read as fact by every agent after it.")}
@@ -301,7 +301,7 @@ function loop(): string {
 
   return `<section id="site-how" style="${section(140)}">
     ${heading("how-head", "Orient, work, record.", "The loop that keeps the store current: agents read before they start and write back when they finish.")}
-    <div style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit, minmax(290px, 1fr));gap:16px;align-items:stretch">
+    <div style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:16px;align-items:stretch">
       ${step(0, "01 · Orient", "Before touching an existing area, the agent searches Canopy and reads the relevant docs and decisions.", orient)}
       ${step(1, "02 · Work", "The agent builds on what the team decided instead of guessing.", work)}
       ${step(2, "03 · Record", "On request, the agent reads what actually shipped from git and GitHub and sends one batch of updates.", record)}
@@ -318,7 +318,7 @@ function authority(): string {
         <p style="margin:16px 0 0;max-width:480px;font-size:15.5px;line-height:1.65;color:var(--fg-70);text-wrap:pretty">No agent tool can approve, promote, or reject anything. Those actions only exist in the signed-in web app. Rejected proposals and old versions are kept, never deleted.</p>
       </div>
       <div ${rv("authority-card", "rv-r")} style="flex:1 1 380px;min-width:0;${at(120)}">
-        <div class="site-lift" style="border:1px solid var(--border);border-radius:13px;padding:34px 36px;box-shadow:var(--shadow)">
+        <div class="site-lift" style="border:1px solid var(--border);border-radius:13px;padding:34px 36px;box-shadow:var(--lift-shadow)">
           <div style="display:flex;align-items:center;gap:12px">
             <span style="font-size:17px;font-weight:650">Deploy process</span>
             ${pill("staged", "amber", "10px", "2px 7px")}
@@ -432,7 +432,7 @@ function tour(): string {
   const mywork = `
       <div class="site-st" style="font-size:17px;font-weight:650;letter-spacing:-0.015em;${at(S)}">Good morning, Maya</div>
       <div style="margin-top:14px;font-family:var(--label);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);border-bottom:1px solid var(--border);padding-bottom:7px">To-do</div>
-      <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit, minmax(210px, 1fr));gap:10px">
+      <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:10px">
         ${todo(0, "Retry-After on 429 responses", "#212", field("Summary", "Surface the bucket's reset time on rejected calls.") + field("Next step", "Thread reset through the limiter and test it.", true))}
         ${todo(1, "Digest de-dupe on Mondays", "#218", field("Milestone", "Notifications and digests · due Oct 16") + field("Next step", "Key the send ledger on digest window, not day.", true))}
       </div>`;
@@ -473,7 +473,7 @@ function tour(): string {
         <span style="font-size:12px;font-weight:600">Artifacts</span>
         <span style="margin-left:auto;font-family:var(--label);font-size:10px;color:var(--fg-40)">ticket #212 · 3 pages</span>
       </div>
-      <div style="padding:14px 16px 16px;display:grid;grid-template-columns:repeat(auto-fit, minmax(150px, 1fr));gap:10px">
+      <div style="padding:14px 16px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px">
         ${artCard(0, bars([70, 45, 88, 30]), "Rate limit headers: design", "html", `<span class="site-swap" style="${at(S + 1300)}">${pill("published", "blue")}${pill("ratified", "green")}</span>`)}
         ${artCard(1, flow, "Digest pipeline", "svg", pill("published", "blue"))}
         ${artCard(2, bars([55, 80, 62]), "429 rates by org, last 7 days", "markdown", pill("draft", "fg-55"))}
@@ -508,7 +508,7 @@ function extras(): string {
       ${card(2, t("Prompt Library"), "Reusable prompts with variables. Agents stage new ones, people publish them.")}
       ${card(3, t("Repo dashboard"), "Deploys, CI, drift, and usage from captured data. Unknown reads as unknown, never zero.")}
       ${card(4, t("Email digests"), "Daily or weekly, per section, so nobody has to poll the feed.")}
-      ${card(5,`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14.5px;font-weight:650">Three themes</span><span style="display:flex;gap:4px;margin-left:auto">${swatch("#faf8f3", 0)}${swatch("#1c1a16", 1)}${swatch("#000000", 2)}</span></div>`, "Light, Dark, and Midnight.")}
+      ${card(5,`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14.5px;font-weight:650">Light and dark</span><span style="display:flex;gap:4px;margin-left:auto">${swatch("#f6f6f7", 0)}${swatch("#1c1a16", 1)}</span></div>`, "Two themes, or follow your system.")}
     </div>
   </section>`;
 }
@@ -609,7 +609,7 @@ function footer(): string {
 function signInDialog(): string {
   return `<div data-act="closeSignIn" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);animation:cnpy-fade .14s ease"></div>
   <div style="position:fixed;inset:0;z-index:61;display:grid;place-items:center;padding:16px;pointer-events:none">
-    <div role="dialog" aria-modal="true" aria-labelledby="signin-title" style="pointer-events:auto;position:relative;width:min(400px, 100%);border:1px solid var(--border-strong);border-radius:14px;padding:32px 30px 26px;background:var(--bg);box-shadow:var(--shadow);animation:cnpy-pop .16s ease">
+    <div role="dialog" aria-modal="true" aria-labelledby="signin-title" style="pointer-events:auto;position:relative;width:min(400px, 100%);border:1px solid var(--border-strong);border-radius:14px;padding:32px 30px 26px;background:var(--bg);box-shadow:var(--lift-shadow);animation:cnpy-pop .16s ease">
       <button data-act="closeSignIn" title="Close" aria-label="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--fg-40)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"></path></svg>
       </button>

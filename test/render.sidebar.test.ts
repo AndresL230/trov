@@ -31,13 +31,14 @@ describe("sidebar — structure is stable across every state", () => {
     const base = skeleton(sidebarView(props()));
     const variants: Partial<SidebarProps>[] = [
       { collapsed: true },
-      { navOpen: { tickets: true, roadmap: true, repo: true, docs: true, maintenance: true } },
+      { navOpen: { tickets: true, repo: true, docs: true, maintenance: true } },
       { screen: "repo", repoTab: "ci" },
       { screen: "ticketdetail" },
       { counts: { review: 3, maintenance: 2, tickets: 9, handoffs: 2, prompts: 1 } },
       { screen: "settings" },
       { screen: "handoff" },
       { screen: "maintenance", maintTab: "people" },
+      { screen: "releases" },
     ];
     for (const v of variants) expect(skeleton(sidebarView(props(v))), JSON.stringify(v)).toBe(base);
   });
@@ -52,18 +53,21 @@ describe("sidebar — groups and order (the design's five sections)", () => {
   it("orders Workspace · Monitor · Knowledge · Triage · Help, with Repo in Monitor", () => {
     const html = sidebarView(props());
     const at = (needle: string) => html.indexOf(needle);
-    const order = [">Workspace<", "goMyWork", "goTickets", "goRoadmap", "goHandoffs", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goDocs", "goArtifacts", "goPrompts", ">Triage<", "goReview", "goMaintenance", ">Help<", "goGuide"];
+    const order = [">Workspace<", "goMyWork", "goTickets", "goRoadmap", "goHandoffs", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goDocs", "goArtifacts", "goPrompts", ">Triage<", "goReview", "goMaintenance", ">Help<", "goGuide", "goReleases"];
     for (let i = 1; i < order.length; i++) expect(at(order[i]), order[i]).toBeGreaterThan(at(order[i - 1]));
   });
 
   it("offers only sub-pages that go somewhere", () => {
     const html = sidebarView(props());
-    for (const arg of ["tickets:queue", "tickets:board", "tickets:new", "roadmap:narrative", "roadmap:timeline",
+    for (const arg of ["tickets:queue", "tickets:board", "tickets:new",
       "repo:overview", "repo:code", "repo:ci", "repo:usage", "repo:planning", "docs:technical", "docs:product",
       "maintenance:unplaced", "maintenance:identity", "maintenance:people"]) {
       expect(html).toContain(`data-act="navSub" data-arg="${arg}"`);
     }
-    expect((html.match(/data-act="navSub"/g) ?? []).length).toBe(15);
+    expect((html.match(/data-act="navSub"/g) ?? []).length).toBe(13);
+    // Roadmap has no sub-pages in the rail (its tabs are the header switch) — and no chevron.
+    expect(html).not.toContain('data-arg="roadmap:');
+    expect(html).not.toContain('data-act="navToggle" data-arg="roadmap"');
   });
 
   it("has no Search nav row — search is the box at the top of the rail", () => {
@@ -84,6 +88,7 @@ describe("sidebar — active state", () => {
     expect(navKeyOf("handoff")).toBe("handoffs");
     expect(navKeyOf("promptedit")).toBe("prompts");
     expect(navKeyOf("newdoc")).toBe("docs");
+    expect(navKeyOf("releases")).toBe("releases");
     expect(sidebarView(props({ screen: "sprint" }))).toContain('class="cnpy-navrow n-roadmap is-active"');
   });
 
@@ -96,8 +101,8 @@ describe("sidebar — active state", () => {
     expect(detail).not.toContain("cnpy-sub-i is-active");
 
     expect(sidebarView(props({ screen: "repo", repoTab: "usage" }))).toContain('data-arg="repo:usage" class="cnpy-sub-i is-active"');
-    // Roadmap's tab is remembered state — it must not light up from another screen.
-    expect(sidebarView(props({ screen: "feed", roadmapTab: "timeline" }))).not.toContain("cnpy-sub-i is-active");
+    // Roadmap has no rail sub-pages, so its tab never lights one up.
+    expect(sidebarView(props({ screen: "roadmap", roadmapTab: "timeline" }))).not.toContain("cnpy-sub-i is-active");
   });
 
   it("navGroupOf names the group a screen's pages belong to", () => {
@@ -122,7 +127,7 @@ describe("sidebar — open/closed and collapsed are attributes", () => {
     const html = sidebarView(props({ collapsed: true, navOpen: { ...NAV_CLOSED, repo: true } }));
     expect(html).toContain('data-arg="repo:code" class="cnpy-sub-i" tabindex="-1"');
     expect(html).toContain('aria-label="Expand sidebar" aria-expanded="false"');
-    for (const tip of ["My Work", "Tickets", "Roadmap", "Handoffs", "Repo", "Feed", "Docs", "Artifacts", "Prompt Library", "Review", "Maintenance", "Get Started", "Search", "Settings"]) {
+    for (const tip of ["My Work", "Tickets", "Roadmap", "Handoffs", "Repo", "Feed", "Docs", "Artifacts", "Prompt Library", "Review", "Maintenance", "Get Started", "What&#39;s new", "Search", "Settings"]) {
       expect(html).toContain(`data-tip="${tip}"`);
     }
   });

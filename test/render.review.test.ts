@@ -155,6 +155,24 @@ describe("reviewView — populated", () => {
   });
 });
 
+describe("reviewView — surface cards", () => {
+  it("queue cards are clickable surfaces; every diff mode and the ADR record is one surface", () => {
+    const list = reviewView(makeReviewProps());
+    expect(list).toContain('class="cnpy-titem cnpy-surface cnpy-card"');
+    for (const diffView of ["unified", "split", "rendered"] as const) {
+      const html = reviewDetail(makeItem(), diffView);
+      expect(html.match(/cnpy-surface/g)?.length, diffView).toBe(1);
+      expect(html, diffView).not.toContain("border:1px solid var(--border);border-radius:10px");
+      expect(html, diffView).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
+    }
+    const adr = reviewDetail(makeItem({ kind: "decision", diff: undefined, adr: [{ h: "Context", p: "Why." }] }), "unified");
+    // The proposed record keeps its green accent rule on top of the surface.
+    expect(adr).toMatch(/class="cnpy-surface" style="border-left:2px solid var\(--green\)/);
+    const stale = reviewDetail(makeItem({ stale: true, staleNote: "Proposed from v6." }), "unified");
+    expect(stale).toMatch(/class="cnpy-surface" style="border-left:2px solid var\(--amber\)/);
+  });
+});
+
 describe("reviewView — diff view modes", () => {
   it("unified mode renders +/− prefixed lines", () => {
     const html = reviewView(makeReviewProps({ diffView: "unified" }));
@@ -427,6 +445,17 @@ describe("maintenanceView — Identity tab", () => {
     expect(html).toContain("maya-k");
     expect(html).toContain("Map login");
     expect(html).not.toContain("Loose thing");
+  });
+});
+
+describe("maintenanceView — surface cards", () => {
+  it("Unplaced and Identity each sit in ONE surface card, rows hairline-divided inside", () => {
+    for (const tab of ["unplaced", "identity"] as const) {
+      const html = maintenanceView(makeMaintProps({ tab }));
+      expect(html.match(/cnpy-surface/g)?.length, tab).toBe(1);
+      expect(html, tab).not.toContain("border-radius:12px");
+      expect(html, tab).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
+    }
   });
 });
 

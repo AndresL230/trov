@@ -1,4 +1,4 @@
-import type { DocRow, DocVersionRow, FeedRow, AdrRow, NeedsTriageRow, SprintRow, PlanRow, EventRow, IdentityTaskRow, TicketRow, TicketLinkRow, TicketCommentRow, TicketEventRow } from "@shared/rows";
+import type { DocRow, DocMetaRow, DocVersionRow, FeedRow, AdrRow, NeedsTriageRow, SprintRow, PlanRow, EventRow, IdentityTaskRow, TicketRow, TicketLinkRow, TicketCommentRow, TicketEventRow } from "@shared/rows";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
@@ -28,6 +28,13 @@ export async function list_docs(db: DB, section?: string): Promise<DocRow[]> {
     return all<DocRow>(db, `SELECT * FROM docs WHERE section = ? ORDER BY slug ASC`, section);
   }
   return all<DocRow>(db, `SELECT * FROM docs ORDER BY slug ASC`);
+}
+
+/** Every doc WITHOUT its body — for a surface that only lists (My Work's "Docs you
+ *  own"), so it never pulls every doc's full text over the wire. */
+export async function list_doc_meta(db: DB): Promise<DocMetaRow[]> {
+  return all<DocMetaRow>(db,
+    `SELECT slug, section, title, current_version, updated_at, updated_by, space, owner FROM docs ORDER BY slug ASC`);
 }
 
 export interface FeedFilter {

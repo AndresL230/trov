@@ -38,7 +38,8 @@ export interface MyWorkTodo {
  * One open ticket assigned to the person (Phase 5 — "Tickets assigned to me").
  * These are D1 tickets, NEVER GitHub issues, so they are their own list and are
  * never folded into `todo`: `todo` is the GitHub issue surface (it carries a
- * `number` and a `url`), a ticket has neither.
+ * `number` and a `url`), a ticket has neither. A MIRRORED ticket (`source:
+ * "github"`) is listed here too — the screen renders no issue list any more.
  * `status` is always an OPEN status (`submitted` / `in_progress`) — closed
  * tickets never reach My Work.
  */
@@ -49,6 +50,9 @@ export interface MyWorkTicket {
   category: TicketCategory;
   priority: TicketPriority;
   status: Extract<TicketStatus, "submitted" | "in_progress" | "testing">;
+  // "github" = mirrored from a GitHub issue (0032). My Work lists both sources, so
+  // a mirrored ticket's issue may ALSO be in `todo` — this says which one it is.
+  source: "canopy" | "github";
   requester: string; // person handle who filed it
   sprint: { id: number; label: string } | null; // null = Backlog
   updatedAt: string;
@@ -59,6 +63,7 @@ export interface DashboardData {
   person: string | null; // identity-mapped name; null if unmapped
   previousActivity: MyWorkPr[]; // summarized merged/closed PRs, 5 most recent
   todo: MyWorkTodo[]; // open issues assigned to the person
-  tickets: MyWorkTicket[]; // open queue tickets assigned to the person (NEVER in `todo`)
+  tickets: MyWorkTicket[]; // open tickets assigned to the person, native AND mirrored, capped (6)
+  ticketsTotal: number; // the uncapped count of that same list — the "N open" figure
   degraded: boolean; // D1 projection unavailable
 }

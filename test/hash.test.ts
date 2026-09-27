@@ -24,11 +24,23 @@ describe("parseHash", () => {
   });
 
   it("still parses every pre-existing plain screen", () => {
-    for (const s of ["mywork", "feed", "docs", "roadmap", "review", "search", "settings", "guide", "unsubscribe", "handoffs", "prompts"]) {
+    for (const s of ["mywork", "feed", "docs", "review", "search", "settings", "guide", "unsubscribe", "handoffs", "prompts"]) {
       expect(parseHash(`#${s}`)).toEqual({ screen: s, ticketId: null, sprintId: null });
     }
     // Maintenance now names its sub-page (Unplaced is the bare hash).
+    expect(parseHash("#roadmap")).toEqual({ screen: "roadmap", ticketId: null, sprintId: null, roadmapTab: "narrative" });
     expect(parseHash("#maintenance")).toEqual({ screen: "maintenance", ticketId: null, sprintId: null, maintTab: "unplaced" });
+  });
+
+  it("keeps the Roadmap tab in the hash, so a reload stays on it", () => {
+    const base = { screen: "roadmap" as const, ticketId: null, sprintId: null };
+    expect(parseHash("#roadmap/timeline")).toEqual({ ...base, roadmapTab: "timeline" });
+    expect(parseHash("#roadmap/narrative")).toEqual({ ...base, roadmapTab: "narrative" });
+    expect(parseHash("#roadmap/gantt").screen).toBe("mywork");
+    expect(hashForRoute({ ...base, roadmapTab: "timeline" })).toBe("#roadmap/timeline");
+    expect(hashForRoute({ ...base, roadmapTab: "narrative" })).toBe("#roadmap");
+    expect(hashForRoute(base)).toBe("#roadmap");
+    for (const tab of ["narrative", "timeline"] as const) expect(parseHash(hashForRoute({ ...base, roadmapTab: tab }))).toEqual({ ...base, roadmapTab: tab });
   });
 
   it("parses the handoff, prompt, new-doc and maintenance sub-routes, and round-trips them", () => {

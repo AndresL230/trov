@@ -11,7 +11,7 @@ import { artifactsApp } from "./artifacts/routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runBackfill, isFinalBackfillBatch } from "./tools/backfill";
-import { get_doc, list_docs, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
+import { get_doc, list_docs, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
 import {
   create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link,
   set_ticket_sprint, set_ticket_parent, add_ticket_comment,
@@ -31,10 +31,13 @@ import { get_plan } from "./tools/plan";
 import {
   listHandoffs, getHandoff, createHandoff, claimHandoff, expireHandoff, HandoffCreateInput, HandoffError, HANDOFF_ERROR_STATUS,
 } from "./tools/handoffs";
-import { listPrompts, getPrompt, listPromptVersions, savePrompt, setPromptTags, publishPrompt, PromptSaveInput, PromptError, PROMPT_ERROR_STATUS } from "./tools/prompts";
+import { listPrompts, getPrompt, recordPromptUse, listPromptVersions, savePrompt, setPromptTags, publishPrompt, PromptSaveInput, PromptError, PROMPT_ERROR_STATUS } from "./tools/prompts";
 import { isSection } from "@shared/vocabulary";
 import { HANDOFF_BOXES, type HandoffBox } from "@shared/handoffs";
 import { getMyWork } from "./tools/mywork";
+import { quickSearch } from "./tools/quick-search";
+import { QUICK_TYPES, type QuickType } from "@shared/quick-search";
+import { feedStats, isFeedStatsDays, isFeedStatsTz } from "./tools/feed-stats";
 import { getRepoDashboard, emptyRepoDashboard } from "./tools/repo";
 import { reconcileRepo, type ReconcileResult } from "./repo/github";
 import { repoEnvironments } from "./repo/config";
@@ -106,6 +109,8 @@ app.post("/ingest", async (c) => {
 });
 
 app.get("/docs", async (c) => {
+  // `?fields=meta` drops the bodies (and ignores `section`) — a list-only read.
+  if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(c.env.DB) });
   const docs = await list_docs(c.env.DB, c.req.query("section"));
   return c.json({ docs });
 });
@@ -128,6 +133,25 @@ app.get("/feed", async (c) => {
   return c.json({ feed });
 });
 
+// The Feed aside's "This week": entry counts per day, people, top tags and authors over
+// the WHOLE window (never the Feed's loaded page). `days` 1–30 (default 7); `tz` = the
+// viewer's minutes EAST of UTC, so the day buckets are their local days (default 0 = UTC).
+// A bad parameter is a 400; a failed read is a 503 `{ error }` — never a 500.
+app.get("/feed/stats", async (c) => {
+  const daysRaw = c.req.query("days");
+  const tzRaw = c.req.query("tz");
+  const days = daysRaw === undefined ? 7 : /^\d{1,3}$/.test(daysRaw) ? Number(daysRaw) : NaN;
+  if (!isFeedStatsDays(days)) return c.json({ error: "days must be an integer from 1 to 30" }, 400);
+  const tz = tzRaw === undefined ? 0 : /^-?\d{1,4}$/.test(tzRaw) ? Number(tzRaw) : NaN;
+  if (!isFeedStatsTz(tz)) return c.json({ error: "tz must be whole minutes east of UTC, within ±840" }, 400);
+  try {
+    return c.json(await feedStats(c.env.DB, { days, tzOffsetMin: tz }));
+  } catch (e) {
+    console.error("feed stats failed", e instanceof Error ? e.message : String(e));
+    return c.json({ error: "Couldn't read the feed stats" }, 503);
+  }
+});
+
 // Human Search backs onto the same query() engine as MCP, but include_staged is
 // false — the human screen surfaces only settled (live) context, never staged.
 app.get("/search", async (c) => {
@@ -147,6 +171,30 @@ app.get("/search", async (c) => {
     limit: limit ? Number(limit) : undefined,
   }, c.get("principal").handle); // the viewer: a private artifact reaches only its author
   return c.json({ result });
+});
+
+// The "search everything" dropdown (web/src/quicksearch.ts): one D1 batch of small,
+// LIMITed per-type lookups — titles + one-line excerpts, never bodies — for the
+// session principal, live-only like /search. `q` under 2 characters answers without
+// touching D1. Never a 500: a failure is an empty answer flagged `degraded`.
+app.get("/search/quick", async (c) => {
+  const typesCsv = c.req.query("types");
+  const types = typesCsv
+    ? typesCsv.split(",").map((t) => t.trim()).filter((t): t is QuickType => (QUICK_TYPES as readonly string[]).includes(t))
+    : undefined;
+  const limit = Number(c.req.query("limit"));
+  const q = c.req.query("q") ?? "";
+  c.header("cache-control", "private, no-store");
+  try {
+    const result = await quickSearch(c.env.DB, q, c.get("principal").handle, {
+      limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
+      types,
+    });
+    return c.json({ result });
+  } catch (e) {
+    console.error("search/quick failed", e instanceof Error ? e.message : String(e));
+    return c.json({ result: { q: q.trim(), groups: [] }, degraded: true });
+  }
 });
 
 // SEAM: POST /ask — retrieve via query(), synthesize a grounded, slug-citing answer. Out of scope.
@@ -217,7 +265,8 @@ app.post("/api/handoffs/:id/expire", async (c) => {
 
 app.get("/api/prompts", async (c) => {
   const tags = (c.req.query("tags") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
-  const sort = c.req.query("sort") === "updated_asc" ? "updated_asc" : "updated_desc";
+  const want = c.req.query("sort");
+  const sort = want === "updated_asc" || want === "used" ? want : "updated_desc";
   return c.json({ prompts: await listPrompts(c.env.DB, { q: c.req.query("q") ?? "", tags, sort }) });
 });
 app.get("/api/prompts/:slug", async (c) => {
@@ -240,6 +289,18 @@ app.post("/api/prompts/:slug/tags", async (c) => {
   if (!body || !Array.isArray(body.tags) || !body.tags.every((t) => typeof t === "string")) return c.json({ error: "tags (string[]) required" }, 400);
   try { return c.json({ ok: true, prompt: await setPromptTags(c.env.DB, c.req.param("slug"), body.tags as string[]) }); }
   catch (e) { return handoffFail(c, e); }
+});
+// One USE of a prompt (the web Copy button; MCP get_prompt counts its own): one
+// conditional UPDATE, so a request counts once. Unknown slug → 404; a D1 failure is a
+// 503, never a 500 — a lost count must not break the copy.
+app.post("/api/prompts/:slug/used", async (c) => {
+  try {
+    if (!(await recordPromptUse(c.env.DB, c.req.param("slug")))) return c.json({ error: "not found" }, 404);
+    const prompt = await getPrompt(c.env.DB, c.req.param("slug"));
+    return prompt ? c.json({ ok: true, use_count: prompt.use_count, last_used_at: prompt.last_used_at }) : c.json({ error: "not found" }, 404);
+  } catch {
+    return c.json({ error: "temporarily unavailable" }, 503);
+  }
 });
 // Publishing is a human confirmation, gated exactly like POST /doc/:slug/promote:
 // any signed-in person (sessionGate), never an MCP tool.
@@ -434,9 +495,10 @@ app.post("/invites/:email/resend", async (c) => {
 // merged with cached progress from the plan store. No live GitHub, no per-user token.
 app.get("/roadmap", async (c) => c.json(await get_plan(c.env.DB)));
 
-// Personal dashboard (session-gated): the signed-in user's two-list My Work —
-// previous activity (summarized merged/closed PRs) + open assigned issues,
-// projected entirely from captured GitHub events. Stored nowhere; never 500s.
+// Personal dashboard (session-gated): the signed-in user's My Work projection —
+// previous activity (summarized merged/closed PRs), open assigned issues, and open
+// assigned tickets (native + mirrored, with the uncapped `ticketsTotal`), all D1.
+// Stored nowhere; never 500s.
 app.get("/me/dashboard", async (c) => {
   const login = c.get("principal").handle;
   try {
@@ -444,7 +506,7 @@ app.get("/me/dashboard", async (c) => {
     return c.json(data);
   } catch {
     // Absolute backstop: never 500. Anything unexpected (D1) → empty degraded payload.
-    const empty: DashboardData = { person: null, previousActivity: [], todo: [], tickets: [], degraded: true };
+    const empty: DashboardData = { person: null, previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: true };
     return c.json(empty);
   }
 });
@@ -766,11 +828,21 @@ const sprintId = (c: Context<AppEnv>): number | null => {
 
 // Created from the Roadmap's New sprint panel: always inactive ('upcoming') and,
 // without a `due`, unscheduled. The creator is the authenticated principal.
+// `start` / `due` must be real YYYY-MM-DD days (or blank) with start <= due — the
+// ONE rule in shared/sprints-core.ts; a refusal's `error` IS that rule's message
+// (the New sprint panel shows it), and nothing is written.
 app.post("/sprints", async (c) => {
   const parsed = SprintCreate.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
-  const sprint = await create_sprint(c.env.DB, parsed.data, c.get("principal").handle);
-  return c.json({ ok: true, sprint });
+  if (!parsed.success) {
+    const custom = parsed.error.issues.find((i) => i.code === "custom")?.message;
+    return c.json({ error: custom ?? "invalid payload", issues: parsed.error.issues }, 400);
+  }
+  try {
+    const sprint = await create_sprint(c.env.DB, parsed.data, c.get("principal").handle);
+    return c.json({ ok: true, sprint });
+  } catch (e) {
+    return sprintFail(c, e);
+  }
 });
 
 // The roadmap's sprint list: each with its tickets-only progress, the separate

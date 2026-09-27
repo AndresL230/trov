@@ -31,7 +31,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     env.DB,
     { slug: "rename-test-doc", section: "reference", title: "T", body: "b", change_summary: "s", confidence: "high" },
     handle
-  ); // docs.updated_by + doc_versions.created_by
+  ); // docs.updated_by + docs.owner (0035) + doc_versions.created_by
   await stage_adr(env.DB, { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, handle); // adrs.created_by
   // sprints.created_by + sprints.lead — the admin plan write is the real writer
   // of both (0025 added `lead`; the proposal path that used to create these rows

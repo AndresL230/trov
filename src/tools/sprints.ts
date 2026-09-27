@@ -9,8 +9,8 @@
 // `complete_sprint` (the Confirm-done button) or the plan write — never inferred
 // from tickets resolving or issues closing.
 //
-// TWO VOCABULARIES. The DB keeps `title` / `target_date`; every DTO here speaks
-// `label` / `due` / `active` (shared/sprints.ts documents the seam, and
+// TWO VOCABULARIES. The DB keeps `title` / `target_date` / `start_date`; every DTO
+// here speaks `label` / `due` / `start` / `active` (shared/sprints.ts documents the seam, and
 // `toSprintView` is the one translation). Column names never leave this file.
 //
 // THE PROGRESS RULE (one place, `sprintProgress` below): a sprint's progress is
@@ -34,6 +34,7 @@ import {
   type SprintTicketRow,
   type SprintResourceView,
 } from "@shared/sprints";
+import { normalizeSprintDate, sprintDatesProblem } from "@shared/sprints-core";
 import { parseTicketLink } from "@shared/tickets";
 import { type DB, first, all, run, nowIso, ph, fanOut } from "../db";
 import { getProgress } from "./progress";
@@ -308,20 +309,27 @@ export async function get_sprint(db: DB, id: number): Promise<SprintDetail | nul
  *
  * `lead` is stored as given (a person handle) without a persons lookup — the
  * same contract the admin plan write has, so the two paths cannot disagree.
+ *
+ * `start` / `due` are re-checked HERE with the one validator (`sprintDatesProblem`,
+ * shared/sprints-core.ts) even though `SprintCreate` already did: a bad pair is a
+ * `bad_request` that writes nothing, whoever the caller. Blank = not set.
  */
 export async function create_sprint(db: DB, input: SprintCreate, author: string): Promise<SprintView> {
+  const problem = sprintDatesProblem(input);
+  if (problem) throw new SprintError("bad_request", problem);
   const now = nowIso();
   const res = await run(
     db,
-    `INSERT INTO sprints (title, description, summary, phase, dates, target_date, status, urgency, lead, domain,
+    `INSERT INTO sprints (title, description, summary, phase, dates, start_date, target_date, status, urgency, lead, domain,
                           github_ref, created_at, created_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'upcoming', ?, ?, ?, NULL, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'upcoming', ?, ?, ?, NULL, ?, ?, ?)`,
     input.label,
     input.description ?? null,
     input.summary ?? null,
     input.phase ?? "Unscheduled",
     input.dates ?? null,
-    input.due ?? "",
+    normalizeSprintDate(input.start),
+    normalizeSprintDate(input.due) ?? "",
     input.urgency,
     input.lead ?? null,
     input.domain ?? null,

@@ -6,7 +6,7 @@
 import type { HandoffView, HandoffStatus } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
 import type { PersonSummary } from "./api";
-import { esc, attr, relTime, WORK_SHELL } from "./ui";
+import { esc, attr, relTime, surface, WORK_SHELL } from "./ui";
 import { personChip } from "./people";
 import { renderMarkdown } from "./markdown";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
@@ -90,7 +90,7 @@ const sectionHead = (label: string, count: number, top = false): string =>
   `<div style="${top ? "" : "margin-top:36px"}"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:0 2px"><div style="font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--fg-55);white-space:nowrap">${esc(label)}</div><div style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap">${count}</div></div></div>`;
 
 const table = (rows: string): string =>
-  `<div style="overflow:hidden;margin-top:10px;border:1px solid var(--border);border-radius:11px"><div class="cnpy-stagger" style="margin-bottom:-1px">${rows}</div></div>`;
+  `<div${surface("overflow:hidden;margin-top:10px")}><div class="cnpy-stagger" style="margin-bottom:-1px">${rows}</div></div>`;
 
 const notice = (text: string): string => `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">${esc(text)}</div>`;
 
@@ -169,7 +169,7 @@ export function handoffDetailView(p: HandoffDetailProps): string {
     : pending ? "Waiting for a session to claim it" : "Expired unclaimed";
 
   return shell(`
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:22px;border-bottom:1px solid var(--border)">
+    <div class="cnpy-dhead" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:22px;border-bottom:1px solid var(--border)">
       <div style="flex:1;min-width:0">
         <h2 style="margin:0;max-width:620px;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.28;text-wrap:pretty">${esc(firstLine(h.body))}</h2>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--fg-55)">
@@ -188,7 +188,7 @@ export function handoffDetailView(p: HandoffDetailProps): string {
         ${promptSection}
       </div>
 
-      <div style="flex:1 1 290px;min-width:0;border:1px solid var(--border);border-radius:12px;background:color-mix(in srgb,var(--fg) 2.5%,transparent);padding:18px 20px">
+      <div${surface("flex:1 1 290px;min-width:0;padding:18px 20px")}>
         <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
           <div style="${MONO_EYEBROW}">Where it stands</div>
           <div style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap">${c.done.length} of ${total} done</div>
@@ -293,7 +293,7 @@ export function newHandoffView(p: NewHandoffProps): string {
 
   const canSend = !!n.body.trim();
   return `<div data-screen-label="New handoff" style="${WORK_SHELL}">
-  <div style="border:1px solid var(--border);border-radius:13px;padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)">
+  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)")}>
     <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
       <div style="min-width:0;display:flex;flex-direction:column">
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Message <span style="font-weight:400;color:var(--fg-40)">— markdown · the first line is the title</span></label>
