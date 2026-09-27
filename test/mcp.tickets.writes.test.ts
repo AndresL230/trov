@@ -204,17 +204,17 @@ describe("the shared rules still bite over MCP", () => {
     const id = await ticketFor("andres", ["andres"]);
     const before = await snapshot(id);
     // submitted → submitted is not in the one shared table (tickets-core.ts) —
-    // every OPEN status may go anywhere ELSE, so a no-op move is the illegal one.
+    // every status may go anywhere ELSE, so a no-op move is the only illegal one.
     const err = failed(await callTool("andres", "transition_ticket", { id, to: "submitted" }));
     expect(err.code).toBe("conflict");
     expect(await snapshot(id)).toEqual(before);
   });
 
-  it("a resolved ticket is terminal", async () => {
+  it("a resolved ticket moves back", async () => {
     const id = await ticketFor("andres", ["andres"]);
     ok(await callTool("andres", "transition_ticket", { id, to: "in_progress" }));
     ok(await callTool("andres", "transition_ticket", { id, to: "declined" }));
-    expect(failed(await callTool("andres", "transition_ticket", { id, to: "submitted" })).code).toBe("conflict");
+    ok(await callTool("andres", "transition_ticket", { id, to: "submitted" }));
   });
 
   it("an unusable link is bad_request", async () => {

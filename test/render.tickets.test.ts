@@ -35,7 +35,7 @@ import {
   type QueueProps, type NewTicketProps, type TicketDetailProps,
 } from "../web/src/tickets";
 import type { TicketListItem, TicketDetail, TicketLinkRow, TicketCommentRow, TicketEventRow } from "@shared/tickets";
-import { TICKET_STATUS_LABEL, type TicketStatus } from "@shared/tickets";
+import { TICKET_STATUS_LABEL, TICKET_STATUSES, type TicketStatus } from "@shared/tickets";
 import type { SprintView } from "@shared/sprints";
 import type { PersonSummary } from "../web/src/api";
 import { WORK_SHELL, DETAIL_SHELL } from "../web/src/ui";
@@ -515,14 +515,14 @@ describe("queueView — the Assignee filter names people", () => {
 });
 
 describe("queueView — the board card drags", () => {
-  it("an open card is draggable with its status; a resolved one is not", () => {
+  it("every card is draggable with its status — a resolved one too", () => {
     const html = queueView(queueProps({
       view: "board", seg: "all",
       tickets: [ticket({ id: 1, title: "S" }), ticket({ id: 2, title: "D", status: "done" })],
     }));
     expect(html).toContain('data-tdrag="1" data-status="submitted"');
     expect(html).not.toContain('draggable="true"');   // pointer-driven, never the browser's drag image
-    expect(html).not.toContain('data-tdrag="2"');
+    expect(html).toContain('data-tdrag="2" data-status="done"');
     for (const st of ["submitted", "in_progress", "done", "declined"]) expect(html).toContain(`data-tdrop="${st}"`);
   });
 });
@@ -863,11 +863,11 @@ describe("ticketDetailView — the status control (design call #7)", () => {
     expect(test).toContain("TESTING");
   });
 
-  it("renders a terminal status as a plain pill — no control, nothing to set", () => {
+  it("a resolved status is still a control — every other status can be set from it", () => {
     for (const status of ["done", "declined"] as const) {
       const html = ticketDetailView(props(status, "rail"));
-      expect(html).not.toContain('data-act="ticketStatusMenu"');
-      expect(html).not.toContain('data-act="ticketStatus"');
+      expect(html).toContain('data-act="ticketStatusMenu"');
+      for (const st of TICKET_STATUSES.filter((s) => s !== status)) expect(html).toContain(`data-act="ticketStatus" data-arg="${st}"`);
       expect(html).toContain(TICKET_STATUS_LABEL[status].toUpperCase());
     }
   });

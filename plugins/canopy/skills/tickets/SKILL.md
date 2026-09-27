@@ -92,8 +92,8 @@ move #42 · submitted → in_progress
 ```
 
 Wait for confirmation unless the config sets `require_confirmation: false`. **Always** confirm for
-`done` and `declined` — those resolve the ticket for the whole org and are terminal; nothing re-opens
-a resolved ticket.
+`done` and `declined` — those resolve the ticket for the whole org (a person can still move it back
+later, but the whole team sees it resolved until then).
 
 `--dry-run`: print the line above and **stop**. No tool call.
 
@@ -112,23 +112,21 @@ If the call came back with a `code`, say what it means and what the person shoul
 | code | what it means | what to say |
 |---|---|---|
 | `forbidden` | outside your lane | who needs to assign it, in the web UI |
-| `conflict` | a shared rule said no — an illegal status move, or a nesting rule | which rule, and the legal moves from here |
+| `conflict` | a shared rule said no — a move to the status it already has, or a nesting rule | which rule |
 | `bad_request` | your input was wrong — an unknown handle, an unusable link, an empty comment | the specific field |
 | `not_found` | no such ticket or sprint | the id you used |
 
 ## The status machine
 
-One table, shared with the web UI and the server — this skill never invents a move:
+One table, shared with the web UI and the server: **any status may move to any other.**
 
 ```
-submitted    → in_progress | testing | done | declined
-in_progress  → testing | done | declined | submitted
-testing      → done | in_progress | declined | submitted
-done, declined  — TERMINAL. A resolved ticket is not re-opened.
+submitted | in_progress | testing | done | declined  →  any of the other four
 ```
 
-Any OPEN status (`submitted` / `in_progress` / `testing`) may move to any other; `testing` is an
-optional step between In progress and Done, not a gate. `seg=open` covers all three.
+`done` and `declined` are not terminal — a ticket resolved by mistake, or whose work turned out
+unfinished, is moved back to an open status. `testing` is an optional step between In progress and
+Done, not a gate. `seg=open` covers `submitted` / `in_progress` / `testing`.
 
 Nesting is exactly **one level**: `set_ticket_parent` fails as a `conflict` if the parent already has
 a parent, the child already has a parent, the child is resolved, or the child has sub-tickets of its
