@@ -195,8 +195,8 @@ export interface AppState {
   grantRevokeArm: number | null;
   /** Connected apps opened past its first MCP_LIST_CAP rows by "Show all". */
   grantsAll: boolean;
-  /** The "Set it up without the plugin" disclosure — state, not a `<details>`, so a rerender keeps it open. */
-  mcpManual: boolean;
+  /** Settings › MCP access's "Set it up without the plugin" modal is open (`mcpSetupModal`, at the app root). */
+  mcpSetup: boolean;
   // Settings › Profile: the handle rename editor.
   handleEdit: boolean;
   handleDraft: string;
@@ -425,7 +425,7 @@ export function initialState(): AppState {
     displayName: "",
     grants: { status: "idle", data: [] },
     grantRevokeArm: null,
-    mcpManual: false,
+    mcpSetup: false,
     grantsAll: false,
     handleEdit: false,
     handleDraft: "",
@@ -1807,12 +1807,13 @@ export function profileSection(s: AppState): string {
         ${handleRow}
       </div>
     </div>
-    <div style="margin-top:20px"><label style="${FIELD_LABEL}">Your color</label>${swatches("setMyColor", me?.color ?? "stone", true)}</div>
+    <div class="cnpy-tile-foot" style="padding-top:20px"><label style="${FIELD_LABEL}">Your color</label>${swatches("setMyColor", me?.color ?? "stone", true)}</div>
   </section>`;
 }
 
 /** Settings › Account: who you are signed in as (no avatar — Profile, beside it, already
- *  shows it), Sign out, and the sign-in methods
+ *  shows it), Sign out, and — pinned to the tile's foot, so a stretched tile reads as
+ *  top and bottom rather than a gap under its content — the sign-in methods
  *  (link/unlink per provider — the last identity can't be unlinked).
  *  Pure over AppState — exported for the pure render test. */
 export function accountSection(s: AppState): string {
@@ -1831,12 +1832,12 @@ export function accountSection(s: AppState): string {
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
       <div style="min-width:0">
         <div style="font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Signed in as ${me ? handleLink({ handle: me.handle, name: me.name, color: me.color }, me.handle, 13) : ""}</div>
-        <div style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--green);margin-top:4px"><span style="width:6px;height:6px;border-radius:50%;background:var(--green)"></span>${viaGithub ? `Member of <b>${esc(me?.org ?? "")}</b>` : "Signed in with Google"}</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--green);margin-top:4px"><span style="flex:none;width:6px;height:6px;border-radius:50%;background:var(--green)"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${viaGithub ? `Member of <b>${esc(me?.org ?? "")}</b>` : "Signed in with Google"}</span></div>
       </div>
       <button data-act="signOut" class="cnpy-signout" style="flex:none;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500">Sign out</button>
     </div>
-    <div style="margin-top:18px">
-      <div style="font-size:13px;font-weight:500;margin-bottom:8px">Sign-in methods <span style="font-weight:400;color:var(--fg-40)">· at least one stays linked</span></div>
+    <div class="cnpy-tile-foot" style="padding-top:18px">
+      <div style="font-size:13px;font-weight:500;margin-bottom:8px">Sign-in methods <span style="font-weight:400;color:var(--fg-40)">· keep one linked</span></div>
       ${provRow("github", "GitHub")}${provRow("google", "Google")}
     </div>
   </section>`;
@@ -1900,45 +1901,66 @@ export function browserConnectCommand(url: string = mcpEndpoint()): string {
   return `claude mcp add --transport http --scope user canopy ${url}`;
 }
 
+const mcpCode = (t: string) => `<code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${t}</code>`;
+const mcpStrong = (t: string) => `<strong style="font-weight:600;color:var(--fg)">${t}</strong>`;
+/** A command with a small Copy icon in its corner, so the text keeps the box's full width —
+ *  the MCP tile's install commands and the by-hand setup modal's `claude mcp add`. */
+function copyBox(text: string, act: string, label: string): string {
+  return `<div style="position:relative;margin-top:7px;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:7px 36px 7px 11px">
+        <pre style="margin:0;font-family:var(--code);font-size:11.5px;line-height:1.6;color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere">${esc(text)}</pre>
+        <button data-act="${act}" class="cnpy-copybtn" title="Copy" aria-label="${label}" style="position:absolute;top:5px;right:5px;display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg);color:var(--fg-55)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button>
+      </div>`;
+}
+
 /**
  * Settings › MCP access — OAuth only: Canopy no longer mints tokens here (the token routes
- * stay, so a token already in use keeps working). Top to bottom: what it is in one line;
- * the browser sign-in as three numbered steps (install the plugin, `/mcp` → Authenticate,
- * approve in the browser); Connected apps, where that sign-in lands; and, folded away, the
- * by-hand `claude mcp add` for anyone not using the plugin.
+ * stay, so a token already in use keeps working). Beside the heading, a quiet link to the
+ * by-hand `claude mcp add` for anyone not using the plugin — it opens a MODAL
+ * (`mcpSetupModal`), so using it never changes the tile's height. Then, top to bottom: what
+ * it is in one line; the browser sign-in as three numbered steps (install the plugin,
+ * `/mcp` → Authenticate, approve in the browser); Connected apps, where that sign-in lands.
  * Pure over AppState — exported for the pure render test.
  */
-export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll" | "mcpManual">): string {
-  const code = (t: string) => `<code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${t}</code>`;
-  const b = (t: string) => `<strong style="font-weight:600;color:var(--fg)">${t}</strong>`;
+export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll">): string {
   const step = (n: number, body: string) => `<li style="display:flex;gap:11px;align-items:flex-start">
       <span aria-hidden="true" style="flex:none;display:grid;place-items:center;width:20px;height:20px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:600;margin-top:1px">${n}</span>
       <div style="flex:1;min-width:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${body}</div>
     </li>`;
-  // A command with a small Copy icon in its corner, so the text keeps the box's full width.
-  const copyRow = (text: string, act: string, label: string) => `<div style="position:relative;margin-top:7px;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:7px 36px 7px 11px">
-        <pre style="margin:0;font-family:var(--code);font-size:11.5px;line-height:1.6;color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere">${esc(text)}</pre>
-        <button data-act="${act}" class="cnpy-copybtn" title="Copy" aria-label="${label}" style="position:absolute;top:5px;right:5px;display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg);color:var(--fg-55)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button>
-      </div>`;
-  const open = s.mcpManual;
-  const chevron = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" style="flex:none;transition:transform .15s ease;transform:rotate(${open ? 90 : 0}deg)"><path d="m9 6 6 6-6 6"></path></svg>`;
-  const manual = `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-      <button data-act="mcpManual" aria-expanded="${open}" aria-controls="mcp-manual" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;padding:0;font-size:12px;font-weight:500;color:var(--fg-55)">${chevron}Set it up without the plugin</button>
-      ${open ? `<div id="mcp-manual" style="margin-top:8px;font-size:12px;line-height:1.55;color:var(--fg-55)">Add the server by hand, then do steps 2 and 3. Skip this if you installed the plugin, or you'll have two Canopy servers.${copyRow(browserConnectCommand(), "copyBrowserConnect", "Copy the command")}</div>` : ""}
-    </div>`;
   return `<section class="cnpy-tile cnpy-surface cnpy-set-mcp">
-    <div style="${SECTION_LABEL};margin-bottom:6px">MCP access</div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;column-gap:12px;row-gap:2px;margin-bottom:6px">
+      <div style="${SECTION_LABEL};margin-bottom:0">MCP access</div>
+      <button data-act="mcpSetupOpen" data-mcp-setup-trigger aria-haspopup="dialog" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--fg-55)">Set it up without the plugin &rarr;</button>
+    </div>
     <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you.</div>
     <div class="cnpy-mcp-body">
       <ol aria-label="Connect Claude Code" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0">
-        ${step(1, `Install the Canopy plugin in Claude Code:${copyRow(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
-        ${step(2, `Run ${code("/mcp")}, choose ${b("canopy")}, then ${b("Authenticate")}.`)}
-        ${step(3, `Your browser opens Canopy. Click ${b("Allow")} and you're connected &mdash; it shows up under Connected apps.`)}
+        ${step(1, `Install the Canopy plugin in Claude Code:${copyBox(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
+        ${step(2, `Run ${mcpCode("/mcp")}, choose ${mcpStrong("canopy")}, then ${mcpStrong("Authenticate")}.`)}
+        ${step(3, `Your browser opens Canopy. Click ${mcpStrong("Allow")} and you're connected &mdash; it shows up under Connected apps.`)}
       </ol>
       ${grantListBody(s)}
     </div>
-    ${manual}
   </section>`;
+}
+
+/** Settings › MCP access's by-hand setup, as a modal in the confirmation modal's shell
+ *  (`.cnpy-cmodal` — a dimmed backdrop, a centered card, a bottom sheet at phone width),
+ *  rendered at the app ROOT as a `data-overlay` so morph keeps it across rerenders. The
+ *  backdrop, the × and Escape close it. Exported for the pure render test. */
+export function mcpSetupModal(url: string = mcpEndpoint()): string {
+  const close = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
+  return `<div data-overlay="mcp-setup" class="cnpy-cmodal">
+    <div data-act="mcpSetupClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
+    <div class="cnpy-cmodal-wrap">
+      <div id="mcp-setup" role="dialog" aria-modal="true" aria-labelledby="mcp-setup-t" aria-describedby="mcp-setup-d" tabindex="-1" data-mcp-setup class="cnpy-surface cnpy-cmodal-box" style="position:relative;width:min(480px, 100%)">
+        <button data-act="mcpSetupClose" aria-label="Close" title="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${close}</button>
+        <div id="mcp-setup-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em">Set it up without the plugin</div>
+        <p id="mcp-setup-d" style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">Add the Canopy server to Claude Code by hand &mdash; skip this if you installed the plugin, or you'll have two Canopy servers.</p>
+        ${copyBox(browserConnectCommand(url), "copyBrowserConnect", "Copy the command")}
+        <p style="margin:12px 0 0;font-size:13px;line-height:1.55;color:var(--fg-70)">Then run ${mcpCode("/mcp")}, choose ${mcpStrong("canopy")}, then ${mcpStrong("Authenticate")}, and click ${mcpStrong("Allow")} in the browser.</p>
+      </div>
+    </div>
+  </div>`;
 }
 function settingsView(s: AppState): string {
   const themeCards = [
@@ -1958,22 +1980,20 @@ function settingsView(s: AppState): string {
     return `<button data-act="setTheme" data-arg="${k}" class="cnpy-themecard" aria-pressed="${sel}" style="${style}">${icon}<span style="font-size:13px;font-weight:500;line-height:18px">${label}</span></button>`;
   }).join("");
 
-  // Bento on three columns (canopy.css): Profile and Account side by side with Appearance
-  // under both, MCP access down the third column, Email notifications at full width. The
-  // first three are their OWN grid, so a taller MCP tile never stretches them — and nothing
-  // stretches at all: every tile is as tall as its content (canopy.css has the folds).
+  // ONE bento grid (canopy.css), every tile stretched to its grid area so every edge lines
+  // up: Profile | Account | MCP access (spanning two rows), Appearance under the first two,
+  // Email notifications at full width. DOM order is the folded order — Profile, Account,
+  // Appearance, then MCP access — so the narrower layouts need no reordering.
   return `<div class="cnpy-set-wrap"><div class="cnpy-set">
-    <div class="cnpy-set-you">
-      ${profileSection(s)}
+    ${profileSection(s)}
 
-      ${accountSection(s)}
+    ${accountSection(s)}
 
-      <section class="cnpy-tile cnpy-surface cnpy-set-appear">
-        <div style="${SECTION_LABEL}">Appearance</div>
-        <div class="cnpy-set-themes">${themeCards}</div>
-        <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">System follows your operating system's appearance.</div>
-      </section>
-    </div>
+    <section class="cnpy-tile cnpy-surface cnpy-set-appear">
+      <div style="${SECTION_LABEL}">Appearance</div>
+      <div class="cnpy-set-themes">${themeCards}</div>
+      <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">System follows your operating system's appearance.</div>
+    </section>
 
     ${mcpAccessSection(s)}
 
@@ -2377,6 +2397,7 @@ export function render(s: AppState): string {
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}
+    ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}
