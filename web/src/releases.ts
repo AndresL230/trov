@@ -120,6 +120,7 @@ export const RELEASES: Release[] = [
         "Tickets table: 20px sides inside its card, no hairline under every row, category and priority as plain text (#86)",
         "My Work: with nothing to review, the clear Needs your review tile sits beside Repo instead of leading the page (#87)",
         "Tickets: every status moves to any other — Done and Declined are no longer terminal, so a resolved ticket drags (or is set) back to an open status; `tickets` skill, plugin 0.6.7 (#88)",
+        "Tickets: `POST /tickets/:id/delete` hard-deletes a native ticket (any member, never MCP; a ticket mirrored from GitHub is a 403); Delete ticket in the rail, through the confirmation modal (#88)",
         "Light theme palette from the Claude Design `Canopy Restyled.dc.html` (cool neutral grey, indigo accent)",
         "`--label` is Geist everywhere except the sidebar, which keeps Archivo Narrow",
         "Roadmap: New sprint in the header; `#roadmap/timeline` in the URL; the rail's Narrative / Timeline sub-pages removed",

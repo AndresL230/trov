@@ -24,7 +24,7 @@ import {
   listMcpTokens, revokeMcpToken, listOAuthGrants, revokeOAuthGrant,
   listPersons, listInvites, createInvite, revokeInvite, resendInvite, updateMe, unlinkIdentity, renameHandle,
   listTickets, getTicket, getTicketBadge, createTicket, transitionTicket, moveTicket, toggleTicketAssignee,
-  addTicketLink, editTicket, removeTicketLink, setTicketSprint, setTicketParent, addTicketComment, listSprints,
+  addTicketLink, editTicket, removeTicketLink, deleteTicket, setTicketSprint, setTicketParent, addTicketComment, listSprints,
   getSprint, createSprint, setSprintActive, addSprintResource,
   type TicketDetail,
   listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, deleteArtifact, restoreArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
@@ -432,6 +432,7 @@ function currentRoute(): Route {
   return r;
 }
 function applyRoute(r: Route): void {
+  if (r.ticketId !== state.ticketId) { state.tdDeleteArm = false; state.tdDeleteBusy = false; }   // a confirm never carries to another ticket
   state.screen = r.screen;
   state.ticketId = r.ticketId;
   state.sprintId = r.sprintId;
@@ -1986,7 +1987,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.ticketId = id;
       state.commentDraft = ""; state.mention = null; state.commentHeight = null; state.linkDraft = "";
       state.lkOpen = false; state.asgMenu = false; state.sprMenu = false; state.relMenu = false; state.lkMenu = null; state.stMenu = null;
-      state.tdEdit = null;
+      state.tdEdit = null; state.tdDeleteArm = false; state.tdDeleteBusy = false;
       loadSprintsIfNeeded();
       loadTicketsIfNeeded();          // backs the sub-ticket candidate menu
       loadTicketDetail(id);
@@ -2313,6 +2314,42 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       setTicketParent(id, child)
         .then((t) => applyTicketWrite(t, "Added as sub-ticket — this ticket is now its parent", seq))
         .catch(ticketErr);
+      return;
+    }
+    // Delete (a NATIVE ticket only — a mirrored one has no button, and the server
+    // 403s it): the confirmation modal (Delete focused, so Enter confirms), then back
+    // to the queue. A hard delete, so there is no Undo.
+    case "ticketDeleteArm":
+      if (state.ticketDetail.data?.source !== "canopy") return;
+      state.tdDeleteArm = true;
+      rerender();
+      mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+      return;
+    case "ticketDeleteCancel": {
+      if (!state.tdDeleteArm || state.tdDeleteBusy) return;
+      confirmOut(() => {
+        state.tdDeleteArm = false;
+        rerender();
+        mount.querySelector<HTMLElement>("[data-confirm-trigger]")?.focus();
+      });
+      return;
+    }
+    case "ticketDelete": {
+      const d = state.ticketDetail.data;
+      if (!d || !state.tdDeleteArm || state.tdDeleteBusy) return;
+      state.tdDeleteBusy = true;
+      rerender();
+      deleteTicket(d.id)
+        .then((r) => {
+          state.tdDeleteArm = false; state.tdDeleteBusy = false;
+          state.ticketDetail = { status: "idle", data: null };
+          state.tickets = { ...state.tickets, data: state.tickets.data.filter((x) => x.id !== r.id) };
+          state.screen = "tickets"; state.ticketId = null;
+          loadTickets();
+          loadTicketBadge();
+          flash(`Deleted #${r.id} “${r.title}”`);
+        })
+        .catch((e) => { state.tdDeleteBusy = false; state.tdDeleteArm = false; ticketErr(e); });
       return;
     }
     // The title/description editor (POST /tickets/:id/edit). A mirrored ticket's
