@@ -77,7 +77,7 @@ export const RELEASES: Release[] = [
     headline: "Click anyone's name to see their photo and role, upload your own photo, and agents can read what each person owns.",
     highlights: [
       "Click anyone's name — on a ticket, in the Feed, in search or in Maintenance › People — to see their card: their photo, name, role, when they joined and their GitHub.",
-      "Upload your own photo in Settings › Profile. It's cropped to a square and shows everywhere your avatar does; remove it to go back to your GitHub or Google picture.",
+      "Click your photo in Settings › Profile to upload a new one or remove it. It's cropped to a square and shows everywhere your avatar does; removing it goes back to your GitHub or Google picture.",
       "Everyone has a role, shown on their card. Admins set it, with each person's responsibilities, in Maintenance › People. Responsibilities aren't shown anywhere: agents read them when deciding whom to assign work.",
       "Tickets you filed in Canopy can be deleted from the ticket page (tickets mirrored from GitHub can't), after a confirmation.",
       "In Maintenance › Identity, discard a GitHub login that isn't on the team — outside contributors stop showing up there, even when they open another pull request, and Undo brings one back.",
@@ -95,7 +95,7 @@ export const RELEASES: Release[] = [
         "Migration `0036_person_profiles`: `persons.avatar_sha`, `role`, `responsibilities`; `shared/people.ts` — `ROLE_MAX`, `RESPONSIBILITIES_MAX`, `AVATAR_MAX_BYTES`, `AVATAR_TYPES`, `avatarSrc` and the profile DTOs (#89)",
         "`GET /api/people/:handle` / `PUT /api/people/:handle` (admins only), `POST /api/people/me/avatar` and `/avatar/remove`, `GET /avatar/<sha>`; `GET /persons` and `/auth/me` carry `role` and a resolved `avatar_url` (#89)",
         "`web/src/profile.ts` `personCardModal`: the person card a click on a name opens (the confirm modal's shell) — no People screen, no profile page; `GET /api/people/:handle` returns only the card's fields (#89)",
-        "Settings › Profile: Upload photo / Remove photo (`web/src/avatar.ts` centre-crops to a 512px square and encodes WebP, else PNG, before upload) (#89)",
+        "Settings › Profile: the avatar is the photo control — a hover veil with a camera, and a click menu with Upload (Change) photo, Remove photo over an uploaded one and the accepted types (`web/src/avatar.ts` centre-crops to a 512px square and encodes WebP, else PNG, before upload) (#89)",
         "Tickets: `POST /tickets/:id/delete` hard-deletes a native ticket (any member, never MCP; a ticket mirrored from GitHub is a 403); Delete ticket in the rail, through the confirmation modal (#89)",
         "Maintenance › Identity: `POST /identity-tasks/:login/discard` / `restore` — a soft, sticky discard (`identity_tasks.status = 'discarded'` + `resolved_at` / `resolved_by`, no migration; the login's PK keeps it from being re-raised, its events are still captured); a Discard on each card, a \"Discarded @login · Undo\" toast, and an \"N discarded\" list with Restore; `GET /identity-tasks` adds `discarded` (#89)",
         "MCP `assign_ticket { id, login, on }` (issue #90): adds or removes one assignee over the web's `toggle_assignee`, scoped to an admin, the ticket's requester or a current assignee (`assertTicketAssignable`); idempotent with no write, never changes status; the `tickets` / `canopy` skills and `create_ticket`'s description say so (#89)",
