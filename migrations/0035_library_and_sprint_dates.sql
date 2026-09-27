@@ -1,9 +1,10 @@
 -- 0035_library_and_sprint_dates — every schema change of the 2026-09-26 redesign batch, in ONE
 -- migration (it was two while in development: 0035_library_metadata + 0036_sprint_start;
--- consolidated before either reached production). Two independent parts:
+-- consolidated before either reached production). Three independent parts:
 --   PART A — My Work's library strip: docs.owner, artifact_pages.published_at, prompt usage.
 --   PART B — sprint start dates: sprints.start_date + its conservative backfill.
--- Tests re-run each part's backfill by splitting on the PART B marker line below.
+--   PART C — prompt soft delete: prompts.deleted_at / deleted_by + prompts_fts skips deleted rows.
+-- Tests re-run a part's backfill by cutting the file at the PART B / PART C marker lines below.
 
 -- ═══ PART A: library metadata ═══════════════════════════════════════════════════
 -- Three data sources for My Work's "library" strip (2026-09-26): who OWNS a doc, when an
@@ -178,3 +179,57 @@ UPDATE sprints
       AND start <= due
       AND julianday(due) - julianday(start) <= 366
  );
+
+-- ═══ PART C: prompt soft delete ═══════════════════════════════════════════════
+-- A prompt can be DELETED (2026-09-26) — softly, like every other exit in Canopy:
+-- the row and every prompt_versions row stay in D1; `deleted_at` / `deleted_by` (a
+-- person HANDLE, listed in HANDLE_COLUMNS so a rename rewrites it) mark it gone.
+-- A deleted prompt is absent from every read (the library, GET /api/prompts/:slug,
+-- versions, /search/quick, MCP search_prompts / get_prompt) and its slug stays
+-- RESERVED: a save to it is a 409 naming the fix (restore it). Writers and rules in
+-- src/tools/prompts.ts (deletePrompt / restorePrompt: the author or an admin, over
+-- the session cookie only — never an MCP tool). Both columns NULL = live; a restore
+-- clears both.
+ALTER TABLE prompts ADD COLUMN deleted_at TEXT;
+ALTER TABLE prompts ADD COLUMN deleted_by TEXT;
+
+-- prompts_fts holds ONLY live prompts: each rebuild trigger re-inserts a slug's row
+-- only while `deleted_at IS NULL`, and the prompts update trigger now also fires on
+-- `deleted_at` — so a delete drops the FTS row and a restore puts it back. (The
+-- readers filter `deleted_at IS NULL` as well; the index is simply never a leak.)
+DROP TRIGGER IF EXISTS prompts_fts_ai;
+CREATE TRIGGER prompts_fts_ai AFTER INSERT ON prompts BEGIN
+  DELETE FROM prompts_fts WHERE slug = new.slug;
+  INSERT INTO prompts_fts (slug, title, description, body, tags)
+    SELECT p.slug, p.title, p.description, COALESCE(v.body, ''), p.tags
+    FROM prompts p LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version
+    WHERE p.slug = new.slug AND p.deleted_at IS NULL;
+END;
+
+DROP TRIGGER IF EXISTS prompts_fts_au;
+CREATE TRIGGER prompts_fts_au AFTER UPDATE OF slug, title, description, tags, current_version, deleted_at ON prompts BEGIN
+  DELETE FROM prompts_fts WHERE slug = old.slug;
+  DELETE FROM prompts_fts WHERE slug = new.slug;
+  INSERT INTO prompts_fts (slug, title, description, body, tags)
+    SELECT p.slug, p.title, p.description, COALESCE(v.body, ''), p.tags
+    FROM prompts p LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version
+    WHERE p.slug = new.slug AND p.deleted_at IS NULL;
+END;
+
+DROP TRIGGER IF EXISTS prompts_fts_vai;
+CREATE TRIGGER prompts_fts_vai AFTER INSERT ON prompt_versions BEGIN
+  DELETE FROM prompts_fts WHERE slug = new.slug;
+  INSERT INTO prompts_fts (slug, title, description, body, tags)
+    SELECT p.slug, p.title, p.description, COALESCE(v.body, ''), p.tags
+    FROM prompts p LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version
+    WHERE p.slug = new.slug AND p.deleted_at IS NULL;
+END;
+
+DROP TRIGGER IF EXISTS prompts_fts_vau;
+CREATE TRIGGER prompts_fts_vau AFTER UPDATE ON prompt_versions BEGIN
+  DELETE FROM prompts_fts WHERE slug = new.slug;
+  INSERT INTO prompts_fts (slug, title, description, body, tags)
+    SELECT p.slug, p.title, p.description, COALESCE(v.body, ''), p.tags
+    FROM prompts p LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version
+    WHERE p.slug = new.slug AND p.deleted_at IS NULL;
+END;

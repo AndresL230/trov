@@ -125,12 +125,15 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `0034_feed_brief_artifact_cap` [`feed.brief` — see "The feed brief" below — and REBUILDS `artifact_versions`
   to raise its text CHECK to 768000 bytes, the 750 KB `ARTIFACT_TEXT_CAP`], then `0035_library_and_sprint_dates`
   (ONE migration for the 2026-09-26 redesign batch — developed as 0035 + 0036, consolidated before production;
-  two marked parts) — PART A [`docs.owner`, `artifact_pages.published_at`, `prompts.use_count` / `last_used_at` —
+  three marked parts, each test cutting its own part out between the `-- ═══ PART` marker lines) — PART A [`docs.owner`, `artifact_pages.published_at`, `prompts.use_count` / `last_used_at` —
   each backfilled — and `prompts_fts_au` narrowed to the indexed columns so a use bump never rewrites the FTS
   row; the data behind My Work's library strip], PART B [`sprints.start_date` (nullable `YYYY-MM-DD`, the DTO's
   `start`), backfilled CONSERVATIVELY from `dates` — only a label that BEGINS with an ISO date or "<month> <day>"
   with no year, against an ISO `target_date` (the year before only for a range crossing New Year); anything else
-  stays NULL and the Timeline still parses `dates`. Nothing else is rewritten — legacy non-ISO `target_date`s stay]).
+  stays NULL and the Timeline still parses `dates`. Nothing else is rewritten — legacy non-ISO `target_date`s stay],
+  PART C [prompt soft delete: `prompts.deleted_at` / `deleted_by` (a handle, in `HANDLE_COLUMNS`), and the four
+  `prompts_fts` rebuild triggers re-created to index only `deleted_at IS NULL` rows — the update trigger now also
+  fires on `deleted_at`, so a delete drops the FTS row and a restore puts it back — see the Prompt Library below]).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
@@ -1147,10 +1150,26 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   in `recordPromptUse` — from MCP `get_prompt` (every principal) and `POST /api/prompts/:slug/used` (the web Copy
   button; 404 unknown slug, 503 on a D1 failure, never a 500); a use is not an edit, so `updated_at` stays, and
   `GET /api/prompts?sort=used` lists the most used first.
+- **Delete is SOFT** (0035 PART C; `deletePrompt` / `restorePrompt`): `POST /api/prompts/:slug/delete` stamps
+  `deleted_at` / `deleted_by` and touches nothing else — every `prompt_versions` row stays in D1. Only the prompt's
+  AUTHOR (case-insensitive) or an ADMIN (`isAdmin`); anyone else is 403 with nothing written. A deleted prompt is
+  gone from EVERY read — the library, `GET /api/prompts/:slug` (the same 404 as an unknown slug), versions,
+  `/search/quick`, MCP `search_prompts` / `get_prompt`, `prompts_fts`, and so every picker fed by the library — and
+  takes no write (tags / publish / use / a second delete are 404). **Its slug stays RESERVED**: a save to it (new,
+  rename target, or an agent's `save_prompt`) is a 409 `slug <s> belongs to a deleted prompt — restore it instead
+  of reusing the slug` — chosen over reuse because a reused slug would silently re-point everything that names it
+  (handoffs, skills, agents' `get_prompt` calls) at different instructions, and would collide with a restore.
+  `POST /api/prompts/:slug/restore` (same people; 409 `prompt is not deleted` on a live one) clears both columns,
+  so the prompt is back exactly as it was. Both are session-cookie only — there is NO MCP delete, so an agent can
+  never remove a prompt. On screen: "Delete prompt" in the prompt page's header (author / admins only), an in-app
+  confirm popover (`web/src/confirm.ts` — `confirmAnchor`, role="alertdialog", Cancel focused, Escape closes; never
+  `window.confirm`), then the library with a toast "Deleted “<title>” · Undo" (`flash(msg, ms, action)` — a
+  toast may carry ONE `data-act` button) whose Undo calls restore. There is no list of deleted prompts.
 - **Routes** (session cookie, `{ error }` on failure): `GET /api/handoffs?box=mine|me|anyone|sent`,
   `GET /api/handoffs/:id`, `POST /api/handoffs`, `POST /api/handoffs/:id/claim`, `POST /api/handoffs/:id/expire`,
   `GET /api/prompts?q&tags&sort`, `GET /api/prompts/:slug`, `GET /api/prompts/:slug/versions`, `POST /api/prompts`,
-  `POST /api/prompts/:slug/tags`, `POST /api/prompts/:slug/publish`, and `POST /api/docs/propose` (a person stages
+  `POST /api/prompts/:slug/tags`, `POST /api/prompts/:slug/publish`, `POST /api/prompts/:slug/delete|restore`, and
+  `POST /api/docs/propose` (a person stages
   a NEW doc through `ingestDocProposal`; an existing slug is a 409). The Hono app stays cookie-only — agents
   reach these through MCP, not a bearer on `/api/*` (no new auth class).
 - **MCP** (every principal): `send_handoff`, `list_handoffs` (pending `me` + `anyone` by default; only `sent`

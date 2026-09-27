@@ -20,7 +20,7 @@ import { buildSeedStatements } from "../scripts/seed/build.mjs";
 import prompts from "../fixtures/dev/prompts.json";
 import combined from "../migrations/0035_library_and_sprint_dates.sql?raw";
 /** PART A of the consolidated migration — the library-metadata half. */
-const migration = combined.split("-- ═══ PART B")[0];
+const migration = combined.split("-- ═══ PART B")[0].split("-- ═══ PART C")[0];
 import type { DocRow } from "../shared/rows";
 import type { PromptDetail, PromptSummary } from "../shared/handoffs";
 

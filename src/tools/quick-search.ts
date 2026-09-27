@@ -19,7 +19,8 @@
 //              upload never landed reaches no one; drafts dropped (live-only).
 //   prompt   — prompts_fts; only a prompt with at least one PUBLISHED version (a
 //              prompt that is still only a draft or an agent's staged proposal is
-//              not settled). The context line is its description, not the body.
+//              not settled), and never a soft-deleted one (0035 PART C — prompts_fts
+//              drops it too). The context line is its description, not the body.
 //   handoff  — no FTS: a LIKE over the viewer's OWN handoffs (the union of the
 //              inbox's boxes — left for me, left for anyone, or sent by me), pending
 //              or claimed. A small, bounded set; one statement.
@@ -161,6 +162,7 @@ export async function quickSearch(db: DB, q: string, viewer: string, opts: Quick
          FROM prompts_fts JOIN prompts p ON p.slug = prompts_fts.slug
          LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version
         WHERE prompts_fts MATCH ?
+          AND p.deleted_at IS NULL
           AND EXISTS (SELECT 1 FROM prompt_versions pv WHERE pv.slug = p.slug AND pv.status = 'published')
         ORDER BY bm25(prompts_fts, 2.0, 5.0, 1.0, 1.0, 1.0) LIMIT ${n}`).bind(match),
       map: (r) => ({ type: "prompt", id: str(r.id) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.description)), status: str(r.status), by: str(r.by), at: str(r.at) }) });

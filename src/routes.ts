@@ -31,7 +31,7 @@ import { get_plan } from "./tools/plan";
 import {
   listHandoffs, getHandoff, createHandoff, claimHandoff, expireHandoff, HandoffCreateInput, HandoffError, HANDOFF_ERROR_STATUS,
 } from "./tools/handoffs";
-import { listPrompts, getPrompt, recordPromptUse, listPromptVersions, savePrompt, setPromptTags, publishPrompt, PromptSaveInput, PromptError, PROMPT_ERROR_STATUS } from "./tools/prompts";
+import { listPrompts, getPrompt, recordPromptUse, listPromptVersions, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, PromptSaveInput, PromptError, PROMPT_ERROR_STATUS } from "./tools/prompts";
 import { isSection } from "@shared/vocabulary";
 import { HANDOFF_BOXES, type HandoffBox } from "@shared/handoffs";
 import { getMyWork } from "./tools/mywork";
@@ -309,6 +309,20 @@ app.post("/api/prompts/:slug/publish", async (c) => {
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
   try { return c.json({ ok: true, prompt: await publishPrompt(c.env.DB, c.req.param("slug"), version) }); }
+  catch (e) { return handoffFail(c, e); }
+});
+// Soft delete + restore (0035 PART C): the prompt's author or an admin; anyone else
+// is a 403 with nothing written. Session-cookie only — there is NO MCP delete, so an
+// agent can never remove a prompt. A deleted prompt's slug stays reserved (a save to
+// it is a 409), and restore is the one way back.
+app.post("/api/prompts/:slug/delete", async (c) => {
+  const me = c.get("principal").handle;
+  try { return c.json({ ok: true, ...(await deletePrompt(c.env.DB, c.req.param("slug"), me, isAdmin(c.env, me))) }); }
+  catch (e) { return handoffFail(c, e); }
+});
+app.post("/api/prompts/:slug/restore", async (c) => {
+  const me = c.get("principal").handle;
+  try { return c.json({ ok: true, prompt: await restorePrompt(c.env.DB, c.req.param("slug"), me, isAdmin(c.env, me)) }); }
   catch (e) { return handoffFail(c, e); }
 });
 

@@ -99,6 +99,8 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     handle, handle, nowIso(), nowIso(), handle, nowIso());
   await run(env.DB, `INSERT INTO prompts (slug, title, author, current_version, created_at, updated_at) VALUES (?, 'T', ?, 1, ?, ?)`, "rename-test", handle, nowIso(), nowIso());
   await run(env.DB, `INSERT INTO prompt_versions (slug, version, status, author, body, created_at) VALUES (?, 1, 'published', ?, 'b', ?)`, "rename-test", handle, nowIso());
+  // prompts.deleted_by (0035 PART C): a second prompt, soft-deleted by the person.
+  await run(env.DB, `INSERT INTO prompts (slug, title, author, current_version, created_at, updated_at, deleted_at, deleted_by) VALUES (?, 'T', ?, 1, ?, ?, ?, ?)`, "rename-test-deleted", handle, nowIso(), nowIso(), nowIso(), handle);
   // oauth_grants.person + oauth_codes.person (0029) — direct inserts; the writer
   // (issueAuthorization) needs a registered client, seeded here too.
   await run(env.DB, `INSERT OR IGNORE INTO oauth_clients (client_id, client_name, redirect_uris, created_at) VALUES ('rename-client', 'C', '["http://localhost/cb"]', ?)`, nowIso());

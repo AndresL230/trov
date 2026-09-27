@@ -588,6 +588,16 @@ export async function setPromptTags(slug: string, tags: string[]): Promise<Promp
 export async function publishPrompt(slug: string, version: number): Promise<PromptDetail> {
   return (await postJson<{ ok: true; prompt: PromptDetail }>(`/api/prompts/${encodeURIComponent(slug)}/publish`, { version })).prompt;
 }
+/** Soft-delete a prompt (its author or an admin; 403 otherwise). Returns what was deleted,
+ *  for the "Deleted “<title>” · Undo" toast. */
+export async function deletePrompt(slug: string): Promise<{ slug: string; title: string }> {
+  const r = await postJson<{ ok: true; slug: string; title: string }>(`/api/prompts/${encodeURIComponent(slug)}/delete`);
+  return { slug: r.slug, title: r.title };
+}
+/** Undo a delete: the prompt is back everywhere, exactly as it was. */
+export async function restorePrompt(slug: string): Promise<PromptDetail> {
+  return (await postJson<{ ok: true; prompt: PromptDetail }>(`/api/prompts/${encodeURIComponent(slug)}/restore`)).prompt;
+}
 /** Count one USE of a prompt (the Copy button). 404 on an unknown slug. Fire-and-forget:
  *  callers should not let a failure here block the copy. */
 export async function usePrompt(slug: string): Promise<{ use_count: number; last_used_at: string | null }> {

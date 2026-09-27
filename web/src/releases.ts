@@ -80,7 +80,7 @@ export const RELEASES: Release[] = [
       "Sprints have real start dates: the New sprint panel uses date pickers, a start can't be after the due date, and a sprint counts as overdue from the day after it is due, the same on every screen.",
       "Beside the Feed: This week (entries per day, who posted and the top tags, each a click to filter) and Waiting on review.",
       "Search everything from the sidebar: results for tickets, docs, decisions, roadmap, artifacts, prompts, handoffs, people, feed and app screens appear in a compact dropdown after a short pause (⌘K opens a palette when the rail is collapsed).",
-      "One look: white cards on a light grey background in the new light theme, Geist type everywhere except the sidebar, search and Filter as one box on Tickets, Artifacts and the Prompt Library, and a tab icon that follows the app's theme.",
+      "One look: white cards on a light grey background in the new light theme, Geist type everywhere except the sidebar, search and Filter as one box on Tickets, Artifacts and the Prompt Library, and a tab icon that follows the app's theme. You can also delete a prompt you wrote (with Undo), and Get Started shows the new screens.",
     ],
     headsUp: [
       "The Roadmap's plan narrative is now limited to 800 characters, so it stays a short Now / Next / Later; the detail lives in each sprint.",
@@ -106,6 +106,9 @@ export const RELEASES: Release[] = [
         "`npm run watch:web`, which `npm run dev` now runs beside `wrangler dev`",
         "`GET /search/quick` (`src/tools/quick-search.ts`, `shared/quick-search.ts`): one D1 batch, FTS prefix matching, live-only visibility, a degraded read answers empty, never a 500",
         "`web/src/quicksearch.ts`: the sidebar search dropdown — debounced prefetch, abort, a 40-entry cache, a 1 s show delay, animated open and height, keyboard navigation",
+        "Prompt soft delete: `POST /api/prompts/:slug/delete` and `/restore` (author or admin, session cookie, never MCP); the slug stays reserved; `web/src/confirm.ts` in-app confirm and an Undo toast",
+        "Migration `0035_library_and_sprint_dates`, PART C: `prompts.deleted_at` / `deleted_by`; the `prompts_fts` triggers index live prompts only",
+        "Get Started and the landing page describe the new screens; screenshots recaptured in dark and light, plus Timeline, search and What's new figures",
       ],
       changed: [
         "Light theme palette from the Claude Design `Canopy Restyled.dc.html` (cool neutral grey, indigo accent)",

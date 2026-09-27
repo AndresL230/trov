@@ -16,6 +16,7 @@ import { unifiedDiff } from "./review";
 import { primaryStyle } from "./handoffs";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
 import { segmented } from "./segmented";
+import { confirmAnchor } from "./confirm";
 
 const personOf = (persons: PersonSummary[], h: string): PersonSummary | null =>
   persons.find((p) => p.handle.toLowerCase() === h.toLowerCase()) ?? null;
@@ -150,6 +151,12 @@ export interface PromptDetailProps {
   tagDraft: string;
   /** The prompt box's Raw / Rendered setting. */
   promptView: PromptView;
+  /** The viewer is the prompt's author or an admin — the only people shown "Delete prompt". */
+  canDelete: boolean;
+  /** The delete confirm is open. */
+  deleteArm: boolean;
+  /** The delete request is in flight. */
+  deleteBusy?: boolean;
 }
 
 const PROP_ROW = "display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center;height:30px";
@@ -164,6 +171,9 @@ export function tagOptions(current: string[], known: string[], draftRaw: string)
   if (draft && !all.includes(draft) && !current.includes(draft)) opts.unshift({ tag: draft, label: `+ ${draft}` });
   return opts;
 }
+
+/** What a delete keeps, for the confirm: "Its one version is kept" / "All 3 versions are kept". */
+const deleteKeeps = (n: number): string => (n === 1 ? "Its one version is kept" : `All ${n} versions are kept`);
 
 export function promptDetailView(p: PromptDetailProps): string {
   // The page is at least the viewport tall and the body row takes what is left, so the
@@ -230,6 +240,14 @@ export function promptDetailView(p: PromptDetailProps): string {
         ${staged ? `<button data-act="promptPublish" data-arg="${staged.version}" class="cnpy-accentbtn" style="${primaryStyle(true)}">Publish v${staged.version}</button>` : ""}
         <button data-act="promptEdit" data-arg="${attr(x.slug)}" class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">Edit</button>
         <button data-act="promptNewVersion" data-arg="${attr(x.slug)}" class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">New version</button>
+        ${p.canDelete ? confirmAnchor(
+          { label: "Delete prompt", act: p.deleteArm ? "promptDeleteCancel" : "promptDeleteArm", armed: p.deleteArm, controls: "prompt-delete-confirm" },
+          {
+            id: "prompt-delete-confirm", title: `Delete “${x.title}”?`,
+            body: `It leaves the library, search and agents' get_prompt. ${deleteKeeps(p.versions.length || x.version)}, the slug stays reserved, and you can undo.`,
+            confirmLabel: "Delete prompt", confirmAct: "promptDelete", cancelAct: "promptDeleteCancel", busy: p.deleteBusy,
+          },
+        ) : ""}
       </div>
     </div>
 

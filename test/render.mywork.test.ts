@@ -389,7 +389,7 @@ describe("render() — the Get Started guide", () => {
 
   it("shows a figure for every screen in the sidebar, the ticket, sprint and artifact pages, and the connect modal", () => {
     const html = render(guideState());
-    for (const name of ["mywork", "tickets", "board", "ticket", "roadmap", "sprint", "repo", "repo-usage", "feed", "docs", "search", "review", "maintenance", "settings", "connect", "handoffs", "artifacts", "artifact", "prompts"]) {
+    for (const name of ["mywork", "tickets", "board", "ticket", "roadmap", "sprint", "repo", "repo-usage", "feed", "docs", "search", "review", "maintenance", "settings", "connect", "handoffs", "artifacts", "artifact", "prompts", "timeline", "quicksearch", "releases"]) {
       expect(html).toContain(`/guide/${name}-`);
     }
   });

@@ -5,6 +5,10 @@ import { handoffsView, handoffDetailView, handoffAsPrompt, docDraftFromHandoff, 
 import { promptDetailView, promptLibraryView, filterPrompts, promptEditorView, blankPromptDraft } from "../web/src/prompts";
 import { newDocView, blankDoc } from "../web/src/newdoc";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion } from "../shared/handoffs";
+import { canDeletePrompt, render, initialState } from "../web/src/render";
+import confirmSrc from "../web/src/confirm.ts?raw";
+import promptsSrc from "../web/src/prompts.ts?raw";
+import mainSrc from "../web/src/main.ts?raw";
 
 /** The one `.cnpy-sfbar` (search + Filter) element in `html`, balanced by its divs — or null. */
 function sfbar(html: string): string | null {
@@ -78,7 +82,7 @@ describe("new doc — the FROM HANDOFF banner", () => {
 describe("prompts", () => {
   const detail: PromptDetail = { slug: "lint", title: "Lint", description: "", tags: ["ui"], author: "Darkest-Teddy", version: 3, status: "staged", updated_at: "2026-09-23T10:00:00Z", body: "Lint {{path}}.", use_count: 0, last_used_at: null };
   const v = (version: number, status: PromptVersion["status"]): PromptVersion => ({ version, status, author: "Darkest-Teddy", created_at: "2026-09-20T10:00:00Z", summary: "s", body: "b" });
-  const props = { status: "ok" as const, prompt: detail, persons, knownTags: [], diffVersion: null, tagMenu: false, tagDraft: "", promptView: "raw" as const };
+  const props = { status: "ok" as const, prompt: detail, persons, knownTags: [], diffVersion: null, tagMenu: false, tagDraft: "", promptView: "raw" as const, canDelete: false, deleteArm: false };
 
   it("offers Publish vN only while a staged version exists", () => {
     expect(promptDetailView({ ...props, versions: [v(3, "staged"), v(2, "published")] })).toContain('data-act="promptPublish" data-arg="3"');
@@ -196,5 +200,56 @@ describe("surface cards — handoffs, prompts, new doc", () => {
     }
     // The FROM HANDOFF banner is a surface that keeps its accent edge.
     expect(doc).toContain('class="cnpy-surface" style="border-left:2px solid var(--accent);padding:11px 15px;');
+  });
+});
+
+// ── Delete prompt (0035 PART C): author / admin only, an IN-APP confirm, an Undo toast ──
+describe("prompt delete", () => {
+  const detail: PromptDetail = { slug: "lint", title: "Lint", description: "", tags: [], author: "Darkest-Teddy", version: 2, status: "published", updated_at: "2026-09-23T10:00:00Z", body: "Lint.", use_count: 0, last_used_at: null };
+  const versions: PromptVersion[] = [2, 1].map((n) => ({ version: n, status: "published" as const, author: "Darkest-Teddy", created_at: "2026-09-20T10:00:00Z", summary: "s", body: "b" }));
+  const props = { status: "ok" as const, prompt: detail, versions, persons, knownTags: [], diffVersion: null, tagMenu: false, tagDraft: "", promptView: "raw" as const };
+  const me = (handle: string, admin: boolean) => ({ handle, name: null, avatar_url: null, color: "moss" as const, identities: [], org: "SaplingLearn", admin });
+
+  it("offers Delete prompt only to its author or an admin (canDeletePrompt, case-insensitive)", () => {
+    const state = (m: ReturnType<typeof me>) => ({ me: m, promptDetail: { status: "ok" as const, data: { prompt: detail, versions } } });
+    expect(canDeletePrompt(state(me("darkest-teddy", false)))).toBe(true);
+    expect(canDeletePrompt(state(me("someone", true)))).toBe(true);
+    expect(canDeletePrompt(state(me("someone", false)))).toBe(false);
+    expect(promptDetailView({ ...props, canDelete: false, deleteArm: false })).not.toContain("promptDeleteArm");
+    const html = promptDetailView({ ...props, canDelete: true, deleteArm: false });
+    expect(html).toContain('data-act="promptDeleteArm"');
+    expect(html).toContain("Delete prompt");
+    expect(html).toContain('class="cnpy-dangerbtn" aria-haspopup="dialog" aria-expanded="false"');
+    expect(html).not.toContain('role="alertdialog"'); // the confirm opens only when armed
+  });
+
+  it("confirms in the app — an alertdialog with Cancel focused first — never window.confirm", () => {
+    const html = promptDetailView({ ...props, canDelete: true, deleteArm: true });
+    expect(html).toContain('role="alertdialog"');
+    expect(html).toContain("Delete “Lint”?");
+    expect(html).toContain("All 2 versions are kept");
+    expect(promptDetailView({ ...props, versions: versions.slice(1), canDelete: true, deleteArm: true })).toContain("Its one version is kept");
+    expect(html).toContain('data-act="promptDelete"');
+    expect(html).toMatch(/data-act="promptDeleteCancel" data-confirm-focus/);
+    expect(html).toContain('aria-expanded="true"');
+    // The trigger toggles: while armed, clicking it again closes.
+    expect(html).toMatch(/data-act="promptDeleteCancel" data-confirm-trigger/);
+    // Busy: both buttons disabled, the label says so.
+    expect(promptDetailView({ ...props, canDelete: true, deleteArm: true, deleteBusy: true })).toContain("Deleting…");
+    for (const src of [confirmSrc, promptsSrc, mainSrc]) {
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, ""); // comments may NAME it
+      expect(code).not.toMatch(/window\.confirm|\bconfirm\(|\balert\(/);
+    }
+  });
+
+  it("the toast carries the Undo button that restores it", () => {
+    const html = render({
+      ...initialState(), view: "app", me: me("alice", false),
+      toast: "Deleted “Lint”", toastAction: { label: "Undo", act: "promptRestore", arg: "lint" }, toastAt: Date.now(), toastMs: 8000,
+    });
+    expect(html).toContain('class="cnpy-toast" role="status" aria-live="polite"');
+    expect(html).toContain("Deleted “Lint”");
+    expect(html).toContain('data-act="promptRestore" data-arg="lint" class="cnpy-toast-act"');
+    expect(render({ ...initialState(), view: "app", me: me("alice", false), toast: "Saved", toastAt: Date.now(), toastMs: 2000 })).not.toContain("cnpy-toast-act");
   });
 });

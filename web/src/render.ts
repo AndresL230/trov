@@ -317,6 +317,9 @@ export interface AppState {
   promptDiffV: number | null;
   promptTagMenu: boolean;
   promptTagDraft: string;
+  /** The prompt page's "Delete prompt" confirm is open / its request is in flight. */
+  promptDeleteArm: boolean;
+  promptDeleteBusy: boolean;
   /** The prompt page's body, expanded over the page (the shared prompt modal). */
   promptExpanded: boolean;
   /** Raw markdown or rendered, for every prompt box (a handoff's and a library prompt's). */
@@ -330,6 +333,8 @@ export interface AppState {
   /** The filter menu (web/src/filter-menu.ts) the NEXT paint opens — its entrance plays once, then main.ts clears this. */
   fmOpening: string | null;
   toast: string | null;
+  /** One button on the toast (a delete's "Undo") — dispatched like any `data-act`. */
+  toastAction: ToastAction | null;
   /** When the toast went up and how long it stays (ms) — a rerender joins its fade where it left off. */
   toastAt: number;
   toastMs: number;
@@ -445,12 +450,13 @@ export function initialState(): AppState {
     promptQ: "", promptTag: null, promptSort: "updated_desc", promptFilterOpen: false, promptFilterCat: "tag",
     promptSlug: null,
     promptDetail: { status: "idle", data: null },
-    promptDiffV: null, promptTagMenu: false, promptTagDraft: "", promptExpanded: false, promptView: "raw",
+    promptDiffV: null, promptTagMenu: false, promptTagDraft: "", promptDeleteArm: false, promptDeleteBusy: false, promptExpanded: false, promptView: "raw",
     promptMode: "new", promptEd: null,
     nd: blankDoc("technical", ""),
     maintTab: "unplaced", maintDiscardArm: false,
     fmOpening: null,
     toast: null,
+    toastAction: null,
     toastAt: 0,
     toastMs: 0,
     backfillSync: null,
@@ -1595,7 +1601,8 @@ function guideView(s: AppState): string {
     ${sub("Reading")}
     <p style="${gP}">The ${gStrong("Docs")} library is split into ${gStrong("Technical")} and ${gStrong("Product")} spaces, each grouped into sections like ${gStrong("Architecture")} and ${gStrong("Decisions")}. Opening a doc expands its heading outline in the tree, and ${gStrong("Version history")} keeps every earlier version. ${gStrong("New doc")} lets you propose one yourself.</p>
     ${gFig("docs", `${gEm("Docs")}: the open doc's outline in the tree, and a banner pointing to a proposal awaiting review.`)}
-    <p style="${gP};margin-top:14px">${gStrong("Search")} is the box at the top of the sidebar (${gCode("⌘K")}, or ${gCode("Ctrl K")} on Windows and Linux). It searches docs, decisions, the feed, sprints, tickets, and artifacts, and shows only settled content. Your agent's ${gCode("query")} tool searches the same things plus pending proposals, each labelled, so it can tell settled context from a draft.</p>
+    <p style="${gP};margin-top:14px">${gStrong("Search")} is the box at the top of the sidebar (${gCode("⌘K")}, or ${gCode("Ctrl K")} on Windows and Linux). Type and pause: a dropdown jumps straight to a ticket, doc, decision, sprint, artifact, prompt, handoff, person, or screen. Press ${gCode("Tab")} for the full ${gStrong("Search")} screen, which ranks docs, decisions, the feed, the roadmap, and artifacts. Both show only settled content. Your agent's ${gCode("query")} tool also sees tickets and pending proposals, each labelled, so it can tell settled context from a draft.</p>
+    ${gFig("quicksearch", `${gEm("Search everything")}: matches grouped by type as you type, with a jump to the full results.`)}
     ${gFig("search", `${gEm("Search")}: ranked results across every type, with your query highlighted.`)}
 
     ${sub("How agent writes are staged")}
@@ -1608,22 +1615,24 @@ function guideView(s: AppState): string {
     ${gFig("maintenance", `${gEm("Maintenance")}: the Unplaced queue, waiting to be routed or discarded.`)}
 
     ${sec("Tour", "Every screen, top to bottom", "Tour")}
-    <p style="${gP}">The sidebar groups screens into ${gStrong("Workspace")}, ${gStrong("Monitor")}, ${gStrong("Knowledge")}, and ${gStrong("Triage")}. A chevron opens a screen's sub-pages, ${gStrong("Collapse")} folds the rail to icons, and every screen has its own address (${gCode("#tickets/7")}, ${gCode("#artifacts")}) you can send to a teammate.</p>
+    <p style="${gP}">The sidebar groups screens into ${gStrong("Workspace")}, ${gStrong("Monitor")}, ${gStrong("Knowledge")}, ${gStrong("Triage")}, and ${gStrong("Help")} (this guide and What's new). A chevron opens a screen's sub-pages, ${gStrong("Collapse")} folds the rail to icons, and every screen has its own address (${gCode("#tickets/7")}, ${gCode("#artifacts")}) you can send to a teammate. On a phone the sidebar opens as a drawer.</p>
 
     ${sub("My Work")}
-    <p style="${gP}">Canopy opens here. ${gStrong("Tickets for you")}: your open tickets, with their sprint and when it is due. ${gStrong("Needs your review")}: what agents staged, with Promote, Ratify and Reject right there. ${gStrong("Your sessions")}: what you recorded lately and the handoffs waiting for you. ${gStrong("Repo")}: drift, CI, deploys and pull requests at a glance. Under them, the docs you own, recent artifacts and your saved prompts. It reads only what Canopy has already captured, so it loads instantly.</p>
-    ${gFig("mywork", `${gEm("My Work")}: your open issues, recent PRs, and tickets.`)}
+    <p style="${gP}">Canopy opens here. ${gStrong("Tickets for you")}: your open tickets, with their sprint and when it is due. ${gStrong("Needs your review")}: what agents staged, with Promote, Ratify and Reject right there. ${gStrong("Your sessions")}: what you recorded lately and the handoffs waiting for you. ${gStrong("Repo")}: drift, CI, deploys and pull requests at a glance. Under them, the docs you own, artifacts published this week, and handoffs queued for you, each with ${gStrong("Copy")} to paste it into a fresh session as a prompt. It reads only what Canopy has already captured, so it loads instantly.</p>
+    ${gFig("mywork", `${gEm("My Work")}: your tickets, the review queue, your sessions, and the repo at a glance.`)}
 
     ${sub("Tickets")}
-    <p style="${gP}">The team's request queue. Anyone can file a bug, request, question, or access ask with ${gStrong("New ticket")}. The ${gStrong("Queue")} groups tickets by sprint (no sprint means ${gStrong("Backlog")}); ${gStrong("Board")} shows the same tickets as status columns. A ticket moves ${gStrong("Triage → In progress → Done")}, or ends ${gStrong("Declined")}, and only a person closes one: a merged PR never does.</p>
-    ${gFig("tickets", `${gEm("Tickets")}: the queue grouped by sprint.`)}
-    ${gFig("board", `${gEm("Board")}: the same queue as status columns.`)}
+    <p style="${gP}">The team's request queue. Anyone can file a bug, request, question, or access ask with ${gStrong("Submit a ticket")}. The ${gStrong("Board")} is the default view, one column per status: ${gStrong("Triage")}, ${gStrong("In progress")}, ${gStrong("Testing")}, ${gStrong("Done")}, and ${gStrong("Declined")}. Drag a card to change its status or its place in a column. An open ticket can move to any column, and Testing is optional. ${gStrong("Table")} lists the same tickets grouped by sprint (no sprint means ${gStrong("Backlog")}). Both have a search box and a ${gStrong("Filter")} menu.</p>
+    ${gFig("board", `${gEm("Board")}: a column per status, in the order people dragged them.`)}
+    ${gFig("tickets", `${gEm("Table")}: the same tickets grouped by sprint.`)}
+    <p style="${gP};margin-top:14px">Issues in the product's GitHub repo also show up as tickets, each with a locked link back to its issue. Closing or reopening the issue closes or reopens its ticket; everything else about it is edited in Canopy. Apart from that, only a person closes a ticket: a merged PR never does.</p>
     <p style="${gP};margin-top:14px">A ticket's page holds its thread (comments with ${gCode("@mentions")}, next to every status change), its assignees and sprint, one level of sub-tickets, and ${gStrong("Linked work")}: paste a GitHub or Figma URL, or a bare ${gCode("#123")}. Artifacts linked to the ticket show here too. Your agent can file tickets, and on tickets ${gStrong("assigned to you")} it can move status, comment, link, set the sprint, or nest. It can't change who a ticket is assigned to.</p>
     ${gFig("ticket", `${gEm("A ticket")}: description, linked work, and thread, with status, assignees, and sprint alongside.`)}
 
     ${sub("Roadmap and sprints")}
-    <p style="${gP}">${gStrong("Narrative")} reads the plan as a document; ${gStrong("Timeline")} lays out the sprints by date. Each sprint shows its urgency, due date, domain, lead, and a progress bar that counts that sprint's tickets closed (done or declined) out of its total, plus any GitHub issues it tracks. A sprint's own page lists its tickets, assignees, and resources. When everything in it is closed, the page offers to complete it. That's always a person's call.</p>
-    ${gFig("roadmap", `${gEm("Roadmap")}: sprints in progress and upcoming, each with its progress.`)}
+    <p style="${gP}">${gStrong("Narrative")} reads the plan and its sprint cards, beside what's in progress now and the latest from the feed. ${gStrong("Timeline")} puts the sprints on a calendar: each bar runs from a sprint's start to its due date, overdue ones are marked, and a click opens it. ${gStrong("New sprint")} is in the header. Each sprint shows its urgency, due date, domain, lead, and a progress bar that counts that sprint's tickets closed (done or declined) out of its total, plus any GitHub issues it tracks. A sprint's own page lists its tickets, assignees, and resources. When everything in it is closed, the page offers to complete it. That's always a person's call. ${gStrong("Delete sprint")} sends its tickets back to the backlog.</p>
+    ${gFig("roadmap", `${gEm("Roadmap › Narrative")}: the plan and its sprints, with what's happening now alongside.`)}
+    ${gFig("timeline", `${gEm("Roadmap › Timeline")}: sprints on the calendar, filled by their done tickets.`)}
     ${gFig("sprint", `${gEm("A sprint")}: its tickets, progress, properties, assignees, and resources.`)}
 
     ${sub("Handoffs")}
@@ -1636,8 +1645,8 @@ function guideView(s: AppState): string {
     ${gFig("repo-usage", `${gEm("Repo › Usage")} (sample data): traffic, errors, active users, and product metrics.`)}
 
     ${sub("Feed")}
-    <p style="${gP}">A timeline of everything that shipped, from people and agents alike. Each entry links to its PR, commit, or issue and says whether an agent wrote it. Filter by author, tag, or time.</p>
-    ${gFig("feed", `${gEm("Feed")}: every change with its PR, commit, and issue links.`)}
+    <p style="${gP}">A timeline of everything that shipped, from people and agents alike. ${gStrong("For reading")} (the default) shows each entry's title and a short brief in plain words; ${gStrong("For agents")} shows the full record. Each entry links to its PR, commit, or issue and says whether an agent wrote it. Alongside: this week's activity and what's waiting on review. ${gStrong("Filter")} by author, tag, or time.</p>
+    ${gFig("feed", `${gEm("Feed")}: every change with its brief and its PR, commit, and issue links.`)}
 
     ${sub("Artifacts")}
     <p style="${gP}">An artifact is a page an agent or person made: an HTML design, a markdown report, an SVG or mermaid diagram, an image, a PDF, or a file. Canopy stores every version and links it to the ticket or sprint it came from. ${gStrong("New artifact")} takes pasted source, an upload, or a URL. A new artifact starts as a ${gStrong("draft")}; ${gStrong("Published")} shares it; ${gStrong("Ratify")} is a person's sign-off on the latest version, and only a person can give it. ${gStrong("Compare versions")} diffs any two. Flip its ${gStrong("Org")} switch to ${gStrong("Private")} to keep one to yourself.</p>
@@ -1651,13 +1660,17 @@ function guideView(s: AppState): string {
     ${sub("Settings")}
     <p style="${gP}">Click your name at the bottom of the sidebar. ${gStrong("Profile")} sets your name, handle, and color. ${gStrong("Account")} links GitHub and Google. ${gStrong("MCP access")} is where agents connect: your connected apps and any access tokens. ${gStrong("Appearance")} switches between Light, Dark, and System. ${gStrong("Email notifications")} sets each digest (your work, the review queue, roadmap changes, the ticket queue) to daily, weekly, or off.</p>
 
+    ${sub("What's new")}
+    <p style="${gP}">Every release of Canopy, newest first. Open one for its notes, or switch to ${gStrong("Patch notes")} for the full list of changes with links to the pull requests.</p>
+    ${gFig("releases", `${gEm("What's new")}: one card per release.`)}
+
     ${sec("Troubleshooting", "When something doesn't work", "Troubleshooting")}
     <ul style="${gList}">
       <li>${gStrong("GitHub sign-in says you're not a member.")} Accept the SaplingLearn org invite on GitHub, then sign in again.</li>
       <li>${gStrong("Google sign-in says you're not invited.")} Ask an admin to invite the exact address you signed in with.</li>
       <li>${gStrong("Canopy shows as needing authentication in Claude Code.")} Run ${gCode("/mcp")}, pick ${gStrong("canopy")} and choose ${gStrong("Authenticate")}. If the browser says Canopy doesn't recognise the app, choose ${gStrong("Clear authentication")} first, then Authenticate again. A connection you revoked in Settings needs the same.</li>
       <li>${gStrong("A token-based agent (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $CANOPY_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. When in doubt, mint a new token and revoke the old one.</li>
-      <li>${gStrong("The Canopy server doesn't appear in /mcp.")} Restart Claude Code after installing the plugin and setting the token. Run ${gCode("/plugin")} to check that ${gCode("canopy")} is installed and enabled.</li>
+      <li>${gStrong("The Canopy server doesn't appear in /mcp.")} Restart Claude Code after installing the plugin. Run ${gCode("/plugin")} to check that ${gCode("canopy")} is installed and enabled.</li>
       <li>${gStrong("The plugin is out of date.")} Run ${gCode("/plugin marketplace update canopy")}, then restart.</li>
       <li>${gStrong("Your agent sees every tool twice.")} It's connected both through the plugin and through a manual setup. Remove one: ${gCode("claude mcp remove canopy")} drops the manual one.</li>
       <li>${gStrong("Your agent can't change a ticket.")} Agents can only change tickets assigned to you. Assign yourself in the web app first.</li>
@@ -2271,6 +2284,7 @@ function screenBody(s: AppState): string {
       status: s.promptDetail.status, prompt: s.promptDetail.data?.prompt ?? null, versions: s.promptDetail.data?.versions ?? [],
       persons: s.persons.data, knownTags: [...new Set(s.promptList.data.flatMap((p) => p.tags))],
       diffVersion: s.promptDiffV, tagMenu: s.promptTagMenu, tagDraft: s.promptTagDraft, promptView: s.promptView,
+      canDelete: canDeletePrompt(s), deleteArm: s.promptDeleteArm, deleteBusy: s.promptDeleteBusy,
     });
     case "promptedit": return promptEditorView({ draft: s.promptEd, takenSlugs: s.promptList.data.map((p) => p.slug) });
     case "newdoc": return newDocView({ draft: s.nd, spaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })), sections: ASSIGN_OPTIONS.sections });
@@ -2319,9 +2333,17 @@ function appView(s: AppState): string {
 // already elapsed (negative = joined mid-way), so a rerender while it is up never replays the pop.
 // Centered with auto margins, not translateX(-50%): cnpy-pop animates `transform` to none.
 const TOAST_FADE_MS = 400;
-function toastBlock(msg: string, elapsed: number, ms: number): string {
-  return `<div class="cnpy-toast" style="position:fixed;bottom:22px;left:0;right:0;margin:0 auto;width:max-content;max-width:min(520px,calc(100vw - 32px));z-index:50;display:flex;align-items:flex-start;gap:9px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);box-shadow:0 8px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.45;animation-delay:${-elapsed}ms,${ms - TOAST_FADE_MS - elapsed}ms">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg><span>${esc(msg)}</span>
+/** A toast's one button: `Undo` on a delete. Dispatched like any `data-act`. */
+export interface ToastAction { label: string; act: string; arg: string }
+/** Whether the signed-in person may delete the open prompt: its author, or an admin (the server re-checks). */
+export function canDeletePrompt(s: Pick<AppState, "me" | "promptDetail">): boolean {
+  const p = s.promptDetail.data?.prompt;
+  if (!p || !s.me) return false;
+  return s.me.admin || s.me.handle.toLowerCase() === p.author.toLowerCase();
+}
+function toastBlock(msg: string, elapsed: number, ms: number, action: ToastAction | null = null): string {
+  return `<div class="cnpy-toast" role="status" aria-live="polite" style="position:fixed;bottom:22px;left:0;right:0;margin:0 auto;width:max-content;max-width:min(520px,calc(100vw - 32px));z-index:50;display:flex;align-items:flex-start;gap:9px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);box-shadow:0 8px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.45;animation-delay:${-elapsed}ms,${ms - TOAST_FADE_MS - elapsed}ms">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg><span>${esc(msg)}</span>${action ? `<span aria-hidden="true" style="color:var(--fg-40)">·</span><button type="button" data-act="${attr(action.act)}" data-arg="${attr(action.arg)}" class="cnpy-toast-act" style="font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap">${esc(action.label)}</button>` : ""}
   </div>`;
 }
 
@@ -2356,7 +2378,7 @@ export function render(s: AppState): string {
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
     ${s.view === "auth" ? authView(s) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
-    ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs) : ""}
+    ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.backfillSync ? backfillSyncModal(s.backfillSync) : ""}
     ${s.view === "app" ? connectModal(s) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}

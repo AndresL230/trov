@@ -10,7 +10,7 @@ import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
 import {
   render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, connectSnippet, CONNECT_CLIENTS, browserConnectCommand,
-  FEED_FILTER_CATS, type AppState, type Screen, type ConnectClient, type FeedFilterCat,
+  FEED_FILTER_CATS, type AppState, type Screen, type ConnectClient, type FeedFilterCat, type ToastAction,
 } from "./render";
 import {
   getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard,
@@ -29,7 +29,7 @@ import {
   type TicketDetail,
   listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
   listHandoffs, getHandoff, listPrompts, getPrompt, getPromptVersions,
-  createHandoff, claimHandoff, expireHandoff, savePrompt, setPromptTags, publishPrompt, proposeDoc,
+  createHandoff, claimHandoff, expireHandoff, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, proposeDoc,
   Unauthorized, NotFound, ApiError,
 } from "./api";
 import { handoffAsPrompt, blankHandoff, docDraftFromHandoff, type NewHandoffDraft } from "./handoffs";
@@ -527,6 +527,7 @@ function loadPrompts(): void {
 function openPrompt(slug: string): void {
   state.promptSlug = slug;
   state.promptDiffV = null; state.promptTagMenu = false; state.promptTagDraft = ""; state.promptExpanded = false;
+  state.promptDeleteArm = false; state.promptDeleteBusy = false;
   const same = state.promptDetail.data?.prompt.slug === slug;
   state.promptDetail = { status: "loading", data: same ? state.promptDetail.data : null };
   rerender();
@@ -1591,15 +1592,19 @@ window.addEventListener("message", (e) => {
   }
 });
 
-function flash(msg: string, ms = 2200): void {
+/** A toast. `action` puts one button on it (a delete's "Undo"); a newer flash replaces both. */
+function flash(msg: string, ms = 2200, action: ToastAction | null = null): void {
   const at = Date.now();
   state.toast = msg;
+  state.toastAction = action;
   state.toastAt = at;
   state.toastMs = ms;
   rerender();
   // Only clear the toast this call put up — a newer flash keeps its own full time.
-  setTimeout(() => { if (state.toastAt === at) { state.toast = null; rerender(); } }, ms);
+  setTimeout(() => { if (state.toastAt === at) { state.toast = null; state.toastAction = null; rerender(); } }, ms);
 }
+/** How long a toast carrying an Undo stays up — long enough to read it and reach the button. */
+const UNDO_TOAST_MS = 8000;
 
 // Drives a (possibly multi-batch) Sync GitHub run: the backend caps AI calls
 // per invocation (src/tools/backfill.ts's summaryBudgetExhausted), so this
@@ -2732,6 +2737,47 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .catch((e) => { writeErr(e, "Couldn't publish"); openPrompt(p.slug); });
       return;
     }
+    // Delete (author / admin only — the server re-checks): an in-app confirm, then back to
+    // the library with a "Deleted “…” · Undo" toast whose Undo restores it.
+    case "promptDeleteArm":
+      state.promptDeleteArm = true;
+      rerender();
+      mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+      return;
+    case "promptDeleteCancel": {
+      const wasOpen = state.promptDeleteArm;
+      state.promptDeleteArm = false;
+      rerender();
+      if (wasOpen) mount.querySelector<HTMLElement>("[data-confirm-trigger]")?.focus();
+      return;
+    }
+    case "promptDelete": {
+      const p = state.promptDetail.data?.prompt;
+      if (!p || state.promptDeleteBusy) return;
+      state.promptDeleteBusy = true;
+      rerender();
+      deletePrompt(p.slug)
+        .then((r) => {
+          state.promptDeleteArm = false; state.promptDeleteBusy = false;
+          state.promptDetail = { status: "idle", data: null };
+          state.promptSlug = null;
+          state.promptList = { ...state.promptList, data: state.promptList.data.filter((x) => x.slug !== r.slug) };
+          state.screen = "prompts";
+          loadPrompts();
+          flash(`Deleted “${r.title}”`, UNDO_TOAST_MS, { label: "Undo", act: "promptRestore", arg: r.slug });
+        })
+        .catch((e) => { state.promptDeleteBusy = false; state.promptDeleteArm = false; writeErr(e, "Couldn't delete the prompt"); });
+      return;
+    }
+    case "promptRestore": {
+      if (!arg) return;
+      state.toast = null; state.toastAction = null;
+      restorePrompt(arg)
+        .then((np) => { loadPrompts(); flash(`Restored “${np.title}”`); })
+        .catch((e) => writeErr(e, "Couldn't restore the prompt"));
+      rerender();
+      return;
+    }
     case "promptEdit": if (!arg) return; state.screen = "promptedit"; openEditor("edit", arg); return;
     case "promptNewVersion": if (!arg) return; state.screen = "promptedit"; openEditor("version", arg); return;
     // The editor's fields. Title drives the slug until the slug is edited by hand.
@@ -3715,6 +3761,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || state.view !== "app") return;
   if (state.handoffPromptOpen) { state.handoffPromptOpen = false; rerender(); }
   else if (state.promptExpanded) { state.promptExpanded = false; rerender(); }
+  else if (state.promptDeleteArm && !state.promptDeleteBusy) dispatch("promptDeleteCancel", null, null);
 });
 
 // ── sidebar: ⌘K / Ctrl+K, the search box, and the collapsed-rail tooltip ──────

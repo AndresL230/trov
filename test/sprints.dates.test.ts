@@ -22,8 +22,9 @@ import {
 } from "@shared/sprints";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import combined from "../migrations/0035_library_and_sprint_dates.sql?raw";
-/** PART B of the consolidated migration — the sprint-dates half. */
-const migration = combined.split("-- ═══ PART B")[1] ?? "";
+/** PART B of the consolidated migration — the sprint-dates part: the text between the
+ *  PART B and PART C marker lines (PART C, prompt soft delete, follows it). */
+const migration = (combined.split("-- ═══ PART B")[1] ?? "").split("-- ═══ PART C")[0];
 
 const ADMIN = "admin-user"; // ADMIN_LOGINS in vitest.config.ts
 

@@ -68,9 +68,6 @@ function initials(text: string, size = 26, font = "10px"): string {
 function segTab(text: string, on: boolean, divider = false): string {
   return `<span style="padding:3px 10px;${on ? "background:var(--hover);color:var(--fg)" : "color:var(--fg-55)"}${divider ? ";border-left:1px solid var(--border)" : ""}">${text}</span>`;
 }
-function chipTab(text: string, on: boolean, start: number): string {
-  return `<span class="site-st st-pop" style="padding:3px 10px;border-radius:6px;font-size:10.5px;font-weight:500;${on ? "border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft)" : "border:1px solid var(--border);color:var(--fg-55)"};${at(start)}">${text}</span>`;
-}
 /** A section heading block (h2 + optional lede) that rises in on scroll. */
 function heading(key: string, title: string, lede = ""): string {
   return `<div ${rv(key)}>
@@ -166,10 +163,14 @@ function hero(): string {
           ${sideHead("Workspace", "4px")}
           <div style="display:flex;flex-direction:column;gap:1px">
             ${side(`<path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>`, "My Work")}
-            ${side(`<path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path>`, "Feed")}
-            ${side(`<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`, "Roadmap")}
             ${side(`<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`, "Tickets")}
+            ${side(`<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`, "Roadmap")}
             ${side(`<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`, "Handoffs")}
+          </div>
+          ${sideHead("Monitor", "16px")}
+          <div style="display:flex;flex-direction:column;gap:1px">
+            ${side(`<path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>`, "Repo")}
+            ${side(`<path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path>`, "Feed")}
           </div>
           ${sideHead("Knowledge", "16px")}
           <div style="display:flex;flex-direction:column;gap:1px">
@@ -386,55 +387,77 @@ function tour(): string {
         <div style="display:flex;gap:11px">
           ${initials("SO")}
           <div style="min-width:0">
-            <div style="font-size:13px;font-weight:600">Webhook capture records issue milestones</div>
-            <div style="margin-top:3px;font-size:11.5px;line-height:1.55;color:var(--fg-70)">My Work cards now show milestone and due date without a live GitHub call.</div>
+            <div style="font-size:13px;font-weight:600">Tickets move freely on the board</div>
+            <div style="margin-top:3px;font-size:11.5px;line-height:1.55;color:var(--fg-70)">Drag a ticket to any column. The order you leave it in is saved for everyone.</div>
             <div style="margin-top:7px;font-size:11px;color:var(--fg-55)">Sam Ortiz · 3d ago</div>
           </div>
         </div>
       </div>`;
 
-  const prio = (p: string, c: string) => `<span style="font-family:var(--label);font-size:9px;font-weight:600;text-transform:uppercase;color:var(--${c});border:1px solid ${c === "fg-55" ? "var(--border-strong)" : `color-mix(in srgb, var(--${c}) 45%, transparent)`};border-radius:4px;padding:1.5px 5px;flex:none">${p}</span>`;
-  const ticket = (i: number, title: string, meta: string, p: string, who: string, last = false) => `<div class="site-st st-l" style="display:flex;align-items:center;gap:10px;padding:12px 16px${last ? "" : ";border-bottom:1px solid var(--border)"};${at(S + 250 + i * 110)}">
-      <div style="min-width:0;flex:1"><div style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div><div style="margin-top:2px;font-size:10.5px;color:var(--fg-55)">${meta}</div></div>
-      ${p}${who}
+  const prio = (p: string, c: string) => `<span style="font-family:var(--label);font-size:8.5px;font-weight:600;text-transform:uppercase;color:var(--${c});border:1px solid ${c === "fg-55" ? "var(--border-strong)" : `color-mix(in srgb, var(--${c}) 45%, transparent)`};border-radius:4px;padding:1px 4px;flex:none">${p}</span>`;
+  const nobody = `<span style="width:18px;height:18px;border-radius:50%;border:1px dashed var(--border-strong);display:grid;place-items:center;font-size:8px;font-weight:600;color:var(--fg-40);flex:none">–</span>`;
+  const card = (i: number, title: string, meta: string, who: string) => `<div class="site-st st-pop" style="border:1px solid var(--border);border-radius:8px;padding:8px 9px;background:var(--bg);${at(S + 250 + i * 110)}">
+      <div style="font-size:11px;font-weight:600;line-height:1.35">${title}</div>
+      <div style="margin-top:7px;display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--fg-40)">${meta}<span style="margin-left:auto;display:flex">${who}</span></div>
+    </div>`;
+  const column = (name: string, color: string, cards: string[], hideSm = false) => `<div${hideSm ? ` class="site-hide-sm"` : ""} style="min-width:0;display:flex;flex-direction:column;gap:7px">
+      <div style="display:flex;align-items:center;padding-bottom:6px;border-bottom:1px solid var(--border);font-family:var(--label);font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--${color})">${name}<span style="margin-left:auto;color:var(--fg-40)">${cards.length}</span></div>
+      ${cards.join("")}
     </div>`;
   const tickets = `
-      <div style="display:flex;align-items:center;gap:6px;padding:12px 16px;border-bottom:1px solid var(--border)">
-        ${chipTab("Triage", true, S)}${chipTab("In progress", false, S + 50)}${chipTab("Done", false, S + 100)}${chipTab("Declined", false, S + 150)}
+      <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)">
+        <span style="font-size:12px;font-weight:600">Tickets</span>
+        <span style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:10.5px;font-weight:500">${segTab("Board", true)}${segTab("Table", false, true)}</span>
       </div>
-      ${ticket(0, "Onboarding checklist is stale", "Docs · 3 comments · latest: “@maya can you confirm the SSO step?”", prio("P1", "amber"), initials("SO", 22, "9px"))}
-      ${ticket(1, "Rate limiting on the public API", "Backend · ↳ 2 sub-tickets · sprint: Hardening", prio("P0", "red"), initials("LP", 22, "9px"))}
-      ${ticket(2, "Email digest lands twice on Mondays", "Notifications · unassigned · 1 comment", prio("P2", "fg-55"), `<span style="width:22px;height:22px;border-radius:50%;border:1px dashed var(--border-strong);display:grid;place-items:center;font-size:8px;font-weight:600;color:var(--fg-40);flex:none">–</span>`, true)}`;
+      <div style="padding:14px 16px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(110px,100%),1fr));gap:10px;align-items:start">
+        ${column("Triage", "blue", [card(0, "Email digest lands twice on Mondays", `#218 · ${prio("P2", "fg-55")}`, nobody), card(3, "Onboarding checklist is stale", "↗ GitHub #230", initials("SO", 18, "7.5px"))])}
+        ${column("In progress", "accent", [card(1, "Rate limiting on the public API", `#212 · ${prio("P0", "red")}`, initials("LP", 18, "7.5px"))])}
+        ${column("Testing", "amber", [card(2, "Retry-After on 429 responses", "#213 · 3 comments", initials("MC", 18, "7.5px"))])}
+        ${column("Done", "green", [card(4, "SSO step in the checklist", "#209", initials("SO", 18, "7.5px"))], true)}
+      </div>`;
 
-  const sprint = (i: number, title: string, badge: string, meta: string, pct: number, count: string) => `<div class="site-st" style="border:1px solid var(--border);border-radius:10px;padding:13px 16px;${at(S + i * 150)}">
-      <div style="display:flex;align-items:center;gap:9px"><span style="font-size:13px;font-weight:600">${title}</span>${badge}</div>
-      <div style="margin-top:4px;font-family:var(--label);font-size:10px;color:var(--fg-40)">${meta}</div>
-      <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
-        <span style="flex:1;height:5px;border-radius:3px;background:var(--hover);overflow:hidden;display:block"><span class="site-bar" style="display:block;width:${pct}%;height:100%;background:var(--accent);${at(S + 250 + i * 150)}"></span></span>
-        <span style="font-family:var(--label);font-size:10px;color:var(--fg-55);flex:none">${count}</span>
+  const lane = (i: number, label: string, left: number, width: number, pct: number, color: string, count: string) => `<div class="site-st st-l" style="position:relative;height:30px;${at(S + i * 150)}">
+      <div style="position:absolute;left:${left}%;width:${width}%;top:3px;bottom:3px;border:1px solid color-mix(in srgb, var(--${color}) 50%, transparent);background:color-mix(in srgb, var(--${color}) 9%, transparent);border-radius:6px;overflow:hidden">
+        <span class="site-bar" style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:color-mix(in srgb, var(--${color}) 26%, transparent);${at(S + 250 + i * 150)}"></span>
+        <span style="position:relative;display:flex;align-items:center;height:100%;padding:0 8px;gap:6px;font-size:10.5px;font-weight:600;white-space:nowrap"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">${label}</span><span style="margin-left:auto;font-family:var(--label);font-size:9.5px;font-weight:500;color:var(--fg-55)">${count}</span></span>
       </div>
     </div>`;
+  const month = (label: string, left: number) => `<span style="position:absolute;left:${left}%;top:0;font-family:var(--label);font-size:9.5px;color:var(--fg-40)">${label}</span>`;
+  const stat = (n: string, label: string, c = "fg") => `<div><div style="font-size:16px;font-weight:650;color:var(--${c})">${n}</div><div style="margin-top:2px;font-family:var(--label);font-size:8.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">${label}</div></div>`;
   const roadmap = `
       <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)">
         <span style="font-size:12px;font-weight:600">Roadmap</span>
         <span style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:10.5px;font-weight:500">${segTab("Narrative", false)}${segTab("Timeline", true, true)}</span>
       </div>
-      <div style="padding:16px 18px 20px;display:flex;flex-direction:column;gap:12px">
-        ${sprint(0, "Hardening the public API", pill("Active", "green"), "Weeks 3–4 · due Oct 2 · lead @leo", 66, "4/6 closed")}
-        ${sprint(1, "Notifications and digests", pill("Next", "blue"), "Weeks 5–6 · due Oct 16 · lead @sam", 12, "1/8 closed")}
+      <div style="padding:16px 18px 20px">
+        <div style="display:flex;gap:22px;padding-bottom:14px;border-bottom:1px solid var(--border)">${stat("2", "In progress")}${stat("1", "Upcoming")}${stat("Oct 2", "Next due")}</div>
+        <div style="position:relative;height:16px;margin-top:14px">${month("Sep", 0)}${month("Oct", 33)}${month("Nov", 66)}</div>
+        <div style="position:relative;margin-top:6px;display:flex;flex-direction:column;gap:6px">
+          <span style="position:absolute;left:36%;top:-4px;bottom:-4px;width:1.5px;background:var(--red);opacity:.8"></span>
+          ${lane(0, "Hardening the public API", 2, 38, 66, "accent", "4/6")}
+          ${lane(1, "Notifications and digests", 24, 42, 12, "blue", "1/8")}
+          ${lane(2, "Self-host guide", 58, 38, 0, "fg-55", "0/3")}
+        </div>
       </div>`;
 
-  const field = (label: string, text: string, accent = false) => `<span style="font-family:var(--label);font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(${accent ? "--accent" : "--fg-40"});padding-top:1px">${label}</span><span style="color:var(--fg-70);line-height:1.5">${text}</span>`;
-  const todo = (i: number, title: string, num: string, fields: string) => `<div class="site-st" style="border:1px solid var(--border);border-radius:10px;padding:13px 15px;${at(S + 200 + i * 140)}">
-      <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12.5px;font-weight:600;min-width:0">${title}</span><span style="margin-left:auto;font-family:var(--label);font-size:9.5px;color:var(--accent);border:1px solid color-mix(in srgb, var(--accent) 45%, transparent);border-radius:5px;padding:1px 6px;flex:none">${num} ↗</span></div>
-      <div style="margin-top:9px;display:grid;grid-template-columns:64px 1fr;gap:5px 10px;font-size:10.5px">${fields}</div>
-    </div>`;
+  const tileHead = (title: string, sub: string) => `<div style="padding:11px 13px 9px"><div style="font-size:12px;font-weight:600">${title}</div><div style="margin-top:2px;font-size:10px;color:var(--fg-55)">${sub}</div></div>`;
+  const tRow = (i: number, title: string, meta: string) => `<div class="site-st st-l" style="padding:8px 13px;border-top:1px solid var(--border);${at(S + 200 + i * 120)}"><div style="font-size:11px;font-weight:600;line-height:1.35">${title}</div><div style="margin-top:3px;font-size:9.5px;color:var(--fg-55)">${meta}</div></div>`;
+  const rRow = (i: number, title: string, kind: string, btn: string) => `<div class="site-st st-l" style="display:flex;align-items:center;gap:8px;padding:8px 13px;border-top:1px solid var(--border);${at(S + 320 + i * 120)}"><div style="min-width:0;flex:1"><div style="font-size:11px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div><div style="margin-top:3px">${kind}</div></div><span style="flex:none;background:var(--accent);color:var(--accent-fg);font-size:9.5px;font-weight:600;padding:3px 8px;border-radius:5px">${btn}</span></div>`;
+  const tileBox = "min-width:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg)";
   const mywork = `
       <div class="site-st" style="font-size:17px;font-weight:650;letter-spacing:-0.015em;${at(S)}">Good morning, Maya</div>
-      <div style="margin-top:14px;font-family:var(--label);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);border-bottom:1px solid var(--border);padding-bottom:7px">To-do</div>
-      <div style="margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:10px">
-        ${todo(0, "Retry-After on 429 responses", "#212", field("Summary", "Surface the bucket's reset time on rejected calls.") + field("Next step", "Thread reset through the limiter and test it.", true))}
-        ${todo(1, "Digest de-dupe on Mondays", "#218", field("Milestone", "Notifications and digests · due Oct 16") + field("Next step", "Key the send ledger on digest window, not day.", true))}
+      <div class="site-st" style="margin-top:3px;font-size:11px;color:var(--fg-55);${at(S + 80)}">2 tickets open · 2 to review · 1 handoff waiting</div>
+      <div style="margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:10px">
+        <div style="${tileBox}">
+          ${tileHead("Tickets for you", "2 open")}
+          ${tRow(0, "Retry-After on 429 responses", "Testing · Hardening the public API · due Oct 2")}
+          ${tRow(1, "Digest de-dupe on Mondays", "In progress · Notifications and digests")}
+        </div>
+        <div style="${tileBox}">
+          ${tileHead("Needs your review", "1 to promote, 1 to ratify")}
+          ${rRow(0, "Deploy process", pill("staged", "amber"), "Promote")}
+          ${rRow(1, "ADR-0012 · Retry budget", pill("draft", "blue"), "Ratify")}
+        </div>
       </div>`;
 
   const hsec = (label: string, items: string[], start: number) => `<div style="margin-top:12px">
@@ -483,10 +506,10 @@ function tour(): string {
     ${heading("tour-head", "One place for what the team knows.")}
     <div style="margin-top:64px;display:flex;flex-direction:column;gap:96px">
       ${tourRow("docs", "Docs", "A library that stays reviewed", "Technical and Product spaces, full version history on every doc, and a heading outline for long pages.", MOCK, docs)}
-      ${tourRow("feed", "Feed", "A timeline of what shipped", "Every entry links to the PRs, commits, and issues behind it, so the record points at the work itself.", `${MOCK};padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px`, feed, true)}
-      ${tourRow("tickets", "Tickets", "A queue the whole team files into", "Triage, In progress, Done, Declined. Assignees, comments with @mentions, and sub-tickets one level deep.", MOCK, tickets)}
-      ${tourRow("roadmap", "Roadmap", "Sprints with a narrative", "A narrative view and a timeline view of sprints, each with a progress bar over its tickets.", MOCK, roadmap, true)}
-      ${tourRow("mywork", "My Work", "Your day on one page", "Your assigned issues, recent PRs, and open tickets, projected from captured GitHub events.", `${MOCK};padding:20px 22px 22px`, mywork)}
+      ${tourRow("feed", "Feed", "A timeline of what shipped", "Every entry leads with a short brief for people and links to the PRs, commits, and issues behind it. Agents get the full record.", `${MOCK};padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px`, feed, true)}
+      ${tourRow("tickets", "Tickets", "A board the whole team files into", "Drag cards across Triage, In progress, Testing, and Done, or read the queue as a table by sprint. Comments with @mentions, sub-tickets, and GitHub issues mirrored in as tickets.", MOCK, tickets)}
+      ${tourRow("roadmap", "Roadmap", "Sprints on a calendar", "A short narrative with its sprint cards, and a timeline that runs each sprint from start to due date, filled by its done tickets.", MOCK, roadmap, true)}
+      ${tourRow("mywork", "My Work", "Your day on one page", "Your tickets, what's waiting on your review, your recent sessions and handoffs, and the repo at a glance.", `${MOCK};padding:20px 22px 22px`, mywork)}
       ${tourRow("handoffs", "Handoffs", "Pick up where the last session stopped", "An agent leaves a note for the next session or a teammate: what's done, what's next, and the branch. The next session offers it and claims it only when you say so.", MOCK, handoffs, true)}
       ${tourRow("artifacts", "Artifacts", "Designs and reports, versioned", "HTML pages, markdown reports, diagrams, images, and PDFs, linked to the ticket or sprint they came from. Agents publish them. Only a person can ratify one.", MOCK, artifacts)}
     </div>
@@ -504,7 +527,7 @@ function extras(): string {
   return `<section style="max-width:1120px;margin:0 auto;padding:130px 24px 0">
     <div ${rv("extras", "rv-static")} style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:16px">
       ${card(0, t("Decisions"), "ADRs drafted by agents, ratified by people.")}
-      ${card(1, t("Full-text search"), "People see settled content. Agents see pending proposals too, each one labeled.")}
+      ${card(1, t("Search everything"), "One box jumps to any ticket, doc, sprint, artifact, prompt, or person. Agents also see pending proposals, labeled.")}
       ${card(2, t("Prompt Library"), "Reusable prompts with variables. Agents stage new ones, people publish them.")}
       ${card(3, t("Repo dashboard"), "Deploys, CI, drift, and usage from captured data. Unknown reads as unknown, never zero.")}
       ${card(4, t("Email digests"), "Daily or weekly, per section, so nobody has to poll the feed.")}
@@ -530,10 +553,11 @@ function agents(): string {
   const tools = `
           ${group("Read", ["query", "get_doc", "list_docs", "get_feed", "get_roadmap", "get_my_work", "get_events", "get_repo_dashboard"])}
           ${group("Contribute", ["append_feed", "propose_doc_update", "record_session"])}
-          ${group("Tickets", ["list_tickets", "get_ticket", "create_ticket", "transition_ticket", "add_ticket_comment", "add_ticket_link", "set_ticket_sprint", "set_ticket_parent", "list_sprints", "get_sprint"])}
+          ${group("Tickets", ["list_tickets", "get_ticket", "create_ticket", "edit_ticket", "transition_ticket", "add_ticket_comment", "add_ticket_link", "set_ticket_sprint", "set_ticket_parent"])}
+          ${group("Sprints", ["list_sprints", "get_sprint", "create_sprint", "set_sprint_active", "complete_sprint", "add_sprint_resource", "delete_sprint"])}
           ${group("Handoffs and prompts", ["send_handoff", "list_handoffs", "get_handoff", "claim_handoff", "expire_handoff", "search_prompts", "get_prompt", "save_prompt"])}
           ${group("Artifacts and doc images", ["upload_asset", "artifact_update", "artifact_get", "artifact_list"])}
-          ${group("Admin", ["update_plan", "create_sprint", "set_sprint_active", "complete_sprint", "add_sprint_resource"], true)}`;
+          ${group("Admin", ["update_plan"], true)}`;
   n = 0;
   const skills = chips(["canopy", "load-context", "record-session", "my-work", "tickets", "handoff", "prompts", "artifacts", "read-plan", "update-plan"]);
   const [cmd1, cmd1End] = typed("/plugin marketplace add SaplingLearn/canopy", 700, 28);
@@ -546,7 +570,7 @@ function agents(): string {
       <div ${rv("agents-mcp")} style="border:1px solid var(--border);border-radius:13px;padding:26px 28px">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
           <span style="font-size:17px;font-weight:650">MCP server</span>
-          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">33 tools, plus 5 admin-only</span>
+          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">39 tools, plus 1 admin-only</span>
         </div>
         <div style="margin-top:20px;display:flex;flex-direction:column;gap:16px">${tools}
         </div>
@@ -577,7 +601,7 @@ function security(): string {
     ${heading("security-head", "Security, in plain terms")}
     <div ${rv("security", "rv-static")} style="margin-top:44px;display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:14px 40px;max-width:900px">
       ${row(0, "Sign-in with GitHub or Google, restricted to your org.")}
-      ${row(1, "Each person mints their own agent token; only a hash is stored.")}
+      ${row(1, "Agents connect by browser sign-in or a personal token; only hashes are stored.")}
       ${row(2, "Agents write as their person and can't claim another author.")}
       ${row(3, "Agents can only change tickets assigned to their person.")}
       ${row(4, "Tickets and sprints are never closed automatically.")}

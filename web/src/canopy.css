@@ -783,6 +783,14 @@ input, select { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) { .cnpy-lkmenu { animation:none; } }
 @media (hover:none) { .cnpy-lkmore { opacity:1; pointer-events:auto; } .cnpy-lkarr { opacity:0; } }
 .cnpy-rejectbtn:hover { border-color:var(--red); color:var(--red); background:color-mix(in srgb, var(--red) 10%, transparent); }
+/* The destructive trigger + its in-app confirm (web/src/confirm.ts): muted until hovered,
+   focused or open, then red. The confirm's red button brightens on hover. */
+.cnpy-dangerbtn { transition:background .15s ease, color .15s ease, border-color .15s ease; }
+.cnpy-dangerbtn:hover, .cnpy-dangerbtn:focus-visible, .cnpy-dangerbtn[aria-expanded="true"] { border-color:color-mix(in srgb, var(--red) 55%, transparent) !important; color:var(--red) !important; background:color-mix(in srgb, var(--red) 8%, transparent); }
+.cnpy-confirm-go { transition:filter .12s ease; }
+.cnpy-confirm-go:hover { filter:brightness(1.1); }
+.cnpy-confirm-go:disabled, .cnpy-confirm button:disabled { opacity:.6; cursor:default; }
+.cnpy-toast-act:hover { text-decoration:underline; text-underline-offset:3px; }
 .cnpy-rejectbtn:active { transform:translateY(1px); }
 .cnpy-issuechip { transition:border-color .12s ease, color .12s ease; }
 .cnpy-issuechip:hover { border-color:var(--border-strong); color:var(--fg); }
