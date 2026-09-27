@@ -1,5 +1,6 @@
 import { type DB, first, all, run, nowIso } from "../db";
 import { PERSON_COLORS, type PersonColor, type PersonRow, type IdentityRow, type IdentityProvider } from "@shared/rows";
+import { avatarSrc, type PersonSummary } from "@shared/people";
 
 export const HANDLE_RE = /^[a-z][a-z0-9-]{1,23}$/;
 export const RESERVED_HANDLES: readonly string[] = ["github-webhook", "system", "admin", "canopy", "me"];
@@ -44,7 +45,9 @@ export async function handleAvailable(db: DB, handle: string): Promise<{ availab
   return { available: true };
 }
 
-/** Every sign-in: refresh name/avatar; write email ONLY when the row has none (0021 rule). */
+/** Every sign-in: refresh name/avatar; write email ONLY when the row has none (0021 rule).
+ *  `avatar_url` is the PROVIDER's picture; an uploaded avatar (`avatar_sha`, 0036) is never
+ *  touched here and keeps outranking it. */
 export async function recordSignIn(db: DB, handle: string, p: { name: string | null; avatar_url: string | null; email: string | null }): Promise<void> {
   await run(db, `UPDATE persons SET name = COALESCE(?, name), avatar_url = COALESCE(?, avatar_url), email = COALESCE(email, ?) WHERE handle = ? COLLATE NOCASE`,
     p.name, p.avatar_url, p.email, handle);
@@ -91,10 +94,13 @@ export async function updateProfile(db: DB, handle: string, patch: { name?: stri
 /** The people directory (pickers, avatars). A RESERVED handle is a system principal,
  *  not a person — `github-webhook` has a row only because the GitHub mirror files
  *  tickets as it (0032) — so it is never listed and never offered as an assignee. */
-export function listPersons(db: DB): Promise<Pick<PersonRow, "handle" | "name" | "color" | "avatar_url">[]> {
-  return all(db, `SELECT handle, name, color, avatar_url FROM persons
-                   WHERE handle NOT IN (${RESERVED_HANDLES.map(() => "?").join(", ")})
-                   ORDER BY handle COLLATE NOCASE ASC`, ...RESERVED_HANDLES);
+export async function listPersons(db: DB): Promise<PersonSummary[]> {
+  const rows = await all<Pick<PersonRow, "handle" | "name" | "color" | "avatar_url" | "avatar_sha" | "role">>(db,
+    `SELECT handle, name, color, avatar_url, avatar_sha, role FROM persons
+      WHERE handle NOT IN (${RESERVED_HANDLES.map(() => "?").join(", ")})
+      ORDER BY handle COLLATE NOCASE ASC`, ...RESERVED_HANDLES);
+  // `avatar_url` goes out RESOLVED: an uploaded avatar (0036) outranks the provider's.
+  return rows.map((r) => ({ handle: r.handle, name: r.name, color: r.color, avatar_url: avatarSrc(r), role: r.role }));
 }
 
 /** Every (table, column) that stores a person handle. A rename rewrites all of them. */

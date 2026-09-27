@@ -57,7 +57,8 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
 
 - `shared/` — the ONLY shared layer (imported via the `@shared` alias by `src/` and `web/`):
   `contract.ts` (Zod ingest contract), `vocabulary.ts` (controlled vocab), `rows.ts` (one type per D1 table),
-  `dashboard.ts` (the My Work DTO shared by the Worker and web), `repo.ts` (the Repo dashboard DTO — zod-free,
+  `dashboard.ts` (the My Work DTO shared by the Worker and web), `people.ts` (the person-profile contract —
+  zod-free: the caps, `avatarSrc`, the profile / directory / agent DTOs), `repo.ts` (the Repo dashboard DTO — zod-free,
   since the SPA imports `REPO_TABS` as a value), `notifications.ts` (the digest DTOs), and the
   tickets pair-per-domain: `tickets.ts` / `sprints.ts` (zod rows, DTOs, payloads, `parseTicketLink`,
   `toSprintView`) over `tickets-core.ts` / `sprints-core.ts`. **The `*-core.ts` split is a rule**: anything
@@ -135,7 +136,9 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `prompts_fts` rebuild triggers re-created to index only `deleted_at IS NULL` rows — the update trigger now also
   fires on `deleted_at`, so a delete drops the FTS row and a restore puts it back — see the Prompt Library below],
   PART D [artifact soft delete: `artifact_pages.deleted_at` / `deleted_by` (a handle, in `HANDLE_COLUMNS`) — no
-  trigger, `artifacts_fts` is kept by the repository — see Artifacts below]).
+  trigger, `artifacts_fts` is kept by the repository — see Artifacts below]), then `0036_person_profiles`
+  [`persons.avatar_sha` (64 lowercase hex, CHECKed) / `role` / `responsibilities`, all nullable, never backfilled —
+  see "People profiles" below].
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
@@ -471,6 +474,42 @@ Every `recorded_by` / `created_by` / `user_id` is a handle. Migrated GitHub user
 `docs.owner` (0035) is one too — the proposer of a doc's FIRST version, set once at creation and never
 overwritten by edits or promotions (`updated_by` is the last promoter) — listed in `HANDLE_COLUMNS`; there is no
 route to change it yet.
+
+## People profiles — an avatar, a role, responsibilities (`0036_person_profiles`; contract `shared/people.ts`)
+
+Three nullable person fields, written directly (no gate, no staging) by `src/tools/people.ts`:
+
+- **The avatar rule is ONE function, `avatarSrc`** (`shared/people.ts`): an UPLOADED avatar (`persons.avatar_sha`
+  → `/avatar/<sha>`) outranks the provider picture (`persons.avatar_url`, which `recordSignIn` still refreshes at
+  every sign-in and never touches `avatar_sha`), else null (initials). Every DTO that sends a person's picture to
+  the SPA sends it RESOLVED — `GET /persons` (`listPersons`, now `PersonSummary` with `role`), `GET /auth/me`
+  (+ `role`), the profile, `/search/quick`'s person hits — so a new surface must go through `avatarSrc` too.
+- **Upload** (`POST /api/people/me/avatar`, multipart `file`; the viewer's OWN only — there is no upload for
+  someone else): the declared type must be in `AVATAR_TYPES` (png / jpeg / webp / gif) AND the magic bytes must say
+  the same type (`sniffAvatarType` — the declared type is never trusted), ≤ `AVATAR_MAX_BYTES` (2 MB, else 413),
+  sha256 via Web Crypto, bytes in R2 (`ARTIFACTS_BUCKET`) at `avatars/<sha256>` with R2's own sha256 check and the
+  SNIFFED type as `httpMetadata.contentType` — skipped when that object already exists. Returns `{ ok, avatar_url }`.
+  `POST /api/people/me/avatar/remove` only clears `avatar_sha` (returns the picture that now shows); the bytes are
+  immutable and never deleted, like doc images. There is no avatars table: the R2 object's metadata is the type.
+- **Serving** `GET /avatar/<sha>` (session-gated, beside `/img/<sha>` and exactly like it): `nosniff`,
+  `default-src 'none'; sandbox`, `Cache-Control: private, max-age=31536000, immutable`; 404 for a malformed sha,
+  no object, or a stored type outside `AVATAR_TYPES`.
+- **Profile** `GET /api/people/:handle` (session cookie; `me` = the viewer; an unknown or RESERVED handle is 404):
+  `PersonProfile` — role, GitHub login, joined, `admin`, `editable` (self or admin), `self`; their open assigned
+  tickets of BOTH sources through My Work's own `listAssignedTickets` / `countAssignedTickets` (8 + the uncapped
+  `ticketsOpen`), their latest 5 feed entries, and the LIVE docs they own (`docs.owner`, `current_version > 0`, 8)
+  — person, GitHub login, sessions and docs in ONE `db.batch`. A D1 failure is 503 `{ error }`, never a 500.
+- **`responsibilities` is never rendered on a profile.** It travels only to the person themselves and to admins
+  (the edit form fills from it) and to MCP `list_people`.
+- **Write** `PUT /api/people/:handle` (`PersonProfileWrite`): the person (case-insensitive) or an admin
+  (`isAdmin`), else 403 with nothing written. Trimmed; absent = untouched, `""` / null / whitespace clears; over
+  `ROLE_MAX` (80) / `RESPONSIBILITIES_MAX` (2000) is 400 and writes NOTHING (every field is validated before the
+  one UPDATE). Returns the fresh profile. Name and color stay on `PUT /auth/me`.
+- **MCP gets ONE read, `list_people`** (every principal): `{ people: [{ handle, name, role, responsibilities }] }`
+  for every non-reserved person — nothing else about a person (no avatar, no load, no profile), and NO people
+  write of any kind. Its description, `create_ticket`'s and the `tickets` / `canopy` skills tell an agent to read
+  it before choosing `assignees`, and that a null is unknown, never to be guessed.
+- `scripts/seed/reset.mjs` seeds a role + responsibilities for the six dev/test persons.
 
 ## Roadmap & My Work — authored plan + stored projections, no live GitHub at render
 

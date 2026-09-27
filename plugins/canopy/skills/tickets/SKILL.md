@@ -2,7 +2,7 @@
 name: tickets
 description: Use when a person explicitly asks to work the Canopy ticket queue — file a ticket, start or resolve one, comment on it, link work to it, move it into a sprint, nest it under another, or create and manage sprints (triggers — "file a ticket for…", "start that ticket", "mark it done", "comment on ticket 12", "move this to sprint 13", "create a sprint"). Reading the queue needs no skill. Explicit invocation only for writes — must never auto-fire.
 disable-model-invocation: true
-allowed-tools: mcp__canopy__list_tickets, mcp__canopy__get_ticket, mcp__canopy__list_sprints, mcp__canopy__get_sprint, mcp__canopy__create_ticket, mcp__canopy__edit_ticket, mcp__canopy__transition_ticket, mcp__canopy__add_ticket_comment, mcp__canopy__add_ticket_link, mcp__canopy__set_ticket_sprint, mcp__canopy__set_ticket_parent, mcp__canopy__create_sprint, mcp__canopy__set_sprint_active, mcp__canopy__complete_sprint, mcp__canopy__add_sprint_resource
+allowed-tools: mcp__canopy__list_tickets, mcp__canopy__get_ticket, mcp__canopy__list_sprints, mcp__canopy__get_sprint, mcp__canopy__list_people, mcp__canopy__create_ticket, mcp__canopy__edit_ticket, mcp__canopy__transition_ticket, mcp__canopy__add_ticket_comment, mcp__canopy__add_ticket_link, mcp__canopy__set_ticket_sprint, mcp__canopy__set_ticket_parent, mcp__canopy__create_sprint, mcp__canopy__set_sprint_active, mcp__canopy__complete_sprint, mcp__canopy__add_sprint_resource
 ---
 
 # Tickets → Canopy
@@ -40,7 +40,8 @@ Three consequences worth knowing before you promise a person anything:
 
 - **You cannot assign anyone after a ticket is filed.** There is no `toggle_assignee` tool and there
   never will be — assignment is the data the lane rule is built on. `create_ticket`'s `assignees` is
-  the only agent-reachable assignment in Canopy.
+  the only agent-reachable assignment in Canopy — so choose it from `list_people` (step 1), never
+  from a guess.
 - **You cannot pick work up off the unassigned pile.** Somebody has to assign it to your principal in
   the web UI first. Say that plainly rather than trying and reporting a failure.
 - **You cannot triage other people's tickets** — not comment, not resolve, not re-parent. An admin is
@@ -74,6 +75,11 @@ Never write from the conversation's memory of a ticket. Read it back:
 - `get_ticket <id>` — the whole ticket, including **`assignees`** (your lane check) and `status`
   (which moves are even legal).
 - `list_sprints` / `get_sprint <id>` before any sprint move, so you name a real sprint.
+- `list_people` before **filing with assignees** — every person's `handle`, `name`, `role` and
+  `responsibilities`. Propose the person whose role and responsibilities fit the work, by handle; a
+  null `role` / `responsibilities` means unknown, so never infer what someone owns from a name. If
+  nobody clearly fits, propose filing it unassigned (or ask) — a wrong assignee can only be fixed by a
+  person in the web UI.
 
 ### 2. Check the lane, and say so if you're outside it
 

@@ -49,6 +49,8 @@ import { listPersons } from "./auth/persons";
 import { sendInvite } from "./notifications/invite";
 import type { InviteRow } from "@shared/rows";
 import { readDocImage } from "./tools/doc-images";
+import { getPersonProfile, writePersonProfile, setAvatar, clearAvatar, readAvatar, PeopleError, PEOPLE_ERROR_STATUS } from "./tools/people";
+import { AVATAR_MAX_BYTES } from "@shared/people";
 
 export const app = new Hono<AppEnv>();
 
@@ -73,6 +75,23 @@ app.get("/img/:sha", async (c) => {
   const lockdown = { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" };
   if (!/^[0-9a-f]{64}$/.test(sha)) return c.json({ error: "not_found" }, 404, lockdown);
   const img = await readDocImage(c.env.DB, c.env.ARTIFACTS_BUCKET, sha);
+  if (!img) return c.json({ error: "not_found" }, 404, lockdown);
+  return new Response(img.body, {
+    headers: {
+      ...lockdown,
+      "content-type": img.content_type,
+      "content-length": String(img.size_bytes),
+      "cache-control": "private, max-age=31536000, immutable",
+    },
+  });
+});
+
+// Person avatars (0036): the bytes behind an uploaded `/avatar/<sha256>`, served exactly
+// like a doc image — session-gated, content-addressed and immutable, `default-src 'none'`
+// + nosniff. The type is the one SNIFFED at upload (the R2 object's own metadata).
+app.get("/avatar/:sha", async (c) => {
+  const lockdown = { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" };
+  const img = await readAvatar(c.env.ARTIFACTS_BUCKET, c.req.param("sha"));
   if (!img) return c.json({ error: "not_found" }, 404, lockdown);
   return new Response(img.body, {
     headers: {
@@ -468,6 +487,48 @@ app.post("/identity-tasks/:login/map", async (c) => {
 
 // Person directory (session-gated): the avatar-chip source for every screen and the identity picker.
 app.get("/persons", async (c) => c.json({ persons: await listPersons(c.env.DB) }));
+
+// ── People profiles (0036; the contract is shared/people.ts) — session cookie, NEVER MCP ──
+// Read: any signed-in member; `responsibilities` only to the person and admins. Write:
+// the person or an admin (403 otherwise, nothing written). Avatar: the viewer's OWN only.
+// `me` names the viewer (it is a reserved handle, so it can never be someone else's).
+// A PeopleError is its status; anything else (a D1 failure) is a 503, never a 500.
+const peopleFail = (c: Context<AppEnv>, e: unknown) =>
+  e instanceof PeopleError ? c.json({ error: e.message }, PEOPLE_ERROR_STATUS[e.code]) : c.json({ error: "temporarily unavailable" }, 503);
+const profileHandle = (c: Context<AppEnv>): string => {
+  const h = c.req.param("handle") ?? "";
+  return h.toLowerCase() === "me" ? c.get("principal").handle : h;
+};
+const adminCheck = (c: Context<AppEnv>) => (h: string) => isAdmin(c.env, h);
+app.get("/api/people/:handle", async (c) => {
+  try { return c.json(await getPersonProfile(c.env.DB, profileHandle(c), c.get("principal").handle, adminCheck(c))); }
+  catch (e) { return peopleFail(c, e); }
+});
+app.put("/api/people/:handle", async (c) => {
+  const body = await c.req.json().catch(() => undefined);
+  try { return c.json(await writePersonProfile(c.env.DB, profileHandle(c), c.get("principal").handle, adminCheck(c), body)); }
+  catch (e) { return peopleFail(c, e); }
+});
+// Multipart, field `file`. A declared length past the cap (plus multipart framing) is
+// refused before the body is read.
+app.post("/api/people/me/avatar", async (c) => {
+  const len = Number(c.req.header("content-length"));
+  if (Number.isFinite(len) && len > AVATAR_MAX_BYTES + 64 * 1024) return c.json({ error: `an avatar is at most ${AVATAR_MAX_BYTES} bytes` }, 413);
+  let file: File | null = null;
+  try {
+    const form = await c.req.raw.formData();
+    const v = form.get("file");
+    file = v && typeof v !== "string" ? (v as File) : null;
+  } catch {
+    return c.json({ error: "the body must be multipart/form-data" }, 400);
+  }
+  try { return c.json({ ok: true, ...(await setAvatar(c.env.DB, c.env.ARTIFACTS_BUCKET, c.get("principal").handle, file)) }); }
+  catch (e) { return peopleFail(c, e); }
+});
+app.post("/api/people/me/avatar/remove", async (c) => {
+  try { return c.json({ ok: true, ...(await clearAvatar(c.env.DB, c.get("principal").handle)) }); }
+  catch (e) { return peopleFail(c, e); }
+});
 
 // ── Maintenance › People: the invite list (admin, session-cookie only, NEVER MCP) ──
 const InviteWrite = z.object({ email: z.string().trim().max(254).regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "invalid email"), name: z.string().trim().max(120).optional() });

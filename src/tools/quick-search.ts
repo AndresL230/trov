@@ -34,6 +34,7 @@
 import type { DB } from "../db";
 import { RESERVED_HANDLES } from "../auth/persons";
 import { searchArtifactsStmt } from "./artifacts";
+import { avatarSrc } from "@shared/people";
 import {
   QUICK_TYPES, QUICK_MIN_CHARS, QUICK_LIMIT_DEFAULT, QUICK_LIMIT_MAX,
   type QuickHit, type QuickType, type QuickSearchResult,
@@ -197,12 +198,12 @@ export async function quickSearch(db: DB, q: string, viewer: string, opts: Quick
     // The whole query (an @ dropped) as a prefix of the handle, the name, or any word of the name.
     const whole = likeEsc(trimmed.replace(/^@/, "").replace(/\s+/g, " "));
     plan.push({ type: "person", stmt: db.prepare(
-      `SELECT handle, name, color, avatar_url FROM persons
+      `SELECT handle, name, color, avatar_url, avatar_sha FROM persons
         WHERE handle NOT IN (${RESERVED_HANDLES.map(() => "?").join(", ")})
           AND (handle LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\')
         ORDER BY (handle LIKE ? ESCAPE '\\') DESC, handle COLLATE NOCASE LIMIT ${n}`)
       .bind(...RESERVED_HANDLES, `${whole}%`, `${whole}%`, `% ${whole}%`, `${whole}%`),
-      map: (r) => ({ type: "person", id: str(r.handle) ?? "", title: str(r.name) || (str(r.handle) ?? ""), snippet: null, status: null, by: null, at: null, color: str(r.color), avatar_url: str(r.avatar_url) }) });
+      map: (r) => ({ type: "person", id: str(r.handle) ?? "", title: str(r.name) || (str(r.handle) ?? ""), snippet: null, status: null, by: null, at: null, color: str(r.color), avatar_url: avatarSrc({ avatar_sha: str(r.avatar_sha), avatar_url: str(r.avatar_url) }) }) });
   }
 
   if (want.has("feed")) {
