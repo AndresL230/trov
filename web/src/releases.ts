@@ -118,6 +118,7 @@ export const RELEASES: Release[] = [
         "Sidebar (light): the selected row is a white card, not a darker fill, and hover previews it; Tickets has no sub-page list — Board / Table / Submit a ticket are in its header (#86)",
         "My Work: Needs your review always holds its place and reads clear in it; Your sessions shows 2 sessions and 1 handoff; the Repo tile keeps one height across PRs / CI / Deploys (#86)",
         "Tickets table: 20px sides inside its card, no hairline under every row, category and priority as plain text (#86)",
+        "My Work: with nothing to review, the clear Needs your review tile sits beside Repo instead of leading the page (#87)",
         "Light theme palette from the Claude Design `Canopy Restyled.dc.html` (cool neutral grey, indigo accent)",
         "`--label` is Geist everywhere except the sidebar, which keeps Archivo Narrow",
         "Roadmap: New sprint in the header; `#roadmap/timeline` in the URL; the rail's Narrative / Timeline sub-pages removed",
@@ -137,7 +138,7 @@ export const RELEASES: Release[] = [
         "The Midnight theme and its Get Started screenshots",
       ],
     },
-    prs: [84, 85, 86],
+    prs: [84, 85, 86, 87],
   },
   {
     version: "0.14",
