@@ -271,20 +271,57 @@ describe("Settings › Profile — the photo; no role or responsibilities", () =
     return s;
   };
 
-  it("offers Upload photo (the four types) and Remove photo only over an uploaded one", () => {
+  it("has no photo row: the avatar is the control — a button with a hover veil that opens the photo menu", () => {
     const html = profileSection(settings());
-    expect(html).toContain('data-act="avatarPick"');
+    // The old row (two buttons + the types line) is gone.
+    expect(html).not.toContain("Cropped to a square");
+    expect(html).not.toContain("cnpy-outlinebtn");
+    // The avatar is a menu button, closed, with the camera veil the hover/focus rule shows.
+    expect(html).toMatch(/<button data-act="avatarMenu" class="cnpy-avbtn"[^>]*aria-haspopup="menu" aria-expanded="false"/);
+    expect(html).toContain('aria-label="Profile photo options"');
+    expect(html).toMatch(/<button data-act="avatarMenu"[\s\S]*?class="cnpy-av"[\s\S]*?class="cnpy-avbtn-veil"[\s\S]*?<\/button>/);
+    expect(html).toContain("cnpy-avbtn-badge"); // the touch-screen hint
+    // The hidden input the menu's Upload row clicks: the four types.
     expect(html).toContain(`accept="${AVATAR_TYPES.join(",")}"`);
     expect(html).toContain("data-avatar-file");
-    expect(html).not.toContain('data-act="avatarRemove"'); // no photo
-    const s = settings();
+    // Closed: no menu, no rows.
+    expect(html).not.toContain("data-avatar-menu");
+    expect(html).not.toContain('data-act="avatarPick"');
+  });
+
+  it("the open menu: Upload photo, Remove only over an UPLOADED avatar (then Change photo), and the types footnote", () => {
+    const s = settings({ avatarMenu: true });
+    let html = profileSection(s); // no photo: the initials
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain('data-act="avatarMenuClose"'); // the click-outside backdrop
+    expect(html).toMatch(/role="menu"[^>]*data-avatar-menu/);
+    expect(html).toMatch(/role="menuitem" data-act="avatarPick"[^>]*>[\s\S]*?Upload photo<\/button>/);
+    expect(html).not.toContain('data-act="avatarRemove"');
+    expect(html).toContain("Square crop · PNG, JPEG, WebP, GIF");
     s.me = ME({ avatar_url: "https://avatars.githubusercontent.com/u/1" });
-    expect(profileSection(s)).not.toContain('data-act="avatarRemove"'); // the provider's picture
+    html = profileSection(s); // the provider's picture is not Canopy's to remove
+    expect(html).toContain("Upload photo");
+    expect(html).not.toContain('data-act="avatarRemove"');
     s.me = ME({ avatar_url: "/avatar/abc" });
-    expect(profileSection(s)).toContain('data-act="avatarRemove"');
-    s.avatarBusy = "upload";
-    expect(profileSection(s)).toContain("Uploading…");
-    expect(profileSection(s)).toMatch(/data-act="avatarPick"[^>]*disabled/);
+    html = profileSection(s);
+    expect(html).toContain("Change photo");
+    expect(html).not.toContain("Upload photo");
+    expect(html).toMatch(/role="menuitem" data-act="avatarRemove"[^>]*>[\s\S]*?Remove photo<\/button>/);
+  });
+
+  it("busy: the avatar spins, says what it is doing, and the menu can't open", () => {
+    const s = settings({ avatarMenu: true, avatarBusy: "upload" });
+    let html = profileSection(s);
+    expect(html).toContain("cnpy-avbtn is-busy");
+    expect(html).toMatch(/data-act="avatarMenu"[^>]*aria-disabled="true" aria-busy="true"/);
+    expect(html).toContain('aria-label="Uploading photo…"');
+    expect(html).toMatch(/class="cnpy-avbtn-veil"[^>]*><svg[^>]*animation:cnpy-spin/);
+    expect(html).not.toContain("data-avatar-menu"); // even with the menu flag still set
+    expect(html).toContain('aria-expanded="false"');
+    s.avatarBusy = "remove";
+    html = profileSection(s);
+    expect(html).toContain('aria-label="Removing photo…"');
+    expect(html).not.toContain("data-avatar-menu");
   });
 
   it("has no Role or Responsibilities field — both are admin-set in Maintenance › People", () => {
