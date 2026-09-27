@@ -113,6 +113,8 @@ export const RELEASES: Release[] = [
         "Get Started and the landing page describe the new screens; screenshots recaptured in dark and light, plus Timeline, search and What's new figures",
       ],
       changed: [
+        "My Work's Repo tile: PRs · CI · Deploys, opening on PRs; the environment-named drift tab is gone — drift stays on the Repo dashboard (#85)",
+        "Review: a drafted decision's Proposed record card drops its green left edge (#85)",
         "Light theme palette from the Claude Design `Canopy Restyled.dc.html` (cool neutral grey, indigo accent)",
         "`--label` is Geist everywhere except the sidebar, which keeps Archivo Narrow",
         "Roadmap: New sprint in the header; `#roadmap/timeline` in the URL; the rail's Narrative / Timeline sub-pages removed",
@@ -125,12 +127,14 @@ export const RELEASES: Release[] = [
       fixed: [
         "`npm run dev` served stale or missing assets after a web rebuild; the watch keeps old bundles (`--emptyOutDir false`)",
         "A multi-word FTS query whose last word got stem-shortened alternatives came back empty; the terms are now joined with an explicit AND",
-        "My Work › Your library: a narrow cell's header link (Queued handoffs' \"Handoffs →\") ran past the tile's edge and was clipped; the header row now wraps the link under its title",
+        "My Work › Your library: a narrow cell's header link (Queued handoffs' \"Handoffs →\") ran past the tile's edge and was clipped; the header row now wraps the link under its title (#85)",
+        "What's new still tagged this release Unreleased after it deployed; it is v0.15, and the merging PR now cuts the version (#85)",
       ],
       removed: [
         "The Midnight theme and its Get Started screenshots",
       ],
     },
+    prs: [84, 85],
   },
   {
     version: "0.14",
