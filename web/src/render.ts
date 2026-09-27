@@ -1927,7 +1927,7 @@ export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" |
       <div style="flex:1;min-width:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${body}</div>
     </li>`;
   return `<section class="cnpy-tile cnpy-surface cnpy-set-mcp">
-    <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;column-gap:12px;row-gap:2px;margin-bottom:6px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;column-gap:12px;row-gap:2px;margin-bottom:14px">
       <div style="${SECTION_LABEL};margin-bottom:0">MCP access</div>
       <button data-act="mcpSetupOpen" data-mcp-setup-trigger aria-haspopup="dialog" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--fg-55)">Set it up without the plugin &rarr;</button>
     </div>
