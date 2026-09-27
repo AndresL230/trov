@@ -782,6 +782,15 @@ input, select { font-family: inherit; }
   .cnpy-nt-grid, .cnpy-td-grid, .cnpy-sprint-grid { grid-template-columns:minmax(0,1fr) !important; }
   .cnpy-nt-grid > div + div, .cnpy-td-grid > div + div, .cnpy-sprint-grid > div + div { border-left:none !important; padding-left:0 !important; }
 }
+/* People (web/src/profile.ts): the directory's card grid, and a profile's open tickets beside
+   its sessions + docs — one column under 900px; at phone width a ticket row keeps only its pill. */
+.cnpy-people-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr)); gap:10px; }
+.cnpy-profile-grid { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:18px; align-items:start; margin-top:26px; }
+@media (max-width:900px) { .cnpy-profile-grid { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:640px) { .cnpy-profile-opt { display:none; } }
+/* A person's name that opens their profile (the ticket rail, the feed, Maintenance › People). */
+.cnpy-personlink { cursor:pointer; text-underline-offset:2px; }
+.cnpy-personlink:hover, .cnpy-maint-person:hover > span > span:first-child { text-decoration:underline; text-underline-offset:2px; }
 .cnpy-accentbtn { transition:filter .12s ease, transform .12s ease; }
 .cnpy-accentbtn:hover { filter:brightness(1.06); }
 .cnpy-accentbtn:active { transform:translateY(1px); }

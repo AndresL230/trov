@@ -52,9 +52,9 @@ const D = 86_400_000;
 const FUTURE = new Date(NOW + 400 * D).toISOString().slice(0, 10);
 
 const PERSONS: PersonSummary[] = [
-  { handle: "sanaok", name: "Sana Okafor", color: "ochre", avatar_url: null },
-  { handle: "jose-a", name: "Jose Alvarez", color: "moss", avatar_url: null },
-  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null },
+  { handle: "sanaok", name: "Sana Okafor", color: "ochre", avatar_url: null, role: null },
+  { handle: "jose-a", name: "Jose Alvarez", color: "moss", avatar_url: null, role: null },
+  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null, role: null },
 ];
 
 function sprint(o: Partial<SprintView> & { id: number; label: string }): SprintView {

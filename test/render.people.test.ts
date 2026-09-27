@@ -1,12 +1,25 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+// DOMPurify needs a DOM the worker pool doesn't have; a profile's session titles are inline markdown.
+vi.mock("../web/src/markdown", () => ({
+  renderMarkdown: (s: string) => `<div class="mock-md">${s.replace(/</g, "&lt;")}</div>`,
+  renderMarkdownInline: (s: string) => s.replace(/</g, "&lt;"),
+  enhance: () => {},
+  sanitizeSvg: (s: string) => s,
+}));
+
 import { peopleSection } from "../web/src/maintenance";
-import { profileSection, accountSection, tokenListBody, initialState } from "../web/src/render";
+import { profileSection, accountSection, tokenListBody, initialState, render, aboutValues, isUploadedAvatar } from "../web/src/render";
 import { peopleFromPersons } from "../web/src/triage-map";
-import { handleTag } from "../web/src/people";
+import { handleTag, personChip, markAvatarFailed, AVATAR_IMG_CLASS } from "../web/src/people";
+import { peopleDirectoryView, peopleMatching, personProfileView } from "../web/src/profile";
+import { avatarCrop, avatarTypeProblem, avatarSizeProblem } from "../web/src/avatar";
+import { ROLE_MAX, RESPONSIBILITIES_MAX, AVATAR_TYPES, AVATAR_MAX_BYTES, type PersonProfile } from "@shared/people";
+import type { Me } from "../web/src/api";
 
 const persons = [
-  { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null },
-  { handle: "priya", name: "Priya Natarajan", color: "plum" as const, avatar_url: "https://a/p.png" },
+  { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null, role: null },
+  { handle: "priya", name: "Priya Natarajan", color: "plum" as const, avatar_url: "https://a/p.png", role: null },
 ];
 const invites = [
   { email: "m.okafor@gmail.com", name: null, invited_by: "AndresL230", invited_at: "2026-09-12T10:00:00Z", accepted_by: null, revoked_at: null, email_sent_at: "2026-09-12T10:00:01Z", email_id: null, email_error: null },
@@ -153,5 +166,237 @@ describe("handleTag", () => {
 describe("peopleFromPersons", () => {
   it("maps directory rows to picker entries keyed by handle", () => {
     expect(peopleFromPersons(persons)[1]).toEqual({ id: "priya", name: "Priya Natarajan", initials: "PN", color: "plum", avatar_url: "https://a/p.png" });
+  });
+});
+
+// ── person profiles (0036) ───────────────────────────────────────────────────
+
+const ME = (over: Partial<Me> = {}): Me => ({ handle: "AndresL230", name: "Andres", avatar_url: null, color: "moss", identities: [{ provider: "github", label: "AndresL230", linked_at: "t" }], org: "SaplingLearn", admin: false, role: null, ...over });
+const SECRET = "Owns the ingest gate and every migration";
+const profile = (over: Partial<PersonProfile> = {}): PersonProfile => ({
+  handle: "priya", name: "Priya Natarajan", color: "plum", avatar_url: "/avatar/abc", role: "Backend engineer",
+  github: "priya-n", joined: "2026-06-03T10:00:00Z", admin: false, editable: false, self: false,
+  tickets: [{ id: 12, title: "Fix the gate", status: "in_progress", priority: "high", updated_at: "2026-09-26T10:00:00Z" }],
+  ticketsOpen: 1,
+  sessions: [{ id: 4, summary: "Shipped the **gate** fix", brief: null, created_at: "2026-09-26T10:00:00Z" }],
+  docs: [{ slug: "ingest-gate", title: "The ingest gate", updated_at: "2026-09-20T10:00:00Z" }],
+  ...over,
+});
+const view = (pr: PersonProfile, edit: { role: string; responsibilities: string } | null = null) =>
+  personProfileView({ status: "ok", handle: pr.handle, profile: pr, edit, saving: false });
+
+describe("personChip — photos", () => {
+  it("lays the photo over the initials, so a slow or failed photo shows the initials", () => {
+    const html = personChip({ handle: "priya", name: "Priya Natarajan", color: "plum", avatar_url: "/avatar/abc" }, 28, "priya");
+    expect(html).toContain(">PN<img");
+    expect(html).toContain(`class="${AVATAR_IMG_CLASS}" src="/avatar/abc"`);
+    expect(html).toContain("position:absolute;inset:0");
+  });
+
+  it("a photo that failed to load is left out for the session (the chip is initials only)", () => {
+    const url = "https://avatars.example/gone.png";
+    markAvatarFailed(url);
+    const html = personChip({ handle: "sam", name: "Samir Mehta", color: "sky", avatar_url: url }, 20, "sam");
+    expect(html).toContain(">SM</div>");
+    expect(html).not.toContain("<img");
+  });
+});
+
+describe("People directory", () => {
+  const dir = [
+    { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null, role: "Founder" },
+    { handle: "priya", name: "Priya Natarajan", color: "plum" as const, avatar_url: "/avatar/abc", role: "Backend engineer" },
+    { handle: "meilin", name: "Mei Lin", color: "rose" as const, avatar_url: null, role: null },
+  ];
+
+  it("a card per person — avatar, name, role, handle — each opening the profile, mine marked YOU", () => {
+    const html = peopleDirectoryView({ status: "ok", persons: dir, q: "", me: "andresl230" });
+    for (const p of dir) expect(html).toContain(`data-act="openPerson" data-arg="${p.handle}"`);
+    expect(html).toContain("Backend engineer");
+    expect(html).toContain("No role yet");
+    expect(html).toContain('src="/avatar/abc"');
+    expect(html.match(/>YOU</g)?.length).toBe(1);
+    expect(html).toContain('data-act="peopleQ" data-field="peopleQ"');
+  });
+
+  it("searches name, handle and role — every word, any case", () => {
+    expect(peopleMatching(dir, "backend").map((p) => p.handle)).toEqual(["priya"]);
+    expect(peopleMatching(dir, "MEI").map((p) => p.handle)).toEqual(["meilin"]);
+    expect(peopleMatching(dir, "andres founder").map((p) => p.handle)).toEqual(["AndresL230"]);
+    expect(peopleMatching(dir, "  ").length).toBe(3);
+    expect(peopleDirectoryView({ status: "ok", persons: dir, q: "nobody", me: "" })).toContain("Nobody matches");
+  });
+
+  it("loading and failed reads say so; hostile fields are escaped", () => {
+    expect(peopleDirectoryView({ status: "loading", persons: [], q: "", me: "" })).toContain("Loading people");
+    expect(peopleDirectoryView({ status: "error", persons: [], q: "", me: "" })).toContain("Couldn't load the team");
+    const bad = peopleDirectoryView({ status: "ok", persons: [{ ...dir[2], role: "<b>x</b>" }], q: "", me: "" });
+    expect(bad).not.toContain("<b>x</b>");
+  });
+});
+
+describe("Profile screen", () => {
+  it("heads with the large avatar, name, handle, role, joined date and a GitHub link, then tickets, sessions and docs", () => {
+    const html = view(profile({ admin: true }));
+    expect(html).toContain('width="88" height="88"');
+    expect(html).toContain("Priya Natarajan");
+    expect(html).toContain("@priya");
+    expect(html).toContain("Backend engineer");
+    expect(html).toContain("ADMIN");
+    expect(html).toContain("Joined Jun 2026");
+    expect(html).toContain('href="https://github.com/priya-n"');
+    expect(html).toContain('data-act="openTicket" data-arg="12"');
+    expect(html).toContain("IN PROGRESS");
+    expect(html).toContain('data-act="personFeed" data-arg="priya"');
+    expect(html).toContain('data-act="openDocFrom" data-arg="ingest-gate"');
+    expect(html).toContain("cnpy-profile-grid");
+  });
+
+  it("no Admin badge or GitHub link when there is none; empty lists say so", () => {
+    const html = view(profile({ github: null, tickets: [], ticketsOpen: 0, sessions: [], docs: [] }));
+    expect(html).not.toContain("ADMIN");
+    expect(html).not.toContain("github.com");
+    expect(html).toContain("Nothing assigned to Priya right now.");
+    expect(html).toContain("No sessions recorded yet.");
+    expect(html).toContain("No docs yet.");
+  });
+
+  it("NEVER renders responsibilities on a plain view — not even for an admin or for self", () => {
+    for (const over of [{}, { editable: true }, { editable: true, self: true }] as Partial<PersonProfile>[]) {
+      const html = view(profile({ ...over, responsibilities: SECRET }));
+      expect(html, JSON.stringify(over)).not.toContain(SECRET);
+    }
+  });
+
+  it("self gets Edit profile (→ Settings); an admin viewing someone else gets the role editor", () => {
+    expect(view(profile({ self: true, editable: true }))).toContain('data-act="goSettings"');
+    const admin = view(profile({ editable: true }));
+    expect(admin).toContain('data-act="personEditOpen"');
+    expect(admin).not.toContain('data-act="goSettings"');
+    const plain = view(profile());
+    expect(plain).not.toContain('data-act="personEditOpen"');
+    expect(plain).not.toContain('data-act="goSettings"');
+  });
+
+  it("the admin's open editor is the one place another person's responsibilities show", () => {
+    const pr = profile({ editable: true, responsibilities: SECRET });
+    const html = view(pr, { role: "Backend engineer", responsibilities: SECRET });
+    expect(html).toContain(SECRET);
+    expect(html).toContain('data-act="personRoleDraft"');
+    expect(html).toContain(`maxlength="${ROLE_MAX}"`);
+    expect(html).toContain(`maxlength="${RESPONSIBILITIES_MAX}"`);
+    expect(html).toContain("agents read it when deciding whom to assign work");
+    expect(html).toContain('data-act="personEditSave"');
+    // A viewer who may not edit never gets the editor, whatever state says.
+    expect(view(profile({ responsibilities: SECRET }), { role: "", responsibilities: SECRET })).not.toContain(SECRET);
+    // Nor does self — self edits in Settings.
+    expect(view(profile({ self: true, editable: true, responsibilities: SECRET }), { role: "", responsibilities: SECRET })).not.toContain(SECRET);
+  });
+
+  it("loading, unknown handle and failed read", () => {
+    expect(personProfileView({ status: "loading", handle: "priya", profile: null, edit: null, saving: false })).toContain("Loading profile");
+    const missing = personProfileView({ status: "ok", handle: "ghost", profile: null, edit: null, saving: false });
+    expect(missing).toContain("nobody called @ghost");
+    expect(missing).toContain('data-act="goPeople"');
+    expect(personProfileView({ status: "error", handle: "priya", profile: null, edit: null, saving: false })).toContain("Couldn't load this profile");
+  });
+
+  it("the app shell: People lit in the sidebar, the crumb names the person, the title goes back to the directory", () => {
+    const s = initialState();
+    s.view = "app"; s.me = ME(); s.screen = "person"; s.personHandle = "priya";
+    s.personProfile = { status: "ok", data: profile() };
+    const html = render(s);
+    expect(html).toContain('class="cnpy-navrow n-people is-active"');
+    expect(html).toContain('data-act="goPeople"');
+    expect(html).toContain(">Priya Natarajan</span>");
+    // A different person's profile still in state never shows under a new handle.
+    s.personHandle = "meilin";
+    expect(render(s)).not.toContain("Backend engineer");
+  });
+});
+
+describe("Settings › Profile — photo, role, responsibilities", () => {
+  const settings = (over: Partial<ReturnType<typeof initialState>> = {}) => {
+    const s = initialState();
+    s.me = ME({ role: "Founder" });
+    s.displayName = "Andres";
+    s.meProfile = { status: "ok", data: profile({ handle: "AndresL230", name: "Andres", self: true, editable: true, role: "Founder", responsibilities: SECRET }) };
+    Object.assign(s, over);
+    return s;
+  };
+
+  it("offers Upload photo (the four types) and Remove photo only over an uploaded one", () => {
+    const html = profileSection(settings());
+    expect(html).toContain('data-act="avatarPick"');
+    expect(html).toContain(`accept="${AVATAR_TYPES.join(",")}"`);
+    expect(html).toContain("data-avatar-file");
+    expect(html).not.toContain('data-act="avatarRemove"'); // no photo
+    const s = settings();
+    s.me = ME({ avatar_url: "https://avatars.githubusercontent.com/u/1" });
+    expect(profileSection(s)).not.toContain('data-act="avatarRemove"'); // the provider's picture
+    s.me = ME({ avatar_url: "/avatar/abc" });
+    expect(profileSection(s)).toContain('data-act="avatarRemove"');
+    s.avatarBusy = "upload";
+    expect(profileSection(s)).toContain("Uploading…");
+    expect(profileSection(s)).toMatch(/data-act="avatarPick"[^>]*disabled/);
+  });
+
+  it("Role and Responsibilities fields with their caps, the helper line, and a Save live only once something changed", () => {
+    const html = profileSection(settings());
+    expect(html).toContain('data-act="roleDraft" data-field="roleDraft" value="Founder"');
+    expect(html).toContain(`maxlength="${ROLE_MAX}"`);
+    expect(html).toContain(`maxlength="${RESPONSIBILITIES_MAX}"`);
+    expect(html).toContain(SECRET);
+    expect(html).toContain("Not shown on your profile — agents read it when deciding whom to assign work.");
+    expect(html).toMatch(/data-act="saveAbout"[^>]*disabled/);
+    expect(profileSection(settings({ roleDraft: "CTO" }))).not.toMatch(/data-act="saveAbout"[^>]*disabled/);
+    expect(profileSection(settings({ roleDraft: "Founder " }))).toMatch(/data-act="saveAbout"[^>]*disabled/); // whitespace only
+  });
+
+  it("Responsibilities waits for my profile read — disabled while it loads or failed", () => {
+    const loading = profileSection(settings({ meProfile: { status: "loading", data: null } }));
+    expect(loading).toMatch(/data-act="respDraft"[^>]*disabled/);
+    expect(loading).toContain('placeholder="Loading…"');
+    expect(profileSection(settings({ meProfile: { status: "error", data: null } }))).toContain("Couldn't load your responsibilities");
+    expect(profileSection(settings())).not.toMatch(/data-act="respDraft"[^>]*disabled/);
+  });
+
+  it("aboutValues: a draft wins, else what is saved", () => {
+    const s = settings({ respDraft: "New text" });
+    expect(aboutValues(s)).toMatchObject({ role: "Founder", resp: "New text", savedResp: SECRET, dirty: true });
+    expect(aboutValues(settings())).toMatchObject({ dirty: false });
+    expect(isUploadedAvatar("/avatar/abc")).toBe(true);
+    expect(isUploadedAvatar("https://x/y.png")).toBe(false);
+    expect(isUploadedAvatar(null)).toBe(false);
+  });
+});
+
+describe("avatar prep (web/src/avatar.ts)", () => {
+  it("centre-crops to a square no wider than 512px", () => {
+    expect(avatarCrop(1200, 800)).toEqual({ sx: 200, sy: 0, side: 800, out: 512 });
+    expect(avatarCrop(300, 500)).toEqual({ sx: 0, sy: 100, side: 300, out: 300 });
+    expect(avatarCrop(512, 512)).toEqual({ sx: 0, sy: 0, side: 512, out: 512 });
+  });
+  it("refuses a type the Worker refuses, and a photo still over the cap", () => {
+    for (const t of AVATAR_TYPES) expect(avatarTypeProblem(t)).toBeNull();
+    expect(avatarTypeProblem("image/svg+xml")).toMatch(/PNG, JPEG, WebP or GIF/);
+    expect(avatarSizeProblem(AVATAR_MAX_BYTES)).toBeNull();
+    expect(avatarSizeProblem(AVATAR_MAX_BYTES + 1)).toMatch(/over 2 MB/);
+  });
+});
+
+describe("Maintenance › People — role and the admin's Edit role", () => {
+  const dir = [
+    { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null, role: "Founder" },
+    { handle: "priya", name: "Priya Natarajan", color: "plum" as const, avatar_url: null, role: null },
+  ];
+  it("each row opens the profile and shows the role; only an admin gets Edit role", () => {
+    const admin = peopleSection({ persons: dir, invites: [], inviteDraft: "", loading: false, error: null, me: "AndresL230" });
+    expect(admin).toContain('data-act="openPerson" data-arg="priya"');
+    expect(admin).toContain("· Founder");
+    expect(admin).toContain('data-act="openPersonEdit" data-arg="priya"');
+    const member = peopleSection({ persons: dir, invites: [], inviteDraft: "", loading: false, error: null, canInvite: false });
+    expect(member).toContain('data-act="openPerson" data-arg="priya"');
+    expect(member).not.toContain('data-act="openPersonEdit"');
   });
 });

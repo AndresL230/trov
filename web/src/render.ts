@@ -3,7 +3,7 @@
 // `.map().join('')`, `sc-if` to ternaries, and `onClick="{{ fn }}"` to
 // `data-act` / `data-arg` attributes dispatched in main.ts.
 
-import type { Me, StagedProposal, IdentityTask, PersonSummary, InviteRow } from "./api";
+import type { Me, StagedProposal, IdentityTask, PersonSummary, PersonProfile, InviteRow } from "./api";
 import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary } from "@shared/rows";
 import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
@@ -14,6 +14,8 @@ import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, handleTag, swatches, type OnboardState } from "./people";
+import { peopleDirectoryView, personProfileView, RESPONSIBILITIES_HELP, type PersonEditDraft } from "./profile";
+import { ROLE_MAX, RESPONSIBILITIES_MAX, AVATAR_TYPES } from "@shared/people";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import {
@@ -71,7 +73,9 @@ export type Screen =
   // Docs › New doc.
   | "newdoc"
   // Help › What's new: the release grid, and each release's notes / patch notes (releases.ts, static data).
-  | "releases";
+  | "releases"
+  // People (Workspace): the directory and one person's profile (profile.ts).
+  | "people" | "person";
 
 /** Async data slice: a screen's fetched payload plus its load status. */
 export interface Loadable<T> {
@@ -344,6 +348,23 @@ export interface AppState {
   /** ADMIN Sync GitHub progress — null when idle; present while a (possibly
    *  multi-batch) sync is running, tracking cumulative counts across batches. */
   backfillSync: BackfillSyncState | null;
+  // ── People (profile.ts) + Settings › Profile's photo / role / responsibilities ──
+  /** The directory's search box (client-side over `persons`). */
+  peopleQ: string;
+  /** The profile the `person` screen shows (from `#people/<handle>`). */
+  personHandle: string | null;
+  personProfile: Loadable<PersonProfile | null>;
+  /** An admin's inline editor for someone else's role + responsibilities (null = closed). */
+  personEdit: PersonEditDraft | null;
+  personSaving: boolean;
+  /** Settings › Profile: MY profile read — the only source of my own responsibilities. */
+  meProfile: Loadable<PersonProfile | null>;
+  /** The Role / Responsibilities drafts; null = untouched (the field shows what is saved). */
+  roleDraft: string | null;
+  respDraft: string | null;
+  aboutSaving: boolean;
+  /** A photo upload or removal in flight. */
+  avatarBusy: "upload" | "remove" | null;
 }
 
 /** Sync GitHub modal state: "starting" from the click until the first batch
@@ -463,6 +484,16 @@ export function initialState(): AppState {
     toastAt: 0,
     toastMs: 0,
     backfillSync: null,
+    peopleQ: "",
+    personHandle: null,
+    personProfile: { status: "idle", data: null },
+    personEdit: null,
+    personSaving: false,
+    meProfile: { status: "idle", data: null },
+    roleDraft: null,
+    respDraft: null,
+    aboutSaving: false,
+    avatarBusy: null,
   };
 }
 
@@ -689,6 +720,10 @@ function headerCrumb(s: AppState): string {
     return ed.mode === "new" ? "New prompt" : `${ed.mode === "edit" ? "Edit" : "New version"} · ${ed.title}`;
   }
   if (s.screen === "newdoc") return "New doc";
+  if (s.screen === "person") {
+    const pr = s.personProfile.data;
+    return pr && pr.handle.toLowerCase() === (s.personHandle ?? "").toLowerCase() ? pr.name || pr.handle : s.personHandle ?? "";
+  }
   if (s.screen === "maintenance") return s.maintTab === "identity" ? "Identity" : s.maintTab === "people" ? "People" : "";
   if (s.screen === "ticketdetail") return s.ticketDetail.data?.title ?? "";
   if (s.screen === "sprint") {
@@ -710,6 +745,7 @@ function header(s: AppState): string {
     prompts: "Prompt Library", prompt: "Prompt Library", promptedit: "Prompt Library",
     newdoc: "Docs",
     releases: "What's new",
+    people: "People", person: "People",
   };
   // dark = "show the moon icon".
   const dark = resolved(s) !== "light";
@@ -784,6 +820,7 @@ function header(s: AppState): string {
   // the design's single `back` handler).
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
     || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
+    || s.screen === "person"
     || (s.screen === "maintenance" && s.maintTab !== "unplaced")
     || (s.screen === "releases" && s.releaseVersion !== null);
   // The act the title's back button fires: each child screen returns to its own parent.
@@ -793,6 +830,7 @@ function header(s: AppState): string {
     : s.screen === "newdoc" ? "goDocs"
     : s.screen === "maintenance" ? "goMaintenance"
     : s.screen === "releases" ? "goReleases"
+    : s.screen === "person" ? "goPeople"
     : "ticketsBack";
   const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : child
     ? `<span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:13px">›</span><span style="font-size:13px;font-weight:500;color:var(--fg-70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(headerCrumb(s))}</span></span>`
@@ -992,6 +1030,14 @@ function feedBrief(brief: string | null): string {
   return `<div class="cnpy-feed-brief" style="font-size:13.5px;color:var(--fg-70);line-height:1.6;margin-top:5px">${esc(brief)}</div>`;
 }
 
+/** A feed entry's `@author`: a link to their profile when the author is a known person. */
+function feedAuthorTag(s: AppState, author: string): string {
+  const p = personFor(s, author);
+  return p
+    ? `<button data-act="openPerson" data-arg="${attr(p.handle)}" class="cnpy-personlink" title="${attr(`${p.name || p.handle}'s profile`)}" style="padding:0">${handleTag(p, author)}</button>`
+    : handleTag(null, author);
+}
+
 function feedView(s: AppState): string {
   if (s.feed.status === "loading" && s.feed.data.length === 0) return wrapFeed(s, notice("Loading feed&hellip;"));
   if (s.feed.status === "error") return wrapFeed(s, notice("Couldn't load the feed."));
@@ -1010,7 +1056,7 @@ function feedView(s: AppState): string {
           <div class="cnpy-md-inline" style="font-size:14px;font-weight:500;line-height:1.5;letter-spacing:-0.005em">${renderMarkdownInline(e.summary)}</div>
           ${s.feedView === "reading" ? feedBrief(e.brief) : feedBody(e.body)}
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px">
-            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55)">${handleTag(personFor(s, e.author), e.author)}</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55)">${feedAuthorTag(s, e.author)}</div>
             <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 5px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="11" rx="2"></rect><path d="M12 8V4M8 13h.01M16 13h.01"></path></svg>agent</span>
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
@@ -1707,7 +1753,20 @@ function handleStatusText(check: AppState["handleCheck"]): { text: string; color
   }
 }
 
-/** Settings › Profile: display name, handle, and color.
+/** The Role / Responsibilities values Settings shows: a draft wins, else what is saved
+ *  (`role` rides /auth/me; `responsibilities` only MY profile read carries). */
+export function aboutValues(s: Pick<AppState, "me" | "meProfile" | "roleDraft" | "respDraft">): { role: string; resp: string; savedRole: string; savedResp: string; dirty: boolean } {
+  const savedRole = s.meProfile.data?.role ?? s.me?.role ?? "";
+  const savedResp = s.meProfile.data?.responsibilities ?? "";
+  const role = s.roleDraft ?? savedRole;
+  const resp = s.respDraft ?? savedResp;
+  return { role, resp, savedRole, savedResp, dirty: role.trim() !== savedRole.trim() || resp.trim() !== savedResp.trim() };
+}
+
+/** An uploaded photo (served by the Worker at `/avatar/<sha>`) — not the provider's picture. */
+export const isUploadedAvatar = (url: string | null | undefined): boolean => !!url && url.startsWith("/avatar/");
+
+/** Settings › Profile: photo, display name, handle, color, role and responsibilities.
  *  Pure over AppState — exported for the pure render test. */
 export function profileSection(s: AppState): string {
   const me = s.me;
@@ -1730,6 +1789,33 @@ export function profileSection(s: AppState): string {
   })() : `<div style="font-size:12px;color:var(--fg-40);margin-top:8px">Handle ${me ? handleTag({ handle, color: me.color }, handle, 12) : handleTag(null, handle, 12)} <button data-act="handleEdit" class="cnpy-mutelink" style="font-size:11.5px;color:var(--fg-55);text-decoration:underline;text-underline-offset:2px;margin-left:6px">Change</button></div>`;
   // The avatar spans the label + the 40px field exactly: 16px line + 8px gap + 40px = 64px.
   const FIELD_LABEL = "display:block;font-size:13px;line-height:16px;font-weight:500;margin-bottom:8px";
+  // The photo: a hidden file input the "Upload photo" button clicks (main.ts downsizes the
+  // pick to a 512px square before it is sent), and "Remove photo" only over an UPLOADED one.
+  const busy = s.avatarBusy;
+  const photoBtn = "display:inline-flex;align-items:center;gap:6px;padding:0 12px;height:30px;border-radius:8px;font-size:12px;font-weight:500;white-space:nowrap";
+  const photoRow = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px">
+      <input type="file" data-avatar-file accept="${attr(AVATAR_TYPES.join(","))}" hidden tabindex="-1" aria-hidden="true" />
+      <button data-act="avatarPick" class="cnpy-outlinebtn" ${busy ? "disabled " : ""}style="${photoBtn};border:1px solid var(--border-strong);color:var(--fg-70);${busy ? "opacity:.6;cursor:default" : ""}">${busy === "upload" ? "Uploading…" : "Upload photo"}</button>
+      ${isUploadedAvatar(me?.avatar_url) ? `<button data-act="avatarRemove" class="cnpy-ghostbtn" ${busy ? "disabled " : ""}style="${photoBtn};border:1px solid var(--border);color:var(--fg-55);${busy ? "opacity:.6;cursor:default" : ""}">${busy === "remove" ? "Removing…" : "Remove photo"}</button>` : ""}
+      <span style="font-size:11.5px;color:var(--fg-40)">Cropped to a square · PNG, JPEG, WebP or GIF</span>
+    </div>`;
+  // Role and responsibilities: one Save for both, live once either differs from what is saved.
+  // Responsibilities waits for MY profile read (the only thing that carries it), so an edit
+  // can never overwrite text this page never saw.
+  const about = aboutValues(s);
+  const respReady = s.meProfile.status === "ok";
+  const canSaveAbout = about.dirty && !s.aboutSaving && (s.respDraft === null || respReady);
+  const fieldBox = "width:100%;box-sizing:border-box;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:14px;outline:none";
+  const aboutBlock = `<div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border)">
+      <label for="me-role" style="${FIELD_LABEL}">Role</label>
+      <input id="me-role" data-act="roleDraft" data-field="roleDraft" value="${attr(about.role)}" maxlength="${ROLE_MAX}" placeholder="e.g. Backend engineer" class="cnpy-input" style="${fieldBox};height:40px;padding:0 13px" />
+      <label for="me-resp" style="${FIELD_LABEL};margin-top:16px">Responsibilities</label>
+      <textarea id="me-resp" data-act="respDraft" data-field="respDraft" maxlength="${RESPONSIBILITIES_MAX}" rows="4" ${respReady ? "" : "disabled "}placeholder="${respReady ? "What you own, and what should be assigned to you" : s.meProfile.status === "error" ? "Couldn't load your responsibilities" : "Loading…"}" class="cnpy-input" style="${fieldBox};padding:10px 13px;line-height:1.55;resize:vertical;min-height:96px;font-family:var(--sans)">${esc(about.resp)}</textarea>
+      <div style="display:flex;justify-content:space-between;gap:12px;font-size:11.5px;color:var(--fg-40);margin-top:7px;line-height:1.5"><span>${esc(RESPONSIBILITIES_HELP)}</span><span style="font-family:var(--label);white-space:nowrap">${about.resp.length} / ${RESPONSIBILITIES_MAX}</span></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px">
+        <button data-act="saveAbout" class="cnpy-accentbtn" ${canSaveAbout ? "" : "disabled "}style="padding:0 16px;height:36px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:13px;font-weight:600;${canSaveAbout ? "" : "opacity:.45;cursor:default"}">${s.aboutSaving ? "Saving…" : "Save"}</button>
+      </div>
+    </div>`;
   return `<section class="cnpy-tile cnpy-surface">
     <div style="${SECTION_LABEL}">Profile</div>
     <div style="display:flex;align-items:flex-start;gap:14px">
@@ -1743,7 +1829,9 @@ export function profileSection(s: AppState): string {
         ${handleRow}
       </div>
     </div>
+    ${photoRow}
     <div style="margin-top:20px"><label style="${FIELD_LABEL}">Your color</label>${swatches("setMyColor", me?.color ?? "stone", true)}</div>
+    ${aboutBlock}
   </section>`;
 }
 
@@ -2293,6 +2381,13 @@ function screenBody(s: AppState): string {
       canDelete: canDeletePrompt(s), deleteArm: s.promptDeleteArm, deleteBusy: s.promptDeleteBusy,
     });
     case "promptedit": return promptEditorView({ draft: s.promptEd, takenSlugs: s.promptList.data.map((p) => p.slug) });
+    case "people": return peopleDirectoryView({ status: s.persons.status, persons: s.persons.data, q: s.peopleQ, me: s.me?.handle ?? "" });
+    case "person": return personProfileView({
+      status: s.personProfile.status, handle: s.personHandle ?? "",
+      // Never show a previous person's page under a new handle while the read is in flight.
+      profile: s.personProfile.data && s.personProfile.data.handle.toLowerCase() === (s.personHandle ?? "").toLowerCase() ? s.personProfile.data : null,
+      edit: s.personEdit, saving: s.personSaving,
+    });
     case "newdoc": return newDocView({ draft: s.nd, spaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })), sections: ASSIGN_OPTIONS.sections });
     default: return feedView(s);
   }
@@ -2302,7 +2397,7 @@ function screenBody(s: AppState): string {
 function repoProps(s: AppState): RepoProps {
   return {
     tab: s.repoTab, range: s.repoRange, driftOpen: s.repoDriftOpen, repo: s.repo, fetchedAt: s.repoFetchedAt, sample: s.repoSample,
-    admin: s.me?.admin === true, poll: s.repoPoll, productEnv: s.repoProductEnv,
+    admin: s.me?.admin === true, poll: s.repoPoll, productEnv: s.repoProductEnv, persons: s.persons.data,
   };
 }
 

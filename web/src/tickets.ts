@@ -111,6 +111,14 @@ function person(persons: PersonSummary[], handle: string): PersonSummary | null 
 }
 const nameOf = (persons: PersonSummary[], handle: string): string =>
   person(persons, handle)?.name || (handle === MIRROR_HANDLE ? "GitHub" : handle);
+/** A name in the rail: a link to their profile when the handle is a known person (never the
+ *  GitHub mirror's system handle), else plain text. `style` is the text's own. */
+function personName(persons: PersonSummary[], handle: string, label: string, style: string): string {
+  const pp = person(persons, handle);
+  return pp && handle !== MIRROR_HANDLE
+    ? `<button data-act="openPerson" data-arg="${attr(pp.handle)}" class="cnpy-personlink" title="${attr(`${pp.name || pp.handle}'s profile`)}" style="${style};text-align:left;padding:0">${esc(label)}</button>`
+    : `<span style="${style}">${esc(label)}</span>`;
+}
 const firstNameOf = (persons: PersonSummary[], handle: string): string => nameOf(persons, handle).split(" ")[0];
 
 /** Avatar row — the design's `asgAvs` (-7px overlap, ring in the page background). The
@@ -903,7 +911,7 @@ function assigneeRail(p: TicketDetailProps): string {
   const list = assigned.length
     ? assigned.map((h) => `<div style="display:flex;align-items:center;gap:10px;height:34px">
         ${personChip(person(p.persons, h), 24, h)}
-        <span style="flex:1;min-width:0;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nameOf(p.persons, h))}</span>
+        <span style="flex:1;min-width:0;display:flex">${personName(p.persons, h, nameOf(p.persons, h), "min-width:0;font-size:13px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}</span>
         <button data-act="ticketAsgRemove" data-arg="${attr(h)}" title="Remove" class="cnpy-iconbtn" style="flex:none;${ICON_BTN};opacity:.45"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>
       </div>`).join("")
     : `<div style="display:flex;align-items:center;gap:10px;height:34px">
@@ -1036,7 +1044,7 @@ export function ticketDetailView(p: TicketDetailProps): string {
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">STATUS</div><div style="min-width:0">${statusControl(t.status, p.stMenu === "rail", "rail")}</div></div>
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">CATEGORY</div><div>${categoryChip(t.category)}</div></div>
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">PRIORITY</div><div>${priorityChip(t.priority)}</div></div>
-          <div style="${PROP_ROW}"><div style="${PROP_LABEL}">REQUESTER</div><div style="display:flex;align-items:center;gap:7px;min-width:0">${personChip(person(p.persons, t.requester), 20, t.requester)}<span style="font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.requester === MIRROR_HANDLE && t.source_author ? `@${t.source_author}` : nameOf(p.persons, t.requester))}</span></div></div>
+          <div style="${PROP_ROW}"><div style="${PROP_LABEL}">REQUESTER</div><div style="display:flex;align-items:center;gap:7px;min-width:0">${personChip(person(p.persons, t.requester), 20, t.requester)}${personName(p.persons, t.requester, t.requester === MIRROR_HANDLE && t.source_author ? `@${t.source_author}` : nameOf(p.persons, t.requester), "min-width:0;font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}</div></div>
           ${sourceRow(t)}
           <div style="${PROP_ROW}"><div style="${PROP_LABEL}">OPENED</div><div style="font-size:12.5px;color:var(--fg-70);white-space:nowrap">${esc(relTime(t.created_at))}</div></div>
         </div>

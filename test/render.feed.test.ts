@@ -45,7 +45,7 @@ function feedState(rows: FeedRow[], feedView: "reading" | "agents" = "agents"): 
     view: "app",
     screen: "feed",
     me: { handle: "alice", name: "Alice", avatar_url: null, color: "stone", identities: [], org: "SaplingLearn", admin: false },
-    persons: { status: "ok", data: [{ handle: "AndresL230", name: "Andres", color: "moss", avatar_url: null }] },
+    persons: { status: "ok", data: [{ handle: "AndresL230", name: "Andres", color: "moss", avatar_url: null, role: null }] },
     feed: { status: "ok", data: rows },
     feedAuthors: [...new Set(rows.map((r) => r.author))],
   };

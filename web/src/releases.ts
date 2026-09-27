@@ -71,6 +71,46 @@ export const prUrl = (n: number): string => `${CANOPY_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
   {
+    version: "0.16",
+    date: "2026-09-27",
+    title: "People profiles",
+    headline: "Everyone on the team has a profile — a photo, a role, what they're working on — and agents can read what each person owns.",
+    highlights: [
+      "People is a new page in the sidebar: everyone on the team as a card, searchable by name, handle or role. Open one for their profile — their role, when they joined, their GitHub, their open tickets, their recent sessions and the docs they own.",
+      "Upload your own photo in Settings › Profile. It's cropped to a square and shows everywhere your avatar does; remove it to go back to your GitHub or Google picture.",
+      "Add your role in Settings, and it shows on your profile and in the People directory. Admins can set anyone's role from their profile or from Maintenance › People.",
+      "Write down your responsibilities — what you own, and what should come to you. They aren't shown on your profile: agents read them when deciding whom to assign work.",
+      "Names lead to profiles: a person in search, a requester or assignee on a ticket, and an author in the Feed each open that person's profile.",
+      "Tickets you filed in Canopy can be deleted from the ticket page (tickets mirrored from GitHub can't), after a confirmation.",
+    ],
+    headsUp: [
+      "Opening Settings no longer lights up the account chip at the bottom of the sidebar as if it were a selected row.",
+    ],
+    ops: [
+      "Apply migration `0036_person_profiles` with `npm run db:migrate:remote` before this deploys.",
+      "Canopy plugin 0.6.8.",
+    ],
+    patches: {
+      added: [
+        "Migration `0036_person_profiles`: `persons.avatar_sha`, `role`, `responsibilities`; `shared/people.ts` — `ROLE_MAX`, `RESPONSIBILITIES_MAX`, `AVATAR_MAX_BYTES`, `AVATAR_TYPES`, `avatarSrc` and the profile DTOs",
+        "`GET /api/people/:handle` / `PUT /api/people/:handle` (self or admin), `POST /api/people/me/avatar` and `/avatar/remove`, `GET /avatar/<sha>`; `GET /persons` and `/auth/me` carry `role` and a resolved `avatar_url`",
+        "`web/src/profile.ts`: the People directory (`#people`) and a profile (`#people/<handle>`) — open tickets, recent sessions (→ the Feed filtered to them), docs they own, and an admin's inline role + responsibilities editor; People in the sidebar's Workspace",
+        "Settings › Profile: Upload photo / Remove photo (`web/src/avatar.ts` centre-crops to a 512px square and encodes WebP, else PNG, before upload), Role and Responsibilities",
+        "Tickets: `POST /tickets/:id/delete` hard-deletes a native ticket (any member, never MCP; a ticket mirrored from GitHub is a 403); Delete ticket in the rail, through the confirmation modal",
+      ],
+      changed: [
+        "`personChip` draws the initials under the photo; a photo that fails to load is dropped for the session (one capture-phase `error` listener), so it falls back to initials instead of a broken image",
+        "Quick search: a person hit opens their profile (was the queue filtered to them); People is in the Screens list",
+        "The ticket rail's requester and assignees, the Feed's authors and Maintenance › People's rows open the profile; Maintenance › People shows each role and, for admins, Edit role",
+        "Repo dashboard: PR authors and contributors show their avatar photo",
+        "Sidebar: no selected fill on the account chip while Settings is open — only its gear stays turned",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [],
+  },
+  {
     version: "0.15",
     date: "2026-09-26",
     title: "My Work tiles, a Roadmap timeline, one card look",
@@ -120,7 +160,6 @@ export const RELEASES: Release[] = [
         "Tickets table: 20px sides inside its card, no hairline under every row, category and priority as plain text (#86)",
         "My Work: with nothing to review, the clear Needs your review tile sits beside Repo instead of leading the page (#87)",
         "Tickets: every status moves to any other — Done and Declined are no longer terminal, so a resolved ticket drags (or is set) back to an open status; `tickets` skill, plugin 0.6.7 (#88)",
-        "Tickets: `POST /tickets/:id/delete` hard-deletes a native ticket (any member, never MCP; a ticket mirrored from GitHub is a 403); Delete ticket in the rail, through the confirmation modal (#88)",
         "Light theme palette from the Claude Design `Canopy Restyled.dc.html` (cool neutral grey, indigo accent)",
         "`--label` is Geist everywhere except the sidebar, which keeps Archivo Narrow",
         "Roadmap: New sprint in the header; `#roadmap/timeline` in the URL; the rail's Narrative / Timeline sub-pages removed",

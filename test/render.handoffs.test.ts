@@ -26,8 +26,8 @@ function sfbar(html: string): string | null {
 }
 
 const persons = [
-  { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null },
-  { handle: "Darkest-Teddy", name: "Jack", color: "plum" as const, avatar_url: null },
+  { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null, role: null },
+  { handle: "Darkest-Teddy", name: "Jack", color: "plum" as const, avatar_url: null, role: null },
 ];
 const h = (over: Partial<HandoffView> = {}): HandoffView => ({
   id: 12, sender: "Darkest-Teddy", recipient: "AndresL230", status: "pending",

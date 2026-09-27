@@ -39,6 +39,8 @@ describe("sidebar — structure is stable across every state", () => {
       { screen: "handoff" },
       { screen: "maintenance", maintTab: "people" },
       { screen: "releases" },
+      { screen: "people" },
+      { screen: "person" },
     ];
     for (const v of variants) expect(skeleton(sidebarView(props(v))), JSON.stringify(v)).toBe(base);
   });
@@ -53,7 +55,7 @@ describe("sidebar — groups and order (the design's five sections)", () => {
   it("orders Workspace · Monitor · Knowledge · Triage · Help, with Repo in Monitor", () => {
     const html = sidebarView(props());
     const at = (needle: string) => html.indexOf(needle);
-    const order = [">Workspace<", "goMyWork", "goTickets", "goRoadmap", "goHandoffs", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goDocs", "goArtifacts", "goPrompts", ">Triage<", "goReview", "goMaintenance", ">Help<", "goGuide", "goReleases"];
+    const order = [">Workspace<", "goMyWork", "goTickets", "goRoadmap", "goHandoffs", "goPeople", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goDocs", "goArtifacts", "goPrompts", ">Triage<", "goReview", "goMaintenance", ">Help<", "goGuide", "goReleases"];
     for (let i = 1; i < order.length; i++) expect(at(order[i]), order[i]).toBeGreaterThan(at(order[i - 1]));
   });
 
@@ -92,6 +94,9 @@ describe("sidebar — active state", () => {
     expect(navKeyOf("promptedit")).toBe("prompts");
     expect(navKeyOf("newdoc")).toBe("docs");
     expect(navKeyOf("releases")).toBe("releases");
+    expect(navKeyOf("people")).toBe("people");
+    expect(navKeyOf("person")).toBe("people");
+    expect(sidebarView(props({ screen: "person" }))).toContain('class="cnpy-navrow n-people is-active"');
     expect(sidebarView(props({ screen: "sprint" }))).toContain('class="cnpy-navrow n-roadmap is-active"');
   });
 

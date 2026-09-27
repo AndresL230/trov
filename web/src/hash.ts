@@ -19,6 +19,7 @@
 //                       prompt; #prompts/<slug>/edit and #prompts/<slug>/version its editor
 //   #docs/new         → the new-doc form
 //   #maintenance      → Maintenance › Unplaced; #maintenance/identity and #maintenance/people
+//   #people           → the People directory; #people/<handle> one person's profile
 //   #releases         → Help › What's new: the grid of releases
 //   #releases/<v>     → one release's notes (<v> = "0.14" or "unreleased"); #releases/<v>/patches
 //                       its patch notes. The legacy #releases/patches opens the newest release's.
@@ -38,7 +39,7 @@ import { RELEASES, releaseSlug, type ReleasePage } from "./releases";
  *  sprint routes are parsed separately below. */
 const PLAIN_SCREENS: Screen[] = [
   "mywork", "feed", "docs", "review",
-  "search", "settings", "guide", "unsubscribe", "tickets", "site", "handoffs", "prompts",
+  "search", "settings", "guide", "unsubscribe", "tickets", "site", "handoffs", "prompts", "people",
 ];
 
 export interface Route {
@@ -65,13 +66,15 @@ export interface Route {
   releaseVersion?: string;
   /** Set only with `releaseVersion`. */
   releasePage?: ReleasePage;
+  /** Set only on `person` (the handle, as written in the hash). */
+  personHandle?: string;
 }
 
 /** Whether two routes name the same place (the hashchange no-op check). */
 export function sameRoute(a: Route, b: Route): boolean {
   return a.screen === b.screen && a.ticketId === b.ticketId && a.sprintId === b.sprintId && a.repoTab === b.repoTab
     && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.maintTab === b.maintTab && a.roadmapTab === b.roadmapTab
-    && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
+    && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage && a.personHandle === b.personHandle
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null);
 }
 
@@ -171,6 +174,11 @@ export function parseHash(hash: string): Route {
     if (parts[2] === "patches" || parts[2] === "notes") return { screen: "releases", ...base, releaseVersion: v, releasePage: parts[2] };
     return none;
   }
+  if (parts[0] === "people" && parts.length === 2) {
+    // A handle: letters, digits, `-` / `_` (migrated GitHub logins keep their case).
+    const h = seg(parts[1]);
+    return h && /^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/.test(h) ? { screen: "person", ...base, personHandle: h } : none;
+  }
   if (parts[0] === "maintenance") {
     if (parts.length === 1) return { screen: "maintenance", ...base, maintTab: "unplaced" };
     if (parts.length === 2 && (MAINT_TABS as readonly string[]).includes(parts[1])) return { screen: "maintenance", ...base, maintTab: parts[1] as MaintTab };
@@ -209,6 +217,7 @@ export function hashForRoute(r: Route): string {
     if (!r.releaseVersion) return "#releases";
     return `#releases/${encodeURIComponent(r.releaseVersion)}${r.releasePage === "patches" ? "/patches" : ""}`;
   }
+  if (r.screen === "person") return r.personHandle ? `#people/${encodeURIComponent(r.personHandle)}` : "#people";
   if (r.screen === "maintenance") return !r.maintTab || r.maintTab === "unplaced" ? "#maintenance" : `#maintenance/${r.maintTab}`;
   return `#${r.screen}`;
 }
