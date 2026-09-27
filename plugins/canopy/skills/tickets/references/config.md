@@ -36,7 +36,7 @@ All optional. Unknown keys are ignored.
 | `self_assign_on_create` | `true` | Whether the agent puts its own principal on tickets it files. **This is the lever on the one escalation the design has**: a self-assigned ticket is in the agent's lane, so it can later resolve it. Set `false` on a team that wants a person to pick up everything, including what an agent filed. |
 | `offer_transitions` | `all` | Which moves the skill proposes. `all`, or `start-only` (`submitted → in_progress` and nothing else — a team that wants people to close things). Advisory. |
 | `comment_prefix` | *(none)* | Prepended to every comment the agent posts, e.g. `[via claude]`. Canopy stores **no** provenance on a write, so this is the only thing that makes an agent's comment recognizable in the ticket history. |
-| `require_confirmation` | `true` | Show the one-line diff and wait before any write. `done` / `declined` and `complete_sprint` are **always** confirmed regardless of this setting — they are terminal and org-visible. |
+| `require_confirmation` | `true` | Show the one-line diff and wait before any write. `done` / `declined` and `complete_sprint` are **always** confirmed regardless of this setting — they resolve work for the whole org. |
 | `link_repo` | `SaplingLearn/sapling` | The repo a bare `#214` resolves against. Must match `DEFAULT_TICKET_REPO` in `shared/tickets.ts` — the server parses the link, not the skill, so a mismatch here just makes the skill's preview wrong. |
 
 ## Example

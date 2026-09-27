@@ -14,8 +14,8 @@
 //     drives closure. A `closed` delivery forces the final state (done /
 //     declined), a `deleted` / `transferred` one forces declined, and a
 //     `reopened` one reopens a resolved ticket to `submitted`. Those forced moves
-//     bypass TICKET_TRANSITIONS (done is terminal for a person, not for GitHub)
-//     through `forceStatus` below, which is NOT exported: no route or MCP tool
+//     go through `forceStatus` below (a person may make any move too; the mirror's
+//     writer just carries GitHub's actor and `source_updated_at`), which is NOT exported: no route or MCP tool
 //     can reach it. Every forced move writes a `ticket_events` row as
 //     `github-webhook`.
 //   - the source link: locked forever (`ticket_links.locked = 1`); the one delete
@@ -197,8 +197,8 @@ function forcedStatus(m: IssueMirror, current: TicketStatus): TicketStatus | nul
 }
 
 /**
- * THE internal status writer — the mirror's only way to move a status, and the
- * only writer in Canopy that may bypass TICKET_TRANSITIONS. Module-private on
+ * THE internal status writer — the mirror's only way to move a status, writing
+ * as `github-webhook` and stamping `source_updated_at`. Module-private on
  * purpose: routes and MCP reach status only through `transition_ticket`.
  */
 async function forceStatus(db: DB, id: number, from: TicketStatus, to: TicketStatus, sourceUpdatedAt: string): Promise<void> {

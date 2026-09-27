@@ -41,21 +41,20 @@ export function sourceIssueNumber(sourceRef: string | null | undefined): number 
 // the card on the board — there are no accept/reject action buttons, and
 // assignment never implies a status (an assignee is assigned, full stop).
 //
-// The board moves freely (the owner's call, 2026-09-26): any OPEN status —
-// submitted, in_progress, testing — may move to any other status, Triage straight
-// to Done included. Testing (0033) is an optional step between In progress and
-// Done, not a gate. done, declined are terminal — a resolved ticket is not
-// re-opened by a person (a mirrored ticket still reopens with its GitHub issue,
-// through the mirror's own writer).
+// Every move is free (the owner's call, 2026-09-27): any status may move to any
+// other — Triage straight to Done, and Done or Declined back to any open status
+// (a ticket resolved by mistake, or whose work turned out unfinished, is simply
+// moved back). Testing (0033) is an optional step, not a gate. The only move
+// refused is a status to itself, which is not a move.
 //
 // The order here is the pipeline's, which is the order the control lists them in.
 
 export const TICKET_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
   submitted: ["in_progress", "testing", "done", "declined"],
-  in_progress: ["testing", "done", "declined", "submitted"],
-  testing: ["done", "in_progress", "declined", "submitted"],
-  done: [],
-  declined: [],
+  in_progress: ["submitted", "testing", "done", "declined"],
+  testing: ["submitted", "in_progress", "done", "declined"],
+  done: ["submitted", "in_progress", "testing", "declined"],
+  declined: ["submitted", "in_progress", "testing", "done"],
 };
 
 export function canTransition(from: TicketStatus, to: TicketStatus): boolean {

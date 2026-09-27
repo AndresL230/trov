@@ -396,8 +396,8 @@ function tableView(p: QueueProps): string {
 
 /** A board card — the plain one: the title, then #number · priority (only when
  *  it is not normal) · the assignees. Everything else is one click away.
- *  Open tickets drag between columns (main.ts's pointer-driven board drag); a
- *  resolved one stays put, since done / declined are terminal. */
+ *  Every card drags between columns (main.ts's pointer-driven board drag) —
+ *  a resolved ticket moves back as freely as an open one. */
 function boardCard(t: TicketListItem, persons: PersonSummary[]): string {
   const canMove = legalMoves(t.status).length > 0;
   const prio = t.priority === "normal" ? ""
@@ -682,9 +682,8 @@ export type StatusMenuAnchor = "rail";
  *  "Decline" pair read as an accept/reject gate on the assignment, which is not
  *  what a status is (and assignment never gated anything — `toggle_assignee`
  *  does not touch status). The menu lists the statuses in pipeline order with
- *  the current one ticked; only the moves `TICKET_TRANSITIONS` allows are
- *  clickable, so the control can never offer what the route would 409. A
- *  terminal status has no moves and renders as a plain pill. */
+ *  the current one ticked; every other status is clickable (`TICKET_TRANSITIONS`
+ *  allows every move), done and declined included. */
 function statusControl(status: TicketStatus, open: boolean, anchor: StatusMenuAnchor): string {
   const moves = legalMoves(status);
   if (moves.length === 0) return ticketPill(status);

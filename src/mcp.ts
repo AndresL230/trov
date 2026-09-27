@@ -260,7 +260,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "transition_ticket",
-    "Move a ticket's status. SCOPED: only on a ticket already assigned to you, else `forbidden` and nothing is written. Legal moves are the one shared table — any OPEN status (submitted, in_progress, testing) may move to any other status; done and declined are TERMINAL (an illegal move is `conflict`, and writes nothing, not even history). `done`/`declined` resolve the ticket for the whole org and cannot be undone, so confirm with the person first. Appends a ticket_events row attributed to you.",
+    "Move a ticket's status. SCOPED: only on a ticket already assigned to you, else `forbidden` and nothing is written. Any status may move to any other — done and declined included, so a resolved ticket can be moved back (only a move to the status it already has is `conflict`, and writes nothing). `done`/`declined` resolve the ticket for the whole org, so confirm with the person first. Appends a ticket_events row attributed to you.",
     { id: z.number(), ...TicketTransition.shape },
     async ({ id, to }) => runTool(async () => {
       await agentTransitionTicket(env.DB, env, id, to, principal.handle);

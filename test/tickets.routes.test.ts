@@ -360,14 +360,16 @@ describe("POST /tickets/:id/move", () => {
     expect(await eventsOf(b.id)).toHaveLength(1);                     // just the opening row
   });
 
-  it("refuses a move out of a terminal status with 409 and writes nothing", async () => {
+  it("moves a resolved ticket back out of Done, with a history row", async () => {
     const cookie = await cookieFor("andres");
     const t = await createTicket(cookie, { title: "Closed" });
     await forceStatus(t.id, "done");
     const res = await post(`/tickets/${t.id}/move`, cookie, { to: "testing", after_id: null });
-    expect(res.status).toBe(409);
-    const row = await first<{ status: string; board_rank: number | null }>(env.DB, `SELECT status, board_rank FROM tickets WHERE id = ?`, t.id);
-    expect(row).toEqual({ status: "done", board_rank: null });
+    expect(res.status).toBe(200);
+    const row = await first<{ status: string }>(env.DB, `SELECT status FROM tickets WHERE id = ?`, t.id);
+    expect(row).toEqual({ status: "testing" });
+    const events = await eventsOf(t.id);
+    expect(events[events.length - 1]).toEqual({ actor: "andres", from_status: "done", to_status: "testing" });
   });
 
   it("a status-menu move clears the saved position — the card goes to the top of its new column", async () => {
@@ -398,8 +400,8 @@ describe("POST /tickets/:id/status", () => {
 
     const legal: Array<[TicketStatus, TicketStatus]> = [];
     for (const from of TICKET_STATUSES) for (const to of TICKET_TRANSITIONS[from]) legal.push([from, to]);
-    // Every OPEN status (submitted, in_progress, testing) → each of the other four.
-    expect(legal.length).toBe(12);
+    // Every status → each of the other four.
+    expect(legal.length).toBe(20);
 
     for (const [from, to] of legal) {
       const t = await createTicket(cookie, { title: `${from} to ${to}` });
@@ -430,9 +432,9 @@ describe("POST /tickets/:id/status", () => {
         if (!TICKET_TRANSITIONS[from].includes(to)) illegal.push([from, to]);
       }
     }
-    // 25 pairs minus the 12 legal ones — and every status contributes at least one
-    // (an open status: itself; done / declined: everything).
-    expect(illegal.length).toBe(13);
+    // 25 pairs minus the 20 legal ones: each status to itself, and nothing else.
+    expect(illegal.length).toBe(5);
+    for (const [from, to] of illegal) expect(from).toBe(to);
     for (const status of TICKET_STATUSES) expect(illegal.some(([f]) => f === status)).toBe(true);
 
     for (const [from, to] of illegal) {

@@ -15,13 +15,12 @@ import {
 // Deliberately NOT derived from TICKET_TRANSITIONS: this table is the spec, and
 // a test that reads the constant it is checking cannot fail when the constant
 // changes. All 4x4 = 16 ordered pairs, including every self-transition.
-// The board moves freely (2026-09-26): every OPEN status → every other status;
-// done and declined stay terminal. Written out pair by pair on purpose.
-const OPEN = ["submitted", "in_progress", "testing"] as const;
+// Every move is free (2026-09-27): every status → every OTHER status, done and
+// declined included. Only a status to itself is refused.
 const EXPECTED_TRANSITIONS: ReadonlyArray<readonly [TicketStatus, TicketStatus, boolean]> =
   (["submitted", "in_progress", "testing", "done", "declined"] as const).flatMap((from) =>
     (["submitted", "in_progress", "testing", "done", "declined"] as const).map((to) =>
-      [from, to, (OPEN as readonly string[]).includes(from) && from !== to] as const));
+      [from, to, from !== to] as const));
 
 describe("ticket status machine", () => {
   it("canTransition matches the spec for all 25 from→to pairs", () => {
@@ -31,6 +30,9 @@ describe("ticket status machine", () => {
     // The two moves the owner asked for by name.
     expect(canTransition("submitted", "done")).toBe(true);
     expect(canTransition("in_progress", "testing")).toBe(true);
+    // And the one asked for on 2026-09-27: a resolved ticket moves back.
+    expect(canTransition("done", "in_progress")).toBe(true);
+    expect(canTransition("declined", "submitted")).toBe(true);
     const covered = new Set(EXPECTED_TRANSITIONS.map(([f, t]) => `${f}>${t}`));
     for (const from of TICKET_STATUSES) {
       for (const to of TICKET_STATUSES) {
@@ -45,18 +47,18 @@ describe("ticket status machine", () => {
 
   it("legalMoves returns exactly the allowed targets per status, in pipeline order", () => {
     expect(legalMoves("submitted")).toEqual(["in_progress", "testing", "done", "declined"]);
-    expect(legalMoves("in_progress")).toEqual(["testing", "done", "declined", "submitted"]);
-    expect(legalMoves("testing")).toEqual(["done", "in_progress", "declined", "submitted"]);
-    expect(legalMoves("done")).toEqual([]);
-    expect(legalMoves("declined")).toEqual([]);
+    expect(legalMoves("in_progress")).toEqual(["submitted", "testing", "done", "declined"]);
+    expect(legalMoves("testing")).toEqual(["submitted", "in_progress", "done", "declined"]);
+    expect(legalMoves("done")).toEqual(["submitted", "in_progress", "testing", "declined"]);
+    expect(legalMoves("declined")).toEqual(["submitted", "in_progress", "testing", "done"]);
   });
 
   it("legalMoves hands back a copy — a caller cannot mutate the transition table", () => {
     const moves = legalMoves("done");
-    moves.push("submitted");
-    expect(legalMoves("done")).toEqual([]);
-    expect(TICKET_TRANSITIONS.done).toEqual([]);
-    expect(canTransition("done", "submitted")).toBe(false);
+    moves.push("done");
+    expect(legalMoves("done")).toEqual(["submitted", "in_progress", "testing", "declined"]);
+    expect(TICKET_TRANSITIONS.done).toEqual(["submitted", "in_progress", "testing", "declined"]);
+    expect(canTransition("done", "done")).toBe(false);
   });
 
   it("isOpenStatus splits the queue into open (submitted, in_progress, testing) and closed", () => {

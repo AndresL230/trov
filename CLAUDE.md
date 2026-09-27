@@ -230,9 +230,10 @@ tickets nest exactly ONE level (`set_ticket_parent`'s four rejections).
 
 **The ticket board** (the queue's DEFAULT view, `web/src/tickets.ts` `boardView`; the Table is the other).
 Statuses are `submitted` (Triage) / `in_progress` / `testing` / `done` / `declined` — `testing` (0033) is an
-optional step, not a gate. The board moves FREELY (the owner's call, 2026-09-26): any OPEN status —
-`OPEN_STATUSES`, spelled `OPEN_STATUS_SQL` in every SQL reader (My Work, the badge, the Repo tile, `seg=open`) —
-may move to any other, Triage straight to Done included; `done` / `declined` stay terminal. Each column is in
+optional step, not a gate. Every move is FREE (the owner's call, 2026-09-27): ANY status may move to any other —
+Triage straight to Done, and `done` / `declined` back to an open status (nothing is terminal; only a move to the
+status a ticket already has is a 409). The OPEN statuses are `OPEN_STATUSES`, spelled `OPEN_STATUS_SQL` in every
+SQL reader (My Work, the badge, the Repo tile, `seg=open`). Each column is in
 a SAVED order, `tickets.board_rank`, written only by a drag: `POST /tickets/:id/move {to, after_id}` →
 `move_ticket` sets status AND position in one batch (a status change appends the same history row as
 `transition_ticket`; a same-column drop only reorders). NULL = no position = the TOP of the column,

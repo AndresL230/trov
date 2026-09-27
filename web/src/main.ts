@@ -3457,13 +3457,12 @@ mount.addEventListener("change", (e) => {
 // A press becomes a drag only past DRAG_SLOP px, so a click still opens the
 // ticket, and the click a real drag's release fires is swallowed. The columns
 // themselves are NOT highlighted (the owner's call): the slot says where the card
-// goes. A column the status machine refuses (`canTransition`, the table the server
-// enforces) takes no slot — it goes home — and a release there explains why.
+// goes. Every column takes the card — any status may move to any other.
 // Rerenders are held for the whole drag (the DOM IS the drag state).
 // Mouse and pen only: on touch a press on the board must still scroll it.
 const DRAG_SLOP = 5;
 const SLIDE_MS = 160;
-let boardDrag: { id: number; from: TicketStatus; blocked: TicketStatus | null } | null = null;
+let boardDrag: { id: number; from: TicketStatus } | null = null;
 let rerenderHeld = false;
 interface BoardPress {
   card: HTMLElement; id: number; from: TicketStatus; x: number; y: number;
@@ -3541,7 +3540,7 @@ function startBoardDrag(p: BoardPress): void {
   p.card.parentElement?.insertBefore(slot, p.card);
   p.card.classList.add("is-lifted");
   p.slot = slot;
-  boardDrag = { id: p.id, from: p.from, blocked: null };
+  boardDrag = { id: p.id, from: p.from };
   document.documentElement.classList.add("cnpy-grabbing");
 }
 mount.addEventListener("pointerdown", (e) => {
@@ -3566,16 +3565,11 @@ document.addEventListener("pointermove", (e) => {
   ghost.style.left = `${e.clientX - p.dx}px`;
   ghost.style.top = `${e.clientY - p.dy}px`;
   const col = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-tdrop]") ?? null;
-  const st = (col?.dataset.tdrop ?? null) as TicketStatus | null;
-  const ok = st !== null && (st === p.from || canTransition(p.from, st));
-  boardDrag.blocked = st !== null && !ok ? st : null;
-  const list = col && ok ? listOf(col) : null;
+  const list = col ? listOf(col) : null;
   if (list) {
     // The slot goes before the first card whose middle is below the pointer.
     const ref = liveCards(list).find((c) => { const b = c.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; }) ?? null;
     moveSlot(slot, list, ref);
-  } else if (boardDrag.blocked && p.homeList) {
-    moveSlot(slot, p.homeList, p.homeNext);             // refused column: the gap goes home
   }
 });
 function endBoardDrag(commit: boolean): void {
@@ -3584,7 +3578,7 @@ function endBoardDrag(commit: boolean): void {
   if (!p.ghost || !p.slot || !boardDrag) { boardPress = null; return; }   // a plain click: let it open the ticket
   swallowClick = true;                                  // the click this release fires is not an "open"
   setTimeout(() => { swallowClick = false; }, 0);
-  const { id, from, blocked } = boardDrag;
+  const { id, from } = boardDrag;
   const slot = p.slot;
   const to = (slot.closest<HTMLElement>("[data-tdrop]")?.dataset.tdrop ?? from) as TicketStatus;
   const after = prevLive(slot);
@@ -3592,11 +3586,6 @@ function endBoardDrag(commit: boolean): void {
   const finish = () => {
     clearBoardDrag();
     if (!commit) return;
-    if (blocked) {
-      const legal = TICKET_STATUSES.filter((s) => canTransition(from, s)).map((s) => TICKET_STATUS_LABEL[s]);
-      flash(`${TICKET_STATUS_LABEL[from]} can't move to ${TICKET_STATUS_LABEL[blocked]} — only to ${legal.join(" or ")}`);
-      return;
-    }
     if (!unmoved) dispatch("queueDrop", `${id}:${to}:${after?.dataset.arg ?? ""}`, null);
   };
   if (!commit || reducedMotion()) { finish(); return; }
