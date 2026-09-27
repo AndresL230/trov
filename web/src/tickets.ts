@@ -73,6 +73,14 @@ export function tagChip(
 
 const categoryChip = (c: string) => tagChip(c, { color: "var(--fg-55)", border: "var(--border-strong)" });
 
+/** The table's category and priority: plain text, no box — inside the table's one surface
+ *  only the status pill (whose hue means something) keeps an outline. Priority stays
+ *  MONOCHROME (design call #5): weight and tone, not hue. */
+const tableCategory = (c: string) =>
+  `<span style="font-size:12.5px;color:var(--fg-55);white-space:nowrap">${esc(c)}</span>`;
+const tablePriority = (p: TicketPriority) =>
+  `<span style="font-family:var(--label);font-size:10.5px;letter-spacing:.05em;white-space:nowrap;${p === "high" ? "font-weight:700;color:var(--fg)" : p === "normal" ? "font-weight:600;color:var(--fg-55)" : "font-weight:600;color:var(--fg-40)"}">${esc(p.toUpperCase())}</span>`;
+
 /** The system requester of a mirrored ticket whose issue author maps to no person
  *  (0032). Not in the people directory, so it gets its own display name. */
 const MIRROR_HANDLE = "github-webhook";
@@ -302,16 +310,17 @@ function relationChip(t: TicketListItem): string {
   return "";
 }
 
-/** `last` = the table's final row: no hairline under it, since the surface's own edge closes the list. */
-function tableRow(t: TicketListItem, persons: PersonSummary[], last = false): string {
+/** A table row: no hairline of its own — the hover fill marks a row, and one hairline
+ *  between sprint groups is the only rule inside the body. */
+function tableRow(t: TicketListItem, persons: PersonSummary[]): string {
   const attn = needsAttention(t);
   const asgText = assigneeLabel(t.assignees, persons);
   const asgStyle = t.assignees.length ? "color:var(--fg-70)" : "color:var(--fg-55);font-style:italic";
-  return `<button data-act="openTicket" data-arg="${t.id}" class="cnpy-trow${attn ? NEEDS_ATTENTION_CLASS : ""}" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;align-items:center;width:100%;text-align:left;padding:12px 10px;${last ? "" : "border-bottom:1px solid var(--border);"}transition:background .12s ease">
+  return `<button data-act="openTicket" data-arg="${t.id}" class="cnpy-trow${attn ? NEEDS_ATTENTION_CLASS : ""}" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;align-items:center;width:100%;text-align:left;padding:11px 20px;transition:background .12s ease">
     <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="min-width:0;font-size:13.5px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>${relationChip(t)}${sourceChip(t)}</div>
     <div style="display:flex;align-items:center;gap:7px;min-width:0">${personChip(person(persons, t.requester), 20, t.requester)}<span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nameOf(persons, t.requester))}</span></div>
-    <div>${categoryChip(t.category)}</div>
-    <div>${priorityChip(t.priority)}</div>
+    <div>${tableCategory(t.category)}</div>
+    <div>${tablePriority(t.priority)}</div>
     <div>${ticketPill(t.status)}</div>
     <div style="display:flex;align-items:center;gap:7px;min-width:0">${avatarStack(t.assignees, persons)}<span style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${asgStyle}">${esc(asgText)}</span></div>
     <div style="font-size:11.5px;color:var(--fg-40);text-align:right;font-family:var(--label)">${esc(age(t.created_at))}</div>
@@ -357,30 +366,30 @@ function groupHeader(g: QueueGroup): string {
     ? `<button data-act="openSprint" data-arg="${g.key}" title="Open sprint screen" class="cnpy-grouplink" style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500;color:var(--fg-55);white-space:nowrap;flex:none;padding:2px 6px">Open sprint →</button>`
     : "";
   const meta = `<span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40);white-space:nowrap">${esc(g.dates)}${g.active ? `<span style="color:var(--accent)"> · ACTIVE</span>` : ""}</span>`;
-  return `<div class="cnpy-tgrp" style="display:flex;align-items:center;gap:9px;padding:18px 10px 8px">
+  return `<div class="cnpy-tgrp" style="display:flex;align-items:center;gap:9px;padding:18px 20px 6px">
     <span style="width:7px;height:7px;border-radius:50%;flex:none;background:${g.active ? "var(--accent)" : "var(--border-strong)"}"></span>
     <span style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;white-space:nowrap;color:${g.active ? "var(--accent)" : "var(--fg-55)"}">${esc(g.label)}</span>
     ${meta}
     ${openLink}
-    <div style="flex:1;height:1px;background:var(--border)"></div>
+    <div style="flex:1"></div>
     <span style="font-family:var(--label);font-size:10px;font-weight:600;color:var(--fg-40);white-space:nowrap;flex:none">${g.rows.length} ${g.rows.length === 1 ? "ticket" : "tickets"}</span>
   </div>`;
 }
 
 function tableView(p: QueueProps): string {
-  const head = `<div class="cnpy-thead" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;padding:12px 10px 8px;border-bottom:1px solid var(--border-strong);font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">
+  const head = `<div class="cnpy-thead" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;padding:14px 20px 10px;border-bottom:1px solid var(--border);font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">
     <div>TITLE</div><div>OPENED BY</div><div>CATEGORY</div><div>PRIORITY</div><div>STATUS</div><div>ASSIGNEE</div><div style="text-align:right">AGE</div>
   </div>`;
-  const all = queueGroups(p.tickets, p.sprints);
-  const groups = all
-    .map((g, gi) => `<div class="cnpy-stagger">${groupHeader(g)}${g.rows.map((t, ri) =>
-      tableRow(t, p.persons, gi === all.length - 1 && ri === g.rows.length - 1)).join("")}</div>`)
+  // Each group is a `.cnpy-tgroup`; canopy.css draws the ONE hairline between groups.
+  const groups = queueGroups(p.tickets, p.sprints)
+    .map((g) => `<div class="cnpy-stagger cnpy-tgroup">${groupHeader(g)}${g.rows.map((t) => tableRow(t, p.persons)).join("")}</div>`)
     .join("");
   const empty = p.tickets.length === 0
     ? `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">Nothing in this view.</div>`
     : "";
-  // The table is ONE surface; its rows stay hairline-divided inside it, and a
-  // row's hover fill runs to the surface's edges (overflow clips the corners). Narrow
+  // The table is ONE surface with 20px sides; rows carry no dividers (a hairline
+  // separates sprint groups), and a row's hover fill runs to the surface's edges
+  // (overflow clips the corners). Narrow
   // (`.cnpy-ttable`, a container query in canopy.css) each row reflows into a small card.
   return `<div${surface("margin-top:8px;overflow:hidden", { cls: "cnpy-ttable" })}>${head}${groups}${empty}</div>`;
 }

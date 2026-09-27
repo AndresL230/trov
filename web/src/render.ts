@@ -2054,7 +2054,7 @@ function myWorkView(s: AppState): string {
   // waiting on me — the sidebar badge's definition, `handoffsForMe`.
   const feedLoad = mwLoad(s.mwSessions.status, s.mwSessions.data.length > 0);
   const sessions: MwSession[] = s.mwSessions.data
-    .slice(0, 3)
+    .slice(0, 2)
     .map((e) => ({ id: e.id, summaryHtml: renderMarkdownInline(e.summary), brief: e.brief, at: e.created_at }));
   const handoffLoad = mwLoad(s.handoffs.status, s.handoffs.data.length > 0);
   const waiting: MwHandoff[] = handoffsForMe(s.handoffs.data, me)
@@ -2107,12 +2107,11 @@ function myWorkView(s: AppState): string {
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   // The design's composition: Tickets (only when you have some) and Needs your
-  // review (only when something waits) lead at 7/5; Your sessions and Repo follow;
-  // a clear review queue drops to a slim strip beside the library.
+  // review lead at 7/5; Your sessions and Repo follow; the library closes. Review
+  // ALWAYS holds its place — a clear queue reads clear there, never moves.
   const hasTickets = dLoad !== "ok" || degraded || tickets.length > 0;
-  const hasReview = reviewLoad !== "ok" || reviewItems.length > 0;
-  const order = [hasTickets ? "tickets" : "", hasReview ? "review" : "", "sessions", "repo"].filter(Boolean);
-  const strips = hasReview ? ["library"] : ["review", "library"];
+  const order = [hasTickets ? "tickets" : "", "review", "sessions", "repo"].filter(Boolean);
+  const strips = ["library"];
   const span = mwSpans(order, strips);
   const tile: Record<string, () => string> = {
     tickets: () => ticketsTile({ load: dLoad, rows: tickets, total: ticketsTotal, expanded: s.mwExpanded.tickets }, degraded, span.tickets, dueOf),

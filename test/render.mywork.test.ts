@@ -173,6 +173,7 @@ describe("reviewTile", () => {
   it("an empty, loaded queue reads clear — a loading one never does", () => {
     expect(reviewTile([], "ok", 5)).toContain("Nothing waiting on your review");
     expect(reviewTile([], "pending", 5)).not.toContain("Nothing waiting on your review");
+    expect(reviewTile([], "pending", 5)).toContain("Loading");
   });
 });
 
@@ -268,12 +269,13 @@ describe("render() — My Work screen", () => {
     expect(html).not.toContain("Recent happenings");
   });
 
-  it("drops Tickets when there are none, and a clear review queue to a strip beside the library", () => {
+  it("drops Tickets when there are none; a clear review queue keeps its place and reads clear", () => {
     const s = stateWithDashboard(dash());
     const html = render({ ...s, proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } });
     const labels = [...html.matchAll(/data-screen-label="My Work · ([^"]+)"/g)].map((m) => m[1]);
-    expect(labels).toEqual(["Your sessions", "Repo monitor", "Needs your review, clear", "Your library"]);
+    expect(labels).toEqual(["Needs your review", "Your sessions", "Repo monitor", "Your library"]);
     expect(html).toContain("Nothing waiting on your review");
+    expect(html).toMatch(/--span:12[^"]*"[^>]*data-mw="library"/); // the library: its own full row
   });
 
   it("degraded:true keeps the tickets tile, with a hint instead of empty copy", () => {
@@ -488,6 +490,18 @@ describe("My Work — audit fixes", () => {
     expect(html).not.toContain("From the FEED screen");
   });
 
+  it("Your sessions shows two sessions and one handoff, however many wait", () => {
+    const html = render(loaded({
+      mwSessions: { status: "ok", data: [1, 2, 3].map((id) => feedRow(id, "alice", `Session ${id}`)) },
+      handoffs: { status: "ok", data: [1, 2, 3].map((id) => handoff(id, "bob", "alice")) },
+    }));
+    const tile = html.slice(html.indexOf('data-mw="sessions"'), html.indexOf('data-mw="repo"'));
+    expect((tile.match(/data-act="goFeed" class="mw-row"/g) ?? []).length).toBe(2);
+    expect(tile).not.toContain("Session 3");
+    expect((tile.match(/data-act="openHandoff"/g) ?? []).length).toBe(1);
+    expect(tile).toContain("3 handoffs waiting for a fresh session");
+  });
+
   it("Your sessions: loading, error and empty each say so honestly", () => {
     const tileOf = (html: string) => html.slice(html.indexOf('data-mw="sessions"'), html.indexOf('data-mw="repo"'));
     expect(tileOf(render(loaded({ mwSessions: { status: "loading", data: [] } })))).toContain("Loading");
@@ -545,6 +559,11 @@ describe("My Work — audit fixes", () => {
     expect(html).toContain("2 handoffs waiting for a fresh session");
     expect(dateLine(html)).toContain("2 handoffs waiting");
     expect(html).not.toContain(">Waiting<");
+    // None waiting: the tile says nothing about handoffs (the library strip's cell does).
+    const none = render(loaded({ handoffs: { status: "ok", data: [handoff(3, "bob", "anyone")] } }));
+    const tile = none.slice(none.indexOf('data-mw="sessions"'), none.indexOf('data-mw="sessions"') + 2000);
+    expect(tile).not.toMatch(/handoffs? waiting/i);
+    expect(none).toContain("No handoffs queued.");
   });
 
   // Docs you own: meta read, stubs excluded
@@ -573,7 +592,7 @@ describe("My Work — audit fixes", () => {
     expect(mw).toContain("loadMwDocs()");
     expect(mw).toContain("loadMwSessions()");
     expect(body("loadMwDocs")).toContain("listDocMeta()");
-    expect(body("loadMwSessions")).toContain("limit: 3");
+    expect(body("loadMwSessions")).toContain("limit: 2");
     // The boot's badge loads are guarded, so a screen loader that already started them (My Work, Review) is not doubled.
     expect(mainSrc).toContain('if (state.proposals.status === "idle") loadProposals();');
     expect(mainSrc).toContain('if (state.draftAdrs.status === "idle") loadDraftAdrs();');
