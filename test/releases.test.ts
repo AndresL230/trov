@@ -20,6 +20,14 @@ import { render, initialState } from "../web/src/render";
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
+// The live data has an Unreleased entry only between a merge and the next version cut,
+// so the Unreleased rendering is tested against this fixture prepended to it.
+const NEXT: Release = {
+  version: "Unreleased", date: "2099-01-01", unreleased: true, title: "Next", headline: "Coming",
+  highlights: ["a", "b", "c"], patches: { added: ["x"], changed: [], fixed: [], removed: [] },
+};
+const withNext: Release[] = [NEXT, ...RELEASES];
+
 describe("RELEASES — the data", () => {
   it("is newest first: dates never increase down the list, and Unreleased (if any) is first", () => {
     for (let i = 1; i < RELEASES.length; i++) {
@@ -61,9 +69,8 @@ describe("RELEASES — the data", () => {
     }
   });
 
-  it("names the migration an admin must run for the unreleased batch — in ops, not the users' heads-up", () => {
-    const next = RELEASES[0];
-    expect(next.unreleased).toBe(true);
+  it("names the migration an admin must run for 0.15 — in ops, not the users' heads-up", () => {
+    const next = findRelease("0.15")!;
     expect(next.ops?.join(" ")).toMatch(/0035_library_and_sprint_dates/);
     expect(next.ops?.join(" ")).not.toMatch(/0036/);
     expect(next.headsUp?.join(" ")).toMatch(/800 characters/);
@@ -102,7 +109,7 @@ describe("releaseLine / releaseDate / slugs", () => {
     expect(releaseHash(null)).toBe("#releases");
     expect(releaseHash("0.14")).toBe("#releases/0.14");
     expect(releaseHash("0.14", "patches")).toBe("#releases/0.14/patches");
-    expect(findRelease("UNRELEASED")?.unreleased).toBe(true);
+    expect(findRelease("UNRELEASED", withNext)?.unreleased).toBe(true);
     expect(findRelease("0.99")).toBeNull();
   });
 });
@@ -121,18 +128,18 @@ const hostile: Release[] = [
 
 describe("the index — a grid of release cards", () => {
   it("renders every release as a card linking to its page, newest first", () => {
-    const html = releasesIndex();
+    const html = releasesIndex(withNext);
     expect(html).toContain('class="cnpy-relgrid"');
     const hrefs = [...html.matchAll(/<a href="(#releases\/[^"]+)"[^>]*class="cnpy-surface cnpy-card cnpy-relcard/g)].map((m) => m[1]);
-    expect(hrefs).toEqual(RELEASES.map((r) => `#releases/${releaseSlug(r)}`));
+    expect(hrefs).toEqual(withNext.map((r) => `#releases/${releaseSlug(r)}`));
     expect(hrefs[0]).toBe("#releases/unreleased");
   });
 
   it("tags Unreleased, and each card carries its count line", () => {
-    const html = releasesIndex();
+    const html = releasesIndex(withNext);
     expect(html).toContain("cnpy-relcard cnpy-rise is-next");
     expect(html).toContain(">Unreleased<");
-    const r = RELEASES[1];
+    const r = withNext[1];
     const n = r.patches.added.length + r.patches.changed.length + r.patches.fixed.length + r.patches.removed.length;
     expect(html).toContain(`${r.highlights.length} highlights · ${n} patch lines`);
     expect(html).not.toContain("cnpy-guide-toc"); // no "On this page" rail on the index
@@ -167,8 +174,8 @@ describe("one release — its notes page and its patches page", () => {
     expect(html).not.toContain("/pull/");        // release notes carry no PR links
     expect(html).not.toContain("Upgrade notes");
     expect(html).not.toContain("cnpy-relpatch-group");       // no patch groups on the notes page
-    // Newer = Unreleased, older = 0.13, each keeping the page kind.
-    expect(html).toContain('href="#releases/unreleased"');
+    // Newer = 0.15, older = 0.13, each keeping the page kind.
+    expect(html).toContain('href="#releases/0.15"');
     expect(html).toContain('href="#releases/0.13"');
   });
 
@@ -213,7 +220,7 @@ describe("one release — its notes page and its patches page", () => {
     expect(p14.slice(p14.indexOf('class="cnpy-surface'))).not.toContain("cnpy-relheads");
     // One heads-up item is one line; several are a compact list; none renders nothing.
     expect(notes).toContain('class="cnpy-relheads-one"');
-    expect(releasePageView("unreleased", "notes")).toContain('class="cnpy-relheads-list"');
+    expect(releasePageView("0.15", "notes")).toContain('class="cnpy-relheads-list"');
     expect(releasePageView("0.13", "notes")).not.toContain("cnpy-relheads");
     expect(releasePageView("0.13", "notes")).not.toContain("has-heads");
     // Five or more highlights may flow into two columns (a very wide card only).
@@ -286,7 +293,8 @@ describe("one release — its notes page and its patches page", () => {
 
   it("releasesScreen is the index without a version, the page with one", () => {
     expect(releasesScreen(null, "notes")).toContain("cnpy-relgrid");
-    expect(releasesScreen("unreleased", "notes")).toContain("Not deployed yet");
+    expect(releasesScreen("unreleased", "notes", withNext)).toContain("Not deployed yet");
+    expect(releasesScreen(null, "notes")).not.toContain("Not deployed yet"); // nothing pending right now
   });
 });
 

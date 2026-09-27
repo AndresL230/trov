@@ -16,8 +16,8 @@ import type { ReviewHead } from "./triage-map";
 import { segmented } from "./segmented";
 import { esc, attr, relTime, surface } from "./ui";
 
-export type MwRepoTab = "drift" | "ci" | "deploys" | "prs";
-export const MW_REPO_TABS: readonly MwRepoTab[] = ["drift", "ci", "deploys", "prs"];
+export type MwRepoTab = "prs" | "ci" | "deploys";
+export const MW_REPO_TABS: readonly MwRepoTab[] = ["prs", "ci", "deploys"];
 
 /** A slice's readiness, collapsed to what a tile needs to say. */
 export type MwLoad = "pending" | "ok" | "error";
@@ -210,16 +210,6 @@ function repoPanel(d: RepoDashboard, tab: MwRepoTab): RepoPanel {
   const none = (note: string): RepoPanel => ({ head: "", headColor: "", sub: "", rows: [], note });
   const gate = (st: "ok" | "empty" | "not_connected"): RepoPanel | null =>
     st === "not_connected" ? none(NOT_CONNECTED) : st === "empty" ? none(NOTHING) : null;
-  if (tab === "drift") {
-    const s = d.drift;
-    if (s.status !== "ok") return gate(s.status)!;
-    const x = s.data;
-    return {
-      head: String(x.ahead), headColor: "var(--fg)",
-      sub: `commit${x.ahead === 1 ? "" : "s"} on ${x.head} not yet on ${x.base}${x.behind ? ` · ${x.behind} behind` : ""}`,
-      rows: x.groups.filter((g) => g.kind !== "behind").slice(0, 3).map((g) => ({ tone: g.kind === "pr" ? "var(--accent)" : "var(--fg-40)", title: g.title, ref: g.tag, time: g.meta })),
-    };
-  }
   if (tab === "ci") {
     const s = d.ciFailures;
     if (s.status !== "ok") return gate(s.status)!;
@@ -267,8 +257,6 @@ function repoPanel(d: RepoDashboard, tab: MwRepoTab): RepoPanel {
 }
 
 export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTab, span: number): string {
-  const envs = repo?.environments.status === "ok" ? repo.environments.data : [];
-  const driftLabel = envs[0]?.name ?? "Drift";
   // Sample data (the Repo screen's "Preview with sample data", session-only)
   // replaces `state.repo` wholesale — there is no live payload left to show
   // instead — so it stays on the tile, but never unlabelled.
@@ -277,7 +265,7 @@ export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTa
   const head = tileHead("Repo", { act: "goRepo", label: "Dashboard" }, name);
   const tabs = `<div style="padding:10px 16px 12px">${segmented({
     id: "mw-repo", ariaLabel: "Repo view", value: tab, act: "mwRepoTab", size: "xs", inertOn: true,
-    options: [{ value: "drift", label: driftLabel }, { value: "ci", label: "CI" }, { value: "deploys", label: "Deploys" }, { value: "prs", label: "PRs" }],
+    options: [{ value: "prs", label: "PRs" }, { value: "ci", label: "CI" }, { value: "deploys", label: "Deploys" }],
   })}</div>`;
   if (!repo) return tile("repo", span, "Repo monitor", `${head}${tabs}${tileNote(load === "error" ? "Couldn't load the Repo dashboard." : "Loading&hellip;")}`);
   const p = repoPanel(repo, tab);
@@ -307,7 +295,7 @@ export interface MwLibrary {
 export function libraryStrip(lib: MwLibrary, span: number): string {
   const cell = (title: string, link: { act: string; label: string }, body: string): string =>
     `<div style="min-width:0;display:flex;flex-direction:column;gap:6px;padding:14px 16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><span style="font-size:14px;font-weight:500;white-space:nowrap">${title}</span><button data-act="${link.act}" class="mw-more" style="display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--fg-40);white-space:nowrap;padding:0">${esc(link.label)}${ARROW}</button></div>${body}</div>`;
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:2px 10px"><span style="font-size:14px;font-weight:500;white-space:nowrap">${title}</span><button data-act="${link.act}" class="mw-more" style="display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--fg-40);white-space:nowrap;padding:0">${esc(link.label)}${ARROW}</button></div>${body}</div>`;
   const line = (html: string) => `<div style="font-size:13px;color:var(--fg-55)">${html}</div>`;
   const quiet = (html: string) => `<div style="font-size:12.5px;color:var(--fg-40);text-wrap:pretty">${html}</div>`;
   const pending = (l: MwLoad) => (l === "pending" ? line("Loading&hellip;") : line("Couldn't load."));

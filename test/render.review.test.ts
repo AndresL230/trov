@@ -167,7 +167,8 @@ describe("reviewView — surface cards", () => {
     }
     const adr = reviewDetail(makeItem({ kind: "decision", diff: undefined, adr: [{ h: "Context", p: "Why." }] }), "unified");
     // The proposed record keeps its green accent rule on top of the surface.
-    expect(adr).toMatch(/class="cnpy-surface" style="border-left:2px solid var\(--green\)/);
+    expect(adr).toMatch(/class="cnpy-surface" style="padding:24px 28px 26px"/);
+    expect(adr).not.toContain("border-left:2px solid var(--green)"); // no accent edge on the record
     const stale = reviewDetail(makeItem({ stale: true, staleNote: "Proposed from v6." }), "unified");
     expect(stale).toMatch(/class="cnpy-surface" style="border-left:2px solid var\(--amber\)/);
   });

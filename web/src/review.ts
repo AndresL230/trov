@@ -251,7 +251,7 @@ export function adrRecord(sections: AdrSection[]): string {
     <div style="${MONO_LABEL}">PROPOSED RECORD</div>
     <div style="font-size:11.5px;color:var(--fg-40)">new document — no prior version</div>
   </div>
-  <div${surface("border-left:2px solid var(--green);padding:24px 28px 26px")}>${body}</div>`;
+  <div${surface("padding:24px 28px 26px")}>${body}</div>`;
 }
 
 /** Detail pane for the selected item: header + verdict actions + content. */
