@@ -51,6 +51,7 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "Roadmap › Timeline", hint: "Sprints on a timeline", keys: "plan sprints gantt schedule", steps: [["goRoadmap", null], ["roadmapTimeline", null]] },
   { label: "Handoffs", hint: "Work left for the next session", keys: "inbox claim", steps: [["goHandoffs", null]] },
   { label: "New handoff", hint: "Leave work for someone", keys: "send create", steps: [["newHandoff", null]] },
+  { label: "People", hint: "Everyone on the team, and their profiles", keys: "team directory members profiles roles who", steps: [["goPeople", null]] },
   { label: "Repo › Overview", hint: "Environments, drift and health", keys: "dashboard github environments health deploys", steps: [["navSub", "repo:overview"]] },
   { label: "Repo › Code", hint: "Pull requests, commits and branches", keys: "prs pull requests branches commits", steps: [["navSub", "repo:code"]] },
   { label: "Repo › CI", hint: "Deploys, failures, coverage and bundle", keys: "builds checks runs coverage failures deploys", steps: [["navSub", "repo:ci"]] },
@@ -196,8 +197,8 @@ export function rowOf(h: QuickHit): QuickRow {
       return { group: "handoff", title: h.title, meta: `#${h.id}`, pick: go(["openHandoff", h.id]), context: join(cap(h.status ?? ""), h.snippet, age) };
     case "person": {
       const color = (PERSON_COLORS as readonly string[]).includes(h.color ?? "") ? (h.color as PersonColor) : "stone";
-      return { group: "person", title: h.title, meta: "Tickets", pick: go(["goTickets", null], ["queueAssignee", `@${h.id}`]),
-        context: `@${h.id} · tickets assigned to them`, person: { handle: h.id, name: h.title, color, avatar_url: h.avatar_url ?? null } };
+      return { group: "person", title: h.title, meta: "Profile", pick: go(["openPerson", h.id]),
+        context: join(`@${h.id}`, h.snippet), person: { handle: h.id, name: h.title, color, avatar_url: h.avatar_url ?? null } };
     }
     case "feed":
       return { group: "feed", title: h.title, meta: age, pick: go(["goFeed", null]), context: join(h.snippet, h.by ? `@${h.by}` : null) };

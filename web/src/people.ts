@@ -31,15 +31,27 @@ export function handleTag(p: { handle: string; color: PersonColor } | null, fall
   return `<span style="font-family:var(--sans);font-size:${size}px;font-weight:500;color:var(--p-${p.color})">@${esc(p.handle)}</span>`;
 }
 
+/** Avatar URLs that failed to load this session (a revoked provider picture, a deleted
+ *  upload). main.ts's ONE capture-phase `error` listener records them through
+ *  `markAvatarFailed`; a chip for a failed URL is initials only, so a rerender never
+ *  puts the broken image back. */
+const failedAvatars = new Set<string>();
+export function markAvatarFailed(url: string): void { failedAvatars.add(url); }
+/** The `<img>` class that listener watches. */
+export const AVATAR_IMG_CLASS = "cnpy-av-img";
+
+/** A person's avatar: initials on their color, with the photo (when there is one) laid OVER
+ *  them — so a photo that is slow, or fails, shows the initials rather than a broken image. */
 export function personChip(p: { handle: string; name?: string | null; color: PersonColor; avatar_url?: string | null } | null, size: number, fallback: string): string {
   const font = Math.max(9, Math.round(size * 0.36));
   if (!p) {
     return `<div class="cnpy-av cnpy-av-anon" style="width:${size}px;height:${size}px;border-radius:50%;border:1px solid var(--border-strong);background:color-mix(in srgb,var(--fg) 7%,transparent);display:grid;place-items:center;font-size:${font}px;font-weight:600;color:var(--fg);flex:none">${esc(initialsOf(fallback))}</div>`;
   }
-  const inner = p.avatar_url
-    ? `<img src="${attr(p.avatar_url)}" width="${size}" height="${size}" alt="" style="display:block;width:100%;height:100%;border-radius:50%;object-fit:cover" />`
-    : esc(initialsOfName(p.name, p.handle));
-  return `<div class="cnpy-av" title="${attr(p.name ?? p.handle)}" style="--c:var(--p-${p.color});width:${size}px;height:${size}px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:${font}px;font-weight:600;color:#fff;flex:none;overflow:hidden">${inner}</div>`;
+  const url = p.avatar_url && !failedAvatars.has(p.avatar_url) ? p.avatar_url : null;
+  const img = url
+    ? `<img class="${AVATAR_IMG_CLASS}" src="${attr(url)}" width="${size}" height="${size}" alt="" decoding="async" style="position:absolute;inset:0;display:block;width:100%;height:100%;border-radius:50%;object-fit:cover" />`
+    : "";
+  return `<div class="cnpy-av" title="${attr(p.name ?? p.handle)}" style="--c:var(--p-${p.color});position:relative;width:${size}px;height:${size}px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:${font}px;font-weight:600;color:#fff;flex:none;overflow:hidden">${esc(initialsOfName(p.name, p.handle))}${img}</div>`;
 }
 
 export function swatches(act: string, selected: PersonColor, compact = false): string {

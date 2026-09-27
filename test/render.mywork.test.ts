@@ -38,8 +38,8 @@ function makeTodo(overrides: Partial<MyWorkTodo> = {}): MyWorkTodo {
   };
 }
 const PERSONS: PersonSummary[] = [
-  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null },
-  { handle: "alice", name: "Alice Ng", color: "moss", avatar_url: null },
+  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null, role: null },
+  { handle: "alice", name: "Alice Ng", color: "moss", avatar_url: null, role: null },
 ];
 function makeTicket(overrides: Partial<MyWorkTicket> = {}): MyWorkTicket {
   return {

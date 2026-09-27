@@ -21,6 +21,7 @@ import {
 import type { Loadable } from "./render";
 import { esc, attr, statusBadge, SURFACE } from "./ui";
 import { personChip } from "./people";
+import type { PersonSummary } from "./api";
 import { segmented } from "./segmented";
 
 export interface RepoProps {
@@ -36,6 +37,8 @@ export interface RepoProps {
   poll: RepoPollState | null;
   /** The environment the Usage tab's Product section shows. Session-only; null = the default. */
   productEnv: string | null;
+  /** The persons directory — only for each mapped person's avatar (a RepoPerson carries none). */
+  persons?: PersonSummary[];
 }
 
 /** "Poll now" (POST /admin/poll): in flight, its per-source outcomes, a 409 (another refresh holds the lock), or a failed request. */
@@ -90,8 +93,11 @@ const spark = (trend: number[], stroke: string, height: number, mt = 10): string
 /** "▲ 2" / "▼ 3" / "—" — the design's week-over-week delta. */
 const delta = (n: number): string => (n > 0 ? `▲ ${n}` : n < 0 ? `▼ ${Math.abs(n)}` : "—");
 
-const avatar = (p: RepoPerson, size: number): string =>
-  personChip(p.handle && p.color ? { handle: p.handle, name: p.name, color: p.color } : null, size, p.login);
+const avatar = (p: RepoPerson, size: number, persons: PersonSummary[] = []): string => {
+  const h = p.handle?.toLowerCase();
+  const avatar_url = h ? persons.find((x) => x.handle.toLowerCase() === h)?.avatar_url ?? null : null;
+  return personChip(p.handle && p.color ? { handle: p.handle, name: p.name, color: p.color, avatar_url } : null, size, p.login);
+};
 const who = (p: RepoPerson): string => p.handle ?? p.login;
 
 // ── section states ───────────────────────────────────────────────────────────
@@ -290,12 +296,12 @@ const PR_STATE: Record<RepoPrState, [string, string | null]> = {
 };
 const CHECKS = { pass: ["✓", "var(--green)", "all checks passing"], fail: ["✕", "var(--red)", "checks failing"], run: [GDOT, "var(--amber)", "checks running"] } as const;
 
-function prRow(pr: RepoPr, now: number): string {
+function prRow(pr: RepoPr, now: number, persons: PersonSummary[] = []): string {
   const [text, color] = PR_STATE[pr.state];
   const chip = color ? statusBadge(text, color) : `<span style="${M_CHIP}">${text}</span>`;
   const ck = pr.checks ? CHECKS[pr.checks] : null;
   return `<a href="${attr(safeUrl(pr.url))}" target="_blank" rel="noopener" class="repo-row" style="display:flex;align-items:center;gap:12px;padding:8px 20px;border-bottom:1px solid var(--border);color:inherit;text-decoration:none">
-    <span title="${attr(who(pr.author))}" style="flex:none">${avatar(pr.author, 22)}</span>
+    <span title="${attr(who(pr.author))}" style="flex:none">${avatar(pr.author, 22, persons)}</span>
     <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500">${esc(pr.title)} <span style="font-family:var(--label);font-size:11px;font-weight:400;color:var(--fg-40)">#${pr.number}${pr.branch ? ` · ${esc(pr.branch)}` : ""}</span></span>
     <span style="flex:none">${chip}</span>
     <span title="${ck ? ck[2] : ""}" style="width:16px;text-align:center;flex:none;font-family:var(--label);font-size:12px;font-weight:600;color:${ck ? ck[1] : "transparent"}">${ck ? ck[0] : ""}</span>
@@ -334,7 +340,7 @@ function codeTab(p: RepoProps): string {
   // `ok` with no rows happens once open PRs are captured (`openCount` known)
   // but nothing was touched in 90 days — say that, not "not captured".
   const prs = sec(p, (d) => d.prs, { nc: "Pull requests aren't connected.", empty: "No pull requests captured yet.", lines: 4 }, (l) =>
-    l.rows.length ? l.rows.map((r) => prRow(r, now)).join("") : `<div style="padding:6px 20px">${emptyBlock("No pull requests updated in the last 90 days.")}</div>`);
+    l.rows.length ? l.rows.map((r) => prRow(r, now, p.persons)).join("") : `<div style="padding:6px 20px">${emptyBlock("No pull requests updated in the last 90 days.")}</div>`);
 
   const br = okData(p, (d) => d.branches);
   const branches = sec(p, (d) => d.branches, { nc: "No branch snapshot yet. One is taken when an admin runs Sync GitHub and by the 6-hourly GitHub reconcile — both need GITHUB_SERVICE_TOKEN.", empty: "No branches recorded." }, (b) =>
@@ -938,7 +944,7 @@ function planningTab(p: RepoProps): string {
     return rows.map((r, i) => {
       const color = r.person.color ? `var(--p-${r.person.color})` : "var(--fg-40)";
       return `<div style="display:grid;grid-template-columns:112px minmax(0,1fr) 74px;gap:12px;align-items:center;padding:5.5px 0;${TOP}">
-        <span style="display:inline-flex;align-items:center;gap:7px;min-width:0">${avatar(r.person, 20)}<span style="font-family:var(--label);font-size:11.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(who(r.person))}</span></span>
+        <span style="display:inline-flex;align-items:center;gap:7px;min-width:0">${avatar(r.person, 20, p.persons)}<span style="font-family:var(--label);font-size:11.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(who(r.person))}</span></span>
         <span style="display:block;height:6px;border-radius:999px;background:var(--hover);overflow:hidden"><span class="repo-fill" style="--i:${i};display:block;height:100%;border-radius:999px;background:${color};width:${Math.round(((r.pushes + r.merged + (r.reviews ?? 0)) / max) * 100)}%"></span></span>
         <span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55);text-align:right">${r.pushes} · ${r.merged} · ${r.reviews === null ? "—" : r.reviews}</span>
       </div>`;

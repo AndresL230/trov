@@ -10,7 +10,7 @@ import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
 import {
   render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, connectSnippet, CONNECT_CLIENTS, browserConnectCommand,
-  FEED_FILTER_CATS, type AppState, type Screen, type ConnectClient, type FeedFilterCat, type ToastAction,
+  FEED_FILTER_CATS, aboutValues, type AppState, type Screen, type ConnectClient, type FeedFilterCat, type ToastAction,
 } from "./render";
 import {
   getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard,
@@ -23,6 +23,7 @@ import {
   getNotificationSettings, putNotificationSettings, listNotificationOutbox, testSendNotification, type PrefsWrite,
   listMcpTokens, revokeMcpToken, listOAuthGrants, revokeOAuthGrant,
   listPersons, listInvites, createInvite, revokeInvite, resendInvite, updateMe, unlinkIdentity, renameHandle,
+  getPersonProfile, updatePersonProfile, uploadAvatar, removeAvatar, type PersonProfileWrite,
   listTickets, getTicket, getTicketBadge, createTicket, transitionTicket, moveTicket, toggleTicketAssignee,
   addTicketLink, editTicket, removeTicketLink, deleteTicket, setTicketSprint, setTicketParent, addTicketComment, listSprints,
   getSprint, createSprint, setSprintActive, addSprintResource,
@@ -48,7 +49,8 @@ import {
 } from "@shared/tickets-core";
 import { decodeReviewId } from "./triage-map";
 import { QUEUE_FILTER_CATS, type QueueFilterCat } from "./tickets";
-import { initialOnboard } from "./people";
+import { initialOnboard, markAvatarFailed, AVATAR_IMG_CLASS } from "./people";
+import { prepareAvatar } from "./avatar";
 import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX } from "./mentions";
 import { PERSON_COLORS, type PersonColor } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
@@ -158,6 +160,8 @@ function screenSettled(): boolean {
     case "handoff": return ok(state.handoffDetail) || state.handoffDetail.data !== null;
     case "prompts": return ok(state.promptList) || state.promptList.data.length > 0;
     case "prompt": return ok(state.promptDetail) || state.promptDetail.data !== null;
+    case "people": return ok(state.persons) || state.persons.data.length > 0;
+    case "person": return ok(state.personProfile) || state.personProfile.data !== null;
     default: return true; // search re-queries per keystroke; the rest load nothing
   }
 }
@@ -429,6 +433,7 @@ function currentRoute(): Route {
     if (state.promptMode !== "new" && state.promptSlug) r.promptSlug = state.promptSlug;
   }
   if (state.screen === "maintenance") r.maintTab = state.maintTab;
+  if (state.screen === "person" && state.personHandle) r.personHandle = state.personHandle;
   return r;
 }
 function applyRoute(r: Route): void {
@@ -453,6 +458,7 @@ function applyRoute(r: Route): void {
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
   if (r.maintTab) state.maintTab = r.maintTab;
+  if (r.personHandle) state.personHandle = r.personHandle;
 }
 
 // Kick off the data load for a screen (mirrors the go* dispatch cases).
@@ -474,7 +480,9 @@ function loadForScreen(screen: Screen): void {
     case "mywork": loadMyWorkIfNeeded(); break;
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
-    case "settings": loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); break;
+    case "settings": loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); loadMeProfile(); break;
+    case "people": loadPersons(); rerender(); break;
+    case "person": if (state.personHandle) openPersonProfile(state.personHandle); else rerender(); break;
     case "unsubscribe": runUnsubscribe(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
@@ -1327,6 +1335,67 @@ function refreshMe(): void {
   getMe().then((me) => { state.me = me; state.displayName = me.name ?? me.handle; rerender(); }).catch(() => undefined);
 }
 
+// ── People: one person's profile, and Settings › Profile's own read + photo ──
+let personSeq = 0;
+/** Open `#people/<handle>`. `edit` opens an admin's role + responsibilities editor once the
+ *  profile lands (Maintenance › People's "Edit role") — only for someone else, never self. */
+function openPersonProfile(handle: string, edit = false): void {
+  const seq = ++personSeq;
+  const same = state.personProfile.data?.handle.toLowerCase() === handle.toLowerCase();
+  if (!same) state.personEdit = null;
+  state.personHandle = handle;
+  state.personSaving = false;
+  state.personProfile = { status: "loading", data: same ? state.personProfile.data : null };
+  rerender();
+  getPersonProfile(handle)
+    .then((pr) => {
+      if (seq !== personSeq) return;
+      state.personProfile = { status: "ok", data: pr };
+      if (edit && pr.editable && !pr.self) state.personEdit = { role: pr.role ?? "", responsibilities: pr.responsibilities ?? "" };
+      rerender();
+    })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      if (seq !== personSeq) return;
+      // An unknown handle is a settled page ("nobody called …"), not a failed read.
+      state.personProfile = { status: e instanceof NotFound ? "ok" : "error", data: null, error: errMsg(e) };
+      rerender();
+    });
+}
+let meProfileSeq = 0;
+/** Settings › Profile: MY profile — the one read that carries my responsibilities. */
+function loadMeProfile(): void {
+  const me = state.me;
+  if (!me) return;
+  const seq = ++meProfileSeq;
+  state.meProfile = { status: "loading", data: state.meProfile.data };
+  getPersonProfile(me.handle)
+    .then((pr) => { if (seq !== meProfileSeq) return; state.meProfile = { status: "ok", data: pr }; rerender(); })
+    .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } if (seq !== meProfileSeq) return; state.meProfile = { status: "error", data: state.meProfile.data, error: errMsg(e) }; rerender(); });
+}
+/** My photo changed (uploaded or removed): every chip reads `me` or the directory. */
+function setMyAvatar(url: string | null): void {
+  state.avatarBusy = null;
+  if (state.me) state.me.avatar_url = url;
+  if (state.meProfile.data) state.meProfile = { ...state.meProfile, data: { ...state.meProfile.data, avatar_url: url } };
+  loadPersons();
+}
+/** The picked photo: downsized to a square in the browser (avatar.ts), then uploaded. */
+function uploadAvatarFile(file: File | undefined | null): void {
+  if (!file || state.avatarBusy) return;
+  state.avatarBusy = "upload";
+  rerender();
+  prepareAvatar(file)
+    .then(({ blob, filename }) => uploadAvatar(blob, filename))
+    .then((r) => { setMyAvatar(r.avatar_url); flash("Photo updated"); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.avatarBusy = null;
+      if (e instanceof ApiError) flash(e.status === 413 ? "That photo is too large." : /^\d+$/.test(e.message) ? "Couldn't upload the photo" : e.message);
+      else flash(errMsg(e));
+    });
+}
+
 // ── Artifacts (/api/artifacts; the screens are artifacts.ts) ─────────────────
 // Each read is its own slice: the library list (loaded unfiltered — the filter
 // popover counts every option), one detail per `slug@v`, one diff per pair, the
@@ -1962,6 +2031,45 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "goFeed": state.screen = "feed"; loadFeedIfNeeded(); loadFeedStats(); return;
+
+    // ── People: the directory and a profile ─────────────────────────────────
+    case "goPeople": state.screen = "people"; loadPersons(); break;
+    case "peopleQ": state.peopleQ = value ?? ""; break;
+    case "openPerson": if (!arg) return; state.screen = "person"; openPersonProfile(arg); return;
+    // Maintenance › People's "Edit role": the profile with its admin editor open (self edits in Settings).
+    case "openPersonEdit":
+      if (!arg) return;
+      if (arg.toLowerCase() === (state.me?.handle ?? "").toLowerCase()) { dispatch("goSettings", null, null); return; }
+      state.screen = "person"; openPersonProfile(arg, true); return;
+    // A profile's Recent sessions: the Feed, filtered to that person (the Filter menu's own author filter).
+    case "personFeed": if (!arg) return; state.screen = "feed"; state.feedAuthor = arg; loadFeed(); loadFeedStats(); return;
+    case "personEditOpen": {
+      const pr = state.personProfile.data;
+      if (!pr || !pr.editable || pr.self) return;
+      state.personEdit = { role: pr.role ?? "", responsibilities: pr.responsibilities ?? "" };
+      rerender();
+      mount.querySelector<HTMLInputElement>('[data-field="personRole"]')?.focus();
+      return;
+    }
+    case "personEditCancel": state.personEdit = null; break;
+    case "personRoleDraft": if (state.personEdit) state.personEdit = { ...state.personEdit, role: value ?? "" }; break;
+    case "personRespDraft": if (state.personEdit) state.personEdit = { ...state.personEdit, responsibilities: value ?? "" }; break;
+    case "personEditSave": {
+      const pr = state.personProfile.data;
+      const d = state.personEdit;
+      if (!pr || !d || state.personSaving) return;
+      state.personSaving = true;
+      rerender();
+      updatePersonProfile(pr.handle, { role: d.role.trim() || null, responsibilities: d.responsibilities.trim() || null })
+        .then((fresh) => {
+          state.personSaving = false;
+          if (state.personProfile.data?.handle.toLowerCase() === fresh.handle.toLowerCase()) { state.personProfile = { status: "ok", data: fresh }; state.personEdit = null; }
+          flash(`Saved ${fresh.name || fresh.handle}'s role`);
+          loadPersons();
+        })
+        .catch((e) => { state.personSaving = false; writeErr(e, "Couldn't save the role"); });
+      return;
+    }
     case "goDocs": state.screen = "docs"; loadDocsIfNeeded(); return;
     case "goRoadmap": state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadRoadmapFeed(); return;
 
@@ -2480,7 +2588,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded(); loadIdentityTasksIfNeeded(); loadFeedIfNeeded(); loadNotifAdminIfNeeded(); loadInvitesIfAdmin();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.unsub.preview = false; state.tokenRevokeArm = null; state.grantRevokeArm = null; loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.unsub.preview = false; state.tokenRevokeArm = null; state.grantRevokeArm = null; loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); loadMeProfile(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3182,6 +3290,41 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } flash("Couldn't save profile"); });
       return;
     }
+    // ── Settings › Profile: photo, role and responsibilities ─────────────────
+    case "avatarPick": if (!state.avatarBusy) mount.querySelector<HTMLInputElement>("[data-avatar-file]")?.click(); return;
+    case "avatarRemove":
+      if (state.avatarBusy) return;
+      state.avatarBusy = "remove";
+      rerender();
+      removeAvatar()
+        .then((r) => { setMyAvatar(r.avatar_url); flash("Photo removed"); })
+        .catch((e) => { state.avatarBusy = null; writeErr(e, "Couldn't remove the photo"); });
+      return;
+    case "roleDraft": state.roleDraft = value ?? ""; break;
+    case "respDraft": state.respDraft = value ?? ""; break;
+    case "saveAbout": {
+      const me = state.me;
+      if (!me || state.aboutSaving) return;
+      const a = aboutValues(state);
+      // Only what changed travels; responsibilities only once my profile read landed (the
+      // field is disabled until then), so an edit never overwrites text this page never saw.
+      const body: PersonProfileWrite = {};
+      if (a.role.trim() !== a.savedRole.trim()) body.role = a.role.trim() || null;
+      if (state.meProfile.status === "ok" && a.resp.trim() !== a.savedResp.trim()) body.responsibilities = a.resp.trim() || null;
+      if (!("role" in body) && !("responsibilities" in body)) return;
+      state.aboutSaving = true;
+      rerender();
+      updatePersonProfile(me.handle, body)
+        .then((fresh) => {
+          state.meProfile = { status: "ok", data: fresh };
+          if (state.me) state.me.role = fresh.role;
+          state.roleDraft = null; state.respDraft = null; state.aboutSaving = false;
+          flash("Profile saved");
+          loadPersons();
+        })
+        .catch((e) => { state.aboutSaving = false; writeErr(e, "Couldn't save your role"); });
+      return;
+    }
     case "setMyColor": {
       if (!arg || !state.me || !(PERSON_COLORS as readonly string[]).includes(arg)) return;
       const color = arg as PersonColor;
@@ -3654,6 +3797,24 @@ mount.addEventListener("keydown", (e) => {
   e.preventDefault();
   dispatch(card.dataset.act ?? "", card.dataset.arg ?? null, null);
 });
+
+// Settings › Profile's photo picker (a hidden input the "Upload photo" button clicks).
+mount.addEventListener("change", (e) => {
+  const el = e.target as HTMLElement;
+  if (!(el instanceof HTMLInputElement) || el.type !== "file" || !el.hasAttribute("data-avatar-file")) return;
+  uploadAvatarFile(el.files?.[0]);
+  el.value = ""; // picking the same file again still fires `change`
+});
+// An avatar photo that fails to load (a revoked provider picture, a removed upload) drops out
+// and leaves the initials under it — and stays out across rerenders (people.ts records it).
+// `error` doesn't bubble, so ONE capture-phase listener on the document covers the app, the
+// sidebar and the search panel on <body>.
+document.addEventListener("error", (e) => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || !img.classList.contains(AVATAR_IMG_CLASS)) return;
+  markAvatarFailed(img.getAttribute("src") ?? "");
+  img.remove();
+}, true);
 
 // The new-artifact form's and the New version dialog's file picker and drop zone (a file has
 // no string value to dispatch). `data-art-file="nv"` / `data-art-drop="nv"` mark the dialog's.

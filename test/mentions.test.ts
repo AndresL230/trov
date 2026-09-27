@@ -16,10 +16,10 @@ import type { PersonSummary } from "../web/src/api";
 // Every fixture name is capitalized the same way on purpose: the ordering
 // assertions below must not depend on how `localeCompare` ranks case.
 const PERSONS: PersonSummary[] = [
-  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null },
-  { handle: "sanaok", name: "Sana Okafor", color: "ochre", avatar_url: null },
-  { handle: "jose-a", name: "Jose Alvarez", color: "moss", avatar_url: null },
-  { handle: "sam", name: "Samir Mehta", color: "sky", avatar_url: null },
+  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null, role: null },
+  { handle: "sanaok", name: "Sana Okafor", color: "ochre", avatar_url: null, role: null },
+  { handle: "jose-a", name: "Jose Alvarez", color: "moss", avatar_url: null, role: null },
+  { handle: "sam", name: "Samir Mehta", color: "sky", avatar_url: null, role: null },
 ];
 
 describe("mentionTokenAt", () => {
@@ -102,8 +102,8 @@ describe("mentionCandidates", () => {
 
   it("puts an EXACT handle match first, ahead of the name order", () => {
     const pair: PersonSummary[] = [
-      { handle: "zed", name: "Zed Zulu", color: "rose", avatar_url: null },
-      { handle: "zedd", name: "Aaron Zedd", color: "moss", avatar_url: null },
+      { handle: "zed", name: "Zed Zulu", color: "rose", avatar_url: null, role: null },
+      { handle: "zedd", name: "Aaron Zedd", color: "moss", avatar_url: null, role: null },
     ];
     const h = (q: string) => mentionCandidates(pair, q).map((p) => p.handle);
     // Both match "zed"; the exact handle wins even though "Aaron Zedd" sorts first.
@@ -114,8 +114,8 @@ describe("mentionCandidates", () => {
 
   it("falls back to the handle for ordering when a person has no name", () => {
     const fb: PersonSummary[] = [
-      { handle: "aaa", name: "zebra one", color: "rose", avatar_url: null },   // key: "zebra one"
-      { handle: "mmm", name: null, color: "moss", avatar_url: null },          // key: "mmm"
+      { handle: "aaa", name: "zebra one", color: "rose", avatar_url: null, role: null },   // key: "zebra one"
+      { handle: "mmm", name: null, color: "moss", avatar_url: null, role: null },          // key: "mmm"
     ];
     // Ordering by handle would give ["aaa","mmm"]; by `name ?? handle` it is:
     expect(mentionCandidates(fb, "").map((p) => p.handle)).toEqual(["mmm", "aaa"]);
@@ -127,7 +127,7 @@ describe("mentionCandidates", () => {
 
   it("caps at 6 by default", () => {
     const many: PersonSummary[] = Array.from({ length: 12 }, (_, i) => ({
-      handle: `p${i}`, name: `Person ${String.fromCharCode(97 + i)}`, color: "moss", avatar_url: null,
+      handle: `p${i}`, name: `Person ${String.fromCharCode(97 + i)}`, color: "moss", avatar_url: null, role: null,
     }));
     expect(mentionCandidates(many, "")).toHaveLength(6);
     expect(mentionCandidates(many, "p")).toHaveLength(6);

@@ -68,7 +68,7 @@ describe("quick search — grouping", () => {
     expect(rowOf(hit({ type: "prompt", id: "p", title: "t" })).pick).toEqual({ kind: "go", steps: [["openPrompt", "p"]] });
     expect(rowOf(hit({ type: "handoff", id: "14", title: "t" })).pick).toEqual({ kind: "go", steps: [["openHandoff", "14"]] });
     expect(rowOf(hit({ type: "feed", id: "3", title: "t" })).pick).toEqual({ kind: "go", steps: [["goFeed", null]] });
-    expect(rowOf(hit({ type: "person", id: "dana", title: "Dana" })).pick).toEqual({ kind: "go", steps: [["goTickets", null], ["queueAssignee", "@dana"]] });
+    expect(rowOf(hit({ type: "person", id: "dana", title: "Dana" })).pick).toEqual({ kind: "go", steps: [["openPerson", "dana"]] });
     expect(rowOf(hit({ type: "decision", id: "2", title: "Adopt X" })).pick).toEqual({ kind: "search", q: "Adopt X" });
   });
 

@@ -235,7 +235,7 @@ export interface PeopleProps {
   error: string | null;
   /** The signed-in handle (its row carries YOU). */
   me?: string | null;
-  /** Invites are admin-only; without it the tab is the directory alone. */
+  /** The viewer is an admin: invites, and each person's "Edit role". Without it the tab is the directory alone. */
   canInvite?: boolean;
 }
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -245,7 +245,13 @@ export function peopleSection(p: PeopleProps): string {
   const pending = canInvite ? p.invites.filter((i) => !i.accepted_by && !i.revoked_at) : [];
   const canSend = EMAIL_RE.test(p.inviteDraft.trim());
   const row = "display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--border);margin-bottom:-1px";
-  const persons = p.persons.map((x) => `<div style="${row}">${personChip(x, 28, x.handle)}<div style="flex:1;min-width:0;line-height:1.3"><div style="font-size:13.5px;font-weight:600">${esc(x.name ?? x.handle)}</div>${handleTag(x, x.handle, 11.5)}</div>${p.me && x.handle.toLowerCase() === p.me.toLowerCase() ? `<span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:2px 6px">YOU</span>` : ""}</div>`).join("");
+  // Each person opens their profile; an admin's Edit opens it with the role + responsibilities
+  // editor already open (profile.ts `personEditor` — the one editor, not a second one here).
+  const persons = p.persons.map((x) => `<div style="${row}">
+      <button data-act="openPerson" data-arg="${attr(x.handle)}" class="cnpy-maint-person" style="flex:1;min-width:0;display:flex;align-items:center;gap:12px;text-align:left;padding:0">${personChip(x, 28, x.handle)}<span style="flex:1;min-width:0;line-height:1.3"><span style="display:block;font-size:13.5px;font-weight:600">${esc(x.name ?? x.handle)}</span><span style="display:flex;align-items:center;gap:8px;min-width:0">${handleTag(x, x.handle, 11.5)}${x.role ? `<span style="font-size:12px;color:var(--fg-55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">· ${esc(x.role)}</span>` : ""}</span></span></button>
+      ${p.me && x.handle.toLowerCase() === p.me.toLowerCase() ? `<span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:2px 6px">YOU</span>` : ""}
+      ${canInvite ? `<button data-act="openPersonEdit" data-arg="${attr(x.handle)}" class="cnpy-ghostbtn" style="font-size:12px;color:var(--fg-55);padding:4px 8px;border-radius:6px;border:1px solid var(--border);white-space:nowrap">Edit role</button>` : ""}
+    </div>`).join("");
   const invites = pending.map((i) => {
     const status = i.email_error ? `<span style="color:var(--red)">email failed: ${esc(i.email_error)}</span>` : i.email_sent_at ? "email sent" : "email not sent";
     return `<div style="${row};flex-wrap:wrap">

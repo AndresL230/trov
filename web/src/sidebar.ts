@@ -23,13 +23,14 @@ export type NavOpen = Record<NavGroup, boolean>;
 export const NAV_CLOSED: NavOpen = { repo: false, docs: false, maintenance: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
-export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases";
+export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "people" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases";
 const NAV_OF: Record<string, NavKey> = {
   mywork: "mywork", feed: "feed", docs: "docs", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
   review: "review", maintenance: "maintenance", guide: "guide", releases: "releases",
   tickets: "tickets", ticketdetail: "tickets", newticket: "tickets",
   artifacts: "artifacts", artifactnew: "artifacts", artifact: "artifacts",
   handoffs: "handoffs", handoff: "handoffs", newhandoff: "handoffs",
+  people: "people", person: "people",
   prompts: "prompts", prompt: "prompts", promptedit: "prompts",
   newdoc: "docs",
 };
@@ -64,6 +65,8 @@ const ICONS: Record<NavKey | "search" | "collapse", string> = {
   tickets: ICON(`<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`),
   roadmap: ICON(`<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`),
   handoffs: ICON(`<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`),
+  // Two heads: the team.
+  people: ICON(`<circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0 1 13 0"></path><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"></path><path d="M18.5 14.2A6.5 6.5 0 0 1 21.5 20"></path>`),
   prompts: ICON(`<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path>`),
   repo: ICON(`<path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>`),
   feed: ICON(`<path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path>`),
@@ -153,6 +156,7 @@ export function sidebarView(p: SidebarProps): string {
       ${item("tickets", "goTickets", "Tickets", c.tickets)}
       ${item("roadmap", "goRoadmap", "Roadmap")}
       ${item("handoffs", "goHandoffs", "Handoffs", c.handoffs)}
+      ${item("people", "goPeople", "People")}
       ${section("Monitor")}
       ${item("repo", "goRepo", "Repo")}
       ${item("feed", "goFeed", "Feed")}

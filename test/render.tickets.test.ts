@@ -62,9 +62,9 @@ const H = 3600_000;
 const D = 86_400_000;
 
 const PERSONS: PersonSummary[] = [
-  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null },
-  { handle: "sanaok", name: "Sana Okafor", color: "ochre", avatar_url: null },
-  { handle: "jose-a", name: "Jose Alvarez", color: "moss", avatar_url: null },
+  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null, role: null },
+  { handle: "sanaok", name: "Sana Okafor", color: "ochre", avatar_url: null, role: null },
+  { handle: "jose-a", name: "Jose Alvarez", color: "moss", avatar_url: null, role: null },
 ];
 
 function sprint(o: Partial<SprintView> & { id: number; label: string }): SprintView {
@@ -214,7 +214,7 @@ describe("sidebar — the Tickets entry (design call #2)", () => {
     expect(html).toContain('data-collapsed="1"');
     expect(ticketsRow(html)).toContain('<span class="cnpy-dot" data-n="4"></span>');
     // review/maintenance counts are 0 here, so theirs stay hidden
-    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(12);
+    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(13); // every other entry, People included
   });
 
   it("lights Tickets on all three ticket screens", () => {
