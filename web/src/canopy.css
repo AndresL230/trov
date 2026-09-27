@@ -836,6 +836,40 @@ input, select { font-family: inherit; }
 .cnpy-td-body p { white-space:pre-line; }
 .cnpy-ghostbtn { transition:all .12s ease; }
 .cnpy-ghostbtn:hover { border-color:var(--border-strong); color:var(--fg); }
+/* Maintenance › People: the admin's role editor (maintenance.ts `personRoleEditor`). The row and
+   its editor read as one tinted block — the row hands its divider to the editor (border AND the
+   -1px overlap, which would stack the two translucent tints into a seam), so the editor's border
+   sits exactly where the row's did at every height. It opens by growing its ONE grid row
+   0fr → 1fr (a real height animation, nothing measured) with a fade and a small drop of its
+   body; `data-roleedit="out"` is the collapsed state a closed editor lingers in for its exit.
+   The animations play only while main.ts `syncRoleEdit` has set `data-anim` (the 200ms open /
+   close window), joined mid-way through the negative `--re-t` — so a rerender never replays them. */
+.cnpy-prow[data-roleedit] { border-bottom:0 !important; margin-bottom:0 !important; }
+.cnpy-prow[data-roleedit="in"] { background:var(--hover); }
+.cnpy-prow-edit { color:var(--fg-55); border:1px solid var(--border); background:transparent; }
+.cnpy-prow-edit[aria-expanded="true"] { color:var(--fg); border-color:var(--border-strong); background:var(--surface); }
+.cnpy-roleedit { display:grid; grid-template-rows:1fr; background:var(--hover); border-bottom:1px solid var(--border); margin-bottom:-1px; }
+.cnpy-roleedit[data-roleedit="out"] { grid-template-rows:0fr; opacity:0; }
+.cnpy-roleedit-clip { min-height:0; overflow:hidden; }
+.cnpy-roleedit-body { box-sizing:border-box; max-width:640px; padding:4px 16px 18px 56px; }
+.cnpy-roleedit-count { font-size:11px; color:var(--fg-40); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.cnpy-roleedit-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:16px; }
+.cnpy-roleedit-keys { margin-right:auto; min-width:0; font-size:11px; color:var(--fg-40); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-roleedit-skel { background:var(--hover) !important; border-color:var(--border) !important; animation:cnpy-shimmer 1.4s ease infinite; }
+[data-phone="1"] .cnpy-roleedit-body { padding-left:16px; }
+[data-phone="1"] .cnpy-roleedit-keys { display:none; }
+.cnpy-roleedit[data-anim] { animation:cnpy-re-open .2s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--re-t, 0ms); }
+.cnpy-roleedit[data-anim] .cnpy-roleedit-body { animation:cnpy-re-drop .2s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--re-t, 0ms); }
+.cnpy-roleedit[data-roleedit="out"][data-anim] { animation:cnpy-re-close .2s cubic-bezier(.4,0,.2,1) both; animation-delay:var(--re-t, 0ms); }
+.cnpy-roleedit[data-roleedit="out"][data-anim] .cnpy-roleedit-body { animation:none; }
+.cnpy-prow[data-roleedit="in"][data-anim] { animation:cnpy-re-tint .2s ease both; animation-delay:var(--re-t, 0ms); }
+.cnpy-prow[data-roleedit="out"][data-anim] { animation:cnpy-re-untint .2s ease both; animation-delay:var(--re-t, 0ms); }
+@keyframes cnpy-re-open { from { grid-template-rows:0fr; opacity:0; } 70% { opacity:1; } to { grid-template-rows:1fr; opacity:1; } }
+@keyframes cnpy-re-close { from { grid-template-rows:1fr; opacity:1; } 60% { opacity:0; } to { grid-template-rows:0fr; opacity:0; } }
+@keyframes cnpy-re-drop { from { transform:translateY(-6px); } to { transform:none; } }
+@keyframes cnpy-re-tint { from { background-color:transparent; } to { background-color:var(--hover); } }
+@keyframes cnpy-re-untint { from { background-color:var(--hover); } to { background-color:transparent; } }
+@media (prefers-reduced-motion: reduce) { .cnpy-roleedit[data-anim], .cnpy-roleedit[data-anim] .cnpy-roleedit-body, .cnpy-prow[data-anim], .cnpy-roleedit-skel { animation:none !important; } }
 .cnpy-iconbtn { transition:background .12s ease, color .12s ease; }
 .cnpy-iconbtn:hover { background:var(--hover); color:var(--fg-70); }
 .cnpy-link:hover { text-decoration:underline; }
