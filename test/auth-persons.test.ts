@@ -40,17 +40,17 @@ describe("createPerson / recordSignIn", () => {
       createPerson(env.DB, { handle: "zed", name: null, color: "neon" as never, avatar_url: null, email: null })
     ).rejects.not.toBeInstanceOf(HandleTakenError);
   });
-  it("recordSignIn refreshes name/avatar and never overwrites a set email", async () => {
+  it("recordSignIn fills the picture, never writes the name, and never overwrites a set email", async () => {
     await createPerson(env.DB, { handle: "priya", name: "Priya", color: "plum", avatar_url: null, email: "set@example.com" });
-    await recordSignIn(env.DB, "priya", { name: "Priya Natarajan", avatar_url: "https://a/p.png", email: "other@example.com" });
+    await recordSignIn(env.DB, "priya", { provider: "github", avatar_url: "https://a/p.png", email: "other@example.com" });
     const row = (await getPerson(env.DB, "priya"))!;
-    expect(row.name).toBe("Priya Natarajan");
+    expect(row.name).toBe("Priya");
     expect(row.avatar_url).toBe("https://a/p.png");
     expect(row.email).toBe("set@example.com");
   });
   it("recordSignIn fills a NULL email", async () => {
     await createPerson(env.DB, { handle: "priya", name: null, color: "plum", avatar_url: null, email: null });
-    await recordSignIn(env.DB, "priya", { name: null, avatar_url: null, email: "late@example.com" });
+    await recordSignIn(env.DB, "priya", { provider: "github", avatar_url: null, email: "late@example.com" });
     expect((await getPerson(env.DB, "priya"))!.email).toBe("late@example.com");
   });
 });

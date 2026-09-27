@@ -162,7 +162,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     if (!avail.available) return c.json({ error: avail.reason === "taken" ? "handle_taken" : `handle_${avail.reason}` }, avail.reason === "taken" ? 409 : 400);
     if (p.invite_email && !(await findLiveInvite(c.env.DB, p.invite_email))) return c.json({ error: "invite_revoked" }, 403);
     try {
-      await createPerson(c.env.DB, { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, email: p.email });
+      await createPerson(c.env.DB, { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, avatar_source: p.provider, email: p.email });
     } catch (e) {
       if (e instanceof HandleTakenError) return c.json({ error: "handle_taken" }, 409);
       throw e;

@@ -303,7 +303,7 @@ describe("the avatar rule on every person surface", () => {
     const cookie = await cookieFor("uploader", { avatar_url: PROVIDER });
     await upload(cookie, PNG("keep"), "image/png");
     const sha = await sha256Hex(PNG("keep"));
-    await recordSignIn(env.DB, "uploader", { name: "Up Loader", avatar_url: "https://new/picture.png", email: null });
+    await recordSignIn(env.DB, "uploader", { provider: "github", avatar_url: "https://new/picture.png", email: null });
     const row = await personRow("uploader");
     expect(row.avatar_url).toBe("https://new/picture.png");
     expect(row.avatar_sha).toBe(sha);

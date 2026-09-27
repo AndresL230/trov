@@ -68,14 +68,14 @@ export async function openOnboard(sealed: string, secret: string, now: () => num
 export async function completeSignIn(db: DB, p: ProviderProfile): Promise<ForkResult> {
   const known = await findIdentity(db, p.provider, p.subject);
   if (known) {
-    await recordSignIn(db, known.person, { name: p.name, avatar_url: p.avatar_url, email: p.email });
+    await recordSignIn(db, known.person, { provider: p.provider, avatar_url: p.avatar_url, email: p.email });
     return { kind: "session", handle: known.person };
   }
   if (p.email) {
     const byEmail = await findPersonByEmail(db, p.email);
     if (byEmail) {
       await linkIdentity(db, { provider: p.provider, subject: p.subject, label: p.label, person: byEmail.handle, linkedBy: byEmail.handle });
-      await recordSignIn(db, byEmail.handle, { name: p.name, avatar_url: p.avatar_url, email: p.email });
+      await recordSignIn(db, byEmail.handle, { provider: p.provider, avatar_url: p.avatar_url, email: p.email });
       return { kind: "session", handle: byEmail.handle };
     }
   }
