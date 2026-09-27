@@ -14,7 +14,7 @@ import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, handleTag, swatches, type OnboardState } from "./people";
-import { peopleDirectoryView, personProfileView } from "./profile";
+import { personCardModal } from "./profile";
 import { AVATAR_TYPES } from "@shared/people";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
@@ -73,9 +73,7 @@ export type Screen =
   // Docs › New doc.
   | "newdoc"
   // Help › What's new: the release grid, and each release's notes / patch notes (releases.ts, static data).
-  | "releases"
-  // People (Workspace): the directory and one person's profile (profile.ts).
-  | "people" | "person";
+  | "releases";
 
 /** Async data slice: a screen's fetched payload plus its load status. */
 export interface Loadable<T> {
@@ -348,12 +346,11 @@ export interface AppState {
   /** ADMIN Sync GitHub progress — null when idle; present while a (possibly
    *  multi-batch) sync is running, tracking cumulative counts across batches. */
   backfillSync: BackfillSyncState | null;
-  // ── People (profile.ts), Maintenance › People's role editor, Settings › Profile's photo ──
-  /** The directory's search box (client-side over `persons`). */
-  peopleQ: string;
-  /** The profile the `person` screen shows (from `#people/<handle>`). */
-  personHandle: string | null;
-  personProfile: Loadable<PersonProfile | null>;
+  // ── The person card (profile.ts), Maintenance › People's role editor, Settings › Profile's photo ──
+  /** The person card open over the page (a click on a name); null = closed. */
+  personCard: string | null;
+  /** That person's `GET /api/people/:handle` (joined, GitHub, admin) — the card paints without it. */
+  personDetail: Loadable<PersonProfile | null>;
   /** Maintenance › People: the admin's open role + responsibilities editor (one person;
    *  `draft` null while that person's profile read is in flight); null = closed. */
   personEdit: { handle: string; draft: PersonEditDraft | null } | null;
@@ -479,9 +476,8 @@ export function initialState(): AppState {
     toastAt: 0,
     toastMs: 0,
     backfillSync: null,
-    peopleQ: "",
-    personHandle: null,
-    personProfile: { status: "idle", data: null },
+    personCard: null,
+    personDetail: { status: "idle", data: null },
     personEdit: null,
     personSaving: false,
     avatarBusy: null,
@@ -711,10 +707,6 @@ function headerCrumb(s: AppState): string {
     return ed.mode === "new" ? "New prompt" : `${ed.mode === "edit" ? "Edit" : "New version"} · ${ed.title}`;
   }
   if (s.screen === "newdoc") return "New doc";
-  if (s.screen === "person") {
-    const pr = s.personProfile.data;
-    return pr && pr.handle.toLowerCase() === (s.personHandle ?? "").toLowerCase() ? pr.name || pr.handle : s.personHandle ?? "";
-  }
   if (s.screen === "maintenance") return s.maintTab === "identity" ? "Identity" : s.maintTab === "people" ? "People" : "";
   if (s.screen === "ticketdetail") return s.ticketDetail.data?.title ?? "";
   if (s.screen === "sprint") {
@@ -736,7 +728,6 @@ function header(s: AppState): string {
     prompts: "Prompt Library", prompt: "Prompt Library", promptedit: "Prompt Library",
     newdoc: "Docs",
     releases: "What's new",
-    people: "People", person: "People",
   };
   // dark = "show the moon icon".
   const dark = resolved(s) !== "light";
@@ -811,7 +802,6 @@ function header(s: AppState): string {
   // the design's single `back` handler).
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
     || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
-    || s.screen === "person"
     || (s.screen === "maintenance" && s.maintTab !== "unplaced")
     || (s.screen === "releases" && s.releaseVersion !== null);
   // The act the title's back button fires: each child screen returns to its own parent.
@@ -821,7 +811,6 @@ function header(s: AppState): string {
     : s.screen === "newdoc" ? "goDocs"
     : s.screen === "maintenance" ? "goMaintenance"
     : s.screen === "releases" ? "goReleases"
-    : s.screen === "person" ? "goPeople"
     : "ticketsBack";
   const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : child
     ? `<span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:13px">›</span><span style="font-size:13px;font-weight:500;color:var(--fg-70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(headerCrumb(s))}</span></span>`
@@ -2314,6 +2303,16 @@ function sprintScreenBody(s: AppState): string {
   return sprintScreen({ detail: slice.data, persons: s.persons.data, resourceDraft: s.linkDraft, deleteArmed: s.sprintDeleteArmed });
 }
 
+/** The person card for `handle`: painted from the `GET /persons` summary, completed by the
+ *  detail read once it lands (and from the detail alone if the directory hasn't loaded). */
+function personCardFor(s: AppState, handle: string): string {
+  const h = handle.toLowerCase();
+  const detail = s.personDetail.data && s.personDetail.data.handle.toLowerCase() === h ? s.personDetail.data : null;
+  const person = s.persons.data.find((x) => x.handle.toLowerCase() === h) ?? detail
+    ?? { handle, name: null, color: "stone" as const, avatar_url: null, role: null };
+  return personCardModal({ person, detail, self: h === (s.me?.handle ?? "").toLowerCase() });
+}
+
 // ── root ─────────────────────────────────────────────────────────────────────
 function screenBody(s: AppState): string {
   switch (s.screen) {
@@ -2346,12 +2345,6 @@ function screenBody(s: AppState): string {
       canDelete: canDeletePrompt(s), deleteArm: s.promptDeleteArm, deleteBusy: s.promptDeleteBusy,
     });
     case "promptedit": return promptEditorView({ draft: s.promptEd, takenSlugs: s.promptList.data.map((p) => p.slug) });
-    case "people": return peopleDirectoryView({ status: s.persons.status, persons: s.persons.data, q: s.peopleQ, me: s.me?.handle ?? "" });
-    case "person": return personProfileView({
-      status: s.personProfile.status, handle: s.personHandle ?? "",
-      // Never show a previous person's page under a new handle while the read is in flight.
-      profile: s.personProfile.data && s.personProfile.data.handle.toLowerCase() === (s.personHandle ?? "").toLowerCase() ? s.personProfile.data : null,
-    });
     case "newdoc": return newDocView({ draft: s.nd, spaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })), sections: ASSIGN_OPTIONS.sections });
     default: return feedView(s);
   }
@@ -2448,6 +2441,7 @@ export function render(s: AppState): string {
     ${s.view === "app" ? connectModal(s) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
+    ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}

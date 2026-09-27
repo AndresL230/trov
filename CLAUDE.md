@@ -333,7 +333,7 @@ still out shows the longest cached PREFIX's still-matching hits plus "Searching�
 strip — selection is a background fill. ↑/↓ move (a first press before the pause shows the results), Enter opens the selected row — or, typed
 faster than the panel shows, goes straight to the Search screen with the text; Tab / ⌘Enter = the Search
 screen with the query, Esc closes. A pick runs the existing acts (`openTicket`, `openDocFrom`, `openSprint`,
-`artOpen`, `openPrompt`, `openHandoff`, `goFeed`, a person → their profile (`#people/<handle>`, the role as the context line); a decision, which has
+`artOpen`, `openPrompt`, `openHandoff`, `goFeed`, a person → their person card (the role as the context line); a decision, which has
 no screen, → the Search screen on its title).
 
 **MCP ticket/sprint reads are unscoped; the writes are not** — `src/mcp.ts` registers `list_tickets`
@@ -494,12 +494,11 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
 - **Serving** `GET /avatar/<sha>` (session-gated, beside `/img/<sha>` and exactly like it): `nosniff`,
   `default-src 'none'; sandbox`, `Cache-Control: private, max-age=31536000, immutable`; 404 for a malformed sha,
   no object, or a stored type outside `AVATAR_TYPES`.
-- **Profile** `GET /api/people/:handle` (session cookie; `me` = the viewer; an unknown or RESERVED handle is 404):
-  `PersonProfile` — role, GitHub login, joined, `admin`, `editable` (the VIEWER is an admin), `self`; their open assigned
-  tickets of BOTH sources through My Work's own `listAssignedTickets` / `countAssignedTickets` (8 + the uncapped
-  `ticketsOpen`), their latest 5 feed entries, and the LIVE docs they own (`docs.owner`, `current_version > 0`, 8)
-  — person, GitHub login, sessions and docs in ONE `db.batch`. A D1 failure is 503 `{ error }`, never a 500.
-- **`responsibilities` is never rendered on a profile.** It travels only to admins (Maintenance › People's editor
+- **Person card read** `GET /api/people/:handle` (session cookie; `me` = the viewer; an unknown or RESERVED handle
+  is 404): `PersonProfile` — role, GitHub login, joined, `admin`, `editable` (the VIEWER is an admin), `self`, and
+  nothing else (no tickets, sessions or docs — there is no profile page) — the person and their GitHub login in ONE
+  `db.batch`. A D1 failure is 503 `{ error }`, never a 500.
+- **`responsibilities` is never rendered.** It travels only to admins (Maintenance › People's editor
   fills from it) and to MCP `list_people` — not even to the person themselves.
 - **Role and responsibilities are ADMIN-set** (the owner's call, 2026-09-27): a person changes only their own photo
   (and name / color / handle, as before). **Write** `PUT /api/people/:handle` (`PersonProfileWrite`): an admin
@@ -511,16 +510,16 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   write of any kind. Its description, `create_ticket`'s and the `tickets` / `canopy` skills tell an agent to read
   it before choosing `assignees`, and that a null is unknown, never to be guessed.
 - `scripts/seed/reset.mjs` seeds a role + responsibilities for the six dev/test persons.
-- **On screen** (`web/src/profile.ts`, `web/src/avatar.ts`): `#people` — the directory (a card per person, a
-  search over name / handle / role; People in the sidebar's Workspace section) — and `#people/<handle>`, the profile
-  (avatar, role, admin badge, joined, GitHub; open tickets, recent sessions, docs owned). Own profile → "Edit
-  profile" opens Settings (photo, name). Role + responsibilities are edited in ONE place: Maintenance › People, where
+- **On screen there is NO People screen and no profile page** (the owner's call, 2026-09-27): a click on anyone's
+  name — the ticket rail's people, Feed authors, quick search's person hits, Maintenance › People's rows — opens the
+  **person card** (`personCardModal`, `web/src/profile.ts`): a modal in the confirm modal's `.cnpy-cmodal` shell,
+  rendered at the app root (`state.personCard`), with the large avatar, name, handle and role painted at once from
+  `GET /persons`, then joined / GitHub / the admin badge when `GET /api/people/:handle` lands; the backdrop, × and
+  Escape close it, and one's OWN card links to Settings (photo, name). Role + responsibilities are edited in ONE place: Maintenance › People, where
   an admin's "Edit role" opens `personRoleEditor` (`web/src/maintenance.ts`) under that row, filled from the
   person's profile read. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in the browser before
   the POST — so a GIF loses its animation) and removes one (shown only for an `/avatar/` URL); it has no role or
-  responsibilities field. A
-  profile opens from quick search's person hits, the ticket rail's people, Feed authors and Maintenance › People.
-  A `personChip` whose image fails to load shows the initials under it.
+  responsibilities field. A `personChip` whose image fails to load shows the initials under it.
 
 ## Roadmap & My Work — authored plan + stored projections, no live GitHub at render
 

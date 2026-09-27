@@ -6,10 +6,10 @@
 //     served by the session-gated `GET /avatar/<sha>`). It outranks the provider picture
 //     (`persons.avatar_url`); `avatarSrc` is the ONE rule, and every DTO's `avatar_url`
 //     is already resolved through it, so `personChip` needs no change.
-//   • role — a short title, shown on the profile and in the people directory.
-//   • responsibilities — what the person owns / should be assigned. NEVER rendered on a
-//     profile; returned only to admins (for editing) and to MCP (`list_people`,
-//     read-only), where an agent reads it when assigning work.
+//   • role — a short title, shown on the person card (a click on anyone's name).
+//   • responsibilities — what the person owns / should be assigned. NEVER rendered;
+//     returned only to admins (for editing) and to MCP (`list_people`, read-only),
+//     where an agent reads it when assigning work.
 //
 // Who writes (the owner's call, 2026-09-27): a person changes only their OWN avatar
 // (Settings); role and responsibilities are set by an ADMIN (`isAdmin`), in Maintenance ›
@@ -38,19 +38,11 @@ export interface PersonSummary {
   role: string | null;
 }
 
-/** A ticket line on a profile (open, assigned to the person). */
-export interface ProfileTicket {
-  id: number;
-  title: string;
-  status: string;
-  priority: string;
-  updated_at: string;
-}
-
 /**
- * `GET /api/people/:handle` — the profile page. Session cookie. An unknown or reserved
- * handle is 404. `responsibilities` is present ONLY when the viewer is an admin (so
- * Maintenance › People's editor can fill it); no page renders it.
+ * `GET /api/people/:handle` — the person card (the modal a click on a person's name opens;
+ * there is no profile page). Session cookie. An unknown or reserved handle is 404.
+ * `responsibilities` is present ONLY when the viewer is an admin (so Maintenance › People's
+ * editor can fill it); nothing renders it.
  */
 export interface PersonProfile extends PersonSummary {
   /** GitHub login from `identities`, when linked (for a "GitHub" link). */
@@ -59,16 +51,9 @@ export interface PersonProfile extends PersonSummary {
   admin: boolean;                              // this person is an admin
   /** The viewer may set this person's role / responsibilities (admins only). */
   editable: boolean;
-  /** The viewer is this person (may also change the avatar). */
+  /** The viewer is this person (the card offers "Edit profile" → Settings). */
   self: boolean;
   responsibilities?: string | null;
-  /** Open tickets assigned to them (both sources), most recently updated first, max 8. */
-  tickets: ProfileTicket[];
-  ticketsOpen: number;                         // uncapped count of the same rule
-  /** Their latest feed entries, max 5. */
-  sessions: Array<{ id: number; summary: string; brief: string | null; created_at: string }>;
-  /** Live docs they own (`docs.owner`), max 8. */
-  docs: Array<{ slug: string; title: string; updated_at: string }>;
 }
 
 /** `PUT /api/people/:handle` body — admins only; every field optional, "" / null clears. */

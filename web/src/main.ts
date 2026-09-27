@@ -160,8 +160,6 @@ function screenSettled(): boolean {
     case "handoff": return ok(state.handoffDetail) || state.handoffDetail.data !== null;
     case "prompts": return ok(state.promptList) || state.promptList.data.length > 0;
     case "prompt": return ok(state.promptDetail) || state.promptDetail.data !== null;
-    case "people": return ok(state.persons) || state.persons.data.length > 0;
-    case "person": return ok(state.personProfile) || state.personProfile.data !== null;
     default: return true; // search re-queries per keystroke; the rest load nothing
   }
 }
@@ -433,7 +431,6 @@ function currentRoute(): Route {
     if (state.promptMode !== "new" && state.promptSlug) r.promptSlug = state.promptSlug;
   }
   if (state.screen === "maintenance") r.maintTab = state.maintTab;
-  if (state.screen === "person" && state.personHandle) r.personHandle = state.personHandle;
   return r;
 }
 function applyRoute(r: Route): void {
@@ -458,7 +455,6 @@ function applyRoute(r: Route): void {
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
   if (r.maintTab) state.maintTab = r.maintTab;
-  if (r.personHandle) state.personHandle = r.personHandle;
 }
 
 // Kick off the data load for a screen (mirrors the go* dispatch cases).
@@ -481,8 +477,6 @@ function loadForScreen(screen: Screen): void {
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
     case "settings": loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); break;
-    case "people": loadPersons(); rerender(); break;
-    case "person": if (state.personHandle) openPersonProfile(state.personHandle); else rerender(); break;
     case "unsubscribe": runUnsubscribe(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
@@ -1335,26 +1329,24 @@ function refreshMe(): void {
   getMe().then((me) => { state.me = me; state.displayName = me.name ?? me.handle; rerender(); }).catch(() => undefined);
 }
 
-// ── People: one person's profile, and Settings › Profile's own read + photo ──
+// ── The person card (a click on a name), and Settings › Profile's photo ──
 let personSeq = 0;
-/** Open `#people/<handle>`. */
-function openPersonProfile(handle: string): void {
+/** Open the person card for `handle`: it paints at once from the directory, and the detail
+ *  read (joined, GitHub, admin) fills in when it lands. A failed read leaves the card as is. */
+function openPersonCard(handle: string): void {
   const seq = ++personSeq;
-  const same = state.personProfile.data?.handle.toLowerCase() === handle.toLowerCase();
-  state.personHandle = handle;
-  state.personProfile = { status: "loading", data: same ? state.personProfile.data : null };
+  state.personCard = handle;
+  const same = state.personDetail.data?.handle.toLowerCase() === handle.toLowerCase();
+  state.personDetail = { status: "loading", data: same ? state.personDetail.data : null };
+  if (!state.persons.data.length) loadPersons();
   rerender();
+  mount.querySelector<HTMLElement>("[data-person-card]")?.focus();
   getPersonProfile(handle)
-    .then((pr) => {
-      if (seq !== personSeq) return;
-      state.personProfile = { status: "ok", data: pr };
-      rerender();
-    })
+    .then((pr) => { if (seq !== personSeq) return; state.personDetail = { status: "ok", data: pr }; rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== personSeq) return;
-      // An unknown handle is a settled page ("nobody called …"), not a failed read.
-      state.personProfile = { status: e instanceof NotFound ? "ok" : "error", data: null, error: errMsg(e) };
+      state.personDetail = { status: e instanceof NotFound ? "ok" : "error", data: null, error: errMsg(e) };
       rerender();
     });
 }
@@ -2016,12 +2008,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     case "goFeed": state.screen = "feed"; loadFeedIfNeeded(); loadFeedStats(); return;
 
-    // ── People: the directory and a profile ─────────────────────────────────
-    case "goPeople": state.screen = "people"; loadPersons(); break;
-    case "peopleQ": state.peopleQ = value ?? ""; break;
-    case "openPerson": if (!arg) return; state.screen = "person"; openPersonProfile(arg); return;
-    // A profile's Recent sessions: the Feed, filtered to that person (the Filter menu's own author filter).
-    case "personFeed": if (!arg) return; state.screen = "feed"; state.feedAuthor = arg; loadFeed(); loadFeedStats(); return;
+    // ── The person card: a click on anyone's name (the rail, the Feed, quick search,
+    // Maintenance › People) opens it over the page; the backdrop, × and Escape close it.
+    case "openPerson": if (!arg) return; openPersonCard(arg); return;
+    case "personCardClose": state.personCard = null; break;
     // Maintenance › People (admin): "Edit role" opens the role + responsibilities editor under
     // that person's row — the one place either is edited. Responsibilities come from the
     // person's profile read (an admin's read carries them); the editor waits for it.
@@ -2053,7 +2043,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .then((fresh) => {
           state.personSaving = false;
           if (state.personEdit?.handle === ed.handle) state.personEdit = null;
-          if (state.personProfile.data?.handle.toLowerCase() === fresh.handle.toLowerCase()) state.personProfile = { status: "ok", data: fresh };
+          if (state.personDetail.data?.handle.toLowerCase() === fresh.handle.toLowerCase()) state.personDetail = { status: "ok", data: fresh };
           flash(`Saved ${fresh.name || fresh.handle}'s role`);
           loadPersons();
         })
@@ -2578,7 +2568,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded(); loadIdentityTasksIfNeeded(); loadFeedIfNeeded(); loadNotifAdminIfNeeded(); loadInvitesIfAdmin();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.unsub.preview = false; state.tokenRevokeArm = null; state.grantRevokeArm = null; loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.unsub.preview = false; state.tokenRevokeArm = null; state.grantRevokeArm = null; loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3960,7 +3950,8 @@ mount.addEventListener("keydown", (e) => {
 // Escape closes the expanded handoff prompt (the filter menus close in their own listener).
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || state.view !== "app") return;
-  if (state.handoffPromptOpen) { state.handoffPromptOpen = false; rerender(); }
+  if (state.personCard) { state.personCard = null; rerender(); }
+  else if (state.handoffPromptOpen) { state.handoffPromptOpen = false; rerender(); }
   else if (state.promptExpanded) { state.promptExpanded = false; rerender(); }
 });
 

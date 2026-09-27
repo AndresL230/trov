@@ -24,7 +24,7 @@ describe("parseHash", () => {
   });
 
   it("still parses every pre-existing plain screen", () => {
-    for (const s of ["mywork", "feed", "docs", "review", "search", "settings", "guide", "unsubscribe", "handoffs", "prompts", "people"]) {
+    for (const s of ["mywork", "feed", "docs", "review", "search", "settings", "guide", "unsubscribe", "handoffs", "prompts"]) {
       expect(parseHash(`#${s}`)).toEqual({ screen: s, ticketId: null, sprintId: null });
     }
     // Maintenance now names its sub-page (Unplaced is the bare hash).
@@ -66,28 +66,6 @@ describe("parseHash", () => {
     expect(parseHash("#handoffs/%E0%A4%A")).toEqual(none); // malformed escape
     expect(parseHash("#handoffs/h_8d05")).toEqual(none);    // ids are numbers
     expect(parseHash("#handoffs/0")).toEqual(none);
-  });
-
-  it("routes the People directory and one person's profile, and round-trips them", () => {
-    const base = { ticketId: null, sprintId: null };
-    const cases: [string, object][] = [
-      ["#people", { screen: "people", ...base }],
-      ["#people/meilin", { screen: "person", ...base, personHandle: "meilin" }],
-      // Migrated GitHub users kept their login as handle — case and all.
-      ["#people/AndresL230", { screen: "person", ...base, personHandle: "AndresL230" }],
-      ["#people/jose-a", { screen: "person", ...base, personHandle: "jose-a" }],
-    ];
-    for (const [hash, route] of cases) {
-      expect(parseHash(hash), hash).toEqual(route);
-      expect(hashForRoute(parseHash(hash)), hash).toBe(hash);
-    }
-    const none = { screen: "mywork", ticketId: null, sprintId: null };
-    expect(parseHash("#people/meilin/edit")).toEqual(none);   // too deep
-    expect(parseHash("#people/%E0%A4%A")).toEqual(none);      // malformed escape
-    expect(parseHash("#people/a%20b")).toEqual(none);         // not a handle
-    expect(parseHash("#people/-x")).toEqual(none);
-    // A profile route with no handle writes the directory back.
-    expect(hashForRoute({ screen: "person", ...base })).toBe("#people");
   });
 
   it("falls back to My Work for junk, empty, and malformed ids", () => {

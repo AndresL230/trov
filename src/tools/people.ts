@@ -13,7 +13,6 @@
 
 import { first, all, run, type DB } from "../db";
 import { RESERVED_HANDLES } from "../auth/persons";
-import { listAssignedTickets, countAssignedTickets } from "./mywork";
 import { sha256Hex } from "./artifacts";
 import type { PersonColor } from "@shared/rows";
 import {
@@ -29,11 +28,6 @@ export const PEOPLE_ERROR_STATUS: Record<PeopleErrorCode, 400 | 403 | 404 | 413>
   not_found: 404, forbidden: 403, bad_request: 400, too_large: 413,
 };
 
-/** Profile list caps (`PersonProfile`'s own comments). */
-export const PROFILE_TICKETS = 8;
-export const PROFILE_SESSIONS = 5;
-export const PROFILE_DOCS = 8;
-
 const SHA_RE = /^[0-9a-f]{64}$/;
 export const avatarKey = (sha: string): string => `avatars/${sha}`;
 const isReserved = (h: string): boolean => RESERVED_HANDLES.includes(h.toLowerCase());
@@ -45,36 +39,25 @@ interface ProfileRow {
 }
 
 /**
- * The profile of `handle` as `viewer` sees it. An unknown or RESERVED handle is
- * `not_found` (a system principal is not a person). `responsibilities` travels only to
- * admins — Maintenance › People's editor fills from it; no page renders it, and the
- * person themselves does not get it (they cannot edit it). D1 only: the person, their GitHub login, sessions and docs in ONE batch,
- * beside the two assigned-ticket reads My Work uses (both sources, the same rule).
+ * The person card of `handle` as `viewer` sees it (the modal a click on a name opens, and
+ * Maintenance › People's editor). An unknown or RESERVED handle is `not_found` (a system
+ * principal is not a person). `responsibilities` travels only to admins — the editor fills
+ * from it; no page renders it, and the person themselves does not get it (they cannot edit
+ * it). D1 only: the person and their GitHub login in ONE batch.
  */
 export async function getPersonProfile(
   db: DB, handle: string, viewer: string, isAdmin: (h: string) => boolean,
 ): Promise<PersonProfile> {
   if (isReserved(handle)) throw new PeopleError("not_found", "not found");
-  const [p, g, s, d] = await db.batch([
+  const [p, g] = await db.batch([
       db.prepare(`SELECT handle, name, color, avatar_url, avatar_sha, role, responsibilities, created_at
                     FROM persons WHERE handle = ? COLLATE NOCASE`).bind(handle),
       db.prepare(`SELECT subject FROM identities WHERE provider = 'github' AND person = ? COLLATE NOCASE
                    ORDER BY linked_at ASC LIMIT 1`).bind(handle),
-      db.prepare(`SELECT id, summary, brief, created_at FROM feed WHERE author = ? COLLATE NOCASE
-                   ORDER BY created_at DESC, id DESC LIMIT ${PROFILE_SESSIONS}`).bind(handle),
-      // Live = promoted at least once; a stub at current_version 0 is not a doc yet.
-      db.prepare(`SELECT slug, title, updated_at FROM docs WHERE owner = ? COLLATE NOCASE AND current_version > 0
-                   ORDER BY updated_at DESC, slug ASC LIMIT ${PROFILE_DOCS}`).bind(handle),
   ]);
   const person = p.results?.[0] as ProfileRow | undefined;
   const gh = g.results?.[0] as { subject: string } | undefined;
-  const sessions = (s.results ?? []) as PersonProfile["sessions"];
-  const docs = (d.results ?? []) as Array<{ slug: string; title: string; updated_at: string | null }>;
   if (!person) throw new PeopleError("not_found", "not found");
-  const [tickets, ticketsOpen] = await Promise.all([
-    listAssignedTickets(db, person.handle, { sources: "all", limit: PROFILE_TICKETS }),
-    countAssignedTickets(db, person.handle, "all"),
-  ]);
   const self = sameHandle(person.handle, viewer);
   const editor = isAdmin(viewer);
   return {
@@ -89,10 +72,6 @@ export async function getPersonProfile(
     editable: editor,
     self,
     ...(editor ? { responsibilities: person.responsibilities } : {}),
-    tickets: tickets.map((t) => ({ id: t.id, title: t.title, status: t.status, priority: t.priority, updated_at: t.updatedAt })),
-    ticketsOpen,
-    sessions: sessions.map((s) => ({ id: s.id, summary: s.summary, brief: s.brief ?? null, created_at: s.created_at })),
-    docs: docs.map((d) => ({ slug: d.slug, title: d.title, updated_at: d.updated_at ?? "" })),
   };
 }
 

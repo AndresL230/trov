@@ -51,7 +51,6 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "Roadmap › Timeline", hint: "Sprints on a timeline", keys: "plan sprints gantt schedule", steps: [["goRoadmap", null], ["roadmapTimeline", null]] },
   { label: "Handoffs", hint: "Work left for the next session", keys: "inbox claim", steps: [["goHandoffs", null]] },
   { label: "New handoff", hint: "Leave work for someone", keys: "send create", steps: [["newHandoff", null]] },
-  { label: "People", hint: "Everyone on the team, and their profiles", keys: "team directory members profiles roles who", steps: [["goPeople", null]] },
   { label: "Repo › Overview", hint: "Environments, drift and health", keys: "dashboard github environments health deploys", steps: [["navSub", "repo:overview"]] },
   { label: "Repo › Code", hint: "Pull requests, commits and branches", keys: "prs pull requests branches commits", steps: [["navSub", "repo:code"]] },
   { label: "Repo › CI", hint: "Deploys, failures, coverage and bundle", keys: "builds checks runs coverage failures deploys", steps: [["navSub", "repo:ci"]] },

@@ -55,8 +55,9 @@ describe("GET /api/people/:handle", () => {
     expect(p).toMatchObject({
       handle: "Jose-Gael-Cruz-Lopez", name: "Jose", color: "sky", avatar_url: null, role: "Backend engineer",
       github: "Jose-Gael-Cruz-Lopez", joined: "2026-01-01T00:00:00Z", admin: false, editable: false, self: false,
-      tickets: [], ticketsOpen: 0, sessions: [], docs: [],
     });
+    // The card carries nothing else — no tickets, sessions or docs (there is no profile page).
+    expect(Object.keys(p).sort()).toEqual(["admin", "avatar_url", "color", "editable", "github", "handle", "joined", "name", "role", "self"]);
     expect("responsibilities" in p).toBe(false);
   });
 
@@ -81,42 +82,6 @@ describe("GET /api/people/:handle", () => {
     for (const h of ["nobody-here", "github-webhook", "GitHub-Webhook"]) {
       expect((await get(`/api/people/${h}`, cookie)).status).toBe(404);
     }
-  });
-
-  it("tickets: their OPEN assigned tickets of BOTH sources, newest first, capped at 8, with the uncapped count", async () => {
-    const who = "lpcooper-arch";
-    for (let i = 0; i < 9; i++) await seedTicket(`native ${i}`, who, { updated_at: `2026-09-0${i + 1}T00:00:00.000Z` });
-    const mirrored = await seedTicket("mirrored", who, { source: "github", updated_at: "2026-09-20T00:00:00.000Z" });
-    await seedTicket("resolved", who, { status: "done" });
-    await seedTicket("someone else's", "Darkest-Teddy");
-    const p = await profileOf(who, await cookieFor("viewer"));
-    expect(p.ticketsOpen).toBe(10);
-    expect(p.tickets).toHaveLength(8);
-    expect(p.tickets[0]).toEqual({ id: mirrored, title: "mirrored", status: "submitted", priority: "normal", updated_at: "2026-09-20T00:00:00.000Z" });
-    expect(p.tickets.map((t) => t.title)).not.toContain("resolved");
-  });
-
-  it("sessions: their latest 5 feed entries; docs: the LIVE docs they own, capped at 8", async () => {
-    const who = "Darkest-Teddy";
-    for (let i = 0; i < 7; i++) {
-      await run(env.DB, `INSERT INTO feed (author, summary, brief, body, created_at) VALUES (?, ?, ?, 'b', ?)`,
-        i === 6 ? "darkest-teddy" : who, `entry ${i}`, i === 6 ? "the brief" : null, `2026-09-1${i}T00:00:00Z`);
-    }
-    await run(env.DB, `INSERT INTO feed (author, summary, body, created_at) VALUES ('AndresL230', 'not theirs', 'b', '2026-09-30T00:00:00Z')`);
-    for (let i = 0; i < 10; i++) {
-      await run(env.DB, `INSERT INTO docs (slug, section, title, body, current_version, updated_at, updated_by, owner) VALUES (?, 'reference', ?, 'x', 1, ?, 'AndresL230', ?)`,
-        `doc-${i}`, `Doc ${i}`, `2026-09-${10 + i}T00:00:00Z`, who);
-    }
-    await run(env.DB, `INSERT INTO docs (slug, section, title, body, current_version, updated_at, owner) VALUES ('stub', 'reference', 'Stub', '', 0, '2026-09-30T00:00:00Z', ?)`, who);
-    await run(env.DB, `INSERT INTO docs (slug, section, title, body, current_version, updated_at, owner) VALUES ('other', 'reference', 'Other', 'x', 1, '2026-09-30T00:00:00Z', 'AndresL230')`);
-    const p = await profileOf(who, await cookieFor("viewer"));
-    expect(p.sessions.map((s) => s.summary)).toEqual(["entry 6", "entry 5", "entry 4", "entry 3", "entry 2"]);
-    expect(p.sessions[0]).toMatchObject({ brief: "the brief", created_at: "2026-09-16T00:00:00Z" });
-    expect(Object.keys(p.sessions[0]).sort()).toEqual(["brief", "created_at", "id", "summary"]);
-    expect(p.docs).toHaveLength(8);
-    expect(p.docs[0]).toEqual({ slug: "doc-9", title: "Doc 9", updated_at: "2026-09-19T00:00:00Z" });
-    expect(p.docs.map((d) => d.slug)).not.toContain("stub");
-    expect(p.docs.map((d) => d.slug)).not.toContain("other");
   });
 
   it("a D1 failure is a 503, never a 500", async () => {
