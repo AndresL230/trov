@@ -8,12 +8,12 @@
 //     is already resolved through it, so `personChip` needs no change.
 //   • role — a short title, shown on the profile and in the people directory.
 //   • responsibilities — what the person owns / should be assigned. NEVER rendered on a
-//     profile; returned only to the person themselves, to admins (for editing) and to MCP
-//     (`list_people`, read-only), where an agent reads it when assigning work.
+//     profile; returned only to admins (for editing) and to MCP (`list_people`,
+//     read-only), where an agent reads it when assigning work.
 //
-// Who writes: a person edits their OWN role, responsibilities and avatar (Settings); an
-// admin (`isAdmin`) may edit ANY person's role and responsibilities (Maintenance › People).
-// Nothing here is an MCP write.
+// Who writes (the owner's call, 2026-09-27): a person changes only their OWN avatar
+// (Settings); role and responsibilities are set by an ADMIN (`isAdmin`), in Maintenance ›
+// People — never by the person themselves. Nothing here is an MCP write.
 
 import type { PersonColor } from "./rows";
 
@@ -49,15 +49,15 @@ export interface ProfileTicket {
 
 /**
  * `GET /api/people/:handle` — the profile page. Session cookie. An unknown or reserved
- * handle is 404. `responsibilities` is present ONLY when the viewer is that person or an
- * admin (so the edit form can fill it); the profile never renders it.
+ * handle is 404. `responsibilities` is present ONLY when the viewer is an admin (so
+ * Maintenance › People's editor can fill it); no page renders it.
  */
 export interface PersonProfile extends PersonSummary {
   /** GitHub login from `identities`, when linked (for a "GitHub" link). */
   github: string | null;
   joined: string;                              // persons.created_at
   admin: boolean;                              // this person is an admin
-  /** The viewer may edit this person's role / responsibilities (self or admin). */
+  /** The viewer may set this person's role / responsibilities (admins only). */
   editable: boolean;
   /** The viewer is this person (may also change the avatar). */
   self: boolean;
@@ -71,7 +71,7 @@ export interface PersonProfile extends PersonSummary {
   docs: Array<{ slug: string; title: string; updated_at: string }>;
 }
 
-/** `PUT /api/people/:handle` body — self or admin; every field optional, "" / null clears. */
+/** `PUT /api/people/:handle` body — admins only; every field optional, "" / null clears. */
 export interface PersonProfileWrite {
   role?: string | null;
   responsibilities?: string | null;

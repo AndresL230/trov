@@ -495,14 +495,15 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   `default-src 'none'; sandbox`, `Cache-Control: private, max-age=31536000, immutable`; 404 for a malformed sha,
   no object, or a stored type outside `AVATAR_TYPES`.
 - **Profile** `GET /api/people/:handle` (session cookie; `me` = the viewer; an unknown or RESERVED handle is 404):
-  `PersonProfile` — role, GitHub login, joined, `admin`, `editable` (self or admin), `self`; their open assigned
+  `PersonProfile` — role, GitHub login, joined, `admin`, `editable` (the VIEWER is an admin), `self`; their open assigned
   tickets of BOTH sources through My Work's own `listAssignedTickets` / `countAssignedTickets` (8 + the uncapped
   `ticketsOpen`), their latest 5 feed entries, and the LIVE docs they own (`docs.owner`, `current_version > 0`, 8)
   — person, GitHub login, sessions and docs in ONE `db.batch`. A D1 failure is 503 `{ error }`, never a 500.
-- **`responsibilities` is never rendered on a profile.** It travels only to the person themselves and to admins
-  (the edit form fills from it) and to MCP `list_people`.
-- **Write** `PUT /api/people/:handle` (`PersonProfileWrite`): the person (case-insensitive) or an admin
-  (`isAdmin`), else 403 with nothing written. Trimmed; absent = untouched, `""` / null / whitespace clears; over
+- **`responsibilities` is never rendered on a profile.** It travels only to admins (Maintenance › People's editor
+  fills from it) and to MCP `list_people` — not even to the person themselves.
+- **Role and responsibilities are ADMIN-set** (the owner's call, 2026-09-27): a person changes only their own photo
+  (and name / color / handle, as before). **Write** `PUT /api/people/:handle` (`PersonProfileWrite`): an admin
+  (`isAdmin`) only — anyone else, the person themselves included, is 403 with nothing written. Trimmed; absent = untouched, `""` / null / whitespace clears; over
   `ROLE_MAX` (80) / `RESPONSIBILITIES_MAX` (2000) is 400 and writes NOTHING (every field is validated before the
   one UPDATE). Returns the fresh profile. Name and color stay on `PUT /auth/me`.
 - **MCP gets ONE read, `list_people`** (every principal): `{ people: [{ handle, name, role, responsibilities }] }`
@@ -513,10 +514,11 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
 - **On screen** (`web/src/profile.ts`, `web/src/avatar.ts`): `#people` — the directory (a card per person, a
   search over name / handle / role; People in the sidebar's Workspace section) — and `#people/<handle>`, the profile
   (avatar, role, admin badge, joined, GitHub; open tickets, recent sessions, docs owned). Own profile → "Edit
-  profile" opens Settings; an ADMIN on someone else's gets the inline role + responsibilities editor, the one place
-  another person's responsibilities appear. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in
-  the browser before the POST — so a GIF loses its animation), removes one (shown only for an `/avatar/` URL), and
-  edits role + responsibilities (disabled until the profile read lands, so a save never blanks unread text). A
+  profile" opens Settings (photo, name). Role + responsibilities are edited in ONE place: Maintenance › People, where
+  an admin's "Edit role" opens `personRoleEditor` (`web/src/maintenance.ts`) under that row, filled from the
+  person's profile read. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in the browser before
+  the POST — so a GIF loses its animation) and removes one (shown only for an `/avatar/` URL); it has no role or
+  responsibilities field. A
   profile opens from quick search's person hits, the ticket rail's people, Feed authors and Maintenance › People.
   A `personChip` whose image fails to load shows the initials under it.
 

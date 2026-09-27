@@ -60,11 +60,11 @@ describe("GET /api/people/:handle", () => {
     expect("responsibilities" in p).toBe(false);
   });
 
-  it("shows responsibilities to the person themselves and to an admin (the edit form fills from it)", async () => {
+  it("shows responsibilities ONLY to an admin (Maintenance › People's editor fills from it) — not to the person", async () => {
     const self = await profileOf("jose-gael-cruz-lopez", await cookieFor("Jose-Gael-Cruz-Lopez")); // any case
     expect(self.self).toBe(true);
-    expect(self.editable).toBe(true);
-    expect(self.responsibilities).toMatch(/Sapling API/);
+    expect(self.editable).toBe(false);
+    expect("responsibilities" in self).toBe(false);
     const admin = await profileOf("Jose-Gael-Cruz-Lopez", await cookieFor("admin-user"));
     expect(admin.self).toBe(false);
     expect(admin.editable).toBe(true);
@@ -139,8 +139,8 @@ describe("GET /api/people/:handle", () => {
 });
 
 describe("PUT /api/people/:handle", () => {
-  it("the person edits their own role and responsibilities (trimmed) and gets the fresh profile", async () => {
-    const cookie = await cookieFor("sanaok", { github: false });
+  it("an admin sets role and responsibilities (trimmed) and gets the fresh profile", async () => {
+    const cookie = await cookieFor("admin-user");
     const res = await put("/api/people/sanaok", cookie, { role: "  Support lead ", responsibilities: " Tickets from users. " });
     expect(res.status).toBe(200);
     const p = await res.json() as PersonProfile;
@@ -150,17 +150,17 @@ describe("PUT /api/people/:handle", () => {
   });
 
   it("an absent field is untouched; \"\" and null clear", async () => {
-    const cookie = await cookieFor("sanaok", { github: false });
-    await put("/api/people/me", cookie, { role: "" });
+    const cookie = await cookieFor("admin-user");
+    await put("/api/people/sanaok", cookie, { role: "" });
     let row = await personRow("sanaok");
     expect(row.role).toBeNull();
     expect(row.responsibilities).toMatch(/Student and teacher support/);
-    await put("/api/people/me", cookie, { responsibilities: null });
+    await put("/api/people/sanaok", cookie, { responsibilities: null });
     row = await personRow("sanaok");
     expect(row.responsibilities).toBeNull();
     // Whitespace alone is empty.
-    await put("/api/people/me", cookie, { role: "Lead" });
-    await put("/api/people/me", cookie, { role: "   " });
+    await put("/api/people/sanaok", cookie, { role: "Lead" });
+    await put("/api/people/sanaok", cookie, { role: "   " });
     expect((await personRow("sanaok")).role).toBeNull();
   });
 
@@ -170,17 +170,19 @@ describe("PUT /api/people/:handle", () => {
     expect((await personRow("meilin")).role).toBe("Head of product");
   });
 
-  it("anyone else is 403 and nothing is written", async () => {
-    const before = await personRow("meilin");
-    const res = await put("/api/people/meilin", await cookieFor("sanaok", { github: false }), { role: "Intruder", responsibilities: "x" });
-    expect(res.status).toBe(403);
-    const after = await personRow("meilin");
-    expect(after.role).toBe(before.role);
-    expect(after.responsibilities).toBe(before.responsibilities);
+  it("anyone else is 403 and nothing is written — the person themselves included", async () => {
+    for (const [target, viewer] of [["meilin", "sanaok"], ["sanaok", "sanaok"], ["sanaok", "me"]] as const) {
+      const before = await personRow(target);
+      const res = await put(`/api/people/${viewer === "me" ? "me" : target}`, await cookieFor("sanaok", { github: false }), { role: "Intruder", responsibilities: "x" });
+      expect(res.status, `${viewer} → ${target}`).toBe(403);
+      const after = await personRow(target);
+      expect(after.role).toBe(before.role);
+      expect(after.responsibilities).toBe(before.responsibilities);
+    }
   });
 
   it("over a cap is 400 and writes NOTHING — not even the other, valid field", async () => {
-    const cookie = await cookieFor("sanaok", { github: false });
+    const cookie = await cookieFor("admin-user");
     const before = await personRow("sanaok");
     let res = await put("/api/people/sanaok", cookie, { role: "r".repeat(ROLE_MAX + 1), responsibilities: "fine" });
     expect(res.status).toBe(400);

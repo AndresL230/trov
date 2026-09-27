@@ -10,7 +10,7 @@ import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
 import {
   render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, connectSnippet, CONNECT_CLIENTS, browserConnectCommand,
-  FEED_FILTER_CATS, aboutValues, type AppState, type Screen, type ConnectClient, type FeedFilterCat, type ToastAction,
+  FEED_FILTER_CATS, type AppState, type Screen, type ConnectClient, type FeedFilterCat, type ToastAction,
 } from "./render";
 import {
   getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard,
@@ -23,7 +23,7 @@ import {
   getNotificationSettings, putNotificationSettings, listNotificationOutbox, testSendNotification, type PrefsWrite,
   listMcpTokens, revokeMcpToken, listOAuthGrants, revokeOAuthGrant,
   listPersons, listInvites, createInvite, revokeInvite, resendInvite, updateMe, unlinkIdentity, renameHandle,
-  getPersonProfile, updatePersonProfile, uploadAvatar, removeAvatar, type PersonProfileWrite,
+  getPersonProfile, updatePersonProfile, uploadAvatar, removeAvatar,
   listTickets, getTicket, getTicketBadge, createTicket, transitionTicket, moveTicket, toggleTicketAssignee,
   addTicketLink, editTicket, removeTicketLink, deleteTicket, setTicketSprint, setTicketParent, addTicketComment, listSprints,
   getSprint, createSprint, setSprintActive, addSprintResource,
@@ -480,7 +480,7 @@ function loadForScreen(screen: Screen): void {
     case "mywork": loadMyWorkIfNeeded(); break;
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
-    case "settings": loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); loadMeProfile(); break;
+    case "settings": loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); break;
     case "people": loadPersons(); rerender(); break;
     case "person": if (state.personHandle) openPersonProfile(state.personHandle); else rerender(); break;
     case "unsubscribe": runUnsubscribe(); break;
@@ -1337,21 +1337,17 @@ function refreshMe(): void {
 
 // ── People: one person's profile, and Settings › Profile's own read + photo ──
 let personSeq = 0;
-/** Open `#people/<handle>`. `edit` opens an admin's role + responsibilities editor once the
- *  profile lands (Maintenance › People's "Edit role") — only for someone else, never self. */
-function openPersonProfile(handle: string, edit = false): void {
+/** Open `#people/<handle>`. */
+function openPersonProfile(handle: string): void {
   const seq = ++personSeq;
   const same = state.personProfile.data?.handle.toLowerCase() === handle.toLowerCase();
-  if (!same) state.personEdit = null;
   state.personHandle = handle;
-  state.personSaving = false;
   state.personProfile = { status: "loading", data: same ? state.personProfile.data : null };
   rerender();
   getPersonProfile(handle)
     .then((pr) => {
       if (seq !== personSeq) return;
       state.personProfile = { status: "ok", data: pr };
-      if (edit && pr.editable && !pr.self) state.personEdit = { role: pr.role ?? "", responsibilities: pr.responsibilities ?? "" };
       rerender();
     })
     .catch((e) => {
@@ -1362,22 +1358,10 @@ function openPersonProfile(handle: string, edit = false): void {
       rerender();
     });
 }
-let meProfileSeq = 0;
-/** Settings › Profile: MY profile — the one read that carries my responsibilities. */
-function loadMeProfile(): void {
-  const me = state.me;
-  if (!me) return;
-  const seq = ++meProfileSeq;
-  state.meProfile = { status: "loading", data: state.meProfile.data };
-  getPersonProfile(me.handle)
-    .then((pr) => { if (seq !== meProfileSeq) return; state.meProfile = { status: "ok", data: pr }; rerender(); })
-    .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } if (seq !== meProfileSeq) return; state.meProfile = { status: "error", data: state.meProfile.data, error: errMsg(e) }; rerender(); });
-}
 /** My photo changed (uploaded or removed): every chip reads `me` or the directory. */
 function setMyAvatar(url: string | null): void {
   state.avatarBusy = null;
   if (state.me) state.me.avatar_url = url;
-  if (state.meProfile.data) state.meProfile = { ...state.meProfile, data: { ...state.meProfile.data, avatar_url: url } };
   loadPersons();
 }
 /** The picked photo: downsized to a square in the browser (avatar.ts), then uploaded. */
@@ -2036,34 +2020,40 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goPeople": state.screen = "people"; loadPersons(); break;
     case "peopleQ": state.peopleQ = value ?? ""; break;
     case "openPerson": if (!arg) return; state.screen = "person"; openPersonProfile(arg); return;
-    // Maintenance › People's "Edit role": the profile with its admin editor open (self edits in Settings).
-    case "openPersonEdit":
-      if (!arg) return;
-      if (arg.toLowerCase() === (state.me?.handle ?? "").toLowerCase()) { dispatch("goSettings", null, null); return; }
-      state.screen = "person"; openPersonProfile(arg, true); return;
     // A profile's Recent sessions: the Feed, filtered to that person (the Filter menu's own author filter).
     case "personFeed": if (!arg) return; state.screen = "feed"; state.feedAuthor = arg; loadFeed(); loadFeedStats(); return;
+    // Maintenance › People (admin): "Edit role" opens the role + responsibilities editor under
+    // that person's row — the one place either is edited. Responsibilities come from the
+    // person's profile read (an admin's read carries them); the editor waits for it.
     case "personEditOpen": {
-      const pr = state.personProfile.data;
-      if (!pr || !pr.editable || pr.self) return;
-      state.personEdit = { role: pr.role ?? "", responsibilities: pr.responsibilities ?? "" };
+      if (!arg || state.me?.admin !== true) return;
+      const handle = arg;
+      state.personEdit = { handle, draft: null };
+      state.personSaving = false;
       rerender();
-      mount.querySelector<HTMLInputElement>('[data-field="personRole"]')?.focus();
+      getPersonProfile(handle)
+        .then((pr) => {
+          if (state.personEdit?.handle !== handle) return;
+          state.personEdit = { handle, draft: { role: pr.role ?? "", responsibilities: pr.responsibilities ?? "" } };
+          rerender();
+          mount.querySelector<HTMLInputElement>('[data-field="personRole"]')?.focus();
+        })
+        .catch((e) => { if (state.personEdit?.handle === handle) state.personEdit = null; writeErr(e, "Couldn't load that person's role"); });
       return;
     }
     case "personEditCancel": state.personEdit = null; break;
-    case "personRoleDraft": if (state.personEdit) state.personEdit = { ...state.personEdit, role: value ?? "" }; break;
-    case "personRespDraft": if (state.personEdit) state.personEdit = { ...state.personEdit, responsibilities: value ?? "" }; break;
+    case "personRoleDraft": if (state.personEdit?.draft) state.personEdit = { ...state.personEdit, draft: { ...state.personEdit.draft, role: value ?? "" } }; break;
+    case "personRespDraft": if (state.personEdit?.draft) state.personEdit = { ...state.personEdit, draft: { ...state.personEdit.draft, responsibilities: value ?? "" } }; break;
     case "personEditSave": {
-      const pr = state.personProfile.data;
-      const d = state.personEdit;
-      if (!pr || !d || state.personSaving) return;
+      const ed = state.personEdit;
+      if (!ed?.draft || state.personSaving) return;
       state.personSaving = true;
       rerender();
-      updatePersonProfile(pr.handle, { role: d.role.trim() || null, responsibilities: d.responsibilities.trim() || null })
+      updatePersonProfile(ed.handle, { role: ed.draft.role.trim() || null, responsibilities: ed.draft.responsibilities.trim() || null })
         .then((fresh) => {
           state.personSaving = false;
-          if (state.personProfile.data?.handle.toLowerCase() === fresh.handle.toLowerCase()) { state.personProfile = { status: "ok", data: fresh }; state.personEdit = null; }
+          if (state.personEdit?.handle === ed.handle) state.personEdit = null;
+          if (state.personProfile.data?.handle.toLowerCase() === fresh.handle.toLowerCase()) state.personProfile = { status: "ok", data: fresh };
           flash(`Saved ${fresh.name || fresh.handle}'s role`);
           loadPersons();
         })
@@ -2588,7 +2578,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded(); loadIdentityTasksIfNeeded(); loadFeedIfNeeded(); loadNotifAdminIfNeeded(); loadInvitesIfAdmin();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.unsub.preview = false; state.tokenRevokeArm = null; state.grantRevokeArm = null; loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); loadMeProfile(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.unsub.preview = false; state.tokenRevokeArm = null; state.grantRevokeArm = null; loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3290,7 +3280,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } flash("Couldn't save profile"); });
       return;
     }
-    // ── Settings › Profile: photo, role and responsibilities ─────────────────
+    // ── Settings › Profile: the photo ────────────────────────────────────────
     case "avatarPick": if (!state.avatarBusy) mount.querySelector<HTMLInputElement>("[data-avatar-file]")?.click(); return;
     case "avatarRemove":
       if (state.avatarBusy) return;
@@ -3300,31 +3290,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .then((r) => { setMyAvatar(r.avatar_url); flash("Photo removed"); })
         .catch((e) => { state.avatarBusy = null; writeErr(e, "Couldn't remove the photo"); });
       return;
-    case "roleDraft": state.roleDraft = value ?? ""; break;
-    case "respDraft": state.respDraft = value ?? ""; break;
-    case "saveAbout": {
-      const me = state.me;
-      if (!me || state.aboutSaving) return;
-      const a = aboutValues(state);
-      // Only what changed travels; responsibilities only once my profile read landed (the
-      // field is disabled until then), so an edit never overwrites text this page never saw.
-      const body: PersonProfileWrite = {};
-      if (a.role.trim() !== a.savedRole.trim()) body.role = a.role.trim() || null;
-      if (state.meProfile.status === "ok" && a.resp.trim() !== a.savedResp.trim()) body.responsibilities = a.resp.trim() || null;
-      if (!("role" in body) && !("responsibilities" in body)) return;
-      state.aboutSaving = true;
-      rerender();
-      updatePersonProfile(me.handle, body)
-        .then((fresh) => {
-          state.meProfile = { status: "ok", data: fresh };
-          if (state.me) state.me.role = fresh.role;
-          state.roleDraft = null; state.respDraft = null; state.aboutSaving = false;
-          flash("Profile saved");
-          loadPersons();
-        })
-        .catch((e) => { state.aboutSaving = false; writeErr(e, "Couldn't save your role"); });
-      return;
-    }
     case "setMyColor": {
       if (!arg || !state.me || !(PERSON_COLORS as readonly string[]).includes(arg)) return;
       const color = arg as PersonColor;

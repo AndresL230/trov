@@ -8,8 +8,8 @@ vi.mock("../web/src/markdown", () => ({
   sanitizeSvg: (s: string) => s,
 }));
 
-import { peopleSection } from "../web/src/maintenance";
-import { profileSection, accountSection, tokenListBody, initialState, render, aboutValues, isUploadedAvatar } from "../web/src/render";
+import { peopleSection, personRoleEditor } from "../web/src/maintenance";
+import { profileSection, accountSection, tokenListBody, initialState, render, isUploadedAvatar } from "../web/src/render";
 import { peopleFromPersons } from "../web/src/triage-map";
 import { handleTag, personChip, markAvatarFailed, AVATAR_IMG_CLASS } from "../web/src/people";
 import { peopleDirectoryView, peopleMatching, personProfileView } from "../web/src/profile";
@@ -182,8 +182,7 @@ const profile = (over: Partial<PersonProfile> = {}): PersonProfile => ({
   docs: [{ slug: "ingest-gate", title: "The ingest gate", updated_at: "2026-09-20T10:00:00Z" }],
   ...over,
 });
-const view = (pr: PersonProfile, edit: { role: string; responsibilities: string } | null = null) =>
-  personProfileView({ status: "ok", handle: pr.handle, profile: pr, edit, saving: false });
+const view = (pr: PersonProfile) => personProfileView({ status: "ok", handle: pr.handle, profile: pr });
 
 describe("personChip — photos", () => {
   it("lays the photo over the initials, so a slow or failed photo shows the initials", () => {
@@ -268,37 +267,22 @@ describe("Profile screen", () => {
     }
   });
 
-  it("self gets Edit profile (→ Settings); an admin viewing someone else gets the role editor", () => {
-    expect(view(profile({ self: true, editable: true }))).toContain('data-act="goSettings"');
-    const admin = view(profile({ editable: true }));
-    expect(admin).toContain('data-act="personEditOpen"');
-    expect(admin).not.toContain('data-act="goSettings"');
-    const plain = view(profile());
-    expect(plain).not.toContain('data-act="personEditOpen"');
-    expect(plain).not.toContain('data-act="goSettings"');
-  });
-
-  it("the admin's open editor is the one place another person's responsibilities show", () => {
-    const pr = profile({ editable: true, responsibilities: SECRET });
-    const html = view(pr, { role: "Backend engineer", responsibilities: SECRET });
-    expect(html).toContain(SECRET);
-    expect(html).toContain('data-act="personRoleDraft"');
-    expect(html).toContain(`maxlength="${ROLE_MAX}"`);
-    expect(html).toContain(`maxlength="${RESPONSIBILITIES_MAX}"`);
-    expect(html).toContain("agents read it when deciding whom to assign work");
-    expect(html).toContain('data-act="personEditSave"');
-    // A viewer who may not edit never gets the editor, whatever state says.
-    expect(view(profile({ responsibilities: SECRET }), { role: "", responsibilities: SECRET })).not.toContain(SECRET);
-    // Nor does self — self edits in Settings.
-    expect(view(profile({ self: true, editable: true, responsibilities: SECRET }), { role: "", responsibilities: SECRET })).not.toContain(SECRET);
+  it("self gets Edit profile (→ Settings); nobody gets a role editor on a profile — admins set it in Maintenance", () => {
+    expect(view(profile({ self: true }))).toContain('data-act="goSettings"');
+    for (const over of [{}, { editable: true }, { editable: true, self: true }] as Partial<PersonProfile>[]) {
+      const html = view(profile(over));
+      expect(html, JSON.stringify(over)).not.toContain('data-act="personEditOpen"');
+      expect(html, JSON.stringify(over)).not.toContain('data-act="personRoleDraft"');
+    }
+    expect(view(profile({ editable: true }))).not.toContain('data-act="goSettings"');
   });
 
   it("loading, unknown handle and failed read", () => {
-    expect(personProfileView({ status: "loading", handle: "priya", profile: null, edit: null, saving: false })).toContain("Loading profile");
-    const missing = personProfileView({ status: "ok", handle: "ghost", profile: null, edit: null, saving: false });
+    expect(personProfileView({ status: "loading", handle: "priya", profile: null })).toContain("Loading profile");
+    const missing = personProfileView({ status: "ok", handle: "ghost", profile: null });
     expect(missing).toContain("nobody called @ghost");
     expect(missing).toContain('data-act="goPeople"');
-    expect(personProfileView({ status: "error", handle: "priya", profile: null, edit: null, saving: false })).toContain("Couldn't load this profile");
+    expect(personProfileView({ status: "error", handle: "priya", profile: null })).toContain("Couldn't load this profile");
   });
 
   it("the app shell: People lit in the sidebar, the crumb names the person, the title goes back to the directory", () => {
@@ -315,12 +299,11 @@ describe("Profile screen", () => {
   });
 });
 
-describe("Settings › Profile — photo, role, responsibilities", () => {
+describe("Settings › Profile — the photo; no role or responsibilities", () => {
   const settings = (over: Partial<ReturnType<typeof initialState>> = {}) => {
     const s = initialState();
     s.me = ME({ role: "Founder" });
     s.displayName = "Andres";
-    s.meProfile = { status: "ok", data: profile({ handle: "AndresL230", name: "Andres", self: true, editable: true, role: "Founder", responsibilities: SECRET }) };
     Object.assign(s, over);
     return s;
   };
@@ -341,30 +324,15 @@ describe("Settings › Profile — photo, role, responsibilities", () => {
     expect(profileSection(s)).toMatch(/data-act="avatarPick"[^>]*disabled/);
   });
 
-  it("Role and Responsibilities fields with their caps, the helper line, and a Save live only once something changed", () => {
+  it("has no Role or Responsibilities field — both are admin-set in Maintenance › People", () => {
     const html = profileSection(settings());
-    expect(html).toContain('data-act="roleDraft" data-field="roleDraft" value="Founder"');
-    expect(html).toContain(`maxlength="${ROLE_MAX}"`);
-    expect(html).toContain(`maxlength="${RESPONSIBILITIES_MAX}"`);
-    expect(html).toContain(SECRET);
-    expect(html).toContain("Not shown on your profile — agents read it when deciding whom to assign work.");
-    expect(html).toMatch(/data-act="saveAbout"[^>]*disabled/);
-    expect(profileSection(settings({ roleDraft: "CTO" }))).not.toMatch(/data-act="saveAbout"[^>]*disabled/);
-    expect(profileSection(settings({ roleDraft: "Founder " }))).toMatch(/data-act="saveAbout"[^>]*disabled/); // whitespace only
+    expect(html).not.toContain('data-field="roleDraft"');
+    expect(html).not.toContain('data-field="respDraft"');
+    expect(html).not.toContain("Responsibilities");
+    expect(html).not.toContain('data-act="saveAbout"');
   });
 
-  it("Responsibilities waits for my profile read — disabled while it loads or failed", () => {
-    const loading = profileSection(settings({ meProfile: { status: "loading", data: null } }));
-    expect(loading).toMatch(/data-act="respDraft"[^>]*disabled/);
-    expect(loading).toContain('placeholder="Loading…"');
-    expect(profileSection(settings({ meProfile: { status: "error", data: null } }))).toContain("Couldn't load your responsibilities");
-    expect(profileSection(settings())).not.toMatch(/data-act="respDraft"[^>]*disabled/);
-  });
-
-  it("aboutValues: a draft wins, else what is saved", () => {
-    const s = settings({ respDraft: "New text" });
-    expect(aboutValues(s)).toMatchObject({ role: "Founder", resp: "New text", savedResp: SECRET, dirty: true });
-    expect(aboutValues(settings())).toMatchObject({ dirty: false });
+  it("isUploadedAvatar: only a Canopy-stored photo", () => {
     expect(isUploadedAvatar("/avatar/abc")).toBe(true);
     expect(isUploadedAvatar("https://x/y.png")).toBe(false);
     expect(isUploadedAvatar(null)).toBe(false);
@@ -394,9 +362,25 @@ describe("Maintenance › People — role and the admin's Edit role", () => {
     const admin = peopleSection({ persons: dir, invites: [], inviteDraft: "", loading: false, error: null, me: "AndresL230" });
     expect(admin).toContain('data-act="openPerson" data-arg="priya"');
     expect(admin).toContain("· Founder");
-    expect(admin).toContain('data-act="openPersonEdit" data-arg="priya"');
+    expect(admin).toContain('data-act="personEditOpen" data-arg="priya"');
     const member = peopleSection({ persons: dir, invites: [], inviteDraft: "", loading: false, error: null, canInvite: false });
     expect(member).toContain('data-act="openPerson" data-arg="priya"');
-    expect(member).not.toContain('data-act="openPersonEdit"');
+    expect(member).not.toContain('data-act="personEditOpen"');
+  });
+
+  it("an admin's open editor sits under that row — the one place role and responsibilities are edited", () => {
+    const base = { persons: dir, invites: [], inviteDraft: "", loading: false, error: null, me: "AndresL230" };
+    const open = peopleSection({ ...base, edit: { handle: "PRIYA", draft: { role: "Backend", responsibilities: SECRET }, saving: false } });
+    expect(open).toContain(SECRET);
+    expect(open).toContain('data-act="personRoleDraft"');
+    expect(open).toContain(`maxlength="${ROLE_MAX}"`);
+    expect(open).toContain(`maxlength="${RESPONSIBILITIES_MAX}"`);
+    expect(open).toContain("agents read it when deciding whom to assign work");
+    expect(open).toContain('data-act="personEditCancel" data-arg="priya"');   // the row's button now closes it
+    expect(open.indexOf(SECRET)).toBeGreaterThan(open.indexOf('data-arg="priya"'));
+    // Loading, saving, and a non-admin never sees it whatever state says.
+    expect(personRoleEditor("Priya", null, false)).toContain("Loading Priya");
+    expect(personRoleEditor("Priya", { role: "", responsibilities: "" }, true)).toContain("Saving…");
+    expect(peopleSection({ ...base, canInvite: false, edit: { handle: "priya", draft: { role: "", responsibilities: SECRET }, saving: false } })).not.toContain(SECRET);
   });
 });

@@ -1,8 +1,9 @@
 // Person profiles (0036) — the repository behind `GET|PUT /api/people/:handle`, the avatar
 // upload and `GET /avatar/<sha>`, and MCP `list_people`. The contract is `shared/people.ts`.
 //
-// Every write here is a DIRECT AUTHORED write (the person, or an admin) — no gate, no
-// staging, no MCP counterpart. The ONE agent surface is the read `listPeopleForAgents`
+// Every write here is a DIRECT AUTHORED write — no gate, no staging, no MCP counterpart.
+// A person changes only their own PHOTO; role and responsibilities are ADMIN-set (the
+// owner's call, 2026-09-27 — Maintenance › People), never by the person themselves. The ONE agent surface is the read `listPeopleForAgents`
 // (handle, name, role, responsibilities — nothing else about a person reaches MCP).
 //
 // An avatar is content-addressed and immutable, like a doc image: bytes in R2
@@ -46,8 +47,8 @@ interface ProfileRow {
 /**
  * The profile of `handle` as `viewer` sees it. An unknown or RESERVED handle is
  * `not_found` (a system principal is not a person). `responsibilities` travels only to
- * the person themselves and to admins — the edit form fills from it; the page never
- * renders it. D1 only: the person, their GitHub login, sessions and docs in ONE batch,
+ * admins — Maintenance › People's editor fills from it; no page renders it, and the
+ * person themselves does not get it (they cannot edit it). D1 only: the person, their GitHub login, sessions and docs in ONE batch,
  * beside the two assigned-ticket reads My Work uses (both sources, the same rule).
  */
 export async function getPersonProfile(
@@ -75,7 +76,7 @@ export async function getPersonProfile(
     countAssignedTickets(db, person.handle, "all"),
   ]);
   const self = sameHandle(person.handle, viewer);
-  const editor = self || isAdmin(viewer);
+  const editor = isAdmin(viewer);
   return {
     handle: person.handle,
     name: person.name,
@@ -106,8 +107,8 @@ function field(v: unknown, name: string, max: number): { set: false } | { set: t
 }
 
 /**
- * `PUT /api/people/:handle` — the person themselves or an admin; anyone else is
- * `forbidden` and nothing is written. Every field is validated BEFORE the one UPDATE,
+ * `PUT /api/people/:handle` — ADMINS only (role and responsibilities are admin-set);
+ * anyone else, the person themselves included, is `forbidden` and nothing is written. Every field is validated BEFORE the one UPDATE,
  * so an over-cap value writes nothing (not even the other, valid field).
  */
 export async function writePersonProfile(
@@ -116,9 +117,7 @@ export async function writePersonProfile(
   if (isReserved(handle)) throw new PeopleError("not_found", "not found");
   const person = await first<{ handle: string }>(db, `SELECT handle FROM persons WHERE handle = ? COLLATE NOCASE`, handle);
   if (!person) throw new PeopleError("not_found", "not found");
-  if (!sameHandle(person.handle, viewer) && !isAdmin(viewer)) {
-    throw new PeopleError("forbidden", "only the person themselves or an admin may edit a profile");
-  }
+  if (!isAdmin(viewer)) throw new PeopleError("forbidden", "only an admin may set a person's role and responsibilities");
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new PeopleError("bad_request", "the body must be a JSON object");
   const b = body as PersonProfileWrite;
   const role = field(b.role, "role", ROLE_MAX);

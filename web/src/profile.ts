@@ -3,23 +3,17 @@
 // (shared/people.ts). Purely presentational: props in, markup out.
 //
 // ONE RULE shapes the profile: `responsibilities` is NEVER rendered on a profile. It is
-// what agents read when deciding whom to assign work, so it appears only where it is
-// EDITED — the person's own Settings › Profile, and the inline editor an admin opens on
-// someone else's profile (the one place it shows for another person).
+// what agents read when deciding whom to assign work, and it (with the role) is set only
+// by an ADMIN in Maintenance › People (maintenance.ts `personRoleEditor`) — a person never
+// edits their own. The profile's own action is "Edit profile" (Settings: photo, name).
 
 import type { PersonSummary, PersonProfile, ProfileTicket } from "@shared/people";
-import { ROLE_MAX, RESPONSIBILITIES_MAX } from "@shared/people";
 import { TICKET_STATUSES, TICKET_PRIORITIES, type TicketStatus, type TicketPriority } from "@shared/tickets-core";
 import { esc, attr, relTime, surface, DETAIL_SHELL, WORK_SHELL, asideHead, asideNote, statusBadge } from "./ui";
 import { personChip, handleTag } from "./people";
 import { ticketPill, priorityChip } from "./tickets";
 import { renderMarkdownInline } from "./markdown";
 
-/** The helper line under every Responsibilities field. */
-export const RESPONSIBILITIES_HELP = "Not shown on your profile — agents read it when deciding whom to assign work.";
-
-/** An admin's editor for someone else's role + responsibilities (null = closed). */
-export interface PersonEditDraft { role: string; responsibilities: string }
 
 // ── the directory ─────────────────────────────────────────────────────────────
 
@@ -79,9 +73,6 @@ export interface PersonProfileProps {
   /** The handle the route names (shown while the read is in flight). */
   handle: string;
   profile: PersonProfile | null;
-  /** The admin's inline editor for someone else's role + responsibilities; null = closed. */
-  edit: PersonEditDraft | null;
-  saving: boolean;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -107,10 +98,8 @@ function profileHead(pr: PersonProfile): string {
   if (pr.github) {
     meta.push(`<a href="https://github.com/${encodeURIComponent(pr.github)}" target="_blank" rel="noopener noreferrer" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:5px;color:var(--fg-55);text-decoration:none;white-space:nowrap">${GH_SVG}<span style="font-family:var(--label)">${esc(pr.github)}</span></a>`);
   }
-  // Self edits in Settings (the avatar lives there too); an admin edits someone else in place.
-  const action = pr.self ? outlineBtn("goSettings", "Edit profile")
-    : pr.editable ? outlineBtn("personEditOpen", "Edit role & responsibilities")
-    : "";
+  // Self edits the photo and name in Settings; role is admin-set in Maintenance › People.
+  const action = pr.self ? outlineBtn("goSettings", "Edit profile") : "";
   return `<div class="cnpy-profile-head cnpy-rise" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
     ${personChip(pr, 88, pr.handle)}
     <div style="flex:1 1 260px;min-width:0">
@@ -123,24 +112,6 @@ function profileHead(pr: PersonProfile): string {
     </div>
     ${action}
   </div>`;
-}
-
-/** The admin's editor for someone else — the ONE place their responsibilities are shown. */
-export function personEditor(pr: PersonProfile, d: PersonEditDraft, saving: boolean): string {
-  const field = "width:100%;box-sizing:border-box;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;outline:none";
-  const label = "display:block;font-size:13px;line-height:16px;font-weight:500;margin-bottom:8px";
-  return `<section${surface("padding:18px 20px;margin-top:22px", { cls: "cnpy-rise" })} aria-label="Edit ${attr(pr.name || pr.handle)}'s role">
-    <div style="font-size:14px;font-weight:500;margin-bottom:14px">Role &amp; responsibilities <span style="font-weight:400;color:var(--fg-40)">· as an admin</span></div>
-    <label style="${label}" for="person-role">Role</label>
-    <input id="person-role" data-act="personRoleDraft" data-field="personRole" value="${attr(d.role)}" maxlength="${ROLE_MAX}" placeholder="e.g. Backend engineer" class="cnpy-input" style="${field};height:38px;padding:0 12px;max-width:420px" />
-    <label style="${label};margin-top:16px" for="person-resp">Responsibilities</label>
-    <textarea id="person-resp" data-act="personRespDraft" data-field="personResp" maxlength="${RESPONSIBILITIES_MAX}" rows="5" placeholder="What they own, and what should be assigned to them" class="cnpy-input" style="${field};padding:10px 12px;line-height:1.55;resize:vertical;min-height:110px;font-family:var(--sans)">${esc(d.responsibilities)}</textarea>
-    <div style="display:flex;justify-content:space-between;gap:12px;font-size:11.5px;color:var(--fg-40);margin-top:7px;line-height:1.5"><span>${esc(RESPONSIBILITIES_HELP)}</span><span style="font-family:var(--label);white-space:nowrap">${d.responsibilities.length} / ${RESPONSIBILITIES_MAX}</span></div>
-    <div style="display:flex;gap:8px;margin-top:14px">
-      <button data-act="personEditSave" class="cnpy-accentbtn" ${saving ? "disabled " : ""}style="padding:0 16px;height:34px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;${saving ? "opacity:.6;cursor:default" : ""}">${saving ? "Saving…" : "Save"}</button>
-      <button data-act="personEditCancel" class="cnpy-ghostbtn" style="padding:0 14px;height:34px;border-radius:8px;border:1px solid var(--border);font-size:12.5px;color:var(--fg-55)">Cancel</button>
-    </div>
-  </section>`;
 }
 
 function ticketRow(t: ProfileTicket): string {
@@ -189,12 +160,8 @@ export function personProfileView(p: PersonProfileProps): string {
       : "Loading profile&hellip;";
     return `<div data-screen-label="Profile" style="${DETAIL_SHELL}"><div style="font-size:13px;color:var(--fg-40);padding:8px 0">${msg}</div>${p.status === "ok" ? `<div style="margin-top:12px">${outlineBtn("goPeople", "Everyone on the team")}</div>` : ""}</div>`;
   }
-  // The editor is an admin's, for SOMEONE ELSE (self edits in Settings) — and it is the only
-  // markup on this page that carries `responsibilities`.
-  const editor = p.edit && pr.editable && !pr.self ? personEditor(pr, p.edit, p.saving) : "";
   return `<div data-screen-label="Profile" style="${DETAIL_SHELL}">
     ${profileHead(pr)}
-    ${editor}
     <div class="cnpy-profile-grid">
       <div style="min-width:0">${ticketsBox(pr)}</div>
       <div style="display:flex;flex-direction:column;gap:14px;min-width:0">${sessionsBox(pr)}${docsBox(pr)}</div>

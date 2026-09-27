@@ -14,8 +14,8 @@ import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, handleTag, swatches, type OnboardState } from "./people";
-import { peopleDirectoryView, personProfileView, RESPONSIBILITIES_HELP, type PersonEditDraft } from "./profile";
-import { ROLE_MAX, RESPONSIBILITIES_MAX, AVATAR_TYPES } from "@shared/people";
+import { peopleDirectoryView, personProfileView } from "./profile";
+import { AVATAR_TYPES } from "@shared/people";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import {
@@ -32,7 +32,7 @@ import { REPO_URL } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote } from "./ui";
 import { landingView } from "./landing";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
-import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab } from "./maintenance";
+import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab, type PersonEditDraft } from "./maintenance";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
@@ -348,21 +348,16 @@ export interface AppState {
   /** ADMIN Sync GitHub progress — null when idle; present while a (possibly
    *  multi-batch) sync is running, tracking cumulative counts across batches. */
   backfillSync: BackfillSyncState | null;
-  // ── People (profile.ts) + Settings › Profile's photo / role / responsibilities ──
+  // ── People (profile.ts), Maintenance › People's role editor, Settings › Profile's photo ──
   /** The directory's search box (client-side over `persons`). */
   peopleQ: string;
   /** The profile the `person` screen shows (from `#people/<handle>`). */
   personHandle: string | null;
   personProfile: Loadable<PersonProfile | null>;
-  /** An admin's inline editor for someone else's role + responsibilities (null = closed). */
-  personEdit: PersonEditDraft | null;
+  /** Maintenance › People: the admin's open role + responsibilities editor (one person;
+   *  `draft` null while that person's profile read is in flight); null = closed. */
+  personEdit: { handle: string; draft: PersonEditDraft | null } | null;
   personSaving: boolean;
-  /** Settings › Profile: MY profile read — the only source of my own responsibilities. */
-  meProfile: Loadable<PersonProfile | null>;
-  /** The Role / Responsibilities drafts; null = untouched (the field shows what is saved). */
-  roleDraft: string | null;
-  respDraft: string | null;
-  aboutSaving: boolean;
   /** A photo upload or removal in flight. */
   avatarBusy: "upload" | "remove" | null;
 }
@@ -489,10 +484,6 @@ export function initialState(): AppState {
     personProfile: { status: "idle", data: null },
     personEdit: null,
     personSaving: false,
-    meProfile: { status: "idle", data: null },
-    roleDraft: null,
-    respDraft: null,
-    aboutSaving: false,
     avatarBusy: null,
   };
 }
@@ -1753,20 +1744,11 @@ function handleStatusText(check: AppState["handleCheck"]): { text: string; color
   }
 }
 
-/** The Role / Responsibilities values Settings shows: a draft wins, else what is saved
- *  (`role` rides /auth/me; `responsibilities` only MY profile read carries). */
-export function aboutValues(s: Pick<AppState, "me" | "meProfile" | "roleDraft" | "respDraft">): { role: string; resp: string; savedRole: string; savedResp: string; dirty: boolean } {
-  const savedRole = s.meProfile.data?.role ?? s.me?.role ?? "";
-  const savedResp = s.meProfile.data?.responsibilities ?? "";
-  const role = s.roleDraft ?? savedRole;
-  const resp = s.respDraft ?? savedResp;
-  return { role, resp, savedRole, savedResp, dirty: role.trim() !== savedRole.trim() || resp.trim() !== savedResp.trim() };
-}
 
 /** An uploaded photo (served by the Worker at `/avatar/<sha>`) — not the provider's picture. */
 export const isUploadedAvatar = (url: string | null | undefined): boolean => !!url && url.startsWith("/avatar/");
 
-/** Settings › Profile: photo, display name, handle, color, role and responsibilities.
+/** Settings › Profile: photo, display name, handle and color (role is admin-set in Maintenance › People).
  *  Pure over AppState — exported for the pure render test. */
 export function profileSection(s: AppState): string {
   const me = s.me;
@@ -1799,23 +1781,6 @@ export function profileSection(s: AppState): string {
       ${isUploadedAvatar(me?.avatar_url) ? `<button data-act="avatarRemove" class="cnpy-ghostbtn" ${busy ? "disabled " : ""}style="${photoBtn};border:1px solid var(--border);color:var(--fg-55);${busy ? "opacity:.6;cursor:default" : ""}">${busy === "remove" ? "Removing…" : "Remove photo"}</button>` : ""}
       <span style="font-size:11.5px;color:var(--fg-40)">Cropped to a square · PNG, JPEG, WebP or GIF</span>
     </div>`;
-  // Role and responsibilities: one Save for both, live once either differs from what is saved.
-  // Responsibilities waits for MY profile read (the only thing that carries it), so an edit
-  // can never overwrite text this page never saw.
-  const about = aboutValues(s);
-  const respReady = s.meProfile.status === "ok";
-  const canSaveAbout = about.dirty && !s.aboutSaving && (s.respDraft === null || respReady);
-  const fieldBox = "width:100%;box-sizing:border-box;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:14px;outline:none";
-  const aboutBlock = `<div style="margin-top:20px;padding-top:18px;border-top:1px solid var(--border)">
-      <label for="me-role" style="${FIELD_LABEL}">Role</label>
-      <input id="me-role" data-act="roleDraft" data-field="roleDraft" value="${attr(about.role)}" maxlength="${ROLE_MAX}" placeholder="e.g. Backend engineer" class="cnpy-input" style="${fieldBox};height:40px;padding:0 13px" />
-      <label for="me-resp" style="${FIELD_LABEL};margin-top:16px">Responsibilities</label>
-      <textarea id="me-resp" data-act="respDraft" data-field="respDraft" maxlength="${RESPONSIBILITIES_MAX}" rows="4" ${respReady ? "" : "disabled "}placeholder="${respReady ? "What you own, and what should be assigned to you" : s.meProfile.status === "error" ? "Couldn't load your responsibilities" : "Loading…"}" class="cnpy-input" style="${fieldBox};padding:10px 13px;line-height:1.55;resize:vertical;min-height:96px;font-family:var(--sans)">${esc(about.resp)}</textarea>
-      <div style="display:flex;justify-content:space-between;gap:12px;font-size:11.5px;color:var(--fg-40);margin-top:7px;line-height:1.5"><span>${esc(RESPONSIBILITIES_HELP)}</span><span style="font-family:var(--label);white-space:nowrap">${about.resp.length} / ${RESPONSIBILITIES_MAX}</span></div>
-      <div style="display:flex;justify-content:flex-end;margin-top:12px">
-        <button data-act="saveAbout" class="cnpy-accentbtn" ${canSaveAbout ? "" : "disabled "}style="padding:0 16px;height:36px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:13px;font-weight:600;${canSaveAbout ? "" : "opacity:.45;cursor:default"}">${s.aboutSaving ? "Saving…" : "Save"}</button>
-      </div>
-    </div>`;
   return `<section class="cnpy-tile cnpy-surface">
     <div style="${SECTION_LABEL}">Profile</div>
     <div style="display:flex;align-items:flex-start;gap:14px">
@@ -1831,7 +1796,6 @@ export function profileSection(s: AppState): string {
     </div>
     ${photoRow}
     <div style="margin-top:20px"><label style="${FIELD_LABEL}">Your color</label>${swatches("setMyColor", me?.color ?? "stone", true)}</div>
-    ${aboutBlock}
   </section>`;
 }
 
@@ -2259,6 +2223,7 @@ function maintenanceScreen(s: AppState): string {
     error: admin ? (s.invites.error ?? null) : null,
     me: s.me?.handle ?? null,
     canInvite: admin,
+    edit: admin && s.personEdit ? { ...s.personEdit, saving: s.personSaving } : null,
   }) + (admin
     ? notificationsMaintenanceSections({
         policy: s.notifPolicy.data,
@@ -2386,7 +2351,6 @@ function screenBody(s: AppState): string {
       status: s.personProfile.status, handle: s.personHandle ?? "",
       // Never show a previous person's page under a new handle while the read is in flight.
       profile: s.personProfile.data && s.personProfile.data.handle.toLowerCase() === (s.personHandle ?? "").toLowerCase() ? s.personProfile.data : null,
-      edit: s.personEdit, saving: s.personSaving,
     });
     case "newdoc": return newDocView({ draft: s.nd, spaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })), sections: ASSIGN_OPTIONS.sections });
     default: return feedView(s);

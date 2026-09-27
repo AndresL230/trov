@@ -78,8 +78,7 @@ export const RELEASES: Release[] = [
     highlights: [
       "People is a new page in the sidebar: everyone on the team as a card, searchable by name, handle or role. Open one for their profile — their role, when they joined, their GitHub, their open tickets, their recent sessions and the docs they own.",
       "Upload your own photo in Settings › Profile. It's cropped to a square and shows everywhere your avatar does; remove it to go back to your GitHub or Google picture.",
-      "Add your role in Settings, and it shows on your profile and in the People directory. Admins can set anyone's role from their profile or from Maintenance › People.",
-      "Write down your responsibilities — what you own, and what should come to you. They aren't shown on your profile: agents read them when deciding whom to assign work.",
+      "Everyone has a role, shown on their profile and in the People directory. Admins set it, with each person's responsibilities, in Maintenance › People. Responsibilities aren't shown anywhere: agents read them when deciding whom to assign work.",
       "Names lead to profiles: a person in search, a requester or assignee on a ticket, and an author in the Feed each open that person's profile.",
       "Tickets you filed in Canopy can be deleted from the ticket page (tickets mirrored from GitHub can't), after a confirmation.",
     ],
@@ -93,15 +92,15 @@ export const RELEASES: Release[] = [
     patches: {
       added: [
         "Migration `0036_person_profiles`: `persons.avatar_sha`, `role`, `responsibilities`; `shared/people.ts` — `ROLE_MAX`, `RESPONSIBILITIES_MAX`, `AVATAR_MAX_BYTES`, `AVATAR_TYPES`, `avatarSrc` and the profile DTOs (#89)",
-        "`GET /api/people/:handle` / `PUT /api/people/:handle` (self or admin), `POST /api/people/me/avatar` and `/avatar/remove`, `GET /avatar/<sha>`; `GET /persons` and `/auth/me` carry `role` and a resolved `avatar_url` (#89)",
-        "`web/src/profile.ts`: the People directory (`#people`) and a profile (`#people/<handle>`) — open tickets, recent sessions (→ the Feed filtered to them), docs they own, and an admin's inline role + responsibilities editor; People in the sidebar's Workspace (#89)",
-        "Settings › Profile: Upload photo / Remove photo (`web/src/avatar.ts` centre-crops to a 512px square and encodes WebP, else PNG, before upload), Role and Responsibilities (#89)",
+        "`GET /api/people/:handle` / `PUT /api/people/:handle` (admins only), `POST /api/people/me/avatar` and `/avatar/remove`, `GET /avatar/<sha>`; `GET /persons` and `/auth/me` carry `role` and a resolved `avatar_url` (#89)",
+        "`web/src/profile.ts`: the People directory (`#people`) and a profile (`#people/<handle>`) — open tickets, recent sessions (→ the Feed filtered to them), docs they own; People in the sidebar's Workspace (#89)",
+        "Settings › Profile: Upload photo / Remove photo (`web/src/avatar.ts` centre-crops to a 512px square and encodes WebP, else PNG, before upload) (#89)",
         "Tickets: `POST /tickets/:id/delete` hard-deletes a native ticket (any member, never MCP; a ticket mirrored from GitHub is a 403); Delete ticket in the rail, through the confirmation modal (#89)",
       ],
       changed: [
         "`personChip` draws the initials under the photo; a photo that fails to load is dropped for the session (one capture-phase `error` listener), so it falls back to initials instead of a broken image (#89)",
         "Quick search: a person hit opens their profile (was the queue filtered to them); People is in the Screens list (#89)",
-        "The ticket rail's requester and assignees, the Feed's authors and Maintenance › People's rows open the profile; Maintenance › People shows each role and, for admins, Edit role (#89)",
+        "The ticket rail's requester and assignees, the Feed's authors and Maintenance › People's rows open the profile; Maintenance › People shows each role and, for admins, Edit role — the one role + responsibilities editor (#89)",
         "Repo dashboard: PR authors and contributors show their avatar photo (#89)",
         "Sidebar: no selected fill on the account chip while Settings is open — only its gear stays turned (#89)",
       ],
