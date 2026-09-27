@@ -1350,6 +1350,12 @@ function openPersonCard(handle: string): void {
       rerender();
     });
 }
+/** Close Settings › MCP access's by-hand setup modal; focus goes back to the link that opened it. */
+function closeMcpSetup(): void {
+  state.mcpSetup = false;
+  rerender();
+  mount.querySelector<HTMLElement>("[data-mcp-setup-trigger]")?.focus();
+}
 /** My photo changed (uploaded or removed): every chip reads `me` or the directory. */
 function setMyAvatar(url: string | null): void {
   state.avatarBusy = null;
@@ -2622,7 +2628,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded(); loadIdentityTasksIfNeeded(); loadFeedIfNeeded(); loadNotifAdminIfNeeded(); loadInvitesIfAdmin();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.unsub.preview = false; state.grantRevokeArm = null; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3294,7 +3300,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     // Connected apps opens to every row, or folds back to the first few.
     case "mcpShowAll": state.grantsAll = !state.grantsAll; break;
-    case "mcpManual": state.mcpManual = !state.mcpManual; break;
+    // The by-hand setup is a modal, so the MCP tile never changes height: focus goes into
+    // the dialog on open, and back to its link on close (the backdrop, the ×, or Escape).
+    case "mcpSetupOpen":
+      state.mcpSetup = true;
+      rerender();
+      mount.querySelector<HTMLElement>("[data-mcp-setup]")?.focus();
+      return;
+    case "mcpSetupClose": closeMcpSetup(); return;
     case "copyPluginInstall":
       copyToClipboard(PLUGIN_INSTALL).then((ok) => flash(ok ? "Commands copied" : "Couldn't copy the commands"));
       return;
@@ -4038,6 +4051,7 @@ mount.addEventListener("keydown", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || state.view !== "app") return;
   if (state.personCard) { state.personCard = null; rerender(); }
+  else if (state.mcpSetup) closeMcpSetup();
   else if (state.handoffPromptOpen) { state.handoffPromptOpen = false; rerender(); }
   else if (state.promptExpanded) { state.promptExpanded = false; rerender(); }
 });

@@ -674,17 +674,21 @@ input, select { font-family: inherit; }
   .cnpy-pdetail-rail { flex:none; max-width:none; }
 }
 .cnpy-set-wrap { container:cnpy-set / inline-size; }
-/* Settings is a bento on three columns: Profile and Account side by side with Appearance
-   under both (their own grid, `.cnpy-set-you`, two columns wide), MCP access down a third,
-   slightly wider column (its install command fits on one line), Email notifications at
-   full width. Every grid aligns to the START, so each tile is as tall as its content —
-   none stretches to match a neighbour, and because the first three are a grid of their
-   own, a taller MCP tile never pulls their rows apart either. */
-.cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr); gap:14px; align-items:start; }
-.cnpy-set-you { grid-column:span 2; min-width:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }
-.cnpy-set-appear { grid-column:1 / -1; }
-/* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this only adds its padding. */
-.cnpy-tile { min-width:0; padding:20px 22px; }
+/* Settings is ONE bento grid with even edges: row 1 is Profile | Account | MCP access (MCP
+   spans rows 1–2, down a slightly wider third column — its install command fits on one
+   line), row 2 is Appearance under the first two, row 3 Email notifications at full width.
+   Every tile STRETCHES to its grid area (the default), so tiles in a row share one top and
+   one bottom and the left block ends where MCP access does. The stretch is kept to a few
+   pixels by balancing content, not by sizing tiles: the by-hand setup is a modal (it never
+   grows the MCP tile) and Connected apps shows at most MCP_LIST_CAP rows. */
+.cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr); gap:14px; }
+.cnpy-set-appear { grid-column:1 / span 2; }
+.cnpy-set-mcp { grid-column:3; grid-row:1 / span 2; }
+/* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this adds its padding, and
+   a column flow so a stretched tile keeps its content at the top — with `.cnpy-tile-foot`
+   (Profile's color swatches, Account's sign-in methods) pinned to the bottom edge. */
+.cnpy-tile { min-width:0; padding:20px 22px; display:flex; flex-direction:column; }
+.cnpy-tile-foot { margin-top:auto; }
 .cnpy-set-email { grid-column:1 / -1; container:cnpy-email / inline-size; }
 .cnpy-set-pairs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:40px; }
 @container cnpy-email (max-width:935px) {
@@ -709,15 +713,14 @@ input, select { font-family: inherit; }
 @container cnpy-mcp (min-width:620px) {
   .cnpy-mcp-body { grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:32px; }
 }
-/* Narrower: the three small tiles keep their own two-up grid and MCP access takes the full
-   width under them; on a phone, one column. */
+/* Narrower: two columns — Profile | Account in one row (equal heights), Appearance and then
+   MCP access at full width under them; on a phone, one column. */
 @container cnpy-set (max-width:999px) {
-  .cnpy-set { grid-template-columns:minmax(0,1fr); }
-  .cnpy-set-you { grid-column:auto; }
+  .cnpy-set { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .cnpy-set-appear, .cnpy-set-mcp { grid-column:1 / -1; grid-row:auto; }
 }
 @container cnpy-set (max-width:759px) {
-  .cnpy-set { padding:24px 16px 64px; }
-  .cnpy-set-you { grid-template-columns:minmax(0,1fr); }
+  .cnpy-set { padding:24px 16px 64px; grid-template-columns:minmax(0,1fr); }
 }
 /* Tickets: the queue's table rows, and the two-column form/detail layouts that
    collapse to one column on a narrow viewport. */

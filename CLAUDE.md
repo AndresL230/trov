@@ -443,18 +443,24 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
   `GET /auth/mcp-tokens` lists the caller's live tokens by `token_hint` (the first 4 characters of the random
   part), and `POST /auth/mcp-tokens/:id/revoke` soft-revokes the caller's OWN token — someone else's id is the
   same 404 as an unknown one. All three are session-cookie routes, never MCP tools, with no screen in front of
-  them. Settings › MCP access (`mcpAccessSection` in `web/src/render.ts`) reads top to bottom: one line of what
-  it is; the browser sign-in as three numbered steps — install the plugin (`PLUGIN_INSTALL`, the same two
-  commands the Get Started guide shows), `/mcp` → canopy → Authenticate, click Allow in the browser; then
-  **Connected apps** (the OAuth grants — below the steps, or beside them once the tile is ≥ 620px, the
-  `cnpy-mcp` container — with a count, its own empty state, a two-click Revoke per row and its first
-  `MCP_LIST_CAP` (3) rows until "Show all N"; no fixed height, no inner scroller); and, folded behind "Set it
-  up without the plugin" (`state.mcpManual`, not a `<details>`, so a rerender keeps it open), the by-hand
-  `claude mcp add --transport http --scope user canopy <origin>/mcp` (`browserConnectCommand`, no header).
-  The Settings screen is a bento on three columns (Profile and Account side by side with Appearance under
-  both — their own grid, `.cnpy-set-you` — MCP access down a slightly wider third column, Email notifications
-  at full width), every grid `align-items:start`, so no tile stretches to a neighbour's height; MCP access
-  drops under the small tiles below a 1000px page, and a phone is one column. `/mcp` is **bearer-only**; its `401` carries
+  them. Settings › MCP access (`mcpAccessSection` in `web/src/render.ts`) has, beside its heading, a quiet
+  "Set it up without the plugin" link that opens a MODAL (`mcpSetupModal`, `state.mcpSetup`: the confirmation
+  modal's `.cnpy-cmodal` shell as a root-level `data-overlay`, focus in on open and back to the link on close,
+  the backdrop / × / Escape close it, a bottom sheet on a phone) holding the by-hand
+  `claude mcp add --transport http --scope user canopy <origin>/mcp` (`browserConnectCommand`, no header) with a
+  Copy button and the `/mcp` → Authenticate follow-up — so using it never changes the tile's height. The tile
+  then reads top to bottom: one line of what it is; the browser sign-in as three numbered steps — install the
+  plugin (`PLUGIN_INSTALL`, the same two commands the Get Started guide shows), `/mcp` → canopy → Authenticate,
+  click Allow in the browser; then **Connected apps** (the OAuth grants — below the steps, or beside them once
+  the tile is ≥ 620px, the `cnpy-mcp` container — with a count, its own empty state, a two-click Revoke per row
+  and its first `MCP_LIST_CAP` (3) rows until "Show all N"; no fixed height, no inner scroller).
+  The Settings screen is ONE bento grid with even edges (`.cnpy-set`, three columns): Profile | Account | MCP
+  access (spanning rows 1–2 of a slightly wider third column), Appearance under the first two, Email
+  notifications at full width. Every tile STRETCHES to its grid area, so tiles in a row share a top and a bottom
+  and the left block ends where MCP access does; the stretch is kept small by balancing CONTENT (≤ ~30px at
+  common widths with two connected apps), and a `.cnpy-tile` is a flex column whose `.cnpy-tile-foot` (Profile's
+  color, Account's sign-in methods) is pinned to the bottom edge. Below a 1000px page it is two columns (Profile
+  | Account, then Appearance and MCP access at full width), and a phone is one column. `/mcp` is **bearer-only**; its `401` carries
   `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource"` (plus
   `error="invalid_token"` when a token was presented), which is how Claude Code and claude.ai discover
   sign-in. A fresh `McpServer` is constructed per request
