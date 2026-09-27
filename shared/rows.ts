@@ -117,6 +117,11 @@ export interface PersonRow {
   email_unsubscribed: number;
   created_at: string;
   onboarded_at: string;
+  /** SHA-256 of an UPLOADED avatar (0036), bytes in R2 at `avatars/<sha>`. Outranks
+   *  `avatar_url` — never read this pair directly for display; use `avatarSrc`. */
+  avatar_sha: string | null;
+  role: string | null;             // 0036: a short title ("Backend engineer")
+  responsibilities: string | null; // 0036: what they own — for agents and editors, never rendered
 }
 
 export type IdentityProvider = "github" | "google";

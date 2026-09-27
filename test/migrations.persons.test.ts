@@ -34,6 +34,11 @@ async function replay0023(): Promise<void> {
   const m = env.TEST_MIGRATIONS.find((x) => x.name.startsWith("0023"));
   if (!m) throw new Error("0023 migration not found");
   for (const q of m.queries) await env.DB.prepare(q).run();
+  // Re-add the columns LATER migrations put on persons (0036's profile columns), so the
+  // rebuilt table is the shape the harness's per-test reset (scripts/seed/reset.mjs) writes.
+  for (const later of env.TEST_MIGRATIONS.filter((x) => x.name > m.name)) {
+    for (const q of later.queries) if (/\bALTER TABLE persons\b/i.test(q)) await env.DB.prepare(q).run();
+  }
 }
 
 describe("0023_persons backfill", () => {

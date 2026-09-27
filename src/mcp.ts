@@ -19,6 +19,7 @@ import {
   agentAddTicketLink, agentSetTicketSprint, agentSetTicketParent,
 } from "./tools/tickets-agent";
 import { getMyWork, list_events } from "./tools/mywork";
+import { listPeopleForAgents } from "./tools/people";
 import { getRepoDashboardForAgent } from "./tools/repo-agent";
 import { repoEnvironments } from "./repo/config";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoTab } from "@shared/repo";
@@ -243,7 +244,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "create_ticket",
-    "File a ticket. THE ONE UNSCOPED WRITE — you may file freely; every other ticket write requires the ticket to be assigned to you already. The requester is YOU (the bearer principal); a client-supplied requester is ignored. `assignees` (person handles) is the ONLY place an agent can assign anyone — after filing, assignment is web-only, so there is no tool to add or remove an assignee later. Optional `link` takes a bare issue number ('#214'), a GitHub/Figma URL, or any URL. `sprint_id` omitted = the backlog. Returns the whole ticket. Confirm the exact fields with the person before calling — a ticket is org-visible the moment it exists.",
+    "File a ticket. THE ONE UNSCOPED WRITE — you may file freely; every other ticket write requires the ticket to be assigned to you already. The requester is YOU (the bearer principal); a client-supplied requester is ignored. `assignees` (person handles) is the ONLY place an agent can assign anyone — after filing, assignment is web-only, so there is no tool to add or remove an assignee later — so call `list_people` first and match the work to each person's role and responsibilities. Optional `link` takes a bare issue number ('#214'), a GitHub/Figma URL, or any URL. `sprint_id` omitted = the backlog. Returns the whole ticket. Confirm the exact fields with the person before calling — a ticket is org-visible the moment it exists.",
     TicketCreate.shape,
     async (input) => runTool(async () => ticketDetail(await agentCreateTicket(env.DB, TicketCreate.parse(input), principal.handle))),
   );
@@ -313,6 +314,18 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
     "Your personal My Work projection (D1 only, no live GitHub): previous-activity (your most recent summarized merged/closed PRs), to-do (your open assigned GitHub issues), and tickets (your open assigned tickets, native AND mirrored from GitHub issues — `source: \"github\"` marks a mirrored one, whose issue may also be in to-do; capped, with `ticketsTotal` the full count). Read-only.",
     {},
     async () => runTool(() => getMyWork(env.DB, principal.handle))
+  );
+
+  // ── People: ONE read, for every principal (0036) ─────────────────────────────
+  //
+  // An agent reads who does what — handle, name, role, responsibilities — and nothing
+  // else about a person: no profile, no avatar, no load. Profiles are written only by
+  // the person or an admin, over session-cookie routes; there is NO people write here.
+  server.tool(
+    "list_people",
+    "Read-only: every person in the org as { handle, name, role, responsibilities }. Call this BEFORE choosing `assignees` on create_ticket: match the work to each person's `role` and `responsibilities` and use their `handle`. `role` / `responsibilities` may be null — that means unknown, never guess what someone owns from their name or handle; if nobody clearly fits, file the ticket unassigned (or ask the person you are working for) rather than pick someone. Returns { people }.",
+    {},
+    async () => runTool(async () => ({ people: await listPeopleForAgents(env.DB) })),
   );
 
   server.tool(

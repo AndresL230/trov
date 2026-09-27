@@ -70,6 +70,14 @@ export const RESET_STATEMENTS = [
   // are the queue's requesters — the people filing tickets who don't ship code.
   "INSERT INTO persons (handle, name, color, created_at, onboarded_at) VALUES ('meilin', 'Meilin Zhao', 'rose', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'), ('sanaok', 'Sana Okafor', 'ochre', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
   "INSERT INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES ('google', 'google-sub-meilin', 'meilin@saplinglearn.org', 'meilin', '2026-01-01T00:00:00Z', 'seed'), ('google', 'google-sub-sanaok', 'sanaok@saplinglearn.org', 'sanaok', '2026-01-01T00:00:00Z', 'seed')",
+  // …each with a profile (0036): a role, and the responsibilities an agent reads through
+  // MCP `list_people` when it chooses assignees. Illustrative, not the real team's.
+  "UPDATE persons SET role = 'Founding engineer', responsibilities = 'Canopy itself: the Worker, D1 migrations, MCP tools and auth. Deploys and production incidents.' WHERE handle = 'AndresL230'",
+  "UPDATE persons SET role = 'Backend engineer', responsibilities = 'The Sapling API on Railway: the tutor, quizzes and the RAG pipeline. LLM cost and backend errors.' WHERE handle = 'Jose-Gael-Cruz-Lopez'",
+  "UPDATE persons SET role = 'Frontend engineer', responsibilities = 'The Sapling web app: study screens, flashcards, onboarding, accessibility and bundle size.' WHERE handle = 'lpcooper-arch'",
+  "UPDATE persons SET role = 'Infrastructure engineer', responsibilities = 'CI, the Cloudflare Workers builds, environments and health checks, the metrics endpoint.' WHERE handle = 'Darkest-Teddy'",
+  "UPDATE persons SET role = 'Product manager', responsibilities = 'The roadmap and sprint planning, user research, triage of incoming requests.' WHERE handle = 'meilin'",
+  "UPDATE persons SET role = 'Community lead', responsibilities = 'Student and teacher support, community content, bug reports from users.' WHERE handle = 'sanaok'",
   // …and the system person 0032 seeds: the GitHub mirror's fallback requester.
   // The DELETE FROM persons above wipes the migration's row, so it is re-seeded here.
   "INSERT INTO persons (handle, name, color, created_at, onboarded_at) VALUES ('github-webhook', 'GitHub', 'stone', '2026-09-24T00:00:00Z', '2026-09-24T00:00:00Z')",

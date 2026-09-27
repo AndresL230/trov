@@ -9,7 +9,7 @@
 //   • role — a short title, shown on the profile and in the people directory.
 //   • responsibilities — what the person owns / should be assigned. NEVER rendered on a
 //     profile; returned only to the person themselves, to admins (for editing) and to MCP
-//     (`list_people` / `get_person`), where an agent reads it when assigning work.
+//     (`list_people`, read-only), where an agent reads it when assigning work.
 //
 // Who writes: a person edits their OWN role, responsibilities and avatar (Settings); an
 // admin (`isAdmin`) may edit ANY person's role and responsibilities (Maintenance › People).
@@ -77,14 +77,14 @@ export interface PersonProfileWrite {
   responsibilities?: string | null;
 }
 
-/** MCP `list_people` / `get_person` — what an agent reads to decide whom to assign. */
+/**
+ * MCP `list_people` — the ONE thing an agent may read about people: who does what, so it
+ * can choose `assignees` on `create_ticket`. Deliberately nothing else (no avatar, no
+ * load, no profile data); `responsibilities` null = unknown, never to be guessed.
+ */
 export interface PersonForAgents {
   handle: string;
   name: string | null;
   role: string | null;
   responsibilities: string | null;
-  github: string | null;
-  admin: boolean;
-  /** Open tickets assigned to them right now (both sources) — their current load. */
-  openTickets: number;
 }

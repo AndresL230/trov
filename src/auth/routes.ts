@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import { z } from "zod";
 import { PERSON_COLORS } from "@shared/rows";
+import { avatarSrc } from "@shared/people";
 import type { AppEnv } from "./principal";
 import { isAdmin, resolveSessionPrincipal } from "./principal";
 import { pkce, randomToken, hmacSeal, hmacUnseal } from "./crypto";
@@ -202,7 +203,8 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     const handle = c.get("principal").handle;
     const row = await getPerson(c.env.DB, handle);
     const identities = (await listIdentities(c.env.DB, handle)).map((i) => ({ provider: i.provider, label: i.label, linked_at: i.linked_at }));
-    return c.json({ handle, name: row?.name ?? null, avatar_url: row?.avatar_url ?? null, color: row?.color ?? "stone", identities, org: SAPLING_ORG, admin: isAdmin(c.env, handle) });
+    // `avatar_url` goes out RESOLVED: an uploaded avatar (0036) outranks the provider's.
+    return c.json({ handle, name: row?.name ?? null, avatar_url: row ? avatarSrc(row) : null, role: row?.role ?? null, color: row?.color ?? "stone", identities, org: SAPLING_ORG, admin: isAdmin(c.env, handle) });
   });
   const ProfileWrite = z.object({ name: z.string().trim().max(120).nullable().optional(), color: z.enum(PERSON_COLORS).optional() });
   authApp.put("/me", async (c) => {
