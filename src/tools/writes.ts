@@ -160,7 +160,9 @@ export async function route_triage(
  * so capture never depends on this. login is the PK — INSERT OR IGNORE collapses
  * many events from one unknown person into one task and never re-raises a
  * resolved one. A login already linked (an `identities` row) raises nothing.
- * NEVER throws: like storePrSummary, this is a post-capture side-task, and a
+ * That same PK makes a DISCARD sticky: a discarded row stays, so the IGNORE
+ * swallows every later event from that login until a person restores it — the
+ * event itself is captured all the same. NEVER throws: like storePrSummary, this is a post-capture side-task, and a
  * failure here must not break event capture or the caller's downstream
  * summary/progress seams.
  */
@@ -218,6 +220,61 @@ export async function map_identity(
     login
   );
   return { login, person: person.handle, status: "resolved" };
+}
+
+/** An identity-task write the route answers with a status: `not_found` 404, `conflict` 409. */
+export class IdentityTaskError extends Error {
+  constructor(readonly code: "not_found" | "conflict", message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Human placement (Maintenance group): discard an identity task — a login that
+ * will never be a person (an outside contributor). Soft: the row stays, marked
+ * `discarded` with the audit columns, and leaves the pending list. STICKY: the
+ * row keeps the login's PK, so `ensure_identity_task`'s INSERT OR IGNORE never
+ * re-raises it; the login's events are still captured. Idempotent on a
+ * discarded task; a mapped (resolved) one is a conflict — it is not noise.
+ */
+export async function discard_identity_task(
+  db: DB,
+  login: string,
+  by: string
+): Promise<{ login: string; status: "discarded" }> {
+  const task = await first<IdentityTaskRow>(db, `SELECT * FROM identity_tasks WHERE login = ?`, login);
+  if (!task) throw new IdentityTaskError("not_found", `no such identity task: ${login}`);
+  if (task.status === "discarded") return { login, status: "discarded" }; // idempotent no-op
+  if (task.status === "resolved") throw new IdentityTaskError("conflict", `identity task ${login} is already mapped`);
+  await run(
+    db,
+    `UPDATE identity_tasks SET status = 'discarded', resolved_at = ?, resolved_by = ? WHERE login = ? AND status = 'pending'`,
+    nowIso(),
+    by,
+    login
+  );
+  return { login, status: "discarded" };
+}
+
+/**
+ * Undo a discard: the task is pending again (back in the list, audit columns
+ * cleared), and the login raises tasks as normal. Idempotent on a pending task.
+ * A mapped task, or a discarded login that has since been linked some other way
+ * (a GitHub sign-in), is a conflict — there is nothing left to map.
+ */
+export async function restore_identity_task(db: DB, login: string): Promise<{ login: string; status: "pending" }> {
+  const task = await first<IdentityTaskRow>(db, `SELECT * FROM identity_tasks WHERE login = ?`, login);
+  if (!task) throw new IdentityTaskError("not_found", `no such identity task: ${login}`);
+  if (task.status === "pending") return { login, status: "pending" }; // idempotent no-op
+  if (task.status === "resolved") throw new IdentityTaskError("conflict", `identity task ${login} is already mapped`);
+  const linked = await findIdentity(db, "github", login);
+  if (linked) throw new IdentityTaskError("conflict", `login already linked to ${linked.person}`);
+  await run(
+    db,
+    `UPDATE identity_tasks SET status = 'pending', resolved_at = NULL, resolved_by = NULL WHERE login = ? AND status = 'discarded'`,
+    login
+  );
+  return { login, status: "pending" };
 }
 
 /**

@@ -15,6 +15,8 @@ import { describe, it, expect } from "vitest";
 import { lineDiff, collapsedLineDiff } from "../web/src/diff";
 import { reviewView, reviewDetail, reviewCard, unifiedDiff, renderedPreview, splitDiffRows, type ReviewItem, type ReviewProps } from "../web/src/review";
 import { maintenanceView, assignPanel, personPicker, fileHint, type MaintenanceProps, type UnplacedItem, type IdentityGroup } from "../web/src/maintenance";
+import { render, initialState } from "../web/src/render";
+import mainSrc from "../web/src/main.ts?raw";
 
 // ── lineDiff ──────────────────────────────────────────────────────────────────
 
@@ -393,6 +395,8 @@ function makeMaintProps(overrides: Partial<MaintenanceProps> = {}): MaintenanceP
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
     discardArm: false,
     identity: [makeGroup()],
+    discarded: [],
+    showDiscarded: false,
     people: [{ id: "maya-k", name: "maya-k", initials: "MA" }],
     mapPicks: {},
     mapConfirm: null,
@@ -446,6 +450,42 @@ describe("maintenanceView — Identity tab", () => {
     expect(html).toContain("maya-k");
     expect(html).toContain("Map login");
     expect(html).not.toContain("Loose thing");
+  });
+
+  it("each card has a one-click Discard (no arm step — the toast carries the Undo)", () => {
+    const html = maintenanceView(makeMaintProps({ tab: "identity" }));
+    expect(html).toContain('data-act="identityDiscard" data-arg="mk-dev2" class="cnpy-mutelink"');
+    expect(html).toMatch(/data-act="identityDiscard"[^>]*>Discard</);
+  });
+
+  it("no discarded logins → no discarded line; some → a quiet 'N discarded' toggle, Restore rows only when open", () => {
+    expect(maintenanceView(makeMaintProps({ tab: "identity" }))).not.toContain("identityToggleDiscarded");
+    const discarded = [{ login: "rando-1", meta: "discarded 2h ago by andres" }, { login: "rando-2", meta: "discarded 1d ago by andres" }];
+    const closed = maintenanceView(makeMaintProps({ tab: "identity", discarded }));
+    expect(closed).toContain('data-act="identityToggleDiscarded" aria-expanded="false"');
+    expect(closed).toContain("2 discarded &middot; Show");
+    expect(closed).not.toContain('data-act="identityRestore"');
+    const open = maintenanceView(makeMaintProps({ tab: "identity", discarded, showDiscarded: true }));
+    expect(open).toContain('aria-expanded="true"');
+    expect(open).toContain('data-act="identityRestore" data-arg="rando-1"');
+    expect(open).toContain('data-act="identityRestore" data-arg="rando-2"');
+    expect(open).toContain("discarded 2h ago by andres");
+    // An empty list still reaches the discarded logins, so the last one can be brought back.
+    const empty = maintenanceView(makeMaintProps({ tab: "identity", identity: [], discarded, showDiscarded: true }));
+    expect(empty).toContain("Everyone is accounted for");
+    expect(empty).toContain('data-act="identityRestore" data-arg="rando-1"');
+  });
+
+  it("the discard toast carries the Undo that restores the login", () => {
+    const html = render({
+      ...initialState(), view: "app",
+      me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+      toast: "Discarded @rando-1", toastAction: { label: "Undo", act: "identityRestore", arg: "rando-1" }, toastAt: Date.now(), toastMs: 8000,
+    });
+    expect(html).toContain("Discarded @rando-1");
+    expect(html).toContain('data-act="identityRestore" data-arg="rando-1" class="cnpy-toast-act"');
+    // main.ts wires it: Discard flashes with UNDO_TOAST_MS and the identityRestore action.
+    expect(mainSrc).toMatch(/flash\(`Discarded @\$\{arg\}`, UNDO_TOAST_MS, \{ label: "Undo", act: "identityRestore", arg \}\)/);
   });
 });
 

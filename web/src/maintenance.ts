@@ -2,7 +2,8 @@
 // which split the old single column into three sub-pages under the sidebar entry:
 //   UNPLACED  — read a loose thing an agent couldn't place, then file it or discard it
 //               (a list on the left, the selected item on the right).
-//   IDENTITY  — match an unmapped activity login to a person.
+//   IDENTITY  — match an unmapped activity login to a person, or discard one that
+//               isn't on the team (an outside contributor; Undo / Restore brings it back).
 //   PEOPLE    — everyone with a handle, plus pending invites (admins can invite).
 // Empty is the normal state for the first two.
 //
@@ -55,6 +56,12 @@ export interface IdentityGroup {
   sample: ActivitySample[];
 }
 
+/** A login discarded as not-a-person (an outside contributor); Restore puts it back. */
+export interface DiscardedLogin {
+  login: string;
+  meta: string;        // e.g. "discarded 2h ago by andres"
+}
+
 export interface Person { id: string; name: string; initials: string; color?: PersonColor; avatar_url?: string | null }
 
 export interface MaintenanceProps {
@@ -70,6 +77,9 @@ export interface MaintenanceProps {
   /** The Discard button was clicked once — the second click discards. */
   discardArm: boolean;
   identity: IdentityGroup[];
+  /** Discarded logins, and whether their restore list is open. */
+  discarded: DiscardedLogin[];
+  showDiscarded: boolean;
   people: Person[];
   mapPicks: Record<string, string>;
   /** Login currently in the map confirm step (two-step guard) — null when none. */
@@ -206,7 +216,25 @@ export function personPicker(groupId: string, people: Person[], pick: string | n
     <div style="display:flex;align-items:center;gap:14px;margin-top:12px">
       ${primaryBtn(confirming && pick !== null ? "Confirm mapping" : "Map login", pick !== null, "identityMap", groupId, "padding:8px 16px")}
       ${confirming && pick !== null ? `<button data-act="identityCancel" data-arg="${attr(groupId)}" class="cnpy-mutelink" style="font-size:12px;font-weight:500;color:var(--fg-55)">Cancel</button>` : ""}
+      <span style="flex:1"></span>
+      <button data-act="identityDiscard" data-arg="${attr(groupId)}" class="cnpy-mutelink" title="Not on the team — stop listing this login" style="font-size:12.5px;font-weight:500;white-space:nowrap;color:var(--fg-55)">Discard</button>
     </div>`;
+}
+
+/** The quiet "N discarded" line under the list, and (opened) each discarded login with Restore. */
+export function discardedLogins(items: DiscardedLogin[], open: boolean): string {
+  if (items.length === 0) return "";
+  const rows = open
+    ? `<div${surface("overflow:hidden;margin-top:10px")}>${items.map((d) => `<div style="display:flex;align-items:baseline;gap:10px;padding:11px 16px;border-bottom:1px solid var(--border);margin-bottom:-1px">
+        <span style="font-family:var(--label);font-size:13px;font-weight:600;color:var(--fg-70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(d.login)}</span>
+        <span style="flex:1;font-size:11.5px;color:var(--fg-40);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.meta)}</span>
+        <button data-act="identityRestore" data-arg="${attr(d.login)}" class="cnpy-mutelink" style="font-size:12px;font-weight:500;white-space:nowrap;color:var(--fg-55)">Restore</button>
+      </div>`).join("")}</div>`
+    : "";
+  return `<div style="margin-top:14px">
+    <button data-act="identityToggleDiscarded" aria-expanded="${open ? "true" : "false"}" class="cnpy-mutelink" style="font-size:12px;font-weight:500;color:var(--fg-40)">${items.length} discarded &middot; ${open ? "Hide" : "Show"}</button>
+    ${rows}
+  </div>`;
 }
 
 /** One unmatched login: the activity sample that identifies the person, beside the picker. */
@@ -222,9 +250,11 @@ export function identityCard(g: IdentityGroup, people: Person[], pick: string | 
 }
 
 function identityTab(p: MaintenanceProps): string {
-  if (p.identity.length === 0) return maintEmpty("Everyone is accounted for", "Every login in the activity stream is matched to a person.");
+  const discarded = discardedLogins(p.discarded, p.showDiscarded);
+  if (p.identity.length === 0) return maintEmpty("Everyone is accounted for", "Every login in the activity stream is matched to a person.") + discarded;
   return `<div${surface("overflow:hidden")}>${p.identity.map((g) => identityCard(g, p.people, p.mapPicks[g.id] ?? null, p.mapConfirm === g.id)).join("")}</div>
-    <div style="font-size:11.5px;color:var(--fg-40);margin-top:12px">Mapping attributes all past and future activity from that login to the person, and lets that GitHub account sign in as them.</div>`;
+    <div style="font-size:11.5px;color:var(--fg-40);margin-top:12px">Mapping attributes all past and future activity from that login to the person, and lets that GitHub account sign in as them. Discarding stops listing a login that isn't on the team; its activity is still recorded.</div>
+    ${discarded}`;
 }
 
 // ── PEOPLE ───────────────────────────────────────────────────────────────────
