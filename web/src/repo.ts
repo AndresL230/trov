@@ -20,7 +20,7 @@ import {
 } from "@shared/repo";
 import type { Loadable } from "./render";
 import { esc, attr, statusBadge, SURFACE } from "./ui";
-import { personChip } from "./people";
+import { personChip, personLink, personNameLink } from "./people";
 import type { PersonSummary } from "./api";
 import { segmented } from "./segmented";
 
@@ -37,7 +37,8 @@ export interface RepoProps {
   poll: RepoPollState | null;
   /** The environment the Usage tab's Product section shows. Session-only; null = the default. */
   productEnv: string | null;
-  /** The persons directory — only for each mapped person's avatar (a RepoPerson carries none). */
+  /** The persons directory — each mapped person's avatar (a RepoPerson carries none), and whose
+   *  card a contributor's or an activity line's name opens. */
   persons?: PersonSummary[];
 }
 
@@ -99,6 +100,12 @@ const avatar = (p: RepoPerson, size: number, persons: PersonSummary[] = []): str
   return personChip(p.handle && p.color ? { handle: p.handle, name: p.name, color: p.color, avatar_url } : null, size, p.login);
 };
 const who = (p: RepoPerson): string => p.handle ?? p.login;
+/** The directory's person behind a captured one — whose card a name opens; null (plain) for a
+ *  login no one holds (a bot, an outside contributor) and for sample data, which is no one. */
+const linkedPerson = (x: RepoPerson, p: Pick<RepoProps, "persons" | "sample">): PersonSummary | null => {
+  const h = x.handle?.toLowerCase();
+  return h && !p.sample ? (p.persons ?? []).find((y) => y.handle.toLowerCase() === h) ?? null : null;
+};
 
 // ── section states ───────────────────────────────────────────────────────────
 type Phase = "loading" | "error" | "ready";
@@ -375,12 +382,17 @@ const ACTIVITY_ICON: Record<RepoActivityKind, [string, string]> = {
   review: ["M4 12c2.7-4.7 13.3-4.7 16 0-2.7 4.7-13.3 4.7-16 0z", "var(--fg-55)"],
 };
 
-function activityRow(a: RepoActivity, now: number): string {
+function activityRow(a: RepoActivity, now: number, p: Pick<RepoProps, "persons" | "sample">): string {
   const [d, c] = ACTIVITY_ICON[a.kind];
-  const text = `${a.actor ? `${esc(who(a.actor))} ` : ""}${esc(a.text)}`;
-  const body = a.url && safeUrl(a.url) !== "#"
-    ? `<a href="${attr(safeUrl(a.url))}" target="_blank" rel="noopener" class="repo-quiet" style="font-size:12.5px;color:var(--fg-70);min-width:0;flex:1;line-height:1.5;text-decoration:none">${text}</a>`
-    : `<span style="font-size:12.5px;color:var(--fg-70);min-width:0;flex:1;line-height:1.5">${text}</span>`;
+  const line = "font-size:12.5px;color:var(--fg-70);min-width:0;flex:1;line-height:1.5";
+  const actor = a.actor ? linkedPerson(a.actor, p) : null;
+  const link = a.url && safeUrl(a.url) !== "#" ? safeUrl(a.url) : null;
+  // A known actor's name opens their person card, so it sits BESIDE the event's link, never in it.
+  const body = actor && a.actor
+    ? `<span style="${line}">${personNameLink(actor, who(a.actor))} ${link ? `<a href="${attr(link)}" target="_blank" rel="noopener" class="repo-quiet" style="text-decoration:none">${esc(a.text)}</a>` : esc(a.text)}</span>`
+    : link
+      ? `<a href="${attr(link)}" target="_blank" rel="noopener" class="repo-quiet" style="${line};text-decoration:none">${a.actor ? `${esc(who(a.actor))} ` : ""}${esc(a.text)}</a>`
+      : `<span style="${line}">${a.actor ? `${esc(who(a.actor))} ` : ""}${esc(a.text)}</span>`;
   return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 4px;${TOP}">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" style="flex:none;margin-top:3px"><path d="${d}"></path></svg>
     ${body}
@@ -449,7 +461,7 @@ function ciTab(p: RepoProps): string {
   const bundle = sec(p, (d) => d.bundle, { nc: "No bundle size reported yet. It appears once the repo's CI posts a canopy/bundle-kb commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.", empty: "No bundle size reported in the last 30 days.", lines: 2 }, (t) => trendBlock("Bundle size — web", t, "var(--fg-55)"));
 
   const activity = sec(p, (d) => d.activity, { nc: "The activity feed isn't connected.", empty: "No repo events captured yet.", lines: 4 }, (rows) =>
-    `<div class="cnpy-scroll" style="max-height:236px;overflow-y:auto">${rows.map((a) => activityRow(a, now)).join("")}</div>`);
+    `<div class="cnpy-scroll" style="max-height:236px;overflow-y:auto">${rows.map((a) => activityRow(a, now, p)).join("")}</div>`);
   const count = okData(p, (d) => d.activity)?.length ?? 0;
 
   return `<div ${rise(0, `padding:18px 20px 4px`)}>
@@ -943,8 +955,13 @@ function planningTab(p: RepoProps): string {
     const max = Math.max(1, ...rows.map((r) => r.pushes + r.merged + (r.reviews ?? 0)));
     return rows.map((r, i) => {
       const color = r.person.color ? `var(--p-${r.person.color})` : "var(--fg-40)";
+      // A known person is one chip that opens their card; a bot or an unmapped login stays plain.
+      const linked = linkedPerson(r.person, p);
+      const name = "font-family:var(--label);font-size:11.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
       return `<div style="display:grid;grid-template-columns:112px minmax(0,1fr) 74px;gap:12px;align-items:center;padding:5.5px 0;${TOP}">
-        <span style="display:inline-flex;align-items:center;gap:7px;min-width:0">${avatar(r.person, 20, p.persons)}<span style="font-family:var(--label);font-size:11.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(who(r.person))}</span></span>
+        ${linked
+          ? `<span style="display:inline-flex;min-width:0">${personLink(linked, r.person.login, 20, who(r.person), `min-width:0;${name}`)}</span>`
+          : `<span style="display:inline-flex;align-items:center;gap:7px;min-width:0">${avatar(r.person, 20, p.persons)}<span style="${name}">${esc(who(r.person))}</span></span>`}
         <span style="display:block;height:6px;border-radius:999px;background:var(--hover);overflow:hidden"><span class="repo-fill" style="--i:${i};display:block;height:100%;border-radius:999px;background:${color};width:${Math.round(((r.pushes + r.merged + (r.reviews ?? 0)) / max) * 100)}%"></span></span>
         <span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55);text-align:right">${r.pushes} · ${r.merged} · ${r.reviews === null ? "—" : r.reviews}</span>
       </div>`;

@@ -55,7 +55,7 @@ import type { SprintView } from "@shared/sprints";
 import { isoDayKey, localDayKey, sprintDueState } from "@shared/sprints-core";
 import type { PersonSummary } from "./api";
 import { esc, attr, surface } from "./ui";
-import { personChip } from "./people";
+import { personAvatarLink } from "./people";
 
 const DAY = 86_400_000;
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -366,7 +366,7 @@ function row(p: Placed, axis: Axis, persons: PersonSummary[], now: number, up: b
   // or on the left when the bar ends in the last ~40% of the track.
   const outSide = left + width > 0.6 ? "l" : "r";
   const lead = sp.lead
-    ? personChip(personOf(persons, sp.lead), 22, sp.lead)
+    ? personAvatarLink(personOf(persons, sp.lead), sp.lead, 22)
     : `<span title="No lead" style="width:22px;height:22px;border-radius:999px;border:1px dashed var(--border);flex:none"></span>`;
   return `<div class="tl-row">
     <div class="tl-lab">

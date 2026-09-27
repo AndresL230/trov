@@ -57,21 +57,43 @@ export function personChip(p: { handle: string; name?: string | null; color: Per
 /** A person's photo and name as ONE chip: the whole thing is the button that opens their
  *  person card (`openPerson`), and it lights up as one on hover. `person` null (an unknown
  *  handle, or the GitHub mirror's system handle) renders the same two pieces as plain,
- *  unclickable content, so the layout never shifts. `textStyle` is the name's own. */
-export function personLink(person: { handle: string; name?: string | null; color: PersonColor; avatar_url?: string | null } | null, fallback: string, size: number, label: string, textStyle: string): string {
-  const inner = `${personChip(person, size, fallback)}<span style="${textStyle}">${esc(label)}</span>`;
-  const box = "display:inline-flex;align-items:center;gap:7px;min-width:0;max-width:100%";
+ *  unclickable content, so the layout never shifts. `textStyle` is the name's own; `label` is
+ *  text, or `{ html }` for a caller-built one (a name over its `@handle`). `gap` is the
+ *  photo-to-name gap of the pair the chip replaces, so it sits exactly where that pair did.
+ *  The button's hover padding bleeds out through equal negative margins, so its cap is
+ *  100% + that 10px: capped at 100%, a chip in a shrink-to-fit box (whose width is the
+ *  chip's MARGIN box) came out 10px short and cut its own name. */
+export function personLink(person: { handle: string; name?: string | null; color: PersonColor; avatar_url?: string | null } | null, fallback: string, size: number, label: string | { html: string }, textStyle: string, gap = 7): string {
+  const inner = `${personChip(person, size, fallback)}<span style="${textStyle}">${typeof label === "string" ? esc(label) : label.html}</span>`;
+  const box = `display:inline-flex;align-items:center;gap:${gap}px;min-width:0`;
   return person
-    ? `<button data-act="openPerson" data-arg="${attr(person.handle)}" class="cnpy-personchip" title="${attr(person.name || person.handle)}" style="${box};text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px">${inner}</button>`
-    : `<span style="${box}">${inner}</span>`;
+    ? `<button data-act="openPerson" data-arg="${attr(person.handle)}" class="cnpy-personchip" title="${attr(person.name || person.handle)}" style="${box};max-width:calc(100% + 10px);text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px">${inner}</button>`
+    : `<span style="${box};max-width:100%">${inner}</span>`;
 }
 
 /** A person's photo on its own, clickable like their name (the Feed's and a comment's
  *  avatar column). Plain when the person is unknown. */
 export function personAvatarLink(person: { handle: string; name?: string | null; color: PersonColor; avatar_url?: string | null } | null, fallback: string, size: number): string {
   return person
-    ? `<button data-act="openPerson" data-arg="${attr(person.handle)}" class="cnpy-personav" title="${attr(person.name || person.handle)}" aria-label="${attr(`${person.name || person.handle} — person card`)}" style="display:flex;padding:0;border-radius:50%">${personChip(person, size, fallback)}</button>`
+    ? `<button data-act="openPerson" data-arg="${attr(person.handle)}" class="cnpy-personav" title="${attr(person.name || person.handle)}" aria-label="${attr(`${person.name || person.handle} — person card`)}" style="display:flex;flex:none;padding:0;border-radius:50%">${personChip(person, size, fallback)}</button>`
     : personChip(person, size, fallback);
+}
+
+/** A person's name alone, inline in a line of text ("v3 by Priya"), as the button that opens
+ *  their card. `style` is the text's own (it inherits the line's font unless it says
+ *  otherwise); plain text when the person is unknown. */
+export function personNameLink(person: { handle: string; name?: string | null } | null, label: string, style = ""): string {
+  return person
+    ? `<button data-act="openPerson" data-arg="${attr(person.handle)}" class="cnpy-personlink" title="${attr(person.name || person.handle)}" style="font:inherit;color:inherit;text-align:left;padding:0${style ? `;${style}` : ""}">${esc(label)}</button>`
+    : `<span${style ? ` style="${style}"` : ""}>${esc(label)}</span>`;
+}
+
+/** `handleTag` as the button that opens the person's card (the Feed's author line, a doc's
+ *  "Updated by"). Unmapped → the plain muted tag. */
+export function handleLink(p: { handle: string; name?: string | null; color: PersonColor } | null, fallback: string, size = 12): string {
+  return p
+    ? `<button data-act="openPerson" data-arg="${attr(p.handle)}" class="cnpy-personlink" title="${attr(p.name || p.handle)}" style="padding:0">${handleTag(p, fallback, size)}</button>`
+    : handleTag(null, fallback, size);
 }
 
 export function swatches(act: string, selected: PersonColor, compact = false): string {

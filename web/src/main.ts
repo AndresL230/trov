@@ -3778,14 +3778,6 @@ mount.addEventListener("click", (e) => {
   e.stopPropagation();
   e.preventDefault();
 }, true);
-// A board card is a div (so it can drag): Enter / Space open it, like a button.
-mount.addEventListener("keydown", (e) => {
-  if (e.key !== "Enter" && e.key !== " ") return;
-  const card = e.target as HTMLElement | null;
-  if (!card?.classList?.contains("cnpy-tcard")) return;
-  e.preventDefault();
-  dispatch(card.dataset.act ?? "", card.dataset.arg ?? null, null);
-});
 
 // Settings › Profile's photo picker (a hidden input the "Upload photo" button clicks).
 mount.addEventListener("change", (e) => {

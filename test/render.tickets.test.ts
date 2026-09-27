@@ -553,7 +553,7 @@ describe("tickets — cards are the shared surface", () => {
     expect(html).toMatch(/class="cnpy-tgrp" style="[^"]*padding:18px 20px 6px/);
     expect(html).toContain("cnpy-stagger cnpy-tgroup"); // canopy.css draws the one hairline between groups
     // Only the status pill is boxed; category and priority are plain text.
-    const row = html.slice(html.indexOf('class="cnpy-trow'), html.indexOf("</button>", html.indexOf('class="cnpy-trow')));
+    const row = html.slice(html.indexOf('class="cnpy-trow'), html.indexOf('class="cnpy-hit"', html.indexOf('class="cnpy-trow')));
     expect((row.match(/border:1px solid/g) ?? []).length).toBe(1);
     expect(html).not.toContain(OLD_FILL);
   });
@@ -1431,5 +1431,35 @@ describe("ticketDetailView — people are clickable chips", () => {
     const html = ticketDetailView(detailProps(detail({ id: 2, title: "M", requester: "github-webhook", source: "github", source_ref: "SaplingLearn/sapling#1", source_author: "outsider" })));
     expect(html).not.toContain('data-arg="github-webhook"');
     expect(html).toContain("@outsider");
+  });
+});
+
+describe("the queue's people open their person card (hitArea rows and cards)", () => {
+  const PERSON_BTN = (h: string, cls: string) => new RegExp(`<button data-act="openPerson" data-arg="${h}" class="${cls}"`);
+
+  it("a table row's requester is one photo + name chip and each assignee's photo a button; the row is not a button", () => {
+    const html = queueView(queueProps({ view: "table", seg: "all", tickets: [ticket({ id: 4, title: "A", requester: "sanaok", assignees: ["meilin"] })] }));
+    expect(html).toMatch(PERSON_BTN("sanaok", "cnpy-personchip"));
+    expect(html).toMatch(PERSON_BTN("meilin", "cnpy-personav"));
+    expect(html).toContain('<button data-act="openTicket" data-arg="4" class="cnpy-hit" aria-label="#4 A"></button>');
+    expect(html).not.toMatch(/<button[^>]*class="cnpy-trow/);
+  });
+
+  it("the GitHub mirror's requester and an unknown handle stay plain text", () => {
+    const html = queueView(queueProps({ view: "table", seg: "all", tickets: [
+      ticket({ id: 5, title: "Mirrored", requester: "github-webhook", source: "github", source_ref: "o/r#5" }),
+      ticket({ id: 6, title: "Stranger", requester: "ghost", assignees: ["ghost"] }),
+    ] }));
+    expect(html).not.toContain('data-arg="github-webhook"');
+    expect(html).not.toContain('data-act="openPerson" data-arg="ghost"');
+  });
+
+  it("a board card is a plain container (no role=button, still draggable) whose assignee photos open the card", () => {
+    const html = queueView(queueProps({ view: "board", seg: "all", tickets: [ticket({ id: 7, title: "B", assignees: ["jose-a"] })] }));
+    const card = html.slice(html.indexOf('data-tdrag="7"'));
+    expect(card.slice(0, card.indexOf(">"))).not.toContain('role="button"');
+    expect(card.slice(0, card.indexOf(">"))).toContain("cnpy-hitbox");
+    expect(card).toMatch(PERSON_BTN("jose-a", "cnpy-personav"));
+    expect(card).toContain('<button data-act="openTicket" data-arg="7" class="cnpy-hit" aria-label="#7 B"></button>');
   });
 });

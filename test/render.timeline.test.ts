@@ -287,3 +287,11 @@ describe("the Timeline reads the ONE due-date rule (shared/sprints-core sprintDu
     }
   });
 });
+
+describe("the Timeline's lead opens their person card", () => {
+  it("a known lead's photo is a button; an unknown lead's is plain", () => {
+    const persons = [{ handle: "ana", name: "Ana Ruiz", color: "moss" as const, avatar_url: null, role: null }];
+    expect(draw([sp({ lead: "ana" })], { persons })).toMatch(/<button data-act="openPerson" data-arg="ana" class="cnpy-personav"/);
+    expect(draw([sp({ lead: "ghost" })], { persons })).not.toContain('data-act="openPerson"');
+  });
+});

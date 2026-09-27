@@ -605,3 +605,24 @@ describe("Review › Rendered shows the proposed images", () => {
     expect(html).toContain("&lt;b onmouseover=x&gt;");
   });
 });
+
+describe("Review and Unplaced — the detail's author opens their person card", () => {
+  it("a mapped proposer is one chip in the detail byline; the list card (a select button) keeps a plain pair", () => {
+    const it0 = makeItem({ agent: "maya-k", agentColor: "plum", agentHandle: "maya-k", agentName: "Maya K" });
+    expect(reviewDetail(it0, "unified")).toMatch(/<button data-act="openPerson" data-arg="maya-k" class="cnpy-personchip"/);
+    expect(reviewCard(it0, false)).not.toContain('data-act="openPerson"');
+  });
+
+  it("an unmapped proposer stays plain in the detail", () => {
+    expect(reviewDetail(makeItem(), "unified")).not.toContain('data-act="openPerson"');
+  });
+
+  it("the Unplaced detail's author is a chip when mapped, plain when not; the list rows stay select buttons", () => {
+    const people = [{ id: "maya-k", name: "Maya K", initials: "MK", color: "plum" as const }];
+    const mapped = maintenanceView(makeMaintProps({ people, unplaced: [makeUnplaced({ author: "maya-k", when: "1h ago" })] }));
+    expect(mapped).toMatch(/<button data-act="openPerson" data-arg="maya-k" class="cnpy-personchip"/);
+    expect((mapped.match(/data-act="openPerson"/g) ?? []).length).toBe(1);
+    const stranger = maintenanceView(makeMaintProps({ people, unplaced: [makeUnplaced({ author: "ghost", when: "1h ago" })] }));
+    expect(stranger).not.toContain('data-act="openPerson"');
+  });
+});

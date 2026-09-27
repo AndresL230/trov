@@ -561,3 +561,12 @@ describe("render() — Recent happenings caps each row's GitHub chips", () => {
     expect(html.slice(html.indexOf("Roadmap · Recent happenings"))).not.toMatch(/>\+\d+<\/span>/);
   });
 });
+
+describe("render() — Recent happenings authors open their person card", () => {
+  it("a known author's @handle is a button; an unknown one stays plain", () => {
+    const s = stateWithFeed("");
+    const known = render({ ...s, persons: { status: "ok", data: [{ handle: "AndresL230", name: "Andres", color: "moss", avatar_url: null, role: null }] } });
+    expect(known).toMatch(/<button data-act="openPerson" data-arg="AndresL230" class="cnpy-personlink"[^>]*><span[^>]*>@AndresL230<\/span><\/button>/);
+    expect(render(s)).not.toContain('data-act="openPerson" data-arg="AndresL230"');
+  });
+});

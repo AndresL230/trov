@@ -12,7 +12,7 @@
 // assign / discard / map / invite writes the single-column version had).
 
 import { esc, attr, primaryBtn, relTime, surface } from "./ui";
-import { personChip, handleTag } from "./people";
+import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor, InviteRow } from "@shared/rows";
 import type { PersonSummary } from "./api";
 import { ROLE_MAX, RESPONSIBILITIES_MAX } from "@shared/people";
@@ -114,8 +114,9 @@ export function maintEmpty(title: string, sub: string): string {
 
 const person = (people: Person[], id: string | null | undefined): Person | null =>
   id ? people.find((p) => p.id.toLowerCase() === id.toLowerCase()) ?? null : null;
-const chipOf = (p: Person | null, size: number, fallback: string) =>
-  personChip(p?.color ? { handle: p.id, name: p.name, color: p.color, avatar_url: p.avatar_url } : null, size, fallback);
+/** A Person as the chip helpers take it — null (plain, initials) without a color. */
+const chipPerson = (p: Person | null) => (p?.color ? { handle: p.id, name: p.name, color: p.color, avatar_url: p.avatar_url } : null);
+const chipOf = (p: Person | null, size: number, fallback: string) => personChip(chipPerson(p), size, fallback);
 
 // ── UNPLACED ─────────────────────────────────────────────────────────────────
 /** The "File it as" block: pick what it is, then the real per-type target. */
@@ -178,7 +179,7 @@ function unplacedTab(p: MaintenanceProps): string {
     <div style="flex:2 1 380px;min-width:0;display:flex;flex-direction:column;padding:24px 28px;box-shadow:0 -1px 0 var(--border)">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--fg-55)">
         <span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-55);border:1px solid var(--border-strong);border-radius:5px;padding:2px 6px;white-space:nowrap">${esc(sel.reason)}</span>
-        <span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;min-width:0">${chipOf(au, 18, sel.author ?? "?")}<span style="overflow:hidden;text-overflow:ellipsis">${esc(au?.name ?? sel.author ?? "unknown")}</span></span>
+        <span style="display:inline-flex;white-space:nowrap;min-width:0">${personLink(chipPerson(au), sel.author ?? "?", 18, au?.name ?? sel.author ?? "unknown", "min-width:0;overflow:hidden;text-overflow:ellipsis", 6)}</span>
         <span style="color:var(--fg-40);white-space:nowrap">&middot; ${esc(sel.when ?? "")}</span>
         <span style="flex:1"></span>
         <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap">${idx + 1} of ${p.unplaced.length}</span>

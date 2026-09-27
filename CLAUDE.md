@@ -534,7 +534,17 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   an admin's "Edit role" opens `personRoleEditor` (`web/src/maintenance.ts`) under that row, filled from the
   person's profile read. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in the browser before
   the POST — so a GIF loses its animation) and removes one (shown only for an `/avatar/` URL); it has no role or
-  responsibilities field. A `personChip` whose image fails to load shows the initials under it.
+  responsibilities field. A `personChip` whose image fails to load shows the initials under it. **Every name or
+  avatar opens the card** (`web/src/people.ts`): photo + name as ONE chip where both fit (`personLink`), a photo alone
+  (`personAvatarLink`, and `avatarStack(…, linked)`), a name or `@handle` in a line of text (`personNameLink` /
+  `handleLink`) — each resolved through `GET /persons` case-insensitively, so an unknown handle, a bot, the GitHub
+  mirror's `github-webhook` and Repo sample data stay plain. A card or row that opens something else (queue rows and
+  board cards, sprint ticket boxes, handoff rows, prompt and artifact cards, the Feed's review rows) is a plain
+  container whose own target is an empty button laid over it (`ui.ts` `hitArea` + `HITBOX`), with the people above it
+  — never a button inside a button. Left plain on purpose: pickers and filter menus (a click there selects), the
+  Review and Unplaced list rows (select buttons; their detail pane links the person), menu rows, anything inside a
+  link (a Repo PR row, a ticket's artifact chip), tooltips, the ratify dialog's "Recorded as", the sidebar's account
+  chip (it opens Settings), the onboarding preview and the landing page.
 
 ## Roadmap & My Work — authored plan + stored projections, no live GitHub at render
 
