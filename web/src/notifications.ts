@@ -96,14 +96,15 @@ export function emailNotificationsSection(p: NotifSettingsProps): string {
     const body = p.loading
       ? `Loading email settings&hellip;`
       : `Couldn't load email settings${p.error ? ` &mdash; ${esc(p.error)}` : ""}.`;
-    return `<section class="cnpy-tile cnpy-surface cnpy-set-full">${head}<div style="${TILE_ROW};font-size:12.5px;color:var(--fg-40)">${body}</div></section>`;
+    return `<section class="cnpy-tile cnpy-surface cnpy-set-email">${head}<div style="${TILE_ROW};font-size:12.5px;color:var(--fg-40)">${body}</div></section>`;
   }
   const v = p.prefs;
   const rows = v.kinds.map(kindRow).join("");
   const listStyle = `opacity:${v.unsubscribed ? ".45" : "1"};pointer-events:${v.unsubscribed ? "none" : "auto"};transition:opacity .15s ease`;
-  // Full-width tile, two columns inside: address beside the all-off switch, then the
-  // kinds two-up — half the height of one long list (canopy.css folds it to one column).
-  return `<section class="cnpy-tile cnpy-surface cnpy-set-full">
+  // Two columns inside once the tile is wide enough: address beside the all-off switch, then
+  // the kinds two-up — half the height of one long list. canopy.css folds it to one column
+  // by the TILE's own width, since it sits in Settings' wide column, not across the page.
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-email">
     ${head}
     <div class="cnpy-set-pairs">
       ${emailRow(p, v.email)}

@@ -18,7 +18,7 @@ import type { DashboardData } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import type { RepoDashboard, RepoRefreshResult } from "@shared/repo";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
-import type { NotificationOutboxRow, NotificationSettingsRow, McpTokenSummary, OAuthGrantSummary } from "@shared/rows";
+import type { NotificationOutboxRow, NotificationSettingsRow, OAuthGrantSummary } from "@shared/rows";
 import type {
   ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactDiffDTO, ArtifactFetchDTO,
   ArtifactKind, ArtifactVisibility, ArtifactLinkType,
@@ -586,15 +586,6 @@ export function fetchArtifactUrl(url: string): Promise<ArtifactFetchDTO> {
 export function logout(): Promise<{ ok: true }> {
   return postJson<{ ok: true }>("/auth/logout");
 }
-export function mintMcpToken(): Promise<{ token: string }> {
-  return postJson<{ token: string }>("/auth/mcp-token");
-}
-export async function listMcpTokens(): Promise<McpTokenSummary[]> {
-  return (await getJson<{ tokens: McpTokenSummary[] }>("/auth/mcp-tokens")).tokens;
-}
-export function revokeMcpToken(id: number): Promise<{ ok: true }> {
-  return postJson<{ ok: true }>(`/auth/mcp-tokens/${id}/revoke`);
-}
 export async function listOAuthGrants(): Promise<OAuthGrantSummary[]> {
   return (await getJson<{ grants: OAuthGrantSummary[] }>("/auth/oauth-grants")).grants;
 }
@@ -607,7 +598,7 @@ export type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow
 export type { SprintView, SprintDetail, SprintCreate };
 export type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory, TicketCreate };
 export type { DashboardData };
-export type { PrefsView, PolicyKindView, Cadence, NotificationOutboxRow, NotificationSettingsRow, McpTokenSummary };
+export type { PrefsView, PolicyKindView, Cadence, NotificationOutboxRow, NotificationSettingsRow };
 export type { InviteRow, PersonColor };
 export type { PersonSummary, PersonProfile, PersonProfileWrite };
 

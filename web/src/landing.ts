@@ -601,7 +601,7 @@ function security(): string {
     ${heading("security-head", "Security, in plain terms")}
     <div ${rv("security", "rv-static")} style="margin-top:44px;display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:14px 40px;max-width:900px">
       ${row(0, "Sign-in with GitHub or Google, restricted to your org.")}
-      ${row(1, "Agents connect by browser sign-in or a personal token; only hashes are stored.")}
+      ${row(1, "Agents connect by browser sign-in; only hashes of their tokens are stored.")}
       ${row(2, "Agents write as their person and can't claim another author.")}
       ${row(3, "Agents can only change tickets assigned to their person.")}
       ${row(4, "Tickets and sprints are never closed automatically.")}

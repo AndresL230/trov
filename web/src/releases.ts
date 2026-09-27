@@ -86,6 +86,8 @@ export const RELEASES: Release[] = [
     headsUp: [
       "Opening Settings no longer lights up the account chip at the bottom of the sidebar as if it were a selected row.",
       "Your picture and name no longer change with the way you sign in. If you linked both GitHub and Google, the picture you have now stays — it only updates when that same provider's picture changes — and a name you set in Settings sticks.",
+      "Settings no longer mints MCP tokens — connect with the steps on Settings › MCP access and sign in in the browser. Tokens you already use keep working.",
+      "Settings' boxes are only as tall as what they hold, and MCP access now walks you through the browser sign-in, with your connected apps right under it.",
     ],
     ops: [
       "Apply migration `0036_person_profiles` with `npm run db:migrate:remote` before this deploys.",
@@ -108,11 +110,14 @@ export const RELEASES: Release[] = [
         "Every name or photo opens the person card — the ticket queue (table rows and board cards), sprints and the Timeline's lead, handoffs, prompts, artifacts, docs, Review, Unplaced, the Repo dashboard's contributors and activity, the Feed's review box and Settings › Account — as one photo + name chip (`personLink`) where both fit; a card or row that opens something else is a container with its own click target laid over it (`ui.ts` `hitArea`), so a person is never a button inside a button (#89)",
         "Repo dashboard: PR authors and contributors show their avatar photo (#89)",
         "Sidebar: no selected fill on the account chip while Settings is open or on hover — only its gear turns (#89)",
+        "Settings: the bento keeps its three columns but every grid is `align-items:start` and Profile / Account / Appearance are their own grid (`.cnpy-set-you`), so no tile stretches to the MCP tile's height; MCP access (`mcpAccessSection`) is OAuth only — one line, three numbered browser sign-in steps (`PLUGIN_INSTALL`), Connected apps capped at 3 rows with Show all (no fixed-height scroller), and the by-hand `claude mcp add` folded behind Set it up without the plugin; the Get Started guide says the same (#89)",
       ],
       fixed: [
         "A person with GitHub and Google linked got the picture (and the name) of whichever they signed in with last: the provider picture now has one owner, `persons.avatar_source` (0036 PART B, backfilled from the picture's host) — only that provider's sign-in refreshes it, and a sign-in never writes the name, so a Settings edit sticks (#89)",
       ],
-      removed: [],
+      removed: [
+        "Settings' token UI: Get connection command (`connectModal` / `connectSnippet` / `CONNECT_CLIENTS`, and with it the Codex, `.mcp.json`-with-header and Token only setups), the token list (`tokenListBody`) and the web client's `mintMcpToken` / `listMcpTokens` / `revokeMcpToken`; the guide's `connect` figure. The `/auth/mcp-token*` routes, `canopy_mcp_` bearer resolution and `mcp_tokens` stay, so existing tokens keep working (#89)",
+      ],
     },
     prs: [89],
   },

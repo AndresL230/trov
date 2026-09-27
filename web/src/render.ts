@@ -40,7 +40,7 @@ import { newDocView, blankDoc, type NewDocDraft } from "./newdoc";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
 import { emailNotificationsSection, notificationsMaintenanceSections, unsubscribeView } from "./notifications";
-import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow, McpTokenSummary } from "./api";
+import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
 import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
 import { repoView, repoControls, repoCrumb, type RepoProps, type RepoPollState } from "./repo";
 import {
@@ -189,20 +189,14 @@ export interface AppState {
   searchType: "all" | "doc" | "feed" | "decision" | "artifact";
   searchResults: Loadable<QueryResult>;
   displayName: string;
-  /** Settings › "Get connection command": the modal, open while non-null. `token` is
-   *  null while the mint is in flight; `error` is set when it failed. The token lives
-   *  ONLY here — closing the modal drops it, and the server keeps just a hash. */
-  connect: { token: string | null; error: string | null } | null;
-  /** Which client's setup the modal shows, and its Copy button's state. */
-  connectClient: ConnectClient;
-  connectCopied: boolean;
-  /** Settings › MCP access: the caller's live tokens (hint only, never the value). */
-  tokens: Loadable<McpTokenSummary[]>;
-  /** The token whose Revoke was clicked once — the second click is the one that revokes. */
-  tokenRevokeArm: number | null;
-  /** Settings › Connected apps: the caller's OAuth connections. */
+  /** Settings › MCP access › Connected apps: the caller's OAuth connections. */
   grants: Loadable<OAuthGrantSummary[]>;
+  /** The connection whose Revoke was clicked once — the second click is the one that revokes. */
   grantRevokeArm: number | null;
+  /** Connected apps opened past its first MCP_LIST_CAP rows by "Show all". */
+  grantsAll: boolean;
+  /** The "Set it up without the plugin" disclosure — state, not a `<details>`, so a rerender keeps it open. */
+  mcpManual: boolean;
   // Settings › Profile: the handle rename editor.
   handleEdit: boolean;
   handleDraft: string;
@@ -429,13 +423,10 @@ export function initialState(): AppState {
     searchQuery: "token", searchType: "all",
     searchResults: { status: "idle", data: { primary: [], pointers: [], meta: { engine: "fts5", total: 0 } } },
     displayName: "",
-    connect: null,
-    connectClient: "claude",
-    connectCopied: false,
-    tokens: { status: "idle", data: [] },
-    tokenRevokeArm: null,
     grants: { status: "idle", data: [] },
     grantRevokeArm: null,
+    mcpManual: false,
+    grantsAll: false,
     handleEdit: false,
     handleDraft: "",
     handleCheck: "idle",
@@ -1603,19 +1594,17 @@ function guideView(s: AppState): string {
     <p style="${gP}">Your agent talks to Canopy over the ${gStrong("Model Context Protocol")} (MCP). You connect it by signing in to Canopy in your browser, once. It acts as you: it sees what you see, and what it writes is recorded as yours.</p>
 
     ${sub("Claude Code: install the plugin")}
-    <p style="${gP}">The plugin wires up the MCP server and installs every skill below. Two steps:</p>
+    <p style="${gP}">The plugin wires up the MCP server and installs every skill below. Three steps, the same ones ${gStrong("Settings › MCP access")} shows:</p>
     <ol style="${gList}">
       <li>In Claude Code, install the plugin:
-        ${gPre(`/plugin marketplace add SaplingLearn/canopy
-/plugin install canopy@canopy`)}</li>
-      <li>Run ${gCode("/mcp")}, pick ${gStrong("canopy")} and choose ${gStrong("Authenticate")}. Your browser opens Canopy: sign in if asked, then click ${gStrong("Allow")}. The connection is listed in ${gStrong("Settings › MCP access")} under ${gStrong("Connected apps")}, where ${gStrong("Revoke")} disconnects it immediately.</li>
+        ${gPre(PLUGIN_INSTALL)}</li>
+      <li>Run ${gCode("/mcp")}, pick ${gStrong("canopy")} and choose ${gStrong("Authenticate")}.</li>
+      <li>Your browser opens Canopy: sign in if asked, then click ${gStrong("Allow")}. The connection is listed in ${gStrong("Settings › MCP access")} under ${gStrong("Connected apps")}, where ${gStrong("Revoke")} disconnects it immediately.</li>
     </ol>
-    <p style="${gP}">Not using the plugin? ${gStrong("Settings › MCP access")} has a ${gStrong("Sign in with browser")} command that adds the server by hand. Run it, then do step 2. Don't do both, or you'll have two Canopy servers.</p>
-    ${gFig("connect", `${gEm("Get connection command")}: pick your client and copy the ready-made setup. (The token is hidden in this screenshot.)`)}
+    <p style="${gP}">Not using the plugin? Open ${gStrong("Set it up without the plugin")} in ${gStrong("Settings › MCP access")} for the command that adds the server by hand. Run it, then do steps 2 and 3. Don't do both, or you'll have two Canopy servers.</p>
 
     ${sub("Other agents")}
-    <p style="${gP}">For ${gStrong("Codex")}, CI, or any client that can't open a browser, use a personal token instead: in ${gStrong("Settings › MCP access")}, under ${gStrong("Access tokens")}, click ${gStrong("Get connection command")}. It has ready-made setups for Codex and a ${gStrong(".mcp.json")} file (Cursor and other MCP clients), each with a fresh token and this Canopy's address filled in. Paste it and restart the agent. The token is shown only once.</p>
-    <p style="${gP}">Every token you mint stays listed in Settings by its first few characters. ${gStrong("Revoke")} disconnects that agent immediately.</p>
+    <p style="${gP}">Any MCP client that can sign in through the browser (OAuth) connects to the same address, ${gCode(esc(mcpEndpoint()))}, and shows up under ${gStrong("Connected apps")} once you approve it. Canopy no longer creates access tokens in Settings; a token you already set up (for Codex or CI) keeps working.</p>
     ${gFig("settings", `${gEm("Settings")}: profile, sign-in methods, MCP access, appearance, and email digests.`)}
 
     ${sec("Step 3", "Learn the skills", "Learn the skills")}
@@ -1697,7 +1686,7 @@ function guideView(s: AppState): string {
     ${gFig("prompts", `${gEm("Prompt Library")}: published, staged, and draft prompts with their tags and versions.`)}
 
     ${sub("Settings")}
-    <p style="${gP}">Click your name at the bottom of the sidebar. ${gStrong("Profile")} sets your name, handle, and color. ${gStrong("Account")} links GitHub and Google. ${gStrong("MCP access")} is where agents connect: your connected apps and any access tokens. ${gStrong("Appearance")} switches between Light, Dark, and System. ${gStrong("Email notifications")} sets each digest (your work, the review queue, roadmap changes, the ticket queue) to daily, weekly, or off.</p>
+    <p style="${gP}">Click your name at the bottom of the sidebar. ${gStrong("Profile")} sets your name, handle, and color. ${gStrong("Account")} links GitHub and Google. ${gStrong("MCP access")} is where agents connect: the browser sign-in steps and the apps you have connected. ${gStrong("Appearance")} switches between Light, Dark, and System. ${gStrong("Email notifications")} sets each digest (your work, the review queue, roadmap changes, the ticket queue) to daily, weekly, or off.</p>
 
     ${sub("What's new")}
     <p style="${gP}">Every release of Canopy, newest first. Open one for its notes, or switch to ${gStrong("Patch notes")} for the full list of changes with links to the pull requests.</p>
@@ -1708,7 +1697,7 @@ function guideView(s: AppState): string {
       <li>${gStrong("GitHub sign-in says you're not a member.")} Accept the SaplingLearn org invite on GitHub, then sign in again.</li>
       <li>${gStrong("Google sign-in says you're not invited.")} Ask an admin to invite the exact address you signed in with.</li>
       <li>${gStrong("Canopy shows as needing authentication in Claude Code.")} Run ${gCode("/mcp")}, pick ${gStrong("canopy")} and choose ${gStrong("Authenticate")}. If the browser says Canopy doesn't recognise the app, choose ${gStrong("Clear authentication")} first, then Authenticate again. A connection you revoked in Settings needs the same.</li>
-      <li>${gStrong("A token-based agent (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $CANOPY_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. When in doubt, mint a new token and revoke the old one.</li>
+      <li>${gStrong("An agent set up with an older access token (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $CANOPY_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. Settings no longer creates tokens, so if the agent can sign in through the browser, reconnect it that way instead.</li>
       <li>${gStrong("The Canopy server doesn't appear in /mcp.")} Restart Claude Code after installing the plugin. Run ${gCode("/plugin")} to check that ${gCode("canopy")} is installed and enabled.</li>
       <li>${gStrong("The plugin is out of date.")} Run ${gCode("/plugin marketplace update canopy")}, then restart.</li>
       <li>${gStrong("Your agent sees every tool twice.")} It's connected both through the plugin and through a manual setup. Remove one: ${gCode("claude mcp remove canopy")} drops the manual one.</li>
@@ -1835,7 +1824,7 @@ export function accountSection(s: AppState): string {
       : `<button data-act="linkProvider" data-arg="${p}" class="cnpy-ghostbtn" style="font-size:12px;color:var(--fg-70);padding:4px 10px;border-radius:6px;border:1px solid var(--border-strong)">Link ${label}</button>`;
     return `<div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border)"><div style="line-height:1.25"><b style="font-size:13.5px;font-weight:600;display:block">${label}</b><span style="font-family:var(--label);font-size:11.5px;color:${id ? "var(--fg-55)" : "var(--fg-40)"}">${id ? esc(id.label) : "not linked"}</span></div>${btn}</div>`;
   };
-  return `<section class="cnpy-tile cnpy-surface" style="display:flex;flex-direction:column">
+  return `<section class="cnpy-tile cnpy-surface">
     <div style="${SECTION_LABEL}">Account</div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
       <div style="min-width:0">
@@ -1844,7 +1833,7 @@ export function accountSection(s: AppState): string {
       </div>
       <button data-act="signOut" class="cnpy-signout" style="flex:none;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500">Sign out</button>
     </div>
-    <div style="margin-top:auto;padding-top:20px">
+    <div style="margin-top:18px">
       <div style="font-size:13px;font-weight:500;margin-bottom:8px">Sign-in methods <span style="font-weight:400;color:var(--fg-40)">· at least one stays linked</span></div>
       ${provRow("github", "GitHub")}${provRow("google", "Google")}
     </div>
@@ -1856,171 +1845,99 @@ export function accountSection(s: AppState): string {
 const mcpEndpoint = (): string =>
   `${typeof location !== "undefined" && location.origin ? location.origin : "https://canopy.saplinglearn.com"}/mcp`;
 
-/** Settings › MCP access: one hairline row per live token. Only the hint is ever
- *  known here — the server keeps a hash — so a row is `canopy_mcp_ab12…`, when it was
- *  minted and last used, and a two-click Revoke (an agent stops working the moment it lands). */
-export function tokenListBody(s: Pick<AppState, "tokens" | "tokenRevokeArm">): string {
-  // Every state renders inside the same fixed-height scroller (canopy.css), so the
-  // number of tokens never changes the tile's height, or the row's beside it.
-  const box = (inner: string) => `<div class="cnpy-scroll cnpy-set-tokens">${inner}</div>`;
-  const note = (text: string) => box(`<div style="padding:12px 0;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-40)">${text}</div>`);
-  const t = s.tokens;
-  if (t.status === "error") return note(`Couldn't load your tokens${t.error ? ` &mdash; ${esc(t.error)}` : ""}.`);
-  if (t.status !== "ok" && !t.data.length) return note("Loading tokens&hellip;");
-  if (!t.data.length) return note("No tokens yet. Get a connection command to connect an agent.");
-  const rows = t.data.map((tk) => {
-    const armed = s.tokenRevokeArm === tk.id;
-    const btn = "flex:none;padding:4px 10px;border-radius:6px;font-size:12px";
-    const actions = armed
-      ? `<button data-act="revokeToken" data-arg="${tk.id}" class="cnpy-revoke" style="${btn};font-weight:600;color:var(--red);border:1px solid var(--red)">Revoke</button>
-         <button data-act="revokeTokenCancel" class="cnpy-ghostbtn" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Keep</button>`
-      : `<button data-act="revokeTokenArm" data-arg="${tk.id}" class="cnpy-revoke" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Revoke</button>`;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)">
-      <div style="flex:1;min-width:0;line-height:1.35">
-        <code style="display:block;font-family:var(--code);font-size:12.5px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">canopy_mcp_${esc(tk.hint ?? "")}<span style="color:var(--fg-40)">&bull;&bull;&bull;&bull;</span></code>
-        <span style="font-size:11.5px;color:var(--fg-40)">${armed ? "Any agent using it stops working." : `Minted ${esc(relTime(tk.created_at))} &middot; ${tk.last_used_at ? `last used ${esc(relTime(tk.last_used_at))}` : "never used"}`}</span>
-      </div>
-      ${actions}
-    </div>`;
-  }).join("");
-  return box(rows);
-}
+/** The two Claude Code commands that install the Canopy plugin — Settings › MCP access
+ *  and the Get Started guide both show exactly this. */
+export const PLUGIN_INSTALL = `/plugin marketplace add SaplingLearn/canopy
+/plugin install canopy@canopy`;
 
-/** Settings › Connected apps: one hairline row per OAuth connection — the app's
- *  self-reported name, when it connected and was last used, and a two-click Revoke. */
-export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm">): string {
-  const note = (text: string) => `<div style="padding:12px 0;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-40)">${text}</div>`;
+/** How many Connected apps rows Settings › MCP access shows before its "Show all N". */
+export const MCP_LIST_CAP = 3;
+
+/** Settings › MCP access › Connected apps: a heading with its count, then one hairline row
+ *  per OAuth connection — the app's self-reported name, when it connected and was last
+ *  used, and a two-click Revoke — the first MCP_LIST_CAP until "Show all"; or one quiet
+ *  line while it loads, when it is empty and when the read failed. No fixed height and no
+ *  inner scroller: the list is as tall as what it shows, and "Show all" is how it grows. */
+export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & Partial<Pick<AppState, "grantsAll">>): string {
   const g = s.grants;
-  if (g.status === "error") return note(`Couldn't load connected apps${g.error ? ` &mdash; ${esc(g.error)}` : ""}.`);
-  if (g.status !== "ok" && !g.data.length) return note("Loading connected apps&hellip;");
-  if (!g.data.length) return note("No apps connected. Run the command above, then sign in from the app.");
-  // Capped at two rows, then it scrolls — like the token list, it must not grow the tile.
-  return `<div class="cnpy-scroll cnpy-set-grants">${g.data.map((gr) => {
+  const n = g.status === "error" ? 0 : g.data.length;
+  const count = n ? `<span style="flex:none;font-family:var(--label);font-size:11px;line-height:17px;color:var(--fg-55);background:var(--hover);border-radius:999px;padding:0 7px">${n}</span>` : "";
+  const head = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:600">Connected apps</span>${count}</div>`;
+  const wrap = (inner: string) => `<div class="cnpy-mcp-list" data-list="grants">${head}${inner}</div>`;
+  if (!n) {
+    const note = g.status === "error" ? `Couldn't load connected apps${g.error ? ` &mdash; ${esc(g.error)}` : ""}.`
+      : g.status !== "ok" ? "Loading connected apps&hellip;"
+      : "No apps connected yet. Once you approve Claude Code in the browser, it shows up here.";
+    return wrap(`<div style="padding:10px 0;border-top:1px solid var(--border);font-size:12.5px;line-height:1.5;color:var(--fg-40)">${note}</div>`);
+  }
+  const btn = "flex:none;padding:4px 10px;border-radius:6px;font-size:12px";
+  const all = !!s.grantsAll;
+  const rows = (all ? g.data : g.data.slice(0, MCP_LIST_CAP)).map((gr) => {
     const armed = s.grantRevokeArm === gr.id;
-    const btn = "flex:none;padding:4px 10px;border-radius:6px;font-size:12px";
     const actions = armed
       ? `<button data-act="revokeGrant" data-arg="${gr.id}" class="cnpy-revoke" style="${btn};font-weight:600;color:var(--red);border:1px solid var(--red)">Disconnect</button>
          <button data-act="revokeGrantCancel" class="cnpy-ghostbtn" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Keep</button>`
       : `<button data-act="revokeGrantArm" data-arg="${gr.id}" class="cnpy-revoke" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Revoke</button>`;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)">
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
       <div style="flex:1;min-width:0;line-height:1.35">
         <span style="display:block;font-size:13px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(gr.client_name)}</span>
-        <span style="font-size:11.5px;color:var(--fg-40)">${armed ? "The app is signed out the moment you disconnect it." : `Connected ${esc(relTime(gr.created_at))} &middot; ${gr.last_used_at ? `last used ${esc(relTime(gr.last_used_at))}` : "never used"}`}</span>
+        <span style="display:block;font-size:11.5px;color:var(--fg-40)">${armed ? "The app is signed out the moment you disconnect it." : `Connected ${esc(relTime(gr.created_at))} &middot; ${gr.last_used_at ? `last used ${esc(relTime(gr.last_used_at))}` : "never used"}`}</span>
       </div>
       ${actions}
     </div>`;
-  }).join("")}</div>`;
+  }).join("");
+  const more = n > MCP_LIST_CAP
+    ? `<button data-act="mcpShowAll" aria-expanded="${all}" class="cnpy-mutelink" style="display:block;width:100%;text-align:left;padding:9px 0 1px;border-top:1px solid var(--border);font-size:12px;font-weight:500;color:var(--fg-55)">${all ? "Show fewer" : `Show all ${n}`}</button>`
+    : "";
+  return wrap(rows + more);
 }
 
-/** The browser sign-in setup: the server with no header — Claude Code opens the
- *  browser on `/mcp` → Authenticate. Mints nothing. */
+/** The by-hand setup: the server with no header — Claude Code then signs in through the
+ *  browser on `/mcp` → Authenticate, exactly as the plugin does. Mints nothing. */
 export function browserConnectCommand(url: string = mcpEndpoint()): string {
   return `claude mcp add --transport http --scope user canopy ${url}`;
 }
 
-// ── Settings › Connect an agent ──────────────────────────────────────────────
-
-export type ConnectClient = "claude" | "codex" | "json" | "token";
-export const CONNECT_CLIENTS: readonly { id: ConnectClient; label: string }[] = [
-  { id: "claude", label: "Claude Code" },
-  { id: "codex", label: "Codex" },
-  { id: "json", label: ".mcp.json" },
-  { id: "token", label: "Token only" },
-];
-
 /**
- * The setup text for one client, with `token` filled in. Pure, so a test pins each
- * shape. Claude Code takes the header on the command line; Codex reads a bearer
- * token from an environment variable via its `--bearer-token-env-var`, spelled
- * `CANOPY_MCP_TOKEN` here. (The Canopy plugin itself never reads this variable —
- * it connects by browser sign-in, `/mcp` → Authenticate.)
+ * Settings › MCP access — OAuth only: Canopy no longer mints tokens here (the token routes
+ * stay, so a token already in use keeps working). Top to bottom: what it is in one line;
+ * the browser sign-in as three numbered steps (install the plugin, `/mcp` → Authenticate,
+ * approve in the browser); Connected apps, where that sign-in lands; and, folded away, the
+ * by-hand `claude mcp add` for anyone not using the plugin.
+ * Pure over AppState — exported for the pure render test.
  */
-export function connectSnippet(client: ConnectClient, token: string, url: string = mcpEndpoint()): string {
-  switch (client) {
-    case "claude":
-      return `claude mcp add --transport http --scope user canopy ${url} \\\n  --header "Authorization: Bearer ${token}"`;
-    case "codex":
-      return `export CANOPY_MCP_TOKEN=${token}\ncodex mcp add canopy --url ${url} --bearer-token-env-var CANOPY_MCP_TOKEN`;
-    case "json":
-      return `{\n  "mcpServers": {\n    "canopy": {\n      "type": "http",\n      "url": "${url}",\n      "headers": { "Authorization": "Bearer ${token}" }\n    }\n  }\n}`;
-    case "token":
-      return token;
-  }
-}
-
-const CONNECT_NOTE: Record<ConnectClient, string> = {
-  claude: `Paste it into a terminal, then restart Claude Code. <code style="font-family:var(--code);font-size:11px">--scope user</code> makes Canopy available in every project.`,
-  codex: `Paste both lines into a terminal, then restart Codex. Codex reads the token from <code style="font-family:var(--code);font-size:11px">CANOPY_MCP_TOKEN</code> each time it starts, so add the <code style="font-family:var(--code);font-size:11px">export</code> line to your shell profile too.`,
-  json: `For Cursor and other MCP clients: put this in the client's MCP config (for Claude Code, a project's <code style="font-family:var(--code);font-size:11px">.mcp.json</code>), then restart it.`,
-  token: `For anything else, send it as a bearer header: <code style="font-family:var(--code);font-size:11px">Authorization: Bearer &lt;token&gt;</code> to <code style="font-family:var(--code);font-size:11px">${esc(mcpEndpoint())}</code>. Using the Canopy plugin? It connects by browser sign-in instead — see <strong>Sign in with browser</strong> above.`,
-};
-
-/** The Settings row a minted token shows up as: `canopy_mcp_` + the first 4 characters. */
-export const tokenLabel = (token: string): string =>
-  `canopy_mcp_${token.startsWith("canopy_mcp_") ? token.slice(11, 15) : ""}`;
-
-/**
- * "Get connection command": ONE modal that is the whole flow. The click mints a
- * token; the modal shows the exact setup for the chosen client with that token
- * already in it, says where the token now lives in Settings, and on Done/close the
- * token is gone from the page for good — there is no second place it is shown.
- * Built on the sign-in dialog's pattern: a sibling backdrop that closes it, and a
- * pointer-events:none wrapper so clicks inside the panel never reach the backdrop.
- */
-export function connectModal(s: Pick<AppState, "connect" | "connectClient" | "connectCopied">): string {
-  const m = s.connect;
-  if (!m) return "";
-  const close = `<button data-act="connectClose" title="Close" aria-label="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--fg-40)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>`;
-
-  let body: string;
-  if (m.error) {
-    body = `<div style="font-size:13px;color:var(--red);line-height:1.6;margin-bottom:18px">Couldn't create a token — ${esc(m.error)}</div>
-      <div style="display:flex;justify-content:flex-end"><button data-act="connectClose" class="cnpy-outlinebtn" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">Close</button></div>`;
-  } else if (!m.token) {
-    body = `<div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--fg-55);padding:18px 0 8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="animation:cnpy-spin .8s linear infinite"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>Creating a token for this connection&hellip;</div>`;
-  } else {
-    const tabs = segmented({
-      id: "connect-client", ariaLabel: "Client", act: "connectClient", value: s.connectClient, inertOn: true,
-      options: CONNECT_CLIENTS.map(({ id, label }) => ({ value: id, label })),
-    });
-    const token = m.token;
-    // EVERY client's snippet (and note) is rendered, stacked in one grid cell, and
-    // only the chosen one is visible: the box is always as tall as the tallest, so a
-    // tab switch changes the text and nothing else moves.
-    const stack = (cell: (id: ConnectClient) => string): string =>
-      CONNECT_CLIENTS.map(({ id }) => {
-        const on = s.connectClient === id;
-        return `<div data-client="${id}" ${on ? "" : `aria-hidden="true"`} style="grid-area:1/1;min-width:0;visibility:${on ? "visible" : "hidden"}">${cell(id)}</div>`;
-      }).join("");
-    const btnBase = "flex:none;align-self:flex-start;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:7px;font-size:12.5px;font-weight:600";
-    const copy = s.connectCopied
-      ? `<button data-act="connectCopy" class="cnpy-copybtn is-copied" style="${btnBase};background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Copied</button>`
-      : `<button data-act="connectCopy" class="cnpy-copybtn" style="${btnBase};background:var(--accent);color:var(--accent-fg);border:1px solid var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>Copy</button>`;
-    body = `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px">${tabs}</div>
-      <div style="display:flex;align-items:stretch;gap:8px;background:var(--hover);border:1px solid var(--border-strong);border-radius:9px;padding:10px 10px 10px 14px">
-        <div style="flex:1;min-width:0;display:grid">${stack((id) =>
-          `<pre style="margin:0;font-family:var(--code);font-size:12.5px;line-height:1.6;color:var(--fg);white-space:pre-wrap;word-break:break-all">${esc(connectSnippet(id, token))}</pre>`)}</div>
-        ${copy}
-      </div>
-      <div style="display:grid;font-size:11.5px;color:var(--fg-55);margin-top:10px;line-height:1.55">${stack((id) => `<div>${CONNECT_NOTE[id]}</div>`)}</div>
-      <div style="display:flex;gap:10px;align-items:flex-start;margin-top:18px;padding:12px 14px;border-radius:9px;border:1px solid var(--border);font-size:12px;line-height:1.55;color:var(--fg-70)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" style="flex:none;margin-top:1px"><path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>
-        <div>This is the only time the token is shown, so copy it before closing. It's saved as <code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${esc(tokenLabel(m.token))}&bull;&bull;&bull;&bull;</code> under <strong style="color:var(--fg);font-weight:600">Access tokens</strong> under MCP access in Settings. Revoke it there to disconnect the agent.</div>
-      </div>
-      <div style="display:flex;justify-content:flex-end;margin-top:18px"><button data-act="connectClose" class="cnpy-outlinebtn" style="padding:7px 16px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:600;color:var(--fg)">Done</button></div>`;
-  }
-
-  return `<div data-overlay="connect"><div data-act="connectClose" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);animation:cnpy-fade .14s ease"></div>
-  <div style="position:fixed;inset:0;z-index:61;display:grid;place-items:center;padding:16px;pointer-events:none">
-    <div role="dialog" aria-modal="true" aria-labelledby="connect-title"${surface("pointer-events:auto;position:relative;width:min(580px, 100%);max-height:calc(100vh - 32px);overflow-y:auto;border-color:var(--border-strong);padding:26px 26px 22px;animation:cnpy-pop .16s ease")}>
-      ${close}
-      <div id="connect-title" style="font-size:16px;font-weight:600;letter-spacing:-0.01em;margin-bottom:4px">Connect an agent</div>
-      <div style="font-size:12.5px;color:var(--fg-55);margin-bottom:18px">Pick your agent, copy the setup, paste it. Your agent acts as you.</div>
-      ${body}
+export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll" | "mcpManual">): string {
+  const code = (t: string) => `<code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${t}</code>`;
+  const b = (t: string) => `<strong style="font-weight:600;color:var(--fg)">${t}</strong>`;
+  const step = (n: number, body: string) => `<li style="display:flex;gap:11px;align-items:flex-start">
+      <span aria-hidden="true" style="flex:none;display:grid;place-items:center;width:20px;height:20px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:600;margin-top:1px">${n}</span>
+      <div style="flex:1;min-width:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${body}</div>
+    </li>`;
+  // A command with a small Copy icon in its corner, so the text keeps the box's full width.
+  const copyRow = (text: string, act: string, label: string) => `<div style="position:relative;margin-top:7px;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:7px 36px 7px 11px">
+        <pre style="margin:0;font-family:var(--code);font-size:11.5px;line-height:1.6;color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere">${esc(text)}</pre>
+        <button data-act="${act}" class="cnpy-copybtn" title="Copy" aria-label="${label}" style="position:absolute;top:5px;right:5px;display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg);color:var(--fg-55)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button>
+      </div>`;
+  const open = s.mcpManual;
+  const chevron = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" style="flex:none;transition:transform .15s ease;transform:rotate(${open ? 90 : 0}deg)"><path d="m9 6 6 6-6 6"></path></svg>`;
+  const manual = `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+      <button data-act="mcpManual" aria-expanded="${open}" aria-controls="mcp-manual" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;padding:0;font-size:12px;font-weight:500;color:var(--fg-55)">${chevron}Set it up without the plugin</button>
+      ${open ? `<div id="mcp-manual" style="margin-top:8px;font-size:12px;line-height:1.55;color:var(--fg-55)">Add the server by hand, then do steps 2 and 3. Skip this if you installed the plugin, or you'll have two Canopy servers.${copyRow(browserConnectCommand(), "copyBrowserConnect", "Copy the command")}</div>` : ""}
+    </div>`;
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-mcp">
+    <div style="${SECTION_LABEL};margin-bottom:6px">MCP access</div>
+    <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you.</div>
+    <div class="cnpy-mcp-body">
+      <ol aria-label="Connect Claude Code" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0">
+        ${step(1, `Install the Canopy plugin in Claude Code:${copyRow(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
+        ${step(2, `Run ${code("/mcp")}, choose ${b("canopy")}, then ${b("Authenticate")}.`)}
+        ${step(3, `Your browser opens Canopy. Click ${b("Allow")} and you're connected &mdash; it shows up under Connected apps.`)}
+      </ol>
+      ${grantListBody(s)}
     </div>
-  </div></div>`;
+    ${manual}
+  </section>`;
 }
-
 function settingsView(s: AppState): string {
   const themeCards = [
     ["light", "Light"],
@@ -2039,40 +1956,24 @@ function settingsView(s: AppState): string {
     return `<button data-act="setTheme" data-arg="${k}" class="cnpy-themecard" aria-pressed="${sel}" style="${style}">${icon}<span style="font-size:13px;font-weight:500;line-height:18px">${label}</span></button>`;
   }).join("");
 
-  const tokenList = tokenListBody(s);
-
-  // Bento on three columns: Profile / Account on the left two, MCP access down the right
-  // column for two rows with Appearance under Profile + Account beside it, then Email at
-  // full width. The token and app lists are fixed-height scrollers, so how many you have
-  // never changes a tile's height (canopy.css has the folds for narrower widths).
+  // Bento on three columns (canopy.css): Profile and Account side by side with Appearance
+  // under both, MCP access down the third column, Email notifications at full width. The
+  // first three are their OWN grid, so a taller MCP tile never stretches them — and nothing
+  // stretches at all: every tile is as tall as its content (canopy.css has the folds).
   return `<div class="cnpy-set-wrap"><div class="cnpy-set">
-    ${profileSection(s)}
+    <div class="cnpy-set-you">
+      ${profileSection(s)}
 
-    ${accountSection(s)}
+      ${accountSection(s)}
 
-    <section class="cnpy-tile cnpy-surface cnpy-set-mcp" style="display:flex;flex-direction:column">
-      <div style="${SECTION_LABEL}">MCP access</div>
-      <div style="font-size:12.5px;font-weight:500;margin-bottom:6px">Sign in with browser <span style="font-weight:400;color:var(--fg-40)">· recommended</span></div>
-      <div style="display:flex;align-items:center;gap:8px;background:var(--hover);border:1px solid var(--border-strong);border-radius:9px;padding:8px 8px 8px 12px">
-        <code style="flex:1;min-width:0;font-family:var(--code);font-size:12px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(browserConnectCommand())}</code>
-        <button data-act="copyBrowserConnect" class="cnpy-copybtn" style="flex:none;padding:5px 10px;border-radius:7px;font-size:12px;font-weight:600;border:1px solid var(--border-strong);color:var(--fg-70)">Copy</button>
-      </div>
-      <div style="font-size:11.5px;color:var(--fg-40);margin:6px 0 14px;line-height:1.5">Then run <code style="font-family:var(--code);font-size:11px">/mcp</code> in Claude Code and choose Authenticate.</div>
-      <div style="font-size:12.5px;font-weight:500;margin-bottom:4px">Connected apps</div>
-      ${grantListBody(s)}
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;row-gap:8px;flex-wrap:wrap;margin:18px 0 4px">
-        <div style="flex:1 1 180px;min-width:0;font-size:12.5px;font-weight:500">Access tokens <span style="font-weight:400;color:var(--fg-40)">· for CI and other headless clients</span></div>
-        <button data-act="connectOpen" class="cnpy-mintbtn" style="flex:none;display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--accent);color:var(--accent);font-size:12.5px;font-weight:600;background:var(--accent-soft)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Get connection command</button>
-      </div>
-      ${tokenList}
-      <div style="font-size:11.5px;color:var(--fg-40);margin-top:auto;padding-top:12px;line-height:1.5">Each connection command creates its own token. Revoking a token or an app disconnects it immediately.</div>
-    </section>
+      <section class="cnpy-tile cnpy-surface cnpy-set-appear">
+        <div style="${SECTION_LABEL}">Appearance</div>
+        <div class="cnpy-set-themes">${themeCards}</div>
+        <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">System follows your operating system's appearance.</div>
+      </section>
+    </div>
 
-    <section class="cnpy-tile cnpy-surface cnpy-set-appear">
-      <div style="${SECTION_LABEL}">Appearance</div>
-      <div class="cnpy-set-themes">${themeCards}</div>
-      <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">System follows your operating system's appearance.</div>
-    </section>
+    ${mcpAccessSection(s)}
 
     ${emailNotificationsSection({
       prefs: s.notifPrefs.data,
@@ -2471,7 +2372,6 @@ export function render(s: AppState): string {
     ${s.view === "auth" ? authView(s) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.backfillSync ? backfillSyncModal(s.backfillSync) : ""}
-    ${s.view === "app" ? connectModal(s) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}

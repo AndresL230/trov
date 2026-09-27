@@ -110,7 +110,7 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `milestone_progress`→`sprint_progress` (`milestone_id`→`sprint_id`), `plan_versions.milestones_json`
   →`sprints_json`, roadmap_fts re-keyed `milestone:<id>`→`sprint:<id>`, new `sprint_resources`, and
   `DROP TABLE milestone_proposals` — the whole agent-proposed-roadmap surface goes with it], then
-  `0026_token_hint` [`mcp_tokens.token_hint` — the clear-text label Settings lists a token by], then
+  `0026_token_hint` [`mcp_tokens.token_hint` — the clear-text label `GET /auth/mcp-tokens` lists a token by], then
   `0027_repo_capture` [`repo_events` (append-only, UNIQUE `semantic_key`, kinds push/pr/review/deploy/check/run)
   / `repo_snapshots` / `repo_metrics` — the Repo dashboard's second capture path, deliberately separate from
   `events`], then `0028_handoffs_prompts` [`handoffs` / `prompts` / `prompt_versions` / `prompts_fts` — see
@@ -437,10 +437,24 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
 - **Bearer token** (agents, `/mcp`): either a pasted per-person `canopy_mcp_` token (stored hashed) or an
   OAuth access token (`canopy_oat_`) obtained through Canopy's own OAuth server — both resolve to the same
   person handle in `resolveBearerPrincipal`, so OAuth is how a bearer is OBTAINED, not a fourth class.
-  Settings lists a person's live tokens by `token_hint` (the first 4 characters
-  of the random part; the value itself is shown once, at mint) via `GET /auth/mcp-tokens`, and
-  `POST /auth/mcp-tokens/:id/revoke` soft-revokes the caller's OWN token — someone else's id is the same
-  404 as an unknown one. Both are session-cookie routes, never MCP tools. Settings › **Get connection command** (`connectModal` / `connectSnippet` in `web/src/render.ts`) is the ONE place a token's value appears: the click mints, a modal shows the exact setup for Claude Code (`claude mcp add … --header`), Codex (`CANOPY_MCP_TOKEN` + `--bearer-token-env-var`), a `.mcp.json` or the bare token, against the SPA's own origin, and names the Settings row the token now lives under; closing the modal drops the token from the page for good. `/mcp` is **bearer-only**; its `401` carries
+  **The Settings UI is OAuth-only** (the owner's call, 2026-09-27): nothing in the SPA mints, lists or revokes a
+  `canopy_mcp_` token any more — the Get connection command modal, the token list and their web client calls are
+  gone. The token routes REMAIN, so a token already in use keeps working: `POST /auth/mcp-token` still mints,
+  `GET /auth/mcp-tokens` lists the caller's live tokens by `token_hint` (the first 4 characters of the random
+  part), and `POST /auth/mcp-tokens/:id/revoke` soft-revokes the caller's OWN token — someone else's id is the
+  same 404 as an unknown one. All three are session-cookie routes, never MCP tools, with no screen in front of
+  them. Settings › MCP access (`mcpAccessSection` in `web/src/render.ts`) reads top to bottom: one line of what
+  it is; the browser sign-in as three numbered steps — install the plugin (`PLUGIN_INSTALL`, the same two
+  commands the Get Started guide shows), `/mcp` → canopy → Authenticate, click Allow in the browser; then
+  **Connected apps** (the OAuth grants — below the steps, or beside them once the tile is ≥ 620px, the
+  `cnpy-mcp` container — with a count, its own empty state, a two-click Revoke per row and its first
+  `MCP_LIST_CAP` (3) rows until "Show all N"; no fixed height, no inner scroller); and, folded behind "Set it
+  up without the plugin" (`state.mcpManual`, not a `<details>`, so a rerender keeps it open), the by-hand
+  `claude mcp add --transport http --scope user canopy <origin>/mcp` (`browserConnectCommand`, no header).
+  The Settings screen is a bento on three columns (Profile and Account side by side with Appearance under
+  both — their own grid, `.cnpy-set-you` — MCP access down a slightly wider third column, Email notifications
+  at full width), every grid `align-items:start`, so no tile stretches to a neighbour's height; MCP access
+  drops under the small tiles below a 1000px page, and a phone is one column. `/mcp` is **bearer-only**; its `401` carries
   `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource"` (plus
   `error="invalid_token"` when a token was presented), which is how Claude Code and claude.ai discover
   sign-in. A fresh `McpServer` is constructed per request
