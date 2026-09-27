@@ -257,16 +257,18 @@ scrolls. The queue's search box and Filter menu (Assignee incl. any one person, 
 are the Artifacts library's; Assignee (anyone / me / unassigned) and Category filter server-side, a person,
 Priority, Sprint and search narrow the loaded rows (`queueRows`).
 
-**The writer is a PERSON — over a cookie, or over their own bearer token.** Seven of those writers are also
+**The writer is a PERSON — over a cookie, or over their own bearer token.** Eight of those writers are also
 MCP tools (`src/tools/tickets-agent.ts`, the read side below), scoped so an agent writes only inside its
 principal's lane. That is a narrowing of the old "ticket writes are cookie-only" rule, not of the
 invariant underneath it: **nothing INFERS a resolution.** `done` / `declined` are never set by a PR
 merging, an issue closing, the webhook, or `scheduled()` — a person asks for them, and an agent holding
 that person's token asking is that person asking. ONE carve-out: a ticket MIRRORED from a GitHub issue
 follows its OWN source issue's close and reopen (see "Tickets mirrored from GitHub issues"); a native
-ticket that merely links an issue never does. `toggle_assignee` is the one writer with NO MCP
-counterpart (design D3): assignment is the data the lane rule is built on, so after filing it is
-cookie-only, forever.
+ticket that merely links an issue never does. `toggle_assignee` reaches MCP as `assign_ticket` (issue #90,
+2026-09-27), which REVERSES design D3 ("no MCP counterpart, forever — assignment is the data the lane rule is
+built on"): leads had to assign agent-split work by hand, ticket by ticket, and teammates GitHub cannot reach
+could not be assigned at all. Because assignment is how a ticket gets INTO a lane, the lane cannot scope it, so
+it has its own rule (below).
 
 **The feed brief** (`0034_feed_brief_artifact_cap`, spec `docs/superpowers/specs/2026-09-26-feed-brief-design.md`). A
 feed entry has two readers. `summary` is the one-line title; `brief` (optional, 1–2 plain sentences,
@@ -362,13 +364,19 @@ degraded, tab, range, sections }`.
 `docs/superpowers/specs/2026-09-17-agent-ticket-writes-design.md`). A ticket write over MCP is permitted
 exactly when the bearer principal is ALREADY an assignee of that ticket, else `TicketError('forbidden')`
 (403) with NOTHING written; an unknown id is `not_found` FIRST, so the check is never an existence
-oracle. Each of the seven tools (`create_ticket` / `edit_ticket` / `transition_ticket` / `add_ticket_comment` /
-`add_ticket_link` / `set_ticket_sprint` / `set_ticket_parent`) asserts, then delegates to the UNTOUCHED
-writer in `tools/tickets.ts` — the transition table, nesting rules and audit rows stay shared with the
+oracle. Each of the eight tools (`create_ticket` / `edit_ticket` / `transition_ticket` / `add_ticket_comment` /
+`add_ticket_link` / `set_ticket_sprint` / `set_ticket_parent` / `assign_ticket`) asserts, then delegates to the
+UNTOUCHED writer in `tools/tickets.ts` — the transition table, nesting rules and audit rows stay shared with the
 cookie routes, which are NOT assignee-scoped and did not change. `create_ticket` is the one unscoped
-write (filing is how work enters the queue) and its `assignees` is the only agent-reachable assignment;
-`set_ticket_parent` needs the lane on BOTH ids. ONE exception: an **admin** may `set_ticket_sprint` on any
-ticket (composing a sprint is sprint management) — it spreads to no other verb. **Sprint writes are
+write (filing is how work enters the queue); `set_ticket_parent` needs the lane on BOTH ids. TWO exceptions to
+the lane: an **admin** may `set_ticket_sprint` on any ticket (composing a sprint is sprint management) — it
+spreads to no other verb; and **`assign_ticket { id, login, on }`** (over `toggle_assignee`) is scoped by
+`assertTicketAssignable` instead — the bearer must be an ADMIN, the ticket's REQUESTER or a CURRENT ASSIGNEE
+(NOCASE), else 403 with nothing written, `not_found` first as ever. It is idempotent WITHOUT a write (adding
+someone already on it / removing someone who is not returns before `toggle_assignee`, which would still bump
+`updated_at`), still validates the handle on that path (`requirePerson`: unknown or RESERVED → `bad_request`),
+never touches status, writes no history row (`ticket_events` audits status moves only — assignment has no audit,
+from the web either), and works on mirrored tickets (their assignees are Canopy's after import). **Sprint writes are
 open to every principal** (`create_sprint` / `set_sprint_active` / `complete_sprint` /
 `add_sprint_resource` / `delete_sprint`), matching the web, where every sprint route sits under
 `sessionGate` with no `adminGate`; only the whole-plan rewrite `update_plan` stays admin-only. **No provenance is stored** (design D4): an
@@ -1159,7 +1167,7 @@ issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source 
   `submitted`; closed `completed` → `done`, `not_planned` / `duplicate` → `declined`.
 - **Ownership (the owner's ruling)**: title, body, category, priority, requester and assignees are seeded at
   IMPORT and are Canopy's afterwards — later deliveries never overwrite them, and they are edited like any
-  ticket (`edit_ticket`, `toggle_assignee`, the normal transition table). GitHub drives only CLOSURE: a
+  ticket (`edit_ticket`, `toggle_assignee` — `assign_ticket` over MCP — the normal transition table). GitHub drives only CLOSURE: a
   `closed` delivery forces `done`/`declined`, `deleted` / `transferred` forces `declined`, `reopened` puts a
   resolved ticket back to `submitted` — through the module-private `forceStatus`, the ONE writer allowed to
   bypass `TICKET_TRANSITIONS`, writing a `ticket_events` row as `github-webhook`. Canopy never writes back to

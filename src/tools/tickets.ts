@@ -60,8 +60,9 @@ const touch = (db: DB, id: number, at: string) => run(db, `UPDATE tickets SET up
 /** Resolve a handle to its canonical `persons.handle` spelling, or 400. A RESERVED
  *  handle (`github-webhook`, 0032) has a persons row but is not a person: it can
  *  never be assigned, file, comment or link through these writers — only the
- *  GitHub mirror (./ticket-mirror.ts) writes as it. */
-async function requirePerson(db: DB, handle: string): Promise<string> {
+ *  GitHub mirror (./ticket-mirror.ts) writes as it. Exported for ./tickets-agent.ts,
+ *  whose `assign_ticket` must validate a handle on its no-op path too. */
+export async function requirePerson(db: DB, handle: string): Promise<string> {
   const p = await getPerson(db, handle);
   if (!p || RESERVED_HANDLES.includes(p.handle)) throw new TicketError("bad_request", `no such person: ${handle}`);
   return p.handle;

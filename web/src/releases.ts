@@ -81,6 +81,7 @@ export const RELEASES: Release[] = [
       "Everyone has a role, shown on their profile and in the People directory. Admins set it, with each person's responsibilities, in Maintenance › People. Responsibilities aren't shown anywhere: agents read them when deciding whom to assign work.",
       "Names lead to profiles: a person in search, a requester or assignee on a ticket, and an author in the Feed each open that person's profile.",
       "Tickets you filed in Canopy can be deleted from the ticket page (tickets mirrored from GitHub can't), after a confirmation.",
+      "Agents can now assign and unassign people on existing tickets — when the person they work for is an admin, the ticket's requester or already on it. Tickets mirrored from GitHub included.",
     ],
     headsUp: [
       "Opening Settings no longer lights up the account chip at the bottom of the sidebar as if it were a selected row.",
@@ -96,6 +97,7 @@ export const RELEASES: Release[] = [
         "`web/src/profile.ts`: the People directory (`#people`) and a profile (`#people/<handle>`) — open tickets, recent sessions (→ the Feed filtered to them), docs they own; People in the sidebar's Workspace (#89)",
         "Settings › Profile: Upload photo / Remove photo (`web/src/avatar.ts` centre-crops to a 512px square and encodes WebP, else PNG, before upload) (#89)",
         "Tickets: `POST /tickets/:id/delete` hard-deletes a native ticket (any member, never MCP; a ticket mirrored from GitHub is a 403); Delete ticket in the rail, through the confirmation modal (#89)",
+        "MCP `assign_ticket { id, login, on }` (issue #90): adds or removes one assignee over the web's `toggle_assignee`, scoped to an admin, the ticket's requester or a current assignee (`assertTicketAssignable`); idempotent with no write, never changes status; the `tickets` / `canopy` skills and `create_ticket`'s description say so (#89)",
       ],
       changed: [
         "`personChip` draws the initials under the photo; a photo that fails to load is dropped for the session (one capture-phase `error` listener), so it falls back to initials instead of a broken image (#89)",

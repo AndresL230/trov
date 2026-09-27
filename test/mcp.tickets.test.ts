@@ -34,6 +34,7 @@ const WRITE_TOOLS = [
   "add_ticket_link",
   "set_ticket_sprint",
   "set_ticket_parent",
+  "assign_ticket",
 ] as const;
 
 // The sprint writes: open to EVERY principal, like the web's sprint routes.
@@ -42,9 +43,9 @@ const SPRINT_WRITE_TOOLS = [
   "create_sprint", "set_sprint_active", "complete_sprint", "add_sprint_resource", "delete_sprint",
 ] as const;
 
-// Assignment is the data the lane rule is built on: an agent that could edit the
-// assignee list could edit its own permissions. `toggle_assignee` is web-only,
-// forever, and this list must never empty out.
+// The web writer's own name never reaches MCP: assignment over MCP is
+// `assign_ticket`, scoped by its own rule in tickets-agent.ts (issue #90), not an
+// unscoped pass-through of the cookie route's `toggle_assignee`.
 const BANNED_WRITE_TOOLS = ["toggle_assignee"] as const;
 
 // ADMIN_LOGINS binds ONLY "admin-user" in vitest.config.ts, so every handle used
@@ -166,7 +167,7 @@ async function seedQueue(): Promise<Queue> {
 }
 
 describe("the MCP ticket/sprint surface", () => {
-  it("tools/list carries exactly the reads + the seven scoped ticket writes, and NOT toggle_assignee", async () => {
+  it("tools/list carries exactly the reads + the eight scoped ticket writes, and NOT toggle_assignee", async () => {
     const names = await toolNames("andres");
     for (const t of READ_TOOLS) expect(names).toContain(t);
     for (const t of WRITE_TOOLS) expect(names).toContain(t);
@@ -211,8 +212,16 @@ describe("the MCP ticket/sprint surface", () => {
       expect(desc.get(t)!, t).toMatch(/scoped/i);
     }
     expect(desc.get("create_ticket")!).toMatch(/unscoped/i);
-    // …and that assignment cannot be changed after filing.
-    expect(desc.get("create_ticket")!).toMatch(/assignment is web-only|only place an agent can assign/i);
+    // …and where assignment goes after filing (issue #90).
+    expect(desc.get("create_ticket")!).toMatch(/assign_ticket/);
+    expect(desc.get("create_ticket")!).not.toMatch(/assignment is web-only|only place an agent can assign/i);
+    // assign_ticket states its own rule, its idempotency, that status stays put, and where handles come from.
+    const assign = desc.get("assign_ticket")!;
+    expect(assign).toMatch(/admin/i);
+    expect(assign).toMatch(/requester/i);
+    expect(assign).toMatch(/idempotent/i);
+    expect(assign).toMatch(/never changes status/i);
+    expect(assign).toMatch(/list_people/);
     // Sprint writes are named as admin-only in the sprint READ descriptions, so a
     // non-admin agent learns why it cannot see them.
     expect(desc.get("list_sprints")!).toMatch(/admin-only/i);
