@@ -1,5 +1,6 @@
 // Maintenance — ported from the Claude Design `Canopy.dc.html` (project 2c8cfa50),
-// which split the old single column into three sub-pages under the sidebar entry:
+// which split the old single column into three tabs (switched in the header by
+// `maintTabSwitch`; they were sub-pages under the sidebar entry until 2026-09-27):
 //   UNPLACED  — read a loose thing an agent couldn't place, then file it or discard it
 //               (a list on the left, the selected item on the right).
 //   IDENTITY  — match an unmapped activity login to a person, or discard one that
@@ -12,6 +13,7 @@
 // assign / discard / map / invite writes the single-column version had).
 
 import { esc, attr, primaryBtn, relTime, surface } from "./ui";
+import { segmented } from "./segmented";
 import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor, InviteRow } from "@shared/rows";
 import type { PersonSummary } from "./api";
@@ -389,6 +391,22 @@ export const MAINT_INTRO: Record<MaintTab, string> = {
   identity: "Logins in the activity stream that don't belong to anyone yet.",
   people: "Everyone with a handle, and invites that haven't been accepted.",
 };
+
+const MAINT_TAB_LABEL: Record<MaintTab, string> = { unplaced: "Unplaced", identity: "Identity", people: "People" };
+
+/** The header's tab switch (it replaced the sidebar's sub-page list, 2026-09-27): the
+ *  three tabs are peers, each carrying the sidebar's count badge for what waits in it
+ *  (`data-n="0"` hides it; People has none). The picked tab is inert. */
+export function maintTabSwitch(tab: MaintTab, counts: { unplaced: number; identity: number }): string {
+  const badge = (n: number) => `<span class="cnpy-badge" data-n="${n}">${n}</span>`;
+  return segmented({
+    id: "maint-tab", ariaLabel: "Maintenance tab", act: "setMaintTab", value: tab, inertOn: true,
+    options: MAINT_TABS.map((t) => ({
+      value: t, label: MAINT_TAB_LABEL[t],
+      trail: t === "unplaced" ? badge(counts.unplaced) : t === "identity" ? badge(counts.identity) : "",
+    })),
+  });
+}
 
 /** One tab of Maintenance. `people` is the People tab's body (it needs more than
  *  these props — the directory, the invites, the admin flag), rendered by the caller. */
