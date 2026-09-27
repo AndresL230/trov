@@ -137,8 +137,9 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   fires on `deleted_at`, so a delete drops the FTS row and a restore puts it back — see the Prompt Library below],
   PART D [artifact soft delete: `artifact_pages.deleted_at` / `deleted_by` (a handle, in `HANDLE_COLUMNS`) — no
   trigger, `artifacts_fts` is kept by the repository — see Artifacts below]), then `0036_person_profiles`
-  [`persons.avatar_sha` (64 lowercase hex, CHECKed) / `role` / `responsibilities`, all nullable, never backfilled —
-  see "People profiles" below].
+  (two marked parts) — PART A [`persons.avatar_sha` (64 lowercase hex, CHECKed) / `role` / `responsibilities`, all
+  nullable, never backfilled], PART B [`persons.avatar_source` (`github` / `google`, CHECKed), backfilled
+  conservatively from the picture URL's host] — see "People profiles" below.
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
@@ -495,8 +496,13 @@ route to change it yet.
 Three nullable person fields, written directly (no gate, no staging) by `src/tools/people.ts`:
 
 - **The avatar rule is ONE function, `avatarSrc`** (`shared/people.ts`): an UPLOADED avatar (`persons.avatar_sha`
-  → `/avatar/<sha>`) outranks the provider picture (`persons.avatar_url`, which `recordSignIn` still refreshes at
-  every sign-in and never touches `avatar_sha`), else null (initials). Every DTO that sends a person's picture to
+  → `/avatar/<sha>`) outranks the provider picture (`persons.avatar_url`), else null (initials). **The provider
+  picture has ONE owner, `persons.avatar_source`** (0036 PART B): onboarding records it, a NULL picture is claimed by
+  the first sign-in that brings one, only a sign-in with THAT provider refreshes it (`recordSignIn`), and one with the
+  other provider — or linking it in Settings — never touches it, so a person's picture never flips with how they
+  signed in; unlinking the owning provider sets `avatar_source` NULL so the remaining one takes over. A sign-in
+  never writes `persons.name` either (onboarding seeds it, Settings edits it) and never touches `avatar_sha`.
+  Every DTO that sends a person's picture to
   the SPA sends it RESOLVED — `GET /persons` (`listPersons`, now `PersonSummary` with `role`), `GET /auth/me`
   (+ `role`), the profile, `/search/quick`'s person hits — so a new surface must go through `avatarSrc` too.
 - **Upload** (`POST /api/people/me/avatar`, multipart `file`; the viewer's OWN only — there is no upload for

@@ -45,19 +45,30 @@ export async function handleAvailable(db: DB, handle: string): Promise<{ availab
   return { available: true };
 }
 
-/** Every sign-in: refresh name/avatar; write email ONLY when the row has none (0021 rule).
- *  `avatar_url` is the PROVIDER's picture; an uploaded avatar (`avatar_sha`, 0036) is never
- *  touched here and keeps outranking it. */
-export async function recordSignIn(db: DB, handle: string, p: { name: string | null; avatar_url: string | null; email: string | null }): Promise<void> {
-  await run(db, `UPDATE persons SET name = COALESCE(?, name), avatar_url = COALESCE(?, avatar_url), email = COALESCE(email, ?) WHERE handle = ? COLLATE NOCASE`,
-    p.name, p.avatar_url, p.email, handle);
+/** Every sign-in: write email ONLY when the row has none (0021 rule), and the provider
+ *  picture ONLY from the provider that owns it (`avatar_source`, 0036 PART B) — a NULL
+ *  picture is claimed by whichever provider brings one first, the owner may refresh it,
+ *  and a sign-in with the OTHER provider never touches it, so a person's picture never
+ *  flips with how they signed in. The name is never written here: it is seeded at
+ *  onboarding and edited in Settings (`updateProfile`), and a sign-in must not clobber
+ *  it. An uploaded avatar (`avatar_sha`, 0036) is never touched and keeps outranking all
+ *  of it. (SQLite evaluates every SET against the OLD row, so both CASEs see the old owner.) */
+export async function recordSignIn(db: DB, handle: string, p: { provider: IdentityProvider; avatar_url: string | null; email: string | null }): Promise<void> {
+  await run(db, `UPDATE persons SET
+      avatar_url = CASE WHEN ? IS NOT NULL AND (avatar_source IS NULL OR avatar_source = ?) THEN ? ELSE avatar_url END,
+      avatar_source = CASE WHEN ? IS NOT NULL AND avatar_source IS NULL THEN ? ELSE avatar_source END,
+      email = COALESCE(email, ?)
+    WHERE handle = ? COLLATE NOCASE`,
+    p.avatar_url, p.provider, p.avatar_url, p.avatar_url, p.provider, p.email, handle);
 }
 
-export async function createPerson(db: DB, p: { handle: string; name: string | null; color: PersonColor; avatar_url: string | null; email: string | null }): Promise<PersonRow> {
+/** `avatar_source` names the provider `avatar_url` came from (onboarding passes its own);
+ *  it is stored only beside a picture, so a person with none is claimable at sign-in. */
+export async function createPerson(db: DB, p: { handle: string; name: string | null; color: PersonColor; avatar_url: string | null; avatar_source?: IdentityProvider | null; email: string | null }): Promise<PersonRow> {
   const now = nowIso();
   try {
-    await run(db, `INSERT INTO persons (handle, name, color, avatar_url, email, email_unsubscribed, created_at, onboarded_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)`,
-      p.handle, p.name, p.color, p.avatar_url, p.email, now, now);
+    await run(db, `INSERT INTO persons (handle, name, color, avatar_url, avatar_source, email, email_unsubscribed, created_at, onboarded_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      p.handle, p.name, p.color, p.avatar_url, p.avatar_url ? p.avatar_source ?? null : null, p.email, now, now);
   } catch (e) {
     if (/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) throw new HandleTakenError(p.handle);
     throw e;
@@ -75,7 +86,13 @@ export async function unlinkIdentity(db: DB, person: string, provider: IdentityP
   const target = mine.find((i) => i.provider === provider);
   if (!target) return "not_found";
   if (mine.length <= 1) return "last_identity";
-  await run(db, `DELETE FROM identities WHERE provider = ? AND subject = ?`, target.provider, target.subject);
+  // Unlinking the provider that owns the picture releases it (0036 PART B): the picture
+  // stays, and the remaining provider claims — and from then on refreshes — it at its next
+  // sign-in, rather than the picture freezing with no owner left to refresh it.
+  await db.batch([
+    db.prepare(`DELETE FROM identities WHERE provider = ? AND subject = ?`).bind(target.provider, target.subject),
+    db.prepare(`UPDATE persons SET avatar_source = NULL WHERE handle = ? COLLATE NOCASE AND avatar_source = ?`).bind(person, target.provider),
+  ]);
   return "ok";
 }
 

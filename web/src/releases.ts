@@ -85,6 +85,7 @@ export const RELEASES: Release[] = [
     ],
     headsUp: [
       "Opening Settings no longer lights up the account chip at the bottom of the sidebar as if it were a selected row.",
+      "Your picture and name no longer change with the way you sign in. If you linked both GitHub and Google, the picture you have now stays — it only updates when that same provider's picture changes — and a name you set in Settings sticks.",
     ],
     ops: [
       "Apply migration `0036_person_profiles` with `npm run db:migrate:remote` before this deploys.",
@@ -107,7 +108,9 @@ export const RELEASES: Release[] = [
         "Repo dashboard: PR authors and contributors show their avatar photo (#89)",
         "Sidebar: no selected fill on the account chip while Settings is open or on hover — only its gear turns (#89)",
       ],
-      fixed: [],
+      fixed: [
+        "A person with GitHub and Google linked got the picture (and the name) of whichever they signed in with last: the provider picture now has one owner, `persons.avatar_source` (0036 PART B, backfilled from the picture's host) — only that provider's sign-in refreshes it, and a sign-in never writes the name, so a Settings edit sticks (#89)",
+      ],
       removed: [],
     },
     prs: [89],

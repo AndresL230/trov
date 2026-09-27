@@ -120,6 +120,8 @@ export interface PersonRow {
   /** SHA-256 of an UPLOADED avatar (0036), bytes in R2 at `avatars/<sha>`. Outranks
    *  `avatar_url` — never read this pair directly for display; use `avatarSrc`. */
   avatar_sha: string | null;
+  /** The provider `avatar_url` came from (0036 PART B): only a sign-in with it refreshes the picture. */
+  avatar_source: IdentityProvider | null;
   role: string | null;             // 0036: a short title ("Backend engineer")
   responsibilities: string | null; // 0036: what they own — for agents and editors, never rendered
 }

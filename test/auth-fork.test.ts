@@ -15,11 +15,11 @@ const github = (over: Partial<ProviderProfile> = {}): ProviderProfile => ({
 });
 
 describe("completeSignIn — the fork", () => {
-  it("1. known identity → session; name/avatar refreshed, email COALESCEd", async () => {
+  it("1. known identity → session; the name kept, email COALESCEd", async () => {
     const r = await completeSignIn(env.DB, github({ subject: "AndresL230", label: "AndresL230", name: "Andrés L", email: "x@y.z" }));
     expect(r).toEqual({ kind: "session", handle: "AndresL230" });
     const p = (await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'AndresL230'`))!;
-    expect(p.name).toBe("Andrés L");
+    expect(p.name).toBe("Andres"); // a sign-in never writes the name (0036 PART B)
     expect(p.email).toBe("x@y.z"); // was NULL in the seed → filled
   });
   it("2. unknown identity, verified email matches a person → linked + session, no onboarding", async () => {
