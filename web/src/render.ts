@@ -4,28 +4,36 @@
 // `data-act` / `data-arg` attributes dispatched in main.ts.
 
 import type { Me, StagedProposal, IdentityTask, PersonSummary, InviteRow } from "./api";
-import type { FeedRow, DocRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary } from "@shared/rows";
+import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary } from "@shared/rows";
 import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
 import { queueView, newTicketView, ticketDetailView, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
-import { sprintCard, newSprintPanel, newSprintToggle, sprintScreen } from "./sprints";
+import { sprintCard, newSprintPanel, sprintScreen, nextSprintId } from "./sprints";
+import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
+import { roadmapTimeline } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, handleTag, swatches, type OnboardState } from "./people";
-import type { DashboardData, MyWorkPr, MyWorkTodo, MyWorkTicket } from "@shared/dashboard";
+import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
+import type { FeedStats } from "@shared/feed-stats";
+import {
+  myWorkLayout, mwSpans, ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip, handoffsForMe,
+  type MwLoad, type MwSession, type MwHandoff, type MwLibrary, type MwRepoTab, type MwDue,
+} from "./mywork";
 import { TAGS } from "@shared/vocabulary";
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
+import { releasesScreen, findRelease, type ReleasePage } from "./releases";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { REPO_URL } from "./github";
-import { esc, attr, initialsOf, relTime } from "./ui";
+import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote } from "./ui";
 import { landingView } from "./landing";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
 import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab } from "./maintenance";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
-import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, type PromptFilterCat, type PromptDraft } from "./prompts";
+import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
 import { newDocView, blankDoc, type NewDocDraft } from "./newdoc";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
@@ -38,7 +46,7 @@ import {
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
 } from "./artifacts";
 import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
-import { reviewItemsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, peopleFromPersons } from "./triage-map";
+import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, peopleFromPersons } from "./triage-map";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -61,7 +69,9 @@ export type Screen =
   // Prompt Library (Knowledge): the library, one prompt, the editor (new / edit / new version).
   | "prompts" | "prompt" | "promptedit"
   // Docs › New doc.
-  | "newdoc";
+  | "newdoc"
+  // Help › What's new: the release grid, and each release's notes / patch notes (releases.ts, static data).
+  | "releases";
 
 /** Async data slice: a screen's fetched payload plus its load status. */
 export interface Loadable<T> {
@@ -86,12 +96,26 @@ export interface AppState {
   inviteDraft: string;
   me: Me | null;
   mywork: Loadable<DashboardData | null>;
+  /** My Work › Repo tile: which view is showing. Session-only. */
+  mwRepoTab: MwRepoTab;
+  /** My Work list tiles the person expanded past MW_ROWS. Session-only. */
+  mwExpanded: Record<string, boolean>;
+  /** My Work › Your sessions: MY latest feed entries — its own read, never `feed`
+   *  (which carries the Feed screen's author/tag filters). */
+  mwSessions: Loadable<FeedRow[]>;
+  /** My Work › Docs you own: every doc WITHOUT its body (`/docs?fields=meta`), so
+   *  My Work never pulls every doc's text nor opens the Docs screen's first doc. */
+  mwDocs: Loadable<DocMetaRow[]>;
   screen: Screen;
-  theme: "dark" | "light" | "midnight" | "system";
+  theme: "dark" | "light" | "system";
   systemDark: boolean;
   collapsed: boolean;
   /** The viewport is too narrow for the full rail — it renders collapsed regardless of `collapsed`. */
   narrow: boolean;
+  /** A phone-width viewport (≤ 640px): the rail leaves the layout and becomes a drawer. */
+  phone: boolean;
+  /** The phone drawer is open (never persisted; closes on navigation, backdrop tap or Esc). */
+  drawer: boolean;
   /** Which sidebar entries have their sub-page list open (persisted; a group opens itself on entry). */
   navOpen: NavOpen;
   // ── Repo dashboard ─────────────────────────────────────────────────────────
@@ -116,16 +140,28 @@ export interface AppState {
   feedRange: string;
   feed: Loadable<FeedRow[]>;
   feedAuthors: string[];
+  /** The Feed aside's "This week" (`GET /feed/stats`): the WHOLE team's last 7 days,
+   *  unfiltered — refreshed on each entry to the Feed, never by a filter change. */
+  feedStats: Loadable<FeedStats | null>;
   docsList: Loadable<DocRow[]>;
   docDetail: Loadable<{ doc: DocRow; versions: DocVersionRow[] } | null>;
   docSlug: string | null;
+  /** Narrow screens only: the Docs page list is showing instead of the reader. */
+  docsTree: boolean;
   docSpace: DocSpace;
   /** Docs-tree pages whose outline (in-page headings) is expanded, keyed by slug. */
   docOutlineOpen: Record<string, boolean>;
   /** Heading id to scroll the reader to after the next render, then cleared. */
   pendingScrollId: string | null;
   roadmapTab: "narrative" | "timeline";
+  /** Help › What's new: the release shown (`#releases/<v>`), or null for the grid (`#releases`). */
+  releaseVersion: string | null;
+  /** Which of that release's two pages (`#releases/<v>` / `#releases/<v>/patches`). */
+  releasePage: ReleasePage;
   roadmap: Loadable<PlanView>;
+  /** Roadmap › Recent happenings: its OWN unfiltered read of the newest
+   *  HAPPENINGS_LIMIT feed entries — never the Feed screen's (filterable) slice. */
+  roadmapFeed: Loadable<FeedRow[]>;
   // Triage surfaces (Review + Maintenance) — four Loadable slices, one per
   // list read; each surface's counts/props derive straight from these.
   proposals: Loadable<StagedProposal[]>;
@@ -240,16 +276,19 @@ export interface AppState {
   sprintId: number | null;
   /** The sprint screen's inline delete confirm is showing. */
   sprintDeleteArmed: boolean;
-  // The Roadmap Timeline's New sprint panel (the design's ns* state). `label` is
+  // The Roadmap Narrative tab's New sprint panel (the design's ns* state). `label` is
   // the only required field, so `nsName` is what arms "Create sprint".
   nsOpen: boolean;
   nsName: string;
-  nsDates: string;
+  /** The Start / Due date fields: "" or YYYY-MM-DD (native `<input type="date">`). */
+  nsStart: string;
   nsDesc: string;
   nsUrg: SprintUrgency;
   nsDue: string;
   nsLead: string | null;
   nsDom: SprintDomain | null;
+  /** The sprint-date refusal shown under the dates (`sprintDatesProblem`, or the server's 400), or null. */
+  nsError: string | null;
   // ── Artifacts (artifacts.ts) ─────────────────────────────────────────────
   /** The artifact the `artifact` screen shows (slug, version, diff pair). */
   artRoute: ArtRoute;
@@ -278,6 +317,9 @@ export interface AppState {
   promptDiffV: number | null;
   promptTagMenu: boolean;
   promptTagDraft: string;
+  /** The prompt page's "Delete prompt" confirm is open / its request is in flight. */
+  promptDeleteArm: boolean;
+  promptDeleteBusy: boolean;
   /** The prompt page's body, expanded over the page (the shared prompt modal). */
   promptExpanded: boolean;
   /** Raw markdown or rendered, for every prompt box (a handoff's and a library prompt's). */
@@ -291,6 +333,8 @@ export interface AppState {
   /** The filter menu (web/src/filter-menu.ts) the NEXT paint opens — its entrance plays once, then main.ts clears this. */
   fmOpening: string | null;
   toast: string | null;
+  /** One button on the toast (a delete's "Undo") — dispatched like any `data-act`. */
+  toastAction: ToastAction | null;
   /** When the toast went up and how long it stays (ms) — a rerender joins its fade where it left off. */
   toastAt: number;
   toastMs: number;
@@ -320,21 +364,32 @@ export function initialState(): AppState {
     theme: "dark", systemDark: true,
     collapsed: false,
     narrow: false,
+    phone: false,
+    drawer: false,
     navOpen: { ...NAV_CLOSED },
     repo: { status: "idle", data: null },
     repoTab: "overview", repoRange: "7d", repoProductEnv: null, repoDriftOpen: false, repoFetchedAt: null, repoSample: false, repoPoll: null,
     feedView: "reading", feedFilterOpen: false, feedFilterCat: "author", feedAuthor: "all", feedTag: "all", feedRange: "all",
     feed: { status: "idle", data: [] },
     mywork: { status: "idle", data: null },
+    mwRepoTab: "drift",
+    mwExpanded: {},
+    mwSessions: { status: "idle", data: [] },
+    mwDocs: { status: "idle", data: [] },
     feedAuthors: [],
+    feedStats: { status: "idle", data: null },
     docsList: { status: "idle", data: [] },
     docDetail: { status: "idle", data: null },
     docSlug: null,
+    docsTree: false,
     docSpace: "technical",
     docOutlineOpen: {},
     pendingScrollId: null,
-    roadmapTab: "timeline",
+    roadmapTab: "narrative", // the Roadmap opens on Narrative (the combined narrative + sprints + aside)
+    releaseVersion: null,
+    releasePage: "notes",
     roadmap: { status: "idle", data: { narrative: "", version: 0, updated_at: null, updated_by: null, sprints: [] } },
+    roadmapFeed: { status: "idle", data: [] },
     proposals: { status: "idle", data: [] },
     draftAdrs: { status: "idle", data: [] },
     needsTriage: { status: "idle", data: [] },
@@ -384,7 +439,7 @@ export function initialState(): AppState {
     sprintDetail: { status: "idle", data: null },
     sprintId: null,
     sprintDeleteArmed: false,
-    nsOpen: false, nsName: "", nsDates: "", nsDesc: "", nsUrg: "normal", nsDue: "", nsLead: null, nsDom: null,
+    nsOpen: false, nsName: "", nsStart: "", nsDesc: "", nsUrg: "normal", nsDue: "", nsLead: null, nsDom: null, nsError: null,
     artRoute: ART_ROUTE_NONE,
     art: initialArtUi(),
     handoffs: { status: "idle", data: [] },
@@ -395,12 +450,13 @@ export function initialState(): AppState {
     promptQ: "", promptTag: null, promptSort: "updated_desc", promptFilterOpen: false, promptFilterCat: "tag",
     promptSlug: null,
     promptDetail: { status: "idle", data: null },
-    promptDiffV: null, promptTagMenu: false, promptTagDraft: "", promptExpanded: false, promptView: "raw",
+    promptDiffV: null, promptTagMenu: false, promptTagDraft: "", promptDeleteArm: false, promptDeleteBusy: false, promptExpanded: false, promptView: "raw",
     promptMode: "new", promptEd: null,
     nd: blankDoc("technical", ""),
     maintTab: "unplaced", maintDiscardArm: false,
     fmOpening: null,
     toast: null,
+    toastAction: null,
     toastAt: 0,
     toastMs: 0,
     backfillSync: null,
@@ -446,16 +502,16 @@ export function triageCounts(s: AppState): { review: number; maintenance: number
   };
 }
 
-/** Sidebar count for Handoffs: pending handoffs left for ME (the ones only I can pick up). */
+/** Sidebar count for Handoffs: pending handoffs left for ME — `handoffsForMe`, the
+ *  ONE definition My Work's Your sessions tile counts too. */
 export function handoffBadge(s: AppState): number {
-  const me = s.me?.handle.toLowerCase() ?? "";
-  return s.handoffs.data.filter((h) => h.status === "pending" && h.recipient.toLowerCase() === me).length;
+  return handoffsForMe(s.handoffs.data, s.me?.handle ?? "").length;
 }
 
 const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>`;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-function resolved(s: AppState): "dark" | "light" | "midnight" {
+function resolved(s: AppState): "dark" | "light" {
   return s.theme === "system" ? (s.systemDark ? "dark" : "light") : s.theme;
 }
 // esc / attr live in ./ui (shared with the componentized surfaces).
@@ -520,10 +576,6 @@ function sprintRefChips(github_ref: string | null): { kind: string; label: strin
   } catch { /* malformed ref → no chips */ }
   return [];
 }
-/** Escape text, then turn bare GitHub issue refs (#123) into links. esc runs first, so it's safe. */
-function linkifyRefs(text: string): string {
-  return esc(text).replace(/#(\d+)\b/g, (_m, n) => `<a href="${REPO_URL}/issues/${n}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">#${n}</a>`);
-}
 /** Centered muted notice reused for loading / error states (no layout change). */
 function notice(text: string): string {
   return `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">${text}</div>`;
@@ -533,7 +585,7 @@ function notice(text: string): string {
 function authView(s: AppState): string {
   // Signed out → the landing page; its Sign in opens the provider dialog.
   if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, seen: s.landingSeen });
-  return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
+  return `<div class="cnpy-authwrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
     ${s.authStep === "nonmember" ? nonmemberCard() : ""}
     ${s.authStep === "notinvited" ? notInvitedCard(s.deniedEmail) : ""}
     ${s.authStep === "verifying" ? verifyingCard() : ""}
@@ -542,8 +594,8 @@ function authView(s: AppState): string {
 }
 
 function nonmemberCard(): string {
-  return `<div style="width:400px">
-    <div style="border:1px solid var(--border);border-radius:14px;padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center">
+  return `<div style="width:400px;max-width:100%">
+    <div${surface("padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center", { cls: "cnpy-authcard" })}>
       <div class="cnpy-seal" style="width:52px;height:52px;border-radius:50%;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
       </div>
@@ -561,8 +613,8 @@ function nonmemberCard(): string {
 }
 
 function notInvitedCard(email: string | null): string {
-  return `<div style="width:400px">
-    <div style="border:1px solid var(--border);border-radius:14px;padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center">
+  return `<div style="width:400px;max-width:100%">
+    <div${surface("padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center", { cls: "cnpy-authcard" })}>
       <div class="cnpy-seal" style="width:52px;height:52px;border-radius:50%;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55)">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
       </div>
@@ -593,8 +645,9 @@ function verifyingCard(): string {
 }
 
 // ── app shell ────────────────────────────────────────────────────────────────
-/** The rail is collapsed when the person collapsed it OR the viewport forces it. */
-export const railCollapsed = (s: AppState): boolean => s.collapsed || s.narrow;
+/** The rail is collapsed when the person collapsed it OR the viewport forces it. On a phone
+ *  it is neither: it is the full rail, in a drawer (canopy.css `[data-phone="1"]`). */
+export const railCollapsed = (s: AppState): boolean => !s.phone && (s.collapsed || s.narrow);
 
 function sidebar(s: AppState): string {
   const counts = triageCounts(s);
@@ -618,6 +671,11 @@ function sidebar(s: AppState): string {
 
 /** The "›" crumb text for the three child screens (empty on a top-level screen). */
 function headerCrumb(s: AppState): string {
+  if (s.screen === "releases") {
+    const r = s.releaseVersion ? findRelease(s.releaseVersion) : null;
+    const name = r ? (r.unreleased ? "Unreleased" : `v${r.version}`) : (s.releaseVersion ?? "");
+    return s.releasePage === "patches" ? `${name} · Patch notes` : name;
+  }
   if (s.screen === "newticket") return "New ticket";
   if (s.screen === "handoff") return s.handoffDetail.data ? firstLine(s.handoffDetail.data.body) : "";
   if (s.screen === "newhandoff") return "New handoff";
@@ -648,8 +706,9 @@ function header(s: AppState): string {
     handoffs: "Handoffs", handoff: "Handoffs", newhandoff: "Handoffs",
     prompts: "Prompt Library", prompt: "Prompt Library", promptedit: "Prompt Library",
     newdoc: "Docs",
+    releases: "What's new",
   };
-  // dark = "show the moon icon" — true for any non-light theme (dark + midnight).
+  // dark = "show the moon icon".
   const dark = resolved(s) !== "light";
 
   // Feed chrome: ONE Filter menu (author · tag · time — the shared filter-menu, no
@@ -675,14 +734,16 @@ function header(s: AppState): string {
   const overdueCount = s.screen === "roadmap" && s.roadmap.status === "ok"
     ? roadmapEnriched(s.roadmap.data.sprints, s.confirmedSprints).overdueCount
     : 0;
-  const roadmapControls = s.screen === "roadmap" ? segmented({
+  // The Roadmap header: the tab switch, then New sprint (it opens the panel at the
+  // top of whichever tab is showing), like the queue's switch + Submit a ticket.
+  const roadmapControls = s.screen === "roadmap" ? `${segmented({
     id: "roadmap-tab", ariaLabel: "Roadmap view", act: "", value: s.roadmapTab,
     options: [
       { value: "narrative", label: "Narrative", act: "roadmapNarrative", arg: "" },
       { value: "timeline", label: "Timeline", act: "roadmapTimeline", arg: "",
         trail: overdueCount ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:1px"></span>` : "" },
     ],
-  }) : "";
+  })}${accentNew("nsToggle", "New sprint")}` : "";
 
   // ADMIN-only, My Work screen: trigger the server-side GitHub backfill. Rendered
   // only when /auth/me returned admin:true (outline button, promote-class action).
@@ -720,13 +781,15 @@ function header(s: AppState): string {
   // the design's single `back` handler).
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
     || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
-    || (s.screen === "maintenance" && s.maintTab !== "unplaced");
+    || (s.screen === "maintenance" && s.maintTab !== "unplaced")
+    || (s.screen === "releases" && s.releaseVersion !== null);
   // The act the title's back button fires: each child screen returns to its own parent.
   const backAct = s.screen === "handoff" || s.screen === "newhandoff" ? "goHandoffs"
     : s.screen === "prompt" ? "goPrompts"
     : s.screen === "promptedit" ? "edCancel"
     : s.screen === "newdoc" ? "goDocs"
     : s.screen === "maintenance" ? "goMaintenance"
+    : s.screen === "releases" ? "goReleases"
     : "ticketsBack";
   const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : child
     ? `<span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:13px">›</span><span style="font-size:13px;font-weight:500;color:var(--fg-70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(headerCrumb(s))}</span></span>`
@@ -738,23 +801,130 @@ function header(s: AppState): string {
   // The Artifacts screens draw their own title + crumbs (a diff has two crumbs).
   const art = isArtScreen(s.screen) ? artifactsHeader(artProps(s, s.screen)) : null;
 
-  return `<header style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
-    <div style="display:flex;align-items:center;gap:12px;min-width:0">
-      ${art ? art.title : title}
+  // The phone drawer's toggle: always emitted, shown only at phone width (canopy.css
+  // `.cnpy-menubtn`), where the header also wraps its controls under the title (`.cnpy-hdr`).
+  const menuBtn = `<button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="${s.drawer}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button>`;
+
+  return `<header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
+    <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
+      ${menuBtn}${art ? art.title : title}
       ${art ? art.crumb : crumb}
     </div>
-    <div style="display:flex;align-items:center;gap:8px;flex:none">
+    <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
       ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${feedViewSwitch}${themeBtn}
     </div>
   </header>`;
 }
 
 // ── feed ─────────────────────────────────────────────────────────────────────
-function wrapFeed(inner: string): string {
-  return `<div style="max-width:760px;margin:0 auto;padding:24px 24px 80px">
-    ${inner}
-    <div style="text-align:center;padding:18px 0;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">&mdash; start of recorded history &mdash;</div>
+/** The Feed page: the entries (`inner`) beside the sticky aside — This week + Waiting on
+ *  review — in the Roadmap Narrative's two columns (ui.ts `asideColumns`). */
+function wrapFeed(s: AppState, inner: string): string {
+  return asideColumns(`${inner}
+    <div style="text-align:center;padding:18px 0;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">&mdash; start of recorded history &mdash;</div>`, feedAside(s));
+}
+
+function feedAside(s: AppState): string {
+  return `${feedWeekBox(s)}${feedReviewBox(s)}`;
+}
+
+const WEEKDAY_1 = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEKDAY_3 = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
+
+/** A chip in the This week box: it applies the Feed's OWN filter (the Filter menu's
+ *  setTag / setAuthor acts); pressing the active one clears that filter. */
+function feedStatChip(act: "setTag" | "setAuthor", value: string, active: boolean, label: string, count: number, lead = ""): string {
+  const tone = active
+    ? "border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft)"
+    : "border:1px solid var(--border);color:var(--fg-70)";
+  return `<button data-act="${act}" data-arg="${attr(active ? "all" : value)}" aria-pressed="${active}" class="cnpy-issuechip" style="display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:3px 8px;border-radius:6px;font-size:12px;${tone}">${lead}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap${act === "setTag" ? ";font-family:var(--label)" : ""}">${esc(label)}</span><span style="color:var(--fg-40);font-variant-numeric:tabular-nums">${count}</span></button>`;
+}
+
+/**
+ * Box 1, "This week": the feed's pulse over the last 7 days — its own server read
+ * (`GET /feed/stats`, the whole team, unfiltered, in the viewer's local days), never
+ * the Feed's loaded page. A zero day is a true zero (the count covers the whole window),
+ * so it is drawn as an empty bar. Tag and author chips apply the Feed's filter.
+ */
+function feedWeekBox(s: AppState): string {
+  const st = s.feedStats;
+  const d = st.data;
+  const hasWeek = FEED_RANGES.some(([v]) => v === "7d");
+  const head = asideHead("This week", hasWeek ? { act: "setRange", arg: "7d", label: "Everything this week" } : undefined);
+  const sub = `<div style="font-size:12.5px;color:var(--fg-40);padding:0 18px 10px;margin-top:-4px">Whole team, last 7 days</div>`;
+  const wrap = (body: string) => `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Feed · This week">${head}${sub}${body}</section>`;
+  if (!d) {
+    return wrap(asideNote(st.status === "error" ? "Couldn't load this week's numbers." : "Loading&hellip;"));
+  }
+  if (d.total === 0) return wrap(asideNote("Nothing recorded in the last 7 days."));
+
+  const max = Math.max(...d.days.map((x) => x.count));
+  const bars = d.days.map((x, i) => {
+    const at = new Date(`${x.date}T00:00:00Z`);
+    const today = i === d.days.length - 1;
+    const tip = `${WEEKDAY_3[at.getUTCDay()]} ${at.getUTCDate()} ${MONTH_3[at.getUTCMonth()]} · ${plural(x.count, "entry", "entries")}`;
+    const fill = x.count > 0
+      ? `<span style="display:block;width:100%;height:${Math.max(8, Math.round((x.count / max) * 100))}%;background:var(--accent);border-radius:2px"></span>`
+      : "";
+    return `<span title="${attr(tip)}" data-day="${attr(x.date)}" data-n="${x.count}" style="display:flex;flex-direction:column;align-items:stretch;gap:5px;min-width:0">
+      <span style="display:flex;align-items:flex-end;height:36px;background:var(--hover);border-radius:2px;overflow:hidden">${fill}</span>
+      <span style="text-align:center;font-size:10.5px;line-height:1;color:${today ? "var(--fg-70)" : "var(--fg-40)"};font-weight:${today ? 600 : 400}">${WEEKDAY_1[at.getUTCDay()]}</span>
+    </span>`;
+  }).join("");
+  const chart = `<div role="img" aria-label="${attr(`Entries per day, oldest first: ${d.days.map((x) => x.count).join(", ")}`)}" style="display:grid;grid-template-columns:repeat(${d.days.length},minmax(0,1fr));gap:6px;padding:0 18px 14px">${bars}</div>`;
+  const headline = `<div style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;padding:0 18px 12px">
+    <span style="font-size:24px;font-weight:500;letter-spacing:-0.02em;line-height:1;font-variant-numeric:tabular-nums">${d.total}</span>
+    <span style="font-size:13px;color:var(--fg-55)">${d.total === 1 ? "entry" : "entries"} · ${plural(d.people, "person", "people")}</span>
   </div>`;
+  const group = (label: string, chips: string) => chips
+    ? `<div style="padding:10px 18px 12px;border-top:1px solid var(--border)">
+        <div style="font-size:11.5px;font-weight:500;color:var(--fg-40);margin-bottom:7px">${label}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+      </div>`
+    : "";
+  const tags = d.topTags.map((t) => feedStatChip("setTag", t.tag, s.feedTag === t.tag, t.tag, t.count)).join("");
+  const people = d.topAuthors.map((a) => feedStatChip("setAuthor", a.author, s.feedAuthor === a.author, `@${a.author}`, a.count, personChip(personFor(s, a.author), 16, a.author))).join("");
+  return wrap(`${headline}${chart}${group("Top tags", tags)}${group("Most active", people)}`);
+}
+
+/**
+ * Box 2, "Waiting on review": what sessions staged that no one has confirmed — the
+ * Review queue, from the boot-loaded proposals + draft ADR slices, as the cheap no-diff
+ * heads (`reviewHeadsFromReads`). Each row opens the Review screen on that item (My
+ * Work's `mwOpenReview`). Data on hand wins over a refetch (mwLoad), a failed slice is
+ * never papered over as "nothing waiting".
+ */
+/** How many queued items the Feed's "Waiting on review" box lists (newest first). */
+export const FEED_REVIEW_LIMIT = 5;
+
+function feedReviewBox(s: AppState): string {
+  const items = reviewHeadsFromReads(s.proposals.data, s.draftAdrs.data);
+  const pLoad = mwLoad(s.proposals.status, s.proposals.data.length > 0);
+  const aLoad = mwLoad(s.draftAdrs.status, s.draftAdrs.data.length > 0);
+  const load: MwLoad = pLoad === "error" || aLoad === "error" ? "error"
+    : (pLoad === "ok" && aLoad === "ok") || items.length > 0 ? "ok" : "pending";
+  const head = asideHead("Waiting on review", { act: "goReview", label: "Review" });
+  const wrap = (body: string) => `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Feed · Waiting on review">${head}${body}</section>`;
+  if (load === "error") return wrap(asideNote("Couldn't load the review queue."));
+  if (load === "pending") return wrap(asideNote("Loading&hellip;"));
+  if (items.length === 0) return wrap(asideNote("Nothing waiting on review."));
+
+  const proposals = items.filter((i) => i.kind === "proposal").length;
+  const decisions = items.length - proposals;
+  const split = [proposals ? plural(proposals, "proposal") : "", decisions ? plural(decisions, "decision") : ""].filter(Boolean).join(", ");
+  const count = `<div style="font-size:13px;color:var(--fg-55);padding:0 18px 10px;margin-top:-2px"><span style="color:var(--fg);font-weight:500;font-variant-numeric:tabular-nums">${items.length}</span> waiting · ${split}</div>`;
+  const rows = items.slice(0, FEED_REVIEW_LIMIT).map((it) => `<button data-act="mwOpenReview" data-arg="${attr(it.id)}" class="mw-row" style="display:block;width:100%;text-align:left;padding:9px 18px;border-top:1px solid var(--border);font-size:13px">
+      <span style="display:block;color:var(--fg);font-weight:500;line-height:1.45;overflow-wrap:anywhere">${esc(it.title)}</span>
+      <span style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:3px;font-size:12px;color:var(--fg-40)">
+        <span style="width:7px;height:7px;border-radius:50%;background:${it.badgeColor};flex:none"></span>
+        <span style="color:var(--fg-55)">${it.kind === "decision" ? "Decision" : "Proposal"}</span>
+        <span>·</span>${handleTag(personFor(s, it.agent), it.agent, 11.5)}
+        <span>·</span><span style="white-space:nowrap">${esc(it.time)}</span>
+      </span>
+    </button>`).join("");
+  return wrap(`${count}${rows}`);
 }
 
 /** A feed entry's body is agent-written markdown (lists, code, links, bold), so it goes through
@@ -820,8 +990,8 @@ function feedBrief(brief: string | null): string {
 }
 
 function feedView(s: AppState): string {
-  if (s.feed.status === "loading" && s.feed.data.length === 0) return wrapFeed(notice("Loading feed&hellip;"));
-  if (s.feed.status === "error") return wrapFeed(notice("Couldn't load the feed."));
+  if (s.feed.status === "loading" && s.feed.data.length === 0) return wrapFeed(s, notice("Loading feed&hellip;"));
+  if (s.feed.status === "error") return wrapFeed(s, notice("Couldn't load the feed."));
 
   const cards = feedRows(s).map((e) => {
     const artifacts = feedArtifacts(e.artifacts);
@@ -830,7 +1000,7 @@ function feedView(s: AppState): string {
           ${artifacts.map((ar) => `<a href="${ar.href}" target="_blank" class="cnpy-issuechip" style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;border:1px solid var(--border);border-radius:6px;padding:3px 8px;text-decoration:none;color:var(--fg-70)"><span style="color:var(--fg-40)">${esc(ar.kind)}</span><span style="font-family:var(--label);font-weight:500">${esc(ar.label)}</span></a>`).join("")}
         </div>`
       : "";
-    return `<div class="cnpy-card" style="border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px">
+    return `<div${surface("padding:16px 18px;margin-bottom:12px", { hover: true })}>
       <div style="display:flex;align-items:flex-start;gap:12px">
         <div style="margin-top:1px">${personChip(personFor(s, e.author), 30, e.author)}</div>
         <div style="flex:1;min-width:0">
@@ -850,7 +1020,7 @@ function feedView(s: AppState): string {
   }).join("");
 
   const empty = s.feed.status === "ok" && feedRows(s).length === 0 ? notice("No entries match this filter.") : "";
-  return wrapFeed(`<div class="cnpy-stagger">${cards}</div>${empty}`);
+  return wrapFeed(s, `<div class="cnpy-stagger">${cards}</div>${empty}`);
 }
 
 // ── docs ─────────────────────────────────────────────────────────────────────
@@ -869,7 +1039,7 @@ const sectionRank = (sec: string): number => {
 // derived from the data, so a stray/foreign `space` value can never add or change
 // a tab. New docs are constrained to these values at the write boundary too.
 export const DOC_SPACES = ["technical", "product"] as const;
-const spaceLabel = (k: string): string => (k ? k.charAt(0).toUpperCase() + k.slice(1) : k);
+export const spaceLabel = (k: string): string => (k ? k.charAt(0).toUpperCase() + k.slice(1) : k);
 
 /** First doc of a space in tree display order (section rank, then title) — the
  *  page opened by default when the docs list loads or the space toggles. */
@@ -929,8 +1099,11 @@ function docsView(s: AppState): string {
   // ── reader (right pane) ─────────────────────────────────────────────────────
   const readerHtml = docReaderHtml(s);
 
-  return `<div style="display:flex;height:100%">
-    <div class="cnpy-scroll" style="width:252px;flex:none;border-right:1px solid var(--border);overflow-y:auto;padding:18px 12px">${treeHtml}</div>
+  // Narrow (canopy.css `.cnpy-docs`): the page list and the reader take turns; the bar's
+  // Pages button swaps them (hidden on a wide screen, where both panes show).
+  return `<div class="cnpy-docs" data-tree="${s.docsTree ? "1" : "0"}" style="display:flex;height:100%">
+    <div class="cnpy-docs-bar"><button data-act="docsTree" class="cnpy-outlinebtn" aria-expanded="${s.docsTree}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h13"></path></svg>${s.docsTree ? "Back to the page" : `${esc(spaceLabel(s.docSpace))} pages`}</button></div>
+    <div class="cnpy-scroll cnpy-docs-tree" style="width:252px;flex:none;border-right:1px solid var(--border);overflow-y:auto;padding:18px 12px">${treeHtml}</div>
     <div id="cnpy-reader" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-width:0">${readerHtml}</div>
   </div>`;
 }
@@ -951,13 +1124,13 @@ export function docReaderHtml(s: AppState): string {
     const { doc, versions } = dd.data;
     const hasStaged = versions.some((v) => v.status === "staged" && v.version > doc.current_version);
 
-    const stagedBanner = hasStaged ? `<div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border:1px solid var(--border);border-radius:9px;margin-bottom:26px">
+    const stagedBanner = hasStaged ? `<div${surface("display:flex;align-items:center;gap:14px;padding:12px 14px;margin-bottom:26px")}>
       <span style="display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);background:color-mix(in srgb,var(--amber) 12%,transparent);border-radius:5px;padding:3px 7px;flex:none">STAGED</span>
       <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.45">You're viewing the <strong style="font-weight:600;color:var(--fg)">promoted</strong> version. A newer proposal is awaiting review.</div>
       <button data-act="goReview" class="cnpy-link" style="display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--accent);white-space:nowrap;flex:none">Review proposal<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
     </div>` : "";
 
-    const history = s.showHistory ? `<div style="border:1px solid var(--border);border-radius:10px;padding:6px;margin-top:18px">
+    const history = s.showHistory ? `<div${surface("padding:6px;margin-top:18px")}>
       ${versions.map((v) => `<div style="display:flex;align-items:center;gap:12px;padding:9px 11px;border-radius:7px">
         <span style="font-family:var(--label);font-size:12px;font-weight:600;color:var(--fg);width:26px">v${v.version}</span>
         <span style="flex:1;font-size:12.5px;color:var(--fg-70)">${esc(v.summary ?? "")}</span>
@@ -966,7 +1139,7 @@ export function docReaderHtml(s: AppState): string {
       </div>`).join("")}
     </div>` : "";
 
-    return `<div style="max-width:1080px;margin:0 auto;padding:34px 52px 120px">
+    return `<div class="cnpy-docpage" style="max-width:1080px;margin:0 auto;padding:34px 52px 120px">
     ${stagedBanner}
     <div style="font-family:var(--label);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.11em;color:var(--fg-40);margin-bottom:11px">${esc(spaceLabel(doc.space))} <span style="color:var(--border-strong);margin:0 2px">/</span> ${esc(doc.section)}</div>
     <h1 style="font-size:29px;font-weight:650;letter-spacing:-0.022em;line-height:1.16;margin:0">${esc(doc.title)}</h1>
@@ -995,8 +1168,7 @@ interface EnrichedSprint {
   issues: { closed: number; total: number } | null;
 }
 
-function roadmapEnriched(sprints: SprintView[], confirmedSprints: Record<string, boolean>): { list: EnrichedSprint[]; doneCount: number; overdueCount: number } {
-  const now = Date.now();
+function roadmapEnriched(sprints: SprintView[], confirmedSprints: Record<string, boolean>, now: number = Date.now()): { list: EnrichedSprint[]; doneCount: number; overdueCount: number } {
   const fmt = (iso: string) => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const badgeFor = (st: string): { label: string; color: string; soft?: boolean } => {
     if (st === "done") return { label: "Done", color: "var(--green)", soft: true };
@@ -1016,8 +1188,9 @@ function roadmapEnriched(sprints: SprintView[], confirmedSprints: Record<string,
     const total = counted ? sp.progress.total : null;
     const ready = !done && counted && sp.progress.closed >= sp.progress.total;
     // An unscheduled sprint (due: null) is never overdue and never "next up".
+    // Overdue from the calendar day AFTER the due date — the ONE rule (shared/sprints-core).
     const tgt = sp.due ? new Date(sp.due + "T12:00:00").getTime() : Infinity;
-    const overdue = !done && !ready && tgt < now;
+    const overdue = !done && !ready && !!sprintDueState(sp.due, now)?.overdue;
     return {
       id: sp.id, title: sp.label, about: sp.description ?? "", github_ref: sp.github_ref, phase: sp.phase,
       closed, total, done, ready, overdue, pct: counted ? sp.progress.pct : 0, tgt,
@@ -1026,11 +1199,8 @@ function roadmapEnriched(sprints: SprintView[], confirmedSprints: Record<string,
     };
   });
 
-  let nextId: number | null = null;
-  let nextTime = Infinity;
-  enriched.forEach((m) => {
-    if (!m.done && !m.overdue && m.tgt >= now && m.tgt < nextTime) { nextTime = m.tgt; nextId = m.id; }
-  });
+  // THE next sprint — one, never every card not yet running (./sprints `nextSprintId`).
+  const nextId = nextSprintId(sprints, confirmedSprints, now);
   enriched.forEach((m) => { m.isNext = m.id === nextId; });
 
   return {
@@ -1041,23 +1211,19 @@ function roadmapEnriched(sprints: SprintView[], confirmedSprints: Record<string,
 }
 
 /**
- * The Roadmap's Timeline tab: the plan as a sequence of sprint cards, grouped
- * In Progress (active) / Upcoming / Done (§C.6). Every card is `sprintCard` from
- * ./sprints — the ONE place a sprint is painted, shared with nothing else on this
- * screen so the card and the Sprint screen can never drift.
- *
- * The header also carries the "New sprint" toggle; the panel it opens renders
- * above the first group (`POST /sprints` creates the sprint unscheduled and
- * inactive, so it lands in Upcoming).
+ * The sprint groups on the Roadmap's Narrative tab — In Progress (active) /
+ * Upcoming / Done (§C.6). Every card is `sprintCard` from ./sprints — the ONE
+ * place a sprint is painted, so the card and the Sprint screen can never drift.
  */
-function roadmapNarrative(s: AppState): string {
+function roadmapSprintGroups(s: AppState): string {
   const sprints = s.roadmap.data.sprints;
-  const total = sprints.length;
   const isDone = (sp: SprintView) => sp.status === "done" || !!s.confirmedSprints[String(sp.id)];
 
   const inProgress = sprints.filter((sp) => !isDone(sp) && sp.active);
   const upcoming = sprints.filter((sp) => !isDone(sp) && !sp.active);
   const done = sprints.filter(isDone);
+  const now = Date.now();
+  const nextId = nextSprintId(sprints, s.confirmedSprints, now);
 
   const sectionHeading = (label: string, color: string): string =>
     `<div style="display:flex;align-items:center;gap:9px;margin:28px 0 12px"><span style="width:7px;height:7px;border-radius:50%;flex:none;background:${color}"></span><span style="font-size:11px;font-weight:600;font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;color:${color}">${label}</span><div style="flex:1;height:1px;background:var(--border)"></div></div>`;
@@ -1065,33 +1231,23 @@ function roadmapNarrative(s: AppState): string {
   const renderGroup = (items: SprintView[], heading: string, color: string): string =>
     items.length === 0
       ? ""
-      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp) })).join("")}</div>`;
+      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp), nextUp: sp.id === nextId, now })).join("")}</div>`;
 
-  const intro = total === 0
-    ? notice("No sprints yet.")
-    : `<p style="font-size:14px;line-height:1.7;color:var(--fg-70);margin:0 0 4px">
-        The plan is a sequence of time-boxed sprints, each a container of tickets with its own screen.
-        <strong style="color:var(--fg);font-weight:600">Progress is live</strong> — computed from each sprint's done tickets.
-      </p>`;
-
-  return `<div class="cnpy-scroll" style="max-width:820px;margin:0 auto;padding:32px 40px 100px">
-    <div style="margin-bottom:20px">
-      <div style="font-size:11px;font-weight:600;font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);margin-bottom:6px">Narrative</div>
-      <h1 style="font-size:24px;font-weight:600;letter-spacing:-0.02em;margin:0 0 12px">Roadmap Overview</h1>
-      <div style="display:flex;align-items:flex-start;gap:12px">
-        <div style="flex:1;min-width:0">${intro}</div>
-        ${newSprintToggle(s.nsOpen)}
-      </div>
-    </div>
-    ${newSprintPanel({
-      open: s.nsOpen, name: s.nsName, dates: s.nsDates, desc: s.nsDesc,
-      urgency: s.nsUrg, due: s.nsDue, lead: s.nsLead, domain: s.nsDom,
-    }, s.persons.data)}
-    ${renderGroup(inProgress, "In Progress", "var(--amber)")}
+  return `${renderGroup(inProgress, "In Progress", "var(--amber)")}
     ${renderGroup(upcoming, "Upcoming", "var(--blue)")}
-    ${renderGroup(done, "Done", "var(--green)")}
-    ${total > 0 ? `<div style="text-align:center;padding:14px 0 0;font-size:11.5px;color:var(--fg-40)">Sprints are the plan — each one is a time-boxed container of tickets with its own screen.</div>` : ""}
-  </div>`;
+    ${renderGroup(done, "Done", "var(--green)")}`;
+}
+
+/**
+ * The Roadmap's Timeline tab: the sprints on a calendar (./timeline — a Gantt
+ * graph, bars from start to due, filled by ticket progress, a today line), full
+ * width in the Roadmap's page frame. No aside here: Now + Recent happenings
+ * belong to the Narrative tab alone.
+ */
+function roadmapTimelineTab(s: AppState): string {
+  return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">${roadmapNewSprint(s)}${roadmapTimeline({
+    sprints: s.roadmap.data.sprints, confirmed: s.confirmedSprints, persons: s.persons.data, now: Date.now(),
+  })}</div>`;
 }
 
 function roadmapView(s: AppState): string {
@@ -1102,7 +1258,7 @@ function roadmapView(s: AppState): string {
     return `<div class="cnpy-scroll" style="max-width:820px;margin:0 auto;padding:32px 40px 100px">${notice("Couldn't load the roadmap.")}</div>`;
   }
   if (s.roadmapTab === "narrative") return roadmapDigest(s);
-  return roadmapNarrative(s);
+  return roadmapTimelineTab(s);
 }
 
 /**
@@ -1116,29 +1272,68 @@ function roadmapView(s: AppState): string {
 export function planNarrativeBlock(narrative: string, markdownFn: (body: string) => string): string {
   const body = narrative.trim()
     ? `<div class="cnpy-md">${markdownFn(narrative)}</div>`
-    : `<div style="border:1px dashed var(--border-strong);border-radius:13px;padding:18px 20px;color:var(--fg-55);font-size:13.5px;line-height:1.6">No plan narrative yet — write one with the update-plan skill</div>`;
-  return `<div style="margin-bottom:18px">
-    <div style="font-size:11px;font-weight:600;font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);margin-bottom:6px">Narrative</div>
-    <h1 style="font-size:24px;font-weight:600;letter-spacing:-0.02em;margin:0 0 14px">What's happening</h1>
+    : `<div style="border:1px dashed var(--border-strong);border-radius:10px;padding:16px 18px;color:var(--fg-55);font-size:13.5px;line-height:1.6">No plan narrative yet — write one with the update-plan skill</div>`;
+  return `<section${surface(`${RM_CARD};padding:18px 20px`, { cls: "cnpy-rise" })}>
+    <div style="font-size:12px;font-weight:500;color:var(--fg-40);margin:0 0 8px">What's happening</div>
     ${body}
-  </div>`;
+  </section>`;
 }
 
+/** A Roadmap card's own layout; the look is the shared surface (ui.ts `surface()`). */
+const RM_CARD = "min-width:0";
+
+/**
+ * The New sprint form, at the top of the main column on BOTH Roadmap tabs. The
+ * button that opens it is in the Roadmap header (`roadmapControls`, act
+ * `nsToggle`); the panel renders nothing unless `s.nsOpen`. `POST /sprints`
+ * creates the sprint unscheduled and inactive, so it lands in Upcoming (and
+ * under the Timeline's "Unscheduled" until it gets a due date).
+ */
+function roadmapNewSprint(s: AppState): string {
+  const panel = newSprintPanel({
+    open: s.nsOpen, name: s.nsName, start: s.nsStart, desc: s.nsDesc,
+    urgency: s.nsUrg, due: s.nsDue, lead: s.nsLead, domain: s.nsDom, error: s.nsError,
+  }, s.persons.data);
+  // The panel carries its own 14px top margin for sitting under a header row; at
+  // the top of the column it is pulled flush and given room below instead.
+  return panel ? `<div style="margin:-14px 0 18px">${panel}</div>` : "";
+}
+
+/**
+ * Roadmap › Narrative, in the design's two columns (ui.ts `asideColumns`, shared with
+ * the Feed): the admin narrative, then the sprint groups, on the left; on the right a
+ * sticky aside with two boxes — "Now" (the sprint getting the attention, its
+ * tickets-only bar and GitHub links) and "Recent happenings" (the live feed, with its
+ * GitHub chips). The Timeline tab has no aside.
+ */
 function roadmapDigest(s: AppState): string {
+  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(s.roadmap.data.narrative, renderMarkdown)}${roadmapSprintGroups(s)}`, roadmapAside(s));
+}
+
+/** How many feed entries the Roadmap's "Recent happenings" box shows (and main.ts reads). */
+export const HAPPENINGS_LIMIT = 4;
+/** How many GitHub chips one Recent happenings row shows before a "+N". */
+export const HAPPENINGS_CHIP_CAP = 3;
+
+/**
+ * The Narrative tab's aside: "Now" (the sprint getting the attention —
+ * its tickets-only bar, and the ONE place the cached GitHub issue counts render,
+ * beside the chips that link those issues) and "Recent happenings" (the live
+ * feed, with its GitHub chips).
+ */
+function roadmapAside(s: AppState): string {
   const { list } = roadmapEnriched(s.roadmap.data.sprints, s.confirmedSprints);
   const inProgress = list.filter((m) => !m.done && m.badge.label === "In progress");
   // What's "getting the attention" = something actively in progress first; only fall back
   // to the next upcoming goal when nothing is underway.
   const focus = inProgress[0] ?? list.find((m) => m.isNext) ?? list.find((m) => !m.done);
 
-  // ── Current-focus spotlight (with progress bar + GitHub links) ──
-  const spotlight = focus ? (() => {
+  const nowLabel = `<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:500;color:var(--fg-40)"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none"></span>Now</div>`;
+  const now = focus ? (() => {
     const barColor = focus.done ? "var(--green)" : focus.overdue ? "var(--red)" : "var(--accent)";
-    const bar = focus.total !== null && focus.closed !== null
-      ? `<div style="display:flex;align-items:center;gap:12px;margin-top:15px">
-          <div style="flex:1;height:6px;border-radius:999px;background:var(--border);overflow:hidden"><div style="height:100%;border-radius:999px;width:${focus.pct}%;background:${barColor}"></div></div>
-          <span style="font-size:12px;color:var(--fg-55);font-family:var(--label);white-space:nowrap;flex:none">${focus.closed}/${focus.total} closed</span>
-        </div>`
+    const count = focus.total !== null && focus.closed !== null ? ` · ${focus.closed}/${focus.total} closed` : "";
+    const bar = focus.total !== null
+      ? `<div style="height:4px;border-radius:2px;background:var(--hover);overflow:hidden;margin-top:12px"><div style="height:100%;width:${focus.pct}%;background:${barColor};border-radius:2px"></div></div>`
       : "";
     const chips = sprintRefChips(focus.github_ref);
     // The GitHub half of a sprint lives HERE and nowhere else: the cached issue
@@ -1147,45 +1342,44 @@ function roadmapDigest(s: AppState): string {
     const issueCount = focus.issues
       ? `<span style="font-size:11.5px;color:var(--fg-55);font-family:var(--label);white-space:nowrap;flex:none">${focus.issues.closed}/${focus.issues.total} issues closed</span>`
       : "";
-    return `<div style="border:1px solid var(--accent);border-radius:14px;padding:20px;margin:22px 0;background:var(--accent-soft)">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:10px;min-width:0">
-          <span style="font-size:10px;font-weight:700;font-family:var(--label);letter-spacing:.12em;color:var(--accent);flex:none">NOW</span>
-          <span style="font-size:16px;font-weight:600;letter-spacing:-0.01em">${esc(focus.title)}</span>
-        </div>
-        <span style="font-size:12px;color:var(--fg-55);font-family:var(--label);flex:none">${focus.dateLabel}</span>
-      </div>
-      ${focus.about ? `<p style="font-size:13px;line-height:1.6;color:var(--fg-70);margin:10px 0 0">${linkifyRefs(focus.about)}</p>` : ""}
+    return `<section${surface(`${RM_CARD};padding:16px 18px`, { cls: "cnpy-rise" })} data-screen-label="Roadmap · Now">
+      ${nowLabel}
+      <button data-act="openSprint" data-arg="${focus.id}" class="mw-more" style="display:block;text-align:left;padding:0;font-size:15px;font-weight:500;margin-top:6px;letter-spacing:-0.01em;color:var(--fg)">${esc(focus.title)}</button>
+      <div style="font-size:12.5px;color:${focus.overdue ? "var(--red)" : "var(--fg-40)"};margin-top:2px">${esc(focus.dateLabel)}${count}</div>
       ${bar}
-      ${chips.length || issueCount ? `<div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:14px">${chips.map(ghChip).join("")}${issueCount}</div>` : ""}
-    </div>`;
-  })() : "";
+      ${focus.about ? `<div class="cnpy-md rm-now-about">${renderMarkdown(focus.about)}</div>` : ""}
+      ${chips.length || issueCount ? `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:12px">${chips.map(ghChip).join("")}${issueCount}</div>` : ""}
+    </section>`;
+  })() : `<section${surface(`${RM_CARD};padding:16px 18px`, { cls: "cnpy-rise" })} data-screen-label="Roadmap · Now">${nowLabel}<div style="font-size:13px;color:var(--fg-40);margin-top:6px">No sprint in progress.</div></section>`;
 
-  // ── Recent happenings (compact table from the live feed, with GitHub chips) ──
-  const entries = s.feed.data.slice(0, 6);
-  const happenRows = entries.map((e) => {
+  // ── Recent happenings (the live feed, with GitHub chips) ──
+  // Its OWN unfiltered read (s.roadmapFeed), so a Feed-screen author/tag filter
+  // never narrows it, and a failed read says so instead of "no activity".
+  const feed = s.roadmapFeed;
+  const entries = feed.data.slice(0, HAPPENINGS_LIMIT);
+  const rows = entries.map((e) => {
     const chips = feedArtifacts(e.artifacts);
-    return `<tr style="border-top:1px solid var(--border)">
-      <td style="padding:11px 14px 11px 0;vertical-align:top;white-space:nowrap;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">${relTime(e.created_at)}</td>
-      <td style="padding:11px 14px 11px 0;vertical-align:top;white-space:nowrap;font-size:12.5px;color:var(--fg-55)"><span style="display:inline-flex;align-items:center;gap:6px">${personChip(personFor(s, e.author), 18, e.author)}${handleTag(personFor(s, e.author), e.author, 11.5)}</span></td>
-      <td style="padding:11px 0;vertical-align:top;font-size:13px;color:var(--fg);line-height:1.5"><span class="cnpy-md-inline">${renderMarkdownInline(e.summary)}</span>${chips.length ? ` <span style="display:inline-flex;gap:6px;flex-wrap:wrap;margin-left:4px;vertical-align:middle">${chips.map(ghChip).join("")}</span>` : ""}</td>
-    </tr>`;
+    // At most HAPPENINGS_CHIP_CAP chips, then a quiet "+N" naming the rest — a long
+    // chip list wrapped into two or three rows and crammed the box.
+    const shown = chips.slice(0, HAPPENINGS_CHIP_CAP);
+    const rest = chips.slice(HAPPENINGS_CHIP_CAP);
+    const more = rest.length
+      ? `<span title="${attr(rest.map((c) => `${c.kind} ${c.label}`).join(", "))}" style="display:inline-flex;align-items:center;font-size:11.5px;color:var(--fg-40);padding:3px 2px">+${rest.length}</span>`
+      : "";
+    return `<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:9px 18px;border-top:1px solid var(--border);font-size:13px">
+      <span style="font-size:12px;color:var(--fg-40);padding-top:1px;white-space:nowrap">${relTime(e.created_at).replace(/ ago$/, "")}</span>
+      <span style="color:var(--fg-70);line-height:1.5;min-width:0;overflow-wrap:anywhere">${handleTag(personFor(s, e.author), e.author, 11.5)} <span class="cnpy-md-inline">${renderMarkdownInline(e.summary)}</span>${chips.length ? `<span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${shown.map(ghChip).join("")}${more}</span>` : ""}</span>
+    </div>`;
   }).join("");
-  const happenings = s.feed.status === "loading" && entries.length === 0
-    ? notice("Loading recent activity&hellip;")
-    : entries.length === 0
-    ? notice("No recent activity yet.")
-    : `<table style="width:100%;border-collapse:collapse">${happenRows}</table>`;
+  const happenings = `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Roadmap · Recent happenings">
+    ${asideHead("Recent happenings", { act: "goFeed", label: "Feed" })}
+    ${feed.status === "error" ? asideNote("Couldn't load recent activity.")
+      : entries.length > 0 ? rows
+      : feed.status === "ok" ? asideNote("No recent activity yet.")
+      : asideNote("Loading&hellip;")}
+  </section>`;
 
-  return `<div class="cnpy-scroll" style="max-width:820px;margin:0 auto;padding:32px 40px 100px">
-    ${planNarrativeBlock(s.roadmap.data.narrative, renderMarkdown)}
-    ${spotlight}
-    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:28px 0 2px">
-      <h2 style="font-size:12px;font-weight:600;font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;color:var(--fg-55);margin:0">Recent happenings</h2>
-      <button data-act="goFeed" class="cnpy-link" style="font-size:12.5px;font-weight:500;color:var(--accent);background:none">View all in Feed →</button>
-    </div>
-    ${happenings}
-  </div>`;
+  return `${now}${happenings}`;
 }
 
 // ── search ───────────────────────────────────────────────────────────────────
@@ -1246,8 +1440,8 @@ function primaryCard(r: QueryPrimary, sq: string): string {
     <div style="font-size:13px;line-height:1.6;color:var(--fg-55)">${highlight(preview, sq)}${r.body.length > 280 ? "…" : ""}</div>`;
   const act = searchOpenAttr(r.type, r.id);
   return act
-    ? `<button ${act} class="cnpy-card" style="display:block;width:100%;text-align:left;border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:10px;cursor:pointer">${inner}</button>`
-    : `<div class="cnpy-card" style="display:block;width:100%;text-align:left;border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:10px">${inner}</div>`;
+    ? `<button ${act}${surface("display:block;width:100%;text-align:left;padding:16px 18px;margin-bottom:10px;cursor:pointer", { hover: true })}>${inner}</button>`
+    : `<div${surface("display:block;width:100%;text-align:left;padding:16px 18px;margin-bottom:10px")}>${inner}</div>`;
 }
 
 function pointerRow(r: QueryPointer, sq: string): string {
@@ -1255,8 +1449,8 @@ function pointerRow(r: QueryPointer, sq: string): string {
     <div style="font-size:12.5px;line-height:1.55;color:var(--fg-55)">${highlight(r.snippet, sq)}</div>`;
   const act = searchOpenAttr(r.type, r.id);
   return act
-    ? `<button ${act} style="display:block;width:100%;text-align:left;border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:8px;background:transparent;cursor:pointer">${inner}</button>`
-    : `<div style="display:block;width:100%;text-align:left;border:1px solid var(--border);border-radius:10px;padding:11px 14px;margin-bottom:8px">${inner}</div>`;
+    ? `<button ${act}${surface("display:block;width:100%;text-align:left;padding:11px 14px;margin-bottom:8px;cursor:pointer", { hover: true })}>${inner}</button>`
+    : `<div${surface("display:block;width:100%;text-align:left;padding:11px 14px;margin-bottom:8px")}>${inner}</div>`;
 }
 
 function searchView(s: AppState): string {
@@ -1311,7 +1505,7 @@ function searchView(s: AppState): string {
 
 // ── get started / guide ──────────────────────────────────────────────────────
 function guideView(s: AppState): string {
-  // Screenshots are captured per theme (dark/light/midnight) by scripts/capture-guide.mjs;
+  // Screenshots are captured per theme (dark/light) by scripts/capture-guide.mjs;
   // pick the variant that matches the viewer's active theme so the figures never clash
   // with the surrounding page.
   const th = resolved(s);
@@ -1403,7 +1597,8 @@ function guideView(s: AppState): string {
     ${sub("Reading")}
     <p style="${gP}">The ${gStrong("Docs")} library is split into ${gStrong("Technical")} and ${gStrong("Product")} spaces, each grouped into sections like ${gStrong("Architecture")} and ${gStrong("Decisions")}. Opening a doc expands its heading outline in the tree, and ${gStrong("Version history")} keeps every earlier version. ${gStrong("New doc")} lets you propose one yourself.</p>
     ${gFig("docs", `${gEm("Docs")}: the open doc's outline in the tree, and a banner pointing to a proposal awaiting review.`)}
-    <p style="${gP};margin-top:14px">${gStrong("Search")} is the box at the top of the sidebar (${gCode("⌘K")}, or ${gCode("Ctrl K")} on Windows and Linux). It searches docs, decisions, the feed, sprints, tickets, and artifacts, and shows only settled content. Your agent's ${gCode("query")} tool searches the same things plus pending proposals, each labelled, so it can tell settled context from a draft.</p>
+    <p style="${gP};margin-top:14px">${gStrong("Search")} is the box at the top of the sidebar (${gCode("⌘K")}, or ${gCode("Ctrl K")} on Windows and Linux). Type and pause: a dropdown jumps straight to a ticket, doc, decision, sprint, artifact, prompt, handoff, person, or screen. Press ${gCode("Tab")} for the full ${gStrong("Search")} screen, which ranks docs, decisions, the feed, the roadmap, and artifacts. Both show only settled content. Your agent's ${gCode("query")} tool also sees tickets and pending proposals, each labelled, so it can tell settled context from a draft.</p>
+    ${gFig("quicksearch", `${gEm("Search everything")}: matches grouped by type as you type, with a jump to the full results.`)}
     ${gFig("search", `${gEm("Search")}: ranked results across every type, with your query highlighted.`)}
 
     ${sub("How agent writes are staged")}
@@ -1416,22 +1611,24 @@ function guideView(s: AppState): string {
     ${gFig("maintenance", `${gEm("Maintenance")}: the Unplaced queue, waiting to be routed or discarded.`)}
 
     ${sec("Tour", "Every screen, top to bottom", "Tour")}
-    <p style="${gP}">The sidebar groups screens into ${gStrong("Workspace")}, ${gStrong("Monitor")}, ${gStrong("Knowledge")}, and ${gStrong("Triage")}. A chevron opens a screen's sub-pages, ${gStrong("Collapse")} folds the rail to icons, and every screen has its own address (${gCode("#tickets/7")}, ${gCode("#artifacts")}) you can send to a teammate.</p>
+    <p style="${gP}">The sidebar groups screens into ${gStrong("Workspace")}, ${gStrong("Monitor")}, ${gStrong("Knowledge")}, ${gStrong("Triage")}, and ${gStrong("Help")} (this guide and What's new). A chevron opens a screen's sub-pages, ${gStrong("Collapse")} folds the rail to icons, and every screen has its own address (${gCode("#tickets/7")}, ${gCode("#artifacts")}) you can send to a teammate. On a phone the sidebar opens as a drawer.</p>
 
     ${sub("My Work")}
-    <p style="${gP}">Canopy opens here, and it has three lists. ${gStrong("To-Do")}: your open assigned GitHub issues, each with a short summary, its sprint, and a suggested next step. ${gStrong("Previous activity")}: your recently merged and closed PRs, each summarized once. ${gStrong("Tickets assigned to me")}: your open tickets. It reads only what Canopy has already captured, so it loads instantly.</p>
-    ${gFig("mywork", `${gEm("My Work")}: your open issues, recent PRs, and tickets.`)}
+    <p style="${gP}">Canopy opens here. ${gStrong("Tickets for you")}: your open tickets, with their sprint and when it is due. ${gStrong("Needs your review")}: what agents staged, with Promote, Ratify and Reject right there. ${gStrong("Your sessions")}: what you recorded lately and the handoffs waiting for you. ${gStrong("Repo")}: drift, CI, deploys and pull requests at a glance. Under them, the docs you own, artifacts published this week, and handoffs queued for you, each with ${gStrong("Copy")} to paste it into a fresh session as a prompt. It reads only what Canopy has already captured, so it loads instantly.</p>
+    ${gFig("mywork", `${gEm("My Work")}: your tickets, the review queue, your sessions, and the repo at a glance.`)}
 
     ${sub("Tickets")}
-    <p style="${gP}">The team's request queue. Anyone can file a bug, request, question, or access ask with ${gStrong("New ticket")}. The ${gStrong("Queue")} groups tickets by sprint (no sprint means ${gStrong("Backlog")}); ${gStrong("Board")} shows the same tickets as status columns. A ticket moves ${gStrong("Triage → In progress → Done")}, or ends ${gStrong("Declined")}, and only a person closes one: a merged PR never does.</p>
-    ${gFig("tickets", `${gEm("Tickets")}: the queue grouped by sprint.`)}
-    ${gFig("board", `${gEm("Board")}: the same queue as status columns.`)}
+    <p style="${gP}">The team's request queue. Anyone can file a bug, request, question, or access ask with ${gStrong("Submit a ticket")}. The ${gStrong("Board")} is the default view, one column per status: ${gStrong("Triage")}, ${gStrong("In progress")}, ${gStrong("Testing")}, ${gStrong("Done")}, and ${gStrong("Declined")}. Drag a card to change its status or its place in a column. An open ticket can move to any column, and Testing is optional. ${gStrong("Table")} lists the same tickets grouped by sprint (no sprint means ${gStrong("Backlog")}). Both have a search box and a ${gStrong("Filter")} menu.</p>
+    ${gFig("board", `${gEm("Board")}: a column per status, in the order people dragged them.`)}
+    ${gFig("tickets", `${gEm("Table")}: the same tickets grouped by sprint.`)}
+    <p style="${gP};margin-top:14px">Issues in the product's GitHub repo also show up as tickets, each with a locked link back to its issue. Closing or reopening the issue closes or reopens its ticket; everything else about it is edited in Canopy. Apart from that, only a person closes a ticket: a merged PR never does.</p>
     <p style="${gP};margin-top:14px">A ticket's page holds its thread (comments with ${gCode("@mentions")}, next to every status change), its assignees and sprint, one level of sub-tickets, and ${gStrong("Linked work")}: paste a GitHub or Figma URL, or a bare ${gCode("#123")}. Artifacts linked to the ticket show here too. Your agent can file tickets, and on tickets ${gStrong("assigned to you")} it can move status, comment, link, set the sprint, or nest. It can't change who a ticket is assigned to.</p>
     ${gFig("ticket", `${gEm("A ticket")}: description, linked work, and thread, with status, assignees, and sprint alongside.`)}
 
     ${sub("Roadmap and sprints")}
-    <p style="${gP}">${gStrong("Narrative")} reads the plan as a document; ${gStrong("Timeline")} lays out the sprints by date. Each sprint shows its urgency, due date, domain, lead, and a progress bar that counts that sprint's tickets closed (done or declined) out of its total, plus any GitHub issues it tracks. A sprint's own page lists its tickets, assignees, and resources. When everything in it is closed, the page offers to complete it. That's always a person's call.</p>
-    ${gFig("roadmap", `${gEm("Roadmap")}: sprints in progress and upcoming, each with its progress.`)}
+    <p style="${gP}">${gStrong("Narrative")} reads the plan and its sprint cards, beside what's in progress now and the latest from the feed. ${gStrong("Timeline")} puts the sprints on a calendar: each bar runs from a sprint's start to its due date, overdue ones are marked, and a click opens it. ${gStrong("New sprint")} is in the header. Each sprint shows its urgency, due date, domain, lead, and a progress bar that counts that sprint's tickets closed (done or declined) out of its total, plus any GitHub issues it tracks. A sprint's own page lists its tickets, assignees, and resources. When everything in it is closed, the page offers to complete it. That's always a person's call. ${gStrong("Delete sprint")} sends its tickets back to the backlog.</p>
+    ${gFig("roadmap", `${gEm("Roadmap › Narrative")}: the plan and its sprints, with what's happening now alongside.`)}
+    ${gFig("timeline", `${gEm("Roadmap › Timeline")}: sprints on the calendar, filled by their done tickets.`)}
     ${gFig("sprint", `${gEm("A sprint")}: its tickets, progress, properties, assignees, and resources.`)}
 
     ${sub("Handoffs")}
@@ -1444,8 +1641,8 @@ function guideView(s: AppState): string {
     ${gFig("repo-usage", `${gEm("Repo › Usage")} (sample data): traffic, errors, active users, and product metrics.`)}
 
     ${sub("Feed")}
-    <p style="${gP}">A timeline of everything that shipped, from people and agents alike. Each entry links to its PR, commit, or issue and says whether an agent wrote it. Filter by author, tag, or time.</p>
-    ${gFig("feed", `${gEm("Feed")}: every change with its PR, commit, and issue links.`)}
+    <p style="${gP}">A timeline of everything that shipped, from people and agents alike. ${gStrong("For reading")} (the default) shows each entry's title and a short brief in plain words; ${gStrong("For agents")} shows the full record. Each entry links to its PR, commit, or issue and says whether an agent wrote it. Alongside: this week's activity and what's waiting on review. ${gStrong("Filter")} by author, tag, or time.</p>
+    ${gFig("feed", `${gEm("Feed")}: every change with its brief and its PR, commit, and issue links.`)}
 
     ${sub("Artifacts")}
     <p style="${gP}">An artifact is a page an agent or person made: an HTML design, a markdown report, an SVG or mermaid diagram, an image, a PDF, or a file. Canopy stores every version and links it to the ticket or sprint it came from. ${gStrong("New artifact")} takes pasted source, an upload, or a URL. A new artifact starts as a ${gStrong("draft")}; ${gStrong("Published")} shares it; ${gStrong("Ratify")} is a person's sign-off on the latest version, and only a person can give it. ${gStrong("Compare versions")} diffs any two. Flip its ${gStrong("Org")} switch to ${gStrong("Private")} to keep one to yourself.</p>
@@ -1457,7 +1654,11 @@ function guideView(s: AppState): string {
     ${gFig("prompts", `${gEm("Prompt Library")}: published, staged, and draft prompts with their tags and versions.`)}
 
     ${sub("Settings")}
-    <p style="${gP}">Click your name at the bottom of the sidebar. ${gStrong("Profile")} sets your name, handle, and color. ${gStrong("Account")} links GitHub and Google. ${gStrong("MCP access")} is where agents connect: your connected apps and any access tokens. ${gStrong("Appearance")} switches between Light, Dark, Midnight, and System. ${gStrong("Email notifications")} sets each digest (your work, the review queue, roadmap changes, the ticket queue) to daily, weekly, or off.</p>
+    <p style="${gP}">Click your name at the bottom of the sidebar. ${gStrong("Profile")} sets your name, handle, and color. ${gStrong("Account")} links GitHub and Google. ${gStrong("MCP access")} is where agents connect: your connected apps and any access tokens. ${gStrong("Appearance")} switches between Light, Dark, and System. ${gStrong("Email notifications")} sets each digest (your work, the review queue, roadmap changes, the ticket queue) to daily, weekly, or off.</p>
+
+    ${sub("What's new")}
+    <p style="${gP}">Every release of Canopy, newest first. Open one for its notes, or switch to ${gStrong("Patch notes")} for the full list of changes with links to the pull requests.</p>
+    ${gFig("releases", `${gEm("What's new")}: one card per release.`)}
 
     ${sec("Troubleshooting", "When something doesn't work", "Troubleshooting")}
     <ul style="${gList}">
@@ -1465,7 +1666,7 @@ function guideView(s: AppState): string {
       <li>${gStrong("Google sign-in says you're not invited.")} Ask an admin to invite the exact address you signed in with.</li>
       <li>${gStrong("Canopy shows as needing authentication in Claude Code.")} Run ${gCode("/mcp")}, pick ${gStrong("canopy")} and choose ${gStrong("Authenticate")}. If the browser says Canopy doesn't recognise the app, choose ${gStrong("Clear authentication")} first, then Authenticate again. A connection you revoked in Settings needs the same.</li>
       <li>${gStrong("A token-based agent (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $CANOPY_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. When in doubt, mint a new token and revoke the old one.</li>
-      <li>${gStrong("The Canopy server doesn't appear in /mcp.")} Restart Claude Code after installing the plugin and setting the token. Run ${gCode("/plugin")} to check that ${gCode("canopy")} is installed and enabled.</li>
+      <li>${gStrong("The Canopy server doesn't appear in /mcp.")} Restart Claude Code after installing the plugin. Run ${gCode("/plugin")} to check that ${gCode("canopy")} is installed and enabled.</li>
       <li>${gStrong("The plugin is out of date.")} Run ${gCode("/plugin marketplace update canopy")}, then restart.</li>
       <li>${gStrong("Your agent sees every tool twice.")} It's connected both through the plugin and through a manual setup. Remove one: ${gCode("claude mcp remove canopy")} drops the manual one.</li>
       <li>${gStrong("Your agent can't change a ticket.")} Agents can only change tickets assigned to you. Assign yourself in the web app first.</li>
@@ -1526,7 +1727,7 @@ export function profileSection(s: AppState): string {
   })() : `<div style="font-size:12px;color:var(--fg-40);margin-top:8px">Handle ${me ? handleTag({ handle, color: me.color }, handle, 12) : handleTag(null, handle, 12)} <button data-act="handleEdit" class="cnpy-mutelink" style="font-size:11.5px;color:var(--fg-55);text-decoration:underline;text-underline-offset:2px;margin-left:6px">Change</button></div>`;
   // The avatar spans the label + the 40px field exactly: 16px line + 8px gap + 40px = 64px.
   const FIELD_LABEL = "display:block;font-size:13px;line-height:16px;font-weight:500;margin-bottom:8px";
-  return `<section class="cnpy-tile">
+  return `<section class="cnpy-tile cnpy-surface">
     <div style="${SECTION_LABEL}">Profile</div>
     <div style="display:flex;align-items:flex-start;gap:14px">
       ${personChip(me ? { handle, name: s.displayName || me.name, color: me.color, avatar_url: me.avatar_url } : null, 64, handle || "?")}
@@ -1558,7 +1759,7 @@ export function accountSection(s: AppState): string {
       : `<button data-act="linkProvider" data-arg="${p}" class="cnpy-ghostbtn" style="font-size:12px;color:var(--fg-70);padding:4px 10px;border-radius:6px;border:1px solid var(--border-strong)">Link ${label}</button>`;
     return `<div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border)"><div style="line-height:1.25"><b style="font-size:13.5px;font-weight:600;display:block">${label}</b><span style="font-family:var(--label);font-size:11.5px;color:${id ? "var(--fg-55)" : "var(--fg-40)"}">${id ? esc(id.label) : "not linked"}</span></div>${btn}</div>`;
   };
-  return `<section class="cnpy-tile" style="display:flex;flex-direction:column">
+  return `<section class="cnpy-tile cnpy-surface" style="display:flex;flex-direction:column">
     <div style="${SECTION_LABEL}">Account</div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
       <div style="min-width:0">
@@ -1735,7 +1936,7 @@ export function connectModal(s: Pick<AppState, "connect" | "connectClient" | "co
 
   return `<div data-overlay="connect"><div data-act="connectClose" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);animation:cnpy-fade .14s ease"></div>
   <div style="position:fixed;inset:0;z-index:61;display:grid;place-items:center;padding:16px;pointer-events:none">
-    <div role="dialog" aria-modal="true" aria-labelledby="connect-title" style="pointer-events:auto;position:relative;width:min(580px, 100%);max-height:calc(100vh - 32px);overflow-y:auto;border:1px solid var(--border-strong);border-radius:14px;padding:26px 26px 22px;background:var(--bg);box-shadow:var(--shadow);animation:cnpy-pop .16s ease">
+    <div role="dialog" aria-modal="true" aria-labelledby="connect-title"${surface("pointer-events:auto;position:relative;width:min(580px, 100%);max-height:calc(100vh - 32px);overflow-y:auto;border-color:var(--border-strong);padding:26px 26px 22px;animation:cnpy-pop .16s ease")}>
       ${close}
       <div id="connect-title" style="font-size:16px;font-weight:600;letter-spacing:-0.01em;margin-bottom:4px">Connect an agent</div>
       <div style="font-size:12.5px;color:var(--fg-55);margin-bottom:18px">Pick your agent, copy the setup, paste it. Your agent acts as you.</div>
@@ -1748,19 +1949,18 @@ function settingsView(s: AppState): string {
   const themeCards = [
     ["light", "Light"],
     ["dark", "Dark"],
-    ["midnight", "Midnight"],
     ["system", "System"],
   ].map(([k, label]) => {
     const sel = s.theme === k;
-    const style = `display:flex;align-items:center;justify-content:center;gap:9px;padding:13px 8px;border-radius:11px;border:1px solid ${sel ? "var(--accent)" : "var(--border)"};background:${sel ? "var(--accent-soft)" : "transparent"};color:${sel ? "var(--accent)" : "var(--fg-70)"}`;
+    // Layout (flex, gap, padding, the narrow stacked form) is canopy.css's `.cnpy-themecard`,
+    // so its container query can restack it; only the radius and the picked colours are inline.
+    const style = `border-radius:11px;border:1px solid ${sel ? "var(--accent)" : "var(--border)"};background:${sel ? "var(--accent-soft)" : "transparent"};color:${sel ? "var(--accent)" : "var(--fg-70)"}`;
     const icon = k === "light"
       ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"></path></svg>`
       : k === "dark"
       ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`
-      : k === "midnight"
-      ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path><path d="M17 3.2l.55 1.55L19.1 5.3l-1.55.55L17 7.4l-.55-1.55L14.9 5.3l1.55-.55z"></path></svg>`
       : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>`;
-    return `<button data-act="setTheme" data-arg="${k}" class="cnpy-themecard" style="${style}">${icon}<span style="font-size:13px;font-weight:500">${label}</span></button>`;
+    return `<button data-act="setTheme" data-arg="${k}" class="cnpy-themecard" aria-pressed="${sel}" style="${style}">${icon}<span style="font-size:13px;font-weight:500;line-height:18px">${label}</span></button>`;
   }).join("");
 
   const tokenList = tokenListBody(s);
@@ -1774,7 +1974,7 @@ function settingsView(s: AppState): string {
 
     ${accountSection(s)}
 
-    <section class="cnpy-tile cnpy-set-mcp" style="display:flex;flex-direction:column">
+    <section class="cnpy-tile cnpy-surface cnpy-set-mcp" style="display:flex;flex-direction:column">
       <div style="${SECTION_LABEL}">MCP access</div>
       <div style="font-size:12.5px;font-weight:500;margin-bottom:6px">Sign in with browser <span style="font-weight:400;color:var(--fg-40)">· recommended</span></div>
       <div style="display:flex;align-items:center;gap:8px;background:var(--hover);border:1px solid var(--border-strong);border-radius:9px;padding:8px 8px 8px 12px">
@@ -1792,7 +1992,7 @@ function settingsView(s: AppState): string {
       <div style="font-size:11.5px;color:var(--fg-40);margin-top:auto;padding-top:12px;line-height:1.5">Each connection command creates its own token. Revoking a token or an app disconnects it immediately.</div>
     </section>
 
-    <section class="cnpy-tile cnpy-set-appear">
+    <section class="cnpy-tile cnpy-surface cnpy-set-appear">
       <div style="${SECTION_LABEL}">Appearance</div>
       <div class="cnpy-set-themes">${themeCards}</div>
       <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">System follows your operating system's appearance.</div>
@@ -1810,193 +2010,123 @@ function settingsView(s: AppState): string {
 }
 
 // ── my work (personal dashboard) ──────────────────────────────────────────────
-const MW_LABEL = "font-size:13px;font-weight:700;font-family:var(--label);text-transform:uppercase;letter-spacing:.14em;color:var(--fg)";
-
-// Option-2a card anatomy (design_handoff_mywork_cards): roomy card, title +
-// number pill row, then hairline-separated 96px-label section rows, footer meta.
-const MW_CARD = "border:1px solid var(--border);border-radius:16px;padding:20px 22px 14px;background:color-mix(in srgb,var(--fg) 2.5%,transparent);display:flex;flex-direction:column;height:100%";
-const MW_ROW = "display:grid;grid-template-columns:96px 1fr;gap:12px;padding:11px 0;border-top:1px solid var(--border)";
-const MW_ROW_LABEL = "font-family:var(--label);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-40);padding-top:2px";
-const MW_ROW_BODY = "font-size:13.5px;line-height:1.6;color:var(--fg-70)";
-const MW_CODE = "font-family:var(--label);font-size:12.5px;background:var(--hover);border:1px solid var(--border);border-radius:4px;padding:0 4px";
-const MW_ARROW_SVG = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M7 17 17 7"></path><path d="M9 7h8v8"></path></svg>`;
-const MW_FLAG_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="flex:none"><path d="M12 2v20"></path><path d="M12 4h7l-2 3 2 3h-7"></path></svg>`;
-
-function wrapMyWork(inner: string): string {
-  return `<div class="cnpy-scroll" style="max-width:1120px;margin:0 auto;padding:32px 32px 100px">${inner}</div>`;
-}
+// The layout lives in ./mywork (the Claude Design bento); this composes its
+// props from the slices the app
+// already reads. main.ts's loadForScreen("mywork") starts every one of them.
 function greetingFor(): string {
   const h = new Date().getHours();
   if (h < 12) return "Good morning";
   if (h < 18) return "Good afternoon";
   return "Good evening";
 }
-function mwSection(label: string, body: string): string {
-  return `<section style="margin-top:44px">
-    <div style="padding-bottom:13px;margin-bottom:18px;border-bottom:1px solid var(--border-strong)">
-      <span style="${MW_LABEL}">${label}</span>
-    </div>${body}</section>`;
-}
-/** Dashed-card empty-state hint (existing idiom, e.g. old "no focus set yet"). */
-function mwEmptyHint(text: string): string {
-  return `<div style="border:1px dashed var(--border-strong);border-radius:13px;padding:18px 20px;color:var(--fg-55);font-size:13.5px;line-height:1.6">${text}</div>`;
-}
 /** Muted single-line hint for a degraded (D1 projection unavailable) section (existing idiom). */
 function mwDegradedHint(text: string): string {
   return `<div style="font-size:13px;color:var(--fg-40);padding:2px 0">${text}</div>`;
 }
-
-/** Card title row: title left, number pill (the card's ONLY link) far right. */
-function mwTitleRow(title: string, number: number, url: string): string {
-  return `<div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px">
-      <span style="font-size:16.5px;font-weight:600;letter-spacing:-0.01em;line-height:1.35;color:var(--fg);flex:1;min-width:0">${esc(title)}</span>
-      <a href="${attr(safeUrl(url))}" target="_blank" rel="noopener" class="cnpy-numpill" style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:3px 8px;display:flex;align-items:center;gap:5px;margin-top:2px;text-decoration:none;flex:none">#${number}${MW_ARROW_SVG}</a>
-    </div>`;
-}
-/** One hairline-separated section row: 96px label-face label + a pre-built body cell.
- *  Callers skip the call entirely for null data — no empty labels. */
-function mwRow(label: string, bodyCell: string, labelExtra = ""): string {
-  return `<div style="${MW_ROW}"><div style="${MW_ROW_LABEL}${labelExtra}">${label}</div>${bodyCell}</div>`;
-}
-/** Escaped prose body cell; backtick spans become styled <code> AFTER escaping,
- *  so bodies never inject unescaped HTML. */
-function mwProseBody(text: string): string {
-  const prose = esc(text).replace(/`([^`]+)`/g, `<code style="${MW_CODE}">$1</code>`);
-  return `<div style="${MW_ROW_BODY}">${prose}</div>`;
-}
-/** Markdown-rendered body cell (PR summaries/impact only; todo bodies stay prose). */
-function mwMdBody(body: string, markdownFn: (body: string) => string): string {
-  return `<div class="cnpy-md" style="${MW_ROW_BODY}">${markdownFn(body)}</div>`;
-}
-/** Footer meta row closing a card (chips left, timestamp right via margin-left:auto). */
-function mwFooter(inner: string, gap: number): string {
-  return `<div style="margin-top:auto;padding:12px 0 2px;border-top:1px solid var(--border);display:flex;align-items:center;gap:${gap}px">${inner}</div>`;
-}
-/** Human-short date for a sprint due date, e.g. "Jul 20" (the same short
- *  format relTime falls back to; date-only ISO pinned to noon to dodge TZ shift). */
-function mwDueDate(iso: string): string {
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso}T12:00:00` : iso);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-/** A merged/closed PR card (option 2a): title + number pill, then the structured
- *  rows — "What changed"/"Why" from the DTO fields (pr.what/pr.why), "Impact" when
- *  present — and a footer with the MERGED/CLOSED chip + time ("· into <base>" when
- *  known). A PR with no structured summary shows a "No summary recorded"
- *  placeholder; the raw excerpt is NEVER rendered here — a prose "Summary" is the
- *  issue/todo surface (see todoCard), not the PR surface. */
-export function prActivityCard(pr: MyWorkPr, markdownFn: (body: string) => string): string {
-  const rows: string[] = [];
-  if (pr.what !== null) {
-    rows.push(mwRow("What changed", mwMdBody(pr.what, markdownFn)));
-    if (pr.why) rows.push(mwRow("Why", mwMdBody(pr.why, markdownFn)));
-  } else {
-    rows.push(mwRow("What changed", `<div style="font-size:13.5px;color:var(--fg-55);line-height:1.6">${linkifyRefs("No summary recorded for this PR.")}</div>`));
-  }
-  if (pr.impact) rows.push(mwRow("Impact", mwMdBody(pr.impact, markdownFn)));
-  const chip = pr.merged
-    ? `<span style="font-size:9.5px;font-weight:600;font-family:var(--label);letter-spacing:.03em;color:var(--green);border:1px solid color-mix(in srgb,var(--green) 45%,transparent);background:color-mix(in srgb,var(--green) 12%,transparent);border-radius:5px;padding:2px 6px;white-space:nowrap">MERGED</span>`
-    : `<span style="font-size:9.5px;font-weight:600;font-family:var(--label);letter-spacing:.03em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:2px 6px;white-space:nowrap">CLOSED</span>`;
-  const into = pr.baseRef ? ` · into <span style="font-family:var(--label)">${esc(pr.baseRef)}</span>` : "";
-  const footer = mwFooter(`${chip}<span style="font-size:11.5px;color:var(--fg-40)">${relTime(pr.occurredAt)}${into}</span>`, 9);
-  return `<div class="cnpy-card" style="${MW_CARD}">
-    ${mwTitleRow(pr.displayTitle ?? pr.title, pr.number, pr.url)}
-    <div style="display:flex;flex-direction:column;flex:1">${rows.join("")}${footer}</div>
-  </div>`;
-}
-
-/** An assigned-issue card (option 2a): title + number pill, then labeled rows —
- *  Summary (escaped prose, backtick code spans styled), Sprint (flag + title
- *  + "· due <date>"), Next step (the one accent label) — null rows collapse —
- *  and a footer with the priority chip, labels (capped at 3, existing
- *  convention) and "updated <relTime>". Only the number pill links out. */
-export function todoCard(t: MyWorkTodo): string {
-  const rows: string[] = [];
-  if (t.summary) rows.push(mwRow("Summary", mwProseBody(t.summary)));
-  if (t.sprint) {
-    const due = t.sprint.dueOn ? `<span style="font-size:11.5px;color:var(--fg-40)">· due ${esc(mwDueDate(t.sprint.dueOn))}</span>` : "";
-    rows.push(mwRow("Sprint", `<div style="${MW_ROW_BODY};display:flex;align-items:center;gap:8px">${MW_FLAG_SVG}<span>${esc(t.sprint.title)}</span>${due}</div>`));
-  }
-  if (t.nextStep) rows.push(mwRow("Next step", mwProseBody(t.nextStep), ";color:var(--accent)"));
-  const prio = t.priority ? `<span style="font-family:var(--label);font-size:10.5px;font-weight:700;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 45%,transparent);background:color-mix(in srgb,var(--amber) 12%,transparent);border-radius:5px;padding:1px 6px">${esc(t.priority)}</span>` : "";
-  const labels = t.labels.slice(0, 3).map((l) => `<span style="font-size:10.5px;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 6px">${esc(l)}</span>`).join("");
-  const footer = mwFooter(`${prio}${labels}<span style="font-size:11px;color:var(--fg-40);margin-left:auto">updated ${relTime(t.updatedAt)}</span>`, 6);
-  return `<div class="cnpy-card" style="${MW_CARD}">
-    ${mwTitleRow(t.displayTitle ?? t.title, t.number, t.url)}
-    <div style="display:flex;flex-direction:column;flex:1">${rows.join("")}${footer}</div>
-  </div>`;
-}
-
-/**
- * A ticket assigned to me, in the To-do card treatment (design call #9 / design
- * 611–637): the title, then the labeled rows — Summary (the ticket body as
- * escaped prose; the row collapses when the body is empty), Requester, Sprint
- * ("Backlog" when it has none) — and a footer with the status pill, the
- * monochrome priority chip and "updated <relTime>".
- *
- * NO NUMERIC ID is shown: a ticket's id is an internal D1 key, not something
- * people refer to a ticket by. The TITLE is the open control
- * (data-act="openTicket") — it NAVIGATES rather than linking out, because a
- * ticket is a D1 row on this origin, never the GitHub issue itself (ADR-007, as
- * amended), so there is no external URL to point at — and a ticket MIRRORED from
- * an issue never reaches this block (listAssignedTickets reads native tickets only). That is exactly what separates this block from
- * the To-do cards above it, which keep their GitHub issue number pill.
- */
-export function ticketCard(t: MyWorkTicket, personOf: (handle: string) => PersonSummary | null): string {
-  const rows: string[] = [];
-  if (t.body.trim()) rows.push(mwRow("Summary", mwProseBody(t.body)));
-  rows.push(mwRow("Requester", `<div style="${MW_ROW_BODY};display:flex;align-items:center;gap:8px">${personChip(personOf(t.requester), 20, t.requester)}${handleTag(personOf(t.requester), t.requester, 13)}</div>`));
-  rows.push(mwRow("Sprint", `<div style="${MW_ROW_BODY}">${esc(t.sprint?.label ?? "Backlog")}</div>`));
-  const footer = mwFooter(
-    `${ticketPill(t.status)}${priorityChip(t.priority)}<span style="font-size:11px;color:var(--fg-40);margin-left:auto;white-space:nowrap">updated ${relTime(t.updatedAt)}</span>`,
-    6
-  );
-  return `<div class="cnpy-card" style="${MW_CARD}">
-    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px">
-      <button data-act="openTicket" data-arg="${t.id}" style="font-size:16.5px;font-weight:600;letter-spacing:-0.01em;line-height:1.35;color:var(--fg);flex:1;min-width:0;text-align:left;background:none;padding:0;display:flex;align-items:flex-start;gap:6px"><span style="min-width:0">${esc(t.title)}</span><span style="flex:none;color:var(--accent);margin-top:3px">${MW_ARROW_SVG}</span></button>
-    </div>
-    <div style="display:flex;flex-direction:column;flex:1">${rows.join("")}${footer}</div>
-  </div>`;
+/** A slice's readiness for a tile: data on hand counts as ready even mid-refresh. */
+function mwLoad(status: string, hasData: boolean): MwLoad {
+  if (status === "ok") return "ok";
+  if (status === "error" || status === "missing") return hasData ? "ok" : "error";
+  return hasData ? "ok" : "pending";
 }
 
 function myWorkView(s: AppState): string {
   const slice = s.mywork;
-  if (slice.status === "loading" && !slice.data) return wrapMyWork(notice("Loading your work&hellip;"));
-  if (slice.status === "error") return wrapMyWork(notice("Couldn't load your dashboard."));
+  const wrap = (inner: string) => `<div class="cnpy-scroll" style="max-width:1320px;margin:0 auto;padding:28px 32px 80px">${inner}</div>`;
+  if (slice.status === "error" && !slice.data) return wrap(notice("Couldn't load your dashboard."));
   const d = slice.data;
-  if (!d) return wrapMyWork(notice("Nothing to show yet."));
+  const dLoad: MwLoad = d ? "ok" : "pending";
+  const degraded = d?.degraded ?? false;
+  const me = (s.me?.handle ?? "").toLowerCase();
 
-  const name = esc(s.displayName || s.me?.name || s.me?.handle || "there");
-  const hero = `<div style="margin-bottom:24px">
-    <h2 style="font-size:24px;font-weight:600;letter-spacing:-0.02em;margin:0">${greetingFor()}, ${name}</h2>
-  </div>`;
+  // Needs review: the Review screen's own queue, as one-line heads (no diff — the
+  // tile never shows one, and this runs on every paint). Each slice follows the
+  // mwLoad rule (data on hand = ok), so a refetch after a verdict never blanks the
+  // tile to "Loading…" or moves it; items on hand win over the other slice still
+  // loading, but a failed slice is never papered over.
+  const reviewItems = reviewHeadsFromReads(s.proposals.data, s.draftAdrs.data);
+  const pLoad = mwLoad(s.proposals.status, s.proposals.data.length > 0);
+  const aLoad = mwLoad(s.draftAdrs.status, s.draftAdrs.data.length > 0);
+  const reviewLoad: MwLoad = pLoad === "error" || aLoad === "error" ? "error"
+    : (pLoad === "ok" && aLoad === "ok") || reviewItems.length > 0 ? "ok" : "pending";
 
-  const activityBody = d.degraded
-    ? mwDegradedHint("Couldn't load your recent activity right now.")
-    : d.previousActivity.length === 0
-      ? mwEmptyHint("No merged or closed PRs yet.")
-      : `<div class="cnpy-mw-grid cnpy-stagger">${d.previousActivity.map((pr) => prActivityCard(pr, renderMarkdown)).join("")}</div>`;
+  // Your sessions: MY latest feed entries (My Work's own read), and the handoffs
+  // waiting on me — the sidebar badge's definition, `handoffsForMe`.
+  const feedLoad = mwLoad(s.mwSessions.status, s.mwSessions.data.length > 0);
+  const sessions: MwSession[] = s.mwSessions.data
+    .slice(0, 3)
+    .map((e) => ({ id: e.id, summaryHtml: renderMarkdownInline(e.summary), brief: e.brief, at: e.created_at }));
+  const handoffLoad = mwLoad(s.handoffs.status, s.handoffs.data.length > 0);
+  const waiting: MwHandoff[] = handoffsForMe(s.handoffs.data, me)
+    .map((h) => ({ id: h.id, title: firstLine(h.body) || `Handoff #${h.id}`, at: h.created_at }));
 
-  const todoBody = d.degraded
-    ? mwDegradedHint("Couldn't load your to-do list right now.")
-    : d.todo.length === 0
-      ? mwEmptyHint("No open issues assigned to you.")
-      : `<div class="cnpy-mw-grid cnpy-stagger">${d.todo.map((t) => todoCard(t)).join("")}</div>`;
+  // The library strip: docs you own, artifacts published this week, and the queued
+  // handoffs (the same `handoffsForMe` set as the badge).
+  const monthAgo = Date.now() - 30 * 86_400_000;
+  const weekAgo = Date.now() - 7 * 86_400_000;
+  const ts = (iso: string | null) => (iso ? Date.parse(iso) : NaN);
+  // "Docs you own" = docs.owner (0035: the author of the first version, kept through later
+  // edits and promotions), never-promoted stubs excluded.
+  const myDocs = s.mwDocs.data.filter((x) => x.current_version > 0 && (x.owner ?? "").toLowerCase() === me);
+  const staleDocs = myDocs
+    .filter((x) => !(ts(x.updated_at) >= monthAgo))
+    .sort((a, b) => (ts(a.updated_at) || 0) - (ts(b.updated_at) || 0))
+    .map((x) => x.title);
+  // "Published this week" reads artifact_pages.published_at (0035: when the current published
+  // content went live; null for drafts), not the version date.
+  const published = (s.art.list.data ?? []).filter((a) => a.published_at !== null);
+  const latestArt = [...published].sort((a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? ""))[0] ?? null;
+  const library: MwLibrary = {
+    docs: { load: mwLoad(s.mwDocs.status, s.mwDocs.data.length > 0), total: myDocs.length, stale: staleDocs },
+    artifacts: { load: mwLoad(s.art.list.status, (s.art.list.data ?? []).length > 0), publishedThisWeek: published.filter((a) => ts(a.published_at) >= weekAgo).length, latest: latestArt ? { slug: latestArt.slug, title: latestArt.title, at: latestArt.published_at ?? latestArt.updated_at } : null },
+    handoffs: { load: handoffLoad, count: waiting.length, newest: [...waiting].sort((a, b) => b.at.localeCompare(a.at))[0] ?? null },
+  };
 
-  // The third block (design call #9): the org's ticket queue, filtered to what is
-  // assigned to me and still open. Tickets are NEVER folded into `todo` — that
-  // list is the GitHub issue surface.
-  const ticketsBody = d.degraded
-    ? mwDegradedHint("Couldn't load your assigned tickets right now.")
-    : d.tickets.length === 0
-      ? mwEmptyHint("No tickets assigned to you. The queue has what's waiting.")
-      : `<div class="cnpy-mw-grid cnpy-stagger">${d.tickets.map((t) => ticketCard(t, (h) => personFor(s, h))).join("")}</div>`;
+  // A ticket's due date is its sprint's; "this week" = within the next 7 days; before today = overdue.
+  const sprintDue = new Map(s.sprints.data.map((sp) => [sp.id, sp.due]));
+  const dueOf = (t: MyWorkTicket): MwDue | null => {
+    const due = t.sprint ? sprintDue.get(t.sprint.id) : null;
+    // The ONE due-date rule (shared/sprints-core): due all of that day, overdue from the next.
+    const st = due ? sprintDueState(due, Date.now()) : null;
+    if (!due || !st) return null;
+    return { label: new Date(`${due.slice(0, 10)}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }), soon: st.soon, overdue: st.overdue };
+  };
 
-  const activity = mwSection("Previous activity", activityBody);
-  const todo = mwSection("To-do", todoBody);
-  const tickets = mwSection("Tickets assigned to me", ticketsBody);
+  const tickets = d?.tickets ?? [];
+  // The uncapped count (the list is capped); never below what is on hand.
+  const ticketsTotal = Math.max(d?.ticketsTotal ?? 0, tickets.length);
+  // The stat line claims only what has landed: a slice still loading or failed
+  // contributes nothing, and "nothing is waiting on you" needs EVERY slice read ok.
+  const ticketsKnown = dLoad === "ok" && !degraded;
+  const stat = [
+    ticketsKnown && ticketsTotal ? `${ticketsTotal} ticket${ticketsTotal === 1 ? "" : "s"} open` : "",
+    reviewLoad === "ok" && reviewItems.length ? `${reviewItems.length} to review` : "",
+    handoffLoad === "ok" && waiting.length ? `${waiting.length} handoff${waiting.length === 1 ? "" : "s"} waiting` : "",
+  ].filter(Boolean).join(", ")
+    || (ticketsKnown && reviewLoad === "ok" && handoffLoad === "ok" ? "nothing is waiting on you" : "");
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
-  return wrapMyWork(`${hero}${todo}${activity}${tickets}`);
+  // The design's composition: Tickets (only when you have some) and Needs your
+  // review (only when something waits) lead at 7/5; Your sessions and Repo follow;
+  // a clear review queue drops to a slim strip beside the library.
+  const hasTickets = dLoad !== "ok" || degraded || tickets.length > 0;
+  const hasReview = reviewLoad !== "ok" || reviewItems.length > 0;
+  const order = [hasTickets ? "tickets" : "", hasReview ? "review" : "", "sessions", "repo"].filter(Boolean);
+  const strips = hasReview ? ["library"] : ["review", "library"];
+  const span = mwSpans(order, strips);
+  const tile: Record<string, () => string> = {
+    tickets: () => ticketsTile({ load: dLoad, rows: tickets, total: ticketsTotal, expanded: s.mwExpanded.tickets }, degraded, span.tickets, dueOf),
+    review: () => reviewTile(reviewItems, reviewLoad, span.review),
+    sessions: () => sessionsTile(sessions, feedLoad, waiting, span.sessions),
+    repo: () => repoTile(s.repo.data, mwLoad(s.repo.status, !!s.repo.data), s.mwRepoTab, span.repo),
+    library: () => libraryStrip(library, span.library),
+  };
+
+  return myWorkLayout({
+    greeting: `${greetingFor()}, ${esc(s.displayName || s.me?.name || s.me?.handle || "there")}`,
+    dateLine: stat ? `${esc(today)} · ${esc(stat)}` : esc(today),
+    tiles: [...order, ...strips].map((k) => tile[k]()),
+  });
 }
 
 /** A list slice that hasn't produced data yet (idle/loading with nothing cached). */
@@ -2133,6 +2263,7 @@ function screenBody(s: AppState): string {
     case "search": return searchView(s);
     case "settings": return settingsView(s);
     case "guide": return guideView(s);
+    case "releases": return releasesScreen(s.releaseVersion, s.releasePage);
     case "tickets": return ticketsScreen(s);
     case "newticket": return newTicketScreen(s);
     case "ticketdetail": return ticketDetailScreen(s);
@@ -2149,6 +2280,7 @@ function screenBody(s: AppState): string {
       status: s.promptDetail.status, prompt: s.promptDetail.data?.prompt ?? null, versions: s.promptDetail.data?.versions ?? [],
       persons: s.persons.data, knownTags: [...new Set(s.promptList.data.flatMap((p) => p.tags))],
       diffVersion: s.promptDiffV, tagMenu: s.promptTagMenu, tagDraft: s.promptTagDraft, promptView: s.promptView,
+      canDelete: canDeletePrompt(s), deleteArm: s.promptDeleteArm, deleteBusy: s.promptDeleteBusy,
     });
     case "promptedit": return promptEditorView({ draft: s.promptEd, takenSlugs: s.promptList.data.map((p) => p.slug) });
     case "newdoc": return newDocView({ draft: s.nd, spaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })), sections: ASSIGN_OPTIONS.sections });
@@ -2167,12 +2299,12 @@ function repoProps(s: AppState): RepoProps {
 /** Project the app state onto the Artifacts screens' props. */
 function artProps(s: AppState, screen: ArtScreen): ArtProps {
   return {
-    screen, route: s.artRoute, ui: s.art, me: s.me?.handle ?? "", fmOpening: s.fmOpening,
+    screen, route: s.artRoute, ui: s.art, me: s.me?.handle ?? "", admin: s.me?.admin === true, fmOpening: s.fmOpening,
     persons: s.persons.data, host: typeof location !== "undefined" ? location.host : "canopy",
     theme: resolved(s),
     // Every ticket (the attach dialog's own read); the queue's filtered list until it lands.
     tickets: s.art.attachTickets.data ?? s.tickets.data.map((t) => ({ id: t.id, title: t.title, status: t.status })),
-    sprints: s.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: x.dates, active: x.active })),
+    sprints: s.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: sprintDatesLabel(x), active: x.active })),
   };
 }
 const isArtScreen = (screen: Screen): screen is ArtScreen => screen === "artifacts" || screen === "artifactnew" || screen === "artifact";
@@ -2189,6 +2321,7 @@ function appView(s: AppState): string {
       ${header(s)}
       <div id="cnpy-main" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0">${screenBody(s)}</div>
     </main>
+    <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>`;
 }
 
@@ -2196,9 +2329,17 @@ function appView(s: AppState): string {
 // already elapsed (negative = joined mid-way), so a rerender while it is up never replays the pop.
 // Centered with auto margins, not translateX(-50%): cnpy-pop animates `transform` to none.
 const TOAST_FADE_MS = 400;
-function toastBlock(msg: string, elapsed: number, ms: number): string {
-  return `<div class="cnpy-toast" style="position:fixed;bottom:22px;left:0;right:0;margin:0 auto;width:max-content;max-width:min(520px,calc(100vw - 32px));z-index:50;display:flex;align-items:flex-start;gap:9px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);box-shadow:0 8px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.45;animation-delay:${-elapsed}ms,${ms - TOAST_FADE_MS - elapsed}ms">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg><span>${esc(msg)}</span>
+/** A toast's one button: `Undo` on a delete. Dispatched like any `data-act`. */
+export interface ToastAction { label: string; act: string; arg: string }
+/** Whether the signed-in person may delete the open prompt: its author, or an admin (the server re-checks). */
+export function canDeletePrompt(s: Pick<AppState, "me" | "promptDetail">): boolean {
+  const p = s.promptDetail.data?.prompt;
+  if (!p || !s.me) return false;
+  return s.me.admin || s.me.handle.toLowerCase() === p.author.toLowerCase();
+}
+function toastBlock(msg: string, elapsed: number, ms: number, action: ToastAction | null = null): string {
+  return `<div class="cnpy-toast" role="status" aria-live="polite" style="position:fixed;bottom:22px;left:0;right:0;margin:0 auto;width:max-content;max-width:min(520px,calc(100vw - 32px));z-index:50;display:flex;align-items:flex-start;gap:9px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);box-shadow:0 8px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.45;animation-delay:${-elapsed}ms,${ms - TOAST_FADE_MS - elapsed}ms">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg><span>${esc(msg)}</span>${action ? `<span aria-hidden="true" style="color:var(--fg-40)">·</span><button type="button" data-act="${attr(action.act)}" data-arg="${attr(action.arg)}" class="cnpy-toast-act" style="font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap">${esc(action.label)}</button>` : ""}
   </div>`;
 }
 
@@ -2221,7 +2362,7 @@ function backfillSyncModal(sync: BackfillSyncState): string {
     : `${bar("PRs summarized", sync.prSummarizedCount, sync.prsTotal)}
       ${bar("issues summarized", sync.issueSummarizedCount, sync.issuesTotal)}`;
   return `<div style="position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)">
-    <div style="width:360px;border:1px solid var(--border-strong);border-radius:14px;padding:28px 30px;background:var(--bg);box-shadow:0 20px 60px rgba(0,0,0,.45);text-align:center">
+    <div${surface("width:360px;max-width:calc(100vw - 32px);border-color:var(--border-strong);padding:28px 30px;box-shadow:0 20px 60px rgba(0,0,0,.45);text-align:center")}>
       <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="animation:cnpy-spin .8s linear infinite;margin-bottom:14px"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>
       <div style="font-size:15px;font-weight:600;margin-bottom:14px">Syncing GitHub</div>
       ${body}
@@ -2231,13 +2372,14 @@ function backfillSyncModal(sync: BackfillSyncState): string {
 
 export function render(s: AppState): string {
   const themeAttr = resolved(s);
-  return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+  return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
     ${s.view === "auth" ? authView(s) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
-    ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs) : ""}
+    ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.backfillSync ? backfillSyncModal(s.backfillSync) : ""}
     ${s.view === "app" ? connectModal(s) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
+    ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
   </div>`;
 }

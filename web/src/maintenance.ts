@@ -10,7 +10,7 @@
 // interactions dispatch via data-act / data-arg handled in main.ts (the same
 // assign / discard / map / invite writes the single-column version had).
 
-import { esc, attr, primaryBtn, relTime } from "./ui";
+import { esc, attr, primaryBtn, relTime, surface } from "./ui";
 import { personChip, handleTag } from "./people";
 import type { PersonColor, InviteRow } from "@shared/rows";
 import type { PersonSummary } from "./api";
@@ -162,7 +162,7 @@ function unplacedTab(p: MaintenanceProps): string {
     ? `<div style="font-size:18px;font-weight:500;line-height:1.5;letter-spacing:-0.01em;color:var(--fg);margin-top:16px;text-wrap:pretty">${esc(sel.title)}</div><div style="font-size:13.5px;line-height:1.6;color:var(--fg-70);margin-top:8px">${esc(sel.snippet)}</div>`
     : `<div style="font-size:18px;font-weight:500;line-height:1.5;letter-spacing:-0.01em;color:var(--fg);margin-top:16px;text-wrap:pretty">${esc(sel.snippet)}</div>`;
 
-  return `<div style="display:flex;flex-wrap:wrap;border:1px solid var(--border);border-radius:12px;overflow:hidden;min-height:440px">
+  return `<div${surface("display:flex;flex-wrap:wrap;overflow:hidden;min-height:440px")}>
     <div class="cnpy-scroll" style="flex:1 1 260px;min-width:0;max-width:100%;box-shadow:1px 0 0 var(--border);overflow-y:auto;overflow-x:hidden;max-height:640px">${list}</div>
     <div style="flex:2 1 380px;min-width:0;display:flex;flex-direction:column;padding:24px 28px;box-shadow:0 -1px 0 var(--border)">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--fg-55)">
@@ -222,7 +222,7 @@ export function identityCard(g: IdentityGroup, people: Person[], pick: string | 
 
 function identityTab(p: MaintenanceProps): string {
   if (p.identity.length === 0) return maintEmpty("Everyone is accounted for", "Every login in the activity stream is matched to a person.");
-  return `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">${p.identity.map((g) => identityCard(g, p.people, p.mapPicks[g.id] ?? null, p.mapConfirm === g.id)).join("")}</div>
+  return `<div${surface("overflow:hidden")}>${p.identity.map((g) => identityCard(g, p.people, p.mapPicks[g.id] ?? null, p.mapConfirm === g.id)).join("")}</div>
     <div style="font-size:11.5px;color:var(--fg-40);margin-top:12px">Mapping attributes all past and future activity from that login to the person, and lets that GitHub account sign in as them.</div>`;
 }
 
@@ -262,7 +262,7 @@ export function peopleSection(p: PeopleProps): string {
     </div>` : "";
   return `${inviteBar}
     ${p.error ? `<div style="font-size:12.5px;color:var(--red);margin-bottom:8px">${esc(p.error)}</div>` : ""}
-    ${p.loading && p.persons.length === 0 ? `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0">Loading people…</div>` : `<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden">${persons}${invites}</div>`}`;
+    ${p.loading && p.persons.length === 0 ? `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0">Loading people…</div>` : `<div${surface("overflow:hidden")}>${persons}${invites}</div>`}`;
 }
 
 // ── composed surface ─────────────────────────────────────────────────────────

@@ -1,7 +1,8 @@
 import type { SprintRow, PlanRow } from "@shared/rows";
 import type { SprintView } from "@shared/sprints";
+import { planNarrativeProblem, normalizeSprintDate, sprintDateProblem, sprintDatesProblem } from "@shared/sprints-core";
 import { type DB, first, all, run, nowIso } from "../db";
-import { list_sprints } from "./sprints";
+import { list_sprints, SprintError } from "./sprints";
 
 /**
  * One sprint as the ADMIN plan write receives it. This is the DTO vocabulary
@@ -15,7 +16,8 @@ export interface PlanSprintInput {
   description?: string | null;
   phase?: string | null;
   dates?: string | null;
-  due: string;
+  start?: string | null;                       // YYYY-MM-DD; absent = unchanged on an update, null/"" clears
+  due: string;                                 // YYYY-MM-DD, or "" = unscheduled
   status: "upcoming" | "in_progress" | "done"; // 'done' allowed HERE ONLY (admin-authored)
   urgency?: "low" | "normal" | "high";
   lead?: string | null;                        // person handle
@@ -49,12 +51,38 @@ const githubRefJson = (ref: number | number[] | null | undefined): string | null
  *
  * Ticket membership of a sprint is NOT set here — that is the Tickets UI's job
  * (`POST /tickets/:id/sprint`). The plan write owns the sprint's own fields only.
+ *
+ * Every refusal is decided BEFORE the first write, so a refused plan writes nothing:
+ * a narrative over PLAN_NARRATIVE_MAX (trimmed, like the feed brief) is a
+ * `bad_request`, and an unknown sprint id is `no such sprint` — no plan row, no
+ * plan_versions row, no sprint touched. The stored narrative is the trimmed one.
+ * So are bad sprint dates (`bad_request`): `due` / `start` must each be a real
+ * YYYY-MM-DD day or blank, and start <= due — checked against the STORED start when
+ * an update omits `start`, so a new due cannot slip in before an existing start.
  */
 export async function write_plan(
   db: DB,
   input: PlanWrite,
   author: string
 ): Promise<{ version: number; sprints: SprintRow[] }> {
+  const narrative = input.narrative.trim();
+  const problem = planNarrativeProblem(narrative);
+  if (problem) throw new SprintError("bad_request", problem);
+  for (const sp of input.sprints) {
+    const own = sprintDateProblem("start", sp.start) ?? sprintDateProblem("due", sp.due);
+    if (own) throw new SprintError("bad_request", `sprint "${sp.label}": ${own}`);
+    let start = sp.start;
+    if (sp.id !== undefined) {
+      const exists = await first<{ id: number; start_date: string | null }>(db, `SELECT id, start_date FROM sprints WHERE id = ?`, sp.id);
+      if (!exists) throw new Error(`no such sprint: ${sp.id}`);
+      if (start === undefined) start = exists.start_date;
+    }
+    // A stored start from before the rule is compared only when it is itself valid.
+    if (sprintDateProblem("start", start)) continue;
+    const order = sprintDatesProblem({ start, due: sp.due });
+    if (order) throw new SprintError("bad_request", `sprint "${sp.label}": ${order}`);
+  }
+
   await run(db, `INSERT OR IGNORE INTO plan (id, narrative, current_version) VALUES (1, '', 0)`);
 
   const plan = await first<PlanRow>(db, `SELECT * FROM plan WHERE id = 1`);
@@ -74,12 +102,13 @@ export async function write_plan(
       // An EXPLICIT `null` still CLEARS the column: `undefined` (absent) and
       // `null` (cleared) are distinct here, and that distinction is the contract.
       const sets: string[] = [`title = ?`, `target_date = ?`, `status = ?`, `updated_at = ?`];
-      const binds: unknown[] = [sp.label, sp.due, sp.status, now];
+      const binds: unknown[] = [sp.label, normalizeSprintDate(sp.due) ?? "", sp.status, now];
       const optional: [string, unknown][] = [
         ["description", sp.description],
         ["summary", sp.summary],
         ["phase", sp.phase],
         ["dates", sp.dates],
+        ["start_date", sp.start === undefined ? undefined : normalizeSprintDate(sp.start)],
         ["urgency", sp.urgency],
         ["lead", sp.lead],
         ["domain", sp.domain],
@@ -95,15 +124,16 @@ export async function write_plan(
     } else {
       await run(
         db,
-        `INSERT INTO sprints (title, description, summary, phase, dates, target_date, status, urgency, lead, domain,
+        `INSERT INTO sprints (title, description, summary, phase, dates, start_date, target_date, status, urgency, lead, domain,
                               github_ref, created_at, created_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         sp.label,
         sp.description ?? null,
         sp.summary ?? null,
         sp.phase ?? null,
         sp.dates ?? null,
-        sp.due,
+        normalizeSprintDate(sp.start),
+        normalizeSprintDate(sp.due) ?? "",
         sp.status,
         sp.urgency ?? "normal",
         sp.lead ?? null,
@@ -121,7 +151,7 @@ export async function write_plan(
   await run(
     db,
     `UPDATE plan SET narrative = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE id = 1`,
-    input.narrative,
+    narrative,
     version,
     now,
     author
@@ -130,7 +160,7 @@ export async function write_plan(
     db,
     `INSERT INTO plan_versions (version, narrative, sprints_json, created_at, created_by) VALUES (?, ?, ?, ?, ?)`,
     version,
-    input.narrative,
+    narrative,
     JSON.stringify(sprints),
     now,
     author

@@ -5,7 +5,7 @@
 // @shared rows. All requests carry the session cookie (credentials:"same-origin");
 // the MCP bearer is for /mcp only and never appears here.
 import type {
-  FeedRow, DocRow, DocVersionRow, AdrRow, NeedsTriageRow, EventRow,
+  FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, EventRow,
   PersonColor, InviteRow,
 } from "@shared/rows";
 // Type-only (erased at build): the sprint DTOs the roadmap renders. Importing the
@@ -15,6 +15,7 @@ import type {
   TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory, TicketCreate,
 } from "@shared/tickets";
 import type { DashboardData } from "@shared/dashboard";
+import type { FeedStats } from "@shared/feed-stats";
 import type { RepoDashboard, RepoRefreshResult } from "@shared/repo";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow, McpTokenSummary, OAuthGrantSummary } from "@shared/rows";
@@ -22,6 +23,7 @@ import type {
   ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactDiffDTO, ArtifactFetchDTO,
   ArtifactKind, ArtifactVisibility, ArtifactLinkType,
 } from "@shared/artifacts-core";
+import type { QuickSearchResult } from "@shared/quick-search";
 import type {
   HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody,
 } from "@shared/handoffs";
@@ -75,17 +77,28 @@ async function putJson<T>(path: string, body: unknown = {}): Promise<T> {
 }
 
 // ── reads ────────────────────────────────────────────────────────────────────
-export interface FeedQuery { author?: string; tags?: string[]; }
+export interface FeedQuery { author?: string; tags?: string[]; limit?: number; }
 export function getFeed(q: FeedQuery = {}): Promise<FeedRow[]> {
   const p = new URLSearchParams();
   if (q.author) p.set("author", q.author);
   if (q.tags && q.tags.length) p.set("tags", q.tags.join(","));
+  if (q.limit) p.set("limit", String(q.limit));
   const qs = p.toString();
   return getJson<{ feed: FeedRow[] }>(`/feed${qs ? `?${qs}` : ""}`).then((r) => r.feed);
 }
 
+/** The Feed aside's "This week" (`GET /feed/stats`): the last `days` of the WHOLE
+ *  feed, bucketed into the viewer's local days (`tz` = minutes east of UTC). */
+export function getFeedStats(days = 7, tz = -new Date().getTimezoneOffset()): Promise<FeedStats> {
+  return getJson<FeedStats>(`/feed/stats?days=${days}&tz=${tz}`);
+}
+
 export function listDocs(): Promise<DocRow[]> {
   return getJson<{ docs: DocRow[] }>("/docs").then((r) => r.docs);
+}
+/** Every doc without its body (`/docs?fields=meta`) — My Work's "Docs you own". */
+export function listDocMeta(): Promise<DocMetaRow[]> {
+  return getJson<{ docs: DocMetaRow[] }>("/docs?fields=meta").then((r) => r.docs);
 }
 
 export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersionRow[] }> {
@@ -115,6 +128,17 @@ export interface QueryResult {
 }
 
 // Human Search: the route forces include_staged:false, so results are live-only.
+/** The "search everything" dropdown (GET /search/quick): titles + one-line excerpts per
+ *  type, never bodies. `signal` aborts it when the next keystroke lands. */
+export async function quickSearch(q: string, signal?: AbortSignal, limit?: number): Promise<QuickSearchResult> {
+  const p = new URLSearchParams({ q });
+  if (limit) p.set("limit", String(limit));
+  const res = await fetch(`/search/quick?${p}`, { credentials: "same-origin", headers: { accept: "application/json" }, signal });
+  if (res.status === 401) throw new Unauthorized();
+  if (!res.ok) throw new ApiError(res.status, `/search/quick -> ${res.status}`);
+  return ((await res.json()) as { result: QuickSearchResult }).result;
+}
+
 export function search(q: string, opts: { types?: QueryType[]; section?: string; space?: string; limit?: number } = {}): Promise<QueryResult> {
   const p = new URLSearchParams();
   if (q) p.set("q", q);
@@ -491,6 +515,16 @@ export function getArtifactDiff(slug: string, a: number, b: number): Promise<Art
 export function ratifyArtifact(slug: string, version: number): Promise<unknown> {
   return sendJson("POST", `${artPath(slug)}/ratify`, { version });
 }
+/** Soft-delete an artifact page (its author or an admin; 403 otherwise). Session-only, never an
+ *  MCP tool. Returns what was deleted, for the "Deleted “<title>” · Undo" toast. */
+export async function deleteArtifact(slug: string): Promise<{ slug: string; title: string; versions: number }> {
+  const r = await sendJson<{ ok: true; slug: string; title: string; versions: number }>("POST", `${artPath(slug)}/delete`);
+  return { slug: r.slug, title: r.title, versions: r.versions };
+}
+/** Undo a delete: the page is back everywhere, exactly as it was. */
+export async function restoreArtifact(slug: string): Promise<ArtifactDetailDTO> {
+  return (await sendJson<{ ok: true; artifact: ArtifactDetailDTO }>("POST", `${artPath(slug)}/restore`)).artifact;
+}
 /** Fetch a page once for the new-artifact form's URL tab (https only; nothing is stored). */
 export function fetchArtifactUrl(url: string): Promise<ArtifactFetchDTO> {
   return sendJson("POST", "/api/artifacts/fetch", { url });
@@ -516,7 +550,7 @@ export function revokeOAuthGrant(id: number): Promise<{ ok: true }> {
 }
 
 // Re-export the row types the UI renders, so screens import shapes from one place.
-export type { FeedRow, DocRow, DocVersionRow, AdrRow, NeedsTriageRow };
+export type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow };
 export type { SprintView, SprintDetail, SprintCreate };
 export type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory, TicketCreate };
 export type { DashboardData };
@@ -563,6 +597,22 @@ export async function setPromptTags(slug: string, tags: string[]): Promise<Promp
 /** 409 `{ error: "not staged" }` when that version is not staged. */
 export async function publishPrompt(slug: string, version: number): Promise<PromptDetail> {
   return (await postJson<{ ok: true; prompt: PromptDetail }>(`/api/prompts/${encodeURIComponent(slug)}/publish`, { version })).prompt;
+}
+/** Soft-delete a prompt (its author or an admin; 403 otherwise). Returns what was deleted,
+ *  for the "Deleted “<title>” · Undo" toast. */
+export async function deletePrompt(slug: string): Promise<{ slug: string; title: string }> {
+  const r = await postJson<{ ok: true; slug: string; title: string }>(`/api/prompts/${encodeURIComponent(slug)}/delete`);
+  return { slug: r.slug, title: r.title };
+}
+/** Undo a delete: the prompt is back everywhere, exactly as it was. */
+export async function restorePrompt(slug: string): Promise<PromptDetail> {
+  return (await postJson<{ ok: true; prompt: PromptDetail }>(`/api/prompts/${encodeURIComponent(slug)}/restore`)).prompt;
+}
+/** Count one USE of a prompt (the Copy button). 404 on an unknown slug. Fire-and-forget:
+ *  callers should not let a failure here block the copy. */
+export async function usePrompt(slug: string): Promise<{ use_count: number; last_used_at: string | null }> {
+  const r = await postJson<{ ok: true; use_count: number; last_used_at: string | null }>(`/api/prompts/${encodeURIComponent(slug)}/used`);
+  return { use_count: r.use_count, last_used_at: r.last_used_at };
 }
 /** Stage a version-1 doc proposal through the gate (lands in Review). */
 export async function proposeDoc(body: DocProposeBody): Promise<StagedProposal> {

@@ -14,17 +14,18 @@ import type { PersonColor } from "@shared/rows";
 import { esc, attr } from "./ui";
 import { personChip, handleTag } from "./people";
 
-/** The nav entries that own a sub-page list. */
-export const NAV_GROUPS = ["tickets", "roadmap", "repo", "docs", "maintenance"] as const;
+/** The nav entries that own a sub-page list. Roadmap has none: its Narrative / Timeline
+ *  tabs are the header switch (removed from the rail 2026-09-26). */
+export const NAV_GROUPS = ["tickets", "repo", "docs", "maintenance"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 export type NavOpen = Record<NavGroup, boolean>;
-export const NAV_CLOSED: NavOpen = { tickets: false, roadmap: false, repo: false, docs: false, maintenance: false };
+export const NAV_CLOSED: NavOpen = { tickets: false, repo: false, docs: false, maintenance: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
-export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide";
+export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases";
 const NAV_OF: Record<string, NavKey> = {
   mywork: "mywork", feed: "feed", docs: "docs", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
-  review: "review", maintenance: "maintenance", guide: "guide",
+  review: "review", maintenance: "maintenance", guide: "guide", releases: "releases",
   tickets: "tickets", ticketdetail: "tickets", newticket: "tickets",
   artifacts: "artifacts", artifactnew: "artifacts", artifact: "artifacts",
   handoffs: "handoffs", handoff: "handoffs", newhandoff: "handoffs",
@@ -70,6 +71,8 @@ const ICONS: Record<NavKey | "search" | "collapse", string> = {
   review: ICON(`<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path>`),
   maintenance: ICON(`<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>`),
   guide: ICON(`<path d="M2 4h7a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2z"></path><path d="M22 4h-7a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H22z"></path>`),
+  // A sparkle: what's new.
+  releases: ICON(`<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path>`),
   search: `<svg class="cnpy-nav-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>`,
   // Drawn in its "expanded" pose; canopy.css mirrors it (scaleX(-1)) when collapsed,
   // which is exactly the design's second icon — so the swap is a flip, not a cut.
@@ -87,7 +90,6 @@ const isMac = (): boolean => typeof navigator !== "undefined" && /Mac|iPhone|iPa
 function activeSub(p: SidebarProps, g: NavGroup): string | null {
   switch (g) {
     case "tickets": return p.screen === "tickets" ? (p.qView === "board" ? "board" : "queue") : p.screen === "newticket" ? "new" : null;
-    case "roadmap": return p.screen === "roadmap" ? p.roadmapTab : null;
     case "repo": return p.screen === "repo" ? p.repoTab : null;
     case "docs": return p.screen === "docs" ? p.docSpace : null;
     case "maintenance": return p.screen === "maintenance" ? p.maintTab : null;
@@ -97,7 +99,6 @@ function activeSub(p: SidebarProps, g: NavGroup): string | null {
 function subPages(p: SidebarProps, g: NavGroup): { key: string; label: string }[] {
   switch (g) {
     case "tickets": return [{ key: "board", label: "Board" }, { key: "queue", label: "Table" }, { key: "new", label: "New ticket" }];
-    case "roadmap": return [{ key: "narrative", label: "Narrative" }, { key: "timeline", label: "Timeline" }];
     case "repo": return REPO_TABS.map(([key, label]) => ({ key, label }));
     case "docs": return p.docSpaces;
     case "maintenance": return [{ key: "unplaced", label: "Unplaced" }, { key: "identity", label: "Identity" }, { key: "people", label: "People" }];
@@ -165,6 +166,7 @@ export function sidebarView(p: SidebarProps): string {
       ${item("maintenance", "goMaintenance", "Maintenance", c.maintenance)}
       ${section("Help")}
       ${item("guide", "goGuide", "Get Started")}
+      ${item("releases", "goReleases", "What's new")}
     </nav>
     <div class="cnpy-collapse" data-tip="Expand sidebar">
       <button data-act="toggleCollapse" class="cnpy-nav-i" aria-label="${p.collapsed ? "Expand sidebar" : "Collapse sidebar"}" aria-expanded="${!p.collapsed}">${ICONS.collapse}<span class="cnpy-lbl cnpy-nav-t">Collapse</span></button>

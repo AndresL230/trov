@@ -8,7 +8,7 @@
 //   2. capture every figure:  node scripts/capture-guide.mjs  (first creates the sample
 //      artifacts in fixtures/dev/artifacts.json when the local store has none)
 //
-// Writes web/public/guide/<name>-<theme>.png for each surface × theme (dark/light/midnight),
+// Writes web/public/guide/<name>-<theme>.png for each surface × theme (dark/light),
 // so the guide can show the variant matching the viewer's active theme. Override the target
 // dir with CANOPY_SHOT_DIR, the base URL with CANOPY_URL, or the theme list with
 // CANOPY_THEMES (comma-separated). `node scripts/capture-guide.mjs docs search` captures
@@ -21,7 +21,7 @@ import { chromium } from "playwright";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.CANOPY_URL ?? "http://localhost:8787";
 const OUT_DIR = process.env.CANOPY_SHOT_DIR ?? join(HERE, "..", "web", "public", "guide");
-const THEMES = (process.env.CANOPY_THEMES ?? "dark,light,midnight").split(",").map((t) => t.trim()).filter(Boolean);
+const THEMES = (process.env.CANOPY_THEMES ?? "dark,light").split(",").map((t) => t.trim()).filter(Boolean);
 
 // Forge the dev session cookie the same way scripts/dev-cookie.mjs does, so the SPA's
 // same-origin fetches are authed even if DEV_LOGIN weren't set.
@@ -44,11 +44,14 @@ const click = (page, sel) => page.locator(sel).first().click();
 // how long to let async fetches + the entrance animation settle.
 const SHOTS = [
   { name: "mywork", hash: "#mywork" },
-  { name: "tickets", hash: "#tickets" },
+  // The Board is the queue's default view; the Table is the other.
+  { name: "tickets", hash: "#tickets",
+    step: (p) => click(p, '[data-act=navSub][data-arg="tickets:queue"]') },
   { name: "board", hash: "#tickets",
     step: (p) => click(p, '[data-act=navSub][data-arg="tickets:board"]') },
   { name: "ticket", hash: "#tickets/3" },
   { name: "roadmap", hash: "#roadmap" },
+  { name: "timeline", hash: "#roadmap/timeline" },
   { name: "sprint", hash: "#sprints/3" },
   // The local seed has no repo capture, so every section reads "not connected"; the
   // screen's own "Preview with sample data" fills it client-side (labelled on screen).
@@ -70,18 +73,22 @@ const SHOTS = [
       }
     }) },
   { name: "prompts", hash: "#prompts" },
+  // The sidebar box's "search everything" dropdown paints once typing PAUSES (1s).
+  { name: "quicksearch", hash: "#mywork", settle: 2400,
+    step: async (p) => { await p.locator("input.cnpy-search-in").first().click(); await p.keyboard.type("token", { delay: 60 }); } },
   { name: "search", hash: "#search",
     step: async (p) => { await p.locator("input[data-act=setSearch]").first().fill("gate"); } },
   { name: "review", hash: "#review" },
   { name: "maintenance", hash: "#maintenance" },
   { name: "settings", hash: "#settings" },
+  { name: "releases", hash: "#releases" },
   // Mints a (local) token and opens the one-time setup modal. The figure shows the
   // production origin and no token value; `after` revokes the token so the next theme's
   // Settings figure is unchanged.
   { name: "connect", hash: "#settings",
     step: async (p) => {
       await click(p, "[data-act=connectOpen]");
-      await p.waitForFunction(() => /canopy_mcp_\w{12,}/.test(document.querySelector("[data-overlay=connect]")?.textContent ?? ""));
+      await p.waitForFunction(() => /canopy_mcp_[A-Za-z0-9_-]{12,}/.test(document.querySelector("[data-overlay=connect]")?.textContent ?? ""));
     },
     // Run just before the shot: a later rerender would put the real text back.
     dress: (p) => p.evaluate(() => {

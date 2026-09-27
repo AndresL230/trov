@@ -1,8 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-  <!-- Top bar: electric-green accent -->
-  <rect x="2" y="4.5" width="20" height="3.4" rx="1.7" fill="#2BFF88"/>
-  <!-- Middle bar: white -->
-  <rect x="5" y="10.3" width="14" height="3.4" rx="1.7" fill="#FFFFFF"/>
-  <!-- Bottom bar: white at 50% opacity -->
-  <rect x="8" y="16.1" width="8" height="3.4" rx="1.7" fill="#FFFFFF" opacity="0.5"/>
+  <!-- The original Canopy mark. Light: the indigo accent over the same white bars.
+       Dark (the original colourway): electric-green over white. The app re-points
+       the icon at its own theme's colourway once it runs (web/src/favicon.ts). -->
+  <style>.t{fill:#5e6ad2}.m{fill:#FFFFFF}.b{fill:#FFFFFF}@media (prefers-color-scheme:dark){.t{fill:#2BFF88}.m{fill:#FFFFFF}.b{fill:#FFFFFF}}</style>
+  <rect x="2" y="4.5" width="20" height="3.4" rx="1.7" class="t"/>
+  <rect x="5" y="10.3" width="14" height="3.4" rx="1.7" class="m"/>
+  <rect x="8" y="16.1" width="8" height="3.4" rx="1.7" class="b" opacity="0.5"/>
 </svg>

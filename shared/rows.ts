@@ -31,7 +31,14 @@ export interface DocRow {
   updated_at: string | null;
   updated_by: string | null;
   space: string;   // 'technical' | 'product' — the Docs tab this doc lives under (UI grouping, not access)
+  /** A person handle: who proposed the doc's FIRST version (0035). Set at creation, never
+   *  overwritten by later edits/promotions; renamed with the person. NULL only for a doc
+   *  row with no version and no updated_by at backfill time. */
+  owner: string | null;
 }
+
+/** A doc without its body — `GET /docs?fields=meta` (My Work's "Docs you own" cell). */
+export type DocMetaRow = Pick<DocRow, "slug" | "section" | "title" | "current_version" | "updated_at" | "updated_by" | "space" | "owner">;
 
 export interface DocVersionRow {
   id: number;

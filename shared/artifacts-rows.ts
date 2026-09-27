@@ -21,6 +21,12 @@ export interface ArtifactPageRow {
   created_at: string;
   /** created_at of the latest version — the library's sort key. */
   updated_at: string;
+  /** When the current published content went live (0035); NULL while draft. Ratify leaves it. */
+  published_at: string | null;
+  /** Soft delete (0035 PART D): set = the page is gone from every read; NULL = live. */
+  deleted_at: string | null;
+  /** The handle that deleted it (HANDLE_COLUMNS); NULL while live. */
+  deleted_by: string | null;
 }
 
 export interface ArtifactVersionRow {

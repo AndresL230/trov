@@ -134,7 +134,7 @@ describe("POST /identity-tasks/:login/map", () => {
     // Before mapping: captured but unsurfaced — "mystery-dev" is not (yet) any
     // person's handle or identity, so it resolves to nothing.
     const before = await getMyWork(env.DB, "mystery-dev");
-    expect(before).toEqual({ person: null, previousActivity: [], todo: [], tickets: [], degraded: false });
+    expect(before).toEqual({ person: null, previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false });
 
     expect((await post("/identity-tasks/mystery-dev/map", cookie, { person: "casey" })).status).toBe(200);
 

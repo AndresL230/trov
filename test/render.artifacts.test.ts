@@ -27,6 +27,23 @@ import {
 import { render, initialState } from "../web/src/render";
 import type { ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactVersionDTO, ArtifactKind, ArtifactDiffDTO } from "@shared/artifacts-core";
 import { ARTIFACT_TEXT_CAP } from "@shared/artifacts-core";
+import { canDeleteArtifact } from "../web/src/artifacts";
+import artifactsSrc from "../web/src/artifacts.ts?raw";
+import mainSrc from "../web/src/main.ts?raw";
+
+/** The one `.cnpy-sfbar` (search + Filter) element in `html`, balanced by its divs — or null. */
+function sfbar(html: string): string | null {
+  const start = html.indexOf('<div class="cnpy-sfbar"');
+  if (start < 0 || html.indexOf('<div class="cnpy-sfbar"', start + 1) >= 0) return null;
+  const re = /<div\b|<\/div>/g;
+  re.lastIndex = start;
+  let depth = 0;
+  for (let m = re.exec(html); m; m = re.exec(html)) {
+    depth += m[0] === "</div>" ? -1 : 1;
+    if (depth === 0) return html.slice(start, m.index + 6);
+  }
+  return null;
+}
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
 
@@ -37,7 +54,7 @@ function ver(n: number, over: Partial<ArtifactVersionDTO> = {}): ArtifactVersion
 function summary(slug: string, over: Partial<ArtifactSummaryDTO> = {}): ArtifactSummaryDTO {
   return {
     id: 1, slug, title: slug.replace(/-/g, " "), kind: "html", area: "ui", repo: "SaplingLearn/canopy", author_id: "AndresL230",
-    status: "published", visibility: "org", current_version: 1, updated_at: T0, size_bytes: 1200, excerpt: null,
+    status: "published", visibility: "org", current_version: 1, updated_at: T0, published_at: T0, size_bytes: 1200, excerpt: null,
     ticket_ids: [], sprint_ids: [], ...over,
   };
 }
@@ -64,7 +81,7 @@ function ui(over: Partial<ArtUi> = {}): ArtUi {
   return { ...initialArtUi(), list: { status: "ok", data: LIST.map((x) => ({ ...x })) }, ...over };
 }
 function props(screen: ArtScreen, route: ArtRoute = ART_ROUTE_NONE, over: Partial<ArtProps> = {}): ArtProps {
-  return { screen, route, ui: ui(), me: "AndresL230", persons: [], host: "canopy.test", theme: "dark", tickets: TICKETS, sprints: SPRINTS, ...over };
+  return { screen, route, ui: ui(), me: "AndresL230", admin: false, persons: [], host: "canopy.test", theme: "dark", tickets: TICKETS, sprints: SPRINTS, ...over };
 }
 const view = (slug: string, v: number | null = null): ArtRoute => ({ slug, v, diff: null });
 /** Props for the viewer with one detail loaded under the route's key. */
@@ -73,7 +90,7 @@ function viewer(d: ArtifactDetailDTO, v: number | null = null, over: Partial<Art
   p.ui.details[detailKey(d.slug, v)] = { status: "ok", data: d };
   return p;
 }
-const ctx = (p: ArtProps) => ({ screen: p.screen, route: p.route, me: p.me, host: "https://canopy.test", sprints: p.sprints });
+const ctx = (p: ArtProps) => ({ screen: p.screen, route: p.route, me: p.me, admin: p.admin, host: "https://canopy.test", sprints: p.sprints });
 
 // ── library ──────────────────────────────────────────────────────────────────
 
@@ -126,6 +143,18 @@ describe("artifacts — library", () => {
     expect(html).toContain("Sprint 14");
     expect(html).toContain('data-fm-panel="area" class="fm-panel">');
     expect(html).toContain('data-fm-panel="kind" class="fm-panel" hidden>');
+  });
+
+  it("search and Filter are ONE combined control: the input and the Filter toggle inside a single .cnpy-sfbar", () => {
+    const p = props("artifacts");
+    p.ui.q = "auth";
+    const bar = sfbar(artifactsView(p));
+    expect(bar).not.toBeNull();
+    expect(bar).toContain('data-act="artQ" data-field="artQ"');
+    expect(bar).toContain('placeholder="Search by title, area, kind or ticket"');
+    expect(bar).toContain('data-act="artClearQ"');
+    expect(bar).toContain('data-act="fmToggle" data-arg="art"');
+    expect(bar).not.toContain('class="cnpy-search"');
   });
 
   it("the filter menu opens on hover and its categories switch on hover", () => {
@@ -297,6 +326,83 @@ describe("artifacts — reducer", () => {
     expect(artifactsAct(p.ui, ctx(p), "artOpen", "a-page", null)).toEqual({ nav: { screen: "artifact", route: { slug: "a-page", v: null, diff: null } } });
     const d = props("artifact", { slug: "a-page", v: null, diff: { a: 1, b: 3 } });
     expect(artifactsAct(d.ui, ctx(d), "artDiffA", "a-page", "2", )).toEqual({ nav: { screen: "artifact", route: { slug: "a-page", v: null, diff: { a: 2, b: 3 } } } });
+  });
+});
+
+// ── delete (0035 PART D): author / admin only, the shared in-app confirm, an Undo toast ──
+
+describe("artifacts — delete", () => {
+  const open = (p: ArtProps) => { artifactsAct(p.ui, ctx(p), "artDotMenu", null, null); return artifactsView(p); };
+
+  it("offers Delete artifact in the … menu only to its author or an admin (case-insensitive)", () => {
+    const d = detail("a", "html", { author_id: "Jose-Gael-Cruz-Lopez" });
+    expect(canDeleteArtifact(d, "jose-gael-cruz-lopez", false)).toBe(true);
+    expect(canDeleteArtifact(d, "someone", true)).toBe(true);
+    expect(canDeleteArtifact(d, "someone", false)).toBe(false);
+    expect(canDeleteArtifact(d, "", false)).toBe(false);
+    expect(open(viewer(d))).not.toContain("artDeleteArm"); // AndresL230, not an admin
+    expect(open(viewer(d, null, { admin: true }))).toContain('data-act="artDeleteArm"');
+    const mine = open(viewer(detail("a", "html")));
+    expect(mine).toContain('data-act="artDeleteArm"');
+    expect(mine).toContain("Delete artifact");
+    expect(mine).not.toContain('role="alertdialog"'); // the confirm opens only when armed
+    // A stranger cannot arm it through the reducer either.
+    const theirs = viewer(d);
+    expect(artifactsAct(theirs.ui, ctx(theirs), "artDeleteArm", null, null)).toBeNull();
+    expect(theirs.ui.deleteArm).toBe(false);
+  });
+
+  it("confirms in the shared MODAL — Delete focused so Enter confirms, once — never window.confirm", () => {
+    const p = viewer(detail("a", "html", { title: "Sign-in flow" }));
+    artifactsAct(p.ui, ctx(p), "artDotMenu", null, null);
+    expect(artifactsDialogs(p)).toBe(""); // nothing until armed
+    expect(artifactsAct(p.ui, ctx(p), "artDeleteArm", null, null)).toEqual({ focus: "[data-confirm-focus]" });
+    expect(p.ui.dotMenu).toBe(false);
+    expect(artifactsView(p)).not.toContain('role="alertdialog"'); // the modal is an app-root overlay, not in the page
+    const html = artifactsDialogs(p);
+    expect(html).toContain('data-overlay="confirm-art-delete-confirm"');
+    expect(html).toContain('id="art-delete-confirm" role="alertdialog" aria-modal="true" aria-labelledby="art-delete-confirm-t" aria-describedby="art-delete-confirm-d" tabindex="-1" data-confirm-dialog data-confirm-act="artDelete" data-confirm-cancel="artDeleteCancel" class="cnpy-surface cnpy-cmodal-box"');
+    expect(html).toMatch(/<div data-act="artDeleteCancel" class="cnpy-cmodal-back" aria-hidden="true">/);
+    expect(html).toContain("Delete “Sign-in flow”?");
+    expect(html).toContain("All 3 versions are kept and you can undo.");
+    expect(html).toMatch(/data-act="artDelete" data-confirm-focus class="cnpy-confirm-go"[^>]*>Delete</);
+    expect(html).toMatch(/data-act="artDeleteCancel" class="cnpy-outlinebtn"[^>]*>Cancel</);
+    expect(artifactsView(p)).toMatch(/data-act="artDotMenu"[^>]*data-confirm-trigger/); // focus returns here on cancel
+    // …and it reaches the page through render()'s root.
+    const one = viewer(detail("b", "html", {}, 1));
+    artifactsAct(one.ui, ctx(one), "artDeleteArm", null, null);
+    expect(artifactsDialogs(one)).toContain("Its one version is kept and you can undo.");
+    // Enter / the Delete click → ONE write; busy holds every further press and says so.
+    expect(artifactsAct(p.ui, ctx(p), "artDelete", null, null)).toEqual({ write: { op: "delete", slug: "a" } });
+    expect(p.ui.deleteBusy).toBe(true);
+    expect(artifactsAct(p.ui, ctx(p), "artDelete", null, null)).toBeNull();
+    const busy = artifactsDialogs(p);
+    expect(busy).toContain("Deleting…");
+    expect(busy).toMatch(/data-confirm-dialog [^>]*data-busy/);
+    expect(artifactsAct(p.ui, ctx(p), "artDeleteCancel", null, null)).toBeNull(); // Escape can't cancel mid-write
+    // Escape / the backdrop / Cancel close it and return focus to the … button.
+    p.ui.deleteBusy = false;
+    expect(artifactsAct(p.ui, ctx(p), "artDeleteCancel", null, null)).toEqual({ focus: "[data-confirm-trigger]" });
+    expect(artifactsDialogs(p)).toBe("");
+    // A stranger's viewer never renders it, even if armed by hand.
+    const theirs = viewer(detail("c", "html", { author_id: "Jose-Gael-Cruz-Lopez" }));
+    theirs.ui.deleteArm = true;
+    expect(artifactsDialogs(theirs)).toBe("");
+    for (const src of [artifactsSrc, mainSrc]) {
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, ""); // comments may NAME it
+      // A bare confirm( / alert( — not a method like the icon helper `I.alert(`.
+      expect(code).not.toMatch(/window\.confirm|(?<![.\w])confirm\(|(?<![.\w])alert\(/);
+    }
+  });
+
+  it("the toast's Undo restores it, from any screen", () => {
+    const p = props("artifacts");
+    expect(artifactsAct(p.ui, ctx(p), "artRestore", "a", null)).toEqual({ write: { op: "restore", slug: "a" } });
+    const html = render({
+      ...initialState(), view: "app", me: { handle: "alice", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+      toast: "Deleted “Sign-in flow”", toastAction: { label: "Undo", act: "artRestore", arg: "sign-in-flow" }, toastAt: Date.now(), toastMs: 8000,
+    });
+    expect(html).toContain('data-act="artRestore" data-arg="sign-in-flow" class="cnpy-toast-act"');
   });
 });
 
@@ -608,5 +714,64 @@ describe("artifacts — segmented switches", () => {
     expect(src).not.toContain('data-arg="url"');
     expect((src.match(/disabled aria-pressed="false" title="Text kinds only"/g) ?? []).length).toBe(2);
     expect(src).toMatch(/class="cnpy-seg-btn is-on" data-act="artCTab" data-arg="file"/);
+  });
+});
+
+describe("artifacts — surface cards", () => {
+  const OLD_TINT = "color-mix(in srgb,var(--fg) 2.5%";
+  const surfaces = (html: string): number => (html.match(/class="cnpy-surface[ "]/g) ?? []).length;
+
+  it("library cards are clickable surfaces that keep their rise, with no inline card chrome", () => {
+    const html = artifactsView(props("artifacts"));
+    expect((html.match(/class="cnpy-surface cnpy-card cnpy-rise" style="--i:\d+;padding:0;display:flex/g) ?? []).length).toBe(5);
+    expect(html).not.toContain(OLD_TINT);
+    expect(html).not.toContain("border-radius:14px");
+  });
+
+  it("the viewer's content card (strong edge kept) and both detail panels are surfaces; a file card inside the content is not", () => {
+    const html = artifactsView(viewer(detail("x", "html")));
+    expect(html).toContain('class="cnpy-surface" style="margin-top:22px;border-color:var(--border-strong)"');
+    expect(html).toContain('class="cnpy-surface art-b-props" style="padding:16px 18px;min-width:0"');
+    expect(html).toContain('class="cnpy-surface art-b-links" style="padding:16px 18px;min-width:0"');
+    expect(html).not.toContain(OLD_TINT);
+    const file = artifactsView(viewer(detail("f", "file", { content: null })));
+    expect(surfaces(file)).toBe(3);
+    expect(file).not.toContain(OLD_TINT);
+  });
+
+  it("the diff: version cards and the comparison body are surfaces", () => {
+    const pd = (kind: ArtifactKind, a: string | null, b: string | null): ArtProps => {
+      const p = props("artifact", { slug: "x", v: null, diff: { a: 1, b: 2 } });
+      p.ui.details[detailKey("x", null)] = { status: "ok", data: detail("x", kind, {}, 2) };
+      p.ui.diffs[diffKey("x", 1, 2)] = { status: "ok", data: { kind, a: { ...ver(1), content: a, raw_url: "/raw/a/x@v1" }, b: { ...ver(2), content: b, raw_url: "/raw/a/x@v2" } } };
+      return p;
+    };
+    const text = artifactsView(pd("markdown", "a\nb", "a\nB"));
+    expect(surfaces(text)).toBe(3); // two version cards + the line diff
+    expect(text).not.toContain(OLD_TINT);
+    expect(surfaces(artifactsView(pd("image", null, null)))).toBe(4); // + two image panes
+    expect(surfaces(artifactsView(pd("pdf", null, null)))).toBe(3);
+  });
+
+  it("the not-found card, a picked file on the create form, and the dialogs are surfaces", () => {
+    const nf = props("artifact", view("nope"));
+    nf.ui.details[detailKey("nope", null)] = { status: "missing", data: null };
+    expect(artifactsView(nf)).toContain('class="cnpy-surface" style="width:420px;max-width:100%;padding:34px;');
+
+    const c = props("artifactnew");
+    artAcceptFile(c.ui, { name: "mock.png", size: 2048, text: null, blob: new Blob([new Uint8Array(2048)], { type: "image/png" }) });
+    const form = artifactsView(c);
+    expect(form).toContain('class="cnpy-surface" style="display:flex;align-items:center;gap:12px;padding:12px 14px"');
+    expect(form).not.toContain(OLD_TINT);
+
+    const p = viewer(detail("login-mock", "image", { content: null }));
+    artifactsAct(p.ui, ctx(p), "artNvOpen", null, null);
+    artAcceptNvFile(p.ui, "image", { name: "mock-v2.png", size: 2048, text: null, blob: new Blob([new Uint8Array(2048)], { type: "image/png" }) });
+    const dlg = artifactsDialogs(p);
+    // The floating layer keeps its strong edge and deep shadow; the picked file inside it is NOT a second surface.
+    expect(dlg).toMatch(/role="dialog"[^>]*class="cnpy-surface" style="[^"]*border:1px solid var\(--border-strong\);box-shadow:0 20px 60px/);
+    expect(surfaces(dlg)).toBe(1);
+    expect(dlg).not.toContain(OLD_TINT);
+    expect(dlg).not.toContain("background:var(--bg);box-shadow");
   });
 });

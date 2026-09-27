@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build:web": "vite build --config web/vite.config.ts",
-    "dev": "npm run build:web && wrangler dev",
+    "dev": "npm run build:web && (npm run watch:web & wrangler dev)",
+    "watch:web": "vite build --config web/vite.config.ts --watch --emptyOutDir false",
     "deploy": "npm run build:web && wrangler deploy",
     "pretest": "mkdir -p web/dist",
     "test": "vitest run",

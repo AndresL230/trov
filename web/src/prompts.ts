@@ -7,15 +7,16 @@
 import type { PromptSummary, PromptDetail, PromptVersion, PromptStatus, PromptSort } from "@shared/handoffs";
 import { detectVars } from "@shared/handoffs";
 import { TAGS } from "@shared/vocabulary";
-import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
+import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import type { PersonSummary } from "./api";
-import { esc, attr, relTime, statusBadge, WORK_SHELL } from "./ui";
+import { esc, attr, relTime, statusBadge, surface, WORK_SHELL } from "./ui";
 import { personChip, handleTag } from "./people";
 import { collapsedLineDiff } from "./diff";
 import { unifiedDiff } from "./review";
 import { primaryStyle } from "./handoffs";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
 import { segmented } from "./segmented";
+import { dangerTrigger, confirmModal } from "./confirm";
 
 const personOf = (persons: PersonSummary[], h: string): PersonSummary | null =>
   persons.find((p) => p.handle.toLowerCase() === h.toLowerCase()) ?? null;
@@ -87,7 +88,7 @@ function promptFilterMenu(p: PromptLibraryProps): FilterMenuProps {
 
 function promptCard(x: PromptSummary, persons: PersonSummary[]): string {
   const au = personOf(persons, x.author);
-  return `<button data-act="openPrompt" data-arg="${attr(x.slug)}" class="cnpy-card" style="display:flex;flex-direction:column;text-align:left;width:100%;min-width:0;border:1px solid var(--border);border-radius:12px;padding:16px 18px">
+  return `<button data-act="openPrompt" data-arg="${attr(x.slug)}" class="cnpy-surface cnpy-card" style="display:flex;flex-direction:column;text-align:left;width:100%;min-width:0;padding:16px 18px">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;width:100%">
       <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(x.title)}</div>
       ${promptBadge(x.status)}
@@ -126,14 +127,10 @@ export function promptLibraryView(p: PromptLibraryProps): string {
 
   return `<div data-screen-label="Prompt Library" style="${WORK_SHELL}">
   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 16px">
-    <div style="position:relative;display:flex;align-items:stretch;width:420px;max-width:100%;height:34px">
-      <div class="cnpy-search" style="flex:1;min-width:0;height:34px;box-sizing:border-box;padding:0 10px;border-top-right-radius:0;border-bottom-right-radius:0">
-        <svg class="cnpy-nav-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
-        <input data-act="promptQuery" data-field="promptQuery" value="${attr(p.q)}" class="cnpy-search-in" placeholder="Search titles, slugs and bodies" aria-label="Search prompts" autocomplete="off" spellcheck="false">
-      </div>
-      ${filterMenuBackdrop(menu)}
-      ${filterMenu(menu)}
-    </div>
+    ${searchFilterBar({
+      search: { act: "promptQuery", field: "promptQuery", value: p.q, placeholder: "Search titles, slugs and bodies", ariaLabel: "Search prompts" },
+      menu,
+    })}
     <span style="flex:1"></span>
     <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap;margin-left:6px">${loading ? "" : `${shown.length} shown · ${staged} staged`}</span>
   </div>
@@ -154,6 +151,12 @@ export interface PromptDetailProps {
   tagDraft: string;
   /** The prompt box's Raw / Rendered setting. */
   promptView: PromptView;
+  /** The viewer is the prompt's author or an admin — the only people shown "Delete prompt". */
+  canDelete: boolean;
+  /** The delete confirm is open. */
+  deleteArm: boolean;
+  /** The delete request is in flight. */
+  deleteBusy?: boolean;
 }
 
 const PROP_ROW = "display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center;height:30px";
@@ -167,6 +170,18 @@ export function tagOptions(current: string[], known: string[], draftRaw: string)
   const opts = all.filter((t) => !current.includes(t) && (!draft || t.includes(draft))).map((t) => ({ tag: t, label: t }));
   if (draft && !all.includes(draft) && !current.includes(draft)) opts.unshift({ tag: draft, label: `+ ${draft}` });
   return opts;
+}
+
+/** What a delete keeps, for the confirm: "Its one version is kept" / "All 3 versions are kept". */
+const deleteKeeps = (n: number): string => (n === 1 ? "Its one version is kept" : `All ${n} versions are kept`);
+
+/** The prompt's delete confirmation modal (render.ts puts it at the app root while armed). */
+export function promptDeleteModal(x: Pick<PromptDetail, "title" | "version">, versions: number, busy: boolean): string {
+  return confirmModal({
+    id: "prompt-delete-confirm", title: `Delete “${x.title}”?`,
+    body: `It leaves the library, search and agents' get_prompt. ${deleteKeeps(versions || x.version)}, the slug stays reserved, and you can undo.`,
+    confirmAct: "promptDelete", cancelAct: "promptDeleteCancel", busy,
+  });
 }
 
 export function promptDetailView(p: PromptDetailProps): string {
@@ -234,6 +249,7 @@ export function promptDetailView(p: PromptDetailProps): string {
         ${staged ? `<button data-act="promptPublish" data-arg="${staged.version}" class="cnpy-accentbtn" style="${primaryStyle(true)}">Publish v${staged.version}</button>` : ""}
         <button data-act="promptEdit" data-arg="${attr(x.slug)}" class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">Edit</button>
         <button data-act="promptNewVersion" data-arg="${attr(x.slug)}" class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">New version</button>
+        ${p.canDelete ? dangerTrigger({ label: "Delete prompt", act: "promptDeleteArm", armed: p.deleteArm, controls: "prompt-delete-confirm" }) : ""}
       </div>
     </div>
 
@@ -318,7 +334,7 @@ export function promptEditorView(p: PromptEditorProps): string {
   const can = !!ed.title.trim() && !!ed.body.trim() && s.ok && !s.taken;
 
   return shell(`
-  <div style="border:1px solid var(--border);border-radius:13px;padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)">
+  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)")}>
     <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
       <div style="min-width:0;display:flex;flex-direction:column">
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Title</label>
@@ -327,7 +343,7 @@ export function promptEditorView(p: PromptEditorProps): string {
           <label style="display:block;font-size:13px;font-weight:500">Slug</label>
           ${ed.slugTouched ? `<button data-act="edResetSlug" class="cnpy-mutelink" style="font-size:11.5px;font-weight:500;color:var(--fg-40)">Reset to title</button>` : `<span style="font-size:11.5px;color:var(--fg-40)">— from the title; edit to pin it</span>`}
         </div>
-        <div style="display:flex;align-items:center;border:1px solid var(--border-strong);border-radius:9px;background:var(--bg);overflow:hidden">
+        <div style="display:flex;align-items:center;border:1px solid var(--border-strong);border-radius:9px;background:transparent;overflow:hidden">
           <span style="font-family:var(--sans);font-size:13px;color:var(--fg-40);padding-left:12px;white-space:nowrap">prompts/</span>
           <input data-act="edSlug" data-field="edSlug" value="${attr(ed.slug)}" class="cnpy-input" autocomplete="off" spellcheck="false" maxlength="60" style="flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--fg);font-size:13px;padding:10px 12px 10px 2px;font-family:var(--sans)">
           <span style="font-family:var(--label);font-size:11px;padding:0 12px;white-space:nowrap;color:${slugColor}">${slugStatus}</span>

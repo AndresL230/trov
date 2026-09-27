@@ -213,6 +213,24 @@ describe("CI failures", () => {
     expect(f.rate).toBeNull();
     expect(f.trend).toEqual([]);
     expect(f.rows).toHaveLength(1);              // the failures themselves are facts
+    expect(f.total).toBe(1);
+  });
+
+  it("`total` counts every failure in the week while `rows` stays capped at 5", async () => {
+    // 7 failures + 1 timed out this week, 1 failure older than the week, 1 success.
+    await put([
+      ...Array.from({ length: 7 }, (_, i) => ciRun(10 + i, "failure", 30 + i * 60)),
+      ciRun(20, "timed_out", 600), ciRun(21, "failure", 8 * 24 * 60), ciRun(22, "success", 5),
+    ]);
+    const f = ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).ciFailures);
+    expect(f.rows).toHaveLength(5);
+    expect(f.total).toBe(8);
+  });
+
+  it("`total` is 0 in a week with no failures", async () => {
+    await put([ciRun(22, "success", 5)]);
+    const f = ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).ciFailures);
+    expect(f).toMatchObject({ rows: [], total: 0 });
   });
 
   it("is not_connected until a workflow run has ever been captured", async () => {

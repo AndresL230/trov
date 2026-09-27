@@ -108,6 +108,7 @@ describe("GET /me/dashboard (session-gated)", () => {
     });
 
     expect(body.tickets).toEqual([]); // no tickets assigned → the third list is present and empty
+    expect(body.ticketsTotal).toBe(0);
 
     // Revert guard: the old ROADMAP.md/focus dashboard shape is gone for good.
     expect(body).not.toHaveProperty("focus");
@@ -137,5 +138,25 @@ describe("GET /me/dashboard (session-gated)", () => {
     expect(body.tickets.map((t) => t.title)).toEqual(["SSO login loops"]);
     expect(body.tickets[0]).toMatchObject({ status: "submitted", priority: "high", requester: "AndresL230", sprint: null });
     expect(body.todo).toEqual([]); // tickets are a SEPARATE list, never folded into todo
+    expect(body.ticketsTotal).toBe(1);
+  });
+});
+
+describe("GET /docs?fields=meta — the body-less doc list (My Work's Docs you own)", () => {
+  it("returns every doc's metadata and no body; plain /docs is unchanged", async () => {
+    const cookie = await cookieFor("AndresL230");
+    const now = new Date().toISOString();
+    await env.DB.prepare(
+      `INSERT INTO docs (slug, section, title, body, current_version, updated_at, updated_by, space) VALUES (?, 'reference', 'Gate', 'SECRET BODY', 2, ?, 'AndresL230', 'technical')`
+    ).bind("gate", now).run();
+
+    const meta = (await (await app.request("/docs?fields=meta", { headers: { cookie } }, env)).json()) as { docs: Record<string, unknown>[] };
+    expect(meta.docs).toHaveLength(1);
+    expect(meta.docs[0]).toMatchObject({ slug: "gate", title: "Gate", current_version: 2, updated_by: "AndresL230", space: "technical" });
+    expect(meta.docs[0]).not.toHaveProperty("body");
+    expect(JSON.stringify(meta)).not.toContain("SECRET BODY");
+
+    const full = (await (await app.request("/docs", { headers: { cookie } }, env)).json()) as { docs: Record<string, unknown>[] };
+    expect(full.docs[0]).toHaveProperty("body", "SECRET BODY");
   });
 });

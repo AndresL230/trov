@@ -69,14 +69,17 @@ export async function propose_doc_update(
     const title = proposal.title ?? humanizeSlug(proposal.slug);
     await run(
       db,
-      `INSERT INTO docs (slug, section, title, body, current_version, updated_at, updated_by, space)
-       VALUES (?, ?, ?, '', 0, ?, ?, ?)`,
+      `INSERT INTO docs (slug, section, title, body, current_version, updated_at, updated_by, space, owner)
+       VALUES (?, ?, ?, '', 0, ?, ?, ?, ?)`,
       proposal.slug,
       proposal.section,
       title,
       created_at,
       author,
-      proposal.space ?? "technical"
+      proposal.space ?? "technical",
+      // `owner` (0035) = the proposer of the FIRST version, set here once and never
+      // overwritten — later proposals and promotions leave it alone.
+      author
     );
   }
 

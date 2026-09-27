@@ -19,6 +19,50 @@ export function attr(v: string): string {
 export const MONO_LABEL =
   "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)";
 
+/** The surface card's class (canopy.css `.cnpy-surface`): background, hairline border, 10px
+ *  radius and small shadow, defined ONCE there. */
+export const SURFACE = "cnpy-surface";
+
+/** The attributes of a surface card: ` class="cnpy-surface …" style="…"`, to splice into an
+ *  opening tag (`<section${surface("padding:18px 20px", { cls: "cnpy-rise" })}>`). `style` is
+ *  the card's own layout and padding only — never a border, background, radius or shadow,
+ *  which the class owns. `hover` adds the interactive modifier (`.cnpy-card`: the hairline
+ *  darkens on hover) for a card that opens something. */
+export function surface(style = "", opts: { hover?: boolean; cls?: string } = {}): string {
+  const cls = [SURFACE, opts.hover ? "cnpy-card" : "", opts.cls ?? ""].filter(Boolean).join(" ");
+  return ` class="${cls}"${style ? ` style="${style}"` : ""}`;
+}
+
+// ── two columns + a sticky aside (Roadmap › Narrative, Feed) ─────────────────
+// canopy.css `.cnpy-cols-page` / `.cnpy-cols` / `.cnpy-cols-aside`: the main column beside a
+// 360px aside that sticks at the page's own top padding (--cols-pad-top), one column (aside below) under an 880px page.
+
+/** A page in two columns: `main` on the left, `aside` (its boxes) as the sticky right column. */
+export function asideColumns(main: string, aside: string): string {
+  return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
+    <div class="cnpy-cols">
+      <div style="min-width:0">${main}</div>
+      <aside class="cnpy-cols-aside cnpy-stagger">${aside}</aside>
+    </div>
+  </div>`;
+}
+
+/** The quiet trailing arrow of a box's title-row link. */
+export const ASIDE_ARROW = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>`;
+
+/** An aside box's title row: a 14px title and, on the right, a quiet "label →" link. */
+export function asideHead(title: string, link?: { act: string; label: string; arg?: string }): string {
+  const go = link
+    ? `<button data-act="${attr(link.act)}"${link.arg !== undefined ? ` data-arg="${attr(link.arg)}"` : ""} class="mw-more" style="display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--fg-40);white-space:nowrap;padding:0">${esc(link.label)}${ASIDE_ARROW}</button>`
+    : "";
+  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px 8px"><span style="font-size:14px;font-weight:500">${esc(title)}</span>${go}</div>`;
+}
+
+/** An aside box's body when it has no rows (loading, failed, empty) — below a hairline. `html` is trusted markup. */
+export function asideNote(html: string): string {
+  return `<div style="padding:12px 18px 14px;border-top:1px solid var(--border);font-size:13px;color:var(--fg-40)">${html}</div>`;
+}
+
 /** Bordered tinted status chip (STAGED / DRAFT / …); colorVar is a CSS var expression.
  *  `size` overrides the box (height, padding, font size, radius) where the chip sits in a
  *  row of buttons and must match their height. */

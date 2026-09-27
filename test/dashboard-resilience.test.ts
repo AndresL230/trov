@@ -13,6 +13,6 @@ const throwingDb = {
 describe("getMyWork resilience", () => {
   it("returns a safe degraded payload (never throws) when D1 reads fail", async () => {
     const work = await getMyWork(throwingDb, "AndresL230");
-    expect(work).toEqual({ person: null, previousActivity: [], todo: [], tickets: [], degraded: true });
+    expect(work).toEqual({ person: null, previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: true });
   });
 });

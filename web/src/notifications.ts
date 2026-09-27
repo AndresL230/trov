@@ -4,7 +4,7 @@
 // presentational functions over props — no fetch, no state.
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
-import { esc, attr } from "./ui";
+import { esc, attr, surface } from "./ui";
 import { maintSectionHeader, maintEmpty } from "./maintenance";
 import { segmented } from "./segmented";
 
@@ -96,14 +96,14 @@ export function emailNotificationsSection(p: NotifSettingsProps): string {
     const body = p.loading
       ? `Loading email settings&hellip;`
       : `Couldn't load email settings${p.error ? ` &mdash; ${esc(p.error)}` : ""}.`;
-    return `<section class="cnpy-tile cnpy-set-full">${head}<div style="${TILE_ROW};font-size:12.5px;color:var(--fg-40)">${body}</div></section>`;
+    return `<section class="cnpy-tile cnpy-surface cnpy-set-full">${head}<div style="${TILE_ROW};font-size:12.5px;color:var(--fg-40)">${body}</div></section>`;
   }
   const v = p.prefs;
   const rows = v.kinds.map(kindRow).join("");
   const listStyle = `opacity:${v.unsubscribed ? ".45" : "1"};pointer-events:${v.unsubscribed ? "none" : "auto"};transition:opacity .15s ease`;
   // Full-width tile, two columns inside: address beside the all-off switch, then the
   // kinds two-up — half the height of one long list (canopy.css folds it to one column).
-  return `<section class="cnpy-tile cnpy-set-full">
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-full">
     ${head}
     <div class="cnpy-set-pairs">
       ${emailRow(p, v.email)}
@@ -138,7 +138,7 @@ export function unsubscribeView(p: { email: string | null; pending: boolean; err
         <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4.5" width="20" height="3.4" rx="1.7" fill="var(--accent)"></rect><rect x="5" y="10.3" width="14" height="3.4" rx="1.7" fill="currentColor"></rect><rect x="8" y="16.1" width="8" height="3.4" rx="1.7" fill="currentColor" opacity="0.5"></rect></svg>
         <span style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Canopy</span>
       </div>
-      <div style="border:1px solid var(--border);border-radius:14px;padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center">
+      <div${surface("padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center")}>
         <div class="cnpy-seal" style="width:52px;height:52px;border-radius:50%;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--accent)">
           ${p.pending ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="animation:cnpy-spin .8s linear infinite"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"></path></svg>` : `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"></path></svg>`}
         </div>
@@ -218,7 +218,7 @@ export function notificationsMaintenanceSections(p: NotifMaintenanceProps): stri
   const hours = Array.from({ length: 24 }, (_, h) => `<option value="${h}"${s && s.send_hour === h ? " selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("");
   const tzList = s && !TIMEZONES.includes(s.timezone) ? [s.timezone, ...TIMEZONES] : TIMEZONES;
   const tzs = tzList.map((tz) => `<option value="${attr(tz)}"${s && s.timezone === tz ? " selected" : ""}>${esc(tz)}</option>`).join("");
-  const schedule = `<div style="display:grid;grid-template-columns:140px 230px minmax(0,1fr);gap:16px;padding:18px 0;border-bottom:1px solid var(--border)">
+  const schedule = `<div class="cnpy-sched" style="display:grid;grid-template-columns:140px 230px minmax(0,1fr);gap:16px;padding:18px 0;border-bottom:1px solid var(--border)">
     <div>
       <div style="${LABEL};font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--fg-40);margin-bottom:8px">SEND HOUR</div>
       <select data-act="schedHour" style="${FORM_SELECT}"${s ? "" : " disabled"}>${hours}</select>
@@ -245,10 +245,11 @@ export function notificationsMaintenanceSections(p: NotifMaintenanceProps): stri
   </div>
   <div style="font-size:11.5px;color:var(--fg-40);margin-top:8px">Preview renders your own digest with live data (prefs ignored). A test send goes to your address through the real delivery path and shows up in the outbox below; when nothing has changed it falls back to sample data.</div>`;
 
+  // `.cnpy-hscroll`: at phone width the five columns keep their room and scroll sideways.
   const outbox = p.outbox.length
-    ? `<div style="display:grid;grid-template-columns:1.1fr .6fr 1fr .9fr .9fr;gap:12px;padding:10px 0 8px;border-bottom:1px solid var(--border);${LABEL};font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">
+    ? `<div class="cnpy-hscroll"><div><div style="display:grid;grid-template-columns:1.1fr .6fr 1fr .9fr .9fr;gap:12px;padding:10px 0 8px;border-bottom:1px solid var(--border);${LABEL};font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">
         <div>USER</div><div>CADENCE</div><div>WINDOW</div><div>STATUS</div><div style="text-align:right">AT</div>
-      </div>` + p.outbox.map((o) => outboxRow(o, p.outboxExpanded === o.idempotency_key)).join("")
+      </div>` + p.outbox.map((o) => outboxRow(o, p.outboxExpanded === o.idempotency_key)).join("") + `</div></div>`
     : maintEmpty("No sends yet", "Runs appear here after the first scheduled window.");
 
   return `${maintSectionHeader("NOTIFICATIONS · POLICY", "which digests exist org-wide, and their default cadence", `${enabled} of ${p.policy.length} enabled`, false)}

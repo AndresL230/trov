@@ -88,7 +88,8 @@ export const ARTIFACT_TEXT_EXT: Record<ArtifactTextKind, string> = { html: "html
 //   draft ⇄ published      → PATCH, by anyone who can read the page
 //   published → ratified   → POST …/ratify, SESSION ONLY, only the LATEST version
 //   any new version        → status "published", ratified_* cleared
-//   → draft                → ratified_* cleared
+//   → draft                → ratified_* cleared, published_at cleared
+//   → published            → published_at stamped (kept if already set; every new version re-stamps)
 //   publishing a private page (visibility → org) also moves draft → published
 
 export const canRatify = (status: ArtifactStatus, version: number, currentVersion: number): boolean =>
@@ -120,6 +121,14 @@ export interface ArtifactSummaryDTO {
   current_version: number;
   /** created_at of the latest version — the library's sort key. */
   updated_at: string;
+  /**
+   * When the page's CURRENT published content went live (0035), else null. Stamped on
+   * draft → published (PATCH, or private → org) and whenever a later version
+   * auto-publishes; cleared to null on → draft; untouched by ratify (a ratified page
+   * keeps the stamp from when it was published). Pre-0035 pages carry the current
+   * version's created_at.
+   */
+  published_at: string | null;
   size_bytes: number;
   excerpt: string | null;
   /** The ticket ids and sprint ids linked, so the library can filter/search without N+1. */

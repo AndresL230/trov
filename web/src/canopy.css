@@ -16,6 +16,9 @@ input, select { font-family: inherit; }
 .cnpy-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
 .cnpy-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
 .cnpy-scroll::-webkit-scrollbar-track { background: transparent; }
+/* The app's one page scroller always reserves its scrollbar's width, so a screen whose height
+   crosses the viewport mid-render (a tab switch, an entrance animation) never jumps sideways. */
+#cnpy-main { scrollbar-gutter: stable; }
 @keyframes cnpy-spin { to { transform: rotate(360deg); } }
 @keyframes cnpy-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes cnpy-pop { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
@@ -23,10 +26,124 @@ input, select { font-family: inherit; }
 .cnpy-toast { animation: cnpy-pop .25s ease both, cnpy-toast-out .4s ease forwards; }
 @media (prefers-reduced-motion: reduce) { .cnpy-toast { animation: none; } }
 
-[data-cnpy-theme="dark"] { --bg:#1c1a16; --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.40); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --hover:rgba(237,233,226,0.07); --accent:#9aab65; --accent-fg:#131a07; --accent-soft:rgba(154,171,101,0.14); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#cc6262; --purple:#a98bd6; --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Archivo Narrow',system-ui,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
-[data-cnpy-theme="light"] { --bg:#faf8f3; --fg:#1a1814; --fg-70:rgba(26,24,20,0.72); --fg-55:rgba(26,24,20,0.55); --fg-40:rgba(26,24,20,0.40); --border:rgba(42,39,31,0.10); --border-strong:rgba(42,39,31,0.18); --hover:rgba(42,39,31,0.06); --accent:#8a9a5b; --accent-fg:#ffffff; --accent-soft:rgba(138,154,91,0.12); --green:#1b6c42; --amber:#b4562c; --blue:#3e6f8a; --red:#a83a3a; --purple:#6e4fa6; --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Archivo Narrow',system-ui,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
-/* Midnight = the original high-contrast black + neon-green theme (pre-Sapling), kept as an option. */
-[data-cnpy-theme="midnight"] { --bg:#000000; --fg:#ffffff; --fg-70:rgba(255,255,255,0.70); --fg-55:rgba(255,255,255,0.55); --fg-40:rgba(255,255,255,0.40); --border:rgba(255,255,255,0.11); --border-strong:rgba(255,255,255,0.20); --hover:rgba(255,255,255,0.055); --accent:#2BFF88; --accent-fg:#00130a; --accent-soft:rgba(43,255,136,0.13); --green:#2BFF88; --amber:#FFB454; --blue:#74A9FF; --red:#FF6B6B; --purple:#B98CFF; --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Archivo Narrow',system-ui,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+[data-cnpy-theme="dark"] { --bg:#1c1a16; --surface:#221f1b; --shadow:0 1px 2px rgba(0,0,0,0.35); --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.40); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --hover:rgba(237,233,226,0.07); --accent:#9aab65; --accent-fg:#131a07; --accent-soft:rgba(154,171,101,0.14); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#cc6262; --purple:#a98bd6; --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Geist',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+/* Light = the palette of the Claude Design `Canopy Restyled.dc.html` (2026-09-26): a cool neutral
+   ground, white surfaces with a hairline shadow, an indigo accent. Canopy's fonts stay. */
+[data-cnpy-theme="light"] { --bg:#f6f6f7; --surface:#ffffff; --fg:#16161a; --fg-70:#4f4f58; --fg-55:#6e6e78; --fg-40:#8e8e98; --border:rgba(20,20,30,0.08); --border-strong:rgba(20,20,30,0.15); --hover:rgba(20,20,30,0.04); --accent:#5e6ad2; --accent-fg:#ffffff; --accent-soft:rgba(94,106,210,0.12); --green:#2f9e6b; --amber:#c98a1a; --blue:#4c8ed9; --red:#e5484d; --purple:#8e5cc7; --shadow:0 1px 2px rgba(20,20,30,0.05); --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Geist',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+
+/* ── My Work (web/src/mywork.ts) ──────────────────────────────────────────────
+   The Claude Design bento on a 12-column grid (each tile says its own --span).
+   It collapses by CONTAINER width, not viewport, so the rail's collapse state
+   never matters. */
+.mw-main { min-width:0; container:mwmain / inline-size; }
+.mw-bento { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:12px; align-items:stretch; }
+.mw-tile { grid-column:span var(--span, 12); }
+.mw-lib { display:grid; grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr) 1px minmax(0,1fr); }
+.mw-libdiv { width:1px; height:100%; }
+.mw-row { transition:background .12s ease; }
+.mw-row:hover { background:var(--hover); }
+.mw-more { transition:color .12s ease; }
+.mw-more:hover { color:var(--fg) !important; }
+.mw-reject { transition:border-color .12s ease, color .12s ease; }
+.mw-reject:hover { border-color:var(--red) !important; color:var(--red) !important; }
+.mw-handoff { transition:border-color .12s ease; }
+.mw-handoff:hover { border-color:color-mix(in srgb,var(--blue) 45%,transparent) !important; }
+@container mwmain (max-width: 700px) {
+  .mw-tile { grid-column:span 12; }
+  .mw-lib { grid-template-columns:minmax(0,1fr); }
+  .mw-libdiv { width:100%; height:1px; }
+}
+
+/* ── Two columns + a sticky aside (ui.ts `asideColumns`) — Roadmap › Narrative (the
+   narrative beside Now + Recent happenings) and the Feed (entries beside This week +
+   Waiting on review): the main column on the left, a sticky 360px aside on the right,
+   a single column (aside below) under an 880px page — where the main column would drop
+   under ~510px beside a 360px aside. */
+/* --cols-pad-top is BOTH the page's top padding and the aside's sticky top, so the aside
+   pins the instant the page scrolls — zero travel before it sticks. */
+.cnpy-cols-page { container:colspage / inline-size; --cols-pad-top:28px; }
+.cnpy-cols { display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:12px; align-items:start; }
+.cnpy-cols-aside { min-width:0; display:flex; flex-direction:column; gap:12px; position:sticky; top:var(--cols-pad-top); }
+@container colspage (max-width: 880px) {
+  .cnpy-cols { grid-template-columns:minmax(0,1fr); }
+  .cnpy-cols-aside { position:static; }
+}
+/* The Now box's sprint description: the sprint's own markdown (renderMarkdown, so
+   `#123` still links), set at the aside's body size and CLAMPED to three lines with
+   an ellipsis — the Sprint screen shows it whole. Blocks lose their document
+   spacing so the clamp counts text lines, not margins. */
+.cnpy-md.rm-now-about { font-size:13px; line-height:1.55; color:var(--fg-70); margin:10px 0 0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; overflow:hidden; overflow-wrap:anywhere; }
+.cnpy-md.rm-now-about :is(h1,h2,h3,h4,h5,h6) { font:inherit; font-weight:600; color:var(--fg); letter-spacing:0; text-transform:none; margin:0; padding:0; border:0; }
+.cnpy-md.rm-now-about :is(p,ul,ol,pre,blockquote,table,li) { margin:0; }
+.cnpy-md.rm-now-about :is(pre,blockquote) { padding:0; border:0; background:none; }
+.cnpy-md.rm-now-about :is(img,hr) { display:none; }
+
+/* ── Roadmap › Timeline (web/src/timeline.ts): the sprints as a Gantt graph. Every
+   position is a PERCENT of the track, so the graph fits its card rather than
+   scrolling; --tl-lab is the label column the axis, the gridline layer, the lanes
+   and every row share. Each bar sits in a `.tl-barwrap` that is a size container:
+   the name + count go ON the bar when it is ≥ 104px wide, else beside it
+   (`.tl-out`). The popover is the barwrap's next sibling (pure CSS :hover /
+   :focus-within), positioned against the TRACK and clamped inline, so it never
+   runs off the graph. Radii are inline (the corners block already lists them).
+   Narrow: label above bar, every other axis label hidden, the summary stacks. */
+.tl-card { container:tlcard / inline-size; }
+.tl-sum { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1fr); margin-bottom:18px; }
+.tl-sum-cell { min-width:0; padding:13px 16px; }
+.tl-sum-cell + .tl-sum-cell { border-left:1px solid var(--border); }
+.tl-graph { --tl-lab:200px; position:relative; }
+.tl-row { display:grid; grid-template-columns:var(--tl-lab) minmax(0,1fr); align-items:center; min-height:54px; padding:0; }
+.tl-head { min-height:0; padding:0 0 4px; border-bottom:1px solid var(--border); }
+.tl-lab { min-width:0; padding-right:14px; display:flex; align-items:center; gap:10px; }
+.tl-axis { position:relative; height:58px; overflow:hidden; }
+.tl-major { position:absolute; top:2px; box-sizing:border-box; padding-left:6px; font-size:12px; font-weight:600; color:var(--fg-70); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tl-tick { position:absolute; top:22px; padding-left:5px; font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.04em; color:var(--fg-40); white-space:nowrap; }
+.tl-todaytag { position:absolute; bottom:1px; width:44px; box-sizing:border-box; text-align:center; font-family:var(--label); font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; line-height:14px; color:var(--red); background:color-mix(in srgb,var(--red) 12%,var(--surface)); border:1px solid color-mix(in srgb,var(--red) 40%,transparent); }
+.tl-body { position:relative; padding-bottom:6px; }
+.tl-layer { position:absolute; top:0; bottom:0; left:var(--tl-lab); right:0; pointer-events:none; }
+.tl-band { position:absolute; top:0; bottom:0; background:var(--hover); }
+.tl-grid { position:absolute; top:0; bottom:0; width:1px; background:var(--border); opacity:.7; }
+.tl-grid--major { background:var(--border-strong); opacity:1; }
+.tl-today { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--red); }
+.tl-lane { position:relative; padding:14px 0 2px; }
+.tl-layer + .tl-lane { padding-top:10px; }
+.tl-lanelab { position:relative; display:inline-flex; align-items:center; gap:7px; font-family:var(--label); font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-70); }
+.tl-track { position:relative; height:32px; }
+.tl-barwrap { container:tlbar / inline-size; position:absolute; top:0; bottom:0; min-width:10px; }
+.tl-bar { position:absolute; inset:0; width:100%; padding:0; overflow:hidden; cursor:pointer; text-align:left; transition:box-shadow .12s ease; }
+.tl-barwrap:hover .tl-bar, .tl-bar:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb,var(--tl-c) 25%,transparent); }
+.tl-fill { position:absolute; top:0; bottom:0; left:0; transform-origin:0 50%; }
+[data-enter] .tl-fill, [data-enter] .tl-sumfill { animation:cnpy-grow-x .7s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 40ms + 200ms + var(--enter-t, 0ms)); }
+.tl-sumfill { transform-origin:0 50%; }
+.tl-in { position:absolute; inset:0; display:none; align-items:center; gap:8px; padding:0 10px; }
+.tl-name { min-width:0; flex:1; font-size:12.5px; font-weight:600; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tl-cnt { flex:none; font-family:var(--label); font-size:11px; font-weight:600; color:var(--fg-70); }
+.tl-out { position:absolute; top:50%; transform:translateY(-50%); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--fg-55); pointer-events:none; }
+.tl-out b { font-weight:600; color:var(--fg); }
+.tl-out span { font-family:var(--label); font-size:11px; }
+.tl-out--r { left:calc(100% + 8px); }
+.tl-out--l { right:calc(100% + 8px); }
+@container tlbar (min-width: 104px) { .tl-in { display:flex; } .tl-out { display:none; } }
+.tl-pop { position:absolute; z-index:30; width:min(280px,100%); box-sizing:border-box; padding:12px 14px; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--lift-shadow); text-align:left; pointer-events:none; visibility:hidden; opacity:0; transform:translateY(3px); transition:opacity .12s ease, transform .12s ease, visibility 0s linear .12s; }
+.tl-barwrap:hover + .tl-pop, .tl-barwrap:focus-within + .tl-pop { visibility:visible; opacity:1; transform:none; transition:opacity .12s ease, transform .12s ease; }
+.tl-unsched { cursor:pointer; transition:background .12s ease, border-color .12s ease; }
+.tl-unsched:hover { background:var(--hover) !important; border-color:var(--border-strong) !important; }
+@media (prefers-reduced-motion: reduce) { .tl-bar, .tl-pop, .tl-unsched { transition:none !important; } .tl-pop { transform:none; } }
+@container tlcard (max-width: 640px) {
+  .tl-sum { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .tl-sum-cell:first-child { grid-column:1 / -1; border-bottom:1px solid var(--border); }
+  .tl-sum-cell + .tl-sum-cell { border-left:none; }
+  .tl-sum-cell:last-child { border-left:1px solid var(--border); }
+}
+@container tlcard (max-width: 540px) {
+  .tl-graph { --tl-lab:0px; }
+  .tl-row { grid-template-columns:minmax(0,1fr); row-gap:6px; padding:8px 0 4px; }
+  .tl-head { padding:0 0 4px; }
+  .tl-head > .tl-lab { display:none; }
+  .tl-lab { padding-right:0; }
+  .tl-alt { display:none; }
+  .tl-out { max-width:140px; }
+}
 
 /* ── sidebar ─────────────────────────────────────────────────────────────────
    Ported from `Canopy Repo Dashboard.dc.html`. The <aside> outlives rerenders
@@ -66,9 +183,15 @@ input, select { font-family: inherit; }
 .cnpy-search-in::placeholder { color:var(--fg-40); }
 .cnpy-kbd { font-family:var(--label); font-size:10.5px; border:1px solid var(--border); border-radius:4px; padding:0 5px; color:var(--fg-40); flex:none; white-space:nowrap; }
 .cnpy-search:focus-within .cnpy-kbd { opacity:0; }
+/* No keyboard shortcut to hint at on a phone (the drawer's search box). */
+[data-phone="1"] .cnpy-kbd { display:none; }
 [data-collapsed="1"] .cnpy-search { padding-left:12.5px; padding-right:0; cursor:pointer; }
 
 /* Section header → the collapsed rail's hairline divider, in one element. */
+/* Archivo Narrow is the SIDEBAR's face only (2026-09-26): everywhere else --label is the body
+   font (Geist), set in the theme blocks above. Inside the rail it is restored, so the badges,
+   the ⌘K key and the section labels keep the narrow face. */
+.cnpy-aside { --label:'Archivo Narrow',system-ui,sans-serif; }
 /* Sidebar section labels (WORKSPACE, MONITOR…): Archivo Narrow, chosen over the mono treatment 2026-09-25. */
 .cnpy-sec { position:relative; flex:none; height:28px; padding:7px 11px 0; overflow:hidden; font-family:'Archivo Narrow',system-ui,sans-serif; font-size:11.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); white-space:nowrap; transition:height var(--side-t) var(--side-e), padding var(--side-t) var(--side-e); }
 .cnpy-sec.is-first { height:31px; padding-top:10px; }
@@ -151,14 +274,124 @@ input, select { font-family: inherit; }
 .cnpy-tip { position:fixed; left:72px; top:0; z-index:60; padding:6px 10px; border-radius:7px; border:1px solid var(--border-strong); background:var(--bg); color:var(--fg); font-size:12.5px; font-weight:500; white-space:nowrap; box-shadow:0 8px 24px rgba(0,0,0,.28); pointer-events:none; opacity:0; transform:translate(-4px,-50%); transition:opacity .12s ease, transform .16s var(--side-e); }
 .cnpy-tip[data-on="1"] { opacity:1; transform:translate(0,-50%); }
 
+/* ── phone: the rail becomes a drawer ─────────────────────────────────────────
+   At phone width (main.ts `state.phone`, ≤ 640px) even the 64px rail starves the screen,
+   so the <aside> leaves the layout: it is the FULL rail (render.ts `railCollapsed` is false
+   on a phone), fixed off-canvas, and the header's menu button slides it in over a scrim.
+   Same element tree, same morph — only attributes on the root flip (`data-phone`,
+   `data-drawer`), so the slide is a transition like every other rail change. Closed, it is
+   `visibility:hidden` (after the slide), which also takes its rows out of the tab order. */
+.cnpy-menubtn, .cnpy-scrim { display:none; }
+.cnpy-menubtn { border-radius:8px; }
+[data-phone="1"] .cnpy-menubtn { display:grid; place-items:center; flex:none; width:40px; height:40px; margin-left:-8px; color:var(--fg-70); }
+[data-phone="1"] .cnpy-aside { position:fixed; top:0; bottom:0; left:0; z-index:90; width:min(292px, calc(100vw - 48px)); padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); transform:translateX(-100%); visibility:hidden; transition:transform .26s var(--side-e), visibility 0s linear .26s; }
+[data-phone="1"][data-drawer="1"] .cnpy-aside { transform:none; visibility:visible; box-shadow:0 0 48px rgba(0,0,0,.32); transition:transform .26s var(--side-e); }
+[data-phone="1"] .cnpy-scrim { display:block; position:fixed; inset:0; z-index:85; background:rgba(0,0,0,.45); opacity:0; pointer-events:none; transition:opacity .26s ease; -webkit-tap-highlight-color:transparent; }
+[data-phone="1"][data-drawer="1"] .cnpy-scrim { opacity:1; pointer-events:auto; }
+/* Finger-sized rows in the drawer (≥ 40px). */
+[data-phone="1"] .cnpy-nav-i { padding-top:11px; padding-bottom:11px; font-size:14.5px; }
+[data-phone="1"] .cnpy-chev { height:42px; width:36px; margin-right:2px; }
+[data-phone="1"] .cnpy-sub-i { padding-top:10px; padding-bottom:10px; font-size:13.5px; }
+[data-phone="1"] .cnpy-chip { padding-top:10px; padding-bottom:10px; }
+@media (prefers-reduced-motion: reduce) { .cnpy-scrim { transition:none !important; } }
+
+/* The header at phone width: tighter gutters (plus the notch), and the screen's controls
+   wrap onto a second row, right-aligned, when they no longer fit beside the title. */
+[data-phone="1"] .cnpy-hdr { flex-wrap:wrap; row-gap:8px; column-gap:10px; min-height:56px !important; padding:8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)) !important; }
+[data-phone="1"] .cnpy-hdr-l { flex:1 1 auto; gap:10px !important; }
+/* A crumb (a ticket's title, a prompt's) claims no width of its own, so a long one never
+   pushes the controls to a second row: it takes what is left and ellipsizes. */
+[data-phone="1"] .cnpy-hdr-l > span { contain:inline-size; flex:1 1 0; min-width:0; overflow:hidden; }
+[data-phone="1"] .cnpy-hdr-r { margin-left:auto; max-width:100%; flex-wrap:wrap; justify-content:flex-end; row-gap:8px; }
+/* Finger-sized header controls (≥ 40px): icon buttons, labelled buttons, the switches and
+   the Feed's Filter (their sizes are inline styles, hence !important). */
+[data-phone="1"] .cnpy-hdr-r > button { min-height:40px; }
+[data-phone="1"] .cnpy-hdr-r > .cnpy-iconbtn, [data-phone="1"] .cnpy-hdr-r > .repo-pollbtn { width:40px !important; height:40px !important; }
+[data-phone="1"] .cnpy-hdr-r > div:has(> [data-hover-menu]) { height:40px !important; }
+[data-phone="1"] .cnpy-hdr-r > .cnpy-seg > .cnpy-seg-btn { min-height:32px; padding-left:10px; padding-right:10px; }
+/* …and a little tighter, so a switch + its button + the theme toggle share ONE second row
+   on a 360px screen (the Board / Table glyphs go; their words stay). */
+[data-phone="1"] .cnpy-hdr-r { gap:6px !important; }
+[data-phone="1"] .cnpy-hdr-r > .cnpy-seg > .cnpy-seg-btn > svg { display:none; }
+[data-phone="1"] .cnpy-hdr-r > .cnpy-accentbtn { padding-left:12px !important; padding-right:12px !important; }
+/* The app shell fills the VISIBLE viewport (100vh on a phone runs under its toolbars). */
+@supports (height:100dvh) { .cnpy-shell { height:100dvh !important; } }
+/* Edge to edge (index.html `viewport-fit=cover`): the shell and the landing keep clear of a
+   notch and the status bar; the toast clears the home indicator. All 0 off a notched phone. */
+.cnpy-shell { padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.cnpy-site { padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right); }
+.cnpy-toast { margin-bottom:env(safe-area-inset-bottom) !important; }
+/* No zoom-on-focus on iOS: a text field under 16px makes Safari zoom the page. */
+@media (max-width:640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select { font-size:16px !important; }
+}
+
 .cnpy-achip { padding:5px 11px; border-radius:7px; font-size:12.5px; font-weight:500; border:1px solid var(--border); color:var(--fg-55); background:transparent; transition:border-color .12s ease; white-space:nowrap; }
 .cnpy-achip:hover { border-color:var(--border-strong); }
 [data-author="all"] .cnpy-achip.a-all, [data-author="jose-a"] .cnpy-achip.a-jose-a, [data-author="meilin"] .cnpy-achip.a-meilin, [data-author="dev-raj"] .cnpy-achip.a-dev-raj, [data-author="sanaok"] .cnpy-achip.a-sanaok { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
-.cnpy-titem { display:block; width:100%; text-align:left; padding:13px 15px; border-radius:11px; border:1px solid var(--border); background:transparent; margin-bottom:8px; position:relative; transition:all .12s ease; cursor:pointer; }
-.cnpy-titem:hover { border-color:var(--border-strong); }
+/* A Review queue card: a surface (class="cnpy-titem cnpy-surface cnpy-card") — this only lays it out. */
+.cnpy-titem { display:block; width:100%; text-align:left; padding:13px 15px; margin-bottom:8px; position:relative; transition:all .12s ease; cursor:pointer; }
 .cnpy-selbar { position:absolute; inset:0; border-radius:inherit; border:1px solid var(--border-strong); background:var(--hover); box-shadow:inset 2px 0 0 var(--accent); pointer-events:none; }
 /* Review list cards: selected state keeps the border + fill, no left accent bar. */
 .cnpy-titem .cnpy-selbar { box-shadow:none; }
+/* Review under a tablet's width: the list and the detail take turns (review.ts
+   `data-pane`), and the detail's header lets its buttons drop under the title. */
+.cnpy-rv-back { display:none; }
+@media (max-width:900px) {
+  .cnpy-rv-list { width:auto !important; flex:1 1 auto !important; border-right:none !important; }
+  .cnpy-rv[data-pane="detail"] > .cnpy-rv-list, .cnpy-rv[data-pane="list"] > .cnpy-rv-detail { display:none !important; }
+  .cnpy-rv-back { display:inline-flex; align-items:center; gap:4px; min-height:40px; margin:10px 0 0 10px; padding:0 8px; font-size:13px; font-weight:500; color:var(--fg-55); }
+  .cnpy-rv-body { padding:8px 20px 80px !important; }
+  .cnpy-rv-head { flex-wrap:wrap; row-gap:12px !important; }
+  .cnpy-rv-head > :last-child { flex-wrap:wrap; }
+}
+@media (max-width:640px) { .cnpy-rv-body { padding-left:16px !important; padding-right:16px !important; } }
+/* Docs under ~760px: the page list and the reader take turns (render.ts `.cnpy-docs`
+   `data-tree`), swapped by the Pages button in the bar above them; the reader's page
+   keeps a phone's gutter instead of the desktop's 52px. */
+.cnpy-docs-bar { display:none; }
+@media (max-width:760px) {
+  .cnpy-docs { flex-direction:column; }
+  .cnpy-docs-bar { display:flex; align-items:center; flex:none; padding:10px 16px; border-bottom:1px solid var(--border); }
+  .cnpy-docs-bar > button { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px; border:1px solid var(--border-strong); border-radius:8px; font-size:13px; font-weight:500; color:var(--fg-70); }
+  .cnpy-docs > .cnpy-docs-tree { width:auto !important; flex:1 1 auto !important; min-height:0; border-right:none !important; padding:14px 10px !important; }
+  .cnpy-docs[data-tree="0"] > .cnpy-docs-tree, .cnpy-docs[data-tree="1"] > #cnpy-reader { display:none !important; }
+  .cnpy-docpage { padding:22px 16px 96px !important; }
+  .cnpy-docs .cnpy-tree, .cnpy-docs .cnpy-outline-item { min-height:40px; }
+}
+/* A detail page's head — title on the left, its actions on the right (a handoff, a prompt):
+   at phone width the actions drop under the title instead of squeezing it to a column. */
+@media (max-width:640px) {
+  .cnpy-dhead { flex-wrap:wrap; row-gap:14px !important; }
+  .cnpy-dhead > :first-child { flex:1 1 100% !important; }
+  .cnpy-dhead > :last-child { flex-wrap:wrap; }
+}
+/* A wide ledger (the notification outbox) at phone width: it keeps its columns and scrolls
+   sideways inside its own box. On a wider screen the wrapper is a plain block. */
+@media (max-width:640px) {
+  .cnpy-hscroll { overflow-x:auto; overscroll-behavior-x:contain; }
+  .cnpy-hscroll > * { min-width:560px; }
+  /* Maintenance › Notifications › Schedule: hour + timezone, the from address under them. */
+  .cnpy-sched { grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) !important; }
+  .cnpy-sched > :nth-child(3) { grid-column:1 / -1; }
+}
+/* A modal dialog at phone width is a SHEET: full width, along the bottom edge, rounded only
+   on top, clear of the home indicator (the transparent bottom border is the safe area —
+   the surface's own background fills it). Every modal — connect, the artifact dialogs, an
+   expanded prompt, sign-in — sits in a full-screen wrapper whose child is the dialog. */
+@media (max-width:640px) {
+  [data-cnpy-theme] :has(> [role="dialog"][aria-modal="true"]),
+  [data-cnpy-theme] :has(> [role="alertdialog"][aria-modal="true"]) { grid-template-columns:minmax(0,1fr) !important; place-items:end stretch !important; align-items:flex-end !important; padding:env(safe-area-inset-top) 0 0 !important; }
+  [data-cnpy-theme] [role="alertdialog"][aria-modal="true"],
+  [data-cnpy-theme] [role="dialog"][aria-modal="true"] { width:100% !important; max-width:none !important; max-height:calc(100dvh - 20px - env(safe-area-inset-top)) !important; border-left:none !important; border-right:none !important; border-bottom:env(safe-area-inset-bottom, 0px) solid transparent !important; border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
+}
+/* The signed-out cards (not a member, not invited, onboarding) at phone width: a phone's
+   gutter, and the nested onboarding wrapper adds none of its own. */
+@media (max-width:640px) {
+  .cnpy-authwrap { padding:max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)) !important; }
+  .cnpy-authwrap .cnpy-authwrap { padding:0 !important; min-height:0 !important; }
+  .cnpy-authcard { padding:26px 20px !important; }
+}
 /* ── docs nav tree (static section labels · pages · per-page outline) ───────── */
 .cnpy-treesec { font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); padding:0 10px 7px 8px; }
 .cnpy-tree { display:flex; align-items:center; gap:5px; width:100%; text-align:left; padding:6px 10px 6px 6px; border-radius:7px; font-size:13px; font-weight:400; color:var(--fg-55); background:transparent; transition:background .12s ease, color .12s ease; }
@@ -196,11 +429,158 @@ input, select { font-family: inherit; }
 .cnpy-guide-toc-subs { display:flex; flex-direction:column; gap:1px; margin:1px 0 4px; }
 .cnpy-guide-anchor { scroll-margin-top:24px; }
 @media (max-width: 1180px) { .cnpy-guide-toc { display:none; } }
+
+/* ── What's new (web/src/releases.ts). The INDEX is a grid of release cards (.cnpy-surface).
+   A release PAGE is one wide document: its header on the page background, then ONE
+   full-width surface card (.cnpy-reldoc-card) holding the body — two columns for the notes,
+   the patch groups side by side — split by hairlines, no box inside it; newer / older links
+   under it. No radius is declared here (the corners layer would need a rule for it). Long
+   `code` runs wrap anywhere, so a phone never scrolls sideways; under 600px every page keeps
+   a 16px gutter and stacks to one column. */
+.cnpy-relidx { max-width:1180px; margin:0 auto; padding:40px 32px 120px; }
+.cnpy-relidx-head { max-width:720px; margin-bottom:28px; }
+.cnpy-relidx-title { margin:0; font-size:26px; font-weight:650; letter-spacing:-0.02em; line-height:1.2; color:var(--fg); }
+.cnpy-relidx-intro { margin:10px 0 0; font-size:14.5px; line-height:1.6; color:var(--fg-55); text-wrap:pretty; }
+.cnpy-relgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap:16px; }
+.cnpy-relcard { display:flex; flex-direction:column; min-width:0; padding:18px 20px 16px; color:inherit; text-decoration:none; transition:border-color .15s ease; }
+.cnpy-relcard:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.cnpy-relcard.is-next { border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.cnpy-relcard-title { margin:10px 0 0; font-size:16px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; color:var(--fg); text-wrap:balance; }
+.cnpy-relcard-headline { margin:8px 0 0; flex:1; font-size:13.5px; line-height:1.6; color:var(--fg-55); text-wrap:pretty; }
+.cnpy-relcard-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:12.5px; color:var(--fg-40); }
+.cnpy-relcard-go { display:inline-flex; color:var(--fg-40); transition:transform .15s ease, color .15s ease; }
+.cnpy-relcard:hover .cnpy-relcard-go { color:var(--accent); transform:translateX(2px); }
+
+.cnpy-reldoc { max-width:1180px; margin:0 auto; padding:28px 32px 120px; display:flex; flex-direction:column; gap:28px; container:reldoc / inline-size; }
+/* The page header: the title block, and — when the page has a note (the Heads-up on the
+   release notes, the Upgrade notes on the patch notes) — that note on the right, top-aligned
+   with the title; under 900px of page the note drops under the lede. The Release notes /
+   Patch notes switch is in the app's top bar. */
+.cnpy-reldoc-head { display:grid; grid-template-columns:minmax(0, 1fr); gap:14px 48px; align-items:start; }
+.cnpy-reldoc-head.has-heads { grid-template-columns:minmax(0, 1fr) minmax(280px, 330px); }
+.cnpy-reldoc-head-main { display:flex; flex-direction:column; align-items:flex-start; gap:10px; min-width:0; }
+/* The back link and, right-aligned on the same row, the Release notes / Patch notes switch —
+   the row spans the header, so the switch's right edge is the note's. It wraps under the back
+   link when both do not fit. */
+.cnpy-reldoc-toprow { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; min-width:0; }
+.cnpy-reldoc-toprow .cnpy-rel-back { margin-bottom:0; }
+@container reldoc (max-width: 899px) {
+  .cnpy-reldoc-head.has-heads { grid-template-columns:minmax(0, 1fr); }
+}
+.cnpy-rel-back { display:inline-flex; align-items:center; gap:6px; margin-bottom:10px; font-size:13px; font-weight:500; color:var(--fg-55); text-decoration:none; }
+.cnpy-rel-back:hover { color:var(--fg); }
+.cnpy-reldoc-title { margin:0; max-width:900px; font-size:32px; font-weight:650; letter-spacing:-0.025em; line-height:1.15; color:var(--fg); text-wrap:balance; }
+.cnpy-reldoc-lede { margin:0; max-width:780px; font-size:17px; line-height:1.6; color:var(--fg-70); text-wrap:pretty; }
+.cnpy-reldoc-facts { margin-top:2px; font-size:13px; color:var(--fg-40); }
+.cnpy-reldoc-card { min-width:0; overflow:hidden; }
+.cnpy-reldoc-main { padding:30px 36px 34px; min-width:0; }
+.cnpy-reldoc-hl { font-size:15.5px; gap:14px; max-width:820px; }
+.cnpy-reldoc-hl li { break-inside:avoid; }
+/* The release notes' Heads-up, in the page header: compact and calm — a faint neutral fill (its
+   6px radius is inline), a small icon + label, the lines in --fg-70 at 13px. Its margin-top
+   (the meta row above the title) top-aligns it with the title. */
+.cnpy-relheads { display:flex; flex-direction:column; gap:7px; padding:12px 14px 13px; background:var(--hover); min-width:0; margin-top:30px; }
+.cnpy-relheads-l { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600; color:var(--fg-55); white-space:nowrap; }
+.cnpy-relheads-one { margin:0; font-size:13px; line-height:1.55; color:var(--fg-70); overflow-wrap:anywhere; text-wrap:pretty; }
+.cnpy-relheads-list { margin:0; padding-left:16px; display:flex; flex-direction:column; gap:5px; font-size:13px; line-height:1.55; color:var(--fg-70); }
+.cnpy-relheads-list li { overflow-wrap:anywhere; text-wrap:pretty; }
+.cnpy-relheads-list li::marker { color:var(--fg-40); }
+@container reldoc (max-width: 899px) { .cnpy-relheads { margin-top:4px; } }
+/* Release notes' "At a glance": a full-width strip across the card's top — version and date as
+   facts, the change counts as large figures (each a button to that patch group), then the
+   link to every patch line. Stacks under 760px of card (container query below). */
+.cnpy-relglance { display:grid; grid-template-columns:auto auto minmax(0, 1fr) auto; align-items:center; gap:14px 40px; padding:14px 32px 15px; border-bottom:1px solid var(--border); }
+.cnpy-relglance-fact { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.cnpy-relglance-lab { font-size:12px; color:var(--fg-40); }
+.cnpy-relglance-val { font-size:16px; font-weight:500; color:var(--fg); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.cnpy-relglance-stats { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; min-width:0; }
+.cnpy-relstat { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0; padding:6px 14px; text-align:left; background:transparent; transition:background .12s ease; }
+.cnpy-relstat:hover { background:var(--hover); }
+.cnpy-relstat:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.cnpy-relstat-n { font-size:26px; font-weight:600; letter-spacing:-0.02em; line-height:1.1; color:var(--fg); font-variant-numeric:tabular-nums; }
+.cnpy-relstat-l { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--fg-55); white-space:nowrap; }
+.cnpy-relglance-all { display:inline-flex; align-items:center; gap:6px; font-size:14px; white-space:nowrap; }
+/* Beside the highlights, the Heads-up fills its column top to bottom. */
+/* Patch notes: the groups STACKED, full width, one row per line at a readable measure; a
+   hairline between groups only; the PRs as one quiet line of chips. */
+.cnpy-relpatch-group { padding:26px 32px 28px; min-width:0; }
+.cnpy-relpatch-group + .cnpy-relpatch-group { border-top:1px solid var(--border); }
+.cnpy-relpatch-h { display:flex; align-items:center; gap:8px; margin:0 0 14px; font-size:14px; font-weight:600; color:var(--fg); }
+.cnpy-relpatch-n { font-size:12.5px; font-weight:500; color:var(--fg-40); font-variant-numeric:tabular-nums; }
+.cnpy-relpatch-list { margin:0; padding-left:20px; max-width:900px; font-size:14.5px; line-height:1.6; color:var(--fg-70); }
+.cnpy-relpatch-list li { padding-left:4px; overflow-wrap:anywhere; text-wrap:pretty; break-inside:avoid; }
+.cnpy-relpatch-list li + li { margin-top:10px; }
+.cnpy-relpatch-list li::marker { color:var(--fg-40); }
+.cnpy-relpatch-prs { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; padding:16px 32px 18px; border-top:1px solid var(--border); }
+.cnpy-relpatch-prs-l { font-size:12.5px; color:var(--fg-40); }
+.cnpy-relpatch-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.cnpy-relpr-chip { font-size:12.5px; line-height:1; padding:4px 7px; color:var(--fg-55); background:var(--hover); text-decoration:none; font-variant-numeric:tabular-nums; transition:color .12s ease; }
+.cnpy-relpr-chip:hover { color:var(--accent); }
+.cnpy-reldoc-pad { padding:28px 32px; }
+.cnpy-rel-empty { margin:0; font-size:14px; color:var(--fg-55); }
+
+.cnpy-rel-meta { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:12.5px; color:var(--fg-40); }
+.cnpy-rel-ver { font-family:var(--label); font-size:12.5px; font-weight:600; color:var(--fg-70); font-variant-numeric:tabular-nums; }
+.cnpy-rel-tag { font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); background:var(--accent-soft); padding:2px 7px; }
+.cnpy-rel-h3 { display:flex; align-items:center; gap:8px; margin:0 0 16px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
+.cnpy-rel-n { margin-left:auto; font-weight:500; color:var(--fg-40); letter-spacing:0; font-variant-numeric:tabular-nums; }
+.cnpy-rel-list { margin:0; padding-left:20px; display:flex; flex-direction:column; gap:10px; font-size:15px; line-height:1.6; color:var(--fg-70); }
+.cnpy-rel-list li { padding-left:4px; overflow-wrap:anywhere; text-wrap:pretty; }
+.cnpy-rel-list li::marker { color:var(--fg-40); }
+.cnpy-rel-log { font-size:13.5px; gap:10px; }
+/* Inline code, light: the code face at .9em on a faint fill, no border; a short token stays on
+   one line (.is-short), a long path may wrap. */
+.cnpy-reldoc code, .cnpy-relidx code { font-family:var(--code); font-size:.9em; color:var(--fg); background:var(--hover); padding:1px 3px; overflow-wrap:anywhere; }
+.cnpy-reldoc code.is-short, .cnpy-relidx code.is-short { white-space:nowrap; }
+.cnpy-rel-pr { color:var(--accent); text-decoration:none; font-variant-numeric:tabular-nums; }
+.cnpy-rel-pr:hover { text-decoration:underline; }
+.cnpy-relpager { display:grid; grid-template-columns:1fr 1fr; gap:24px; padding-top:4px; }
+.cnpy-relpager-i { display:flex; flex-direction:column; gap:6px; min-width:0; color:inherit; text-decoration:none; }
+.cnpy-relpager-i.is-older { text-align:right; align-items:flex-end; }
+.cnpy-relpager-i.is-none { visibility:hidden; }
+.cnpy-relpager-dir { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-40); }
+.cnpy-relpager-name { font-size:15px; font-weight:500; line-height:1.4; color:var(--fg-70); overflow-wrap:anywhere; transition:color .12s ease; }
+.cnpy-relpager-i:hover .cnpy-relpager-name { color:var(--accent); }
+/* The body follows the CARD's width (a container query — the rail collapses, so the
+   viewport lies about the room): the notes' two columns from 760px; a LONG patch group
+   (.is-long) flows into two balanced columns only on a very wide card (1040px+). */
+.cnpy-reldoc-card { container-type:inline-size; }
+@container (min-width: 1040px) {
+  .cnpy-reldoc-hl.is-long { display:block; max-width:none; columns:2; column-gap:56px; }
+  .cnpy-reldoc-hl.is-long li { padding-bottom:14px; }
+  .cnpy-relpatch-list.is-long { max-width:none; columns:2; column-gap:56px; }
+  .cnpy-relpatch-list.is-long li + li { margin-top:0; }
+  .cnpy-relpatch-list.is-long li { padding-bottom:10px; }
+}
+@container (max-width: 959px) {
+  .cnpy-relglance { grid-template-columns:auto auto minmax(0, 1fr); }
+  .cnpy-relglance-stats { grid-column:1 / -1; grid-row:2; }
+  .cnpy-relglance-all { justify-self:end; }
+}
+@container (max-width: 759px) {
+  .cnpy-relglance { grid-template-columns:1fr 1fr; gap:16px 20px; }
+  .cnpy-relglance-stats { grid-column:1 / -1; grid-row:auto; grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .cnpy-relglance-all { grid-column:1 / -1; justify-self:start; }
+}
+@media (max-width: 600px) {
+  .cnpy-relidx { padding:24px 16px 80px; }
+  .cnpy-reldoc { padding:20px 16px 80px; gap:22px; }
+  .cnpy-reldoc-title { font-size:25px; }
+  .cnpy-reldoc-lede { font-size:15.5px; }
+  .cnpy-reldoc-main, .cnpy-relpatch-group { padding:20px 16px 22px; }
+  .cnpy-relglance { padding:14px 16px; }
+  .cnpy-relpatch-prs { padding:14px 16px 16px; }
+  .cnpy-relpatch-list { font-size:14px; padding-left:18px; }
+  .cnpy-rel-list { font-size:14.5px; padding-left:18px; }
+  .cnpy-relpager { grid-template-columns:1fr; gap:16px; }
+  .cnpy-relpager-i.is-older { text-align:left; align-items:flex-start; }
+  .cnpy-relpager-i.is-none { display:none; }
+}
 /* Guide figures open in the lightbox (web/src/lightbox.ts). The thumbnail lifts on
    hover like Sapling's .cp-shot. */
 .cnpy-guide-shot { display:block; width:100%; padding:0; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--bg); cursor:zoom-in; transition:border-color .22s, box-shadow .22s, transform .22s; }
 .cnpy-guide-shot img { display:block; width:100%; height:auto; }
-.cnpy-guide-shot:hover { border-color:var(--border-strong); box-shadow:var(--shadow); transform:translateY(-2px); }
+.cnpy-guide-shot:hover { border-color:var(--border-strong); box-shadow:var(--lift-shadow); transform:translateY(-2px); }
 .cnpy-guide-shot:active { transform:translateY(-1px); transition-duration:90ms; }
 .cnpy-guide-shot:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 
@@ -236,6 +616,15 @@ input, select { font-family: inherit; }
 
 /* ── hover / focus utility layer (reproduces dc-runtime style-* pseudo-props) ─ */
 .cnpy-select { appearance:none; -webkit-appearance:none; padding:5px 28px 5px 11px; border-radius:7px; font-size:12.5px; font-weight:500; border:1px solid var(--border); color:var(--fg-70); cursor:pointer; background:var(--bg) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23888' stroke-width='2'><path d='M2 4l4 4 4-4'/></svg>") no-repeat right 9px center; }
+/* The SURFACE card — the app's ONE card look (Claude Design `Canopy Restyled.dc.html`): white in
+   the light theme, a lifted tone in dark (both --surface), a hairline border and a small shadow
+   (--shadow — not the landing's --lift-shadow). Markup opts in with class="cnpy-surface", usually
+   through `surface()` in web/src/ui.ts; its inline style then carries only the card's own layout
+   and padding, never a border / background / radius / shadow (an inline one would override this).
+   A card inside a surface is NOT another surface — it becomes a row or a divider. */
+.cnpy-surface { background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); }
+/* The interactive modifier: a card that opens something darkens its hairline on hover. Also used
+   on its own by a few bordered rows that are not surfaces. */
 .cnpy-card { transition:border-color .14s ease; }
 .cnpy-card:hover { border-color:var(--border-strong); }
 .cnpy-mw-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:1fr; gap:14px; align-items:stretch; }
@@ -270,14 +659,24 @@ input, select { font-family: inherit; }
 }
 .cnpy-set-wrap { container:cnpy-set / inline-size; }
 .cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-flow:dense; gap:14px; align-items:stretch; }
-.cnpy-tile { min-width:0; border:1px solid var(--border); border-radius:16px; padding:20px 22px; background:color-mix(in srgb,var(--fg) 2.5%,transparent); }
+/* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this only adds its padding. */
+.cnpy-tile { min-width:0; padding:20px 22px; }
 .cnpy-set-full { grid-column:1 / -1; }
 /* Three columns: MCP access holds the right column for two rows and Appearance sits
    under Profile + Account only, so it never pushes into MCP access. */
 .cnpy-set-mcp { grid-row:span 2; }
 .cnpy-set-appear { grid-column:span 2; }
 .cnpy-set-pairs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:40px; }
-.cnpy-set-themes { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+/* Appearance: Light / Dark / System are ONE row of three equal cards at every width, edge to
+   edge of the tile's content box. The row is its own container, so a card's form follows the
+   room it actually has (not the viewport): icon beside label, or — once a card is too narrow
+   for that (row < 350px, ~110px a card) — icon stacked over label, still three across. */
+.cnpy-set-themes { container:cnpy-themes / inline-size; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.cnpy-themecard { display:flex; align-items:center; justify-content:center; gap:9px; min-width:0; padding:13px 8px; }
+.cnpy-themecard > svg { flex:none; display:block; }
+@container cnpy-themes (max-width:349px) {
+  .cnpy-themecard { flex-direction:column; gap:6px; padding:12px 6px; }
+}
 .cnpy-set .cnpy-sw.compact { padding:6px 0; }
 /* The token list takes whatever height its row leaves and scrolls inside it, so a long
    list never stretches the bento; stacked in one column it caps itself instead. */
@@ -292,15 +691,12 @@ input, select { font-family: inherit; }
   .cnpy-set { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .cnpy-set-mcp { grid-row:auto; }
   .cnpy-set-appear { grid-column:auto; }
-  .cnpy-set-appear .cnpy-set-themes { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .cnpy-set-pairs { grid-template-columns:minmax(0,1fr); }
 }
 @container cnpy-set (max-width:759px) {
   .cnpy-set { grid-template-columns:minmax(0,1fr); padding:24px 16px 64px; }
-  .cnpy-set-appear .cnpy-set-themes { grid-template-columns:repeat(4,minmax(0,1fr)); }
   .cnpy-set-tokens { flex:none; height:auto; max-height:236px; }
 }
-@container cnpy-set (max-width:419px) { .cnpy-set-appear .cnpy-set-themes { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 /* Tickets: the queue's table rows, and the two-column form/detail layouts that
    collapse to one column on a narrow viewport. */
 .cnpy-trow { transition:background .12s ease; cursor:pointer; }
@@ -309,12 +705,35 @@ input, select { font-family: inherit; }
 .cnpy-tcard:active { transform:translateY(1px); }
 @media (prefers-reduced-motion: reduce) { .cnpy-tcard:active { transform:none; } }
 .cnpy-trow:hover { background:var(--hover); }
+/* The queue's Table under ~640px of its own width: the column head goes and each row
+   reflows into a small card — the title (two lines) and its age, then status · category ·
+   priority, the assignee at the far right. "Opened by" is on the ticket. The row's grid is
+   an inline style, hence !important. */
+.cnpy-ttable { container:ttable / inline-size; }
+@container ttable (max-width: 640px) {
+  .cnpy-thead { display:none !important; }
+  .cnpy-trow { display:flex !important; flex-wrap:wrap; align-items:center; gap:8px 8px !important; padding:12px 14px !important; }
+  .cnpy-trow > :nth-child(1) { order:0; flex:1 1 calc(100% - 64px); align-items:flex-start !important; }
+  .cnpy-trow > :nth-child(1) > span:first-child { white-space:normal !important; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
+  .cnpy-trow > :nth-child(7) { order:1; flex:none; margin-left:auto; }
+  .cnpy-trow > :nth-child(2) { display:none !important; }
+  .cnpy-trow > :nth-child(5) { order:2; }
+  .cnpy-trow > :nth-child(3) { order:3; }
+  .cnpy-trow > :nth-child(4) { order:4; }
+  .cnpy-trow > :nth-child(6) { order:5; flex:0 1 auto; margin-left:auto; max-width:50%; }
+  .cnpy-tgrp { flex-wrap:wrap; row-gap:4px !important; padding-left:14px !important; padding-right:14px !important; }
+  .cnpy-tgrp > div { display:none; }
+  .cnpy-tgrp > :last-child { margin-left:auto; }
+}
 /* Design call #6 — "needs attention" (unassigned + Submitted). The faint accent
    fill lives HERE rather than inline so that :hover (class + pseudo-class, higher
    specificity) still wins and the row keeps its hover background. It is now the
    WHOLE marker: the 2px inset left rule that tickets.ts used to add inline was
    dropped at the owner's request — no box-shadow, no left border here either. */
 .cnpy-attn { background:color-mix(in srgb,var(--accent) 4%,transparent); }
+/* On a surface card both fills mix INTO the surface, so the card stays opaque over its column. */
+.cnpy-surface.cnpy-attn { background:color-mix(in srgb,var(--accent) 4%,var(--surface)); }
+.cnpy-surface.cnpy-tcard:hover { background:linear-gradient(var(--hover),var(--hover)) var(--surface) !important; }
 /* The ticket board's drag (main.ts). The columns stay as they are — the lifted
    card and the slot the other cards slide around already say a drag is on. */
 .cnpy-tcard[data-tdrag] { user-select:none; -webkit-user-select:none; }
@@ -327,10 +746,19 @@ input, select { font-family: inherit; }
    rule (in the corners block): setting its size from script re-serialises the
    style attribute as "border-radius: 10px", which the inline-radius selectors no
    longer match. */
-.cnpy-tghost { position:fixed; z-index:1000; margin:0 !important; pointer-events:none; box-sizing:border-box; background:var(--bg); border-color:var(--border-strong) !important; box-shadow:0 18px 40px rgba(0,0,0,.35); cursor:grabbing; }
+.cnpy-tghost { position:fixed; z-index:1000; margin:0 !important; pointer-events:none; box-sizing:border-box; background:var(--surface); border-color:var(--border-strong) !important; box-shadow:0 18px 40px rgba(0,0,0,.35); cursor:grabbing; }
 .cnpy-grabbing, .cnpy-grabbing * { cursor:grabbing !important; }
+/* The board under a tablet's width: every column keeps a readable width and the board
+   scrolls sideways INSIDE itself, bleeding to the screen's edges (the shell's gutter moves
+   into its padding), one column per snap. The grid is an inline style, hence !important. */
+@media (max-width:900px) {
+  .cnpy-board { --bg-gut:clamp(20px,2.6vw,46px); grid-template-columns:none !important; grid-auto-flow:column; grid-auto-columns:minmax(250px,1fr); overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x mandatory; scroll-padding-inline:var(--bg-gut); margin-left:calc(-1 * var(--bg-gut)); margin-right:calc(-1 * var(--bg-gut)); padding:0 var(--bg-gut) 6px; scrollbar-width:none; }
+  .cnpy-board::-webkit-scrollbar { display:none; }
+  .cnpy-board > .cnpy-tcol { scroll-snap-align:start; }
+}
+@media (max-width:640px) { .cnpy-board { grid-auto-columns:min(290px, calc(100vw - 64px)); } }
 @media (max-width:860px) {
-  .cnpy-nt-grid, .cnpy-td-grid, .cnpy-sprint-grid { grid-template-columns:1fr !important; }
+  .cnpy-nt-grid, .cnpy-td-grid, .cnpy-sprint-grid { grid-template-columns:minmax(0,1fr) !important; }
   .cnpy-nt-grid > div + div, .cnpy-td-grid > div + div, .cnpy-sprint-grid > div + div { border-left:none !important; padding-left:0 !important; }
 }
 .cnpy-accentbtn { transition:filter .12s ease, transform .12s ease; }
@@ -362,6 +790,36 @@ input, select { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) { .cnpy-lkmenu { animation:none; } }
 @media (hover:none) { .cnpy-lkmore { opacity:1; pointer-events:auto; } .cnpy-lkarr { opacity:0; } }
 .cnpy-rejectbtn:hover { border-color:var(--red); color:var(--red); background:color-mix(in srgb, var(--red) 10%, transparent); }
+/* The destructive trigger + its confirmation modal (web/src/confirm.ts): the trigger is muted
+   until hovered, focused or open, then red. The modal is a root-level overlay: a dimmed
+   backdrop (a click cancels) and a centered surface that fades/scales in and, with
+   `data-closing`, out. At phone width it is a bottom SHEET (the modal/sheet rule above,
+   which also names role="alertdialog") that slides up. No motion under reduced motion. */
+.cnpy-dangerbtn { transition:background .15s ease, color .15s ease, border-color .15s ease; }
+.cnpy-dangerbtn:hover, .cnpy-dangerbtn:focus-visible, .cnpy-dangerbtn[aria-expanded="true"] { border-color:color-mix(in srgb, var(--red) 55%, transparent) !important; color:var(--red) !important; background:color-mix(in srgb, var(--red) 8%, transparent); }
+.cnpy-confirm-go { transition:filter .12s ease; }
+.cnpy-confirm-go:hover { filter:brightness(1.1); }
+.cnpy-confirm-go:focus-visible { outline:2px solid color-mix(in srgb, var(--red) 55%, transparent); outline-offset:2px; }
+.cnpy-confirm-go:disabled, .cnpy-cmodal button:disabled { opacity:.6; cursor:default; }
+.cnpy-cmodal { position:fixed; inset:0; z-index:80; }
+.cnpy-cmodal-back { position:absolute; inset:0; background:rgba(0,0,0,.5); animation:cnpy-cm-fade .16s ease both; }
+.cnpy-cmodal-wrap { position:absolute; inset:0; display:grid; place-items:center; padding:16px; pointer-events:none; }
+.cnpy-cmodal-box { pointer-events:auto; box-sizing:border-box; width:min(420px, 100%); padding:20px 22px 18px; border-color:var(--border-strong) !important; box-shadow:0 20px 60px rgba(0,0,0,.45); outline:none; animation:cnpy-cm-in .18s cubic-bezier(.2,.8,.2,1) both; }
+.cnpy-cmodal[data-closing] .cnpy-cmodal-back { animation:cnpy-cm-fade-out .14s ease both; }
+.cnpy-cmodal[data-closing] .cnpy-cmodal-box { animation:cnpy-cm-out .14s ease both; }
+@keyframes cnpy-cm-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes cnpy-cm-fade-out { from { opacity:1; } to { opacity:0; } }
+@keyframes cnpy-cm-in { from { opacity:0; transform:scale(.96); } to { opacity:1; transform:none; } }
+@keyframes cnpy-cm-out { from { opacity:1; transform:none; } to { opacity:0; transform:scale(.97); } }
+@keyframes cnpy-cm-up { from { transform:translateY(100%); } to { transform:none; } }
+@keyframes cnpy-cm-down { from { transform:none; } to { transform:translateY(100%); } }
+@media (max-width:640px) {
+  .cnpy-cmodal-box { padding:20px max(18px, env(safe-area-inset-right)) 16px max(18px, env(safe-area-inset-left)); animation:cnpy-cm-up .22s cubic-bezier(.2,.8,.2,1) both; }
+  .cnpy-cmodal[data-closing] .cnpy-cmodal-box { animation:cnpy-cm-down .14s ease both; }
+  .cnpy-cmodal-btns > button { flex:1; padding-top:11px !important; padding-bottom:11px !important; }
+}
+@media (prefers-reduced-motion: reduce) { .cnpy-cmodal-back, .cnpy-cmodal-box, .cnpy-cmodal[data-closing] .cnpy-cmodal-back, .cnpy-cmodal[data-closing] .cnpy-cmodal-box { animation:none !important; } }
+.cnpy-toast-act:hover { text-decoration:underline; text-underline-offset:3px; }
 .cnpy-rejectbtn:active { transform:translateY(1px); }
 .cnpy-issuechip { transition:border-color .12s ease, color .12s ease; }
 .cnpy-issuechip:hover { border-color:var(--border-strong); color:var(--fg); }
@@ -387,7 +845,7 @@ input, select { font-family: inherit; }
 /* ── ticket & sprint surfaces: menu rows, pick chips, segments, grip ─────────
    Inline styles cannot express `:hover`, so every dropdown row / chip we added
    for the ticket screens gets its hover HERE. `--hover` and `--border-strong`
-   are defined by dark, light AND midnight, so one rule covers all three themes.
+   are defined by dark AND light, so one rule covers both themes.
 
    These surfaces paint their selected state INLINE (the app's template-string
    idiom), so a plain class rule loses the cascade to the element's own style
@@ -442,7 +900,7 @@ input, select { font-family: inherit; }
 
 /* ── rendered markdown (docs reader) ───────────────────────────────────────── */
 /* A typeset technical document: comfortable measure, label-face structural spine.
-   Every color derives from the theme vars so it holds in dark / light / midnight. */
+   Every color derives from the theme vars so it holds in dark and light. */
 .cnpy-md { font-size:15px; line-height:1.75; color:color-mix(in srgb, var(--fg) 82%, transparent); }
 .cnpy-md > :first-child { margin-top:0 !important; }
 .cnpy-md > :last-child { margin-bottom:0; }
@@ -499,7 +957,7 @@ input, select { font-family: inherit; }
 /* An uploaded doc image (/img/<sha256>): a zoom button around the picture that opens
    the lightbox. The button carries the frame; the image inside fills it. */
 .cnpy-md-img { display:block; max-width:100%; margin:6px 0; padding:0; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg); cursor:zoom-in; transition:border-color .2s, box-shadow .2s; }
-.cnpy-md-img:hover { border-color:var(--border-strong); box-shadow:var(--shadow); }
+.cnpy-md-img:hover { border-color:var(--border-strong); box-shadow:var(--lift-shadow); }
 .cnpy-md-img:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .cnpy-md-img img, .cnpy-md .cnpy-md-img img { display:block; max-width:100%; height:auto; border:0; border-radius:0; }
 
@@ -513,9 +971,9 @@ input, select { font-family: inherit; }
 .cnpy-md tbody tr:last-child td { border-bottom:none; }
 .cnpy-md th:first-child, .cnpy-md td:first-child { padding-left:2px; }
 
-/* ── person colors (0023): stored by name; one set per theme, midnight reuses dark ── */
+/* ── person colors (0023): stored by name; one set per theme ── */
 [data-cnpy-theme="light"] { --p-moss:#6f8a3a; --p-fern:#2f7d57; --p-sky:#3e6f8a; --p-slate:#5b6b8c; --p-plum:#7a4f8f; --p-rose:#a84a68; --p-rust:#b4562c; --p-ochre:#a8791e; --p-clay:#8c5a3c; --p-stone:#6b665e; }
-[data-cnpy-theme="dark"], [data-cnpy-theme="midnight"] { --p-moss:#9aab65; --p-fern:#5ab88a; --p-sky:#6aa8c4; --p-slate:#8d9bc0; --p-plum:#b48ac8; --p-rose:#d47a97; --p-rust:#d98a52; --p-ochre:#d4a84a; --p-clay:#c2895f; --p-stone:#9a958d; }
+[data-cnpy-theme="dark"] { --p-moss:#9aab65; --p-fern:#5ab88a; --p-sky:#6aa8c4; --p-slate:#8d9bc0; --p-plum:#b48ac8; --p-rose:#d47a97; --p-rust:#d98a52; --p-ochre:#d4a84a; --p-clay:#c2895f; --p-stone:#9a958d; }
 .cnpy-sw { display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 6px 8px; border-radius:10px; border:1px solid transparent; transition:border-color .12s ease, background .12s ease; }
 .cnpy-sw:hover { background:var(--hover); }
 .cnpy-sw i { width:28px; height:28px; border-radius:50%; background:var(--c); display:block; box-shadow:0 0 0 2px var(--bg), 0 0 0 3px transparent; }
@@ -590,6 +1048,8 @@ input, select { font-family: inherit; }
 [data-enter] .repo-dot { animation:cnpy-dot .3s cubic-bezier(.34,1.56,.64,1) both; animation-delay:calc(var(--i, 0) * 30ms + 140ms + var(--enter-t, 0ms)); }
 .repo-tip { position:absolute; bottom:24px; left:50%; z-index:30; display:block; background:var(--bg); border:1px solid var(--border-strong); border-radius:9px; padding:9px 12px; box-shadow:0 8px 30px rgba(0,0,0,.35); white-space:nowrap; pointer-events:none; opacity:0; visibility:hidden; transform:translate(-50%,6px) scale(.98); transition:opacity .15s ease, transform .15s ease, visibility 0s .15s; }
 .repo-dotwrap:hover .repo-tip, .repo-dot:focus-visible + .repo-tip { opacity:1; visibility:visible; transform:translate(-50%,0); transition-delay:0s; }
+/* Touch has no hover: a tapped (focused) deploy dot shows its tip. */
+@media (hover:none) { .repo-dot:focus + .repo-tip { opacity:1; visibility:visible; transform:translate(-50%,0); transition-delay:0s; } }
 
 /* the panel's two-up splits stack on a laptop-and-below width */
 @container (max-width: 760px) { .repo-split { grid-template-columns:minmax(0,1fr) !important; } .repo-split-r { border-left:none !important; border-top:1px solid var(--border); } .repo-tiles { grid-template-columns:repeat(2,minmax(0,1fr)) !important; } }
@@ -610,6 +1070,20 @@ input, select { font-family: inherit; }
 /* phone: the bar drops under its label and figure, so the label keeps room to be read */
 @container (max-width: 520px) { .repo-rank { grid-template-columns:minmax(0,1fr) auto; gap:5px 12px; padding:7px 0; } .repo-rank > .repo-rank-bar { grid-column:1 / -1; grid-row:2; } }
 .repo-panel { container-type:inline-size; }
+/* phone: a branch row and a health row fold to two lines instead of squeezing the name
+   (or the URL) to nothing — name + STALE / env + state + latency, then the rest under it. */
+@container (max-width: 520px) {
+  .repo-brow { grid-template-columns:minmax(0,1fr) auto !important; row-gap:2px !important; }
+  .repo-brow > :nth-child(1) { grid-area:1 / 1; }
+  .repo-brow > :nth-child(4) { grid-area:1 / 2; }
+  .repo-brow > :nth-child(2) { grid-area:2 / 1; }
+  .repo-brow > :nth-child(3) { grid-area:2 / 2; text-align:right; }
+  .repo-hrow { grid-template-columns:minmax(0,1fr) auto auto !important; row-gap:4px !important; }
+  .repo-hrow > :nth-child(1) { grid-area:1 / 1; }
+  .repo-hrow > :nth-child(3) { grid-area:1 / 2; }
+  .repo-hrow > :nth-child(4) { grid-area:1 / 3; }
+  .repo-hrow > :nth-child(2) { grid-area:2 / 1 / 3 / 4; min-width:0; }
+}
 /* "Poll now" in the Repo top bar (admins only). The bar's room depends on the
    rail as much as on the viewport, so this keys off the BAR's own width — and
    only a bar that HAS the button becomes a container, so nobody else's changes.
@@ -640,9 +1114,8 @@ input, select { font-family: inherit; }
    are the tokens the site needs that the app themes don't carry, plus the
    dc-runtime `style-hover` pseudo-props as real rules. */
 .cnpy-site { font-size:16px; line-height:normal; text-rendering:optimizeLegibility; }
-[data-cnpy-theme="light"] { --shadow:0 32px 64px -24px rgba(42,39,31,0.18), 0 4px 12px -4px rgba(42,39,31,0.08); --term:#1c1a16; --term-fg:#ede9e2; }
-[data-cnpy-theme="dark"] { --shadow:0 32px 64px -24px rgba(0,0,0,0.55), 0 4px 12px -4px rgba(0,0,0,0.3); --term:#131210; --term-fg:#ede9e2; }
-[data-cnpy-theme="midnight"] { --shadow:0 32px 64px -24px rgba(0,0,0,0.7), 0 4px 12px -4px rgba(0,0,0,0.4); --term:#0e0e0e; --term-fg:#ede9e2; }
+[data-cnpy-theme="light"] { --lift-shadow:0 32px 64px -24px rgba(42,39,31,0.18), 0 4px 12px -4px rgba(42,39,31,0.08); --term:#1c1a16; --term-fg:#ede9e2; }
+[data-cnpy-theme="dark"] { --lift-shadow:0 32px 64px -24px rgba(0,0,0,0.55), 0 4px 12px -4px rgba(0,0,0,0.3); --term:#131210; --term-fg:#ede9e2; }
 /* :where keeps this at element specificity so the button-like links below win. */
 :where(.cnpy-site) a { color:var(--accent); text-decoration:none; }
 :where(.cnpy-site) a:hover { text-decoration:underline; text-underline-offset:3px; }
@@ -658,6 +1131,8 @@ input, select { font-family: inherit; }
 .site-btn-outline { border:1px solid var(--border-strong); color:var(--fg); }
 .site-btn-outline:hover { background:var(--hover); color:var(--fg); }
 @media (max-width:900px) { .site-hide-sm { display:none !important; } }
+/* phone: the nav's logo, icons and Sign in / Back to the app fit a 360px screen. */
+@media (max-width:480px) { .site-navin { gap:12px !important; padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)) !important; } .site-navin > div:last-child { gap:8px !important; } }
 
 /* ── landing motion ───────────────────────────────────────────────────────────
    The choreography for landing.ts. An element with `data-rv` renders hidden;
@@ -687,7 +1162,7 @@ input, select { font-family: inherit; }
 
 /* hover: cards and mockups rise a little (transform, so it composes with the reveal's translate) */
 .site-card, .site-lift { transition:transform .3s var(--ease-out), box-shadow .3s ease; }
-.site-card:hover { transform:translateY(-3px); box-shadow:var(--shadow); }
+.site-card:hover { transform:translateY(-3px); box-shadow:var(--lift-shadow); }
 .site-lift:hover { transform:translateY(-4px); }
 
 /* text that types itself in: one clip step per character (even steps — exact only in the monospace terminal lines) */
@@ -747,12 +1222,29 @@ input, select { font-family: inherit; }
    later rerender. Switching category rerenders nothing: the highlight (.fm-ind) slides on
    a transform transition and the new panel's options play in from the direction moved
    (.is-switching + data-dir). Close: a short exit on the live popover (.is-closing). */
+/* Search + Filter as ONE control (filter-menu.ts searchFilterBar): one bordered field,
+   the query on the left, the Filter button on the right past a hairline. No overflow
+   clip — the Filter popover hangs below it. The input shrinks; the button never wraps. */
+.cnpy-sfbar { position:relative; display:flex; align-items:stretch; flex:1 1 260px; max-width:480px; min-width:0; height:34px; box-sizing:border-box; border:1px solid var(--border); border-radius:8px; background:var(--surface); box-shadow:var(--shadow); transition:border-color .12s ease; }
+.cnpy-sfbar:hover { border-color:var(--border-strong); }
+.cnpy-sfbar:focus-within { border-color:var(--border-strong); outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+.cnpy-sfbar-q { flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:9px; padding:0 11px; color:var(--fg-40); cursor:text; transition:color .12s ease; }
+.cnpy-sfbar-q:focus-within { color:var(--fg-70); }
+.cnpy-sfbar-div { flex:none; width:1px; margin:7px 0; background:var(--border); }
+.cnpy-sfbar > [data-hover-menu] { flex:none; }
+.cnpy-sfbar .fm-btn { border-radius:0 7px 7px 0; }
+.cnpy-sfbar .fm-btn:hover, .cnpy-sfbar .fm-btn:focus-visible { background:var(--hover); color:var(--fg) !important; outline:none; }
+/* The popover spans the whole control, border included (the bar is its positioned parent). */
+.cnpy-sfbar .fm-pop:not(.is-right) { left:-1px !important; right:-1px !important; }
 .fm-pop { transform-origin:top left; }
 /* The option list never shows a scrollbar: the popover is sized to fit it, and a list
    past MAX_ROWS (filter-menu.ts) still scrolls, just without the bar. */
 .fm-scroll { scrollbar-width:none; }
 .fm-scroll::-webkit-scrollbar { display:none; }
 .fm-pop.is-right { transform-origin:top right; }
+/* At phone width a right-anchored menu (the Feed's, in the header) has no room to hang off
+   its button, so it opens as a sheet along the bottom of the screen, clear of the notch. */
+[data-phone="1"] .fm-pop.is-right { position:fixed !important; top:auto !important; left:8px !important; right:8px !important; bottom:calc(8px + env(safe-area-inset-bottom)) !important; width:auto !important; max-width:none !important; transform-origin:bottom center; }
 .fm-pop.is-opening { animation:fm-in .26s cubic-bezier(.2,.9,.25,1) both; }
 .fm-pop.is-closing { animation:fm-out .13s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
 .fm-pop.is-opening .fm-cat { animation:fm-rise .24s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(70ms + var(--i) * 30ms); }
@@ -791,6 +1283,67 @@ input, select { font-family: inherit; }
 .art-frame { transition:height .18s ease; }
 @media (prefers-reduced-motion: reduce) { .art-frame { transition:none; } }
 
+/* A native date field (the New sprint panel's Start / Due): the browser draws its own
+   text, calendar icon and picker, so tell it the app's theme — without this a dark
+   theme gets the light picker and a near-black icon on a dark field. */
+[data-cnpy-theme="dark"] .cnpy-date { color-scheme:dark; }
+[data-cnpy-theme="light"] .cnpy-date { color-scheme:light; }
+.cnpy-date::-webkit-calendar-picker-indicator { cursor:pointer; opacity:.6; }
+.cnpy-date::-webkit-calendar-picker-indicator:hover { opacity:1; }
+
+/* ── Quick search (web/src/quicksearch.ts) ─────────────────────────────────────
+   The sidebar's "search everything" dropdown. Its node is mounted on <body>, OUTSIDE
+   the app root (so rerender() never touches it), carrying the app's data-cnpy-theme like
+   the lightbox, so the tokens and the corners layer below apply. `anchor`: hangs under
+   the sidebar box (placed in script). `palette`: centered over a dim backdrop with its
+   own input — the collapsed rail's and the narrow viewport's presentation. */
+@keyframes cnpy-qs-in { from { opacity:0; transform:translateY(-6px) scale(.985); } to { opacity:1; transform:none; } }
+@keyframes cnpy-qs-out { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(-4px) scale(.985); } }
+@keyframes cnpy-qs-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes cnpy-qs-fade-out { from { opacity:1; } to { opacity:0; } }
+.cnpy-qs-layer { position:fixed; inset:0; z-index:150; display:none; pointer-events:none; font-family:'Geist',system-ui,-apple-system,sans-serif; font-size:14px; line-height:1.45; color:var(--fg); -webkit-font-smoothing:antialiased; }
+.cnpy-qs-layer[data-open] { display:block; }
+.cnpy-qs-layer[data-mode="palette"] { pointer-events:auto; background:rgba(12,11,9,.42); animation:cnpy-qs-fade .14s ease both; }
+.cnpy-qs { position:absolute; pointer-events:auto; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--border-strong); border-radius:12px; box-shadow:var(--lift-shadow); overflow:hidden; transform-origin:top center; animation:cnpy-qs-in .2s cubic-bezier(.2,.7,.2,1) both; transition:height .22s cubic-bezier(.2,.7,.2,1); }
+/* Closing: MUST match CLOSE_MS in quicksearch.ts. */
+.cnpy-qs-layer[data-closing] { pointer-events:none; }
+.cnpy-qs-layer[data-closing] .cnpy-qs { pointer-events:none; animation:cnpy-qs-out .16s ease both; }
+.cnpy-qs-layer[data-closing][data-mode="palette"] { animation:cnpy-qs-fade-out .16s ease both; }
+.cnpy-qs-layer[data-mode="anchor"][data-empty] .cnpy-qs { display:none; }
+.cnpy-qs-layer[data-mode="palette"] .cnpy-qs { left:0; right:0; top:12vh; margin:0 auto; width:min(480px, calc(100vw - 32px)); max-height:min(520px, 76vh); }
+.cnpy-qs-inbar { display:none; flex:none; align-items:center; gap:9px; height:44px; padding:0 12px; border-bottom:1px solid var(--border); color:var(--fg-40); }
+.cnpy-qs-layer[data-mode="palette"] .cnpy-qs-inbar { display:flex; }
+.cnpy-qs-in { flex:1; min-width:0; padding:0; border:none; outline:none; background:none; color:var(--fg); font-size:15px; font-family:inherit; }
+.cnpy-qs-in::placeholder { color:var(--fg-40); }
+.cnpy-qs-list { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; padding:4px; }
+.cnpy-qs-list:empty { display:none; }
+.cnpy-qs-g + .cnpy-qs-g { margin-top:1px; }
+.cnpy-qs-gh { display:flex; align-items:center; gap:6px; padding:6px 8px 2px; font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--fg-40); }
+.cnpy-qs-gall { margin-top:4px; padding-top:4px; border-top:1px solid var(--border); }
+.cnpy-qs-row { display:flex; align-items:center; gap:8px; min-width:0; padding:3px 8px; border-radius:7px; cursor:pointer; }
+.cnpy-qs-row.is-sel { background:var(--hover); }
+.cnpy-qs-ic { flex:none; display:grid; place-items:center; width:18px; color:var(--fg-40); }
+/* One line per row: the title, then its context muted beside it; both truncate. */
+.cnpy-qs-main { flex:1; min-width:0; display:flex; align-items:baseline; gap:7px; }
+.cnpy-qs-t { flex:0 1 auto; max-width:70%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:12.5px; line-height:20px; font-weight:500; letter-spacing:-0.005em; color:var(--fg); }
+.cnpy-qs-c { flex:1 1 0; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:11.5px; color:var(--fg-55); }
+.cnpy-qs-all .cnpy-qs-t { max-width:none; font-weight:400; color:var(--fg-70); }
+.cnpy-qs-m { flex:none; font-family:var(--label); font-size:11px; color:var(--fg-40); white-space:nowrap; }
+.cnpy-qs-hl { padding:0 1px; border-radius:3px; background:var(--accent-soft); color:inherit; font-weight:600; }
+.cnpy-qs-note { padding:7px 8px; font-size:12.5px; color:var(--fg-55); }
+.cnpy-qs-note.is-err { color:var(--red); }
+.cnpy-qs-list { position:relative; }
+.cnpy-qs-note.is-float { position:absolute; top:6px; right:8px; padding:3px 8px; font-size:11.5px; background:var(--surface); }
+.cnpy-qs-foot { flex:none; display:flex; flex-wrap:wrap; gap:4px 10px; padding:5px 10px; border-top:1px solid var(--border); font-size:11.5px; color:var(--fg-40); }
+.cnpy-qs-kbd { margin-right:3px; padding:0 4px; border:1px solid var(--border); border-radius:4px; font-family:var(--label); font-size:10.5px; color:var(--fg-55); }
+@media (max-width: 560px) {
+  .cnpy-qs-foot { display:none; }
+  .cnpy-qs-layer[data-mode="palette"] .cnpy-qs { top:16px; max-height:calc(100dvh - 32px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-qs-layer, .cnpy-qs { animation:none !important; transition:none !important; }
+}
+
 /* ── corners: tightened ──────────────────────────────────────────────────────
    Canopy's corners are TIGHTER than the design file's: every radius is shrunk by one
    factor, --corner-scale, so a card stays rounder than a chip and the hierarchy of the
@@ -819,7 +1372,11 @@ input, select { font-family: inherit; }
 [data-cnpy-theme] .cnpy-seg--xs > .cnpy-seg-ind { border-radius:calc(6px * var(--corner-scale)) !important; }
 /* canopy.css classes, by the radius each declares above. */
 [data-cnpy-theme] .cnpy-kbd,
+[data-cnpy-theme] .cnpy-qs-kbd,
 [data-cnpy-theme] .cnpy-treechev { border-radius:calc(4px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-qs-hl { border-radius:calc(3px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-qs-row { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-qs { border-radius:calc(12px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-md code,
 [data-cnpy-theme] .cnpy-md-inline code { border-radius:calc(5px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-chev,
@@ -839,25 +1396,29 @@ input, select { font-family: inherit; }
 [data-cnpy-theme] .cnpy-select,
 [data-cnpy-theme] .site-navlink { border-radius:calc(7px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-search,
+[data-cnpy-theme] .cnpy-sfbar,
 [data-cnpy-theme] .cnpy-navrow,
 [data-cnpy-theme] .cnpy-nav-i,
+[data-cnpy-theme] .cnpy-menubtn,
+[data-cnpy-theme] .cnpy-docs-bar > button,
 [data-cnpy-theme] .site-iconbtn { border-radius:calc(8px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-chip,
 [data-cnpy-theme] .repo-tip,
 [data-cnpy-theme] .site-btn { border-radius:calc(9px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-surface,
 [data-cnpy-theme] .cnpy-md img,
 [data-cnpy-theme] .cnpy-md-img,
 [data-cnpy-theme] .cnpy-sw { border-radius:calc(10px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-tslot,
 [data-cnpy-theme] .cnpy-tghost { border-radius:calc(10px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .cnpy-titem,
 [data-cnpy-theme] .cnpy-code,
 [data-cnpy-theme] .cnpy-md pre { border-radius:calc(11px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .cnpy-tile { border-radius:calc(16px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-badge,
 [data-cnpy-theme] .cnpy-dot,
 [data-cnpy-theme] .cnpy-sw i,
 [data-cnpy-theme] .repo-gdot { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
+/* The Filter button inside the search + Filter bar: rounded only where the bar is. */
+[data-cnpy-theme] .cnpy-sfbar .fm-btn { border-radius:0 calc(7px * var(--corner-scale)) calc(7px * var(--corner-scale)) 0 !important; }
 [data-cnpy-theme] .cnpy-md blockquote { border-radius:0 calc(8px * var(--corner-scale)) calc(8px * var(--corner-scale)) 0 !important; }
 [data-cnpy-theme] .cnpy-md .cnpy-code pre { border-radius:0 !important; }
 [data-cnpy-theme] .cnpy-selbar { border-radius:inherit !important; }

@@ -19,7 +19,7 @@ import {
   type PollOutcome, type RepoRefreshGithub, type RepoRefreshResult, type UsagePollSource,
 } from "@shared/repo";
 import type { Loadable } from "./render";
-import { esc, attr, statusBadge } from "./ui";
+import { esc, attr, statusBadge, SURFACE } from "./ui";
 import { personChip } from "./people";
 import { segmented } from "./segmented";
 
@@ -45,7 +45,8 @@ export type RepoPollState = { status: "polling" } | { status: "done"; result: Re
 const LABEL = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap";
 const LABEL_SM = LABEL.replace("10.5px", "10px");
 const FRAME = "max-width:1180px;margin:0 auto;padding:22px 32px 36px";
-const PANEL = "border:1px solid var(--border);border-radius:16px;background:color-mix(in srgb,var(--fg) 2.5%,transparent);display:flex;flex-direction:column;overflow:hidden";
+/** The dashboard's one panel: a surface card (`.cnpy-surface`) — its layout only here. */
+const PANEL = "display:flex;flex-direction:column;overflow:hidden";
 const CODE = "font-family:var(--label);font-size:12.5px;color:var(--fg);background:var(--hover);border:1px solid var(--border);border-radius:4px;padding:0 5px";
 const TOP = "border-top:1px solid var(--border)";
 const LEFT = "border-left:1px solid var(--border)";
@@ -207,7 +208,7 @@ const kv = (k: string, v: string): string =>
 function overviewTab(p: RepoProps): string {
   const now = Date.now();
   const envs = sec(p, (d) => d.environments, { nc: "Nothing captured for a configured environment yet. Cards appear once REPO_ENVIRONMENTS lists an environment and a health ping, a deploy or a head check lands for it — from the 10-minute cron, the GitHub webhook, or an admin's Sync GitHub.", empty: "No environments recorded." }, (rows) =>
-    `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">${rows.map((e, i) => {
+    `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${rows.map((e, i) => {
       const c = TONE[e.tone];
       return `<div style="padding:20px 22px 10px;min-width:0;${i ? LEFT : ""}">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
@@ -263,7 +264,7 @@ function overviewTab(p: RepoProps): string {
   const health = sec(p, (d) => d.health, { nc: "No health ping has landed yet. The repo cron pings each environment in REPO_ENVIRONMENTS every 10 minutes, so this fills in after its first tick.", empty: "No fresh health reading — the last ping is over 30 minutes old.", lines: 2 }, (rows) =>
     rows.map((h) => {
       const c = h.up ? "var(--green)" : "var(--red)";
-      return `<div style="display:grid;grid-template-columns:84px minmax(0,1fr) 110px 90px;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)">
+      return `<div class="repo-hrow" style="display:grid;grid-template-columns:84px minmax(0,1fr) 110px 90px;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:12.5px;font-weight:600;color:var(--fg-70)">${esc(h.env)}</span>
         <a href="${attr(safeUrl(h.url))}" target="_blank" rel="noopener" class="repo-link" style="font-family:var(--label);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg-55)">${esc(h.url.replace(/^https?:\/\//, ""))}</a>
         <span style="display:inline-flex;align-items:center;gap:7px;font-family:var(--label);font-size:11px;font-weight:600;color:${c}"><span style="width:7px;height:7px;border-radius:50%;background:${c}"></span>${h.up ? "UP" : "DOWN"}</span>
@@ -326,15 +327,18 @@ function codeTab(p: RepoProps): string {
     <div style="display:flex;justify-content:space-between;margin-top:6px;font-family:var(--label);font-size:10px;color:var(--fg-40)"><span>${esc(fmt(b.days[0].date))}</span><span>${esc(fmt(mid.date))}</span><span>${esc(fmt(b.days[b.days.length - 1].date))}</span></div>`;
   });
 
-  const prRows = okData(p, (d) => d.prs);
-  const prsLive = prRows !== null;
+  const prList = okData(p, (d) => d.prs);
+  const prsLive = prList !== null;
   // The header names what's actually shown, not the sample flag — a captured list can include OPEN PRs.
-  const prsOpen = prRows ? prRows.some((r) => r.state !== "merged" && r.state !== "closed") : false;
-  const prs = sec(p, (d) => d.prs, { nc: "Pull requests aren't connected.", empty: "No pull requests captured yet.", lines: 4 }, (rows) => rows.map((r) => prRow(r, now)).join(""));
+  const prsOpen = prList ? prList.rows.some((r) => r.state !== "merged" && r.state !== "closed") : false;
+  // `ok` with no rows happens once open PRs are captured (`openCount` known)
+  // but nothing was touched in 90 days — say that, not "not captured".
+  const prs = sec(p, (d) => d.prs, { nc: "Pull requests aren't connected.", empty: "No pull requests captured yet.", lines: 4 }, (l) =>
+    l.rows.length ? l.rows.map((r) => prRow(r, now)).join("") : `<div style="padding:6px 20px">${emptyBlock("No pull requests updated in the last 90 days.")}</div>`);
 
   const br = okData(p, (d) => d.branches);
   const branches = sec(p, (d) => d.branches, { nc: "No branch snapshot yet. One is taken when an admin runs Sync GitHub and by the 6-hourly GitHub reconcile — both need GITHUB_SERVICE_TOKEN.", empty: "No branches recorded." }, (b) =>
-    b.rows.map((r) => `<div style="display:grid;grid-template-columns:minmax(0,1.4fr) 90px 130px 54px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+    b.rows.map((r) => `<div class="repo-brow" style="display:grid;grid-template-columns:minmax(0,1.4fr) 90px 130px 54px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
       <span style="font-family:var(--label);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span>
       <span style="font-size:11.5px;color:var(--fg-40);white-space:nowrap">${esc(ago(r.at, now))} ago</span>
       <span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55);white-space:nowrap">+${r.ahead} / −${r.behind}${b.head ? ` vs ${esc(b.head)}` : ""}</span>
@@ -421,12 +425,14 @@ function ciTab(p: RepoProps): string {
     `${f.rate === null
         ? `<div style="margin-top:8px;font-size:12.5px;color:var(--fg-40)">A 7-day rate appears after a week of captured runs.</div>`
         : spark(f.trend, "var(--amber)", 40)}
+    ${f.total ? "" : `<div style="margin-top:10px;font-size:12.5px;color:var(--fg-55)">No CI failures this week.</div>`}
     <div style="margin-top:10px">${f.rows.map((r) => `<div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr) 82px;gap:10px;align-items:center;padding:10px 4px;${TOP}">
       <span style="display:inline-flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:12px;font-weight:600;color:var(--red);flex:none">✕</span><span style="font-family:var(--label);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.workflow)}</span></span>
       <span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.branch)}</span>
       <span style="font-size:12px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.job)}</span>
       <span style="text-align:right;white-space:nowrap"><span style="font-size:11px;color:var(--fg-40)">${esc(ago(r.at, now))} · </span><a href="${attr(safeUrl(r.url))}" target="_blank" rel="noopener" class="repo-link" style="font-size:11.5px">Logs ↗</a></span>
-    </div>`).join("")}</div>`);
+    </div>`).join("")}</div>
+    ${f.total > f.rows.length ? `<div style="margin-top:8px;font-size:12px;color:var(--fg-40)">Latest ${f.rows.length} of ${f.total} failures this week.</div>` : ""}`);
 
   // I2: `empty` now means "a reading has landed before, just not in the
   // window" (src/tools/repo.ts checks `latestMetric` on the empty path) — the
@@ -967,7 +973,7 @@ function planningTab(p: RepoProps): string {
     <div style="font-size:11.5px;color:var(--fg-40);margin-top:8px">counted by CI on each push to the default environment branch</div>`);
 
   return `<div ${rise(0, `padding:20px 22px`)}>${sprintLive ? sprint : `<div style="${LABEL}">Current sprint</div>${sprint}`}</div>
-    <div ${rise(1, `display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));${TOP};flex:1`)}>
+    <div ${rise(1, `display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));${TOP};flex:1`)}>
       <div style="padding:16px 20px;min-width:0">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span style="${LABEL}">Contributors this week</span><span title="pushes · merged PRs · reviews" style="font-family:var(--label);font-size:10px;color:var(--fg-40);letter-spacing:.04em">P · M · R</span></div>
         ${contributors}
@@ -1017,7 +1023,7 @@ export function repoView(p: RepoProps): string {
 
   return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}">
     ${banner}
-    <div class="repo-panel" style="${PANEL}">${canPollRepo(p) ? pollStrip(p.poll) : ""}${body}</div>
+    <div class="repo-panel ${SURFACE}" style="${PANEL}">${canPollRepo(p) ? pollStrip(p.poll) : ""}${body}</div>
     ${footer}
   </div>`;
 }

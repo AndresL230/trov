@@ -44,7 +44,7 @@ const argAttr = (arg?: string) => (arg === undefined ? "" : ` data-arg="${attr(a
 /** The box. It grows to fill a flex column (`flex:1`) and never drops below 180px of body.
  *  Raw shows the markdown source (scrolls sideways, nothing wraps); Rendered shows it formatted. */
 export function promptBox(p: PromptBoxProps): string {
-  return `<div class="cnpy-promptbox" style="position:relative;flex:1;display:flex;flex-direction:column;margin-top:${p.marginTop ?? 0}px;border:1px solid var(--border);border-radius:11px;overflow:hidden">
+  return `<div class="cnpy-promptbox cnpy-surface" style="position:relative;flex:1;display:flex;flex-direction:column;margin-top:${p.marginTop ?? 0}px;overflow:hidden">
     <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
       <div style="${MONO_EYEBROW}">Prompt</div>
       <div style="flex:1;min-width:0;font-size:12.5px;font-weight:500;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.title)}</div>
@@ -74,7 +74,7 @@ export interface PromptModalProps {
 /** The expanded prompt, over everything (render it at the root, like the connect modal). */
 export function promptModal(p: PromptModalProps): string {
   return `<div data-act="${attr(p.closeAct)}" style="position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);display:grid;place-items:center;padding:24px">
-    <div data-act="stop" role="dialog" aria-modal="true" aria-label="${attr(p.title)}" style="width:100%;max-width:620px;max-height:calc(100vh - 48px);display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--border-strong);border-radius:13px;box-shadow:0 14px 38px rgba(0,0,0,.38);animation:cnpy-pop .2s ease both">
+    <div data-act="stop" role="dialog" aria-modal="true" aria-label="${attr(p.title)}" class="cnpy-surface" style="width:100%;max-width:620px;max-height:calc(100vh - 48px);display:flex;flex-direction:column;border:1px solid var(--border-strong);box-shadow:0 14px 38px rgba(0,0,0,.38);animation:cnpy-pop .2s ease both">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border)">
         <div style="flex:1;font-size:14px;font-weight:600;letter-spacing:-0.005em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.title)}</div>
         <button data-act="${attr(p.closeAct)}" class="cnpy-xbtn" aria-label="Close" style="width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-55);flex:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 5l14 14M19 5 5 19"></path></svg></button>

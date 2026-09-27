@@ -221,6 +221,14 @@ describe("MCP get_repo_dashboard — the default call", () => {
     for (const s of Object.values(v.sections)) expect(["ok", "empty", "not_connected"]).toContain((s as { status: string }).status);
   });
 
+  it("prs: no open count before the prs_reconciled marker; the real one (here 0) after it", async () => {
+    // Before the marker there is nothing to count off — the section is `empty`,
+    // never an ok list claiming "0 open".
+    expect((await view({ tab: "code" })).sections.prs).toEqual({ status: "empty" });
+    await putSnapshot(env.DB, "prs_reconciled", { at: new Date().toISOString() });
+    expect(okData<{ openCount: number | null; rows: unknown[] }>((await view({ tab: "code" })).sections.prs)).toEqual({ rows: [], openCount: 0 });
+  });
+
   it("a cold database reads not_connected / empty throughout — never zeros", async () => {
     const v = await view({ tab: "usage" });
     for (const name of REPO_TAB_SECTIONS.usage) expect(v.sections[name]).toEqual({ status: "not_connected" });
@@ -373,15 +381,15 @@ function richDashboard(): RepoDashboard {
     health: ok(Array.from({ length: 4 }, (_, i) => ({ env: `env ${i}`, url: "https://api.example.com/api/health", up: true, ms: 120 }))),
     codeStats: ok(Array.from({ length: 4 }, (_, i) => ({ label: `Code stat ${i}`, value: 40, sub: "+12 vs last week", tone: "neutral" as const }))),
     bars: ok({ title: "Commits", note: "last 14 days", days: Array.from({ length: 14 }, (_, i) => ({ date: `2026-09-${String(7 + i).padStart(2, "0")}`, count: i })) }),
-    prs: ok(Array.from({ length: 8 }, (_, i) => ({
+    prs: ok({ openCount: 23, rows: Array.from({ length: 8 }, (_, i) => ({
       number: 480 + i, title: `A pull request title of ordinary length, number ${i}`, url: `https://github.com/SaplingLearn/sapling/pull/${480 + i}`,
       author: person("jose-a"), branch: `feat/some-branch-${i}`, state: "review" as const, checks: "pass" as const, at,
-    }))),
+    })) }),
     branches: ok({ active: 12, stale: 3, head: "main", rows: Array.from({ length: 8 }, (_, i) => ({ name: `feat/branch-${i}`, at, ahead: 3, behind: 1, stale: false })) }),
     deploys: ok(["staging", "production"].flatMap((e) => (["backend", "frontend"] as const).map((part) => ({
       env: e, part, label: `${e} · ${part}`, deploys: Array.from({ length: 14 }, () => ({ sha: "abc1234", at, by: "jose-a", result: "ok" as const })),
     })))),
-    ciFailures: ok({ rate: 4.2, trend: trend(7), rows: Array.from({ length: 5 }, (_, i) => ({ workflow: "CI", branch: `feat/branch-${i}`, job: "e2e", at, url: "https://github.com/SaplingLearn/sapling/actions/runs/1" })) }),
+    ciFailures: ok({ rate: 4.2, trend: trend(7), total: 17, rows: Array.from({ length: 5 }, (_, i) => ({ workflow: "CI", branch: `feat/branch-${i}`, job: "e2e", at, url: "https://github.com/SaplingLearn/sapling/actions/runs/1" })) }),
     coverage: ok({ value: "81.2%", trend: trend(10), delta: "+1.4", tone: "good" as const, note: "over 30 days" }),
     bundle: ok({ value: "412 KB", trend: trend(10), delta: "-8", tone: "good" as const, note: "over 30 days" }),
     activity: ok(Array.from({ length: 20 }, (_, i) => ({ kind: "push" as const, actor: person("jose-a"), text: `pushed 3 commits to feat/branch-${i}`, url: "https://github.com/SaplingLearn/sapling/commit/abc", at }))),
@@ -421,6 +429,22 @@ describe("get_repo_dashboard — size discipline", () => {
     expect(drift.data.groups).toHaveLength(DRIFT_GROUP_LIMIT);
     const all = shapeRepoDashboard(dash, { tab: "overview", includeTrends: true }).sections.drift as { data: { groupCount: number; groups: unknown[] } };
     expect(all.data.groups).toHaveLength(250);
+  });
+
+  it("carries prs.openCount and ciFailures.total through, a null openCount as null (never 0)", () => {
+    const dash = richDashboard();
+    const code = shapeRepoDashboard(dash, { tab: "code" }).sections.prs as { data: { openCount: number | null; rows: unknown[] } };
+    expect(code.data.openCount).toBe(23);
+    expect(code.data.rows).toHaveLength(8);
+    const ci = shapeRepoDashboard(dash, { tab: "ci" }).sections.ciFailures as { data: { total: number; rows: unknown[]; trend?: unknown } };
+    expect(ci.data).toMatchObject({ total: 17, rate: 4.2 });
+    expect(ci.data.rows).toHaveLength(5);
+    expect(ci.data.trend).toBeUndefined();
+
+    const unknown = { ...dash, prs: { status: "ok" as const, data: { rows: [], openCount: null } } };
+    const view = shapeRepoDashboard(unknown, { tab: "code" }).sections.prs as { data: { openCount: number | null } };
+    expect(view.data.openCount).toBeNull();
+    expect(JSON.parse(JSON.stringify(view)).data.openCount).toBeNull();
   });
 
   it("the shaper never mutates the projection it was given", () => {

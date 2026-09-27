@@ -7,7 +7,7 @@
 // Interactions dispatch via data-act / data-arg handled in main.ts. No fetching,
 // no inline data.
 
-import { esc, attr, statusBadge, selectChip, dashedCard, MONO_LABEL } from "./ui";
+import { esc, attr, statusBadge, selectChip, dashedCard, MONO_LABEL, surface, SURFACE } from "./ui";
 import { personChip, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
 
@@ -69,7 +69,7 @@ export function reviewFilterChips(filter: ReviewFilter): string {
 export function reviewCard(it: ReviewItem, selected: boolean): string {
   const { type, id } = splitEyebrow(it.eyebrow);
   const dot = `<span style="color:var(--fg-40)">·</span>`;
-  return `<button data-act="reviewSelect" data-arg="${attr(it.id)}" class="cnpy-titem">
+  return `<button data-act="reviewSelect" data-arg="${attr(it.id)}" class="cnpy-titem ${SURFACE} cnpy-card">
     ${selected ? `<span class="cnpy-selbar"></span>` : ""}
     <div style="position:relative">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
@@ -100,7 +100,7 @@ export function reviewListEmpty(): string {
 
 // ── detail pane pieces ───────────────────────────────────────────────────────
 export function staleBaseWarning(note: string): string {
-  return `<div style="border:1px solid var(--border);border-left:2px solid var(--amber);border-radius:9px;padding:11px 15px;margin-top:18px;display:flex;gap:10px;align-items:baseline">
+  return `<div${surface("border-left:2px solid var(--amber);padding:11px 15px;margin-top:18px;display:flex;gap:10px;align-items:baseline")}>
     <div style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--amber);flex:none">STALE BASE</div>
     <div style="font-size:12.5px;color:var(--fg-70)">${esc(note)}</div>
   </div>`;
@@ -129,7 +129,7 @@ export function unifiedDiff(entries: DiffEntry[]): string {
     if (e.t === "ellipsis") return `<div style="${ELLIPSIS_STYLE}">${esc(e.s ?? "")}</div>`;
     return `<div style="${diffLineStyle(e.t)}">${diffPrefix(e.t)}${esc(e.s ?? "")}</div>`;
   }).join("");
-  return `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;padding:8px 0">${lines}</div>`;
+  return `<div${surface("overflow:hidden;padding:8px 0")}>${lines}</div>`;
 }
 
 type SplitCell = { t: DiffEntryKind | "empty"; text: string };
@@ -172,7 +172,7 @@ export function splitDiff(entries: DiffEntry[], liveLabel: string): string {
   const rows = splitDiffRows(entries).map((r) =>
     `<div style="display:grid;grid-template-columns:1fr 1fr">${splitCellHtml(r.left, true)}${splitCellHtml(r.right, false)}</div>`
   ).join("");
-  return `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+  return `<div${surface("overflow:hidden")}>
     <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border)">
       <div style="padding:8px 14px;font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40);border-right:1px solid var(--border)">${esc(liveLabel)}</div>
       <div style="padding:8px 14px;font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--accent)">PROPOSED</div>
@@ -218,7 +218,7 @@ function renderedLine(e: DiffEntry, text: string): string {
 }
 
 function renderedFrame(blocks: string): string {
-  return `<div style="border:1px solid var(--border);border-radius:10px;padding:22px 28px 26px">
+  return `<div${surface("padding:22px 28px 26px")}>
     ${blocks}
     <div style="display:flex;gap:16px;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)">
       <div style="font-size:11px;color:var(--fg-40)"><span style="color:var(--green)">■</span> added in this proposal</div>
@@ -251,7 +251,7 @@ export function adrRecord(sections: AdrSection[]): string {
     <div style="${MONO_LABEL}">PROPOSED RECORD</div>
     <div style="font-size:11.5px;color:var(--fg-40)">new document — no prior version</div>
   </div>
-  <div style="border:1px solid var(--border);border-left:2px solid var(--green);border-radius:10px;padding:24px 28px 26px">${body}</div>`;
+  <div${surface("border-left:2px solid var(--green);padding:24px 28px 26px")}>${body}</div>`;
 }
 
 /** Detail pane for the selected item: header + verdict actions + content. */
@@ -278,8 +278,8 @@ export function reviewDetail(it: ReviewItem, diffView: DiffViewMode): string {
   const { type, id } = splitEyebrow(it.eyebrow);
   // Byline: record type · identifier (label-face, reads as a reference) · author · date.
   const dot = `<span style="color:var(--fg-40)">·</span>`;
-  return `<div style="max-width:920px;padding:24px 32px 100px">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
+  return `<div class="cnpy-rv-body" style="max-width:920px;padding:24px 32px 100px">
+    <div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
       <div style="min-width:0">
         <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">${esc(it.title)}</h2>
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:8px;font-size:12px;color:var(--fg-55)">
@@ -307,6 +307,7 @@ export function reviewQueueClear(): string {
 }
 
 // ── composed surface ─────────────────────────────────────────────────────────
+const BACK_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>`;
 export function reviewView(p: ReviewProps): string {
   const visible = p.items.filter((it) => p.filter === "all" || it.kind === p.filter);
   // Selection survives a filter that hides it (the detail keeps showing it);
@@ -317,8 +318,11 @@ export function reviewView(p: ReviewProps): string {
     ? visible.map((it) => reviewCard(it, sel !== null && it.id === sel.id)).join("")
     : reviewListEmpty();
 
-  return `<div style="display:flex;height:100%;min-width:0">
-    <div style="width:376px;flex:none;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
+  // Under a tablet's width the two panes take turns (canopy.css `.cnpy-rv`): the list, or —
+  // once an item is picked by hand — its detail, with a back button to the list.
+  const pane = p.selectedId !== null && sel ? "detail" : "list";
+  return `<div class="cnpy-rv" data-pane="${pane}" style="display:flex;height:100%;min-width:0">
+    <div class="cnpy-rv-list" style="width:376px;flex:none;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
       <div style="padding:22px 20px 0">
         <h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Review</h1>
         <div style="font-size:12.5px;color:var(--fg-55);margin-top:3px">Agent-produced changes waiting for a verdict.</div>
@@ -326,7 +330,8 @@ export function reviewView(p: ReviewProps): string {
       </div>
       <div class="cnpy-scroll cnpy-stagger" style="flex:1;overflow-y:auto;padding:2px 14px 80px">${list}</div>
     </div>
-    <div class="cnpy-scroll" style="flex:1;min-width:0;overflow-y:auto">
+    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
+      <button data-act="reviewBack" class="cnpy-rv-back">${BACK_ICON}All items</button>
       ${sel ? reviewDetail(sel, p.diffView) : reviewQueueClear()}
     </div>
   </div>`;

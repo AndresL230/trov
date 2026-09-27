@@ -40,6 +40,20 @@ import type { SprintView } from "@shared/sprints";
 import type { PersonSummary } from "../web/src/api";
 import { WORK_SHELL, DETAIL_SHELL } from "../web/src/ui";
 
+/** The one `.cnpy-sfbar` (search + Filter) element in `html`, balanced by its divs — or null. */
+function sfbar(html: string): string | null {
+  const start = html.indexOf('<div class="cnpy-sfbar"');
+  if (start < 0 || html.indexOf('<div class="cnpy-sfbar"', start + 1) >= 0) return null;
+  const re = /<div\b|<\/div>/g;
+  re.lastIndex = start;
+  let depth = 0;
+  for (let m = re.exec(html); m; m = re.exec(html)) {
+    depth += m[0] === "</div>" ? -1 : 1;
+    if (depth === 0) return html.slice(start, m.index + 6);
+  }
+  return null;
+}
+
 // ── fixtures ─────────────────────────────────────────────────────────────────
 
 const NOW = Date.now();
@@ -55,7 +69,7 @@ const PERSONS: PersonSummary[] = [
 
 function sprint(o: Partial<SprintView> & { id: number; label: string }): SprintView {
   return {
-    summary: null, description: null, phase: "Phase 2", dates: "SEP 8 – 19", due: "2026-09-26",
+    summary: null, description: null, phase: "Phase 2", dates: "SEP 8 – 19", start: null, due: "2026-09-26",
     status: "upcoming", active: false, urgency: "normal", lead: null, domain: null,
     github_ref: null, created_at: ago(30 * D), created_by: "jose-a", updated_at: null,
     progress: { closed: 0, total: 0, pct: 0 },
@@ -200,7 +214,7 @@ describe("sidebar — the Tickets entry (design call #2)", () => {
     expect(html).toContain('data-collapsed="1"');
     expect(ticketsRow(html)).toContain('<span class="cnpy-dot" data-n="4"></span>');
     // review/maintenance counts are 0 here, so theirs stay hidden
-    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(11);
+    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(12);
   });
 
   it("lights Tickets on all three ticket screens", () => {
@@ -419,6 +433,21 @@ describe("queueView — the toolbar", () => {
     expect(html).not.toContain('role="dialog"');
   });
 
+  it("search and Filter are ONE combined control: the input and the Filter toggle inside a single .cnpy-sfbar", () => {
+    const bar = sfbar(queueView(queueProps({ q: "login" })));
+    expect(bar).not.toBeNull();
+    expect(bar).toContain('data-act="queueQ" data-field="queueQ"');
+    expect(bar).toContain('placeholder="Search by title, #number or person"');
+    expect(bar).toContain('data-act="queueClearQ"');
+    expect(bar).toContain('data-act="fmToggle" data-arg="queue"');
+    expect(bar).toContain('class="cnpy-sfbar-div"');
+    expect(bar!.indexOf('data-act="queueQ"')).toBeLessThan(bar!.indexOf('data-act="fmToggle"'));
+    expect(bar).toMatch(/^<div class="cnpy-sfbar" data-hover-blur>/);   // the queue's mouse-leave blur survives
+    // The Filter button draws no box of its own inside the bar.
+    expect(bar).toMatch(/class="cnpy-ghostbtn fm-btn" style="[^"]*border:none/);
+    expect(bar).not.toContain('class="cnpy-search"');
+  });
+
   it("the open menu offers Assignee, Category, Priority and Sprint, and checks the current values", () => {
     const html = queueView(queueProps({
       assignee: "me", category: "bug", filterOpen: true, filterCat: "assignee",
@@ -495,6 +524,34 @@ describe("queueView — the board card drags", () => {
     expect(html).not.toContain('draggable="true"');   // pointer-driven, never the browser's drag image
     expect(html).not.toContain('data-tdrag="2"');
     for (const st of ["submitted", "in_progress", "done", "declined"]) expect(html).toContain(`data-tdrop="${st}"`);
+  });
+});
+
+describe("tickets — cards are the shared surface", () => {
+  const OLD_FILL = "color-mix(in srgb,var(--fg) 2.5%";
+  it("a board card is a clickable surface with no inline border, radius or fill", () => {
+    const html = queueView(queueProps({ view: "board", seg: "all", tickets: [ticket({ id: 1, title: "S" })] }));
+    const card = html.slice(html.indexOf('data-tdrag="1"'));
+    expect(card).toContain('class="cnpy-tcard cnpy-surface cnpy-card');
+    expect(card.slice(0, card.indexOf(">"))).not.toContain("border:1px solid var(--border)");
+    expect(card.slice(0, card.indexOf(">"))).not.toContain("border-radius");
+    expect(html).not.toContain(OLD_FILL);
+  });
+  it("the table is ONE surface holding hairline rows; the last row carries no hairline", () => {
+    const rows = [ticket({ id: 1, title: "A" }), ticket({ id: 2, title: "B" })];
+    const html = queueView(queueProps({ view: "table", seg: "all", tickets: rows }));
+    expect(html.match(/cnpy-surface/g)).toHaveLength(1);
+    expect(html).toContain('class="cnpy-surface cnpy-ttable" style="margin-top:8px;overflow:hidden"');
+    expect(html.match(/class="cnpy-trow[^"]*" style="[^"]*border-bottom:1px solid var\(--border\)/g)).toHaveLength(1);
+    expect(html).not.toContain(OLD_FILL);
+  });
+  it("the new-ticket form card and the comment composer are surfaces", () => {
+    const form = newTicketView(formProps());
+    expect(form).toContain('class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)"');
+    expect(form).not.toContain("border-radius:13px");
+    const d = ticketDetailView(detailProps(detail({ id: 1, title: "T" })));
+    expect(d).toContain("cnpy-surface");
+    expect(d).not.toContain("border-radius:11px;padding:12px");
   });
 });
 
@@ -623,7 +680,8 @@ describe("the ticket screens' frame", () => {
     expect(html).toContain("display:flex;flex-direction:column;flex:1;min-height:0");
     // ...and the composer is the one part that does not.
     const box = html.slice(html.indexOf('data-act="ticketComment"'));
-    expect(html.slice(0, html.indexOf('data-act="ticketComment"'))).toContain("border-radius:11px;padding:12px;margin-top:16px;flex:none");
+    // The composer box is a surface (the class carries border, radius and fill).
+    expect(html.slice(0, html.indexOf('data-act="ticketComment"'))).toContain('class="cnpy-surface" style="position:relative;padding:12px;margin-top:16px;flex:none"');
     expect(box).toContain('data-act="ticketCommentPost"');
   });
 

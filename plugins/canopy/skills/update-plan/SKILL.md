@@ -37,25 +37,45 @@ skill does so itself, in step 1) so you never write blind.
 ### 1. Always `get_roadmap` first (read-before-write)
 
 Call `mcp__canopy__get_roadmap` before composing anything. Carry forward:
-- The current `narrative` (you'll pass a full replacement, so start from what's live).
+- The current `narrative` (you'll pass a full replacement, so start from what's live). Check its
+  length: if it is over the **800-character cap** (below), you cannot resend it as it is — even a
+  sprint-only change carries the narrative — so step 2 proposes a shortened one.
 - Every existing sprint's **`id`** — pass `id` on a sprint you're editing so the tool updates it
   in place; a sprint omitted from your call is **untouched**, not deleted. Omitting `id` on a new
   entry creates it.
 
-### 2. Show the admin a diff and get confirmation
+### 2. Keep the narrative short
 
-Before writing, lay out plainly what will change: narrative before/after (or "narrative unchanged"),
+The narrative is the Roadmap's "What's happening" card, not a status report. Write it — or ask the
+admin for it — as **2–3 sentences up to two short paragraphs: Now / Next / Later**, optionally under one
+short heading line. The server refuses anything over **800 characters** (counted after trimming) and
+writes nothing — not the plan, not a version, not one sprint.
+
+- **Leave out** sprint-by-sprint detail, issue-number lists, dated status logs ("State as of …"),
+  ops sequences and schedule tables. The sprints (`summary` / `description`) and the timeline carry
+  those; move detail there instead of dropping it.
+- **Count before you call.** Measure the trimmed length of the narrative you are about to send; if it
+  is over 800, cut it and re-show the admin the shorter text — never send it hoping it fits.
+- **An existing narrative over the cap** is not resent: propose a shortened replacement (Now / Next /
+  Later in a few sentences) in the diff, and say where any detail you cut now lives (which sprint's
+  `description`). A long narrative already stored still reads fine — the cap applies only to the next
+  write.
+
+### 3. Show the admin a diff and get confirmation
+
+Before writing, lay out plainly what will change: narrative before/after with its character count
+(or "narrative unchanged" — only when the live one is within the cap),
 and per sprint — created / edited (with the specific fields changing) / left untouched. Get the
 admin's explicit go-ahead on that diff before calling the write tool. If they want changes, revise the
 diff and re-confirm — don't call `update_plan` speculatively.
 
-### 3. One `update_plan` call
+### 4. One `update_plan` call
 
 Once confirmed, make **exactly one** call:
 
 ```jsonc
 {
-  "narrative": "<full narrative text>",
+  "narrative": "<full narrative text — ≤ 800 characters, Now / Next / Later>",
   "sprints": [
     { "id": 3, "label": "Ticket queue", "summary": "One queue the whole org files into.",
       "description": "markdown — **bold**, `code`, links, ### headings, - bullets",
@@ -72,11 +92,12 @@ The sprint vocabulary (the DTO's words, not the column names):
 | field | meaning |
 |---|---|
 | `label` | the sprint name (required) |
-| `due` | target date, `YYYY-MM-DD` (required) |
+| `due` | target date — a real calendar day `YYYY-MM-DD`, or `""` for unscheduled (required) |
+| `start` | start date, `YYYY-MM-DD`, on or before `due` (omit = keep the stored one, `null` = clear). A bad date or start after due refuses the WHOLE call |
 | `summary` | one line under the label on the Roadmap card |
 | `description` | markdown body, rendered on the sprint screen |
 | `phase` | coarse plan label — "Now", "Weeks 3-4", "Later" |
-| `dates` | human date range, e.g. "Sep 16 – Sep 30" |
+| `dates` | optional free-text label, e.g. "Sep 16 – Sep 30" — display only; the Roadmap shows start–due when `start` is set |
 | `status` | `upcoming` \| `in_progress` \| `done` (`in_progress` = the Roadmap's **active**) |
 | `urgency` | `low` \| `normal` \| `high` (defaults `normal`) |
 | `lead` | a person **handle** |
@@ -98,7 +119,9 @@ The sprint vocabulary (the DTO's words, not the column names):
 - `status: 'done'` is legal here (this is the one agent-reachable path allowed to set it) — only set
   it when the admin explicitly confirmed the sprint is done, never inferred from closed issues or from
   every ticket in the sprint being resolved.
-- Report back the new plan `version` the tool returns.
+- Report back the new plan `version` the tool returns. If the call comes back with
+  `narrative is N characters; the cap is 800`, nothing was written: shorten the narrative, re-confirm
+  with the admin and call once more.
 
 ## Hard rules (invariants)
 
@@ -110,6 +133,8 @@ The sprint vocabulary (the DTO's words, not the column names):
 - **Confirm the diff before writing** — no silent writes.
 - **`done` is admin-said-so only** — set here or via the web Confirm-done button, never inferred from
   GitHub activity, issue closure percentage, or `get_events`.
+- **Narrative ≤ 800 characters** (after trimming) — server-enforced; over it, the whole call is
+  refused and nothing is written.
 - **One call.** Compose the full sprints array (with unchanged ones simply omitted) and call
   `update_plan` once — this is a direct write, not a reconciling batch, so there's no replay safety net
   if you call it twice with different content.
@@ -123,5 +148,8 @@ The sprint vocabulary (the DTO's words, not the column names):
   rejects the call as a validation error.
 - Setting `status: 'done'` because issues look closed, without the admin having said so.
 - Skipping the diff/confirmation step and writing straight from the ask.
+- Writing the narrative as a status report — per-sprint progress, issue lists, dated logs — or resending
+  a stored narrative that is already over the cap. It is refused; shorten it and push the detail into
+  the sprints.
 - Calling `get_roadmap` after deciding what to write instead of before — you lose the current `id`s
   and the real current narrative to diff against.

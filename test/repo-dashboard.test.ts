@@ -96,7 +96,10 @@ describe("getRepoDashboard — a D1-only projection", () => {
     const merged = data(d.stats)[0];
     expect(merged).toMatchObject({ label: "Merged PRs", value: 3, delta: 2 });
 
-    const prs = data(d.prs);
+    const prList = data(d.prs);
+    // Before the prs_reconciled marker the open count is UNKNOWN — never 0.
+    expect(prList.openCount).toBeNull();
+    const prs = prList.rows;
     expect(prs.map((p) => p.number)).toEqual([10, 11, 12, 13, 5]);
     expect(prs[0]).toMatchObject({ state: "merged", branch: "→ main", checks: null });
     expect(prs[3].state).toBe("closed");
@@ -329,7 +332,7 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
     await seedPerson("jose-a");
     await ingestRepo([prRow(7, "draft", ago(3)), prRow(7, "review", ago(1)), prRow(8, "merged", ago(2))]);
     await markPrsReconciled();
-    const prs = data((await getRepoDashboard(env.DB, "o/r", NOW)).prs);
+    const prs = data((await getRepoDashboard(env.DB, "o/r", NOW)).prs).rows;
     expect(prs.map((p) => [p.number, p.state, p.branch])).toEqual([[7, "review", "feat/7"], [8, "merged", "feat/8"]]);
     expect(prs[0].author.handle).toBe("jose-a");
   });
@@ -338,7 +341,7 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
     await seedPerson("jose-a");
     await ingestRepo([prRow(7, "review", ago(1)), prRow(9, "some-new-github-state", ago(1))]);
     await markPrsReconciled();
-    const prs = data((await getRepoDashboard(env.DB, "o/r", NOW)).prs);
+    const prs = data((await getRepoDashboard(env.DB, "o/r", NOW)).prs).rows;
     expect(prs.map((p) => p.number)).toEqual([7]);
   });
 
@@ -418,7 +421,8 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
     await markPrsReconciled();
     const after = await getRepoDashboard(env.DB, "o/r", NOW);
     expect(data(after.stats).map((s) => s.label)).toEqual(["Open PRs", "Awaiting review", "Open issues", "Open bugs"]);
-    expect(data(after.prs).map((p) => p.number)).toEqual([7]);
+    expect(data(after.prs).rows.map((p) => p.number)).toEqual([7]);
+    expect(data(after.prs).openCount).toBe(1);
   });
 
   it("bounds recentPrRows to 90 days but not prStatesAsOf — a PR untouched for 120 days is still open but absent from the recent list", async () => {
@@ -427,6 +431,28 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
     const d = await getRepoDashboard(env.DB, "o/r", NOW);
     const [openPrs] = data(d.stats);
     expect(openPrs).toMatchObject({ label: "Open PRs", value: 1 });
-    expect(d.prs.status).toBe("empty");
+    // The list is empty but the count is KNOWN, so the section still carries it —
+    // the same figure as the tile, not a count off the (capped, 90-day) rows.
+    expect(data(d.prs)).toEqual({ rows: [], openCount: 1 });
+  });
+
+  it("openCount is the Overview's Open PRs figure, not a count of the capped list", async () => {
+    // 10 open PRs + 2 merged: the list is capped at 8, the count is not.
+    await ingestRepo([
+      ...Array.from({ length: 10 }, (_, i) => prRow(100 + i, i % 2 ? "draft" : "review", ago(1 + i / 10))),
+      prRow(200, "merged", ago(0.5)), prRow(201, "merged", ago(0.6)),
+    ]);
+    await markPrsReconciled();
+    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    const list = data(d.prs);
+    expect(list.rows.length).toBe(8);
+    expect(list.rows.filter((r) => r.state !== "merged").length).toBeLessThan(10);
+    expect(list.openCount).toBe(10);
+    expect(data(d.stats).find((s) => s.label === "Open PRs")?.value).toBe(list.openCount);
+  });
+
+  it("with the marker and nothing open, openCount is a real 0 (known), not null", async () => {
+    await markPrsReconciled();
+    expect(data((await getRepoDashboard(env.DB, "o/r", NOW)).prs)).toEqual({ rows: [], openCount: 0 });
   });
 });

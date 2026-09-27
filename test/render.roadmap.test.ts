@@ -5,8 +5,9 @@
  *  • planNarrativeBlock — the ADMIN-authored plan narrative rendered via an injected
  *    markdown fn (the injected-markdownFn pattern); empty → dashed-card hint.
  *  • render() over a roadmap-populated AppState — narrative tab shows the narrative,
- *    timeline tab shows cached progress ("4/6 closed"), phase mono suffix, and the
- *    Confirm-done button; search results of type "sprint" navigate via goRoadmap.
+ *    the New sprint toggle and the sprint cards (ticket progress "4/6 done", phase
+ *    suffix, Confirm-done); the timeline tab is the calendar (web/src/timeline.ts,
+ *    see render.timeline.test.ts); search results of type "sprint" navigate via goRoadmap.
  *
  * All tests are pure (no D1 / Miniflare bindings) and assertions are HTML-string based.
  * The module-level renderMarkdown (marked + DOMPurify) cannot run in this workerd test
@@ -28,6 +29,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 
 import { planNarrativeBlock, render, initialState } from "../web/src/render";
+import canopyCss from "../web/src/canopy.css?raw";
 import type { PlanView, SprintView, FeedRow } from "../web/src/api";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -46,6 +48,7 @@ function makeSprint(overrides: Partial<SprintView> = {}): SprintView {
     summary: null,
     description: "Ship semantic search to everyone.",
     phase: null,
+    start: null,
     dates: null,
     due: "2026-09-01",
     status: "in_progress",
@@ -130,13 +133,14 @@ describe("render() — Roadmap narrative tab", () => {
     expect(html).toContain("The plan **narrative** prose.");
   });
 
-  it("keeps the sprint spotlight and Recent happenings sections below the narrative", () => {
+  it("puts the Now and Recent happenings boxes in the aside, after the narrative", () => {
     const html = render(stateWithPlan(makePlanView(), "narrative"));
-    expect(html).toContain(">NOW<"); // spotlight badge for the in-progress sprint
+    expect(html).toContain('data-screen-label="Roadmap · Now"'); // the in-progress sprint's box
+    expect(html).toContain('class="cnpy-cols-aside');
     expect(html).toContain("Vectorize GA");
     expect(html).toContain("Recent happenings");
     // Narrative block precedes the spotlight
-    expect(html.indexOf("mock-live-md")).toBeLessThan(html.indexOf(">NOW<"));
+    expect(html.indexOf("mock-live-md")).toBeLessThan(html.indexOf("Roadmap · Now"));
   });
 
   it("the spotlight is the ONE place the cached GitHub issue counts appear — 'N/M issues closed' beside the chips", () => {
@@ -160,25 +164,27 @@ describe("render() — Roadmap narrative tab", () => {
       progress: { closed: 1, total: 4, pct: 25 }, issues: null,
     });
     const html = render(stateWithPlan(makePlanView({ sprints: [noIssues] }), "narrative"));
-    expect(html).toContain(">NOW<");
+    expect(html).toContain("Roadmap · Now");
     expect(html).not.toContain("issues closed");
   });
 
-  it("the Timeline tab never shows the issue counts — they are narrative-only", () => {
+  it("the sprint cards never show the issue counts — only the shared Now box does", () => {
     const withIssues = makeSprint({
       id: 7, label: "Vectorize GA", status: "in_progress", github_ref: "[41,42,43]",
       progress: { closed: 1, total: 4, pct: 25 }, issues: { closed: 2, total: 3 },
     });
-    const html = render(stateWithPlan(makePlanView({ sprints: [withIssues] }), "timeline"));
-    expect(html).toContain("1/4 done");      // the tickets-only bar
-    expect(html).not.toContain("issues closed");
-    expect(html).not.toContain("2/3");
+    const html = render(stateWithPlan(makePlanView({ sprints: [withIssues] }), "narrative"));
+    expect(html).toContain("1/4 done");      // the tickets-only bar on the card
+    // The count appears exactly once, and inside the aside's Now box.
+    expect(html.match(/issues closed/g)?.length).toBe(1);
+    expect(html.indexOf("issues closed")).toBeGreaterThan(html.indexOf('class="cnpy-cols-aside'));
   });
 
   it("empty narrative → the update-plan hint in the narrative tab", () => {
     const html = render(stateWithPlan(makePlanView({ narrative: "" }), "narrative"));
     expect(html).toContain("No plan narrative yet — write one with the update-plan skill");
-    expect(html).not.toContain("mock-live-md");
+    // (the Now box's sprint description is markdown too — only the narrative's wrapper is absent)
+    expect(html).not.toContain('<div class="cnpy-md"><div class="mock-live-md">');
   });
 
   it("XSS: a <script> narrative reaches the DOM only via the (sanitizing) markdown module", () => {
@@ -189,38 +195,40 @@ describe("render() — Roadmap narrative tab", () => {
   });
 });
 
-// ── full render() — timeline tab ─────────────────────────────────────────────
+// ── full render() — the sprint cards (Narrative tab) ─────────────────────────
+// The cards moved from the old Timeline tab to the Narrative tab when the Timeline
+// became a calendar (web/src/timeline.ts, pinned in render.timeline.test.ts).
 
-describe("render() — Roadmap timeline tab", () => {
+describe("render() — Roadmap sprint cards (narrative tab)", () => {
   it("shows the sprint's TICKET progress as 4/6 done (no live GitHub, no issue counts)", () => {
-    const html = render(stateWithPlan(makePlanView(), "timeline"));
+    const html = render(stateWithPlan(makePlanView(), "narrative"));
     expect(html).toContain("4/6 done");
   });
 
   it("shows the phase as a small mono suffix before the date label, · separated", () => {
     const plan = makePlanView({ sprints: [makeSprint({ phase: "Phase 2 — reads" })] });
-    const html = render(stateWithPlan(plan, "timeline"));
+    const html = render(stateWithPlan(plan, "narrative"));
     expect(html).toContain("Phase 2 — reads · ");
     // Date label is kept alongside the phase (target 2026-09-01 → "Sep 1, 2026")
     expect(html).toContain("Sep 1, 2026");
   });
 
   it("omits the phase suffix when phase is null", () => {
-    const html = render(stateWithPlan(makePlanView(), "timeline"));
+    const html = render(stateWithPlan(makePlanView(), "narrative"));
     expect(html).not.toContain("null · ");
     expect(html).toContain("Sep 1, 2026");
   });
 
   it("XSS: a malicious phase is escaped", () => {
     const plan = makePlanView({ sprints: [makeSprint({ phase: '<img src=x onerror=alert(1)>' })] });
-    const html = render(stateWithPlan(plan, "timeline"));
+    const html = render(stateWithPlan(plan, "narrative"));
     expect(html).not.toContain("<img src=x");
     expect(html).toContain("&lt;img");
   });
 
   it("keeps the Confirm-done button for a ready sprint (all its TICKETS resolved, not done)", () => {
     const ready = makeSprint({ id: 9, label: "All wrapped", progress: { closed: 6, total: 6, pct: 100 } });
-    const html = render(stateWithPlan(makePlanView({ sprints: [ready] }), "timeline"));
+    const html = render(stateWithPlan(makePlanView({ sprints: [ready] }), "narrative"));
     expect(html).toContain('data-act="confirmSprint"');
     expect(html).toContain('data-arg="9"');
     expect(html).toContain("Confirm done");
@@ -232,14 +240,14 @@ describe("render() — Roadmap timeline tab", () => {
       id: 10, label: "Tickets all done", progress: { closed: 6, total: 6, pct: 100 },
       issues: { closed: 0, total: 9 },
     });
-    expect(render(stateWithPlan(makePlanView({ sprints: [ready] }), "timeline"))).toContain('data-act="confirmSprint"');
+    expect(render(stateWithPlan(makePlanView({ sprints: [ready] }), "narrative"))).toContain('data-act="confirmSprint"');
 
     // Every cached ISSUE closed but tickets still open → NOT ready.
     const notReady = makeSprint({
       id: 11, label: "Issues all done", progress: { closed: 1, total: 6, pct: 17 },
       issues: { closed: 9, total: 9 },
     });
-    const html = render(stateWithPlan(makePlanView({ sprints: [notReady] }), "timeline"));
+    const html = render(stateWithPlan(makePlanView({ sprints: [notReady] }), "narrative"));
     expect(html).not.toContain('data-act="confirmSprint"');
     expect(html).not.toContain("ready to complete");
   });
@@ -248,7 +256,7 @@ describe("render() — Roadmap timeline tab", () => {
     // SprintView.progress is always present; total 0 is the "no tickets" case,
     // which must render exactly like the old progress:null sprint did.
     const empty = makeSprint({ id: 4, label: "Nothing counted", progress: { closed: 0, total: 0, pct: 0 } });
-    const html = render(stateWithPlan(makePlanView({ sprints: [empty] }), "timeline"));
+    const html = render(stateWithPlan(makePlanView({ sprints: [empty] }), "narrative"));
     expect(html).toContain("Nothing counted");
     expect(html).not.toContain("0/0 done");
     expect(html).not.toContain("ready to complete");
@@ -257,10 +265,61 @@ describe("render() — Roadmap timeline tab", () => {
 
   it("an unscheduled sprint (due: null) reads 'No target date' and is never overdue", () => {
     const unscheduled = makeSprint({ id: 5, label: "Unscheduled", due: null, status: "upcoming", progress: { closed: 0, total: 0, pct: 0 } });
-    const html = render(stateWithPlan(makePlanView({ sprints: [unscheduled] }), "timeline"));
+    const html = render(stateWithPlan(makePlanView({ sprints: [unscheduled] }), "narrative"));
     expect(html).toContain("No target date");
     expect(html).not.toContain(">OVERDUE<");
     expect(html).not.toContain("Invalid Date");
+  });
+});
+
+// ── full render() — timeline tab (the calendar) ──────────────────────────────
+
+describe("render() — Roadmap timeline tab", () => {
+  it("draws the calendar full width — no aside, no sprint cards, no old overview", () => {
+    const html = render(stateWithPlan(makePlanView(), "timeline"));
+    expect(html).toContain('data-screen-label="Roadmap · Timeline"');
+    expect(html).toMatch(/class="tl-bar" data-act="openSprint" data-arg="1"/);
+    expect(html).not.toContain('class="cnpy-cols-aside');
+    expect(html).not.toContain('class="cnpy-cols');
+    expect(html).not.toContain("Roadmap · Now");
+    expect(html).not.toContain("Recent happenings");
+    expect(html).not.toContain("Roadmap Overview");
+    expect(html).not.toContain("Open sprint<svg"); // no sprintCard on this tab
+  });
+
+  it("never shows the GitHub issue counts (they live in the Narrative tab's Now box only)", () => {
+    const withIssues = makeSprint({ id: 7, github_ref: "[41]", issues: { closed: 2, total: 3 } });
+    const html = render(stateWithPlan(makePlanView({ sprints: [withIssues] }), "timeline"));
+    expect(html).not.toContain("issues closed");
+  });
+});
+
+describe("render() — New sprint: a header button, the form on either tab", () => {
+  it("the Roadmap header carries the New sprint button on both tabs; the page body does not", () => {
+    for (const tab of ["narrative", "timeline"] as const) {
+      const html = render(stateWithPlan(makePlanView(), tab));
+      const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+      expect(header).toContain('data-act="nsToggle"');
+      expect(html.slice(html.indexOf('id="cnpy-main"'))).not.toContain('data-act="nsToggle"');
+    }
+  });
+
+  it("opens the form at the top of the main column on the Narrative tab", () => {
+    const html = render({ ...stateWithPlan(makePlanView(), "narrative"), nsOpen: true });
+    expect(html).toContain('data-act="nsCreate"');
+    expect(html.indexOf('data-act="nsCreate"')).toBeLessThan(html.indexOf("mock-live-md"));
+  });
+
+  it("opens the form above the calendar on the Timeline tab", () => {
+    const html = render({ ...stateWithPlan(makePlanView(), "timeline"), nsOpen: true });
+    expect(html).toContain('data-act="nsCreate"');
+    expect(html.indexOf('data-act="nsCreate"')).toBeLessThan(html.indexOf('data-screen-label="Roadmap · Timeline"'));
+  });
+
+  it("renders no form while closed", () => {
+    for (const tab of ["narrative", "timeline"] as const) {
+      expect(render(stateWithPlan(makePlanView(), tab))).not.toContain('data-act="nsCreate"');
+    }
   });
 });
 
@@ -284,7 +343,7 @@ function feedRow(overrides: Partial<FeedRow> = {}): FeedRow {
 
 function stateWithFeed(artifacts: string): ReturnType<typeof initialState> {
   const s = stateWithPlan(makePlanView(), "narrative");
-  return { ...s, feed: { status: "ok", data: [feedRow({ artifacts })] } };
+  return { ...s, roadmapFeed: { status: "ok", data: [feedRow({ artifacts })] } };
 }
 
 describe("render() — Recent happenings GitHub chips", () => {
@@ -370,5 +429,135 @@ describe("search results — sprint hits navigate via goRoadmap", () => {
       },
     });
     expect(html).toContain('data-act="goRoadmap"');
+  });
+});
+
+describe("render() — Recent happenings limit", () => {
+  it("shows at most 4 feed entries", () => {
+    const s = stateWithPlan(makePlanView(), "narrative");
+    const data = [1, 2, 3, 4, 5, 6].map((n) => feedRow({ id: n, summary: `happening number ${n}` }));
+    const html = render({ ...s, roadmapFeed: { status: "ok", data } });
+    const shown = [1, 2, 3, 4, 5, 6].filter((n) => html.includes(`happening number ${n}`));
+    expect(shown).toEqual([1, 2, 3, 4]);
+  });
+});
+
+// ── Recent happenings — its OWN unfiltered read, honest states ───────────────
+
+describe("render() — Recent happenings reads its own slice, not the Feed screen's", () => {
+  const base = () => stateWithPlan(makePlanView(), "narrative");
+
+  it("ignores a filtered Feed-screen slice entirely", () => {
+    const html = render({
+      ...base(),
+      feedAuthor: "meilin", feedTag: "infra",
+      feed: { status: "ok", data: [feedRow({ id: 9, summary: "only meilin's infra entry" })] },
+      roadmapFeed: { status: "ok", data: [feedRow({ id: 1, summary: "the newest entry, any author" })] },
+    });
+    expect(html).toContain("the newest entry, any author");
+    expect(html).not.toContain("only meilin's infra entry");
+  });
+
+  it("a failed read says so — never 'No recent activity yet.'", () => {
+    const html = render({ ...base(), roadmapFeed: { status: "error", data: [], error: "boom" } });
+    expect(html).toContain("Couldn't load recent activity.");
+    expect(html).not.toContain("No recent activity yet.");
+  });
+
+  it("…even when the Feed screen's own slice holds rows", () => {
+    const html = render({
+      ...base(),
+      feed: { status: "ok", data: [feedRow({ summary: "feed screen row" })] },
+      roadmapFeed: { status: "error", data: [], error: "boom" },
+    });
+    expect(html).toContain("Couldn't load recent activity.");
+    expect(html).not.toContain("feed screen row");
+  });
+
+  it("idle / loading with nothing yet → Loading…; an empty ok read → the empty copy", () => {
+    for (const status of ["idle", "loading"] as const) {
+      const html = render({ ...base(), roadmapFeed: { status, data: [] } });
+      expect(html).toContain("Loading&hellip;");
+      expect(html).not.toContain("No recent activity yet.");
+    }
+    expect(render({ ...base(), roadmapFeed: { status: "ok", data: [] } })).toContain("No recent activity yet.");
+  });
+
+  it("a refresh keeps what is already shown", () => {
+    const html = render({ ...base(), roadmapFeed: { status: "loading", data: [feedRow({ summary: "still here" })] } });
+    expect(html).toContain("still here");
+    expect(html).not.toContain("Loading&hellip;");
+  });
+});
+
+// ── the Now box's sprint description ─────────────────────────────────────────
+
+describe("render() — the Now box renders the description as markdown, clamped", () => {
+  const nowBox = (html: string) => {
+    const at = html.indexOf('data-screen-label="Roadmap · Now"');
+    return html.slice(at, html.indexOf("</section>", at));
+  };
+
+  it("goes through the markdown module inside the clamped wrapper — no raw markers", () => {
+    const html = render(stateWithPlan(makePlanView({ sprints: [makeSprint({ description: "Ship **semantic** search <b>now</b>." })] }), "narrative"));
+    const box = nowBox(html);
+    expect(box).toContain('<div class="cnpy-md rm-now-about"><div class="mock-live-md">');
+    expect(box).not.toContain("<b>now</b>"); // escaped by the (sanitizing) markdown fn
+    expect(box).toContain("&lt;b&gt;");
+  });
+
+  it("the clamp is CSS: three lines with an ellipsis", () => {
+    expect(canopyCss).toMatch(/\.cnpy-md\.rm-now-about \{[^}]*-webkit-line-clamp:3/);
+  });
+
+  it("no description → no wrapper", () => {
+    const html = render(stateWithPlan(makePlanView({ sprints: [makeSprint({ description: null })] }), "narrative"));
+    expect(nowBox(html)).not.toContain("rm-now-about");
+  });
+});
+
+// ── the shared two-column helper (ui.ts asideColumns, also the Feed's) ────────
+
+describe("render() — Roadmap Narrative uses the shared two-column helper", () => {
+  it("is exactly asideColumns(main, aside): the page frame, the grid, the sticky aside", () => {
+    const html = render(stateWithPlan(makePlanView(), "narrative"));
+    const page = html.indexOf('class="cnpy-scroll cnpy-cols-page"');
+    const cols = html.indexOf('<div class="cnpy-cols">');
+    const aside = html.indexOf('<aside class="cnpy-cols-aside cnpy-stagger">');
+    expect(page).toBeGreaterThan(-1);
+    expect(cols).toBeGreaterThan(page);
+    expect(aside).toBeGreaterThan(cols);
+    // The Roadmap's own boxes sit inside that aside, after the narrative.
+    expect(html.indexOf("Roadmap · Now")).toBeGreaterThan(aside);
+    expect(html.indexOf("mock-live-md")).toBeLessThan(aside);
+    // The Roadmap no longer carries a layout class of its own.
+    expect(html).not.toMatch(/class="[^"]*\brm-(page|cols|aside)\b/);
+  });
+
+  it("the shared CSS: a 360px aside, sticky at the page's own top padding, one column under 880px", () => {
+    expect(canopyCss).toMatch(/\.cnpy-cols \{[^}]*grid-template-columns:minmax\(0,1fr\) 360px/);
+    expect(canopyCss).toMatch(/\.cnpy-cols-page \{[^}]*--cols-pad-top:28px/);
+    expect(canopyCss).toMatch(/\.cnpy-cols-aside \{[^}]*position:sticky; top:var\(--cols-pad-top\)/);
+    expect(canopyCss).toMatch(/@container colspage \(max-width: 880px\)/);
+    // NOT the sidebar's .cnpy-aside, whose width and border-right would leak onto it.
+    const html = render(stateWithPlan(makePlanView(), "narrative"));
+    expect(html).not.toContain('<aside class="cnpy-aside cnpy-stagger">');
+    expect(html).toContain("padding:var(--cols-pad-top) 32px 80px");
+  });
+});
+
+describe("render() — Recent happenings caps each row's GitHub chips", () => {
+  it("shows at most three chips, then a quiet +N naming the rest", () => {
+    const html = render(stateWithFeed(JSON.stringify({ prs: ["1", "2"], commits: ["abc1234"], issues: [7, 8] })));
+    const box = html.slice(html.indexOf("Roadmap · Recent happenings"));
+    expect(box).toContain(">#1<");
+    expect(box).toContain(">#2<");
+    expect(box).not.toContain(">#7<");
+    expect(box).toContain(">+2</span>");
+  });
+
+  it("three or fewer chips → no +N", () => {
+    const html = render(stateWithFeed(JSON.stringify({ prs: ["1"], commits: [], issues: [7] })));
+    expect(html.slice(html.indexOf("Roadmap · Recent happenings"))).not.toMatch(/>\+\d+<\/span>/);
   });
 });

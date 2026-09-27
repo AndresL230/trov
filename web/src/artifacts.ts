@@ -21,9 +21,10 @@
 // touches the DOM or the network; what it cannot do itself (navigate, write,
 // toast, download, open a tab, copy) it returns as an effect for main.ts.
 
-import { esc, attr, relTime } from "./ui";
-import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
+import { esc, attr, relTime, surface } from "./ui";
+import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
+import { confirmModal } from "./confirm";
 import { renderMarkdown, sanitizeSvg } from "./markdown";
 import { collapsedLineDiff } from "./diff";
 import type { PersonColor } from "@shared/rows";
@@ -111,6 +112,10 @@ export interface ArtUi {
   attachPick: number | null;
   /** The New version dialog, open when non-null. */
   nv: ArtNewVersion | null;
+  /** The viewer's "Delete artifact" confirm is open (author / admin only). */
+  deleteArm: boolean;
+  /** The delete is in flight: the confirm's buttons are disabled. */
+  deleteBusy: boolean;
   c: ArtCreate;
 }
 export function initialArtCreate(): ArtCreate {
@@ -124,6 +129,7 @@ export function initialArtUi(): ArtUi {
     list: IDLE(), details: {}, diffs: {}, ticketArts: {}, attachTickets: IDLE(), busy: false,
     q: "", f: { ...NO_FILTERS }, filterOpen: false, filterCat: "area",
     verMenu: false, dotMenu: false, ratifyOpen: false, attachOpen: false, attachQ: "", attachPick: null, nv: null,
+    deleteArm: false, deleteBusy: false,
     c: initialArtCreate(),
   };
 }
@@ -142,6 +148,8 @@ export interface ArtProps {
   ui: ArtUi;
   /** The signed-in handle — the author check for private artifacts and the visibility toggle. */
   me: string;
+  /** The signed-in person is an admin — may delete any artifact they can see. */
+  admin: boolean;
   persons: ArtPerson[];
   /** `location.host` in the browser; the address strips print it. */
   host: string;
@@ -180,7 +188,6 @@ const NEUTRAL = CHIP + "color:var(--fg-55);border:1px solid var(--border-strong)
 const MONO_VAL = "font-family:var(--label);font-size:11.5px;color:var(--fg-70)";
 const EYEBROW = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)";
 const SHELL = "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
-const PANEL = "border:1px solid var(--border);border-radius:14px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)";
 const MENU = "background:var(--bg);border:1px solid var(--border-strong);border-radius:11px;box-shadow:0 14px 38px rgba(0,0,0,.3)";
 const OUTLINE_BTN = "padding:7px 15px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)";
 /** The toast shown when the author makes a page private (it replaced a standing banner). */
@@ -208,6 +215,7 @@ const I = {
   shield: () => svg(11, 2.2, `<path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.3 7.5 9.5 4.3-1.2 7.5-4.9 7.5-9.5V6z"></path><path d="m9 12 2.2 2.2L15.5 10"></path>`),
   ext: () => svg(14, 1.8, `<path d="M14 4h6v6"></path><path d="M20 4 11 13"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path>`),
   link: () => svg(14, 1.8, `<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path>`),
+  trash: () => svg(14, 1.8, `<path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6M14 11v6"></path>`),
   download: () => svg(14, 1.8, `<path d="M12 4v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 20h14"></path>`),
   arrow: (w = 13) => svg(w, 2, `<path d="M5 12h14M13 6l6 6-6 6"></path>`),
   ticket: () => svg(13, 1.9, `<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path>`),
@@ -226,6 +234,12 @@ export const fmtKB = (b: number): string => (b >= 1024 * 1024 ? `${(b / 1024 / 1
 export const capLabel = (k: ArtifactKind): string => (isBinaryKind(k) ? "10 MB" : "750 KB");
 export const slugifyTitle = (t: string): string => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 const sameHandle = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+
+/** Whether the signed-in person may delete this page: its author, or an admin (the server re-checks). */
+export function canDeleteArtifact(d: Pick<ArtifactDetailDTO, "author_id">, me: string, admin: boolean): boolean {
+  return admin || (me !== "" && sameHandle(d.author_id, me));
+}
+const deleteKeeps = (n: number): string => (n === 1 ? "Its one version is kept" : `All ${n} versions are kept`);
 
 interface Who { handle: string; name: string; first: string; color: PersonColor; ini: string }
 function who(p: Pick<ArtProps, "persons">, handle: string): Who {
@@ -452,21 +466,16 @@ function libraryView(p: ArtProps): string {
 
 
   const toolbar = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 4px">
-    <div style="position:relative;display:flex;align-items:stretch;flex:1 1 260px;max-width:480px;min-width:0;height:34px">
-      <div class="cnpy-search" style="flex:1;min-width:0;padding:0 11px;border-radius:7px 0 0 7px;border-color:var(--border-strong)">
-        ${I.search()}
-        <input data-act="artQ" data-field="artQ" class="cnpy-search-in" style="font-size:12.5px" placeholder="Search by title, area, kind or ticket" value="${attr(ui.q)}" autocomplete="off" spellcheck="false">
-        ${ui.q ? `<button data-act="artClearQ" aria-label="Clear search" class="cnpy-xbtn" style="width:16px;height:16px;display:grid;place-items:center;color:var(--fg-40);flex:none">${I.x()}</button>` : ""}
-      </div>
-      ${filterMenuBackdrop(menu)}
-      ${filterMenu(menu)}
-    </div>
+    ${searchFilterBar({
+      search: { act: "artQ", field: "artQ", value: ui.q, placeholder: "Search by title, area, kind or ticket", clearAct: "artClearQ" },
+      menu,
+    })}
     <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap;margin-left:auto;flex:none">${rows.length} shown · ${all.length} total</span>
   </div>`;
 
   const card = (a: ArtifactSummaryDTO, i: number): string => {
     const au = who(p, a.author_id);
-    return `<button data-act="artOpen" data-arg="${attr(a.slug)}" class="cnpy-card cnpy-rise" style="--i:${i};border:1px solid var(--border);border-radius:14px;padding:0;background:color-mix(in srgb,var(--fg) 2.5%,transparent);display:flex;flex-direction:column;height:100%;width:100%;text-align:left;cursor:pointer;overflow:hidden">
+    return `<button data-act="artOpen" data-arg="${attr(a.slug)}"${surface(`--i:${i};padding:0;display:flex;flex-direction:column;height:100%;width:100%;text-align:left;cursor:pointer;overflow:hidden`, { hover: true, cls: "cnpy-rise" })}>
       <div style="position:relative;height:160px;border-bottom:1px solid var(--border);overflow:hidden;background:var(--bg);flex:none">
         ${thumb(a)}
         <div style="position:absolute;left:0;right:0;bottom:0;height:36px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none"></div>
@@ -627,7 +636,7 @@ function contentBlock(p: ArtProps, d: ArtifactDetailDTO): string {
     default: {
       const name = artFileName(d.slug, d.kind, ver);
       return `<div style="display:grid;place-items:center;padding:48px 24px;background:var(--bg)">
-        <div style="display:flex;align-items:center;gap:14px;width:min(480px,100%);padding:14px 16px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+        <div style="display:flex;align-items:center;gap:14px;width:min(480px,100%);padding:14px 16px;border:1px solid var(--border);border-radius:10px">
           <span style="width:36px;height:36px;border-radius:8px;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55);flex:none">${I.kind(d.kind, 16)}</span>
           <span style="flex:1;min-width:0"><span style="display:block;font-family:var(--label);font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</span><span style="display:block;font-size:11.5px;color:var(--fg-40);margin-top:2px">${esc(fmtKB(ver.size_bytes))}${ver.content_type ? ` · ${esc(ver.content_type)}` : ""}</span></span>
           <button data-act="artDownload" class="cnpy-accentbtn" style="display:inline-flex;align-items:center;gap:7px;${ACCENT_BTN};flex:none">${I.download()}Download</button>
@@ -699,10 +708,15 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
     }),
   });
 
+  // "Delete artifact" (author / admin only) closes the menu and opens the shared
+  // confirmation modal (web/src/confirm.ts, rendered by artifactsDialogs) — never window.confirm.
+  const canDelete = canDeleteArtifact(d, p.me, p.admin);
   const dotMenu = ui.dotMenu ? `<div data-act="artCloseMenus" style="position:fixed;inset:0;z-index:29"></div>
     <div role="menu" style="position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:210px;${MENU};padding:5px;animation:cnpy-pop .14s ease both">
       ${[["artCopyLink", I.link(), "Copy link"], ["artDownload", I.download(), "Download raw"], ["artOpenTab", I.ext(), "Open in new tab"]].map(([act, icon, label]) =>
         `<button data-act="${act}" role="menuitem" class="cnpy-menurow" style="display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 10px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--fg-70)">${icon}${label}</button>`).join("")}
+      ${canDelete ? `<div style="height:1px;background:var(--border);margin:5px 4px"></div>
+      <button data-act="artDeleteArm" role="menuitem" aria-haspopup="dialog" class="cnpy-menurow" style="display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 10px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--red)">${I.trash()}Delete artifact</button>` : ""}
     </div>` : "";
 
   const toolbar = `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;padding:6px;border-bottom:1px solid var(--border)">
@@ -721,7 +735,7 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
     <button data-act="artNvOpen" title="${isBinaryKind(d.kind) ? "Upload a replacement file" : `Edit v${ver.version_no} or upload a replacement`}" class="cnpy-ghostbtn" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap;flex:none">${I.plus(12)}New version</button>
     <button data-act="artOpenTab" title="Open in new tab" aria-label="Open in new tab" class="cnpy-iconbtn" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55);flex:none">${I.ext()}</button>
     <div style="position:relative;flex:none">
-      <button data-act="artDotMenu" title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded="${ui.dotMenu}" class="cnpy-iconbtn" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55)">${I.dots()}</button>
+      <button data-act="artDotMenu" title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded="${ui.dotMenu}"${canDelete ? " data-confirm-trigger" : ""} class="cnpy-iconbtn" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55)">${I.dots()}</button>
       ${dotMenu}
     </div>
   </div>`;
@@ -773,22 +787,22 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
       <div style="padding-top:3px">${visSwitch}</div>
     </div>
 
-    <div style="margin-top:22px;border:1px solid var(--border-strong);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+    <div${surface("margin-top:22px;border-color:var(--border-strong)")}>
       ${toolbar}
-      <div style="border-radius:0 0 11px 11px;overflow:hidden">${contentBlock(p, d)}</div>
+      <div style="border-radius:0 0 10px 10px;overflow:hidden">${contentBlock(p, d)}</div>
     </div>
 
     <div data-screen-label="Artifact details" class="art-bento" style="display:grid;gap:14px;margin-top:18px">
-      <div class="art-b-props" style="${PANEL};padding:16px 18px;min-width:0">
+      <div${surface("padding:16px 18px;min-width:0", { cls: "art-b-props" })}>
         <div style="display:flex;align-items:center;height:24px;margin-bottom:8px"><div style="${EYEBROW}">Properties</div></div>
         ${props}
       </div>
-      <div class="art-b-links" style="${PANEL};padding:16px 18px;min-width:0">
+      <div${surface("padding:16px 18px;min-width:0", { cls: "art-b-links" })}>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;height:24px;margin-bottom:8px">
           <div style="${EYEBROW}">Linked work</div>
           <button data-act="artAttachOpen" title="Attach to ticket" class="cnpy-iconbtn" style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:6px;font-size:11.5px;font-weight:500;color:var(--fg-55)">${I.plus(12)}Attach ticket</button>
         </div>
-        ${links.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px">${links.join("")}</div>` : `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0 4px">Nothing linked yet.</div>`}
+        ${links.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(200px,100%),1fr));gap:8px">${links.join("")}</div>` : `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0 4px">Nothing linked yet.</div>`}
       </div>
     </div>
   </div>`;
@@ -811,7 +825,7 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
   const opts = (sel: number) => versions.map((x) => `<option value="${x.version_no}"${x.version_no === sel ? " selected" : ""}>v${x.version_no} · ${esc(relTime(x.created_at))}</option>`).join("");
   const side = (x: ArtifactVersionDTO | undefined, n: number, tag: string, color: string) => {
     const w = x ? who(p, x.created_by) : null;
-    return `<div style="border:1px solid var(--border);border-radius:11px;padding:12px 14px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+    return `<div${surface("padding:12px 14px")}>
       <div style="display:flex;align-items:center;gap:8px"><span style="${CHIP}color:${color};border:1px solid color-mix(in srgb,${color} 38%,transparent)">${tag}</span><span style="font-family:var(--label);font-size:12px;font-weight:600">v${n}</span></div>
       ${x && w ? `<div style="font-size:13px;color:var(--fg-70);margin-top:7px">${esc(x.summary || "No summary")}</div>
       <div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:var(--fg-40)">${av(w, 16)}<span style="font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-${w.color})">@${esc(w.handle)}</span> · ${esc(relTime(x.created_at))}</div>` : `<div style="font-size:13px;color:var(--fg-40);margin-top:7px">No such version.</div>`}
@@ -829,26 +843,26 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
   else if (text) {
     body = rows.length === 0 || rows.every((x) => x.t === "ctx")
       ? `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">These versions are identical.</div>`
-      : `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;padding:8px 0;margin-top:18px">${rows.map((x) => {
+      : `<div${surface("overflow:hidden;padding:8px 0;margin-top:18px")}>${rows.map((x) => {
         const pre = x.t === "del" ? "−" : x.t === "add" ? "+" : "";
         const preColor = x.t === "del" ? "var(--red)" : x.t === "add" ? "var(--green)" : "var(--fg-40)";
         return `<div style="display:flex;${lineSt(x.t)}"><span style="display:inline-block;width:18px;flex:none;color:${preColor}">${pre}</span><span style="min-width:0">${esc(x.t === "ellipsis" ? "⋯ " + x.text : x.text || " ")}</span></div>`;
       }).join("")}</div>`;
   } else if (d.kind === "image") {
-    const pane = (x: typeof dd.a, tag: string) => `<figure style="margin:0;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg)">
+    const pane = (x: typeof dd.a, tag: string) => `<figure${surface("margin:0;overflow:hidden")}>
       <div style="display:grid;place-items:center;padding:18px;min-height:220px"><img src="${attr(x.raw_url || rawUrl(d.slug, x.version_no))}" alt="${attr(`${d.title} v${x.version_no}`)}" style="display:block;max-width:100%;height:auto"></div>
       <figcaption style="padding:8px 12px;border-top:1px solid var(--border);font-family:var(--label);font-size:11px;color:var(--fg-55)">${tag} · v${x.version_no} · ${esc(fmtKB(x.size_bytes))}</figcaption>
     </figure>`;
-    body = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:18px">${pane(dd.a, "BASE")}${pane(dd.b, "COMPARED")}</div>`;
+    body = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:10px;margin-top:18px">${pane(dd.a, "BASE")}${pane(dd.b, "COMPARED")}</div>`;
   } else {
     const meta = (x: typeof dd.a) => `<div style="display:grid;grid-template-columns:96px minmax(0,1fr);gap:6px 10px;font-size:12.5px">
       <span style="${EYEBROW};font-size:10px">SIZE</span><span style="color:var(--fg-70)">${esc(fmtKB(x.size_bytes))}</span>
       <span style="${EYEBROW};font-size:10px">TYPE</span><span style="${MONO_VAL}">${esc(x.content_type || "—")}</span>
       <span style="${EYEBROW};font-size:10px">SHA-256</span><span style="${MONO_VAL};overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${attr(x.sha256)}">${esc(x.sha256.slice(0, 16))}…</span>
     </div>`;
-    body = `<div style="border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-top:18px">
+    body = `<div${surface("padding:16px 18px;margin-top:18px")}>
       <div style="font-size:12.5px;color:var(--fg-55);margin-bottom:14px">${dd.a.sha256 === dd.b.sha256 ? "Both versions are the same file." : `A ${d.kind === "pdf" ? "PDF" : "file"} can't be compared line by line — here is what changed.`}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px">${meta(dd.a)}${meta(dd.b)}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:18px">${meta(dd.a)}${meta(dd.b)}</div>
     </div>`;
   }
 
@@ -865,7 +879,7 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
       <span style="flex:1"></span>
       <button data-act="artOpen" data-arg="${attr(openArg)}" class="cnpy-ghostbtn" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:7px;padding:5px 11px;white-space:nowrap">Open v${pair.b}</button>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:18px">${side(va, pair.a, "BASE", "var(--red)")}${side(vb, pair.b, "COMPARED", "var(--green)")}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:10px;margin-top:18px">${side(va, pair.a, "BASE", "var(--red)")}${side(vb, pair.b, "COMPARED", "var(--green)")}</div>
     ${body}
   </div>`;
 }
@@ -926,7 +940,7 @@ function createView(p: ArtProps): string {
           <div style="font-size:12.5px;color:var(--fg-40)">.html, .md, .svg or .mmd up to 750 KB · images, PDFs and other files up to 10 MB</div>
           <label class="cnpy-outlinebtn" style="margin-top:12px;${OUTLINE_BTN};padding:6px 14px;cursor:pointer">Choose file<input type="file" data-art-file style="display:none"></label>
         </div>`
-      : `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+      : `<div${surface("display:flex;align-items:center;gap:12px;padding:12px 14px")}>
           <span style="width:30px;height:30px;border-radius:6px;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55);flex:none">${binary ? I.kind(c.kind, 14) : I.file()}</span>
           <span style="flex:1;min-width:0"><span style="display:block;font-family:var(--label);font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.file.name)}</span><span style="display:block;font-size:11.5px;color:var(--fg-40);margin-top:1px">${fmtKB(c.file.size)} · ${c.kind}${c.file.size > cap ? " · over the cap" : ""}</span></span>
           <button data-act="artCRemoveFile" class="cnpy-mutelink" style="font-size:12px;font-weight:500;color:var(--fg-40)">Remove</button>
@@ -1008,7 +1022,7 @@ function createView(p: ArtProps): string {
 
 function notFoundView(p: ArtProps): string {
   return `<div data-screen-label="Artifact not found" style="display:flex;justify-content:center;padding:80px 24px">
-    <div style="width:420px;max-width:100%;border:1px solid var(--border);border-radius:14px;padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center">
+    <div${surface("width:420px;max-width:100%;padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center")}>
       <div style="width:52px;height:52px;border-radius:14px;background:var(--hover);display:grid;place-items:center;color:var(--fg-55)">${svg(22, 1.7, `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="m9.5 12.5 5 5M14.5 12.5l-5 5"></path>`)}</div>
       <div>
         <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">This artifact isn't available.</div>
@@ -1023,13 +1037,21 @@ function notFoundView(p: ArtProps): string {
 // ── dialogs (ratify, attach) ─────────────────────────────────────────────────
 
 export function artifactsDialogs(p: ArtProps): string {
-  if (p.screen !== "artifact" || p.route.diff || !(p.ui.ratifyOpen || p.ui.attachOpen || p.ui.nv)) return "";
+  if (p.screen !== "artifact" || p.route.diff || !(p.ui.ratifyOpen || p.ui.attachOpen || p.ui.nv || p.ui.deleteArm)) return "";
   const d = routeDetail(p)?.data;
   if (!d) return "";
+  // The delete confirmation (author / admin only — the server re-checks).
+  if (p.ui.deleteArm) {
+    return canDeleteArtifact(d, p.me, p.admin) ? confirmModal({
+      id: "art-delete-confirm", title: `Delete “${d.title}”?`,
+      body: `It leaves the library, search, tickets and agents. ${deleteKeeps(d.current_version)} and you can undo.`,
+      confirmAct: "artDelete", cancelAct: "artDeleteCancel", busy: p.ui.deleteBusy,
+    }) : "";
+  }
   const vno = d.version.version_no;
   const shell = (w: number, inner: string, label: string) => `<div data-act="artCloseDialogs" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);animation:cnpy-fade .14s ease"></div>
     <div style="position:fixed;inset:0;z-index:61;display:grid;place-items:center;padding:16px;pointer-events:none">
-      <div role="dialog" aria-modal="true" aria-label="${label}" style="pointer-events:auto;width:min(${w}px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;border:1px solid var(--border-strong);border-radius:14px;background:var(--bg);box-shadow:0 20px 60px rgba(0,0,0,.45);animation:cnpy-pop .2s ease both">${inner}</div>
+      <div role="dialog" aria-modal="true" aria-label="${label}"${surface(`pointer-events:auto;width:min(${w}px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;border:1px solid var(--border-strong);box-shadow:0 20px 60px rgba(0,0,0,.45);animation:cnpy-pop .2s ease both`)}>${inner}</div>
     </div>`;
 
   if (p.ui.nv) return shell(820, newVersionDialog(p, d, p.ui.nv), "New version");
@@ -1116,7 +1138,7 @@ function newVersionDialog(p: ArtProps, d: ArtifactDetailDTO, nv: ArtNewVersion):
           <label class="cnpy-outlinebtn" style="margin-top:12px;${OUTLINE_BTN};padding:6px 14px;cursor:pointer">Choose file<input type="file" data-art-file="nv" style="display:none"></label>
         </div>
         ${nv.fileErr ? `<div style="font-size:12px;color:var(--red);margin-top:7px">${esc(nv.fileErr)}</div>` : ""}`
-      : `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+      : `<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px">
           <span style="width:30px;height:30px;border-radius:6px;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55);flex:none">${binary ? I.kind(d.kind, 14) : I.file()}</span>
           <span style="flex:1;min-width:0"><span style="display:block;font-family:var(--label);font-size:12.5px;font-weight:500;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nv.file.name)}</span><span style="display:block;font-size:11.5px;color:var(--fg-40);margin-top:1px">${fmtKB(nv.file.size)} · replaces v${latestNo}</span></span>
           <button data-act="artNvRemoveFile" class="cnpy-mutelink" style="font-size:12px;font-weight:500;color:var(--fg-40)">Remove</button>
@@ -1180,7 +1202,9 @@ export type ArtWrite =
   | { op: "link"; slug: string; target_type: ArtifactLinkType; target_ref: string; flash: string }
   | { op: "create"; fields: { title: string; kind: ArtifactKind; area: string; repo: string; visibility: ArtifactVisibility; summary: string }; content: string | null; file: Blob | null; filename: string | null; links: { target_type: ArtifactLinkType; target_ref: string }[] }
   | { op: "version"; slug: string; body: { content: string; summary: string } | { file: Blob; filename: string; summary: string } }
-  | { op: "fetchUrl"; url: string };
+  | { op: "fetchUrl"; url: string }
+  | { op: "delete"; slug: string }
+  | { op: "restore"; slug: string };
 
 export type ArtEffect =
   | { nav: { screen: ArtScreen; route: ArtRoute } }
@@ -1190,6 +1214,8 @@ export type ArtEffect =
   | { download: { url: string; name: string } }
   | { copy: { text: string; flash: string } }
   | { retry: true }
+  /** Rerender, then move focus to this selector (the delete confirm's Cancel / its trigger). */
+  | { focus: string }
   | null;
 
 /**
@@ -1199,7 +1225,7 @@ export type ArtEffect =
  */
 export function artifactsAct(
   ui: ArtUi,
-  ctx: { screen: ArtScreen | null; route: ArtRoute; me: string; host: string; sprints?: ArtSprintRef[] },
+  ctx: { screen: ArtScreen | null; route: ArtRoute; me: string; admin?: boolean; host: string; sprints?: ArtSprintRef[] },
   act: string, arg: string | null, value: string | null,
 ): ArtEffect {
   const d = ctx.screen === "artifact" ? routeDetail({ route: ctx.route, ui })?.data ?? null : null;
@@ -1247,6 +1273,26 @@ export function artifactsAct(
     case "artVerMenu": ui.verMenu = !ui.verMenu; ui.dotMenu = false; return null;
     case "artDotMenu": ui.dotMenu = !ui.dotMenu; ui.verMenu = false; return null;
     case "artCloseMenus": closeMenus(); return null;
+    // Delete (author / admin only — the server re-checks): the in-app confirm, then the write.
+    case "artDeleteArm":
+      if (!d || !canDeleteArtifact(d, ctx.me, ctx.admin === true)) return null;
+      closeMenus();
+      ui.deleteArm = true;
+      return { focus: "[data-confirm-focus]" };
+    case "artDeleteCancel": {
+      if (ui.deleteBusy) return null;
+      const was = ui.deleteArm;
+      ui.deleteArm = false;
+      return was ? { focus: "[data-confirm-trigger]" } : null;
+    }
+    case "artDelete":
+      if (!d || !ui.deleteArm || ui.deleteBusy || !canDeleteArtifact(d, ctx.me, ctx.admin === true)) return null;
+      ui.deleteBusy = true;
+      return { write: { op: "delete", slug: d.slug } };
+    // The toast's Undo — works from any screen (the toast outlives the viewer).
+    case "artRestore":
+      if (!arg) return null;
+      return { write: { op: "restore", slug: arg } };
     case "artCloseDialogs":
       ui.ratifyOpen = false; ui.attachOpen = false;
       if (!ui.nv?.submitting) ui.nv = null;

@@ -336,7 +336,7 @@ describe("reconcileRepo — the reviews arm", () => {
     expect(await hasCaptured(env.DB, "review", "webhook")).toBe(false);
     expect(await awaiting()).toBe(1);
     const d = await getRepoDashboard(env.DB, "o/r", NOW, ENVS);
-    expect((d.prs as { data: { number: number; state: string }[] }).data.map((r) => [r.number, r.state]).sort()).toEqual([[480, "approved"], [481, "review"]]);
+    expect((d.prs as { data: { rows: { number: number; state: string }[] } }).data.rows.map((r) => [r.number, r.state]).sort()).toEqual([[480, "approved"], [481, "review"]]);
   });
 
   it("a failing reviews query is named in `failed`, stops nothing, and never logs the token", async () => {

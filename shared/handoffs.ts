@@ -45,7 +45,8 @@ export interface HandoffCreate {
 }
 
 export type PromptStatus = "draft" | "staged" | "published";
-export type PromptSort = "updated_desc" | "updated_asc";
+/** `used` = most used first (use_count desc, then last_used_at desc, then updated_at desc). */
+export type PromptSort = "updated_desc" | "updated_asc" | "used";
 
 /** A library card: the prompt at its latest version; excerpt = first non-blank line of the body. */
 export interface PromptSummary {
@@ -57,6 +58,10 @@ export interface PromptSummary {
   status: PromptStatus;
   updated_at: string;
   excerpt: string;
+  /** Times the prompt was fetched by MCP get_prompt or copied on the web (0035). */
+  use_count: number;
+  /** When it was last used; null = never (or not since 0035). */
+  last_used_at: string | null;
 }
 
 export interface PromptDetail {
@@ -69,6 +74,9 @@ export interface PromptDetail {
   status: PromptStatus;
   updated_at: string;
   body: string;
+  /** See PromptSummary.use_count / last_used_at (0035). */
+  use_count: number;
+  last_used_at: string | null;
 }
 
 export interface PromptVersion {

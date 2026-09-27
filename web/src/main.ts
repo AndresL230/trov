@@ -6,12 +6,14 @@
 import "./canopy.css";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments } from "./segmented";
+import { syncFavicon } from "./favicon";
+import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
 import {
-  render, initialState, firstDocForSpace, docReaderHtml, connectSnippet, CONNECT_CLIENTS, browserConnectCommand,
-  FEED_FILTER_CATS, type AppState, type Screen, type ConnectClient, type FeedFilterCat,
+  render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, connectSnippet, CONNECT_CLIENTS, browserConnectCommand,
+  FEED_FILTER_CATS, type AppState, type Screen, type ConnectClient, type FeedFilterCat, type ToastAction,
 } from "./render";
 import {
-  getFeed, listDocs, getDoc, search, getRoadmap, getMyDashboard, getRepoDashboard,
+  getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
   listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, type AssignTarget,
@@ -25,9 +27,9 @@ import {
   addTicketLink, editTicket, removeTicketLink, setTicketSprint, setTicketParent, addTicketComment, listSprints,
   getSprint, createSprint, setSprintActive, addSprintResource,
   type TicketDetail,
-  listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
+  listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, deleteArtifact, restoreArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
   listHandoffs, getHandoff, listPrompts, getPrompt, getPromptVersions,
-  createHandoff, claimHandoff, expireHandoff, savePrompt, setPromptTags, publishPrompt, proposeDoc,
+  createHandoff, claimHandoff, expireHandoff, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, proposeDoc,
   Unauthorized, NotFound, ApiError,
 } from "./api";
 import { handoffAsPrompt, blankHandoff, docDraftFromHandoff, type NewHandoffDraft } from "./handoffs";
@@ -36,7 +38,7 @@ import { selectedUnplacedId } from "./maintenance";
 import { ASSIGN_OPTIONS } from "./triage-map";
 import { draftFromPrompt, blankPromptDraft, slugify, tagOptions } from "./prompts";
 import { blankDoc, defaultSection } from "./newdoc";
-import { SPRINT_URGENCIES, SPRINT_DOMAINS, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
+import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
 import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, type Route } from "./hash";
 import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
@@ -51,6 +53,7 @@ import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX
 import { PERSON_COLORS, type PersonColor } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
+import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
 import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo";
 import { isRepoTab, REPO_RANGES, type RepoRange } from "@shared/repo";
@@ -59,6 +62,7 @@ import {
   type ArtScreen, type ArtEffect, type ArtWrite, type ArtRoute, type ArtFilterKey, type ArtFile,
 } from "./artifacts";
 import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
+import { confirmKeyAction } from "./confirm";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Canopy: #app mount point missing");
@@ -66,10 +70,20 @@ const mount = root;
 
 const state: AppState = initialState();
 
+// The sidebar's "search everything" dropdown. Its node lives on <body>, outside the
+// mount, so rerender() never touches it; rerender() calls `qs.sync()` to re-anchor it.
+const qs = createQuickSearch({
+  fetch: (q, signal) => quickSearch(q, signal),
+  pick: quickPick,
+  theme: () => resolvedTheme(),
+  railCollapsed: () => railCollapsed(state), // on a phone the drawer is the full, expanded rail
+});
+
 // ── persisted client prefs (theme + sidebar only; not backend state) ─────────
 try {
   const t = localStorage.getItem("canopy.theme");
-  if (t === "dark" || t === "light" || t === "midnight" || t === "system") state.theme = t;
+  if (t === "dark" || t === "light" || t === "system") state.theme = t;
+  else if (t === "midnight") state.theme = "dark"; // Midnight was retired (2026-09-26) — its closest theme
   const fv = localStorage.getItem("canopy.feedView");
   if (fv === "reading" || fv === "agents") state.feedView = fv;
   const pv = localStorage.getItem("canopy.promptView");
@@ -94,6 +108,14 @@ if (window.matchMedia) {
   const onNarrow = (ev: MediaQueryListEvent) => { state.narrow = ev.matches; rerender(); };
   if (narrow.addEventListener) narrow.addEventListener("change", onNarrow);
   else narrow.addListener(onNarrow);
+
+  // At phone width even the collapsed rail starves the screen: it leaves the layout and
+  // opens as a drawer from the header's menu button (canopy.css `[data-phone="1"]`).
+  const phone = window.matchMedia("(max-width: 640px)");
+  state.phone = phone.matches;
+  const onPhone = (ev: MediaQueryListEvent) => { state.phone = ev.matches; state.drawer = false; rerender(); };
+  if (phone.addEventListener) phone.addEventListener("change", onPhone);
+  else phone.addListener(onPhone);
 }
 
 // ── render with focus/caret + main-pane scroll preservation ──────────────────
@@ -144,7 +166,10 @@ function markEnter(): void {
   const root = mount.firstElementChild as HTMLElement | null;
   if (!root || state.view !== "app") return;
   const settled = screenSettled();
-  const key = `${hashForRoute(currentRoute())}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
+  // An in-page view switch (the header's segmented switch — Roadmap Narrative/Timeline, a
+  // release's Release/Patch notes) is not a new page: key the entrance on the route WITHOUT
+  // it, so flipping the switch swaps the content in place instead of replaying the screen.
+  const key = `${hashForRoute({ ...currentRoute(), roadmapTab: undefined, releasePage: undefined })}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
   const now = performance.now();
   // A still-loading paint does not enter: the entrance plays ONCE, when the screen's
   // read lands. Playing it for the loading paint too made every first visit (and every
@@ -197,6 +222,8 @@ function countUp(root: HTMLElement): void {
 let pendingFlash: string | null = null;
 
 let lastNavGroup: NavGroup | null = null;
+/** The route the phone drawer was last seen on (rerender closes it when this changes). */
+let drawerRoute = "";
 /** The group the app opened on its own (so it may close it again). */
 let autoOpened: NavGroup | null = null;
 
@@ -204,6 +231,9 @@ function rerender(): void {
   // A board drag holds the DOM: swapping <main> would drop the card mid-drag.
   // The held paint runs when the drag ends (clearBoardDrag).
   if (boardDrag) { rerenderHeld = true; return; }
+  // The phone drawer closes whenever the route changes (a nav row, a search, Back).
+  const drawerKey = state.view === "app" ? hashForRoute(currentRoute()) : state.view;
+  if (drawerKey !== drawerRoute) { drawerRoute = drawerKey; state.drawer = false; }
   // The "Poll now" result is session-only and belongs to the Repo screen: leaving
   // it (any route, or signing out) clears it, and an in-flight poll's answer is
   // then dropped on arrival (runRepoPoll checks it is still the one polling).
@@ -243,6 +273,9 @@ function rerender(): void {
   const scroll = captureScroll(mount, state.screen);
   paint(mount, render(state));
   syncSegments(mount);
+  qs.sync();   // the search dropdown lives outside the mount: re-anchor and re-theme it
+  // The tab icon follows the app's resolved theme (a no-op until it changes).
+  syncFavicon(resolvedTheme(), mount.querySelector("[data-cnpy-theme]"));
   restoreScroll(mount, scroll, state.screen);
   markEnter();
   if (pendingFlash) {
@@ -369,7 +402,7 @@ mount.addEventListener("scroll", () => {
   requestAnimationFrame(() => { spyScheduled = false; updateActiveHeading(); updateGuideToc(); });
 }, true);
 
-function resolvedTheme(): "dark" | "light" | "midnight" {
+function resolvedTheme(): "dark" | "light" {
   return state.theme === "system" ? (state.systemDark ? "dark" : "light") : state.theme;
 }
 function persist(key: string, value: string): void {
@@ -386,6 +419,8 @@ function persistNavOpen(): void {
 function currentRoute(): Route {
   const r: Route = { screen: state.screen, ticketId: state.ticketId, sprintId: state.sprintId };
   if (state.screen === "repo") r.repoTab = state.repoTab;
+  if (state.screen === "roadmap") r.roadmapTab = state.roadmapTab;
+  if (state.screen === "releases" && state.releaseVersion) { r.releaseVersion = state.releaseVersion; r.releasePage = state.releasePage; }
   if (state.screen === "artifact") r.art = state.artRoute;
   if (state.screen === "handoff" && state.handoffId) r.handoffId = state.handoffId;
   if (state.screen === "prompt" && state.promptSlug) r.promptSlug = state.promptSlug;
@@ -401,9 +436,18 @@ function applyRoute(r: Route): void {
   state.ticketId = r.ticketId;
   state.sprintId = r.sprintId;
   if (r.repoTab) state.repoTab = r.repoTab;
+  if (r.roadmapTab) state.roadmapTab = r.roadmapTab;
+  if (r.screen === "releases") {
+    // What's new keeps one screen for the grid and every release page, so moving between
+    // them (a card, Back, the newer/older links) starts the new page at its top.
+    const v = r.releaseVersion ?? null, page = r.releasePage ?? "notes";
+    if (v !== state.releaseVersion || page !== state.releasePage) document.getElementById("cnpy-main")?.scrollTo(0, 0);
+    state.releaseVersion = v; state.releasePage = page;
+  }
   state.artRoute = r.art ?? ART_ROUTE_NONE;
   // A route change closes the artifact viewer's menus and dialogs (the design's onHash).
   state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false;
+  if (!state.art.deleteBusy) state.art.deleteArm = false;
   if (r.handoffId) state.handoffId = r.handoffId;
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
@@ -413,9 +457,9 @@ function applyRoute(r: Route): void {
 // Kick off the data load for a screen (mirrors the go* dispatch cases).
 function loadForScreen(screen: Screen): void {
   switch (screen) {
-    case "feed": loadFeedIfNeeded(); break;
+    case "feed": loadFeedIfNeeded(); loadFeedStats(); break;
     case "docs": loadDocsIfNeeded(); break;
-    case "roadmap": loadRoadmapIfNeeded(); loadFeedIfNeeded(); break;
+    case "roadmap": loadRoadmapIfNeeded(); loadRoadmapFeed(); break;
     case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); break;
     case "maintenance": loadNeedsTriageIfNeeded(); loadIdentityTasksIfNeeded(); loadFeedIfNeeded(); loadNotifAdminIfNeeded(); loadInvitesIfAdmin(); break;
     case "handoffs": loadHandoffs(); break;
@@ -485,6 +529,7 @@ function loadPrompts(): void {
 function openPrompt(slug: string): void {
   state.promptSlug = slug;
   state.promptDiffV = null; state.promptTagMenu = false; state.promptTagDraft = ""; state.promptExpanded = false;
+  state.promptDeleteArm = false; state.promptDeleteBusy = false;
   const same = state.promptDetail.data?.prompt.slug === slug;
   state.promptDetail = { status: "loading", data: same ? state.promptDetail.data : null };
   rerender();
@@ -575,6 +620,31 @@ function loadFeedIfNeeded(): void {
   else rerender();
 }
 
+/**
+ * The Feed aside's "This week": its OWN read over the whole team's last 7 local days
+ * (`GET /feed/stats`), refreshed on every entry to the Feed — never on a filter change,
+ * since the numbers are unfiltered. What is on screen stays while it refreshes; a failed
+ * read says so rather than showing old numbers as current. The seq guard lets only the
+ * newest request commit.
+ */
+let feedStatsSeq = 0;
+function loadFeedStats(): void {
+  const seq = ++feedStatsSeq;
+  state.feedStats = { status: "loading", data: state.feedStats.data };
+  getFeedStats(7)
+    .then((data) => {
+      if (seq !== feedStatsSeq) return;
+      state.feedStats = { status: "ok", data };
+      rerender();
+    })
+    .catch((e) => {
+      if (seq !== feedStatsSeq) return;
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      state.feedStats = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
+      rerender();
+    });
+}
+
 function loadMyWork(): void {
   state.mywork = { status: "loading", data: state.mywork.data };
   rerender();
@@ -589,9 +659,44 @@ function loadMyWork(): void {
       rerender();
     });
 }
+/** Your sessions: MY three latest feed entries — My Work's own read, so the Feed
+ *  screen's author/tag filters (which shape `state.feed`) never reach it. */
+function loadMwSessions(): void {
+  const me = state.me?.handle;
+  if (!me) return;
+  state.mwSessions = { status: "loading", data: state.mwSessions.data };
+  getFeed({ author: me, limit: 3 })
+    .then((rows) => { state.mwSessions = { status: "ok", data: rows }; rerender(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.mwSessions = { status: "error", data: state.mwSessions.data, error: String(e) };
+      rerender();
+    });
+}
+/** Docs you own: the doc list WITHOUT bodies — never `loadDocs`, which also opens
+ *  the Docs screen's first doc (its body + every version) and picks `docSlug`. */
+function loadMwDocs(): void {
+  state.mwDocs = { status: "loading", data: state.mwDocs.data };
+  listDocMeta()
+    .then((rows) => { state.mwDocs = { status: "ok", data: rows }; rerender(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.mwDocs = { status: "error", data: state.mwDocs.data, error: String(e) };
+      rerender();
+    });
+}
+/** My Work reads its own DTO plus the slices its tiles and rail are built on —
+ *  each loaded only when idle, so a screen already visited costs nothing. */
 function loadMyWorkIfNeeded(): void {
   if (state.mywork.status === "idle") loadMyWork();
-  else rerender();
+  loadProposalsIfNeeded(); loadDraftAdrsIfNeeded();
+  loadSprintsIfNeeded(); // a ticket's due date is its sprint's
+  if (state.mwSessions.status === "idle") loadMwSessions();
+  if (state.handoffs.status === "idle") loadHandoffs();
+  if (state.repo.status === "idle") loadRepo();
+  if (state.mwDocs.status === "idle") loadMwDocs();
+  loadArtifactList();
+  rerender();
 }
 
 // ── Repo dashboard ───────────────────────────────────────────────────────────
@@ -802,6 +907,16 @@ function setOutlineOpen(el: Element | null, open: boolean): void {
 
 // Flip a doc's outline open/closed in place (chevron + row both use this). No
 // navigation, no rerender — just the animated toggle and the open-set update.
+/** Narrow screens: picking a page (or a heading) in the page list shows the reader again.
+ *  In place — the reader pane itself updates in place, without a rerender. */
+function closeDocsTree(): void {
+  state.docsTree = false;
+  const box = mount.querySelector(".cnpy-docs");
+  box?.setAttribute("data-tree", "0");
+  const btn = box?.querySelector<HTMLElement>('[data-act="docsTree"]');
+  if (btn) { btn.setAttribute("aria-expanded", "false"); btn.lastChild!.textContent = `${spaceLabel(state.docSpace)} pages`; }
+}
+
 function toggleOutlineFor(slug: string): void {
   const esc = cssEscape(slug);
   const open = !state.docOutlineOpen[slug];
@@ -889,6 +1004,19 @@ function loadSearchIfNeeded(): void {
   else rerender();
 }
 
+/** The Search screen, on `q` — the dropdown's "all results". */
+function openSearchScreen(q: string): void {
+  state.searchQuery = q;
+  state.screen = "search";
+  loadSearch();
+}
+
+/** A dropdown pick: the existing acts that open the thing, in order. */
+function quickPick(p: QuickPick): void {
+  if (p.kind === "search") { openSearchScreen(p.q); return; }
+  for (const [act, arg] of p.steps) dispatch(act, arg, null);
+}
+
 function loadRoadmap(): void {
   state.roadmap = { status: "loading", data: state.roadmap.data };
   rerender();
@@ -911,6 +1039,32 @@ function loadRoadmap(): void {
 function loadRoadmapIfNeeded(): void {
   if (state.roadmap.status === "idle") loadRoadmap();
   else rerender();
+}
+
+/**
+ * Roadmap › Recent happenings: its OWN unfiltered read of the newest
+ * HAPPENINGS_LIMIT feed entries, refreshed on every entry to the Roadmap — never
+ * the Feed screen's slice, which carries that screen's author/tag filter. What is
+ * already shown stays on screen while it refreshes; the seq guard lets only the
+ * newest request commit.
+ */
+let roadmapFeedSeq = 0;
+function loadRoadmapFeed(): void {
+  const seq = ++roadmapFeedSeq;
+  state.roadmapFeed = { status: "loading", data: state.roadmapFeed.data };
+  rerender();
+  getFeed({ limit: HAPPENINGS_LIMIT })
+    .then((rows) => {
+      if (seq !== roadmapFeedSeq) return;
+      state.roadmapFeed = { status: "ok", data: rows };
+      rerender();
+    })
+    .catch((e) => {
+      if (seq !== roadmapFeedSeq) return;
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      state.roadmapFeed = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
+      rerender();
+    });
 }
 
 // Write-completion handlers refetch the triage slices directly (not via
@@ -1280,6 +1434,7 @@ function goArt(screen: ArtScreen, route: ArtRoute = ART_ROUTE_NONE): void {
   state.artRoute = route;
   state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false; state.art.filterOpen = false;
   state.art.nv = null;
+  if (!state.art.deleteBusy) state.art.deleteArm = false;
   loadArtifactsIfNeeded(true);
   document.getElementById("cnpy-main")?.scrollTo(0, 0);
 }
@@ -1358,6 +1513,40 @@ function runArtWrite(w: ArtWrite): void {
     rerender();
     return;
   }
+  // Delete (author / admin only — the server re-checks): the in-app confirm already ran;
+  // back to the library with a "Deleted “…” · Undo" toast whose Undo restores it.
+  if (w.op === "delete") {
+    deleteArtifact(w.slug)
+      .then((r) => {
+        state.art.deleteArm = false; state.art.deleteBusy = false;
+        for (const k of Object.keys(state.art.details)) if (k.startsWith(`${r.slug}@`)) delete state.art.details[k];
+        for (const k of Object.keys(state.art.diffs)) if (k.startsWith(`${r.slug}:`)) delete state.art.diffs[k];
+        state.art.ticketArts = {};
+        state.art.list = { status: "idle", data: (state.art.list.data ?? []).filter((x) => x.slug !== r.slug) };
+        goArt("artifacts", ART_ROUTE_NONE);
+        flash(`Deleted “${r.title}”`, UNDO_TOAST_MS, { label: "Undo", act: "artRestore", arg: r.slug });
+      })
+      .catch((e) => {
+        state.art.deleteArm = false; state.art.deleteBusy = false;
+        if (e instanceof Unauthorized) { unauth(e); return; }
+        if (e instanceof NotFound) { refreshArt(w.slug); flash("This artifact isn't available anymore"); return; }
+        writeErr(e, "Couldn't delete the artifact");
+      });
+    rerender();
+    return;
+  }
+  if (w.op === "restore") {
+    state.toast = null; state.toastAction = null;
+    restoreArtifact(w.slug)
+      .then((d) => {
+        state.art.ticketArts = {};
+        if (state.art.list.status !== "idle" || state.screen === "artifacts") loadArtifactList(true);
+        flash(`Restored “${d.title}”`);
+      })
+      .catch((e) => writeErr(e, "Couldn't restore the artifact"));
+    rerender();
+    return;
+  }
   state.art.busy = true;
   rerender();
   const req = w.op === "patch" ? patchArtifact(w.slug, w.body)
@@ -1387,6 +1576,8 @@ function runArtEffect(fx: ArtEffect): void {
   if ("flash" in fx) { flash(fx.flash); return; }
   if ("write" in fx) { runArtWrite(fx.write); return; }
   if ("retry" in fx) { loadArtifactsIfNeeded(true); return; }
+  // The delete confirm: focus Cancel when it opens, the trigger (the … button) when it closes.
+  if ("focus" in fx) { rerender(); mount.querySelector<HTMLElement>(fx.focus)?.focus(); return; }
   if ("copy" in fx) {
     navigator.clipboard?.writeText(fx.copy.text).catch(() => undefined);
     flash(fx.copy.flash);
@@ -1440,14 +1631,28 @@ window.addEventListener("message", (e) => {
   }
 });
 
-function flash(msg: string, ms = 2200): void {
+/** A toast. `action` puts one button on it (a delete's "Undo"); a newer flash replaces both. */
+function flash(msg: string, ms = 2200, action: ToastAction | null = null): void {
   const at = Date.now();
   state.toast = msg;
+  state.toastAction = action;
   state.toastAt = at;
   state.toastMs = ms;
   rerender();
   // Only clear the toast this call put up — a newer flash keeps its own full time.
-  setTimeout(() => { if (state.toastAt === at) { state.toast = null; rerender(); } }, ms);
+  setTimeout(() => { if (state.toastAt === at) { state.toast = null; state.toastAction = null; rerender(); } }, ms);
+}
+/** How long a toast carrying an Undo stays up — long enough to read it and reach the button. */
+const UNDO_TOAST_MS = 8000;
+/** The confirmation modal's exit (canopy.css `.cnpy-cmodal[data-closing]`), then `then` — which
+ *  closes it in state. Instant under prefers-reduced-motion or when no modal is open. */
+const CONFIRM_OUT_MS = 140;
+function confirmOut(then: () => void): void {
+  const layer = mount.querySelector<HTMLElement>("[data-confirm-layer]");
+  if (layer?.hasAttribute("data-closing")) return; // already on its way out
+  if (!layer || matchMedia("(prefers-reduced-motion: reduce)").matches) { then(); return; }
+  layer.setAttribute("data-closing", "");
+  setTimeout(then, CONFIRM_OUT_MS);
 }
 
 // Drives a (possibly multi-batch) Sync GitHub run: the backend caps AI calls
@@ -1671,6 +1876,27 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
 
     // primary navigation
     case "goMyWork": state.screen = "mywork"; loadMyWorkIfNeeded(); return;
+    case "mwRepoTab":
+      if (!(MW_REPO_TABS as readonly string[]).includes(arg ?? "") || arg === state.mwRepoTab) return;
+      state.mwRepoTab = arg as MwRepoTab;
+      pendingFlash = ".mw-repo-swap";
+      break;
+    // Tickets for you › "N more in the queue": the queue, filtered to my tickets.
+    case "mwAllTickets":
+      state.screen = "tickets"; state.ticketId = null;
+      state.qAssignee = "me"; state.qPerson = "";
+      loadSprintsIfNeeded(); loadTickets();
+      return;
+    case "mwMore":
+      if (arg !== "tickets") return;
+      state.mwExpanded = { ...state.mwExpanded, [arg]: !state.mwExpanded[arg] };
+      break;
+    case "mwOpenReview":
+      if (!arg) return;
+      state.reviewSel = arg;
+      state.screen = "review";
+      loadProposalsIfNeeded(); loadDraftAdrsIfNeeded();
+      return;
     case "goArtifacts": goArt("artifacts"); return;
     case "fmToggle": case "fmClose": case "fmCat": filterMenuAct(act, arg); return;
 
@@ -1721,23 +1947,28 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         dispatch("goTickets", null, null);
         return;
       }
-      if (g === "roadmap") { state.roadmapTab = page === "narrative" ? "narrative" : "timeline"; dispatch("goRoadmap", null, null); return; }
       if (g === "repo") { if (!isRepoTab(page)) return; state.screen = "repo"; state.repoTab = page; loadRepoIfNeeded(); return; }
       if (g === "docs") { state.screen = "docs"; dispatch("setDocSpace", page, null); loadDocsIfNeeded(); return; }
       if (g === "maintenance") { dispatch("goMaintenance", page, null); return; }
       return;
     }
-    case "sideSearch": return; // uncontrolled: the box holds its own text until Enter
+    // Uncontrolled: the box holds its own text; each keystroke feeds the search
+    // dropdown (web/src/quicksearch.ts), which patches only its own panel — never a rerender.
+    case "sideSearch": {
+      const box = mount.querySelector<HTMLInputElement>('[data-field="sideSearch"]');
+      if (box) qs.input(box, value ?? "");
+      return;
+    }
     case "sideSearchFocus": {
-      // A narrow viewport cannot open the rail, so the icon goes to the Search screen.
-      if (state.narrow) { dispatch("goSearch", null, null); return; }
-      if (state.collapsed) { state.collapsed = false; persist("canopy.collapsed", "0"); rerender(); }
+      // A collapsed (or narrow) rail has no box to type in: ⌘K / the icon open the
+      // centered command palette instead.
+      if (state.collapsed || state.narrow) { qs.openPalette(); return; }
       mount.querySelector<HTMLInputElement>('[data-field="sideSearch"]')?.focus();
       return;
     }
-    case "goFeed": state.screen = "feed"; loadFeedIfNeeded(); return;
+    case "goFeed": state.screen = "feed"; loadFeedIfNeeded(); loadFeedStats(); return;
     case "goDocs": state.screen = "docs"; loadDocsIfNeeded(); return;
-    case "goRoadmap": state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadFeedIfNeeded(); return;
+    case "goRoadmap": state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadRoadmapFeed(); return;
 
     // ── Tickets: navigation ──────────────────────────────────────────────────
     case "goTickets": state.screen = "tickets"; state.ticketId = null; loadSprintsIfNeeded(); loadTicketsIfNeeded(); return;
@@ -1751,7 +1982,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // The header breadcrumb's back button — one act, resolved against the screen
     // it was clicked from (the design's single `back` handler).
     case "ticketsBack":
-      if (state.screen === "sprint") { state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadFeedIfNeeded(); return; }
+      if (state.screen === "sprint") { state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadRoadmapFeed(); return; }
       state.screen = "tickets"; state.ticketId = null; loadSprintsIfNeeded(); loadTicketsIfNeeded(); return;
     // Also the act the Search screen's ticket cards have emitted since Phase 2.
     case "openTicket": {
@@ -1779,12 +2010,26 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
 
     // ── Roadmap: the New sprint panel (design 156–197) ───────────────────────
-    case "nsToggle": state.nsOpen = !state.nsOpen; break;
+    case "nsToggle": state.nsOpen = !state.nsOpen; state.nsError = null; break;
     case "nsField":
+      if (arg === "start" || arg === "due") {
+        // A native date field is NOT rerendered under the person: Chrome fires `input`
+        // per segment once the date is whole (typing a year's digits one by one), and a
+        // swap would throw the caret back to the first segment. Store the value, and
+        // clear a shown refusal in place — it is re-checked on Create.
+        if (arg === "start") state.nsStart = value ?? ""; else state.nsDue = value ?? "";
+        if (state.nsError) {
+          state.nsError = null;
+          const err = mount.querySelector<HTMLElement>("[data-ns-error]");
+          if (err) { err.textContent = ""; err.style.display = "none"; }
+          for (const f of Array.from(mount.querySelectorAll<HTMLInputElement>('input[data-act="nsField"][type="date"]'))) {
+            f.style.borderColor = ""; f.removeAttribute("aria-invalid"); f.removeAttribute("aria-describedby");
+          }
+        }
+        return;
+      }
       if (arg === "name") state.nsName = value ?? "";
-      else if (arg === "dates") state.nsDates = value ?? "";
       else if (arg === "desc") state.nsDesc = value ?? "";
-      else if (arg === "due") state.nsDue = value ?? "";
       else return;
       break;                          // rerenders: "Create sprint" arms on a non-empty name
     case "nsUrg":
@@ -1801,18 +2046,26 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "nsCreate": {
       const label = state.nsName.trim();
       if (!label) return;             // the button is inert, but guard the dispatch too
+      // The ONE sprint-date rule (shared/sprints-core), checked here before the POST —
+      // the server applies the same one, and its 400 lands in the same place.
+      const start = state.nsStart.trim() || null;
+      const due = state.nsDue.trim() || null;
+      const dateProblem = sprintDatesProblem({ start, due });
+      // (The rule's "— nothing was written." tail is for API callers; the form never sent anything.)
+      if (dateProblem) { state.nsError = dateProblem.replace(/ — nothing was written\.$/, "."); rerender(); return; }
+      state.nsError = null;
       createSprint({
         label,
-        dates: state.nsDates.trim() || null,
         summary: state.nsDesc.trim() || null,
         urgency: state.nsUrg,
-        due: state.nsDue.trim() || null,
+        start,
+        due,
         lead: state.nsLead,
         domain: state.nsDom,
       })
         .then((sp) => {
           state.nsOpen = false;
-          state.nsName = ""; state.nsDates = ""; state.nsDesc = "";
+          state.nsName = ""; state.nsStart = ""; state.nsDesc = ""; state.nsError = null;
           state.nsUrg = "normal"; state.nsDue = ""; state.nsLead = null; state.nsDom = null;
           loadSprints();              // the queue's group headers + the form's chips read this
           loadRoadmap();              // the new card belongs on the timeline immediately
@@ -1820,6 +2073,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         })
         .catch((e) => {
           if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          // A date refusal from the server reads under the dates, like the client's own.
+          if (e instanceof ApiError && e.status === 400 && /\b(start|due)\b/.test(e.message)) { state.nsError = e.message; rerender(); return; }
           flash(e instanceof ApiError ? e.message : "Could not create the sprint");
         });
       return;
@@ -2196,23 +2451,40 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
     case "goSettings": state.screen = "settings"; state.unsub.preview = false; state.tokenRevokeArm = null; state.grantRevokeArm = null; loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
+    // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
+    case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
+    // One release's page (arg = its slug, "0.14" / "unreleased"), and its notes / patches switch.
+    case "openRelease": if (!arg) return; state.screen = "releases"; state.releaseVersion = arg.toLowerCase(); state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
+    case "releasePage": state.releasePage = arg === "patches" ? "patches" : "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
+    // A change count on a release's notes (At a glance): open its patch notes at that group.
+    case "releaseGroup": {
+      state.releasePage = "patches";
+      rerender();
+      const pane = document.getElementById("cnpy-main");
+      const target = arg ? document.getElementById(`relgroup-${arg}`) : null;
+      if (pane) pane.scrollTop = target ? Math.max(0, target.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 24) : 0;
+      return;
+    }
 
     // chrome: theme + sidebar
+    // The phone drawer (the rail at phone width). It closes on its own on navigation —
+    // see the drawer listeners below dispatch.
+    case "openDrawer": state.drawer = true; railTip(null); break;
+    case "closeDrawer": state.drawer = false; break;
     case "toggleCollapse":
       state.collapsed = !state.collapsed;
       persist("canopy.collapsed", state.collapsed ? "1" : "0");
       railTip(null);
       break;
     case "cycleTheme": {
-      // header button steps through the three concrete themes; settings can also pick "system".
-      const order = ["light", "dark", "midnight"] as const;
-      const next = order[(order.indexOf(resolvedTheme()) + 1) % order.length];
+      // header button flips between the two concrete themes; settings can also pick "system".
+      const next = resolvedTheme() === "light" ? "dark" : "light";
       state.theme = next;
       persist("canopy.theme", next);
       break;
     }
     case "setTheme":
-      if (arg === "dark" || arg === "light" || arg === "midnight" || arg === "system") {
+      if (arg === "dark" || arg === "light" || arg === "system") {
         state.theme = arg;
         persist("canopy.theme", arg);
       }
@@ -2236,6 +2508,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
 
     // ── Review (wired: real proposals + draft ADR reads, real verdict writes) ──
     case "reviewSelect": if (arg) state.reviewSel = arg; break;
+    case "reviewBack": state.reviewSel = null; break;   // narrow: back to the list pane
     case "reviewFilter":
       if (arg === "all" || arg === "proposal" || arg === "decision") state.reviewFilter = arg;
       break;
@@ -2270,8 +2543,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // docs navigation. Clicking the whole row toggles the outline like the chevron:
     // if it's the doc you're already reading, collapse/expand its outline; otherwise
     // navigate to it (which opens its outline).
+    case "docsTree": state.docsTree = !state.docsTree; break;
     case "openDoc":
       if (arg) {
+        if (state.docsTree && arg !== state.docSlug) closeDocsTree();
         if (arg === state.docSlug) toggleOutlineFor(arg);
         else openDocInTree(arg);
       }
@@ -2300,6 +2575,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const sep = arg.indexOf("::");
       const slug = sep < 0 ? arg : arg.slice(0, sep);
       const headingId = sep < 0 ? "" : arg.slice(sep + 2);
+      if (state.docsTree) closeDocsTree();
       if (state.docSlug !== slug) {
         state.pendingScrollId = headingId;
         openDocInTree(slug); // loads into the pane; refreshReaderPane scrolls once ready
@@ -2382,6 +2658,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goHandoffs": state.screen = "handoffs"; state.handoffId = null; loadHandoffs(); return;
     case "newHandoff": state.screen = "newhandoff"; state.nh = blankHandoff(); rerender(); return;
     case "openHandoff": { const id = Number(arg); if (!Number.isInteger(id) || id <= 0) return; state.screen = "handoff"; openHandoff(id); return; }
+    case "mwHandoffCopy": {
+      // My Work › Queued handoffs: the same "Copy as prompt" text as the handoff screen,
+      // from the inbox row already on hand — so the write stays inside the click.
+      const h = state.handoffs.data.find((x) => x.id === Number(arg));
+      if (!h) return;
+      copyToClipboard(handoffAsPrompt(h)).then((ok) => flash(ok ? "Copied as prompt" : "Couldn't reach the clipboard"));
+      return;
+    }
     case "handoffCopy": {
       const h = state.handoffDetail.data;
       if (!h || h.id !== Number(arg)) return;
@@ -2500,6 +2784,50 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       publishPrompt(p.slug, v)
         .then((np) => afterPromptWrite(np.slug, `Published v${v}`))
         .catch((e) => { writeErr(e, "Couldn't publish"); openPrompt(p.slug); });
+      return;
+    }
+    // Delete (author / admin only — the server re-checks): the confirmation modal (Delete
+    // focused, so Enter confirms), then back to the library with a "Deleted “…” · Undo"
+    // toast whose Undo restores it.
+    case "promptDeleteArm":
+      state.promptDeleteArm = true;
+      rerender();
+      mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+      return;
+    case "promptDeleteCancel": {
+      if (!state.promptDeleteArm || state.promptDeleteBusy) return;
+      confirmOut(() => {
+        state.promptDeleteArm = false;
+        rerender();
+        mount.querySelector<HTMLElement>("[data-confirm-trigger]")?.focus();
+      });
+      return;
+    }
+    case "promptDelete": {
+      const p = state.promptDetail.data?.prompt;
+      if (!p || !state.promptDeleteArm || state.promptDeleteBusy) return;
+      state.promptDeleteBusy = true;
+      rerender();
+      deletePrompt(p.slug)
+        .then((r) => {
+          state.promptDeleteArm = false; state.promptDeleteBusy = false;
+          state.promptDetail = { status: "idle", data: null };
+          state.promptSlug = null;
+          state.promptList = { ...state.promptList, data: state.promptList.data.filter((x) => x.slug !== r.slug) };
+          state.screen = "prompts";
+          loadPrompts();
+          flash(`Deleted “${r.title}”`, UNDO_TOAST_MS, { label: "Undo", act: "promptRestore", arg: r.slug });
+        })
+        .catch((e) => { state.promptDeleteBusy = false; state.promptDeleteArm = false; writeErr(e, "Couldn't delete the prompt"); });
+      return;
+    }
+    case "promptRestore": {
+      if (!arg) return;
+      state.toast = null; state.toastAction = null;
+      restorePrompt(arg)
+        .then((np) => { loadPrompts(); flash(`Restored “${np.title}”`); })
+        .catch((e) => writeErr(e, "Couldn't restore the prompt"));
+      rerender();
       return;
     }
     case "promptEdit": if (!arg) return; state.screen = "promptedit"; openEditor("edit", arg); return;
@@ -2897,7 +3225,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;
-        runArtEffect(artifactsAct(state.art, { screen, route: state.artRoute, me: state.me?.handle ?? "", host: location.origin, sprints: state.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: x.dates, active: x.active })) }, act, arg, value));
+        const run = () => runArtEffect(artifactsAct(state.art, { screen, route: state.artRoute, me: state.me?.handle ?? "", admin: state.me?.admin === true, host: location.origin, sprints: state.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: sprintDatesLabel(x), active: x.active })) }, act, arg, value));
+        // The delete confirm plays its exit before it closes (Escape, the backdrop, Cancel).
+        if (act === "artDeleteCancel" && state.art.deleteArm && !state.art.deleteBusy) confirmOut(run);
+        else run();
       }
       return;
   }
@@ -3080,6 +3411,23 @@ mount.addEventListener("click", (e) => {
   const el = target.closest<HTMLElement>("[data-act]");
   if (!el) return;
   dispatch(el.dataset.act ?? "", el.dataset.arg ?? null, null);
+});
+
+// The phone drawer closes once a row in it is picked — even the page already shown —
+// but not for the rows that only change the drawer itself (a sub-page chevron, the search).
+mount.addEventListener("click", (e) => {
+  if (!state.drawer) return;
+  const el = (e.target as Element).closest<HTMLElement>(".cnpy-aside [data-act]");
+  const act = el?.dataset.act;
+  if (!act || act === "navToggle" || act === "sideSearchFocus" || act === "sideSearch") return;
+  state.drawer = false;
+  rerender();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !state.drawer) return;
+  state.drawer = false;
+  rerender();
+  mount.querySelector<HTMLElement>(".cnpy-menubtn")?.focus();
 });
 
 // Right-click on an element that carries `data-ctx` opens ITS menu instead of
@@ -3470,6 +3818,36 @@ document.addEventListener("keydown", (e) => {
   else if (state.promptExpanded) { state.promptExpanded = false; rerender(); }
 });
 
+// ── the confirmation modal (web/src/confirm.ts): ONE keyboard contract for every
+// `[data-confirm-dialog]` — the prompt page's and the artifact viewer's delete. Capture
+// phase, so no other Escape / Enter handler also acts while it is open.
+//   Enter  — confirms. On the focused Delete button the browser's own click does it; on
+//            anything else (the dialog, the page after focus fell out) it is dispatched
+//            here. Enter on a focused Cancel still cancels (its own click).
+//   Escape — cancels (focus goes back to the trigger).
+//   Tab    — trapped inside the dialog.
+// While the write runs (`data-busy`) every key is swallowed, so a held or repeated Enter
+// never deletes twice — the reducers' busy guards say the same.
+document.addEventListener("keydown", (e) => {
+  if (state.view !== "app") return;
+  const dlg = mount.querySelector<HTMLElement>("[data-confirm-dialog]");
+  if (!dlg) return;
+  const t = e.target instanceof HTMLButtonElement ? e.target : null;
+  const what = confirmKeyAction(e.key, { onDialogButton: !!t && dlg.contains(t) && !t.disabled, busy: dlg.hasAttribute("data-busy"), repeat: e.repeat });
+  if (what === null || what === "native") return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const arg = dlg.getAttribute("data-arg");
+  if (what === "confirm") dispatch(dlg.getAttribute("data-confirm-act") ?? "", arg, null);
+  else if (what === "cancel") dispatch(dlg.getAttribute("data-confirm-cancel") ?? "", arg, null);
+  else if (what === "trap") {
+    const items = Array.from(dlg.querySelectorAll<HTMLElement>("button:not([disabled])"));
+    if (!items.length) { dlg.focus(); return; }
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const next = at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length;
+    items[next].focus();
+  }
+}, true);
+
 // ── sidebar: ⌘K / Ctrl+K, the search box, and the collapsed-rail tooltip ──────
 document.addEventListener("keydown", (e) => {
   if (state.view !== "app" || e.key.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
@@ -3479,16 +3857,13 @@ document.addEventListener("keydown", (e) => {
 mount.addEventListener("keydown", (e) => {
   const box = (e.target as Element | null)?.closest?.<HTMLInputElement>('[data-field="sideSearch"]');
   if (!box) return;
-  if (e.key === "Escape") { box.value = ""; box.blur(); return; }
-  if (e.key !== "Enter") return;
-  const q = box.value.trim();
-  if (!q) return;
-  e.preventDefault();
-  box.value = "";
-  box.blur();
-  state.searchQuery = q;
-  state.screen = "search";
-  loadSearch();
+  // ↑/↓ move, Enter opens (the Search screen when there is nothing to pick), Tab or
+  // ⌘Enter = all results, Esc closes and clears.
+  if (qs.key(e, box)) { e.preventDefault(); e.stopPropagation(); }
+});
+mount.addEventListener("focusin", (e) => {
+  const box = (e.target as Element | null)?.closest?.<HTMLInputElement>('[data-field="sideSearch"]');
+  if (box) qs.focus(box);
 });
 
 // The rail's labels are gone when it is collapsed, so each row names itself in a
@@ -3497,7 +3872,7 @@ mount.addEventListener("keydown", (e) => {
 function railTip(row: HTMLElement | null): void {
   const tip = mount.querySelector<HTMLElement>(".cnpy-tip");
   if (!tip) return;
-  if (!row || !(state.collapsed || state.narrow)) { tip.removeAttribute("data-on"); return; }
+  if (!row || !railCollapsed(state)) { tip.removeAttribute("data-on"); return; }
   const r = row.getBoundingClientRect();
   tip.textContent = row.dataset.tip ?? "";
   tip.style.top = `${Math.round(r.top + r.height / 2)}px`;
@@ -3576,8 +3951,10 @@ if (params.get("denied") === "1") {
       checkLinkConflict();
       // Boot-time loads for the sidebar triage badges — the counts must be
       // right on every screen, not just after visiting Review/Maintenance.
-      loadProposals();
-      loadDraftAdrs();
+      // Guarded: the screen's own loader (My Work, Review) may have just started
+      // these — a second unconditional call would fetch each twice.
+      if (state.proposals.status === "idle") loadProposals();
+      if (state.draftAdrs.status === "idle") loadDraftAdrs();
       loadNeedsTriage();
       loadIdentityTasks();
       // The Tickets badge shows on every screen too — unassigned + open, org-wide.

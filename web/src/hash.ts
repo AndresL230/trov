@@ -6,6 +6,7 @@
 //   #tickets/new      → the new-ticket form
 //   #tickets/<id>     → one ticket's detail
 //   #sprints/<id>     → one sprint's screen
+//   #roadmap          → the Roadmap's Narrative tab; #roadmap/timeline its Timeline
 //   #repo             → the Repo dashboard's Overview
 //   #repo/<tab>       → one of its other tabs (code / ci / usage / planning)
 //   #artifacts        → the Artifacts library
@@ -18,6 +19,9 @@
 //                       prompt; #prompts/<slug>/edit and #prompts/<slug>/version its editor
 //   #docs/new         → the new-doc form
 //   #maintenance      → Maintenance › Unplaced; #maintenance/identity and #maintenance/people
+//   #releases         → Help › What's new: the grid of releases
+//   #releases/<v>     → one release's notes (<v> = "0.14" or "unreleased"); #releases/<v>/patches
+//                       its patch notes. The legacy #releases/patches opens the newest release's.
 //   #<screen>         → every other screen, named exactly as the Screen union
 //                       (`#site` is the landing page, reopened from inside the app)
 // Anything unrecognised falls back to My Work — the same rule the app has always
@@ -28,11 +32,12 @@ import { isRepoTab, type RepoTab } from "@shared/repo";
 import type { ArtRoute } from "./artifacts";
 import { parseSlugVersion } from "@shared/artifacts-core";
 import { MAINT_TABS, type MaintTab } from "./maintenance";
+import { RELEASES, releaseSlug, type ReleasePage } from "./releases";
 
 /** Every screen addressable by its bare name (`#feed`). The compound ticket /
  *  sprint routes are parsed separately below. */
 const PLAIN_SCREENS: Screen[] = [
-  "mywork", "feed", "docs", "roadmap", "review",
+  "mywork", "feed", "docs", "review",
   "search", "settings", "guide", "unsubscribe", "tickets", "site", "handoffs", "prompts",
 ];
 
@@ -54,12 +59,19 @@ export interface Route {
   promptMode?: "new" | "edit" | "version";
   /** Set only on `maintenance`. */
   maintTab?: MaintTab;
+  /** Set only on `roadmap`. */
+  roadmapTab?: "narrative" | "timeline";
+  /** Set only on a release's page (`releases` without it is the index). */
+  releaseVersion?: string;
+  /** Set only with `releaseVersion`. */
+  releasePage?: ReleasePage;
 }
 
 /** Whether two routes name the same place (the hashchange no-op check). */
 export function sameRoute(a: Route, b: Route): boolean {
   return a.screen === b.screen && a.ticketId === b.ticketId && a.sprintId === b.sprintId && a.repoTab === b.repoTab
-    && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.maintTab === b.maintTab
+    && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.maintTab === b.maintTab && a.roadmapTab === b.roadmapTab
+    && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null);
 }
 
@@ -97,6 +109,12 @@ export function parseHash(hash: string): Route {
   if (parts[0] === "sprints" && parts.length === 2) {
     const id = intSeg(parts[1]);
     if (id !== null) return { screen: "sprint", ticketId: null, sprintId: id };
+    return none;
+  }
+  if (parts[0] === "roadmap") {
+    if (parts.length === 1) return { screen: "roadmap", ticketId: null, sprintId: null, roadmapTab: "narrative" };
+    // `#roadmap/narrative` is not canonical (the bare `#roadmap` is), but it still resolves.
+    if (parts.length === 2 && (parts[1] === "narrative" || parts[1] === "timeline")) return { screen: "roadmap", ticketId: null, sprintId: null, roadmapTab: parts[1] };
     return none;
   }
   if (parts[0] === "repo") {
@@ -137,6 +155,22 @@ export function parseHash(hash: string): Route {
     return none;
   }
   if (parts[0] === "docs" && parts.length === 2 && parts[1] === "new") return { screen: "newdoc", ...base };
+  if (parts[0] === "releases") {
+    if (parts.length === 1) return { screen: "releases", ...base };
+    // Legacy (the first cut had one global switch): `#releases/notes` is the index,
+    // `#releases/patches` the NEWEST release's patch notes.
+    if (parts.length === 2 && parts[1] === "notes") return { screen: "releases", ...base };
+    if (parts.length === 2 && parts[1] === "patches") {
+      return RELEASES[0] ? { screen: "releases", ...base, releaseVersion: releaseSlug(RELEASES[0]), releasePage: "patches" } : { screen: "releases", ...base };
+    }
+    // A version segment; an unknown one still routes here and renders a friendly not-found.
+    const v = parts.length === 2 || parts.length === 3 ? seg(parts[1])?.toLowerCase() ?? null : null;
+    if (!v || !/^[a-z0-9][a-z0-9.\-]{0,39}$/.test(v)) return none;
+    if (parts.length === 2) return { screen: "releases", ...base, releaseVersion: v, releasePage: "notes" };
+    // `#releases/<v>/notes` is not canonical (the bare `#releases/<v>` is), but it still resolves.
+    if (parts[2] === "patches" || parts[2] === "notes") return { screen: "releases", ...base, releaseVersion: v, releasePage: parts[2] };
+    return none;
+  }
   if (parts[0] === "maintenance") {
     if (parts.length === 1) return { screen: "maintenance", ...base, maintTab: "unplaced" };
     if (parts.length === 2 && (MAINT_TABS as readonly string[]).includes(parts[1])) return { screen: "maintenance", ...base, maintTab: parts[1] as MaintTab };
@@ -153,6 +187,7 @@ export function parseHash(hash: string): Route {
 export function hashForRoute(r: Route): string {
   if (r.screen === "ticketdetail") return r.ticketId !== null ? `#tickets/${r.ticketId}` : "#tickets";
   if (r.screen === "newticket") return "#tickets/new";
+  if (r.screen === "roadmap") return r.roadmapTab === "timeline" ? "#roadmap/timeline" : "#roadmap";
   if (r.screen === "repo") return !r.repoTab || r.repoTab === "overview" ? "#repo" : `#repo/${r.repoTab}`;
   if (r.screen === "artifactnew") return "#artifacts/new";
   if (r.screen === "artifact") {
@@ -170,6 +205,10 @@ export function hashForRoute(r: Route): string {
     return "#prompts/new";
   }
   if (r.screen === "newdoc") return "#docs/new";
+  if (r.screen === "releases") {
+    if (!r.releaseVersion) return "#releases";
+    return `#releases/${encodeURIComponent(r.releaseVersion)}${r.releasePage === "patches" ? "/patches" : ""}`;
+  }
   if (r.screen === "maintenance") return !r.maintTab || r.maintTab === "unplaced" ? "#maintenance" : `#maintenance/${r.maintTab}`;
   return `#${r.screen}`;
 }

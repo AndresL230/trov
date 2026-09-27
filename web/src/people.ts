@@ -2,7 +2,7 @@
 // image on top), the color swatch picker, and the onboarding screen. Pure
 // functions over state — no fetch, no DOM — so they are unit-testable.
 import { PERSON_COLORS, type PersonColor } from "@shared/rows";
-import { esc, attr, initialsOf } from "./ui";
+import { esc, attr, initialsOf, surface } from "./ui";
 import type { OnboardPrefill } from "./api";
 
 export const COLOR_NAMES: readonly PersonColor[] = PERSON_COLORS;
@@ -68,7 +68,7 @@ export function onboardView(o: OnboardState): string {
   const field = (label: string, inner: string, help = "") => `<div><label style="display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);margin-bottom:7px">${label}</label>${inner}${help ? `<div style="font-size:12px;color:var(--fg-40);margin-top:7px;line-height:1.5">${help}</div>` : ""}</div>`;
   const row = "display:flex;align-items:center;border:1px solid var(--border-strong);border-radius:9px;background:var(--bg);overflow:hidden";
   const input = "flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--fg);font-size:14px;padding:11px 12px";
-  return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px"><div style="width:100%;max-width:520px">
+  return `<div class="cnpy-authwrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px"><div style="width:100%;max-width:520px">
     <div style="margin-bottom:26px">
       <div style="font-family:var(--label);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">Welcome to Canopy · one step</div>
       <h1 style="font-size:22px;font-weight:600;letter-spacing:-0.02em;margin:0 0 6px">Choose how you'll appear.</h1>
@@ -79,7 +79,7 @@ export function onboardView(o: OnboardState): string {
         "2 to 24 characters. Lowercase letters, numbers and hyphens. Starts with a letter.")}
       ${field("Display name", `<div style="${row}"><input data-act="onbName" data-field="onbName" value="${attr(o.name)}" maxlength="120" class="cnpy-input" style="${input}" /></div>`)}
       ${field("Your color", swatches("onbColor", o.color))}
-      <div style="border:1px solid var(--border);border-radius:11px;padding:12px 14px;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+      <div${surface("padding:12px 14px")}>
         <div style="font-family:var(--label);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">How you'll appear in the feed</div>
         ${feedPreviewRow({ name: o.name, handle: o.handle, color: o.color })}
       </div>

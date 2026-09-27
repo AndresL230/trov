@@ -38,6 +38,13 @@ describe("peopleSection", () => {
     expect(peopleSection({ persons, invites: [], inviteDraft: "nope", loading: false, error: null })).toMatch(/data-act="inviteSend"[^>]*disabled/);
     expect(peopleSection({ persons, invites: [], inviteDraft: "a@b.co", loading: false, error: null })).not.toMatch(/data-act="inviteSend"[^>]*disabled/);
   });
+  it("the directory list is one surface card with hairline rows inside", () => {
+    const html = peopleSection({ persons, invites, inviteDraft: "", loading: false, error: null });
+    expect(html.match(/cnpy-surface/g)?.length).toBe(1);
+    expect(html).toMatch(/class="cnpy-surface" style="overflow:hidden">/);
+    expect(html).not.toContain("border-radius:12px");
+    expect(html).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
+  });
 });
 
 describe("profileSection", () => {

@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { connectSnippet, connectModal, tokenLabel, grantListBody, browserConnectCommand, render, initialState } from "../web/src/render";
+import css from "../web/src/canopy.css?raw";
 
 const URL = "https://canopy.example.com/mcp";
 const TOKEN = "canopy_mcp_abcd1234";
@@ -130,5 +131,33 @@ describe("grantListBody", () => {
   it("the rows sit in the capped scroller, so many apps never grow the tile", () => {
     expect(grantListBody({ grants: { status: "ok", data: [grant, { ...grant, id: 8 }, { ...grant, id: 9 }] }, grantRevokeArm: null }))
       .toMatch(/^<div class="cnpy-scroll cnpy-set-grants">[\s\S]*<\/div>$/);
+  });
+});
+
+describe("Settings › Appearance — three theme cards in one row", () => {
+  const settingsState = (theme: "light" | "dark" | "system") => ({
+    ...initialState(),
+    view: "app" as const,
+    screen: "settings" as const,
+    theme,
+    me: { handle: "alice", name: null, avatar_url: null, color: "moss" as const, identities: [], org: "SaplingLearn", admin: false },
+  });
+  const appearance = (html: string) => html.match(/<section class="[^"]*cnpy-set-appear[\s\S]*?<\/section>/)?.[0] ?? "";
+
+  it("renders exactly Light, Dark and System, the picked one pressed, then the hint below them", () => {
+    const tile = appearance(render(settingsState("dark")));
+    const cards = [...tile.matchAll(/<button data-act="setTheme" data-arg="(\w+)" class="cnpy-themecard" aria-pressed="(\w+)"/g)];
+    expect(cards.map((m) => m[1])).toEqual(["light", "dark", "system"]);
+    expect(cards.map((m) => m[2])).toEqual(["false", "true", "false"]);
+    expect(tile).toMatch(/<div class="cnpy-set-themes">(<button[^]*?<\/button>){3}<\/div>\s*<div[^>]*>System follows/);
+    // Layout is the class's, so the container query can restack it — never inline.
+    expect(tile).not.toMatch(/cnpy-themecard"[^>]*style="[^"]*display:flex/);
+  });
+
+  it("the row is three equal columns at every width — no four-card template or 2-up override left", () => {
+    expect(css).toMatch(/\.cnpy-set-themes \{[^}]*grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+    expect(css).not.toMatch(/\.cnpy-set-themes \{[^}]*repeat\([^3]/);
+    // Narrow cards stack icon over label, still three across.
+    expect(css).toMatch(/@container cnpy-themes \(max-width:\d+px\) \{\s*\.cnpy-themecard \{[^}]*flex-direction:column/);
   });
 });

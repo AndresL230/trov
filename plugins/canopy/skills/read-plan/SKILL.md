@@ -38,6 +38,9 @@ its own `get_roadmap` call) before writing.
    closed issues. It is **never** a live GitHub read. A sprint with neither reads `0/0`; say so rather
    than calling it stalled. `members` is the distinct set of person handles assigned to that sprint's
    tickets (empty when the sprint holds no assigned tickets — not a staffing claim).
+   The `narrative` is meant to be short (Now / Next / Later — `update_plan` refuses one over 800
+   characters); one stored before the cap may be longer and still reads whole. If it is over, say so:
+   the next `update-plan` has to shorten it.
    `active` is derived (`status === 'in_progress'`), and `label`/`due` are the DTO's words for the
    stored `title`/`target_date` (an unscheduled sprint has `due: null` and sorts last).
 2. **`mcp__canopy__get_events`** — pull recent captured activity (e.g. `limit: 30`) so you can compare

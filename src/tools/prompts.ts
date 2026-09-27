@@ -6,6 +6,13 @@
 // slug; an AGENT (MCP bearer) always stages and never renames — a staged version
 // waits for a person to publish it, the same agents-stage-humans-confirm rule the
 // doc gate enforces. Not the ingestion gate: a prompt carries no vocab/confidence.
+//
+// DELETE is soft (0035 PART C): `deleted_at` / `deleted_by` mark the row, every
+// version stays in D1, and a deleted prompt is absent from every read here (the
+// SELECTs below filter it; prompts_fts never indexes it). Its slug stays RESERVED —
+// a save to it is a 409 naming the fix — so `restorePrompt` is the one way back.
+// Only the author or an admin may delete or restore, over the session cookie; there
+// is no MCP delete, so an agent can never remove a prompt.
 
 import { z } from "zod";
 import { all, first, run, nowIso, type DB } from "../db";
@@ -45,9 +52,13 @@ export type PromptSaveInput = z.infer<typeof PromptSaveInput>;
 interface PromptRow {
   slug: string; title: string; description: string; tags: string; author: string;
   current_version: number; updated_at: string; status: PromptStatus | null; body: string | null;
+  use_count: number; last_used_at: string | null;
 }
-const SELECT = `SELECT p.slug, p.title, p.description, p.tags, p.author, p.current_version, p.updated_at, v.status, v.body
+const SELECT = `SELECT p.slug, p.title, p.description, p.tags, p.author, p.current_version, p.updated_at, v.status, v.body,
+    p.use_count, p.last_used_at
   FROM prompts p LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version`;
+/** The live-prompt condition every read carries: a soft-deleted prompt is absent. */
+const LIVE = `p.deleted_at IS NULL`;
 
 function tagsOf(json: string): string[] {
   try { const v: unknown = JSON.parse(json); return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []; } catch { return []; }
@@ -56,30 +67,52 @@ function toDetail(r: PromptRow): PromptDetail {
   return {
     slug: r.slug, title: r.title, description: r.description, tags: tagsOf(r.tags), author: r.author,
     version: r.current_version, status: r.status ?? "draft", updated_at: r.updated_at, body: r.body ?? "",
+    use_count: r.use_count ?? 0, last_used_at: r.last_used_at ?? null,
   };
 }
 const toSummary = (d: PromptDetail): PromptSummary => ({
   slug: d.slug, title: d.title, tags: d.tags, author: d.author, version: d.version, status: d.status, updated_at: d.updated_at, excerpt: firstLine(d.body),
+  use_count: d.use_count, last_used_at: d.last_used_at,
 });
 
+/** ORDER BY for each sort. `used` = most used first; ties (incl. never used) by last use, then recency. */
+const ORDER: Record<PromptSort, string> = {
+  updated_desc: `p.updated_at DESC`,
+  updated_asc: `p.updated_at ASC`,
+  used: `p.use_count DESC, p.last_used_at IS NULL, p.last_used_at DESC, p.updated_at DESC, p.slug ASC`,
+};
+
 /** The library: `q` is an FTS5 match over slug / title / description / body / tags
- *  (ranked by bm25, title weighted), `tags` are ANDed, then sorted by recency. */
+ *  (ranked by bm25, title weighted), `tags` are ANDed, then sorted by `sort`
+ *  (default recency; `used` = most used first). */
 export async function listPrompts(db: DB, opts: { q?: string; tags?: string[]; sort?: PromptSort } = {}): Promise<PromptSummary[]> {
   const match = buildMatch(opts.q ?? "");
-  const dir = opts.sort === "updated_asc" ? "ASC" : "DESC";
+  const order = ORDER[opts.sort ?? "updated_desc"] ?? ORDER.updated_desc;
   const rows = match
-    ? await all<PromptRow>(db, `${SELECT} JOIN prompts_fts f ON f.slug = p.slug WHERE prompts_fts MATCH ? ORDER BY p.updated_at ${dir}`, match)
-    : await all<PromptRow>(db, `${SELECT} ORDER BY p.updated_at ${dir}`);
+    ? await all<PromptRow>(db, `${SELECT} JOIN prompts_fts f ON f.slug = p.slug WHERE prompts_fts MATCH ? AND ${LIVE} ORDER BY ${order}`, match)
+    : await all<PromptRow>(db, `${SELECT} WHERE ${LIVE} ORDER BY ${order}`);
   const want = normalizeTags(opts.tags ?? []);
   return rows.map(toDetail).filter((p) => want.every((t) => p.tags.includes(t))).map(toSummary);
 }
 
 export async function getPrompt(db: DB, slug: string): Promise<PromptDetail | null> {
-  const r = await first<PromptRow>(db, `${SELECT} WHERE p.slug = ?`, slug);
+  const r = await first<PromptRow>(db, `${SELECT} WHERE p.slug = ? AND ${LIVE}`, slug);
   return r ? toDetail(r) : null;
 }
 
-/** Every version, newest first. */
+/**
+ * Record one USE of a prompt (0035): `use_count + 1`, `last_used_at = now`, in ONE
+ * conditional UPDATE — so a call counts exactly once and an unknown slug writes nothing
+ * (as does a deleted one) and returns false. Callers: MCP `get_prompt` (every principal) and the session-cookie
+ * `POST /api/prompts/:slug/used` (the web Copy button). Does NOT touch `updated_at`
+ * (a use is not an edit) nor the FTS index (0035 narrowed its update trigger).
+ */
+export async function recordPromptUse(db: DB, slug: string): Promise<boolean> {
+  const res = await run(db, `UPDATE prompts SET use_count = use_count + 1, last_used_at = ? WHERE slug = ? AND deleted_at IS NULL`, nowIso(), slug);
+  return (res.meta.changes ?? 0) > 0;
+}
+
+/** Every version, newest first. Callers check the prompt is live first (getPrompt). */
 export async function listPromptVersions(db: DB, slug: string): Promise<PromptVersion[]> {
   return all<PromptVersion>(db, `SELECT version, status, author, created_at, summary, body FROM prompt_versions WHERE slug = ? ORDER BY version DESC`, slug);
 }
@@ -88,17 +121,20 @@ export async function listPromptVersions(db: DB, slug: string): Promise<PromptVe
  * Save: upsert keyed on `base_slug || slug`. A new prompt is v1 authored by the
  * writer; an existing one gets version current+1. ALWAYS writes a version row.
  * Agent saves are forced to `staged` and may not rename; `branch` feeds an agent's
- * default summary.
+ * default summary. A slug held by a DELETED prompt — as the key or as a rename's
+ * target — is a 409 (`reservedMessage`): the slug stays reserved, restore it instead.
  */
 export async function savePrompt(
   db: DB, writer: string, input: PromptSaveInput, via: PromptVia, opts: { branch?: string } = {},
 ): Promise<PromptDetail> {
   const key = input.base_slug || input.slug;
-  const existing = await first<{ slug: string; current_version: number }>(db, `SELECT slug, current_version FROM prompts WHERE slug = ?`, key);
+  const existing = await first<{ slug: string; current_version: number; deleted_at: string | null }>(db, `SELECT slug, current_version, deleted_at FROM prompts WHERE slug = ?`, key);
+  if (existing?.deleted_at) throw new PromptError("conflict", reservedMessage(existing.slug));
   const renaming = !!existing && input.slug !== existing.slug;
   if (renaming && via === "agent") throw new PromptError("forbidden", "agents cannot rename a prompt's slug");
-  if ((renaming || (!existing && input.base_slug && input.base_slug !== input.slug)) && (await first(db, `SELECT 1 FROM prompts WHERE slug = ?`, input.slug))) {
-    throw new PromptError("conflict", `slug taken: ${input.slug}`);
+  if (renaming || (!existing && input.base_slug && input.base_slug !== input.slug)) {
+    const holder = await first<{ deleted_at: string | null }>(db, `SELECT deleted_at FROM prompts WHERE slug = ?`, input.slug);
+    if (holder) throw new PromptError("conflict", holder.deleted_at ? reservedMessage(input.slug) : `slug taken: ${input.slug}`);
   }
   if (!existing && input.base_slug && input.base_slug !== input.slug) throw new PromptError("not_found", `no prompt ${input.base_slug}`);
 
@@ -128,18 +164,54 @@ export async function savePrompt(
   return (await getPrompt(db, input.slug))!;
 }
 
+/** The 409 for a slug a deleted prompt still holds. */
+const reservedMessage = (slug: string): string =>
+  `slug ${slug} belongs to a deleted prompt — restore it instead of reusing the slug`;
+
 /** Replace a prompt's tags (people only — the route is session-cookie). */
 export async function setPromptTags(db: DB, slug: string, tags: string[]): Promise<PromptDetail> {
-  const res = await run(db, `UPDATE prompts SET tags = ?, updated_at = ? WHERE slug = ?`, JSON.stringify(normalizeTags(tags)), nowIso(), slug);
+  const res = await run(db, `UPDATE prompts SET tags = ?, updated_at = ? WHERE slug = ? AND deleted_at IS NULL`, JSON.stringify(normalizeTags(tags)), nowIso(), slug);
   if (!res.meta.changes) throw new PromptError("not_found", "prompt not found");
   return (await getPrompt(db, slug))!;
 }
 
 /** Publish a STAGED version (people only). Anything else is a 409 `not staged`. */
 export async function publishPrompt(db: DB, slug: string, version: number): Promise<PromptDetail> {
-  if (!(await first(db, `SELECT 1 FROM prompts WHERE slug = ?`, slug))) throw new PromptError("not_found", "prompt not found");
+  if (!(await first(db, `SELECT 1 FROM prompts WHERE slug = ? AND deleted_at IS NULL`, slug))) throw new PromptError("not_found", "prompt not found");
   const res = await run(db, `UPDATE prompt_versions SET status = 'published' WHERE slug = ? AND version = ? AND status = 'staged'`, slug, version);
   if (!res.meta.changes) throw new PromptError("conflict", "not staged");
   await run(db, `UPDATE prompts SET updated_at = ? WHERE slug = ?`, nowIso(), slug);
   return (await getPrompt(db, slug))!;
+}
+
+/**
+ * Soft-delete a prompt (0035 PART C): stamp `deleted_at` / `deleted_by` in ONE
+ * conditional UPDATE; nothing else changes and no version row is touched. Only the
+ * AUTHOR (case-insensitive, like every handle) or an ADMIN may; anyone else is
+ * `forbidden` with nothing written. An unknown OR already-deleted slug is
+ * `not_found` FIRST — a deleted prompt is gone from every read, this one included.
+ * Session-cookie only (`POST /api/prompts/:slug/delete`); never an MCP tool.
+ */
+export async function deletePrompt(db: DB, slug: string, actor: string, admin: boolean): Promise<{ slug: string; title: string }> {
+  const row = await first<{ slug: string; title: string; author: string }>(db, `SELECT slug, title, author FROM prompts WHERE slug = ? AND deleted_at IS NULL`, slug);
+  if (!row) throw new PromptError("not_found", "prompt not found");
+  if (!admin && row.author.toLowerCase() !== actor.toLowerCase()) throw new PromptError("forbidden", "only the prompt's author or an admin can delete it");
+  const res = await run(db, `UPDATE prompts SET deleted_at = ?, deleted_by = ? WHERE slug = ? AND deleted_at IS NULL`, nowIso(), actor, row.slug);
+  if (!res.meta.changes) throw new PromptError("not_found", "prompt not found"); // a racing delete won
+  return { slug: row.slug, title: row.title };
+}
+
+/**
+ * Restore a soft-deleted prompt: clear `deleted_at` / `deleted_by`, so it is back in
+ * every read (the FTS trigger re-indexes it) exactly as it was — same versions, same
+ * `updated_at`. The same people as delete (author or admin), else `forbidden`; an
+ * unknown slug is `not_found`, a live one `conflict` ("not deleted").
+ */
+export async function restorePrompt(db: DB, slug: string, actor: string, admin: boolean): Promise<PromptDetail> {
+  const row = await first<{ slug: string; author: string; deleted_at: string | null }>(db, `SELECT slug, author, deleted_at FROM prompts WHERE slug = ?`, slug);
+  if (!row) throw new PromptError("not_found", "prompt not found");
+  if (!admin && row.author.toLowerCase() !== actor.toLowerCase()) throw new PromptError("forbidden", "only the prompt's author or an admin can restore it");
+  if (!row.deleted_at) throw new PromptError("conflict", "prompt is not deleted");
+  await run(db, `UPDATE prompts SET deleted_at = NULL, deleted_by = NULL WHERE slug = ?`, row.slug);
+  return (await getPrompt(db, row.slug))!;
 }

@@ -738,6 +738,13 @@ export async function getRepoDashboard(
   const runRecordingSince = runCaptured ? await recordingSince(db, "run") : null;
   const ciRates = runRecordingSince !== null && runRecordingSince <= weekAgo ? await ciDailyRates(db, now) : null;
   const failureRows = runCaptured ? await ciFailureRows(db, weekAgo, CI_FAILURE_LIMIT) : [];
+  // The list is capped; the COUNT is not. Same window and definition as
+  // `ciFailureRows` (a failed/timed-out run after `weekAgo`), so "N failures"
+  // never reads the cap off the list.
+  const failureTotal = !runCaptured ? 0
+    : failureRows.length < CI_FAILURE_LIMIT ? failureRows.length
+    : (await first<{ n: number }>(db,
+        `SELECT COUNT(*) AS n FROM repo_events WHERE kind = 'run' AND state IN ('failure', 'timed_out') AND occurred_at > ?`, weekAgo))?.n ?? failureRows.length;
   const reviews = await reviewRowsSince(db, twoWeeksAgo);
 
   const issueEvents = await all<IssueRow>(
@@ -1043,12 +1050,16 @@ export async function getRepoDashboard(
             workflow: r.name ?? "workflow", branch: r.ref ?? "", job: r.title ?? "—",
             at: r.occurred_at, url: r.url ?? "",
           })),
+          total: failureTotal,
         })
       : NOT_CONNECTED,
     stats: ok(stats),
     codeStats: ok(codeStats),
     bars: barTotal > 0 ? ok(bars) : EMPTY,
-    prs: some(capturedPrs),
+    // `openCount` is the "Open PRs" tile's own figure (`prsNow`), so the list's
+    // consumers never count open PRs off the capped rows — and it is `null`
+    // until the `prs_reconciled` marker makes it a complete count.
+    prs: capturedPrs.length || prCaptured ? ok({ rows: capturedPrs, openCount: prCaptured ? prsNow.length : null }) : EMPTY,
     activity: some(activity),
     sprint: sprint ? ok(sprint) : EMPTY,
     contributors: some(contributors),

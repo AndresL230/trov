@@ -8,7 +8,7 @@ import { createSession } from "../src/auth/session";
 import { mintToken } from "../src/auth/tokens";
 import { createInvite, acceptInvite } from "../src/auth/invites";
 import { ingestEvent, ingestFeedEntry } from "../src/consumer";
-import { createPage as createArtifact, setStatus as setArtifactStatus, ratify as ratifyArtifact, mintUploadToken } from "../src/tools/artifacts";
+import { createPage as createArtifact, setStatus as setArtifactStatus, ratify as ratifyArtifact, mintUploadToken, deletePage as deleteArtifact } from "../src/tools/artifacts";
 import { write_plan } from "../src/tools/plan";
 import {
   append_feed, propose_doc_update, stage_adr,
@@ -31,7 +31,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     env.DB,
     { slug: "rename-test-doc", section: "reference", title: "T", body: "b", change_summary: "s", confidence: "high" },
     handle
-  ); // docs.updated_by + doc_versions.created_by
+  ); // docs.updated_by + docs.owner (0035) + doc_versions.created_by
   await stage_adr(env.DB, { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, handle); // adrs.created_by
   // sprints.created_by + sprints.lead — the admin plan write is the real writer
   // of both (0025 added `lead`; the proposal path that used to create these rows
@@ -92,6 +92,9 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await setArtifactStatus(env.DB, art.slug, "published", handle);
   await ratifyArtifact(env.DB, art.slug, 1, handle);
   await mintUploadToken(env.DB, { kind: "file", size_bytes: 1, sha256: "e".repeat(64), title: "Rename test upload", area: "ui" }, handle);
+  // artifact_pages.deleted_by (0035 PART D): a second page, soft-deleted by the person.
+  const gone = await createArtifact(env.DB, { title: "Rename test deleted artifact", kind: "markdown", area: "ui", content: "# bye" }, handle);
+  await deleteArtifact(env.DB, gone.slug, handle, false);
   // Handoffs + Prompt Library (0028): direct inserts for sender / recipient /
   // claimed_by and the prompt's author plus its version's (the real writers
   // take the principal from auth, which this seed does not have).
@@ -99,6 +102,8 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     handle, handle, nowIso(), nowIso(), handle, nowIso());
   await run(env.DB, `INSERT INTO prompts (slug, title, author, current_version, created_at, updated_at) VALUES (?, 'T', ?, 1, ?, ?)`, "rename-test", handle, nowIso(), nowIso());
   await run(env.DB, `INSERT INTO prompt_versions (slug, version, status, author, body, created_at) VALUES (?, 1, 'published', ?, 'b', ?)`, "rename-test", handle, nowIso());
+  // prompts.deleted_by (0035 PART C): a second prompt, soft-deleted by the person.
+  await run(env.DB, `INSERT INTO prompts (slug, title, author, current_version, created_at, updated_at, deleted_at, deleted_by) VALUES (?, 'T', ?, 1, ?, ?, ?, ?)`, "rename-test-deleted", handle, nowIso(), nowIso(), nowIso(), handle);
   // oauth_grants.person + oauth_codes.person (0029) — direct inserts; the writer
   // (issueAuthorization) needs a registered client, seeded here too.
   await run(env.DB, `INSERT OR IGNORE INTO oauth_clients (client_id, client_name, redirect_uris, created_at) VALUES ('rename-client', 'C', '["http://localhost/cb"]', ?)`, nowIso());

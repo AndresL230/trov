@@ -18,9 +18,9 @@
 import type {
   SprintView, SprintDetail, SprintUrgency, SprintDomain, SprintResourceView, SprintTicketRow,
 } from "@shared/sprints";
-import { SPRINT_URGENCIES, SPRINT_DOMAINS } from "@shared/sprints-core";
+import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import type { PersonSummary } from "./api";
-import { esc, attr, DETAIL_SHELL } from "./ui";
+import { esc, attr, DETAIL_SHELL, SURFACE, surface } from "./ui";
 import { personChip } from "./people";
 import { renderMarkdown } from "./markdown";
 import { segmented } from "./segmented";
@@ -92,18 +92,41 @@ export interface SprintCardOpts {
   /** Treat the sprint as done although the server still says otherwise — the
    *  Confirm-done click is optimistic (`AppState.confirmedSprints`). */
   done?: boolean;
+  /** This is THE next sprint (`nextSprintId`) — the one card that says NEXT UP. */
+  nextUp?: boolean;
+  /** The clock (ms), injected for tests; defaults to `Date.now()`. */
+  now?: number;
+}
+
+/**
+ * THE next sprint, the one that earns NEXT UP: among sprints not done (by status
+ * or a confirm this session) and not yet running, the earliest due date that is
+ * not past by the shared rule (`sprintDueState` — due today still counts). An
+ * unscheduled sprint is never next; a tie goes to the earlier in the list. null
+ * when nothing qualifies.
+ */
+export function nextSprintId(sprints: SprintView[], confirmed: Record<string, boolean>, now: number): number | null {
+  let best: { id: number; left: number } | null = null;
+  for (const sp of sprints) {
+    if (sp.status === "done" || confirmed[String(sp.id)] || sp.active) continue;
+    const due = sprintDueState(sp.due, now);
+    if (!due || due.overdue) continue;
+    if (!best || due.daysLeft < best.left) best = { id: sp.id, left: due.daysLeft };
+  }
+  return best ? best.id : null;
 }
 
 /**
  * One sprint as the Roadmap Timeline shows it (design 770–805): label, the
- * NEXT UP badge on anything not yet active, the urgency/DUE/DOMAIN tags, the
+ * NEXT UP badge on the one next sprint (`opts.nextUp`), the urgency/DUE/DOMAIN tags, the
  * lead, the summary, "phase · dates", the progress bar with "closed/total done",
  * the member avatars and "Open sprint →".
  *
  * Everything is derived from the view, so the card is the same on every surface.
- * `dates` is the human range the admin authored ("SEP 8 – 19"); when it is
- * absent the card falls back to the Roadmap's own date note (Due / Was due …
- * overdue / Completed by), which is what the plan has always shown.
+ * The date note is the sprint's real span when it has a `start` ("oct 6 – 17",
+ * `sprintDatesLabel`), else the human range the admin authored in `dates`
+ * ("SEP 8 – 19"); with neither, the card falls back to the Roadmap's own date note
+ * (Due / Was due … overdue / Completed by), which is what the plan has always shown.
  *
  * A sprint whose bar is full but which nobody has confirmed gets the
  * "ready to complete" row + Confirm-done button — completion is a HUMAN act,
@@ -113,10 +136,11 @@ export function sprintCard(sp: SprintView, persons: PersonSummary[], opts: Sprin
   const done = opts.done ?? sp.status === "done";
   const counted = sp.progress.total > 0;
   const ready = !done && counted && sp.progress.closed >= sp.progress.total;
-  const dueTime = sp.due ? new Date(`${sp.due}T12:00:00`).getTime() : Number.POSITIVE_INFINITY;
-  const overdue = !done && !ready && dueTime < Date.now();
-  // The design shows NEXT UP on every card that is not yet running.
-  const nextUp = !done && !sp.active;
+  // Overdue from the calendar day AFTER the due date — the ONE rule, shared/sprints-core.
+  const overdue = !done && !ready && !!sprintDueState(sp.due, opts.now ?? Date.now())?.overdue;
+  // NEXT UP marks the single next sprint (`nextSprintId`, decided by the caller),
+  // never every card that is not yet running.
+  const nextUp = !done && !sp.active && !!opts.nextUp;
 
   const dateLabel = sp.due ? longDate(sp.due) : "No target date";
   const fallbackNote = done
@@ -124,7 +148,8 @@ export function sprintCard(sp: SprintView, persons: PersonSummary[], opts: Sprin
     : overdue
       ? `Was due ${dateLabel} — overdue`
       : `Due ${dateLabel}`;
-  const dateNote = [sp.phase, sp.dates ? sp.dates.toLowerCase() : fallbackNote]
+  const span = sprintDatesLabel(sp);
+  const dateNote = [sp.phase, span ? span.toLowerCase() : fallbackNote]
     .filter((v): v is string => !!v)
     .join(" · ");
 
@@ -143,7 +168,7 @@ export function sprintCard(sp: SprintView, persons: PersonSummary[], opts: Sprin
       </div>`
     : "";
 
-  return `<div style="padding:14px 16px;border:1px solid var(--border);border-radius:11px;margin-bottom:8px">
+  return `<div${surface("padding:14px 16px;margin-bottom:8px")}>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
       <span style="font-size:14.5px;font-weight:600;letter-spacing:-0.01em">${esc(sp.label)}</span>
       ${nextUp ? `<span style="${NEXT_UP_STYLE}">NEXT UP</span>` : ""}
@@ -170,17 +195,24 @@ export function sprintCard(sp: SprintView, persons: PersonSummary[], opts: Sprin
 export interface NewSprintState {
   open: boolean;
   name: string;
-  dates: string;
+  /** `<input type="date">` values: "" or YYYY-MM-DD. */
+  start: string;
   desc: string;
   urgency: SprintUrgency;
   due: string;
   lead: string | null;
   domain: SprintDomain | null;
+  /** The date refusal to show under the dates (`sprintDatesProblem`, set on Create), or null. */
+  error: string | null;
 }
 
 const NS_LABEL = "display:block;font-size:12.5px;font-weight:500;margin-bottom:7px";
 const NS_INPUT =
   "width:100%;height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:8px;background:transparent;color:var(--fg);font-size:13px;outline:none";
+/** A native date field on the same box. `cnpy-date` (canopy.css) sets `color-scheme`
+ *  to the app's theme so the browser's own picker and calendar icon are dark in dark. */
+const nsDateInput = (arg: "start" | "due", value: string, label: string, invalid: boolean): string =>
+  `<input type="date" class="cnpy-date" data-act="nsField" data-arg="${arg}" data-field="ns-${arg}" value="${attr(value)}" aria-label="${attr(label)}"${invalid ? ` aria-invalid="true" aria-describedby="ns-date-error"` : ""} style="${NS_INPUT};font-family:inherit;${invalid ? "border-color:var(--red);" : ""}" />`;
 const chipStyle = (on: boolean) =>
   `padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid ${on ? "var(--accent);color:var(--accent);background:var(--accent-soft)" : "var(--border);color:var(--fg-55);background:transparent"}`;
 /** The chip hover hook (canopy.css), exactly as the ticket form uses it: the
@@ -195,6 +227,12 @@ const chipClass = (on: boolean) => `cnpy-pickchip${on ? " is-on" : ""}`;
  * new-ticket form's title (and `POST /sprints` enforces the same rule).
  * Lead and Codebase domain are single-choice chips that toggle OFF when the
  * current pick is clicked again (the design's `s.nsLead === l ? null : l`).
+ *
+ * Start and Due are native date fields (both optional); main.ts checks them with the
+ * ONE sprint-date rule (`sprintDatesProblem`) before it submits, and a refusal shows
+ * here, under the dates. There is no free-text "Dates" label any more: every surface
+ * derives the span from start/due (`sprintDatesLabel`); `dates` stays on the model for
+ * sprints the plan write authored.
  */
 export function newSprintPanel(s: NewSprintState, persons: PersonSummary[]): string {
   if (!s.open) return "";
@@ -215,29 +253,30 @@ export function newSprintPanel(s: NewSprintState, persons: PersonSummary[]): str
     ? "background:var(--accent);color:var(--accent-fg);border:1px solid transparent"
     : "background:transparent;color:var(--fg-40);border:1px solid var(--border);cursor:default";
 
-  return `<div style="border:1px solid var(--border-strong);border-radius:13px;padding:18px 20px;margin:14px 0 6px">
-    <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:14px">
+  return `<div${surface("padding:18px 20px;margin:14px 0 6px")}>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:end">
       <div style="min-width:0">
         <label style="${NS_LABEL}">Sprint name</label>
         <input data-act="nsField" data-arg="name" data-field="ns-name" value="${attr(s.name)}" placeholder="Sprint 14" style="${NS_INPUT}" />
       </div>
-      <div style="min-width:0">
-        <label style="${NS_LABEL}">Dates</label>
-        <input data-act="nsField" data-arg="dates" data-field="ns-dates" value="${attr(s.dates)}" placeholder="Oct 6 – 17" style="${NS_INPUT}" />
-      </div>
-    </div>
-    <label style="${NS_LABEL};margin:15px 0 7px">Goal <span style="font-weight:400;color:var(--fg-40)">— what this sprint is for</span></label>
-    <input data-act="nsField" data-arg="desc" data-field="ns-desc" value="${attr(s.desc)}" placeholder="One sentence describing the sprint's goal" style="${NS_INPUT}" />
-    <div style="display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;margin-top:15px;align-items:end">
       <div>
         <label style="${NS_LABEL}">Urgency</label>
         ${urgSeg}
       </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:15px">
       <div style="min-width:0">
-        <label style="${NS_LABEL}">Due date</label>
-        <input data-act="nsField" data-arg="due" data-field="ns-due" value="${attr(s.due)}" placeholder="2026-10-17" style="${NS_INPUT};height:34px" />
+        <label style="${NS_LABEL}">Start date <span style="font-weight:400;color:var(--fg-40)">— optional</span></label>
+        ${nsDateInput("start", s.start, "Start date", !!s.error)}
+      </div>
+      <div style="min-width:0">
+        <label style="${NS_LABEL}">Due date <span style="font-weight:400;color:var(--fg-40)">— optional</span></label>
+        ${nsDateInput("due", s.due, "Due date", !!s.error)}
       </div>
     </div>
+    <div id="ns-date-error" data-ns-error role="alert" style="font-size:12px;color:var(--red);margin-top:7px${s.error ? "" : ";display:none"}">${esc(s.error ?? "")}</div>
+    <label style="${NS_LABEL};margin:15px 0 7px">Goal <span style="font-weight:400;color:var(--fg-40)">— what this sprint is for</span></label>
+    <input data-act="nsField" data-arg="desc" data-field="ns-desc" value="${attr(s.desc)}" placeholder="One sentence describing the sprint's goal" style="${NS_INPUT}" />
     <label style="${NS_LABEL};margin:15px 0 7px">Lead</label>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${leadChips}</div>
     <label style="${NS_LABEL};margin:15px 0 7px">Codebase domain</label>
@@ -276,7 +315,7 @@ const RESOURCE_ICON: Record<string, string> = {
 const safeHref = (u: string): string => (/^https?:\/\//i.test(u) ? u : "#");
 
 function resourceRow(lk: SprintResourceView): string {
-  return `<a href="${attr(safeHref(lk.url))}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:9px;padding:7px 10px;border:1px solid var(--border);border-radius:9px;text-decoration:none;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
+  return `<a href="${attr(safeHref(lk.url))}" target="_blank" rel="noopener"${surface("display:flex;align-items:center;gap:9px;padding:7px 10px;text-decoration:none", { hover: true })}>
     <span style="flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:6px;color:var(--fg-70);background:color-mix(in srgb,var(--fg) 6%,transparent)">${RESOURCE_ICON[lk.kind] ?? RESOURCE_ICON.plain}</span>
     <span style="min-width:0;flex:1">
       <span style="display:block;font-size:12px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(lk.label)}</span>
@@ -299,7 +338,7 @@ function sprintTicketCard(t: SprintTicketRow, persons: PersonSummary[]): string 
   const who = t.assignees.length > 0
     ? avatarStack(t.assignees, persons, 20)
     : `<span style="font-size:11.5px;font-style:italic;color:var(--fg-40)">Unassigned</span>`;
-  return `<button data-act="openTicket" data-arg="${t.id}" class="cnpy-tcard" style="display:flex;flex-direction:column;gap:10px;min-width:0;min-height:132px;text-align:left;padding:14px 15px 13px;border:1px solid var(--border);border-radius:11px;background:color-mix(in srgb,var(--fg) 2.5%,transparent);${closed ? "opacity:.6;" : ""}">
+  return `<button data-act="openTicket" data-arg="${t.id}" class="cnpy-tcard ${SURFACE}" style="display:flex;flex-direction:column;gap:10px;min-width:0;min-height:132px;text-align:left;padding:14px 15px 13px;${closed ? "opacity:.6;" : ""}">
     <div style="display:flex;align-items:center;gap:8px;width:100%;min-width:0">
       <span style="font-family:var(--label);font-size:11px;color:var(--fg-40);flex:none">#${t.id}</span>
       ${tagChip(t.category)}
@@ -370,7 +409,7 @@ export function sprintScreen(p: SprintScreenProps): string {
     : `<button data-act="sprintActive" data-arg="${sp.active ? "0" : "1"}" class="cnpy-outlinebtn" style="padding:4px 11px;border-radius:7px;border:1px solid var(--border-strong);font-size:11.5px;font-weight:500;color:var(--fg-70);flex:none">${sp.active ? "Mark inactive" : "Mark active"}</button>`;
 
   const tickets = sp.tickets.length > 0
-    ? `<div class="cnpy-stagger" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-top:14px">${sp.tickets.map((t) => sprintTicketCard(t, p.persons)).join("")}</div>`
+    ? `<div class="cnpy-stagger" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:10px;margin-top:14px">${sp.tickets.map((t) => sprintTicketCard(t, p.persons)).join("")}</div>`
     : `<div style="border:1px dashed var(--border-strong);border-radius:11px;padding:20px;text-align:center;font-size:12.5px;color:var(--fg-40);margin-top:12px">No tickets in this sprint yet — move some from the queue's sprint picker.</div>`;
 
   const members = sp.members.length > 0
@@ -411,7 +450,7 @@ export function sprintScreen(p: SprintScreenProps): string {
       <div style="border-left:1px solid var(--border);padding-left:22px">
         <div style="${RAIL_EYEBROW};margin-bottom:8px">Properties</div>
         <div style="display:flex;flex-direction:column">
-          ${prop("DATES", `<span style="${PROP_CHIP}">${esc(sp.dates ?? "—")}</span>`)}
+          ${prop("DATES", `<span style="${PROP_CHIP}">${esc(sprintDatesLabel(sp) ?? "—")}</span>`)}
           ${prop("DUE", `<span style="${PROP_CHIP}">${esc(sp.due ? shortDue(sp.due) : "—")}</span>`)}
           ${prop("URGENCY", sprintTags({ urgency: sp.urgency, due: null, domain: null }))}
           ${prop("DOMAIN", sp.domain ? tag(sp.domain.toUpperCase(), tint("var(--blue)")) : `<span style="${PROP_CHIP}">—</span>`)}

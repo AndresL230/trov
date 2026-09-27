@@ -153,7 +153,7 @@ describe("GET /api/prompts", () => {
     expect(lint.version).toBe(3);
     expect(lint.status).toBe("staged");
     expect(lint.excerpt).toBe("Lint the Sapling lesson at {{lesson_path}}.");
-    expect(Object.keys(lint).sort()).toEqual(["author", "excerpt", "slug", "status", "tags", "title", "updated_at", "version"]);
+    expect(Object.keys(lint).sort()).toEqual(["author", "excerpt", "last_used_at", "slug", "status", "tags", "title", "updated_at", "use_count", "version"]);
   });
 
   it("q is FTS over slug, title and body; tags are ANDed; sort flips", async () => {

@@ -4,7 +4,7 @@
  * Pure functions from web/src/sprints.ts plus `render()` over a hand-built
  * AppState (no D1, no DOM), the idiom of test/render.tickets.test.ts:
  *  • sprintCard — the design's tag set (▲ HIGH / NORMAL / LOW, DUE, DOMAIN),
- *    the lead's FIRST name, NEXT UP only on an inactive sprint, the progress
+ *    the lead's FIRST name, NEXT UP only on THE next sprint (`nextSprintId`), the progress
  *    text "closed/total done" + the bar width, "Open sprint →"
  *  • the Roadmap Timeline's grouping: active → In Progress, upcoming →
  *    Upcoming, done → Done
@@ -12,6 +12,8 @@
  *  • sprintScreen — the markdown description, tickets as grid boxes (a sub-ticket names its parent),
  *    the resources list, the members list, the ACTIVE chip
  *  • parseHash("#sprints/7")
+ *  • the ONE due-date rule (`sprintDueState`, shared/sprints-core) with an injected
+ *    clock, and every surface — card, Roadmap header dot, Timeline — agreeing on it
  *
  * The markdown module is vi.mock'd (marked + DOMPurify cannot run in this
  * workerd environment — same reason render.roadmap.test.ts mocks it) with a
@@ -32,7 +34,9 @@ vi.mock("../web/src/markdown", () => ({
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")}</div>`,
 }));
 
-import { sprintCard, newSprintPanel, newSprintToggle, sprintScreen, sprintTags, shortDue, type NewSprintState } from "../web/src/sprints";
+import { sprintCard, newSprintPanel, newSprintToggle, sprintScreen, sprintTags, shortDue, nextSprintId, type NewSprintState } from "../web/src/sprints";
+import { sprintDueState } from "@shared/sprints-core";
+import { placeSprint } from "../web/src/timeline";
 import { render, initialState, type AppState } from "../web/src/render";
 import { parseHash } from "../web/src/hash";
 import { avatarStack } from "../web/src/tickets";
@@ -59,6 +63,7 @@ function sprint(o: Partial<SprintView> & { id: number; label: string }): SprintV
     description: null,
     phase: "Phase 2",
     dates: "SEP 8 – 19",
+    start: null,
     due: FUTURE,
     status: "upcoming",
     active: false,
@@ -94,7 +99,7 @@ const resource = (o: Partial<SprintResourceView> = {}): SprintResourceView => ({
 });
 
 const NS: NewSprintState = {
-  open: false, name: "", dates: "", desc: "", urgency: "normal", due: "", lead: null, domain: null,
+  open: false, name: "", start: "", desc: "", urgency: "normal", due: "", lead: null, domain: null, error: null,
 };
 
 function roadmapState(sprints: SprintView[], over: Partial<AppState> = {}): AppState {
@@ -103,7 +108,7 @@ function roadmapState(sprints: SprintView[], over: Partial<AppState> = {}): AppS
     ...s,
     view: "app",
     screen: "roadmap",
-    roadmapTab: "timeline",
+    roadmapTab: "narrative", // the sprint cards + New sprint live on the Narrative tab
     me: { handle: "jose-a", name: "Jose", avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
     persons: { status: "ok", data: PERSONS },
     roadmap: { status: "ok", data: { narrative: "n", version: 1, updated_at: null, updated_by: null, sprints } },
@@ -173,12 +178,14 @@ describe("sprintCard — lead, NEXT UP, progress, open", () => {
     expect(sprintCard(sprint({ id: 1, label: "S", lead: null }), PERSONS)).not.toContain("· lead");
   });
 
-  it("badges NEXT UP on an inactive sprint and NEVER on an active or done one", () => {
-    expect(sprintCard(sprint({ id: 1, label: "S", status: "upcoming", active: false }), PERSONS)).toContain("NEXT UP");
-    expect(sprintCard(sprint({ id: 1, label: "S", status: "in_progress", active: true }), PERSONS)).not.toContain("NEXT UP");
-    expect(sprintCard(sprint({ id: 1, label: "S", status: "done", active: false }), PERSONS)).not.toContain("NEXT UP");
+  it("badges NEXT UP only when told it is THE next sprint, and NEVER on an active or done one", () => {
+    expect(sprintCard(sprint({ id: 1, label: "S", status: "upcoming", active: false }), PERSONS, { nextUp: true })).toContain("NEXT UP");
+    // not yet running is not enough on its own — that was every upcoming card
+    expect(sprintCard(sprint({ id: 1, label: "S", status: "upcoming", active: false }), PERSONS)).not.toContain("NEXT UP");
+    expect(sprintCard(sprint({ id: 1, label: "S", status: "in_progress", active: true }), PERSONS, { nextUp: true })).not.toContain("NEXT UP");
+    expect(sprintCard(sprint({ id: 1, label: "S", status: "done", active: false }), PERSONS, { nextUp: true })).not.toContain("NEXT UP");
     // an optimistic Confirm-done also suppresses it
-    expect(sprintCard(sprint({ id: 1, label: "S", status: "upcoming", active: false }), PERSONS, { done: true })).not.toContain("NEXT UP");
+    expect(sprintCard(sprint({ id: 1, label: "S", status: "upcoming", active: false }), PERSONS, { done: true, nextUp: true })).not.toContain("NEXT UP");
   });
 
   it("reads 'closed/total done' with the bar at pct%", () => {
@@ -205,6 +212,18 @@ describe("sprintCard — lead, NEXT UP, progress, open", () => {
     expect(html).toContain("Phase 2 · sep 8 – 19");
   });
 
+  it("prefers the real start/due span over the authored dates label once a start is set", () => {
+    const html = sprintCard(sprint({ id: 1, label: "S", phase: "Phase 2", dates: "SEP 8 – 19", start: "2026-10-06", due: "2026-10-17" }), PERSONS);
+    expect(html).toContain("Phase 2 · oct 6 – 17");
+    expect(html).not.toContain("sep 8 – 19");
+  });
+
+  it("a legacy non-ISO due still renders (raw text, no overdue claim)", () => {
+    const html = sprintCard(sprint({ id: 1, label: "S", dates: null, start: null, due: "Oct 17" }), PERSONS, { now: Date.parse("2027-01-01T12:00:00") });
+    expect(html).toContain("DUE OCT 17");
+    expect(html).not.toContain("OVERDUE");
+  });
+
   it("stacks one avatar per member", () => {
     const html = sprintCard(sprint({ id: 1, label: "S", members: ["sanaok", "jose-a"] }), PERSONS);
     expect(html.match(/margin-left:-7px/g)).toHaveLength(1); // 2 avatars → 1 overlap
@@ -220,9 +239,9 @@ describe("sprintCard — lead, NEXT UP, progress, open", () => {
   });
 });
 
-// ── the Roadmap Timeline tab ─────────────────────────────────────────────────
+// ── the Roadmap's sprint groups (Narrative tab) ──────────────────────────────
 
-describe("render() — Roadmap Timeline groups sprints by status (§C.6)", () => {
+describe("render() — Roadmap Narrative groups sprints by status (§C.6)", () => {
   it("puts active in In Progress, upcoming in Upcoming and done in Done, in that order", () => {
     const html = render(roadmapState([
       sprint({ id: 1, label: "Running now", status: "in_progress", active: true }),
@@ -249,10 +268,10 @@ describe("render() — Roadmap Timeline groups sprints by status (§C.6)", () =>
     expect(html).not.toContain(">Done<");
   });
 
-  it("carries the design's Timeline intro copy", () => {
-    const html = render(roadmapState([sprint({ id: 1, label: "S" })]));
-    expect(html).toContain("The plan is a sequence of time-boxed sprints, each a container of tickets with its own screen.");
-    expect(html).toContain("Progress is live");
+  it("the Timeline tab draws the sprints on the calendar, not as cards", () => {
+    const html = render(roadmapState([sprint({ id: 1, label: "S" })], { roadmapTab: "timeline" }));
+    expect(html).toContain('data-screen-label="Roadmap · Timeline"');
+    expect(html).not.toContain("In Progress");
   });
 
   it("keeps the Confirm-done row for a fully-closed sprint nobody has confirmed", () => {
@@ -281,12 +300,15 @@ describe("newSprintPanel", () => {
     expect(newSprintPanel(NS, PERSONS)).toBe("");
     const open = newSprintPanel({ ...NS, open: true }, PERSONS);
     expect(open).toContain("Sprint name");
-    expect(open).toContain("Dates");
+    expect(open).toContain("Start date");
     expect(open).toContain("Due date");
     expect(open).toContain("Urgency");
     expect(open).toContain("Codebase domain");
     expect(open).toContain("Create sprint");
     expect(open).toContain('data-act="nsToggle"'); // Cancel
+    // The panel is a surface, not a hand-drawn border-strong box.
+    expect(open.startsWith('<div class="cnpy-surface" style="padding:18px 20px;margin:14px 0 6px">')).toBe(true);
+    expect(open).not.toContain("border-radius:13px");
   });
 
   it("leaves Create sprint inert until the sprint has a name", () => {
@@ -346,10 +368,38 @@ describe("newSprintPanel", () => {
 
   it("every text field carries data-field so the caret survives a rerender", () => {
     const html = newSprintPanel({ ...NS, open: true }, PERSONS);
-    for (const f of ["ns-name", "ns-dates", "ns-desc", "ns-due"]) expect(html).toContain(`data-field="${f}"`);
+    for (const f of ["ns-name", "ns-start", "ns-desc", "ns-due"]) expect(html).toContain(`data-field="${f}"`);
   });
 
-  it("the toggle button lives outside the panel and is always present on the Timeline", () => {
+  it("Start and Due are native date inputs, themed through cnpy-date, carrying their values", () => {
+    const html = newSprintPanel({ ...NS, open: true, start: "2026-10-06", due: "2026-10-17" }, PERSONS);
+    const tag = (field: string) => {
+      const at = html.indexOf(`data-field="${field}"`);
+      return html.slice(html.lastIndexOf("<input", at), html.indexOf(">", at));
+    };
+    for (const [field, value] of [["ns-start", "2026-10-06"], ["ns-due", "2026-10-17"]]) {
+      expect(tag(field)).toContain('type="date"');
+      expect(tag(field)).toContain('class="cnpy-date"');
+      expect(tag(field)).toContain(`value="${value}"`);
+      expect(tag(field)).not.toContain("aria-invalid");
+    }
+    // The free-text Dates label field is gone — the span is derived from start/due.
+    expect(html).not.toContain('data-field="ns-dates"');
+    // No error: the alert region is present but hidden and empty.
+    expect(html).toMatch(/data-ns-error role="alert" style="[^"]*display:none"><\/div>/);
+  });
+
+  it("shows a date refusal inline under the dates and marks both fields invalid", () => {
+    const msg = "start (2026-10-20) is after due (2026-10-17); a sprint must start on or before its due date.";
+    const html = newSprintPanel({ ...NS, open: true, start: "2026-10-20", due: "2026-10-17", error: msg }, PERSONS);
+    const at = html.indexOf("data-ns-error");
+    const region = html.slice(at, html.indexOf("</div>", at));
+    expect(region).not.toContain("display:none");
+    expect(region).toContain("start (2026-10-20) is after due (2026-10-17)");
+    expect(html.match(/aria-invalid="true"/g)).toHaveLength(2);
+  });
+
+  it("the toggle button lives outside the panel (in the Roadmap header) and is always present", () => {
     expect(newSprintToggle(false)).toContain('data-act="nsToggle"');
     expect(newSprintToggle(false)).toContain("New sprint");
     const closed = render(roadmapState([sprint({ id: 1, label: "S" })]));
@@ -366,6 +416,14 @@ describe("newSprintPanel", () => {
 
 describe("sprintScreen", () => {
   const base = () => detail({ id: 3, label: "Sprint 13 — Tickets" });
+
+  it("the DATES property prefers the real start/due span, else the authored label", () => {
+    const real = sprintScreen({ detail: detail({ id: 3, label: "S", dates: "SEP 8 – 19", start: "2026-10-06", due: "2026-11-02" }), persons: PERSONS, resourceDraft: "" });
+    expect(real).toContain("Oct 6 – Nov 2");
+    expect(real).not.toContain("SEP 8 – 19");
+    const legacy = sprintScreen({ detail: detail({ id: 3, label: "S", dates: "SEP 8 – 19", start: null }), persons: PERSONS, resourceDraft: "" });
+    expect(legacy).toContain("SEP 8 – 19");
+  });
 
   it("renders the description as MARKDOWN inside a cnpy-md wrapper (bold → <strong>)", () => {
     const html = sprintScreen({ detail: detail({ id: 3, label: "S", description: "Ship the **last two** blockers." }), persons: PERSONS, resourceDraft: "" });
@@ -392,10 +450,12 @@ describe("sprintScreen", () => {
       }),
       persons: PERSONS, resourceDraft: "",
     });
-    expect(html).toContain("grid-template-columns:repeat(auto-fill,minmax(240px,1fr))");
+    expect(html).toContain("grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr))");
     const root = html.slice(html.indexOf('data-arg="10"'), html.indexOf('data-arg="11"'));
     const child = html.slice(html.indexOf('data-arg="11"'));
-    expect(root).toContain('class="cnpy-tcard"');
+    expect(root).toContain('class="cnpy-tcard cnpy-surface"');
+    expect(root.slice(0, root.indexOf(">"))).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
+    expect(root.slice(0, root.indexOf(">"))).not.toContain("border-radius");
     expect(root).not.toContain("↳");
     expect(child).toContain("↳ sub-ticket of #10");
     // children render AFTER their root, and each box opens its ticket
@@ -451,6 +511,9 @@ describe("sprintScreen", () => {
     expect(html).toContain('href="https://github.com/SaplingLearn/canopy/milestone/4"');
     expect(html).toContain('data-act="sprintResourceAdd"');
     expect(html).toContain('value="https://example.com/x"');
+    // Each resource row is a clickable surface, never the old 2.5% tinted box.
+    expect(html.match(/rel="noopener" class="cnpy-surface cnpy-card"/g)).toHaveLength(3);
+    expect(html).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
   });
 
   it("offers Delete sprint, and once armed confirms inline that its tickets move to the backlog", () => {
@@ -534,5 +597,90 @@ describe("render() — the sprint screen slice", () => {
 describe("parseHash — the sprint route", () => {
   it("parses #sprints/<id> into the sprint screen with its id", () => {
     expect(parseHash("#sprints/7")).toEqual({ screen: "sprint", ticketId: null, sprintId: 7 });
+  });
+});
+
+// ── the ONE due-date rule ─────────────────────────────────────────────────────
+
+describe("sprintDueState — due all of that day, overdue from the next (injected clock)", () => {
+  // Tue Sep 15 2026, late evening LOCAL — the pool runs in UTC, so local = UTC here.
+  const now = new Date(2026, 8, 15, 23, 30);
+  it("due today → not overdue, and soon", () => {
+    expect(sprintDueState("2026-09-15", now)).toEqual({ overdue: false, soon: true, daysLate: 0, daysLeft: 0 });
+  });
+  it("due yesterday → overdue by 1 day, not soon", () => {
+    expect(sprintDueState("2026-09-14", now)).toEqual({ overdue: true, soon: false, daysLate: 1, daysLeft: 0 });
+  });
+  it("due in 7 days is soon; in 8 days is not", () => {
+    expect(sprintDueState("2026-09-22", now)).toMatchObject({ overdue: false, soon: true, daysLeft: 7 });
+    expect(sprintDueState("2026-09-23", now)).toMatchObject({ overdue: false, soon: false, daysLeft: 8 });
+  });
+  it("no due date (or an unparseable one) → null", () => {
+    expect(sprintDueState(null, now)).toBeNull();
+    expect(sprintDueState(undefined, now)).toBeNull();
+    expect(sprintDueState("next week", now)).toBeNull();
+    expect(sprintDueState("2026-02-30", now)).toBeNull();
+  });
+  it("the clock may be a Date or epoch ms, and the time of day never matters", () => {
+    expect(sprintDueState("2026-09-15", new Date(2026, 8, 15, 0, 1))).toEqual(sprintDueState("2026-09-15", now.getTime()));
+    expect(sprintDueState("2026-09-15", new Date(2026, 8, 16, 0, 1))?.overdue).toBe(true);
+  });
+});
+
+/** A local calendar date `offset` days from today, as the DTO spells `due`. */
+function localIso(offset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const RED_DOT = 'background:var(--red);margin-left:1px';
+
+describe("every sprint surface flips to overdue on the SAME day", () => {
+  const late = (due: string) => sprint({ id: 1, label: "S", status: "in_progress", active: true, dates: null, due });
+
+  it("due today: no surface says overdue", () => {
+    const sp = late(localIso(0));
+    expect(sprintCard(sp, PERSONS)).not.toContain(">OVERDUE<");
+    expect(render(roadmapState([sp], { roadmapTab: "timeline" }))).not.toContain(RED_DOT);
+    expect(placeSprint(sp, {}, Date.now())?.state).toBe("active");
+  });
+
+  it("due yesterday: every surface says overdue", () => {
+    const sp = late(localIso(-1));
+    expect(sprintCard(sp, PERSONS)).toContain(">OVERDUE<");
+    expect(render(roadmapState([sp], { roadmapTab: "timeline" }))).toContain(RED_DOT);
+    expect(placeSprint(sp, {}, Date.now())?.state).toBe("overdue");
+  });
+
+  it("the card takes the injected clock", () => {
+    const sp = late("2026-09-14");
+    expect(sprintCard(sp, PERSONS, { now: new Date(2026, 8, 14, 23, 59).getTime() })).not.toContain(">OVERDUE<");
+    expect(sprintCard(sp, PERSONS, { now: new Date(2026, 8, 15, 0, 0).getTime() })).toContain(">OVERDUE<");
+  });
+});
+
+describe("nextSprintId / NEXT UP — exactly one card", () => {
+  const now = new Date(2026, 8, 15, 12).getTime();
+  const up = (id: number, due: string | null, o: Partial<SprintView> = {}) =>
+    sprint({ id, label: `S${id}`, status: "upcoming", active: false, due, ...o });
+
+  it("picks the earliest due, not-running, not-done, not-past sprint — due today counts", () => {
+    const set = [up(1, "2026-10-01"), up(2, "2026-09-15"), up(3, "2026-09-14"), up(4, null),
+      up(5, "2026-09-16", { status: "in_progress", active: true }), up(6, "2026-09-15", { status: "done" })];
+    expect(nextSprintId(set, {}, now)).toBe(2);
+    // a sprint confirmed done this session drops out
+    expect(nextSprintId(set, { "2": true }, now)).toBe(1);
+    expect(nextSprintId([up(3, "2026-09-14"), up(4, null)], {}, now)).toBeNull();
+  });
+
+  it("the Roadmap paints NEXT UP on one card among several upcoming ones", () => {
+    const html = render(roadmapState([
+      sprint({ id: 1, label: "Running", status: "in_progress", active: true }),
+      up(2, localIso(20)), up(3, localIso(5)), up(4, localIso(40)), up(5, null),
+    ]));
+    expect(html.match(/>NEXT UP</g)?.length).toBe(1);
+    // …and it is the soonest one (S3)
+    const at = html.indexOf(">NEXT UP<");
+    expect(html.lastIndexOf(">S3<", at)).toBeGreaterThan(html.lastIndexOf(">S2<", at));
   });
 });

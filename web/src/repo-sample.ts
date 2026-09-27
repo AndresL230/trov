@@ -201,9 +201,10 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
       title: "Commit activity — last 14 days", note: "70 commits · all branches",
       days: cbVals.map((count, i) => ({ date: new Date(now - (13 - i) * DAY).toISOString().slice(0, 10), count })),
     } },
-    prs: { status: "ok", data: prRows.map(([title, number, login, branch, state, checks, ms]) => ({
+    // 7 open, matching the "Open PRs" tile above.
+    prs: { status: "ok", data: { openCount: 7, rows: prRows.map(([title, number, login, branch, state, checks, ms]) => ({
       number, title, url: `${GH}/pull/${number}`, author: person(login), branch, state, checks, at: at(ms),
-    })) },
+    })) } },
     branches: { status: "ok", data: { active: 14, stale: 2, head: "main", rows: [
       { name: "feature/usage-rollup", at: at(24 * MIN), ahead: 4, behind: 0, stale: false },
       { name: "notif/quiet-hours", at: at(HOUR), ahead: 2, behind: 1, stale: false },
@@ -218,7 +219,7 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
       { workflow: "e2e-smoke", branch: "staging", job: "auth flow · shard 1/2", at: at(26 * MIN), url: `${GH}/actions` },
       { workflow: "test", branch: "fix/sse-auth", job: "vitest · shard 2/4", at: at(2 * HOUR), url: `${GH}/actions` },
       { workflow: "deploy-staging", branch: "staging", job: "wrangler publish", at: at(22 * HOUR), url: `${GH}/actions` },
-    ] } },
+    ], total: 3 } },
     coverage: { status: "ok", data: { value: "78.4%", trend: [76.1, 76.4, 76.2, 77.0, 77.4, 77.2, 77.9, 78.1, 78.0, 78.4], delta: "+1.2", tone: "good", note: "this month · gate at 75%" } },
     bundle: { status: "ok", data: { value: "412 KB", trend: [388, 390, 395, 393, 398, 401, 406, 404, 409, 412], delta: "+6 KB", tone: "warn", note: "this week · gzip, main bundle" } },
     activity: { status: "ok", data: evRows.map(([kind, login, text, ms]) => ({ kind, actor: login ? person(login) : null, text, url: null, at: at(ms) })) },

@@ -18,6 +18,12 @@ describe("onboardView", () => {
     expect(onboardView({ ...s, check: "taken" })).toContain("taken");
     expect(onboardView({ ...s, handle: "Bad", check: "invalid" })).toContain("invalid");
   });
+  it("the feed preview sits on a surface card, not the old 2.5% tint", () => {
+    const html = onboardView({ ...initialOnboard(), handle: "priya-n", name: "Priya", color: "plum" as const });
+    expect(html).toContain('<div class="cnpy-surface" style="padding:12px 14px">');
+    expect(html).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
+  });
+
   it("escapes user-controlled text", () => {
     const s = { ...initialOnboard(), name: "<img src=x>", handle: "x", color: "moss" as const };
     expect(onboardView(s)).not.toContain("<img src=x>");
