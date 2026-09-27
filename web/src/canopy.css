@@ -216,11 +216,9 @@ input, select { font-family: inherit; }
 [data-cnpy-theme="light"] .cnpy-navrow.is-active { background:var(--surface); box-shadow:var(--shadow), 0 0 0 1px var(--border); }
 /* …and hover is the same card, half-drawn: a translucent white with the hairline, no lift —
    so hovering previews the selected look instead of darkening the rail. Also the rail's
-   other rows (Collapse, the person chip; the chip's Settings-selected state is the full card). */
+   other row, Collapse. (The person chip has no fill at all — see `.cnpy-chip`.) */
 [data-cnpy-theme="light"] .cnpy-navrow:not(.is-active):hover,
-[data-cnpy-theme="light"] .cnpy-collapse .cnpy-nav-i:hover,
-[data-cnpy-theme="light"] .cnpy-chip:hover { background:color-mix(in srgb,var(--surface) 60%,transparent); box-shadow:0 0 0 1px var(--border); }
-[data-cnpy-theme="light"] .cnpy-chip { transition:background .15s ease, box-shadow .15s ease, padding var(--side-t) var(--side-e); }
+[data-cnpy-theme="light"] .cnpy-collapse .cnpy-nav-i:hover { background:color-mix(in srgb,var(--surface) 60%,transparent); box-shadow:0 0 0 1px var(--border); }
 .cnpy-nav-i { position:relative; display:flex; align-items:center; gap:11px; flex:1; min-width:0; width:100%; padding:8px 11px; border-radius:8px; font-size:13.5px; font-weight:500; color:var(--fg-55); text-align:left; overflow:hidden; transition:color .12s ease, padding var(--side-t) var(--side-e); }
 .cnpy-navrow:hover .cnpy-nav-i { color:var(--fg-70); }
 .cnpy-navrow.is-active .cnpy-nav-i { color:var(--fg); }
@@ -276,16 +274,15 @@ input, select { font-family: inherit; }
 
 .cnpy-ghost { padding:0 21px 9px; font-size:11.5px; color:var(--fg-40); white-space:nowrap; overflow:hidden; flex:none; }
 .cnpy-foot { padding:10px; border-top:1px solid var(--border); flex:none; }
-.cnpy-chip { display:flex; align-items:center; gap:10px; width:100%; padding:8px 9px; border-radius:9px; text-align:left; overflow:hidden; transition:background .15s ease, padding var(--side-t) var(--side-e); }
-.cnpy-chip:hover { background:var(--hover); }
-.cnpy-chip:hover svg.cnpy-lbl { transform:rotate(45deg); }
+/* The account chip is not a nav row: no fill or ring on hover or on Settings (the owner's
+   call, 2026-09-27). Its only cue, hovered or on Settings, is the gear — turned and brighter. */
+.cnpy-chip { display:flex; align-items:center; gap:10px; width:100%; padding:8px 9px; border-radius:9px; text-align:left; overflow:hidden; transition:padding var(--side-t) var(--side-e); }
+.cnpy-chip:hover svg.cnpy-lbl { transform:rotate(45deg); color:var(--fg-70); }
 .cnpy-chip svg.cnpy-lbl { color:var(--fg-40); transition:opacity .16s ease .1s, transform .4s var(--side-e), color .15s ease; }
 .cnpy-chip-t { overflow:hidden; flex:1; min-width:0; }
 .cnpy-chip-n { font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .cnpy-chip-h { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.4; }
 [data-collapsed="1"] .cnpy-chip { padding-left:8px; padding-right:0; }
-/* On Settings the chip is NOT a selected row (no fill — it is the account, not a nav
-   item); the only cue is the gear, which stays turned and at full strength. */
 [data-screen="settings"] .cnpy-chip svg.cnpy-lbl { transform:rotate(45deg); color:var(--fg-70); }
 
 /* Collapsed-rail tooltip. Positioned by main.ts (the nav list scrolls, and a
