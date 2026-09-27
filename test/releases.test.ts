@@ -154,7 +154,14 @@ describe("one release — its notes page and its patches page", () => {
     expect(html).toContain("All releases");
     expect(html).toContain(">v0.14<");
     expect(html).toContain(`>${r.title}</h1>`);
-    expect(html).not.toContain('data-seg="release-page"');  // the switch is in the app's top bar
+    // The switch sits on the back link's row in the PAGE header, right after the back link.
+    const row = html.slice(html.indexOf('class="cnpy-reldoc-toprow"'), html.indexOf('class="cnpy-reldoc-head-main"'));
+    expect(row).toContain('class="cnpy-rel-back"');
+    expect(row).toContain('data-seg="release-page"');
+    expect(row).toMatch(/class="cnpy-seg-btn is-on"[^>]*aria-pressed="true">Release notes</);
+    expect(row).toContain('data-act="releasePage" data-arg="patches"');
+    expect(releasePageView("0.13", "notes")).toContain('class="cnpy-reldoc-toprow"'); // no note: still there
+    expect(releasePageView("0.99", "notes")).not.toContain('data-seg="release-page"'); // not-found: none
     expect(html).toContain(">Highlights<");
     expect(html).toContain("Heads-up");
     expect(html).not.toContain("/pull/");        // release notes carry no PR links
@@ -326,12 +333,13 @@ describe("the What's new screen in the app", () => {
 
   it("a release page: the title is a back button, the crumb names the release, the entry stays lit", () => {
     const html = app("0.14", "patches");
-    // The Release notes / Patch notes switch is in the app's top bar (the <header>), not the page.
+    // The switch is in the PAGE header's back-link row — never in the app's top bar.
     const top = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-    expect(top).toContain('data-seg="release-page"');
-    expect(top).toMatch(/class="cnpy-seg-btn is-on"[^>]*aria-pressed="true">Patch notes</);
-    expect(top).toContain('data-act="releasePage" data-arg="notes"');
-    expect(html.slice(html.indexOf("</header>")).match(/data-seg="release-page"/g)).toBeNull();
+    expect(top).not.toContain('data-seg="release-page"');
+    const row = html.slice(html.indexOf('class="cnpy-reldoc-toprow"'), html.indexOf('class="cnpy-reldoc-head-main"'));
+    expect(row).toMatch(/class="cnpy-seg-btn is-on"[^>]*aria-pressed="true">Patch notes</);
+    expect(row).toContain('data-act="releasePage" data-arg="notes"');
+    expect((html.match(/data-seg="release-page"/g) ?? []).length).toBe(1);
     expect(app("0.99")).not.toContain('data-seg="release-page"'); // not-found: no switch
     expect(html).toContain('data-act="goReleases"');
     expect(html).toContain("v0.14 · Patch notes");

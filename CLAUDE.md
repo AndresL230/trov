@@ -125,7 +125,7 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `0034_feed_brief_artifact_cap` [`feed.brief` — see "The feed brief" below — and REBUILDS `artifact_versions`
   to raise its text CHECK to 768000 bytes, the 750 KB `ARTIFACT_TEXT_CAP`], then `0035_library_and_sprint_dates`
   (ONE migration for the 2026-09-26 redesign batch — developed as 0035 + 0036, consolidated before production;
-  three marked parts, each test cutting its own part out between the `-- ═══ PART` marker lines) — PART A [`docs.owner`, `artifact_pages.published_at`, `prompts.use_count` / `last_used_at` —
+  four marked parts, each test cutting its own part out between the `-- ═══ PART` marker lines) — PART A [`docs.owner`, `artifact_pages.published_at`, `prompts.use_count` / `last_used_at` —
   each backfilled — and `prompts_fts_au` narrowed to the indexed columns so a use bump never rewrites the FTS
   row; the data behind My Work's library strip], PART B [`sprints.start_date` (nullable `YYYY-MM-DD`, the DTO's
   `start`), backfilled CONSERVATIVELY from `dates` — only a label that BEGINS with an ISO date or "<month> <day>"
@@ -133,7 +133,9 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   stays NULL and the Timeline still parses `dates`. Nothing else is rewritten — legacy non-ISO `target_date`s stay],
   PART C [prompt soft delete: `prompts.deleted_at` / `deleted_by` (a handle, in `HANDLE_COLUMNS`), and the four
   `prompts_fts` rebuild triggers re-created to index only `deleted_at IS NULL` rows — the update trigger now also
-  fires on `deleted_at`, so a delete drops the FTS row and a restore puts it back — see the Prompt Library below]).
+  fires on `deleted_at`, so a delete drops the FTS row and a restore puts it back — see the Prompt Library below],
+  PART D [artifact soft delete: `artifact_pages.deleted_at` / `deleted_by` (a handle, in `HANDLE_COLUMNS`) — no
+  trigger, `artifacts_fts` is kept by the repository — see Artifacts below]).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
@@ -1161,9 +1163,9 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   (handoffs, skills, agents' `get_prompt` calls) at different instructions, and would collide with a restore.
   `POST /api/prompts/:slug/restore` (same people; 409 `prompt is not deleted` on a live one) clears both columns,
   so the prompt is back exactly as it was. Both are session-cookie only — there is NO MCP delete, so an agent can
-  never remove a prompt. On screen: "Delete prompt" in the prompt page's header (author / admins only), an in-app
-  confirm popover (`web/src/confirm.ts` — `confirmAnchor`, role="alertdialog", Cancel focused, Escape closes; never
-  `window.confirm`), then the library with a toast "Deleted “<title>” · Undo" (`flash(msg, ms, action)` — a
+  never remove a prompt. On screen: "Delete prompt" in the prompt page's header (author / admins only), the shared
+  confirmation MODAL (`web/src/confirm.ts` — see "The confirmation modal" under Artifacts; never `window.confirm`),
+  then the library with a toast "Deleted “<title>” · Undo" (`flash(msg, ms, action)` — a
   toast may carry ONE `data-act` button) whose Undo calls restore. There is no list of deleted prompts.
 - **Routes** (session cookie, `{ error }` on failure): `GET /api/handoffs?box=mine|me|anyone|sent`,
   `GET /api/handoffs/:id`, `POST /api/handoffs`, `POST /api/handoffs/:id/claim`, `POST /api/handoffs/:id/expire`,
@@ -1210,13 +1212,40 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy
   published (PATCH or private → org) and by every later version (it auto-publishes), kept by a PATCH that leaves
   the page published, cleared to NULL on → draft, untouched by ratify; pre-0035 pages carry their current
   version's `created_at` (a v1 published by PATCH never recorded when, so that is a lower bound).
+- **Delete is SOFT** (0035 PART D; `deletePage` / `restorePage` in `src/tools/artifacts.ts`):
+  `POST /api/artifacts/:slug/delete` stamps `deleted_at` / `deleted_by` and drops the page's `artifacts_fts` row in
+  ONE batch — every version, every `artifact_links` row and the R2 bytes stay, so restore is lossless. Only the
+  page's AUTHOR (case-insensitive) or an ADMIN (`isAdmin`), and only on a page they can SEE (an admin gets the plain
+  404 on someone's private page); anyone else is 403 with nothing written. `VISIBLE_SQL` carries `p.deleted_at IS
+  NULL`, so a deleted page is the ONE byte-identical not-found on EVERY surface — library, detail, diff, raw, MCP
+  `artifact_get` / `artifact_list` / `artifact_update` / `upload_asset` targeting it, `query` (its hydration repeats
+  the rule), `/search`, `/search/quick`, a ticket's / sprint's artifacts, My Work's "published this week", a
+  record_session `artifact_links` entry (`not_found`), a signed download minted BEFORE the delete (the re-check at
+  download) and an upload token minted before it (the consume re-check) — for its own author too.
+  `POST /api/artifacts/:slug/restore` (same people; for anyone else a deleted page stays the one 404; a LIVE page is
+  409 `artifact is not deleted`) clears both columns and re-inserts the FTS row. **The slug stays RESERVED**:
+  `uniqueSlug` counts every row, so a new page with the same title gets `<slug>-2` (there is no explicit-slug
+  create to 409). Both routes are session-cookie only and refuse an `Authorization` header, like ratify — there is
+  NO MCP delete. On screen: "Delete artifact" at the bottom of the viewer's `…` menu (author / admins only;
+  `canDeleteArtifact`), the confirmation modal, then the library with "Deleted “<title>” · Undo" (Undo →
+  `artRestore` → "Restored “<title>”"). There is no list of deleted artifacts.
+- **The confirmation modal** (`web/src/confirm.ts` `confirmModal`, shared by the prompt and artifact deletes; never
+  `window.confirm`): a root-level `data-overlay` (so morph keeps it, and its focus, across rerenders) — a dimmed
+  backdrop whose click cancels, and a centered `.cnpy-surface` `role="alertdialog"` `aria-modal="true"` labelled by
+  its title and described by its explanation, with Cancel and a red Delete. Delete is FOCUSED on open, so Enter /
+  Space press it; ONE capture-phase keydown listener in `main.ts` drives every `[data-confirm-dialog]` through the
+  pure `confirmKeyAction`: Enter elsewhere confirms (never on a key repeat), Escape cancels and focus returns to
+  `[data-confirm-trigger]`, Tab is trapped; while the write runs the button reads "Deleting…", both buttons are
+  disabled and `data-busy` swallows every key (the reducers' busy guards agree — one delete, ever). Fade/scale in,
+  `data-closing` plays the exit (`confirmOut`), none under reduced motion; at ≤ 640px it is a bottom sheet (the
+  modal/sheet rule names `role="alertdialog"` too) with safe-area padding.
 - **Ratify is the human confirm gate**: `POST /api/artifacts/:slug/ratify {version}`, session cookie only, only
   the LATEST version of a `published` page, and it refuses any request carrying an `Authorization` header. There
   is NO MCP ratify tool.
 - **HTTP** (`src/artifacts/routes.ts`, mounted at `/api/artifacts`, session cookie): list (filters area, kind,
   author, status, sprint, ticket, q), get `?v=`, create (JSON text / multipart binary), PATCH, add version
   (content or `old_str`/`new_str`, which must match exactly once; multipart for binary), links add/remove,
-  diff, ratify, `upload-url`, and `POST /api/artifacts/fetch` (the From-URL tab: `src/artifacts/fetch-url.ts`,
+  diff, ratify, delete / restore (`POST /:slug/delete|restore`), `upload-url`, and `POST /api/artifacts/fetch` (the From-URL tab: `src/artifacts/fetch-url.ts`,
   https only, private/loopback/link-local literals refused, every redirect hop re-checked, 5 s, 750 KB, text
   only, nothing stored — a Worker cannot resolve DNS first, so rebinding is out of its reach).
 - **Two token-authenticated routes sit in `src/index.ts` BEFORE the session-gated app** (like `/u/`): the upload

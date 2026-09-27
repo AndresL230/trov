@@ -515,6 +515,16 @@ export function getArtifactDiff(slug: string, a: number, b: number): Promise<Art
 export function ratifyArtifact(slug: string, version: number): Promise<unknown> {
   return sendJson("POST", `${artPath(slug)}/ratify`, { version });
 }
+/** Soft-delete an artifact page (its author or an admin; 403 otherwise). Session-only, never an
+ *  MCP tool. Returns what was deleted, for the "Deleted “<title>” · Undo" toast. */
+export async function deleteArtifact(slug: string): Promise<{ slug: string; title: string; versions: number }> {
+  const r = await sendJson<{ ok: true; slug: string; title: string; versions: number }>("POST", `${artPath(slug)}/delete`);
+  return { slug: r.slug, title: r.title, versions: r.versions };
+}
+/** Undo a delete: the page is back everywhere, exactly as it was. */
+export async function restoreArtifact(slug: string): Promise<ArtifactDetailDTO> {
+  return (await sendJson<{ ok: true; artifact: ArtifactDetailDTO }>("POST", `${artPath(slug)}/restore`)).artifact;
+}
 /** Fetch a page once for the new-artifact form's URL tab (https only; nothing is stored). */
 export function fetchArtifactUrl(url: string): Promise<ArtifactFetchDTO> {
   return sendJson("POST", "/api/artifacts/fetch", { url });

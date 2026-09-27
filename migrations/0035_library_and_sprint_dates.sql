@@ -1,10 +1,11 @@
 -- 0035_library_and_sprint_dates — every schema change of the 2026-09-26 redesign batch, in ONE
 -- migration (it was two while in development: 0035_library_metadata + 0036_sprint_start;
--- consolidated before either reached production). Three independent parts:
+-- consolidated before either reached production). Four independent parts:
 --   PART A — My Work's library strip: docs.owner, artifact_pages.published_at, prompt usage.
 --   PART B — sprint start dates: sprints.start_date + its conservative backfill.
 --   PART C — prompt soft delete: prompts.deleted_at / deleted_by + prompts_fts skips deleted rows.
--- Tests re-run a part's backfill by cutting the file at the PART B / PART C marker lines below.
+--   PART D — artifact soft delete: artifact_pages.deleted_at / deleted_by.
+-- Tests re-run a part's backfill by cutting the file at the PART B / C / D marker lines below.
 
 -- ═══ PART A: library metadata ═══════════════════════════════════════════════════
 -- Three data sources for My Work's "library" strip (2026-09-26): who OWNS a doc, when an
@@ -233,3 +234,17 @@ CREATE TRIGGER prompts_fts_vau AFTER UPDATE ON prompt_versions BEGIN
     FROM prompts p LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version
     WHERE p.slug = new.slug AND p.deleted_at IS NULL;
 END;
+
+-- ═══ PART D: artifact soft delete ═════════════════════════════════════════════
+-- An artifact page can be DELETED (2026-09-26) — softly, the same design as PART C:
+-- the page row, every artifact_versions row, its artifact_links and the R2 bytes all
+-- stay; `deleted_at` / `deleted_by` (a person HANDLE, listed in HANDLE_COLUMNS so a
+-- rename rewrites it) mark it gone. A deleted page is the ONE byte-identical not-found
+-- on every surface — the visibility predicate every read and write binds (`VISIBLE_SQL`
+-- in src/tools/artifacts.ts) carries `p.deleted_at IS NULL` — and its slug stays
+-- RESERVED (a new page never takes it; `uniqueSlug` counts every row). Only the author
+-- or an admin, over the session cookie — never an MCP tool (deletePage / restorePage).
+-- Both columns NULL = live; a restore clears both. artifacts_fts is kept in sync by the
+-- repository, not triggers: a delete drops the page's FTS row, a restore re-inserts it.
+ALTER TABLE artifact_pages ADD COLUMN deleted_at TEXT;
+ALTER TABLE artifact_pages ADD COLUMN deleted_by TEXT;

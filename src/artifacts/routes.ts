@@ -20,7 +20,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
-import type { AppEnv } from "../auth/principal";
+import { isAdmin, type AppEnv } from "../auth/principal";
 import {
   AddTextVersionSchema, ArtifactBinaryKindSchema, ArtifactLinkInputSchema, ArtifactListFiltersSchema,
   ArtifactPageFieldsSchema, ARTIFACT_BINARY_CAP, ARTIFACT_FILENAME_MAX, ARTIFACT_SUMMARY_MAX, ARTIFACT_TEXT_CAP,
@@ -29,7 +29,7 @@ import {
 } from "@shared/artifacts";
 import {
   ArtifactError, ARTIFACT_NOT_FOUND, addBinaryVersion, addLink, addTextVersion, createPage, getPage, getVersionPair, listPages, mintUploadToken,
-  patchPage, ratify, removeLink,
+  patchPage, ratify, removeLink, deletePage, restorePage,
 } from "../tools/artifacts";
 import { artifactErrorResponse } from "./http";
 import { FetchUrlError, fetchArtifactUrl } from "./fetch-url";
@@ -284,6 +284,25 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
     const body = await jsonBody(c, RatifyArtifactSchema);
     if (!body.ok) return body.res;
     return c.json(await ratify(c.env.DB, c.req.param("slug"), body.data.version, who(c)));
+  }));
+
+  // ── soft delete + restore (0035 PART D) — session only, never an MCP tool ────
+  // The page's author or an admin; anyone else is a 403 with nothing written. A deleted
+  // page is the one not_found everywhere, its slug stays reserved, and restore is the
+  // one way back. Like ratify, a request carrying an Authorization header is refused.
+  const personOnly = (c: C) =>
+    c.req.header("authorization") ? c.json({ error: "forbidden", message: "deleting an artifact is a signed-in person's action, never a token's" }, 403) : null;
+  r.post("/:slug/delete", (c) => guard(async () => {
+    const refused = personOnly(c);
+    if (refused) return refused;
+    const me = who(c);
+    return c.json({ ok: true, ...(await deletePage(c.env.DB, c.req.param("slug"), me, isAdmin(c.env, me))) });
+  }));
+  r.post("/:slug/restore", (c) => guard(async () => {
+    const refused = personOnly(c);
+    if (refused) return refused;
+    const me = who(c);
+    return c.json({ ok: true, artifact: await restorePage(c.env.DB, c.req.param("slug"), me, isAdmin(c.env, me)) });
   }));
 
   return r;

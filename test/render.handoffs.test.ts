@@ -7,6 +7,7 @@ import { newDocView, blankDoc } from "../web/src/newdoc";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion } from "../shared/handoffs";
 import { canDeletePrompt, render, initialState } from "../web/src/render";
 import confirmSrc from "../web/src/confirm.ts?raw";
+import { confirmKeyAction } from "../web/src/confirm";
 import promptsSrc from "../web/src/prompts.ts?raw";
 import mainSrc from "../web/src/main.ts?raw";
 
@@ -223,23 +224,54 @@ describe("prompt delete", () => {
     expect(html).not.toContain('role="alertdialog"'); // the confirm opens only when armed
   });
 
-  it("confirms in the app — an alertdialog with Cancel focused first — never window.confirm", () => {
-    const html = promptDetailView({ ...props, canDelete: true, deleteArm: true });
-    expect(html).toContain('role="alertdialog"');
-    expect(html).toContain("Delete “Lint”?");
-    expect(html).toContain("All 2 versions are kept");
-    expect(promptDetailView({ ...props, versions: versions.slice(1), canDelete: true, deleteArm: true })).toContain("Its one version is kept");
-    expect(html).toContain('data-act="promptDelete"');
-    expect(html).toMatch(/data-act="promptDeleteCancel" data-confirm-focus/);
-    expect(html).toContain('aria-expanded="true"');
-    // The trigger toggles: while armed, clicking it again closes.
-    expect(html).toMatch(/data-act="promptDeleteCancel" data-confirm-trigger/);
-    // Busy: both buttons disabled, the label says so.
-    expect(promptDetailView({ ...props, canDelete: true, deleteArm: true, deleteBusy: true })).toContain("Deleting…");
+  it("confirms in a MODAL at the app root — an alertdialog, Delete focused so Enter confirms — never window.confirm", () => {
+    const at = (arm: boolean, busy = false, vs = versions) => render({
+      ...initialState(), view: "app", screen: "prompt", me: me("Darkest-Teddy", false),
+      promptDetail: { status: "ok", data: { prompt: detail, versions: vs } }, promptDeleteArm: arm, promptDeleteBusy: busy,
+    });
+    expect(at(false)).not.toContain('role="alertdialog"'); // the modal opens only when armed
+    const html = at(true);
+    // The trigger stays a trigger (it only opens); the page shows it expanded.
+    expect(html).toMatch(/data-act="promptDeleteArm" data-confirm-trigger class="cnpy-dangerbtn" aria-haspopup="dialog" aria-expanded="true" aria-controls="prompt-delete-confirm"/);
+    // One root-level overlay: backdrop (a click cancels) + the centered surface dialog.
+    const modal = html.slice(html.indexOf('data-overlay="confirm-prompt-delete-confirm"'));
+    expect(modal).toContain('class="cnpy-cmodal"');
+    expect(modal).toMatch(/<div data-act="promptDeleteCancel" class="cnpy-cmodal-back" aria-hidden="true">/);
+    expect(modal).toContain('id="prompt-delete-confirm" role="alertdialog" aria-modal="true" aria-labelledby="prompt-delete-confirm-t" aria-describedby="prompt-delete-confirm-d" tabindex="-1" data-confirm-dialog data-confirm-act="promptDelete" data-confirm-cancel="promptDeleteCancel" class="cnpy-surface cnpy-cmodal-box"');
+    expect(modal).toContain('<div id="prompt-delete-confirm-t"');
+    expect(modal).toContain("Delete “Lint”?");
+    expect(modal).toContain("All 2 versions are kept");
+    expect(at(true, false, versions.slice(1))).toContain("Its one version is kept");
+    // Cancel, then the red Delete — the one focused on open (data-confirm-focus), so Enter / Space press it.
+    expect(modal).toMatch(/data-act="promptDeleteCancel" class="cnpy-outlinebtn"[^>]*>Cancel</);
+    expect(modal).toMatch(/data-act="promptDelete" data-confirm-focus class="cnpy-confirm-go"[^>]*>Delete</);
+    expect((modal.match(/data-confirm-focus/g) ?? []).length).toBe(1);
+    // Busy: both buttons disabled, the dialog marked, the label says so.
+    const busy = at(true, true);
+    expect(busy).toContain("Deleting…");
+    expect(busy).toMatch(/data-confirm-dialog [^>]*data-busy/);
+    expect((busy.match(/ disabled/g) ?? []).length).toBeGreaterThanOrEqual(2);
     for (const src of [confirmSrc, promptsSrc, mainSrc]) {
       const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, ""); // comments may NAME it
       expect(code).not.toMatch(/window\.confirm|\bconfirm\(|\balert\(/);
     }
+  });
+
+  it("the keyboard contract: Enter confirms ONCE, Escape cancels, Tab is trapped (confirmKeyAction)", () => {
+    const k = (key: string, o: Partial<{ onDialogButton: boolean; busy: boolean; repeat: boolean }> = {}) =>
+      confirmKeyAction(key, { onDialogButton: false, busy: false, repeat: false, ...o });
+    expect(k("Enter", { onDialogButton: true })).toBe("native"); // the focused Delete's own click
+    expect(k("Enter")).toBe("confirm");                           // Enter on the dialog / the page
+    expect(k("Enter", { repeat: true })).toBe("swallow");         // a held key never repeats the delete
+    expect(k("Enter", { busy: true })).toBe("swallow");           // nor does a second press while it runs
+    expect(k("Enter", { busy: true, onDialogButton: true })).toBe("swallow");
+    expect(k("Escape")).toBe("cancel");
+    expect(k("Escape", { busy: true })).toBe("swallow");
+    expect(k("Tab")).toBe("trap");
+    expect(k("a")).toBeNull();
+    // main.ts wires it once, in the capture phase, for every [data-confirm-dialog].
+    expect(mainSrc).toMatch(/confirmKeyAction\(e\.key/);
+    expect(mainSrc).toMatch(/querySelector<HTMLElement>\("\[data-confirm-dialog\]"\)/);
   });
 
   it("the toast carries the Undo button that restores it", () => {

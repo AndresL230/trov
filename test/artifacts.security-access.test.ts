@@ -1,5 +1,6 @@
 // Artifacts — who can see and write what, end to end (issue #52 · Track E):
-// 6. private-page 404 parity across every HTTP, raw, MCP, query and ticket surface;
+// 6. private-page 404 parity across every HTTP, raw, MCP, query and ticket surface —
+//    and a SOFT-DELETED page (0035 PART D) is the same byte-identical not-found;
 // 11. MCP permission checks for a second principal.
 // Entry points: `worker.fetch` (src/index.ts) and the real /mcp endpoint with a bearer.
 
@@ -26,6 +27,7 @@ async function seedTicket(): Promise<number> {
  *   `privtext` — OWNER's private markdown (v2, published, linked to the ticket);
  *   `privbin`  — OWNER's private image;
  *   `pendpage` — OWNER's org pdf whose upload never landed (current_version 0, linked).
+ *   `delpage`  — OWNER's org markdown (linked), soft-DELETED by OWNER (0035 PART D).
  * `missing` does not exist. `orgpage` is a plain org page (the control).
  */
 async function seedWorld() {
@@ -38,10 +40,12 @@ async function seedWorld() {
   const pend = await uploadUrl(owner, { kind: "pdf", size_bytes: 10, sha256: "a".repeat(64), title: "Pendpage", area: "api", summary: "okapi", links: [{ target_type: "ticket", target_ref: String(tid) }] });
   expect(pend.status).toBe(201);
   await createText(owner, { title: "Orgpage", content: "okapi public words", links: [{ target_type: "ticket", target_ref: String(tid) }] });
+  await createText(owner, { title: "Delpage", content: "okapi deleted words", summary: "okapi", links: [{ target_type: "ticket", target_ref: String(tid) }] });
+  expect((await wf("/api/artifacts/delpage/delete", jsonInit("POST", {}, owner))).status).toBe(200);
   return { owner, other, tid };
 }
 
-const HIDDEN = ["privtext", "privbin", "pendpage"] as const;
+const HIDDEN = ["privtext", "privbin", "pendpage", "delpage"] as const;
 
 /** Every read/write probe of one slug, as a list of [label, request]. */
 function httpProbes(slug: string, cookie: string): [string, () => Promise<Response>][] {
@@ -63,6 +67,8 @@ function httpProbes(slug: string, cookie: string): [string, () => Promise<Respon
     ["links add", () => wf(`/api/artifacts/${slug}/links`, jsonInit("POST", { target_type: "pr", target_ref: "o/r#1" }, cookie))],
     ["links remove", () => wf(`/api/artifacts/${slug}/links/remove`, jsonInit("POST", { target_type: "pr", target_ref: "o/r#1" }, cookie))],
     ["ratify", () => wf(`/api/artifacts/${slug}/ratify`, jsonInit("POST", { version: 1 }, cookie))],
+    ["delete", () => wf(`/api/artifacts/${slug}/delete`, jsonInit("POST", {}, cookie))],
+    ["restore", () => wf(`/api/artifacts/${slug}/restore`, jsonInit("POST", {}, cookie))],
     ["upload-url", () => wf("/api/artifacts/upload-url", jsonInit("POST", { slug, kind: "image", size_bytes: 3, sha256: "b".repeat(64), content_type: "image/png" }, cookie))],
     ["upload-url pdf", () => wf("/api/artifacts/upload-url", jsonInit("POST", { slug, kind: "pdf", size_bytes: 3, sha256: "b".repeat(64) }, cookie))],
     ["raw", () => get(`/raw/a/${slug}`, cookie)],
@@ -97,12 +103,24 @@ describe("6 · private / pending / missing — byte-identical everywhere", () =>
     const pages = await all<{ slug: string; title: string; visibility: string; status: string; current_version: number }>(env.DB,
       `SELECT slug, title, visibility, status, current_version FROM artifact_pages ORDER BY slug`);
     expect(pages).toEqual([
+      { slug: "delpage", title: "Delpage", visibility: "org", status: "draft", current_version: 1 },
       { slug: "orgpage", title: "Orgpage", visibility: "org", status: "draft", current_version: 1 },
       { slug: "pendpage", title: "Pendpage", visibility: "org", status: "draft", current_version: 0 },
       { slug: "privbin", title: "Privbin", visibility: "private", status: "draft", current_version: 1 },
       { slug: "privtext", title: "Privtext", visibility: "private", status: "published", current_version: 2 },
     ]);
     expect(await all(env.DB, `SELECT target_ref FROM artifact_links WHERE target_type = 'pr'`)).toEqual([]);
+    expect(await all(env.DB, `SELECT slug FROM artifact_pages WHERE deleted_at IS NOT NULL`)).toEqual([{ slug: "delpage" }]);
+  });
+
+  it("the deleted page is not_found to its OWN author on every read and write but restore", async () => {
+    const { owner } = await seedWorld();
+    for (const [label, probe] of httpProbes("delpage", owner)) {
+      if (label === "restore" || label.startsWith("upload-url")) continue; // restore is the way back; upload-url needs a binary page (artifacts.delete.test.ts)
+      const res = await probe();
+      expect(res.status, label).toBe(404);
+      expect(await res.text(), label).toBe(NOT_FOUND);
+    }
   });
 
   it("the pending page is not_found to its OWN author on every read (it does not exist until the PUT)", async () => {
@@ -176,7 +194,7 @@ describe("6 · private / pending / missing — byte-identical everywhere", () =>
       const r = await mcpCall(OTHER, "query", args);
       expect(r.isError).toBe(false);
       for (const h of HIDDEN) expect(ids(r.body), JSON.stringify(args)).not.toContain(h);
-      expect(r.text).not.toMatch(/privtext|privbin|pendpage|secret words/);
+      expect(r.text).not.toMatch(/privtext|privbin|pendpage|delpage|secret words|deleted words/);
     }
     // the control: the org page IS found, by search and by browse
     expect(ids((await mcpCall(OTHER, "query", { q: "okapi" })).body)).toEqual(["orgpage"]);
@@ -189,7 +207,8 @@ describe("6 · private / pending / missing — byte-identical everywhere", () =>
       expect(await res.text()).not.toMatch(/pendpage/);
     }
     const s = await get("/search?q=okapi&types=artifact", other);
-    expect(await s.text()).not.toMatch(/privtext|privbin|pendpage/);
+    expect(await s.text()).not.toMatch(/privtext|privbin|pendpage|delpage/);
+    for (const cookie of [other, owner]) expect(await (await get("/search?q=okapi", cookie)).text()).not.toMatch(/delpage|deleted words/);
   });
 
   it("get_ticket: linked hidden pages are absent from `artifacts` (the pending one even for its owner)", async () => {
@@ -207,9 +226,9 @@ describe("6 · private / pending / missing — byte-identical everywhere", () =>
       session: { id: crypto.randomUUID(), author: OTHER, ended_at: "2026-09-23T00:00:00Z", skill_version: "2.0" },
       artifact_links: [...HIDDEN, "missing"].map((slug) => ({ slug, target_type: "pr", target_ref: "o/r#9" })),
     });
-    expect(r.body.artifact_links.map((o: { outcome: string }) => o.outcome)).toEqual(["not_found", "not_found", "not_found", "not_found"]);
+    expect(r.body.artifact_links.map((o: { outcome: string }) => o.outcome)).toEqual(["not_found", "not_found", "not_found", "not_found", "not_found"]);
     expect(r.body.artifact_links.map(({ slug: _s, ...rest }: { slug: string }) => rest)).toEqual(
-      Array(4).fill({ target_type: "pr", target_ref: "o/r#9", outcome: "not_found" })
+      Array(5).fill({ target_type: "pr", target_ref: "o/r#9", outcome: "not_found" })
     );
     expect(await all(env.DB, `SELECT page_id FROM artifact_links WHERE target_type = 'pr'`)).toEqual([]);
     void tid;

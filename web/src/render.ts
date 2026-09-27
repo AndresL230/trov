@@ -23,7 +23,7 @@ import {
 import { TAGS } from "@shared/vocabulary";
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
-import { releasesScreen, releasePageSwitch, findRelease, type ReleasePage } from "./releases";
+import { releasesScreen, findRelease, type ReleasePage } from "./releases";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { REPO_URL } from "./github";
@@ -33,7 +33,7 @@ import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } fr
 import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab } from "./maintenance";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
-import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, type PromptFilterCat, type PromptDraft } from "./prompts";
+import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
 import { newDocView, blankDoc, type NewDocDraft } from "./newdoc";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
@@ -736,10 +736,6 @@ function header(s: AppState): string {
     : 0;
   // The Roadmap header: the tab switch, then New sprint (it opens the panel at the
   // top of whichever tab is showing), like the queue's switch + Submit a ticket.
-  // What's new: on a release's page (never the index, nor a not-found version) the top bar
-  // carries its Release notes / Patch notes switch, like the Roadmap's Narrative / Timeline.
-  const releaseControls = s.screen === "releases" && s.releaseVersion && findRelease(s.releaseVersion)
-    ? releasePageSwitch(s.releasePage) : "";
   const roadmapControls = s.screen === "roadmap" ? `${segmented({
     id: "roadmap-tab", ariaLabel: "Roadmap view", act: "", value: s.roadmapTab,
     options: [
@@ -815,7 +811,7 @@ function header(s: AppState): string {
       ${art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${newControls}${feedControls}${docsControls}${roadmapControls}${releaseControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${feedViewSwitch}${themeBtn}
+      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${feedViewSwitch}${themeBtn}
     </div>
   </header>`;
 }
@@ -2303,7 +2299,7 @@ function repoProps(s: AppState): RepoProps {
 /** Project the app state onto the Artifacts screens' props. */
 function artProps(s: AppState, screen: ArtScreen): ArtProps {
   return {
-    screen, route: s.artRoute, ui: s.art, me: s.me?.handle ?? "", fmOpening: s.fmOpening,
+    screen, route: s.artRoute, ui: s.art, me: s.me?.handle ?? "", admin: s.me?.admin === true, fmOpening: s.fmOpening,
     persons: s.persons.data, host: typeof location !== "undefined" ? location.host : "canopy",
     theme: resolved(s),
     // Every ticket (the attach dialog's own read); the queue's filtered list until it lands.
@@ -2384,5 +2380,6 @@ export function render(s: AppState): string {
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
+    ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
   </div>`;
 }

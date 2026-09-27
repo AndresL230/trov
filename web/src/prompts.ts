@@ -16,7 +16,7 @@ import { unifiedDiff } from "./review";
 import { primaryStyle } from "./handoffs";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
 import { segmented } from "./segmented";
-import { confirmAnchor } from "./confirm";
+import { dangerTrigger, confirmModal } from "./confirm";
 
 const personOf = (persons: PersonSummary[], h: string): PersonSummary | null =>
   persons.find((p) => p.handle.toLowerCase() === h.toLowerCase()) ?? null;
@@ -175,6 +175,15 @@ export function tagOptions(current: string[], known: string[], draftRaw: string)
 /** What a delete keeps, for the confirm: "Its one version is kept" / "All 3 versions are kept". */
 const deleteKeeps = (n: number): string => (n === 1 ? "Its one version is kept" : `All ${n} versions are kept`);
 
+/** The prompt's delete confirmation modal (render.ts puts it at the app root while armed). */
+export function promptDeleteModal(x: Pick<PromptDetail, "title" | "version">, versions: number, busy: boolean): string {
+  return confirmModal({
+    id: "prompt-delete-confirm", title: `Delete “${x.title}”?`,
+    body: `It leaves the library, search and agents' get_prompt. ${deleteKeeps(versions || x.version)}, the slug stays reserved, and you can undo.`,
+    confirmAct: "promptDelete", cancelAct: "promptDeleteCancel", busy,
+  });
+}
+
 export function promptDetailView(p: PromptDetailProps): string {
   // The page is at least the viewport tall and the body row takes what is left, so the
   // prompt box runs to the bottom of the screen instead of stopping at the rail's height.
@@ -240,14 +249,7 @@ export function promptDetailView(p: PromptDetailProps): string {
         ${staged ? `<button data-act="promptPublish" data-arg="${staged.version}" class="cnpy-accentbtn" style="${primaryStyle(true)}">Publish v${staged.version}</button>` : ""}
         <button data-act="promptEdit" data-arg="${attr(x.slug)}" class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">Edit</button>
         <button data-act="promptNewVersion" data-arg="${attr(x.slug)}" class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">New version</button>
-        ${p.canDelete ? confirmAnchor(
-          { label: "Delete prompt", act: p.deleteArm ? "promptDeleteCancel" : "promptDeleteArm", armed: p.deleteArm, controls: "prompt-delete-confirm" },
-          {
-            id: "prompt-delete-confirm", title: `Delete “${x.title}”?`,
-            body: `It leaves the library, search and agents' get_prompt. ${deleteKeeps(p.versions.length || x.version)}, the slug stays reserved, and you can undo.`,
-            confirmLabel: "Delete prompt", confirmAct: "promptDelete", cancelAct: "promptDeleteCancel", busy: p.deleteBusy,
-          },
-        ) : ""}
+        ${p.canDelete ? dangerTrigger({ label: "Delete prompt", act: "promptDeleteArm", armed: p.deleteArm, controls: "prompt-delete-confirm" }) : ""}
       </div>
     </div>
 

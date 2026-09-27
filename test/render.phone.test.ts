@@ -107,6 +107,9 @@ describe("narrow layouts — the hooks exist and their rules are there", () => {
 
   it("a modal is a bottom sheet on a phone, clear of the home indicator", () => {
     expect(rules).toMatch(/\[data-cnpy-theme\] \[role="dialog"\]\[aria-modal="true"\] \{ width:100% !important;[^}]*env\(safe-area-inset-bottom/);
+    // The confirmation modal (web/src/confirm.ts) is an alertdialog — the same sheet.
+    expect(rules).toMatch(/\[data-cnpy-theme\] \[role="alertdialog"\]\[aria-modal="true"\],\s*\[data-cnpy-theme\] \[role="dialog"\]\[aria-modal="true"\] \{ width:100% !important;/);
+    expect(rules).toContain('[data-cnpy-theme] :has(> [role="alertdialog"][aria-modal="true"])');
   });
 
   it("text fields are 16px on a phone (no zoom-on-focus in iOS Safari)", () => {

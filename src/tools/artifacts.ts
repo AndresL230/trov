@@ -23,6 +23,13 @@
 //     `db.batch`; a UNIQUE collision (a racing writer) is `conflict`.
 //   • FTS is kept in sync here, not by triggers: html/svg are tag-stripped, markdown /
 //     mermaid indexed raw, binary kinds index no body. description = latest summary.
+//   • DELETE is soft (0035 PART D): `deleted_at` / `deleted_by` mark the page; its
+//     versions, links and R2 bytes all stay. `VISIBLE_SQL` carries `deleted_at IS NULL`,
+//     so a deleted page is the SAME one not_found on every read and write (the upload
+//     consume and the download re-check included). Its slug stays reserved —
+//     `uniqueSlug` counts every row — and `restorePage` is the one way back. Only the
+//     author or an admin (`deletePage` / `restorePage`), over the session cookie; there
+//     is no MCP delete. A delete drops the page's FTS row; a restore re-inserts it.
 
 import { all, first, fanOut, nowIso, run, type DB } from "../db";
 import {
@@ -97,8 +104,8 @@ export function slugify(title: string): string {
 }
 
 /**
- * A slug no page holds (pending version-0 pages included) and that is not reserved
- * (`new`). Collisions take `-2`, `-3`, … with the base cut so `base-N` fits 60.
+ * A slug no page holds (pending version-0 AND soft-deleted pages included — a deleted
+ * page's slug stays reserved for its restore) and that is not reserved (`new`). Collisions take `-2`, `-3`, … with the base cut so `base-N` fits 60.
  */
 export async function uniqueSlug(db: DB, base: string): Promise<string> {
   const root = slugify(base);
@@ -294,7 +301,8 @@ async function resolveLinks(db: DB, rows: ArtifactLinkRow[]): Promise<ArtifactLi
 
 // ── page lookup (THE visibility rule) ────────────────────────────────────────
 
-const VISIBLE_SQL = `(p.visibility = 'org' OR p.author_id = ? COLLATE NOCASE)`;
+/** THE visibility rule, bound by every read and write: org or the viewer's own, and not soft-deleted. */
+const VISIBLE_SQL = `((p.visibility = 'org' OR p.author_id = ? COLLATE NOCASE) AND p.deleted_at IS NULL)`;
 
 /** The page, if `viewer` may see it; else the one not_found. `allowPending` lets a version-0 page through (upload paths only). */
 async function loadPage(db: DB, slug: string, viewer: string, allowPending = false): Promise<ArtifactPageRow> {
@@ -834,6 +842,52 @@ export async function removeLink(db: DB, slug: string, link: ArtifactLinkInput, 
   const p = await loadPage(db, slug, who);
   const ref = await normalizeLinkRef(db, link.target_type, link.target_ref, p.repo, false);
   await run(db, `DELETE FROM artifact_links WHERE page_id = ? AND target_type = ? AND target_ref = ?`, p.id, link.target_type, ref);
+  return await getPage(db, p.slug, null, who);
+}
+
+// ── soft delete (0035 PART D) ────────────────────────────────────────────────
+
+/**
+ * Soft-delete a page: stamp `deleted_at` / `deleted_by` and drop its FTS row, in ONE
+ * batch; no version, link or R2 object is touched. The page must be visible to `who`
+ * (else the one not_found — a private page of someone else's, a pending page, an
+ * already-deleted one); then only its AUTHOR (case-insensitive) or an ADMIN may, else
+ * `forbidden` with nothing written. Session-cookie only (`POST /api/artifacts/:slug/delete`).
+ */
+export async function deletePage(db: DB, slug: string, who: string, admin: boolean): Promise<{ slug: string; title: string; versions: number }> {
+  const p = await loadPage(db, slug, who);
+  if (!admin && !sameHandle(p.author_id, who)) throw new ArtifactError("forbidden", "only the artifact's author or an admin can delete it");
+  const res = await db.batch([
+    db.prepare(`UPDATE artifact_pages SET deleted_at = ?, deleted_by = ? WHERE id = ? AND deleted_at IS NULL`).bind(nowIso(), who, p.id),
+    db.prepare(`DELETE FROM artifacts_fts WHERE page_id = ?`).bind(String(p.id)),
+  ]);
+  if (!res[0].meta.changes) throw notFound(); // a racing delete won
+  return { slug: p.slug, title: p.title, versions: p.current_version };
+}
+
+/**
+ * Restore a soft-deleted page: clear `deleted_at` / `deleted_by` and re-insert its FTS
+ * row (title, the current version's summary and body), in ONE batch — the page is back
+ * exactly as it was. The same people as delete: its author or an admin, and the page
+ * must otherwise be visible to them (org, or their own private page). For anyone else a
+ * deleted page stays the one not_found; a LIVE page they can see is `conflict`.
+ */
+export async function restorePage(db: DB, slug: string, who: string, admin: boolean): Promise<ArtifactDetailDTO> {
+  const parsed = parseSlugVersion(String(slug ?? ""));
+  if (!parsed || parsed.version !== null) throw notFound();
+  const p = await first<ArtifactPageRow>(
+    db, `SELECT p.* FROM artifact_pages p WHERE p.slug = ? AND (p.visibility = 'org' OR p.author_id = ? COLLATE NOCASE)`, parsed.slug, who
+  );
+  if (!p || p.current_version === 0) throw notFound();
+  const mayRestore = admin || sameHandle(p.author_id, who);
+  if (!p.deleted_at) throw new ArtifactError("conflict", "artifact is not deleted");
+  if (!mayRestore) throw notFound();
+  const cur = await first<ArtifactVersionRow>(db, `SELECT * FROM artifact_versions WHERE page_id = ? AND version_no = ?`, p.id, p.current_version);
+  await db.batch([
+    db.prepare(`UPDATE artifact_pages SET deleted_at = NULL, deleted_by = NULL WHERE id = ?`).bind(p.id),
+    db.prepare(`DELETE FROM artifacts_fts WHERE page_id = ?`).bind(String(p.id)),
+    ftsInsert(db, "?", String(p.id), p.title, cur?.summary ?? "", ftsBody(p.kind, cur?.content ?? null)),
+  ]);
   return await getPage(db, p.slug, null, who);
 }
 

@@ -27,7 +27,7 @@ import {
   addTicketLink, editTicket, removeTicketLink, setTicketSprint, setTicketParent, addTicketComment, listSprints,
   getSprint, createSprint, setSprintActive, addSprintResource,
   type TicketDetail,
-  listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
+  listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, deleteArtifact, restoreArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
   listHandoffs, getHandoff, listPrompts, getPrompt, getPromptVersions,
   createHandoff, claimHandoff, expireHandoff, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, proposeDoc,
   Unauthorized, NotFound, ApiError,
@@ -62,6 +62,7 @@ import {
   type ArtScreen, type ArtEffect, type ArtWrite, type ArtRoute, type ArtFilterKey, type ArtFile,
 } from "./artifacts";
 import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
+import { confirmKeyAction } from "./confirm";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Canopy: #app mount point missing");
@@ -446,6 +447,7 @@ function applyRoute(r: Route): void {
   state.artRoute = r.art ?? ART_ROUTE_NONE;
   // A route change closes the artifact viewer's menus and dialogs (the design's onHash).
   state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false;
+  if (!state.art.deleteBusy) state.art.deleteArm = false;
   if (r.handoffId) state.handoffId = r.handoffId;
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
@@ -1432,6 +1434,7 @@ function goArt(screen: ArtScreen, route: ArtRoute = ART_ROUTE_NONE): void {
   state.artRoute = route;
   state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false; state.art.filterOpen = false;
   state.art.nv = null;
+  if (!state.art.deleteBusy) state.art.deleteArm = false;
   loadArtifactsIfNeeded(true);
   document.getElementById("cnpy-main")?.scrollTo(0, 0);
 }
@@ -1510,6 +1513,40 @@ function runArtWrite(w: ArtWrite): void {
     rerender();
     return;
   }
+  // Delete (author / admin only — the server re-checks): the in-app confirm already ran;
+  // back to the library with a "Deleted “…” · Undo" toast whose Undo restores it.
+  if (w.op === "delete") {
+    deleteArtifact(w.slug)
+      .then((r) => {
+        state.art.deleteArm = false; state.art.deleteBusy = false;
+        for (const k of Object.keys(state.art.details)) if (k.startsWith(`${r.slug}@`)) delete state.art.details[k];
+        for (const k of Object.keys(state.art.diffs)) if (k.startsWith(`${r.slug}:`)) delete state.art.diffs[k];
+        state.art.ticketArts = {};
+        state.art.list = { status: "idle", data: (state.art.list.data ?? []).filter((x) => x.slug !== r.slug) };
+        goArt("artifacts", ART_ROUTE_NONE);
+        flash(`Deleted “${r.title}”`, UNDO_TOAST_MS, { label: "Undo", act: "artRestore", arg: r.slug });
+      })
+      .catch((e) => {
+        state.art.deleteArm = false; state.art.deleteBusy = false;
+        if (e instanceof Unauthorized) { unauth(e); return; }
+        if (e instanceof NotFound) { refreshArt(w.slug); flash("This artifact isn't available anymore"); return; }
+        writeErr(e, "Couldn't delete the artifact");
+      });
+    rerender();
+    return;
+  }
+  if (w.op === "restore") {
+    state.toast = null; state.toastAction = null;
+    restoreArtifact(w.slug)
+      .then((d) => {
+        state.art.ticketArts = {};
+        if (state.art.list.status !== "idle" || state.screen === "artifacts") loadArtifactList(true);
+        flash(`Restored “${d.title}”`);
+      })
+      .catch((e) => writeErr(e, "Couldn't restore the artifact"));
+    rerender();
+    return;
+  }
   state.art.busy = true;
   rerender();
   const req = w.op === "patch" ? patchArtifact(w.slug, w.body)
@@ -1539,6 +1576,8 @@ function runArtEffect(fx: ArtEffect): void {
   if ("flash" in fx) { flash(fx.flash); return; }
   if ("write" in fx) { runArtWrite(fx.write); return; }
   if ("retry" in fx) { loadArtifactsIfNeeded(true); return; }
+  // The delete confirm: focus Cancel when it opens, the trigger (the … button) when it closes.
+  if ("focus" in fx) { rerender(); mount.querySelector<HTMLElement>(fx.focus)?.focus(); return; }
   if ("copy" in fx) {
     navigator.clipboard?.writeText(fx.copy.text).catch(() => undefined);
     flash(fx.copy.flash);
@@ -1605,6 +1644,16 @@ function flash(msg: string, ms = 2200, action: ToastAction | null = null): void 
 }
 /** How long a toast carrying an Undo stays up — long enough to read it and reach the button. */
 const UNDO_TOAST_MS = 8000;
+/** The confirmation modal's exit (canopy.css `.cnpy-cmodal[data-closing]`), then `then` — which
+ *  closes it in state. Instant under prefers-reduced-motion or when no modal is open. */
+const CONFIRM_OUT_MS = 140;
+function confirmOut(then: () => void): void {
+  const layer = mount.querySelector<HTMLElement>("[data-confirm-layer]");
+  if (layer?.hasAttribute("data-closing")) return; // already on its way out
+  if (!layer || matchMedia("(prefers-reduced-motion: reduce)").matches) { then(); return; }
+  layer.setAttribute("data-closing", "");
+  setTimeout(then, CONFIRM_OUT_MS);
+}
 
 // Drives a (possibly multi-batch) Sync GitHub run: the backend caps AI calls
 // per invocation (src/tools/backfill.ts's summaryBudgetExhausted), so this
@@ -2737,23 +2786,26 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .catch((e) => { writeErr(e, "Couldn't publish"); openPrompt(p.slug); });
       return;
     }
-    // Delete (author / admin only — the server re-checks): an in-app confirm, then back to
-    // the library with a "Deleted “…” · Undo" toast whose Undo restores it.
+    // Delete (author / admin only — the server re-checks): the confirmation modal (Delete
+    // focused, so Enter confirms), then back to the library with a "Deleted “…” · Undo"
+    // toast whose Undo restores it.
     case "promptDeleteArm":
       state.promptDeleteArm = true;
       rerender();
       mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
       return;
     case "promptDeleteCancel": {
-      const wasOpen = state.promptDeleteArm;
-      state.promptDeleteArm = false;
-      rerender();
-      if (wasOpen) mount.querySelector<HTMLElement>("[data-confirm-trigger]")?.focus();
+      if (!state.promptDeleteArm || state.promptDeleteBusy) return;
+      confirmOut(() => {
+        state.promptDeleteArm = false;
+        rerender();
+        mount.querySelector<HTMLElement>("[data-confirm-trigger]")?.focus();
+      });
       return;
     }
     case "promptDelete": {
       const p = state.promptDetail.data?.prompt;
-      if (!p || state.promptDeleteBusy) return;
+      if (!p || !state.promptDeleteArm || state.promptDeleteBusy) return;
       state.promptDeleteBusy = true;
       rerender();
       deletePrompt(p.slug)
@@ -3173,7 +3225,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;
-        runArtEffect(artifactsAct(state.art, { screen, route: state.artRoute, me: state.me?.handle ?? "", host: location.origin, sprints: state.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: sprintDatesLabel(x), active: x.active })) }, act, arg, value));
+        const run = () => runArtEffect(artifactsAct(state.art, { screen, route: state.artRoute, me: state.me?.handle ?? "", admin: state.me?.admin === true, host: location.origin, sprints: state.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: sprintDatesLabel(x), active: x.active })) }, act, arg, value));
+        // The delete confirm plays its exit before it closes (Escape, the backdrop, Cancel).
+        if (act === "artDeleteCancel" && state.art.deleteArm && !state.art.deleteBusy) confirmOut(run);
+        else run();
       }
       return;
   }
@@ -3761,8 +3816,37 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || state.view !== "app") return;
   if (state.handoffPromptOpen) { state.handoffPromptOpen = false; rerender(); }
   else if (state.promptExpanded) { state.promptExpanded = false; rerender(); }
-  else if (state.promptDeleteArm && !state.promptDeleteBusy) dispatch("promptDeleteCancel", null, null);
 });
+
+// ── the confirmation modal (web/src/confirm.ts): ONE keyboard contract for every
+// `[data-confirm-dialog]` — the prompt page's and the artifact viewer's delete. Capture
+// phase, so no other Escape / Enter handler also acts while it is open.
+//   Enter  — confirms. On the focused Delete button the browser's own click does it; on
+//            anything else (the dialog, the page after focus fell out) it is dispatched
+//            here. Enter on a focused Cancel still cancels (its own click).
+//   Escape — cancels (focus goes back to the trigger).
+//   Tab    — trapped inside the dialog.
+// While the write runs (`data-busy`) every key is swallowed, so a held or repeated Enter
+// never deletes twice — the reducers' busy guards say the same.
+document.addEventListener("keydown", (e) => {
+  if (state.view !== "app") return;
+  const dlg = mount.querySelector<HTMLElement>("[data-confirm-dialog]");
+  if (!dlg) return;
+  const t = e.target instanceof HTMLButtonElement ? e.target : null;
+  const what = confirmKeyAction(e.key, { onDialogButton: !!t && dlg.contains(t) && !t.disabled, busy: dlg.hasAttribute("data-busy"), repeat: e.repeat });
+  if (what === null || what === "native") return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  const arg = dlg.getAttribute("data-arg");
+  if (what === "confirm") dispatch(dlg.getAttribute("data-confirm-act") ?? "", arg, null);
+  else if (what === "cancel") dispatch(dlg.getAttribute("data-confirm-cancel") ?? "", arg, null);
+  else if (what === "trap") {
+    const items = Array.from(dlg.querySelectorAll<HTMLElement>("button:not([disabled])"));
+    if (!items.length) { dlg.focus(); return; }
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    const next = at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length;
+    items[next].focus();
+  }
+}, true);
 
 // ── sidebar: ⌘K / Ctrl+K, the search box, and the collapsed-rail tooltip ──────
 document.addEventListener("keydown", (e) => {

@@ -8,7 +8,7 @@ import { createSession } from "../src/auth/session";
 import { mintToken } from "../src/auth/tokens";
 import { createInvite, acceptInvite } from "../src/auth/invites";
 import { ingestEvent, ingestFeedEntry } from "../src/consumer";
-import { createPage as createArtifact, setStatus as setArtifactStatus, ratify as ratifyArtifact, mintUploadToken } from "../src/tools/artifacts";
+import { createPage as createArtifact, setStatus as setArtifactStatus, ratify as ratifyArtifact, mintUploadToken, deletePage as deleteArtifact } from "../src/tools/artifacts";
 import { write_plan } from "../src/tools/plan";
 import {
   append_feed, propose_doc_update, stage_adr,
@@ -92,6 +92,9 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await setArtifactStatus(env.DB, art.slug, "published", handle);
   await ratifyArtifact(env.DB, art.slug, 1, handle);
   await mintUploadToken(env.DB, { kind: "file", size_bytes: 1, sha256: "e".repeat(64), title: "Rename test upload", area: "ui" }, handle);
+  // artifact_pages.deleted_by (0035 PART D): a second page, soft-deleted by the person.
+  const gone = await createArtifact(env.DB, { title: "Rename test deleted artifact", kind: "markdown", area: "ui", content: "# bye" }, handle);
+  await deleteArtifact(env.DB, gone.slug, handle, false);
   // Handoffs + Prompt Library (0028): direct inserts for sender / recipient /
   // claimed_by and the prompt's author plus its version's (the real writers
   // take the principal from auth, which this seed does not have).

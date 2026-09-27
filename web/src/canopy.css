@@ -380,7 +380,9 @@ input, select { font-family: inherit; }
    the surface's own background fills it). Every modal — connect, the artifact dialogs, an
    expanded prompt, sign-in — sits in a full-screen wrapper whose child is the dialog. */
 @media (max-width:640px) {
-  [data-cnpy-theme] :has(> [role="dialog"][aria-modal="true"]) { grid-template-columns:minmax(0,1fr) !important; place-items:end stretch !important; align-items:flex-end !important; padding:env(safe-area-inset-top) 0 0 !important; }
+  [data-cnpy-theme] :has(> [role="dialog"][aria-modal="true"]),
+  [data-cnpy-theme] :has(> [role="alertdialog"][aria-modal="true"]) { grid-template-columns:minmax(0,1fr) !important; place-items:end stretch !important; align-items:flex-end !important; padding:env(safe-area-inset-top) 0 0 !important; }
+  [data-cnpy-theme] [role="alertdialog"][aria-modal="true"],
   [data-cnpy-theme] [role="dialog"][aria-modal="true"] { width:100% !important; max-width:none !important; max-height:calc(100dvh - 20px - env(safe-area-inset-top)) !important; border-left:none !important; border-right:none !important; border-bottom:env(safe-area-inset-bottom, 0px) solid transparent !important; border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
 }
 /* The signed-out cards (not a member, not invited, onboarding) at phone width: a phone's
@@ -457,6 +459,11 @@ input, select { font-family: inherit; }
 .cnpy-reldoc-head { display:grid; grid-template-columns:minmax(0, 1fr); gap:14px 48px; align-items:start; }
 .cnpy-reldoc-head.has-heads { grid-template-columns:minmax(0, 1fr) minmax(280px, 330px); }
 .cnpy-reldoc-head-main { display:flex; flex-direction:column; align-items:flex-start; gap:10px; min-width:0; }
+/* The back link and, right-aligned on the same row, the Release notes / Patch notes switch —
+   the row spans the header, so the switch's right edge is the note's. It wraps under the back
+   link when both do not fit. */
+.cnpy-reldoc-toprow { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; min-width:0; }
+.cnpy-reldoc-toprow .cnpy-rel-back { margin-bottom:0; }
 @container reldoc (max-width: 899px) {
   .cnpy-reldoc-head.has-heads { grid-template-columns:minmax(0, 1fr); }
 }
@@ -471,8 +478,8 @@ input, select { font-family: inherit; }
 .cnpy-reldoc-hl li { break-inside:avoid; }
 /* The release notes' Heads-up, in the page header: compact and calm — a faint neutral fill (its
    6px radius is inline), a small icon + label, the lines in --fg-70 at 13px. Its margin-top
-   (the back link + the meta row above the title) top-aligns it with the title. */
-.cnpy-relheads { display:flex; flex-direction:column; gap:7px; padding:12px 14px 13px; background:var(--hover); min-width:0; margin-top:68px; }
+   (the meta row above the title) top-aligns it with the title. */
+.cnpy-relheads { display:flex; flex-direction:column; gap:7px; padding:12px 14px 13px; background:var(--hover); min-width:0; margin-top:30px; }
 .cnpy-relheads-l { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600; color:var(--fg-55); white-space:nowrap; }
 .cnpy-relheads-one { margin:0; font-size:13px; line-height:1.55; color:var(--fg-70); overflow-wrap:anywhere; text-wrap:pretty; }
 .cnpy-relheads-list { margin:0; padding-left:16px; display:flex; flex-direction:column; gap:5px; font-size:13px; line-height:1.55; color:var(--fg-70); }
@@ -783,13 +790,35 @@ input, select { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) { .cnpy-lkmenu { animation:none; } }
 @media (hover:none) { .cnpy-lkmore { opacity:1; pointer-events:auto; } .cnpy-lkarr { opacity:0; } }
 .cnpy-rejectbtn:hover { border-color:var(--red); color:var(--red); background:color-mix(in srgb, var(--red) 10%, transparent); }
-/* The destructive trigger + its in-app confirm (web/src/confirm.ts): muted until hovered,
-   focused or open, then red. The confirm's red button brightens on hover. */
+/* The destructive trigger + its confirmation modal (web/src/confirm.ts): the trigger is muted
+   until hovered, focused or open, then red. The modal is a root-level overlay: a dimmed
+   backdrop (a click cancels) and a centered surface that fades/scales in and, with
+   `data-closing`, out. At phone width it is a bottom SHEET (the modal/sheet rule above,
+   which also names role="alertdialog") that slides up. No motion under reduced motion. */
 .cnpy-dangerbtn { transition:background .15s ease, color .15s ease, border-color .15s ease; }
 .cnpy-dangerbtn:hover, .cnpy-dangerbtn:focus-visible, .cnpy-dangerbtn[aria-expanded="true"] { border-color:color-mix(in srgb, var(--red) 55%, transparent) !important; color:var(--red) !important; background:color-mix(in srgb, var(--red) 8%, transparent); }
 .cnpy-confirm-go { transition:filter .12s ease; }
 .cnpy-confirm-go:hover { filter:brightness(1.1); }
-.cnpy-confirm-go:disabled, .cnpy-confirm button:disabled { opacity:.6; cursor:default; }
+.cnpy-confirm-go:focus-visible { outline:2px solid color-mix(in srgb, var(--red) 55%, transparent); outline-offset:2px; }
+.cnpy-confirm-go:disabled, .cnpy-cmodal button:disabled { opacity:.6; cursor:default; }
+.cnpy-cmodal { position:fixed; inset:0; z-index:80; }
+.cnpy-cmodal-back { position:absolute; inset:0; background:rgba(0,0,0,.5); animation:cnpy-cm-fade .16s ease both; }
+.cnpy-cmodal-wrap { position:absolute; inset:0; display:grid; place-items:center; padding:16px; pointer-events:none; }
+.cnpy-cmodal-box { pointer-events:auto; box-sizing:border-box; width:min(420px, 100%); padding:20px 22px 18px; border-color:var(--border-strong) !important; box-shadow:0 20px 60px rgba(0,0,0,.45); outline:none; animation:cnpy-cm-in .18s cubic-bezier(.2,.8,.2,1) both; }
+.cnpy-cmodal[data-closing] .cnpy-cmodal-back { animation:cnpy-cm-fade-out .14s ease both; }
+.cnpy-cmodal[data-closing] .cnpy-cmodal-box { animation:cnpy-cm-out .14s ease both; }
+@keyframes cnpy-cm-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes cnpy-cm-fade-out { from { opacity:1; } to { opacity:0; } }
+@keyframes cnpy-cm-in { from { opacity:0; transform:scale(.96); } to { opacity:1; transform:none; } }
+@keyframes cnpy-cm-out { from { opacity:1; transform:none; } to { opacity:0; transform:scale(.97); } }
+@keyframes cnpy-cm-up { from { transform:translateY(100%); } to { transform:none; } }
+@keyframes cnpy-cm-down { from { transform:none; } to { transform:translateY(100%); } }
+@media (max-width:640px) {
+  .cnpy-cmodal-box { padding:20px max(18px, env(safe-area-inset-right)) 16px max(18px, env(safe-area-inset-left)); animation:cnpy-cm-up .22s cubic-bezier(.2,.8,.2,1) both; }
+  .cnpy-cmodal[data-closing] .cnpy-cmodal-box { animation:cnpy-cm-down .14s ease both; }
+  .cnpy-cmodal-btns > button { flex:1; padding-top:11px !important; padding-bottom:11px !important; }
+}
+@media (prefers-reduced-motion: reduce) { .cnpy-cmodal-back, .cnpy-cmodal-box, .cnpy-cmodal[data-closing] .cnpy-cmodal-back, .cnpy-cmodal[data-closing] .cnpy-cmodal-box { animation:none !important; } }
 .cnpy-toast-act:hover { text-decoration:underline; text-underline-offset:3px; }
 .cnpy-rejectbtn:active { transform:translateY(1px); }
 .cnpy-issuechip { transition:border-color .12s ease, color .12s ease; }

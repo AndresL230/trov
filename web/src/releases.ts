@@ -80,7 +80,7 @@ export const RELEASES: Release[] = [
       "Sprints have real start dates: the New sprint panel uses date pickers, a start can't be after the due date, and a sprint counts as overdue from the day after it is due, the same on every screen.",
       "Beside the Feed: This week (entries per day, who posted and the top tags, each a click to filter) and Waiting on review.",
       "Search everything from the sidebar: results for tickets, docs, decisions, roadmap, artifacts, prompts, handoffs, people, feed and app screens appear in a compact dropdown after a short pause (⌘K opens a palette when the rail is collapsed).",
-      "One look: white cards on a light grey background in the new light theme, Geist type everywhere except the sidebar, search and Filter as one box on Tickets, Artifacts and the Prompt Library, and a tab icon that follows the app's theme. You can also delete a prompt you wrote (with Undo), and Get Started shows the new screens.",
+      "One look: white cards on a light grey background in the new light theme, Geist type everywhere except the sidebar, search and Filter as one box on Tickets, Artifacts and the Prompt Library, and a tab icon that follows the app's theme. You can also delete a prompt or an artifact you made: a confirmation asks first (Enter confirms), and Undo brings it back. Get Started shows the new screens.",
     ],
     headsUp: [
       "The Roadmap's plan narrative is now limited to 800 characters, so it stays a short Now / Next / Later; the detail lives in each sprint.",
@@ -88,7 +88,6 @@ export const RELEASES: Release[] = [
     ],
     ops: [
       "Apply migration `0035_library_and_sprint_dates` (one file) with `npm run db:migrate:remote` before this deploys.",
-      "The production plan narrative is over the new 800-character cap: it still reads in full, but the next `update_plan` must shorten it.",
     ],
     patches: {
       added: [
@@ -108,6 +107,8 @@ export const RELEASES: Release[] = [
         "`web/src/quicksearch.ts`: the sidebar search dropdown — debounced prefetch, abort, a 40-entry cache, a 1 s show delay, animated open and height, keyboard navigation",
         "Prompt soft delete: `POST /api/prompts/:slug/delete` and `/restore` (author or admin, session cookie, never MCP); the slug stays reserved; `web/src/confirm.ts` in-app confirm and an Undo toast",
         "Migration `0035_library_and_sprint_dates`, PART C: `prompts.deleted_at` / `deleted_by`; the `prompts_fts` triggers index live prompts only",
+        "Artifact soft delete: `POST /api/artifacts/:slug/delete` and `/restore` (author or admin, session cookie, never MCP); a deleted page is the one byte-identical not-found on every surface, versions, links and R2 bytes kept; migration 0035 PART D (`artifact_pages.deleted_at` / `deleted_by`)",
+        "`confirmModal` in `web/src/confirm.ts`: one confirmation dialog for destructive actions (Delete focused, Enter confirms once, Esc cancels, a bottom sheet on phones)",
         "Get Started and the landing page describe the new screens; screenshots recaptured in dark and light, plus Timeline, search and What's new figures",
       ],
       changed: [
@@ -791,7 +792,7 @@ export function releasesIndex(releases: readonly Release[] = RELEASES): string {
 // side — with hairlines between sections and no box inside it. Newer / older links
 // sit under the card. Everything stacks to one column on a narrow page.
 
-/** A release page's Release notes / Patch notes switch — rendered in the app's top bar. */
+/** A release page's Release notes / Patch notes switch — on the page header's back-link row. */
 export function releasePageSwitch(page: ReleasePage): string {
   return segmented({
     id: "release-page", ariaLabel: "Release page", act: "releasePage", value: page, inertOn: true,
@@ -807,12 +808,15 @@ function docHead(r: Release, page: ReleasePage): string {
   const facts = `${plural(r.highlights.length, "highlight")} · ${plural(patchCount(r), "patch line")}${page === "patches" && r.prs?.length ? ` · ${plural(r.prs.length, "pull request")}` : ""}`;
   // The page's note sits in the header, to the right of the title block: the Heads-up on the
   // release notes, the Upgrade notes on the patch notes. Below ~900px of page it drops under
-  // the lede (canopy.css, grid areas + a container query). The Release notes / Patch notes
-  // switch is in the app's top bar (render.ts `releaseControls`), not here.
+  // the lede (canopy.css, a container query). The Release notes / Patch notes switch sits on
+  // the back link's row, right-aligned — its right edge on the note's.
   const note = page === "notes" ? headsUp(r) : upgradeNotes(r);
   return `<header class="cnpy-reldoc-head cnpy-rise${note ? " has-heads" : ""}">
-    <div class="cnpy-reldoc-head-main">
+    <div class="cnpy-reldoc-toprow">
       <a href="#releases" class="cnpy-rel-back">${ARROW_L}All releases</a>
+      ${releasePageSwitch(page)}
+    </div>
+    <div class="cnpy-reldoc-head-main">
       ${metaRow(r)}
       <h1 class="cnpy-reldoc-title">${esc(r.title)}</h1>
       <p class="cnpy-reldoc-lede">${releaseLine(r.headline)}</p>

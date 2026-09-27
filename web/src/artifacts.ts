@@ -24,6 +24,7 @@
 import { esc, attr, relTime, surface } from "./ui";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
+import { confirmModal } from "./confirm";
 import { renderMarkdown, sanitizeSvg } from "./markdown";
 import { collapsedLineDiff } from "./diff";
 import type { PersonColor } from "@shared/rows";
@@ -111,6 +112,10 @@ export interface ArtUi {
   attachPick: number | null;
   /** The New version dialog, open when non-null. */
   nv: ArtNewVersion | null;
+  /** The viewer's "Delete artifact" confirm is open (author / admin only). */
+  deleteArm: boolean;
+  /** The delete is in flight: the confirm's buttons are disabled. */
+  deleteBusy: boolean;
   c: ArtCreate;
 }
 export function initialArtCreate(): ArtCreate {
@@ -124,6 +129,7 @@ export function initialArtUi(): ArtUi {
     list: IDLE(), details: {}, diffs: {}, ticketArts: {}, attachTickets: IDLE(), busy: false,
     q: "", f: { ...NO_FILTERS }, filterOpen: false, filterCat: "area",
     verMenu: false, dotMenu: false, ratifyOpen: false, attachOpen: false, attachQ: "", attachPick: null, nv: null,
+    deleteArm: false, deleteBusy: false,
     c: initialArtCreate(),
   };
 }
@@ -142,6 +148,8 @@ export interface ArtProps {
   ui: ArtUi;
   /** The signed-in handle — the author check for private artifacts and the visibility toggle. */
   me: string;
+  /** The signed-in person is an admin — may delete any artifact they can see. */
+  admin: boolean;
   persons: ArtPerson[];
   /** `location.host` in the browser; the address strips print it. */
   host: string;
@@ -207,6 +215,7 @@ const I = {
   shield: () => svg(11, 2.2, `<path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.3 7.5 9.5 4.3-1.2 7.5-4.9 7.5-9.5V6z"></path><path d="m9 12 2.2 2.2L15.5 10"></path>`),
   ext: () => svg(14, 1.8, `<path d="M14 4h6v6"></path><path d="M20 4 11 13"></path><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"></path>`),
   link: () => svg(14, 1.8, `<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path>`),
+  trash: () => svg(14, 1.8, `<path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="M19 6l-1 14H6L5 6"></path><path d="M10 11v6M14 11v6"></path>`),
   download: () => svg(14, 1.8, `<path d="M12 4v11"></path><path d="m7 10 5 5 5-5"></path><path d="M5 20h14"></path>`),
   arrow: (w = 13) => svg(w, 2, `<path d="M5 12h14M13 6l6 6-6 6"></path>`),
   ticket: () => svg(13, 1.9, `<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path>`),
@@ -225,6 +234,12 @@ export const fmtKB = (b: number): string => (b >= 1024 * 1024 ? `${(b / 1024 / 1
 export const capLabel = (k: ArtifactKind): string => (isBinaryKind(k) ? "10 MB" : "750 KB");
 export const slugifyTitle = (t: string): string => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
 const sameHandle = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+
+/** Whether the signed-in person may delete this page: its author, or an admin (the server re-checks). */
+export function canDeleteArtifact(d: Pick<ArtifactDetailDTO, "author_id">, me: string, admin: boolean): boolean {
+  return admin || (me !== "" && sameHandle(d.author_id, me));
+}
+const deleteKeeps = (n: number): string => (n === 1 ? "Its one version is kept" : `All ${n} versions are kept`);
 
 interface Who { handle: string; name: string; first: string; color: PersonColor; ini: string }
 function who(p: Pick<ArtProps, "persons">, handle: string): Who {
@@ -693,10 +708,15 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
     }),
   });
 
+  // "Delete artifact" (author / admin only) closes the menu and opens the shared
+  // confirmation modal (web/src/confirm.ts, rendered by artifactsDialogs) — never window.confirm.
+  const canDelete = canDeleteArtifact(d, p.me, p.admin);
   const dotMenu = ui.dotMenu ? `<div data-act="artCloseMenus" style="position:fixed;inset:0;z-index:29"></div>
     <div role="menu" style="position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:210px;${MENU};padding:5px;animation:cnpy-pop .14s ease both">
       ${[["artCopyLink", I.link(), "Copy link"], ["artDownload", I.download(), "Download raw"], ["artOpenTab", I.ext(), "Open in new tab"]].map(([act, icon, label]) =>
         `<button data-act="${act}" role="menuitem" class="cnpy-menurow" style="display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 10px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--fg-70)">${icon}${label}</button>`).join("")}
+      ${canDelete ? `<div style="height:1px;background:var(--border);margin:5px 4px"></div>
+      <button data-act="artDeleteArm" role="menuitem" aria-haspopup="dialog" class="cnpy-menurow" style="display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 10px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--red)">${I.trash()}Delete artifact</button>` : ""}
     </div>` : "";
 
   const toolbar = `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;padding:6px;border-bottom:1px solid var(--border)">
@@ -715,7 +735,7 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
     <button data-act="artNvOpen" title="${isBinaryKind(d.kind) ? "Upload a replacement file" : `Edit v${ver.version_no} or upload a replacement`}" class="cnpy-ghostbtn" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap;flex:none">${I.plus(12)}New version</button>
     <button data-act="artOpenTab" title="Open in new tab" aria-label="Open in new tab" class="cnpy-iconbtn" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55);flex:none">${I.ext()}</button>
     <div style="position:relative;flex:none">
-      <button data-act="artDotMenu" title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded="${ui.dotMenu}" class="cnpy-iconbtn" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55)">${I.dots()}</button>
+      <button data-act="artDotMenu" title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded="${ui.dotMenu}"${canDelete ? " data-confirm-trigger" : ""} class="cnpy-iconbtn" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55)">${I.dots()}</button>
       ${dotMenu}
     </div>
   </div>`;
@@ -1017,9 +1037,17 @@ function notFoundView(p: ArtProps): string {
 // ── dialogs (ratify, attach) ─────────────────────────────────────────────────
 
 export function artifactsDialogs(p: ArtProps): string {
-  if (p.screen !== "artifact" || p.route.diff || !(p.ui.ratifyOpen || p.ui.attachOpen || p.ui.nv)) return "";
+  if (p.screen !== "artifact" || p.route.diff || !(p.ui.ratifyOpen || p.ui.attachOpen || p.ui.nv || p.ui.deleteArm)) return "";
   const d = routeDetail(p)?.data;
   if (!d) return "";
+  // The delete confirmation (author / admin only — the server re-checks).
+  if (p.ui.deleteArm) {
+    return canDeleteArtifact(d, p.me, p.admin) ? confirmModal({
+      id: "art-delete-confirm", title: `Delete “${d.title}”?`,
+      body: `It leaves the library, search, tickets and agents. ${deleteKeeps(d.current_version)} and you can undo.`,
+      confirmAct: "artDelete", cancelAct: "artDeleteCancel", busy: p.ui.deleteBusy,
+    }) : "";
+  }
   const vno = d.version.version_no;
   const shell = (w: number, inner: string, label: string) => `<div data-act="artCloseDialogs" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);animation:cnpy-fade .14s ease"></div>
     <div style="position:fixed;inset:0;z-index:61;display:grid;place-items:center;padding:16px;pointer-events:none">
@@ -1174,7 +1202,9 @@ export type ArtWrite =
   | { op: "link"; slug: string; target_type: ArtifactLinkType; target_ref: string; flash: string }
   | { op: "create"; fields: { title: string; kind: ArtifactKind; area: string; repo: string; visibility: ArtifactVisibility; summary: string }; content: string | null; file: Blob | null; filename: string | null; links: { target_type: ArtifactLinkType; target_ref: string }[] }
   | { op: "version"; slug: string; body: { content: string; summary: string } | { file: Blob; filename: string; summary: string } }
-  | { op: "fetchUrl"; url: string };
+  | { op: "fetchUrl"; url: string }
+  | { op: "delete"; slug: string }
+  | { op: "restore"; slug: string };
 
 export type ArtEffect =
   | { nav: { screen: ArtScreen; route: ArtRoute } }
@@ -1184,6 +1214,8 @@ export type ArtEffect =
   | { download: { url: string; name: string } }
   | { copy: { text: string; flash: string } }
   | { retry: true }
+  /** Rerender, then move focus to this selector (the delete confirm's Cancel / its trigger). */
+  | { focus: string }
   | null;
 
 /**
@@ -1193,7 +1225,7 @@ export type ArtEffect =
  */
 export function artifactsAct(
   ui: ArtUi,
-  ctx: { screen: ArtScreen | null; route: ArtRoute; me: string; host: string; sprints?: ArtSprintRef[] },
+  ctx: { screen: ArtScreen | null; route: ArtRoute; me: string; admin?: boolean; host: string; sprints?: ArtSprintRef[] },
   act: string, arg: string | null, value: string | null,
 ): ArtEffect {
   const d = ctx.screen === "artifact" ? routeDetail({ route: ctx.route, ui })?.data ?? null : null;
@@ -1241,6 +1273,26 @@ export function artifactsAct(
     case "artVerMenu": ui.verMenu = !ui.verMenu; ui.dotMenu = false; return null;
     case "artDotMenu": ui.dotMenu = !ui.dotMenu; ui.verMenu = false; return null;
     case "artCloseMenus": closeMenus(); return null;
+    // Delete (author / admin only — the server re-checks): the in-app confirm, then the write.
+    case "artDeleteArm":
+      if (!d || !canDeleteArtifact(d, ctx.me, ctx.admin === true)) return null;
+      closeMenus();
+      ui.deleteArm = true;
+      return { focus: "[data-confirm-focus]" };
+    case "artDeleteCancel": {
+      if (ui.deleteBusy) return null;
+      const was = ui.deleteArm;
+      ui.deleteArm = false;
+      return was ? { focus: "[data-confirm-trigger]" } : null;
+    }
+    case "artDelete":
+      if (!d || !ui.deleteArm || ui.deleteBusy || !canDeleteArtifact(d, ctx.me, ctx.admin === true)) return null;
+      ui.deleteBusy = true;
+      return { write: { op: "delete", slug: d.slug } };
+    // The toast's Undo — works from any screen (the toast outlives the viewer).
+    case "artRestore":
+      if (!arg) return null;
+      return { write: { op: "restore", slug: arg } };
     case "artCloseDialogs":
       ui.ratifyOpen = false; ui.attachOpen = false;
       if (!ui.nv?.submitting) ui.nv = null;

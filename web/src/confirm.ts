@@ -1,21 +1,30 @@
 // The in-app confirm for a destructive action — ONE component, never `window.confirm`.
-// A quiet trigger (`dangerTrigger`, red on hover / focus / while open) and a small
-// popover anchored under it (`confirmPopover`, role="alertdialog") with Cancel and a red
-// confirm button. Purely presentational: the caller holds the "armed" flag in state and
-// dispatches the three acts in main.ts. main.ts moves focus to `[data-confirm-focus]`
-// (Cancel — the safe default) when a confirm opens, and Escape closes it back to
-// `[data-confirm-trigger]`. The trigger and the popover must sit in one
-// `position:relative` wrapper (`confirmAnchor`).
+// A quiet trigger (`dangerTrigger`, red on hover / focus / while open) and a CONFIRMATION
+// MODAL (`confirmModal`): a centered `.cnpy-surface` dialog over a dimmed backdrop
+// (role="alertdialog", aria-modal, labelled by its title, described by its explanation)
+// with Cancel and a red Delete — at phone width a bottom sheet (the modal/sheet rule in
+// canopy.css) clear of the home indicator. Purely presentational: the caller holds the
+// "armed" / "busy" flags in state and renders the modal at the app ROOT as a
+// `data-overlay` (web/src/morph.ts keeps it — and its focus — across rerenders).
+//
+// main.ts owns the keyboard, generically for any `[data-confirm-dialog]`: the destructive
+// button (`[data-confirm-focus]`) is focused on open, so Enter / Space press it, and Enter
+// anywhere else in the page confirms too (the dialog names its acts in
+// `data-confirm-act` / `data-confirm-cancel`); Escape and a backdrop click cancel and
+// return focus to `[data-confirm-trigger]`; Tab is trapped inside the dialog. While the
+// write runs the button reads "Deleting…", both buttons are disabled and the dialog
+// carries `data-busy`, so a repeated Enter confirms nothing twice. Open and close are a
+// short fade/scale (`data-closing` plays the exit), off under prefers-reduced-motion.
 
 import { esc, attr } from "./ui";
 
 export interface DangerTriggerProps {
   label: string;
-  /** Arms the confirm (and, while armed, disarms it — a second click closes). */
+  /** Opens the confirm modal. */
   act: string;
   arg?: string;
   armed: boolean;
-  /** The popover's DOM id, for aria-controls. */
+  /** The modal dialog's DOM id, for aria-controls. */
   controls: string;
 }
 
@@ -26,40 +35,69 @@ export function dangerTrigger(p: DangerTriggerProps): string {
   return `<button type="button" data-act="${attr(p.act)}"${p.arg !== undefined ? ` data-arg="${attr(p.arg)}"` : ""} data-confirm-trigger class="cnpy-dangerbtn" aria-haspopup="dialog" aria-expanded="${p.armed ? "true" : "false"}" aria-controls="${attr(p.controls)}" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-55);white-space:nowrap">${TRASH}${esc(p.label)}</button>`;
 }
 
-export interface ConfirmPopoverProps {
-  /** DOM id of the popover (the trigger's aria-controls). */
+export interface ConfirmModalProps {
+  /** DOM id of the dialog (the trigger's aria-controls). */
   id: string;
   /** The question, e.g. `Delete “Review an SSE endpoint”?`. Plain text. */
   title: string;
   /** What happens, in one or two plain sentences. */
   body: string;
-  confirmLabel: string;
+  /** The destructive button's label (default "Delete"). */
+  confirmLabel?: string;
+  /** Its label while the write runs (default "Deleting…"). */
+  busyLabel?: string;
   confirmAct: string;
   cancelAct: string;
   arg?: string;
-  /** Which edge of the anchor the popover lines up with (default right). */
-  align?: "left" | "right";
   /** True while the write is in flight: both buttons disabled, the label says so. */
   busy?: boolean;
 }
 
-/** The popover itself, plus a transparent click-away layer that cancels. */
-export function confirmPopover(p: ConfirmPopoverProps): string {
+/** The modal: a root-level `data-overlay` — backdrop (a click cancels) + the centered dialog. */
+export function confirmModal(p: ConfirmModalProps): string {
   const argA = p.arg !== undefined ? ` data-arg="${attr(p.arg)}"` : "";
-  const edge = p.align === "left" ? "left:0" : "right:0";
   const dis = p.busy ? " disabled" : "";
-  return `<div data-act="${attr(p.cancelAct)}" aria-hidden="true" style="position:fixed;inset:0;z-index:29"></div>
-    <div id="${attr(p.id)}" role="alertdialog" aria-modal="false" aria-labelledby="${attr(p.id)}-t" aria-describedby="${attr(p.id)}-d" class="cnpy-confirm" style="position:absolute;top:calc(100% + 6px);${edge};z-index:30;width:min(300px,calc(100vw - 32px));box-sizing:border-box;background:var(--bg);border:1px solid var(--border-strong);border-radius:11px;padding:14px 14px 12px;box-shadow:0 14px 38px rgba(0,0,0,.38);text-align:left;animation:cnpy-pop .16s ease both">
-      <div id="${attr(p.id)}-t" style="font-size:13px;font-weight:600;color:var(--fg);line-height:1.4">${esc(p.title)}</div>
-      <div id="${attr(p.id)}-d" style="font-size:12px;line-height:1.5;color:var(--fg-55);margin-top:5px">${esc(p.body)}</div>
-      <div style="display:flex;justify-content:flex-end;gap:7px;margin-top:12px">
-        <button type="button" data-act="${attr(p.cancelAct)}"${argA} data-confirm-focus class="cnpy-outlinebtn"${dis} style="padding:6px 12px;border-radius:7px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg-70)">Cancel</button>
-        <button type="button" data-act="${attr(p.confirmAct)}"${argA} class="cnpy-confirm-go"${dis} style="padding:6px 12px;border-radius:7px;background:var(--red);color:#fff;font-size:12px;font-weight:600;white-space:nowrap">${esc(p.busy ? "Deleting…" : p.confirmLabel)}</button>
+  return `<div data-overlay="confirm-${attr(p.id)}" data-confirm-layer class="cnpy-cmodal">
+    <div data-act="${attr(p.cancelAct)}"${argA} class="cnpy-cmodal-back" aria-hidden="true"></div>
+    <div class="cnpy-cmodal-wrap">
+      <div id="${attr(p.id)}" role="alertdialog" aria-modal="true" aria-labelledby="${attr(p.id)}-t" aria-describedby="${attr(p.id)}-d" tabindex="-1" data-confirm-dialog data-confirm-act="${attr(p.confirmAct)}" data-confirm-cancel="${attr(p.cancelAct)}"${argA}${p.busy ? " data-busy" : ""} class="cnpy-surface cnpy-cmodal-box">
+        <div id="${attr(p.id)}-t" style="font-size:16px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);line-height:1.35;overflow-wrap:anywhere">${esc(p.title)}</div>
+        <div id="${attr(p.id)}-d" style="font-size:13px;line-height:1.55;color:var(--fg-70);margin-top:7px">${esc(p.body)}</div>
+        <div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
+          <button type="button" data-act="${attr(p.cancelAct)}"${argA} class="cnpy-outlinebtn"${dis} style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)">Cancel</button>
+          <button type="button" data-act="${attr(p.confirmAct)}"${argA} data-confirm-focus class="cnpy-confirm-go"${dis}${p.busy ? ' aria-busy="true"' : ""} style="padding:8px 16px;border-radius:8px;background:var(--red);color:#fff;font-size:13px;font-weight:600;white-space:nowrap">${esc(p.busy ? p.busyLabel ?? "Deleting…" : p.confirmLabel ?? "Delete")}</button>
+        </div>
       </div>
-    </div>`;
+    </div>
+  </div>`;
 }
 
-/** The trigger with its popover (when armed), in the one `position:relative` wrapper. */
-export function confirmAnchor(trigger: DangerTriggerProps, pop: ConfirmPopoverProps | null): string {
-  return `<div style="position:relative;display:inline-flex">${dangerTrigger(trigger)}${trigger.armed && pop ? confirmPopover(pop) : ""}</div>`;
+/** What a keydown does while a confirmation modal is open — main.ts's one listener acts on it. */
+export type ConfirmKeyAction =
+  /** Dispatch the dialog's `data-confirm-act`. */
+  | "confirm"
+  /** Dispatch its `data-confirm-cancel`. */
+  | "cancel"
+  /** Leave it to the focused button's own click (Enter on Delete confirms, on Cancel cancels). */
+  | "native"
+  /** Move focus within the dialog (Tab / Shift+Tab). */
+  | "trap"
+  /** Swallow it: a write is in flight, or a held key repeating. */
+  | "swallow"
+  /** Not the modal's key. */
+  | null;
+
+/**
+ * The keyboard contract, pure. Enter confirms — through the focused Delete button's own
+ * click, or directly from anywhere else (the dialog itself, the page if focus fell out) —
+ * but never while busy and never on a key repeat, so it deletes ONCE. Escape cancels
+ * (not while busy). Tab is trapped.
+ */
+export function confirmKeyAction(key: string, o: { onDialogButton: boolean; busy: boolean; repeat: boolean }): ConfirmKeyAction {
+  if (key === "Tab") return "trap";
+  if (key === "Escape") return o.busy ? "swallow" : "cancel";
+  if (key !== "Enter") return null;
+  if (o.busy) return "swallow";
+  if (o.onDialogButton) return "native";
+  return o.repeat ? "swallow" : "confirm";
 }

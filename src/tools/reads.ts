@@ -670,7 +670,7 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
                    v.content, v.summary, v.content_type, v.size_bytes, v.created_by
               FROM artifact_pages p
               JOIN artifact_versions v ON v.page_id = p.id AND v.version_no = p.current_version
-             WHERE (p.visibility = 'org' OR p.author_id = ? COLLATE NOCASE) AND p.id IN (${p})`,
+             WHERE (p.visibility = 'org' OR p.author_id = ? COLLATE NOCASE) AND p.deleted_at IS NULL AND p.id IN (${p})`,
     [artifactViewer]
   )) artifactMap.set(String(r.id), r);
 
