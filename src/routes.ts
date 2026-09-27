@@ -11,7 +11,7 @@ import { artifactsApp } from "./artifacts/routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runBackfill, isFinalBackfillBatch } from "./tools/backfill";
-import { get_doc, list_docs, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
+import { get_doc, list_docs, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
 import {
   create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link, delete_ticket,
   set_ticket_sprint, set_ticket_parent, add_ticket_comment,
@@ -21,7 +21,7 @@ import {
   TicketCreate, TicketEdit, TicketTransition, TicketMove, TicketAssigneeToggle, TicketLinkAdd,
   TicketSprintSet, TicketParentSet, TicketCommentAdd, TicketSeg, TicketAssigneeFilter, TicketCategory,
 } from "@shared/tickets";
-import { promote_doc, ratify_adr, reject_doc_version, reject_adr, resolve_triage, assign_triage, map_identity, type AssignType } from "./tools/writes";
+import { promote_doc, ratify_adr, reject_doc_version, reject_adr, resolve_triage, assign_triage, map_identity, discard_identity_task, restore_identity_task, IdentityTaskError, type AssignType } from "./tools/writes";
 import {
   create_sprint, set_sprint_active, complete_sprint, add_sprint_resource, delete_sprint, list_sprints, get_sprint,
   SprintError, SPRINT_ERROR_STATUS,
@@ -466,8 +466,10 @@ app.post("/needs-triage/:id/assign", async (c) => {
 // (/needs-triage + assign/discard above) + Identity (below). ─────────────────
 
 // Pending unknown-login identity tasks, each with a small LIVE activity sample
-// pulled from `events` at read time — activity is never copied onto the task.
-app.get("/identity-tasks", async (c) => c.json({ tasks: await list_identity_tasks(c.env.DB) }));
+// pulled from `events` at read time — activity is never copied onto the task —
+// plus the discarded logins Undo can still restore.
+app.get("/identity-tasks", async (c) =>
+  c.json({ tasks: await list_identity_tasks(c.env.DB), discarded: await list_discarded_identities(c.env.DB) }));
 
 // Human placement (session-gated): link a login to an EXISTING person (by
 // handle) as a github identity (a direct authored write, not a gate re-run),
@@ -482,6 +484,31 @@ app.post("/identity-tasks/:login/map", async (c) => {
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+
+// Human placement (session-gated): discard a login that will never be a person
+// (an outside contributor). Soft and STICKY — the row stays `discarded` with the
+// audit columns, and the login is never re-raised; its events are still captured.
+// Restore puts it back in the list. 404 unknown login, 409 a mapped task.
+const identityFail = (c: Context<AppEnv>, e: unknown) =>
+  e instanceof IdentityTaskError
+    ? c.json({ error: e.message }, e.code === "not_found" ? 404 : 409)
+    : c.json({ error: "temporarily unavailable" }, 503);
+app.post("/identity-tasks/:login/discard", async (c) => {
+  try {
+    const res = await discard_identity_task(c.env.DB, c.req.param("login"), c.get("principal").handle);
+    return c.json({ ok: true, ...res });
+  } catch (e) {
+    return identityFail(c, e);
+  }
+});
+app.post("/identity-tasks/:login/restore", async (c) => {
+  try {
+    const res = await restore_identity_task(c.env.DB, c.req.param("login"));
+    return c.json({ ok: true, ...res });
+  } catch (e) {
+    return identityFail(c, e);
   }
 });
 

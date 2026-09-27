@@ -16,7 +16,7 @@ import {
   getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
-  listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, type AssignTarget,
+  listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, discardIdentity, restoreIdentity, type AssignTarget,
   getMe, logout, mintMcpToken, adminBackfill, adminPoll,
   getOnboardPrefill, checkHandle, submitOnboard,
   getNotificationPrefs, putNotificationPrefs, getNotificationPolicy, putNotificationPolicy,
@@ -1143,7 +1143,13 @@ function loadIdentityTasks(): void {
   state.identityTasks = { status: "loading", data: state.identityTasks.data };
   rerender();
   listIdentityTasks()
-    .then((rows) => { if (seq !== identityTasksSeq) return; state.identityTasks = { status: "ok", data: rows }; rerender(); })
+    .then((r) => {
+      if (seq !== identityTasksSeq) return;
+      state.identityTasks = { status: "ok", data: r.tasks };
+      state.identityDiscarded = r.discarded;
+      if (r.discarded.length === 0) state.identityShowDiscarded = false;
+      rerender();
+    })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== identityTasksSeq) return;
@@ -3132,6 +3138,34 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         });
       return;
     }
+    // Discard is undoable, so no confirm step: the toast carries the Undo.
+    case "identityDiscard": {
+      if (!arg) return;
+      if (state.mapConfirm === arg) state.mapConfirm = null;
+      discardIdentity(arg)
+        .then(() => {
+          loadIdentityTasks();
+          flash(`Discarded @${arg}`, UNDO_TOAST_MS, { label: "Undo", act: "identityRestore", arg });
+        })
+        .catch((e) => {
+          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          flash(e instanceof ApiError ? e.message : "Could not discard login");
+        });
+      return;
+    }
+    case "identityRestore": {
+      if (!arg) return;
+      state.toast = null; state.toastAction = null;
+      restoreIdentity(arg)
+        .then(() => { loadIdentityTasks(); flash(`Restored @${arg}`); })
+        .catch((e) => {
+          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          flash(e instanceof ApiError ? e.message : "Could not restore login");
+        });
+      rerender();
+      return;
+    }
+    case "identityToggleDiscarded": state.identityShowDiscarded = !state.identityShowDiscarded; break;
     // ── Settings › Email notifications ───────────────────────────────────────
     case "emailStartEdit": state.emailEditing = true; state.emailDraft = state.notifPrefs.data?.email ?? ""; break;
     case "emailCancel": state.emailEditing = false; state.emailDraft = ""; break;

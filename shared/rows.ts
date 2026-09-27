@@ -251,10 +251,12 @@ export interface SprintProgressRow {
 // Identity triage task (0016): one pending row per unknown GitHub login seen on
 // a captured event. Raised by ingestEvent after the event write; resolved by the
 // map-to-person route (the `people` table's only runtime writer). Soft resolve.
+// `discarded` (no migration — status carries no CHECK) is a login that will never be
+// a person; the row keeps the PK, so the login is never re-raised until restored.
 export interface IdentityTaskRow {
   login: string;
   first_seen: string;
-  status: "pending" | "resolved";
+  status: "pending" | "resolved" | "discarded";
   resolved_at: string | null;
   resolved_by: string | null;
 }

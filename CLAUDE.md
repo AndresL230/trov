@@ -468,7 +468,14 @@ atomically via `HANDLE_COLUMNS`, in one D1 batch with FK checks deferred for the
 (`resolvePersonForLogin`); an unmapped login raises an `identity_tasks` row and Maintenance › Identity
 links it to an existing handle. Mapping a login there calls the same `linkIdentity` as sign-in linking, so
 it also grants that GitHub account sign-in as the mapped person, not just attribution — there is no undo
-route yet; fix a wrong mapping by deleting the `identities` row with `wrangler d1 execute`. `ADMIN_LOGINS`
+route yet; fix a wrong mapping by deleting the `identities` row with `wrangler d1 execute`. A login that will
+never be a person (an outside contributor's PR) is DISCARDED instead: `POST /identity-tasks/:login/discard`
+(session cookie, like map; 404 unknown, 409 on a mapped task, idempotent) sets `status = 'discarded'` + the
+`resolved_at` / `resolved_by` audit columns — soft, and STICKY for free: the row keeps the login's PK, so
+`ensure_identity_task`'s `INSERT OR IGNORE` never re-raises it, while its events are captured as before.
+`POST /identity-tasks/:login/restore` puts it back to `pending` (409 once the login has been linked some other
+way); `GET /identity-tasks` returns `{ tasks, discarded }` (discarded minus since-linked logins). On screen:
+Discard on each card (no confirm), a "Discarded @login · Undo" toast, and an "N discarded" list with Restore. `ADMIN_LOGINS`
 holds handles — list the new handle there before an admin renames (`POST /auth/me/handle` 403s otherwise).
 Every `recorded_by` / `created_by` / `user_id` is a handle. Migrated GitHub users kept their login as handle.
 `docs.owner` (0035) is one too — the proposer of a doc's FIRST version, set once at creation and never

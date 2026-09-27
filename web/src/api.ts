@@ -308,7 +308,7 @@ export function listStagedProposals(): Promise<StagedProposal[]> {
 // Maintenance · Identity: pending unknown-login tasks, each with a small LIVE
 // activity sample. Mirrors src/tools/reads.ts IdentityTaskWithSample exactly
 // (web/ can't import src/, so it's re-declared here atop @shared/rows's
-// IdentityTaskRow shape). Envelope: { tasks }.
+// IdentityTaskRow shape). Envelope: { tasks, discarded }.
 export interface IdentitySample {
   semantic_key: string;
   event_type: EventRow["event_type"];
@@ -319,13 +319,20 @@ export interface IdentitySample {
 export interface IdentityTask {
   login: string;
   first_seen: string;
-  status: "pending" | "resolved";
+  status: "pending" | "resolved" | "discarded";
   resolved_at: string | null;
   resolved_by: string | null;
   sample: IdentitySample[];
 }
-export function listIdentityTasks(): Promise<IdentityTask[]> {
-  return getJson<{ tasks: IdentityTask[] }>("/identity-tasks").then((r) => r.tasks);
+/** A discarded login Undo can still restore (src/tools/reads.ts DiscardedIdentity). */
+export interface DiscardedIdentity {
+  login: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+}
+export function listIdentityTasks(): Promise<{ tasks: IdentityTask[]; discarded: DiscardedIdentity[] }> {
+  return getJson<{ tasks: IdentityTask[]; discarded?: DiscardedIdentity[] }>("/identity-tasks")
+    .then((r) => ({ tasks: r.tasks, discarded: r.discarded ?? [] }));
 }
 
 // ── confirms (cookie-authed) ─────────────────────────────────────────────────
@@ -360,6 +367,14 @@ export function assignTriage(id: number, target: AssignTarget): Promise<{ ok: tr
 // teammate's GitHub login as that value.
 export function mapIdentity(login: string, person: string): Promise<{ ok: true; login: string; person: string; status: "resolved" }> {
   return postJson(`/identity-tasks/${encodeURIComponent(login)}/map`, { person });
+}
+/** Discard a login that will never be a person — soft and sticky (it is never re-raised). */
+export function discardIdentity(login: string): Promise<{ ok: true; login: string; status: "discarded" }> {
+  return postJson(`/identity-tasks/${encodeURIComponent(login)}/discard`);
+}
+/** Undo a discard: the login is back in the list and raises tasks as normal. */
+export function restoreIdentity(login: string): Promise<{ ok: true; login: string; status: "pending" }> {
+  return postJson(`/identity-tasks/${encodeURIComponent(login)}/restore`);
 }
 
 // ── email notifications (cookie-gated /api/notifications/*) ──────────────────

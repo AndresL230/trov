@@ -3,7 +3,7 @@
 // `.map().join('')`, `sc-if` to ternaries, and `onClick="{{ fn }}"` to
 // `data-act` / `data-arg` attributes dispatched in main.ts.
 
-import type { Me, StagedProposal, IdentityTask, PersonSummary, PersonProfile, InviteRow } from "./api";
+import type { Me, StagedProposal, IdentityTask, DiscardedIdentity, PersonSummary, PersonProfile, InviteRow } from "./api";
 import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary } from "@shared/rows";
 import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
@@ -48,7 +48,7 @@ import {
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
 } from "./artifacts";
 import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
-import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, peopleFromPersons } from "./triage-map";
+import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -172,6 +172,10 @@ export interface AppState {
   draftAdrs: Loadable<AdrRow[]>;
   needsTriage: Loadable<NeedsTriageRow[]>;
   identityTasks: Loadable<IdentityTask[]>;
+  /** Discarded logins Undo can still restore — rides the identity-tasks read. */
+  identityDiscarded: DiscardedIdentity[];
+  /** Maintenance › Identity's "N discarded" list is open. */
+  identityShowDiscarded: boolean;
   reviewFilter: ReviewFilter;
   reviewSel: string | null;
   reviewDiffView: DiffViewMode;
@@ -413,6 +417,7 @@ export function initialState(): AppState {
     draftAdrs: { status: "idle", data: [] },
     needsTriage: { status: "idle", data: [] },
     identityTasks: { status: "idle", data: [] },
+    identityDiscarded: [], identityShowDiscarded: false,
     reviewFilter: "all", reviewSel: null, reviewDiffView: "unified",
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
     mapConfirm: null,
@@ -513,6 +518,8 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
     assignSpace: s.assignSpace,
     assignTags: s.assignTags,
     identity: s.identityTasks.data.map(identityFromTask),
+    discarded: s.identityDiscarded.map(discardedFromRow),
+    showDiscarded: s.identityShowDiscarded,
     people: peopleFromPersons(s.persons.data),
     mapPicks: s.mapPicks,
     mapConfirm: s.mapConfirm,
