@@ -1054,7 +1054,7 @@ describe("ticketDetailView — the thread", () => {
     expect(html).toMatch(chip("sanaok", "Sana"));     // @Sana   → first-name match
     // A non-member stays plain: the literal text is there and it is NOT chipped.
     expect(html).toContain("@nobody");
-    expect(html).not.toContain(chip("nobody"));
+    expect(html).not.toContain('data-arg="nobody"');
     expect(html).not.toContain(">@nobody</span>");
   });
 });
