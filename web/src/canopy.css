@@ -47,6 +47,13 @@ input, select { font-family: inherit; }
 .mw-reject { transition:border-color .12s ease, color .12s ease; }
 .mw-reject:hover { border-color:var(--red) !important; color:var(--red) !important; }
 .mw-handoff { transition:border-color .12s ease; }
+/* Repo tile: a FIXED floor — the summary line + three one-line rows, the most any tab
+   shows — so switching to a tab with fewer rows (or a note) never shrinks the tile.
+   Every line is pinned to 20px (the rows ellipsize rather than wrap), so the sum is exact:
+   summary 20 + 2×10 + 1 = 41, each row 20 + 2×9 + 1 = 39 — 158, plus 2px because a 1px
+   border renders a little over 1px at fractional display scaling (measured 158.66). */
+.mw-repo-sum, .mw-repo-row { line-height:20px; }
+.mw-repo-swap { min-height:calc(41px + 3 * 39px + 2px); }
 .mw-handoff:hover { border-color:color-mix(in srgb,var(--blue) 45%,transparent) !important; }
 @container mwmain (max-width: 700px) {
   .mw-tile { grid-column:span 12; }
@@ -204,6 +211,18 @@ input, select { font-family: inherit; }
 .cnpy-navrow { display:flex; align-items:center; flex:none; border-radius:8px; transition:background .15s ease; }
 .cnpy-navrow:hover { background:var(--hover); }
 .cnpy-navrow.is-active { background:var(--hover); }
+/* Light: the picked row is LIGHTER than the rail — a white card, like the tiles — not a darker fill. */
+[data-cnpy-theme="light"] .cnpy-navrow { transition:background .15s ease, box-shadow .15s ease; }
+[data-cnpy-theme="light"] .cnpy-navrow.is-active { background:var(--surface); box-shadow:var(--shadow), 0 0 0 1px var(--border); }
+/* …and hover is the same card, half-drawn: a translucent white with the hairline, no lift —
+   so hovering previews the selected look instead of darkening the rail. Also the rail's
+   other rows (Collapse, the person chip; the chip's Settings-selected state is the full card). */
+[data-cnpy-theme="light"] .cnpy-navrow:not(.is-active):hover,
+[data-cnpy-theme="light"] .cnpy-collapse .cnpy-nav-i:hover,
+[data-cnpy-theme="light"] .cnpy-chip:hover { background:color-mix(in srgb,var(--surface) 60%,transparent); box-shadow:0 0 0 1px var(--border); }
+[data-cnpy-theme="light"] .cnpy-chip { transition:background .15s ease, box-shadow .15s ease, padding var(--side-t) var(--side-e); }
+[data-cnpy-theme="light"][data-screen="settings"] .cnpy-chip,
+[data-cnpy-theme="light"] [data-screen="settings"] .cnpy-chip { background:var(--surface); box-shadow:var(--shadow), 0 0 0 1px var(--border); }
 .cnpy-nav-i { position:relative; display:flex; align-items:center; gap:11px; flex:1; min-width:0; width:100%; padding:8px 11px; border-radius:8px; font-size:13.5px; font-weight:500; color:var(--fg-55); text-align:left; overflow:hidden; transition:color .12s ease, padding var(--side-t) var(--side-e); }
 .cnpy-navrow:hover .cnpy-nav-i { color:var(--fg-70); }
 .cnpy-navrow.is-active .cnpy-nav-i { color:var(--fg); }
@@ -710,6 +729,8 @@ input, select { font-family: inherit; }
    priority, the assignee at the far right. "Opened by" is on the ticket. The row's grid is
    an inline style, hence !important. */
 .cnpy-ttable { container:ttable / inline-size; }
+.cnpy-ttable { padding-bottom:8px; }
+.cnpy-tgroup + .cnpy-tgroup { border-top:1px solid var(--border); margin-top:8px; }
 @container ttable (max-width: 640px) {
   .cnpy-thead { display:none !important; }
   .cnpy-trow { display:flex !important; flex-wrap:wrap; align-items:center; gap:8px 8px !important; padding:12px 14px !important; }

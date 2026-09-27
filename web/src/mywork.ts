@@ -137,15 +137,15 @@ export function ticketsTile(sl: MwListSlice<MyWorkTicket>, degraded: boolean, sp
 /** Needs your review: the Review queue's top three, each with its verdict buttons (the
  *  same reviewAccept / reviewReject acts the Review screen dispatches). */
 export function reviewTile(items: ReviewHead[], load: MwLoad, span: number): string {
-  if (load === "ok" && items.length === 0) {
-    return tile("review", span, "Needs your review, clear", `<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;flex-wrap:wrap">
-      <span style="width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:var(--green);background:color-mix(in srgb,var(--green) 14%,transparent);flex:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"></path></svg></span>
-      <span style="flex:1;min-width:0;display:flex;flex-direction:column"><span style="font-size:14px;font-weight:500">Nothing waiting on your review</span><span style="font-size:12.5px;color:var(--fg-40)">New staged items show here as your sessions finish.</span></span>
-      <button data-act="goReview" class="mw-more" style="display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--fg-40);white-space:nowrap;padding:0">Review${ARROW}</button>
-    </div>`);
-  }
   const head = tileHead(`<span style="display:inline-flex;align-items:center;gap:7px">${dot("var(--accent)")}Needs your review</span>`, { act: "goReview", label: "View all" });
   if (load !== "ok") return tile("review", span, "Needs your review", `${head}${tileNote(load === "pending" ? "Loading&hellip;" : "Couldn't load the review queue.")}`);
+  if (items.length === 0) {
+    // Clear: the tile keeps its place (and its header) and says so in its body.
+    return tile("review", span, "Needs your review", `${head}<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:22px 16px 26px;margin-top:12px;border-top:1px solid var(--border);text-align:center">
+      <span style="width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--green);background:color-mix(in srgb,var(--green) 14%,transparent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"></path></svg></span>
+      <span style="display:flex;flex-direction:column;gap:3px"><span style="font-size:14px;font-weight:500">Nothing waiting on your review</span><span style="font-size:12.5px;color:var(--fg-40);text-wrap:pretty">Doc changes and decisions agents stage show up here to promote or ratify.</span></span>
+    </div>`);
+  }
   const staged = items.filter((i) => i.kind === "proposal").length;
   const decide = items.length - staged;
   const sentence = [staged ? `${staged} to promote` : "", decide ? `${decide} to ratify` : ""].filter(Boolean).join(", ");
@@ -179,9 +179,11 @@ export function reviewTile(items: ReviewHead[], load: MwLoad, span: number): str
 export interface MwSession { id: number; summaryHtml: string; brief: string | null; at: string }
 export interface MwHandoff { id: number; title: string; at: string }
 export function sessionsTile(sessions: MwSession[], feedLoad: MwLoad, handoffs: MwHandoff[], span: number): string {
-  const sub = tileSub(handoffs.length === 1
-    ? "1 handoff waiting for a fresh session"
-    : handoffs.length ? `${handoffs.length} handoffs waiting for a fresh session` : "No handoffs waiting");
+  // The line speaks only when a handoff IS waiting — "none" is the library strip's
+  // Queued handoffs cell's to say, not a second time up here.
+  const sub = handoffs.length
+    ? tileSub(handoffs.length === 1 ? "1 handoff waiting for a fresh session" : `${handoffs.length} handoffs waiting for a fresh session`)
+    : `<div style="height:12px"></div>`;
   const rows = sessions.map((x) => `<button data-act="goFeed" class="mw-row" style="${ROW};display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px">
       <span style="min-width:0;font-size:14px;font-weight:500;color:var(--fg);line-height:1.4;text-wrap:pretty" class="cnpy-md-inline">${x.summaryHtml}</span>
       <span style="font-size:12.5px;color:var(--fg-40);white-space:nowrap;padding-top:2px">${relTime(x.at)}</span>
@@ -191,7 +193,7 @@ export function sessionsTile(sessions: MwSession[], feedLoad: MwLoad, handoffs: 
     : feedLoad === "error" && sessions.length === 0 ? tileNote("Couldn't load your recent sessions.")
     : sessions.length === 0 ? tileNote("Nothing recorded yet. Run record-session at the end of a session and it lands here.")
     : rows;
-  const pills = handoffs.slice(0, 2).map((h) => `<button data-act="openHandoff" data-arg="${h.id}" class="mw-handoff" style="display:flex;align-items:flex-start;gap:8px;min-width:0;width:100%;text-align:left;padding:7px 10px;border-radius:7px;background:color-mix(in srgb,var(--blue) 6%,transparent);border:1px solid color-mix(in srgb,var(--blue) 25%,transparent)">
+  const pills = handoffs.slice(0, 1).map((h) => `<button data-act="openHandoff" data-arg="${h.id}" class="mw-handoff" style="display:flex;align-items:flex-start;gap:8px;min-width:0;width:100%;text-align:left;padding:7px 10px;border-radius:7px;background:color-mix(in srgb,var(--blue) 6%,transparent);border:1px solid color-mix(in srgb,var(--blue) 25%,transparent)">
       ${dot("var(--blue)", ";margin-top:6px")}
       <span style="min-width:0;flex:1;font-size:13px;line-height:1.45;color:var(--fg);text-wrap:pretty"><span style="font-family:var(--label);font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--blue);margin-right:8px">For you</span>${esc(h.title)}</span>
       ${CHEV}
@@ -271,17 +273,17 @@ export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTa
   const p = repoPanel(repo, tab);
   const inner = p.note
     ? tileNote(p.note)
-    : `<div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--border);font-size:13.5px">${p.head ? `<span style="font-weight:500;color:${p.headColor};font-variant-numeric:tabular-nums">${esc(p.head)}</span>` : ""}<span style="color:var(--fg-55)">${esc(p.sub)}</span></div>
+    : `<div class="mw-repo-sum" style="display:flex;align-items:baseline;gap:6px;padding:10px 16px;border-top:1px solid var(--border);font-size:13.5px">${p.head ? `<span style="font-weight:500;color:${p.headColor};font-variant-numeric:tabular-nums;flex:none">${esc(p.head)}</span>` : ""}<span style="color:var(--fg-55);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.sub)}</span></div>
       ${p.rows.map((r) => {
-        const open = r.href ? `<a href="${attr(safeUrl(r.href))}" target="_blank" rel="noopener" class="mw-row" style="text-decoration:none;color:inherit;` : `<div style="`;
+        const open = r.href ? `<a href="${attr(safeUrl(r.href))}" target="_blank" rel="noopener" class="mw-row mw-repo-row" style="text-decoration:none;color:inherit;` : `<div class="mw-repo-row" style="`;
         const close = r.href ? "</a>" : "</div>";
         return `${open}display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 16px;border-top:1px solid var(--border)">
           ${dot(r.tone)}
-          <span style="min-width:0;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap"><span style="font-size:14px;color:var(--fg);line-height:1.4">${esc(r.title)}</span>${r.ref ? `<span style="font-family:var(--label);font-size:12px;color:var(--fg-40);white-space:nowrap">${esc(r.ref)}</span>` : ""}</span>
+          <span style="min-width:0;display:flex;align-items:baseline;gap:8px"><span style="font-size:14px;color:var(--fg);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"${r.title ? ` title="${attr(r.title)}"` : ""}>${esc(r.title)}</span>${r.ref ? `<span style="font-family:var(--label);font-size:12px;color:var(--fg-40);white-space:nowrap;flex:none">${esc(r.ref)}</span>` : ""}</span>
           <span style="font-size:12.5px;color:var(--fg-40);white-space:nowrap">${esc(r.time)}</span>
         ${close}`;
       }).join("")}`;
-  return tile("repo", span, "Repo monitor", `${head}${tabs}<div class="mw-repo-swap" style="flex:1;display:flex;flex-direction:column;min-height:0">${inner}</div>`);
+  return tile("repo", span, "Repo monitor", `${head}${tabs}<div class="mw-repo-swap" style="flex:1;display:flex;flex-direction:column">${inner}</div>`);
 }
 
 // ── library strip ────────────────────────────────────────────────────────────

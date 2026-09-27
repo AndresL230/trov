@@ -537,12 +537,24 @@ describe("tickets — cards are the shared surface", () => {
     expect(card.slice(0, card.indexOf(">"))).not.toContain("border-radius");
     expect(html).not.toContain(OLD_FILL);
   });
-  it("the table is ONE surface holding hairline rows; the last row carries no hairline", () => {
+  it("the table is ONE surface: 20px sides, no row hairlines, plain category and priority", () => {
     const rows = [ticket({ id: 1, title: "A" }), ticket({ id: 2, title: "B" })];
     const html = queueView(queueProps({ view: "table", seg: "all", tickets: rows }));
     expect(html.match(/cnpy-surface/g)).toHaveLength(1);
     expect(html).toContain('class="cnpy-surface cnpy-ttable" style="margin-top:8px;overflow:hidden"');
-    expect(html.match(/class="cnpy-trow[^"]*" style="[^"]*border-bottom:1px solid var\(--border\)/g)).toHaveLength(1);
+    const trows = html.match(/class="cnpy-trow[^"]*" style="[^"]*"/g) ?? [];
+    expect(trows).toHaveLength(2);
+    for (const r of trows) {
+      expect(r).toContain("padding:11px 20px");
+      expect(r).not.toContain("border-bottom");
+    }
+    expect(html).toContain('class="cnpy-thead"');
+    expect(html).toMatch(/class="cnpy-thead" style="[^"]*padding:14px 20px 10px/);
+    expect(html).toMatch(/class="cnpy-tgrp" style="[^"]*padding:18px 20px 6px/);
+    expect(html).toContain("cnpy-stagger cnpy-tgroup"); // canopy.css draws the one hairline between groups
+    // Only the status pill is boxed; category and priority are plain text.
+    const row = html.slice(html.indexOf('class="cnpy-trow'), html.indexOf("</button>", html.indexOf('class="cnpy-trow')));
+    expect((row.match(/border:1px solid/g) ?? []).length).toBe(1);
     expect(html).not.toContain(OLD_FILL);
   });
   it("the new-ticket form card and the comment composer are surfaces", () => {

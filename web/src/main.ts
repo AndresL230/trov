@@ -659,13 +659,13 @@ function loadMyWork(): void {
       rerender();
     });
 }
-/** Your sessions: MY three latest feed entries — My Work's own read, so the Feed
+/** Your sessions: MY two latest feed entries — My Work's own read, so the Feed
  *  screen's author/tag filters (which shape `state.feed`) never reach it. */
 function loadMwSessions(): void {
   const me = state.me?.handle;
   if (!me) return;
   state.mwSessions = { status: "loading", data: state.mwSessions.data };
-  getFeed({ author: me, limit: 3 })
+  getFeed({ author: me, limit: 2 })
     .then((rows) => { state.mwSessions = { status: "ok", data: rows }; rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
@@ -1941,12 +1941,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "navSub": {
       // `<group>:<page>` — each page is an existing destination, reached in one click.
       const [g, page = ""] = (arg ?? "").split(":");
-      if (g === "tickets") {
-        if (page === "new") { dispatch("newTicket", null, null); return; }
-        state.qView = page === "board" ? "board" : "table";
-        dispatch("goTickets", null, null);
-        return;
-      }
       if (g === "repo") { if (!isRepoTab(page)) return; state.screen = "repo"; state.repoTab = page; loadRepoIfNeeded(); return; }
       if (g === "docs") { state.screen = "docs"; dispatch("setDocSpace", page, null); loadDocsIfNeeded(); return; }
       if (g === "maintenance") { dispatch("goMaintenance", page, null); return; }
