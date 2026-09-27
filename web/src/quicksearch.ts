@@ -44,8 +44,8 @@ export interface QuickScreen { label: string; hint: string; keys: string; steps:
 
 export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "My Work", hint: "Your PRs, issues and tickets", keys: "home dashboard mine todo", steps: [["goMyWork", null]] },
-  { label: "Tickets › Board", hint: "The ticket board", keys: "queue kanban columns", steps: [["navSub", "tickets:board"]] },
-  { label: "Tickets › Table", hint: "The ticket queue as a table", keys: "queue list", steps: [["navSub", "tickets:queue"]] },
+  { label: "Tickets › Board", hint: "The ticket board", keys: "queue kanban columns", steps: [["goTickets", null], ["queueBoard", null]] },
+  { label: "Tickets › Table", hint: "The ticket queue as a table", keys: "queue list", steps: [["goTickets", null], ["queueTable", null]] },
   { label: "New ticket", hint: "File a ticket", keys: "create bug report request file", steps: [["newTicket", null]] },
   { label: "Roadmap", hint: "The plan narrative and sprints", keys: "plan narrative sprints", steps: [["goRoadmap", null]] },
   { label: "Roadmap › Timeline", hint: "Sprints on a timeline", keys: "plan sprints gantt schedule", steps: [["goRoadmap", null], ["roadmapTimeline", null]] },
