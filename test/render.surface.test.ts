@@ -16,7 +16,7 @@ vi.mock("../web/src/markdown", () => ({
 
 import css from "../web/src/canopy.css?raw";
 import { surface, SURFACE } from "../web/src/ui";
-import { render, initialState, planNarrativeBlock, profileSection, accountSection } from "../web/src/render";
+import { render, initialState, planNarrativeBlock, profileSection, accountSection, mcpAccessSection } from "../web/src/render";
 import { ticketsTile } from "../web/src/mywork";
 import { sprintCard } from "../web/src/sprints";
 import { roadmapTimeline } from "../web/src/timeline";
@@ -95,6 +95,7 @@ describe("the migrated cards render the shared class — never an inline copy, n
     ["Roadmap timeline card", () => roadmapTimeline({ sprints: [sprint({ id: 1, label: "Sprint 1" })], confirmed: {}, persons: [], now: NOW })],
     ["Settings › Profile tile", () => profileSection(signedIn())],
     ["Settings › Account tile", () => accountSection(signedIn())],
+    ["Settings › MCP access tile", () => mcpAccessSection(signedIn())],
     ["Feed entry", () => {
       const row: FeedRow = { id: 1, author: "alice", summary: "Shipped it.", brief: null, body: null, artifacts: null, created_at: "2026-09-14T10:00:00Z" };
       return render({ ...signedIn(), screen: "feed", feed: { status: "ok", data: [row] }, feedAuthors: ["alice"] } as ReturnType<typeof initialState>);

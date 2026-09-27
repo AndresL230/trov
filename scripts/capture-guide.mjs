@@ -82,27 +82,6 @@ const SHOTS = [
   { name: "maintenance", hash: "#maintenance" },
   { name: "settings", hash: "#settings" },
   { name: "releases", hash: "#releases" },
-  // Mints a (local) token and opens the one-time setup modal. The figure shows the
-  // production origin and no token value; `after` revokes the token so the next theme's
-  // Settings figure is unchanged.
-  { name: "connect", hash: "#settings",
-    step: async (p) => {
-      await click(p, "[data-act=connectOpen]");
-      await p.waitForFunction(() => /canopy_mcp_[A-Za-z0-9_-]{12,}/.test(document.querySelector("[data-overlay=connect]")?.textContent ?? ""));
-    },
-    // Run just before the shot: a later rerender would put the real text back.
-    dress: (p) => p.evaluate(() => {
-      const walk = document.createTreeWalker(document.querySelector("[data-overlay=connect]"), NodeFilter.SHOW_TEXT);
-      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
-        n.nodeValue = n.nodeValue
-          .replace(/http:\/\/localhost:\d+/g, "https://canopy.saplinglearn.com")
-          .replace(/canopy_mcp_[A-Za-z0-9_-]{12,}/g, "canopy_mcp_••••••••");
-      }
-    }),
-    after: (p) => p.evaluate(async () => {
-      const { tokens } = await (await fetch("/auth/mcp-tokens")).json();
-      for (const t of tokens) await fetch(`/auth/mcp-tokens/${t.id}/revoke`, { method: "POST" });
-    }) },
 ];
 
 // `npm run seed` has no artifacts (their bodies are hashed and indexed by the repository),

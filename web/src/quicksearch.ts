@@ -68,7 +68,7 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "Maintenance › Identity", hint: "Map GitHub logins to people", keys: "github logins map", steps: [["goMaintenance", "identity"]] },
   { label: "Maintenance › People", hint: "Invites, members and digests", keys: "invite members admin notifications", steps: [["goMaintenance", "people"]] },
   { label: "Settings", hint: "Profile, account and appearance", keys: "profile account preferences", steps: [["goSettings", null]] },
-  { label: "Settings › MCP access", hint: "Connect an agent: apps and tokens", keys: "mcp tokens connect agent claude code codex oauth", steps: [["goSettings", null]] },
+  { label: "Settings › MCP access", hint: "Connect Claude Code: sign-in steps and connected apps", keys: "mcp tokens connect agent claude code plugin oauth authenticate", steps: [["goSettings", null]] },
   { label: "Settings › Appearance", hint: "Light, dark or system theme", keys: "theme dark light mode", steps: [["goSettings", null]] },
   { label: "Settings › Email notifications", hint: "Daily and weekly digests", keys: "digest email unsubscribe", steps: [["goSettings", null]] },
   { label: "Get Started", hint: "The guide to Canopy", keys: "guide help onboarding tour", steps: [["goGuide", null]] },

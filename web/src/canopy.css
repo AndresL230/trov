@@ -674,15 +674,22 @@ input, select { font-family: inherit; }
   .cnpy-pdetail-rail { flex:none; max-width:none; }
 }
 .cnpy-set-wrap { container:cnpy-set / inline-size; }
-.cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-flow:dense; gap:14px; align-items:stretch; }
+/* Settings is a bento on three columns: Profile and Account side by side with Appearance
+   under both (their own grid, `.cnpy-set-you`, two columns wide), MCP access down a third,
+   slightly wider column (its install command fits on one line), Email notifications at
+   full width. Every grid aligns to the START, so each tile is as tall as its content —
+   none stretches to match a neighbour, and because the first three are a grid of their
+   own, a taller MCP tile never pulls their rows apart either. */
+.cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr); gap:14px; align-items:start; }
+.cnpy-set-you { grid-column:span 2; min-width:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }
+.cnpy-set-appear { grid-column:1 / -1; }
 /* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this only adds its padding. */
 .cnpy-tile { min-width:0; padding:20px 22px; }
-.cnpy-set-full { grid-column:1 / -1; }
-/* Three columns: MCP access holds the right column for two rows and Appearance sits
-   under Profile + Account only, so it never pushes into MCP access. */
-.cnpy-set-mcp { grid-row:span 2; }
-.cnpy-set-appear { grid-column:span 2; }
+.cnpy-set-email { grid-column:1 / -1; container:cnpy-email / inline-size; }
 .cnpy-set-pairs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:40px; }
+@container cnpy-email (max-width:935px) {
+  .cnpy-set-pairs { grid-template-columns:minmax(0,1fr); }
+}
 /* Appearance: Light / Dark / System are ONE row of three equal cards at every width, edge to
    edge of the tile's content box. The row is its own container, so a card's form follows the
    room it actually has (not the viewport): icon beside label, or — once a card is too narrow
@@ -694,24 +701,23 @@ input, select { font-family: inherit; }
   .cnpy-themecard { flex-direction:column; gap:6px; padding:12px 6px; }
 }
 .cnpy-set .cnpy-sw.compact { padding:6px 0; }
-/* The token list takes whatever height its row leaves and scrolls inside it, so a long
-   list never stretches the bento; stacked in one column it caps itself instead. */
-/* The MCP tile's lists never set its height: tokens get a fixed one-row box (every
-   state renders inside it, so 0, 1 or 50 tokens is the same tile) that scrolls and
-   takes any spare height; connected apps cap at two rows. An explicit height, not
-   flex-basis 0 — a basis-0 scroller either collapses to nothing (Chrome) or still
-   counts its rows toward the grid row (other engines). */
-.cnpy-set-tokens { flex:1 0 auto; height:58px; overflow-y:auto; }
-.cnpy-set-grants { flex:none; max-height:114px; overflow-y:auto; }
+/* MCP access: the sign-in steps, then Connected apps — beside them once the tile is wide
+   (it spans the page when the bento folds). The list has no fixed height and no scroller:
+   it shows its first rows and a "Show all N" (render.ts `grantListBody`). */
+.cnpy-set-mcp { container:cnpy-mcp / inline-size; }
+.cnpy-mcp-body { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; margin-top:16px; }
+@container cnpy-mcp (min-width:620px) {
+  .cnpy-mcp-body { grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:32px; }
+}
+/* Narrower: the three small tiles keep their own two-up grid and MCP access takes the full
+   width under them; on a phone, one column. */
 @container cnpy-set (max-width:999px) {
-  .cnpy-set { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .cnpy-set-mcp { grid-row:auto; }
-  .cnpy-set-appear { grid-column:auto; }
-  .cnpy-set-pairs { grid-template-columns:minmax(0,1fr); }
+  .cnpy-set { grid-template-columns:minmax(0,1fr); }
+  .cnpy-set-you { grid-column:auto; }
 }
 @container cnpy-set (max-width:759px) {
-  .cnpy-set { grid-template-columns:minmax(0,1fr); padding:24px 16px 64px; }
-  .cnpy-set-tokens { flex:none; height:auto; max-height:236px; }
+  .cnpy-set { padding:24px 16px 64px; }
+  .cnpy-set-you { grid-template-columns:minmax(0,1fr); }
 }
 /* Tickets: the queue's table rows, and the two-column form/detail layouts that
    collapse to one column on a narrow viewport. */
@@ -887,16 +893,11 @@ input, select { font-family: inherit; }
 .cnpy-xbtn:hover { background:color-mix(in srgb, var(--accent) 22%, transparent); }
 .cnpy-input:focus { border-color:var(--accent); }
 .cnpy-themecard { transition:all .12s ease; }
-.cnpy-mintbtn { transition:filter .12s ease; }
-.cnpy-mintbtn:hover { filter:brightness(1.05); }
 .cnpy-numpill { transition:filter .12s ease; }
 .cnpy-numpill:hover { filter:brightness(1.15); }
 .cnpy-copybtn { transition:filter .12s ease, transform .12s ease; }
 .cnpy-copybtn:hover { filter:brightness(1.06); }
 .cnpy-copybtn:active { transform:translateY(1px); }
-.cnpy-copybtn.is-copied { cursor:default; }
-.cnpy-copybtn.is-copied:hover { filter:none; }
-.cnpy-copybtn.is-copied:active { transform:none; }
 .cnpy-signout { transition:all .12s ease; }
 .cnpy-signout:hover { border-color:var(--red); color:var(--red); }
 .cnpy-mutelink:hover { color:var(--fg-70); }

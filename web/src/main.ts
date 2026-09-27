@@ -9,19 +9,19 @@ import { syncSegments } from "./segmented";
 import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
 import {
-  render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, connectSnippet, CONNECT_CLIENTS, browserConnectCommand,
-  FEED_FILTER_CATS, type AppState, type Screen, type ConnectClient, type FeedFilterCat, type ToastAction,
+  render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL,
+  FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
 } from "./render";
 import {
   getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
   listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, discardIdentity, restoreIdentity, type AssignTarget,
-  getMe, logout, mintMcpToken, adminBackfill, adminPoll,
+  getMe, logout, adminBackfill, adminPoll,
   getOnboardPrefill, checkHandle, submitOnboard,
   getNotificationPrefs, putNotificationPrefs, getNotificationPolicy, putNotificationPolicy,
   getNotificationSettings, putNotificationSettings, listNotificationOutbox, testSendNotification, type PrefsWrite,
-  listMcpTokens, revokeMcpToken, listOAuthGrants, revokeOAuthGrant,
+  listOAuthGrants, revokeOAuthGrant,
   listPersons, listInvites, createInvite, revokeInvite, resendInvite, updateMe, unlinkIdentity, renameHandle,
   getPersonProfile, updatePersonProfile, uploadAvatar, removeAvatar,
   listTickets, getTicket, getTicketBadge, createTicket, transitionTicket, moveTicket, toggleTicketAssignee,
@@ -477,7 +477,7 @@ function loadForScreen(screen: Screen): void {
     case "mywork": loadMyWorkIfNeeded(); break;
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
-    case "settings": loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); break;
+    case "settings": loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); break;
     case "unsubscribe": runUnsubscribe(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
@@ -776,28 +776,20 @@ function loadNotifPrefs(): void {
       rerender();
     });
 }
-// Settings › MCP access. No rerender of its own on entry: every caller follows
-// with loadNotifPrefsIfNeeded, which does.
-function loadTokens(): void {
-  state.tokens = { status: "loading", data: state.tokens.data };
-  listMcpTokens()
-    .then((data) => { state.tokens = { status: "ok", data }; rerender(); })
-    .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-      state.tokens = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
-    });
+// Settings › MCP access › Connected apps. No rerender of its own on entry: every caller
+// follows with loadNotifPrefsIfNeeded, which does.
+function loadGrants(): void {
   state.grants = { status: "loading", data: state.grants.data };
   listOAuthGrants()
     .then((data) => { state.grants = { status: "ok", data }; rerender(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) return; // the tokens load above already sends the person to sign-in
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.grants = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerender();
     });
 }
-function loadTokensIfNeeded(): void {
-  if (state.tokens.status === "idle") loadTokens();
+function loadGrantsIfNeeded(): void {
+  if (state.grants.status === "idle") loadGrants();
 }
 function loadNotifPrefsIfNeeded(): void {
   if (state.notifPrefs.status === "idle") loadNotifPrefs();
@@ -2575,7 +2567,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded(); loadIdentityTasksIfNeeded(); loadFeedIfNeeded(); loadNotifAdminIfNeeded(); loadInvitesIfAdmin();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.unsub.preview = false; state.tokenRevokeArm = null; state.grantRevokeArm = null; loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.unsub.preview = false; state.grantRevokeArm = null; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3182,7 +3174,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "previewUnsub": state.unsub = { pending: false, error: null, preview: true }; state.screen = "unsubscribe"; break;
-    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); return;
+    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); return;
 
     // ── Maintenance › Notifications (admin) ──────────────────────────────────
     case "policyToggle": {
@@ -3226,57 +3218,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
 
     // ── Settings ─────────────────────────────────────────────────────────────
-    // "Get connection command": the click mints, the modal shows the setup with the
-    // token in it, and closing the modal drops the token from the page for good.
-    case "connectOpen":
-      if (state.connect) return;                       // a mint is already in flight / open
-      state.connect = { token: null, error: null };
-      state.connectCopied = false;
-      rerender();
-      mintMcpToken()
-        .then(({ token }) => { if (state.connect) state.connect = { token, error: null }; loadTokens(); rerender(); })
-        .catch((e) => {
-          if (e instanceof Unauthorized) { state.connect = null; state.view = "auth"; state.authStep = "login"; rerender(); return; }
-          if (state.connect) state.connect = { token: null, error: e instanceof ApiError ? e.message : "please try again" };
-          rerender();
-        });
-      return;
-    case "connectClient":
-      if (CONNECT_CLIENTS.some((c) => c.id === arg)) { state.connectClient = arg as ConnectClient; state.connectCopied = false; }
-      break;
-    case "connectCopy": {
-      const tk = state.connect?.token;
-      if (!tk) return;
-      copyToClipboard(connectSnippet(state.connectClient, tk)).then((ok) => {
-        if (!ok) { flash("Couldn't copy — select the text and copy it manually"); return; }
-        state.connectCopied = true;
-        rerender();
-        setTimeout(() => { state.connectCopied = false; rerender(); }, 1800);
-      });
-      return;
-    }
-    case "connectClose":
-      if (state.connect && !state.connect.token && !state.connect.error) return;   // mid-mint: let it land
-      state.connect = null; state.connectCopied = false;
-      break;
+    // MCP access is OAuth only: the steps, Connected apps, and a folded by-hand command.
     // Revoke is two clicks: the first arms the row, the second revokes.
-    case "revokeTokenArm": state.tokenRevokeArm = Number(arg); break;
-    case "revokeTokenCancel": state.tokenRevokeArm = null; break;
-    case "revokeToken": {
-      const id = Number(arg);
-      revokeMcpToken(id)
-        .then(() => {
-          state.tokens = { status: "ok", data: state.tokens.data.filter((t) => t.id !== id) };
-          state.tokenRevokeArm = null;
-          flash("Token revoked");
-          rerender();
-        })
-        .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-          flash(e instanceof ApiError ? e.message : "Could not revoke token");
-        });
-      return;
-    }
     case "revokeGrantArm": state.grantRevokeArm = Number(arg); break;
     case "revokeGrantCancel": state.grantRevokeArm = null; break;
     case "revokeGrant": {
@@ -3294,6 +3237,12 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         });
       return;
     }
+    // Connected apps opens to every row, or folds back to the first few.
+    case "mcpShowAll": state.grantsAll = !state.grantsAll; break;
+    case "mcpManual": state.mcpManual = !state.mcpManual; break;
+    case "copyPluginInstall":
+      copyToClipboard(PLUGIN_INSTALL).then((ok) => flash(ok ? "Commands copied" : "Couldn't copy the commands"));
+      return;
     case "copyBrowserConnect":
       copyToClipboard(browserConnectCommand()).then((ok) => flash(ok ? "Command copied" : "Couldn't copy the command"));
       return;
@@ -4091,12 +4040,8 @@ mount.addEventListener("focusin", (e) => railTip((e.target as Element | null)?.c
 mount.addEventListener("focusout", () => railTip(null));
 mount.addEventListener("mouseleave", () => railTip(null));
 
-// Escape closes the landing page's sign-in dialog, wherever focus is — and the
-// Settings connection modal, once its mint has landed.
+// Escape closes the landing page's sign-in dialog, wherever focus is.
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && state.connect && (state.connect.token || state.connect.error)) {
-    state.connect = null; state.connectCopied = false; rerender(); return;
-  }
   if (e.key !== "Escape" || !state.signInOpen || state.view !== "auth") return;
   state.signInOpen = false;
   rerender();

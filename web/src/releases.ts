@@ -85,6 +85,8 @@ export const RELEASES: Release[] = [
     ],
     headsUp: [
       "Opening Settings no longer lights up the account chip at the bottom of the sidebar as if it were a selected row.",
+      "Settings no longer mints MCP tokens — connect with the steps on Settings › MCP access and sign in in the browser. Tokens you already use keep working.",
+      "Settings' boxes are only as tall as what they hold, and MCP access now walks you through the browser sign-in, with your connected apps right under it.",
     ],
     ops: [
       "Apply migration `0036_person_profiles` with `npm run db:migrate:remote` before this deploys.",
@@ -106,9 +108,12 @@ export const RELEASES: Release[] = [
         "The ticket rail's requester and assignees, the Feed's authors and Maintenance › People's rows open the person card; Maintenance › People shows each role and, for admins, Edit role — the one role + responsibilities editor (#89)",
         "Repo dashboard: PR authors and contributors show their avatar photo (#89)",
         "Sidebar: no selected fill on the account chip while Settings is open or on hover — only its gear turns (#89)",
+        "Settings: the bento keeps its three columns but every grid is `align-items:start` and Profile / Account / Appearance are their own grid (`.cnpy-set-you`), so no tile stretches to the MCP tile's height; MCP access (`mcpAccessSection`) is OAuth only — one line, three numbered browser sign-in steps (`PLUGIN_INSTALL`), Connected apps capped at 3 rows with Show all (no fixed-height scroller), and the by-hand `claude mcp add` folded behind Set it up without the plugin; the Get Started guide says the same (#89)",
       ],
       fixed: [],
-      removed: [],
+      removed: [
+        "Settings' token UI: Get connection command (`connectModal` / `connectSnippet` / `CONNECT_CLIENTS`, and with it the Codex, `.mcp.json`-with-header and Token only setups), the token list (`tokenListBody`) and the web client's `mintMcpToken` / `listMcpTokens` / `revokeMcpToken`; the guide's `connect` figure. The `/auth/mcp-token*` routes, `canopy_mcp_` bearer resolution and `mcp_tokens` stay, so existing tokens keep working (#89)",
+      ],
     },
     prs: [89],
   },
