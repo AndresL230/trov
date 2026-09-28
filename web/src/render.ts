@@ -684,7 +684,6 @@ function sidebar(s: AppState): string {
     navOpen: s.navOpen,
     qView: s.qView,
     roadmapTab: s.roadmapTab,
-    repoTab: s.repoTab,
     docSpace: s.docSpace,
     docSpaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })),
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).

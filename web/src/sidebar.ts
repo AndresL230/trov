@@ -9,20 +9,21 @@
 // a CSS transition can run on. Emitting a node conditionally would swap it out
 // from under its own animation.
 
-import { REPO_TABS, type RepoTab } from "@shared/repo";
 import type { PersonColor } from "@shared/rows";
 import { esc, attr } from "./ui";
 import { personChip, handleTag } from "./people";
 
-/** The nav entries that own a sub-page list. Roadmap, Tickets and Maintenance have none:
- *  their switches are in the screen header (Roadmap's Narrative / Timeline, removed from
- *  the rail 2026-09-26; Tickets' Board / Table and Submit a ticket, removed 2026-09-27;
- *  Maintenance's Unplaced / Identity / People, removed 2026-09-27). A stored
- *  `canopy.navOpen` naming a retired group is simply not read back (main.ts). */
-export const NAV_GROUPS = ["repo", "docs"] as const;
+/** The nav entries that own a sub-page list — only Docs now. Roadmap, Tickets, Maintenance
+ *  and Repo have none: their switches are on the screen itself (Roadmap's Narrative /
+ *  Timeline, removed from the rail 2026-09-26; Tickets' Board / Table and Submit a ticket,
+ *  removed 2026-09-27; Maintenance's Unplaced / Identity / People and Repo's Overview /
+ *  Code / CI / Usage / Planning — each a tab bar heading the page body — removed
+ *  2026-09-27). A stored `canopy.navOpen` naming a retired group is simply not read back
+ *  (main.ts). */
+export const NAV_GROUPS = ["docs"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 export type NavOpen = Record<NavGroup, boolean>;
-export const NAV_CLOSED: NavOpen = { repo: false, docs: false };
+export const NAV_CLOSED: NavOpen = { docs: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
 export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases";
@@ -48,7 +49,6 @@ export interface SidebarProps {
   navOpen: NavOpen;
   qView: "table" | "board";
   roadmapTab: "narrative" | "timeline";
-  repoTab: RepoTab;
   docSpace: string;
   docSpaces: { key: string; label: string }[];
   counts: { review: number; maintenance: number; tickets: number; handoffs: number; prompts: number };
@@ -91,14 +91,12 @@ const isMac = (): boolean => typeof navigator !== "undefined" && /Mac|iPhone|iPa
 /** The sub-page a group is currently showing, or null (e.g. a ticket's detail). */
 function activeSub(p: SidebarProps, g: NavGroup): string | null {
   switch (g) {
-    case "repo": return p.screen === "repo" ? p.repoTab : null;
     case "docs": return p.screen === "docs" ? p.docSpace : null;
   }
 }
 
 function subPages(p: SidebarProps, g: NavGroup): { key: string; label: string }[] {
   switch (g) {
-    case "repo": return REPO_TABS.map(([key, label]) => ({ key, label }));
     case "docs": return p.docSpaces;
   }
 }

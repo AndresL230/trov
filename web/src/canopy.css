@@ -1185,6 +1185,12 @@ input, select { font-family: inherit; }
 .repo-rank-l { transition:color .12s ease; }
 .repo-rank:hover .repo-rank-l, .repo-rank-h:hover .repo-rank-l { color:var(--fg) !important; }
 .cnpy-flash .repo-fill { animation:cnpy-grow-x .5s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 22ms + 60ms); }
+/* A Repo tab switch replays no entrance (the tab bar's underline must slide unbroken), so the
+   new tab's content flashes instead (main.ts `setRepoTab`): the 14-day bars grow and the deploy
+   dots pop again. `backwards`, not `both`: a filled transform would outlive the flash and
+   swallow the dot's hover scale. */
+.cnpy-flash .repo-bar { animation:cnpy-grow-y .45s cubic-bezier(.2,.7,.2,1) backwards; animation-delay:calc(var(--i, 0) * 16ms + 60ms); }
+.cnpy-flash .repo-dot { animation:cnpy-dot .3s cubic-bezier(.34,1.56,.64,1) backwards; animation-delay:calc(var(--i, 0) * 22ms + 60ms); }
 @container (max-width: 760px) { .repo-kpis { grid-template-columns:repeat(2,minmax(0,1fr)) !important; } .repo-pgrid > * { grid-column:1 / -1 !important; } }
 @container (max-width: 420px) { .repo-kpis > * { padding:14px 14px 14px !important; } .repo-kpi-n { font-size:20px !important; } .repo-kpi-s { flex-basis:100%; } }
 /* phone: the frame keeps a 16px gutter instead of the desktop 32px */
@@ -1210,19 +1216,20 @@ input, select { font-family: inherit; }
    rail as much as on the viewport, so this keys off the BAR's own width — and
    only a bar that HAS the button becomes a container, so nobody else's changes.
    Measured (a container query sees the CONTENT box, 48px inside the bar): the
-   crumb needs ~271px + a 16px gap, the labelled controls 446px → 733px. Under
-   740px the button is icon-only, the size of the refresh icon beside it
-   (controls 383px → 670px); under 676px the "updated …" text gives up its room
-   too (281px — narrower than the 343px a non-admin's bar already takes, so the
-   phone-width bar is never tighter for having the button). In viewport terms
-   with the rail collapsed (it is, under 900px): icon-only below ~850px, no
-   "updated …" below ~790px. */
+   title + repo slug need ~156px + a 16px gap (the crumb no longer names the tab —
+   the page's tab bar does), the labelled controls 446px → 618px. Under 624px the
+   button is icon-only, the size of the refresh icon beside it (controls 383px →
+   555px); under 560px the "updated …" text gives up its room too (281px —
+   narrower than the 343px a non-admin's bar already takes, so the phone-width bar
+   is never tighter for having the button). In viewport terms with the rail
+   collapsed (it is, under 900px): icon-only below ~735px, no "updated …" below
+   ~670px. */
 [data-screen="repo"] header:has(.repo-pollbtn) { container:repohead / inline-size; }
-@container repohead (max-width: 740px) {
+@container repohead (max-width: 624px) {
   .repo-pollbtn { width:32px; padding:0 !important; justify-content:center; }
   .repo-pollbtn-label { display:none; }
 }
-@container repohead (max-width: 676px) { [data-repo-updated] { display:none; } }
+@container repohead (max-width: 560px) { [data-repo-updated] { display:none; } }
 
 @media (prefers-reduced-motion: reduce) {
   .cnpy-aside, .cnpy-aside *, .cnpy-aside *::before, .cnpy-aside *::after { transition:none !important; }

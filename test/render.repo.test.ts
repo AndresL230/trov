@@ -10,6 +10,8 @@ import { repoView, repoControls, repoCrumb, repoPollFor, repoUpdatedLabel, spark
 import { repoSample } from "../web/src/repo-sample";
 import { productKeyInfo } from "../src/repo/product";
 import { render, initialState } from "../web/src/render";
+import { QUICK_SCREENS } from "../web/src/quicksearch";
+import mainSrc from "../web/src/main.ts?raw";
 import { REPO_TABS, type RepoDashboard, type RepoPerson, type RepoProductCount, type RepoProductEnv, type RepoRefreshResult } from "@shared/repo";
 
 const NC = { status: "not_connected" } as const;
@@ -472,10 +474,13 @@ describe("repoView — live content", () => {
 });
 
 describe("repo header chrome", () => {
-  it("names the tab and the repo in the breadcrumb", () => {
+  it("names the repo beside the title — the tab is the tab bar's to name", () => {
     const html = repoCrumb(props({ tab: "ci" }));
-    expect(html).toContain("CI &amp; Deploys");
     expect(html).toContain("SaplingLearn/sapling");
+    expect(html).not.toContain("CI &amp; Deploys");
+    expect(html).not.toContain("›");
+    // Nothing until the slug is known — never a lone separator.
+    expect(repoCrumb(props({ repo: { status: "loading", data: null } }))).toBe("");
   });
 
   it("shows environment pills only when environments are connected", () => {
@@ -499,6 +504,111 @@ describe("repo header chrome", () => {
     expect(html).toContain(">Repo</h1>");
     expect(html).toContain('class="cnpy-navrow n-repo is-active"');
     expect(html).toContain('data-screen-label="Code"');
+  });
+});
+
+describe("Repo — the tab bar heading the page (the sidebar has no sub-page list)", () => {
+  /** The `.cnpy-tabs` bar carrying `data-tabs="repo-tab"`, up to its closing </div>. */
+  const tabs = (html: string) => {
+    const at = html.indexOf('data-tabs="repo-tab"');
+    return at < 0 ? "" : html.slice(at, html.indexOf("</div>", at));
+  };
+  const app = (over: Partial<ReturnType<typeof initialState>> = {}) => render({
+    ...initialState(), view: "app", screen: "repo", repo: { status: "ok", data: live() },
+    me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: true },
+    ...over,
+  });
+  const header = (html: string) => html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+  const main = (html: string) => html.slice(html.indexOf("</header>"));
+  const TABS = REPO_TABS.map(([k]) => k);
+
+  it("offers the five tabs in order, the current one selected and inert", () => {
+    const bar = tabs(repoView(props({ tab: "usage" })));
+    expect(bar).toContain('role="tablist" aria-label="Repo sections"');
+    expect(bar.match(/role="tab"/g)?.length).toBe(5);
+    const at = REPO_TABS.map(([, label]) => bar.indexOf(`>${label.replace("&", "&amp;")}</button>`));
+    expect(at.every((n) => n > 0)).toBe(true);
+    for (let i = 1; i < at.length; i++) expect(at[i]).toBeGreaterThan(at[i - 1]);
+    expect(bar).toMatch(/id="repo-tab-usage" class="cnpy-tab is-on" aria-selected="true"[^>]*tabindex="0"[^>]*>Usage/);
+    expect(bar).not.toContain('data-arg="usage"');
+    for (const t of TABS.filter((t) => t !== "usage")) {
+      expect(bar, t).toContain(`id="repo-tab-${t}" class="cnpy-tab" data-act="setRepoTab" data-arg="${t}" aria-selected="false"`);
+    }
+    // ONE rerender, no load: the payload covers every tab.
+    expect(mainSrc).toMatch(/case "setRepoTab": \{[\s\S]{0,160}state\.repoTab = tab;[\s\S]{0,120}break;/);
+    expect(mainSrc).not.toMatch(/case "setRepoTab": \{[^}]*loadRepo/);
+  });
+
+  it("heads the page BODY on every tab, and the labelled panel follows its line", () => {
+    for (const repoTab of TABS) {
+      const html = app({ repoTab });
+      expect(header(html), repoTab).not.toContain('data-tabs="repo-tab"');
+      const body = main(html);
+      const page = body.indexOf('class="repo-frame"');
+      const at = body.indexOf('data-tabs="repo-tab"');
+      const panel = body.indexOf(`role="tabpanel" id="repo-tab-panel" aria-labelledby="repo-tab-${repoTab}"`);
+      expect(at, repoTab).toBeGreaterThan(page);
+      expect(panel, repoTab).toBeGreaterThan(at);
+      // Nothing of the page sits above the bar: it is the page's first thing.
+      expect(body.slice(page, at), repoTab).not.toMatch(/>[^<\s]/);
+      expect(body.indexOf('class="repo-panel', panel), repoTab).toBeGreaterThan(panel);
+    }
+  });
+
+  it("is there in every state of the dashboard, always as the page's first thing", () => {
+    const states: RepoProps["repo"][] = [
+      { status: "ok", data: live() }, // every capturable section not_connected / empty
+      { status: "ok", data: live({ degraded: true }) },
+      { status: "loading", data: null },
+      { status: "loading", data: live() },
+      { status: "error", data: null, error: "boom" },
+      { status: "ok", data: repoSample() },
+    ];
+    for (const repo of states) {
+      for (const sample of [false, true]) {
+        const html = repoView(props({ tab: "ci", repo, sample }));
+        const label = `${repo.status}${repo.data ? "+data" : ""}${sample ? " sample" : ""}`;
+        expect(tabs(html), label).toContain('aria-selected="true"');
+        expect(html.indexOf('data-tabs="repo-tab"'), label).toBeLessThan(html.indexOf('id="repo-tab-panel"'));
+        expect(html.slice(0, html.indexOf('data-tabs="repo-tab"')), label).not.toMatch(/>[^<\s]/);
+      }
+    }
+  });
+
+  it("puts the banners, the Poll now strip and the not-connected footer under the line, in the panel", () => {
+    const under = (html: string, needle: string) => {
+      expect(html, needle).toContain(needle);
+      expect(html.indexOf(needle), needle).toBeGreaterThan(html.indexOf('id="repo-tab-panel"'));
+    };
+    under(repoView(props({ repo: { status: "ok", data: live({ degraded: true }) } })), "Some reads failed");
+    under(repoView(props({ repo: { status: "ok", data: repoSample() }, sample: true })), "Back to live data");
+    under(repoView(props({ tab: "usage" })), 'data-act="repoSampleOn"');
+    under(repoView(props({ admin: true, poll: { status: "busy" } })), 'class="repo-poll-strip"');
+  });
+
+  it("the top bar keeps every control: environments, updated, Poll now (admins), refresh", () => {
+    const h = header(app({ repoTab: "usage", repo: { status: "ok", data: repoSample() } }));
+    expect(h).toContain(">Repo</h1>");
+    expect(h).toContain("SaplingLearn/sapling");
+    for (const needle of ["staging — degraded", "data-repo-updated", 'data-act="repoPollNow"', 'data-act="repoRefresh"']) expect(h, needle).toContain(needle);
+    // The range picker stays on the Usage tab, under the line — not in the bar.
+    const body = main(app({ repoTab: "usage" }));
+    expect(body.indexOf('data-seg="repo-range"')).toBeGreaterThan(body.indexOf('id="repo-tab-panel"'));
+  });
+
+  it("switching tabs never replays the screen's entrance (the underline slides unbroken)", () => {
+    expect(mainSrc).toMatch(/hashForRoute\(\{ \.\.\.currentRoute\(\), [^}]*repoTab: undefined[^}]*\}\)/);
+  });
+
+  it("quick search's Repo entries each land on their tab — goRepo with the tab, not the retired navSub", () => {
+    const repo = QUICK_SCREENS.filter((s) => s.label.startsWith("Repo › "));
+    expect(repo.map((s) => s.steps)).toEqual(TABS.map((t) => [["goRepo", t]]));
+    expect(mainSrc).toMatch(/case "goRepo": state\.screen = "repo"; state\.repoTab = arg && isRepoTab\(arg\) \? arg : "overview";/);
+    expect(mainSrc).not.toMatch(/g === "repo"/);
+  });
+
+  it("appears only on Repo", () => {
+    expect(render({ ...initialState(), view: "app", screen: "feed" })).not.toContain('data-tabs="repo-tab"');
   });
 });
 

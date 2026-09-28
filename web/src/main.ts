@@ -94,7 +94,7 @@ try {
   const c = localStorage.getItem("canopy.collapsed");
   if (c) state.collapsed = c === "1";
   const open = JSON.parse(localStorage.getItem("canopy.navOpen") ?? "{}") as Record<string, unknown>;
-  // Only live groups are read, so a retired one's key (tickets, maintenance) is ignored.
+  // Only live groups are read, so a retired one's key (tickets, maintenance, repo) is ignored.
   for (const g of NAV_GROUPS) if (typeof open[g] === "boolean") state.navOpen[g] = open[g] as boolean;
 } catch { /* localStorage unavailable, or a hand-edited value */ }
 
@@ -171,10 +171,10 @@ function markEnter(): void {
   if (!root || state.view !== "app") return;
   const settled = screenSettled();
   // An in-page view switch (the header's segmented switch — Roadmap Narrative/Timeline, a
-  // release's Release/Patch notes — or a page's tab bar, Maintenance's tabs) is not a new
-  // page: key the entrance on the route WITHOUT it, so flipping the switch swaps the content
-  // in place instead of replaying the screen (and the tab bar's underline slides unbroken).
-  const key = `${hashForRoute({ ...currentRoute(), roadmapTab: undefined, releasePage: undefined, maintTab: undefined })}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
+  // release's Release/Patch notes — or a page's tab bar, Maintenance's and Repo's tabs) is not
+  // a new page: key the entrance on the route WITHOUT it, so flipping the switch swaps the
+  // content in place instead of replaying the screen (and the tab bar's underline slides unbroken).
+  const key = `${hashForRoute({ ...currentRoute(), roadmapTab: undefined, releasePage: undefined, maintTab: undefined, repoTab: undefined })}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
   const now = performance.now();
   // A still-loading paint does not enter: the entrance plays ONCE, when the screen's
   // read lands. Playing it for the loading paint too made every first visit (and every
@@ -1998,7 +1998,19 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "fmToggle": case "fmClose": case "fmCat": filterMenuAct(act, arg); return;
 
     // ── Repo dashboard ───────────────────────────────────────────────────────
-    case "goRepo": state.screen = "repo"; state.repoTab = "overview"; loadRepoIfNeeded(); return;
+    // `arg` = the tab to land on (quick search's "Repo › …" entries); none = Overview.
+    case "goRepo": state.screen = "repo"; state.repoTab = arg && isRepoTab(arg) ? arg : "overview"; loadRepoIfNeeded(); return;
+    // The page's tab bar: the one dashboard payload covers every tab, so a switch is ONE
+    // rerender with nothing to load — goRepo's load would rebuild the bar and cut its slide.
+    // The entrance is not replayed (markEnter), so the new tab's content flashes in instead:
+    // a short rise, and its sparklines / fills / bars grow again.
+    case "setRepoTab": {
+      const tab = arg ?? "";
+      if (!isRepoTab(tab) || tab === state.repoTab) return;
+      state.repoTab = tab;
+      pendingFlash = ".repo-panel > :not(.repo-poll-strip)";
+      break;
+    }
     case "repoRefresh": if (state.repo.status !== "loading") loadRepo(); return;
     case "repoRange":
       if (!(REPO_RANGES as readonly string[]).includes(arg ?? "") || arg === state.repoRange) return;
@@ -2038,7 +2050,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "navSub": {
       // `<group>:<page>` — each page is an existing destination, reached in one click.
       const [g, page = ""] = (arg ?? "").split(":");
-      if (g === "repo") { if (!isRepoTab(page)) return; state.screen = "repo"; state.repoTab = page; loadRepoIfNeeded(); return; }
       if (g === "docs") { state.screen = "docs"; dispatch("setDocSpace", page, null); loadDocsIfNeeded(); return; }
       return;
     }

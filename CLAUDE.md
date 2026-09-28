@@ -650,7 +650,7 @@ that renders a "No summary recorded" placeholder. Stored as columns on `pr_summa
 `model != 'excerpt' AND title IS NOT NULL`) — never truth, never generated at render.
 
 **The Repo dashboard** (`GET /repo/dashboard` → `getRepoDashboard` in `src/tools/repo.ts`; screen `#repo`,
-`#repo/code|ci|usage|planning`) is the same class of read as My Work: D1-only, session-cookie, never a 500
+`#repo/code|ci|usage|planning`, its tabs the underline tab bar heading the page body) is the same class of read as My Work: D1-only, session-cookie, never a 500
 (a throw yields `emptyRepoDashboard(repo, degraded:true)`) — and, like My Work, the READ is also an MCP tool
 for every principal (`get_repo_dashboard`, see Read side); "Poll now" and Sync GitHub stay session-cookie +
 admin, NEVER MCP. **Nothing on its render
@@ -999,12 +999,13 @@ mode, and a non-admin's bar is byte-for-byte what it was (pinned by a test; the 
 "Reload from Canopy's database" only beside the button, whose own is "Poll deploys, CI, usage and health now
 (admin) — issues refresh with Sync GitHub", and "Polling…" while it runs). A
 container query on the BAR (`.repo-pollbtn` in `canopy.css`; only a bar that has the button is a container)
-makes it icon-only when crumb + labelled controls no longer fit (bar content < 740px — a viewport under
-~850px with the rail collapsed) and drops the "updated …" text under 676px, so at phone width an admin's
+makes it icon-only when title + repo slug + labelled controls no longer fit (bar content < 624px — a viewport
+under ~735px with the rail collapsed; the crumb is only the slug, the tab bar names the tab) and drops the
+"updated …" text under 560px, so at phone width an admin's
 controls (281px) are narrower than a non-admin's (343px). While in flight it is disabled and reads
 "Polling…" (the refresh icon's `cnpy-spin`, off under reduced motion); a second click does nothing. On
 completion the dashboard reloads (the payload stays on screen, so the entrance is not replayed) and a
-dismissible strip flashes in at the top of WHICHEVER tab is open (`state.repoPoll`, `repoPollFor`:
+dismissible strip flashes in at the top of WHICHEVER tab is open, under the tab bar's line (`state.repoPoll`, `repoPollFor`:
 session-only, survives a tab switch, cleared on leaving the Repo screen): `Health — 3 up · staging api ✗
 timeout`, the three usage lines as below, `GitHub — 12 new · 240 unchanged` / `✗ failed: deployments, runs`
 / `– skipped: …` / `not configured`; a 409 reads "A refresh is already running — try again in a minute.",
@@ -1423,9 +1424,9 @@ animates (`data-collapsed`, `.cnpy-sub[data-open]`, `.is-active`, `data-n="0"` h
 node conditionally there swaps it out from under its own animation — `test/render.sidebar.test.ts` pins the
 element tree across every state. `data-keep` marks a script-owned node (the collapsed-rail tooltip) the
 patcher leaves alone. A sub-page list the app opened on entry folds again on leaving; one opened by hand
-sticks and is what persists (`canopy.navOpen`). Only **Repo** and **Docs** own a sub-page list (`NAV_GROUPS`);
-Roadmap, Tickets and Maintenance are plain rows (Roadmap's and Tickets' switches sit in their screen header,
-Maintenance's tabs head its page body), and a stored
+sticks and is what persists (`canopy.navOpen`). Only **Docs** owns a sub-page list (`NAV_GROUPS`);
+Roadmap, Tickets, Maintenance and Repo are plain rows (Roadmap's and Tickets' switches sit in their screen
+header, Maintenance's and Repo's tabs head their page body), and a stored
 `canopy.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
@@ -1433,7 +1434,9 @@ without touching the saved preference. Search is the box at the top of the rail 
 Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, form segments. Never
 hand-roll a segment group. It picks a VALUE or a view; moving between a page's own SECTIONS is the **underline
 tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Maintenance's Unplaced / Identity / People, `maintTabBar`,
-with the rail's count badges): text tabs at the top of the page BODY on a full-width hairline that is the line
+with the rail's count badges; the Repo dashboard's Overview / Code / CI & Deploys / Usage / Team & Planning,
+`repoTabBar`, in every state of the dashboard, its switch `setRepoTab` flashing the new tab's content in place of
+the entrance): text tabs at the top of the page BODY on a full-width hairline that is the line
 between the tabs and the content, the picked tab marked by a 2px accent underline on that line, 40px tabs (a
 badge never makes one taller), a row that does not fit scrolling inside the bar, `role="tablist"` / `"tab"` +
 `aria-selected` with a roving tabindex and `tabPanelAttrs` on the panel, ←/→ and Home/End (`onTabBarKey`, which
