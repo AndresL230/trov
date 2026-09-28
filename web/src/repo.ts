@@ -3,7 +3,9 @@
 // interactions via data-act / data-arg dispatched in main.ts.
 //
 // Five tabs, each ONE bordered panel divided by hairlines (the design's rule:
-// lines, not cards). Every block is a `RepoSection`, so each one renders four
+// lines, not cards), under an underline tab bar heading the page body
+// (`repoTabBar`; they were sub-pages under the sidebar's Repo entry until
+// 2026-09-27). Every block is a `RepoSection`, so each one renders four
 // ways — live, `empty`, `not_connected` (nothing captured for it yet) and, while the
 // fetch is out or failed, loading / error. The Worker decides which sections are
 // live (`src/tools/repo.ts`); nothing here invents a number.
@@ -20,8 +22,10 @@ import {
 } from "@shared/repo";
 import type { Loadable } from "./render";
 import { esc, attr, statusBadge, SURFACE } from "./ui";
-import { personChip } from "./people";
+import { personChip, personLink, personNameLink } from "./people";
+import type { PersonSummary } from "./api";
 import { segmented } from "./segmented";
+import { tabBar, tabPanelAttrs } from "./tabs";
 
 export interface RepoProps {
   tab: RepoTab;
@@ -36,6 +40,9 @@ export interface RepoProps {
   poll: RepoPollState | null;
   /** The environment the Usage tab's Product section shows. Session-only; null = the default. */
   productEnv: string | null;
+  /** The persons directory — each mapped person's avatar (a RepoPerson carries none), and whose
+   *  card a contributor's or an activity line's name opens. */
+  persons?: PersonSummary[];
 }
 
 /** "Poll now" (POST /admin/poll): in flight, its per-source outcomes, a 409 (another refresh holds the lock), or a failed request. */
@@ -90,9 +97,18 @@ const spark = (trend: number[], stroke: string, height: number, mt = 10): string
 /** "▲ 2" / "▼ 3" / "—" — the design's week-over-week delta. */
 const delta = (n: number): string => (n > 0 ? `▲ ${n}` : n < 0 ? `▼ ${Math.abs(n)}` : "—");
 
-const avatar = (p: RepoPerson, size: number): string =>
-  personChip(p.handle && p.color ? { handle: p.handle, name: p.name, color: p.color } : null, size, p.login);
+const avatar = (p: RepoPerson, size: number, persons: PersonSummary[] = []): string => {
+  const h = p.handle?.toLowerCase();
+  const avatar_url = h ? persons.find((x) => x.handle.toLowerCase() === h)?.avatar_url ?? null : null;
+  return personChip(p.handle && p.color ? { handle: p.handle, name: p.name, color: p.color, avatar_url } : null, size, p.login);
+};
 const who = (p: RepoPerson): string => p.handle ?? p.login;
+/** The directory's person behind a captured one — whose card a name opens; null (plain) for a
+ *  login no one holds (a bot, an outside contributor) and for sample data, which is no one. */
+const linkedPerson = (x: RepoPerson, p: Pick<RepoProps, "persons" | "sample">): PersonSummary | null => {
+  const h = x.handle?.toLowerCase();
+  return h && !p.sample ? (p.persons ?? []).find((y) => y.handle.toLowerCase() === h) ?? null : null;
+};
 
 // ── section states ───────────────────────────────────────────────────────────
 type Phase = "loading" | "error" | "ready";
@@ -152,14 +168,13 @@ function okData<T>(p: RepoProps, pick: (d: RepoDashboard) => RepoSection<T>): T 
 }
 
 // ── header chrome ────────────────────────────────────────────────────────────
+/** The repo the dashboard reads, beside the title. The tab in view is named by the page's
+ *  own tab bar, so the crumb no longer repeats it; nothing is drawn until the slug is known. */
 export function repoCrumb(p: RepoProps): string {
-  const label = REPO_TABS.find(([k]) => k === p.tab)?.[1] ?? "";
   const slug = p.repo.data?.repo ?? "";
-  return `<span style="display:inline-flex;align-items:center;gap:14px;min-width:0">
-    <span style="color:var(--fg-40);font-size:13px">›</span>
-    <span style="font-size:13px;font-weight:500;color:var(--fg-70);white-space:nowrap">${esc(label)}</span>
-    ${slug ? `<span style="font-family:var(--label);font-size:11px;color:var(--fg-40);white-space:nowrap">${esc(slug)}</span>` : ""}
-  </span>`;
+  return slug
+    ? `<span style="font-family:var(--label);font-size:11px;color:var(--fg-40);white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(slug)}</span>`
+    : "";
 }
 
 /** "updated just now" / "updated 4m ago" — main.ts re-ticks this node in place. */
@@ -290,12 +305,12 @@ const PR_STATE: Record<RepoPrState, [string, string | null]> = {
 };
 const CHECKS = { pass: ["✓", "var(--green)", "all checks passing"], fail: ["✕", "var(--red)", "checks failing"], run: [GDOT, "var(--amber)", "checks running"] } as const;
 
-function prRow(pr: RepoPr, now: number): string {
+function prRow(pr: RepoPr, now: number, persons: PersonSummary[] = []): string {
   const [text, color] = PR_STATE[pr.state];
   const chip = color ? statusBadge(text, color) : `<span style="${M_CHIP}">${text}</span>`;
   const ck = pr.checks ? CHECKS[pr.checks] : null;
   return `<a href="${attr(safeUrl(pr.url))}" target="_blank" rel="noopener" class="repo-row" style="display:flex;align-items:center;gap:12px;padding:8px 20px;border-bottom:1px solid var(--border);color:inherit;text-decoration:none">
-    <span title="${attr(who(pr.author))}" style="flex:none">${avatar(pr.author, 22)}</span>
+    <span title="${attr(who(pr.author))}" style="flex:none">${avatar(pr.author, 22, persons)}</span>
     <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500">${esc(pr.title)} <span style="font-family:var(--label);font-size:11px;font-weight:400;color:var(--fg-40)">#${pr.number}${pr.branch ? ` · ${esc(pr.branch)}` : ""}</span></span>
     <span style="flex:none">${chip}</span>
     <span title="${ck ? ck[2] : ""}" style="width:16px;text-align:center;flex:none;font-family:var(--label);font-size:12px;font-weight:600;color:${ck ? ck[1] : "transparent"}">${ck ? ck[0] : ""}</span>
@@ -334,7 +349,7 @@ function codeTab(p: RepoProps): string {
   // `ok` with no rows happens once open PRs are captured (`openCount` known)
   // but nothing was touched in 90 days — say that, not "not captured".
   const prs = sec(p, (d) => d.prs, { nc: "Pull requests aren't connected.", empty: "No pull requests captured yet.", lines: 4 }, (l) =>
-    l.rows.length ? l.rows.map((r) => prRow(r, now)).join("") : `<div style="padding:6px 20px">${emptyBlock("No pull requests updated in the last 90 days.")}</div>`);
+    l.rows.length ? l.rows.map((r) => prRow(r, now, p.persons)).join("") : `<div style="padding:6px 20px">${emptyBlock("No pull requests updated in the last 90 days.")}</div>`);
 
   const br = okData(p, (d) => d.branches);
   const branches = sec(p, (d) => d.branches, { nc: "No branch snapshot yet. One is taken when an admin runs Sync GitHub and by the 6-hourly GitHub reconcile — both need GITHUB_SERVICE_TOKEN.", empty: "No branches recorded." }, (b) =>
@@ -369,12 +384,17 @@ const ACTIVITY_ICON: Record<RepoActivityKind, [string, string]> = {
   review: ["M4 12c2.7-4.7 13.3-4.7 16 0-2.7 4.7-13.3 4.7-16 0z", "var(--fg-55)"],
 };
 
-function activityRow(a: RepoActivity, now: number): string {
+function activityRow(a: RepoActivity, now: number, p: Pick<RepoProps, "persons" | "sample">): string {
   const [d, c] = ACTIVITY_ICON[a.kind];
-  const text = `${a.actor ? `${esc(who(a.actor))} ` : ""}${esc(a.text)}`;
-  const body = a.url && safeUrl(a.url) !== "#"
-    ? `<a href="${attr(safeUrl(a.url))}" target="_blank" rel="noopener" class="repo-quiet" style="font-size:12.5px;color:var(--fg-70);min-width:0;flex:1;line-height:1.5;text-decoration:none">${text}</a>`
-    : `<span style="font-size:12.5px;color:var(--fg-70);min-width:0;flex:1;line-height:1.5">${text}</span>`;
+  const line = "font-size:12.5px;color:var(--fg-70);min-width:0;flex:1;line-height:1.5";
+  const actor = a.actor ? linkedPerson(a.actor, p) : null;
+  const link = a.url && safeUrl(a.url) !== "#" ? safeUrl(a.url) : null;
+  // A known actor's name opens their person card, so it sits BESIDE the event's link, never in it.
+  const body = actor && a.actor
+    ? `<span style="${line}">${personNameLink(actor, who(a.actor))} ${link ? `<a href="${attr(link)}" target="_blank" rel="noopener" class="repo-quiet" style="text-decoration:none">${esc(a.text)}</a>` : esc(a.text)}</span>`
+    : link
+      ? `<a href="${attr(link)}" target="_blank" rel="noopener" class="repo-quiet" style="${line};text-decoration:none">${a.actor ? `${esc(who(a.actor))} ` : ""}${esc(a.text)}</a>`
+      : `<span style="${line}">${a.actor ? `${esc(who(a.actor))} ` : ""}${esc(a.text)}</span>`;
   return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 4px;${TOP}">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" style="flex:none;margin-top:3px"><path d="${d}"></path></svg>
     ${body}
@@ -443,7 +463,7 @@ function ciTab(p: RepoProps): string {
   const bundle = sec(p, (d) => d.bundle, { nc: "No bundle size reported yet. It appears once the repo's CI posts a canopy/bundle-kb commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.", empty: "No bundle size reported in the last 30 days.", lines: 2 }, (t) => trendBlock("Bundle size — web", t, "var(--fg-55)"));
 
   const activity = sec(p, (d) => d.activity, { nc: "The activity feed isn't connected.", empty: "No repo events captured yet.", lines: 4 }, (rows) =>
-    `<div class="cnpy-scroll" style="max-height:236px;overflow-y:auto">${rows.map((a) => activityRow(a, now)).join("")}</div>`);
+    `<div class="cnpy-scroll" style="max-height:236px;overflow-y:auto">${rows.map((a) => activityRow(a, now, p)).join("")}</div>`);
   const count = okData(p, (d) => d.activity)?.length ?? 0;
 
   return `<div ${rise(0, `padding:18px 20px 4px`)}>
@@ -937,8 +957,13 @@ function planningTab(p: RepoProps): string {
     const max = Math.max(1, ...rows.map((r) => r.pushes + r.merged + (r.reviews ?? 0)));
     return rows.map((r, i) => {
       const color = r.person.color ? `var(--p-${r.person.color})` : "var(--fg-40)";
+      // A known person is one chip that opens their card; a bot or an unmapped login stays plain.
+      const linked = linkedPerson(r.person, p);
+      const name = "font-family:var(--label);font-size:11.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
       return `<div style="display:grid;grid-template-columns:112px minmax(0,1fr) 74px;gap:12px;align-items:center;padding:5.5px 0;${TOP}">
-        <span style="display:inline-flex;align-items:center;gap:7px;min-width:0">${avatar(r.person, 20)}<span style="font-family:var(--label);font-size:11.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(who(r.person))}</span></span>
+        ${linked
+          ? `<span style="display:inline-flex;min-width:0">${personLink(linked, r.person.login, 20, who(r.person), `min-width:0;${name}`)}</span>`
+          : `<span style="display:inline-flex;align-items:center;gap:7px;min-width:0">${avatar(r.person, 20, p.persons)}<span style="${name}">${esc(who(r.person))}</span></span>`}
         <span style="display:block;height:6px;border-radius:999px;background:var(--hover);overflow:hidden"><span class="repo-fill" style="--i:${i};display:block;height:100%;border-radius:999px;background:${color};width:${Math.round(((r.pushes + r.merged + (r.reviews ?? 0)) / max) * 100)}%"></span></span>
         <span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55);text-align:right">${r.pushes} · ${r.merged} · ${r.reviews === null ? "—" : r.reviews}</span>
       </div>`;
@@ -1001,6 +1026,19 @@ function hasUncaptured(p: RepoProps): boolean {
   return REPO_TAB_SECTIONS[p.tab].some((k) => ((d[k] as RepoSection<unknown> | undefined)?.status ?? "not_connected") === "not_connected");
 }
 
+/** The page's tab bar: every tab is in the one dashboard payload, so a switch
+ *  (`setRepoTab`) is ONE rerender with nothing to load, and the underline slides. */
+export function repoTabBar(tab: RepoTab): string {
+  return tabBar({
+    id: "repo-tab", ariaLabel: "Repo sections", act: "setRepoTab", value: tab,
+    tabs: REPO_TABS.map(([value, label]) => ({ value, label })),
+  });
+}
+
+/** One tab of the dashboard, under the tab bar. The bar renders in EVERY state (loading,
+ *  failed, degraded, sample, nothing connected) — only the panel's content changes — so its
+ *  line and underline never move; the sample / degraded banner, the "Poll now" strip and the
+ *  "not connected" footer all sit under the line, in the labelled panel. */
 export function repoView(p: RepoProps): string {
   const body = p.tab === "overview" ? overviewTab(p) : p.tab === "code" ? codeTab(p) : p.tab === "ci" ? ciTab(p)
     : p.tab === "usage" ? usageTab(p) : planningTab(p);
@@ -1022,8 +1060,11 @@ export function repoView(p: RepoProps): string {
     : "";
 
   return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}">
-    ${banner}
-    <div class="repo-panel ${SURFACE}" style="${PANEL}">${canPollRepo(p) ? pollStrip(p.poll) : ""}${body}</div>
-    ${footer}
+    ${repoTabBar(p.tab)}
+    <div${tabPanelAttrs("repo-tab", p.tab)} style="padding-top:20px">
+      ${banner}
+      <div class="repo-panel ${SURFACE}" style="${PANEL}">${canPollRepo(p) ? pollStrip(p.poll) : ""}${body}</div>
+      ${footer}
+    </div>
   </div>`;
 }

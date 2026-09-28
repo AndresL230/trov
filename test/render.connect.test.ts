@@ -1,86 +1,20 @@
 /**
- * Settings › "Get connection command" — the pure snippet builder and the modal.
+ * Settings › MCP access — OAuth only — and the Settings bento around it.
  *
- *  • connectSnippet — each client's exact setup, with the token filled in
- *  • connectModal — closed → nothing; minting → a spinner and no token;
- *    ready → the setup + Copy + where the token now lives; failed → the error;
- *    the pressed tab is inert (no data-act)
+ *  • mcpAccessSection — one line, the three browser sign-in steps, Connected apps, and a
+ *    quiet link to the by-hand command; nothing mints or shows a token
+ *  • mcpSetupModal — that command in a root-level modal, so the tile never grows
+ *  • grantListBody — the OAuth connections, capped with "Show all", two-click revoke
+ *  • the Get Started guide says the same thing, browser sign-in first
+ *  • the bento — one grid, every tile stretched to shared rows: even edges
  */
 import { describe, it, expect } from "vitest";
-import { connectSnippet, connectModal, tokenLabel, grantListBody, browserConnectCommand, render, initialState } from "../web/src/render";
+import { grantListBody, mcpAccessSection, mcpSetupModal, MCP_LIST_CAP, PLUGIN_INSTALL, browserConnectCommand, render, initialState } from "../web/src/render";
+import { esc } from "../web/src/ui";
 import css from "../web/src/canopy.css?raw";
 
 const URL = "https://canopy.example.com/mcp";
-const TOKEN = "canopy_mcp_abcd1234";
-
-describe("connectSnippet", () => {
-  it("Claude Code: a user-scoped http server with the token as a bearer header", () => {
-    const s = connectSnippet("claude", TOKEN, URL);
-    expect(s).toContain(`claude mcp add --transport http --scope user canopy ${URL}`);
-    expect(s).toContain(`--header "Authorization: Bearer ${TOKEN}"`);
-  });
-
-  it("Codex: the token in CANOPY_MCP_TOKEN, read through --bearer-token-env-var", () => {
-    const s = connectSnippet("codex", TOKEN, URL);
-    expect(s.split("\n")).toEqual([
-      `export CANOPY_MCP_TOKEN=${TOKEN}`,
-      `codex mcp add canopy --url ${URL} --bearer-token-env-var CANOPY_MCP_TOKEN`,
-    ]);
-  });
-
-  it("Token only: the bare token", () => {
-    expect(connectSnippet("token", TOKEN, URL)).toBe(TOKEN);
-  });
-
-  it(".mcp.json: valid JSON carrying the url and the bearer header", () => {
-    const cfg = JSON.parse(connectSnippet("json", TOKEN, URL));
-    expect(cfg.mcpServers.canopy).toEqual({ type: "http", url: URL, headers: { Authorization: `Bearer ${TOKEN}` } });
-  });
-});
-
-describe("connectModal", () => {
-  const base = { connectClient: "claude" as const, connectCopied: false };
-
-  it("renders nothing while closed", () => {
-    expect(connectModal({ ...base, connect: null })).toBe("");
-  });
-
-  it("while minting: a dialog with no token, no Copy and no Done", () => {
-    const html = connectModal({ ...base, connect: { token: null, error: null } });
-    expect(html).toContain('role="dialog"');
-    expect(html).toContain("Creating a token");
-    expect(html).not.toContain('data-act="connectCopy"');
-    expect(html).not.toContain(">Done<");
-  });
-
-  it("once minted: the setup with the token, Copy, Done, and where the token lives in Settings", () => {
-    const html = connectModal({ ...base, connectClient: "codex", connect: { token: TOKEN, error: null } });
-    expect(html).toContain(`export CANOPY_MCP_TOKEN=${TOKEN}`);
-    expect(html).toContain('data-act="connectCopy"');
-    expect(html).toContain(">Done<");
-    expect(html).toContain("Access tokens</strong> under MCP access in Settings");
-    expect(html).toContain(tokenLabel(TOKEN));
-    expect(html).toContain("only time the token is shown");
-  });
-
-  it("a failed mint says so and offers only Close", () => {
-    const html = connectModal({ ...base, connect: { token: null, error: "boom" } });
-    expect(html).toContain("boom");
-    expect(html).not.toContain('data-act="connectCopy"');
-  });
-
-  it("the pressed tab carries no data-act; the others switch client", () => {
-    const html = connectModal({ ...base, connectClient: "json", connect: { token: TOKEN, error: null } });
-    expect(html).not.toContain('data-arg="json"');
-    for (const id of ["claude", "codex", "token"]) expect(html).toContain(`data-act="connectClient" data-arg="${id}"`);
-  });
-});
-
-describe("tokenLabel", () => {
-  it("is the row Settings lists: canopy_mcp_ + the first 4 characters", () => {
-    expect(tokenLabel(TOKEN)).toBe("canopy_mcp_abcd");
-  });
-});
+const ME = { handle: "alice", name: null, avatar_url: null, color: "moss" as const, identities: [], org: "SaplingLearn", admin: false };
 
 describe("browserConnectCommand", () => {
   it("adds the server with no header — Claude Code signs in through the browser", () => {
@@ -89,26 +23,29 @@ describe("browserConnectCommand", () => {
 });
 
 describe("Get Started guide — Connect your agent", () => {
-  const guideState = () => ({
-    ...initialState(),
-    view: "app" as const,
-    screen: "guide" as const,
-    me: { handle: "alice", name: null, avatar_url: null, color: "moss" as const, identities: [], org: "SaplingLearn", admin: false },
+  const guideState = () => ({ ...initialState(), view: "app" as const, screen: "guide" as const, me: ME });
+
+  it("leads with the plugin and the browser sign-in, the same three steps as Settings", () => {
+    const html = render(guideState());
+    const install = html.indexOf("/plugin install canopy@canopy");
+    const auth = html.indexOf("Authenticate", install);
+    const allow = html.indexOf("Allow", auth);
+    expect(install).toBeGreaterThan(-1);
+    expect(auth).toBeGreaterThan(install);
+    expect(allow).toBeGreaterThan(auth);
+    expect(html).toContain("Set it up without the plugin");
   });
 
-  it("points at Sign in with browser, not the retired MCP access tokens heading", () => {
+  it("never sends anyone to mint a token in Settings, or to the retired connection command", () => {
     const html = render(guideState());
-    expect(html).toContain("Sign in with browser");
+    expect(html).not.toContain("Get connection command");
+    expect(html).not.toContain("mint a new token");
     expect(html).not.toContain("MCP access tokens");
-  });
-
-  it("never tells the plugin to read CANOPY_MCP_TOKEN — it connects by browser sign-in", () => {
-    const html = render(guideState());
-    // The variable may be named for token-based clients (Codex, CI) in troubleshooting,
+    expect(html).not.toContain("/guide/connect-");
+    // The variable may be named for an agent still on an older token (troubleshooting),
     // but the setup never asks anyone to export it.
     expect(html).not.toContain("export CANOPY_MCP_TOKEN");
     expect(html).not.toContain("set -Ux CANOPY_MCP_TOKEN");
-    expect(html).toContain("Authenticate");
   });
 });
 
@@ -128,12 +65,165 @@ describe("grantListBody", () => {
     expect(armed).toContain(`data-act="revokeGrant" data-arg="7"`);
     expect(armed).toContain(`data-act="revokeGrantCancel"`);
   });
-  it("the rows sit in the capped scroller, so many apps never grow the tile", () => {
-    expect(grantListBody({ grants: { status: "ok", data: [grant, { ...grant, id: 8 }, { ...grant, id: 9 }] }, grantRevokeArm: null }))
-      .toMatch(/^<div class="cnpy-scroll cnpy-set-grants">[\s\S]*<\/div>$/);
+  // The old list was a fixed-height scroller so the stretched bento never moved. The bento
+  // balances by content instead, so the invariant is the opposite one: no fixed height, no
+  // inner scroller — at most MCP_LIST_CAP rows, and only "Show all" grows the list.
+  it("many apps show the first MCP_LIST_CAP, a count and a Show all N — never an inner scroller", () => {
+    const many = { status: "ok" as const, data: [7, 8, 9, 10].map((id) => ({ ...grant, id })) };
+    const shut = grantListBody({ grants: many, grantRevokeArm: null });
+    expect(shut).toMatch(/^<div class="cnpy-mcp-list" data-list="grants">[\s\S]*<\/div>$/);
+    expect(shut).not.toContain("cnpy-scroll");
+    expect(shut).toMatch(/>Connected apps<\/span><span[^>]*>4<\/span>/);
+    expect(shut.match(/data-act="revokeGrantArm"/g)).toHaveLength(MCP_LIST_CAP);
+    expect(shut).toContain('data-act="mcpShowAll" aria-expanded="false"');
+    expect(shut).toContain(">Show all 4<");
+    const open = grantListBody({ grants: many, grantRevokeArm: null, grantsAll: true });
+    expect(open.match(/data-act="revokeGrantArm"/g)).toHaveLength(4);
+    expect(open).toContain(">Show fewer<");
+    expect(grantListBody({ grants: { status: "ok", data: many.data.slice(0, MCP_LIST_CAP) }, grantRevokeArm: null })).not.toContain("mcpShowAll");
   });
 });
 
+describe("Settings › MCP access — the browser sign-in, then Connected apps", () => {
+  const base = { grants: { status: "ok" as const, data: [] }, grantRevokeArm: null, grantsAll: false };
+
+  it("reads top to bottom: the heading with the by-hand link, what it is, the three numbered steps, Connected apps", () => {
+    const html = mcpAccessSection(base);
+    const at = (needle: string) => {
+      const i = html.indexOf(needle);
+      expect(i, `missing ${needle}`).toBeGreaterThan(-1);
+      return i;
+    };
+    const order = [
+      at(">MCP access<"),
+      at('data-act="mcpSetupOpen"'),
+      at("Sign Claude Code in with your browser"),
+      at("Install the Canopy plugin"),
+      at("/mcp"),
+      at("Click <strong"),
+      at('data-list="grants"'),
+    ];
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect([...html.matchAll(/<li /g)]).toHaveLength(3);
+    expect(html).toContain('data-act="copyPluginInstall"');
+    for (const line of PLUGIN_INSTALL.split("\n")) expect(html).toContain(line);
+  });
+
+  it("the heading sits as far above the content as every other tile's (14px), and the steps 20px under the intro", () => {
+    const html = mcpAccessSection(base);
+    // The heading row (label + the by-hand link) carries the 14px the other tiles' labels do.
+    expect(html).toMatch(/<div style="display:flex;align-items:baseline;[^"]*margin-bottom:14px">\s*<div style="[^"]*margin-bottom:14px;margin-bottom:0">MCP access</);
+    const settings = render({ ...initialState(), view: "app" as const, screen: "settings" as const, me: ME });
+    for (const t of ["Profile", "Account", "Appearance"]) expect(settings).toMatch(new RegExp(`margin-bottom:14px">${t}<`));
+    expect(css).toMatch(/\.cnpy-mcp-body \{[^}]*margin-top:20px;/);
+  });
+
+  it("the by-hand setup is a MODAL: the tile carries only a quiet link that opens a dialog, never the command", () => {
+    const tile = mcpAccessSection(base);
+    expect(tile).toMatch(/<button data-act="mcpSetupOpen" data-mcp-setup-trigger aria-haspopup="dialog" class="cnpy-mutelink"[^>]*>Set it up without the plugin/);
+    // No inline disclosure left: no toggle state, no command, no copy button in the tile.
+    expect(tile).not.toContain("aria-expanded=\"false\" aria-controls");
+    expect(tile).not.toContain('data-act="mcpManual"');
+    expect(tile).not.toContain("claude mcp add");
+    expect(tile).not.toContain('data-act="copyBrowserConnect"');
+    // No filled accent button anywhere in the tile: the steps are the content.
+    expect(tile).not.toMatch(/background:var\(--accent\);color:var\(--accent-fg\)/);
+  });
+
+  it("the modal: the confirmation modal's shell, a labelled dialog, the command with Copy, the /mcp follow-up, and two ways out", () => {
+    const html = mcpSetupModal(URL);
+    expect(html).toMatch(/^<div data-overlay="mcp-setup" class="cnpy-cmodal">/);
+    expect(html).toContain('<div data-act="mcpSetupClose" class="cnpy-cmodal-back" aria-hidden="true"></div>');
+    expect(html).toContain('class="cnpy-cmodal-wrap"');
+    // role="dialog" + aria-modal is also what makes it a bottom sheet at phone width (canopy.css).
+    expect(html).toMatch(/role="dialog" aria-modal="true" aria-labelledby="mcp-setup-t" aria-describedby="mcp-setup-d" tabindex="-1" data-mcp-setup class="cnpy-surface cnpy-cmodal-box"/);
+    expect(html).toContain('id="mcp-setup-t"');
+    expect(html).toContain(">Set it up without the plugin<");
+    expect(html).toContain(esc(browserConnectCommand(URL)));
+    expect(html).toContain('data-act="copyBrowserConnect"');
+    const follow = html.indexOf("Then run ");
+    expect(follow).toBeGreaterThan(html.indexOf("claude mcp add"));
+    expect(html.slice(follow)).toMatch(/\/mcp[\s\S]*canopy[\s\S]*Authenticate/);
+    // The backdrop and the × both close it (Escape is main.ts's).
+    expect(html.match(/data-act="mcpSetupClose"/g)).toHaveLength(2);
+    expect(html).toContain('aria-label="Close"');
+  });
+
+  it("mints nothing and shows no token: no connection command, no token list, no bearer header", () => {
+    const html = mcpAccessSection(base) + mcpSetupModal(URL);
+    for (const gone of ["connectOpen", "Get connection command", "revokeToken", "canopy_mcp_", "Authorization", "Tokens<"]) {
+      expect(html).not.toContain(gone);
+    }
+  });
+});
+
+describe("Settings › MCP access — the modal opens at the app root and never grows the tile", () => {
+  const settings = (mcpSetup: boolean, screen: "settings" | "mywork" = "settings") =>
+    render({ ...initialState(), view: "app" as const, screen, me: ME, mcpSetup });
+  const tile = (html: string) => html.match(/<section class="cnpy-tile cnpy-surface cnpy-set-mcp">[\s\S]*?<\/section>/)?.[0] ?? "";
+
+  it("closed: no dialog anywhere; open: ONE root-level data-overlay after the app, outside <main>", () => {
+    expect(settings(false)).not.toContain('data-overlay="mcp-setup"');
+    const open = settings(true);
+    expect(open.match(/data-overlay="mcp-setup"/g)).toHaveLength(1);
+    expect(open.indexOf('data-overlay="mcp-setup"')).toBeGreaterThan(open.lastIndexOf("</main>"));
+    // Only on Settings — a stale flag never opens it over another screen.
+    expect(settings(true, "mywork")).not.toContain('data-overlay="mcp-setup"');
+  });
+
+  it("opening it adds nothing to the tile: the MCP tile renders byte-for-byte the same", () => {
+    const shut = tile(settings(false));
+    expect(shut).toContain(">MCP access<");
+    expect(tile(settings(true))).toBe(shut);
+    expect(shut).not.toContain("claude mcp add");
+  });
+});
+
+describe("Settings bento — one grid, every tile stretched to shared rows, so every edge is even", () => {
+  const settings = () => render({ ...initialState(), view: "app" as const, screen: "settings" as const, me: ME });
+  const rule = (sel: string) => css.match(new RegExp(`\\n${sel.replace(/[.]/g, "\\.")} \\{[^}]*\\}`))?.[0] ?? "";
+
+  it("the five tiles are direct children of ONE grid, in the folded order: Profile, Account, Appearance, MCP access, Email", () => {
+    const html = settings();
+    expect(html).not.toContain("cnpy-set-you");
+    const grid = html.slice(html.indexOf('<div class="cnpy-set">'));
+    const at = (needle: string) => {
+      const i = grid.indexOf(needle);
+      expect(i, `missing ${needle}`).toBeGreaterThan(-1);
+      return i;
+    };
+    const order = [at(">Profile<"), at(">Account<"), at("cnpy-set-appear"), at("cnpy-set-mcp"), at("cnpy-set-email")];
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    // Nothing wraps the tiles between the grid and them: each <section> opens at depth one.
+    const inner = grid.slice('<div class="cnpy-set">'.length);
+    expect(inner.trimStart().startsWith('<section class="cnpy-tile cnpy-surface">')).toBe(true);
+    expect(inner.match(/<section class="cnpy-tile cnpy-surface[^"]*"/g)).toHaveLength(5);
+  });
+
+  it("three columns; MCP access spans rows 1–2 of the third, Appearance columns 1–2 — and the grid STRETCHES (no align-items)", () => {
+    const set = rule(".cnpy-set");
+    expect(set).toContain("grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr)");
+    expect(rule(".cnpy-set-mcp")).toContain("grid-column:3; grid-row:1 / span 2;");
+    expect(rule(".cnpy-set-appear")).toContain("grid-column:1 / span 2;");
+    // Stretch is the default: no Settings rule may align tiles to their start (the old ragged edges).
+    expect(css).not.toMatch(/\.cnpy-set[\w-]* \{[^}]*align-(items|self):(start|flex-start)/);
+    expect(css).not.toMatch(/\.cnpy-tile \{[^}]*align-self/);
+  });
+
+  it("a stretched tile keeps its content on top and pins its foot: Profile's color and Account's sign-in methods", () => {
+    expect(rule(".cnpy-tile")).toContain("display:flex; flex-direction:column;");
+    expect(rule(".cnpy-tile-foot")).toContain("margin-top:auto;");
+    const html = settings();
+    const section = (label: string) => html.slice(html.indexOf(`>${label}<`), html.indexOf("</section>", html.indexOf(`>${label}<`)));
+    expect(section("Profile")).toMatch(/<div class="cnpy-tile-foot"[^>]*><label[^>]*>Your color</);
+    expect(section("Account")).toMatch(/<div class="cnpy-tile-foot"[^>]*>\s*<div[^>]*>Sign-in methods/);
+  });
+
+  it("folds: two columns below a 1000px page (Profile | Account, then Appearance and MCP access full width), one on a phone", () => {
+    expect(css).toMatch(/@container cnpy-set \(max-width:999px\) \{\s*\.cnpy-set \{ grid-template-columns:repeat\(2,minmax\(0,1fr\)\); \}\s*\.cnpy-set-appear, \.cnpy-set-mcp \{ grid-column:1 \/ -1; grid-row:auto; \}/);
+    expect(css).toMatch(/@container cnpy-set \(max-width:759px\) \{\s*\.cnpy-set \{[^}]*grid-template-columns:minmax\(0,1fr\); \}/);
+  });
+});
 describe("Settings › Appearance — three theme cards in one row", () => {
   const settingsState = (theme: "light" | "dark" | "system") => ({
     ...initialState(),

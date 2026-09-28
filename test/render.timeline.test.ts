@@ -146,7 +146,7 @@ describe("roadmapTimeline — the graph", () => {
   it("each row carries the lead's avatar, a state tag and how late or early it is", () => {
     const html = draw(
       [sp({ lead: "ana", due: "2026-09-03", dates: "aug 24 – sep 3", progress: { closed: 1, total: 5, pct: 20 } })],
-      { persons: [{ handle: "ana", name: "Ana Ruiz", color: "moss", avatar_url: null }] },
+      { persons: [{ handle: "ana", name: "Ana Ruiz", color: "moss", avatar_url: null, role: null }] },
     );
     const lab = html.slice(html.indexOf('class="tl-lab">'), html.indexOf('class="tl-track"'));
     expect(lab).toContain('class="cnpy-av"');
@@ -183,7 +183,7 @@ describe("roadmapTimeline — the graph", () => {
   it("the popover carries the title, the range, progress, lead / people / urgency / domain and the description's first line", () => {
     const html = draw(
       [sp({ lead: "ana", urgency: "high", domain: "search", phase: "Phase 2", members: ["ana", "bo"] })],
-      { persons: [{ handle: "ana", name: "Ana Ruiz", color: "moss", avatar_url: null }] },
+      { persons: [{ handle: "ana", name: "Ana Ruiz", color: "moss", avatar_url: null, role: null }] },
     );
     const pop = html.slice(html.indexOf('class="tl-pop"'));
     expect(pop).toContain('id="tl-pop-1"');
@@ -285,5 +285,13 @@ describe("the Timeline reads the ONE due-date rule (shared/sprints-core sprintDu
       expect(p.state === "overdue").toBe(rule.overdue);
       if (rule.overdue) expect(timingText(p, NOW)).toBe(`${rule.daysLate}d overdue`);
     }
+  });
+});
+
+describe("the Timeline's lead opens their person card", () => {
+  it("a known lead's photo is a button; an unknown lead's is plain", () => {
+    const persons = [{ handle: "ana", name: "Ana Ruiz", color: "moss" as const, avatar_url: null, role: null }];
+    expect(draw([sp({ lead: "ana" })], { persons })).toMatch(/<button data-act="openPerson" data-arg="ana" class="cnpy-personav"/);
+    expect(draw([sp({ lead: "ghost" })], { persons })).not.toContain('data-act="openPerson"');
   });
 });

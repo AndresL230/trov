@@ -38,8 +38,8 @@ function makeTodo(overrides: Partial<MyWorkTodo> = {}): MyWorkTodo {
   };
 }
 const PERSONS: PersonSummary[] = [
-  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null },
-  { handle: "alice", name: "Alice Ng", color: "moss", avatar_url: null },
+  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null, role: null },
+  { handle: "alice", name: "Alice Ng", color: "moss", avatar_url: null, role: null },
 ];
 function makeTicket(overrides: Partial<MyWorkTicket> = {}): MyWorkTicket {
   return {
@@ -399,9 +399,9 @@ describe("render() — the Get Started guide", () => {
     expect(html).not.toContain("closed/total issue counts recomputed from GitHub events");
   });
 
-  it("shows a figure for every screen in the sidebar, the ticket, sprint and artifact pages, and the connect modal", () => {
+  it("shows a figure for every screen in the sidebar, and the ticket, sprint and artifact pages", () => {
     const html = render(guideState());
-    for (const name of ["mywork", "tickets", "board", "ticket", "roadmap", "sprint", "repo", "repo-usage", "feed", "docs", "search", "review", "maintenance", "settings", "connect", "handoffs", "artifacts", "artifact", "prompts", "timeline", "quicksearch", "releases"]) {
+    for (const name of ["mywork", "tickets", "board", "ticket", "roadmap", "sprint", "repo", "repo-usage", "feed", "docs", "search", "review", "maintenance", "settings", "handoffs", "artifacts", "artifact", "prompts", "timeline", "quicksearch", "releases"]) {
       expect(html).toContain(`/guide/${name}-`);
     }
   });

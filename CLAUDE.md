@@ -57,7 +57,8 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
 
 - `shared/` — the ONLY shared layer (imported via the `@shared` alias by `src/` and `web/`):
   `contract.ts` (Zod ingest contract), `vocabulary.ts` (controlled vocab), `rows.ts` (one type per D1 table),
-  `dashboard.ts` (the My Work DTO shared by the Worker and web), `repo.ts` (the Repo dashboard DTO — zod-free,
+  `dashboard.ts` (the My Work DTO shared by the Worker and web), `people.ts` (the person-profile contract —
+  zod-free: the caps, `avatarSrc`, the profile / directory / agent DTOs), `repo.ts` (the Repo dashboard DTO — zod-free,
   since the SPA imports `REPO_TABS` as a value), `notifications.ts` (the digest DTOs), and the
   tickets pair-per-domain: `tickets.ts` / `sprints.ts` (zod rows, DTOs, payloads, `parseTicketLink`,
   `toSprintView`) over `tickets-core.ts` / `sprints-core.ts`. **The `*-core.ts` split is a rule**: anything
@@ -109,7 +110,7 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `milestone_progress`→`sprint_progress` (`milestone_id`→`sprint_id`), `plan_versions.milestones_json`
   →`sprints_json`, roadmap_fts re-keyed `milestone:<id>`→`sprint:<id>`, new `sprint_resources`, and
   `DROP TABLE milestone_proposals` — the whole agent-proposed-roadmap surface goes with it], then
-  `0026_token_hint` [`mcp_tokens.token_hint` — the clear-text label Settings lists a token by], then
+  `0026_token_hint` [`mcp_tokens.token_hint` — the clear-text label `GET /auth/mcp-tokens` lists a token by], then
   `0027_repo_capture` [`repo_events` (append-only, UNIQUE `semantic_key`, kinds push/pr/review/deploy/check/run)
   / `repo_snapshots` / `repo_metrics` — the Repo dashboard's second capture path, deliberately separate from
   `events`], then `0028_handoffs_prompts` [`handoffs` / `prompts` / `prompt_versions` / `prompts_fts` — see
@@ -135,7 +136,10 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `prompts_fts` rebuild triggers re-created to index only `deleted_at IS NULL` rows — the update trigger now also
   fires on `deleted_at`, so a delete drops the FTS row and a restore puts it back — see the Prompt Library below],
   PART D [artifact soft delete: `artifact_pages.deleted_at` / `deleted_by` (a handle, in `HANDLE_COLUMNS`) — no
-  trigger, `artifacts_fts` is kept by the repository — see Artifacts below]).
+  trigger, `artifacts_fts` is kept by the repository — see Artifacts below]), then `0036_person_profiles`
+  (two marked parts) — PART A [`persons.avatar_sha` (64 lowercase hex, CHECKed) / `role` / `responsibilities`, all
+  nullable, never backfilled], PART B [`persons.avatar_source` (`github` / `google`, CHECKed), backfilled
+  conservatively from the picture URL's host] — see "People profiles" below.
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
@@ -220,9 +224,13 @@ like `promote_doc` / `ratify_adr` / `complete_sprint` always have been: the plan
 (agent-proposed content), add it to the gate — never a second ingestion surface; authored/computed writes
 stay direct in the promote class.
 
-**Tickets are the largest authored-write surface** (`src/tools/tickets.ts`, thirteen session-cookie routes in
+**Tickets are the largest authored-write surface** (`src/tools/tickets.ts`, fourteen session-cookie routes in
 `routes.ts`): `create_ticket` (opening `ticket_events` row) / `edit_ticket` (title and/or body) / `transition_ticket` / `move_ticket` (a board drop) / `toggle_assignee` /
-`add_ticket_link` / `remove_ticket_link` / `set_ticket_sprint` / `set_ticket_parent` / `add_ticket_comment`. There is no vocab
+`add_ticket_link` / `remove_ticket_link` / `set_ticket_sprint` / `set_ticket_parent` / `add_ticket_comment` /
+`delete_ticket` (`POST /tickets/:id/delete`, any signed-in member, NEVER MCP: a HARD delete in one `db.batch` —
+assignees, links, comments, history and `artifact_links` rows go with it, sub-tickets are detached, the number is
+never reissued; a ticket MIRRORED from a GitHub issue is a 403, since the mirror would only re-create it; on screen
+"Delete ticket" at the bottom of the rail, native tickets only, through the shared confirmation modal). There is no vocab
 gate, no confidence, no staged state. Every write bumps `tickets.updated_at` (the queue's sort key); the
 status machine is `canTransition` in `shared/tickets-core.ts` (re-exported by `shared/tickets.ts`) and is
 never re-declared server-side; an illegal move or a nesting-rule break is a 409 that writes nothing;
@@ -250,16 +258,18 @@ scrolls. The queue's search box and Filter menu (Assignee incl. any one person, 
 are the Artifacts library's; Assignee (anyone / me / unassigned) and Category filter server-side, a person,
 Priority, Sprint and search narrow the loaded rows (`queueRows`).
 
-**The writer is a PERSON — over a cookie, or over their own bearer token.** Seven of those writers are also
+**The writer is a PERSON — over a cookie, or over their own bearer token.** Eight of those writers are also
 MCP tools (`src/tools/tickets-agent.ts`, the read side below), scoped so an agent writes only inside its
 principal's lane. That is a narrowing of the old "ticket writes are cookie-only" rule, not of the
 invariant underneath it: **nothing INFERS a resolution.** `done` / `declined` are never set by a PR
 merging, an issue closing, the webhook, or `scheduled()` — a person asks for them, and an agent holding
 that person's token asking is that person asking. ONE carve-out: a ticket MIRRORED from a GitHub issue
 follows its OWN source issue's close and reopen (see "Tickets mirrored from GitHub issues"); a native
-ticket that merely links an issue never does. `toggle_assignee` is the one writer with NO MCP
-counterpart (design D3): assignment is the data the lane rule is built on, so after filing it is
-cookie-only, forever.
+ticket that merely links an issue never does. `toggle_assignee` reaches MCP as `assign_ticket` (issue #90,
+2026-09-27), which REVERSES design D3 ("no MCP counterpart, forever — assignment is the data the lane rule is
+built on"): leads had to assign agent-split work by hand, ticket by ticket, and teammates GitHub cannot reach
+could not be assigned at all. Because assignment is how a ticket gets INTO a lane, the lane cannot scope it, so
+it has its own rule (below).
 
 **The feed brief** (`0034_feed_brief_artifact_cap`, spec `docs/superpowers/specs/2026-09-26-feed-brief-design.md`). A
 feed entry has two readers. `summary` is the one-line title; `brief` (optional, 1–2 plain sentences,
@@ -326,7 +336,7 @@ still out shows the longest cached PREFIX's still-matching hits plus "Searching�
 strip — selection is a background fill. ↑/↓ move (a first press before the pause shows the results), Enter opens the selected row — or, typed
 faster than the panel shows, goes straight to the Search screen with the text; Tab / ⌘Enter = the Search
 screen with the query, Esc closes. A pick runs the existing acts (`openTicket`, `openDocFrom`, `openSprint`,
-`artOpen`, `openPrompt`, `openHandoff`, `goFeed`, a person → the queue filtered to them; a decision, which has
+`artOpen`, `openPrompt`, `openHandoff`, `goFeed`, a person → their person card (the role as the context line); a decision, which has
 no screen, → the Search screen on its title).
 
 **MCP ticket/sprint reads are unscoped; the writes are not** — `src/mcp.ts` registers `list_tickets`
@@ -355,13 +365,19 @@ degraded, tab, range, sections }`.
 `docs/superpowers/specs/2026-09-17-agent-ticket-writes-design.md`). A ticket write over MCP is permitted
 exactly when the bearer principal is ALREADY an assignee of that ticket, else `TicketError('forbidden')`
 (403) with NOTHING written; an unknown id is `not_found` FIRST, so the check is never an existence
-oracle. Each of the seven tools (`create_ticket` / `edit_ticket` / `transition_ticket` / `add_ticket_comment` /
-`add_ticket_link` / `set_ticket_sprint` / `set_ticket_parent`) asserts, then delegates to the UNTOUCHED
-writer in `tools/tickets.ts` — the transition table, nesting rules and audit rows stay shared with the
+oracle. Each of the eight tools (`create_ticket` / `edit_ticket` / `transition_ticket` / `add_ticket_comment` /
+`add_ticket_link` / `set_ticket_sprint` / `set_ticket_parent` / `assign_ticket`) asserts, then delegates to the
+UNTOUCHED writer in `tools/tickets.ts` — the transition table, nesting rules and audit rows stay shared with the
 cookie routes, which are NOT assignee-scoped and did not change. `create_ticket` is the one unscoped
-write (filing is how work enters the queue) and its `assignees` is the only agent-reachable assignment;
-`set_ticket_parent` needs the lane on BOTH ids. ONE exception: an **admin** may `set_ticket_sprint` on any
-ticket (composing a sprint is sprint management) — it spreads to no other verb. **Sprint writes are
+write (filing is how work enters the queue); `set_ticket_parent` needs the lane on BOTH ids. TWO exceptions to
+the lane: an **admin** may `set_ticket_sprint` on any ticket (composing a sprint is sprint management) — it
+spreads to no other verb; and **`assign_ticket { id, login, on }`** (over `toggle_assignee`) is scoped by
+`assertTicketAssignable` instead — the bearer must be an ADMIN, the ticket's REQUESTER or a CURRENT ASSIGNEE
+(NOCASE), else 403 with nothing written, `not_found` first as ever. It is idempotent WITHOUT a write (adding
+someone already on it / removing someone who is not returns before `toggle_assignee`, which would still bump
+`updated_at`), still validates the handle on that path (`requirePerson`: unknown or RESERVED → `bad_request`),
+never touches status, writes no history row (`ticket_events` audits status moves only — assignment has no audit,
+from the web either), and works on mirrored tickets (their assignees are Canopy's after import). **Sprint writes are
 open to every principal** (`create_sprint` / `set_sprint_active` / `complete_sprint` /
 `add_sprint_resource` / `delete_sprint`), matching the web, where every sprint route sits under
 `sessionGate` with no `adminGate`; only the whole-plan rewrite `update_plan` stays admin-only. **No provenance is stored** (design D4): an
@@ -421,10 +437,30 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
 - **Bearer token** (agents, `/mcp`): either a pasted per-person `canopy_mcp_` token (stored hashed) or an
   OAuth access token (`canopy_oat_`) obtained through Canopy's own OAuth server — both resolve to the same
   person handle in `resolveBearerPrincipal`, so OAuth is how a bearer is OBTAINED, not a fourth class.
-  Settings lists a person's live tokens by `token_hint` (the first 4 characters
-  of the random part; the value itself is shown once, at mint) via `GET /auth/mcp-tokens`, and
-  `POST /auth/mcp-tokens/:id/revoke` soft-revokes the caller's OWN token — someone else's id is the same
-  404 as an unknown one. Both are session-cookie routes, never MCP tools. Settings › **Get connection command** (`connectModal` / `connectSnippet` in `web/src/render.ts`) is the ONE place a token's value appears: the click mints, a modal shows the exact setup for Claude Code (`claude mcp add … --header`), Codex (`CANOPY_MCP_TOKEN` + `--bearer-token-env-var`), a `.mcp.json` or the bare token, against the SPA's own origin, and names the Settings row the token now lives under; closing the modal drops the token from the page for good. `/mcp` is **bearer-only**; its `401` carries
+  **The Settings UI is OAuth-only** (the owner's call, 2026-09-27): nothing in the SPA mints, lists or revokes a
+  `canopy_mcp_` token any more — the Get connection command modal, the token list and their web client calls are
+  gone. The token routes REMAIN, so a token already in use keeps working: `POST /auth/mcp-token` still mints,
+  `GET /auth/mcp-tokens` lists the caller's live tokens by `token_hint` (the first 4 characters of the random
+  part), and `POST /auth/mcp-tokens/:id/revoke` soft-revokes the caller's OWN token — someone else's id is the
+  same 404 as an unknown one. All three are session-cookie routes, never MCP tools, with no screen in front of
+  them. Settings › MCP access (`mcpAccessSection` in `web/src/render.ts`) has, beside its heading, a quiet
+  "Set it up without the plugin" link that opens a MODAL (`mcpSetupModal`, `state.mcpSetup`: the confirmation
+  modal's `.cnpy-cmodal` shell as a root-level `data-overlay`, focus in on open and back to the link on close,
+  the backdrop / × / Escape close it, a bottom sheet on a phone) holding the by-hand
+  `claude mcp add --transport http --scope user canopy <origin>/mcp` (`browserConnectCommand`, no header) with a
+  Copy button and the `/mcp` → Authenticate follow-up — so using it never changes the tile's height. The tile
+  then reads top to bottom: one line of what it is; the browser sign-in as three steps — install the
+  plugin (`PLUGIN_INSTALL`, the same two commands the Get Started guide shows), `/mcp` → canopy → Authenticate,
+  click Allow in the browser; then **Connected apps** (the OAuth grants — below the steps, or beside them once
+  the tile is ≥ 620px, the `cnpy-mcp` container — with a count, its own empty state, a two-click Revoke per row
+  and its first `MCP_LIST_CAP` (3) rows until "Show all N"; no fixed height, no inner scroller).
+  The Settings screen is ONE bento grid with even edges (`.cnpy-set`, three columns): Profile | Account | MCP
+  access (spanning rows 1–2 of a slightly wider third column), Appearance under the first two, Email
+  notifications at full width. Every tile STRETCHES to its grid area, so tiles in a row share a top and a bottom
+  and the left block ends where MCP access does; the stretch is kept small by balancing CONTENT (≤ ~30px at
+  common widths with two connected apps), and a `.cnpy-tile` is a flex column whose `.cnpy-tile-foot` (Profile's
+  color, Account's sign-in methods) is pinned to the bottom edge. Below a 1000px page it is two columns (Profile
+  | Account, then Appearance and MCP access at full width), and a phone is one column. `/mcp` is **bearer-only**; its `401` carries
   `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource"` (plus
   `error="invalid_token"` when a token was presented), which is how Claude Code and claude.ai discover
   sign-in. A fresh `McpServer` is constructed per request
@@ -461,12 +497,81 @@ atomically via `HANDLE_COLUMNS`, in one D1 batch with FK checks deferred for the
 (`resolvePersonForLogin`); an unmapped login raises an `identity_tasks` row and Maintenance › Identity
 links it to an existing handle. Mapping a login there calls the same `linkIdentity` as sign-in linking, so
 it also grants that GitHub account sign-in as the mapped person, not just attribution — there is no undo
-route yet; fix a wrong mapping by deleting the `identities` row with `wrangler d1 execute`. `ADMIN_LOGINS`
+route yet; fix a wrong mapping by deleting the `identities` row with `wrangler d1 execute`. A login that will
+never be a person (an outside contributor's PR) is DISCARDED instead: `POST /identity-tasks/:login/discard`
+(session cookie, like map; 404 unknown, 409 on a mapped task, idempotent) sets `status = 'discarded'` + the
+`resolved_at` / `resolved_by` audit columns — soft, and STICKY for free: the row keeps the login's PK, so
+`ensure_identity_task`'s `INSERT OR IGNORE` never re-raises it, while its events are captured as before.
+`POST /identity-tasks/:login/restore` puts it back to `pending` (409 once the login has been linked some other
+way); `GET /identity-tasks` returns `{ tasks, discarded }` (discarded minus since-linked logins). On screen:
+Discard on each card (no confirm), a "Discarded @login · Undo" toast, and an "N discarded" list with Restore. `ADMIN_LOGINS`
 holds handles — list the new handle there before an admin renames (`POST /auth/me/handle` 403s otherwise).
 Every `recorded_by` / `created_by` / `user_id` is a handle. Migrated GitHub users kept their login as handle.
 `docs.owner` (0035) is one too — the proposer of a doc's FIRST version, set once at creation and never
 overwritten by edits or promotions (`updated_by` is the last promoter) — listed in `HANDLE_COLUMNS`; there is no
 route to change it yet.
+
+## People profiles — an avatar, a role, responsibilities (`0036_person_profiles`; contract `shared/people.ts`)
+
+Three nullable person fields, written directly (no gate, no staging) by `src/tools/people.ts`:
+
+- **The avatar rule is ONE function, `avatarSrc`** (`shared/people.ts`): an UPLOADED avatar (`persons.avatar_sha`
+  → `/avatar/<sha>`) outranks the provider picture (`persons.avatar_url`), else null (initials). **The provider
+  picture has ONE owner, `persons.avatar_source`** (0036 PART B): onboarding records it, a NULL picture is claimed by
+  the first sign-in that brings one, only a sign-in with THAT provider refreshes it (`recordSignIn`), and one with the
+  other provider — or linking it in Settings — never touches it, so a person's picture never flips with how they
+  signed in; unlinking the owning provider sets `avatar_source` NULL so the remaining one takes over. A sign-in
+  never writes `persons.name` either (onboarding seeds it, Settings edits it) and never touches `avatar_sha`.
+  Every DTO that sends a person's picture to
+  the SPA sends it RESOLVED — `GET /persons` (`listPersons`, now `PersonSummary` with `role`), `GET /auth/me`
+  (+ `role`), the profile, `/search/quick`'s person hits — so a new surface must go through `avatarSrc` too.
+- **Upload** (`POST /api/people/me/avatar`, multipart `file`; the viewer's OWN only — there is no upload for
+  someone else): the declared type must be in `AVATAR_TYPES` (png / jpeg / webp / gif) AND the magic bytes must say
+  the same type (`sniffAvatarType` — the declared type is never trusted), ≤ `AVATAR_MAX_BYTES` (2 MB, else 413),
+  sha256 via Web Crypto, bytes in R2 (`ARTIFACTS_BUCKET`) at `avatars/<sha256>` with R2's own sha256 check and the
+  SNIFFED type as `httpMetadata.contentType` — skipped when that object already exists. Returns `{ ok, avatar_url }`.
+  `POST /api/people/me/avatar/remove` only clears `avatar_sha` (returns the picture that now shows); the bytes are
+  immutable and never deleted, like doc images. There is no avatars table: the R2 object's metadata is the type.
+- **Serving** `GET /avatar/<sha>` (session-gated, beside `/img/<sha>` and exactly like it): `nosniff`,
+  `default-src 'none'; sandbox`, `Cache-Control: private, max-age=31536000, immutable`; 404 for a malformed sha,
+  no object, or a stored type outside `AVATAR_TYPES`.
+- **Person card read** `GET /api/people/:handle` (session cookie; `me` = the viewer; an unknown or RESERVED handle
+  is 404): `PersonProfile` — role, GitHub login, joined, `admin`, `editable` (the VIEWER is an admin), `self`, and
+  nothing else (no tickets, sessions or docs — there is no profile page) — the person and their GitHub login in ONE
+  `db.batch`. A D1 failure is 503 `{ error }`, never a 500.
+- **`responsibilities` is never rendered.** It travels only to admins (Maintenance › People's editor
+  fills from it) and to MCP `list_people` — not even to the person themselves.
+- **Role and responsibilities are ADMIN-set** (the owner's call, 2026-09-27): a person changes only their own photo
+  (and name / color / handle, as before). **Write** `PUT /api/people/:handle` (`PersonProfileWrite`): an admin
+  (`isAdmin`) only — anyone else, the person themselves included, is 403 with nothing written. Trimmed; absent = untouched, `""` / null / whitespace clears; over
+  `ROLE_MAX` (80) / `RESPONSIBILITIES_MAX` (2000) is 400 and writes NOTHING (every field is validated before the
+  one UPDATE). Returns the fresh profile. Name and color stay on `PUT /auth/me`.
+- **MCP gets ONE read, `list_people`** (every principal): `{ people: [{ handle, name, role, responsibilities }] }`
+  for every non-reserved person — nothing else about a person (no avatar, no load, no profile), and NO people
+  write of any kind. Its description, `create_ticket`'s and the `tickets` / `canopy` skills tell an agent to read
+  it before choosing `assignees`, and that a null is unknown, never to be guessed.
+- `scripts/seed/reset.mjs` seeds a role + responsibilities for the six dev/test persons.
+- **On screen there is NO People screen and no profile page** (the owner's call, 2026-09-27): a click on anyone's
+  name — the ticket rail's people, Feed authors, quick search's person hits, Maintenance › People's rows — opens the
+  **person card** (`personCardModal`, `web/src/profile.ts`): a modal in the confirm modal's `.cnpy-cmodal` shell,
+  rendered at the app root (`state.personCard`), with the large avatar, name, handle and role painted at once from
+  `GET /persons`, then joined / GitHub / the admin badge when `GET /api/people/:handle` lands; the backdrop, × and
+  Escape close it, and one's OWN card links to Settings (photo, name). Role + responsibilities are edited in ONE place: Maintenance › People, where
+  an admin's "Edit role" opens `personRoleEditor` (`web/src/maintenance.ts`) under that row, filled from the
+  person's profile read. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in the browser before
+  the POST — so a GIF loses its animation) and removes one (shown only for an `/avatar/` URL) — both from a small
+  menu the AVATAR opens (`.cnpy-avbtn`: a camera veil on hover / focus, a spinner while a write is in flight, when
+  it won't open; Escape closes, ↑/↓ move); it has no role or responsibilities field. A `personChip` whose image fails to load shows the initials under it. **Every name or
+  avatar opens the card** (`web/src/people.ts`): photo + name as ONE chip where both fit (`personLink`), a photo alone
+  (`personAvatarLink`, and `avatarStack(…, linked)`), a name or `@handle` in a line of text (`personNameLink` /
+  `handleLink`) — each resolved through `GET /persons` case-insensitively, so an unknown handle, a bot, the GitHub
+  mirror's `github-webhook` and Repo sample data stay plain. A card or row that opens something else (queue rows and
+  board cards, sprint ticket boxes, handoff rows, prompt and artifact cards, the Feed's review rows) is a plain
+  container whose own target is an empty button laid over it (`ui.ts` `hitArea` + `HITBOX`), with the people above it
+  — never a button inside a button. Left plain on purpose: pickers and filter menus (a click there selects), the
+  Review and Unplaced list rows (select buttons; their detail pane links the person), menu rows, anything inside a
+  link (a Repo PR row, a ticket's artifact chip), tooltips, the ratify dialog's "Recorded as", the sidebar's account
+  chip (it opens Settings), the onboarding preview and the landing page.
 
 ## Roadmap & My Work — authored plan + stored projections, no live GitHub at render
 
@@ -478,7 +583,7 @@ ids, plus `dates` / `summary` / `urgency` / `lead` / `domain` alongside the pre-
 (now rendered as markdown) and `phase`. Sprint `done` is admin-set here, never event-inferred.
 **ONE overdue rule**: `sprintDueState(due, now)` in `shared/sprints-core.ts` — a sprint is due all of its
 (local) due day and overdue from the day AFTER, "due this week" = today through 7 days out — read by the sprint
-cards, the Roadmap's header dot / Now box / single NEXT UP (`nextSprintId`), the Timeline and My Work's ticket due dates.
+cards, the Roadmap's Timeline-tab dot / Now box / single NEXT UP (`nextSprintId`), the Timeline and My Work's ticket due dates.
 The narrative is short — `PLAN_NARRATIVE_MAX` = 800 characters after trim (`shared/sprints-core.ts`),
 enforced in the `update_plan` input schema AND at the top of `write_plan`, before its first write (so over
 it, or an unknown sprint id, writes nothing: no plan row, no version, no sprint); a longer narrative
@@ -545,7 +650,7 @@ that renders a "No summary recorded" placeholder. Stored as columns on `pr_summa
 `model != 'excerpt' AND title IS NOT NULL`) — never truth, never generated at render.
 
 **The Repo dashboard** (`GET /repo/dashboard` → `getRepoDashboard` in `src/tools/repo.ts`; screen `#repo`,
-`#repo/code|ci|usage|planning`) is the same class of read as My Work: D1-only, session-cookie, never a 500
+`#repo/code|ci|usage|planning`, its tabs the underline tab bar heading the page body) is the same class of read as My Work: D1-only, session-cookie, never a 500
 (a throw yields `emptyRepoDashboard(repo, degraded:true)`) — and, like My Work, the READ is also an MCP tool
 for every principal (`get_repo_dashboard`, see Read side); "Poll now" and Sync GitHub stay session-cookie +
 admin, NEVER MCP. **Nothing on its render
@@ -894,12 +999,13 @@ mode, and a non-admin's bar is byte-for-byte what it was (pinned by a test; the 
 "Reload from Canopy's database" only beside the button, whose own is "Poll deploys, CI, usage and health now
 (admin) — issues refresh with Sync GitHub", and "Polling…" while it runs). A
 container query on the BAR (`.repo-pollbtn` in `canopy.css`; only a bar that has the button is a container)
-makes it icon-only when crumb + labelled controls no longer fit (bar content < 740px — a viewport under
-~850px with the rail collapsed) and drops the "updated …" text under 676px, so at phone width an admin's
+makes it icon-only when title + repo slug + labelled controls no longer fit (bar content < 624px — a viewport
+under ~735px with the rail collapsed; the crumb is only the slug, the tab bar names the tab) and drops the
+"updated …" text under 560px, so at phone width an admin's
 controls (281px) are narrower than a non-admin's (343px). While in flight it is disabled and reads
 "Polling…" (the refresh icon's `cnpy-spin`, off under reduced motion); a second click does nothing. On
 completion the dashboard reloads (the payload stays on screen, so the entrance is not replayed) and a
-dismissible strip flashes in at the top of WHICHEVER tab is open (`state.repoPoll`, `repoPollFor`:
+dismissible strip flashes in at the top of WHICHEVER tab is open, under the tab bar's line (`state.repoPoll`, `repoPollFor`:
 session-only, survives a tab switch, cleared on leaving the Repo screen): `Health — 3 up · staging api ✗
 timeout`, the three usage lines as below, `GitHub — 12 new · 240 unchanged` / `✗ failed: deployments, runs`
 / `– skipped: …` / `not configured`; a 409 reads "A refresh is already running — try again in a minute.",
@@ -1105,7 +1211,7 @@ issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source 
   `submitted`; closed `completed` → `done`, `not_planned` / `duplicate` → `declined`.
 - **Ownership (the owner's ruling)**: title, body, category, priority, requester and assignees are seeded at
   IMPORT and are Canopy's afterwards — later deliveries never overwrite them, and they are edited like any
-  ticket (`edit_ticket`, `toggle_assignee`, the normal transition table). GitHub drives only CLOSURE: a
+  ticket (`edit_ticket`, `toggle_assignee` — `assign_ticket` over MCP — the normal transition table). GitHub drives only CLOSURE: a
   `closed` delivery forces `done`/`declined`, `deleted` / `transferred` forces `declined`, `reopened` puts a
   resolved ticket back to `submitted` — through the module-private `forceStatus`, the ONE writer allowed to
   bypass `TICKET_TRANSITIONS`, writing a `ticket_events` row as `github-webhook`. Canopy never writes back to
@@ -1132,7 +1238,9 @@ issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source 
 Ported from the Claude Design project `2c8cfa50`: **Handoffs** (Workspace; `#handoffs`, `#handoffs/new`,
 `#handoffs/<id>` — `web/src/handoffs.ts`), **Prompt Library** (Knowledge; `#prompts`, `#prompts/new`,
 `#prompts/<slug>`, `#prompts/<slug>/edit|version` — `web/src/prompts.ts`), **Docs › New doc** (`#docs/new`) and
-the tabbed **Maintenance** (Unplaced / Identity / People; the admin email-notification sections sit under People).
+the tabbed **Maintenance** (Unplaced / Identity / People — `#maintenance[/identity|/people]`, switched by the
+underline tab bar heading its page body, not the header or the sidebar; the admin email-notification sections
+sit under People).
 Storage is `0028_handoffs_prompts` (`handoffs` with an INTEGER id rendered `#12`, `context` JSON
 `{ repo, branch, task, done[], next[], files[] }`, an inline prompt that is both-or-neither, `expires_at` =
 created + 7 days; `prompts` / `prompt_versions`; standalone `prompts_fts` over slug/title/description/body/tags
@@ -1316,12 +1424,27 @@ animates (`data-collapsed`, `.cnpy-sub[data-open]`, `.is-active`, `data-n="0"` h
 node conditionally there swaps it out from under its own animation — `test/render.sidebar.test.ts` pins the
 element tree across every state. `data-keep` marks a script-owned node (the collapsed-rail tooltip) the
 patcher leaves alone. A sub-page list the app opened on entry folds again on leaving; one opened by hand
-sticks and is what persists (`canopy.navOpen`). Below 900px the rail renders collapsed (`state.narrow`)
+sticks and is what persists (`canopy.navOpen`). Only **Docs** owns a sub-page list (`NAV_GROUPS`);
+Roadmap, Tickets, Maintenance and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's,
+Maintenance's and Repo's tabs head their page body), and a stored
+`canopy.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
-**Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, Roadmap tabs, the queue's
+**Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, the queue's
 Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, form segments. Never
-hand-roll a segment group. Its picked fill is ONE indicator that slides between options: `rerender()` swaps
+hand-roll a segment group. It picks a VALUE or a view; moving between a page's own SECTIONS is the **underline
+tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Maintenance's Unplaced / Identity / People, `maintTabBar`,
+with the rail's count badges; the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
+tab carrying the red overdue dot, in the same page frame on both tabs — `asideColumns`' optional `tabs` heads
+the Narrative's two columns with it — and New sprint staying in the header; the Repo dashboard's Overview / Code /
+CI & Deploys / Usage / Team & Planning, `repoTabBar`, in every state of the dashboard, its switch `setRepoTab`
+flashing the new tab's content in place of the entrance): text tabs at the top of the page BODY on a full-width hairline that is the line
+between the tabs and the content, the picked tab marked by a 2px accent underline on that line, 40px tabs (a
+badge never makes one taller), a row that does not fit scrolling inside the bar, `role="tablist"` / `"tab"` +
+`aria-selected` with a roving tabindex and `tabPanelAttrs` on the panel, ←/→ and Home/End (`onTabBarKey`, which
+activates the tab it lands on). Its underline slides by the same FLIP, `syncTabBars` beside `syncSegments`
+(keyed by the bar's `id`, no slide for a bar new to the screen, none under reduced motion), and a screen whose
+tabs are in its route leaves them out of `markEnter`'s key so a switch never replays the entrance. Its picked fill is ONE indicator that slides between options: `rerender()` swaps
 `<main>`, so `syncSegments` (run after every paint, and without a slide on resize / font load) remembers each
 switch's indicator box by its stable `id` and plays the slide old → new (FLIP); a switch new to the screen
 does not slide in. Sizes `md` (header) / `sm` / `xs`, plus `cnpy-seg--bar` (a 34px toolbar row) and

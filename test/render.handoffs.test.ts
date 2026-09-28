@@ -26,8 +26,8 @@ function sfbar(html: string): string | null {
 }
 
 const persons = [
-  { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null },
-  { handle: "Darkest-Teddy", name: "Jack", color: "plum" as const, avatar_url: null },
+  { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null, role: null },
+  { handle: "Darkest-Teddy", name: "Jack", color: "plum" as const, avatar_url: null, role: null },
 ];
 const h = (over: Partial<HandoffView> = {}): HandoffView => ({
   id: 12, sender: "Darkest-Teddy", recipient: "AndresL230", status: "pending",
@@ -185,7 +185,8 @@ describe("surface cards — handoffs, prompts, new doc", () => {
 
   it("the prompt library's cards are clickable surfaces", () => {
     const lib = promptLibraryView({ status: "ok", prompts: [summary("a"), summary("b")], q: "", tag: null, sort: "updated_desc", persons, filterCat: "tag", fmOpening: null, filterOpen: false });
-    expect((lib.match(/data-act="openPrompt" data-arg="[ab]" class="cnpy-surface cnpy-card"/g) ?? []).length).toBe(2);
+    expect((lib.match(/<div class="cnpy-surface cnpy-card cnpy-hitbox"/g) ?? []).length).toBe(2);
+    expect((lib.match(/<button data-act="openPrompt" data-arg="[ab]" class="cnpy-hit"/g) ?? []).length).toBe(2);
     expect(lib).not.toMatch(OLD_CARD);
   });
 
@@ -283,5 +284,33 @@ describe("prompt delete", () => {
     expect(html).toContain("Deleted “Lint”");
     expect(html).toContain('data-act="promptRestore" data-arg="lint" class="cnpy-toast-act"');
     expect(render({ ...initialState(), view: "app", me: me("alice", false), toast: "Saved", toastAt: Date.now(), toastMs: 2000 })).not.toContain("cnpy-toast-act");
+  });
+});
+
+describe("handoffs and prompts — people open their person card", () => {
+  it("an inbox row's other party is one photo + name chip over the row's hit area; Anyone stays plain", () => {
+    const html = handoffsView({ status: "ok", handoffs: [h(), h({ id: 13, sender: "AndresL230", recipient: "anyone" })], me: "AndresL230", persons });
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="Darkest-Teddy" class="cnpy-personchip"/);
+    expect(html).toContain('<button data-act="openHandoff" data-arg="12" class="cnpy-hit" aria-label="#12 Quiz agent still fails."></button>');
+    expect(html).not.toMatch(/<button[^>]*class="cnpy-trow/);
+    expect(html).not.toContain('data-arg="anyone"');
+  });
+
+  it("the detail's sender → recipient and the claimer are name buttons (You opens your own card)", () => {
+    const html = handoffDetailView({ status: "ok", handoff: h({ body: "x", status: "claimed", claimed_by: "Darkest-Teddy", claimed_at: "2026-09-23T11:00:00Z" }), me: "AndresL230", persons, expireArm: false, promptView: "raw" });
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="Darkest-Teddy" class="cnpy-personlink"[^>]*>Jack<\/button> → <button data-act="openPerson" data-arg="AndresL230" class="cnpy-personlink"[^>]*>You<\/button>/);
+    expect(html).toMatch(/Claimed by <button data-act="openPerson" data-arg="Darkest-Teddy"/);
+  });
+
+  it("a prompt card's author and the prompt page's Author rail are chips; an unknown author is plain", () => {
+    const card = (author: string): PromptSummary => ({ slug: "p", title: "P", tags: [], author, version: 1, status: "published", updated_at: "2026-09-01T00:00:00Z", excerpt: "x", use_count: 0, last_used_at: null });
+    const lib = promptLibraryView({ status: "ok", prompts: [card("Darkest-Teddy")], q: "", tag: null, sort: "updated_desc", persons, filterCat: "tag", fmOpening: null, filterOpen: false });
+    expect(lib).toMatch(/<button data-act="openPerson" data-arg="Darkest-Teddy" class="cnpy-personchip"/);
+    expect(lib).toContain('<button data-act="openPrompt" data-arg="p" class="cnpy-hit" aria-label="P"></button>');
+    const stranger = promptLibraryView({ status: "ok", prompts: [card("ghost")], q: "", tag: null, sort: "updated_desc", persons, filterCat: "tag", fmOpening: null, filterOpen: false });
+    expect(stranger).not.toContain('data-act="openPerson"');
+    const detail: PromptDetail = { slug: "p", title: "P", description: "", tags: [], author: "Darkest-Teddy", version: 1, status: "published", updated_at: "2026-09-23T10:00:00Z", body: "b", use_count: 0, last_used_at: null };
+    const page = promptDetailView({ status: "ok", prompt: detail, versions: [], persons, knownTags: [], diffVersion: null, tagMenu: false, tagDraft: "", promptView: "raw", canDelete: false, deleteArm: false });
+    expect(page).toMatch(/<button data-act="openPerson" data-arg="Darkest-Teddy" class="cnpy-personchip"[^>]*>.*Jack<\/span>.*@Darkest-Teddy/s);
   });
 });

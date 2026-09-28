@@ -15,6 +15,8 @@ import { describe, it, expect } from "vitest";
 import { lineDiff, collapsedLineDiff } from "../web/src/diff";
 import { reviewView, reviewDetail, reviewCard, unifiedDiff, renderedPreview, splitDiffRows, type ReviewItem, type ReviewProps } from "../web/src/review";
 import { maintenanceView, assignPanel, personPicker, fileHint, type MaintenanceProps, type UnplacedItem, type IdentityGroup } from "../web/src/maintenance";
+import { render, initialState } from "../web/src/render";
+import mainSrc from "../web/src/main.ts?raw";
 
 // ── lineDiff ──────────────────────────────────────────────────────────────────
 
@@ -393,6 +395,8 @@ function makeMaintProps(overrides: Partial<MaintenanceProps> = {}): MaintenanceP
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
     discardArm: false,
     identity: [makeGroup()],
+    discarded: [],
+    showDiscarded: false,
     people: [{ id: "maya-k", name: "maya-k", initials: "MA" }],
     mapPicks: {},
     mapConfirm: null,
@@ -446,6 +450,126 @@ describe("maintenanceView — Identity tab", () => {
     expect(html).toContain("maya-k");
     expect(html).toContain("Map login");
     expect(html).not.toContain("Loose thing");
+  });
+
+  it("each card has a one-click Discard (no arm step — the toast carries the Undo)", () => {
+    const html = maintenanceView(makeMaintProps({ tab: "identity" }));
+    expect(html).toContain('data-act="identityDiscard" data-arg="mk-dev2" class="cnpy-mutelink"');
+    expect(html).toMatch(/data-act="identityDiscard"[^>]*>Discard</);
+  });
+
+  it("no discarded logins → no discarded line; some → a quiet 'N discarded' toggle, Restore rows only when open", () => {
+    expect(maintenanceView(makeMaintProps({ tab: "identity" }))).not.toContain("identityToggleDiscarded");
+    const discarded = [{ login: "rando-1", meta: "discarded 2h ago by andres" }, { login: "rando-2", meta: "discarded 1d ago by andres" }];
+    const closed = maintenanceView(makeMaintProps({ tab: "identity", discarded }));
+    expect(closed).toContain('data-act="identityToggleDiscarded" aria-expanded="false"');
+    expect(closed).toContain("2 discarded &middot; Show");
+    expect(closed).not.toContain('data-act="identityRestore"');
+    const open = maintenanceView(makeMaintProps({ tab: "identity", discarded, showDiscarded: true }));
+    expect(open).toContain('aria-expanded="true"');
+    expect(open).toContain('data-act="identityRestore" data-arg="rando-1"');
+    expect(open).toContain('data-act="identityRestore" data-arg="rando-2"');
+    expect(open).toContain("discarded 2h ago by andres");
+    // An empty list still reaches the discarded logins, so the last one can be brought back.
+    const empty = maintenanceView(makeMaintProps({ tab: "identity", identity: [], discarded, showDiscarded: true }));
+    expect(empty).toContain("Everyone is accounted for");
+    expect(empty).toContain('data-act="identityRestore" data-arg="rando-1"');
+  });
+
+  it("the discard toast carries the Undo that restores the login", () => {
+    const html = render({
+      ...initialState(), view: "app",
+      me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+      toast: "Discarded @rando-1", toastAction: { label: "Undo", act: "identityRestore", arg: "rando-1" }, toastAt: Date.now(), toastMs: 8000,
+    });
+    expect(html).toContain("Discarded @rando-1");
+    expect(html).toContain('data-act="identityRestore" data-arg="rando-1" class="cnpy-toast-act"');
+    // main.ts wires it: Discard flashes with UNDO_TOAST_MS and the identityRestore action.
+    expect(mainSrc).toMatch(/flash\(`Discarded @\$\{arg\}`, UNDO_TOAST_MS, \{ label: "Undo", act: "identityRestore", arg \}\)/);
+  });
+});
+
+describe("Maintenance — the tab bar heading the page (the sidebar has no sub-page list)", () => {
+  /** The `.cnpy-tabs` bar carrying `data-tabs="maint-tab"`, up to its closing </div>. */
+  const tabs = (html: string) => {
+    const at = html.indexOf('data-tabs="maint-tab"');
+    return at < 0 ? "" : html.slice(at, html.indexOf("</div>", at));
+  };
+  const triage = (id: number) => ({ id, raw: "{}", reason: "low_confidence", source_author: null, resolved: 0, created_at: "2026-09-27T00:00:00Z", resolved_at: null, resolved_by: null, resolution: null, assigned_ref: null }) as never;
+  const task = (login: string) => ({ login, first_seen: "2026-09-27T00:00:00Z", status: "pending", resolved_at: null, resolved_by: null, sample: [] }) as never;
+  const app = (over: Partial<ReturnType<typeof initialState>> = {}) => render({
+    ...initialState(), view: "app", screen: "maintenance",
+    me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: true },
+    needsTriage: { status: "ok", data: [triage(1), triage(2), triage(3)] },
+    identityTasks: { status: "ok", data: [task("mk-dev2")] },
+    ...over,
+  });
+  const header = (html: string) => html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+  const main = (html: string) => html.slice(html.indexOf("</header>"));
+
+  it("offers Unplaced · Identity · People as tabs, the current one selected and inert", () => {
+    const bar = tabs(app({ maintTab: "identity" }));
+    expect(bar).toContain('role="tablist" aria-label="Maintenance sections"');
+    expect(bar.match(/role="tab"/g)?.length).toBe(3);
+    expect(bar.indexOf(">Unplaced<")).toBeLessThan(bar.indexOf(">Identity<"));
+    expect(bar.indexOf(">Identity<")).toBeLessThan(bar.indexOf(">People<"));
+    // The picked tab dispatches nothing; the other two switch it (setMaintTab — one rerender).
+    expect(bar).toMatch(/id="maint-tab-identity" class="cnpy-tab is-on" aria-selected="true"[^>]*tabindex="0"[^>]*>Identity/);
+    expect(bar).not.toContain('data-arg="identity"');
+    expect(bar).toContain('class="cnpy-tab" data-act="setMaintTab" data-arg="unplaced" aria-selected="false"');
+    expect(bar).toContain('class="cnpy-tab" data-act="setMaintTab" data-arg="people" aria-selected="false"');
+    expect(mainSrc).toMatch(/case "setMaintTab":[\s\S]{0,200}state\.maintTab = arg as MaintTab;[\s\S]{0,80}break;/);
+  });
+
+  it("carries the sidebar's count badges: unplaced items and pending identity tasks, none on People", () => {
+    const bar = tabs(app());
+    expect(bar).toMatch(/>Unplaced<span class="cnpy-badge" data-n="3">3<\/span><\/button>/);
+    expect(bar).toMatch(/>Identity<span class="cnpy-badge" data-n="1">1<\/span><\/button>/);
+    expect(bar).toMatch(/>People<\/button>/);
+    // An empty queue keeps the badge (a stable tree) and data-n="0" hides it.
+    const clear = tabs(app({ needsTriage: { status: "ok", data: [] } }));
+    expect(clear).toContain('<span class="cnpy-badge" data-n="0">0</span>');
+  });
+
+  it("heads the page BODY, not the header, and the labelled panel with the intro follows its line", () => {
+    for (const maintTab of ["unplaced", "identity", "people"] as const) {
+      const html = app({ maintTab });
+      expect(header(html), maintTab).not.toContain('data-tabs="maint-tab"');
+      expect(header(html), maintTab).not.toContain("cnpy-seg");
+      const body = main(html);
+      const page = body.indexOf('data-screen-label="Maintenance"');
+      const at = body.indexOf('data-tabs="maint-tab"');
+      const panel = body.indexOf(`role="tabpanel" id="maint-tab-panel" aria-labelledby="maint-tab-${maintTab}"`);
+      expect(at, maintTab).toBeGreaterThan(page);
+      expect(panel, maintTab).toBeGreaterThan(at);
+      // Nothing of the page sits above the bar: it is the page's first thing.
+      expect(body.slice(page, at), maintTab).not.toMatch(/>[^<\s]/);
+    }
+    const unplaced = main(app({ maintTab: "unplaced" }));
+    expect(unplaced.indexOf("Things an agent produced")).toBeGreaterThan(unplaced.indexOf('id="maint-tab-panel"'));
+  });
+
+  it("puts a degraded hint under the line, inside the panel", () => {
+    const html = main(app({ maintTab: "unplaced", needsTriage: { status: "error", data: [], error: "x" } as never }));
+    expect(html).toContain("Couldn't load the triage queue.");
+    expect(html.indexOf("Couldn't load the triage queue.")).toBeGreaterThan(html.indexOf('id="maint-tab-panel"'));
+  });
+
+  it("the tabs are peers: a plain title on every tab, no back button and no › crumb", () => {
+    for (const maintTab of ["unplaced", "identity", "people"] as const) {
+      const h = header(app({ maintTab }));
+      expect(h, maintTab).toContain(">Maintenance</h1>");
+      expect(h, maintTab).not.toContain('<button data-act="goMaintenance" style=');
+      expect(h, maintTab).not.toContain("›");
+    }
+  });
+
+  it("switching tabs never replays the screen's entrance (the underline slides unbroken)", () => {
+    expect(mainSrc).toMatch(/hashForRoute\(\{ \.\.\.currentRoute\(\), [^}]*maintTab: undefined[^}]*\}\)/);
+  });
+
+  it("appears only on Maintenance", () => {
+    expect(render({ ...initialState(), view: "app", screen: "review" })).not.toContain('data-tabs="maint-tab"');
   });
 });
 
@@ -563,5 +687,26 @@ describe("Review › Rendered shows the proposed images", () => {
     const html = renderedPreview([{ t: "add", s: `![<b onmouseover=x>](/img/${A})` }]);
     expect(html).not.toContain("<b onmouseover");
     expect(html).toContain("&lt;b onmouseover=x&gt;");
+  });
+});
+
+describe("Review and Unplaced — the detail's author opens their person card", () => {
+  it("a mapped proposer is one chip in the detail byline; the list card (a select button) keeps a plain pair", () => {
+    const it0 = makeItem({ agent: "maya-k", agentColor: "plum", agentHandle: "maya-k", agentName: "Maya K" });
+    expect(reviewDetail(it0, "unified")).toMatch(/<button data-act="openPerson" data-arg="maya-k" class="cnpy-personchip"/);
+    expect(reviewCard(it0, false)).not.toContain('data-act="openPerson"');
+  });
+
+  it("an unmapped proposer stays plain in the detail", () => {
+    expect(reviewDetail(makeItem(), "unified")).not.toContain('data-act="openPerson"');
+  });
+
+  it("the Unplaced detail's author is a chip when mapped, plain when not; the list rows stay select buttons", () => {
+    const people = [{ id: "maya-k", name: "Maya K", initials: "MK", color: "plum" as const }];
+    const mapped = maintenanceView(makeMaintProps({ people, unplaced: [makeUnplaced({ author: "maya-k", when: "1h ago" })] }));
+    expect(mapped).toMatch(/<button data-act="openPerson" data-arg="maya-k" class="cnpy-personchip"/);
+    expect((mapped.match(/data-act="openPerson"/g) ?? []).length).toBe(1);
+    const stranger = maintenanceView(makeMaintProps({ people, unplaced: [makeUnplaced({ author: "ghost", when: "1h ago" })] }));
+    expect(stranger).not.toContain('data-act="openPerson"');
   });
 });

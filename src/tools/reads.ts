@@ -186,6 +186,28 @@ export async function list_identity_tasks(db: DB): Promise<IdentityTaskWithSampl
   return out;
 }
 
+/** A discarded login, as the Identity tab's restore list shows it. */
+export interface DiscardedIdentity {
+  login: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+}
+
+/**
+ * Discarded identity tasks, newest discard first — what Undo can still bring
+ * back. A login linked since (a GitHub sign-in) is left out: restoring it would
+ * list a task there is nothing left to map.
+ */
+export async function list_discarded_identities(db: DB): Promise<DiscardedIdentity[]> {
+  return all<DiscardedIdentity>(
+    db,
+    `SELECT t.login, t.resolved_at, t.resolved_by FROM identity_tasks t
+     WHERE t.status = 'discarded'
+       AND NOT EXISTS (SELECT 1 FROM identities i WHERE i.provider = 'github' AND i.subject = t.login)
+     ORDER BY t.resolved_at DESC, t.login ASC`
+  );
+}
+
 // ── Tickets (the org-wide queue) ──────────────────────────────────────────────
 //
 // Read-only projections over the 0024 tables. Everything here is a fixed number

@@ -5,7 +5,9 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildCanopyMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { all, first, run, nowIso } from "../src/db";
-import { create_ticket } from "../src/tools/tickets";
+import { create_ticket, transition_ticket } from "../src/tools/tickets";
+import { mirrorIssue } from "../src/tools/ticket-mirror";
+import { getMyWork } from "../src/tools/mywork";
 import type { TicketDetail } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
 import { seedPerson } from "./helpers/persons";
@@ -172,7 +174,7 @@ describe("create_ticket — the one unscoped write", () => {
     expect(t.events[0].from_status).toBeNull();
   });
 
-  it("is the ONLY place an agent assigns anyone — and toggle_assignee does not exist", async () => {
+  it("assigns at filing — and filing for someone else does NOT put the agent in the lane", async () => {
     await seedPerson("andres");
     await seedPerson("meilin");
     const t = ok<TicketDetail>(await callTool("andres", "create_ticket", {
@@ -289,5 +291,136 @@ describe("D6 — an admin may re-home any ticket, and nothing more", () => {
     const sprint = await seedSprint("Sprint D");
     await seedPerson("beatrix");
     expect(failed(await callTool("beatrix", "set_ticket_sprint", { id, sprint_id: sprint })).code).toBe("forbidden");
+  });
+});
+
+describe("assign_ticket — issue #90: admin, requester or current assignee", () => {
+  it("adds and removes one assignee, returns the whole ticket, and never changes status", async () => {
+    const id = await ticketFor("andres", ["andres"]);
+    await seedPerson("beatrix");
+
+    const added = ok<TicketDetail>(await callTool("andres", "assign_ticket", { id, login: "beatrix", on: true }));
+    expect(added.assignees.sort()).toEqual(["andres", "beatrix"]);
+    // Matches the web picker exactly: assigning a submitted ticket does not start it.
+    expect(added.status).toBe("submitted");
+    expect(added).toHaveProperty("events");
+
+    const removed = ok<TicketDetail>(await callTool("andres", "assign_ticket", { id, login: "beatrix", on: false }));
+    expect(removed.assignees).toEqual(["andres"]);
+    expect(removed.status).toBe("submitted");
+    // No history row: ticket_events audits status moves only — the opening row is all there is.
+    expect(removed.events).toHaveLength(1);
+  });
+
+  it("is idempotent in BOTH directions — a no-op writes nothing, not even updated_at", async () => {
+    const id = await ticketFor("andres", ["andres", "beatrix"]);
+    await seedPerson("meilin");
+
+    const before = await snapshot(id);
+    // Already assigned (a case variant of the handle, even) → success, nothing written.
+    expect(ok<TicketDetail>(await callTool("andres", "assign_ticket", { id, login: "Beatrix", on: true })).assignees.sort()).toEqual(["andres", "beatrix"]);
+    expect(await snapshot(id)).toEqual(before);
+    // Not assigned → removing succeeds, nothing written.
+    expect(ok<TicketDetail>(await callTool("andres", "assign_ticket", { id, login: "meilin", on: false })).assignees.sort()).toEqual(["andres", "beatrix"]);
+    expect(await snapshot(id)).toEqual(before);
+  });
+
+  it("an unknown handle is bad_request — on the no-op path too — and writes nothing", async () => {
+    const id = await ticketFor("andres", ["andres"]);
+    const before = await snapshot(id);
+    expect(failed(await callTool("andres", "assign_ticket", { id, login: "nobody-at-all", on: true })).code).toBe("bad_request");
+    expect(failed(await callTool("andres", "assign_ticket", { id, login: "nobody-at-all", on: false })).code).toBe("bad_request");
+    expect(await snapshot(id)).toEqual(before);
+  });
+
+  it("refuses a RESERVED handle — github-webhook has a persons row but is not a person", async () => {
+    const id = await ticketFor("andres", ["andres"]);
+    const before = await snapshot(id);
+    expect(failed(await callTool("andres", "assign_ticket", { id, login: "github-webhook", on: true })).code).toBe("bad_request");
+    expect(await snapshot(id)).toEqual(before);
+  });
+
+  it("an unknown ticket is not_found BEFORE scope — never forbidden", async () => {
+    await seedPerson("beatrix");
+    const err = failed(await callTool("beatrix", "assign_ticket", { id: 99_999, login: "beatrix", on: true }));
+    expect(err.code).toBe("not_found");
+  });
+
+  it("an ADMIN may assign on any ticket", async () => {
+    await seedPerson("admin-user");
+    const id = await ticketFor("andres", ["andres"], "andres's ticket");
+    await seedPerson("meilin");
+    const t = ok<TicketDetail>(await callTool("admin-user", "assign_ticket", { id, login: "meilin", on: true }));
+    expect(t.assignees.sort()).toEqual(["andres", "meilin"]);
+  });
+
+  it("the REQUESTER may route their own ticket, even with nobody on it", async () => {
+    const id = await ticketFor("beatrix", [], "beatrix filed this");
+    await seedPerson("meilin");
+    const t = ok<TicketDetail>(await callTool("beatrix", "assign_ticket", { id, login: "meilin", on: true }));
+    expect(t.assignees).toEqual(["meilin"]);
+    // …and hand it back: the requester's right does not depend on being an assignee.
+    expect(ok<TicketDetail>(await callTool("beatrix", "assign_ticket", { id, login: "meilin", on: false })).assignees).toEqual([]);
+  });
+
+  it("a CURRENT ASSIGNEE may hand the ticket on — and removing themselves leaves their lane", async () => {
+    const id = await ticketFor("andres", ["beatrix"], "beatrix's ticket");
+    await seedPerson("meilin");
+    ok(await callTool("beatrix", "assign_ticket", { id, login: "meilin", on: true }));
+    const t = ok<TicketDetail>(await callTool("beatrix", "assign_ticket", { id, login: "beatrix", on: false }));
+    expect(t.assignees).toEqual(["meilin"]);
+    expect(failed(await callTool("beatrix", "transition_ticket", { id, to: "in_progress" })).code).toBe("forbidden");
+  });
+
+  it("an unrelated principal is forbidden — even to add themselves — and the ticket is byte-identical after", async () => {
+    const id = await ticketFor("andres", ["beatrix"], "not meilin's");
+    await seedPerson("meilin");
+    const before = await snapshot(id);
+    for (const args of [
+      { id, login: "meilin", on: true },
+      { id, login: "beatrix", on: false },
+      { id, login: "andres", on: true },
+    ]) {
+      const err = failed(await callTool("meilin", "assign_ticket", args));
+      expect(err.code).toBe("forbidden");
+      expect(err.error).toMatch(/admin, its requester or one of its assignees/i);
+      expect(await snapshot(id)).toEqual(before);
+    }
+  });
+
+  it("assigns a ticket MIRRORED from a GitHub issue, and it lands in that person's My Work", async () => {
+    await seedPerson("admin-user");
+    await seedPerson("meilin", { github: false }); // a Google-only teammate GitHub cannot reach
+    // An unmapped author files as the system person, with nobody on it.
+    expect(await mirrorIssue(env.DB, "SaplingLearn/sapling", {
+      action: "opened",
+      repository: { full_name: "SaplingLearn/sapling" },
+      issue: {
+        number: 901, title: "[P2] Beta onboarding copy", body: "", html_url: "https://github.com/SaplingLearn/sapling/issues/901",
+        state: "open", state_reason: null, updated_at: "2026-09-27T10:00:00Z", user: { login: "someone-unmapped" },
+        assignees: [], labels: [], milestone: null,
+      },
+    })).toBe("created");
+    const mirrored = await first<{ id: number; requester: string }>(env.DB, `SELECT id, requester FROM tickets WHERE source_ref = ?`, "SaplingLearn/sapling#901");
+    expect(mirrored!.requester).toBe("github-webhook");
+    const id = mirrored!.id;
+
+    // Nobody is on it and its requester is the system person, so only an admin may route it.
+    expect(failed(await callTool("meilin", "assign_ticket", { id, login: "meilin", on: true })).code).toBe("forbidden");
+    const t = ok<TicketDetail>(await callTool("admin-user", "assign_ticket", { id, login: "meilin", on: true }));
+    expect(t.source).toBe("github");
+    expect(t.assignees).toEqual(["meilin"]);
+    expect(t.status).toBe("submitted");
+
+    const mw = await getMyWork(env.DB, "meilin");
+    expect(mw.tickets.map((x) => x.id)).toContain(id);
+    expect(mw.ticketsTotal).toBe(1);
+  });
+
+  it("leaves a resolved ticket resolved", async () => {
+    const id = await ticketFor("andres", ["andres"]);
+    await transition_ticket(env.DB, id, "done", "andres");
+    await seedPerson("beatrix");
+    expect(ok<TicketDetail>(await callTool("andres", "assign_ticket", { id, login: "beatrix", on: true })).status).toBe("done");
   });
 });

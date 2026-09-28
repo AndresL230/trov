@@ -8,7 +8,7 @@
 // no inline data.
 
 import { esc, attr, statusBadge, selectChip, dashedCard, MONO_LABEL, surface, SURFACE } from "./ui";
-import { personChip, handleTag } from "./people";
+import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
 
 // ── prop shapes (loose for now — reshaped at wire time) ──────────────────────
@@ -36,6 +36,9 @@ export interface ReviewItem {
    *  Undefined → unmapped login, rendered as a muted handleTag. */
   agentColor?: PersonColor;
   agentAvatar?: string | null;
+  /** The mapped person's handle and name, set with the color — whose card the byline opens. */
+  agentHandle?: string;
+  agentName?: string | null;
   time: string;
   /** Gate's scrutinize signal: staged with low_confidence = 1. Rendered as a small marker. */
   flagged?: boolean;
@@ -92,6 +95,13 @@ export function reviewCard(it: ReviewItem, selected: boolean): string {
 function agentBit(it: ReviewItem, chipSize: number): string {
   const p = it.agentColor ? { handle: it.agent, color: it.agentColor, avatar_url: it.agentAvatar } : null;
   return `${personChip(p, chipSize, it.agent)}${handleTag(p, it.agent)}`;
+}
+/** The same pair as ONE chip that opens the person's card — the detail header's byline (the
+ *  list card is itself a button that selects, so it keeps `agentBit`). Plain when unmapped. */
+function agentLink(it: ReviewItem, chipSize: number): string {
+  const p = it.agentColor ? { handle: it.agent, color: it.agentColor, avatar_url: it.agentAvatar } : null;
+  const person = p && it.agentHandle ? { handle: it.agentHandle, name: it.agentName, color: p.color, avatar_url: p.avatar_url } : null;
+  return personLink(person, it.agent, chipSize, { html: handleTag(p, it.agent) }, "", 6);
 }
 
 export function reviewListEmpty(): string {
@@ -285,7 +295,7 @@ export function reviewDetail(it: ReviewItem, diffView: DiffViewMode): string {
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:8px;font-size:12px;color:var(--fg-55)">
           ${type ? `<span>${esc(type)}</span>` : ""}
           ${id ? `${dot}<span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55)">${esc(id)}</span>` : ""}
-          ${dot}<span style="display:inline-flex;align-items:center;gap:6px">${agentBit(it, 18)}</span>
+          ${dot}<span style="display:inline-flex;align-items:center;gap:6px">${agentLink(it, 18)}</span>
           ${dot}<span style="color:var(--fg-40)">${esc(it.time)}</span>
         </div>
       </div>

@@ -3,17 +3,19 @@
 // `.map().join('')`, `sc-if` to ternaries, and `onClick="{{ fn }}"` to
 // `data-act` / `data-arg` attributes dispatched in main.ts.
 
-import type { Me, StagedProposal, IdentityTask, PersonSummary, InviteRow } from "./api";
+import type { Me, StagedProposal, IdentityTask, DiscardedIdentity, PersonSummary, PersonProfile, InviteRow } from "./api";
 import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary } from "@shared/rows";
 import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
-import { queueView, newTicketView, ticketDetailView, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
+import { queueView, newTicketView, ticketDetailView, ticketDeleteModal, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
 import { sprintCard, newSprintPanel, sprintScreen, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
-import { initialOnboard, onboardView, personChip, handleTag, swatches, type OnboardState } from "./people";
+import { initialOnboard, onboardView, personChip, personLink, personAvatarLink, handleTag, handleLink, swatches, type OnboardState } from "./people";
+import { personCardModal } from "./profile";
+import { AVATAR_TYPES } from "@shared/people";
 import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import {
@@ -23,14 +25,15 @@ import {
 import { TAGS } from "@shared/vocabulary";
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
+import { tabBar, tabPanelAttrs } from "./tabs";
 import { releasesScreen, findRelease, type ReleasePage } from "./releases";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { REPO_URL } from "./github";
-import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote } from "./ui";
+import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
-import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab } from "./maintenance";
+import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab, type PersonEditDraft } from "./maintenance";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
@@ -38,7 +41,7 @@ import { newDocView, blankDoc, type NewDocDraft } from "./newdoc";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
 import { emailNotificationsSection, notificationsMaintenanceSections, unsubscribeView } from "./notifications";
-import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow, McpTokenSummary } from "./api";
+import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
 import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
 import { repoView, repoControls, repoCrumb, type RepoProps, type RepoPollState } from "./repo";
 import {
@@ -46,7 +49,7 @@ import {
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
 } from "./artifacts";
 import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
-import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, peopleFromPersons } from "./triage-map";
+import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -168,6 +171,10 @@ export interface AppState {
   draftAdrs: Loadable<AdrRow[]>;
   needsTriage: Loadable<NeedsTriageRow[]>;
   identityTasks: Loadable<IdentityTask[]>;
+  /** Discarded logins Undo can still restore — rides the identity-tasks read. */
+  identityDiscarded: DiscardedIdentity[];
+  /** Maintenance › Identity's "N discarded" list is open. */
+  identityShowDiscarded: boolean;
   reviewFilter: ReviewFilter;
   reviewSel: string | null;
   reviewDiffView: DiffViewMode;
@@ -183,20 +190,14 @@ export interface AppState {
   searchType: "all" | "doc" | "feed" | "decision" | "artifact";
   searchResults: Loadable<QueryResult>;
   displayName: string;
-  /** Settings › "Get connection command": the modal, open while non-null. `token` is
-   *  null while the mint is in flight; `error` is set when it failed. The token lives
-   *  ONLY here — closing the modal drops it, and the server keeps just a hash. */
-  connect: { token: string | null; error: string | null } | null;
-  /** Which client's setup the modal shows, and its Copy button's state. */
-  connectClient: ConnectClient;
-  connectCopied: boolean;
-  /** Settings › MCP access: the caller's live tokens (hint only, never the value). */
-  tokens: Loadable<McpTokenSummary[]>;
-  /** The token whose Revoke was clicked once — the second click is the one that revokes. */
-  tokenRevokeArm: number | null;
-  /** Settings › Connected apps: the caller's OAuth connections. */
+  /** Settings › MCP access › Connected apps: the caller's OAuth connections. */
   grants: Loadable<OAuthGrantSummary[]>;
+  /** The connection whose Revoke was clicked once — the second click is the one that revokes. */
   grantRevokeArm: number | null;
+  /** Connected apps opened past its first MCP_LIST_CAP rows by "Show all". */
+  grantsAll: boolean;
+  /** Settings › MCP access's "Set it up without the plugin" modal is open (`mcpSetupModal`, at the app root). */
+  mcpSetup: boolean;
   // Settings › Profile: the handle rename editor.
   handleEdit: boolean;
   handleDraft: string;
@@ -262,6 +263,9 @@ export interface AppState {
   lkOpen: boolean;
   /** The ticket detail's title/description editor drafts; null = not editing. */
   tdEdit: { title: string; body: string } | null;
+  /** The ticket page's delete confirm is open / its write is in flight. */
+  tdDeleteArm: boolean;
+  tdDeleteBusy: boolean;
   asgMenu: boolean;
   sprMenu: boolean;
   relMenu: boolean;
@@ -341,6 +345,23 @@ export interface AppState {
   /** ADMIN Sync GitHub progress — null when idle; present while a (possibly
    *  multi-batch) sync is running, tracking cumulative counts across batches. */
   backfillSync: BackfillSyncState | null;
+  // ── The person card (profile.ts), Maintenance › People's role editor, Settings › Profile's photo ──
+  /** The person card open over the page (a click on a name); null = closed. */
+  personCard: string | null;
+  /** That person's `GET /api/people/:handle` (joined, GitHub, admin) — the card paints without it. */
+  personDetail: Loadable<PersonProfile | null>;
+  /** Maintenance › People: the admin's open role + responsibilities editor (one person;
+   *  `draft` null while that person's profile read is in flight, `base` what it returned);
+   *  null = closed. */
+  personEdit: { handle: string; draft: PersonEditDraft | null; base: PersonEditDraft | null } | null;
+  /** The editor just closed (or replaced by another person's), rendered collapsing under its
+   *  row until its exit is over; always null under prefers-reduced-motion. */
+  personEditOut: { handle: string; draft: PersonEditDraft | null; base: PersonEditDraft | null } | null;
+  personSaving: boolean;
+  /** A photo upload or removal in flight. */
+  avatarBusy: "upload" | "remove" | null;
+  /** Settings › Profile: the photo menu the avatar opens (upload / change / remove). */
+  avatarMenu: boolean;
 }
 
 /** Sync GitHub modal state: "starting" from the click until the first batch
@@ -394,6 +415,7 @@ export function initialState(): AppState {
     draftAdrs: { status: "idle", data: [] },
     needsTriage: { status: "idle", data: [] },
     identityTasks: { status: "idle", data: [] },
+    identityDiscarded: [], identityShowDiscarded: false,
     reviewFilter: "all", reviewSel: null, reviewDiffView: "unified",
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
     mapConfirm: null,
@@ -402,13 +424,10 @@ export function initialState(): AppState {
     searchQuery: "token", searchType: "all",
     searchResults: { status: "idle", data: { primary: [], pointers: [], meta: { engine: "fts5", total: 0 } } },
     displayName: "",
-    connect: null,
-    connectClient: "claude",
-    connectCopied: false,
-    tokens: { status: "idle", data: [] },
-    tokenRevokeArm: null,
     grants: { status: "idle", data: [] },
     grantRevokeArm: null,
+    mcpSetup: false,
+    grantsAll: false,
     handleEdit: false,
     handleDraft: "",
     handleCheck: "idle",
@@ -434,7 +453,7 @@ export function initialState(): AppState {
     qQ: "", qPrio: "all", qSprint: "all", qPerson: "", qFilterOpen: false, qFilterCat: "assignee",
     fTitle: "", fCat: null, fPrio: "normal", fDesc: "", fAsgs: [], fLink: "", fSpr: null,
     commentDraft: "", mention: null, commentHeight: null, linkDraft: "",
-    lkOpen: false, tdEdit: null, asgMenu: false, sprMenu: false, relMenu: false, lkMenu: null, stMenu: null,
+    lkOpen: false, tdEdit: null, tdDeleteArm: false, tdDeleteBusy: false, asgMenu: false, sprMenu: false, relMenu: false, lkMenu: null, stMenu: null,
     sprints: { status: "idle", data: [] },
     sprintDetail: { status: "idle", data: null },
     sprintId: null,
@@ -460,6 +479,13 @@ export function initialState(): AppState {
     toastAt: 0,
     toastMs: 0,
     backfillSync: null,
+    personCard: null,
+    personDetail: { status: "idle", data: null },
+    personEdit: null,
+    personEditOut: null,
+    personSaving: false,
+    avatarBusy: null,
+    avatarMenu: false,
   };
 }
 
@@ -468,7 +494,7 @@ export function reviewProps(s: AppState): ReviewProps {
   return {
     items: reviewItemsFromReads(s.proposals.data, s.draftAdrs.data).map((it) => {
       const p = personFor(s, it.agent);
-      return p ? { ...it, agentColor: p.color, agentAvatar: p.avatar_url } : it;
+      return p ? { ...it, agentColor: p.color, agentAvatar: p.avatar_url, agentHandle: p.handle, agentName: p.name } : it;
     }),
     filter: s.reviewFilter,
     selectedId: s.reviewSel,
@@ -488,6 +514,8 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
     assignSpace: s.assignSpace,
     assignTags: s.assignTags,
     identity: s.identityTasks.data.map(identityFromTask),
+    discarded: s.identityDiscarded.map(discardedFromRow),
+    showDiscarded: s.identityShowDiscarded,
     people: peopleFromPersons(s.persons.data),
     mapPicks: s.mapPicks,
     mapConfirm: s.mapConfirm,
@@ -657,10 +685,8 @@ function sidebar(s: AppState): string {
     navOpen: s.navOpen,
     qView: s.qView,
     roadmapTab: s.roadmapTab,
-    repoTab: s.repoTab,
     docSpace: s.docSpace,
     docSpaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })),
-    maintTab: s.maintTab,
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).
     counts: { review: counts.review, maintenance: counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: s.promptList.data.filter((p) => p.status === "staged").length },
     me: s.me ? { handle: s.me.handle, name: s.me.name, color: s.me.color, avatar_url: s.me.avatar_url } : null,
@@ -686,7 +712,6 @@ function headerCrumb(s: AppState): string {
     return ed.mode === "new" ? "New prompt" : `${ed.mode === "edit" ? "Edit" : "New version"} · ${ed.title}`;
   }
   if (s.screen === "newdoc") return "New doc";
-  if (s.screen === "maintenance") return s.maintTab === "identity" ? "Identity" : s.maintTab === "people" ? "People" : "";
   if (s.screen === "ticketdetail") return s.ticketDetail.data?.title ?? "";
   if (s.screen === "sprint") {
     return s.sprintDetail.data?.label ?? s.sprints.data.find((sp) => sp.id === s.sprintId)?.label ?? "";
@@ -731,19 +756,9 @@ function header(s: AppState): string {
     `<button data-act="${act}" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease">${PLUS_ICON}${label}</button>`;
   const newControls = s.screen === "handoffs" ? accentNew("newHandoff", "New handoff") : s.screen === "prompts" ? accentNew("newPrompt", "New prompt") : "";
 
-  const overdueCount = s.screen === "roadmap" && s.roadmap.status === "ok"
-    ? roadmapEnriched(s.roadmap.data.sprints, s.confirmedSprints).overdueCount
-    : 0;
-  // The Roadmap header: the tab switch, then New sprint (it opens the panel at the
-  // top of whichever tab is showing), like the queue's switch + Submit a ticket.
-  const roadmapControls = s.screen === "roadmap" ? `${segmented({
-    id: "roadmap-tab", ariaLabel: "Roadmap view", act: "", value: s.roadmapTab,
-    options: [
-      { value: "narrative", label: "Narrative", act: "roadmapNarrative", arg: "" },
-      { value: "timeline", label: "Timeline", act: "roadmapTimeline", arg: "",
-        trail: overdueCount ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:1px"></span>` : "" },
-    ],
-  })}${accentNew("nsToggle", "New sprint")}` : "";
+  // The Roadmap header: New sprint (it opens the panel at the top of whichever tab is
+  // showing). Narrative / Timeline are the tab bar heading the page body (`roadmapTabBar`).
+  const roadmapControls = s.screen === "roadmap" ? accentNew("nsToggle", "New sprint") : "";
 
   // ADMIN-only, My Work screen: trigger the server-side GitHub backfill. Rendered
   // only when /auth/me returned admin:true (outline button, promote-class action).
@@ -781,14 +796,12 @@ function header(s: AppState): string {
   // the design's single `back` handler).
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
     || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
-    || (s.screen === "maintenance" && s.maintTab !== "unplaced")
     || (s.screen === "releases" && s.releaseVersion !== null);
   // The act the title's back button fires: each child screen returns to its own parent.
   const backAct = s.screen === "handoff" || s.screen === "newhandoff" ? "goHandoffs"
     : s.screen === "prompt" ? "goPrompts"
     : s.screen === "promptedit" ? "edCancel"
     : s.screen === "newdoc" ? "goDocs"
-    : s.screen === "maintenance" ? "goMaintenance"
     : s.screen === "releases" ? "goReleases"
     : "ticketsBack";
   const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : child
@@ -915,15 +928,17 @@ function feedReviewBox(s: AppState): string {
   const decisions = items.length - proposals;
   const split = [proposals ? plural(proposals, "proposal") : "", decisions ? plural(decisions, "decision") : ""].filter(Boolean).join(", ");
   const count = `<div style="font-size:13px;color:var(--fg-55);padding:0 18px 10px;margin-top:-2px"><span style="color:var(--fg);font-weight:500;font-variant-numeric:tabular-nums">${items.length}</span> waiting · ${split}</div>`;
-  const rows = items.slice(0, FEED_REVIEW_LIMIT).map((it) => `<button data-act="mwOpenReview" data-arg="${attr(it.id)}" class="mw-row" style="display:block;width:100%;text-align:left;padding:9px 18px;border-top:1px solid var(--border);font-size:13px">
+  // `hitArea` rows: the proposer's handle opens their person card, the rest the review item.
+  const rows = items.slice(0, FEED_REVIEW_LIMIT).map((it) => `<div class="mw-row ${HITBOX}" style="display:block;width:100%;text-align:left;padding:9px 18px;border-top:1px solid var(--border);font-size:13px">
       <span style="display:block;color:var(--fg);font-weight:500;line-height:1.45;overflow-wrap:anywhere">${esc(it.title)}</span>
       <span style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:3px;font-size:12px;color:var(--fg-40)">
         <span style="width:7px;height:7px;border-radius:50%;background:${it.badgeColor};flex:none"></span>
         <span style="color:var(--fg-55)">${it.kind === "decision" ? "Decision" : "Proposal"}</span>
-        <span>·</span>${handleTag(personFor(s, it.agent), it.agent, 11.5)}
+        <span>·</span>${handleLink(personFor(s, it.agent), it.agent, 11.5)}
         <span>·</span><span style="white-space:nowrap">${esc(it.time)}</span>
       </span>
-    </button>`).join("");
+      ${hitArea("mwOpenReview", it.id, it.title)}
+    </div>`).join("");
   return wrap(`${count}${rows}`);
 }
 
@@ -989,6 +1004,11 @@ function feedBrief(brief: string | null): string {
   return `<div class="cnpy-feed-brief" style="font-size:13.5px;color:var(--fg-70);line-height:1.6;margin-top:5px">${esc(brief)}</div>`;
 }
 
+/** A feed entry's `@author`: a link to their person card when the author is a known person. */
+function feedAuthorTag(s: AppState, author: string): string {
+  return handleLink(personFor(s, author), author);
+}
+
 function feedView(s: AppState): string {
   if (s.feed.status === "loading" && s.feed.data.length === 0) return wrapFeed(s, notice("Loading feed&hellip;"));
   if (s.feed.status === "error") return wrapFeed(s, notice("Couldn't load the feed."));
@@ -1002,12 +1022,12 @@ function feedView(s: AppState): string {
       : "";
     return `<div${surface("padding:16px 18px;margin-bottom:12px", { hover: true })}>
       <div style="display:flex;align-items:flex-start;gap:12px">
-        <div style="margin-top:1px">${personChip(personFor(s, e.author), 30, e.author)}</div>
+        <div style="margin-top:1px">${personAvatarLink(personFor(s, e.author), e.author, 30)}</div>
         <div style="flex:1;min-width:0">
           <div class="cnpy-md-inline" style="font-size:14px;font-weight:500;line-height:1.5;letter-spacing:-0.005em">${renderMarkdownInline(e.summary)}</div>
           ${s.feedView === "reading" ? feedBrief(e.brief) : feedBody(e.body)}
           <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px">
-            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55)">${handleTag(personFor(s, e.author), e.author)}</div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55)">${feedAuthorTag(s, e.author)}</div>
             <span style="display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 5px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="11" rx="2"></rect><path d="M12 8V4M8 13h.01M16 13h.01"></path></svg>agent</span>
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
@@ -1134,7 +1154,7 @@ export function docReaderHtml(s: AppState): string {
       ${versions.map((v) => `<div style="display:flex;align-items:center;gap:12px;padding:9px 11px;border-radius:7px">
         <span style="font-family:var(--label);font-size:12px;font-weight:600;color:var(--fg);width:26px">v${v.version}</span>
         <span style="flex:1;font-size:12.5px;color:var(--fg-70)">${esc(v.summary ?? "")}</span>
-        <span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-40)">${personChip(personFor(s, v.created_by), 16, v.created_by)}${handleTag(personFor(s, v.created_by), v.created_by, 11)} · ${relTime(v.created_at)}</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-40)">${personLink(personFor(s, v.created_by), v.created_by, 16, { html: handleTag(personFor(s, v.created_by), v.created_by, 11) }, "", 6)} · ${relTime(v.created_at)}</span>
         ${v.version === doc.current_version ? `<span style="font-size:9.5px;font-weight:600;font-family:var(--label);color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 45%,transparent);background:var(--accent-soft);border-radius:4px;padding:2px 6px">PROMOTED</span>` : ""}
       </div>`).join("")}
     </div>` : "";
@@ -1145,8 +1165,8 @@ export function docReaderHtml(s: AppState): string {
     <h1 style="font-size:29px;font-weight:650;letter-spacing:-0.022em;line-height:1.16;margin:0">${esc(doc.title)}</h1>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:15px;padding-bottom:17px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--fg-55)">
-        ${personChip(doc.updated_by ? personFor(s, doc.updated_by) : null, 24, doc.updated_by ?? "?")}
-        <span>Updated by ${doc.updated_by ? handleTag(personFor(s, doc.updated_by), doc.updated_by) : ""} · ${relTime(doc.updated_at)}</span>
+        ${personAvatarLink(doc.updated_by ? personFor(s, doc.updated_by) : null, doc.updated_by ?? "?", 24)}
+        <span>Updated by ${doc.updated_by ? handleLink(personFor(s, doc.updated_by), doc.updated_by) : ""} · ${relTime(doc.updated_at)}</span>
       </div>
       <button data-act="toggleHistory" class="cnpy-ghostbtn" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:7px;padding:5px 11px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v6h6"></path><path d="M3.5 9a9 9 0 1 0 2.3-3.3L3 9"></path><path d="M12 8v4l3 2"></path></svg>Version history</button>
     </div>
@@ -1239,15 +1259,35 @@ function roadmapSprintGroups(s: AppState): string {
 }
 
 /**
+ * The tab bar heading the Roadmap's page body (tabs.ts): Narrative · Timeline, the
+ * Timeline tab carrying a red dot while any sprint is overdue. It opens BOTH tabs in the
+ * same page frame (asideColumns' — max-width 1200px, `--cols-pad-top`, 32px sides), so a
+ * switch slides the underline instead of moving the bar; the panel follows its line.
+ */
+function roadmapTabBar(s: AppState): string {
+  const { overdueCount } = roadmapEnriched(s.roadmap.data.sprints, s.confirmedSprints);
+  return tabBar({
+    id: "roadmap-tab", ariaLabel: "Roadmap sections", act: "setRoadmapTab", value: s.roadmapTab,
+    tabs: [
+      { value: "narrative", label: "Narrative" },
+      { value: "timeline", label: "Timeline",
+        trail: overdueCount ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:1px"></span>` : "" },
+    ],
+  });
+}
+
+/**
  * The Roadmap's Timeline tab: the sprints on a calendar (./timeline — a Gantt
  * graph, bars from start to due, filled by ticket progress, a today line), full
- * width in the Roadmap's page frame. No aside here: Now + Recent happenings
- * belong to the Narrative tab alone.
+ * width in the Roadmap's page frame, under the tab bar. No aside here: Now + Recent
+ * happenings belong to the Narrative tab alone.
  */
 function roadmapTimelineTab(s: AppState): string {
-  return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">${roadmapNewSprint(s)}${roadmapTimeline({
+  return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
+    ${roadmapTabBar(s)}<div${tabPanelAttrs("roadmap-tab", s.roadmapTab)} style="padding-top:20px">${roadmapNewSprint(s)}${roadmapTimeline({
     sprints: s.roadmap.data.sprints, confirmed: s.confirmedSprints, persons: s.persons.data, now: Date.now(),
-  })}</div>`;
+  })}</div>
+  </div>`;
 }
 
 function roadmapView(s: AppState): string {
@@ -1304,10 +1344,12 @@ function roadmapNewSprint(s: AppState): string {
  * the Feed): the admin narrative, then the sprint groups, on the left; on the right a
  * sticky aside with two boxes — "Now" (the sprint getting the attention, its
  * tickets-only bar and GitHub links) and "Recent happenings" (the live feed, with its
- * GitHub chips). The Timeline tab has no aside.
+ * GitHub chips). The tab bar heads the page, the columns sit in its panel. The Timeline
+ * tab has no aside.
  */
 function roadmapDigest(s: AppState): string {
-  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(s.roadmap.data.narrative, renderMarkdown)}${roadmapSprintGroups(s)}`, roadmapAside(s));
+  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(s.roadmap.data.narrative, renderMarkdown)}${roadmapSprintGroups(s)}`, roadmapAside(s),
+    { bar: roadmapTabBar(s), panel: tabPanelAttrs("roadmap-tab", s.roadmapTab) });
 }
 
 /** How many feed entries the Roadmap's "Recent happenings" box shows (and main.ts reads). */
@@ -1368,7 +1410,7 @@ function roadmapAside(s: AppState): string {
       : "";
     return `<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:9px 18px;border-top:1px solid var(--border);font-size:13px">
       <span style="font-size:12px;color:var(--fg-40);padding-top:1px;white-space:nowrap">${relTime(e.created_at).replace(/ ago$/, "")}</span>
-      <span style="color:var(--fg-70);line-height:1.5;min-width:0;overflow-wrap:anywhere">${handleTag(personFor(s, e.author), e.author, 11.5)} <span class="cnpy-md-inline">${renderMarkdownInline(e.summary)}</span>${chips.length ? `<span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${shown.map(ghChip).join("")}${more}</span>` : ""}</span>
+      <span style="color:var(--fg-70);line-height:1.5;min-width:0;overflow-wrap:anywhere">${handleLink(personFor(s, e.author), e.author, 11.5)} <span class="cnpy-md-inline">${renderMarkdownInline(e.summary)}</span>${chips.length ? `<span style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${shown.map(ghChip).join("")}${more}</span>` : ""}</span>
     </div>`;
   }).join("");
   const happenings = `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Roadmap · Recent happenings">
@@ -1560,19 +1602,17 @@ function guideView(s: AppState): string {
     <p style="${gP}">Your agent talks to Canopy over the ${gStrong("Model Context Protocol")} (MCP). You connect it by signing in to Canopy in your browser, once. It acts as you: it sees what you see, and what it writes is recorded as yours.</p>
 
     ${sub("Claude Code: install the plugin")}
-    <p style="${gP}">The plugin wires up the MCP server and installs every skill below. Two steps:</p>
+    <p style="${gP}">The plugin wires up the MCP server and installs every skill below. Three steps, the same ones ${gStrong("Settings › MCP access")} shows:</p>
     <ol style="${gList}">
       <li>In Claude Code, install the plugin:
-        ${gPre(`/plugin marketplace add SaplingLearn/canopy
-/plugin install canopy@canopy`)}</li>
-      <li>Run ${gCode("/mcp")}, pick ${gStrong("canopy")} and choose ${gStrong("Authenticate")}. Your browser opens Canopy: sign in if asked, then click ${gStrong("Allow")}. The connection is listed in ${gStrong("Settings › MCP access")} under ${gStrong("Connected apps")}, where ${gStrong("Revoke")} disconnects it immediately.</li>
+        ${gPre(PLUGIN_INSTALL)}</li>
+      <li>Run ${gCode("/mcp")}, pick ${gStrong("canopy")} and choose ${gStrong("Authenticate")}.</li>
+      <li>Your browser opens Canopy: sign in if asked, then click ${gStrong("Allow")}. The connection is listed in ${gStrong("Settings › MCP access")} under ${gStrong("Connected apps")}, where ${gStrong("Revoke")} disconnects it immediately.</li>
     </ol>
-    <p style="${gP}">Not using the plugin? ${gStrong("Settings › MCP access")} has a ${gStrong("Sign in with browser")} command that adds the server by hand. Run it, then do step 2. Don't do both, or you'll have two Canopy servers.</p>
-    ${gFig("connect", `${gEm("Get connection command")}: pick your client and copy the ready-made setup. (The token is hidden in this screenshot.)`)}
+    <p style="${gP}">Not using the plugin? Open ${gStrong("Set it up without the plugin")} in ${gStrong("Settings › MCP access")} for the command that adds the server by hand. Run it, then do steps 2 and 3. Don't do both, or you'll have two Canopy servers.</p>
 
     ${sub("Other agents")}
-    <p style="${gP}">For ${gStrong("Codex")}, CI, or any client that can't open a browser, use a personal token instead: in ${gStrong("Settings › MCP access")}, under ${gStrong("Access tokens")}, click ${gStrong("Get connection command")}. It has ready-made setups for Codex and a ${gStrong(".mcp.json")} file (Cursor and other MCP clients), each with a fresh token and this Canopy's address filled in. Paste it and restart the agent. The token is shown only once.</p>
-    <p style="${gP}">Every token you mint stays listed in Settings by its first few characters. ${gStrong("Revoke")} disconnects that agent immediately.</p>
+    <p style="${gP}">Any MCP client that can sign in through the browser (OAuth) connects to the same address, ${gCode(esc(mcpEndpoint()))}, and shows up under ${gStrong("Connected apps")} once you approve it. Canopy no longer creates access tokens in Settings; a token you already set up (for Codex or CI) keeps working.</p>
     ${gFig("settings", `${gEm("Settings")}: profile, sign-in methods, MCP access, appearance, and email digests.`)}
 
     ${sec("Step 3", "Learn the skills", "Learn the skills")}
@@ -1654,7 +1694,7 @@ function guideView(s: AppState): string {
     ${gFig("prompts", `${gEm("Prompt Library")}: published, staged, and draft prompts with their tags and versions.`)}
 
     ${sub("Settings")}
-    <p style="${gP}">Click your name at the bottom of the sidebar. ${gStrong("Profile")} sets your name, handle, and color. ${gStrong("Account")} links GitHub and Google. ${gStrong("MCP access")} is where agents connect: your connected apps and any access tokens. ${gStrong("Appearance")} switches between Light, Dark, and System. ${gStrong("Email notifications")} sets each digest (your work, the review queue, roadmap changes, the ticket queue) to daily, weekly, or off.</p>
+    <p style="${gP}">Click your name at the bottom of the sidebar. ${gStrong("Profile")} sets your name, handle, and color. ${gStrong("Account")} links GitHub and Google. ${gStrong("MCP access")} is where agents connect: the browser sign-in steps and the apps you have connected. ${gStrong("Appearance")} switches between Light, Dark, and System. ${gStrong("Email notifications")} sets each digest (your work, the review queue, roadmap changes, the ticket queue) to daily, weekly, or off.</p>
 
     ${sub("What's new")}
     <p style="${gP}">Every release of Canopy, newest first. Open one for its notes, or switch to ${gStrong("Patch notes")} for the full list of changes with links to the pull requests.</p>
@@ -1665,7 +1705,7 @@ function guideView(s: AppState): string {
       <li>${gStrong("GitHub sign-in says you're not a member.")} Accept the SaplingLearn org invite on GitHub, then sign in again.</li>
       <li>${gStrong("Google sign-in says you're not invited.")} Ask an admin to invite the exact address you signed in with.</li>
       <li>${gStrong("Canopy shows as needing authentication in Claude Code.")} Run ${gCode("/mcp")}, pick ${gStrong("canopy")} and choose ${gStrong("Authenticate")}. If the browser says Canopy doesn't recognise the app, choose ${gStrong("Clear authentication")} first, then Authenticate again. A connection you revoked in Settings needs the same.</li>
-      <li>${gStrong("A token-based agent (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $CANOPY_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. When in doubt, mint a new token and revoke the old one.</li>
+      <li>${gStrong("An agent set up with an older access token (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $CANOPY_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. Settings no longer creates tokens, so if the agent can sign in through the browser, reconnect it that way instead.</li>
       <li>${gStrong("The Canopy server doesn't appear in /mcp.")} Restart Claude Code after installing the plugin. Run ${gCode("/plugin")} to check that ${gCode("canopy")} is installed and enabled.</li>
       <li>${gStrong("The plugin is out of date.")} Run ${gCode("/plugin marketplace update canopy")}, then restart.</li>
       <li>${gStrong("Your agent sees every tool twice.")} It's connected both through the plugin and through a manual setup. Remove one: ${gCode("claude mcp remove canopy")} drops the manual one.</li>
@@ -1704,7 +1744,11 @@ function handleStatusText(check: AppState["handleCheck"]): { text: string; color
   }
 }
 
-/** Settings › Profile: display name, handle, and color.
+
+/** An uploaded photo (served by the Worker at `/avatar/<sha>`) — not the provider's picture. */
+export const isUploadedAvatar = (url: string | null | undefined): boolean => !!url && url.startsWith("/avatar/");
+
+/** Settings › Profile: photo, display name, handle and color (role is admin-set in Maintenance › People).
  *  Pure over AppState — exported for the pure render test. */
 export function profileSection(s: AppState): string {
   const me = s.me;
@@ -1727,10 +1771,39 @@ export function profileSection(s: AppState): string {
   })() : `<div style="font-size:12px;color:var(--fg-40);margin-top:8px">Handle ${me ? handleTag({ handle, color: me.color }, handle, 12) : handleTag(null, handle, 12)} <button data-act="handleEdit" class="cnpy-mutelink" style="font-size:11.5px;color:var(--fg-55);text-decoration:underline;text-underline-offset:2px;margin-left:6px">Change</button></div>`;
   // The avatar spans the label + the 40px field exactly: 16px line + 8px gap + 40px = 64px.
   const FIELD_LABEL = "display:block;font-size:13px;line-height:16px;font-weight:500;margin-bottom:8px";
+  // The photo: the avatar IS the control. It opens a small menu — Upload (Change, over an
+  // uploaded one), Remove only over an UPLOADED one, and the accepted types as a footnote —
+  // over a hidden file input (main.ts downsizes the pick to a 512px square before it is
+  // sent). A veil with a camera says so on hover / focus / while open; while a write is in
+  // flight a spinner sits in its place and the menu won't open (aria-disabled, so the
+  // button keeps its focus — the reducer ignores the click).
+  const busy = s.avatarBusy;
+  const uploaded = isUploadedAvatar(me?.avatar_url);
+  const open = s.avatarMenu && !busy;
+  const row = "display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 10px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap";
+  const menu = open ? `<div data-act="avatarMenuClose" style="position:fixed;inset:0;z-index:29"></div>
+      <div role="menu" aria-label="Profile photo" data-avatar-menu class="cnpy-avmenu" style="position:absolute;top:calc(100% + 6px);left:0;z-index:30;width:212px;background:var(--bg);border:1px solid var(--border-strong);border-radius:11px;padding:5px;box-shadow:0 14px 38px rgba(0,0,0,.38)">
+        <button role="menuitem" data-act="avatarPick" class="cnpy-menurow" style="${row};color:var(--fg-70)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:none" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m17 8-5-5-5 5"></path><path d="M12 3v12"></path></svg>${uploaded ? "Change photo" : "Upload photo"}</button>
+        ${uploaded ? `<button role="menuitem" data-act="avatarRemove" class="cnpy-menurow" style="${row};color:var(--red)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:none" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"></path></svg>Remove photo</button>` : ""}
+        <div style="height:1px;background:var(--border);margin:5px 4px"></div>
+        <div style="padding:4px 10px 5px;font-size:11px;line-height:1.45;color:var(--fg-40)">Square crop · PNG, JPEG, WebP, GIF</div>
+      </div>` : "";
+  const camera = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg>`;
+  const spinner = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="animation:cnpy-spin .8s linear infinite"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"></path></svg>`;
+  const label = busy === "upload" ? "Uploading photo…" : busy === "remove" ? "Removing photo…" : "Profile photo options";
+  const photo = `<div style="position:relative;flex:none">
+      <input type="file" data-avatar-file accept="${attr(AVATAR_TYPES.join(","))}" hidden tabindex="-1" aria-hidden="true" />
+      <button data-act="avatarMenu" class="cnpy-avbtn${busy ? " is-busy" : ""}" aria-label="${label}" aria-haspopup="menu" aria-expanded="${open ? "true" : "false"}"${busy ? ' aria-disabled="true" aria-busy="true"' : ""} style="position:relative;display:block;padding:0;border-radius:50%;overflow:hidden">
+        ${personChip(me ? { handle, name: s.displayName || me.name, color: me.color, avatar_url: me.avatar_url } : null, 64, handle || "?")}
+        <span class="cnpy-avbtn-veil" aria-hidden="true">${busy ? spinner : camera}</span>
+      </button>
+      <span class="cnpy-avbtn-badge" aria-hidden="true" style="border-radius:50%"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg></span>
+      ${menu}
+    </div>`;
   return `<section class="cnpy-tile cnpy-surface">
     <div style="${SECTION_LABEL}">Profile</div>
     <div style="display:flex;align-items:flex-start;gap:14px">
-      ${personChip(me ? { handle, name: s.displayName || me.name, color: me.color, avatar_url: me.avatar_url } : null, 64, handle || "?")}
+      ${photo}
       <div style="flex:1;min-width:0">
         <label style="${FIELD_LABEL}">Display name</label>
         <div style="display:flex;gap:10px">
@@ -1740,12 +1813,13 @@ export function profileSection(s: AppState): string {
         ${handleRow}
       </div>
     </div>
-    <div style="margin-top:20px"><label style="${FIELD_LABEL}">Your color</label>${swatches("setMyColor", me?.color ?? "stone", true)}</div>
+    <div class="cnpy-tile-foot" style="padding-top:20px"><label style="${FIELD_LABEL}">Your color</label>${swatches("setMyColor", me?.color ?? "stone", true)}</div>
   </section>`;
 }
 
 /** Settings › Account: who you are signed in as (no avatar — Profile, beside it, already
- *  shows it), Sign out, and the sign-in methods
+ *  shows it), Sign out, and — pinned to the tile's foot, so a stretched tile reads as
+ *  top and bottom rather than a gap under its content — the sign-in methods
  *  (link/unlink per provider — the last identity can't be unlinked).
  *  Pure over AppState — exported for the pure render test. */
 export function accountSection(s: AppState): string {
@@ -1759,17 +1833,17 @@ export function accountSection(s: AppState): string {
       : `<button data-act="linkProvider" data-arg="${p}" class="cnpy-ghostbtn" style="font-size:12px;color:var(--fg-70);padding:4px 10px;border-radius:6px;border:1px solid var(--border-strong)">Link ${label}</button>`;
     return `<div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border)"><div style="line-height:1.25"><b style="font-size:13.5px;font-weight:600;display:block">${label}</b><span style="font-family:var(--label);font-size:11.5px;color:${id ? "var(--fg-55)" : "var(--fg-40)"}">${id ? esc(id.label) : "not linked"}</span></div>${btn}</div>`;
   };
-  return `<section class="cnpy-tile cnpy-surface" style="display:flex;flex-direction:column">
+  return `<section class="cnpy-tile cnpy-surface">
     <div style="${SECTION_LABEL}">Account</div>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
       <div style="min-width:0">
-        <div style="font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Signed in as ${me ? handleTag({ handle: me.handle, color: me.color }, me.handle, 13) : ""}</div>
-        <div style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--green);margin-top:4px"><span style="width:6px;height:6px;border-radius:50%;background:var(--green)"></span>${viaGithub ? `Member of <b>${esc(me?.org ?? "")}</b>` : "Signed in with Google"}</div>
+        <div style="font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Signed in as ${me ? handleLink({ handle: me.handle, name: me.name, color: me.color }, me.handle, 13) : ""}</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--green);margin-top:4px"><span style="flex:none;width:6px;height:6px;border-radius:50%;background:var(--green)"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${viaGithub ? `Member of <b>${esc(me?.org ?? "")}</b>` : "Signed in with Google"}</span></div>
       </div>
       <button data-act="signOut" class="cnpy-signout" style="flex:none;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500">Sign out</button>
     </div>
-    <div style="margin-top:auto;padding-top:20px">
-      <div style="font-size:13px;font-weight:500;margin-bottom:8px">Sign-in methods <span style="font-weight:400;color:var(--fg-40)">· at least one stays linked</span></div>
+    <div class="cnpy-tile-foot" style="padding-top:18px">
+      <div style="font-size:13px;font-weight:500;margin-bottom:8px">Sign-in methods <span style="font-weight:400;color:var(--fg-40)">· keep one linked</span></div>
       ${provRow("github", "GitHub")}${provRow("google", "Google")}
     </div>
   </section>`;
@@ -1780,171 +1854,118 @@ export function accountSection(s: AppState): string {
 const mcpEndpoint = (): string =>
   `${typeof location !== "undefined" && location.origin ? location.origin : "https://canopy.saplinglearn.com"}/mcp`;
 
-/** Settings › MCP access: one hairline row per live token. Only the hint is ever
- *  known here — the server keeps a hash — so a row is `canopy_mcp_ab12…`, when it was
- *  minted and last used, and a two-click Revoke (an agent stops working the moment it lands). */
-export function tokenListBody(s: Pick<AppState, "tokens" | "tokenRevokeArm">): string {
-  // Every state renders inside the same fixed-height scroller (canopy.css), so the
-  // number of tokens never changes the tile's height, or the row's beside it.
-  const box = (inner: string) => `<div class="cnpy-scroll cnpy-set-tokens">${inner}</div>`;
-  const note = (text: string) => box(`<div style="padding:12px 0;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-40)">${text}</div>`);
-  const t = s.tokens;
-  if (t.status === "error") return note(`Couldn't load your tokens${t.error ? ` &mdash; ${esc(t.error)}` : ""}.`);
-  if (t.status !== "ok" && !t.data.length) return note("Loading tokens&hellip;");
-  if (!t.data.length) return note("No tokens yet. Get a connection command to connect an agent.");
-  const rows = t.data.map((tk) => {
-    const armed = s.tokenRevokeArm === tk.id;
-    const btn = "flex:none;padding:4px 10px;border-radius:6px;font-size:12px";
-    const actions = armed
-      ? `<button data-act="revokeToken" data-arg="${tk.id}" class="cnpy-revoke" style="${btn};font-weight:600;color:var(--red);border:1px solid var(--red)">Revoke</button>
-         <button data-act="revokeTokenCancel" class="cnpy-ghostbtn" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Keep</button>`
-      : `<button data-act="revokeTokenArm" data-arg="${tk.id}" class="cnpy-revoke" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Revoke</button>`;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)">
-      <div style="flex:1;min-width:0;line-height:1.35">
-        <code style="display:block;font-family:var(--code);font-size:12.5px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">canopy_mcp_${esc(tk.hint ?? "")}<span style="color:var(--fg-40)">&bull;&bull;&bull;&bull;</span></code>
-        <span style="font-size:11.5px;color:var(--fg-40)">${armed ? "Any agent using it stops working." : `Minted ${esc(relTime(tk.created_at))} &middot; ${tk.last_used_at ? `last used ${esc(relTime(tk.last_used_at))}` : "never used"}`}</span>
-      </div>
-      ${actions}
-    </div>`;
-  }).join("");
-  return box(rows);
-}
+/** The two Claude Code commands that install the Canopy plugin — Settings › MCP access
+ *  and the Get Started guide both show exactly this. */
+export const PLUGIN_INSTALL = `/plugin marketplace add SaplingLearn/canopy
+/plugin install canopy@canopy`;
 
-/** Settings › Connected apps: one hairline row per OAuth connection — the app's
- *  self-reported name, when it connected and was last used, and a two-click Revoke. */
-export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm">): string {
-  const note = (text: string) => `<div style="padding:12px 0;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-40)">${text}</div>`;
+/** How many Connected apps rows Settings › MCP access shows before its "Show all N". */
+export const MCP_LIST_CAP = 3;
+
+/** Settings › MCP access › Connected apps: a heading with its count, then one hairline row
+ *  per OAuth connection — the app's self-reported name, when it connected and was last
+ *  used, and a two-click Revoke — the first MCP_LIST_CAP until "Show all"; or one quiet
+ *  line while it loads, when it is empty and when the read failed. No fixed height and no
+ *  inner scroller: the list is as tall as what it shows, and "Show all" is how it grows. */
+export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & Partial<Pick<AppState, "grantsAll">>): string {
   const g = s.grants;
-  if (g.status === "error") return note(`Couldn't load connected apps${g.error ? ` &mdash; ${esc(g.error)}` : ""}.`);
-  if (g.status !== "ok" && !g.data.length) return note("Loading connected apps&hellip;");
-  if (!g.data.length) return note("No apps connected. Run the command above, then sign in from the app.");
-  // Capped at two rows, then it scrolls — like the token list, it must not grow the tile.
-  return `<div class="cnpy-scroll cnpy-set-grants">${g.data.map((gr) => {
+  const n = g.status === "error" ? 0 : g.data.length;
+  const count = n ? `<span style="flex:none;font-family:var(--label);font-size:11px;line-height:17px;color:var(--fg-55);background:var(--hover);border-radius:999px;padding:0 7px">${n}</span>` : "";
+  const head = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:600">Connected apps</span>${count}</div>`;
+  const wrap = (inner: string) => `<div class="cnpy-mcp-list" data-list="grants">${head}${inner}</div>`;
+  if (!n) {
+    const note = g.status === "error" ? `Couldn't load connected apps${g.error ? ` &mdash; ${esc(g.error)}` : ""}.`
+      : g.status !== "ok" ? "Loading connected apps&hellip;"
+      : "No apps connected yet. Once you approve Claude Code in the browser, it shows up here.";
+    return wrap(`<div style="padding:10px 0;border-top:1px solid var(--border);font-size:12.5px;line-height:1.5;color:var(--fg-40)">${note}</div>`);
+  }
+  const btn = "flex:none;padding:4px 10px;border-radius:6px;font-size:12px";
+  const all = !!s.grantsAll;
+  const rows = (all ? g.data : g.data.slice(0, MCP_LIST_CAP)).map((gr) => {
     const armed = s.grantRevokeArm === gr.id;
-    const btn = "flex:none;padding:4px 10px;border-radius:6px;font-size:12px";
     const actions = armed
       ? `<button data-act="revokeGrant" data-arg="${gr.id}" class="cnpy-revoke" style="${btn};font-weight:600;color:var(--red);border:1px solid var(--red)">Disconnect</button>
          <button data-act="revokeGrantCancel" class="cnpy-ghostbtn" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Keep</button>`
       : `<button data-act="revokeGrantArm" data-arg="${gr.id}" class="cnpy-revoke" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Revoke</button>`;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)">
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
       <div style="flex:1;min-width:0;line-height:1.35">
         <span style="display:block;font-size:13px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(gr.client_name)}</span>
-        <span style="font-size:11.5px;color:var(--fg-40)">${armed ? "The app is signed out the moment you disconnect it." : `Connected ${esc(relTime(gr.created_at))} &middot; ${gr.last_used_at ? `last used ${esc(relTime(gr.last_used_at))}` : "never used"}`}</span>
+        <span style="display:block;font-size:11.5px;color:var(--fg-40)">${armed ? "The app is signed out the moment you disconnect it." : `Connected ${esc(relTime(gr.created_at))} &middot; ${gr.last_used_at ? `last used ${esc(relTime(gr.last_used_at))}` : "never used"}`}</span>
       </div>
       ${actions}
     </div>`;
-  }).join("")}</div>`;
+  }).join("");
+  const more = n > MCP_LIST_CAP
+    ? `<button data-act="mcpShowAll" aria-expanded="${all}" class="cnpy-mutelink" style="display:block;width:100%;text-align:left;padding:9px 0 1px;border-top:1px solid var(--border);font-size:12px;font-weight:500;color:var(--fg-55)">${all ? "Show fewer" : `Show all ${n}`}</button>`
+    : "";
+  return wrap(rows + more);
 }
 
-/** The browser sign-in setup: the server with no header — Claude Code opens the
- *  browser on `/mcp` → Authenticate. Mints nothing. */
+/** The by-hand setup: the server with no header — Claude Code then signs in through the
+ *  browser on `/mcp` → Authenticate, exactly as the plugin does. Mints nothing. */
 export function browserConnectCommand(url: string = mcpEndpoint()): string {
   return `claude mcp add --transport http --scope user canopy ${url}`;
 }
 
-// ── Settings › Connect an agent ──────────────────────────────────────────────
-
-export type ConnectClient = "claude" | "codex" | "json" | "token";
-export const CONNECT_CLIENTS: readonly { id: ConnectClient; label: string }[] = [
-  { id: "claude", label: "Claude Code" },
-  { id: "codex", label: "Codex" },
-  { id: "json", label: ".mcp.json" },
-  { id: "token", label: "Token only" },
-];
-
-/**
- * The setup text for one client, with `token` filled in. Pure, so a test pins each
- * shape. Claude Code takes the header on the command line; Codex reads a bearer
- * token from an environment variable via its `--bearer-token-env-var`, spelled
- * `CANOPY_MCP_TOKEN` here. (The Canopy plugin itself never reads this variable —
- * it connects by browser sign-in, `/mcp` → Authenticate.)
- */
-export function connectSnippet(client: ConnectClient, token: string, url: string = mcpEndpoint()): string {
-  switch (client) {
-    case "claude":
-      return `claude mcp add --transport http --scope user canopy ${url} \\\n  --header "Authorization: Bearer ${token}"`;
-    case "codex":
-      return `export CANOPY_MCP_TOKEN=${token}\ncodex mcp add canopy --url ${url} --bearer-token-env-var CANOPY_MCP_TOKEN`;
-    case "json":
-      return `{\n  "mcpServers": {\n    "canopy": {\n      "type": "http",\n      "url": "${url}",\n      "headers": { "Authorization": "Bearer ${token}" }\n    }\n  }\n}`;
-    case "token":
-      return token;
-  }
+const mcpCode = (t: string) => `<code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${t}</code>`;
+const mcpStrong = (t: string) => `<strong style="font-weight:600;color:var(--fg)">${t}</strong>`;
+/** A command with a small Copy icon in its corner, so the text keeps the box's full width —
+ *  the MCP tile's install commands and the by-hand setup modal's `claude mcp add`. */
+function copyBox(text: string, act: string, label: string): string {
+  return `<div style="position:relative;margin-top:7px;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:7px 36px 7px 11px">
+        <pre style="margin:0;font-family:var(--code);font-size:11.5px;line-height:1.6;color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere">${esc(text)}</pre>
+        <button data-act="${act}" class="cnpy-copybtn" title="Copy" aria-label="${label}" style="position:absolute;top:5px;right:5px;display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg);color:var(--fg-55)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button>
+      </div>`;
 }
 
-const CONNECT_NOTE: Record<ConnectClient, string> = {
-  claude: `Paste it into a terminal, then restart Claude Code. <code style="font-family:var(--code);font-size:11px">--scope user</code> makes Canopy available in every project.`,
-  codex: `Paste both lines into a terminal, then restart Codex. Codex reads the token from <code style="font-family:var(--code);font-size:11px">CANOPY_MCP_TOKEN</code> each time it starts, so add the <code style="font-family:var(--code);font-size:11px">export</code> line to your shell profile too.`,
-  json: `For Cursor and other MCP clients: put this in the client's MCP config (for Claude Code, a project's <code style="font-family:var(--code);font-size:11px">.mcp.json</code>), then restart it.`,
-  token: `For anything else, send it as a bearer header: <code style="font-family:var(--code);font-size:11px">Authorization: Bearer &lt;token&gt;</code> to <code style="font-family:var(--code);font-size:11px">${esc(mcpEndpoint())}</code>. Using the Canopy plugin? It connects by browser sign-in instead — see <strong>Sign in with browser</strong> above.`,
-};
-
-/** The Settings row a minted token shows up as: `canopy_mcp_` + the first 4 characters. */
-export const tokenLabel = (token: string): string =>
-  `canopy_mcp_${token.startsWith("canopy_mcp_") ? token.slice(11, 15) : ""}`;
-
 /**
- * "Get connection command": ONE modal that is the whole flow. The click mints a
- * token; the modal shows the exact setup for the chosen client with that token
- * already in it, says where the token now lives in Settings, and on Done/close the
- * token is gone from the page for good — there is no second place it is shown.
- * Built on the sign-in dialog's pattern: a sibling backdrop that closes it, and a
- * pointer-events:none wrapper so clicks inside the panel never reach the backdrop.
+ * Settings › MCP access — OAuth only: Canopy no longer mints tokens here (the token routes
+ * stay, so a token already in use keeps working). Beside the heading, a quiet link to the
+ * by-hand `claude mcp add` for anyone not using the plugin — it opens a MODAL
+ * (`mcpSetupModal`), so using it never changes the tile's height. Then, top to bottom: what
+ * it is in one line; the browser sign-in as three numbered steps (install the plugin,
+ * `/mcp` → Authenticate, approve in the browser); Connected apps, where that sign-in lands.
+ * Pure over AppState — exported for the pure render test.
  */
-export function connectModal(s: Pick<AppState, "connect" | "connectClient" | "connectCopied">): string {
-  const m = s.connect;
-  if (!m) return "";
-  const close = `<button data-act="connectClose" title="Close" aria-label="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--fg-40)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>`;
-
-  let body: string;
-  if (m.error) {
-    body = `<div style="font-size:13px;color:var(--red);line-height:1.6;margin-bottom:18px">Couldn't create a token — ${esc(m.error)}</div>
-      <div style="display:flex;justify-content:flex-end"><button data-act="connectClose" class="cnpy-outlinebtn" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">Close</button></div>`;
-  } else if (!m.token) {
-    body = `<div style="display:flex;align-items:center;gap:10px;font-size:13px;color:var(--fg-55);padding:18px 0 8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="animation:cnpy-spin .8s linear infinite"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>Creating a token for this connection&hellip;</div>`;
-  } else {
-    const tabs = segmented({
-      id: "connect-client", ariaLabel: "Client", act: "connectClient", value: s.connectClient, inertOn: true,
-      options: CONNECT_CLIENTS.map(({ id, label }) => ({ value: id, label })),
-    });
-    const token = m.token;
-    // EVERY client's snippet (and note) is rendered, stacked in one grid cell, and
-    // only the chosen one is visible: the box is always as tall as the tallest, so a
-    // tab switch changes the text and nothing else moves.
-    const stack = (cell: (id: ConnectClient) => string): string =>
-      CONNECT_CLIENTS.map(({ id }) => {
-        const on = s.connectClient === id;
-        return `<div data-client="${id}" ${on ? "" : `aria-hidden="true"`} style="grid-area:1/1;min-width:0;visibility:${on ? "visible" : "hidden"}">${cell(id)}</div>`;
-      }).join("");
-    const btnBase = "flex:none;align-self:flex-start;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:7px;font-size:12.5px;font-weight:600";
-    const copy = s.connectCopied
-      ? `<button data-act="connectCopy" class="cnpy-copybtn is-copied" style="${btnBase};background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"></path></svg>Copied</button>`
-      : `<button data-act="connectCopy" class="cnpy-copybtn" style="${btnBase};background:var(--accent);color:var(--accent-fg);border:1px solid var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>Copy</button>`;
-    body = `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px">${tabs}</div>
-      <div style="display:flex;align-items:stretch;gap:8px;background:var(--hover);border:1px solid var(--border-strong);border-radius:9px;padding:10px 10px 10px 14px">
-        <div style="flex:1;min-width:0;display:grid">${stack((id) =>
-          `<pre style="margin:0;font-family:var(--code);font-size:12.5px;line-height:1.6;color:var(--fg);white-space:pre-wrap;word-break:break-all">${esc(connectSnippet(id, token))}</pre>`)}</div>
-        ${copy}
-      </div>
-      <div style="display:grid;font-size:11.5px;color:var(--fg-55);margin-top:10px;line-height:1.55">${stack((id) => `<div>${CONNECT_NOTE[id]}</div>`)}</div>
-      <div style="display:flex;gap:10px;align-items:flex-start;margin-top:18px;padding:12px 14px;border-radius:9px;border:1px solid var(--border);font-size:12px;line-height:1.55;color:var(--fg-70)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" style="flex:none;margin-top:1px"><path d="M12 9v4M12 17h.01"></path><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"></path></svg>
-        <div>This is the only time the token is shown, so copy it before closing. It's saved as <code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${esc(tokenLabel(m.token))}&bull;&bull;&bull;&bull;</code> under <strong style="color:var(--fg);font-weight:600">Access tokens</strong> under MCP access in Settings. Revoke it there to disconnect the agent.</div>
-      </div>
-      <div style="display:flex;justify-content:flex-end;margin-top:18px"><button data-act="connectClose" class="cnpy-outlinebtn" style="padding:7px 16px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:600;color:var(--fg)">Done</button></div>`;
-  }
-
-  return `<div data-overlay="connect"><div data-act="connectClose" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);animation:cnpy-fade .14s ease"></div>
-  <div style="position:fixed;inset:0;z-index:61;display:grid;place-items:center;padding:16px;pointer-events:none">
-    <div role="dialog" aria-modal="true" aria-labelledby="connect-title"${surface("pointer-events:auto;position:relative;width:min(580px, 100%);max-height:calc(100vh - 32px);overflow-y:auto;border-color:var(--border-strong);padding:26px 26px 22px;animation:cnpy-pop .16s ease")}>
-      ${close}
-      <div id="connect-title" style="font-size:16px;font-weight:600;letter-spacing:-0.01em;margin-bottom:4px">Connect an agent</div>
-      <div style="font-size:12.5px;color:var(--fg-55);margin-bottom:18px">Pick your agent, copy the setup, paste it. Your agent acts as you.</div>
-      ${body}
+export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll">): string {
+  // The steps read in order on their own — no number badges (the owner's call, 2026-09-27).
+  const step = (body: string) => `<li style="min-width:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${body}</li>`;
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-mcp">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;column-gap:12px;row-gap:2px;margin-bottom:14px">
+      <div style="${SECTION_LABEL};margin-bottom:0">MCP access</div>
+      <button data-act="mcpSetupOpen" data-mcp-setup-trigger aria-haspopup="dialog" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--fg-55)">Set it up without the plugin &rarr;</button>
     </div>
-  </div></div>`;
+    <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you.</div>
+    <div class="cnpy-mcp-body">
+      <ol aria-label="Connect Claude Code" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0">
+        ${step(`Install the Canopy plugin in Claude Code:${copyBox(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
+        ${step(`Run ${mcpCode("/mcp")}, choose ${mcpStrong("canopy")}, then ${mcpStrong("Authenticate")}.`)}
+        ${step(`Your browser opens Canopy. Click ${mcpStrong("Allow")} and you're connected &mdash; it shows up under Connected apps.`)}
+      </ol>
+      ${grantListBody(s)}
+    </div>
+  </section>`;
 }
 
+/** Settings › MCP access's by-hand setup, as a modal in the confirmation modal's shell
+ *  (`.cnpy-cmodal` — a dimmed backdrop, a centered card, a bottom sheet at phone width),
+ *  rendered at the app ROOT as a `data-overlay` so morph keeps it across rerenders. The
+ *  backdrop, the × and Escape close it. Exported for the pure render test. */
+export function mcpSetupModal(url: string = mcpEndpoint()): string {
+  const close = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
+  return `<div data-overlay="mcp-setup" class="cnpy-cmodal">
+    <div data-act="mcpSetupClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
+    <div class="cnpy-cmodal-wrap">
+      <div id="mcp-setup" role="dialog" aria-modal="true" aria-labelledby="mcp-setup-t" aria-describedby="mcp-setup-d" tabindex="-1" data-mcp-setup class="cnpy-surface cnpy-cmodal-box" style="position:relative;width:min(480px, 100%)">
+        <button data-act="mcpSetupClose" aria-label="Close" title="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${close}</button>
+        <div id="mcp-setup-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em">Set it up without the plugin</div>
+        <p id="mcp-setup-d" style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">Add the Canopy server to Claude Code by hand &mdash; skip this if you installed the plugin, or you'll have two Canopy servers.</p>
+        ${copyBox(browserConnectCommand(url), "copyBrowserConnect", "Copy the command")}
+        <p style="margin:12px 0 0;font-size:13px;line-height:1.55;color:var(--fg-70)">Then run ${mcpCode("/mcp")}, choose ${mcpStrong("canopy")}, then ${mcpStrong("Authenticate")}, and click ${mcpStrong("Allow")} in the browser.</p>
+      </div>
+    </div>
+  </div>`;
+}
 function settingsView(s: AppState): string {
   const themeCards = [
     ["light", "Light"],
@@ -1963,40 +1984,22 @@ function settingsView(s: AppState): string {
     return `<button data-act="setTheme" data-arg="${k}" class="cnpy-themecard" aria-pressed="${sel}" style="${style}">${icon}<span style="font-size:13px;font-weight:500;line-height:18px">${label}</span></button>`;
   }).join("");
 
-  const tokenList = tokenListBody(s);
-
-  // Bento on three columns: Profile / Account on the left two, MCP access down the right
-  // column for two rows with Appearance under Profile + Account beside it, then Email at
-  // full width. The token and app lists are fixed-height scrollers, so how many you have
-  // never changes a tile's height (canopy.css has the folds for narrower widths).
+  // ONE bento grid (canopy.css), every tile stretched to its grid area so every edge lines
+  // up: Profile | Account | MCP access (spanning two rows), Appearance under the first two,
+  // Email notifications at full width. DOM order is the folded order — Profile, Account,
+  // Appearance, then MCP access — so the narrower layouts need no reordering.
   return `<div class="cnpy-set-wrap"><div class="cnpy-set">
     ${profileSection(s)}
 
     ${accountSection(s)}
-
-    <section class="cnpy-tile cnpy-surface cnpy-set-mcp" style="display:flex;flex-direction:column">
-      <div style="${SECTION_LABEL}">MCP access</div>
-      <div style="font-size:12.5px;font-weight:500;margin-bottom:6px">Sign in with browser <span style="font-weight:400;color:var(--fg-40)">· recommended</span></div>
-      <div style="display:flex;align-items:center;gap:8px;background:var(--hover);border:1px solid var(--border-strong);border-radius:9px;padding:8px 8px 8px 12px">
-        <code style="flex:1;min-width:0;font-family:var(--code);font-size:12px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(browserConnectCommand())}</code>
-        <button data-act="copyBrowserConnect" class="cnpy-copybtn" style="flex:none;padding:5px 10px;border-radius:7px;font-size:12px;font-weight:600;border:1px solid var(--border-strong);color:var(--fg-70)">Copy</button>
-      </div>
-      <div style="font-size:11.5px;color:var(--fg-40);margin:6px 0 14px;line-height:1.5">Then run <code style="font-family:var(--code);font-size:11px">/mcp</code> in Claude Code and choose Authenticate.</div>
-      <div style="font-size:12.5px;font-weight:500;margin-bottom:4px">Connected apps</div>
-      ${grantListBody(s)}
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;row-gap:8px;flex-wrap:wrap;margin:18px 0 4px">
-        <div style="flex:1 1 180px;min-width:0;font-size:12.5px;font-weight:500">Access tokens <span style="font-weight:400;color:var(--fg-40)">· for CI and other headless clients</span></div>
-        <button data-act="connectOpen" class="cnpy-mintbtn" style="flex:none;display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--accent);color:var(--accent);font-size:12.5px;font-weight:600;background:var(--accent-soft)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Get connection command</button>
-      </div>
-      ${tokenList}
-      <div style="font-size:11.5px;color:var(--fg-40);margin-top:auto;padding-top:12px;line-height:1.5">Each connection command creates its own token. Revoking a token or an app disconnects it immediately.</div>
-    </section>
 
     <section class="cnpy-tile cnpy-surface cnpy-set-appear">
       <div style="${SECTION_LABEL}">Appearance</div>
       <div class="cnpy-set-themes">${themeCards}</div>
       <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">System follows your operating system's appearance.</div>
     </section>
+
+    ${mcpAccessSection(s)}
 
     ${emailNotificationsSection({
       prefs: s.notifPrefs.data,
@@ -2168,6 +2171,8 @@ function maintenanceScreen(s: AppState): string {
     error: admin ? (s.invites.error ?? null) : null,
     me: s.me?.handle ?? null,
     canInvite: admin,
+    edit: admin && s.personEdit ? { ...s.personEdit, saving: s.personSaving } : null,
+    editOut: admin && s.personEditOut ? { ...s.personEditOut, saving: false } : null,
   }) + (admin
     ? notificationsMaintenanceSections({
         policy: s.notifPolicy.data,
@@ -2177,7 +2182,7 @@ function maintenanceScreen(s: AppState): string {
         fromDraft: s.fromDraft,
       })
     : "");
-  return `${hint}${maintenanceView(maintenanceProps(s), people)}`;
+  return maintenanceView(maintenanceProps(s), people, hint);
 }
 
 // ── tickets ──────────────────────────────────────────────────────────────────
@@ -2245,6 +2250,7 @@ function ticketDetailScreen(s: AppState): string {
     stMenu: s.stMenu,
     artifactsBlock: ticketArtifactsBlock(s.art.ticketArts[slice.data.id]),
     edit: s.tdEdit,
+    deleteArm: s.tdDeleteArm,
   });
 }
 
@@ -2255,6 +2261,16 @@ function sprintScreenBody(s: AppState): string {
   if (slice.status === "error") return notice("Couldn't load this sprint.");
   if (!slice.data) return notice("That sprint doesn't exist.");
   return sprintScreen({ detail: slice.data, persons: s.persons.data, resourceDraft: s.linkDraft, deleteArmed: s.sprintDeleteArmed });
+}
+
+/** The person card for `handle`: painted from the `GET /persons` summary, completed by the
+ *  detail read once it lands (and from the detail alone if the directory hasn't loaded). */
+function personCardFor(s: AppState, handle: string): string {
+  const h = handle.toLowerCase();
+  const detail = s.personDetail.data && s.personDetail.data.handle.toLowerCase() === h ? s.personDetail.data : null;
+  const person = s.persons.data.find((x) => x.handle.toLowerCase() === h) ?? detail
+    ?? { handle, name: null, color: "stone" as const, avatar_url: null, role: null };
+  return personCardModal({ person, detail, self: h === (s.me?.handle ?? "").toLowerCase() });
 }
 
 // ── root ─────────────────────────────────────────────────────────────────────
@@ -2298,7 +2314,7 @@ function screenBody(s: AppState): string {
 function repoProps(s: AppState): RepoProps {
   return {
     tab: s.repoTab, range: s.repoRange, driftOpen: s.repoDriftOpen, repo: s.repo, fetchedAt: s.repoFetchedAt, sample: s.repoSample,
-    admin: s.me?.admin === true, poll: s.repoPoll, productEnv: s.repoProductEnv,
+    admin: s.me?.admin === true, poll: s.repoPoll, productEnv: s.repoProductEnv, persons: s.persons.data,
   };
 }
 
@@ -2382,10 +2398,12 @@ export function render(s: AppState): string {
     ${s.view === "auth" ? authView(s) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.backfillSync ? backfillSyncModal(s.backfillSync) : ""}
-    ${s.view === "app" ? connectModal(s) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
+    ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}
+    ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
+    ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}
   </div>`;
 }

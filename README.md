@@ -86,7 +86,8 @@ Production: `wrangler secret put GITHUB_CLIENT_ID` (and the others).
 Local dev: copy `.dev.vars.example` to `.dev.vars` (git-ignored) and fill it in.
 
 Mint an MCP token from a logged-in session: `POST /auth/mcp-token` → `{ "token": "canopy_mcp_..." }`
-(shown once; or use the web app → Settings → MCP access tokens).
+(shown once). The web app no longer mints tokens — Settings › MCP access connects agents by browser sign-in (OAuth) —
+but the route and any token already minted keep working.
 
 ## Install the Canopy plugin (skills + MCP in one step)
 

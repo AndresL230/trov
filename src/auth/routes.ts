@@ -2,6 +2,7 @@ import { Hono, type Context } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import { z } from "zod";
 import { PERSON_COLORS } from "@shared/rows";
+import { avatarSrc } from "@shared/people";
 import type { AppEnv } from "./principal";
 import { isAdmin, resolveSessionPrincipal } from "./principal";
 import { pkce, randomToken, hmacSeal, hmacUnseal } from "./crypto";
@@ -161,7 +162,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     if (!avail.available) return c.json({ error: avail.reason === "taken" ? "handle_taken" : `handle_${avail.reason}` }, avail.reason === "taken" ? 409 : 400);
     if (p.invite_email && !(await findLiveInvite(c.env.DB, p.invite_email))) return c.json({ error: "invite_revoked" }, 403);
     try {
-      await createPerson(c.env.DB, { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, email: p.email });
+      await createPerson(c.env.DB, { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, avatar_source: p.provider, email: p.email });
     } catch (e) {
       if (e instanceof HandleTakenError) return c.json({ error: "handle_taken" }, 409);
       throw e;
@@ -202,7 +203,8 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     const handle = c.get("principal").handle;
     const row = await getPerson(c.env.DB, handle);
     const identities = (await listIdentities(c.env.DB, handle)).map((i) => ({ provider: i.provider, label: i.label, linked_at: i.linked_at }));
-    return c.json({ handle, name: row?.name ?? null, avatar_url: row?.avatar_url ?? null, color: row?.color ?? "stone", identities, org: SAPLING_ORG, admin: isAdmin(c.env, handle) });
+    // `avatar_url` goes out RESOLVED: an uploaded avatar (0036) outranks the provider's.
+    return c.json({ handle, name: row?.name ?? null, avatar_url: row ? avatarSrc(row) : null, role: row?.role ?? null, color: row?.color ?? "stone", identities, org: SAPLING_ORG, admin: isAdmin(c.env, handle) });
   });
   const ProfileWrite = z.object({ name: z.string().trim().max(120).nullable().optional(), color: z.enum(PERSON_COLORS).optional() });
   authApp.put("/me", async (c) => {

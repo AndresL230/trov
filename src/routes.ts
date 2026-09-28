@@ -11,9 +11,9 @@ import { artifactsApp } from "./artifacts/routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runBackfill, isFinalBackfillBatch } from "./tools/backfill";
-import { get_doc, list_docs, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
+import { get_doc, list_docs, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
 import {
-  create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link,
+  create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link, delete_ticket,
   set_ticket_sprint, set_ticket_parent, add_ticket_comment,
   TicketError, TICKET_ERROR_STATUS,
 } from "./tools/tickets";
@@ -21,7 +21,7 @@ import {
   TicketCreate, TicketEdit, TicketTransition, TicketMove, TicketAssigneeToggle, TicketLinkAdd,
   TicketSprintSet, TicketParentSet, TicketCommentAdd, TicketSeg, TicketAssigneeFilter, TicketCategory,
 } from "@shared/tickets";
-import { promote_doc, ratify_adr, reject_doc_version, reject_adr, resolve_triage, assign_triage, map_identity, type AssignType } from "./tools/writes";
+import { promote_doc, ratify_adr, reject_doc_version, reject_adr, resolve_triage, assign_triage, map_identity, discard_identity_task, restore_identity_task, IdentityTaskError, type AssignType } from "./tools/writes";
 import {
   create_sprint, set_sprint_active, complete_sprint, add_sprint_resource, delete_sprint, list_sprints, get_sprint,
   SprintError, SPRINT_ERROR_STATUS,
@@ -49,6 +49,8 @@ import { listPersons } from "./auth/persons";
 import { sendInvite } from "./notifications/invite";
 import type { InviteRow } from "@shared/rows";
 import { readDocImage } from "./tools/doc-images";
+import { getPersonProfile, writePersonProfile, setAvatar, clearAvatar, readAvatar, PeopleError, PEOPLE_ERROR_STATUS } from "./tools/people";
+import { AVATAR_MAX_BYTES } from "@shared/people";
 
 export const app = new Hono<AppEnv>();
 
@@ -73,6 +75,23 @@ app.get("/img/:sha", async (c) => {
   const lockdown = { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" };
   if (!/^[0-9a-f]{64}$/.test(sha)) return c.json({ error: "not_found" }, 404, lockdown);
   const img = await readDocImage(c.env.DB, c.env.ARTIFACTS_BUCKET, sha);
+  if (!img) return c.json({ error: "not_found" }, 404, lockdown);
+  return new Response(img.body, {
+    headers: {
+      ...lockdown,
+      "content-type": img.content_type,
+      "content-length": String(img.size_bytes),
+      "cache-control": "private, max-age=31536000, immutable",
+    },
+  });
+});
+
+// Person avatars (0036): the bytes behind an uploaded `/avatar/<sha256>`, served exactly
+// like a doc image — session-gated, content-addressed and immutable, `default-src 'none'`
+// + nosniff. The type is the one SNIFFED at upload (the R2 object's own metadata).
+app.get("/avatar/:sha", async (c) => {
+  const lockdown = { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" };
+  const img = await readAvatar(c.env.ARTIFACTS_BUCKET, c.req.param("sha"));
   if (!img) return c.json({ error: "not_found" }, 404, lockdown);
   return new Response(img.body, {
     headers: {
@@ -447,8 +466,10 @@ app.post("/needs-triage/:id/assign", async (c) => {
 // (/needs-triage + assign/discard above) + Identity (below). ─────────────────
 
 // Pending unknown-login identity tasks, each with a small LIVE activity sample
-// pulled from `events` at read time — activity is never copied onto the task.
-app.get("/identity-tasks", async (c) => c.json({ tasks: await list_identity_tasks(c.env.DB) }));
+// pulled from `events` at read time — activity is never copied onto the task —
+// plus the discarded logins Undo can still restore.
+app.get("/identity-tasks", async (c) =>
+  c.json({ tasks: await list_identity_tasks(c.env.DB), discarded: await list_discarded_identities(c.env.DB) }));
 
 // Human placement (session-gated): link a login to an EXISTING person (by
 // handle) as a github identity (a direct authored write, not a gate re-run),
@@ -466,8 +487,75 @@ app.post("/identity-tasks/:login/map", async (c) => {
   }
 });
 
+// Human placement (session-gated): discard a login that will never be a person
+// (an outside contributor). Soft and STICKY — the row stays `discarded` with the
+// audit columns, and the login is never re-raised; its events are still captured.
+// Restore puts it back in the list. 404 unknown login, 409 a mapped task.
+const identityFail = (c: Context<AppEnv>, e: unknown) =>
+  e instanceof IdentityTaskError
+    ? c.json({ error: e.message }, e.code === "not_found" ? 404 : 409)
+    : c.json({ error: "temporarily unavailable" }, 503);
+app.post("/identity-tasks/:login/discard", async (c) => {
+  try {
+    const res = await discard_identity_task(c.env.DB, c.req.param("login"), c.get("principal").handle);
+    return c.json({ ok: true, ...res });
+  } catch (e) {
+    return identityFail(c, e);
+  }
+});
+app.post("/identity-tasks/:login/restore", async (c) => {
+  try {
+    const res = await restore_identity_task(c.env.DB, c.req.param("login"));
+    return c.json({ ok: true, ...res });
+  } catch (e) {
+    return identityFail(c, e);
+  }
+});
+
 // Person directory (session-gated): the avatar-chip source for every screen and the identity picker.
 app.get("/persons", async (c) => c.json({ persons: await listPersons(c.env.DB) }));
+
+// ── People profiles (0036; the contract is shared/people.ts) — session cookie, NEVER MCP ──
+// Read: any signed-in member; `responsibilities` only to the person and admins. Write:
+// the person or an admin (403 otherwise, nothing written). Avatar: the viewer's OWN only.
+// `me` names the viewer (it is a reserved handle, so it can never be someone else's).
+// A PeopleError is its status; anything else (a D1 failure) is a 503, never a 500.
+const peopleFail = (c: Context<AppEnv>, e: unknown) =>
+  e instanceof PeopleError ? c.json({ error: e.message }, PEOPLE_ERROR_STATUS[e.code]) : c.json({ error: "temporarily unavailable" }, 503);
+const profileHandle = (c: Context<AppEnv>): string => {
+  const h = c.req.param("handle") ?? "";
+  return h.toLowerCase() === "me" ? c.get("principal").handle : h;
+};
+const adminCheck = (c: Context<AppEnv>) => (h: string) => isAdmin(c.env, h);
+app.get("/api/people/:handle", async (c) => {
+  try { return c.json(await getPersonProfile(c.env.DB, profileHandle(c), c.get("principal").handle, adminCheck(c))); }
+  catch (e) { return peopleFail(c, e); }
+});
+app.put("/api/people/:handle", async (c) => {
+  const body = await c.req.json().catch(() => undefined);
+  try { return c.json(await writePersonProfile(c.env.DB, profileHandle(c), c.get("principal").handle, adminCheck(c), body)); }
+  catch (e) { return peopleFail(c, e); }
+});
+// Multipart, field `file`. A declared length past the cap (plus multipart framing) is
+// refused before the body is read.
+app.post("/api/people/me/avatar", async (c) => {
+  const len = Number(c.req.header("content-length"));
+  if (Number.isFinite(len) && len > AVATAR_MAX_BYTES + 64 * 1024) return c.json({ error: `an avatar is at most ${AVATAR_MAX_BYTES} bytes` }, 413);
+  let file: File | null = null;
+  try {
+    const form = await c.req.raw.formData();
+    const v = form.get("file");
+    file = v && typeof v !== "string" ? (v as File) : null;
+  } catch {
+    return c.json({ error: "the body must be multipart/form-data" }, 400);
+  }
+  try { return c.json({ ok: true, ...(await setAvatar(c.env.DB, c.env.ARTIFACTS_BUCKET, c.get("principal").handle, file)) }); }
+  catch (e) { return peopleFail(c, e); }
+});
+app.post("/api/people/me/avatar/remove", async (c) => {
+  try { return c.json({ ok: true, ...(await clearAvatar(c.env.DB, c.get("principal").handle)) }); }
+  catch (e) { return peopleFail(c, e); }
+});
 
 // ── Maintenance › People: the invite list (admin, session-cookie only, NEVER MCP) ──
 const InviteWrite = z.object({ email: z.string().trim().max(254).regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "invalid email"), name: z.string().trim().max(120).optional() });
@@ -776,6 +864,18 @@ app.post("/tickets/:id/links/:linkId/remove", async (c) => {
   try {
     await remove_ticket_link(c.env.DB, id, linkId);
     return ticketDetailResponse(c, id);
+  } catch (e) {
+    return ticketFail(c, e);
+  }
+});
+
+// Delete a ticket (session-gated, any member — no adminGate). A HARD delete; a
+// ticket mirrored from a GitHub issue is a 403, left in place. See delete_ticket.
+app.post("/tickets/:id/delete", async (c) => {
+  const id = ticketId(c);
+  if (id === null) return c.json({ error: "invalid id" }, 400);
+  try {
+    return c.json({ ok: true, ...(await delete_ticket(c.env.DB, id)) });
   } catch (e) {
     return ticketFail(c, e);
   }

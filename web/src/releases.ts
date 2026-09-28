@@ -71,6 +71,60 @@ export const prUrl = (n: number): string => `${CANOPY_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
   {
+    version: "0.16",
+    date: "2026-09-27",
+    title: "Photos, roles and person cards",
+    headline: "Click anyone's name to see their photo and role, upload your own photo, and agents can read what each person owns.",
+    highlights: [
+      "Click anyone's name — on a ticket, in the Feed, in search or in Maintenance › People — to see their card: their photo, name, role, when they joined and their GitHub.",
+      "Click your photo in Settings › Profile to upload a new one or remove it. It's cropped to a square and shows everywhere your avatar does; removing it goes back to your GitHub or Google picture.",
+      "Everyone has a role, shown on their card. Admins set it, with each person's responsibilities, in Maintenance › People. Responsibilities aren't shown anywhere: agents read them when deciding whom to assign work.",
+      "Tickets you filed in Canopy can be deleted from the ticket page (tickets mirrored from GitHub can't), after a confirmation.",
+      "In Maintenance › Identity, discard a GitHub login that isn't on the team — outside contributors stop showing up there, even when they open another pull request, and Undo brings one back.",
+      "Agents can now assign and unassign people on existing tickets — when the person they work for is an admin, the ticket's requester or already on it. Tickets mirrored from GitHub included.",
+    ],
+    headsUp: [
+      "Opening Settings no longer lights up the account chip at the bottom of the sidebar as if it were a selected row.",
+      "Your picture and name no longer change with the way you sign in. If you linked both GitHub and Google, the picture you have now stays — it only updates when that same provider's picture changes — and a name you set in Settings sticks.",
+      "Settings no longer mints MCP tokens — connect with the steps on Settings › MCP access and sign in in the browser. Tokens you already use keep working.",
+      "Settings' boxes are only as tall as what they hold, and MCP access now walks you through the browser sign-in, with your connected apps right under it.",
+    ],
+    ops: [
+      "Apply migration `0036_person_profiles` with `npm run db:migrate:remote` before this deploys.",
+      "Canopy plugin 0.6.8.",
+    ],
+    patches: {
+      added: [
+        "Migration `0036_person_profiles`: `persons.avatar_sha`, `role`, `responsibilities`; `shared/people.ts` — `ROLE_MAX`, `RESPONSIBILITIES_MAX`, `AVATAR_MAX_BYTES`, `AVATAR_TYPES`, `avatarSrc` and the profile DTOs (#89)",
+        "`GET /api/people/:handle` / `PUT /api/people/:handle` (admins only), `POST /api/people/me/avatar` and `/avatar/remove`, `GET /avatar/<sha>`; `GET /persons` and `/auth/me` carry `role` and a resolved `avatar_url` (#89)",
+        "`web/src/profile.ts` `personCardModal`: the person card a click on a name opens (the confirm modal's shell) — no People screen, no profile page; `GET /api/people/:handle` returns only the card's fields (#89)",
+        "Settings › Profile: the avatar is the photo control — a hover veil with a camera, and a click menu with Upload (Change) photo, Remove photo over an uploaded one and the accepted types (`web/src/avatar.ts` centre-crops to a 512px square and encodes WebP, else PNG, before upload) (#89)",
+        "Tickets: `POST /tickets/:id/delete` hard-deletes a native ticket (any member, never MCP; a ticket mirrored from GitHub is a 403); Delete ticket in the rail, through the confirmation modal (#89)",
+        "Maintenance › Identity: `POST /identity-tasks/:login/discard` / `restore` — a soft, sticky discard (`identity_tasks.status = 'discarded'` + `resolved_at` / `resolved_by`, no migration; the login's PK keeps it from being re-raised, its events are still captured); a Discard on each card, a \"Discarded @login · Undo\" toast, and an \"N discarded\" list with Restore; `GET /identity-tasks` adds `discarded` (#89)",
+        "MCP `assign_ticket { id, login, on }` (issue #90): adds or removes one assignee over the web's `toggle_assignee`, scoped to an admin, the ticket's requester or a current assignee (`assertTicketAssignable`); idempotent with no write, never changes status; the `tickets` / `canopy` skills and `create_ticket`'s description say so (#89)",
+      ],
+      changed: [
+        "`personChip` draws the initials under the photo; a photo that fails to load is dropped for the session (one capture-phase `error` listener), so it falls back to initials instead of a broken image (#89)",
+        "Quick search: a person hit opens their person card, with their role as the context line (was the queue filtered to them) (#89)",
+        "The ticket rail's requester and assignees, the Feed's authors and Maintenance › People's rows open the person card; Maintenance › People shows each role and, for admins, Edit role — the one role + responsibilities editor (#89)",
+        "Every name or photo opens the person card — the ticket queue (table rows and board cards), sprints and the Timeline's lead, handoffs, prompts, artifacts, docs, Review, Unplaced, the Repo dashboard's contributors and activity, the Feed's review box and Settings › Account — as one photo + name chip (`personLink`) where both fit; a card or row that opens something else is a container with its own click target laid over it (`ui.ts` `hitArea`), so a person is never a button inside a button (#89)",
+        "Repo dashboard: PR authors and contributors show their avatar photo (#89)",
+        "Sidebar: no selected fill on the account chip while Settings is open or on hover — only its gear turns (#89)",
+        "Maintenance: Unplaced / Identity / People are an underline tab bar at the top of the page body (`maintTabBar`, each tab with its count badge — the new `tabBar()` in `web/src/tabs.ts`, page-level sections as opposed to `segmented()`'s values: text tabs on a hairline, a 2px accent underline that slides between them via `syncTabBars`, tablist semantics and ←/→ / Home/End) instead of a sub-page list under the sidebar entry, which is now a plain row with its badge; the tabs are peers, so the header drops the \"Maintenance › Identity\" back-button crumb, and a tab switch no longer replays the screen's entrance; `maintenance` leaves `NAV_GROUPS` (#89)",
+        "Roadmap: Narrative / Timeline are the same underline tab bar at the top of the page body (`roadmapTabBar`, the Timeline tab carrying the red overdue dot) instead of a `segmented()` switch in the header — both tabs open in one page frame so the underline slides and the bar never moves (`asideColumns` takes an optional `tabs` head for the Narrative's columns), the New sprint panel opens under its line, New sprint stays in the header, and a switch is one rerender (`setRoadmapTab`) that never replays the entrance (#89)",
+        "Repo dashboard: Overview / Code / CI & Deploys / Usage / Team & Planning are the same underline tab bar at the top of the page body (`repoTabBar`, in every state of the dashboard — loading, failed, degraded, sample, nothing connected — with the sample / degraded banner, the Poll now strip and the not-connected footer under its line) instead of a sub-page list under the sidebar entry, which is now a plain row — `repo` leaves `NAV_GROUPS`, so only Docs keeps one; a switch (`setRepoTab`) is one rerender with no reload and no replayed entrance, the new tab's content rising in with its bars, fills, sparklines and deploy dots; the header crumb is just the repo slug; quick search's Repo › … entries and `#repo/<tab>` still land on their tab (#89)",
+        "Settings: ONE bento grid with even edges — Profile | Account | MCP access (spanning two rows), Appearance under the first two, Email notifications full width — every tile stretched to its grid area, content balanced so a stretch is a few pixels, Profile's color and Account's sign-in methods pinned to the tile's foot (`.cnpy-tile-foot`); MCP access (`mcpAccessSection`) is OAuth only — one line, three browser sign-in steps (`PLUGIN_INSTALL`), Connected apps capped at 3 rows with Show all (no fixed-height scroller), and a Set it up without the plugin link that opens the by-hand `claude mcp add` in a modal (`mcpSetupModal`), so the tile never changes height; the Get Started guide says the same (#89)",
+      ],
+      fixed: [
+        "A person with GitHub and Google linked got the picture (and the name) of whichever they signed in with last: the provider picture now has one owner, `persons.avatar_source` (0036 PART B, backfilled from the picture's host) — only that provider's sign-in refreshes it, and a sign-in never writes the name, so a Settings edit sticks (#89)",
+      ],
+      removed: [
+        "Settings' token UI: Get connection command (`connectModal` / `connectSnippet` / `CONNECT_CLIENTS`, and with it the Codex, `.mcp.json`-with-header and Token only setups), the token list (`tokenListBody`) and the web client's `mintMcpToken` / `listMcpTokens` / `revokeMcpToken`; the guide's `connect` figure. The `/auth/mcp-token*` routes, `canopy_mcp_` bearer resolution and `mcp_tokens` stay, so existing tokens keep working (#89)",
+      ],
+    },
+    prs: [89],
+  },
+  {
     version: "0.15",
     date: "2026-09-26",
     title: "My Work tiles, a Roadmap timeline, one card look",

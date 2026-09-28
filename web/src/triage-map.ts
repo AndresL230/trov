@@ -3,9 +3,9 @@
 // reshape deferred during componentization — it lives HERE, in one place per
 // surface, never inside components. Pure functions, no fetching, no state.
 
-import type { StagedProposal, AdrRow, NeedsTriageRow, IdentityTask, PersonSummary } from "./api";
+import type { StagedProposal, AdrRow, NeedsTriageRow, IdentityTask, DiscardedIdentity, PersonSummary } from "./api";
 import type { ReviewItem } from "./review";
-import type { AssignOptions, UnplacedItem, IdentityGroup, Person } from "./maintenance";
+import type { AssignOptions, UnplacedItem, IdentityGroup, DiscardedLogin, Person } from "./maintenance";
 import { collapsedLineDiff } from "./diff";
 import { initialsOf, relTime } from "./ui";
 import { initialsOfName } from "./people";
@@ -185,6 +185,12 @@ export function identityFromTask(t: IdentityTask): IdentityGroup {
       when: relTime(s.occurred_at),
     })),
   };
+}
+
+/** A discarded login's row in the restore list: when it was discarded, and by whom. */
+export function discardedFromRow(d: DiscardedIdentity): DiscardedLogin {
+  const when = d.resolved_at ? ` ${relTime(d.resolved_at)}` : "";
+  return { login: d.login, meta: `discarded${when}${d.resolved_by ? ` by ${d.resolved_by}` : ""}` };
 }
 
 /** The person picker's source: the persons directory. The picked value is the handle.

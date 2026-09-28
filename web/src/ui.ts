@@ -33,17 +33,34 @@ export function surface(style = "", opts: { hover?: boolean; cls?: string } = {}
   return ` class="${cls}"${style ? ` style="${style}"` : ""}`;
 }
 
+/** A card or row that opens something AND shows people, whose names and photos open their
+ *  person card. A button may not hold a button, so the card is a plain container
+ *  (`HITBOX`, position:relative) and this empty button, laid over the whole of it as its
+ *  LAST child, is the card's own click target and focus stop (`label` its accessible name);
+ *  every person button inside (people.ts's links, a linked avatar stack) sits above it
+ *  (canopy.css). Last, so a card that lays out by `:nth-child` (the queue table's narrow
+ *  reflow) counts the same children. */
+export function hitArea(act: string, arg: string, label: string): string {
+  return `<button data-act="${attr(act)}" data-arg="${attr(arg)}" class="cnpy-hit" aria-label="${attr(label)}"></button>`;
+}
+/** The class a `hitArea` card carries. */
+export const HITBOX = "cnpy-hitbox";
+
 // ── two columns + a sticky aside (Roadmap › Narrative, Feed) ─────────────────
 // canopy.css `.cnpy-cols-page` / `.cnpy-cols` / `.cnpy-cols-aside`: the main column beside a
 // 360px aside that sticks at the page's own top padding (--cols-pad-top), one column (aside below) under an 880px page.
 
-/** A page in two columns: `main` on the left, `aside` (its boxes) as the sticky right column. */
-export function asideColumns(main: string, aside: string): string {
-  return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
-    <div class="cnpy-cols">
+/** A page in two columns: `main` on the left, `aside` (its boxes) as the sticky right column.
+ *  `tabs` heads the page with a tab bar (tabs.ts `tabBar`, passed in as markup — this module
+ *  cannot import it) and wraps the columns in its panel (`panel` = `tabPanelAttrs(…)`), 20px
+ *  under the bar's line: Roadmap › Narrative. Without it the markup is unchanged (the Feed). */
+export function asideColumns(main: string, aside: string, tabs?: { bar: string; panel: string }): string {
+  const cols = `<div class="cnpy-cols">
       <div style="min-width:0">${main}</div>
       <aside class="cnpy-cols-aside cnpy-stagger">${aside}</aside>
-    </div>
+    </div>`;
+  return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
+    ${tabs ? `${tabs.bar}<div${tabs.panel} style="padding-top:20px">${cols}</div>` : cols}
   </div>`;
 }
 

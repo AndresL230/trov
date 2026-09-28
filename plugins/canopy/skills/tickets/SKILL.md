@@ -1,8 +1,8 @@
 ---
 name: tickets
-description: Use when a person explicitly asks to work the Canopy ticket queue — file a ticket, start or resolve one, comment on it, link work to it, move it into a sprint, nest it under another, or create and manage sprints (triggers — "file a ticket for…", "start that ticket", "mark it done", "comment on ticket 12", "move this to sprint 13", "create a sprint"). Reading the queue needs no skill. Explicit invocation only for writes — must never auto-fire.
+description: Use when a person explicitly asks to work the Canopy ticket queue — file a ticket, assign or unassign someone, start or resolve one, comment on it, link work to it, move it into a sprint, nest it under another, or create and manage sprints (triggers — "file a ticket for…", "assign 12 to meilin", "start that ticket", "mark it done", "comment on ticket 12", "move this to sprint 13", "create a sprint"). Reading the queue needs no skill. Explicit invocation only for writes — must never auto-fire.
 disable-model-invocation: true
-allowed-tools: mcp__canopy__list_tickets, mcp__canopy__get_ticket, mcp__canopy__list_sprints, mcp__canopy__get_sprint, mcp__canopy__create_ticket, mcp__canopy__edit_ticket, mcp__canopy__transition_ticket, mcp__canopy__add_ticket_comment, mcp__canopy__add_ticket_link, mcp__canopy__set_ticket_sprint, mcp__canopy__set_ticket_parent, mcp__canopy__create_sprint, mcp__canopy__set_sprint_active, mcp__canopy__complete_sprint, mcp__canopy__add_sprint_resource
+allowed-tools: mcp__canopy__list_tickets, mcp__canopy__get_ticket, mcp__canopy__list_sprints, mcp__canopy__get_sprint, mcp__canopy__list_people, mcp__canopy__create_ticket, mcp__canopy__edit_ticket, mcp__canopy__transition_ticket, mcp__canopy__add_ticket_comment, mcp__canopy__add_ticket_link, mcp__canopy__set_ticket_sprint, mcp__canopy__set_ticket_parent, mcp__canopy__assign_ticket, mcp__canopy__create_sprint, mcp__canopy__set_sprint_active, mcp__canopy__complete_sprint, mcp__canopy__add_sprint_resource
 ---
 
 # Tickets → Canopy
@@ -31,18 +31,23 @@ tools are available to every principal and documented in the `canopy` umbrella.
 ## The lane rule — read this before anything else
 
 > **You may write only to tickets already assigned to you.** Filing a new ticket is the one
-> unscoped write.
+> unscoped write, and assigning has a rule of its own (below).
 
 This is enforced by the Worker, not by this skill. A write outside the lane comes back
 `{"error": "…not assigned to you…", "code": "forbidden"}` and **nothing is written**.
 
 Three consequences worth knowing before you promise a person anything:
 
-- **You cannot assign anyone after a ticket is filed.** There is no `toggle_assignee` tool and there
-  never will be — assignment is the data the lane rule is built on. `create_ticket`'s `assignees` is
-  the only agent-reachable assignment in Canopy.
-- **You cannot pick work up off the unassigned pile.** Somebody has to assign it to your principal in
-  the web UI first. Say that plainly rather than trying and reporting a failure.
+- **Assigning after filing is `assign_ticket`, and it has its OWN scope** — the lane can't bound it,
+  because assignment is how a ticket gets into a lane. `assign_ticket { id, login, on }` adds (`on:
+  true`) or removes (`on: false`) one assignee, and only an **admin**, the ticket's **requester** or one
+  of its **current assignees** may call it; anyone else gets `forbidden` and nothing is written. It is
+  idempotent (adding someone already on it, or removing someone who isn't, is a success that writes
+  nothing), it **never changes status**, and it records no history row. `login` is a handle from
+  `list_people` (step 1), never a guess — the same goes for `create_ticket`'s `assignees`.
+- **You cannot pick work up off the unassigned pile** unless your principal is an admin or filed it.
+  Otherwise somebody who may assign it (an admin, its requester, an assignee) has to put your principal
+  on it first. Say that plainly rather than trying and reporting a failure.
 - **You cannot triage other people's tickets** — not comment, not resolve, not re-parent. An admin is
   the one exception, and only for `set_ticket_sprint` (re-homing a ticket into a sprint).
 
@@ -74,12 +79,20 @@ Never write from the conversation's memory of a ticket. Read it back:
 - `get_ticket <id>` — the whole ticket, including **`assignees`** (your lane check) and `status`
   (which moves are even legal).
 - `list_sprints` / `get_sprint <id>` before any sprint move, so you name a real sprint.
+- `list_people` before **filing with assignees** — every person's `handle`, `name`, `role` and
+  `responsibilities`. Propose the person whose role and responsibilities fit the work, by handle; a
+  null `role` / `responsibilities` means unknown, so never infer what someone owns from a name. If
+  nobody clearly fits, propose filing it unassigned (or ask). The same read comes before
+  `assign_ticket`.
 
 ### 2. Check the lane, and say so if you're outside it
 
 If your principal is not in `assignees`, **stop**. Tell the person which ticket it is, that it is not
-assigned to them, and that a person has to assign it in the web UI. Do not call the tool to produce a
-refusal you could have predicted.
+assigned to them, and who can assign it (an admin, its requester or an assignee — in the web UI or with
+`assign_ticket`). Do not call the tool to produce a refusal you could have predicted.
+
+For `assign_ticket` the check is different: you may call it when your principal is an admin, the
+ticket's `requester`, or in its `assignees`. Otherwise stop and say who can.
 
 ### 3. Load the team's config, and show a one-line diff
 
@@ -89,6 +102,7 @@ Then show the person exactly what you are about to send, in one line:
 ```
 file ticket · "CSV export drops the header row" · bug / high · sprint: Backlog · assignees: andres
 move #42 · submitted → in_progress
+assign #42 · + meilin   (unassign: − meilin)
 ```
 
 Wait for confirmation unless the config sets `require_confirmation: false`. **Always** confirm for
@@ -111,7 +125,7 @@ If the call came back with a `code`, say what it means and what the person shoul
 
 | code | what it means | what to say |
 |---|---|---|
-| `forbidden` | outside your lane | who needs to assign it, in the web UI |
+| `forbidden` | outside your lane (or, for `assign_ticket`, not an admin, the requester or an assignee) | who can assign it — an admin, its requester or an assignee |
 | `conflict` | a shared rule said no — a move to the status it already has, or a nesting rule | which rule |
 | `bad_request` | your input was wrong — an unknown handle, an unusable link, an empty comment | the specific field |
 | `not_found` | no such ticket or sprint | the id you used |
@@ -150,7 +164,8 @@ progress from tickets, but `done` is a person's statement.
 - **Never auto-fire.** Explicit ask only.
 - **Never infer `done` / `declined`**, on a ticket or a sprint — a mirrored ticket's closure is the
   Worker following GitHub, never something you do on its behalf.
-- **Never claim you assigned someone** after filing — you cannot.
+- **Never claim you assigned someone** without reading it back — report the `assignees` the call
+  returned, not the ones you asked for.
 - **Read the ticket back before writing it**, every time.
 - **Your writes are attributed to your principal with nothing marking them agent-made.** If the team
   wants agent comments recognizable, `comment_prefix` in the config is how (see `references/config.md`).

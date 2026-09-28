@@ -6,25 +6,27 @@
 import "./canopy.css";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments } from "./segmented";
+import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
 import {
-  render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, connectSnippet, CONNECT_CLIENTS, browserConnectCommand,
-  FEED_FILTER_CATS, type AppState, type Screen, type ConnectClient, type FeedFilterCat, type ToastAction,
+  render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL,
+  FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
 } from "./render";
 import {
   getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
-  listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, type AssignTarget,
-  getMe, logout, mintMcpToken, adminBackfill, adminPoll,
+  listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, discardIdentity, restoreIdentity, type AssignTarget,
+  getMe, logout, adminBackfill, adminPoll,
   getOnboardPrefill, checkHandle, submitOnboard,
   getNotificationPrefs, putNotificationPrefs, getNotificationPolicy, putNotificationPolicy,
   getNotificationSettings, putNotificationSettings, listNotificationOutbox, testSendNotification, type PrefsWrite,
-  listMcpTokens, revokeMcpToken, listOAuthGrants, revokeOAuthGrant,
+  listOAuthGrants, revokeOAuthGrant,
   listPersons, listInvites, createInvite, revokeInvite, resendInvite, updateMe, unlinkIdentity, renameHandle,
+  getPersonProfile, updatePersonProfile, uploadAvatar, removeAvatar,
   listTickets, getTicket, getTicketBadge, createTicket, transitionTicket, moveTicket, toggleTicketAssignee,
-  addTicketLink, editTicket, removeTicketLink, setTicketSprint, setTicketParent, addTicketComment, listSprints,
+  addTicketLink, editTicket, removeTicketLink, deleteTicket, setTicketSprint, setTicketParent, addTicketComment, listSprints,
   getSprint, createSprint, setSprintActive, addSprintResource,
   type TicketDetail,
   listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, deleteArtifact, restoreArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
@@ -34,7 +36,7 @@ import {
 } from "./api";
 import { handoffAsPrompt, blankHandoff, docDraftFromHandoff, type NewHandoffDraft } from "./handoffs";
 import { normalizeTags, type HandoffView } from "@shared/handoffs";
-import { selectedUnplacedId } from "./maintenance";
+import { selectedUnplacedId, personEditChanged, MAINT_TABS, type MaintTab } from "./maintenance";
 import { ASSIGN_OPTIONS } from "./triage-map";
 import { draftFromPrompt, blankPromptDraft, slugify, tagOptions } from "./prompts";
 import { blankDoc, defaultSection } from "./newdoc";
@@ -48,7 +50,8 @@ import {
 } from "@shared/tickets-core";
 import { decodeReviewId } from "./triage-map";
 import { QUEUE_FILTER_CATS, type QueueFilterCat } from "./tickets";
-import { initialOnboard } from "./people";
+import { initialOnboard, markAvatarFailed, AVATAR_IMG_CLASS } from "./people";
+import { prepareAvatar } from "./avatar";
 import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX } from "./mentions";
 import { PERSON_COLORS, type PersonColor } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
@@ -91,6 +94,7 @@ try {
   const c = localStorage.getItem("canopy.collapsed");
   if (c) state.collapsed = c === "1";
   const open = JSON.parse(localStorage.getItem("canopy.navOpen") ?? "{}") as Record<string, unknown>;
+  // Only live groups are read, so a retired one's key (tickets, maintenance, repo) is ignored.
   for (const g of NAV_GROUPS) if (typeof open[g] === "boolean") state.navOpen[g] = open[g] as boolean;
 } catch { /* localStorage unavailable, or a hand-edited value */ }
 
@@ -167,9 +171,10 @@ function markEnter(): void {
   if (!root || state.view !== "app") return;
   const settled = screenSettled();
   // An in-page view switch (the header's segmented switch — Roadmap Narrative/Timeline, a
-  // release's Release/Patch notes) is not a new page: key the entrance on the route WITHOUT
-  // it, so flipping the switch swaps the content in place instead of replaying the screen.
-  const key = `${hashForRoute({ ...currentRoute(), roadmapTab: undefined, releasePage: undefined })}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
+  // release's Release/Patch notes — or a page's tab bar, Maintenance's and Repo's tabs) is not
+  // a new page: key the entrance on the route WITHOUT it, so flipping the switch swaps the
+  // content in place instead of replaying the screen (and the tab bar's underline slides unbroken).
+  const key = `${hashForRoute({ ...currentRoute(), roadmapTab: undefined, releasePage: undefined, maintTab: undefined, repoTab: undefined })}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
   const now = performance.now();
   // A still-loading paint does not enter: the entrance plays ONCE, when the screen's
   // read lands. Playing it for the loading paint too made every first visit (and every
@@ -242,6 +247,7 @@ function rerender(): void {
   // The queue's filter menu left open never survives leaving the queue.
   if (state.screen !== "tickets") state.qFilterOpen = false;
   if (state.screen !== "feed") state.feedFilterOpen = false;
+  if (state.screen !== "settings") state.avatarMenu = false;
   // Entering a group's pages opens its sub-page list, and leaving folds it again —
   // unless the person opened or closed it by hand, which sticks (and is what persists).
   const group = state.view === "app" ? navGroupOf(state.screen) : null;
@@ -273,11 +279,13 @@ function rerender(): void {
   const scroll = captureScroll(mount, state.screen);
   paint(mount, render(state));
   syncSegments(mount);
+  syncTabBars(mount);
   qs.sync();   // the search dropdown lives outside the mount: re-anchor and re-theme it
   // The tab icon follows the app's resolved theme (a no-op until it changes).
   syncFavicon(resolvedTheme(), mount.querySelector("[data-cnpy-theme]"));
   restoreScroll(mount, scroll, state.screen);
   markEnter();
+  syncRoleEdit();
   if (pendingFlash) {
     for (const el of Array.from(mount.querySelectorAll(pendingFlash))) el.classList.add("cnpy-flash");
     pendingFlash = null;
@@ -432,6 +440,7 @@ function currentRoute(): Route {
   return r;
 }
 function applyRoute(r: Route): void {
+  if (r.ticketId !== state.ticketId) { state.tdDeleteArm = false; state.tdDeleteBusy = false; }   // a confirm never carries to another ticket
   state.screen = r.screen;
   state.ticketId = r.ticketId;
   state.sprintId = r.sprintId;
@@ -473,7 +482,7 @@ function loadForScreen(screen: Screen): void {
     case "mywork": loadMyWorkIfNeeded(); break;
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
-    case "settings": loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); break;
+    case "settings": loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); break;
     case "unsubscribe": runUnsubscribe(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
@@ -772,28 +781,20 @@ function loadNotifPrefs(): void {
       rerender();
     });
 }
-// Settings › MCP access. No rerender of its own on entry: every caller follows
-// with loadNotifPrefsIfNeeded, which does.
-function loadTokens(): void {
-  state.tokens = { status: "loading", data: state.tokens.data };
-  listMcpTokens()
-    .then((data) => { state.tokens = { status: "ok", data }; rerender(); })
-    .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-      state.tokens = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
-    });
+// Settings › MCP access › Connected apps. No rerender of its own on entry: every caller
+// follows with loadNotifPrefsIfNeeded, which does.
+function loadGrants(): void {
   state.grants = { status: "loading", data: state.grants.data };
   listOAuthGrants()
     .then((data) => { state.grants = { status: "ok", data }; rerender(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) return; // the tokens load above already sends the person to sign-in
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.grants = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerender();
     });
 }
-function loadTokensIfNeeded(): void {
-  if (state.tokens.status === "idle") loadTokens();
+function loadGrantsIfNeeded(): void {
+  if (state.grants.status === "idle") loadGrants();
 }
 function loadNotifPrefsIfNeeded(): void {
   if (state.notifPrefs.status === "idle") loadNotifPrefs();
@@ -1134,7 +1135,13 @@ function loadIdentityTasks(): void {
   state.identityTasks = { status: "loading", data: state.identityTasks.data };
   rerender();
   listIdentityTasks()
-    .then((rows) => { if (seq !== identityTasksSeq) return; state.identityTasks = { status: "ok", data: rows }; rerender(); })
+    .then((r) => {
+      if (seq !== identityTasksSeq) return;
+      state.identityTasks = { status: "ok", data: r.tasks };
+      state.identityDiscarded = r.discarded;
+      if (r.discarded.length === 0) state.identityShowDiscarded = false;
+      rerender();
+    })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== identityTasksSeq) return;
@@ -1324,6 +1331,55 @@ function loadInvites(): void {
 }
 function refreshMe(): void {
   getMe().then((me) => { state.me = me; state.displayName = me.name ?? me.handle; rerender(); }).catch(() => undefined);
+}
+
+// ── The person card (a click on a name), and Settings › Profile's photo ──
+let personSeq = 0;
+/** Open the person card for `handle`: it paints at once from the directory, and the detail
+ *  read (joined, GitHub, admin) fills in when it lands. A failed read leaves the card as is. */
+function openPersonCard(handle: string): void {
+  const seq = ++personSeq;
+  state.personCard = handle;
+  const same = state.personDetail.data?.handle.toLowerCase() === handle.toLowerCase();
+  state.personDetail = { status: "loading", data: same ? state.personDetail.data : null };
+  if (!state.persons.data.length) loadPersons();
+  rerender();
+  mount.querySelector<HTMLElement>("[data-person-card]")?.focus();
+  getPersonProfile(handle)
+    .then((pr) => { if (seq !== personSeq) return; state.personDetail = { status: "ok", data: pr }; rerender(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      if (seq !== personSeq) return;
+      state.personDetail = { status: e instanceof NotFound ? "ok" : "error", data: null, error: errMsg(e) };
+      rerender();
+    });
+}
+/** Close Settings › MCP access's by-hand setup modal; focus goes back to the link that opened it. */
+function closeMcpSetup(): void {
+  state.mcpSetup = false;
+  rerender();
+  mount.querySelector<HTMLElement>("[data-mcp-setup-trigger]")?.focus();
+}
+/** My photo changed (uploaded or removed): every chip reads `me` or the directory. */
+function setMyAvatar(url: string | null): void {
+  state.avatarBusy = null;
+  if (state.me) state.me.avatar_url = url;
+  loadPersons();
+}
+/** The picked photo: downsized to a square in the browser (avatar.ts), then uploaded. */
+function uploadAvatarFile(file: File | undefined | null): void {
+  if (!file || state.avatarBusy) return;
+  state.avatarBusy = "upload";
+  rerender();
+  prepareAvatar(file)
+    .then(({ blob, filename }) => uploadAvatar(blob, filename))
+    .then((r) => { setMyAvatar(r.avatar_url); flash("Photo updated"); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.avatarBusy = null;
+      if (e instanceof ApiError) flash(e.status === 413 ? "That photo is too large." : /^\d+$/.test(e.message) ? "Couldn't upload the photo" : e.message);
+      else flash(errMsg(e));
+    });
 }
 
 // ── Artifacts (/api/artifacts; the screens are artifacts.ts) ─────────────────
@@ -1655,6 +1711,47 @@ function confirmOut(then: () => void): void {
   setTimeout(then, CONFIRM_OUT_MS);
 }
 
+// ── Maintenance › People: the role editor's open / close motion ──────────────
+// The editor lives in <main>, which every rerender swaps — a keystroke in it builds a NEW
+// element, and a CSS animation on it would replay from the start. So, like the screen
+// entrance (`markEnter`), the motion is keyed on TIME, not on the element: `syncRoleEdit`
+// runs after every paint and marks the editor (and its row) `data-anim` only while its
+// open / close is still inside ROLE_EDIT_MS, with a NEGATIVE delay (`--re-t`) so a
+// rerender mid-way joins the animation where the old element left off. Past the window
+// the element renders plain (open, or collapsed under canopy.css `[data-roleedit="out"]`).
+// A closed editor lingers as `state.personEditOut` for its exit, then drops out.
+const ROLE_EDIT_MS = 200;
+let roleEditInAt = -Infinity;
+let roleEditOutAt = -Infinity;
+
+function syncRoleEdit(): void {
+  const now = performance.now();
+  for (const el of Array.from(mount.querySelectorAll<HTMLElement>("[data-roleedit]"))) {
+    const elapsed = now - (el.dataset.roleedit === "out" ? roleEditOutAt : roleEditInAt);
+    if (elapsed >= ROLE_EDIT_MS) continue;
+    el.setAttribute("data-anim", "");
+    el.style.setProperty("--re-t", `${-Math.round(elapsed)}ms`);
+  }
+}
+
+/** Close the role editor: it collapses under its row (instantly under reduced motion) and,
+ *  with `refocus`, focus goes back to that row's Edit role button. */
+function closePersonEdit(refocus: boolean): void {
+  const ed = state.personEdit;
+  if (!ed) return;
+  state.personEdit = null;
+  state.personSaving = false;
+  if (reducedMotion()) state.personEditOut = null;
+  else {
+    state.personEditOut = ed;
+    const at = (roleEditOutAt = performance.now());
+    setTimeout(() => { if (roleEditOutAt === at && state.personEditOut) { state.personEditOut = null; rerender(); } }, ROLE_EDIT_MS);
+  }
+  rerender();
+  // The button carries a data-field, so every rerender until the exit ends keeps its focus.
+  if (refocus) mount.querySelector<HTMLElement>(`[data-field="personEditBtn:${cssEscape(ed.handle)}"]`)?.focus({ preventScroll: true });
+}
+
 // Drives a (possibly multi-batch) Sync GitHub run: the backend caps AI calls
 // per invocation (src/tools/backfill.ts's summaryBudgetExhausted), so this
 // keeps calling adminBackfill(batch, of) while a budget was exhausted, updating
@@ -1901,7 +1998,19 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "fmToggle": case "fmClose": case "fmCat": filterMenuAct(act, arg); return;
 
     // ── Repo dashboard ───────────────────────────────────────────────────────
-    case "goRepo": state.screen = "repo"; state.repoTab = "overview"; loadRepoIfNeeded(); return;
+    // `arg` = the tab to land on (quick search's "Repo › …" entries); none = Overview.
+    case "goRepo": state.screen = "repo"; state.repoTab = arg && isRepoTab(arg) ? arg : "overview"; loadRepoIfNeeded(); return;
+    // The page's tab bar: the one dashboard payload covers every tab, so a switch is ONE
+    // rerender with nothing to load — goRepo's load would rebuild the bar and cut its slide.
+    // The entrance is not replayed (markEnter), so the new tab's content flashes in instead:
+    // a short rise, and its sparklines / fills / bars grow again.
+    case "setRepoTab": {
+      const tab = arg ?? "";
+      if (!isRepoTab(tab) || tab === state.repoTab) return;
+      state.repoTab = tab;
+      pendingFlash = ".repo-panel > :not(.repo-poll-strip)";
+      break;
+    }
     case "repoRefresh": if (state.repo.status !== "loading") loadRepo(); return;
     case "repoRange":
       if (!(REPO_RANGES as readonly string[]).includes(arg ?? "") || arg === state.repoRange) return;
@@ -1941,9 +2050,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "navSub": {
       // `<group>:<page>` — each page is an existing destination, reached in one click.
       const [g, page = ""] = (arg ?? "").split(":");
-      if (g === "repo") { if (!isRepoTab(page)) return; state.screen = "repo"; state.repoTab = page; loadRepoIfNeeded(); return; }
       if (g === "docs") { state.screen = "docs"; dispatch("setDocSpace", page, null); loadDocsIfNeeded(); return; }
-      if (g === "maintenance") { dispatch("goMaintenance", page, null); return; }
       return;
     }
     // Uncontrolled: the box holds its own text; each keystroke feeds the search
@@ -1961,6 +2068,62 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "goFeed": state.screen = "feed"; loadFeedIfNeeded(); loadFeedStats(); return;
+
+    // ── The person card: a click on anyone's name (the rail, the Feed, quick search,
+    // Maintenance › People) opens it over the page; the backdrop, × and Escape close it.
+    case "openPerson": if (!arg) return; openPersonCard(arg); return;
+    case "personCardClose": state.personCard = null; break;
+    // Maintenance › People (admin): "Edit role" opens the role + responsibilities editor under
+    // that person's row — the one place either is edited. Responsibilities come from the
+    // person's profile read (an admin's read carries them); the editor waits for it, as a
+    // disabled skeleton of itself. Opening a second person's closes the first (it collapses
+    // while the new one expands); see `syncRoleEdit` for how the motion survives rerenders.
+    case "personEditOpen": {
+      if (!arg || state.me?.admin !== true || state.personSaving) return;
+      const handle = arg;
+      if (state.personEdit) closePersonEdit(false);
+      state.personEdit = { handle, draft: null, base: null };
+      roleEditInAt = performance.now();
+      rerender();
+      getPersonProfile(handle)
+        .then((pr) => {
+          if (state.personEdit?.handle !== handle) return;
+          const base = { role: pr.role ?? "", responsibilities: pr.responsibilities ?? "" };
+          state.personEdit = { handle, draft: base, base };
+          rerender();
+          // Focus Role unless the admin has already moved on to something else.
+          const at = document.activeElement;
+          if (!at || at === document.body || at.getAttribute("data-field") === `personEditBtn:${handle}`) {
+            mount.querySelector<HTMLInputElement>('[data-field="personRole"]')?.focus({ preventScroll: true });
+          }
+        })
+        .catch((e) => { if (state.personEdit?.handle === handle) closePersonEdit(true); writeErr(e, "Couldn't load that person's role"); });
+      // Once it has opened, bring the whole editor into view (a row low on the page).
+      setTimeout(() => {
+        if (state.personEdit?.handle !== handle) return;
+        mount.querySelector(".cnpy-roleedit[data-roleedit=\"in\"]")?.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+      }, ROLE_EDIT_MS);
+      return;
+    }
+    case "personEditCancel": if (!state.personSaving) closePersonEdit(true); return;
+    case "personRoleDraft": if (state.personEdit?.draft) state.personEdit = { ...state.personEdit, draft: { ...state.personEdit.draft, role: value ?? "" } }; break;
+    case "personRespDraft": if (state.personEdit?.draft) state.personEdit = { ...state.personEdit, draft: { ...state.personEdit.draft, responsibilities: value ?? "" } }; break;
+    case "personEditSave": {
+      const ed = state.personEdit;
+      if (!ed?.draft || state.personSaving || !personEditChanged(ed.draft, ed.base)) return;
+      state.personSaving = true;
+      rerender();
+      updatePersonProfile(ed.handle, { role: ed.draft.role.trim() || null, responsibilities: ed.draft.responsibilities.trim() || null })
+        .then((fresh) => {
+          state.personSaving = false;
+          if (state.personEdit?.handle === ed.handle) closePersonEdit(true);
+          if (state.personDetail.data?.handle.toLowerCase() === fresh.handle.toLowerCase()) state.personDetail = { status: "ok", data: fresh };
+          flash(`Saved ${fresh.name || fresh.handle}'s role`);
+          loadPersons();
+        })
+        .catch((e) => { state.personSaving = false; writeErr(e, "Couldn't save the role"); });
+      return;
+    }
     case "goDocs": state.screen = "docs"; loadDocsIfNeeded(); return;
     case "goRoadmap": state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadRoadmapFeed(); return;
 
@@ -1986,7 +2149,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.ticketId = id;
       state.commentDraft = ""; state.mention = null; state.commentHeight = null; state.linkDraft = "";
       state.lkOpen = false; state.asgMenu = false; state.sprMenu = false; state.relMenu = false; state.lkMenu = null; state.stMenu = null;
-      state.tdEdit = null;
+      state.tdEdit = null; state.tdDeleteArm = false; state.tdDeleteBusy = false;
       loadSprintsIfNeeded();
       loadTicketsIfNeeded();          // backs the sub-ticket candidate menu
       loadTicketDetail(id);
@@ -2315,6 +2478,42 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .catch(ticketErr);
       return;
     }
+    // Delete (a NATIVE ticket only — a mirrored one has no button, and the server
+    // 403s it): the confirmation modal (Delete focused, so Enter confirms), then back
+    // to the queue. A hard delete, so there is no Undo.
+    case "ticketDeleteArm":
+      if (state.ticketDetail.data?.source !== "canopy") return;
+      state.tdDeleteArm = true;
+      rerender();
+      mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+      return;
+    case "ticketDeleteCancel": {
+      if (!state.tdDeleteArm || state.tdDeleteBusy) return;
+      confirmOut(() => {
+        state.tdDeleteArm = false;
+        rerender();
+        mount.querySelector<HTMLElement>("[data-confirm-trigger]")?.focus();
+      });
+      return;
+    }
+    case "ticketDelete": {
+      const d = state.ticketDetail.data;
+      if (!d || !state.tdDeleteArm || state.tdDeleteBusy) return;
+      state.tdDeleteBusy = true;
+      rerender();
+      deleteTicket(d.id)
+        .then((r) => {
+          state.tdDeleteArm = false; state.tdDeleteBusy = false;
+          state.ticketDetail = { status: "idle", data: null };
+          state.tickets = { ...state.tickets, data: state.tickets.data.filter((x) => x.id !== r.id) };
+          state.screen = "tickets"; state.ticketId = null;
+          loadTickets();
+          loadTicketBadge();
+          flash(`Deleted #${r.id} “${r.title}”`);
+        })
+        .catch((e) => { state.tdDeleteBusy = false; state.tdDeleteArm = false; ticketErr(e); });
+      return;
+    }
     // The title/description editor (POST /tickets/:id/edit). A mirrored ticket's
     // title and body are Canopy's after import, so it edits those too.
     case "ticketEdit": {
@@ -2432,8 +2631,13 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
 
-    // roadmap tab toggle
-    case "roadmapNarrative": state.roadmapTab = "narrative"; break;
+    // The Roadmap's tab bar: both tabs read the roadmap already loaded, so a switch is ONE
+    // rerender and nothing to load — the underline slides unbroken. `roadmapTimeline` is
+    // quick search's "Roadmap › Timeline" step (after goRoadmap).
+    case "setRoadmapTab":
+      if (arg !== "narrative" && arg !== "timeline") return;
+      state.roadmapTab = arg;
+      break;
     case "roadmapTimeline": state.roadmapTab = "timeline"; break;
     case "goReview": state.screen = "review"; loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); return;
     case "goMaintenance":
@@ -2442,8 +2646,15 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.maintDiscardArm = false;
       loadNeedsTriageIfNeeded(); loadIdentityTasksIfNeeded(); loadFeedIfNeeded(); loadNotifAdminIfNeeded(); loadInvitesIfAdmin();
       return;
+    // The page's tab bar: entering Maintenance already loaded every tab, so a switch is ONE
+    // rerender — goMaintenance's several would each rebuild the bar and cut its slide.
+    case "setMaintTab":
+      if (!(MAINT_TABS as readonly string[]).includes(arg ?? "")) return;
+      state.maintTab = arg as MaintTab;
+      state.maintDiscardArm = false;
+      break;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.unsub.preview = false; state.tokenRevokeArm = null; state.grantRevokeArm = null; loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -2997,6 +3208,34 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         });
       return;
     }
+    // Discard is undoable, so no confirm step: the toast carries the Undo.
+    case "identityDiscard": {
+      if (!arg) return;
+      if (state.mapConfirm === arg) state.mapConfirm = null;
+      discardIdentity(arg)
+        .then(() => {
+          loadIdentityTasks();
+          flash(`Discarded @${arg}`, UNDO_TOAST_MS, { label: "Undo", act: "identityRestore", arg });
+        })
+        .catch((e) => {
+          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          flash(e instanceof ApiError ? e.message : "Could not discard login");
+        });
+      return;
+    }
+    case "identityRestore": {
+      if (!arg) return;
+      state.toast = null; state.toastAction = null;
+      restoreIdentity(arg)
+        .then(() => { loadIdentityTasks(); flash(`Restored @${arg}`); })
+        .catch((e) => {
+          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          flash(e instanceof ApiError ? e.message : "Could not restore login");
+        });
+      rerender();
+      return;
+    }
+    case "identityToggleDiscarded": state.identityShowDiscarded = !state.identityShowDiscarded; break;
     // ── Settings › Email notifications ───────────────────────────────────────
     case "emailStartEdit": state.emailEditing = true; state.emailDraft = state.notifPrefs.data?.email ?? ""; break;
     case "emailCancel": state.emailEditing = false; state.emailDraft = ""; break;
@@ -3022,7 +3261,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "previewUnsub": state.unsub = { pending: false, error: null, preview: true }; state.screen = "unsubscribe"; break;
-    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadTokensIfNeeded(); loadNotifPrefsIfNeeded(); return;
+    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); return;
 
     // ── Maintenance › Notifications (admin) ──────────────────────────────────
     case "policyToggle": {
@@ -3066,57 +3305,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
 
     // ── Settings ─────────────────────────────────────────────────────────────
-    // "Get connection command": the click mints, the modal shows the setup with the
-    // token in it, and closing the modal drops the token from the page for good.
-    case "connectOpen":
-      if (state.connect) return;                       // a mint is already in flight / open
-      state.connect = { token: null, error: null };
-      state.connectCopied = false;
-      rerender();
-      mintMcpToken()
-        .then(({ token }) => { if (state.connect) state.connect = { token, error: null }; loadTokens(); rerender(); })
-        .catch((e) => {
-          if (e instanceof Unauthorized) { state.connect = null; state.view = "auth"; state.authStep = "login"; rerender(); return; }
-          if (state.connect) state.connect = { token: null, error: e instanceof ApiError ? e.message : "please try again" };
-          rerender();
-        });
-      return;
-    case "connectClient":
-      if (CONNECT_CLIENTS.some((c) => c.id === arg)) { state.connectClient = arg as ConnectClient; state.connectCopied = false; }
-      break;
-    case "connectCopy": {
-      const tk = state.connect?.token;
-      if (!tk) return;
-      copyToClipboard(connectSnippet(state.connectClient, tk)).then((ok) => {
-        if (!ok) { flash("Couldn't copy — select the text and copy it manually"); return; }
-        state.connectCopied = true;
-        rerender();
-        setTimeout(() => { state.connectCopied = false; rerender(); }, 1800);
-      });
-      return;
-    }
-    case "connectClose":
-      if (state.connect && !state.connect.token && !state.connect.error) return;   // mid-mint: let it land
-      state.connect = null; state.connectCopied = false;
-      break;
+    // MCP access is OAuth only: the steps, Connected apps, and a folded by-hand command.
     // Revoke is two clicks: the first arms the row, the second revokes.
-    case "revokeTokenArm": state.tokenRevokeArm = Number(arg); break;
-    case "revokeTokenCancel": state.tokenRevokeArm = null; break;
-    case "revokeToken": {
-      const id = Number(arg);
-      revokeMcpToken(id)
-        .then(() => {
-          state.tokens = { status: "ok", data: state.tokens.data.filter((t) => t.id !== id) };
-          state.tokenRevokeArm = null;
-          flash("Token revoked");
-          rerender();
-        })
-        .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-          flash(e instanceof ApiError ? e.message : "Could not revoke token");
-        });
-      return;
-    }
     case "revokeGrantArm": state.grantRevokeArm = Number(arg); break;
     case "revokeGrantCancel": state.grantRevokeArm = null; break;
     case "revokeGrant": {
@@ -3134,6 +3324,19 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         });
       return;
     }
+    // Connected apps opens to every row, or folds back to the first few.
+    case "mcpShowAll": state.grantsAll = !state.grantsAll; break;
+    // The by-hand setup is a modal, so the MCP tile never changes height: focus goes into
+    // the dialog on open, and back to its link on close (the backdrop, the ×, or Escape).
+    case "mcpSetupOpen":
+      state.mcpSetup = true;
+      rerender();
+      mount.querySelector<HTMLElement>("[data-mcp-setup]")?.focus();
+      return;
+    case "mcpSetupClose": closeMcpSetup(); return;
+    case "copyPluginInstall":
+      copyToClipboard(PLUGIN_INSTALL).then((ok) => flash(ok ? "Commands copied" : "Couldn't copy the commands"));
+      return;
     case "copyBrowserConnect":
       copyToClipboard(browserConnectCommand()).then((ok) => flash(ok ? "Command copied" : "Couldn't copy the command"));
       return;
@@ -3145,6 +3348,34 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } flash("Couldn't save profile"); });
       return;
     }
+    // ── Settings › Profile: the photo ────────────────────────────────────────
+    // The avatar opens its menu (not while a write is in flight); focus moves to the first row.
+    case "avatarMenu":
+      if (state.avatarBusy) return;
+      state.avatarMenu = !state.avatarMenu;
+      if (state.avatarMenu) pendingFlash = ".cnpy-avmenu";
+      rerender();
+      if (state.avatarMenu) mount.querySelector<HTMLElement>('[data-avatar-menu] [role="menuitem"]')?.focus();
+      return;
+    case "avatarMenuClose": state.avatarMenu = false; break;
+    // Close the menu FIRST, then click the fresh input: the paint swaps <main>, and a
+    // `change` on a detached input never reaches the mount's listener.
+    case "avatarPick":
+      if (state.avatarBusy) return;
+      state.avatarMenu = false;
+      rerender();
+      mount.querySelector<HTMLInputElement>("[data-avatar-file]")?.click();
+      return;
+    case "avatarRemove":
+      if (state.avatarBusy) return;
+      state.avatarMenu = false;
+      state.avatarBusy = "remove";
+      rerender();
+      mount.querySelector<HTMLElement>(".cnpy-avbtn")?.focus();
+      removeAvatar()
+        .then((r) => { setMyAvatar(r.avatar_url); flash("Photo removed"); })
+        .catch((e) => { state.avatarBusy = null; writeErr(e, "Couldn't remove the photo"); });
+      return;
     case "setMyColor": {
       if (!arg || !state.me || !(PERSON_COLORS as readonly string[]).includes(arg)) return;
       const color = arg as PersonColor;
@@ -3387,10 +3618,13 @@ mount.addEventListener("pointerout", (e) => {
   const focused = document.activeElement;
   if (focused instanceof HTMLElement && box.contains(focused)) focused.blur();
 });
-// A switch's option widths change with the viewport and once the web fonts land: re-place
-// every indicator where it sits, without a slide.
-window.addEventListener("resize", () => syncSegments(mount, { instant: true }));
-void document.fonts?.ready.then(() => syncSegments(mount, { instant: true }));
+// A switch's option widths (and a tab bar's tab widths) change with the viewport and once
+// the web fonts land: re-place every indicator where it sits, without a slide.
+const syncIndicators = () => { syncSegments(mount, { instant: true }); syncTabBars(mount, { instant: true }); };
+window.addEventListener("resize", syncIndicators);
+void document.fonts?.ready.then(syncIndicators);
+// A tab bar's keyboard: ←/→ step between its tabs, Home/End jump (./tabs `onTabBarKey`).
+mount.addEventListener("keydown", onTabBarKey);
 // Escape closes an open filter menu.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
@@ -3609,14 +3843,42 @@ mount.addEventListener("click", (e) => {
   e.stopPropagation();
   e.preventDefault();
 }, true);
-// A board card is a div (so it can drag): Enter / Space open it, like a button.
-mount.addEventListener("keydown", (e) => {
-  if (e.key !== "Enter" && e.key !== " ") return;
-  const card = e.target as HTMLElement | null;
-  if (!card?.classList?.contains("cnpy-tcard")) return;
-  e.preventDefault();
-  dispatch(card.dataset.act ?? "", card.dataset.arg ?? null, null);
+
+// Settings › Profile's photo menu: Escape closes it and hands focus back to the avatar;
+// ↑/↓ (and Home/End) move between its rows. Tab leaves it, like the other menus.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !state.avatarMenu || state.view !== "app") return;
+  state.avatarMenu = false;
+  rerender();
+  mount.querySelector<HTMLElement>(".cnpy-avbtn")?.focus();
 });
+mount.addEventListener("keydown", (e) => {
+  const menu = (e.target as Element | null)?.closest?.<HTMLElement>("[data-avatar-menu]");
+  if (!menu || !["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+  e.preventDefault();
+  const items = Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1
+    : (at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+  items[next]?.focus();
+});
+// Settings › Profile's photo picker (a hidden input the menu's "Upload photo" row clicks).
+mount.addEventListener("change", (e) => {
+  const el = e.target as HTMLElement;
+  if (!(el instanceof HTMLInputElement) || el.type !== "file" || !el.hasAttribute("data-avatar-file")) return;
+  uploadAvatarFile(el.files?.[0]);
+  el.value = ""; // picking the same file again still fires `change`
+});
+// An avatar photo that fails to load (a revoked provider picture, a removed upload) drops out
+// and leaves the initials under it — and stays out across rerenders (people.ts records it).
+// `error` doesn't bubble, so ONE capture-phase listener on the document covers the app, the
+// sidebar and the search panel on <body>.
+document.addEventListener("error", (e) => {
+  const img = e.target;
+  if (!(img instanceof HTMLImageElement) || !img.classList.contains(AVATAR_IMG_CLASS)) return;
+  markAvatarFailed(img.getAttribute("src") ?? "");
+  img.remove();
+}, true);
 
 // The new-artifact form's and the New version dialog's file picker and drop zone (a file has
 // no string value to dispatch). `data-art-file="nv"` / `data-art-drop="nv"` mark the dialog's.
@@ -3794,10 +4056,32 @@ mount.addEventListener("keydown", (e) => {
     if (first) dispatch("promptTagAdd", first.tag, null);
   }
 });
+// ── Maintenance › People's role editor: Enter in Role, ⌘/Ctrl+Enter in either field saves
+// (a Save that has nothing to save does nothing); Escape — in the editor, or on its row's
+// Edit role button — cancels, and focus goes back to that button.
+mount.addEventListener("keydown", (e) => {
+  if (!state.personEdit || state.personCard || e.isComposing) return;
+  const t = e.target as Element | null;
+  const inEditor = !!t?.closest?.('.cnpy-roleedit[data-roleedit="in"]');
+  if (e.key === "Escape" && (inEditor || t?.closest?.('.cnpy-prow-edit[aria-expanded="true"]'))) {
+    e.preventDefault();
+    dispatch("personEditCancel", null, null);
+    return;
+  }
+  if (e.key !== "Enter" || !inEditor || e.repeat) return;
+  const field = t?.getAttribute("data-field");
+  const mod = e.metaKey || e.ctrlKey;
+  if ((field === "personRole" && !e.shiftKey) || (field === "personResp" && mod)) {
+    e.preventDefault();
+    dispatch("personEditSave", null, null);
+  }
+});
 // Escape closes the expanded handoff prompt (the filter menus close in their own listener).
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || state.view !== "app") return;
-  if (state.handoffPromptOpen) { state.handoffPromptOpen = false; rerender(); }
+  if (state.personCard) { state.personCard = null; rerender(); }
+  else if (state.mcpSetup) closeMcpSetup();
+  else if (state.handoffPromptOpen) { state.handoffPromptOpen = false; rerender(); }
   else if (state.promptExpanded) { state.promptExpanded = false; rerender(); }
 });
 
@@ -3866,12 +4150,8 @@ mount.addEventListener("focusin", (e) => railTip((e.target as Element | null)?.c
 mount.addEventListener("focusout", () => railTip(null));
 mount.addEventListener("mouseleave", () => railTip(null));
 
-// Escape closes the landing page's sign-in dialog, wherever focus is — and the
-// Settings connection modal, once its mint has landed.
+// Escape closes the landing page's sign-in dialog, wherever focus is.
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && state.connect && (state.connect.token || state.connect.error)) {
-    state.connect = null; state.connectCopied = false; rerender(); return;
-  }
   if (e.key !== "Escape" || !state.signInOpen || state.view !== "auth") return;
   state.signInOpen = false;
   rerender();

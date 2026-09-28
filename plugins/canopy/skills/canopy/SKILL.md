@@ -1,7 +1,7 @@
 ---
 name: canopy
 description: Overview and entry point for working with Canopy, the team's shared context store ("the team brain"). Use when someone asks how Canopy works, how to use it, how to connect an agent, what can be read or written, or wants the whole orient→work→record loop — and as the map to the load-context (orient before work) and record-session (record at the end) skills. Read-only itself; it explains the loop and points to the right tool/skill.
-allowed-tools: mcp__canopy__query, mcp__canopy__get_doc, mcp__canopy__list_tickets, mcp__canopy__get_ticket, mcp__canopy__list_sprints, mcp__canopy__get_sprint, mcp__canopy__get_repo_dashboard, mcp__canopy__artifact_list, mcp__canopy__artifact_get
+allowed-tools: mcp__canopy__query, mcp__canopy__get_doc, mcp__canopy__list_tickets, mcp__canopy__get_ticket, mcp__canopy__list_people, mcp__canopy__list_sprints, mcp__canopy__get_sprint, mcp__canopy__get_repo_dashboard, mcp__canopy__artifact_list, mcp__canopy__artifact_get
 ---
 
 # Canopy — the team's shared context store
@@ -90,6 +90,9 @@ Never present `staged_pending` / `unpromoted` / `draft` content as established f
   PRs from the last 14 days) + to-do (open assigned issues); built from captured GitHub events, no live
   GitHub.
 - **`get_events`** — recent captured GitHub events, filterable by type/subject/limit.
+- **`list_people`** — who does what: every person's `handle`, `name`, `role` and `responsibilities`
+  (null = unknown). Nothing else about a person reaches MCP, and there is no people write. Read it
+  before choosing `assignees` on `create_ticket`, or a `login` for `assign_ticket`.
 - **`get_repo_dashboard`** — the Repo dashboard for the org's main repository, read from Canopy's own
   database (never live GitHub): environments and deploys, CI, code activity, usage (requests, errors,
   hosting, active users), the app's product metrics, and planning. **Use it to orient before work that
@@ -136,11 +139,15 @@ Ticket writes go **direct**, in the same promote class as the cookie routes: no 
 triage step — a ticket write is org-visible immediately. What bounds them is scope, not staging:
 
 > **You may write only to tickets already assigned to you.** Filing (`create_ticket`) is the one
-> unscoped write.
+> unscoped write, and assigning (`assign_ticket`) has a rule of its own.
 
-- **`create_ticket`** — file a ticket. The requester is you. Its `assignees` is the **only**
-  agent-reachable assignment in Canopy: there is no `toggle_assignee` tool and never will be, because
-  assignment is the data the lane rule is built on. After filing, assigning is web-only.
+- **`create_ticket`** — file a ticket. The requester is you. Before choosing its `assignees`, read
+  **`list_people`** (read-only: each person's `handle`, `name`, `role`, `responsibilities`; a null
+  means unknown, never guess) and match the work to who owns it.
+- **`assign_ticket { id, login, on }`** — add or remove one assignee on an existing ticket. Its OWN
+  scope, since the lane cannot bound assignment (assignment is how a ticket gets into a lane): only an
+  **admin**, the ticket's **requester** or a **current assignee** may call it. Idempotent, never
+  changes status, no history row; `login` is a handle from `list_people`.
 - **`edit_ticket` / `transition_ticket` / `add_ticket_comment` / `add_ticket_link` / `set_ticket_sprint` /
   `set_ticket_parent`** — scoped. Outside your lane you get `{"code": "forbidden"}` and nothing is
   written. `set_ticket_parent` needs the lane on both tickets.

@@ -31,15 +31,69 @@ export function handleTag(p: { handle: string; color: PersonColor } | null, fall
   return `<span style="font-family:var(--sans);font-size:${size}px;font-weight:500;color:var(--p-${p.color})">@${esc(p.handle)}</span>`;
 }
 
+/** Avatar URLs that failed to load this session (a revoked provider picture, a deleted
+ *  upload). main.ts's ONE capture-phase `error` listener records them through
+ *  `markAvatarFailed`; a chip for a failed URL is initials only, so a rerender never
+ *  puts the broken image back. */
+const failedAvatars = new Set<string>();
+export function markAvatarFailed(url: string): void { failedAvatars.add(url); }
+/** The `<img>` class that listener watches. */
+export const AVATAR_IMG_CLASS = "cnpy-av-img";
+
+/** A person's avatar: initials on their color, with the photo (when there is one) laid OVER
+ *  them — so a photo that is slow, or fails, shows the initials rather than a broken image. */
 export function personChip(p: { handle: string; name?: string | null; color: PersonColor; avatar_url?: string | null } | null, size: number, fallback: string): string {
   const font = Math.max(9, Math.round(size * 0.36));
   if (!p) {
     return `<div class="cnpy-av cnpy-av-anon" style="width:${size}px;height:${size}px;border-radius:50%;border:1px solid var(--border-strong);background:color-mix(in srgb,var(--fg) 7%,transparent);display:grid;place-items:center;font-size:${font}px;font-weight:600;color:var(--fg);flex:none">${esc(initialsOf(fallback))}</div>`;
   }
-  const inner = p.avatar_url
-    ? `<img src="${attr(p.avatar_url)}" width="${size}" height="${size}" alt="" style="display:block;width:100%;height:100%;border-radius:50%;object-fit:cover" />`
-    : esc(initialsOfName(p.name, p.handle));
-  return `<div class="cnpy-av" title="${attr(p.name ?? p.handle)}" style="--c:var(--p-${p.color});width:${size}px;height:${size}px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:${font}px;font-weight:600;color:#fff;flex:none;overflow:hidden">${inner}</div>`;
+  const url = p.avatar_url && !failedAvatars.has(p.avatar_url) ? p.avatar_url : null;
+  const img = url
+    ? `<img class="${AVATAR_IMG_CLASS}" src="${attr(url)}" width="${size}" height="${size}" alt="" decoding="async" style="position:absolute;inset:0;display:block;width:100%;height:100%;border-radius:50%;object-fit:cover" />`
+    : "";
+  return `<div class="cnpy-av" title="${attr(p.name ?? p.handle)}" style="--c:var(--p-${p.color});position:relative;width:${size}px;height:${size}px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:${font}px;font-weight:600;color:#fff;flex:none;overflow:hidden">${esc(initialsOfName(p.name, p.handle))}${img}</div>`;
+}
+
+/** A person's photo and name as ONE chip: the whole thing is the button that opens their
+ *  person card (`openPerson`), and it lights up as one on hover. `person` null (an unknown
+ *  handle, or the GitHub mirror's system handle) renders the same two pieces as plain,
+ *  unclickable content, so the layout never shifts. `textStyle` is the name's own; `label` is
+ *  text, or `{ html }` for a caller-built one (a name over its `@handle`). `gap` is the
+ *  photo-to-name gap of the pair the chip replaces, so it sits exactly where that pair did.
+ *  The button's hover padding bleeds out through equal negative margins, so its cap is
+ *  100% + that 10px: capped at 100%, a chip in a shrink-to-fit box (whose width is the
+ *  chip's MARGIN box) came out 10px short and cut its own name. */
+export function personLink(person: { handle: string; name?: string | null; color: PersonColor; avatar_url?: string | null } | null, fallback: string, size: number, label: string | { html: string }, textStyle: string, gap = 7): string {
+  const inner = `${personChip(person, size, fallback)}<span style="${textStyle}">${typeof label === "string" ? esc(label) : label.html}</span>`;
+  const box = `display:inline-flex;align-items:center;gap:${gap}px;min-width:0`;
+  return person
+    ? `<button data-act="openPerson" data-arg="${attr(person.handle)}" class="cnpy-personchip" title="${attr(person.name || person.handle)}" style="${box};max-width:calc(100% + 10px);text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px">${inner}</button>`
+    : `<span style="${box};max-width:100%">${inner}</span>`;
+}
+
+/** A person's photo on its own, clickable like their name (the Feed's and a comment's
+ *  avatar column). Plain when the person is unknown. */
+export function personAvatarLink(person: { handle: string; name?: string | null; color: PersonColor; avatar_url?: string | null } | null, fallback: string, size: number): string {
+  return person
+    ? `<button data-act="openPerson" data-arg="${attr(person.handle)}" class="cnpy-personav" title="${attr(person.name || person.handle)}" aria-label="${attr(`${person.name || person.handle} — person card`)}" style="display:flex;flex:none;padding:0;border-radius:50%">${personChip(person, size, fallback)}</button>`
+    : personChip(person, size, fallback);
+}
+
+/** A person's name alone, inline in a line of text ("v3 by Priya"), as the button that opens
+ *  their card. `style` is the text's own (it inherits the line's font unless it says
+ *  otherwise); plain text when the person is unknown. */
+export function personNameLink(person: { handle: string; name?: string | null } | null, label: string, style = ""): string {
+  return person
+    ? `<button data-act="openPerson" data-arg="${attr(person.handle)}" class="cnpy-personlink" title="${attr(person.name || person.handle)}" style="font:inherit;color:inherit;text-align:left;padding:0${style ? `;${style}` : ""}">${esc(label)}</button>`
+    : `<span${style ? ` style="${style}"` : ""}>${esc(label)}</span>`;
+}
+
+/** `handleTag` as the button that opens the person's card (the Feed's author line, a doc's
+ *  "Updated by"). Unmapped → the plain muted tag. */
+export function handleLink(p: { handle: string; name?: string | null; color: PersonColor } | null, fallback: string, size = 12): string {
+  return p
+    ? `<button data-act="openPerson" data-arg="${attr(p.handle)}" class="cnpy-personlink" title="${attr(p.name || p.handle)}" style="padding:0">${handleTag(p, fallback, size)}</button>`
+    : handleTag(null, fallback, size);
 }
 
 export function swatches(act: string, selected: PersonColor, compact = false): string {

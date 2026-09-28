@@ -9,18 +9,21 @@
 // a CSS transition can run on. Emitting a node conditionally would swap it out
 // from under its own animation.
 
-import { REPO_TABS, type RepoTab } from "@shared/repo";
 import type { PersonColor } from "@shared/rows";
 import { esc, attr } from "./ui";
 import { personChip, handleTag } from "./people";
 
-/** The nav entries that own a sub-page list. Roadmap and Tickets have none: their
- *  switches are in the screen header (Roadmap's Narrative / Timeline, removed from the
- *  rail 2026-09-26; Tickets' Board / Table and Submit a ticket, removed 2026-09-27). */
-export const NAV_GROUPS = ["repo", "docs", "maintenance"] as const;
+/** The nav entries that own a sub-page list — only Docs now. Roadmap, Tickets, Maintenance
+ *  and Repo have none: their switches are on the screen itself (Roadmap's Narrative /
+ *  Timeline, removed from the rail 2026-09-26; Tickets' Board / Table and Submit a ticket,
+ *  removed 2026-09-27; Maintenance's Unplaced / Identity / People and Repo's Overview /
+ *  Code / CI / Usage / Planning — each a tab bar heading the page body — removed
+ *  2026-09-27). A stored `canopy.navOpen` naming a retired group is simply not read back
+ *  (main.ts). */
+export const NAV_GROUPS = ["docs"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 export type NavOpen = Record<NavGroup, boolean>;
-export const NAV_CLOSED: NavOpen = { repo: false, docs: false, maintenance: false };
+export const NAV_CLOSED: NavOpen = { docs: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
 export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases";
@@ -46,10 +49,8 @@ export interface SidebarProps {
   navOpen: NavOpen;
   qView: "table" | "board";
   roadmapTab: "narrative" | "timeline";
-  repoTab: RepoTab;
   docSpace: string;
   docSpaces: { key: string; label: string }[];
-  maintTab: "unplaced" | "identity" | "people";
   counts: { review: number; maintenance: number; tickets: number; handoffs: number; prompts: number };
   me: { handle: string; name: string | null; color: PersonColor; avatar_url?: string | null } | null;
   displayName: string;
@@ -80,7 +81,7 @@ const ICONS: Record<NavKey | "search" | "collapse", string> = {
   collapse: ICON(`<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="M14.5 9.5 12 12l2.5 2.5"></path>`),
 };
 
-const GEAR = `<svg class="cnpy-lbl" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:none;color:var(--fg-40)" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`;
+const GEAR = `<svg class="cnpy-lbl" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" style="flex:none" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`;
 
 const CHEVRON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>`;
 
@@ -90,17 +91,13 @@ const isMac = (): boolean => typeof navigator !== "undefined" && /Mac|iPhone|iPa
 /** The sub-page a group is currently showing, or null (e.g. a ticket's detail). */
 function activeSub(p: SidebarProps, g: NavGroup): string | null {
   switch (g) {
-    case "repo": return p.screen === "repo" ? p.repoTab : null;
     case "docs": return p.screen === "docs" ? p.docSpace : null;
-    case "maintenance": return p.screen === "maintenance" ? p.maintTab : null;
   }
 }
 
 function subPages(p: SidebarProps, g: NavGroup): { key: string; label: string }[] {
   switch (g) {
-    case "repo": return REPO_TABS.map(([key, label]) => ({ key, label }));
     case "docs": return p.docSpaces;
-    case "maintenance": return [{ key: "unplaced", label: "Unplaced" }, { key: "identity", label: "Identity" }, { key: "people", label: "People" }];
   }
 }
 

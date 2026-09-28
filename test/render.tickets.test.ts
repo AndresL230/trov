@@ -30,7 +30,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 import { render, initialState, type AppState } from "../web/src/render";
 import {
-  queueView, queueRows, newTicketView, ticketDetailView, relCandidates, queueGroups,
+  queueView, queueRows, newTicketView, ticketDetailView, ticketDeleteModal, relCandidates, queueGroups,
   ticketPill, priorityChip, age, avatarStack, SEG_STATUSES,
   type QueueProps, type NewTicketProps, type TicketDetailProps,
 } from "../web/src/tickets";
@@ -62,9 +62,9 @@ const H = 3600_000;
 const D = 86_400_000;
 
 const PERSONS: PersonSummary[] = [
-  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null },
-  { handle: "sanaok", name: "Sana Okafor", color: "ochre", avatar_url: null },
-  { handle: "jose-a", name: "Jose Alvarez", color: "moss", avatar_url: null },
+  { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null, role: null },
+  { handle: "sanaok", name: "Sana Okafor", color: "ochre", avatar_url: null, role: null },
+  { handle: "jose-a", name: "Jose Alvarez", color: "moss", avatar_url: null, role: null },
 ];
 
 function sprint(o: Partial<SprintView> & { id: number; label: string }): SprintView {
@@ -214,7 +214,7 @@ describe("sidebar — the Tickets entry (design call #2)", () => {
     expect(html).toContain('data-collapsed="1"');
     expect(ticketsRow(html)).toContain('<span class="cnpy-dot" data-n="4"></span>');
     // review/maintenance counts are 0 here, so theirs stay hidden
-    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(12);
+    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(12); // every other entry
   });
 
   it("lights Tickets on all three ticket screens", () => {
@@ -553,7 +553,7 @@ describe("tickets — cards are the shared surface", () => {
     expect(html).toMatch(/class="cnpy-tgrp" style="[^"]*padding:18px 20px 6px/);
     expect(html).toContain("cnpy-stagger cnpy-tgroup"); // canopy.css draws the one hairline between groups
     // Only the status pill is boxed; category and priority are plain text.
-    const row = html.slice(html.indexOf('class="cnpy-trow'), html.indexOf("</button>", html.indexOf('class="cnpy-trow')));
+    const row = html.slice(html.indexOf('class="cnpy-trow'), html.indexOf('class="cnpy-hit"', html.indexOf('class="cnpy-trow')));
     expect((row.match(/border:1px solid/g) ?? []).length).toBe(1);
     expect(html).not.toContain(OLD_FILL);
   });
@@ -1046,14 +1046,15 @@ describe("ticketDetailView — the thread", () => {
     })));
     expect(html).not.toContain("<b>hi</b>");
     expect(html).toContain("&lt;b&gt;hi&lt;/b&gt;");
-    // Both resolving forms become the accent chip carrying the person's FIRST name.
-    const chip = (first: string) =>
-      `<span style="color:var(--accent);font-weight:600;background:var(--accent-soft);border-radius:4px;padding:0 4px">@${first}</span>`;
-    expect(html).toContain(chip("Meilin"));   // @meilin → handle match
-    expect(html).toContain(chip("Sana"));     // @Sana   → first-name match
+    // Both resolving forms become the accent chip carrying the person's FIRST name — a button
+    // that opens that person's card, like the photo and name beside the comment.
+    const chip = (handle: string, first: string) =>
+      new RegExp(`<button data-act="openPerson" data-arg="${handle}" class="cnpy-mention"[^>]*>@${first}</button>`);
+    expect(html).toMatch(chip("meilin", "Meilin"));   // @meilin → handle match
+    expect(html).toMatch(chip("sanaok", "Sana"));     // @Sana   → first-name match
     // A non-member stays plain: the literal text is there and it is NOT chipped.
     expect(html).toContain("@nobody");
-    expect(html).not.toContain(chip("nobody"));
+    expect(html).not.toContain('data-arg="nobody"');
     expect(html).not.toContain(">@nobody</span>");
   });
 });
@@ -1391,5 +1392,74 @@ describe("mirrored ticket history", () => {
     const html = ticketDetailView(detailProps(d));
     expect(html).toContain(">GitHub</span>");
     expect(html).not.toContain(">github-webhook</span>");
+  });
+});
+
+describe("ticketDetailView — delete", () => {
+  it("offers Delete ticket on a native ticket, never on one mirrored from GitHub", () => {
+    const native = ticketDetailView(detailProps(detail({ id: 1, title: "T" })));
+    expect(native).toContain('data-act="ticketDeleteArm"');
+    expect(native).toContain('aria-controls="ticket-delete-confirm"');
+    const mirrored = ticketDetailView(detailProps(detail({ id: 2, title: "M", source: "github", source_ref: "SaplingLearn/sapling#666" })));
+    expect(mirrored).not.toContain("ticketDeleteArm");
+  });
+
+  it("the confirm names the ticket, says it can't be undone, and mentions sub-tickets that stay", () => {
+    const html = ticketDeleteModal(detail({ id: 7, title: "Old idea", children: [{ id: 8, title: "k", status: "submitted" }] as TicketDetail["children"] }), false);
+    expect(html).toContain('role="alertdialog"');
+    expect(html).toContain("Delete #7 “Old idea”?");
+    expect(html).toContain("can&#39;t be undone");
+    expect(html).toContain("sub-ticket stays");
+    expect(html).toContain('data-confirm-act="ticketDelete"');
+  });
+});
+
+describe("ticketDetailView — people are clickable chips", () => {
+  it("the requester, each assignee and each history actor are ONE photo + name button; a comment's photo, name and @mention each open the card", () => {
+    const html = ticketDetailView(detailProps(detail({
+      id: 1, title: "T", requester: "meilin", assignees: ["sanaok"],
+      comments: [comment({ author: "meilin", body: "ping @Sana" })],
+    })));
+    // Photo INSIDE the button, name beside it: one chip.
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="meilin" class="cnpy-personchip"[^>]*><div class="cnpy-av/);
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="sanaok" class="cnpy-personchip"[^>]*><div class="cnpy-av/);
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="meilin" class="cnpy-personav"/);
+    expect(html).toMatch(/<button data-act="openPerson" data-arg="sanaok" class="cnpy-mention"/);
+  });
+
+  it("the GitHub mirror's system handle is never a button", () => {
+    const html = ticketDetailView(detailProps(detail({ id: 2, title: "M", requester: "github-webhook", source: "github", source_ref: "SaplingLearn/sapling#1", source_author: "outsider" })));
+    expect(html).not.toContain('data-arg="github-webhook"');
+    expect(html).toContain("@outsider");
+  });
+});
+
+describe("the queue's people open their person card (hitArea rows and cards)", () => {
+  const PERSON_BTN = (h: string, cls: string) => new RegExp(`<button data-act="openPerson" data-arg="${h}" class="${cls}"`);
+
+  it("a table row's requester is one photo + name chip and each assignee's photo a button; the row is not a button", () => {
+    const html = queueView(queueProps({ view: "table", seg: "all", tickets: [ticket({ id: 4, title: "A", requester: "sanaok", assignees: ["meilin"] })] }));
+    expect(html).toMatch(PERSON_BTN("sanaok", "cnpy-personchip"));
+    expect(html).toMatch(PERSON_BTN("meilin", "cnpy-personav"));
+    expect(html).toContain('<button data-act="openTicket" data-arg="4" class="cnpy-hit" aria-label="#4 A"></button>');
+    expect(html).not.toMatch(/<button[^>]*class="cnpy-trow/);
+  });
+
+  it("the GitHub mirror's requester and an unknown handle stay plain text", () => {
+    const html = queueView(queueProps({ view: "table", seg: "all", tickets: [
+      ticket({ id: 5, title: "Mirrored", requester: "github-webhook", source: "github", source_ref: "o/r#5" }),
+      ticket({ id: 6, title: "Stranger", requester: "ghost", assignees: ["ghost"] }),
+    ] }));
+    expect(html).not.toContain('data-arg="github-webhook"');
+    expect(html).not.toContain('data-act="openPerson" data-arg="ghost"');
+  });
+
+  it("a board card is a plain container (no role=button, still draggable) whose assignee photos open the card", () => {
+    const html = queueView(queueProps({ view: "board", seg: "all", tickets: [ticket({ id: 7, title: "B", assignees: ["jose-a"] })] }));
+    const card = html.slice(html.indexOf('data-tdrag="7"'));
+    expect(card.slice(0, card.indexOf(">"))).not.toContain('role="button"');
+    expect(card.slice(0, card.indexOf(">"))).toContain("cnpy-hitbox");
+    expect(card).toMatch(PERSON_BTN("jose-a", "cnpy-personav"));
+    expect(card).toContain('<button data-act="openTicket" data-arg="7" class="cnpy-hit" aria-label="#7 B"></button>');
   });
 });

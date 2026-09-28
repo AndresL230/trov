@@ -45,7 +45,7 @@ function feedState(rows: FeedRow[], feedView: "reading" | "agents" = "agents"): 
     view: "app",
     screen: "feed",
     me: { handle: "alice", name: "Alice", avatar_url: null, color: "stone", identities: [], org: "SaplingLearn", admin: false },
-    persons: { status: "ok", data: [{ handle: "AndresL230", name: "Andres", color: "moss", avatar_url: null }] },
+    persons: { status: "ok", data: [{ handle: "AndresL230", name: "Andres", color: "moss", avatar_url: null, role: null }] },
     feed: { status: "ok", data: rows },
     feedAuthors: [...new Set(rows.map((r) => r.author))],
   };
@@ -352,5 +352,20 @@ describe("Feed aside — Waiting on review", () => {
       .toContain("Loading&hellip;");
     expect(box(render({ ...s, proposals: { status: "error", data: [], error: "x" }, draftAdrs: { status: "ok", data: [adr(1, "2026-09-20T00:00:00Z")] } }), "Feed · Waiting on review"))
       .toContain("Couldn't load the review queue.");
+  });
+});
+
+describe("Feed — Waiting on review names open their person card", () => {
+  it("a mapped proposer's @handle is a button beside the row's own hit area; an unmapped one stays plain", () => {
+    const s = {
+      ...feedState([feedRow()]),
+      proposals: { status: "ok" as const, data: [proposal("a", "2026-09-14T10:00:00Z", "AndresL230"), proposal("b", "2026-09-14T09:00:00Z", "kai")] },
+      draftAdrs: { status: "ok" as const, data: [] },
+    };
+    const b = box(render(s), "Feed · Waiting on review");
+    expect(b).toMatch(/<button data-act="openPerson" data-arg="AndresL230" class="cnpy-personlink"/);
+    expect(b).not.toContain('data-act="openPerson" data-arg="kai"');
+    expect(b).toMatch(/<button data-act="mwOpenReview" data-arg="[^"]+" class="cnpy-hit"/);
+    expect(b).not.toMatch(/<button[^>]*class="mw-row/);
   });
 });

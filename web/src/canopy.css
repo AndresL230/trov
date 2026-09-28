@@ -216,13 +216,9 @@ input, select { font-family: inherit; }
 [data-cnpy-theme="light"] .cnpy-navrow.is-active { background:var(--surface); box-shadow:var(--shadow), 0 0 0 1px var(--border); }
 /* …and hover is the same card, half-drawn: a translucent white with the hairline, no lift —
    so hovering previews the selected look instead of darkening the rail. Also the rail's
-   other rows (Collapse, the person chip; the chip's Settings-selected state is the full card). */
+   other row, Collapse. (The person chip has no fill at all — see `.cnpy-chip`.) */
 [data-cnpy-theme="light"] .cnpy-navrow:not(.is-active):hover,
-[data-cnpy-theme="light"] .cnpy-collapse .cnpy-nav-i:hover,
-[data-cnpy-theme="light"] .cnpy-chip:hover { background:color-mix(in srgb,var(--surface) 60%,transparent); box-shadow:0 0 0 1px var(--border); }
-[data-cnpy-theme="light"] .cnpy-chip { transition:background .15s ease, box-shadow .15s ease, padding var(--side-t) var(--side-e); }
-[data-cnpy-theme="light"][data-screen="settings"] .cnpy-chip,
-[data-cnpy-theme="light"] [data-screen="settings"] .cnpy-chip { background:var(--surface); box-shadow:var(--shadow), 0 0 0 1px var(--border); }
+[data-cnpy-theme="light"] .cnpy-collapse .cnpy-nav-i:hover { background:color-mix(in srgb,var(--surface) 60%,transparent); box-shadow:0 0 0 1px var(--border); }
 .cnpy-nav-i { position:relative; display:flex; align-items:center; gap:11px; flex:1; min-width:0; width:100%; padding:8px 11px; border-radius:8px; font-size:13.5px; font-weight:500; color:var(--fg-55); text-align:left; overflow:hidden; transition:color .12s ease, padding var(--side-t) var(--side-e); }
 .cnpy-navrow:hover .cnpy-nav-i { color:var(--fg-70); }
 .cnpy-navrow.is-active .cnpy-nav-i { color:var(--fg); }
@@ -231,9 +227,10 @@ input, select { font-family: inherit; }
 .cnpy-nav-t { white-space:nowrap; flex:1; min-width:0; text-align:left; }
 [data-collapsed="1"] .cnpy-nav-i { padding:9px 0 9px 13.5px; }
 
-/* ONE count badge for every sidebar entry: a quiet pill that brightens on the active row. */
+/* ONE count badge for every sidebar entry (and a tab bar's tabs): a quiet pill that
+   brightens on the active row / the picked tab. */
 .cnpy-badge { font-family:var(--label); font-size:11px; font-weight:600; flex:none; min-width:18px; height:18px; line-height:18px; padding:0 6px; border-radius:999px; text-align:center; color:var(--fg-55); background:var(--hover); box-shadow:inset 0 0 0 1px var(--border); }
-.cnpy-navrow.is-active .cnpy-badge { color:var(--fg); box-shadow:inset 0 0 0 1px var(--border-strong); }
+.cnpy-navrow.is-active .cnpy-badge, .cnpy-tab.is-on > .cnpy-badge { color:var(--fg); box-shadow:inset 0 0 0 1px var(--border-strong); }
 /* Rows without a chevron reserve its 30px (24 wide + 6 margin), so every count sits in one column. */
 [data-collapsed="0"] .cnpy-navrow:not(:has(> .cnpy-chev)) .cnpy-nav-i { padding-right:41px; }
 .cnpy-badge[data-n="0"], .cnpy-dot[data-n="0"] { display:none; }
@@ -278,15 +275,16 @@ input, select { font-family: inherit; }
 
 .cnpy-ghost { padding:0 21px 9px; font-size:11.5px; color:var(--fg-40); white-space:nowrap; overflow:hidden; flex:none; }
 .cnpy-foot { padding:10px; border-top:1px solid var(--border); flex:none; }
-.cnpy-chip { display:flex; align-items:center; gap:10px; width:100%; padding:8px 9px; border-radius:9px; text-align:left; overflow:hidden; transition:background .15s ease, padding var(--side-t) var(--side-e); }
-.cnpy-chip:hover { background:var(--hover); }
-.cnpy-chip:hover svg.cnpy-lbl { transform:rotate(45deg); }
-.cnpy-chip svg.cnpy-lbl { transition:opacity .16s ease .1s, transform .4s var(--side-e); }
+/* The account chip is not a nav row: no fill or ring on hover or on Settings (the owner's
+   call, 2026-09-27). Its only cue, hovered or on Settings, is the gear — turned and brighter. */
+.cnpy-chip { display:flex; align-items:center; gap:10px; width:100%; padding:8px 9px; border-radius:9px; text-align:left; overflow:hidden; transition:padding var(--side-t) var(--side-e); }
+.cnpy-chip:hover svg.cnpy-lbl { transform:rotate(45deg); color:var(--fg-70); }
+.cnpy-chip svg.cnpy-lbl { color:var(--fg-40); transition:opacity .16s ease .1s, transform .4s var(--side-e), color .15s ease; }
 .cnpy-chip-t { overflow:hidden; flex:1; min-width:0; }
 .cnpy-chip-n { font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .cnpy-chip-h { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.4; }
 [data-collapsed="1"] .cnpy-chip { padding-left:8px; padding-right:0; }
-[data-screen="settings"] .cnpy-chip { background:var(--hover); }
+[data-screen="settings"] .cnpy-chip svg.cnpy-lbl { transform:rotate(45deg); color:var(--fg-70); }
 
 /* Collapsed-rail tooltip. Positioned by main.ts (the nav list scrolls, and a
    scroll container clips — so it cannot be a CSS ::after on the row). */
@@ -677,15 +675,26 @@ input, select { font-family: inherit; }
   .cnpy-pdetail-rail { flex:none; max-width:none; }
 }
 .cnpy-set-wrap { container:cnpy-set / inline-size; }
-.cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-flow:dense; gap:14px; align-items:stretch; }
-/* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this only adds its padding. */
-.cnpy-tile { min-width:0; padding:20px 22px; }
-.cnpy-set-full { grid-column:1 / -1; }
-/* Three columns: MCP access holds the right column for two rows and Appearance sits
-   under Profile + Account only, so it never pushes into MCP access. */
-.cnpy-set-mcp { grid-row:span 2; }
-.cnpy-set-appear { grid-column:span 2; }
+/* Settings is ONE bento grid with even edges: row 1 is Profile | Account | MCP access (MCP
+   spans rows 1–2, down a slightly wider third column — its install command fits on one
+   line), row 2 is Appearance under the first two, row 3 Email notifications at full width.
+   Every tile STRETCHES to its grid area (the default), so tiles in a row share one top and
+   one bottom and the left block ends where MCP access does. The stretch is kept to a few
+   pixels by balancing content, not by sizing tiles: the by-hand setup is a modal (it never
+   grows the MCP tile) and Connected apps shows at most MCP_LIST_CAP rows. */
+.cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr); gap:14px; }
+.cnpy-set-appear { grid-column:1 / span 2; }
+.cnpy-set-mcp { grid-column:3; grid-row:1 / span 2; }
+/* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this adds its padding, and
+   a column flow so a stretched tile keeps its content at the top — with `.cnpy-tile-foot`
+   (Profile's color swatches, Account's sign-in methods) pinned to the bottom edge. */
+.cnpy-tile { min-width:0; padding:20px 22px; display:flex; flex-direction:column; }
+.cnpy-tile-foot { margin-top:auto; }
+.cnpy-set-email { grid-column:1 / -1; container:cnpy-email / inline-size; }
 .cnpy-set-pairs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:40px; }
+@container cnpy-email (max-width:935px) {
+  .cnpy-set-pairs { grid-template-columns:minmax(0,1fr); }
+}
 /* Appearance: Light / Dark / System are ONE row of three equal cards at every width, edge to
    edge of the tile's content box. The row is its own container, so a card's form follows the
    room it actually has (not the viewport): icon beside label, or — once a card is too narrow
@@ -697,24 +706,22 @@ input, select { font-family: inherit; }
   .cnpy-themecard { flex-direction:column; gap:6px; padding:12px 6px; }
 }
 .cnpy-set .cnpy-sw.compact { padding:6px 0; }
-/* The token list takes whatever height its row leaves and scrolls inside it, so a long
-   list never stretches the bento; stacked in one column it caps itself instead. */
-/* The MCP tile's lists never set its height: tokens get a fixed one-row box (every
-   state renders inside it, so 0, 1 or 50 tokens is the same tile) that scrolls and
-   takes any spare height; connected apps cap at two rows. An explicit height, not
-   flex-basis 0 — a basis-0 scroller either collapses to nothing (Chrome) or still
-   counts its rows toward the grid row (other engines). */
-.cnpy-set-tokens { flex:1 0 auto; height:58px; overflow-y:auto; }
-.cnpy-set-grants { flex:none; max-height:114px; overflow-y:auto; }
+/* MCP access: the sign-in steps, then Connected apps — beside them once the tile is wide
+   (it spans the page when the bento folds). The list has no fixed height and no scroller:
+   it shows its first rows and a "Show all N" (render.ts `grantListBody`). */
+.cnpy-set-mcp { container:cnpy-mcp / inline-size; }
+.cnpy-mcp-body { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; margin-top:20px; }
+@container cnpy-mcp (min-width:620px) {
+  .cnpy-mcp-body { grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:32px; }
+}
+/* Narrower: two columns — Profile | Account in one row (equal heights), Appearance and then
+   MCP access at full width under them; on a phone, one column. */
 @container cnpy-set (max-width:999px) {
   .cnpy-set { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .cnpy-set-mcp { grid-row:auto; }
-  .cnpy-set-appear { grid-column:auto; }
-  .cnpy-set-pairs { grid-template-columns:minmax(0,1fr); }
+  .cnpy-set-appear, .cnpy-set-mcp { grid-column:1 / -1; grid-row:auto; }
 }
 @container cnpy-set (max-width:759px) {
-  .cnpy-set { grid-template-columns:minmax(0,1fr); padding:24px 16px 64px; }
-  .cnpy-set-tokens { flex:none; height:auto; max-height:236px; }
+  .cnpy-set { padding:24px 16px 64px; grid-template-columns:minmax(0,1fr); }
 }
 /* Tickets: the queue's table rows, and the two-column form/detail layouts that
    collapse to one column on a narrow viewport. */
@@ -782,6 +789,54 @@ input, select { font-family: inherit; }
   .cnpy-nt-grid, .cnpy-td-grid, .cnpy-sprint-grid { grid-template-columns:minmax(0,1fr) !important; }
   .cnpy-nt-grid > div + div, .cnpy-td-grid > div + div, .cnpy-sprint-grid > div + div { border-left:none !important; padding-left:0 !important; }
 }
+/* People (web/src/profile.ts): the directory's card grid, and a profile's open tickets beside
+   its sessions + docs — one column under 900px; at phone width a ticket row keeps only its pill. */
+.cnpy-people-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr)); gap:10px; }
+.cnpy-profile-grid { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:18px; align-items:start; margin-top:26px; }
+@media (max-width:900px) { .cnpy-profile-grid { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:640px) { .cnpy-profile-opt { display:none; } }
+/* A person's name that opens their profile (the ticket rail, the feed, Maintenance › People). */
+.cnpy-personlink { cursor:pointer; text-underline-offset:2px; }
+/* A person's photo + name as one chip (people.ts `personLink`): the pair lights up together. */
+.cnpy-personchip { cursor:pointer; transition:background .12s ease; }
+.cnpy-personchip:hover { background:var(--hover); }
+.cnpy-personchip:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.cnpy-personav { cursor:pointer; transition:transform .12s ease, opacity .12s ease; }
+.cnpy-personav:hover { opacity:.85; }
+.cnpy-personav:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+/* Settings › Profile: the avatar is the photo control (render.ts profileSection). A veil
+   with a camera fades in on hover / keyboard focus / while its menu is open; while a
+   write is in flight it stays up with a spinner instead, and the cursor says wait. The
+   button clips the veil to the avatar's own (corner-scaled) shape. On a touch screen,
+   where nothing hovers, a small camera badge on the corner says the same at rest. */
+.cnpy-avbtn { cursor:pointer; }
+.cnpy-avbtn.is-busy { cursor:progress; }
+.cnpy-avbtn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.cnpy-avbtn-veil { position:absolute; inset:0; display:grid; place-items:center; color:#fff; background:rgba(0,0,0,.5); opacity:0; transition:opacity .14s ease; pointer-events:none; }
+.cnpy-avbtn:hover .cnpy-avbtn-veil,
+.cnpy-avbtn:focus-visible .cnpy-avbtn-veil,
+.cnpy-avbtn[aria-expanded="true"] .cnpy-avbtn-veil,
+.cnpy-avbtn.is-busy .cnpy-avbtn-veil { opacity:1; }
+.cnpy-avbtn-veil svg { transition:transform .14s ease; transform:scale(.88); }
+.cnpy-avbtn:hover .cnpy-avbtn-veil svg,
+.cnpy-avbtn:focus-visible .cnpy-avbtn-veil svg,
+.cnpy-avbtn[aria-expanded="true"] .cnpy-avbtn-veil svg { transform:none; }
+.cnpy-avbtn-badge { display:none; position:absolute; right:-4px; bottom:-4px; width:22px; height:22px; place-items:center; background:var(--bg); border:1px solid var(--border-strong); color:var(--fg-55); pointer-events:none; }
+@media (hover:none) { .cnpy-avbtn-badge { display:grid; } .cnpy-avbtn.is-busy + .cnpy-avbtn-badge { display:none; } }
+/* Its menu pops out of the avatar once — on the paint that opens it (main.ts adds
+   .cnpy-flash), never on a later rerender. */
+.cnpy-avmenu { transform-origin:top left; }
+.cnpy-avmenu .cnpy-menurow:focus-visible { outline:none; background:var(--hover); }
+.cnpy-avmenu.cnpy-flash { animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
+.cnpy-mention:hover { text-decoration:underline; text-underline-offset:2px; }
+.cnpy-personlink:hover, .cnpy-maint-person:hover > span > span:first-child { text-decoration:underline; text-underline-offset:2px; }
+.cnpy-personlink:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+/* A card that opens something and shows people (ui.ts `hitArea`): an empty button laid over the
+   whole card is its click target, and every person button in it sits above it as its own. */
+.cnpy-hitbox { position:relative; }
+.cnpy-hit { position:absolute; inset:0; z-index:1; padding:0; border-radius:inherit; cursor:inherit; }
+.cnpy-hit:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.cnpy-hitbox .cnpy-personchip, .cnpy-hitbox .cnpy-personav, .cnpy-hitbox .cnpy-personlink, .cnpy-hitbox .cnpy-avstack { position:relative; z-index:2; }
 .cnpy-accentbtn { transition:filter .12s ease, transform .12s ease; }
 .cnpy-accentbtn:hover { filter:brightness(1.06); }
 .cnpy-accentbtn:active { transform:translateY(1px); }
@@ -798,6 +853,40 @@ input, select { font-family: inherit; }
 .cnpy-td-body p { white-space:pre-line; }
 .cnpy-ghostbtn { transition:all .12s ease; }
 .cnpy-ghostbtn:hover { border-color:var(--border-strong); color:var(--fg); }
+/* Maintenance › People: the admin's role editor (maintenance.ts `personRoleEditor`). The row and
+   its editor read as one tinted block — the row hands its divider to the editor (border AND the
+   -1px overlap, which would stack the two translucent tints into a seam), so the editor's border
+   sits exactly where the row's did at every height. It opens by growing its ONE grid row
+   0fr → 1fr (a real height animation, nothing measured) with a fade and a small drop of its
+   body; `data-roleedit="out"` is the collapsed state a closed editor lingers in for its exit.
+   The animations play only while main.ts `syncRoleEdit` has set `data-anim` (the 200ms open /
+   close window), joined mid-way through the negative `--re-t` — so a rerender never replays them. */
+.cnpy-prow[data-roleedit] { border-bottom:0 !important; margin-bottom:0 !important; }
+.cnpy-prow[data-roleedit="in"] { background:var(--hover); }
+.cnpy-prow-edit { color:var(--fg-55); border:1px solid var(--border); background:transparent; }
+.cnpy-prow-edit[aria-expanded="true"] { color:var(--fg); border-color:var(--border-strong); background:var(--surface); }
+.cnpy-roleedit { display:grid; grid-template-rows:1fr; background:var(--hover); border-bottom:1px solid var(--border); margin-bottom:-1px; }
+.cnpy-roleedit[data-roleedit="out"] { grid-template-rows:0fr; opacity:0; }
+.cnpy-roleedit-clip { min-height:0; overflow:hidden; }
+.cnpy-roleedit-body { box-sizing:border-box; max-width:640px; padding:4px 16px 18px 56px; }
+.cnpy-roleedit-count { font-size:11px; color:var(--fg-40); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.cnpy-roleedit-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:16px; }
+.cnpy-roleedit-keys { margin-right:auto; min-width:0; font-size:11px; color:var(--fg-40); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-roleedit-skel { background:var(--hover) !important; border-color:var(--border) !important; animation:cnpy-shimmer 1.4s ease infinite; }
+[data-phone="1"] .cnpy-roleedit-body { padding-left:16px; }
+[data-phone="1"] .cnpy-roleedit-keys { display:none; }
+.cnpy-roleedit[data-anim] { animation:cnpy-re-open .2s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--re-t, 0ms); }
+.cnpy-roleedit[data-anim] .cnpy-roleedit-body { animation:cnpy-re-drop .2s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--re-t, 0ms); }
+.cnpy-roleedit[data-roleedit="out"][data-anim] { animation:cnpy-re-close .2s cubic-bezier(.4,0,.2,1) both; animation-delay:var(--re-t, 0ms); }
+.cnpy-roleedit[data-roleedit="out"][data-anim] .cnpy-roleedit-body { animation:none; }
+.cnpy-prow[data-roleedit="in"][data-anim] { animation:cnpy-re-tint .2s ease both; animation-delay:var(--re-t, 0ms); }
+.cnpy-prow[data-roleedit="out"][data-anim] { animation:cnpy-re-untint .2s ease both; animation-delay:var(--re-t, 0ms); }
+@keyframes cnpy-re-open { from { grid-template-rows:0fr; opacity:0; } 70% { opacity:1; } to { grid-template-rows:1fr; opacity:1; } }
+@keyframes cnpy-re-close { from { grid-template-rows:1fr; opacity:1; } 60% { opacity:0; } to { grid-template-rows:0fr; opacity:0; } }
+@keyframes cnpy-re-drop { from { transform:translateY(-6px); } to { transform:none; } }
+@keyframes cnpy-re-tint { from { background-color:transparent; } to { background-color:var(--hover); } }
+@keyframes cnpy-re-untint { from { background-color:var(--hover); } to { background-color:transparent; } }
+@media (prefers-reduced-motion: reduce) { .cnpy-roleedit[data-anim], .cnpy-roleedit[data-anim] .cnpy-roleedit-body, .cnpy-prow[data-anim], .cnpy-roleedit-skel { animation:none !important; } }
 .cnpy-iconbtn { transition:background .12s ease, color .12s ease; }
 .cnpy-iconbtn:hover { background:var(--hover); color:var(--fg-70); }
 .cnpy-link:hover { text-decoration:underline; }
@@ -849,16 +938,11 @@ input, select { font-family: inherit; }
 .cnpy-xbtn:hover { background:color-mix(in srgb, var(--accent) 22%, transparent); }
 .cnpy-input:focus { border-color:var(--accent); }
 .cnpy-themecard { transition:all .12s ease; }
-.cnpy-mintbtn { transition:filter .12s ease; }
-.cnpy-mintbtn:hover { filter:brightness(1.05); }
 .cnpy-numpill { transition:filter .12s ease; }
 .cnpy-numpill:hover { filter:brightness(1.15); }
 .cnpy-copybtn { transition:filter .12s ease, transform .12s ease; }
 .cnpy-copybtn:hover { filter:brightness(1.06); }
 .cnpy-copybtn:active { transform:translateY(1px); }
-.cnpy-copybtn.is-copied { cursor:default; }
-.cnpy-copybtn.is-copied:hover { filter:none; }
-.cnpy-copybtn.is-copied:active { transform:none; }
 .cnpy-signout { transition:all .12s ease; }
 .cnpy-signout:hover { border-color:var(--red); color:var(--red); }
 .cnpy-mutelink:hover { color:var(--fg-70); }
@@ -912,6 +996,23 @@ input, select { font-family: inherit; }
 .cnpy-seg.is-live > .cnpy-seg-ind { opacity:1; }
 .cnpy-seg-ind.is-sliding { transition:transform .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1), height .28s cubic-bezier(.3,.7,.2,1), background-color .2s ease; }
 @media (prefers-reduced-motion: reduce) { .cnpy-seg-ind.is-sliding { transition:none; } }
+/* The underline tab bar (web/src/tabs.ts) — page-level navigation between a screen's
+   sections, heading the page body. Text tabs on a full-width hairline (an inset shadow, so
+   it stays put while a too-wide row scrolls sideways inside the bar — never the page); the
+   picked tab's 2px accent underline sits ON it. One indicator slides under the picked tab
+   (syncTabBars places it after each paint); before it is placed, the picked tab draws its
+   own. Every tab is 40px tall, so a badge never makes one taller than another. */
+.cnpy-tabs { position:relative; display:flex; align-items:stretch; gap:22px; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; overscroll-behavior-x:contain; box-shadow:inset 0 -1px 0 var(--border); }
+.cnpy-tabs::-webkit-scrollbar { display:none; }
+.cnpy-tab { position:relative; flex:none; display:inline-flex; align-items:center; gap:7px; height:40px; padding:0 2px; font-size:13.5px; font-weight:500; white-space:nowrap; color:var(--fg-55); transition:color .15s ease; }
+.cnpy-tab:not(.is-on):hover { color:var(--fg); }
+.cnpy-tab.is-on { color:var(--fg); box-shadow:inset 0 -2px 0 var(--accent); }
+.cnpy-tab:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+.cnpy-tabs.is-live > .cnpy-tab.is-on { box-shadow:none; }
+.cnpy-tabs-ind { position:absolute; z-index:1; left:0; bottom:0; width:0; height:2px; background:var(--accent); opacity:0; pointer-events:none; }
+.cnpy-tabs.is-live > .cnpy-tabs-ind { opacity:1; }
+.cnpy-tabs-ind.is-sliding { transition:transform .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1); }
+@media (prefers-reduced-motion: reduce) { .cnpy-tabs-ind.is-sliding { transition:none; } .cnpy-tab { transition:none; } }
 /* The queue group header's "Open sprint →". */
 .cnpy-grouplink { transition:color .12s ease, background .12s ease; border-radius:6px; }
 .cnpy-grouplink:hover { color:var(--fg) !important; background:var(--hover); }
@@ -1084,6 +1185,12 @@ input, select { font-family: inherit; }
 .repo-rank-l { transition:color .12s ease; }
 .repo-rank:hover .repo-rank-l, .repo-rank-h:hover .repo-rank-l { color:var(--fg) !important; }
 .cnpy-flash .repo-fill { animation:cnpy-grow-x .5s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 22ms + 60ms); }
+/* A Repo tab switch replays no entrance (the tab bar's underline must slide unbroken), so the
+   new tab's content flashes instead (main.ts `setRepoTab`): the 14-day bars grow and the deploy
+   dots pop again. `backwards`, not `both`: a filled transform would outlive the flash and
+   swallow the dot's hover scale. */
+.cnpy-flash .repo-bar { animation:cnpy-grow-y .45s cubic-bezier(.2,.7,.2,1) backwards; animation-delay:calc(var(--i, 0) * 16ms + 60ms); }
+.cnpy-flash .repo-dot { animation:cnpy-dot .3s cubic-bezier(.34,1.56,.64,1) backwards; animation-delay:calc(var(--i, 0) * 22ms + 60ms); }
 @container (max-width: 760px) { .repo-kpis { grid-template-columns:repeat(2,minmax(0,1fr)) !important; } .repo-pgrid > * { grid-column:1 / -1 !important; } }
 @container (max-width: 420px) { .repo-kpis > * { padding:14px 14px 14px !important; } .repo-kpi-n { font-size:20px !important; } .repo-kpi-s { flex-basis:100%; } }
 /* phone: the frame keeps a 16px gutter instead of the desktop 32px */
@@ -1109,25 +1216,27 @@ input, select { font-family: inherit; }
    rail as much as on the viewport, so this keys off the BAR's own width — and
    only a bar that HAS the button becomes a container, so nobody else's changes.
    Measured (a container query sees the CONTENT box, 48px inside the bar): the
-   crumb needs ~271px + a 16px gap, the labelled controls 446px → 733px. Under
-   740px the button is icon-only, the size of the refresh icon beside it
-   (controls 383px → 670px); under 676px the "updated …" text gives up its room
-   too (281px — narrower than the 343px a non-admin's bar already takes, so the
-   phone-width bar is never tighter for having the button). In viewport terms
-   with the rail collapsed (it is, under 900px): icon-only below ~850px, no
-   "updated …" below ~790px. */
+   title + repo slug need ~156px + a 16px gap (the crumb no longer names the tab —
+   the page's tab bar does), the labelled controls 446px → 618px. Under 624px the
+   button is icon-only, the size of the refresh icon beside it (controls 383px →
+   555px); under 560px the "updated …" text gives up its room too (281px —
+   narrower than the 343px a non-admin's bar already takes, so the phone-width bar
+   is never tighter for having the button). In viewport terms with the rail
+   collapsed (it is, under 900px): icon-only below ~735px, no "updated …" below
+   ~670px. */
 [data-screen="repo"] header:has(.repo-pollbtn) { container:repohead / inline-size; }
-@container repohead (max-width: 740px) {
+@container repohead (max-width: 624px) {
   .repo-pollbtn { width:32px; padding:0 !important; justify-content:center; }
   .repo-pollbtn-label { display:none; }
 }
-@container repohead (max-width: 676px) { [data-repo-updated] { display:none; } }
+@container repohead (max-width: 560px) { [data-repo-updated] { display:none; } }
 
 @media (prefers-reduced-motion: reduce) {
   .cnpy-aside, .cnpy-aside *, .cnpy-aside *::before, .cnpy-aside *::after { transition:none !important; }
   [data-enter] *, .cnpy-flash, .cnpy-flash *, .repo-shimmer, .repo-pulse, .repo-pollbtn svg { animation:none !important; }
   .repo-tip, .repo-dot, .repo-row, .repo-chev, .repo-rank-l { transition:none !important; }
   .cnpy-statusbtn, .cnpy-statusbtn svg { transition:none !important; }
+  .cnpy-avbtn-veil, .cnpy-avbtn-veil svg { transition:none !important; animation:none !important; }
 }
 
 /* ── landing (signed-out screen, web/src/landing.ts) ──────────────────────────

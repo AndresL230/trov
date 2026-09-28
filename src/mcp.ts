@@ -8,6 +8,7 @@ import { get_doc, list_docs, get_feed, query, list_tickets, get_ticket, list_spr
 import {
   TicketSeg, TicketAssigneeFilter, TicketCategory,
   TicketCreate, TicketEdit, TicketTransition, TicketCommentAdd, TicketLinkAdd, TicketSprintSet, TicketParentSet,
+  TicketAssigneeToggle,
 } from "@shared/tickets";
 import { TicketError } from "./tools/tickets";
 import {
@@ -16,9 +17,10 @@ import {
 import { SprintCreate, PlanNarrative, PlanSprintEntry, PLAN_NARRATIVE_MAX } from "@shared/sprints";
 import {
   agentCreateTicket, agentEditTicket, agentTransitionTicket, agentAddTicketComment,
-  agentAddTicketLink, agentSetTicketSprint, agentSetTicketParent,
+  agentAddTicketLink, agentSetTicketSprint, agentSetTicketParent, agentAssignTicket,
 } from "./tools/tickets-agent";
 import { getMyWork, list_events } from "./tools/mywork";
+import { listPeopleForAgents } from "./tools/people";
 import { getRepoDashboardForAgent } from "./tools/repo-agent";
 import { repoEnvironments } from "./repo/config";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoTab } from "@shared/repo";
@@ -230,9 +232,10 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
   // `done` and `declined` included. Nothing here INFERS a resolution; a person, through
   // their own token, asks for it.
   //
-  // There is deliberately NO toggle_assignee tool. Assignment is the data the lane rule
-  // is built on, so an agent that could edit it could edit its own permissions: after a
-  // ticket is filed, assigning and unassigning are web-only, forever.
+  // Assignment (assign_ticket, issue #90) is the one write the lane cannot scope — it is
+  // how a ticket gets INTO a lane — so it has its own rule in tickets-agent.ts: an admin,
+  // the ticket's requester or a current assignee. That reverses the old "web-only,
+  // forever" (design D3), which left leads assigning agent-split work by hand.
 
   /** Every write returns the whole ticket, exactly like the cookie routes do. */
   const ticketDetail = async (id: number) => {
@@ -243,7 +246,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "create_ticket",
-    "File a ticket. THE ONE UNSCOPED WRITE — you may file freely; every other ticket write requires the ticket to be assigned to you already. The requester is YOU (the bearer principal); a client-supplied requester is ignored. `assignees` (person handles) is the ONLY place an agent can assign anyone — after filing, assignment is web-only, so there is no tool to add or remove an assignee later. Optional `link` takes a bare issue number ('#214'), a GitHub/Figma URL, or any URL. `sprint_id` omitted = the backlog. Returns the whole ticket. Confirm the exact fields with the person before calling — a ticket is org-visible the moment it exists.",
+    "File a ticket. THE ONE UNSCOPED WRITE — you may file freely; every other ticket write requires the ticket to be assigned to you already. The requester is YOU (the bearer principal); a client-supplied requester is ignored. `assignees` (person handles) — call `list_people` first and match the work to each person's role and responsibilities. After filing, assign_ticket adds or removes one assignee (as the ticket's requester you may, so you can route it later). Optional `link` takes a bare issue number ('#214'), a GitHub/Figma URL, or any URL. `sprint_id` omitted = the backlog. Returns the whole ticket. Confirm the exact fields with the person before calling — a ticket is org-visible the moment it exists.",
     TicketCreate.shape,
     async (input) => runTool(async () => ticketDetail(await agentCreateTicket(env.DB, TicketCreate.parse(input), principal.handle))),
   );
@@ -309,10 +312,32 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
   );
 
   server.tool(
+    "assign_ticket",
+    "Add (`on: true`) or remove (`on: false`) ONE assignee on an existing ticket. `login` is a person HANDLE — take it from `list_people`, matching the work to each person's role and responsibilities; an unknown handle is `bad_request`. SCOPED by its own rule, not the lane: only an ADMIN, the ticket's REQUESTER or one of its CURRENT assignees may (re)assign it, else `forbidden` and nothing is written. Idempotent: adding someone already assigned, or removing someone who isn't, succeeds and writes nothing. It never changes status (assigning a submitted ticket does not start it — use transition_ticket), and records no history row — history is status moves, so nothing records who (un)assigned, exactly as with the web UI's picker. Works on a ticket mirrored from a GitHub issue — its assignees are Canopy's after import. Removing yourself takes the ticket out of your lane. Returns the whole ticket; read `assignees` back. Confirm who with the person before calling.",
+    { id: z.number(), ...TicketAssigneeToggle.shape },
+    async ({ id, login, on }) => runTool(async () => {
+      await agentAssignTicket(env.DB, env, id, login, on, principal.handle);
+      return ticketDetail(id);
+    }),
+  );
+
+  server.tool(
     "get_my_work",
     "Your personal My Work projection (D1 only, no live GitHub): previous-activity (your most recent summarized merged/closed PRs), to-do (your open assigned GitHub issues), and tickets (your open assigned tickets, native AND mirrored from GitHub issues — `source: \"github\"` marks a mirrored one, whose issue may also be in to-do; capped, with `ticketsTotal` the full count). Read-only.",
     {},
     async () => runTool(() => getMyWork(env.DB, principal.handle))
+  );
+
+  // ── People: ONE read, for every principal (0036) ─────────────────────────────
+  //
+  // An agent reads who does what — handle, name, role, responsibilities — and nothing
+  // else about a person: no profile, no avatar, no load. Profiles are written only by
+  // the person or an admin, over session-cookie routes; there is NO people write here.
+  server.tool(
+    "list_people",
+    "Read-only: every person in the org as { handle, name, role, responsibilities }. Call this BEFORE choosing `assignees` on create_ticket: match the work to each person's `role` and `responsibilities` and use their `handle`. `role` / `responsibilities` may be null — that means unknown, never guess what someone owns from their name or handle; if nobody clearly fits, file the ticket unassigned (or ask the person you are working for) rather than pick someone. Returns { people }.",
+    {},
+    async () => runTool(async () => ({ people: await listPeopleForAgents(env.DB) })),
   );
 
   server.tool(

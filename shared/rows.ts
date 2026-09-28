@@ -117,6 +117,13 @@ export interface PersonRow {
   email_unsubscribed: number;
   created_at: string;
   onboarded_at: string;
+  /** SHA-256 of an UPLOADED avatar (0036), bytes in R2 at `avatars/<sha>`. Outranks
+   *  `avatar_url` — never read this pair directly for display; use `avatarSrc`. */
+  avatar_sha: string | null;
+  /** The provider `avatar_url` came from (0036 PART B): only a sign-in with it refreshes the picture. */
+  avatar_source: IdentityProvider | null;
+  role: string | null;             // 0036: a short title ("Backend engineer")
+  responsibilities: string | null; // 0036: what they own — for agents and editors, never rendered
 }
 
 export type IdentityProvider = "github" | "google";
@@ -246,10 +253,12 @@ export interface SprintProgressRow {
 // Identity triage task (0016): one pending row per unknown GitHub login seen on
 // a captured event. Raised by ingestEvent after the event write; resolved by the
 // map-to-person route (the `people` table's only runtime writer). Soft resolve.
+// `discarded` (no migration — status carries no CHECK) is a login that will never be
+// a person; the row keeps the PK, so the login is never re-raised until restored.
 export interface IdentityTaskRow {
   login: string;
   first_seen: string;
-  status: "pending" | "resolved";
+  status: "pending" | "resolved" | "discarded";
   resolved_at: string | null;
   resolved_by: string | null;
 }

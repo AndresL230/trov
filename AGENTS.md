@@ -20,7 +20,7 @@ reference is `plugins/canopy/skills/canopy/references/querying.md`.
 - **Knowledge is staged, a person confirms.** Doc changes, ADRs and feed entries go through the gate
   (`propose_doc_update`, `append_feed`, `record_session`); promoting and ratifying are web-only.
 - **Authored work is direct, and scoped.** Tickets: only ones already assigned to you (filing is the
-  exception). Sprints and the plan: admin only.
+  exception; `assign_ticket` is open to an admin, the ticket's requester or an assignee). Sprints and the plan: admin only.
 - **Trust `live`.** Anything flagged `staged_pending`, `unpromoted` or `draft` is not settled yet.
 
 ## Artifacts

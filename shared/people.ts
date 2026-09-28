@@ -1,0 +1,75 @@
+// Person profiles (0036) — the ONE contract the Worker, the SPA and MCP share. Zod-free:
+// the SPA imports the caps and `avatarSrc` as values.
+//
+// Three new person fields:
+//   • avatar — an UPLOADED photo (`persons.avatar_sha`, bytes in R2 at `avatars/<sha>`,
+//     served by the session-gated `GET /avatar/<sha>`). It outranks the provider picture
+//     (`persons.avatar_url`); `avatarSrc` is the ONE rule, and every DTO's `avatar_url`
+//     is already resolved through it, so `personChip` needs no change.
+//   • role — a short title, shown on the person card (a click on anyone's name).
+//   • responsibilities — what the person owns / should be assigned. NEVER rendered;
+//     returned only to admins (for editing) and to MCP (`list_people`, read-only),
+//     where an agent reads it when assigning work.
+//
+// Who writes (the owner's call, 2026-09-27): a person changes only their OWN avatar
+// (Settings); role and responsibilities are set by an ADMIN (`isAdmin`), in Maintenance ›
+// People — never by the person themselves. Nothing here is an MCP write.
+
+import type { PersonColor } from "./rows";
+
+export const ROLE_MAX = 80;
+export const RESPONSIBILITIES_MAX = 2000;
+/** The upload cap for an avatar, in bytes (the SPA downsizes to 512px first, so this is generous). */
+export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+export const AVATAR_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+export type AvatarType = (typeof AVATAR_TYPES)[number];
+
+/** THE avatar rule: an uploaded avatar wins, else the provider picture, else none (initials). */
+export function avatarSrc(p: { avatar_sha?: string | null; avatar_url?: string | null }): string | null {
+  return p.avatar_sha ? `/avatar/${p.avatar_sha}` : p.avatar_url ?? null;
+}
+
+/** One person as every list shows them (`GET /persons`, now with `role`). `avatar_url` is resolved. */
+export interface PersonSummary {
+  handle: string;
+  name: string | null;
+  color: PersonColor;
+  avatar_url: string | null;
+  role: string | null;
+}
+
+/**
+ * `GET /api/people/:handle` — the person card (the modal a click on a person's name opens;
+ * there is no profile page). Session cookie. An unknown or reserved handle is 404.
+ * `responsibilities` is present ONLY when the viewer is an admin (so Maintenance › People's
+ * editor can fill it); nothing renders it.
+ */
+export interface PersonProfile extends PersonSummary {
+  /** GitHub login from `identities`, when linked (for a "GitHub" link). */
+  github: string | null;
+  joined: string;                              // persons.created_at
+  admin: boolean;                              // this person is an admin
+  /** The viewer may set this person's role / responsibilities (admins only). */
+  editable: boolean;
+  /** The viewer is this person (the card offers "Edit profile" → Settings). */
+  self: boolean;
+  responsibilities?: string | null;
+}
+
+/** `PUT /api/people/:handle` body — admins only; every field optional, "" / null clears. */
+export interface PersonProfileWrite {
+  role?: string | null;
+  responsibilities?: string | null;
+}
+
+/**
+ * MCP `list_people` — the ONE thing an agent may read about people: who does what, so it
+ * can choose `assignees` on `create_ticket`. Deliberately nothing else (no avatar, no
+ * load, no profile data); `responsibilities` null = unknown, never to be guessed.
+ */
+export interface PersonForAgents {
+  handle: string;
+  name: string | null;
+  role: string | null;
+  responsibilities: string | null;
+}

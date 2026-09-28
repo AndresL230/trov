@@ -21,7 +21,8 @@
 // touches the DOM or the network; what it cannot do itself (navigate, write,
 // toast, download, open a tab, copy) it returns as an effect for main.ts.
 
-import { esc, attr, relTime, surface } from "./ui";
+import { esc, attr, relTime, surface, hitArea, HITBOX } from "./ui";
+import { personLink, personNameLink } from "./people";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
 import { confirmModal } from "./confirm";
@@ -141,7 +142,7 @@ export type ArtScreen = "artifacts" | "artifactnew" | "artifact";
 export interface ArtRoute { slug: string | null; v: number | null; diff: { a: number; b: number } | null }
 export const ART_ROUTE_NONE: ArtRoute = { slug: null, v: null, diff: null };
 
-export interface ArtPerson { handle: string; name: string | null; color: PersonColor }
+export interface ArtPerson { handle: string; name: string | null; color: PersonColor; avatar_url?: string | null }
 export interface ArtProps {
   screen: ArtScreen;
   route: ArtRoute;
@@ -250,6 +251,10 @@ function who(p: Pick<ArtProps, "persons">, handle: string): Who {
   const ini = (parts.length >= 2 ? parts[0][0] + parts[1][0] : name.slice(0, 2)).toUpperCase();
   return { handle, name, first: parts[0], color, ini };
 }
+/** The directory's person behind a handle — what a name or photo links to (`personLink`); null
+ *  (plain, unclickable) for a handle no one holds. */
+const personIn = (p: Pick<ArtProps, "persons">, handle: string): ArtPerson | null =>
+  p.persons.find((x) => sameHandle(x.handle, handle)) ?? null;
 /** The design's rounded-square avatar (it scales with --corner-scale like every other radius). */
 const av = (w: Who, size: number): string =>
   `<span style="width:${size}px;height:${size}px;border-radius:${size >= 24 ? 12 : size >= 18 ? 11 : 10}px;background:var(--p-${w.color});display:grid;place-items:center;font-size:${Math.max(8, Math.round(size * 0.42))}px;font-weight:600;color:#fff;flex:none">${esc(w.ini)}</span>`;
@@ -475,7 +480,8 @@ function libraryView(p: ArtProps): string {
 
   const card = (a: ArtifactSummaryDTO, i: number): string => {
     const au = who(p, a.author_id);
-    return `<button data-act="artOpen" data-arg="${attr(a.slug)}"${surface(`--i:${i};padding:0;display:flex;flex-direction:column;height:100%;width:100%;text-align:left;cursor:pointer;overflow:hidden`, { hover: true, cls: "cnpy-rise" })}>
+    // A `hitArea` card: the author's photo and name open their person card, the rest the artifact.
+    return `<div${surface(`--i:${i};padding:0;display:flex;flex-direction:column;height:100%;width:100%;text-align:left;cursor:pointer;overflow:hidden`, { hover: true, cls: `cnpy-rise ${HITBOX}` })}>
       <div style="position:relative;height:160px;border-bottom:1px solid var(--border);overflow:hidden;background:var(--bg);flex:none">
         ${thumb(a)}
         <div style="position:absolute;left:0;right:0;bottom:0;height:36px;background:linear-gradient(to bottom,transparent,var(--bg));pointer-events:none"></div>
@@ -483,14 +489,14 @@ function libraryView(p: ArtProps): string {
       <div style="display:flex;flex-direction:column;gap:12px;padding:14px 16px;flex:1">
         <div style="font-size:15px;font-weight:600;letter-spacing:-0.01em;line-height:1.35;color:var(--fg);text-wrap:pretty;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(a.title)}</div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:auto;min-width:0">
-          ${av(au, 20)}
-          <span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:48px;flex:0 1 auto">${esc(au.name)}</span>
+          <span style="display:flex;min-width:76px;flex:0 1 auto">${personLink(personIn(p, a.author_id), a.author_id, 20, au.name, "min-width:0;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap", 8)}</span>
           <span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-55);border:1px solid var(--border);border-radius:5px;padding:2px 6px;white-space:nowrap;flex:none">${esc(a.area)}</span>
           ${a.visibility === "private" ? `<span style="${tint("var(--purple)")}">PRIVATE</span>` : ""}
           <span style="font-size:11.5px;color:var(--fg-40);margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto">${esc(relTime(a.updated_at))}</span>
         </div>
       </div>
-    </button>`;
+      ${hitArea("artOpen", a.slug, a.title)}
+    </div>`;
   };
 
   const empty = rows.length === 0 ? `<div style="display:flex;justify-content:center;padding:56px 0">
@@ -748,9 +754,9 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
     propRow("KIND", `<span style="${NEUTRAL}">${d.kind.toUpperCase()}</span>`),
     propRow("AREA", `<span style="${CHIP}color:var(--fg-40);border:1px solid var(--border)">${esc(d.area)}</span>`),
     propRow("REPO", d.repo ? `<a href="https://github.com/${attr(d.repo)}" target="_blank" rel="noopener" style="${MONO_VAL};min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.repo)}</a>` : `<span style="${MONO_VAL};color:var(--fg-40)">—</span>`),
-    propRow("AUTHOR", `${av(author, 20)}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--fg-70)">${esc(author.name)} <span style="font-family:var(--sans);font-size:11px;color:var(--p-${author.color})">@${esc(author.handle)}</span></span>`),
-    propRow("UPDATED", `<span style="font-size:12.5px;color:var(--fg-70)">v${latest.version_no} · ${esc(relTime(latest.created_at))} by @${esc(latest.created_by)}</span>`),
-    ...(d.ratified_version !== null ? [propRow("RATIFIED", `<span style="font-size:12.5px;color:var(--fg-70)">v${d.ratified_version}${d.ratified_at ? ` · ${esc(relTime(d.ratified_at))}` : ""}${d.ratified_by ? ` by @${esc(d.ratified_by)}` : ""}</span>`)] : []),
+    propRow("AUTHOR", personLink(personIn(p, d.author_id), d.author_id, 20, { html: `${esc(author.name)} <span style="font-family:var(--sans);font-size:11px;color:var(--p-${author.color})">@${esc(author.handle)}</span>` }, "min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--fg-70)", 8)),
+    propRow("UPDATED", `<span style="font-size:12.5px;color:var(--fg-70)">v${latest.version_no} · ${esc(relTime(latest.created_at))} by ${personNameLink(personIn(p, latest.created_by), `@${latest.created_by}`)}</span>`),
+    ...(d.ratified_version !== null ? [propRow("RATIFIED", `<span style="font-size:12.5px;color:var(--fg-70)">v${d.ratified_version}${d.ratified_at ? ` · ${esc(relTime(d.ratified_at))}` : ""}${d.ratified_by ? ` by ${personNameLink(personIn(p, d.ratified_by), `@${d.ratified_by}`)}` : ""}</span>`)] : []),
   ].join("");
 
   const linkCard = (icon: string, title: string, meta: string, mono = false) =>
@@ -828,7 +834,7 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
     return `<div${surface("padding:12px 14px")}>
       <div style="display:flex;align-items:center;gap:8px"><span style="${CHIP}color:${color};border:1px solid color-mix(in srgb,${color} 38%,transparent)">${tag}</span><span style="font-family:var(--label);font-size:12px;font-weight:600">v${n}</span></div>
       ${x && w ? `<div style="font-size:13px;color:var(--fg-70);margin-top:7px">${esc(x.summary || "No summary")}</div>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:var(--fg-40)">${av(w, 16)}<span style="font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-${w.color})">@${esc(w.handle)}</span> · ${esc(relTime(x.created_at))}</div>` : `<div style="font-size:13px;color:var(--fg-40);margin-top:7px">No such version.</div>`}
+      <div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:var(--fg-40)">${personLink(personIn(p, x.created_by), x.created_by, 16, `@${w.handle}`, `font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-${w.color})`, 6)} · ${esc(relTime(x.created_at))}</div>` : `<div style="font-size:13px;color:var(--fg-40);margin-top:7px">No such version.</div>`}
     </div>`;
   };
   const base = "font-family:var(--code);font-size:12.5px;line-height:1.75;padding:2px 16px 2px 12px;white-space:pre-wrap;word-break:break-word;color:var(--fg-55)";

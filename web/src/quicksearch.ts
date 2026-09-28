@@ -44,18 +44,18 @@ export interface QuickScreen { label: string; hint: string; keys: string; steps:
 
 export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "My Work", hint: "Your PRs, issues and tickets", keys: "home dashboard mine todo", steps: [["goMyWork", null]] },
-  { label: "Tickets › Board", hint: "The ticket board", keys: "queue kanban columns", steps: [["navSub", "tickets:board"]] },
-  { label: "Tickets › Table", hint: "The ticket queue as a table", keys: "queue list", steps: [["navSub", "tickets:queue"]] },
+  { label: "Tickets › Board", hint: "The ticket board", keys: "queue kanban columns", steps: [["goTickets", null], ["queueBoard", null]] },
+  { label: "Tickets › Table", hint: "The ticket queue as a table", keys: "queue list", steps: [["goTickets", null], ["queueTable", null]] },
   { label: "New ticket", hint: "File a ticket", keys: "create bug report request file", steps: [["newTicket", null]] },
   { label: "Roadmap", hint: "The plan narrative and sprints", keys: "plan narrative sprints", steps: [["goRoadmap", null]] },
   { label: "Roadmap › Timeline", hint: "Sprints on a timeline", keys: "plan sprints gantt schedule", steps: [["goRoadmap", null], ["roadmapTimeline", null]] },
   { label: "Handoffs", hint: "Work left for the next session", keys: "inbox claim", steps: [["goHandoffs", null]] },
   { label: "New handoff", hint: "Leave work for someone", keys: "send create", steps: [["newHandoff", null]] },
-  { label: "Repo › Overview", hint: "Environments, drift and health", keys: "dashboard github environments health deploys", steps: [["navSub", "repo:overview"]] },
-  { label: "Repo › Code", hint: "Pull requests, commits and branches", keys: "prs pull requests branches commits", steps: [["navSub", "repo:code"]] },
-  { label: "Repo › CI", hint: "Deploys, failures, coverage and bundle", keys: "builds checks runs coverage failures deploys", steps: [["navSub", "repo:ci"]] },
-  { label: "Repo › Usage", hint: "Requests, users and product metrics", keys: "cloudflare railway metrics active users", steps: [["navSub", "repo:usage"]] },
-  { label: "Repo › Planning", hint: "Sprint, labels and contributors", keys: "contributors labels todos", steps: [["navSub", "repo:planning"]] },
+  { label: "Repo › Overview", hint: "Environments, drift and health", keys: "dashboard github environments health deploys", steps: [["goRepo", "overview"]] },
+  { label: "Repo › Code", hint: "Pull requests, commits and branches", keys: "prs pull requests branches commits", steps: [["goRepo", "code"]] },
+  { label: "Repo › CI", hint: "Deploys, failures, coverage and bundle", keys: "builds checks runs coverage failures deploys", steps: [["goRepo", "ci"]] },
+  { label: "Repo › Usage", hint: "Requests, users and product metrics", keys: "cloudflare railway metrics active users", steps: [["goRepo", "usage"]] },
+  { label: "Repo › Planning", hint: "Sprint, labels and contributors", keys: "contributors labels todos", steps: [["goRepo", "planning"]] },
   { label: "Feed", hint: "What shipped, session by session", keys: "activity sessions log", steps: [["goFeed", null]] },
   { label: "Docs", hint: "The team's documentation", keys: "documentation knowledge wiki", steps: [["goDocs", null]] },
   { label: "New doc", hint: "Propose a new doc", keys: "write propose create", steps: [["newDoc", null]] },
@@ -68,7 +68,7 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "Maintenance › Identity", hint: "Map GitHub logins to people", keys: "github logins map", steps: [["goMaintenance", "identity"]] },
   { label: "Maintenance › People", hint: "Invites, members and digests", keys: "invite members admin notifications", steps: [["goMaintenance", "people"]] },
   { label: "Settings", hint: "Profile, account and appearance", keys: "profile account preferences", steps: [["goSettings", null]] },
-  { label: "Settings › MCP access", hint: "Connect an agent: apps and tokens", keys: "mcp tokens connect agent claude code codex oauth", steps: [["goSettings", null]] },
+  { label: "Settings › MCP access", hint: "Connect Claude Code: sign-in steps and connected apps", keys: "mcp tokens connect agent claude code plugin oauth authenticate", steps: [["goSettings", null]] },
   { label: "Settings › Appearance", hint: "Light, dark or system theme", keys: "theme dark light mode", steps: [["goSettings", null]] },
   { label: "Settings › Email notifications", hint: "Daily and weekly digests", keys: "digest email unsubscribe", steps: [["goSettings", null]] },
   { label: "Get Started", hint: "The guide to Canopy", keys: "guide help onboarding tour", steps: [["goGuide", null]] },
@@ -196,8 +196,8 @@ export function rowOf(h: QuickHit): QuickRow {
       return { group: "handoff", title: h.title, meta: `#${h.id}`, pick: go(["openHandoff", h.id]), context: join(cap(h.status ?? ""), h.snippet, age) };
     case "person": {
       const color = (PERSON_COLORS as readonly string[]).includes(h.color ?? "") ? (h.color as PersonColor) : "stone";
-      return { group: "person", title: h.title, meta: "Tickets", pick: go(["goTickets", null], ["queueAssignee", `@${h.id}`]),
-        context: `@${h.id} · tickets assigned to them`, person: { handle: h.id, name: h.title, color, avatar_url: h.avatar_url ?? null } };
+      return { group: "person", title: h.title, meta: "Profile", pick: go(["openPerson", h.id]),
+        context: join(`@${h.id}`, h.snippet), person: { handle: h.id, name: h.title, color, avatar_url: h.avatar_url ?? null } };
     }
     case "feed":
       return { group: "feed", title: h.title, meta: age, pick: go(["goFeed", null]), context: join(h.snippet, h.by ? `@${h.by}` : null) };

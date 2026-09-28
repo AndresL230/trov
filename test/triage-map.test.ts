@@ -225,7 +225,7 @@ describe("ASSIGN_OPTIONS", () => {
 
 describe("peopleFromPersons", () => {
   it("maps a directory row to a picker entry keyed by handle", () => {
-    const directory: PersonSummary[] = [{ handle: "maya-k", name: "Maya Kim", color: "sky", avatar_url: null }];
+    const directory: PersonSummary[] = [{ handle: "maya-k", name: "Maya Kim", color: "sky", avatar_url: null, role: null }];
     expect(peopleFromPersons(directory)).toEqual([{ id: "maya-k", name: "Maya Kim", initials: "MK", color: "sky", avatar_url: null }]);
   });
 });

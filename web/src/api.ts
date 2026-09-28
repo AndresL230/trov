@@ -18,12 +18,14 @@ import type { DashboardData } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import type { RepoDashboard, RepoRefreshResult } from "@shared/repo";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
-import type { NotificationOutboxRow, NotificationSettingsRow, McpTokenSummary, OAuthGrantSummary } from "@shared/rows";
+import type { NotificationOutboxRow, NotificationSettingsRow, OAuthGrantSummary } from "@shared/rows";
 import type {
   ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactDiffDTO, ArtifactFetchDTO,
   ArtifactKind, ArtifactVisibility, ArtifactLinkType,
 } from "@shared/artifacts-core";
 import type { QuickSearchResult } from "@shared/quick-search";
+// Person profiles (0036): the DTOs and caps are one zod-free contract with the Worker.
+import type { PersonSummary, PersonProfile, PersonProfileWrite } from "@shared/people";
 import type {
   HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody,
 } from "@shared/handoffs";
@@ -172,7 +174,9 @@ export function listAdrs(status?: string): Promise<AdrRow[]> {
   return getJson<{ adrs: AdrRow[] }>(`/adrs${status ? `?status=${encodeURIComponent(status)}` : ""}`).then((r) => r.adrs);
 }
 export interface MeIdentity { provider: "github" | "google"; label: string; linked_at: string }
-export interface Me { handle: string; name: string | null; avatar_url: string | null; color: PersonColor; identities: MeIdentity[]; org: string; admin: boolean }
+/** `avatar_url` is already resolved (`avatarSrc`: an uploaded photo, else the provider's
+ *  picture). `role` is optional so a Worker from before 0036 still reads. */
+export interface Me { handle: string; name: string | null; avatar_url: string | null; color: PersonColor; identities: MeIdentity[]; org: string; admin: boolean; role?: string | null }
 export function getMe(): Promise<Me> {
   return getJson<Me>("/auth/me");
 }
@@ -190,9 +194,39 @@ export function updateMe(b: { name?: string | null; color?: PersonColor }): Prom
 export function unlinkIdentity(provider: "github" | "google"): Promise<{ ok: true }> { return postJson(`/auth/identities/${provider}/unlink`); }
 export function renameHandle(handle: string): Promise<{ ok: true; handle: string }> { return postJson("/auth/me/handle", { handle }); }
 
-// ── persons directory ─────────────────────────────────────────────────────────
-export interface PersonSummary { handle: string; name: string | null; color: PersonColor; avatar_url: string | null }
+// ── persons directory + profiles ──────────────────────────────────────────────
 export function listPersons(): Promise<PersonSummary[]> { return getJson<{ persons: PersonSummary[] }>("/persons").then((r) => r.persons); }
+/** One person's profile page. 404 (an unknown or reserved handle) is NotFound. `responsibilities`
+ *  arrives only for the person themselves or an admin. */
+export function getPersonProfile(handle: string): Promise<PersonProfile> {
+  return getJson<PersonProfile>(`/api/people/${encodeURIComponent(handle)}`).catch((e) => {
+    if (e instanceof ApiError && e.status === 404) throw new NotFound(handle);
+    throw e;
+  });
+}
+/** Role and/or responsibilities — the person themselves or an admin (403 otherwise, 400 over
+ *  the caps). Answers with the fresh profile. */
+export function updatePersonProfile(handle: string, body: PersonProfileWrite): Promise<PersonProfile> {
+  return putJson<PersonProfile>(`/api/people/${encodeURIComponent(handle)}`, body);
+}
+/** Upload MY avatar (multipart `file`; the caller downsizes it first). 400 a type the Worker
+ *  refuses, 413 over `AVATAR_MAX_BYTES`. Answers with the resolved `avatar_url`. */
+export async function uploadAvatar(file: Blob, filename = "avatar"): Promise<{ ok: true; avatar_url: string | null }> {
+  const fd = new FormData();
+  fd.set("file", file, filename);
+  const res = await fetch("/api/people/me/avatar", { method: "POST", credentials: "same-origin", headers: { accept: "application/json" }, body: fd });
+  if (res.status === 401) throw new Unauthorized();
+  if (!res.ok) {
+    let msg = String(res.status);
+    try { const j = (await res.json()) as { error?: string }; if (j.error) msg = j.error; } catch { /* non-JSON */ }
+    throw new ApiError(res.status, msg);
+  }
+  return res.json() as Promise<{ ok: true; avatar_url: string | null }>;
+}
+/** Drop MY uploaded avatar: `avatar_url` falls back to the provider picture, or null (initials). */
+export function removeAvatar(): Promise<{ ok: true; avatar_url: string | null }> {
+  return postJson("/api/people/me/avatar/remove");
+}
 
 // ── invites (admin) ───────────────────────────────────────────────────────────
 export function listInvites(): Promise<InviteRow[]> { return getJson<{ invites: InviteRow[] }>("/invites").then((r) => r.invites); }
@@ -274,7 +308,7 @@ export function listStagedProposals(): Promise<StagedProposal[]> {
 // Maintenance · Identity: pending unknown-login tasks, each with a small LIVE
 // activity sample. Mirrors src/tools/reads.ts IdentityTaskWithSample exactly
 // (web/ can't import src/, so it's re-declared here atop @shared/rows's
-// IdentityTaskRow shape). Envelope: { tasks }.
+// IdentityTaskRow shape). Envelope: { tasks, discarded }.
 export interface IdentitySample {
   semantic_key: string;
   event_type: EventRow["event_type"];
@@ -285,13 +319,20 @@ export interface IdentitySample {
 export interface IdentityTask {
   login: string;
   first_seen: string;
-  status: "pending" | "resolved";
+  status: "pending" | "resolved" | "discarded";
   resolved_at: string | null;
   resolved_by: string | null;
   sample: IdentitySample[];
 }
-export function listIdentityTasks(): Promise<IdentityTask[]> {
-  return getJson<{ tasks: IdentityTask[] }>("/identity-tasks").then((r) => r.tasks);
+/** A discarded login Undo can still restore (src/tools/reads.ts DiscardedIdentity). */
+export interface DiscardedIdentity {
+  login: string;
+  resolved_at: string | null;
+  resolved_by: string | null;
+}
+export function listIdentityTasks(): Promise<{ tasks: IdentityTask[]; discarded: DiscardedIdentity[] }> {
+  return getJson<{ tasks: IdentityTask[]; discarded?: DiscardedIdentity[] }>("/identity-tasks")
+    .then((r) => ({ tasks: r.tasks, discarded: r.discarded ?? [] }));
 }
 
 // ── confirms (cookie-authed) ─────────────────────────────────────────────────
@@ -326,6 +367,14 @@ export function assignTriage(id: number, target: AssignTarget): Promise<{ ok: tr
 // teammate's GitHub login as that value.
 export function mapIdentity(login: string, person: string): Promise<{ ok: true; login: string; person: string; status: "resolved" }> {
   return postJson(`/identity-tasks/${encodeURIComponent(login)}/map`, { person });
+}
+/** Discard a login that will never be a person — soft and sticky (it is never re-raised). */
+export function discardIdentity(login: string): Promise<{ ok: true; login: string; status: "discarded" }> {
+  return postJson(`/identity-tasks/${encodeURIComponent(login)}/discard`);
+}
+/** Undo a discard: the login is back in the list and raises tasks as normal. */
+export function restoreIdentity(login: string): Promise<{ ok: true; login: string; status: "pending" }> {
+  return postJson(`/identity-tasks/${encodeURIComponent(login)}/restore`);
 }
 
 // ── email notifications (cookie-gated /api/notifications/*) ──────────────────
@@ -409,6 +458,10 @@ export function addTicketLink(id: number, raw: string): TicketWrite {
 }
 export function removeTicketLink(id: number, linkId: number): TicketWrite {
   return ticketWrite(`/tickets/${id}/links/${linkId}/remove`);
+}
+/** Hard-delete a native ticket (a mirrored one is a 403). */
+export function deleteTicket(id: number): Promise<{ ok: true; id: number; title: string; detached: number }> {
+  return postJson<{ ok: true; id: number; title: string; detached: number }>(`/tickets/${id}/delete`);
 }
 export function setTicketSprint(id: number, sprintId: number | null): TicketWrite {
   return ticketWrite(`/tickets/${id}/sprint`, { sprint_id: sprintId });
@@ -533,15 +586,6 @@ export function fetchArtifactUrl(url: string): Promise<ArtifactFetchDTO> {
 export function logout(): Promise<{ ok: true }> {
   return postJson<{ ok: true }>("/auth/logout");
 }
-export function mintMcpToken(): Promise<{ token: string }> {
-  return postJson<{ token: string }>("/auth/mcp-token");
-}
-export async function listMcpTokens(): Promise<McpTokenSummary[]> {
-  return (await getJson<{ tokens: McpTokenSummary[] }>("/auth/mcp-tokens")).tokens;
-}
-export function revokeMcpToken(id: number): Promise<{ ok: true }> {
-  return postJson<{ ok: true }>(`/auth/mcp-tokens/${id}/revoke`);
-}
 export async function listOAuthGrants(): Promise<OAuthGrantSummary[]> {
   return (await getJson<{ grants: OAuthGrantSummary[] }>("/auth/oauth-grants")).grants;
 }
@@ -554,8 +598,9 @@ export type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow
 export type { SprintView, SprintDetail, SprintCreate };
 export type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory, TicketCreate };
 export type { DashboardData };
-export type { PrefsView, PolicyKindView, Cadence, NotificationOutboxRow, NotificationSettingsRow, McpTokenSummary };
+export type { PrefsView, PolicyKindView, Cadence, NotificationOutboxRow, NotificationSettingsRow };
 export type { InviteRow, PersonColor };
+export type { PersonSummary, PersonProfile, PersonProfileWrite };
 
 // ── Handoffs + Prompt Library ────────────────────────────────────────────────
 export async function listHandoffs(box: HandoffBox = "mine"): Promise<HandoffView[]> {

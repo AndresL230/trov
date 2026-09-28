@@ -60,8 +60,9 @@ const touch = (db: DB, id: number, at: string) => run(db, `UPDATE tickets SET up
 /** Resolve a handle to its canonical `persons.handle` spelling, or 400. A RESERVED
  *  handle (`github-webhook`, 0032) has a persons row but is not a person: it can
  *  never be assigned, file, comment or link through these writers — only the
- *  GitHub mirror (./ticket-mirror.ts) writes as it. */
-async function requirePerson(db: DB, handle: string): Promise<string> {
+ *  GitHub mirror (./ticket-mirror.ts) writes as it. Exported for ./tickets-agent.ts,
+ *  whose `assign_ticket` must validate a handle on its no-op path too. */
+export async function requirePerson(db: DB, handle: string): Promise<string> {
   const p = await getPerson(db, handle);
   if (!p || RESERVED_HANDLES.includes(p.handle)) throw new TicketError("bad_request", `no such person: ${handle}`);
   return p.handle;
@@ -318,4 +319,32 @@ export async function add_ticket_comment(db: DB, id: number, body: string, autho
   );
   await touch(db, id, now);
   return res.meta.last_row_id as number;
+}
+
+/**
+ * Delete a ticket — a HARD delete, one `db.batch`, open to any signed-in member
+ * (like `delete_sprint`). Only a NATIVE ticket: a ticket mirrored from a GitHub
+ * issue (`source = 'github'`) is refused with 403, because the issue is still
+ * there and the mirror would only re-create it on the next delivery or Sync.
+ * Its assignees, links, comments and history go with it; its sub-tickets are
+ * detached (top-level again, never deleted); an artifact linked to it keeps the
+ * page and loses only the link. The number is never reissued (AUTOINCREMENT),
+ * and `tickets_fts_ad` drops the search row.
+ */
+export async function delete_ticket(db: DB, id: number): Promise<{ id: number; title: string; detached: number }> {
+  const t = await getTicketRow(db, id);
+  if (t.source === "github") {
+    throw new TicketError("forbidden", "this ticket mirrors a GitHub issue — close the issue on GitHub instead");
+  }
+  const now = nowIso();
+  const [detached] = await db.batch([
+    db.prepare(`UPDATE tickets SET parent_id = NULL, updated_at = ? WHERE parent_id = ?`).bind(now, id),
+    db.prepare(`DELETE FROM ticket_assignees WHERE ticket_id = ?`).bind(id),
+    db.prepare(`DELETE FROM ticket_links WHERE ticket_id = ?`).bind(id),
+    db.prepare(`DELETE FROM ticket_comments WHERE ticket_id = ?`).bind(id),
+    db.prepare(`DELETE FROM ticket_events WHERE ticket_id = ?`).bind(id),
+    db.prepare(`DELETE FROM artifact_links WHERE target_type = 'ticket' AND target_ref = ?`).bind(String(id)),
+    db.prepare(`DELETE FROM tickets WHERE id = ? AND source = 'canopy'`).bind(id),
+  ]);
+  return { id, title: t.title, detached: detached.meta.changes ?? 0 };
 }
