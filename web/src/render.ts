@@ -1922,10 +1922,8 @@ function copyBox(text: string, act: string, label: string): string {
  * Pure over AppState — exported for the pure render test.
  */
 export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll">): string {
-  const step = (n: number, body: string) => `<li style="display:flex;gap:11px;align-items:flex-start">
-      <span aria-hidden="true" style="flex:none;display:grid;place-items:center;width:20px;height:20px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:600;margin-top:1px">${n}</span>
-      <div style="flex:1;min-width:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${body}</div>
-    </li>`;
+  // The steps read in order on their own — no number badges (the owner's call, 2026-09-27).
+  const step = (body: string) => `<li style="min-width:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${body}</li>`;
   return `<section class="cnpy-tile cnpy-surface cnpy-set-mcp">
     <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;column-gap:12px;row-gap:2px;margin-bottom:14px">
       <div style="${SECTION_LABEL};margin-bottom:0">MCP access</div>
@@ -1934,9 +1932,9 @@ export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" |
     <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you.</div>
     <div class="cnpy-mcp-body">
       <ol aria-label="Connect Claude Code" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0">
-        ${step(1, `Install the Canopy plugin in Claude Code:${copyBox(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
-        ${step(2, `Run ${mcpCode("/mcp")}, choose ${mcpStrong("canopy")}, then ${mcpStrong("Authenticate")}.`)}
-        ${step(3, `Your browser opens Canopy. Click ${mcpStrong("Allow")} and you're connected &mdash; it shows up under Connected apps.`)}
+        ${step(`Install the Canopy plugin in Claude Code:${copyBox(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
+        ${step(`Run ${mcpCode("/mcp")}, choose ${mcpStrong("canopy")}, then ${mcpStrong("Authenticate")}.`)}
+        ${step(`Your browser opens Canopy. Click ${mcpStrong("Allow")} and you're connected &mdash; it shows up under Connected apps.`)}
       </ol>
       ${grantListBody(s)}
     </div>

@@ -449,7 +449,7 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
   the backdrop / × / Escape close it, a bottom sheet on a phone) holding the by-hand
   `claude mcp add --transport http --scope user canopy <origin>/mcp` (`browserConnectCommand`, no header) with a
   Copy button and the `/mcp` → Authenticate follow-up — so using it never changes the tile's height. The tile
-  then reads top to bottom: one line of what it is; the browser sign-in as three numbered steps — install the
+  then reads top to bottom: one line of what it is; the browser sign-in as three steps — install the
   plugin (`PLUGIN_INSTALL`, the same two commands the Get Started guide shows), `/mcp` → canopy → Authenticate,
   click Allow in the browser; then **Connected apps** (the OAuth grants — below the steps, or beside them once
   the tile is ≥ 620px, the `cnpy-mcp` container — with a count, its own empty state, a two-click Revoke per row
