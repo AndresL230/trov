@@ -227,13 +227,10 @@ input, select { font-family: inherit; }
 .cnpy-nav-t { white-space:nowrap; flex:1; min-width:0; text-align:left; }
 [data-collapsed="1"] .cnpy-nav-i { padding:9px 0 9px 13.5px; }
 
-/* ONE count badge for every sidebar entry (and the Maintenance tab switch): a quiet pill
-   that brightens on the active row / the picked tab. */
+/* ONE count badge for every sidebar entry (and a tab bar's tabs): a quiet pill that
+   brightens on the active row / the picked tab. */
 .cnpy-badge { font-family:var(--label); font-size:11px; font-weight:600; flex:none; min-width:18px; height:18px; line-height:18px; padding:0 6px; border-radius:999px; text-align:center; color:var(--fg-55); background:var(--hover); box-shadow:inset 0 0 0 1px var(--border); }
-.cnpy-navrow.is-active .cnpy-badge, .cnpy-seg-btn.is-on > .cnpy-badge { color:var(--fg); box-shadow:inset 0 0 0 1px var(--border-strong); }
-/* In a switch the pill never makes its tab taller than a tab without one (the indicator
-   would change height as it slides). */
-.cnpy-seg-btn > .cnpy-badge { margin:-1px 0; }
+.cnpy-navrow.is-active .cnpy-badge, .cnpy-tab.is-on > .cnpy-badge { color:var(--fg); box-shadow:inset 0 0 0 1px var(--border-strong); }
 /* Rows without a chevron reserve its 30px (24 wide + 6 margin), so every count sits in one column. */
 [data-collapsed="0"] .cnpy-navrow:not(:has(> .cnpy-chev)) .cnpy-nav-i { padding-right:41px; }
 .cnpy-badge[data-n="0"], .cnpy-dot[data-n="0"] { display:none; }
@@ -999,6 +996,23 @@ input, select { font-family: inherit; }
 .cnpy-seg.is-live > .cnpy-seg-ind { opacity:1; }
 .cnpy-seg-ind.is-sliding { transition:transform .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1), height .28s cubic-bezier(.3,.7,.2,1), background-color .2s ease; }
 @media (prefers-reduced-motion: reduce) { .cnpy-seg-ind.is-sliding { transition:none; } }
+/* The underline tab bar (web/src/tabs.ts) — page-level navigation between a screen's
+   sections, heading the page body. Text tabs on a full-width hairline (an inset shadow, so
+   it stays put while a too-wide row scrolls sideways inside the bar — never the page); the
+   picked tab's 2px accent underline sits ON it. One indicator slides under the picked tab
+   (syncTabBars places it after each paint); before it is placed, the picked tab draws its
+   own. Every tab is 40px tall, so a badge never makes one taller than another. */
+.cnpy-tabs { position:relative; display:flex; align-items:stretch; gap:22px; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; overscroll-behavior-x:contain; box-shadow:inset 0 -1px 0 var(--border); }
+.cnpy-tabs::-webkit-scrollbar { display:none; }
+.cnpy-tab { position:relative; flex:none; display:inline-flex; align-items:center; gap:7px; height:40px; padding:0 2px; font-size:13.5px; font-weight:500; white-space:nowrap; color:var(--fg-55); transition:color .15s ease; }
+.cnpy-tab:not(.is-on):hover { color:var(--fg); }
+.cnpy-tab.is-on { color:var(--fg); box-shadow:inset 0 -2px 0 var(--accent); }
+.cnpy-tab:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+.cnpy-tabs.is-live > .cnpy-tab.is-on { box-shadow:none; }
+.cnpy-tabs-ind { position:absolute; z-index:1; left:0; bottom:0; width:0; height:2px; background:var(--accent); opacity:0; pointer-events:none; }
+.cnpy-tabs.is-live > .cnpy-tabs-ind { opacity:1; }
+.cnpy-tabs-ind.is-sliding { transition:transform .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1); }
+@media (prefers-reduced-motion: reduce) { .cnpy-tabs-ind.is-sliding { transition:none; } .cnpy-tab { transition:none; } }
 /* The queue group header's "Open sprint →". */
 .cnpy-grouplink { transition:color .12s ease, background .12s ease; border-radius:6px; }
 .cnpy-grouplink:hover { color:var(--fg) !important; background:var(--hover); }
