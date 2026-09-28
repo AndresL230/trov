@@ -13,7 +13,7 @@
  *    the resources list, the members list, the ACTIVE chip
  *  • parseHash("#sprints/7")
  *  • the ONE due-date rule (`sprintDueState`, shared/sprints-core) with an injected
- *    clock, and every surface — card, Roadmap header dot, Timeline — agreeing on it
+ *    clock, and every surface — card, the Roadmap's Timeline-tab dot, Timeline — agreeing on it
  *
  * The markdown module is vi.mock'd (marked + DOMPurify cannot run in this
  * workerd environment — same reason render.roadmap.test.ts mocks it) with a

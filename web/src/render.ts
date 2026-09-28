@@ -25,6 +25,7 @@ import {
 import { TAGS } from "@shared/vocabulary";
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
+import { tabBar, tabPanelAttrs } from "./tabs";
 import { releasesScreen, findRelease, type ReleasePage } from "./releases";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
@@ -756,19 +757,9 @@ function header(s: AppState): string {
     `<button data-act="${act}" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease">${PLUS_ICON}${label}</button>`;
   const newControls = s.screen === "handoffs" ? accentNew("newHandoff", "New handoff") : s.screen === "prompts" ? accentNew("newPrompt", "New prompt") : "";
 
-  const overdueCount = s.screen === "roadmap" && s.roadmap.status === "ok"
-    ? roadmapEnriched(s.roadmap.data.sprints, s.confirmedSprints).overdueCount
-    : 0;
-  // The Roadmap header: the tab switch, then New sprint (it opens the panel at the
-  // top of whichever tab is showing), like the queue's switch + Submit a ticket.
-  const roadmapControls = s.screen === "roadmap" ? `${segmented({
-    id: "roadmap-tab", ariaLabel: "Roadmap view", act: "", value: s.roadmapTab,
-    options: [
-      { value: "narrative", label: "Narrative", act: "roadmapNarrative", arg: "" },
-      { value: "timeline", label: "Timeline", act: "roadmapTimeline", arg: "",
-        trail: overdueCount ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:1px"></span>` : "" },
-    ],
-  })}${accentNew("nsToggle", "New sprint")}` : "";
+  // The Roadmap header: New sprint (it opens the panel at the top of whichever tab is
+  // showing). Narrative / Timeline are the tab bar heading the page body (`roadmapTabBar`).
+  const roadmapControls = s.screen === "roadmap" ? accentNew("nsToggle", "New sprint") : "";
 
   // ADMIN-only, My Work screen: trigger the server-side GitHub backfill. Rendered
   // only when /auth/me returned admin:true (outline button, promote-class action).
@@ -1269,15 +1260,35 @@ function roadmapSprintGroups(s: AppState): string {
 }
 
 /**
+ * The tab bar heading the Roadmap's page body (tabs.ts): Narrative · Timeline, the
+ * Timeline tab carrying a red dot while any sprint is overdue. It opens BOTH tabs in the
+ * same page frame (asideColumns' — max-width 1200px, `--cols-pad-top`, 32px sides), so a
+ * switch slides the underline instead of moving the bar; the panel follows its line.
+ */
+function roadmapTabBar(s: AppState): string {
+  const { overdueCount } = roadmapEnriched(s.roadmap.data.sprints, s.confirmedSprints);
+  return tabBar({
+    id: "roadmap-tab", ariaLabel: "Roadmap sections", act: "setRoadmapTab", value: s.roadmapTab,
+    tabs: [
+      { value: "narrative", label: "Narrative" },
+      { value: "timeline", label: "Timeline",
+        trail: overdueCount ? `<span style="width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:1px"></span>` : "" },
+    ],
+  });
+}
+
+/**
  * The Roadmap's Timeline tab: the sprints on a calendar (./timeline — a Gantt
  * graph, bars from start to due, filled by ticket progress, a today line), full
- * width in the Roadmap's page frame. No aside here: Now + Recent happenings
- * belong to the Narrative tab alone.
+ * width in the Roadmap's page frame, under the tab bar. No aside here: Now + Recent
+ * happenings belong to the Narrative tab alone.
  */
 function roadmapTimelineTab(s: AppState): string {
-  return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">${roadmapNewSprint(s)}${roadmapTimeline({
+  return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
+    ${roadmapTabBar(s)}<div${tabPanelAttrs("roadmap-tab", s.roadmapTab)} style="padding-top:20px">${roadmapNewSprint(s)}${roadmapTimeline({
     sprints: s.roadmap.data.sprints, confirmed: s.confirmedSprints, persons: s.persons.data, now: Date.now(),
-  })}</div>`;
+  })}</div>
+  </div>`;
 }
 
 function roadmapView(s: AppState): string {
@@ -1334,10 +1345,12 @@ function roadmapNewSprint(s: AppState): string {
  * the Feed): the admin narrative, then the sprint groups, on the left; on the right a
  * sticky aside with two boxes — "Now" (the sprint getting the attention, its
  * tickets-only bar and GitHub links) and "Recent happenings" (the live feed, with its
- * GitHub chips). The Timeline tab has no aside.
+ * GitHub chips). The tab bar heads the page, the columns sit in its panel. The Timeline
+ * tab has no aside.
  */
 function roadmapDigest(s: AppState): string {
-  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(s.roadmap.data.narrative, renderMarkdown)}${roadmapSprintGroups(s)}`, roadmapAside(s));
+  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(s.roadmap.data.narrative, renderMarkdown)}${roadmapSprintGroups(s)}`, roadmapAside(s),
+    { bar: roadmapTabBar(s), panel: tabPanelAttrs("roadmap-tab", s.roadmapTab) });
 }
 
 /** How many feed entries the Roadmap's "Recent happenings" box shows (and main.ts reads). */
