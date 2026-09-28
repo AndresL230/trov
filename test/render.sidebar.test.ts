@@ -14,7 +14,7 @@ import { render, initialState } from "../web/src/render";
 function props(over: Partial<SidebarProps> = {}): SidebarProps {
   return {
     screen: "mywork", collapsed: false, navOpen: { ...NAV_CLOSED },
-    qView: "table", roadmapTab: "timeline", repoTab: "overview", docSpace: "technical",
+    qView: "table", roadmapTab: "timeline", docSpace: "technical",
     docSpaces: [{ key: "technical", label: "Technical" }, { key: "product", label: "Product" }],
     counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 },
     me: { handle: "jose-a", name: "Jose Alvarez", color: "moss" }, displayName: "Jose Alvarez", logo: "<svg></svg>",
@@ -30,8 +30,9 @@ describe("sidebar — structure is stable across every state", () => {
     const base = skeleton(sidebarView(props()));
     const variants: Partial<SidebarProps>[] = [
       { collapsed: true },
-      { navOpen: { repo: true, docs: true } },
-      { screen: "repo", repoTab: "ci" },
+      { navOpen: { docs: true } },
+      { screen: "repo" },
+      { screen: "docs", docSpace: "product" },
       { screen: "ticketdetail" },
       { counts: { review: 3, maintenance: 2, tickets: 9, handoffs: 2, prompts: 1 } },
       { screen: "settings" },
@@ -58,14 +59,13 @@ describe("sidebar — groups and order (the design's five sections)", () => {
 
   it("offers only sub-pages that go somewhere", () => {
     const html = sidebarView(props());
-    for (const arg of [
-      "repo:overview", "repo:code", "repo:ci", "repo:usage", "repo:planning", "docs:technical", "docs:product"]) {
+    for (const arg of ["docs:technical", "docs:product"]) {
       expect(html).toContain(`data-act="navSub" data-arg="${arg}"`);
     }
-    expect((html.match(/data-act="navSub"/g) ?? []).length).toBe(7);
-    // Roadmap, Tickets and Maintenance have no sub-pages in the rail (their switches
-    // are in the screen header) — and no chevron.
-    for (const g of ["roadmap", "tickets", "maintenance"]) {
+    expect((html.match(/data-act="navSub"/g) ?? []).length).toBe(2);
+    // Roadmap, Tickets, Maintenance and Repo have no sub-pages in the rail (their switches
+    // are on the screen itself) — and no chevron.
+    for (const g of ["roadmap", "tickets", "maintenance", "repo"]) {
       expect(html).not.toContain(`data-arg="${g}:`);
       expect(html).not.toContain(`data-act="navToggle" data-arg="${g}"`);
     }
@@ -78,8 +78,18 @@ describe("sidebar — groups and order (the design's five sections)", () => {
     expect(row).toContain('<span class="cnpy-lbl cnpy-badge" data-n="4">4</span>');
     expect(row).not.toContain("cnpy-chev");
     expect(row).not.toContain("cnpy-sub");
-    // Only Repo and Docs still own a sub-page list.
-    expect((html.match(/class="cnpy-sub" /g) ?? []).length).toBe(2);
+    // Only Docs still owns a sub-page list.
+    expect((html.match(/class="cnpy-sub" /g) ?? []).length).toBe(1);
+  });
+
+  it("Repo is a plain row — its five tabs head the page body, not the rail", () => {
+    const html = sidebarView(props({ screen: "repo" }));
+    const row = html.slice(html.indexOf('class="cnpy-navrow n-repo'), html.indexOf('class="cnpy-navrow n-feed'));
+    expect(row).toContain('class="cnpy-navrow n-repo is-active"');
+    expect(row).toContain('<button data-act="goRepo" class="cnpy-nav-i" aria-label="Repo" aria-current="page">');
+    expect(row).not.toContain("cnpy-chev");
+    expect(row).not.toContain("cnpy-sub");
+    for (const tab of ["Overview", "Code", "Usage"]) expect(html).not.toContain(`>${tab}</button>`);
   });
 
   it("has no Search nav row — search is the box at the top of the rail", () => {
@@ -108,19 +118,20 @@ describe("sidebar — active state", () => {
     const docs = sidebarView(props({ screen: "docs", docSpace: "product" }));
     expect(docs).toContain('data-arg="docs:product" class="cnpy-sub-i is-active" aria-current="page"');
     expect(docs).not.toContain('data-arg="docs:technical" class="cnpy-sub-i is-active"');
-    // Tickets and Maintenance have no rail sub-pages, so none of their screens lights one up.
-    for (const screen of ["tickets", "ticketdetail", "newticket", "maintenance"]) {
+    // Tickets, Maintenance and Repo have no rail sub-pages, so none of their screens lights one up.
+    for (const screen of ["tickets", "ticketdetail", "newticket", "maintenance", "repo"]) {
       expect(sidebarView(props({ screen }))).not.toContain("cnpy-sub-i is-active");
     }
 
-    expect(sidebarView(props({ screen: "repo", repoTab: "usage" }))).toContain('data-arg="repo:usage" class="cnpy-sub-i is-active"');
     // Roadmap has no rail sub-pages, so its tab never lights one up.
     expect(sidebarView(props({ screen: "roadmap", roadmapTab: "timeline" }))).not.toContain("cnpy-sub-i is-active");
   });
 
   it("navGroupOf names the group a screen's pages belong to", () => {
     expect(navGroupOf("newticket")).toBeNull();
-    expect(navGroupOf("repo")).toBe("repo");
+    expect(navGroupOf("docs")).toBe("docs");
+    expect(navGroupOf("newdoc")).toBe("docs");
+    expect(navGroupOf("repo")).toBeNull();
     expect(navGroupOf("maintenance")).toBeNull();
     expect(navGroupOf("feed")).toBeNull();
   });
@@ -130,16 +141,16 @@ describe("sidebar — open/closed and collapsed are attributes", () => {
   it("opens a sub-page list with data-open and keeps closed pages out of the tab order", () => {
     const closed = sidebarView(props());
     expect(closed).toContain('<div class="cnpy-sub" data-open="0">');
-    expect(closed).toContain('data-arg="repo:code" class="cnpy-sub-i" tabindex="-1"');
+    expect(closed).toContain('data-arg="docs:product" class="cnpy-sub-i" tabindex="-1"');
 
-    const open = sidebarView(props({ navOpen: { ...NAV_CLOSED, repo: true } }));
-    expect(open).toContain('data-arg="repo:code" class="cnpy-sub-i" tabindex="0"');
-    expect(open).toContain('data-act="navToggle" data-arg="repo" class="cnpy-chev" aria-label="Hide Repo pages" aria-expanded="true"');
+    const open = sidebarView(props({ navOpen: { ...NAV_CLOSED, docs: true } }));
+    expect(open).toContain('data-arg="docs:product" class="cnpy-sub-i" tabindex="0"');
+    expect(open).toContain('data-act="navToggle" data-arg="docs" class="cnpy-chev" aria-label="Hide Docs pages" aria-expanded="true"');
   });
 
   it("collapsed: pages and chevrons leave the tab order; every row still names itself", () => {
-    const html = sidebarView(props({ collapsed: true, navOpen: { ...NAV_CLOSED, repo: true } }));
-    expect(html).toContain('data-arg="repo:code" class="cnpy-sub-i" tabindex="-1"');
+    const html = sidebarView(props({ collapsed: true, navOpen: { ...NAV_CLOSED, docs: true } }));
+    expect(html).toContain('data-arg="docs:product" class="cnpy-sub-i" tabindex="-1"');
     expect(html).toContain('aria-label="Expand sidebar" aria-expanded="false"');
     for (const tip of ["My Work", "Tickets", "Roadmap", "Handoffs", "Repo", "Feed", "Docs", "Artifacts", "Prompt Library", "Review", "Maintenance", "Get Started", "What&#39;s new", "Search", "Settings"]) {
       expect(html).toContain(`data-tip="${tip}"`);

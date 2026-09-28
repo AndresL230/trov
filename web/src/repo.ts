@@ -3,7 +3,9 @@
 // interactions via data-act / data-arg dispatched in main.ts.
 //
 // Five tabs, each ONE bordered panel divided by hairlines (the design's rule:
-// lines, not cards). Every block is a `RepoSection`, so each one renders four
+// lines, not cards), under an underline tab bar heading the page body
+// (`repoTabBar`; they were sub-pages under the sidebar's Repo entry until
+// 2026-09-27). Every block is a `RepoSection`, so each one renders four
 // ways — live, `empty`, `not_connected` (nothing captured for it yet) and, while the
 // fetch is out or failed, loading / error. The Worker decides which sections are
 // live (`src/tools/repo.ts`); nothing here invents a number.
@@ -23,6 +25,7 @@ import { esc, attr, statusBadge, SURFACE } from "./ui";
 import { personChip, personLink, personNameLink } from "./people";
 import type { PersonSummary } from "./api";
 import { segmented } from "./segmented";
+import { tabBar, tabPanelAttrs } from "./tabs";
 
 export interface RepoProps {
   tab: RepoTab;
@@ -165,14 +168,13 @@ function okData<T>(p: RepoProps, pick: (d: RepoDashboard) => RepoSection<T>): T 
 }
 
 // ── header chrome ────────────────────────────────────────────────────────────
+/** The repo the dashboard reads, beside the title. The tab in view is named by the page's
+ *  own tab bar, so the crumb no longer repeats it; nothing is drawn until the slug is known. */
 export function repoCrumb(p: RepoProps): string {
-  const label = REPO_TABS.find(([k]) => k === p.tab)?.[1] ?? "";
   const slug = p.repo.data?.repo ?? "";
-  return `<span style="display:inline-flex;align-items:center;gap:14px;min-width:0">
-    <span style="color:var(--fg-40);font-size:13px">›</span>
-    <span style="font-size:13px;font-weight:500;color:var(--fg-70);white-space:nowrap">${esc(label)}</span>
-    ${slug ? `<span style="font-family:var(--label);font-size:11px;color:var(--fg-40);white-space:nowrap">${esc(slug)}</span>` : ""}
-  </span>`;
+  return slug
+    ? `<span style="font-family:var(--label);font-size:11px;color:var(--fg-40);white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(slug)}</span>`
+    : "";
 }
 
 /** "updated just now" / "updated 4m ago" — main.ts re-ticks this node in place. */
@@ -1024,6 +1026,19 @@ function hasUncaptured(p: RepoProps): boolean {
   return REPO_TAB_SECTIONS[p.tab].some((k) => ((d[k] as RepoSection<unknown> | undefined)?.status ?? "not_connected") === "not_connected");
 }
 
+/** The page's tab bar: every tab is in the one dashboard payload, so a switch
+ *  (`setRepoTab`) is ONE rerender with nothing to load, and the underline slides. */
+export function repoTabBar(tab: RepoTab): string {
+  return tabBar({
+    id: "repo-tab", ariaLabel: "Repo sections", act: "setRepoTab", value: tab,
+    tabs: REPO_TABS.map(([value, label]) => ({ value, label })),
+  });
+}
+
+/** One tab of the dashboard, under the tab bar. The bar renders in EVERY state (loading,
+ *  failed, degraded, sample, nothing connected) — only the panel's content changes — so its
+ *  line and underline never move; the sample / degraded banner, the "Poll now" strip and the
+ *  "not connected" footer all sit under the line, in the labelled panel. */
 export function repoView(p: RepoProps): string {
   const body = p.tab === "overview" ? overviewTab(p) : p.tab === "code" ? codeTab(p) : p.tab === "ci" ? ciTab(p)
     : p.tab === "usage" ? usageTab(p) : planningTab(p);
@@ -1045,8 +1060,11 @@ export function repoView(p: RepoProps): string {
     : "";
 
   return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}">
-    ${banner}
-    <div class="repo-panel ${SURFACE}" style="${PANEL}">${canPollRepo(p) ? pollStrip(p.poll) : ""}${body}</div>
-    ${footer}
+    ${repoTabBar(p.tab)}
+    <div${tabPanelAttrs("repo-tab", p.tab)} style="padding-top:20px">
+      ${banner}
+      <div class="repo-panel ${SURFACE}" style="${PANEL}">${canPollRepo(p) ? pollStrip(p.poll) : ""}${body}</div>
+      ${footer}
+    </div>
   </div>`;
 }
