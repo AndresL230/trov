@@ -7,7 +7,8 @@
  *  • render() over a roadmap-populated AppState — narrative tab shows the narrative,
  *    the New sprint toggle and the sprint cards (ticket progress "4/6 done", phase
  *    suffix, Confirm-done); the timeline tab is the calendar (web/src/timeline.ts,
- *    see render.timeline.test.ts); search results of type "sprint" navigate via goRoadmap.
+ *    see render.timeline.test.ts); search results of type "sprint" navigate via goRoadmap;
+ *    Narrative / Timeline are the underline tab bar heading the page body (tabs.ts).
  *
  * All tests are pure (no D1 / Miniflare bindings) and assertions are HTML-string based.
  * The module-level renderMarkdown (marked + DOMPurify) cannot run in this workerd test
@@ -30,6 +31,7 @@ vi.mock("../web/src/markdown", () => ({
 
 import { planNarrativeBlock, render, initialState } from "../web/src/render";
 import canopyCss from "../web/src/canopy.css?raw";
+import mainSrc from "../web/src/main.ts?raw";
 import type { PlanView, SprintView, FeedRow } from "../web/src/api";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -320,6 +322,111 @@ describe("render() — New sprint: a header button, the form on either tab", () 
     for (const tab of ["narrative", "timeline"] as const) {
       expect(render(stateWithPlan(makePlanView(), tab))).not.toContain('data-act="nsCreate"');
     }
+  });
+
+  it("opens the form UNDER the tab bar's line, inside the panel, on either tab", () => {
+    for (const tab of ["narrative", "timeline"] as const) {
+      const html = render({ ...stateWithPlan(makePlanView(), tab), nsOpen: true });
+      const panel = html.indexOf('id="roadmap-tab-panel"');
+      expect(panel, tab).toBeGreaterThan(html.indexOf('data-tabs="roadmap-tab"'));
+      expect(html.indexOf('data-act="nsCreate"'), tab).toBeGreaterThan(panel);
+    }
+  });
+});
+
+// ── the tab bar heading the page (tabs.ts tabBar) ─────────────────────────────
+
+describe("render() — Roadmap: the tab bar heading the page body, not a header switch", () => {
+  /** The `.cnpy-tabs` bar carrying `data-tabs="roadmap-tab"`, up to its closing </div>. */
+  const tabs = (html: string) => {
+    const at = html.indexOf('data-tabs="roadmap-tab"');
+    return at < 0 ? "" : html.slice(at, html.indexOf("</div>", at));
+  };
+  const header = (html: string) => html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+  const main = (html: string) => html.slice(html.indexOf("</header>"));
+  const RED_DOT = '<span style="width:6px;height:6px;border-radius:50%;background:var(--red);margin-left:1px"></span>';
+  const late = makeSprint({ id: 2, label: "Late", status: "in_progress", active: true, due: "2020-01-01" });
+  const onTime = makeSprint({ id: 3, label: "On time", status: "in_progress", active: true, due: "2099-01-01" });
+
+  it("offers Narrative · Timeline in that order, the current one selected and inert", () => {
+    for (const tab of ["narrative", "timeline"] as const) {
+      const bar = tabs(render(stateWithPlan(makePlanView(), tab)));
+      const other = tab === "narrative" ? "timeline" : "narrative";
+      expect(bar, tab).toContain('role="tablist" aria-label="Roadmap sections"');
+      expect(bar.match(/role="tab"/g)?.length, tab).toBe(2);
+      expect(bar.indexOf(">Narrative<"), tab).toBeLessThan(bar.indexOf(">Timeline"));
+      expect(bar, tab).toMatch(new RegExp(`id="roadmap-tab-${tab}" class="cnpy-tab is-on" aria-selected="true"[^>]*tabindex="0"`));
+      expect(bar, tab).not.toContain(`data-arg="${tab}"`);
+      // The other tab switches it: setRoadmapTab, ONE rerender.
+      expect(bar, tab).toContain(`id="roadmap-tab-${other}" class="cnpy-tab" data-act="setRoadmapTab" data-arg="${other}" aria-selected="false"`);
+    }
+  });
+
+  it("the switch is one plain rerender (nothing loads), and quick search's roadmapTimeline still works", () => {
+    expect(mainSrc).toMatch(/case "setRoadmapTab":\s*if \(arg !== "narrative" && arg !== "timeline"\) return;\s*state\.roadmapTab = arg;\s*break;/);
+    expect(mainSrc).toMatch(/case "roadmapTimeline": state\.roadmapTab = "timeline"; break;/);
+    expect(mainSrc).not.toContain('case "roadmapNarrative"');
+  });
+
+  it("the Timeline tab carries the red overdue dot as its trail — only while a sprint is overdue, on both tabs", () => {
+    for (const tab of ["narrative", "timeline"] as const) {
+      expect(tabs(render(stateWithPlan(makePlanView({ sprints: [late] }), tab))), tab).toContain(`>Timeline${RED_DOT}</button>`);
+      expect(tabs(render(stateWithPlan(makePlanView({ sprints: [onTime] }), tab))), tab).toContain(">Timeline</button>");
+    }
+    // A status dot is an element, and its radius has a rule in the Corners block.
+    expect(canopyCss).toContain('[style*="border-radius:50%"]');
+  });
+
+  it("heads the page BODY (not the header), and the labelled panel follows its line", () => {
+    for (const tab of ["narrative", "timeline"] as const) {
+      const html = render(stateWithPlan(makePlanView(), tab));
+      expect(header(html), tab).not.toContain('data-tabs="roadmap-tab"');
+      expect(header(html), tab).not.toContain("cnpy-seg");
+      expect(header(html), tab).not.toContain(">Narrative<");
+      const body = main(html);
+      const page = body.indexOf('class="cnpy-scroll cnpy-cols-page"');
+      const at = body.indexOf('data-tabs="roadmap-tab"');
+      const panel = body.indexOf(`role="tabpanel" id="roadmap-tab-panel" aria-labelledby="roadmap-tab-${tab}"`);
+      expect(page, tab).toBeGreaterThan(-1);
+      expect(at, tab).toBeGreaterThan(page);
+      expect(panel, tab).toBeGreaterThan(at);
+      // Nothing of the page sits above the bar: it is the page's first thing.
+      expect(body.slice(page, at), tab).not.toMatch(/>[^<\s]/);
+    }
+    // Each tab's content sits in the panel: the narrative + aside columns, the calendar.
+    const narrative = main(render(stateWithPlan(makePlanView(), "narrative")));
+    expect(narrative.indexOf('<div class="cnpy-cols">')).toBeGreaterThan(narrative.indexOf('id="roadmap-tab-panel"'));
+    const timeline = main(render(stateWithPlan(makePlanView(), "timeline")));
+    expect(timeline.indexOf('data-screen-label="Roadmap · Timeline"')).toBeGreaterThan(timeline.indexOf('id="roadmap-tab-panel"'));
+  });
+
+  it("sits in the SAME page frame on both tabs, so the underline slides and the bar never moves", () => {
+    const frame = (html: string) => {
+      const body = main(html);
+      const page = body.lastIndexOf("<div", body.indexOf('class="cnpy-scroll cnpy-cols-page"'));
+      return body.slice(page, body.indexOf('<div class="cnpy-tabs"', page));
+    };
+    const n = frame(render(stateWithPlan(makePlanView(), "narrative")));
+    expect(n).toContain('style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px"');
+    expect(frame(render(stateWithPlan(makePlanView(), "timeline")))).toBe(n);
+  });
+
+  it("New sprint stays in the header, beside no switch", () => {
+    for (const tab of ["narrative", "timeline"] as const) {
+      const h = header(render(stateWithPlan(makePlanView(), tab)));
+      expect(h, tab).toContain('data-act="nsToggle"');
+      expect(h, tab).not.toContain("roadmap-tab");
+    }
+  });
+
+  it("switching tabs never replays the screen's entrance (the underline slides unbroken)", () => {
+    expect(mainSrc).toMatch(/hashForRoute\(\{ \.\.\.currentRoute\(\), [^}]*roadmapTab: undefined[^}]*\}\)/);
+  });
+
+  it("the Feed keeps asideColumns' plain frame: no tab bar, no panel", () => {
+    const html = render({ ...initialState(), view: "app", screen: "feed" });
+    expect(html).not.toContain('role="tabpanel"');
+    expect(html).not.toContain('class="cnpy-tabs"');
   });
 });
 

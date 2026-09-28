@@ -583,7 +583,7 @@ ids, plus `dates` / `summary` / `urgency` / `lead` / `domain` alongside the pre-
 (now rendered as markdown) and `phase`. Sprint `done` is admin-set here, never event-inferred.
 **ONE overdue rule**: `sprintDueState(due, now)` in `shared/sprints-core.ts` — a sprint is due all of its
 (local) due day and overdue from the day AFTER, "due this week" = today through 7 days out — read by the sprint
-cards, the Roadmap's header dot / Now box / single NEXT UP (`nextSprintId`), the Timeline and My Work's ticket due dates.
+cards, the Roadmap's Timeline-tab dot / Now box / single NEXT UP (`nextSprintId`), the Timeline and My Work's ticket due dates.
 The narrative is short — `PLAN_NARRATIVE_MAX` = 800 characters after trim (`shared/sprints-core.ts`),
 enforced in the `update_plan` input schema AND at the top of `write_plan`, before its first write (so over
 it, or an unknown sprint id, writes nothing: no plan row, no version, no sprint); a longer narrative
@@ -1424,16 +1424,18 @@ node conditionally there swaps it out from under its own animation — `test/ren
 element tree across every state. `data-keep` marks a script-owned node (the collapsed-rail tooltip) the
 patcher leaves alone. A sub-page list the app opened on entry folds again on leaving; one opened by hand
 sticks and is what persists (`canopy.navOpen`). Only **Repo** and **Docs** own a sub-page list (`NAV_GROUPS`);
-Roadmap, Tickets and Maintenance are plain rows (Roadmap's and Tickets' switches sit in their screen header,
-Maintenance's tabs head its page body), and a stored
+Roadmap, Tickets and Maintenance are plain rows (Tickets' switch sits in its screen header, Roadmap's and
+Maintenance's tabs head their page body), and a stored
 `canopy.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
-**Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, Roadmap tabs, the queue's
+**Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, the queue's
 Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, form segments. Never
 hand-roll a segment group. It picks a VALUE or a view; moving between a page's own SECTIONS is the **underline
 tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Maintenance's Unplaced / Identity / People, `maintTabBar`,
-with the rail's count badges): text tabs at the top of the page BODY on a full-width hairline that is the line
+with the rail's count badges; the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
+tab carrying the red overdue dot, in the same page frame on both tabs — `asideColumns`' optional `tabs` heads
+the Narrative's two columns with it — and New sprint staying in the header): text tabs at the top of the page BODY on a full-width hairline that is the line
 between the tabs and the content, the picked tab marked by a 2px accent underline on that line, 40px tabs (a
 badge never makes one taller), a row that does not fit scrolling inside the bar, `role="tablist"` / `"tab"` +
 `aria-selected` with a roving tabindex and `tabPanelAttrs` on the panel, ←/→ and Home/End (`onTabBarKey`, which

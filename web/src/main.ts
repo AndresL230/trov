@@ -2620,8 +2620,13 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
 
-    // roadmap tab toggle
-    case "roadmapNarrative": state.roadmapTab = "narrative"; break;
+    // The Roadmap's tab bar: both tabs read the roadmap already loaded, so a switch is ONE
+    // rerender and nothing to load — the underline slides unbroken. `roadmapTimeline` is
+    // quick search's "Roadmap › Timeline" step (after goRoadmap).
+    case "setRoadmapTab":
+      if (arg !== "narrative" && arg !== "timeline") return;
+      state.roadmapTab = arg;
+      break;
     case "roadmapTimeline": state.roadmapTab = "timeline"; break;
     case "goReview": state.screen = "review"; loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); return;
     case "goMaintenance":
