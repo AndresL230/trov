@@ -6,6 +6,7 @@
 import "./canopy.css";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments } from "./segmented";
+import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
 import {
@@ -170,9 +171,10 @@ function markEnter(): void {
   if (!root || state.view !== "app") return;
   const settled = screenSettled();
   // An in-page view switch (the header's segmented switch — Roadmap Narrative/Timeline, a
-  // release's Release/Patch notes) is not a new page: key the entrance on the route WITHOUT
-  // it, so flipping the switch swaps the content in place instead of replaying the screen.
-  const key = `${hashForRoute({ ...currentRoute(), roadmapTab: undefined, releasePage: undefined })}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
+  // release's Release/Patch notes — or a page's tab bar, Maintenance's tabs) is not a new
+  // page: key the entrance on the route WITHOUT it, so flipping the switch swaps the content
+  // in place instead of replaying the screen (and the tab bar's underline slides unbroken).
+  const key = `${hashForRoute({ ...currentRoute(), roadmapTab: undefined, releasePage: undefined, maintTab: undefined })}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
   const now = performance.now();
   // A still-loading paint does not enter: the entrance plays ONCE, when the screen's
   // read lands. Playing it for the loading paint too made every first visit (and every
@@ -277,6 +279,7 @@ function rerender(): void {
   const scroll = captureScroll(mount, state.screen);
   paint(mount, render(state));
   syncSegments(mount);
+  syncTabBars(mount);
   qs.sync();   // the search dropdown lives outside the mount: re-anchor and re-theme it
   // The tab icon follows the app's resolved theme (a no-op until it changes).
   syncFavicon(resolvedTheme(), mount.querySelector("[data-cnpy-theme]"));
@@ -2627,8 +2630,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.maintDiscardArm = false;
       loadNeedsTriageIfNeeded(); loadIdentityTasksIfNeeded(); loadFeedIfNeeded(); loadNotifAdminIfNeeded(); loadInvitesIfAdmin();
       return;
-    // The header's tab switch: entering Maintenance already loaded every tab, so a switch
-    // is ONE rerender — goMaintenance's several would each rebuild the switch and cut its slide.
+    // The page's tab bar: entering Maintenance already loaded every tab, so a switch is ONE
+    // rerender — goMaintenance's several would each rebuild the bar and cut its slide.
     case "setMaintTab":
       if (!(MAINT_TABS as readonly string[]).includes(arg ?? "")) return;
       state.maintTab = arg as MaintTab;
@@ -3599,10 +3602,13 @@ mount.addEventListener("pointerout", (e) => {
   const focused = document.activeElement;
   if (focused instanceof HTMLElement && box.contains(focused)) focused.blur();
 });
-// A switch's option widths change with the viewport and once the web fonts land: re-place
-// every indicator where it sits, without a slide.
-window.addEventListener("resize", () => syncSegments(mount, { instant: true }));
-void document.fonts?.ready.then(() => syncSegments(mount, { instant: true }));
+// A switch's option widths (and a tab bar's tab widths) change with the viewport and once
+// the web fonts land: re-place every indicator where it sits, without a slide.
+const syncIndicators = () => { syncSegments(mount, { instant: true }); syncTabBars(mount, { instant: true }); };
+window.addEventListener("resize", syncIndicators);
+void document.fonts?.ready.then(syncIndicators);
+// A tab bar's keyboard: ←/→ step between its tabs, Home/End jump (./tabs `onTabBarKey`).
+mount.addEventListener("keydown", onTabBarKey);
 // Escape closes an open filter menu.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;

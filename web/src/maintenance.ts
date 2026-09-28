@@ -1,6 +1,6 @@
 // Maintenance — ported from the Claude Design `Canopy.dc.html` (project 2c8cfa50),
-// which split the old single column into three tabs (switched in the header by
-// `maintTabSwitch`; they were sub-pages under the sidebar entry until 2026-09-27):
+// which split the old single column into three tabs (an underline tab bar heading the
+// page body, `maintTabBar`; they were sub-pages under the sidebar entry until 2026-09-27):
 //   UNPLACED  — read a loose thing an agent couldn't place, then file it or discard it
 //               (a list on the left, the selected item on the right).
 //   IDENTITY  — match an unmapped activity login to a person, or discard one that
@@ -13,7 +13,7 @@
 // assign / discard / map / invite writes the single-column version had).
 
 import { esc, attr, primaryBtn, relTime, surface } from "./ui";
-import { segmented } from "./segmented";
+import { tabBar, tabPanelAttrs } from "./tabs";
 import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor, InviteRow } from "@shared/rows";
 import type { PersonSummary } from "./api";
@@ -394,26 +394,31 @@ export const MAINT_INTRO: Record<MaintTab, string> = {
 
 const MAINT_TAB_LABEL: Record<MaintTab, string> = { unplaced: "Unplaced", identity: "Identity", people: "People" };
 
-/** The header's tab switch (it replaced the sidebar's sub-page list, 2026-09-27): the
- *  three tabs are peers, each carrying the sidebar's count badge for what waits in it
- *  (`data-n="0"` hides it; People has none). The picked tab is inert. */
-export function maintTabSwitch(tab: MaintTab, counts: { unplaced: number; identity: number }): string {
+/** The tab bar heading the page (it replaced the sidebar's sub-page list, 2026-09-27):
+ *  the three tabs are peers, each carrying the sidebar's count badge for what waits in
+ *  it (`data-n="0"` hides it; People has none). The picked tab is inert. */
+export function maintTabBar(tab: MaintTab, counts: { unplaced: number; identity: number }): string {
   const badge = (n: number) => `<span class="cnpy-badge" data-n="${n}">${n}</span>`;
-  return segmented({
-    id: "maint-tab", ariaLabel: "Maintenance tab", act: "setMaintTab", value: tab, inertOn: true,
-    options: MAINT_TABS.map((t) => ({
+  return tabBar({
+    id: "maint-tab", ariaLabel: "Maintenance sections", act: "setMaintTab", value: tab,
+    tabs: MAINT_TABS.map((t) => ({
       value: t, label: MAINT_TAB_LABEL[t],
       trail: t === "unplaced" ? badge(counts.unplaced) : t === "identity" ? badge(counts.identity) : "",
     })),
   });
 }
 
-/** One tab of Maintenance. `people` is the People tab's body (it needs more than
- *  these props — the directory, the invites, the admin flag), rendered by the caller. */
-export function maintenanceView(p: MaintenanceProps, people = ""): string {
+/** One tab of Maintenance, under the tab bar: the bar's line is the top edge of the
+ *  content, and the intro, a degraded `hint` and the tab's body sit below it. `people` is
+ *  the People tab's body (it needs more than these props — the directory, the invites,
+ *  the admin flag), rendered by the caller. */
+export function maintenanceView(p: MaintenanceProps, people = "", hint = ""): string {
   const body = p.tab === "identity" ? identityTab(p) : p.tab === "people" ? people : unplacedTab(p);
-  return `<div data-screen-label="Maintenance" style="width:100%;max-width:1180px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
-    <div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">${esc(MAINT_INTRO[p.tab])}</div>
-    ${body}
+  return `<div data-screen-label="Maintenance" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
+    ${maintTabBar(p.tab, { unplaced: p.unplaced.length, identity: p.identity.length })}
+    <div${tabPanelAttrs("maint-tab", p.tab)} style="padding-top:20px">
+      ${hint}<div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">${esc(MAINT_INTRO[p.tab])}</div>
+      ${body}
+    </div>
   </div>`;
 }

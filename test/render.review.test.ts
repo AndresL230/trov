@@ -489,10 +489,10 @@ describe("maintenanceView — Identity tab", () => {
   });
 });
 
-describe("Maintenance — the header's tab switch (the sidebar has no sub-page list)", () => {
-  /** The `.cnpy-seg` group carrying `data-seg="maint-tab"`, up to its closing </div>. */
-  const seg = (html: string) => {
-    const at = html.indexOf('data-seg="maint-tab"');
+describe("Maintenance — the tab bar heading the page (the sidebar has no sub-page list)", () => {
+  /** The `.cnpy-tabs` bar carrying `data-tabs="maint-tab"`, up to its closing </div>. */
+  const tabs = (html: string) => {
+    const at = html.indexOf('data-tabs="maint-tab"');
     return at < 0 ? "" : html.slice(at, html.indexOf("</div>", at));
   };
   const triage = (id: number) => ({ id, raw: "{}", reason: "low_confidence", source_author: null, resolved: 0, created_at: "2026-09-27T00:00:00Z", resolved_at: null, resolved_by: null, resolution: null, assigned_ref: null }) as never;
@@ -505,29 +505,54 @@ describe("Maintenance — the header's tab switch (the sidebar has no sub-page l
     ...over,
   });
   const header = (html: string) => html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+  const main = (html: string) => html.slice(html.indexOf("</header>"));
 
-  it("offers Unplaced · Identity · People in the header, the current tab pressed and inert", () => {
-    const sw = seg(header(app({ maintTab: "identity" })));
-    expect(sw).toContain('aria-label="Maintenance tab"');
-    expect(sw.match(/class="cnpy-seg-btn/g)?.length).toBe(3);
-    expect(sw.indexOf(">Unplaced<")).toBeLessThan(sw.indexOf(">Identity<"));
-    expect(sw.indexOf(">Identity<")).toBeLessThan(sw.indexOf(">People<"));
+  it("offers Unplaced · Identity · People as tabs, the current one selected and inert", () => {
+    const bar = tabs(app({ maintTab: "identity" }));
+    expect(bar).toContain('role="tablist" aria-label="Maintenance sections"');
+    expect(bar.match(/role="tab"/g)?.length).toBe(3);
+    expect(bar.indexOf(">Unplaced<")).toBeLessThan(bar.indexOf(">Identity<"));
+    expect(bar.indexOf(">Identity<")).toBeLessThan(bar.indexOf(">People<"));
     // The picked tab dispatches nothing; the other two switch it (setMaintTab — one rerender).
-    expect(sw).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">Identity/);
-    expect(sw).not.toContain('data-arg="identity"');
-    expect(sw).toContain('data-act="setMaintTab" data-arg="unplaced" aria-pressed="false"');
-    expect(sw).toContain('data-act="setMaintTab" data-arg="people" aria-pressed="false"');
+    expect(bar).toMatch(/id="maint-tab-identity" class="cnpy-tab is-on" aria-selected="true"[^>]*tabindex="0"[^>]*>Identity/);
+    expect(bar).not.toContain('data-arg="identity"');
+    expect(bar).toContain('class="cnpy-tab" data-act="setMaintTab" data-arg="unplaced" aria-selected="false"');
+    expect(bar).toContain('class="cnpy-tab" data-act="setMaintTab" data-arg="people" aria-selected="false"');
     expect(mainSrc).toMatch(/case "setMaintTab":[\s\S]{0,200}state\.maintTab = arg as MaintTab;[\s\S]{0,80}break;/);
   });
 
   it("carries the sidebar's count badges: unplaced items and pending identity tasks, none on People", () => {
-    const sw = seg(header(app()));
-    expect(sw).toMatch(/>Unplaced<span class="cnpy-badge" data-n="3">3<\/span><\/button>/);
-    expect(sw).toMatch(/>Identity<span class="cnpy-badge" data-n="1">1<\/span><\/button>/);
-    expect(sw).toMatch(/>People<\/button>/);
+    const bar = tabs(app());
+    expect(bar).toMatch(/>Unplaced<span class="cnpy-badge" data-n="3">3<\/span><\/button>/);
+    expect(bar).toMatch(/>Identity<span class="cnpy-badge" data-n="1">1<\/span><\/button>/);
+    expect(bar).toMatch(/>People<\/button>/);
     // An empty queue keeps the badge (a stable tree) and data-n="0" hides it.
-    const clear = seg(header(app({ needsTriage: { status: "ok", data: [] } })));
+    const clear = tabs(app({ needsTriage: { status: "ok", data: [] } }));
     expect(clear).toContain('<span class="cnpy-badge" data-n="0">0</span>');
+  });
+
+  it("heads the page BODY, not the header, and the labelled panel with the intro follows its line", () => {
+    for (const maintTab of ["unplaced", "identity", "people"] as const) {
+      const html = app({ maintTab });
+      expect(header(html), maintTab).not.toContain('data-tabs="maint-tab"');
+      expect(header(html), maintTab).not.toContain("cnpy-seg");
+      const body = main(html);
+      const page = body.indexOf('data-screen-label="Maintenance"');
+      const at = body.indexOf('data-tabs="maint-tab"');
+      const panel = body.indexOf(`role="tabpanel" id="maint-tab-panel" aria-labelledby="maint-tab-${maintTab}"`);
+      expect(at, maintTab).toBeGreaterThan(page);
+      expect(panel, maintTab).toBeGreaterThan(at);
+      // Nothing of the page sits above the bar: it is the page's first thing.
+      expect(body.slice(page, at), maintTab).not.toMatch(/>[^<\s]/);
+    }
+    const unplaced = main(app({ maintTab: "unplaced" }));
+    expect(unplaced.indexOf("Things an agent produced")).toBeGreaterThan(unplaced.indexOf('id="maint-tab-panel"'));
+  });
+
+  it("puts a degraded hint under the line, inside the panel", () => {
+    const html = main(app({ maintTab: "unplaced", needsTriage: { status: "error", data: [], error: "x" } as never }));
+    expect(html).toContain("Couldn't load the triage queue.");
+    expect(html.indexOf("Couldn't load the triage queue.")).toBeGreaterThan(html.indexOf('id="maint-tab-panel"'));
   });
 
   it("the tabs are peers: a plain title on every tab, no back button and no › crumb", () => {
@@ -539,8 +564,12 @@ describe("Maintenance — the header's tab switch (the sidebar has no sub-page l
     }
   });
 
+  it("switching tabs never replays the screen's entrance (the underline slides unbroken)", () => {
+    expect(mainSrc).toMatch(/hashForRoute\(\{ \.\.\.currentRoute\(\), [^}]*maintTab: undefined[^}]*\}\)/);
+  });
+
   it("appears only on Maintenance", () => {
-    expect(render({ ...initialState(), view: "app", screen: "review" })).not.toContain('data-seg="maint-tab"');
+    expect(render({ ...initialState(), view: "app", screen: "review" })).not.toContain('data-tabs="maint-tab"');
   });
 });
 

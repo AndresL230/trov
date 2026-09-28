@@ -32,7 +32,7 @@ import { REPO_URL } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
-import { maintenanceView, maintTabSwitch, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab, type PersonEditDraft } from "./maintenance";
+import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab, type PersonEditDraft } from "./maintenance";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
@@ -794,12 +794,6 @@ function header(s: AppState): string {
   })}
     <button data-act="newTicket" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Submit a ticket</button>` : "";
 
-  // Maintenance chrome: the Unplaced / Identity / People switch (the tabs are peers, so
-  // the title stays a plain title — no back button, no crumb).
-  const maintControls = s.screen === "maintenance"
-    ? maintTabSwitch(s.maintTab, { unplaced: s.needsTriage.data.length, identity: s.identityTasks.data.length })
-    : "";
-
   const themeBtn = `<button data-act="cycleTheme" title="Toggle theme" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
       ${dark
         ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`
@@ -840,7 +834,7 @@ function header(s: AppState): string {
       ${art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${maintControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${feedViewSwitch}${themeBtn}
+      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${feedViewSwitch}${themeBtn}
     </div>
   </header>`;
 }
@@ -2176,7 +2170,7 @@ function maintenanceScreen(s: AppState): string {
         fromDraft: s.fromDraft,
       })
     : "");
-  return `${hint}${maintenanceView(maintenanceProps(s), people)}`;
+  return maintenanceView(maintenanceProps(s), people, hint);
 }
 
 // ── tickets ──────────────────────────────────────────────────────────────────
