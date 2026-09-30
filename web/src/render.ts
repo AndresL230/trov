@@ -382,7 +382,7 @@ export function initialState(): AppState {
     inviteDraft: "",
     me: null,
     screen: "mywork",
-    theme: "dark", systemDark: true,
+    theme: "light", systemDark: true,
     collapsed: false,
     narrow: false,
     phone: false,
