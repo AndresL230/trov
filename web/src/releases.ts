@@ -110,7 +110,7 @@ export const RELEASES: Release[] = [
         "The ticket rail's requester and assignees, the Feed's authors and Maintenance › People's rows open the person card; Maintenance › People shows each role and, for admins, Edit role — the one role + responsibilities editor (#89)",
         "Every name or photo opens the person card — the ticket queue (table rows and board cards), sprints and the Timeline's lead, handoffs, prompts, artifacts, docs, Review, Unplaced, the Repo dashboard's contributors and activity, the Feed's review box and Settings › Account — as one photo + name chip (`personLink`) where both fit; a card or row that opens something else is a container with its own click target laid over it (`ui.ts` `hitArea`), so a person is never a button inside a button (#89)",
         "Repo dashboard: PR authors and contributors show their avatar photo (#89)",
-        "The default theme is Light (`initialState().theme`, was Dark), for the landing page and the app alike; a stored `canopy.theme` still wins",
+        "The default theme is Light (`initialState().theme`, was Dark), for the landing page and the app alike; a stored `canopy.theme` still wins (#91)",
         "Sidebar: no selected fill on the account chip while Settings is open or on hover — only its gear turns (#89)",
         "Maintenance: Unplaced / Identity / People are an underline tab bar at the top of the page body (`maintTabBar`, each tab with its count badge — the new `tabBar()` in `web/src/tabs.ts`, page-level sections as opposed to `segmented()`'s values: text tabs on a hairline, a 2px accent underline that slides between them via `syncTabBars`, tablist semantics and ←/→ / Home/End) instead of a sub-page list under the sidebar entry, which is now a plain row with its badge; the tabs are peers, so the header drops the \"Maintenance › Identity\" back-button crumb, and a tab switch no longer replays the screen's entrance; `maintenance` leaves `NAV_GROUPS` (#89)",
         "Roadmap: Narrative / Timeline are the same underline tab bar at the top of the page body (`roadmapTabBar`, the Timeline tab carrying the red overdue dot) instead of a `segmented()` switch in the header — both tabs open in one page frame so the underline slides and the bar never moves (`asideColumns` takes an optional `tabs` head for the Narrative's columns), the New sprint panel opens under its line, New sprint stays in the header, and a switch is one rerender (`setRoadmapTab`) that never replays the entrance (#89)",
@@ -124,7 +124,7 @@ export const RELEASES: Release[] = [
         "Settings' token UI: Get connection command (`connectModal` / `connectSnippet` / `CONNECT_CLIENTS`, and with it the Codex, `.mcp.json`-with-header and Token only setups), the token list (`tokenListBody`) and the web client's `mintMcpToken` / `listMcpTokens` / `revokeMcpToken`; the guide's `connect` figure. The `/auth/mcp-token*` routes, `canopy_mcp_` bearer resolution and `mcp_tokens` stay, so existing tokens keep working (#89)",
       ],
     },
-    prs: [89],
+    prs: [89, 91],
   },
   {
     version: "0.15",
