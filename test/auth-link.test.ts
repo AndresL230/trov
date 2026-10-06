@@ -5,7 +5,7 @@ import type { AppEnv } from "../src/auth/principal";
 import { sessionGate } from "../src/auth/principal";
 import { buildAuthApp } from "../src/auth/routes";
 import { hmacSeal } from "../src/auth/crypto";
-import { first } from "../src/db";
+import { first } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import { fakeGithubFetch } from "./helpers/github";
 import type { IdentityRow } from "@shared/rows";

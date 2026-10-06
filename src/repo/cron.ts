@@ -10,7 +10,7 @@ import { recomputeAllProgress } from "../tools/progress";
 import { repoEnvironments, type RepoEnvConfig } from "./config";
 import { run } from "../data/sql";
 import { platform } from "../data/context";
-import { legacyDb, legacySystemTenant } from "../data/legacy";
+import { legacySystemTenant } from "../data/legacy";
 import { reconcileRepo, scrubbedMessage } from "./github";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollCloudflare, pollRailway, pollSaplingMetrics } from "./poll";
 import { getSnapshot, pruneRepoCapture } from "./store";

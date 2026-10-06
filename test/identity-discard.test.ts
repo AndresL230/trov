@@ -6,7 +6,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { ingestEvent } from "../src/consumer";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import type { IdentityTaskWithSample, DiscardedIdentity } from "../src/tools/reads";

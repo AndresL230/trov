@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import type { PersonRow, IdentityRow, IdentityTaskRow } from "@shared/rows";
 
 const OLD_SHAPE = `

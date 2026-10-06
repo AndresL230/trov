@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run, nowIso } from "../src/db";
+import { all, first, run, nowIso } from "./helpers/db";
 import { HANDLE_COLUMNS } from "../src/auth/persons";
 
 // Schema proof for migration 0032_ticket_source.sql: the four source columns on

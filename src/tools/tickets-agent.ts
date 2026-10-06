@@ -46,8 +46,9 @@ import { type TenantContext, first } from "../data/sql";
 import {
   TicketError,
   create_ticket, edit_ticket, transition_ticket, add_ticket_comment, add_ticket_link,
-  set_ticket_sprint, set_ticket_parent, toggle_assignee, requirePerson,
+  set_ticket_sprint, set_ticket_parent, toggle_assignee,
 } from "./tickets";
+import { requireMember } from "../auth/persons";
 import type { TicketCreate, TicketEdit, TicketStatus } from "@shared/tickets";
 
 /** The lane-scoped verbs. `create_ticket` is absent on purpose — it is the unscoped
@@ -218,7 +219,7 @@ export async function agentSetTicketParent(ctx: TenantContext, env: Env, parentI
  */
 export async function agentAssignTicket(ctx: TenantContext, env: Env, id: number, login: string, on: boolean, actor: string): Promise<void> {
   await assertTicketAssignable(ctx, env, id, actor);
-  const handle = await requirePerson(ctx, login);
+  const handle = await requireMember(ctx, login);
   const has = await first<{ n: number }>(
     ctx,
     `SELECT COUNT(*) AS n FROM ticket_assignees WHERE ticket_id = ? AND org_id = ? AND login = ? COLLATE NOCASE`,

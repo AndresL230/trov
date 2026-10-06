@@ -6,7 +6,7 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { mintToken } from "../src/auth/tokens";
 import { ARTIFACT_UPLOAD_TTL_MS } from "@shared/artifacts";
 import {

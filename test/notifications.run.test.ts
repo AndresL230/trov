@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx } from "./helpers/tenant";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { ingestEvent, ingestAdrDraft } from "../src/consumer";
 import { seedNotificationPolicy } from "../src/notifications/policy";
 import { resolveCadence } from "../src/notifications/resolve";

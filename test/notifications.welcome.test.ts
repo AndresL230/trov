@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { sealOnboard, ONBOARD_COOKIE, type OnboardPayload } from "../src/auth/onboard";
 import { renderWelcomeEmail, welcomeUrl, sendWelcome } from "../src/notifications/welcome";
 import type { PersonRow } from "@shared/rows";

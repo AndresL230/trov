@@ -6,7 +6,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { buildSeedStatements } from "../scripts/seed/build.mjs";
 import handoffs from "../fixtures/dev/handoffs.json";
 import prompts from "../fixtures/dev/prompts.json";

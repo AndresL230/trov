@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { create_ticket } from "../src/tools/tickets";
 import type { ArtifactDetailDTO } from "@shared/artifacts";
 import {

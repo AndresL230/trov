@@ -36,7 +36,7 @@ describe("invites", () => {
   });
   it("recordInviteEmail stores the outcome", async () => {
     await createInvite(platformCtx(), { email: "m@x.io", name: null, invitedBy: "AndresL230" });
-    await recordInviteEmail(env.DB, "m@x.io", { id: "em_1", error: null });
+    await recordInviteEmail(platformCtx(), "m@x.io", { id: "em_1", error: null });
     const r = (await listInvites(platformCtx()))[0];
     expect(r.email_id).toBe("em_1"); expect(r.email_sent_at).toBeTruthy(); expect(r.email_error).toBeNull();
   });

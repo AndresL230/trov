@@ -3,8 +3,7 @@ import type { EventRow, PersonRow } from "@shared/rows";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
 import { type TenantContext, all, first } from "../data/sql";
 import { type PlatformContext, first as platformFirst } from "../data/platform-sql";
-import { legacyDb } from "../data/legacy";
-import { getPerson, listIdentities } from "../auth/persons";
+import { memberPerson, memberGithubLogins } from "../auth/persons";
 import { isIssueGone } from "./issue-gone";
 
 // My Work: a D1-only projection over captured GitHub events (Task 6). No live
@@ -266,7 +265,7 @@ export async function countAssignedTickets(ctx: TenantContext, handle: string, s
  */
 export async function getMyWork(ctx: TenantContext, handle: string): Promise<MyWork> {
   try {
-    const me = await getPerson(legacyDb(ctx), handle);
+    const me = await memberPerson(ctx, handle);
     if (!me) return EMPTY(false);
 
     // Tickets are keyed on the person HANDLE, not on a GitHub login, so they are
@@ -277,7 +276,7 @@ export async function getMyWork(ctx: TenantContext, handle: string): Promise<MyW
     const tickets = await listAssignedTickets(ctx, me.handle, { sources: "all" });
     const ticketsTotal = await countAssignedTickets(ctx, me.handle, "all");
 
-    const logins = (await listIdentities(legacyDb(ctx), handle)).filter((i) => i.provider === "github").map((i) => i.subject);
+    const logins = await memberGithubLogins(ctx, me.handle);
     if (logins.length === 0) return { person: me.name ?? me.handle, previousActivity: [], todo: [], tickets, ticketsTotal, degraded: false };
 
     const prRows = await all<PrEventJoinRow>(

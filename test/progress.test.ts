@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx } from "./helpers/tenant";
-import { run, all, first, nowIso } from "../src/db";
+import { run, all, first, nowIso } from "./helpers/db";
 import type { SprintProgressRow } from "@shared/rows";
 import type { Env } from "../src/env";
 import { eventsFromDelivery, handleGithubWebhook } from "../src/webhook";

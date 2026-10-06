@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { sprintProgress, sprintIssueCounts } from "../src/tools/sprints";
 import { upsertProgress } from "../src/tools/progress";
 import type { SprintDetail, SprintView } from "@shared/sprints";

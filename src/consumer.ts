@@ -7,7 +7,6 @@ import { isSection, isTag } from "@shared/vocabulary";
 import type { DocRow, DocVersionRow, AdrRow, ProcessedItemRow } from "@shared/rows";
 import { type TenantContext, first, run, nowIso } from "./data/sql";
 import type { PlatformContext } from "./data/platform-sql";
-import { legacyDb } from "./data/legacy";
 import { append_feed, propose_doc_update, stage_adr, route_triage, ensure_identity_task } from "./tools/writes";
 import { contentHash } from "./hash";
 import { changeKind } from "./diff";
@@ -15,7 +14,6 @@ import type { Principal } from "./auth/principal";
 import type { RepoEvent } from "./repo/types";
 import { applyArtifactLinks, type ArtifactLinkOutcome } from "./tools/artifacts-agent";
 import { docImageProblems } from "./tools/doc-images";
-import { legacyCtxOf } from "./data/legacy-ctx";
 
 // Per-type, per-outcome counts surfaced on /ingest so a re-run reads, e.g.,
 // "3 docs: 1 staged, 2 unchanged".

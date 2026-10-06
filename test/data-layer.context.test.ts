@@ -9,7 +9,7 @@ import {
 } from "../src/data/context";
 import { resolveBearerTenant } from "../src/data/bearer";
 import { tenantGate } from "../src/data/gate";
-import { joinLegacyOrg, legacyDb, legacySystemTenant } from "../src/data/legacy";
+import { joinLegacyOrg, legacySystemTenant } from "../src/data/legacy";
 import * as sql from "../src/data/sql";
 import * as psql from "../src/data/platform-sql";
 import { mintToken } from "../src/auth/tokens";

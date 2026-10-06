@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { runBackfill, isFinalBackfillBatch } from "../src/tools/backfill";
 import type { Env } from "../src/env";
 import type { Summarizer, PrSummary, IssueSummary } from "../src/tools/summarize";

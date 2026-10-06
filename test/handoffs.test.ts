@@ -6,7 +6,7 @@ import { env } from "cloudflare:test";
 import { app } from "../src/routes";
 import { cookieFor } from "./helpers/persons";
 import { buildSeedStatements } from "../scripts/seed/build.mjs";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { handleRepoCron } from "../src/repo/cron";
 import { expireDueHandoffs } from "../src/tools/handoffs";
 import type { Env } from "../src/env";

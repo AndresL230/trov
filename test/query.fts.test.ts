@@ -5,7 +5,7 @@ import { query } from "../src/tools/reads";
 import { propose_doc_update, promote_doc, append_feed, stage_adr, ratify_adr } from "../src/tools/writes";
 import { create_ticket } from "../src/tools/tickets";
 import { seedPerson } from "./helpers/persons";
-import { run, all, nowIso } from "../src/db";
+import { run, all, nowIso } from "./helpers/db";
 
 const AUTHOR = "tester";
 

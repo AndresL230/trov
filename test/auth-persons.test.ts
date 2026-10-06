@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { first } from "../src/db";
+import { first } from "./helpers/db";
 import {
   isValidHandle, defaultColor, handleAvailable, createPerson, HandleTakenError, recordSignIn,
   linkIdentity, unlinkIdentity, listIdentities, findIdentity, findPersonByEmail, updateProfile, listPersons, getPerson,
@@ -44,7 +44,7 @@ describe("createPerson / recordSignIn", () => {
   it("recordSignIn fills the picture, never writes the name, and never overwrites a set email", async () => {
     await createPerson(platformCtx(), { handle: "priya", name: "Priya", color: "plum", avatar_url: null, email: "set@example.com" });
     await recordSignIn(platformCtx(), "priya", { provider: "github", avatar_url: "https://a/p.png", email: "other@example.com" });
-    const row = (await getPerson(env.DB, "priya"))!;
+    const row = (await getPerson(platformCtx(), "priya"))!;
     expect(row.name).toBe("Priya");
     expect(row.avatar_url).toBe("https://a/p.png");
     expect(row.email).toBe("set@example.com");
@@ -52,18 +52,18 @@ describe("createPerson / recordSignIn", () => {
   it("recordSignIn fills a NULL email", async () => {
     await createPerson(platformCtx(), { handle: "priya", name: null, color: "plum", avatar_url: null, email: null });
     await recordSignIn(platformCtx(), "priya", { provider: "github", avatar_url: null, email: "late@example.com" });
-    expect((await getPerson(env.DB, "priya"))!.email).toBe("late@example.com");
+    expect((await getPerson(platformCtx(), "priya"))!.email).toBe("late@example.com");
   });
 });
 
 describe("identities", () => {
   it("link, list, find, unlink; the last identity cannot be unlinked", async () => {
     await createPerson(platformCtx(), { handle: "priya", name: null, color: "plum", avatar_url: null, email: null });
-    await linkIdentity(env.DB, { provider: "google", subject: "g-123", label: "priya@example.com", person: "priya", linkedBy: "priya" });
-    expect((await findIdentity(env.DB, "google", "g-123"))?.person).toBe("priya");
+    await linkIdentity(platformCtx(), { provider: "google", subject: "g-123", label: "priya@example.com", person: "priya", linkedBy: "priya" });
+    expect((await findIdentity(platformCtx(), "google", "g-123"))?.person).toBe("priya");
     expect(await unlinkIdentity(platformCtx(), "priya", "google")).toBe("last_identity");
-    await linkIdentity(env.DB, { provider: "github", subject: "priya-gh", label: "priya-gh", person: "priya", linkedBy: "priya" });
-    expect((await listIdentities(env.DB, "priya")).map((i) => i.provider).sort()).toEqual(["github", "google"]);
+    await linkIdentity(platformCtx(), { provider: "github", subject: "priya-gh", label: "priya-gh", person: "priya", linkedBy: "priya" });
+    expect((await listIdentities(platformCtx(), "priya")).map((i) => i.provider).sort()).toEqual(["github", "google"]);
     expect(await unlinkIdentity(platformCtx(), "priya", "google")).toBe("ok");
     expect(await unlinkIdentity(platformCtx(), "priya", "google")).toBe("not_found");
   });

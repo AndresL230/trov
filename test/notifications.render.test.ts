@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx } from "./helpers/tenant";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { ingestEvent, ingestDocProposal, ingestAdrDraft } from "../src/consumer";
 import { promote_doc } from "../src/tools/writes";
 import { storePrSummary, type Summarizer, type PrSummary } from "../src/tools/summarize";

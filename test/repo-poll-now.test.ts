@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import { app } from "../src/routes";
 import { handleRepoCron, runUsagePolls } from "../src/repo/cron";
 import { cookieFor } from "./helpers/persons";

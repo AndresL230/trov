@@ -3,7 +3,6 @@ import { DocProposal, AdrDraft, FeedEntry } from "@shared/contract";
 import { isSection, isTag } from "@shared/vocabulary";
 import { type TenantContext, first, run, nowIso } from "../data/sql";
 import type { PlatformContext } from "../data/platform-sql";
-import { legacyDb } from "../data/legacy";
 import { getPerson, findIdentity, linkIdentity } from "../auth/persons";
 // NOTE: writes.ts ↔ consumer.ts is a deliberate circular import. consumer.ts
 // imports the low-level writers below; assign_triage imports the gate functions.
@@ -180,7 +179,7 @@ export async function ensure_identity_task(ctx: TenantContext, p: PlatformContex
     // GitHub reserves the "[bot]" suffix for app identities — bot activity is
     // captured in events but never raises an identity task (nobody maps a bot).
     if (login.endsWith("[bot]")) return;
-    if (await findIdentity(legacyDb(p), "github", login)) return;
+    if (await findIdentity(p, "github", login)) return;
     await run(
       ctx,
       `INSERT OR IGNORE INTO identity_tasks (org_id, login, first_seen, status) VALUES (?, ?, ?, 'pending')`,
@@ -213,16 +212,16 @@ export async function map_identity(
   if (!task) throw new Error(`no such identity task: ${login}`);
   if (task.status === "resolved") {
     // Already resolved — idempotent no-op, surface the recorded mapping.
-    const existing = await findIdentity(legacyDb(p), "github", login);
+    const existing = await findIdentity(p, "github", login);
     return { login, person: existing?.person ?? personHandle, status: "resolved" };
   }
-  const person = await getPerson(legacyDb(p), personHandle);
+  const person = await getPerson(p, personHandle);
   if (!person) throw new Error(`no such person: ${personHandle}`);
   // Pre-check so a stale/unresolved task pointing at an already-linked login fails
   // with a clean message instead of surfacing the identities PK's raw SQL error.
-  const existing = await findIdentity(legacyDb(p), "github", login);
+  const existing = await findIdentity(p, "github", login);
   if (existing) throw new Error(`login already linked to ${existing.person}`);
-  await linkIdentity(legacyDb(p), { provider: "github", subject: login, label: login, person: person.handle, linkedBy: by });
+  await linkIdentity(p, { provider: "github", subject: login, label: login, person: person.handle, linkedBy: by });
   await run(
     ctx,
     `UPDATE identity_tasks SET status = 'resolved', resolved_at = ?, resolved_by = ? WHERE org_id = ? AND login = ?`,
@@ -280,7 +279,7 @@ export async function restore_identity_task(ctx: TenantContext, p: PlatformConte
   if (!task) throw new IdentityTaskError("not_found", `no such identity task: ${login}`);
   if (task.status === "pending") return { login, status: "pending" }; // idempotent no-op
   if (task.status === "resolved") throw new IdentityTaskError("conflict", `identity task ${login} is already mapped`);
-  const linked = await findIdentity(legacyDb(p), "github", login);
+  const linked = await findIdentity(p, "github", login);
   if (linked) throw new IdentityTaskError("conflict", `login already linked to ${linked.person}`);
   await run(
     ctx,

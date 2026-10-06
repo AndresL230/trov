@@ -23,8 +23,7 @@ import type { TicketCreate, TicketEdit, TicketStatus } from "@shared/tickets";
 import { canTransition, parseTicketLink, placeInColumn } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
 import { type TenantContext, type Stmt, first, all, run, stmt, batch, nowIso } from "../data/sql";
-import { legacyDb } from "../data/legacy";
-import { getPerson, RESERVED_HANDLES } from "../auth/persons";
+import { requireMember } from "../auth/persons";
 
 /**
  * A typed failure the routes map onto an HTTP status:
@@ -59,16 +58,11 @@ const getTicketRow = async (ctx: TenantContext, id: number): Promise<TicketRow> 
 const touch = (ctx: TenantContext, id: number, at: string) =>
   run(ctx, `UPDATE tickets SET updated_at = ? WHERE id = ? AND org_id = ?`, at, id, ctx.orgId);
 
-/** Resolve a handle to its canonical `persons.handle` spelling, or 400. A RESERVED
- *  handle (`github-webhook`, 0032) has a persons row but is not a person: it can
- *  never be assigned, file, comment or link through these writers — only the
- *  GitHub mirror (./ticket-mirror.ts) writes as it. Exported for ./tickets-agent.ts,
- *  whose `assign_ticket` must validate a handle on its no-op path too. */
-export async function requirePerson(ctx: TenantContext, handle: string): Promise<string> {
-  const p = await getPerson(legacyDb(ctx), handle);
-  if (!p || RESERVED_HANDLES.includes(p.handle)) throw new TicketError("bad_request", `no such person: ${handle}`);
-  return p.handle;
-}
+// Every handle these writers take — requester, actor, assignee, author — goes through `requireMember`
+// (src/auth/persons.ts, §4.3): its canonical `persons.handle` spelling, or a `PersonError` the routes
+// and /mcp answer exactly as a `bad_request` TicketError. A RESERVED handle (`github-webhook`, 0032)
+// has a persons row but is not a person: it can never be assigned, file, comment or link through
+// these writers — only the GitHub mirror (./ticket-mirror.ts) writes as it.
 
 /** An explicit sprint must exist (the column is a soft INTEGER ref — 0024 could not FK it). */
 async function requireSprint(ctx: TenantContext, sprintId: number): Promise<void> {
@@ -93,12 +87,12 @@ function requireParsedLink(raw: string) {
  * when one was given.
  */
 export async function create_ticket(ctx: TenantContext, input: TicketCreate, requester: string): Promise<number> {
-  const author = await requirePerson(ctx, requester);
+  const author = await requireMember(ctx, requester);
   // Validate everything BEFORE the first insert: a bad assignee or sprint must
   // not leave a half-built ticket behind (D1 has no transaction here).
   const assignees: string[] = [];
   for (const a of input.assignees) {
-    const handle = await requirePerson(ctx, a);
+    const handle = await requireMember(ctx, a);
     if (!assignees.includes(handle)) assignees.push(handle);
   }
   const sprintId = input.sprint_id ?? null;
@@ -155,7 +149,7 @@ export async function create_ticket(ctx: TenantContext, input: TicketCreate, req
  */
 export async function transition_ticket(ctx: TenantContext, id: number, to: TicketStatus, actor: string): Promise<void> {
   const t = await getTicketRow(ctx, id);
-  const who = await requirePerson(ctx, actor);
+  const who = await requireMember(ctx, actor);
   if (!canTransition(t.status, to)) {
     throw new TicketError("conflict", `illegal transition: ${t.status} → ${to}`);
   }
@@ -182,7 +176,7 @@ export async function transition_ticket(ctx: TenantContext, id: number, to: Tick
  */
 export async function move_ticket(ctx: TenantContext, id: number, to: TicketStatus, afterId: number | null, actor: string): Promise<void> {
   const t = await getTicketRow(ctx, id);
-  const who = await requirePerson(ctx, actor);
+  const who = await requireMember(ctx, actor);
   if (to !== t.status && !canTransition(t.status, to)) {
     throw new TicketError("conflict", `illegal transition: ${t.status} → ${to}`);
   }
@@ -211,7 +205,7 @@ export async function move_ticket(ctx: TenantContext, id: number, to: TicketStat
  */
 export async function toggle_assignee(ctx: TenantContext, id: number, login: string, on: boolean): Promise<void> {
   await getTicketRow(ctx, id);
-  const handle = await requirePerson(ctx, login);
+  const handle = await requireMember(ctx, login);
   if (on) {
     await run(ctx, `INSERT OR IGNORE INTO ticket_assignees (org_id, ticket_id, login) VALUES (?, ?, ?)`, ctx.orgId, id, handle);
   } else {
@@ -223,7 +217,7 @@ export async function toggle_assignee(ctx: TenantContext, id: number, login: str
 /** Attach one linked-work reference, parsed by the SHARED parser the SPA also uses. */
 export async function add_ticket_link(ctx: TenantContext, id: number, raw: string, by: string): Promise<number> {
   await getTicketRow(ctx, id);
-  const who = await requirePerson(ctx, by);
+  const who = await requireMember(ctx, by);
   const link = requireParsedLink(raw);
   const now = nowIso();
   const res = await run(
@@ -268,7 +262,7 @@ export async function remove_ticket_link(ctx: TenantContext, id: number, linkId:
  */
 export async function edit_ticket(ctx: TenantContext, id: number, patch: TicketEdit, actor: string): Promise<void> {
   const t = await getTicketRow(ctx, id);
-  await requirePerson(ctx, actor);
+  await requireMember(ctx, actor);
   const title = patch.title !== undefined ? patch.title.trim() : undefined;
   if (title !== undefined && !title) throw new TicketError("bad_request", "title is empty");
   if (title === undefined && patch.body === undefined) throw new TicketError("bad_request", "nothing to edit: pass title and/or body");
@@ -313,7 +307,7 @@ export async function set_ticket_parent(ctx: TenantContext, parentId: number, ch
 /** Append one comment. The body is trimmed and must survive it (min 1 char). */
 export async function add_ticket_comment(ctx: TenantContext, id: number, body: string, author: string): Promise<number> {
   await getTicketRow(ctx, id);
-  const who = await requirePerson(ctx, author);
+  const who = await requireMember(ctx, author);
   const text = body.trim();
   if (!text) throw new TicketError("bad_request", "comment body is empty");
   const now = nowIso();

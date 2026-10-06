@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { systemCtx } from "./helpers/tenant";
 import { propose_doc_update } from "../src/tools/writes";
-import { first, all } from "../src/db";
+import { first, all } from "./helpers/db";
 import type { DocRow, DocVersionRow } from "@shared/rows";
 
 describe("non-destructive doc write", () => {

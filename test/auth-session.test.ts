@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { createSession, getSessionUser, deleteSession } from "../src/auth/session";
-import { run } from "../src/db";
+import { run } from "./helpers/db";
 import { seedPerson } from "./helpers/persons";
 
 import { platformCtx } from "./helpers/tenant";

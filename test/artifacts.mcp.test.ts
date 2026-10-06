@@ -8,7 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { all, run, nowIso } from "../src/db";
+import { all, run, nowIso } from "./helpers/db";
 import { consumeUploadToken, createPage, sha256Hex, mintUploadToken } from "../src/tools/artifacts";
 import { create_ticket } from "../src/tools/tickets";
 import { seedPerson, cookieFor } from "./helpers/persons";

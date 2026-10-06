@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { systemCtx } from "./helpers/tenant";
 import { FeedEntry } from "@shared/contract";
 import { ingestFeedEntry } from "../src/consumer";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import type { FeedRow } from "@shared/rows";
 
 describe("feed entry issue links", () => {

@@ -6,7 +6,7 @@ import { buildTrovMcpServer } from "../src/mcp";
 import { resolveBearerPrincipal } from "../src/auth/principal";
 import type { Principal } from "../src/auth/principal";
 import { mintToken } from "../src/auth/tokens";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import type { FeedRow, DocVersionRow, AdrRow } from "@shared/rows";
 import type { IngestResult } from "../src/consumer";
 import { seedPerson } from "./helpers/persons";

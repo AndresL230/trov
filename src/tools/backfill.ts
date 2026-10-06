@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import { first } from "../data/sql";
 import { platform } from "../data/context";
-import { legacyDb, legacySystemTenant } from "../data/legacy";
+import { legacySystemTenant } from "../data/legacy";
 import { ingestEvent } from "../consumer";
 import { mirrorIssue } from "./ticket-mirror";
 import { eventsFromDelivery } from "../webhook";

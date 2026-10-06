@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import type { Env } from "../src/env";
 import { TicketCreate } from "@shared/tickets";
 import { SprintCreate } from "@shared/sprints";

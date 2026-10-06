@@ -9,7 +9,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { app } from "../src/routes";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { propose_doc_update, promote_doc } from "../src/tools/writes";
 import { ingestDocProposal } from "../src/consumer";
 import { renamePerson } from "../src/auth/persons";

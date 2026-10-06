@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
-import { all, first, run, nowIso } from "../src/db";
+import { all, first, run, nowIso } from "./helpers/db";
 import { TicketError, create_ticket } from "../src/tools/tickets";
 import {
   assertTicketWritable,

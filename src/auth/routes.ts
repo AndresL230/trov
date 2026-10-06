@@ -19,7 +19,7 @@ import { takeOAuthPending } from "./oauth-routes";
 import { listGrants, revokeGrant } from "./oauth";
 import { platformContext } from "../data/gate";
 import { resolveSoleTenant } from "../data/context";
-import { legacyDb, joinLegacyOrg, legacySystemTenant } from "../data/legacy";
+import { joinLegacyOrg, legacySystemTenant } from "../data/legacy";
 
 const OAUTH_TX_COOKIE = "oauth_tx";
 export interface AuthDeps { fetchImpl?: typeof fetch; now?: () => number }

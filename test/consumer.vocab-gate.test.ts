@@ -4,7 +4,7 @@ import { systemCtx } from "./helpers/tenant";
 import { IngestPayload } from "@shared/contract";
 import { consume } from "../src/consumer";
 import { get_feed } from "../src/tools/reads";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import type { NeedsTriageRow, DocVersionRow } from "@shared/rows";
 
 const session = { id: "sess-vocab", author: "andres", ended_at: "2026-06-24T00:00:00Z", skill_version: "1.0" };

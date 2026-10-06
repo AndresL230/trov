@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import type { FeedRow, NeedsTriageRow } from "@shared/rows";
 import { bearerCtx } from "./helpers/tenant";
 

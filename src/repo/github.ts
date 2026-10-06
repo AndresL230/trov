@@ -2,9 +2,7 @@
 // render path: called from the webhook handler (event-triggered) and scheduled().
 import type { TenantContext } from "../data/sql";
 import { fanOut, first, run } from "../data/sql";
-import { legacyDb } from "../data/legacy";
 import { ingestRepoEvent } from "../consumer";
-import { legacyCtx } from "../data/legacy-bridge";
 import { putMetric, putSnapshot } from "./store";
 import { untitledFailedRuns } from "./reads";
 import type { RepoEnvConfig } from "./config";

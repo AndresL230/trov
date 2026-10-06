@@ -2,11 +2,9 @@ import type { DocRow, DocMetaRow, DocVersionRow, FeedRow, AdrRow, NeedsTriageRow
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
-import { legacyCtxOf } from "../data/legacy-ctx";
 import type { TicketListItem, TicketDetail, TicketRef, TicketSeg, TicketAssigneeFilter, TicketCategory } from "@shared/tickets";
 import { OPEN_STATUSES, OPEN_STATUS_SQL, TICKET_STATUSES } from "@shared/tickets-core";
 import { type TenantContext, first, all, ph, fanOut } from "../data/sql";
-import { legacyDb } from "../data/legacy";
 // The sprint read model lives next to the sprint writers; `query()` borrows its
 // progress RULE so the assembled sprint body and the Roadmap can never disagree.
 import { sprintProgress, ticketCountsBySprint } from "./sprints";

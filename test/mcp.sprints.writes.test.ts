@@ -4,7 +4,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { first } from "../src/db";
+import { first } from "./helpers/db";
 import { create_sprint } from "../src/tools/sprints";
 import { create_ticket } from "../src/tools/tickets";
 import { TicketCreate } from "@shared/tickets";

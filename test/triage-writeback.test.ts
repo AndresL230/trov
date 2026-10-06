@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import type { DocVersionRow, AdrRow, NeedsTriageRow } from "@shared/rows";
 import { ingestDocProposal } from "../src/consumer";
 import { propose_doc_update, promote_doc, stage_adr, ratify_adr, route_triage } from "../src/tools/writes";

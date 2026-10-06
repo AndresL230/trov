@@ -9,7 +9,7 @@ import { systemCtx, platformCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
-import { all, run } from "../src/db";
+import { all, run } from "./helpers/db";
 import { ingestAdrDraft } from "../src/consumer";
 import { seedPerson } from "./helpers/persons";
 import type { NotificationOutboxRow } from "@shared/rows";

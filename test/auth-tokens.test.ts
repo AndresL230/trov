@@ -4,7 +4,7 @@ import { mintToken, resolveToken, listTokens, revokeToken } from "../src/auth/to
 import { sha256Hex } from "../src/auth/crypto";
 import { resolveBearerPrincipal } from "../src/auth/principal";
 import { app } from "../src/routes";
-import { first } from "../src/db";
+import { first } from "./helpers/db";
 import { seedPerson, cookieFor } from "./helpers/persons";
 
 import { platformCtx, ORG_A, ORG_B, ensureMember } from "./helpers/tenant";

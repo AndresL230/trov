@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import type { SprintRow, PlanRow, PlanVersionRow } from "@shared/rows";
 import { PLAN_NARRATIVE_MAX } from "@shared/sprints";
 import { bearerCtx } from "./helpers/tenant";

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
-import { first, all } from "../src/db";
+import { first, all } from "./helpers/db";
 import { sealOnboard, ONBOARD_COOKIE, type OnboardPayload } from "../src/auth/onboard";
 import { createInvite } from "../src/auth/invites";
 import type { PersonRow, IdentityRow, InviteRow } from "@shared/rows";

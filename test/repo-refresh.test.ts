@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { app } from "../src/routes";
 import {
   BUDGET_SKIP, REFRESH_LOCK, REFRESH_LOCK_MS, SUBREQUEST_CAP,

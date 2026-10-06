@@ -15,7 +15,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run, nowIso } from "../src/db";
+import { all, first, run, nowIso } from "./helpers/db";
 import type { SprintRow } from "@shared/rows";
 import { sprintActive, toSprintView } from "@shared/sprints";
 import { get_plan } from "../src/tools/plan";

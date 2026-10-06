@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, run, nowIso } from "../src/db";
+import { all, run, nowIso } from "./helpers/db";
 
 // pr_summaries.semantic_key REFERENCES events(semantic_key) — seed the parent
 // row first, mirroring the real call order (same idiom as summarize.test.ts).

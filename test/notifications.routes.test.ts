@@ -8,7 +8,7 @@ import { app } from "../src/routes";
 import worker from "../src/index";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { seedNotificationPolicy } from "../src/notifications/policy";
 import { unsubscribeToken } from "../src/notifications/unsubscribe";
 import { seedPerson } from "./helpers/persons";

@@ -32,10 +32,8 @@
 // just text and can never be a syntax error (a 500).
 
 import { type TenantContext, type Stmt, stmt, batch } from "../data/sql";
-import { legacyDb } from "../data/legacy";
 import { RESERVED_HANDLES } from "../auth/persons";
 import { searchArtifactsStmt } from "./artifacts";
-import { legacyCtxOf } from "../data/legacy-ctx";
 import { avatarSrc } from "@shared/people";
 import {
   QUICK_TYPES, QUICK_MIN_CHARS, QUICK_LIMIT_DEFAULT, QUICK_LIMIT_MAX,

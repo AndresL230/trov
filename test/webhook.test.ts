@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { all, run, nowIso } from "../src/db";
+import { all, run, nowIso } from "./helpers/db";
 import type { EventRow } from "@shared/rows";
 import type { Env } from "../src/env";
 import worker from "../src/index";

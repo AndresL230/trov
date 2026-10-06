@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { mintToken } from "../src/auth/tokens";
 import { ARTIFACT_BINARY_CAP, ARTIFACT_SLUG_MAX, ARTIFACT_TEXT_CAP, type ArtifactDetailDTO } from "@shared/artifacts";
 import {

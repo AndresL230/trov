@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx } from "./helpers/tenant";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { ingestEvent } from "../src/consumer";
 import type { EventRow, IdentityTaskRow } from "@shared/rows";
 import type { CapturedEvent } from "@shared/contract";

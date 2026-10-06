@@ -14,7 +14,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
 import { systemCtx } from "./helpers/tenant";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { reconcileRepo } from "../src/repo/github";
 import { repoEventsFromDelivery } from "../src/repo/capture";

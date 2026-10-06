@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { create_ticket } from "../src/tools/tickets";
 import { deletePage, restorePage } from "../src/tools/artifacts";
 import { renamePerson } from "../src/auth/persons";

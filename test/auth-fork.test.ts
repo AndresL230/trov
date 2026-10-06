@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { first } from "../src/db";
+import { first } from "./helpers/db";
 import { completeSignIn, linkSignIn, suggestHandle, sealOnboard, openOnboard, type ProviderProfile } from "../src/auth/onboard";
 import { createInvite } from "../src/auth/invites";
 import { seedPerson } from "./helpers/persons";

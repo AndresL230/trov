@@ -44,13 +44,11 @@ import { reconcileRepo, type ReconcileResult } from "./repo/github";
 import { repoEnvironments } from "./repo/config";
 import { runLockedRepoRefresh, runUsagePolls } from "./repo/cron";
 import type { DashboardData } from "@shared/dashboard";
-import { first } from "./db";
 import { platformContext, soleTenantGate, tenantGate } from "./data/gate";
 import { orgsApp, myInvitesApp, orgTenantApp } from "./orgs/routes";
 import { platformApp } from "./platform/routes";
-import { legacyDb } from "./data/legacy";
-import { createInvite, revokeInvite, listInvites } from "./auth/invites";
-import { listPersons } from "./auth/persons";
+import { createInvite, getInvite, revokeInvite, listInvites } from "./auth/invites";
+import { listPersons, PersonError } from "./auth/persons";
 import { sendInvite } from "./notifications/invite";
 import type { InviteRow } from "@shared/rows";
 import { readDocImage } from "./tools/doc-images";
@@ -599,7 +597,7 @@ app.post("/invites", async (c) => {
   }
   const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
   const email = await sendInvite(c.env, c.var.ctx, c.var.p, { email: invite.email, inviteeName: invite.name, inviterHandle: c.get("principal").handle, origin });
-  return c.json({ ok: true, invite: (await first<InviteRow>(legacyDb(c.var.p), `SELECT * FROM invites WHERE email = ?`, invite.email))!, email });
+  return c.json({ ok: true, invite: (await getInvite(c.var.p, invite.email))!, email });
 });
 app.post("/invites/:email/revoke", async (c) => {
   const ok = await revokeInvite(c.var.p, decodeURIComponent(c.req.param("email")));
@@ -607,7 +605,7 @@ app.post("/invites/:email/revoke", async (c) => {
 });
 app.post("/invites/:email/resend", async (c) => {
   const email = decodeURIComponent(c.req.param("email")).toLowerCase();
-  const row = await first<InviteRow>(legacyDb(c.var.p), `SELECT * FROM invites WHERE email = ?`, email);
+  const row = await getInvite(c.var.p, email);
   if (!row) return c.json({ error: "no such invite" }, 404);
   if (row.revoked_at || row.accepted_by) return c.json({ error: row.revoked_at ? "revoked" : "accepted" }, 409);
   const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
@@ -733,9 +731,10 @@ app.post("/admin/poll-usage", async (c) => {
 // consume(), no gate, no staged state, no proposals. The requester/actor/author
 // is ALWAYS the authenticated principal; a client-supplied one is ignored. ────
 
-/** Map a TicketError onto its status (404 unknown / 409 rule / 400 payload). */
+/** Map a TicketError onto its status (404 unknown / 409 rule / 400 payload). A PersonError — a handle
+ *  that is not a member of this org (`requireMember`) — is the same 400 a `bad_request` is. */
 const ticketFail = (c: Context<AppEnv>, e: unknown): Response => {
-  if (e instanceof TicketError) return c.json({ error: e.message }, TICKET_ERROR_STATUS[e.code]);
+  if (e instanceof TicketError || e instanceof PersonError) return c.json({ error: e.message }, TICKET_ERROR_STATUS[e.code]);
   throw e; // not ours — a real 500
 };
 

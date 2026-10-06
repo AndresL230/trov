@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { systemCtx } from "./helpers/tenant";
-import { run } from "../src/db";
+import { run } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { getRepoDashboard } from "../src/tools/repo";
 import { branchHeads, checkState, deployHistories } from "../src/repo/reads";

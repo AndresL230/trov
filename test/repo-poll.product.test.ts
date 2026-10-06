@@ -12,7 +12,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import { pollSaplingMetrics, saplingProductMetrics } from "../src/repo/poll";
 import { putMetrics, pruneRepoCapture, putMetric } from "../src/repo/store";
 import { ENVS, LONG_TOKEN, leakedFragments } from "./helpers/repo";

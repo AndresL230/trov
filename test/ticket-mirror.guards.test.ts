@@ -5,7 +5,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { app } from "../src/routes";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { mirrorIssue } from "../src/tools/ticket-mirror";
 import { create_ticket } from "../src/tools/tickets";
 import type { TicketDetail } from "@shared/tickets";

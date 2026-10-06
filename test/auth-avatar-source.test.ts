@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
-import { first, run } from "../src/db";
+import { first, run } from "./helpers/db";
 import { completeSignIn, linkSignIn, sealOnboard, ONBOARD_COOKIE, type ProviderProfile, type OnboardPayload } from "../src/auth/onboard";
 import { getPerson, unlinkIdentity } from "../src/auth/persons";
 import { createInvite } from "../src/auth/invites";
@@ -25,7 +25,7 @@ const github = (over: Partial<ProviderProfile> = {}): ProviderProfile => ({
 const google = (over: Partial<ProviderProfile> = {}): ProviderProfile => ({
   provider: "google", subject: "g-andres", label: "andres@gmail.com", email: "andres@gmail.com", name: "Andrés (Google)", avatar_url: GOOGLE_PIC, ...over,
 });
-const person = async (handle: string) => (await getPerson(env.DB, handle))!;
+const person = async (handle: string) => (await getPerson(platformCtx(), handle))!;
 
 describe("the provider picture has ONE owner", () => {
   it("a GitHub sign-in fills a missing picture and claims it", async () => {

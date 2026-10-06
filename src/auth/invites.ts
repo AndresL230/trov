@@ -1,6 +1,6 @@
 import { type PlatformContext, first, all, run, nowIso } from "../data/platform-sql";
 import type { InviteRow } from "@shared/rows";
-import { findPersonByEmail, runEither, type PersonReader } from "./persons";
+import { findPersonByEmail } from "./persons";
 
 const norm = (e: string) => e.trim().toLowerCase();
 
@@ -31,10 +31,15 @@ export async function revokeInvite(p: PlatformContext, email: string): Promise<b
   return true;
 }
 
+/** One invite row by address, live or not (the admin list's resend / re-read). */
+export function getInvite(p: PlatformContext, email: string): Promise<InviteRow | null> {
+  return first<InviteRow>(p, `SELECT * FROM invites WHERE email = ?`, norm(email));
+}
+
 export function listInvites(p: PlatformContext): Promise<InviteRow[]> {
   return all<InviteRow>(p, `SELECT * FROM invites ORDER BY invited_at DESC, email ASC`);
 }
 
-export async function recordInviteEmail(p: PersonReader, email: string, r: { id: string | null; error: string | null }): Promise<void> {
-  await runEither(p, `UPDATE invites SET email_sent_at = ?, email_id = ?, email_error = ? WHERE email = ?`, nowIso(), r.id, r.error, norm(email));
+export async function recordInviteEmail(p: PlatformContext, email: string, r: { id: string | null; error: string | null }): Promise<void> {
+  await run(p, `UPDATE invites SET email_sent_at = ?, email_id = ?, email_error = ? WHERE email = ?`, nowIso(), r.id, r.error, norm(email));
 }

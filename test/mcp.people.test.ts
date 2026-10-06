@@ -9,7 +9,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { run } from "../src/db";
+import { run } from "./helpers/db";
 import type { PersonForAgents } from "@shared/people";
 import { seedPerson } from "./helpers/persons";
 import { bearerCtx } from "./helpers/tenant";

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { systemCtx } from "./helpers/tenant";
-import { all, run, nowIso } from "../src/db";
+import { all, run, nowIso } from "./helpers/db";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import type { Env } from "../src/env";
 import {

@@ -1,24 +1,12 @@
-// TRANSITIONAL — Multitenancy Phase 3 scaffolding. Nothing here outlives the cut-over.
+// TRANSITIONAL — the cut-over entry points. The data layer itself is org-explicit (every statement
+// binds `ctx.orgId`); what is left here is the ONE place that still names an org: the entry points
+// that cannot resolve theirs yet. Each caller is marked `// MT:`; Phases 4 and 5b replace them.
 import type { Env } from "../env";
-import { LEGACY_ORG_ID } from "../legacy-org";
-import { d1Of, platform, systemTenant, type PlatformContext, type SystemActor, type TenantContext } from "./context";
-import { run } from "./platform-sql";
-import { nowIso } from "../db";
+import { platform, systemTenant, type PlatformContext, type SystemActor, type TenantContext } from "./context";
+import { run, nowIso } from "./platform-sql";
 
-/**
- * DELETE AT THE END OF PHASE 3. The escape hatch for a module that is not ported yet: it keeps its
- * `db: DB` signature and its caller passes `legacyDb(ctx)`. Porting a module turns each
- * `fn(legacyDb(ctx), …)` into `fn(ctx, …)`; when `grep -rn legacyDb src` is empty, this goes.
- */
-export const legacyDb = (ctx: TenantContext | PlatformContext): D1Database => d1Of(ctx);
-
-/**
- * DELETE WITH legacyDb. The same hatch the other way round: an UNPORTED module holds only a `db`, and
- * the ported function it calls needs a context — the legacy org's, as system, which is the org every
- * unported statement already lands in. Porting the caller turns `fn(legacyTenant(db), …)` into `fn(ctx, …)`.
- */
-export const legacyTenant = (db: D1Database): TenantContext =>
-  systemTenant(platform({ DB: db } as Env, "system"), LEGACY_ORG_ID, "system");
+/** Org #1 (0037): every pre-multitenancy row belongs to it, and so does every org-less entry point. */
+export const SAPLINGLEARN_ORG_ID = "org_saplinglearn";
 
 /**
  * The single org every org-less entry point acts on until it can name one: the GitHub webhook (Phase
@@ -26,7 +14,7 @@ export const legacyTenant = (db: D1Database): TenantContext =>
  * token-authenticated artifact upload (the token row will carry its org). Each caller is marked `MT:`.
  */
 export function legacySystemTenant(env: Env, actor: SystemActor): TenantContext {
-  return systemTenant(platform(env, actor), LEGACY_ORG_ID, actor);
+  return systemTenant(platform(env, actor), SAPLINGLEARN_ORG_ID, actor);
 }
 
 /**
@@ -36,5 +24,5 @@ export function legacySystemTenant(env: Env, actor: SystemActor): TenantContext 
  */
 export async function joinLegacyOrg(p: PlatformContext, handle: string): Promise<void> {
   await run(p, `INSERT OR IGNORE INTO memberships (org_id, user_id, role, created_at, created_by) VALUES (?, ?, 'member', ?, ?)`,
-    LEGACY_ORG_ID, handle, nowIso(), handle);
+    SAPLINGLEARN_ORG_ID, handle, nowIso(), handle);
 }

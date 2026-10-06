@@ -1,8 +1,7 @@
 import type { NotificationKind, Section, Window } from "@shared/notifications";
 import { type TenantContext, all } from "../../data/sql";
-import { legacyDb } from "../../data/legacy";
 import { listOpenAssignedIssues, toMyWorkPr, type PrEventJoinRow } from "../../tools/mywork";
-import { getPerson, listIdentities } from "../../auth/persons";
+import { memberPerson, memberGithubLogins } from "../../auth/persons";
 import { escapeHtml, isoOf } from "../html";
 import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP } from "../assemble";
 
@@ -57,9 +56,9 @@ function issueItem(i: Awaited<ReturnType<typeof listOpenAssignedIssues>>[number]
  * no GitHub identity, renders null.
  */
 async function render(ctx: TenantContext, handle: string, window: Window): Promise<Section | null> {
-  const me = await getPerson(legacyDb(ctx), handle);
+  const me = await memberPerson(ctx, handle);
   if (!me) return null;
-  const logins = (await listIdentities(legacyDb(ctx), handle)).filter((i) => i.provider === "github").map((i) => i.subject);
+  const logins = await memberGithubLogins(ctx, me.handle);
   if (logins.length === 0) return null;
 
   const prRows = await all<PrEventJoinRow>(

@@ -17,7 +17,6 @@ import { renderSections, buildMessage, deliverRow, outboxKey } from "./run";
 import { deliveryFor } from "./resend";
 import { unsubscribeUrl } from "./unsubscribe";
 import { sampleSections } from "./sample";
-import { legacyDb } from "../data/legacy";
 
 export const notificationsApp = new Hono<AppEnv>();
 

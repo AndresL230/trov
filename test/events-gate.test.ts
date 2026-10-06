@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx } from "./helpers/tenant";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import { ingestEvent, consume } from "../src/consumer";
 import type { EventRow } from "@shared/rows";
 import { IngestPayload, type CapturedEvent } from "@shared/contract";

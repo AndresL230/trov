@@ -7,7 +7,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx } from "./helpers/tenant";
-import { run } from "../src/db";
+import { run } from "./helpers/db";
 import { ingestEvent, ingestDocProposal, ingestAdrDraft } from "../src/consumer";
 import { promote_doc } from "../src/tools/writes";
 import { storePrSummary, storeIssueSummary, type Summarizer, type PrSummary, type IssueSummary } from "../src/tools/summarize";

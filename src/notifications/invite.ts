@@ -4,7 +4,6 @@
 import type { Env } from "../env";
 import { type TenantContext, nowIso } from "../data/sql";
 import type { PlatformContext } from "../data/platform-sql";
-import { legacyDb } from "../data/legacy";
 import { escapeHtml } from "./html";
 import { EMAIL_COLORS as C, EMAIL_FONT, FONTS_HREF, EMAIL_STYLE, EMAIL_WIDTH, EMAIL_SPACE as SP, emailBanner } from "./assemble";
 import { deliveryFor } from "./resend";
@@ -60,7 +59,7 @@ export function renderInviteEmail(o: { inviteeName: string | null; inviterName: 
 
 /** `ctx` is the inviting org (its mail settings); `p` reads the inviter and records the outcome on the invite. */
 export async function sendInvite(env: Env, ctx: TenantContext, p: PlatformContext, o: { email: string; inviteeName: string | null; inviterHandle: string; origin: string; fetchImpl?: typeof fetch }): Promise<{ status: "sent" | "failed"; id: string | null; error: string | null }> {
-  const inviter = await getPerson(legacyDb(p), o.inviterHandle);
+  const inviter = await getPerson(p, o.inviterHandle);
   const settings = await loadSettings(ctx);
   const msg = renderInviteEmail({
     inviteeName: o.inviteeName, inviterName: inviter?.name ?? o.inviterHandle, email: o.email,
@@ -74,6 +73,6 @@ export async function sendInvite(env: Env, ctx: TenantContext, p: PlatformContex
   } catch (e) {
     result = { status: "failed", id: null, error: e instanceof Error ? e.message : String(e) };
   }
-  await recordInviteEmail(legacyDb(p), o.email, { id: result.id, error: result.error });
+  await recordInviteEmail(p, o.email, { id: result.id, error: result.error });
   return result;
 }

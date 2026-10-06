@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { systemCtx } from "./helpers/tenant";
 import { ingestFeedEntry, ingestDocProposal } from "../src/consumer";
 import { get_feed } from "../src/tools/reads";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import type { DocRow, DocVersionRow, NeedsTriageRow } from "@shared/rows";
 
 // These call the gate functions in src/consumer.ts DIRECTLY (ingestFeedEntry /

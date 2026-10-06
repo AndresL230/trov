@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx } from "./helpers/tenant";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { ingestEvent } from "../src/consumer";
 import { map_identity } from "../src/tools/writes";
 import { seedPerson } from "./helpers/persons";

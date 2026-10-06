@@ -8,7 +8,7 @@ import { env } from "cloudflare:test";
 import { systemCtx, platformCtx } from "./helpers/tenant";
 import wranglerToml from "../wrangler.toml?raw";
 import worker from "../src/index";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { ingestAdrDraft } from "../src/consumer";
 import { DAILY_CRON, WEEKLY_CRON, dueCadence } from "../src/notifications/cron";
 import { REPO_CRON } from "../src/repo/cron";

@@ -13,7 +13,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import worker from "../src/index";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { sha256Hex } from "../src/tools/artifacts";
 import { route_triage, assign_triage } from "../src/tools/writes";
 import { recordBatch } from "../src/consumer";

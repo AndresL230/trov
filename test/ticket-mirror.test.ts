@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import type { Env } from "../src/env";
 import { handleGithubWebhook } from "../src/webhook";
 import { ticketFromIssue, mirrorIssue } from "../src/tools/ticket-mirror";

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { write_plan, get_plan } from "../src/tools/plan";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import type { SprintRow, PlanVersionRow, PlanRow } from "@shared/rows";
 import { PLAN_NARRATIVE_MAX } from "@shared/sprints";
 import { SprintError } from "../src/tools/sprints";

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
-import { all, first, run, nowIso } from "../src/db";
+import { all, first, run, nowIso } from "./helpers/db";
 import type { TicketDetail, TicketListItem, TicketStatus } from "@shared/tickets";
 import { TICKET_STATUSES, TICKET_TRANSITIONS, boardOrder } from "@shared/tickets";
 import { cookieFor, seedPerson } from "./helpers/persons";

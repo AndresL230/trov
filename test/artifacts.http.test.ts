@@ -7,7 +7,7 @@ import { env } from "cloudflare:test";
 import { Hono } from "hono";
 import { app } from "../src/routes";
 import worker from "../src/index";
-import { run, nowIso } from "../src/db";
+import { run, nowIso } from "./helpers/db";
 import { sessionGate, type AppEnv } from "../src/auth/principal";
 import { mintToken } from "../src/auth/tokens";
 import { sha256Hex } from "../src/tools/artifacts";

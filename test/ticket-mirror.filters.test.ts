@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx } from "./helpers/tenant";
-import { first } from "../src/db";
+import { first } from "./helpers/db";
 import { mirrorIssue } from "../src/tools/ticket-mirror";
 import { create_ticket, set_ticket_sprint } from "../src/tools/tickets";
 import { create_sprint, list_sprints } from "../src/tools/sprints";

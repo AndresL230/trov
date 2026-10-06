@@ -7,7 +7,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { create_ticket, transition_ticket } from "../src/tools/tickets";
 import { create_sprint } from "../src/tools/sprints";
 import { getKind, REGISTRY } from "../src/notifications/registry";

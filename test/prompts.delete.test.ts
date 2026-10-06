@@ -10,7 +10,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { app } from "../src/routes";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { savePrompt, deletePrompt, recordPromptUse, PromptSaveInput } from "../src/tools/prompts";
 import { renamePerson } from "../src/auth/persons";
 import { cookieFor, seedPerson } from "./helpers/persons";

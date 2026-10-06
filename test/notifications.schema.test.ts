@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { REGISTRY } from "../src/notifications/registry";
 import { seedNotificationPolicy } from "../src/notifications/policy";
 import type { NotificationPolicyRow, NotificationSettingsRow, PersonRow } from "@shared/rows";

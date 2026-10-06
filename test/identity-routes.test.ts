@@ -4,7 +4,7 @@ import { platformCtx, systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { ingestEvent } from "../src/consumer";
 import { getMyWork } from "../src/tools/mywork";
 import { seedPerson } from "./helpers/persons";

@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import { buildAuthApp } from "../src/auth/routes";
 import { sessionGate, type AppEnv } from "../src/auth/principal";
 import { hmacSeal } from "../src/auth/crypto";
-import { first, all } from "../src/db";
+import { first, all } from "./helpers/db";
 import { createInvite } from "../src/auth/invites";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { makeGoogleKeys, signIdToken, googleFetch, CLAIMS } from "./helpers/google";

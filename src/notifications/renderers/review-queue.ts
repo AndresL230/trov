@@ -1,8 +1,6 @@
 import type { NotificationKind, Section } from "@shared/notifications";
 import type { TenantContext } from "../../data/sql";
-import { legacyDb } from "../../data/legacy";
 import { list_proposals, list_adrs } from "../../tools/reads";
-import { legacyCtx } from "../../data/legacy-bridge";
 import { escapeHtml } from "../html";
 import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP, THEME } from "../assemble";
 

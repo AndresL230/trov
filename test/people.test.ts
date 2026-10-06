@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
 import type { Env } from "../src/env";
-import { first, run } from "../src/db";
+import { first, run } from "./helpers/db";
 import { recordSignIn } from "../src/auth/persons";
 import { create_ticket } from "../src/tools/tickets";
 import { sha256Hex } from "../src/tools/artifacts";

@@ -9,7 +9,7 @@ import { getRepoDashboard } from "../src/tools/repo";
 import { putSnapshot, putMetric } from "../src/repo/store";
 import { create_sprint, set_sprint_active } from "../src/tools/sprints";
 import { seedPerson } from "./helpers/persons";
-import { run } from "../src/db";
+import { run } from "./helpers/db";
 import type { CapturedEvent } from "@shared/contract";
 import type { RepoDashboard } from "@shared/repo";
 import type { RepoEvent } from "../src/repo/types";

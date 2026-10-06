@@ -6,7 +6,7 @@ import { getMyWork } from "../src/tools/mywork";
 import { get_plan } from "../src/tools/plan";
 import { query, get_feed, list_proposals, list_needs_triage, list_adrs, list_identity_tasks, list_tickets, get_ticket, ticket_badge } from "../src/tools/reads";
 import { get_sprint } from "../src/tools/sprints";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import docs from "../fixtures/dev/docs.json";
 import feed from "../fixtures/dev/feed.json";
 import adrs from "../fixtures/dev/adrs.json";

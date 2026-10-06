@@ -1,8 +1,7 @@
 import type { CapturedEvent } from "@shared/contract";
 import type { Env } from "./env";
-import { type DB } from "./db";
 import { platform, type TenantContext } from "./data/context";
-import { legacyDb, legacySystemTenant } from "./data/legacy";
+import { legacySystemTenant } from "./data/legacy";
 import { ingestEvent, ingestRepoEvent } from "./consumer";
 import { type Summarizer, type PrSummary, type IssueSummary, geminiPrSummarizer, geminiIssueSummarizer, storePrSummary, storeIssueSummary } from "./tools/summarize";
 import { applyEventProgress } from "./tools/progress";

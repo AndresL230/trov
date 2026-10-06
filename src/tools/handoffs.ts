@@ -15,10 +15,8 @@
 
 import { z } from "zod";
 import { all, first, run, nowIso, type TenantContext } from "../data/sql";
-import { legacyDb } from "../data/legacy";
 import { append_feed } from "./writes";
-import { legacyCtx } from "../data/legacy-bridge";
-import { getPerson } from "../auth/persons";
+import { memberHandle } from "../auth/persons";
 import {
   EMPTY_CONTEXT, firstLine,
   type HandoffBox, type HandoffContext, type HandoffStatus, type HandoffView,
@@ -120,9 +118,10 @@ export async function createHandoff(
   let recipient = input.recipient ?? "anyone";
   if (recipient.toLowerCase() === "anyone") recipient = "anyone";
   else {
-    const p = await getPerson(legacyDb(ctx), recipient.replace(/^@/, ""));
-    if (!p) throw new HandoffError("bad_request", `unknown recipient: ${recipient}`);
-    recipient = p.handle;
+    // A recipient is a MEMBER of this org (§4.3): another org's person reads as unknown.
+    const member = await memberHandle(ctx, recipient.replace(/^@/, ""));
+    if (!member) throw new HandoffError("bad_request", `unknown recipient: ${recipient}`);
+    recipient = member;
   }
   const c = { ...EMPTY_CONTEXT, ...(input.context ?? {}) };
   const context: HandoffContext = {

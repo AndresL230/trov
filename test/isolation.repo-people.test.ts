@@ -15,7 +15,7 @@ import type { RepoDrift } from "@shared/repo";
 import type { PersonForAgents } from "@shared/people";
 import type { Env } from "../src/env";
 import type { TenantContext } from "../src/data/context";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { buildTrovMcpServer } from "../src/mcp";
 import { PersonError, listPersons, memberHandle, requireMember } from "../src/auth/persons";
 import { fillFailedJob } from "../src/repo/github";

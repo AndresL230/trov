@@ -15,7 +15,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import { pollSaplingMetrics } from "../src/repo/poll";
 import { putMetric } from "../src/repo/store";
 import { getRepoDashboard } from "../src/tools/repo";

@@ -4,7 +4,7 @@ import { systemCtx } from "./helpers/tenant";
 import { IngestPayload } from "@shared/contract";
 import { consume, ingestDocProposal, ingestFeedEntry } from "../src/consumer";
 import { promote_doc } from "../src/tools/writes";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import type { DocRow, DocVersionRow, FeedRow, AdrRow } from "@shared/rows";
 
 const AUTHOR = "real-user";

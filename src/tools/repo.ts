@@ -9,7 +9,6 @@ import {
 import type { PersonColor } from "@shared/rows";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
 import { type TenantContext, all, first, nowIso, ph } from "../data/sql";
-import { legacyDb } from "../data/legacy";
 import { ISSUE_GONE_ACTIONS } from "./issue-gone";
 import { list_sprints } from "./sprints";
 import {

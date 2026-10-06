@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { systemCtx } from "./helpers/tenant";
 import wranglerToml from "../wrangler.toml?raw";
-import { all, run, nowIso } from "../src/db";
+import { all, run, nowIso } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { pingHealth } from "../src/repo/poll";
 import { handleRepoCron, railwayTokens, REPO_CRON } from "../src/repo/cron";

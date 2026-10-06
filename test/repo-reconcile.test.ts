@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { systemCtx } from "./helpers/tenant";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { reconcileRepo } from "../src/repo/github";
 import { getSnapshot } from "../src/repo/store";

@@ -13,7 +13,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { app } from "../src/routes";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { write_plan } from "../src/tools/plan";
 import { create_sprint, list_sprints } from "../src/tools/sprints";
 import type { SprintRow } from "@shared/rows";

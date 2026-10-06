@@ -1,8 +1,5 @@
-import { type PlatformContext, stmt, batch, nowIso } from "../data/platform-sql";
-import * as platformSql from "../data/platform-sql";
+import { type PlatformContext, first, all, run, stmt, batch, nowIso } from "../data/platform-sql";
 import { type TenantContext, first as tenantFirst, all as tenantAll } from "../data/sql";
-import type { legacyDb } from "../data/legacy";
-import * as legacySql from "../db";
 import { PERSON_COLORS, type PersonColor, type PersonRow, type IdentityRow, type IdentityProvider } from "@shared/rows";
 import { avatarSrc, type PersonSummary } from "@shared/people";
 
@@ -25,21 +22,7 @@ export function defaultColor(seed: string): PersonColor {
   return PERSON_COLORS[h % PERSON_COLORS.length];
 }
 
-// MT: DELETE WITH `legacyDb` (end of Phase 3). `getPerson`, `findIdentity`, `linkIdentity` and `listIdentities`
-// (and `recordInviteEmail`, ./invites.ts) are also called by modules that are not ported yet and hold a bare
-// D1 handle (`db`, later `legacyDb(ctx)`) with no PlatformContext in scope. Until those callers are handed
-// one, these five take either.
-export type PersonReader = PlatformContext | ReturnType<typeof legacyDb>;
-const isPlatform = (p: PersonReader): p is PlatformContext => "actor" in p;
-const first = <T>(p: PersonReader, query: string, ...params: unknown[]): Promise<T | null> =>
-  isPlatform(p) ? platformSql.first<T>(p, query, ...params) : legacySql.first<T>(p, query, ...params);
-const all = <T>(p: PersonReader, query: string, ...params: unknown[]): Promise<T[]> =>
-  isPlatform(p) ? platformSql.all<T>(p, query, ...params) : legacySql.all<T>(p, query, ...params);
-export const runEither = (p: PersonReader, query: string, ...params: unknown[]): Promise<D1Result> =>
-  isPlatform(p) ? platformSql.run(p, query, ...params) : legacySql.run(p, query, ...params);
-const run = runEither;
-
-export function getPerson(p: PersonReader, handle: string): Promise<PersonRow | null> {
+export function getPerson(p: PlatformContext, handle: string): Promise<PersonRow | null> {
   return first<PersonRow>(p, `SELECT * FROM persons WHERE handle = ? COLLATE NOCASE`, handle);
 }
 
@@ -66,7 +49,24 @@ export async function requireMember(ctx: TenantContext, handle: string): Promise
   return member;
 }
 
-export function findIdentity(p: PersonReader, provider: IdentityProvider, subject: string): Promise<IdentityRow | null> {
+/** A MEMBER's person row — `getPerson` for a tenant module, with `memberHandle`'s rule: a person who is
+ *  not in the context's org (or a reserved handle) reads as null, so no name crosses an org boundary. */
+export async function memberPerson(ctx: TenantContext, handle: string): Promise<PersonRow | null> {
+  const row = await tenantFirst<PersonRow>(ctx,
+    `SELECT p.* FROM persons p JOIN memberships m ON m.user_id = p.handle AND m.org_id = ?
+      WHERE p.handle = ? COLLATE NOCASE`, ctx.orgId, handle);
+  return row && !RESERVED_HANDLES.includes(row.handle.toLowerCase()) ? row : null;
+}
+
+/** The GitHub logins linked to a MEMBER (what My Work joins events on); none for a non-member. */
+export async function memberGithubLogins(ctx: TenantContext, handle: string): Promise<string[]> {
+  const rows = await tenantAll<{ subject: string }>(ctx,
+    `SELECT i.subject FROM identities i JOIN memberships m ON m.user_id = i.person AND m.org_id = ?
+      WHERE i.person = ? COLLATE NOCASE AND i.provider = 'github' ORDER BY i.linked_at ASC`, ctx.orgId, handle);
+  return rows.map((r) => r.subject);
+}
+
+export function findIdentity(p: PlatformContext, provider: IdentityProvider, subject: string): Promise<IdentityRow | null> {
   return first<IdentityRow>(p, `SELECT * FROM identities WHERE provider = ? AND subject = ?`, provider, subject);
 }
 
@@ -124,7 +124,7 @@ export async function createPerson(p: PlatformContext, n: { handle: string; name
   return (await getPerson(p, n.handle))!;
 }
 
-export async function linkIdentity(p: PersonReader, i: { provider: IdentityProvider; subject: string; label: string; person: string; linkedBy: string }): Promise<void> {
+export async function linkIdentity(p: PlatformContext, i: { provider: IdentityProvider; subject: string; label: string; person: string; linkedBy: string }): Promise<void> {
   await run(p, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES (?, ?, ?, ?, ?, ?)`,
     i.provider, i.subject, i.label, i.person, nowIso(), i.linkedBy);
 }
@@ -144,7 +144,7 @@ export async function unlinkIdentity(p: PlatformContext, person: string, provide
   return "ok";
 }
 
-export function listIdentities(p: PersonReader, person: string): Promise<IdentityRow[]> {
+export function listIdentities(p: PlatformContext, person: string): Promise<IdentityRow[]> {
   return all<IdentityRow>(p, `SELECT * FROM identities WHERE person = ? COLLATE NOCASE ORDER BY linked_at ASC`, person);
 }
 

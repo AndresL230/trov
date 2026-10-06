@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { repoEnvironments } from "../src/repo/config";
 import { putSnapshot, getSnapshot, putMetric, putMetrics, metricSeries, metricsSince, metricsEver, productReadings, latestMetric, pruneRepoCapture } from "../src/repo/store";

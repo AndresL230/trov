@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx, ORG_A } from "./helpers/tenant";
 import { app } from "../src/routes";
-import { all, run, nowIso } from "../src/db";
+import { all, run, nowIso } from "./helpers/db";
 import { renamePerson, HANDLE_COLUMNS, getPerson } from "../src/auth/persons";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { createSession } from "../src/auth/session";
@@ -147,8 +147,8 @@ describe("renamePerson", () => {
       expect(newCount[0].n, `${table}.${column} has no new-me row`).toBeGreaterThanOrEqual(1);
     }
 
-    expect(await getPerson(env.DB, "new-me")).not.toBeNull();
-    expect(await getPerson(env.DB, "old-me")).toBeNull();
+    expect(await getPerson(platformCtx(), "new-me")).not.toBeNull();
+    expect(await getPerson(platformCtx(), "old-me")).toBeNull();
 
     const fkViolations = await all(env.DB, `PRAGMA foreign_key_check`);
     expect(fkViolations).toEqual([]);
@@ -210,8 +210,8 @@ describe("renamePerson", () => {
     expect(await renamePerson(platformCtx(), "andresl230", "AndresL230")).toEqual({ ok: false, reason: "same" });
 
     expect(await renamePerson(platformCtx(), "AndresL230", "andres")).toEqual({ ok: true });
-    expect(await getPerson(env.DB, "andres")).not.toBeNull();
-    expect(await getPerson(env.DB, "AndresL230")).toBeNull();
+    expect(await getPerson(platformCtx(), "andres")).not.toBeNull();
+    expect(await getPerson(platformCtx(), "AndresL230")).toBeNull();
   });
 
   it("refuses: taken, invalid, reserved, not_found", async () => {
@@ -267,8 +267,8 @@ describe("POST /auth/me/handle — admin guard", () => {
     const res = await post("/auth/me/handle", cookie, { handle: "someone" });
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "admin_handle_not_allowlisted" });
-    expect(await getPerson(env.DB, "admin-user")).not.toBeNull();
-    expect(await getPerson(env.DB, "someone")).toBeNull();
+    expect(await getPerson(platformCtx(), "admin-user")).not.toBeNull();
+    expect(await getPerson(platformCtx(), "someone")).toBeNull();
   });
 
   it("the case-insensitive 'same' check runs before the admin guard: an admin re-submitting their own handle gets 400, not 403", async () => {

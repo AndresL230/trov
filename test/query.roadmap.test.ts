@@ -6,7 +6,7 @@ import { write_plan } from "../src/tools/plan";
 import { upsertProgress } from "../src/tools/progress";
 import { create_ticket, transition_ticket } from "../src/tools/tickets";
 import { TicketCreate } from "@shared/tickets";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import { RESET_STATEMENTS } from "../scripts/seed/reset.mjs";
 import { seedPerson } from "./helpers/persons";
 

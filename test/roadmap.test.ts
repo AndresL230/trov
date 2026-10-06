@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run, nowIso } from "../src/db";
+import { all, first, run, nowIso } from "./helpers/db";
 import type { SprintRow } from "@shared/rows";
 import { fetchGithubRefProgress, upsertProgress } from "../src/tools/progress";
 import { get_plan, write_plan } from "../src/tools/plan";

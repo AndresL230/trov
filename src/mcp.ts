@@ -5,7 +5,6 @@ import type { Env } from "./env";
 import type { Principal } from "./auth/principal";
 import { isAdmin } from "./auth/principal";
 import type { TenantContext } from "./data/context";
-import { legacyDb } from "./data/legacy";
 import { get_doc, list_docs, get_feed, query, list_tickets, get_ticket, list_sprints, get_sprint } from "./tools/reads";
 import {
   TicketSeg, TicketAssigneeFilter, TicketCategory,
@@ -13,6 +12,7 @@ import {
   TicketAssigneeToggle,
 } from "@shared/tickets";
 import { TicketError } from "./tools/tickets";
+import { PersonError } from "./auth/persons";
 import {
   SprintError, create_sprint, set_sprint_active, complete_sprint, add_sprint_resource, delete_sprint,
 } from "./tools/sprints";
@@ -65,7 +65,7 @@ async function runTool(fn: () => Promise<unknown>) {
     // An ArtifactError travels the same way. Its not_found message IS "not_found", so a
     // missing slug, a private page and a version-0 page all read exactly
     // { error: "not_found", code: "not_found" } — the check is never an existence oracle.
-    const code = err instanceof TicketError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError || err instanceof PromptError ? err.code : undefined;
+    const code = err instanceof TicketError || err instanceof PersonError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError || err instanceof PromptError ? err.code : undefined;
     return {
       content: [{ type: "text" as const, text: JSON.stringify(code ? { error: message, code } : { error: message }) }],
       isError: true as const,

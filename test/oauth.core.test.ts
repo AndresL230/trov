@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
-import { all, first, type DB } from "../src/db";
+import { all, first, type DB } from "./helpers/db";
 import { pkce, sha256Hex } from "../src/auth/crypto";
 import { seedPerson } from "./helpers/persons";
 import {

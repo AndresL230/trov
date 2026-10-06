@@ -7,7 +7,7 @@ import { env } from "cloudflare:test";
 import { IngestPayload, type CapturedEvent } from "@shared/contract";
 import type { AdrRow, DocRow, DocVersionRow, NeedsTriageRow } from "@shared/rows";
 import { app } from "../src/routes";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { consume, ingestAdrDraft, ingestDocProposal, ingestEvent, ingestFeedEntry, ingestRepoEvent } from "../src/consumer";
 import {
   get_doc, get_feed, get_ticket, list_adrs, list_discarded_identities, list_doc_meta, list_docs, list_identity_tasks,
