@@ -75,7 +75,7 @@ function databaseName() {
   } catch {
     /* fall through */
   }
-  return "canopy"; // the D1 database keeps its name through the rename to Trov
+  return "trov"; // what wrangler.toml names the D1 database (binding DB)
 }
 
 function geminiKey() {

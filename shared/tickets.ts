@@ -184,8 +184,6 @@ export type TicketAssigneeFilter = z.infer<typeof TicketAssigneeFilter>;
 
 // ── link parsing (shared so the SPA and the server agree) ────────────────────
 
-export const DEFAULT_TICKET_REPO = "SaplingLearn/sapling";
-
 export interface ParsedLink {
   url: string;
   kind: TicketLinkKind;
@@ -200,7 +198,9 @@ export interface ParsedLink {
  * for shape:
  *   - trims; empty → null
  *   - no http(s) prefix → a bare issue ref: `https://github.com/<repo>/issues/<n>`
- *     (a leading `#` is stripped, so `#214` and `214` are the same input)
+ *     (a leading `#` is stripped, so `#214` and `214` are the same input), where `<repo>`
+ *     is the ORG's primary repository, passed by the caller. With no repository (`null` —
+ *     the org has connected none) a bare ref is unusable: null. There is no default repo.
  *   - github.com/<owner>/<repo>/(issues|pull)/<n> → kind github, label `<repo> #<n>`,
  *     meta `GITHUB · ISSUE` / `GITHUB · PULL REQUEST`
  *   - any other github.com URL → kind github, label = the path after github.com/
@@ -215,13 +215,14 @@ export interface ParsedLink {
  *   2. the http(s) test is case-insensitive, so `HTTPS://…` is treated as the URL
  *      it obviously is rather than as an issue ref.
  */
-export function parseTicketLink(raw: string, repo: string = DEFAULT_TICKET_REPO): ParsedLink | null {
+export function parseTicketLink(raw: string, repo: string | null): ParsedLink | null {
   const v = raw.trim();
   if (!v) return null;
 
   let url: string;
   if (/^https?:/i.test(v)) url = v;
   else if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(v)) return null;   // some other scheme — never dereference it
+  else if (!repo) return null;                                 // a bare ref, and no repository to resolve it against
   else url = `https://github.com/${repo}/issues/${v.replace(/^#/, "")}`;
 
   const m = url.match(/github\.com\/[^/]+\/([^/]+)\/(issues|pull)\/(\d+)/);

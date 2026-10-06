@@ -1,9 +1,14 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
 import { all, first, run } from "./helpers/db";
 import type { TicketDetail } from "@shared/tickets";
 import { cookieFor } from "./helpers/persons";
+import { addOrgRepo } from "./helpers/org-config";
+
+// A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
+// so the suite's org has SaplingLearn's connected, as 0037 seeds it in production.
+beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 
 // POST /tickets/:id/delete — a HARD delete of a NATIVE ticket, any signed-in member.
 // A ticket mirrored from a GitHub issue is refused (403) and left exactly as it was.

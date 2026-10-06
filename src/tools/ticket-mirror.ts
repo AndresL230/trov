@@ -226,7 +226,7 @@ async function handlesFor(ctx: TenantContext, logins: string[]): Promise<string[
 }
 
 /** The ticket's ONE locked link: the issue itself. */
-const sourceLink = (m: IssueMirror) => parseTicketLink(m.htmlUrl);
+const sourceLink = (m: IssueMirror) => parseTicketLink(m.htmlUrl, null); // always a full URL: no repository to resolve against
 
 /**
  * Create the ticket, its assignees, its opening history row and its locked link

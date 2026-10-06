@@ -20,7 +20,7 @@
 // is the one table, shared with the SPA.
 
 import type { TicketCreate, TicketEdit, TicketStatus } from "@shared/tickets";
-import { canTransition, parseTicketLink, placeInColumn, DEFAULT_TICKET_REPO } from "@shared/tickets";
+import { canTransition, parseTicketLink, placeInColumn } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
 import { type TenantContext, type Stmt, first, all, run, stmt, batch, nowIso } from "../data/sql";
 import { requireMember } from "../auth/persons";
@@ -89,18 +89,23 @@ async function requireSprint(ctx: TenantContext, sprintId: number): Promise<void
 
 /**
  * The repository a BARE issue ref (`#214`) resolves against: the org's primary repository (`org_repos`,
- * D16) — never another org's. An org that has not configured one still gets the pre-multitenancy
- * default (`DEFAULT_TICKET_REPO`); the Phase 7 cleanup removes that fallback with the constant.
+ * D16) — never another org's, and never a default: an org that has connected none gets null, and a
+ * bare ref there is refused (`unusableLink`) rather than pointed at somebody else's repository.
  */
-export async function ticketLinkRepo(ctx: TenantContext): Promise<string> {
+export async function ticketLinkRepo(ctx: TenantContext): Promise<string | null> {
   const row = await first<{ repo_full_name: string }>(ctx, `SELECT repo_full_name FROM org_repos WHERE org_id = ? AND is_primary = 1`, ctx.orgId);
-  return row?.repo_full_name ?? DEFAULT_TICKET_REPO;
+  return row?.repo_full_name ?? null;
 }
+
+/** Why a raw link was unusable, as the refusal's message: a bare `#n` with no repository says what to do. */
+export const unusableLink = (raw: string, repo: string | null): string =>
+  !repo && /^#?\d+$/.test(raw.trim()) ? `"${raw.trim()}" needs a repository: connect one in Org settings › Repositories, or paste the full URL` : `unusable link: ${raw}`;
 
 /** Parse a raw link input, or 400. A blank raw is the caller's business, not this helper's. */
 async function requireParsedLink(ctx: TenantContext, raw: string) {
-  const parsed = parseTicketLink(raw, await ticketLinkRepo(ctx));
-  if (!parsed) throw new TicketError("bad_request", `unusable link: ${raw}`);
+  const repo = await ticketLinkRepo(ctx);
+  const parsed = parseTicketLink(raw, repo);
+  if (!parsed) throw new TicketError("bad_request", unusableLink(raw, repo));
   return parsed;
 }
 

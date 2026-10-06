@@ -38,7 +38,8 @@ import { normalizeSprintDate, sprintDatesProblem } from "@shared/sprints-core";
 import { parseTicketLink } from "@shared/tickets";
 import { type TenantContext, first, all, run, stmt, batch, nowIso, ph, fanOut } from "../data/sql";
 import { getProgress } from "./progress";
-import { ticketLinkRepo } from "./tickets";
+import { ticketLinkRepo, unusableLink } from "./tickets";
+import { requireMember } from "../auth/persons";
 
 /**
  * A typed failure the sprint routes map onto an HTTP status — the same three
@@ -191,6 +192,17 @@ function viewOf(
   return toSprintView(row, { closed: progress.closed, total: progress.total }, members, sprintIssueCounts(cache));
 }
 
+/**
+ * A sprint's `lead` as it may be stored: a member of THIS org, by their canonical handle. `undefined`
+ * (not supplied) stays undefined and null / blank is null (no lead); anything else must pass
+ * `requireMember` — so a sprint can never name a person who is not in the org (or another org's).
+ */
+export async function sprintLead(ctx: TenantContext, lead: string | null | undefined): Promise<string | null | undefined> {
+  if (lead === undefined) return undefined;
+  const handle = (lead ?? "").trim().replace(/^@/, "");
+  return handle === "" ? null : requireMember(ctx, handle);
+}
+
 /** One sprint's row, or a 404-shaped throw. */
 async function requireSprint(ctx: TenantContext, id: number): Promise<SprintRow> {
   const sp = await first<SprintRow>(ctx, `SELECT * FROM sprints WHERE id = ? AND org_id = ?`, id, ctx.orgId);
@@ -323,8 +335,11 @@ export async function get_sprint(ctx: TenantContext, id: number): Promise<Sprint
  * `due: null`. '' is the one sentinel; nothing else means "unscheduled", and
  * the list order (SPRINT_ORDER above) sorts those rows last.
  *
- * `lead` is stored as given (a person handle) without a persons lookup — the
- * same contract the admin plan write has, so the two paths cannot disagree.
+ * `lead` is a MEMBER of this org, checked like a ticket's assignee (`sprintLead` →
+ * `requireMember`): an unknown, reserved or non-member handle is a `bad_request`
+ * (`PersonError`) that writes nothing, and the stored value is the person's canonical
+ * handle. The admin plan write goes through the same check, so the two paths cannot
+ * disagree. Blank / null = no lead.
  *
  * `start` / `due` are re-checked HERE with the one validator (`sprintDatesProblem`,
  * shared/sprints-core.ts) even though `SprintCreate` already did: a bad pair is a
@@ -333,6 +348,7 @@ export async function get_sprint(ctx: TenantContext, id: number): Promise<Sprint
 export async function create_sprint(ctx: TenantContext, input: SprintCreate, author: string): Promise<SprintView> {
   const problem = sprintDatesProblem(input);
   if (problem) throw new SprintError("bad_request", problem);
+  const lead = await sprintLead(ctx, input.lead);
   const now = nowIso();
   const res = await run(
     ctx,
@@ -348,7 +364,7 @@ export async function create_sprint(ctx: TenantContext, input: SprintCreate, aut
     normalizeSprintDate(input.start),
     normalizeSprintDate(input.due) ?? "",
     input.urgency,
-    input.lead ?? null,
+    lead ?? null,
     input.domain ?? null,
     now,
     author,
@@ -450,8 +466,9 @@ export async function delete_sprint(ctx: TenantContext, id: number): Promise<{ i
  */
 export async function add_sprint_resource(ctx: TenantContext, id: number, raw: string): Promise<SprintDetail> {
   await requireSprint(ctx, id);
-  const link = parseTicketLink(raw, await ticketLinkRepo(ctx));
-  if (!link) throw new SprintError("bad_request", `unusable link: ${raw}`);
+  const repo = await ticketLinkRepo(ctx);
+  const link = parseTicketLink(raw, repo);
+  if (!link) throw new SprintError("bad_request", unusableLink(raw, repo));
 
   const existing = await first<{ id: number }>(
     ctx,

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx, mintTokenFor, ORG_A } from "./helpers/tenant";
 import { app } from "../src/routes";
@@ -16,6 +16,11 @@ import {
   ensure_identity_task, map_identity,
 } from "../src/tools/writes";
 import { create_ticket, add_ticket_comment } from "../src/tools/tickets";
+import { addOrgRepo } from "./helpers/org-config";
+
+// A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
+// so the suite's org has SaplingLearn's connected, as 0037 seeds it in production.
+beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 
 const post = (path: string, c: string, body: unknown) =>
   app.request(path, { method: "POST", headers: { cookie: c, "content-type": "application/json" }, body: JSON.stringify(body) }, env);

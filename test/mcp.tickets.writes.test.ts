@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -12,6 +12,11 @@ import type { TicketDetail } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
 import { seedPerson } from "./helpers/persons";
 import { bearerCtx, systemCtx, platformCtx } from "./helpers/tenant";
+import { addOrgRepo } from "./helpers/org-config";
+
+// A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
+// so the suite's org has SaplingLearn's connected, as 0037 seeds it in production.
+beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 
 // Phase 2: the ticket WRITE tools, driven through the REAL registered closures
 // over an in-memory transport — never the writers directly, so a missing or

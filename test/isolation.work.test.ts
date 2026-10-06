@@ -208,6 +208,24 @@ describe("tickets", () => {
     expect(await get_ticket(B, bParent)).not.toBeNull();
   });
 
+  it("a bare issue ref resolves against the org's OWN primary repository — and with none connected it is refused, never pointed at another org's", async () => {
+    await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_a_app', ?, 'a-org/app', 1, 't', 'test')`, ORG_A);
+    const a = await create_ticket(A, ticket({ title: "A", link: "#214" }), "alice");
+    expect((await get_ticket(A, a))!.links.map((l) => l.url)).toEqual(["https://github.com/a-org/app/issues/214"]);
+    // B has connected nothing: no default repository, and certainly not A's.
+    const refused = await create_ticket(B, ticket({ title: "B", link: "#214" }), "bob").then(() => null, (x: unknown) => x);
+    expect(refused).toMatchObject({ code: "bad_request", message: expect.stringContaining("connect one in Org settings › Repositories") });
+    expect(await count("tickets", ORG_B)).toBe(0); // refused before the first insert
+    const b = await create_ticket(B, ticket({ title: "B" }), "bob");
+    await expect(add_ticket_link(B, b, "214", "bob")).rejects.toMatchObject({ code: "bad_request" });
+    const bSprint = (await create_sprint(B, sprint("B sprint"), "bob")).id;
+    await expect(add_sprint_resource(B, bSprint, "#7")).rejects.toMatchObject({ code: "bad_request" });
+    // A full URL needs no repository.
+    await add_ticket_link(B, b, "https://github.com/b-org/site/pull/3", "bob");
+    expect((await get_ticket(B, b))!.links.map((l) => l.label)).toEqual(["site #3"]);
+    expect(await all(env.DB, `SELECT url FROM ticket_links WHERE org_id = ? AND url LIKE '%a-org%'`, ORG_B)).toEqual([]);
+  });
+
   it("the GitHub mirror keys an issue per org", async () => {
     const payload = {
       action: "opened",
@@ -374,6 +392,47 @@ describe("the plan", () => {
     expect(await first(env.DB, `SELECT title, status FROM sprints WHERE id = ?`, b)).toEqual({ title: "B sprint", status: "upcoming" });
     expect((await get_plan(A)).version).toBe(0);
     expect(await count("plan_versions", ORG_A)).toBe(0);
+  });
+});
+
+describe("a sprint's lead is a member of the sprint's org", () => {
+  it("create_sprint: a non-member, another org's member, an unknown and a reserved handle are bad_request and write nothing; a member is stored by canonical handle", async () => {
+    for (const lead of ["bob" /* B only */, "nobody-at-all", "github-webhook"]) {
+      await expect(create_sprint(A, SprintCreate.parse({ label: `led by ${lead}`, lead }), "alice")).rejects.toMatchObject({ code: "bad_request" });
+    }
+    expect(await count("sprints", ORG_A)).toBe(0);
+    expect((await create_sprint(A, SprintCreate.parse({ label: "A's", lead: "@ALICE" }), "alice")).lead).toBe("alice");
+    expect((await create_sprint(B, SprintCreate.parse({ label: "B's", lead: "bob" }), "bob")).lead).toBe("bob");
+    expect((await create_sprint(B, SprintCreate.parse({ label: "B's, nobody leading", lead: "  " }), "bob")).lead).toBeNull();
+    expect((await create_sprint(B, SprintCreate.parse({ label: "B's, no lead given" }), "bob")).lead).toBeNull();
+    await expect(create_sprint(B, SprintCreate.parse({ label: "B's, led from A", lead: "alice" }), "bob")).rejects.toMatchObject({ code: "bad_request" });
+  });
+
+  it("the plan write checks every lead before it writes anything: one bad lead refuses the whole plan", async () => {
+    const before = await get_plan(A);
+    await expect(write_plan(A, { narrative: "n", sprints: [
+      { label: "ok", due: "2026-12-01", status: "upcoming", lead: "alice" },
+      { label: "not ours", due: "2026-12-02", status: "upcoming", lead: "bob" },
+    ] }, "alice")).rejects.toMatchObject({ code: "bad_request" });
+    expect(await count("sprints", ORG_A)).toBe(0);
+    expect((await get_plan(A)).narrative).toBe(before.narrative);
+    const { sprints } = await write_plan(A, { narrative: "n", sprints: [{ label: "ok", due: "2026-12-01", status: "upcoming", lead: "Alice" }] }, "alice");
+    expect(sprints.map((s) => s.lead)).toEqual(["alice"]);
+    // Omitted = unchanged, null = cleared, a non-member = refused with the stored lead left alone.
+    const id = sprints[0].id;
+    await write_plan(A, { narrative: "n", sprints: [{ id, label: "ok", due: "2026-12-01", status: "upcoming" }] }, "alice");
+    expect((await first<{ lead: string | null }>(env.DB, `SELECT lead FROM sprints WHERE id = ?`, id))!.lead).toBe("alice");
+    await expect(write_plan(A, { narrative: "n", sprints: [{ id, label: "ok", due: "2026-12-01", status: "upcoming", lead: "bob" }] }, "alice")).rejects.toMatchObject({ code: "bad_request" });
+    expect((await first<{ lead: string | null }>(env.DB, `SELECT lead FROM sprints WHERE id = ?`, id))!.lead).toBe("alice");
+    await write_plan(A, { narrative: "n", sprints: [{ id, label: "ok", due: "2026-12-01", status: "upcoming", lead: null }] }, "alice");
+    expect((await first<{ lead: string | null }>(env.DB, `SELECT lead FROM sprints WHERE id = ?`, id))!.lead).toBeNull();
+  });
+
+  it("over HTTP a lead who is not a member is a 400 that names the handle, and no sprint is created", async () => {
+    const r = await app.request("/api/o/saplinglearn/sprints", { method: "POST", headers: { cookie: await cookieFor("alice"), "content-type": "application/json" }, body: JSON.stringify({ label: "x", lead: "bob" }) }, env);
+    expect(r.status).toBe(400);
+    expect(JSON.stringify(await r.json())).toContain("bob");
+    expect(await count("sprints", ORG_A)).toBe(0);
   });
 });
 

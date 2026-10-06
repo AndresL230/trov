@@ -2,7 +2,7 @@ import type { SprintRow, PlanRow } from "@shared/rows";
 import type { SprintView } from "@shared/sprints";
 import { planNarrativeProblem, normalizeSprintDate, sprintDateProblem, sprintDatesProblem } from "@shared/sprints-core";
 import { type TenantContext, first, all, run, nowIso } from "../data/sql";
-import { list_sprints, SprintError } from "./sprints";
+import { list_sprints, sprintLead, SprintError } from "./sprints";
 
 /**
  * One sprint as the ADMIN plan write receives it. This is the DTO vocabulary
@@ -83,6 +83,10 @@ export async function write_plan(
     const order = sprintDatesProblem({ start, due: sp.due });
     if (order) throw new SprintError("bad_request", `sprint "${sp.label}": ${order}`);
   }
+  // Every named lead is a member of this org (./sprints.ts `sprintLead`) — checked for the WHOLE plan
+  // before the first write, and stored by canonical handle. Omitted stays unchanged; null clears.
+  const leads = new Map<PlanWrite["sprints"][number], string | null | undefined>();
+  for (const sp of input.sprints) leads.set(sp, await sprintLead(ctx, sp.lead));
 
   await run(ctx, `INSERT OR IGNORE INTO plan (org_id, narrative, current_version) VALUES (?, '', 0)`, ctx.orgId);
 
@@ -111,7 +115,7 @@ export async function write_plan(
         ["dates", sp.dates],
         ["start_date", sp.start === undefined ? undefined : normalizeSprintDate(sp.start)],
         ["urgency", sp.urgency],
-        ["lead", sp.lead],
+        ["lead", leads.get(sp)],
         ["domain", sp.domain],
         ["github_ref", sp.github_ref === undefined ? undefined : github_ref],
       ];
@@ -138,7 +142,7 @@ export async function write_plan(
         normalizeSprintDate(sp.due) ?? "",
         sp.status,
         sp.urgency ?? "normal",
-        sp.lead ?? null,
+        leads.get(sp) ?? null,
         sp.domain ?? null,
         github_ref,
         now,

@@ -998,7 +998,8 @@ tenantRoot.post("/tickets/:id/comment", async (c) => {
 
 /** Map a SprintError onto its status (404 unknown / 409 rule / 400 payload). */
 const sprintFail = (c: Context<AppEnv>, e: unknown): Response => {
-  if (e instanceof SprintError) return c.json({ error: e.message }, SPRINT_ERROR_STATUS[e.code]);
+  // A `lead` that is not a member of this org is a PersonError (`requireMember`): the same 400 a bad assignee is.
+  if (e instanceof SprintError || e instanceof PersonError) return c.json({ error: e.message }, SPRINT_ERROR_STATUS[e.code]);
   throw e; // not ours — a real 500
 };
 

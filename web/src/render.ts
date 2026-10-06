@@ -1887,10 +1887,10 @@ export function accountSection(s: AppState): string {
   };
   return `<section class="cnpy-tile cnpy-surface">
     <div style="${SECTION_LABEL}">Account</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-      <div style="min-width:0">
-        <div style="font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Signed in as ${me ? handleLink({ handle: me.handle, name: me.name, color: me.color }, me.handle, 13) : ""}</div>
-        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--green);margin-top:4px"><span style="flex:none;width:6px;height:6px;border-radius:50%;background:var(--green)"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(memberLine)}</span></div>
+    <div data-account-who style="display:flex;align-items:center;justify-content:space-between;gap:10px 12px;flex-wrap:wrap">
+      <div style="flex:1 1 150px;min-width:0">
+        <div style="font-size:13.5px;font-weight:500;line-height:1.35;overflow-wrap:anywhere">Signed in as ${me ? handleLink({ handle: me.handle, name: me.name, color: me.color }, me.handle, 13) : ""}</div>
+        <div style="display:flex;align-items:baseline;gap:6px;font-size:11.5px;line-height:1.4;color:var(--green);margin-top:4px"><span style="flex:none;width:6px;height:6px;border-radius:50%;background:var(--green);transform:translateY(-1px)"></span><span style="min-width:0;overflow-wrap:anywhere">${esc(memberLine)}</span></div>
       </div>
       <button data-act="signOut" class="cnpy-signout" style="flex:none;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500">Sign out</button>
     </div>

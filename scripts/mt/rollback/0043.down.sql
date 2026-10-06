@@ -1,8 +1,8 @@
 -- HAND-WRITTEN (not generated — scripts/mt/build-rollback.py only writes 0037-0040.down.sql).
 -- Rollback of 0043_platform_orgs.sql: the two tables it created. Run it BEFORE 0037-0040.down.sql —
 -- both tables reference orgs(id), which that file drops:
---   wrangler d1 execute canopy --remote --file scripts/mt/rollback/0043.down.sql
---   wrangler d1 execute canopy --remote --file scripts/mt/rollback/0037-0040.down.sql
+--   wrangler d1 execute trov --remote --file scripts/mt/rollback/0043.down.sql
+--   wrangler d1 execute trov --remote --file scripts/mt/rollback/0037-0040.down.sql
 -- Every statement is a no-op when 0043 was never applied, so it is safe to run on any database.
 --
 -- Not undone here, on purpose:

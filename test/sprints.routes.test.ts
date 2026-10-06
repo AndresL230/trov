@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
 import { all, first, run } from "./helpers/db";
@@ -9,6 +9,11 @@ import type { TicketDetail } from "@shared/tickets";
 import { cookieFor, seedPerson } from "./helpers/persons";
 
 import { systemCtx } from "./helpers/tenant";
+import { addOrgRepo } from "./helpers/org-config";
+
+// A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
+// so the suite's org has SaplingLearn's connected, as 0037 seeds it in production.
+beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 // ── harness (the Phase 2 route-test idiom: real routes, real cookies, real D1) ─
 
 const post = (path: string, cookie: string, body?: unknown) =>

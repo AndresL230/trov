@@ -1,7 +1,7 @@
 -- HAND-WRITTEN (not generated — scripts/mt/build-rollback.py only writes 0037-0040.down.sql).
 -- Rollback of 0046_abuse_limits.sql: the one table it created. It references nothing and nothing
 -- references it, so it can run at any point — before or after 0043.down.sql and 0037-0040.down.sql:
---   wrangler d1 execute canopy --remote --file scripts/mt/rollback/0046.down.sql
+--   wrangler d1 execute trov --remote --file scripts/mt/rollback/0046.down.sql
 -- Every statement is a no-op when 0046 was never applied, so it is safe to run on any database.
 -- A pre-0046 Worker never reads the table; dropping it only forgets the current windows' counts.
 --

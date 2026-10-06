@@ -4,14 +4,15 @@
 // (`.mt/` is gitignored).
 //
 // 1. Export the base tables' DATA from production. `wrangler d1 export` refuses databases with virtual
-//    tables (Canopy has seven FTS5 tables), so export data only, base tables only:
+//    tables (Trov has seven FTS5 tables), so export data only, base tables only. `trov` below is the
+//    database wrangler.toml binds as `DB` (`database_name`) — check it there before running:
 //
 //      mkdir -p .mt
-//      TABLES=$(npx wrangler d1 execute canopy --remote --json --command \
+//      TABLES=$(npx wrangler d1 execute trov --remote --json --command \
 //        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' \
 //         AND name <> 'd1_migrations' AND sql NOT LIKE 'CREATE VIRTUAL%' AND name NOT GLOB '*_fts_*'" \
 //        | node -e "for (const r of JSON.parse(require('fs').readFileSync(0))[0].results) console.log(r.name)")
-//      npx wrangler d1 export canopy --remote --no-schema $(printf -- '--table %s ' $TABLES) --output .mt/prod-data.sql
+//      npx wrangler d1 export trov --remote --no-schema $(printf -- '--table %s ' $TABLES) --output .mt/prod-data.sql
 //
 // 2. Run:  node scripts/mt/verify-migration.mjs .mt/prod-data.sql
 //

@@ -237,7 +237,8 @@ const MATRIX: Record<string, Entry> = {
   // sprints
   list_sprints: () => [read()],
   get_sprint: (o) => [refused({ id: o.sprint })],
-  create_sprint: (o) => [{ args: { label: "led by their member", lead: ONLY[o.org] }, expect: "own" }],
+  // A sprint's lead must be a member of the caller's org (`sprintLead`): the other org's person is refused, nothing written.
+  create_sprint: (o) => [refused({ label: "led by their member", lead: ONLY[o.org] })],
   set_sprint_active: (o) => [refused({ id: o.sprint, active: true })],
   complete_sprint: (o) => [refused({ id: o.sprint })],
   delete_sprint: (o) => [refused({ id: o.sprint })],

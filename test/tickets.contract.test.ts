@@ -22,6 +22,9 @@ const EXPECTED_TRANSITIONS: ReadonlyArray<readonly [TicketStatus, TicketStatus, 
     (["submitted", "in_progress", "testing", "done", "declined"] as const).map((to) =>
       [from, to, from !== to] as const));
 
+/** The org's primary repository, which every caller passes (there is no default one). */
+const REPO = "SaplingLearn/sapling";
+
 describe("ticket status machine", () => {
   it("canTransition matches the spec for all 25 from→to pairs", () => {
     // The table must actually be exhaustive over the status vocabulary.
@@ -118,8 +121,8 @@ describe("placeInColumn / boardOrder", () => {
 // ── the link parser ──────────────────────────────────────────────────────────
 describe("parseTicketLink", () => {
   it("resolves a bare issue number and a #-prefixed one to the same repo issue URL", () => {
-    const bare = parseTicketLink("214");
-    const hashed = parseTicketLink("#214");
+    const bare = parseTicketLink("214", REPO);
+    const hashed = parseTicketLink("#214", REPO);
     expect(bare).toEqual({
       url: "https://github.com/SaplingLearn/sapling/issues/214",
       kind: "github",
@@ -139,7 +142,7 @@ describe("parseTicketLink", () => {
   });
 
   it("shape 1 — a GitHub issue URL", () => {
-    expect(parseTicketLink("https://github.com/SaplingLearn/sapling/issues/214")).toEqual({
+    expect(parseTicketLink("https://github.com/SaplingLearn/sapling/issues/214", REPO)).toEqual({
       url: "https://github.com/SaplingLearn/sapling/issues/214",
       kind: "github",
       label: "sapling #214",
@@ -148,7 +151,7 @@ describe("parseTicketLink", () => {
   });
 
   it("shape 2 — a GitHub pull request URL", () => {
-    expect(parseTicketLink("https://github.com/AndresL230/trov/pull/43")).toEqual({
+    expect(parseTicketLink("https://github.com/AndresL230/trov/pull/43", REPO)).toEqual({
       url: "https://github.com/AndresL230/trov/pull/43",
       kind: "github",
       label: "trov #43",
@@ -158,21 +161,21 @@ describe("parseTicketLink", () => {
 
   it("shape 3 — any other github.com URL keeps kind github with the path as label (40 chars)", () => {
     // A GitHub url, verbatim — not Trov vocabulary.
-    expect(parseTicketLink("https://github.com/AndresL230/trov/milestone/4")).toEqual({
+    expect(parseTicketLink("https://github.com/AndresL230/trov/milestone/4", REPO)).toEqual({
       url: "https://github.com/AndresL230/trov/milestone/4",
       kind: "github",
       label: "AndresL230/trov/milestone/4",
       meta: "GITHUB",
     });
 
-    const long = parseTicketLink("https://github.com/AndresL230/trov/tree/feat/tickets/some/deep/path/that/keeps/going");
+    const long = parseTicketLink("https://github.com/AndresL230/trov/tree/feat/tickets/some/deep/path/that/keeps/going", REPO);
     expect(long!.kind).toBe("github");
     expect(long!.meta).toBe("GITHUB");
     expect(long!.label.length).toBe(40);
     expect(long!.label).toBe("AndresL230/trov/tree/feat/tickets/some/d");
 
     // Bare github.com with nothing after it → the "GitHub" fallback label.
-    expect(parseTicketLink("https://github.com/")).toEqual({
+    expect(parseTicketLink("https://github.com/", REPO)).toEqual({
       url: "https://github.com/",
       kind: "github",
       label: "GitHub",
@@ -181,7 +184,7 @@ describe("parseTicketLink", () => {
   });
 
   it("shape 4 — a Figma URL humanizes the last path segment", () => {
-    expect(parseTicketLink("https://www.figma.com/design/abc123/trov-tickets_queue?node-id=1-2")).toEqual({
+    expect(parseTicketLink("https://www.figma.com/design/abc123/trov-tickets_queue?node-id=1-2", REPO)).toEqual({
       url: "https://www.figma.com/design/abc123/trov-tickets_queue?node-id=1-2",
       kind: "figma",
       label: "Trov tickets queue",
@@ -190,34 +193,38 @@ describe("parseTicketLink", () => {
   });
 
   it("shape 5 — anything else is a plain link labeled with the hostname sans www.", () => {
-    expect(parseTicketLink("https://www.notion.so/team/spec-page")).toEqual({
+    expect(parseTicketLink("https://www.notion.so/team/spec-page", REPO)).toEqual({
       url: "https://www.notion.so/team/spec-page",
       kind: "plain",
       label: "notion.so",
       meta: "LINK",
     });
-    expect(parseTicketLink("http://example.com/x")!.label).toBe("example.com");
+    expect(parseTicketLink("http://example.com/x", REPO)!.label).toBe("example.com");
   });
 
   it("trims, and treats an empty/whitespace-only input as no link", () => {
-    expect(parseTicketLink("  https://github.com/SaplingLearn/sapling/issues/9  ")).toEqual({
+    expect(parseTicketLink("  https://github.com/SaplingLearn/sapling/issues/9  ", REPO)).toEqual({
       url: "https://github.com/SaplingLearn/sapling/issues/9",
       kind: "github",
       label: "sapling #9",
       meta: "GITHUB · ISSUE",
     });
-    expect(parseTicketLink("  #12\n")!.url).toBe("https://github.com/SaplingLearn/sapling/issues/12");
-    expect(parseTicketLink("")).toBeNull();
-    expect(parseTicketLink("   ")).toBeNull();
+    expect(parseTicketLink("  #12\n", REPO)!.url).toBe("https://github.com/SaplingLearn/sapling/issues/12");
+    // No repository connected: a bare ref cannot be resolved (never against some other org's repo); a URL still parses.
+    expect(parseTicketLink("#12", null)).toBeNull();
+    expect(parseTicketLink("12", null)).toBeNull();
+    expect(parseTicketLink("https://github.com/acme/app/issues/12", null)!.label).toBe("app #12");
+    expect(parseTicketLink("", REPO)).toBeNull();
+    expect(parseTicketLink("   ", REPO)).toBeNull();
   });
 
   it("refuses a non-http(s) scheme instead of pasting it into an issue URL", () => {
-    expect(parseTicketLink("javascript:alert(1)")).toBeNull();
-    expect(parseTicketLink("  JavaScript:alert(1)  ")).toBeNull();
-    expect(parseTicketLink("data:text/html,<script>x</script>")).toBeNull();
-    expect(parseTicketLink("mailto:someone@example.com")).toBeNull();
+    expect(parseTicketLink("javascript:alert(1)", REPO)).toBeNull();
+    expect(parseTicketLink("  JavaScript:alert(1)  ", REPO)).toBeNull();
+    expect(parseTicketLink("data:text/html,<script>x</script>", REPO)).toBeNull();
+    expect(parseTicketLink("mailto:someone@example.com", REPO)).toBeNull();
     // …while an uppercase http(s) scheme is still just a URL.
-    expect(parseTicketLink("HTTPS://example.com/x")!.kind).toBe("plain");
+    expect(parseTicketLink("HTTPS://example.com/x", REPO)!.kind).toBe("plain");
   });
 });
 
