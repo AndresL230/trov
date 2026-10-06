@@ -50,7 +50,7 @@ interface Fx {
   alice: string; ownerA: string;
   docSlug: string; promptSlug: string; artifactSlug: string;
   adrId: number; triageId: number; ticketId: number; subTicketId: number; linkId: number; sprintId: number; handoffId: number;
-  inviteId: number; hookId: string; envKey: string; imgSha: string; login: string; tokenId: number;
+  inviteId: number; hookId: string; envKey: string; imgSha: string; login: string; tokenId: number; installationId: number;
   bTicketId: number;
 }
 
@@ -114,6 +114,12 @@ async function seed(): Promise<Fx> {
   // Config and credentials: a repo, an environment, an email invite (the legacy route: `org_invites` + its sidecar), an MCP token.
   const hookId = "hook_canary_a";
   await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES (?, ?, ?, 1, ?, ?)`, hookId, ORG_A, `canary-a/${CANARY}-repo`, T, ALICE);
+  // A GitHub App installation bound to A (0048), covering that repo and attached to its row.
+  const installationId = 77001;
+  await run(env.DB, `INSERT INTO github_installations (installation_id, org_id, account_login, account_id, account_type, repository_selection, connected_by, connected_at, updated_at)
+    VALUES (?, ?, ?, 9001, 'Organization', 'selected', ?, ?, ?)`, installationId, ORG_A, `${CANARY}-account`, ALICE, T, T);
+  await run(env.DB, `INSERT INTO github_installation_repos (org_id, installation_id, repo_id, repo_full_name, private) VALUES (?, ?, 501, ?, 1)`, ORG_A, installationId, `canary-a/${CANARY}-repo`);
+  await run(env.DB, `UPDATE org_repos SET installation_id = ? WHERE id = ?`, installationId, hookId);
   const envKey = "canary-env";
   await run(env.DB, `INSERT INTO org_environments (org_id, key, position, label, branch, created_at, updated_at, updated_by) VALUES (?, ?, 0, ?, 'main', ?, ?, ?)`, ORG_A, envKey, `${CANARY} env`, T, T, ALICE);
   const invited = await app.request("/invites", { method: "POST", headers: { cookie: ownerA, "content-type": "application/json" }, body: JSON.stringify({ email: INVITED, name: `${CANARY} Invitee` }) }, env);
@@ -132,7 +138,7 @@ async function seed(): Promise<Fx> {
   return {
     cookies, alice: await cookieFor(ALICE), ownerA,
     docSlug: "iso-doc", promptSlug: "iso-prompt", artifactSlug, adrId, triageId, ticketId, subTicketId, linkId, sprintId, handoffId,
-    inviteId, hookId, envKey, imgSha, login, tokenId, bTicketId,
+    inviteId, hookId, envKey, imgSha, login, tokenId, installationId, bTicketId,
   };
 }
 
@@ -204,6 +210,7 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "a": case "b": return "nope"; // never `test`: Test connection would reach for the network
     case "email": return encodeURIComponent(INVITED);
     case "ref": return fx.artifactSlug;
+    case "installationId": return String(fx.installationId);
     default: throw new Error(`no fixture value for :${name} in ${suffix}`);
   }
 }
@@ -282,13 +289,17 @@ const TENANT: Record<string, Row> = {
   "GET /environments": {}, "PUT /environments": J({ order: [] }), "PUT /environments/:key": J({ label: "hijacked", branch: "main" }), "DELETE /environments/:key": {},
   // src/auth/token-routes.ts — the caller's OWN tokens for the org in the path (`:id` is alice's token in A)
   "GET /mcp-tokens": {}, "POST /mcp-tokens": J({}), "POST /mcp-tokens/:id/revoke": J({}),
+  // src/github-app/routes.ts — `:installationId` is A's installation (B has none: 404 before any GitHub call).
+  // 503: Install's `github_app_not_configured` — the App's secrets are blank in the suite.
+  "GET /github": {}, "POST /github/install": { body: {}, allow: [503] },
+  "POST /github/installations/:installationId/refresh": J({}), "POST /github/installations/:installationId/disconnect": J({}),
 };
 
-/** The org surface (src/orgs, src/integrations) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
+/** The org surface (src/orgs, src/integrations, src/github-app) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
  *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
  *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
 const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
+  suffix === "/me" || ["/settings", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens", "/github"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
 
 /** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
 const LEGACY_ONLY: Record<string, Row> = {
@@ -337,6 +348,7 @@ const PLATFORM: Record<string, string> = {
   "POST /api/platform/orgs/:slug/unsuspend": "requireSuperadmin", "PUT /api/platform/persons/:handle/org-limit": "requireSuperadmin",
   "GET /api/platform/admins": "requireSuperadmin", "POST /api/platform/admins": "requireSuperadmin", "DELETE /api/platform/admins/:handle": "requireSuperadmin",
   "GET /api/platform/audit": "requireSuperadmin", "GET /api/platform/usage": "requireSuperadmin",
+  "GET /github/app/setup": "the GitHub App's install callback: public to sessionGate, it reads the session itself and names no org from the request — the org is the one in its sealed gh_install cookie, which must name the SAME person, who must still be an admin of it; the installation is verified with that person's own GitHub token",
 };
 
 // ── the registry ─────────────────────────────────────────────────────────────
@@ -488,7 +500,7 @@ describe("controls", () => {
     expect(seen).toEqual(expect.arrayContaining([
       "/img/:sha", "/docs", "/doc/:slug", "/feed", "/search", "/search/quick", "/needs-triage", "/adrs", "/proposals", "/identity-tasks",
       "/persons", "/tickets", "/tickets/:id", "/sprints", "/sprints/:id", "/artifacts", "/artifacts/:slug", "/handoffs", "/handoffs/:id",
-      "/prompts", "/prompts/:slug", "/prompts/:slug/versions", "/people/:handle", "/members", "/repos", "/environments", "/me",
+      "/prompts", "/prompts/:slug", "/prompts/:slug/versions", "/people/:handle", "/members", "/repos", "/environments", "/me", "/github",
     ]));
     // …and at the old paths, for a person whose only org is A.
     for (const path of ["/docs", "/feed", "/tickets?seg=all", "/api/prompts", "/api/artifacts", `/api/people/${ALICE}`]) {
