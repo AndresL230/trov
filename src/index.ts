@@ -76,6 +76,7 @@ export default {
   //    (deploys/checks/runs/branches/drift/open-PRs) at :20 and the capture
   //    prune at :30 — see the subrequest budget at that dispatcher.
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    // MT: as in fetch() — the legacy org's policy rows; a new org's are seeded by createOrg.
     await ensureNotificationPolicySeeded(legacySystemTenant(env, "system")).catch(() => undefined);
     if (controller.cron === DAILY_CRON || controller.cron === WEEKLY_CRON) {
       await pruneUsage(platform(env, "system")).catch(() => undefined); // org_usage_daily retention (400 days)

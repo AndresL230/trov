@@ -262,6 +262,29 @@ describe("data layer — static enforcement (§4.4)", () => {
     expect(stale, `allowlist entries that excuse nothing: ${stale.join("; ")}`).toEqual([]);
   });
 
+  // The cut-over: an entry point that cannot name its org yet acts on org #1 through src/data/legacy.ts.
+  // Each such call is marked `// MT:` (what replaces it, and in which phase) and lives in one of the
+  // files below — so the list of what Phases 4 / 5b still have to replace is this test, not a grep.
+  it("only the marked cut-over entry points reach for the legacy org", () => {
+    const ENTRY_POINTS = [
+      "src/index.ts", "src/webhook.ts", "src/tools/backfill.ts", "src/repo/cron.ts", "src/notifications/cron.ts", "src/auth/routes.ts",
+    ];
+    const found = new Set<string>();
+    const unmarked: string[] = [];
+    for (const [file, src] of Object.entries(SOURCES)) {
+      if (file === "src/data/legacy.ts") continue;
+      const lines = src.split("\n");
+      lines.forEach((line, i) => {
+        if (!/\b(legacySystemTenant|joinLegacyOrg)\(/.test(line)) return;
+        found.add(file);
+        if (!lines.slice(Math.max(0, i - 3), i + 1).some((l) => l.includes("// MT:"))) unmarked.push(`${file}:${i + 1}  ${line.trim()}`);
+      });
+      if (/org_saplinglearn/.test(scanSource(file, src).code)) unmarked.push(`${file}: names org_saplinglearn outside src/data/legacy.ts`);
+    }
+    expect(unmarked, `\n${unmarked.join("\n")}\n`).toEqual([]);
+    expect([...found].sort()).toEqual([...ENTRY_POINTS].sort());
+  });
+
   it("the sprint_progress upsert is still there to be excused", () => {
     const hit = statements(SOURCES, ORG_KEYED).filter((s) => s.file === "src/tools/progress.ts" && /ON\s+CONFLICT\s*\(\s*sprint_id\s*\)/.test(s.text));
     expect(hit).toHaveLength(1);

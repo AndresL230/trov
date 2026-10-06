@@ -14,6 +14,7 @@
 import type { IntegrationKind, OrgAuditAction, OrgAuditDTO } from "@shared/integrations";
 import type { Env } from "../env";
 import { kekOf, requireRole } from "./context";
+import { SAPLINGLEARN_ORG_ID } from "./legacy";
 import { all, batch, first, nowIso, run, stmt, type Stmt, type TenantContext } from "./sql";
 
 export type KekEnv = Pick<Env, "TROV_KEK" | "TROV_KEK_PREVIOUS">;
@@ -502,7 +503,7 @@ export async function currentKeyVersion(ctx: TenantContext): Promise<number | nu
 // SaplingLearn's credentials are still Worker secrets until its owner enters each through the
 // Integrations page; ONLY this org may fall back to them, and only while it has no row for the
 // kind / scope. Phase 7 deletes the fallback, this constant and those Worker secrets.
-const LEGACY_ENV_ORG = "org_saplinglearn";
+const LEGACY_ENV_ORG = SAPLINGLEARN_ORG_ID;
 
 /** `RAILWAY_TOKEN_<KEY>` — src/repo/cron.ts `railwayTokens`' naming (key upper-cased, non-alphanumerics → `_`). */
 const railwayEnvName = (scope: string): string => `RAILWAY_TOKEN_${scope.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
