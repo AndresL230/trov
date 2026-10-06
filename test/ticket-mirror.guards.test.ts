@@ -10,6 +10,7 @@ import { mirrorIssue } from "../src/tools/ticket-mirror";
 import { create_ticket } from "../src/tools/tickets";
 import type { TicketDetail } from "@shared/tickets";
 import { cookieFor } from "./helpers/persons";
+import { bearerCtx } from "./helpers/tenant";
 
 // Phase 3 (0032): the lock and what stays writable on a mirrored ticket. The
 // owner's ruling: ONLY the source link is locked. Title, body, status (under the
@@ -38,7 +39,7 @@ const get = (path: string, cookie: string) => app.request(path, { headers: { coo
 const linksOf = (id: number) => all<{ id: number; url: string; locked: number }>(env.DB, `SELECT id, url, locked FROM ticket_links WHERE ticket_id = ? ORDER BY id`, id);
 
 async function callTool(handle: string, name: string, args: Record<string, unknown> = {}) {
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -52,7 +53,7 @@ async function callTool(handle: string, name: string, args: Record<string, unkno
   }
 }
 async function toolNames(handle: string): Promise<string[]> {
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);

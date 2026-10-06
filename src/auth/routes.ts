@@ -17,6 +17,8 @@ import { findLiveInvite, acceptInvite } from "./invites";
 import { sendWelcome } from "../notifications/welcome";
 import { takeOAuthPending } from "./oauth-routes";
 import { listGrants, revokeGrant } from "./oauth";
+import { platformContext } from "../data/gate";
+import { legacyDb, joinLegacyOrg } from "../data/legacy";
 
 const OAUTH_TX_COOKIE = "oauth_tx";
 export interface AuthDeps { fetchImpl?: typeof fetch; now?: () => number }
@@ -47,6 +49,9 @@ async function beginTx(c: Context<AppEnv>, mode: TxMode): Promise<{ state: strin
 
 export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
   const authApp = new Hono<AppEnv>();
+  // Everything here is person-level: the global tables through `c.var.p`, never a tenant. Set here as
+  // well as in src/routes.ts so the sub-app stands alone.
+  authApp.use("*", platformContext);
   const f = deps.fetchImpl;
 
   /** Common tail after a provider profile is in hand. */
@@ -54,7 +59,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     if (mode === "link") {
       const me = await resolveSessionPrincipal(c);
       if (!me) return c.json({ error: "unauthorized" }, 403);
-      const r = await linkSignIn(c.env.DB, me.handle, profile);
+      const r = await linkSignIn(legacyDb(c.var.p), me.handle, profile);
       if (r === "linked") return c.redirect("/#settings", 302);
       // Two distinct conflict states: the identity belongs to someone else (real
       // conflict) vs. the caller already has an identity of this provider (their own,
@@ -62,13 +67,13 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
       // the right message instead of one generic "conflict".
       return c.redirect(r === "provider_already_linked" ? "/?link=already#settings" : "/?link=conflict#settings", 302);
     }
-    const r: ForkResult = await completeSignIn(c.env.DB, profile);
+    const r: ForkResult = await completeSignIn(legacyDb(c.var.p), profile);
     if (r.kind === "denied") return c.redirect(denied, 302);
     if (r.kind === "onboard") {
       setCookie(c, ONBOARD_COOKIE, await sealOnboard(r.payload, c.env.COOKIE_SECRET), { httpOnly: true, secure: true, sameSite: "Lax", path: "/", maxAge: ONBOARD_TTL_S });
       return c.redirect("/#onboard", 302);
     }
-    const { id } = await createSession(c.env.DB, r.handle);
+    const { id } = await createSession(legacyDb(c.var.p), r.handle);
     await setSessionCookie(c, id, c.env.COOKIE_SECRET);
     // Signed in from an MCP client's authorize link: go back to the consent screen.
     return c.redirect((await takeOAuthPending(c)) ?? "/", 302);
@@ -142,7 +147,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     // capability is enough. sessionGate lets this path through as public, so both branches
     // are checked here.
     if (!(await onboardPayload(c)) && !(await resolveSessionPrincipal(c))) return c.json({ error: "unauthorized" }, 401);
-    return c.json(await handleAvailable(c.env.DB, (c.req.query("handle") ?? "").trim()));
+    return c.json(await handleAvailable(legacyDb(c.var.p), (c.req.query("handle") ?? "").trim()));
   });
   const OnboardWrite = z.object({ handle: z.string().trim(), name: z.string().trim().max(120).nullable().optional(), color: z.enum(PERSON_COLORS) });
   authApp.post("/onboard", async (c) => {
@@ -154,32 +159,35 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     // with the same cookie and a different handle) — once the (provider, subject) pair
     // is actually linked, treat the cookie as spent instead of racing createPerson into
     // an orphan persons row that linkIdentity's PK conflict would otherwise leave behind.
-    if (await findIdentity(c.env.DB, p.provider, p.subject)) {
+    if (await findIdentity(legacyDb(c.var.p), p.provider, p.subject)) {
       deleteCookie(c, ONBOARD_COOKIE, { path: "/" });
       return c.json({ error: "already_onboarded" }, 409);
     }
-    const avail = await handleAvailable(c.env.DB, parsed.data.handle);
+    const avail = await handleAvailable(legacyDb(c.var.p), parsed.data.handle);
     if (!avail.available) return c.json({ error: avail.reason === "taken" ? "handle_taken" : `handle_${avail.reason}` }, avail.reason === "taken" ? 409 : 400);
-    if (p.invite_email && !(await findLiveInvite(c.env.DB, p.invite_email))) return c.json({ error: "invite_revoked" }, 403);
+    if (p.invite_email && !(await findLiveInvite(legacyDb(c.var.p), p.invite_email))) return c.json({ error: "invite_revoked" }, 403);
     try {
-      await createPerson(c.env.DB, { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, avatar_source: p.provider, email: p.email });
+      await createPerson(legacyDb(c.var.p), { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, avatar_source: p.provider, email: p.email });
     } catch (e) {
       if (e instanceof HandleTakenError) return c.json({ error: "handle_taken" }, 409);
       throw e;
     }
     try {
-      await linkIdentity(c.env.DB, { provider: p.provider, subject: p.subject, label: p.label, person: parsed.data.handle, linkedBy: parsed.data.handle });
+      await linkIdentity(legacyDb(c.var.p), { provider: p.provider, subject: p.subject, label: p.label, person: parsed.data.handle, linkedBy: parsed.data.handle });
     } catch (e) {
       // The findIdentity pre-check above closes the common replay window, but a second
       // request racing between that check and this insert can still collide on the
       // (provider, subject) primary key — never leave a persons row with no identity.
-      await run(c.env.DB, `DELETE FROM persons WHERE handle = ?`, parsed.data.handle);
+      await run(legacyDb(c.var.p), `DELETE FROM persons WHERE handle = ?`, parsed.data.handle);
       if (/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) return c.json({ error: "already_onboarded" }, 409);
       throw e;
     }
-    if (p.invite_email) await acceptInvite(c.env.DB, p.invite_email, parsed.data.handle);
+    // MT: until org invites exist (Phase 4), signing up IS joining the legacy org — after the identity is
+    // linked, so the compensating DELETE above never meets a membership row.
+    await joinLegacyOrg(c.var.p, parsed.data.handle);
+    if (p.invite_email) await acceptInvite(legacyDb(c.var.p), p.invite_email, parsed.data.handle);
     deleteCookie(c, ONBOARD_COOKIE, { path: "/" });
-    const { id } = await createSession(c.env.DB, parsed.data.handle);
+    const { id } = await createSession(legacyDb(c.var.p), parsed.data.handle);
     await setSessionCookie(c, id, c.env.COOKIE_SECRET);
     // The welcome email, once the person exists and their session is in hand. It
     // is a courtesy, not part of the write: `sendWelcome` never throws, and its
@@ -188,7 +196,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     const email = p.email;
     if (email) {
       const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-      await sendWelcome(c.env, c.env.DB, {
+      await sendWelcome(c.env, legacyDb(c.var.p), {
         email, name: parsed.data.name ?? p.name, handle: parsed.data.handle, origin, fetchImpl: deps.fetchImpl,
       });
     }
@@ -201,8 +209,8 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
   // ── Session-gated ──
   authApp.get("/me", async (c) => {
     const handle = c.get("principal").handle;
-    const row = await getPerson(c.env.DB, handle);
-    const identities = (await listIdentities(c.env.DB, handle)).map((i) => ({ provider: i.provider, label: i.label, linked_at: i.linked_at }));
+    const row = await getPerson(legacyDb(c.var.p), handle);
+    const identities = (await listIdentities(legacyDb(c.var.p), handle)).map((i) => ({ provider: i.provider, label: i.label, linked_at: i.linked_at }));
     // `avatar_url` goes out RESOLVED: an uploaded avatar (0036) outranks the provider's.
     return c.json({ handle, name: row?.name ?? null, avatar_url: row ? avatarSrc(row) : null, role: row?.role ?? null, color: row?.color ?? "stone", identities, org: SAPLING_ORG, admin: isAdmin(c.env, handle) });
   });
@@ -210,7 +218,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
   authApp.put("/me", async (c) => {
     const parsed = ProfileWrite.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
-    const row = await updateProfile(c.env.DB, c.get("principal").handle, parsed.data);
+    const row = await updateProfile(legacyDb(c.var.p), c.get("principal").handle, parsed.data);
     if (!row) return c.json({ error: "not found" }, 404);
     return c.json({ ok: true, name: row.name, color: row.color });
   });
@@ -224,7 +232,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     // their own handle in a different case) is never an admin-allowlist question.
     if (oldHandle.toLowerCase() === newHandle.toLowerCase()) return c.json({ error: "handle_same" }, 400);
     if (isAdmin(c.env, oldHandle) && !isAdmin(c.env, newHandle)) return c.json({ error: "admin_handle_not_allowlisted" }, 403);
-    const r = await renamePerson(c.env.DB, oldHandle, newHandle);
+    const r = await renamePerson(legacyDb(c.var.p), oldHandle, newHandle);
     if (!r.ok) {
       if (r.reason === "taken") return c.json({ error: "handle_taken" }, 409);
       // Defensive only — oldHandle always comes from a live session, so the person
@@ -237,33 +245,33 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
   authApp.post("/identities/:provider/unlink", async (c) => {
     const provider = c.req.param("provider");
     if (provider !== "github" && provider !== "google") return c.json({ error: "unknown provider" }, 400);
-    const r = await unlinkIdentity(c.env.DB, c.get("principal").handle, provider);
+    const r = await unlinkIdentity(legacyDb(c.var.p), c.get("principal").handle, provider);
     if (r === "last_identity") return c.json({ error: "last_identity" }, 409);
     if (r === "not_found") return c.json({ error: "not linked" }, 404);
     return c.json({ ok: true });
   });
   authApp.post("/logout", async (c) => {
     const id = await readSessionCookie(c, c.env.COOKIE_SECRET);
-    if (id) await deleteSession(c.env.DB, id);
+    if (id) await deleteSession(legacyDb(c.var.p), id);
     clearSessionCookie(c);
     return c.json({ ok: true });
   });
   authApp.post("/mcp-token", async (c) => {
-    const { raw } = await mintToken(c.env.DB, c.get("principal").handle);
+    const { raw } = await mintToken(legacyDb(c.var.p), c.get("principal").handle);
     return c.json({ token: raw });
   });
-  authApp.get("/mcp-tokens", async (c) => c.json({ tokens: await listTokens(c.env.DB, c.get("principal").handle) }));
+  authApp.get("/mcp-tokens", async (c) => c.json({ tokens: await listTokens(legacyDb(c.var.p), c.get("principal").handle) }));
   authApp.post("/mcp-tokens/:id/revoke", async (c) => {
     const id = Number(c.req.param("id"));
-    if (!Number.isInteger(id) || !(await revokeToken(c.env.DB, c.get("principal").handle, id))) return c.json({ error: "not_found" }, 404);
+    if (!Number.isInteger(id) || !(await revokeToken(legacyDb(c.var.p), c.get("principal").handle, id))) return c.json({ error: "not_found" }, 404);
     return c.json({ ok: true });
   });
   // Settings › Connected apps: the caller's OAuth connections. Session-cookie only,
   // never MCP. Someone else's id is the same 404 as an unknown one.
-  authApp.get("/oauth-grants", async (c) => c.json({ grants: await listGrants(c.env.DB, c.get("principal").handle) }));
+  authApp.get("/oauth-grants", async (c) => c.json({ grants: await listGrants(legacyDb(c.var.p), c.get("principal").handle) }));
   authApp.post("/oauth-grants/:id/revoke", async (c) => {
     const id = Number(c.req.param("id"));
-    if (!Number.isInteger(id) || !(await revokeGrant(c.env.DB, c.get("principal").handle, id, Date.now()))) return c.json({ error: "not_found" }, 404);
+    if (!Number.isInteger(id) || !(await revokeGrant(legacyDb(c.var.p), c.get("principal").handle, id, Date.now()))) return c.json({ error: "not_found" }, 404);
     return c.json({ ok: true });
   });
   return authApp;

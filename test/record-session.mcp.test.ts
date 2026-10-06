@@ -10,6 +10,7 @@ import { all } from "../src/db";
 import type { FeedRow, DocVersionRow, AdrRow } from "@shared/rows";
 import type { IngestResult } from "../src/consumer";
 import { seedPerson } from "./helpers/persons";
+import { bearerCtx } from "./helpers/tenant";
 
 type Env = import("../src/env").Env;
 
@@ -40,7 +41,7 @@ async function callRecordSession(
   principal: Principal,
   payload: unknown
 ): Promise<{ result: IngestResult; isError?: boolean }> {
-  const server = buildTrovMcpServer(env as unknown as Env, principal);
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(principal.handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -129,7 +130,7 @@ describe("record_session MCP tool — the real bearer-only agent write path", ()
     const raw = await seedUserWithBearer("bearer-agent-narrow");
     const principal = await bearerPrincipal(raw);
 
-    const server = buildTrovMcpServer(env as unknown as Env, principal);
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(principal.handle));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);

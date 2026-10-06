@@ -44,6 +44,8 @@ import { repoEnvironments } from "./repo/config";
 import { runLockedRepoRefresh, runUsagePolls } from "./repo/cron";
 import type { DashboardData } from "@shared/dashboard";
 import { first } from "./db";
+import { platformContext, soleTenantGate } from "./data/gate";
+import { legacyDb } from "./data/legacy";
 import { createInvite, revokeInvite, listInvites } from "./auth/invites";
 import { listPersons } from "./auth/persons";
 import { sendInvite } from "./notifications/invite";
@@ -62,6 +64,12 @@ app.use("/raw/*", rawHeaders);
 // Fails closed with 401 (no data in the body).
 app.use("*", sessionGate);
 
+// The data-layer contexts (src/data/gate.ts): `c.var.p` for the global tables on every request, and
+// `c.var.ctx` — the caller's ONE org, the cut-over alias — on every session route below that is not
+// person-level (/auth/*, /avatar/*). A signed-in person with no single org gets 409 `org_required`.
+app.use("*", platformContext);
+app.use("*", soleTenantGate);
+
 // Artifacts (issue #52): the JSON API and the raw bytes, both session-gated. The
 // token-authenticated upload PUT is dispatched in src/index.ts, before this app.
 app.route("/api/artifacts", artifactsApp);
@@ -74,7 +82,7 @@ app.get("/img/:sha", async (c) => {
   const sha = c.req.param("sha");
   const lockdown = { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" };
   if (!/^[0-9a-f]{64}$/.test(sha)) return c.json({ error: "not_found" }, 404, lockdown);
-  const img = await readDocImage(c.env.DB, c.env.ARTIFACTS_BUCKET, sha);
+  const img = await readDocImage(legacyDb(c.var.ctx), c.env.ARTIFACTS_BUCKET, sha);
   if (!img) return c.json({ error: "not_found" }, 404, lockdown);
   return new Response(img.body, {
     headers: {
@@ -123,19 +131,19 @@ app.post("/ingest", async (c) => {
   }
   // SEAM: a Cloudflare Queue producer.send({ payload, principal }) would slot in here.
   // recordBatch = consume() + the post-batch artifact_links step, identical to MCP record_session.
-  const result = await recordBatch(c.env.DB, parsed.data, c.get("principal"));
+  const result = await recordBatch(legacyDb(c.var.ctx), parsed.data, c.get("principal"));
   return c.json({ ok: true, result });
 });
 
 app.get("/docs", async (c) => {
   // `?fields=meta` drops the bodies (and ignores `section`) — a list-only read.
-  if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(c.env.DB) });
-  const docs = await list_docs(c.env.DB, c.req.query("section"));
+  if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(legacyDb(c.var.ctx)) });
+  const docs = await list_docs(legacyDb(c.var.ctx), c.req.query("section"));
   return c.json({ docs });
 });
 
 app.get("/doc/:slug", async (c) => {
-  const found = await get_doc(c.env.DB, c.req.param("slug"));
+  const found = await get_doc(legacyDb(c.var.ctx), c.req.param("slug"));
   if (!found) return c.json({ error: "not found" }, 404);
   return c.json(found);
 });
@@ -143,7 +151,7 @@ app.get("/doc/:slug", async (c) => {
 app.get("/feed", async (c) => {
   const tags = c.req.query("tags");
   const limit = c.req.query("limit");
-  const feed = await get_feed(c.env.DB, {
+  const feed = await get_feed(legacyDb(c.var.ctx), {
     author: c.req.query("author"),
     tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
     since: c.req.query("since"),
@@ -164,7 +172,7 @@ app.get("/feed/stats", async (c) => {
   const tz = tzRaw === undefined ? 0 : /^-?\d{1,4}$/.test(tzRaw) ? Number(tzRaw) : NaN;
   if (!isFeedStatsTz(tz)) return c.json({ error: "tz must be whole minutes east of UTC, within ±840" }, 400);
   try {
-    return c.json(await feedStats(c.env.DB, { days, tzOffsetMin: tz }));
+    return c.json(await feedStats(legacyDb(c.var.ctx), { days, tzOffsetMin: tz }));
   } catch (e) {
     console.error("feed stats failed", e instanceof Error ? e.message : String(e));
     return c.json({ error: "Couldn't read the feed stats" }, 503);
@@ -181,7 +189,7 @@ app.get("/search", async (c) => {
   const spaceRaw = c.req.query("space");
   const space = spaceRaw === "technical" || spaceRaw === "product" ? spaceRaw : undefined;
   const limit = c.req.query("limit");
-  const result = await query(c.env.DB, {
+  const result = await query(legacyDb(c.var.ctx), {
     q: c.req.query("q") ?? "",
     types: types && types.length ? types : undefined,
     section: c.req.query("section"),
@@ -205,7 +213,7 @@ app.get("/search/quick", async (c) => {
   const q = c.req.query("q") ?? "";
   c.header("cache-control", "private, no-store");
   try {
-    const result = await quickSearch(c.env.DB, q, c.get("principal").handle, {
+    const result = await quickSearch(legacyDb(c.var.ctx), q, c.get("principal").handle, {
       limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
       types,
     });
@@ -218,9 +226,9 @@ app.get("/search/quick", async (c) => {
 
 // SEAM: POST /ask — retrieve via query(), synthesize a grounded, slug-citing answer. Out of scope.
 
-app.get("/needs-triage", async (c) => c.json({ items: await list_needs_triage(c.env.DB) }));
+app.get("/needs-triage", async (c) => c.json({ items: await list_needs_triage(legacyDb(c.var.ctx)) }));
 
-app.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.env.DB, c.req.query("status")) }));
+app.get("/adrs", async (c) => c.json({ adrs: await list_adrs(legacyDb(c.var.ctx), c.req.query("status")) }));
 
 // ── Review group (session-cookie only, NEVER MCP): Proposals (staged doc
 // versions) + Decisions (ADR drafts) — GET /proposals, GET /adrs, and their
@@ -229,7 +237,7 @@ app.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.env.DB, c.req.que
 // The Proposals queue (Phase 3): staged doc versions newer than their live doc,
 // not rejected, server-joined with both bodies + reconciler metadata. Kills the
 // old web N+1 (audit G9) and is the data source Phase 4's detail pane renders.
-app.get("/proposals", async (c) => c.json({ proposals: await list_proposals(c.env.DB) }));
+app.get("/proposals", async (c) => c.json({ proposals: await list_proposals(legacyDb(c.var.ctx)) }));
 
 // ── Handoffs + Prompt Library (session-cookie; the MCP tools are the agent side) ──
 // A handoff is an addressed message, not knowledge: its writers are direct (NOT
@@ -246,11 +254,11 @@ const handoffId = (raw: string): number | null => (/^\d+$/.test(raw) && Number(r
 app.get("/api/handoffs", async (c) => {
   const box = c.req.query("box") ?? "mine";
   if (!(HANDOFF_BOXES as readonly string[]).includes(box)) return c.json({ error: "unknown box" }, 400);
-  return c.json({ handoffs: await listHandoffs(c.env.DB, c.get("principal").handle, box as HandoffBox) });
+  return c.json({ handoffs: await listHandoffs(legacyDb(c.var.ctx), c.get("principal").handle, box as HandoffBox) });
 });
 app.get("/api/handoffs/:id", async (c) => {
   const id = handoffId(c.req.param("id"));
-  const handoff = id === null ? null : await getHandoff(c.env.DB, id);
+  const handoff = id === null ? null : await getHandoff(legacyDb(c.var.ctx), id);
   return handoff ? c.json({ handoff }) : c.json({ error: "not found" }, 404);
 });
 app.post("/api/handoffs", async (c) => {
@@ -263,7 +271,7 @@ app.post("/api/handoffs", async (c) => {
     ? { sessionId: sess.id, itemIndex: Number.isInteger(raw?.item_index) ? (raw!.item_index as number) : 0 }
     : undefined;
   try {
-    const { handoff } = await createHandoff(c.env.DB, c.get("principal").handle, parsed.data, ledger);
+    const { handoff } = await createHandoff(legacyDb(c.var.ctx), c.get("principal").handle, parsed.data, ledger);
     return c.json({ ok: true, handoff });
   } catch (e) { return handoffFail(c, e); }
 });
@@ -272,13 +280,13 @@ app.post("/api/handoffs/:id/claim", async (c) => {
   if (id === null) return c.json({ error: "not found" }, 404);
   const body = (await c.req.json().catch(() => ({}))) as { session?: unknown };
   const session = typeof body.session === "string" && body.session.trim() ? body.session.trim().slice(0, 120) : `web_${crypto.randomUUID().slice(0, 8)}`;
-  try { return c.json({ ok: true, handoff: await claimHandoff(c.env.DB, id, c.get("principal").handle, session) }); }
+  try { return c.json({ ok: true, handoff: await claimHandoff(legacyDb(c.var.ctx), id, c.get("principal").handle, session) }); }
   catch (e) { return handoffFail(c, e); }
 });
 app.post("/api/handoffs/:id/expire", async (c) => {
   const id = handoffId(c.req.param("id"));
   if (id === null) return c.json({ error: "not found" }, 404);
-  try { return c.json({ ok: true, handoff: await expireHandoff(c.env.DB, id, c.get("principal").handle) }); }
+  try { return c.json({ ok: true, handoff: await expireHandoff(legacyDb(c.var.ctx), id, c.get("principal").handle) }); }
   catch (e) { return handoffFail(c, e); }
 });
 
@@ -286,27 +294,27 @@ app.get("/api/prompts", async (c) => {
   const tags = (c.req.query("tags") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
   const want = c.req.query("sort");
   const sort = want === "updated_asc" || want === "used" ? want : "updated_desc";
-  return c.json({ prompts: await listPrompts(c.env.DB, { q: c.req.query("q") ?? "", tags, sort }) });
+  return c.json({ prompts: await listPrompts(legacyDb(c.var.ctx), { q: c.req.query("q") ?? "", tags, sort }) });
 });
 app.get("/api/prompts/:slug", async (c) => {
-  const prompt = await getPrompt(c.env.DB, c.req.param("slug"));
+  const prompt = await getPrompt(legacyDb(c.var.ctx), c.req.param("slug"));
   return prompt ? c.json({ prompt }) : c.json({ error: "not found" }, 404);
 });
 app.get("/api/prompts/:slug/versions", async (c) => {
   const slug = c.req.param("slug");
-  if (!(await getPrompt(c.env.DB, slug))) return c.json({ error: "not found" }, 404);
-  return c.json({ versions: await listPromptVersions(c.env.DB, slug) });
+  if (!(await getPrompt(legacyDb(c.var.ctx), slug))) return c.json({ error: "not found" }, 404);
+  return c.json({ versions: await listPromptVersions(legacyDb(c.var.ctx), slug) });
 });
 app.post("/api/prompts", async (c) => {
   const parsed = PromptSaveInput.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
-  try { return c.json({ ok: true, prompt: await savePrompt(c.env.DB, c.get("principal").handle, parsed.data, "human") }); }
+  try { return c.json({ ok: true, prompt: await savePrompt(legacyDb(c.var.ctx), c.get("principal").handle, parsed.data, "human") }); }
   catch (e) { return handoffFail(c, e); }
 });
 app.post("/api/prompts/:slug/tags", async (c) => {
   const body = (await c.req.json().catch(() => null)) as { tags?: unknown } | null;
   if (!body || !Array.isArray(body.tags) || !body.tags.every((t) => typeof t === "string")) return c.json({ error: "tags (string[]) required" }, 400);
-  try { return c.json({ ok: true, prompt: await setPromptTags(c.env.DB, c.req.param("slug"), body.tags as string[]) }); }
+  try { return c.json({ ok: true, prompt: await setPromptTags(legacyDb(c.var.ctx), c.req.param("slug"), body.tags as string[]) }); }
   catch (e) { return handoffFail(c, e); }
 });
 // One USE of a prompt (the web Copy button; MCP get_prompt counts its own): one
@@ -314,8 +322,8 @@ app.post("/api/prompts/:slug/tags", async (c) => {
 // 503, never a 500 — a lost count must not break the copy.
 app.post("/api/prompts/:slug/used", async (c) => {
   try {
-    if (!(await recordPromptUse(c.env.DB, c.req.param("slug")))) return c.json({ error: "not found" }, 404);
-    const prompt = await getPrompt(c.env.DB, c.req.param("slug"));
+    if (!(await recordPromptUse(legacyDb(c.var.ctx), c.req.param("slug")))) return c.json({ error: "not found" }, 404);
+    const prompt = await getPrompt(legacyDb(c.var.ctx), c.req.param("slug"));
     return prompt ? c.json({ ok: true, use_count: prompt.use_count, last_used_at: prompt.last_used_at }) : c.json({ error: "not found" }, 404);
   } catch {
     return c.json({ error: "temporarily unavailable" }, 503);
@@ -327,7 +335,7 @@ app.post("/api/prompts/:slug/publish", async (c) => {
   const body = (await c.req.json().catch(() => null)) as { version?: unknown } | null;
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
-  try { return c.json({ ok: true, prompt: await publishPrompt(c.env.DB, c.req.param("slug"), version) }); }
+  try { return c.json({ ok: true, prompt: await publishPrompt(legacyDb(c.var.ctx), c.req.param("slug"), version) }); }
   catch (e) { return handoffFail(c, e); }
 });
 // Soft delete + restore (0035 PART C): the prompt's author or an admin; anyone else
@@ -336,12 +344,12 @@ app.post("/api/prompts/:slug/publish", async (c) => {
 // it is a 409), and restore is the one way back.
 app.post("/api/prompts/:slug/delete", async (c) => {
   const me = c.get("principal").handle;
-  try { return c.json({ ok: true, ...(await deletePrompt(c.env.DB, c.req.param("slug"), me, isAdmin(c.env, me))) }); }
+  try { return c.json({ ok: true, ...(await deletePrompt(legacyDb(c.var.ctx), c.req.param("slug"), me, isAdmin(c.env, me))) }); }
   catch (e) { return handoffFail(c, e); }
 });
 app.post("/api/prompts/:slug/restore", async (c) => {
   const me = c.get("principal").handle;
-  try { return c.json({ ok: true, prompt: await restorePrompt(c.env.DB, c.req.param("slug"), me, isAdmin(c.env, me)) }); }
+  try { return c.json({ ok: true, prompt: await restorePrompt(legacyDb(c.var.ctx), c.req.param("slug"), me, isAdmin(c.env, me)) }); }
   catch (e) { return handoffFail(c, e); }
 });
 
@@ -363,15 +371,15 @@ app.post("/api/docs/propose", async (c) => {
   if (!isSection(d.section)) return c.json({ error: `unknown section: ${d.section}` }, 400);
   const slug = d.slug ?? d.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
   if (!slug) return c.json({ error: "title has no usable slug" }, 400);
-  if (await first(c.env.DB, `SELECT 1 FROM docs WHERE slug = ?`, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
+  if (await first(legacyDb(c.var.ctx), `SELECT 1 FROM docs WHERE slug = ?`, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
   const result = await ingestDocProposal(
-    c.env.DB,
+    legacyDb(c.var.ctx),
     { slug, section: d.section, space: d.space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high" },
     c.get("principal").handle,
   );
   if (result.outcome === "refused") return c.json({ error: result.reason }, 400);
   if (result.outcome !== "written") return c.json({ error: result.outcome === "triaged" ? result.reason : "nothing to stage" }, 409);
-  const proposal = (await list_proposals(c.env.DB)).find((p) => p.slug === slug && p.version === result.version) ?? null;
+  const proposal = (await list_proposals(legacyDb(c.var.ctx))).find((p) => p.slug === slug && p.version === result.version) ?? null;
   return c.json({ ok: true, proposal });
 });
 
@@ -381,7 +389,7 @@ app.post("/doc/:slug/promote", async (c) => {
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
   try {
-    const res = await promote_doc(c.env.DB, c.req.param("slug"), version, c.get("principal").handle);
+    const res = await promote_doc(legacyDb(c.var.ctx), c.req.param("slug"), version, c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -395,7 +403,7 @@ app.post("/doc/:slug/reject", async (c) => {
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
   try {
-    const res = await reject_doc_version(c.env.DB, c.req.param("slug"), version);
+    const res = await reject_doc_version(legacyDb(c.var.ctx), c.req.param("slug"), version);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -407,7 +415,7 @@ app.post("/adr/:id/ratify", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const res = await ratify_adr(c.env.DB, id);
+    const res = await ratify_adr(legacyDb(c.var.ctx), id);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -420,7 +428,7 @@ app.post("/adr/:id/reject", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const res = await reject_adr(c.env.DB, id);
+    const res = await reject_adr(legacyDb(c.var.ctx), id);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -433,7 +441,7 @@ app.post("/needs-triage/:id/discard", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const res = await resolve_triage(c.env.DB, id, c.get("principal").handle, "discarded");
+    const res = await resolve_triage(legacyDb(c.var.ctx), id, c.get("principal").handle, "discarded");
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -450,7 +458,7 @@ app.post("/needs-triage/:id/assign", async (c) => {
     type?: AssignType; section?: string; space?: "technical" | "product"; tags?: string[];
   } | null;
   try {
-    const res = await assign_triage(c.env.DB, id, c.get("principal").handle, {
+    const res = await assign_triage(legacyDb(c.var.ctx), id, c.get("principal").handle, {
       type: body?.type,
       section: body?.section,
       space: body?.space,
@@ -469,7 +477,7 @@ app.post("/needs-triage/:id/assign", async (c) => {
 // pulled from `events` at read time — activity is never copied onto the task —
 // plus the discarded logins Undo can still restore.
 app.get("/identity-tasks", async (c) =>
-  c.json({ tasks: await list_identity_tasks(c.env.DB), discarded: await list_discarded_identities(c.env.DB) }));
+  c.json({ tasks: await list_identity_tasks(legacyDb(c.var.ctx)), discarded: await list_discarded_identities(legacyDb(c.var.ctx)) }));
 
 // Human placement (session-gated): link a login to an EXISTING person (by
 // handle) as a github identity (a direct authored write, not a gate re-run),
@@ -480,7 +488,7 @@ app.post("/identity-tasks/:login/map", async (c) => {
   const person = typeof body?.person === "string" ? body.person.trim() : "";
   if (!person) return c.json({ error: "person (non-empty string) required" }, 400);
   try {
-    const res = await map_identity(c.env.DB, c.req.param("login"), person, c.get("principal").handle);
+    const res = await map_identity(legacyDb(c.var.ctx), c.req.param("login"), person, c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -497,7 +505,7 @@ const identityFail = (c: Context<AppEnv>, e: unknown) =>
     : c.json({ error: "temporarily unavailable" }, 503);
 app.post("/identity-tasks/:login/discard", async (c) => {
   try {
-    const res = await discard_identity_task(c.env.DB, c.req.param("login"), c.get("principal").handle);
+    const res = await discard_identity_task(legacyDb(c.var.ctx), c.req.param("login"), c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return identityFail(c, e);
@@ -505,7 +513,7 @@ app.post("/identity-tasks/:login/discard", async (c) => {
 });
 app.post("/identity-tasks/:login/restore", async (c) => {
   try {
-    const res = await restore_identity_task(c.env.DB, c.req.param("login"));
+    const res = await restore_identity_task(legacyDb(c.var.ctx), c.req.param("login"));
     return c.json({ ok: true, ...res });
   } catch (e) {
     return identityFail(c, e);
@@ -513,7 +521,7 @@ app.post("/identity-tasks/:login/restore", async (c) => {
 });
 
 // Person directory (session-gated): the avatar-chip source for every screen and the identity picker.
-app.get("/persons", async (c) => c.json({ persons: await listPersons(c.env.DB) }));
+app.get("/persons", async (c) => c.json({ persons: await listPersons(legacyDb(c.var.p)) }));
 
 // ── People profiles (0036; the contract is shared/people.ts) — session cookie, NEVER MCP ──
 // Read: any signed-in member; `responsibilities` only to the person and admins. Write:
@@ -528,12 +536,12 @@ const profileHandle = (c: Context<AppEnv>): string => {
 };
 const adminCheck = (c: Context<AppEnv>) => (h: string) => isAdmin(c.env, h);
 app.get("/api/people/:handle", async (c) => {
-  try { return c.json(await getPersonProfile(c.env.DB, profileHandle(c), c.get("principal").handle, adminCheck(c))); }
+  try { return c.json(await getPersonProfile(legacyDb(c.var.ctx), profileHandle(c), c.get("principal").handle, adminCheck(c))); }
   catch (e) { return peopleFail(c, e); }
 });
 app.put("/api/people/:handle", async (c) => {
   const body = await c.req.json().catch(() => undefined);
-  try { return c.json(await writePersonProfile(c.env.DB, profileHandle(c), c.get("principal").handle, adminCheck(c), body)); }
+  try { return c.json(await writePersonProfile(legacyDb(c.var.ctx), profileHandle(c), c.get("principal").handle, adminCheck(c), body)); }
   catch (e) { return peopleFail(c, e); }
 });
 // Multipart, field `file`. A declared length past the cap (plus multipart framing) is
@@ -549,11 +557,11 @@ app.post("/api/people/me/avatar", async (c) => {
   } catch {
     return c.json({ error: "the body must be multipart/form-data" }, 400);
   }
-  try { return c.json({ ok: true, ...(await setAvatar(c.env.DB, c.env.ARTIFACTS_BUCKET, c.get("principal").handle, file)) }); }
+  try { return c.json({ ok: true, ...(await setAvatar(legacyDb(c.var.ctx), c.env.ARTIFACTS_BUCKET, c.get("principal").handle, file)) }); }
   catch (e) { return peopleFail(c, e); }
 });
 app.post("/api/people/me/avatar/remove", async (c) => {
-  try { return c.json({ ok: true, ...(await clearAvatar(c.env.DB, c.get("principal").handle)) }); }
+  try { return c.json({ ok: true, ...(await clearAvatar(legacyDb(c.var.ctx), c.get("principal").handle)) }); }
   catch (e) { return peopleFail(c, e); }
 });
 
@@ -563,39 +571,39 @@ const adminGate = async (c: Context<AppEnv>, next: () => Promise<void>) =>
   isAdmin(c.env, c.get("principal").handle) ? next() : c.json({ error: "admin only" }, 403);
 app.use("/invites", adminGate);
 app.use("/invites/*", adminGate);
-app.get("/invites", async (c) => c.json({ invites: await listInvites(c.env.DB) }));
+app.get("/invites", async (c) => c.json({ invites: await listInvites(legacyDb(c.var.p)) }));
 app.post("/invites", async (c) => {
   const parsed = InviteWrite.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   let invite: InviteRow;
   try {
-    invite = await createInvite(c.env.DB, { email: parsed.data.email, name: parsed.data.name ?? null, invitedBy: c.get("principal").handle });
+    invite = await createInvite(legacyDb(c.var.p), { email: parsed.data.email, name: parsed.data.name ?? null, invitedBy: c.get("principal").handle });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "invite_exists" || msg === "already_a_person") return c.json({ error: msg }, 409);
     throw e;
   }
   const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-  const email = await sendInvite(c.env, c.env.DB, { email: invite.email, inviteeName: invite.name, inviterHandle: c.get("principal").handle, origin });
-  return c.json({ ok: true, invite: (await first<InviteRow>(c.env.DB, `SELECT * FROM invites WHERE email = ?`, invite.email))!, email });
+  const email = await sendInvite(c.env, legacyDb(c.var.p), { email: invite.email, inviteeName: invite.name, inviterHandle: c.get("principal").handle, origin });
+  return c.json({ ok: true, invite: (await first<InviteRow>(legacyDb(c.var.p), `SELECT * FROM invites WHERE email = ?`, invite.email))!, email });
 });
 app.post("/invites/:email/revoke", async (c) => {
-  const ok = await revokeInvite(c.env.DB, decodeURIComponent(c.req.param("email")));
+  const ok = await revokeInvite(legacyDb(c.var.p), decodeURIComponent(c.req.param("email")));
   return ok ? c.json({ ok: true }) : c.json({ error: "no such invite" }, 404);
 });
 app.post("/invites/:email/resend", async (c) => {
   const email = decodeURIComponent(c.req.param("email")).toLowerCase();
-  const row = await first<InviteRow>(c.env.DB, `SELECT * FROM invites WHERE email = ?`, email);
+  const row = await first<InviteRow>(legacyDb(c.var.p), `SELECT * FROM invites WHERE email = ?`, email);
   if (!row) return c.json({ error: "no such invite" }, 404);
   if (row.revoked_at || row.accepted_by) return c.json({ error: row.revoked_at ? "revoked" : "accepted" }, 409);
   const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-  const result = await sendInvite(c.env, c.env.DB, { email: row.email, inviteeName: row.name, inviterHandle: c.get("principal").handle, origin });
+  const result = await sendInvite(c.env, legacyDb(c.var.p), { email: row.email, inviteeName: row.name, inviterHandle: c.get("principal").handle, origin });
   return c.json({ ok: true, email: result });
 });
 
 // Roadmap read (session-gated): admin narrative + sprints in target-date order,
 // merged with cached progress from the plan store. No live GitHub, no per-user token.
-app.get("/roadmap", async (c) => c.json(await get_plan(c.env.DB)));
+app.get("/roadmap", async (c) => c.json(await get_plan(legacyDb(c.var.ctx))));
 
 // Personal dashboard (session-gated): the signed-in user's My Work projection —
 // previous activity (summarized merged/closed PRs), open assigned issues, and open
@@ -604,7 +612,7 @@ app.get("/roadmap", async (c) => c.json(await get_plan(c.env.DB)));
 app.get("/me/dashboard", async (c) => {
   const login = c.get("principal").handle;
   try {
-    const data: DashboardData = await getMyWork(c.env.DB, login);
+    const data: DashboardData = await getMyWork(legacyDb(c.var.ctx), login);
     return c.json(data);
   } catch {
     // Absolute backstop: never 500. Anything unexpected (D1) → empty degraded payload.
@@ -620,7 +628,7 @@ app.get("/me/dashboard", async (c) => {
 app.get("/repo/dashboard", async (c) => {
   const repo = c.env.GITHUB_REPO ?? "";
   try {
-    return c.json(await getRepoDashboard(c.env.DB, repo, Date.now(), repoEnvironments(c.env)));
+    return c.json(await getRepoDashboard(legacyDb(c.var.ctx), repo, Date.now(), repoEnvironments(c.env)));
   } catch {
     return c.json(emptyRepoDashboard(repo, true));
   }
@@ -653,7 +661,7 @@ app.post("/admin/backfill", async (c) => {
   // nothing to do.
   let repo: ReconcileResult | undefined;
   if (isFinalBackfillBatch(res, batch, of) && c.env.GITHUB_SERVICE_TOKEN && c.env.GITHUB_REPO) {
-    repo = await reconcileRepo(c.env.DB, { token: c.env.GITHUB_SERVICE_TOKEN, repo: c.env.GITHUB_REPO }, repoEnvironments(c.env)).catch(() => undefined);
+    repo = await reconcileRepo(legacyDb(c.var.ctx), { token: c.env.GITHUB_SERVICE_TOKEN, repo: c.env.GITHUB_REPO }, repoEnvironments(c.env)).catch(() => undefined);
   }
   return c.json(repo ? { ...res, repo } : res);
 });
@@ -725,7 +733,7 @@ const ticketId = (c: Context<AppEnv>): number | null => {
 
 /** Every write answers with the freshly re-read detail DTO, so one round-trip repaints. */
 const ticketDetailResponse = async (c: Context<AppEnv>, id: number): Promise<Response> => {
-  const ticket = await get_ticket(c.env.DB, id);
+  const ticket = await get_ticket(legacyDb(c.var.ctx), id);
   if (!ticket) return c.json({ error: "not found" }, 404);
   return c.json({ ok: true, ticket });
 };
@@ -735,7 +743,7 @@ app.post("/tickets", async (c) => {
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
     // The principal is the requester, full stop — parsed.data has no requester field.
-    const id = await create_ticket(c.env.DB, parsed.data, c.get("principal").handle);
+    const id = await create_ticket(legacyDb(c.var.ctx), parsed.data, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -761,7 +769,7 @@ app.get("/tickets", async (c) => {
     category = parsed.data;
   }
 
-  const tickets = await list_tickets(c.env.DB, {
+  const tickets = await list_tickets(legacyDb(c.var.ctx), {
     seg: seg.data,
     assignee: assignee.data,
     category,
@@ -772,12 +780,12 @@ app.get("/tickets", async (c) => {
 
 // REGISTERED BEFORE /tickets/:id ON PURPOSE: Hono matches in registration order,
 // so a later ':id' route would otherwise swallow the literal '/tickets/badge'.
-app.get("/tickets/badge", async (c) => c.json({ count: await ticket_badge(c.env.DB) }));
+app.get("/tickets/badge", async (c) => c.json({ count: await ticket_badge(legacyDb(c.var.ctx)) }));
 
 app.get("/tickets/:id", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
-  const ticket = await get_ticket(c.env.DB, id);
+  const ticket = await get_ticket(legacyDb(c.var.ctx), id);
   if (!ticket) return c.json({ error: "not found" }, 404);
   return c.json(ticket);
 });
@@ -790,7 +798,7 @@ app.post("/tickets/:id/edit", async (c) => {
   const parsed = TicketEdit.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await edit_ticket(c.env.DB, id, parsed.data, c.get("principal").handle);
+    await edit_ticket(legacyDb(c.var.ctx), id, parsed.data, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -805,7 +813,7 @@ app.post("/tickets/:id/status", async (c) => {
   const parsed = TicketTransition.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await transition_ticket(c.env.DB, id, parsed.data.to, c.get("principal").handle);
+    await transition_ticket(legacyDb(c.var.ctx), id, parsed.data.to, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -821,7 +829,7 @@ app.post("/tickets/:id/move", async (c) => {
   const parsed = TicketMove.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await move_ticket(c.env.DB, id, parsed.data.to, parsed.data.after_id, c.get("principal").handle);
+    await move_ticket(legacyDb(c.var.ctx), id, parsed.data.to, parsed.data.after_id, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -835,7 +843,7 @@ app.post("/tickets/:id/assignees", async (c) => {
   const parsed = TicketAssigneeToggle.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await toggle_assignee(c.env.DB, id, parsed.data.login, parsed.data.on);
+    await toggle_assignee(legacyDb(c.var.ctx), id, parsed.data.login, parsed.data.on);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -848,7 +856,7 @@ app.post("/tickets/:id/links", async (c) => {
   const parsed = TicketLinkAdd.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await add_ticket_link(c.env.DB, id, parsed.data.raw, c.get("principal").handle);
+    await add_ticket_link(legacyDb(c.var.ctx), id, parsed.data.raw, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -862,7 +870,7 @@ app.post("/tickets/:id/links/:linkId/remove", async (c) => {
   const linkId = Number(c.req.param("linkId"));
   if (id === null || !Number.isInteger(linkId)) return c.json({ error: "invalid id" }, 400);
   try {
-    await remove_ticket_link(c.env.DB, id, linkId);
+    await remove_ticket_link(legacyDb(c.var.ctx), id, linkId);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -875,7 +883,7 @@ app.post("/tickets/:id/delete", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   try {
-    return c.json({ ok: true, ...(await delete_ticket(c.env.DB, id)) });
+    return c.json({ ok: true, ...(await delete_ticket(legacyDb(c.var.ctx), id)) });
   } catch (e) {
     return ticketFail(c, e);
   }
@@ -888,7 +896,7 @@ app.post("/tickets/:id/sprint", async (c) => {
   const parsed = TicketSprintSet.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await set_ticket_sprint(c.env.DB, id, parsed.data.sprint_id);
+    await set_ticket_sprint(legacyDb(c.var.ctx), id, parsed.data.sprint_id);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -903,7 +911,7 @@ app.post("/tickets/:id/parent", async (c) => {
   const parsed = TicketParentSet.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await set_ticket_parent(c.env.DB, id, parsed.data.child_id);
+    await set_ticket_parent(legacyDb(c.var.ctx), id, parsed.data.child_id);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -916,7 +924,7 @@ app.post("/tickets/:id/comment", async (c) => {
   const parsed = TicketCommentAdd.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await add_ticket_comment(c.env.DB, id, parsed.data.body, c.get("principal").handle);
+    await add_ticket_comment(legacyDb(c.var.ctx), id, parsed.data.body, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -952,7 +960,7 @@ app.post("/sprints", async (c) => {
     return c.json({ error: custom ?? "invalid payload", issues: parsed.error.issues }, 400);
   }
   try {
-    const sprint = await create_sprint(c.env.DB, parsed.data, c.get("principal").handle);
+    const sprint = await create_sprint(legacyDb(c.var.ctx), parsed.data, c.get("principal").handle);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return sprintFail(c, e);
@@ -962,12 +970,12 @@ app.post("/sprints", async (c) => {
 // The roadmap's sprint list: each with its tickets-only progress, the separate
 // cached GitHub issue counts, and members.
 // Registered before /sprints/:id (Hono matches in registration order).
-app.get("/sprints", async (c) => c.json({ sprints: await list_sprints(c.env.DB) }));
+app.get("/sprints", async (c) => c.json({ sprints: await list_sprints(legacyDb(c.var.ctx)) }));
 
 app.get("/sprints/:id", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
-  const sprint = await get_sprint(c.env.DB, id);
+  const sprint = await get_sprint(legacyDb(c.var.ctx), id);
   if (!sprint) return c.json({ error: "not found" }, 404);
   return c.json(sprint);
 });
@@ -980,7 +988,7 @@ app.post("/sprints/:id/active", async (c) => {
   const parsed = SprintActiveSet.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    const sprint = await set_sprint_active(c.env.DB, id, parsed.data.active);
+    const sprint = await set_sprint_active(legacyDb(c.var.ctx), id, parsed.data.active);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return sprintFail(c, e);
@@ -996,7 +1004,7 @@ app.post("/sprints/:id/resources", async (c) => {
   const parsed = SprintResourceAdd.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    const sprint = await add_sprint_resource(c.env.DB, id, parsed.data.raw);
+    const sprint = await add_sprint_resource(legacyDb(c.var.ctx), id, parsed.data.raw);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return sprintFail(c, e);
@@ -1009,7 +1017,7 @@ app.post("/sprints/:id/delete", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   try {
-    return c.json({ ok: true, ...(await delete_sprint(c.env.DB, id)) });
+    return c.json({ ok: true, ...(await delete_sprint(legacyDb(c.var.ctx), id)) });
   } catch (e) {
     return sprintFail(c, e);
   }
@@ -1021,7 +1029,7 @@ app.post("/sprints/:id/complete", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const sprint = await complete_sprint(c.env.DB, id);
+    const sprint = await complete_sprint(legacyDb(c.var.ctx), id);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);

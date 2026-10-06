@@ -45,6 +45,10 @@ describe("POST /auth/onboard", () => {
     expect(p.name).toBe("Priya N"); expect(p.color).toBe("plum"); expect(p.email).toBe("priya.n@gmail.com");
     expect((await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE subject = 'g-123'`))?.person).toBe("priya");
     expect((await first<InviteRow>(env.DB, `SELECT * FROM invites WHERE email = 'priya.n@gmail.com'`))?.accepted_by).toBe("priya");
+    // Cut-over (Phase 3): a new person joins SaplingLearn, so their tenant routes resolve — the session works at once.
+    expect(await first(env.DB, `SELECT org_id, role FROM memberships WHERE user_id = 'priya'`)).toEqual({ org_id: "org_saplinglearn", role: "member" });
+    const session = /session=[^;]+/.exec(setCookies)![0];
+    expect((await app.request("/docs", { headers: { cookie: session } }, env)).status).toBe(200);
   });
   it("400 on an invalid handle/color; 409 on a taken handle (cookie kept)", async () => {
     const c = await cookie();

@@ -8,13 +8,14 @@ import { propose_doc_update, promote_doc } from "../src/tools/writes";
 import type { QueryResult } from "@shared/contract";
 import { cookieFor as authedCookie, seedPerson } from "./helpers/persons";
 import { create_ticket } from "../src/tools/tickets";
+import { bearerCtx } from "./helpers/tenant";
 
 const AUTHOR = "agent";
 
 // Drive the ACTUAL registered MCP `query` tool through an in-memory MCP
 // client/server pair — the same closures production runs, not a re-impl.
 async function callQuery(args: Record<string, unknown>): Promise<QueryResult> {
-  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: AUTHOR });
+  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, await bearerCtx(AUTHOR));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -97,7 +98,7 @@ describe("registered MCP query tool + live GET /search route", () => {
     );
 
     // The registered MCP tool's `types` enum lists exactly four types — no ticket.
-    const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: AUTHOR });
+    const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, await bearerCtx(AUTHOR));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);

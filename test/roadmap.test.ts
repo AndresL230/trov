@@ -13,6 +13,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { cookieFor, seedPerson } from "./helpers/persons";
+import { bearerCtx } from "./helpers/tenant";
 
 /** A TicketCreate with the schema's defaults filled in (these tests bypass the route's parse). */
 const ticket = (o: Partial<TicketCreate> & { title: string }): TicketCreate => ({
@@ -188,7 +189,7 @@ describe("registered MCP get_roadmap tool", () => {
     );
     await upsertProgress(env.DB, sprints[0].id, 4, 6, "event");
 
-    const server = buildTrovMcpServer(env as unknown as Env, { handle: "andres" });
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx("andres"));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -222,7 +223,7 @@ describe("registered MCP get_roadmap tool", () => {
     await transition_ticket(env.DB, a, "in_progress", "andres");
     await transition_ticket(env.DB, a, "done", "andres");
 
-    const server = buildTrovMcpServer(env as unknown as Env, { handle: "andres" });
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx("andres"));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -248,7 +249,7 @@ describe("registered MCP get_roadmap tool", () => {
   });
 
   it("MCP registers no agent-PROPOSED sprint tool — sprints are authored, never staged", async () => {
-    const server = buildTrovMcpServer(env as unknown as Env, { handle: "andres" });
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx("andres"));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);

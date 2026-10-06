@@ -23,6 +23,7 @@ import combined from "../migrations/0035_library_and_sprint_dates.sql?raw";
 const migration = combined.split("-- ═══ PART B")[0].split("-- ═══ PART C")[0];
 import type { DocRow } from "../shared/rows";
 import type { PromptDetail, PromptSummary } from "../shared/handoffs";
+import { bearerCtx } from "./helpers/tenant";
 
 /** The migration's backfill UPDATE statements, re-run against the current rows. */
 async function runBackfill(): Promise<void> {
@@ -184,7 +185,7 @@ describe("prompt usage", () => {
   });
 
   async function mcp(handle: string, name: string, args: Record<string, unknown>): Promise<{ text: string; isError?: boolean }> {
-    const server = buildTrovMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://trov.example/" } as Env, { handle });
+    const server = buildTrovMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://trov.example/" } as Env, await bearerCtx(handle));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);

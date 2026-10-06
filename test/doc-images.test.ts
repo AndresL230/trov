@@ -20,6 +20,7 @@ import { recordBatch } from "../src/consumer";
 import { scanDocImages, docImageKey } from "@shared/doc-images";
 import { IngestPayload } from "@shared/contract";
 import { seedPerson, cookieFor } from "./helpers/persons";
+import { bearerCtx } from "./helpers/tenant";
 
 const ME = "img-author";
 const ORIGIN = "https://trov.test"; // PUBLIC_ORIGIN in vitest.config.ts
@@ -28,7 +29,7 @@ const ctx = { waitUntil() {}, passThroughException() {} } as unknown as Executio
 
 async function call(name: string, args: Record<string, unknown>, handle = ME): Promise<{ body: any; isError: boolean }> {
   await seedPerson(handle);
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -176,7 +177,7 @@ describe("upload_asset destination doc", () => {
 
   it("the old name is gone: there is one upload tool", async () => {
     await seedPerson(ME);
-    const server = buildTrovMcpServer(env as unknown as Env, { handle: ME });
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(ME));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);

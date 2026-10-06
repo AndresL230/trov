@@ -18,6 +18,7 @@ import { DRIFT_GROUP_LIMIT, shapeRepoDashboard, type RepoAgentView } from "../sr
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoDashboard, type RepoDrift, type RepoRange, type RepoUsageEnv } from "@shared/repo";
 import type { Env } from "../src/env";
 import { LONG_TOKEN, leakedFragments } from "./helpers/repo";
+import { bearerCtx } from "./helpers/tenant";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -42,7 +43,7 @@ const testEnv = (over: Partial<Record<keyof Env, unknown>> = {}): Env =>
   ({ ...(env as unknown as Env), ...SECRETS, ...over }) as Env;
 
 async function withClient<T>(handle: string, e: Env, fn: (c: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(e, { handle });
+  const server = buildTrovMcpServer(e, await bearerCtx(handle, undefined, e));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -299,7 +300,17 @@ describe("MCP get_repo_dashboard — never an MCP error, never a secret", () => 
       prepare() { throw new Error("D1 is down"); },
       batch() { throw new Error("D1 is down"); },
     } as unknown as Env["DB"];
-    const r = await call({ tab: "overview", range: "24h" }, testEnv({ DB: throwingDb }));
+    // The bearer context is bound to its Env, and resolving it reads the membership — so D1 goes down
+    // AFTER that (`down` flips once the client is connected): the tool's own read is the one that fails.
+    let down = false;
+    const flaky = Object.defineProperty(testEnv(), "DB", { get: () => (down ? throwingDb : env.DB) }) as Env;
+    const r = await withClient("beatrix", flaky, async (client) => {
+      down = true;
+      const res = (await client.callTool({ name: "get_repo_dashboard", arguments: { tab: "overview", range: "24h" } })) as {
+        content: Array<{ type: string; text: string }>; isError?: boolean;
+      };
+      return { text: res.content[0].text, isError: res.isError };
+    });
     expect(r.isError).toBeFalsy();
     const v = JSON.parse(r.text) as RepoAgentView;
     expect(v.degraded).toBe(true);

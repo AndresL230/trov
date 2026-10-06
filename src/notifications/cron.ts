@@ -6,6 +6,7 @@ import type { RunCadence } from "@shared/notifications";
 import type { NotificationSettingsRow } from "@shared/rows";
 import { type DB, first } from "../db";
 import type { Env } from "../env";
+import { legacyDb, legacySystemTenant } from "../data/legacy";
 import { localDate } from "./window";
 import { runDigest, type RunReport } from "./run";
 import { retryFailed, type RetryReport } from "./retry";
@@ -37,7 +38,10 @@ export async function loadSettings(db: DB): Promise<NotificationSettingsRow> {
  * any), then — on the hourly daily trigger — the retry job for failed rows.
  */
 export async function handleNotificationCron(env: Env, cron: string, now: Date): Promise<{ run: RunReport | null; retry: RetryReport | null }> {
-  const settings = await loadSettings(env.DB);
+  // MT: one digest run, one org — the legacy org, as system. Phase 5b runs it per org, each on its own
+  // send_hour + timezone (§8.4).
+  const ctx = legacySystemTenant(env, "system");
+  const settings = await loadSettings(legacyDb(ctx));
   const origin = env.PUBLIC_ORIGIN ?? "";
   const cadence = dueCadence(cron, now, settings);
   const opts = {
@@ -45,7 +49,7 @@ export async function handleNotificationCron(env: Env, cron: string, now: Date):
     origin,
     unsubscribeUrl: (login: string) => unsubscribeUrl(origin, login, env.COOKIE_SECRET),
   };
-  const run = cadence ? await runDigest(env.DB, cadence, now, opts) : null;
-  const retry = cron === DAILY_CRON ? await retryFailed(env.DB, opts) : null;
+  const run = cadence ? await runDigest(legacyDb(ctx), cadence, now, opts) : null;
+  const retry = cron === DAILY_CRON ? await retryFailed(legacyDb(ctx), opts) : null;
   return { run, retry };
 }

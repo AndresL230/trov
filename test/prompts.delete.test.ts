@@ -16,6 +16,7 @@ import { renamePerson } from "../src/auth/persons";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import type { PromptDetail, PromptSummary } from "../shared/handoffs";
 import type { QuickSearchResult } from "@shared/quick-search";
+import { bearerCtx } from "./helpers/tenant";
 
 const AUTHOR = "pauthor";
 const OTHER = "pother";
@@ -38,7 +39,7 @@ const del = (who: string, slug = SLUG) => req("POST", `/api/prompts/${slug}/dele
 const restore = (who: string, slug = SLUG) => req("POST", `/api/prompts/${slug}/restore`, who, {});
 
 async function mcp(handle: string, name: string, args: Record<string, unknown> = {}): Promise<{ text: string; isError?: boolean }> {
-  const server = buildTrovMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://trov.example/" } as Env, { handle });
+  const server = buildTrovMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://trov.example/" } as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -127,7 +128,7 @@ describe("POST /api/prompts/:slug/delete", () => {
   });
 
   it("is never an MCP tool — no agent can delete or restore a prompt", async () => {
-    const server = buildTrovMcpServer(env as unknown as Env, { handle: ADMIN });
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(ADMIN));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);

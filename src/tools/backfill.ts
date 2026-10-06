@@ -1,6 +1,7 @@
 import type { Env } from "../env";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import { first } from "../db";
+import { legacyDb, legacySystemTenant } from "../data/legacy";
 import { ingestEvent } from "../consumer";
 import { mirrorIssue } from "./ticket-mirror";
 import { eventsFromDelivery } from "../webhook";
@@ -194,6 +195,8 @@ export async function runBackfill(
     summaryCallDelayMs?: number;
   }
 ): Promise<BackfillResult> {
+  // MT: the backfill replays GitHub into the legacy org, as system — the webhook's own context.
+  const ctx = legacySystemTenant(env, "system");
   // Nothing-ran failure envelope. The route turns this into a 503 whose error
   // reaches the admin's toast — a Sync that can't reach GitHub must say so, not
   // report zeros as if the repo were empty.
@@ -289,7 +292,7 @@ export async function runBackfill(
     // effort, like the webhook's: a mirror failure never costs the capture.
     if (issue.state === "open") {
       try {
-        await mirrorIssue(env.DB, repo, payload);
+        await mirrorIssue(legacyDb(ctx), repo, payload);
       } catch (e) {
         console.error("ticket mirror failed (backfill)", issue.number, e instanceof Error ? e.message : String(e));
       }
@@ -298,11 +301,11 @@ export async function runBackfill(
 
     for (const base of eventsFromDelivery("issues", payload)) {
       const ev = { ...base, provenance: "backfill" as const };
-      const res = await ingestEvent(env.DB, ev, principalLogin);
+      const res = await ingestEvent(legacyDb(ctx), ev, principalLogin);
       if (res.outcome === "written") {
         captured++;
         // Mirror handleGithubWebhook's progress seam for newly-written issues.
-        await applyEventProgress(env.DB, payload);
+        await applyEventProgress(legacyDb(ctx), payload);
       } else {
         unchanged++;
       }
@@ -310,7 +313,7 @@ export async function runBackfill(
       if (!isAssigned) continue; // unassigned issues never appear in anyone's to-do
 
       const existing = await first<IssueSummaryRow>(
-        env.DB,
+        legacyDb(ctx),
         `SELECT model, title FROM issue_summaries WHERE issue_number = ?`,
         issue.number
       );
@@ -327,7 +330,7 @@ export async function runBackfill(
         continue;
       }
 
-      const stored = await storeIssueSummary(env.DB, issueSummarizer, {
+      const stored = await storeIssueSummary(legacyDb(ctx), issueSummarizer, {
         issue_number: issue.number,
         title: issue.title,
         body: issue.body ?? "",
@@ -347,7 +350,7 @@ export async function runBackfill(
     const payload = prClosedDelivery(pr);
     for (const base of eventsFromDelivery("pull_request", payload)) {
       const ev = { ...base, provenance: "backfill" as const };
-      const res = await ingestEvent(env.DB, ev, principalLogin);
+      const res = await ingestEvent(legacyDb(ctx), ev, principalLogin);
       if (res.outcome === "written") {
         captured++;
       } else {
@@ -358,7 +361,7 @@ export async function runBackfill(
       // event-capture outcome so a Sync also migrates PRs that fell back to the
       // excerpt summary, not just brand-new ones.
       const existing = await first<PrSummaryRow>(
-        env.DB,
+        legacyDb(ctx),
         `SELECT model, title FROM pr_summaries WHERE semantic_key = ?`,
         ev.semantic_key
       );
@@ -377,7 +380,7 @@ export async function runBackfill(
       }
 
       const parsed = JSON.parse(ev.raw) as { pr: { number: number; title: string; body: string | null } };
-      const stored = await storePrSummary(env.DB, summarizer, {
+      const stored = await storePrSummary(legacyDb(ctx), summarizer, {
         semantic_key: ev.semantic_key,
         pr_number: parsed.pr.number,
         title: parsed.pr.title,

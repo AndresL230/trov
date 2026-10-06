@@ -12,6 +12,8 @@ import {
 import { readSessionCookie, getSessionUser } from "./session";
 import { hmacSeal, hmacUnseal, b64uEncode, b64uDecode } from "./crypto";
 import { errorPage, signInPage, consentPage } from "./oauth-pages";
+import { platformContext } from "../data/gate";
+import { legacyDb } from "../data/legacy";
 
 const MAX_REGISTER_BYTES = 8 * 1024;
 const CORS: Record<string, string> = {
@@ -66,7 +68,7 @@ async function consentSession(c: Context<AppEnv>): Promise<{ id: string; handle:
   if (c.env.DEV_LOGIN) return { id: "dev", handle: c.env.DEV_LOGIN };
   const id = await readSessionCookie(c, c.env.COOKIE_SECRET);
   if (!id) return null;
-  const handle = await getSessionUser(c.env.DB, id);
+  const handle = await getSessionUser(legacyDb(c.var.p), id);
   return handle ? { id, handle } : null;
 }
 
@@ -79,6 +81,8 @@ export interface OAuthDeps { now?: () => number }
 export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
   const now = deps.now ?? Date.now;
   const o = new Hono<AppEnv>();
+  // OAuth clients, codes, grants and tokens are global tables: `c.var.p` (set here too, so the app stands alone).
+  o.use("*", platformContext);
 
   const json = (c: Context<AppEnv>, body: unknown, status: 200 | 201 | 400 | 401 | 503 = 200, cache = "no-store") =>
     c.json(body, status, { ...CORS, "cache-control": cache });
@@ -107,7 +111,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
     let body: unknown;
     try { body = JSON.parse(text); } catch { return oauthError(c, new OAuthError("invalid_client_metadata", "the body must be JSON")); }
     try {
-      const client = await registerClient(c.env.DB, validateRegistration(body), now());
+      const client = await registerClient(legacyDb(c.var.p), validateRegistration(body), now());
       return json(c, {
         ...client, client_id_issued_at: Math.floor(now() / 1000), token_endpoint_auth_method: "none",
         grant_types: ["authorization_code", "refresh_token"], response_types: ["code"],
@@ -144,13 +148,13 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
     try {
       const grant = p.get("grant_type");
       if (grant === "authorization_code") {
-        return json(c, await exchangeAuthorizationCode(c.env.DB, {
+        return json(c, await exchangeAuthorizationCode(legacyDb(c.var.p), {
           code: need(p, "code"), code_verifier: need(p, "code_verifier"), redirect_uri: need(p, "redirect_uri"),
           client_id: need(p, "client_id"), resource: p.get("resource"),
         }, oauthOrigin(c.req.url), now()));
       }
       if (grant === "refresh_token") {
-        return json(c, await refreshAccessToken(c.env.DB, { refresh_token: need(p, "refresh_token"), client_id: p.get("client_id") }, now()));
+        return json(c, await refreshAccessToken(legacyDb(c.var.p), { refresh_token: need(p, "refresh_token"), client_id: p.get("client_id") }, now()));
       }
       throw new OAuthError("unsupported_grant_type", "grant_type must be authorization_code or refresh_token");
     } catch (e) {
@@ -164,7 +168,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
   o.post("/oauth/revoke", async (c) => {
     const token = (await params(c)).get("token");
     try {
-      if (token) await revokeOAuthToken(c.env.DB, token, now());
+      if (token) await revokeOAuthToken(legacyDb(c.var.p), token, now());
     } catch (e) {
       console.error("oauth revoke: unexpected error", e instanceof Error ? e.message : "unknown");
       return json(c, { error: "temporarily_unavailable" }, 503);
@@ -200,7 +204,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
   o.get("/oauth/authorize", async (c) => {
     try {
       const q = new URL(c.req.url).searchParams;
-      const check = await checkAuthorizeRequest(c.env.DB, q, oauthOrigin(c.req.url));
+      const check = await checkAuthorizeRequest(legacyDb(c.var.p), q, oauthOrigin(c.req.url));
       if (!check.ok) return refuse(c, check);
       const s = await consentSession(c);
       if (!s) {
@@ -224,7 +228,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
       const body = await c.req.parseBody();
       const q = new URLSearchParams();
       for (const k of AUTHORIZE_KEYS) { const v = body[k]; if (typeof v === "string" && v) q.set(k, v); }
-      const check = await checkAuthorizeRequest(c.env.DB, q, oauthOrigin(c.req.url));
+      const check = await checkAuthorizeRequest(legacyDb(c.var.p), q, oauthOrigin(c.req.url));
       if (!check.ok) return refuse(c, check);
       const s = await consentSession(c);
       const csrf = typeof body.csrf === "string" ? body.csrf : "";
@@ -232,7 +236,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
         return page(c, errorPage("This approval form expired or didn't come from your session. Start the connection again from the app."), 403);
       }
       if (body.decision !== "allow") return c.redirect(back(check.params.redirect_uri, check.params.state, { error: "access_denied" }), 302);
-      const { code } = await issueAuthorization(c.env.DB, { client: check.client, params: check.params, person: s.handle, nowMs: now() });
+      const { code } = await issueAuthorization(legacyDb(c.var.p), { client: check.client, params: check.params, person: s.handle, nowMs: now() });
       return c.redirect(back(check.params.redirect_uri, check.params.state, { code }), 302);
     } catch (e) {
       return unavailable(c, e);

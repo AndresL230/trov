@@ -5,6 +5,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import { all } from "../src/db";
 import type { FeedRow, NeedsTriageRow } from "@shared/rows";
+import { bearerCtx } from "./helpers/tenant";
 
 const AUTHOR = "agent";
 
@@ -14,7 +15,7 @@ const AUTHOR = "agent";
 // so prs/commits were silently dropped at the real call site. This drives the
 // registered tool end-to-end through the gate (audit F3).
 async function callTool(name: string, args: Record<string, unknown>): Promise<{ text: string; isError?: boolean }> {
-  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: AUTHOR });
+  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, await bearerCtx(AUTHOR));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

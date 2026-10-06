@@ -9,6 +9,8 @@ import { pruneOAuth } from "../auth/oauth";
 import { recomputeAllProgress } from "../tools/progress";
 import { repoEnvironments, type RepoEnvConfig } from "./config";
 import { run } from "../db";
+import { platform } from "../data/context";
+import { legacyDb, legacySystemTenant } from "../data/legacy";
 import { reconcileRepo, scrubbedMessage } from "./github";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollCloudflare, pollRailway, pollSaplingMetrics } from "./poll";
 import { getSnapshot, pruneRepoCapture } from "./store";
@@ -76,6 +78,8 @@ const UNEXPECTED: PollOutcome[] = [{ env: "*", status: "failed", written: 0, det
  * `detail` is a poller's scrubbed, truncated message, or a few fixed words.
  */
 export async function runUsagePolls(env: Env, now: number, fetchImpl?: typeof fetch): Promise<UsagePollResult> {
+  // MT: the legacy org, as system — see handleRepoCron.
+  const ctx = legacySystemTenant(env, "system");
   const envs = repoEnvironments(env);
   const arm = async (label: string, fn: () => Promise<PollOutcome[]>): Promise<UsagePollSource> => {
     try {
@@ -88,20 +92,20 @@ export async function runUsagePolls(env: Env, now: number, fetchImpl?: typeof fe
   // Cloudflare: BOTH values, or not called.
   const { CF_ANALYTICS_TOKEN: token, CF_ANALYTICS_ACCOUNT_ID: accountId } = env;
   const cloudflare = token && accountId
-    ? await arm("cloudflare", () => pollCloudflare(env.DB, { token, accountId }, envs, now, fetchImpl))
+    ? await arm("cloudflare", () => pollCloudflare(legacyDb(ctx), { token, accountId }, envs, now, fetchImpl))
     : "not_configured";
   // Railway: a token PER environment; an environment without one is skipped
   // inside the poller, and with none at all the poller is not called.
   const tokens = railwayTokens(env, envs);
   const railway = Object.values(tokens).some(Boolean)
-    ? await arm("railway", () => pollRailway(env.DB, tokens, envs, now, fetchImpl))
+    ? await arm("railway", () => pollRailway(legacyDb(ctx), tokens, envs, now, fetchImpl))
     : "not_configured";
   // Sapling's active users AND product metrics (one response carries both):
   // ONE token for every environment. Absent or empty → not called, and Active
   // users / the Product blocks stay "not connected".
   const saplingToken = env.SAPLING_METRICS_TOKEN;
   const sapling = saplingToken
-    ? await arm("sapling", () => pollSaplingMetrics(env.DB, saplingToken, envs, now, fetchImpl))
+    ? await arm("sapling", () => pollSaplingMetrics(legacyDb(ctx), saplingToken, envs, now, fetchImpl))
     : "not_configured";
   return { cloudflare, railway, sapling };
 }
@@ -163,12 +167,14 @@ export const BUDGET_SKIP = "skipped: would exceed the subrequest budget";
  * "unexpected error" path cannot be reached through it.)
  */
 export async function runRepoRefresh(env: Env, now: number, fetchImpl?: typeof fetch, reconcile: typeof reconcileRepo = reconcileRepo): Promise<RepoRefreshResult> {
+  // MT: the legacy org, as system — see handleRepoCron.
+  const ctx = legacySystemTenant(env, "system");
   const envs = repoEnvironments(env);
 
   let health: UsagePollSource = "not_configured";
   if (envs.length) {
     try {
-      health = await pingHealth(env.DB, envs, now, fetchImpl, HEALTH_ON_DEMAND_BUCKET_MS);
+      health = await pingHealth(legacyDb(ctx), envs, now, fetchImpl, HEALTH_ON_DEMAND_BUCKET_MS);
     } catch (e) {
       console.error("repo refresh", "health", scrubbedLog(e, env));
       health = UNEXPECTED;
@@ -192,7 +198,7 @@ export async function runRepoRefresh(env: Env, now: number, fetchImpl?: typeof f
       github = { written: 0, unchanged: 0, failed: [BUDGET_SKIP] };
     } else {
       try {
-        const res = await reconcile(env.DB, { token, repo, fetchImpl }, envs, now);
+        const res = await reconcile(legacyDb(ctx), { token, repo, fetchImpl }, envs, now);
         if (res.failed.length) console.error("repo refresh reconcile: arms failed", res.failed);
         github = { written: res.written, unchanged: res.unchanged, failed: res.failed };
       } catch (e) {
@@ -237,22 +243,24 @@ export type LockedRefresh =
  * must not delete the lock of the run that replaced it.
  */
 export async function runLockedRepoRefresh(env: Env, by: string, now: number, fetchImpl?: typeof fetch, refresh: typeof runRepoRefresh = runRepoRefresh): Promise<LockedRefresh> {
+  // MT: the legacy org, as system — see handleRepoCron.
+  const ctx = legacySystemTenant(env, "system");
   const at = new Date(now).toISOString();
   const mine = JSON.stringify({ by, at });
   const staleBefore = new Date(now - REFRESH_LOCK_MS).toISOString();
-  const took = await run(env.DB,
+  const took = await run(legacyDb(ctx),
     `INSERT INTO repo_snapshots (kind, json, computed_at) VALUES (?, ?, ?)
      ON CONFLICT(org_id, kind) DO UPDATE SET json = excluded.json, computed_at = excluded.computed_at
      WHERE repo_snapshots.computed_at <= ?`,
     REFRESH_LOCK, mine, at, staleBefore);
   if (!took.meta.changes) {
-    const held = await getSnapshot<{ at?: unknown }>(env.DB, REFRESH_LOCK);
+    const held = await getSnapshot<{ at?: unknown }>(legacyDb(ctx), REFRESH_LOCK);
     return { ok: false, since: held?.computedAt ?? at };
   }
   try {
     return { ok: true, result: await refresh(env, now, fetchImpl) };
   } finally {
-    await run(env.DB, `DELETE FROM repo_snapshots WHERE kind = ? AND json = ?`, REFRESH_LOCK, mine).catch(() => undefined);
+    await run(legacyDb(ctx), `DELETE FROM repo_snapshots WHERE kind = ? AND json = ?`, REFRESH_LOCK, mine).catch(() => undefined);
   }
 }
 
@@ -304,6 +312,8 @@ export async function runLockedRepoRefresh(env: Env, by: string, now: number, fe
  * three on one tick did not, and the reconcile is what died.
  */
 export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?: typeof fetch): Promise<void> {
+  // MT: one job, one org — the legacy org, as system. Phase 5b runs it per (org, environment) by rotation (§8.3).
+  const ctx = legacySystemTenant(env, "system");
   const envs = repoEnvironments(env);
   const when = new Date(scheduledTime);
   const minute = when.getUTCMinutes();
@@ -318,11 +328,11 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
 
   // Every tick: a dead target or a bad token costs one data point, never the
   // cron — pingHealth itself never throws.
-  await safely("health", () => pingHealth(env.DB, envs, scheduledTime, fetchImpl));
+  await safely("health", () => pingHealth(legacyDb(ctx), envs, scheduledTime, fetchImpl));
   // Every tick: pending handoffs past their expires_at flip to expired. D1 only
   // (no subrequest), so it adds nothing to any tick's budget, and it runs BEFORE
   // the :00 early return so no hour is skipped.
-  await safely("handoff expiry", () => expireDueHandoffs(env.DB, scheduledTime));
+  await safely("handoff expiry", () => expireDueHandoffs(legacyDb(ctx), scheduledTime));
 
   if (minute === 0) {
     // The hourly polls — and NOTHING else may join this tick: the slot exists
@@ -340,22 +350,24 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
     : null;
 
   // The progress backstop this trigger has always run — on its own invocation.
-  if (minute === 10 && gh) await safely("progress", () => recomputeAllProgress(env.DB, gh));
+  if (minute === 10 && gh) await safely("progress", () => recomputeAllProgress(legacyDb(ctx), gh));
 
   // reconcileRepo already covers drift and branches as arms (and writes
   // env_heads) — calling refreshDrift/refreshBranches here too would double
   // the requests, not add coverage.
   if (minute === 20 && gh) {
     await safely("reconcile", async () => {
-      const res = await reconcileRepo(env.DB, gh, envs, scheduledTime);
+      const res = await reconcileRepo(legacyDb(ctx), gh, envs, scheduledTime);
       if (res.failed.length) console.error("repo cron reconcile: arms failed", res.failed);
     });
   }
 
   if (minute === 30) {
-    await safely("prune", () => pruneRepoCapture(env.DB, scheduledTime));
+    // MT: the two retention sweeps (and the handoff expiry above) are deliberately CROSS-ORG and write-only
+    // (§4.4's allowlist): ported, they take the platform context, not one org's.
+    await safely("prune", () => pruneRepoCapture(legacyDb(ctx), scheduledTime));
     // MCP OAuth housekeeping rides the same D1-only tick: spent codes, dead tokens,
     // never-used client registrations. Grants are never deleted.
-    await safely("oauth-prune", () => pruneOAuth(env.DB, scheduledTime));
+    await safely("oauth-prune", () => pruneOAuth(legacyDb(platform(env, "system")), scheduledTime));
   }
 }

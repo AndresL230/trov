@@ -11,6 +11,7 @@ import { getMyWork } from "../src/tools/mywork";
 import type { TicketDetail } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
 import { seedPerson } from "./helpers/persons";
+import { bearerCtx } from "./helpers/tenant";
 
 // Phase 2: the ticket WRITE tools, driven through the REAL registered closures
 // over an in-memory transport — never the writers directly, so a missing or
@@ -23,7 +24,7 @@ import { seedPerson } from "./helpers/persons";
 const ISSUE_214 = "https://github.com/SaplingLearn/sapling/issues/214";
 
 async function withClient<T>(handle: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

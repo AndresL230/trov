@@ -1,6 +1,7 @@
 import type { CapturedEvent } from "@shared/contract";
 import type { Env } from "./env";
 import { type DB } from "./db";
+import { legacyDb, legacySystemTenant } from "./data/legacy";
 import { ingestEvent, ingestRepoEvent } from "./consumer";
 import { type Summarizer, type PrSummary, type IssueSummary, geminiPrSummarizer, geminiIssueSummarizer, storePrSummary, storeIssueSummary } from "./tools/summarize";
 import { applyEventProgress } from "./tools/progress";
@@ -336,6 +337,9 @@ export async function handleGithubWebhook(
     // Bare 401, NO WWW-Authenticate — same shape as the /mcp bearer failure.
     return json({ error: "unauthorized" }, 401);
   }
+  // MT: one webhook, one org — the legacy org, as system. Phase 5b resolves the org from the hook's
+  // `org_repos` row (the per-org `/webhook/github/:hook` URL, §8.5) and verifies with THAT org's secret.
+  const ctx = legacySystemTenant(env, "github-webhook");
 
   const eventName = request.headers.get("x-github-event") ?? "";
   const forWork = WORK_EVENT_NAMES.includes(eventName);
@@ -356,7 +360,7 @@ export async function handleGithubWebhook(
   let unchanged = 0;
   if (forWork) {
     for (const ev of eventsFromDelivery(eventName, payload)) {
-      const res = await ingestEvent(env.DB, ev, "github-webhook");
+      const res = await ingestEvent(legacyDb(ctx), ev, "github-webhook");
       if (res.outcome !== "written") { unchanged++; continue; }
       captured++;
       if (ev.event_type === "pr_merged" || ev.event_type === "pr_closed") {
@@ -365,13 +369,13 @@ export async function handleGithubWebhook(
         const summarizer = opts?.summarizer !== undefined
           ? opts.summarizer
           : env.GEMINI_API_KEY ? geminiPrSummarizer(env.GEMINI_API_KEY) : null;
-        await summarizePrSeam(env.DB, summarizer, ev);
+        await summarizePrSeam(legacyDb(ctx), summarizer, ev);
       } else if (ev.event_type === "issue") {
-        await progressSeam(env.DB, payload);
+        await progressSeam(legacyDb(ctx), payload);
         const issueSummarizer = opts?.issueSummarizer !== undefined
           ? opts.issueSummarizer
           : env.GEMINI_API_KEY ? geminiIssueSummarizer(env.GEMINI_API_KEY) : null;
-        await summarizeIssueSeam(env.DB, issueSummarizer, ev);
+        await summarizeIssueSeam(legacyDb(ctx), issueSummarizer, ev);
       }
     }
 
@@ -383,7 +387,7 @@ export async function handleGithubWebhook(
     // no consume(); and a failure here must never cost the events capture above.
     if (eventName === "issues") {
       try {
-        await (opts?.mirror ?? mirrorIssue)(env.DB, env.GITHUB_REPO, payload);
+        await (opts?.mirror ?? mirrorIssue)(legacyDb(ctx), env.GITHUB_REPO, payload);
       } catch (e) {
         console.error("ticket mirror failed", e instanceof Error ? e.message : String(e));
       }
@@ -412,20 +416,20 @@ export async function handleGithubWebhook(
           console.warn("repo capture: dropped status", outcome.dropped.context, "-", outcome.dropped.reason);
         }
         for (const m of outcome.metrics) {
-          if (await putMetric(env.DB, m)) repo.captured++; else repo.unchanged++;
+          if (await putMetric(legacyDb(ctx), m)) repo.captured++; else repo.unchanged++;
         }
       } else {
         for (const ev of repoEventsFromDelivery(eventName, payload, cfgs)) {
-          const res = await ingestRepoEvent(env.DB, ev);
+          const res = await ingestRepoEvent(legacyDb(ctx), ev);
           if (res.outcome !== "written") { repo.unchanged++; continue; }
           repo.captured++;
           if (ev.kind === "run" && (ev.state === "failure" || ev.state === "timed_out") && ev.number && env.GITHUB_SERVICE_TOKEN && env.GITHUB_REPO) {
-            const job = fillFailedJob(env.DB, { token: env.GITHUB_SERVICE_TOKEN, repo: env.GITHUB_REPO, fetchImpl: opts?.fetchImpl }, ev.number, ev.semantic_key);
+            const job = fillFailedJob(legacyDb(ctx), { token: env.GITHUB_SERVICE_TOKEN, repo: env.GITHUB_REPO, fetchImpl: opts?.fetchImpl }, ev.number, ev.semantic_key);
             // Off the response path when the runtime allows; GitHub gives a hook 10s.
             if (opts?.waitUntil) opts.waitUntil(job); else await job;
           }
           if (ev.kind === "push" && cfgs.some((c) => c.branch === ev.ref) && env.GITHUB_SERVICE_TOKEN && env.GITHUB_REPO) {
-            const drift = refreshDrift(env.DB, { token: env.GITHUB_SERVICE_TOKEN, repo: env.GITHUB_REPO, fetchImpl: opts?.fetchImpl }, cfgs);
+            const drift = refreshDrift(legacyDb(ctx), { token: env.GITHUB_SERVICE_TOKEN, repo: env.GITHUB_REPO, fetchImpl: opts?.fetchImpl }, cfgs);
             if (opts?.waitUntil) opts.waitUntil(drift); else await drift;
           }
         }

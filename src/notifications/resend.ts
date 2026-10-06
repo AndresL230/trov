@@ -3,6 +3,7 @@
 // requires RESEND_API_KEY and is a configuration error without it — never a
 // silent fallback in production.
 import type { Env } from "../env";
+import { legacyDb, legacySystemTenant } from "../data/legacy";
 import { type Delivery, localDelivery } from "./delivery";
 
 const RESEND_URL = "https://api.resend.com/emails";
@@ -52,7 +53,9 @@ export function resendDelivery(opts: { apiKey: string; from: string; fetchImpl?:
 
 export function deliveryFor(env: Env, opts: { from: string; fetchImpl?: typeof fetch }): Delivery & { mode: "local" | "resend" } {
   const mode = env.NOTIFICATIONS_MODE ?? "local";
-  if (mode !== "resend") return { ...localDelivery(env.DB), mode: "local" };
+  // MT: local mode writes bodies to the per-org dev table; every caller is the legacy org's until the
+  // digest runs per org (Phase 5b), when this takes the caller's ctx.
+  if (mode !== "resend") return { ...localDelivery(legacyDb(legacySystemTenant(env, "system"))), mode: "local" };
   if (!env.RESEND_API_KEY) throw new Error("NOTIFICATIONS_MODE=resend requires the RESEND_API_KEY secret");
   return { ...resendDelivery({ apiKey: env.RESEND_API_KEY, from: opts.from, fetchImpl: opts.fetchImpl }), mode: "resend" };
 }

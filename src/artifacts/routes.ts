@@ -33,6 +33,7 @@ import {
 } from "../tools/artifacts";
 import { artifactErrorResponse } from "./http";
 import { FetchUrlError, fetchArtifactUrl } from "./fetch-url";
+import { legacyDb } from "../data/legacy";
 
 /** Multipart overhead allowed on top of the binary cap before the body is even read. */
 export const MULTIPART_SLACK = 1024 * 1024;
@@ -155,7 +156,7 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
   r.get("/", (c) => guard(async () => {
     const parsed = ArtifactListFiltersSchema.safeParse(c.req.query());
     if (!parsed.success) return bad(c, "invalid filters", parsed.error.issues);
-    return c.json({ artifacts: await listPages(c.env.DB, parsed.data, who(c)) });
+    return c.json({ artifacts: await listPages(legacyDb(c.var.ctx), parsed.data, who(c)) });
   }));
 
   // ── create ─────────────────────────────────────────────────────────────────
@@ -173,7 +174,7 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
       const bytes = await fileBytes(c, body.file);
       if (!bytes.ok) return bytes.res;
       const d = parsed.data;
-      const page = await createPage(c.env.DB, {
+      const page = await createPage(legacyDb(c.var.ctx), {
         ...d,
         bytes: bytes.bytes,
         content_type: d.content_type ?? (body.file!.type || null),
@@ -183,7 +184,7 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
     }
     const body = await jsonBody(c, CreateTextArtifactSchema);
     if (!body.ok) return body.res;
-    return c.json(await createPage(c.env.DB, body.data, who(c)), 201);
+    return c.json(await createPage(legacyDb(c.var.ctx), body.data, who(c)), 201);
   }));
 
   // ── fetch a URL (text only; nothing stored) ─────────────────────────────────
@@ -202,7 +203,7 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
   r.post("/upload-url", (c) => guard(async () => {
     const body = await jsonBody(c, UploadTicketSchema);
     if (!body.ok) return body.res;
-    const mint = await mintUploadToken(c.env.DB, body.data, who(c));
+    const mint = await mintUploadToken(legacyDb(c.var.ctx), body.data, who(c));
     const dto: ArtifactUploadTicketDTO = {
       id: mint.id,
       slug: mint.slug,
@@ -219,7 +220,7 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
     const v = positiveInt(c.req.query("v"));
     if (v === null) return bad(c, "v must be a positive integer");
     if (v !== undefined && parsed.version !== null && v !== parsed.version) return bad(c, "two different versions were asked for");
-    return c.json(await getPage(c.env.DB, parsed.slug, v ?? parsed.version, who(c)));
+    return c.json(await getPage(legacyDb(c.var.ctx), parsed.slug, v ?? parsed.version, who(c)));
   });
   r.get("/:slug", (c) => detail(c, c.req.param("slug")));
   r.get("/:slug/:ver{v[0-9]+}", (c) => detail(c, `${c.req.param("slug")}/${c.req.param("ver")}`));
@@ -227,7 +228,7 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
   r.patch("/:slug", (c) => guard(async () => {
     const body = await jsonBody(c, PatchArtifactSchema);
     if (!body.ok) return body.res;
-    return c.json(await patchPage(c.env.DB, c.req.param("slug"), body.data, who(c)));
+    return c.json(await patchPage(legacyDb(c.var.ctx), c.req.param("slug"), body.data, who(c)));
   }));
 
   // ── versions ───────────────────────────────────────────────────────────────
@@ -243,7 +244,7 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
       const bytes = await fileBytes(c, body.file);
       if (!bytes.ok) return bytes.res;
       const d = parsed.data;
-      const res = await addBinaryVersion(c.env.DB, c.env.ARTIFACTS_BUCKET, slug, {
+      const res = await addBinaryVersion(legacyDb(c.var.ctx), c.env.ARTIFACTS_BUCKET, slug, {
         bytes: bytes.bytes,
         content_type: d.content_type ?? (body.file!.type || null),
         filename: d.filename ?? (body.file!.name || null),
@@ -253,7 +254,7 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
     }
     const body = await jsonBody(c, AddTextVersionSchema);
     if (!body.ok) return body.res;
-    const res = await addTextVersion(c.env.DB, slug, body.data, who(c));
+    const res = await addTextVersion(legacyDb(c.var.ctx), slug, body.data, who(c));
     return c.json(res, res.unchanged ? 200 : 201);
   }));
 
@@ -261,19 +262,19 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
     const a = positiveInt(c.req.query("a"));
     const b = positiveInt(c.req.query("b"));
     if (a == null || b == null) return bad(c, "a and b must be positive integers");
-    return c.json(await getVersionPair(c.env.DB, c.req.param("slug"), a, b, who(c)));
+    return c.json(await getVersionPair(legacyDb(c.var.ctx), c.req.param("slug"), a, b, who(c)));
   }));
 
   // ── links ──────────────────────────────────────────────────────────────────
   r.post("/:slug/links", (c) => guard(async () => {
     const body = await jsonBody(c, ArtifactLinkInputSchema);
     if (!body.ok) return body.res;
-    return c.json(await addLink(c.env.DB, c.req.param("slug"), body.data, who(c)));
+    return c.json(await addLink(legacyDb(c.var.ctx), c.req.param("slug"), body.data, who(c)));
   }));
   r.post("/:slug/links/remove", (c) => guard(async () => {
     const body = await jsonBody(c, ArtifactLinkInputSchema);
     if (!body.ok) return body.res;
-    return c.json(await removeLink(c.env.DB, c.req.param("slug"), body.data, who(c)));
+    return c.json(await removeLink(legacyDb(c.var.ctx), c.req.param("slug"), body.data, who(c)));
   }));
 
   // ── ratify: the human confirm gate — session only ───────────────────────────
@@ -283,7 +284,7 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
     }
     const body = await jsonBody(c, RatifyArtifactSchema);
     if (!body.ok) return body.res;
-    return c.json(await ratify(c.env.DB, c.req.param("slug"), body.data.version, who(c)));
+    return c.json(await ratify(legacyDb(c.var.ctx), c.req.param("slug"), body.data.version, who(c)));
   }));
 
   // ── soft delete + restore (0035 PART D) — session only, never an MCP tool ────
@@ -296,13 +297,13 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
     const refused = personOnly(c);
     if (refused) return refused;
     const me = who(c);
-    return c.json({ ok: true, ...(await deletePage(c.env.DB, c.req.param("slug"), me, isAdmin(c.env, me))) });
+    return c.json({ ok: true, ...(await deletePage(legacyDb(c.var.ctx), c.req.param("slug"), me, isAdmin(c.env, me))) });
   }));
   r.post("/:slug/restore", (c) => guard(async () => {
     const refused = personOnly(c);
     if (refused) return refused;
     const me = who(c);
-    return c.json({ ok: true, artifact: await restorePage(c.env.DB, c.req.param("slug"), me, isAdmin(c.env, me)) });
+    return c.json({ ok: true, artifact: await restorePage(legacyDb(c.var.ctx), c.req.param("slug"), me, isAdmin(c.env, me)) });
   }));
 
   return r;

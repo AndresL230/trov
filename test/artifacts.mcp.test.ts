@@ -14,6 +14,7 @@ import { create_ticket } from "../src/tools/tickets";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { app } from "../src/routes";
 import { ARTIFACT_INLINE_MAX } from "@shared/artifacts";
+import { bearerCtx } from "./helpers/tenant";
 
 const ME = "arti-author";
 const YOU = "arti-teammate";
@@ -24,7 +25,7 @@ type ToolRes = { content: Array<{ type: string; text: string }>; isError?: boole
 
 async function withClient<T>(handle: string, fn: (c: Client) => Promise<T>, e: Env = env as unknown as Env, origin?: string): Promise<T> {
   await seedPerson(handle);
-  const server = buildTrovMcpServer(e, { handle }, { origin });
+  const server = buildTrovMcpServer(e, await bearerCtx(handle), { origin });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);

@@ -7,6 +7,7 @@ import { ingestEvent } from "../src/consumer";
 import { create_ticket } from "../src/tools/tickets";
 import { seedPerson } from "./helpers/persons";
 import type { CapturedEvent } from "@shared/contract";
+import { bearerCtx } from "./helpers/tenant";
 
 const NOW = new Date().toISOString();
 
@@ -60,7 +61,7 @@ function issueEvent(number: number, login: string): CapturedEvent {
 }
 
 async function callTool(login: string, name: string, args: Record<string, unknown>): Promise<{ text: string; isError?: boolean }> {
-  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: login });
+  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, await bearerCtx(login));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

@@ -22,6 +22,7 @@ import {
 } from "@shared/sprints";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import combined from "../migrations/0035_library_and_sprint_dates.sql?raw";
+import { bearerCtx } from "./helpers/tenant";
 /** PART B of the consolidated migration — the sprint-dates part: the text between the
  *  PART B and PART C marker lines (PART C, prompt soft delete, follows it). */
 const migration = (combined.split("-- ═══ PART B")[1] ?? "").split("-- ═══ PART C")[0];
@@ -32,7 +33,7 @@ const sprintCount = async () => (await first<{ n: number }>(env.DB, `SELECT COUN
 const planVersions = async () => (await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM plan_versions`))!.n;
 
 async function callTool(handle: string, name: string, args: Record<string, unknown>) {
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(b);

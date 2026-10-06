@@ -34,6 +34,8 @@ import { ArtifactError, readRawByPageId, type ArtifactRaw } from "../tools/artif
 import { NOT_FOUND_BODY } from "./http";
 import { rawFilename } from "./raw";
 import type { Env } from "../env";
+import { resolveSoleTenant } from "../data/context";
+import { legacyDb } from "../data/legacy";
 
 export const DOWNLOAD_PREFIX = "/api/artifacts/download/";
 /** Domain separation: the download key is HMAC(COOKIE_SECRET, PURPOSE), never COOKIE_SECRET itself. */
@@ -140,9 +142,14 @@ export async function handleArtifactDownload(request: Request, env: Env, now = D
     return notFound();
   }
   const { handle, page_id, version_no } = verdict.claims;
+  // MT: no session — the signed URL names the person artifact_get minted it for, so the tenant is that
+  // person's ONE org (the bearer alias). Phase 5a puts the org in the token's claims. No org → the same
+  // 404 as a page the person cannot see.
+  const sole = await resolveSoleTenant(env, handle, "bearer");
+  if (!sole.ok) return notFound();
   let r: ArtifactRaw;
   try {
-    r = await readRawByPageId(env.DB, env.ARTIFACTS_BUCKET, page_id, version_no, handle);
+    r = await readRawByPageId(legacyDb(sole.ctx), env.ARTIFACTS_BUCKET, page_id, version_no, handle);
   } catch (e) {
     if (e instanceof ArtifactError) return notFound();
     throw e;

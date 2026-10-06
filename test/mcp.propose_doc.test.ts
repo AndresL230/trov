@@ -6,6 +6,7 @@ import { buildTrovMcpServer } from "../src/mcp";
 import { promote_doc } from "../src/tools/writes";
 import { all, first } from "../src/db";
 import type { DocRow, DocVersionRow, NeedsTriageRow } from "@shared/rows";
+import { bearerCtx } from "./helpers/tenant";
 
 const AUTHOR = "agent";
 
@@ -21,7 +22,7 @@ async function callTool(
 ): Promise<{ text: string; isError?: boolean }> {
   const server = buildTrovMcpServer(
     env as unknown as import("../src/env").Env,
-    { handle: AUTHOR }
+    await bearerCtx(AUTHOR)
   );
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

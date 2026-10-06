@@ -11,6 +11,7 @@ import { TicketCreate } from "@shared/tickets";
 import { SprintCreate, type SprintDetail, type SprintView } from "@shared/sprints";
 import type { SprintRow } from "@shared/rows";
 import { seedPerson } from "./helpers/persons";
+import { bearerCtx } from "./helpers/tenant";
 
 // The FIVE sprint write tools, driven through the REAL registered closures.
 // They are open to EVERY principal, matching the web (every sprint route sits
@@ -23,7 +24,7 @@ const SPRINT_WRITE_TOOLS = [
 ] as const;
 
 async function withClient<T>(handle: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

@@ -16,6 +16,7 @@ import {
 import { create_sprint, set_sprint_active, add_sprint_resource } from "../src/tools/sprints";
 import { upsertProgress } from "../src/tools/progress";
 import { seedPerson } from "./helpers/persons";
+import { bearerCtx } from "./helpers/tenant";
 
 // The ticket/sprint MCP READ surface. Every test here drives the REAL registered
 // closures over an in-memory transport (the same ones production builds per
@@ -54,7 +55,7 @@ const ISSUE_214 = "https://github.com/SaplingLearn/sapling/issues/214";
 const FIGMA_URL = "https://www.figma.com/file/abc/Queue-board";
 
 async function withClient<T>(handle: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
