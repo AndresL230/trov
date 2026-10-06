@@ -158,7 +158,7 @@ describe("prompts", () => {
   });
 });
 
-// The surface card (canopy.css `.cnpy-surface`) replaced each screen's hand-rolled bordered,
+// The surface card (trov.css `.cnpy-surface`) replaced each screen's hand-rolled bordered,
 // 2.5%-tinted card: the class owns background, hairline, radius and shadow.
 describe("surface cards — handoffs, prompts, new doc", () => {
   const OLD_TINT = "color-mix(in srgb,var(--fg) 2.5%";

@@ -10,7 +10,7 @@ import { putMetric } from "./repo/store";
 import { fillFailedJob, refreshDrift } from "./repo/github";
 import { mirrorIssue } from "./tools/ticket-mirror";
 
-// The GitHub webhook is Canopy's THIRD auth class. Unlike the session cookie
+// The GitHub webhook is Trov's THIRD auth class. Unlike the session cookie
 // (humans) and the bearer token (agents), a delivery authenticates itself by an
 // HMAC-SHA256 signature over the raw body against GITHUB_WEBHOOK_SECRET. Once the
 // HMAC verifies, the delivery's own claims (subject_login, issue-group counts) are
@@ -78,7 +78,7 @@ interface GhPullRequest {
   merged_at: string | null;
   closed_at: string | null;
   user: GhUser;
-  milestone?: GhGroup | null; // GitHub's own key — not Canopy vocabulary
+  milestone?: GhGroup | null; // GitHub's own key — not Trov vocabulary
   base?: { ref: string } | null;
 }
 interface GhIssue {
@@ -92,7 +92,7 @@ interface GhIssue {
   user: GhUser;
   assignees?: GhUser[];
   labels?: (string | GhLabel)[];
-  milestone?: GhGroup | null; // GitHub's own key — not Canopy vocabulary
+  milestone?: GhGroup | null; // GitHub's own key — not Trov vocabulary
   pull_request?: unknown; // present only when the "issue" is really a PR
 }
 interface PrPayload {
@@ -113,7 +113,7 @@ const ISSUE_ACTIONS = [
   "unassigned",
   "closed",
   "reopened",
-  // GitHub's own action names — not Canopy vocabulary.
+  // GitHub's own action names — not Trov vocabulary.
   "milestoned",
   "demilestoned",
   // The issue LEFT the repo. Its snapshot still reads state "open", so every
@@ -147,7 +147,7 @@ export function eventsFromDelivery(eventName: string, payload: unknown): Capture
         merged_at: pr.merged_at,
         closed_at: pr.closed_at,
         user: { login: pr.user.login },
-        // GitHub's own key — not Canopy vocabulary (the raw snapshot mirrors it).
+        // GitHub's own key — not Trov vocabulary (the raw snapshot mirrors it).
         milestone: pr.milestone ? { number: pr.milestone.number } : null,
         base: pr.base ? { ref: pr.base.ref } : null,
       },
@@ -206,7 +206,7 @@ export function eventsFromDelivery(eventName: string, payload: unknown): Capture
         labels: (issue.labels ?? [])
           .map((l) => (typeof l === "string" ? l : l.name))
           .filter(Boolean),
-        // GitHub's own key — not Canopy vocabulary (the raw snapshot mirrors it).
+        // GitHub's own key — not Trov vocabulary (the raw snapshot mirrors it).
         milestone: issue.milestone
           ? {
               number: issue.milestone.number,
@@ -247,7 +247,7 @@ export function progressFromIssueEvent(
 ): { groupNumber: number; closed: number; total: number } | null {
   if (payload === null || typeof payload !== "object") return null;
   const issue = (payload as IssuePayload).issue;
-  const m = issue?.milestone; // GitHub's own key — not Canopy vocabulary
+  const m = issue?.milestone; // GitHub's own key — not Trov vocabulary
   if (!m || m.open_issues == null || m.closed_issues == null) return null;
   return {
     groupNumber: m.number,

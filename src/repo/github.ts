@@ -41,7 +41,7 @@ export const scrubbedMessage = (e: unknown, token: string): string => {
  *  `TimeoutError`, so it surfaces exactly like any other failed read — in
  *  `reconcileRepo`, as that arm's name in `failed[]`. */
 const GH_TIMEOUT_MS = 15_000;
-const HEADERS = (token: string) => ({ authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "user-agent": "canopy-worker" });
+const HEADERS = (token: string) => ({ authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "user-agent": "trov-worker" });
 
 export async function ghJson<T>(opts: GhOpts, path: string): Promise<T> {
   const res = await (opts.fetchImpl ?? fetch)(`https://api.github.com/repos/${opts.repo}${path}`, { headers: HEADERS(opts.token), signal: AbortSignal.timeout(GH_TIMEOUT_MS) });

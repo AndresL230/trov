@@ -1,7 +1,7 @@
 /**
  * The browser-tab icon follows the APP's theme, not the OS's.
  *
- * Two fixed colourways of the ORIGINAL Canopy mark (the pre-2026-09-26 favicon.svg,
+ * Two fixed colourways of the ORIGINAL Trov mark (the pre-2026-09-26 favicon.svg,
  * restored at the owner's request — geometry and dark colours exactly as it was):
  *   dark  — the original: electric-green top bar, white bars (bottom at 50%)
  *   light — the same mark with the light theme's indigo accent as the top bar

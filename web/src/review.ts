@@ -267,7 +267,7 @@ export function adrRecord(sections: AdrSection[]): string {
 /** Detail pane for the selected item: header + verdict actions + content. */
 /** Split the mapper's "TYPE · IDENTIFIER" eyebrow into a title-cased record
  *  type and its identifier — e.g. "DECISION · ADR-005" → {type:"Decision",
- *  id:"ADR-005"}; "PROPOSAL · CANOPY / REFERENCE" → {type:"Proposal", id:"CANOPY / REFERENCE"}. */
+ *  id:"ADR-005"}; "PROPOSAL · TROV / REFERENCE" → {type:"Proposal", id:"TROV / REFERENCE"}. */
 function splitEyebrow(eyebrow: string): { type: string; id: string } {
   const at = eyebrow.indexOf(" · ");
   const rawType = at === -1 ? eyebrow : eyebrow.slice(0, at);
@@ -328,7 +328,7 @@ export function reviewView(p: ReviewProps): string {
     ? visible.map((it) => reviewCard(it, sel !== null && it.id === sel.id)).join("")
     : reviewListEmpty();
 
-  // Under a tablet's width the two panes take turns (canopy.css `.cnpy-rv`): the list, or —
+  // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or —
   // once an item is picked by hand — its detail, with a back button to the list.
   const pane = p.selectedId !== null && sel ? "detail" : "list";
   return `<div class="cnpy-rv" data-pane="${pane}" style="display:flex;height:100%;min-width:0">

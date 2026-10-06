@@ -58,12 +58,12 @@ const bad = (m: string): ArtifactError => new ArtifactError("bad_request", m);
 export function artifactWarnings(content: string | null | undefined): string[] {
   if (typeof content !== "string") return [];
   const warnings = claudeOnlyHits(content).map(
-    (m) => `content references \`${m}\`, which only exists inside claude.ai — it will not work in Canopy's viewer`
+    (m) => `content references \`${m}\`, which only exists inside claude.ai — it will not work in Trov's viewer`
   );
   if (isBundledExport(content)) {
     warnings.push(
       "content is a bundled Claude Design export: it loads its scripts from blob: URLs and compiles code at runtime, " +
-        "which Canopy's viewer blocks, so it will render blank — flatten it (every script inline, no eval) and add a new version"
+        "which Trov's viewer blocks, so it will render blank — flatten it (every script inline, no eval) and add a new version"
     );
   }
   return warnings;
@@ -72,7 +72,7 @@ export function artifactWarnings(content: string | null | undefined): string[] {
 const BINARY_FIELDS = ["size_bytes", "sha256", "content_type", "filename"] as const;
 
 // ── upload_asset (was artifact_create) ───────────────────────────────────
-// ONE tool for everything an agent puts into Canopy's asset stores, split by
+// ONE tool for everything an agent puts into Trov's asset stores, split by
 // `destination`: "artifact" (the default) creates an artifact page exactly as
 // artifact_create did; "doc" uploads an image a doc embeds as `![alt](/img/<sha256>)`
 // (src/tools/doc-images.ts) — content-addressed, so a stored image needs no PUT.

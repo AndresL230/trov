@@ -183,7 +183,7 @@ describe("POST /api/prompts (a person)", () => {
     expect(v2.prompt).toMatchObject({ slug: "renamed-one", version: 2, status: "published", author: "AndresL230" });
     expect((await req("/api/prompts/new-one")).status).toBe(404);
     const versions = (await json<{ versions: PromptVersion[] }>(await req("/api/prompts/renamed-one/versions"))).versions;
-    expect(versions.map((v) => [v.version, v.author, v.summary])).toEqual([[2, "Darkest-Teddy", "Edited in Canopy"], [1, "AndresL230", "Created in Canopy"]]);
+    expect(versions.map((v) => [v.version, v.author, v.summary])).toEqual([[2, "Darkest-Teddy", "Edited in Trov"], [1, "AndresL230", "Created in Trov"]]);
     expect((await json<{ prompts: PromptSummary[] }>(await req("/api/prompts?q=renamed"))).prompts.map((p) => p.slug)).toEqual(["renamed-one"]);
   });
 

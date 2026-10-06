@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import { promote_doc } from "../src/tools/writes";
 import { all, first } from "../src/db";
 import type { DocRow, DocVersionRow, NeedsTriageRow } from "@shared/rows";
@@ -19,7 +19,7 @@ async function callTool(
   name: string,
   args: Record<string, unknown>
 ): Promise<{ text: string; isError?: boolean }> {
-  const server = buildCanopyMcpServer(
+  const server = buildTrovMcpServer(
     env as unknown as import("../src/env").Env,
     { handle: AUTHOR }
   );

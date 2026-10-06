@@ -105,9 +105,9 @@ describe("ftsBody / binaryContentType", () => {
 
 describe("createPage (text)", () => {
   it("writes v1 as a draft, with the version, FTS row and DTO in one go", async () => {
-    const a = await mkText({ title: "Auth flow", kind: "markdown", content: "# Auth\n\nsessions", summary: "first cut", repo: "SaplingLearn/canopy" });
+    const a = await mkText({ title: "Auth flow", kind: "markdown", content: "# Auth\n\nsessions", summary: "first cut", repo: "AndresL230/trov" });
     expect(a).toMatchObject({
-      slug: "auth-flow", title: "Auth flow", kind: "markdown", area: "auth", repo: "SaplingLearn/canopy", author_id: ME,
+      slug: "auth-flow", title: "Auth flow", kind: "markdown", area: "auth", repo: "AndresL230/trov", author_id: ME,
       status: "draft", visibility: "org", current_version: 1, ratified_version: null, ratified_by: null, ratified_at: null,
       content: "# Auth\n\nsessions", raw_url: "/raw/a/auth-flow@v1", excerpt: "# Auth\n\nsessions", ticket_ids: [], sprint_ids: [],
     });
@@ -284,13 +284,13 @@ describe("links", () => {
   it("normalizes refs: ticket/sprint ids must exist; pr/issue from #n, n, owner/repo#n or a GitHub URL", async () => {
     const t = await seedTicket();
     const s = await seedSprint();
-    const repo = "SaplingLearn/canopy";
+    const repo = "AndresL230/trov";
     expect(await normalizeLinkRef(DB(), "ticket", `#${t}`, repo)).toBe(String(t));
     expect(await normalizeLinkRef(DB(), "sprint", String(s), repo)).toBe(String(s));
     expect((await errOf(normalizeLinkRef(DB(), "ticket", "99999", repo))).code).toBe("bad_request");
     expect((await errOf(normalizeLinkRef(DB(), "sprint", "abc", repo))).code).toBe("bad_request");
-    expect(await normalizeLinkRef(DB(), "pr", "#212", repo)).toBe("SaplingLearn/canopy#212");
-    expect(await normalizeLinkRef(DB(), "issue", "198", repo)).toBe("SaplingLearn/canopy#198");
+    expect(await normalizeLinkRef(DB(), "pr", "#212", repo)).toBe("AndresL230/trov#212");
+    expect(await normalizeLinkRef(DB(), "issue", "198", repo)).toBe("AndresL230/trov#198");
     expect(await normalizeLinkRef(DB(), "pr", "other/repo#7", "")).toBe("other/repo#7");
     expect(await normalizeLinkRef(DB(), "pr", "https://github.com/SaplingLearn/sapling/pull/658/files", "")).toBe("SaplingLearn/sapling#658");
     expect(await normalizeLinkRef(DB(), "issue", "https://github.com/SaplingLearn/sapling/issues/12", "")).toBe("SaplingLearn/sapling#12");
@@ -303,19 +303,19 @@ describe("links", () => {
     const t = await seedTicket("Fix login", "in_progress");
     const s = await seedSprint("Sprint 7", "in_progress", "Sep 16 – Sep 30");
     const s2 = await seedSprint("Sprint 8", "upcoming", null);
-    const a = await mkText({ repo: "SaplingLearn/canopy", links: [{ target_type: "ticket", target_ref: String(t) }, { target_type: "ticket", target_ref: `#${t}` }] });
+    const a = await mkText({ repo: "AndresL230/trov", links: [{ target_type: "ticket", target_ref: String(t) }, { target_type: "ticket", target_ref: `#${t}` }] });
     expect(a.links).toEqual([{ target_type: "ticket", target_ref: String(t), label: "Fix login", meta: "in_progress" }]);
     await addLink(DB(), a.slug, { target_type: "sprint", target_ref: String(s) }, YOU);
     await addLink(DB(), a.slug, { target_type: "sprint", target_ref: String(s2) }, YOU);
     await addLink(DB(), a.slug, { target_type: "pr", target_ref: "#212" }, YOU);
-    const d = await addLink(DB(), a.slug, { target_type: "issue", target_ref: "https://github.com/SaplingLearn/canopy/issues/198" }, YOU);
+    const d = await addLink(DB(), a.slug, { target_type: "issue", target_ref: "https://github.com/AndresL230/trov/issues/198" }, YOU);
     await addLink(DB(), a.slug, { target_type: "pr", target_ref: "212" }, YOU); // duplicate → no-op
     expect(d.links).toEqual([
       { target_type: "ticket", target_ref: String(t), label: "Fix login", meta: "in_progress" },
       { target_type: "sprint", target_ref: String(s), label: "Sprint 7", meta: "Sep 16 – Sep 30 · ACTIVE" },
       { target_type: "sprint", target_ref: String(s2), label: "Sprint 8", meta: "" },
-      { target_type: "pr", target_ref: "SaplingLearn/canopy#212", label: "#212", meta: "PULL REQUEST · SaplingLearn/canopy" },
-      { target_type: "issue", target_ref: "SaplingLearn/canopy#198", label: "#198", meta: "ISSUE · SaplingLearn/canopy" },
+      { target_type: "pr", target_ref: "AndresL230/trov#212", label: "#212", meta: "PULL REQUEST · AndresL230/trov" },
+      { target_type: "issue", target_ref: "AndresL230/trov#198", label: "#198", meta: "ISSUE · AndresL230/trov" },
     ]);
     expect(d.ticket_ids).toEqual([t]);
     expect(d.sprint_ids).toEqual([s, s2]);
@@ -327,7 +327,7 @@ describe("links", () => {
     await removeLink(DB(), a.slug, { target_type: "sprint", target_ref: String(s2) }, ME);
     const after = await removeLink(DB(), a.slug, { target_type: "pr", target_ref: "#212" }, ME);
     await removeLink(DB(), a.slug, { target_type: "pr", target_ref: "#212" }, ME); // idempotent
-    expect(after.links.map((l) => l.target_ref)).toEqual([String(t), String(s), "SaplingLearn/canopy#198"]);
+    expect(after.links.map((l) => l.target_ref)).toEqual([String(t), String(s), "AndresL230/trov#198"]);
     expect(after.sprint_ids).toEqual([s]);
   });
 

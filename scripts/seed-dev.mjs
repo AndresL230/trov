@@ -33,7 +33,7 @@ const fx = {
 const statements = buildSeedStatements(fx);
 const sql = statements.map((s) => s + ";").join("\n");
 
-const file = join(mkdtempSync(join(tmpdir(), "canopy-seed-")), "seed.sql");
+const file = join(mkdtempSync(join(tmpdir(), "trov-seed-")), "seed.sql");
 writeFileSync(file, sql, "utf8");
 
 console.log(`seed-dev: applying ${statements.length} statements to LOCAL D1…`);

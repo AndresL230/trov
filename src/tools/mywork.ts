@@ -57,8 +57,8 @@ interface RawIssue {
     updated_at: string;
     assignees: { login: string }[];
     labels: string[];
-    // GitHub's own key — not Canopy vocabulary. The group an issue belongs to on
-    // GitHub; Canopy resolves its `number` to a SPRINT below.
+    // GitHub's own key — not Trov vocabulary. The group an issue belongs to on
+    // GitHub; Trov resolves its `number` to a SPRINT below.
     milestone?: { number?: number | null; title?: string | null; due_on?: string | null } | null;
   };
 }
@@ -137,7 +137,7 @@ export async function listOpenAssignedIssues(db: DB, logins: string[]): Promise<
     if (issue.state !== "open") continue;
     if (isIssueGone(parsed.action)) continue; // deleted / transferred: the snapshot still says open
     if (!issue.assignees.some((a) => logins.includes(a.login))) continue;
-    const group = issue.milestone; // GitHub's own key — not Canopy vocabulary
+    const group = issue.milestone; // GitHub's own key — not Trov vocabulary
     const claimed = typeof group?.number === "number" ? sprintByGroup.get(group.number) ?? null : null;
     todo.push({
       number: issue.number,
@@ -181,7 +181,8 @@ interface AssignedTicketRow {
 }
 
 /**
- * Which tickets an assigned-ticket read covers. `"canopy"` = NATIVE tickets only
+ * Which tickets an assigned-ticket read covers. `"canopy"` (the stored `tickets.source` value — it kept its
+ * name through the rename to Trov) = NATIVE tickets only
  * (the ticket-queue digest's rule: a ticket mirrored from a GitHub issue (0032) is
  * that issue, which the digest's readers already know about); `"all"` = native AND
  * mirrored (My Work's rule since the redesign: the screen renders no issue list, so

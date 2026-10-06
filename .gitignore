@@ -4,6 +4,7 @@ web/dist/
 .dev.vars
 *.log
 .superpowers/
+.trov/
 .canopy/
 
 wrangler.old.toml

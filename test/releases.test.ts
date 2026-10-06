@@ -13,7 +13,7 @@ vi.mock("../web/src/markdown", () => ({
 
 import {
   RELEASES, releasesIndex, releasePageView, releasesScreen, releaseLine, releaseDate, releaseSlug, releaseHash,
-  findRelease, prUrl, CANOPY_REPO_URL, type Release,
+  findRelease, prUrl, TROV_REPO_URL, type Release,
 } from "../web/src/releases";
 import { parseHash, hashForRoute } from "../web/src/hash";
 import { render, initialState } from "../web/src/render";
@@ -85,13 +85,13 @@ describe("RELEASES — the data", () => {
 });
 
 describe("releaseLine / releaseDate / slugs", () => {
-  it("escapes text, turns backticks into <code>, and links (#N) to the canopy PR", () => {
+  it("escapes text, turns backticks into <code>, and links (#N) to the trov PR", () => {
     const html = releaseLine("`<b>` & \"x\" (#78)");
     expect(html).toContain('<code class="is-short">&lt;b&gt;</code>');
     expect(html).toContain("&amp; &quot;x&quot;");
     expect(html).not.toContain("<b>");
-    expect(html).toContain(`href="${CANOPY_REPO_URL}/pull/78"`);
-    expect(prUrl(78)).toBe("https://github.com/SaplingLearn/canopy/pull/78");
+    expect(html).toContain(`href="${TROV_REPO_URL}/pull/78"`);
+    expect(prUrl(78)).toBe("https://github.com/AndresL230/trov/pull/78");
   });
 
   it("links every PR in a (#1, #2) group, and leaves a bare #12 alone", () => {

@@ -9,13 +9,13 @@ describe("issue references in prose", () => {
   });
 
   it("owner/repo#N links to THAT repo, never the main one", () => {
-    expect(matchIssueRef("SaplingLearn/canopy#51). Store", REPO)).toEqual({
-      raw: "SaplingLearn/canopy#51", href: "https://github.com/SaplingLearn/canopy/issues/51", text: "SaplingLearn/canopy#51",
+    expect(matchIssueRef("AndresL230/trov#51). Store", REPO)).toEqual({
+      raw: "AndresL230/trov#51", href: "https://github.com/AndresL230/trov/issues/51", text: "AndresL230/trov#51",
     });
   });
 
   it("the start index is the owner, not the #, so the whole reference is one token", () => {
-    expect(issueRefStart("see SaplingLearn/canopy#51 and #7")).toBe(4);
+    expect(issueRefStart("see AndresL230/trov#51 and #7")).toBe(4);
     expect(issueRefStart("and #7")).toBe(4);
     expect(issueRefStart("nothing here")).toBeUndefined();
   });

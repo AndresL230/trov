@@ -8,7 +8,7 @@
       "created_at": "2026-06-25T09:00:00Z"
     },
     {
-      "raw": "Onboarding: 1) get added to the org, 2) sign in to Canopy, 3) mint an MCP token in Settings.",
+      "raw": "Onboarding: 1) get added to the org, 2) sign in to Trov, 3) mint an MCP token in Settings.",
       "reason": "Ambiguous between Context (team process) and Reference (how-to). Needs a human to choose.",
       "source_author": "Jose-Gael-Cruz-Lopez",
       "resolved": 0,
@@ -22,7 +22,7 @@
       "created_at": "2026-07-01T14:00:00Z"
     },
     {
-      "raw": "Sapling lesson slugs and Canopy doc slugs collide in Search. Namespace them?",
+      "raw": "Sapling lesson slugs and Trov doc slugs collide in Search. Namespace them?",
       "reason": "Cross-surface concern; unclear whether it's a Reference note or an infra Decision.",
       "source_author": "lpcooper-arch",
       "resolved": 0,

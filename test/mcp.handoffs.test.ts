@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { all, first } from "../src/db";
 import { buildSeedStatements } from "../scripts/seed/build.mjs";
@@ -16,7 +16,7 @@ beforeEach(async () => {
 });
 
 async function call(handle: string, name: string, args: Record<string, unknown> = {}): Promise<{ text: string; isError?: boolean }> {
-  const server = buildCanopyMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://canopy.example/" } as Env, { handle });
+  const server = buildTrovMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://trov.example/" } as Env, { handle });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -38,7 +38,7 @@ describe("send_handoff", () => {
     });
     const out = JSON.parse(r.text) as { id: number; url: string };
     expect(typeof out.id).toBe("number");
-    expect(out.url).toBe(`https://canopy.example/#handoffs/${out.id}`);
+    expect(out.url).toBe(`https://trov.example/#handoffs/${out.id}`);
     const row = await first<{ sender: string; recipient: string; context: string }>(env.DB, `SELECT sender, recipient, context FROM handoffs WHERE id = ?`, out.id);
     expect(row!.sender).toBe("Jose-Gael-Cruz-Lopez");
     expect(JSON.parse(row!.context).task).toBe("Finish resume");

@@ -1,5 +1,5 @@
 // My Work — ported from the Claude Design `Canopy Restyled.dc.html` (the My Work
-// bento). Canopy's own fonts and vocabulary; the design's layout.
+// bento). Trov's own fonts and vocabulary; the design's layout.
 //
 // Purely presentational: every tile takes pre-read data and renders to an HTML
 // string. Interactions dispatch via data-act / data-arg in main.ts. Every tile is
@@ -68,7 +68,7 @@ const tile = (area: string, span: number, label: string, inner: string, extra = 
 
 const TONE: Record<RepoTone, string> = { good: "var(--green)", warn: "var(--amber)", bad: "var(--red)", neutral: "var(--fg-40)" };
 const TICKET_DOT: Record<MyWorkTicket["status"], string> = { submitted: "var(--blue)", in_progress: "var(--accent)", testing: "var(--amber)" };
-/** Priority keeps Canopy's monochrome rule (weight, not hue, carries it). */
+/** Priority keeps Trov's monochrome rule (weight, not hue, carries it). */
 const PRIO_COLOR: Record<MyWorkTicket["priority"], string> = { high: "var(--fg)", normal: "var(--fg-55)", low: "var(--fg-40)" };
 const prioLabel = (text: string, color: string): string =>
   `<span style="font-family:var(--label);font-size:12px;font-weight:600;color:${color};flex:none;margin-top:2px;width:44px">${esc(text)}</span>`;

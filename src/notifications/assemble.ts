@@ -1,7 +1,7 @@
 // One message per user per run, styled on the site's own tokens (the light
-// theme from web/src/canopy.css flattened to hex, since mail clients have no CSS
+// theme from web/src/trov.css flattened to hex, since mail clients have no CSS
 // variables): a 600px cream card with a hairline border and 13px radius, the
-// Canopy wordmark + cadence as the header, one block per section (heading,
+// Trov wordmark + cadence as the header, one block per section (heading,
 // summary, body, an "Open X →" ghost button), and a footer naming the recipient
 // with the unsubscribe link. A <style> block under prefers-color-scheme: dark
 // swaps every token to the dark theme via [style*=] attribute selectors, so the
@@ -28,7 +28,7 @@ function mix(fg: string, bg: string, t: number): string {
   return "#" + a.map((v, i) => Math.round(v * t + b[i] * (1 - t)).toString(16).padStart(2, "0")).join("");
 }
 
-/** Site tokens (web/src/canopy.css), light → dark. Every colour in the email comes from here. */
+/** Site tokens (web/src/trov.css), light → dark. Every colour in the email comes from here. */
 const BASE = {
   ground: { light: "#f3f0e9", dark: "#141311" }, // page behind the card (one step past --bg)
   bg: { light: "#faf8f3", dark: "#1c1a16" }, // --bg → card
@@ -67,7 +67,7 @@ export const EMAIL_COLORS = C;
 export const EMAIL_SPACE = { xs: 4, s: 8, m: 16, l: 24, xl: 32 } as const;
 
 /**
- * Card width, shared by every Canopy email (digests + invite) so they are one
+ * Card width, shared by every Trov email (digests + invite) so they are one
  * shell. Wider than the stock 600px — the digests read cramped at that width —
  * while staying inside what desktop clients render without a horizontal scroll;
  * `max-width:100%` still collapses it to the viewport on a phone.
@@ -172,9 +172,9 @@ function dayLabel(d: Date, timeZone: string): { month: string; day: number } {
   return { month: MONTHS[l.month - 1], day: l.day };
 }
 
-/** `Canopy daily, Sep 11` / `Canopy weekly, Sep 7 to 11` (start to the last weekday before the send). */
+/** `Trov daily, Sep 11` / `Trov weekly, Sep 7 to 11` (start to the last weekday before the send). */
 export function subjectFor(window: Window, timeZone: string): string {
-  return `Canopy ${window.cadence}, ${dateRange(window, timeZone)}`;
+  return `Trov ${window.cadence}, ${dateRange(window, timeZone)}`;
 }
 
 function dateRange(window: Window, timeZone: string): string {
@@ -190,7 +190,7 @@ function dateRange(window: Window, timeZone: string): string {
 }
 
 /**
- * The Canopy banner, shared by every email: the app's three-bar mark (22/15/9
+ * The Trov banner, shared by every email: the app's three-bar mark (22/15/9
  * wide, stacked and centred, top bar accent, bottom bar at half strength) built
  * from plain blocks because Gmail strips SVG, the wordmark beside it, and an
  * optional subline underneath — all reversed out of a full-bleed accent band,
@@ -211,10 +211,10 @@ export function emailBanner(sublineHtml?: string): string {
   return (
     `<tr><td style="padding:${SP.xl}px 28px ${SP.l}px 28px;background-color:${C.accent};border-radius:13px 13px 0 0;text-align:center;">` +
     `<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr>` +
-    `<td data-mark="canopy" width="24" style="vertical-align:middle;padding-right:11px;">` +
+    `<td data-mark="trov" width="24" style="vertical-align:middle;padding-right:11px;">` +
     bar(1, 22, 0, BAND.ink) + bar(2, 15, 3.5, BAND.bar2) + bar(3, 9, 6.5, BAND.bar3, true) +
     `</td>` +
-    `<td style="vertical-align:middle;${SANS}font-size:22px;font-weight:600;letter-spacing:-0.02em;line-height:1;color:${BAND.ink};">Canopy</td>` +
+    `<td style="vertical-align:middle;${SANS}font-size:22px;font-weight:600;letter-spacing:-0.02em;line-height:1;color:${BAND.ink};">Trov</td>` +
     `</tr></table>` +
     (sublineHtml ? `<div style="${SANS}font-size:13px;line-height:20px;color:${BAND.subline};padding-top:${SP.s}px;">${sublineHtml}</div>` : "") +
     `</td></tr>`
@@ -239,7 +239,7 @@ export function assembleMessage(opts: {
   const range = dateRange(window, timeZone);
   const link = (s: Section) => `${origin}${s.deepLink}`;
   const label = (s: Section) => s.linkLabel ?? s.heading;
-  const host = origin.replace(/^https?:\/\//, "") || "canopy";
+  const host = origin.replace(/^https?:\/\//, "") || "trov";
   const preheader = sections.map((s) => s.summary).filter(Boolean).join(", ");
 
   const heading = `${SANS}font-size:15px;line-height:20px;font-weight:600;letter-spacing:-0.01em;color:${C.fg};`;
@@ -268,11 +268,11 @@ export function assembleMessage(opts: {
     header(window.cadence, range) +
     blocks.join("") +
     `<tr><td style="padding:${SP.l}px 28px ${SP.l}px 28px;border-top:1px solid ${C.border};${SANS}font-size:12px;line-height:20px;color:${C.fg40};">` +
-    `You're getting the ${window.cadence} Canopy digest for ${escapeHtml(login)}. <a href="${escapeHtml(unsubscribeUrl)}" style="color:${C.fg40};text-decoration:underline;text-underline-offset:2px;">Unsubscribe</a><br>` +
-    `Sent by Canopy &middot; ${escapeHtml(host)}</td></tr>` +
+    `You're getting the ${window.cadence} Trov digest for ${escapeHtml(login)}. <a href="${escapeHtml(unsubscribeUrl)}" style="color:${C.fg40};text-decoration:underline;text-underline-offset:2px;">Unsubscribe</a><br>` +
+    `Sent by Trov &middot; ${escapeHtml(host)}</td></tr>` +
     `</table></td></tr></table></body></html>`;
 
-  const title = `CANOPY ${window.cadence.toUpperCase()} — ${range.toUpperCase()}`;
+  const title = `TROV ${window.cadence.toUpperCase()} — ${range.toUpperCase()}`;
   const text = [
     title,
     "=".repeat(title.length),
@@ -287,9 +287,9 @@ export function assembleMessage(opts: {
       "",
     ]),
     "-".repeat(title.length),
-    `You're getting the ${window.cadence} Canopy digest for ${login}.`,
+    `You're getting the ${window.cadence} Trov digest for ${login}.`,
     `Unsubscribe: ${unsubscribeUrl}`,
-    `Sent by Canopy — ${host}`,
+    `Sent by Trov — ${host}`,
     "",
   ].join("\n");
 

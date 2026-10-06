@@ -1,10 +1,10 @@
 {
   "mcpServers": {
-    "canopy": {
+    "trov": {
       "type": "streamable-http",
-      "url": "${CANOPY_MCP_URL:-http://localhost:8787/mcp}",
+      "url": "${TROV_MCP_URL:-http://localhost:8787/mcp}",
       "headers": {
-        "Authorization": "Bearer ${CANOPY_MCP_TOKEN}"
+        "Authorization": "Bearer ${TROV_MCP_TOKEN}"
       }
     }
   }

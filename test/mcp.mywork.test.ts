@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import { ingestEvent } from "../src/consumer";
 import { create_ticket } from "../src/tools/tickets";
 import { seedPerson } from "./helpers/persons";
@@ -26,7 +26,7 @@ function prEvent(number: number, login: string): CapturedEvent {
         merged_at: NOW,
         closed_at: NOW,
         user: { login },
-        milestone: null, // GitHub's own key — not Canopy vocabulary
+        milestone: null, // GitHub's own key — not Trov vocabulary
       },
     }),
     provenance: "webhook",
@@ -51,7 +51,7 @@ function issueEvent(number: number, login: string): CapturedEvent {
         user: { login },
         assignees: [{ login }],
         labels: [],
-        milestone: null, // GitHub's own key — not Canopy vocabulary
+        milestone: null, // GitHub's own key — not Trov vocabulary
       },
     }),
     provenance: "webhook",
@@ -60,7 +60,7 @@ function issueEvent(number: number, login: string): CapturedEvent {
 }
 
 async function callTool(login: string, name: string, args: Record<string, unknown>): Promise<{ text: string; isError?: boolean }> {
-  const server = buildCanopyMcpServer(env as unknown as import("../src/env").Env, { handle: login });
+  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: login });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

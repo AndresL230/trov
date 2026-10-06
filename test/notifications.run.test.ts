@@ -36,7 +36,7 @@ function openIssue(number: number, login: string): CapturedEvent {
   const updatedAt = "2026-09-10T15:00:00Z";
   return {
     semantic_key: `gh:issue:${number}:assigned:${updatedAt}`, event_type: "issue", ref_number: number, subject_login: login, provenance: "webhook", occurred_at: updatedAt,
-    // GitHub's own key — not Canopy vocabulary (a payload literal).
+    // GitHub's own key — not Trov vocabulary (a payload literal).
     raw: JSON.stringify({ action: "assigned", issue: { number, title: `Issue ${number}`, html_url: `https://github.com/o/r/issues/${number}`, state: "open", updated_at: updatedAt, user: { login }, assignees: [{ login }], labels: [], milestone: null } }),
   };
 }
@@ -172,18 +172,18 @@ describe("runDigest (local mode)", () => {
     await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
 
-    await runDigest(env.DB, "daily", FRI, { delivery: delivery(), origin: "https://canopy.example" });
+    await runDigest(env.DB, "daily", FRI, { delivery: delivery(), origin: "https://trov.example" });
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "sent", user_id: "AndresL230", window_id: "2026-09-11" });
     expect(kindsOf(row)).toEqual(["my_work", "review_queue"]);
     expect(row.sent_at).not.toBeNull();
     const [body] = await bodies();
     expect(body.to_address).toBe("andres@example.com");
-    expect(body.subject).toBe("Canopy daily, Sep 11");
+    expect(body.subject).toBe("Trov daily, Sep 11");
     expect(body.html).toContain("My Work");
     expect(body.html).toContain("Review queue");
-    expect(body.html).toContain(`href="https://canopy.example/#mywork"`);
-    expect(body.text).toContain("https://canopy.example/#review");
+    expect(body.html).toContain(`href="https://trov.example/#mywork"`);
+    expect(body.text).toContain("https://trov.example/#review");
     expect(body.text).toContain("Issue 1");
     expect(body.text).toContain("Pending decision");
   });
@@ -194,7 +194,7 @@ describe("runDigest (local mode)", () => {
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('AndresL230', 'my_work', 'weekly', 'now')`);
     await runDigest(env.DB, "weekly", MON, { delivery: delivery() });
     const [body] = await bodies();
-    expect(body.subject).toBe("Canopy weekly, Sep 7 to 11");
+    expect(body.subject).toBe("Trov weekly, Sep 7 to 11");
   });
 
   it("a renderer that throws marks the row failed with the error and sends nothing", async () => {
@@ -237,16 +237,16 @@ describe("assembled message follows the designed template", () => {
     await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
     await runDigest(env.DB, "daily", FRI, {
-      delivery: localDelivery(env.DB), origin: "https://canopy.example",
-      unsubscribeUrl: async (login) => `https://canopy.example/u/${login}.sig`,
+      delivery: localDelivery(env.DB), origin: "https://trov.example",
+      unsubscribeUrl: async (login) => `https://trov.example/u/${login}.sig`,
     });
     const [b] = await bodies();
     expect(b.html).toContain("1 assigned issue open");           // section subline
     expect(b.html).toContain("1 decision waiting");                // review subline
-    expect(b.html).toContain(`href="https://canopy.example/u/AndresL230.sig"`); // footer
-    expect(b.html).toContain("daily Canopy digest for AndresL230");
-    expect(b.text).toContain("CANOPY DAILY — SEP 11");
-    expect(b.text).toContain("Unsubscribe: https://canopy.example/u/AndresL230.sig");
+    expect(b.html).toContain(`href="https://trov.example/u/AndresL230.sig"`); // footer
+    expect(b.html).toContain("daily Trov digest for AndresL230");
+    expect(b.text).toContain("TROV DAILY — SEP 11");
+    expect(b.text).toContain("Unsubscribe: https://trov.example/u/AndresL230.sig");
     expect(b.text).toMatch(/open\s+#1\s+Issue 1/);
   });
 });

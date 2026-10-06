@@ -281,7 +281,7 @@ describe("11 · MCP permissions for a second principal", () => {
     await createBinary(owner, { title: "Org pic", kind: "image", area: "ui" }, { bytes: uniqueBytes("orgpic-1"), name: "a.png", type: "image/png" });
     const bytes = uniqueBytes("orgpic-2");
     const up = await mcpCall(OTHER, "artifact_update", { slug: "org-pic", size_bytes: bytes.byteLength, sha256: await sha256Hex(bytes), content_type: "image/png", summary: "retake" });
-    expect(up.body.upload_url).toMatch(/^https:\/\/canopy\.test\/api\/artifacts\/upload\/[A-Za-z0-9_-]{43}$/);
+    expect(up.body.upload_url).toMatch(/^https:\/\/trov\.test\/api\/artifacts\/upload\/[A-Za-z0-9_-]{43}$/);
     const landed = await put(new URL(up.body.upload_url).pathname, bytes, { cookie: owner }); // a cookie on the PUT changes nothing
     expect(landed.status).toBe(200);
     const after = await mcpCall(OWNER, "artifact_get", { slug: "org-pic" });

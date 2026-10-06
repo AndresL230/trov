@@ -147,7 +147,7 @@
         "body": "Add `POST /api/handoffs/:id/claim` in `src/routes.ts`.\n\nDo it as one statement:\n\n```sql\nUPDATE handoffs SET status = 'claimed', claimed_at = ?, claimed_by = ?, claimed_by_session = ?\nWHERE id = ? AND status = 'pending'\n```\n\nIf `changes` is 0, return 409 with the current status. Then expose it as the `claim_handoff` MCP tool in `src/mcp.ts`, using the bearer principal as the claimer."
       },
       "context": {
-        "repo": "SaplingLearn/canopy",
+        "repo": "AndresL230/trov",
         "branch": "feat/handoffs-api",
         "task": "Add POST /api/handoffs/:id/claim and the MCP claim_handoff tool",
         "done": [
@@ -180,7 +180,7 @@
       "body": "Triage map needs a person picker that can search once the team grows past ten.\n\nKeep the existing `pickRow` look; just add a filter input above the list.",
       "prompt": null,
       "context": {
-        "repo": "SaplingLearn/canopy",
+        "repo": "AndresL230/trov",
         "branch": "feat/identity-picker-search",
         "task": "Searchable person picker in Maintenance › Identity",
         "done": [],

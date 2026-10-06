@@ -1,15 +1,20 @@
 // MCP OAuth — the authorization server behind /mcp (spec:
 // docs/superpowers/specs/2026-09-24-mcp-oauth-design.md). OAuth is how a bearer
 // token is OBTAINED; the token then resolves to a person handle exactly like a
-// `canopy_mcp_` token, so /mcp stays the bearer auth class. D1 only, no fetch,
+// `trov_mcp_` token, so /mcp stays the bearer auth class. D1 only, no fetch,
 // and every clock read is a `nowMs` parameter so tests control time. Raw codes
 // and tokens are returned once and stored only as SHA-256 hashes.
 import { type DB, all, first, run } from "../db";
 import { randomToken, sha256Hex, pkceChallenge } from "./crypto";
 import type { OAuthGrantSummary } from "@shared/rows";
 
-export const ACCESS_PREFIX = "canopy_oat_";
-export const REFRESH_PREFIX = "canopy_ort_";
+export const ACCESS_PREFIX = "trov_oat_";
+export const REFRESH_PREFIX = "trov_ort_";
+/** Issued before the rename to Trov; still valid until each expires (an hour for access tokens — refresh
+ *  tokens are looked up by hash, so an old `canopy_ort_` one rotates into a `trov_` pair as usual). */
+const LEGACY_ACCESS_PREFIX = "canopy_oat_";
+/** Is this bearer an OAuth ACCESS token (either spelling)? `/mcp` dispatches on it. */
+export const isAccessToken = (raw: string): boolean => raw.startsWith(ACCESS_PREFIX) || raw.startsWith(LEGACY_ACCESS_PREFIX);
 export const OAUTH_SCOPE = "mcp";
 export const ACCESS_TTL_MS = 60 * 60 * 1000;
 export const REFRESH_TTL_MS = 90 * 24 * 60 * 60 * 1000;
@@ -58,7 +63,7 @@ export function protectedResourceMetadata(origin: string): Record<string, unknow
   };
 }
 
-/** RFC 8414 — Canopy is its own authorization server. */
+/** RFC 8414 — Trov is its own authorization server. */
 export function authorizationServerMetadata(origin: string): Record<string, unknown> {
   return {
     issuer: origin,
@@ -174,9 +179,9 @@ export async function checkAuthorizeRequest(db: DB, q: URLSearchParams, origin: 
   const clientId = q.get("client_id") ?? "";
   const redirect = q.get("redirect_uri") ?? "";
   const client = clientId ? await getClient(db, clientId) : null;
-  if (!client) return { ok: false, kind: "page", message: "Canopy doesn't recognise this app's registration. In Claude Code, run /mcp, choose canopy → Clear authentication, then Authenticate again." };
+  if (!client) return { ok: false, kind: "page", message: "Trov doesn't recognise this app's registration. In Claude Code, run /mcp, choose trov → Clear authentication, then Authenticate again." };
   if (!redirectMatches(client.redirect_uris, redirect)) {
-    return { ok: false, kind: "page", message: "This app asked to return to an address it never registered, so Canopy won't send you there." };
+    return { ok: false, kind: "page", message: "This app asked to return to an address it never registered, so Trov won't send you there." };
   }
   const state = q.get("state");
   const bad = (description: string): AuthorizeCheck => ({ ok: false, kind: "redirect", redirect_uri: redirect, state, description });
@@ -249,11 +254,11 @@ export async function exchangeAuthorizationCode(
   return mintPair(db, row.grant_id, nowMs);
 }
 
-/** A `canopy_oat_` bearer → its person, while unexpired and its grant unrevoked. ONE
+/** A `trov_oat_` (or legacy `canopy_oat_`) bearer → its person, while unexpired and its grant unrevoked. ONE
  *  read; `last_used_at` is written at most once a minute so MCP traffic isn't a write
  *  per call. */
 export async function resolveOAuthAccessToken(db: DB, raw: string, nowMs: number): Promise<{ handle: string } | null> {
-  if (!raw.startsWith(ACCESS_PREFIX)) return null;
+  if (!isAccessToken(raw)) return null;
   const row = await first<{ grant_id: number; person: string; last_used_at: string | null }>(db,
     `SELECT g.id AS grant_id, g.person, g.last_used_at FROM oauth_tokens t JOIN oauth_grants g ON g.id = t.grant_id
      WHERE t.token_hash = ? AND t.kind = 'access' AND t.expires_at > ? AND g.revoked_at IS NULL`,

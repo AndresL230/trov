@@ -1,5 +1,5 @@
 {
-  "narrative": "## Canopy roadmap\n\nCanopy is the team's working memory: agents propose context through a reconciling gate and humans confirm the consequential changes. \n\n**Now** we're hardening trustworthy capture (staged writes, replay-safe events) and the read-side brain (ranked FTS across docs, decisions, feed, and roadmap). **Next** is making the personal surfaces earn their keep — structured My Work summaries and a roadmap that reads itself against reality. **Later** we open the store up: semantic search over Vectorize and a self-host path.",
+  "narrative": "## Trov roadmap\n\nTrov is the team's working memory: agents propose context through a reconciling gate and humans confirm the consequential changes. \n\n**Now** we're hardening trustworthy capture (staged writes, replay-safe events) and the read-side brain (ranked FTS across docs, decisions, feed, and roadmap). **Next** is making the personal surfaces earn their keep — structured My Work summaries and a roadmap that reads itself against reality. **Later** we open the store up: semantic search over Vectorize and a self-host path.",
   "version": 2,
   "updated_at": "2026-07-05T00:00:00Z",
   "updated_by": "AndresL230",
@@ -83,9 +83,9 @@
           "meta": "GITHUB · ISSUE"
         },
         {
-          "url": "https://www.figma.com/file/canopy-token-settings",
+          "url": "https://www.figma.com/file/trov-token-settings",
           "kind": "figma",
-          "label": "Canopy token settings",
+          "label": "Trov token settings",
           "meta": "FIGMA · DESIGN"
         },
         {

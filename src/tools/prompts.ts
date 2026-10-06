@@ -140,7 +140,7 @@ export async function savePrompt(
 
   const status: PromptStatus = via === "agent" ? "staged" : input.status ?? "draft";
   const summary = input.summary?.trim()
-    || (via === "agent" ? (opts.branch ? `Staged by a session on ${opts.branch}` : "Staged by a session") : existing ? "Edited in Canopy" : "Created in Canopy");
+    || (via === "agent" ? (opts.branch ? `Staged by a session on ${opts.branch}` : "Staged by a session") : existing ? "Edited in Trov" : "Created in Trov");
   const tags = input.tags === undefined ? null : JSON.stringify(normalizeTags(input.tags));
   const now = nowIso();
   const version = existing ? existing.current_version + 1 : 1;

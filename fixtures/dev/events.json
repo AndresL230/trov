@@ -64,8 +64,8 @@
     {
       "semantic_key": "gh:issue:186:assigned:AndresL230:2026-07-03T10:30:00Z", "event_type": "issue", "ref_number": 186, "subject_login": "AndresL230",
       "provenance": "backfill", "occurred_at": "2026-07-03T10:30:00Z", "recorded_at": "2026-07-03T10:31:00Z",
-      "raw": { "action": "assigned", "issue": { "number": 186, "title": "[P2] Namespace Sapling and Canopy slugs in Search", "body": "Sapling lesson slugs and Canopy doc slugs collide in Search results. Namespace them so a query can disambiguate.", "html_url": "https://github.com/SaplingLearn/sapling/issues/186", "state": "open", "updated_at": "2026-07-03T10:30:00Z", "user": { "login": "lpcooper-arch" }, "assignees": [{ "login": "AndresL230" }], "labels": ["api", "data"], "milestone": null } },
-      "issue_summary": { "title": "Namespace Sapling and Canopy slugs in Search", "summary": "Disambiguate colliding lesson and doc slugs in Search results by namespacing them per space.", "next_step": null }
+      "raw": { "action": "assigned", "issue": { "number": 186, "title": "[P2] Namespace Sapling and Trov slugs in Search", "body": "Sapling lesson slugs and Trov doc slugs collide in Search results. Namespace them so a query can disambiguate.", "html_url": "https://github.com/SaplingLearn/sapling/issues/186", "state": "open", "updated_at": "2026-07-03T10:30:00Z", "user": { "login": "lpcooper-arch" }, "assignees": [{ "login": "AndresL230" }], "labels": ["api", "data"], "milestone": null } },
+      "issue_summary": { "title": "Namespace Sapling and Trov slugs in Search", "summary": "Disambiguate colliding lesson and doc slugs in Search results by namespacing them per space.", "next_step": null }
     },
     {
       "semantic_key": "gh:issue:188:assigned:AndresL230:2026-07-02T15:45:00Z", "event_type": "issue", "ref_number": 188, "subject_login": "AndresL230",

@@ -3,7 +3,7 @@
 // VALUE, and the browser bundle never drags zod in (see the `*-core.ts` rule).
 //
 // Every section travels as a `RepoSection<T>` so the screen can tell "nothing
-// happened" (`empty`) from "Canopy has no capture path for this yet"
+// happened" (`empty`) from "Trov has no capture path for this yet"
 // (`not_connected`). The projection is D1-only; anything it cannot read from D1
 // is `not_connected`, never guessed.
 
@@ -172,7 +172,7 @@ export interface RepoHosting { env: string; cpu: string; memory: string }
 // What the target app reports about ITSELF (contract:
 // docs/superpowers/specs/2026-09-21-sapling-product-metrics.md): `counts` are
 // windowed — one figure per range, picked by the tab's 24h / 7d / 30d selector —
-// and `totals` are point-in-time, so they ignore it. Canopy is generic over
+// and `totals` are point-in-time, so they ignore it. Trov is generic over
 // keys: label, group and formatting are decided by the Worker
 // (src/repo/product.ts) and travel here, so the browser needs no registry.
 // A figure is `null` when that metric's latest reading is over 3 hours old

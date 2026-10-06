@@ -62,12 +62,12 @@ describe("7 · raw route headers, per kind", () => {
         expect(res.headers.get("content-type"), path).toBe(type);
         expect(res.headers.get("content-disposition"), path).toBe(`${inline ? "inline" : "attachment"}; filename="${slug}-v1.${ext}"`);
         const text = await res.text();
-        expect(text.includes("canopy:height"), path).toBe(slug === "k-html");
+        expect(text.includes("trov:height"), path).toBe(slug === "k-html");
       }
       const dl = await get(`/raw/a/${slug}?download=1`, me);
       lockedDown(dl, csp, `${slug} download`);
       expect(dl.headers.get("content-disposition")).toBe(`attachment; filename="${slug}-v1.${ext}"`);
-      expect(await dl.text()).not.toContain("canopy:height");
+      expect(await dl.text()).not.toContain("trov:height");
     }
     // The SPA frames a pdf WITHOUT a sandbox (Chrome draws no PDF in one), so a "pdf"
     // must never be served as anything a browser would run: an upload declaring
@@ -86,7 +86,7 @@ describe("7 · raw route headers, per kind", () => {
     expect((await get("/raw/a/k-md?download=1", me)).headers.get("content-disposition")).toBe(`attachment; filename="k-md-v2.md"`);
   });
 
-  it("html and svg opened TOP-LEVEL are sandboxed by the CSP itself (opaque origin — never Canopy's)", async () => {
+  it("html and svg opened TOP-LEVEL are sandboxed by the CSP itself (opaque origin — never Trov's)", async () => {
     // The SPA frames html with sandbox="allow-scripts", but "Open in new tab" and a pasted
     // raw URL navigate to it directly; only a CSP `sandbox` keeps its script off our origin.
     const me = await cookieFor(ME);
@@ -262,7 +262,7 @@ describe("9 · upload tokens", () => {
     expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(Object.keys(t.dto).sort()).toEqual(["expires_at", "id", "slug", "upload_url"]);
     expect(t.text.split(token).length - 1).toBe(1); // once, inside upload_url
-    expect(t.dto.upload_url).toBe(`https://canopy.test/api/artifacts/upload/${token}`);
+    expect(t.dto.upload_url).toBe(`https://trov.test/api/artifacts/upload/${token}`);
 
     const m = await mcpCall(ME, "upload_asset", { title: "Mcp tok", kind: "pdf", area: "api", repo: "", visibility: "org", size_bytes: 3, sha256: "9".repeat(64) });
     expect(Object.keys(m.body).sort()).toEqual(["expires_at", "id", "slug", "upload_url", "url", "warnings"]);

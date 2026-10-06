@@ -17,8 +17,8 @@ import type { Env } from "../src/env";
 const FRI = new Date("2026-09-11T12:00:00.000Z");
 const MSG: OutboundMessage = {
   idempotencyKey: "AndresL230:daily:2026-09-11", userId: "AndresL230", to: "andres@example.com",
-  subject: "Canopy daily, Sep 11", html: "<p>hi</p>", text: "hi",
-  unsubscribeUrl: "https://canopy.example/u/AndresL230.sig",
+  subject: "Trov daily, Sep 11", html: "<p>hi</p>", text: "hi",
+  unsubscribeUrl: "https://trov.example/u/AndresL230.sig",
 };
 
 function capture(status = 200, body: unknown = { id: "em_123" }) {
@@ -33,7 +33,7 @@ function capture(status = 200, body: unknown = { id: "em_123" }) {
 describe("resendDelivery", () => {
   it("POSTs the message to Resend with the bearer key, from, both List-Unsubscribe headers, and returns the id", async () => {
     const { calls, fetchImpl } = capture();
-    const d = resendDelivery({ apiKey: "re_test", from: "Canopy <canopy@mail.example>", fetchImpl });
+    const d = resendDelivery({ apiKey: "re_test", from: "Trov <trov@mail.example>", fetchImpl });
     const r = await d.send(MSG);
     expect(r.id).toBe("em_123");
     expect(calls).toHaveLength(1);
@@ -41,8 +41,8 @@ describe("resendDelivery", () => {
     expect(calls[0].init.method).toBe("POST");
     expect(new Headers(calls[0].init.headers).get("authorization")).toBe("Bearer re_test");
     const body = JSON.parse(String(calls[0].init.body));
-    expect(body).toMatchObject({ from: "Canopy <canopy@mail.example>", to: ["andres@example.com"], subject: "Canopy daily, Sep 11", html: "<p>hi</p>", text: "hi" });
-    expect(body.headers["List-Unsubscribe"]).toBe("<mailto:canopy@mail.example?subject=unsubscribe>, <https://canopy.example/u/AndresL230.sig>");
+    expect(body).toMatchObject({ from: "Trov <trov@mail.example>", to: ["andres@example.com"], subject: "Trov daily, Sep 11", html: "<p>hi</p>", text: "hi" });
+    expect(body.headers["List-Unsubscribe"]).toBe("<mailto:trov@mail.example?subject=unsubscribe>, <https://trov.example/u/AndresL230.sig>");
     expect(body.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
   });
 
@@ -54,7 +54,7 @@ describe("resendDelivery", () => {
 
   it("omits the List-Unsubscribe headers when the message has no unsubscribeUrl (transactional mail)", async () => {
     const { calls, fetchImpl } = capture();
-    const d = resendDelivery({ apiKey: "re_test", from: "Canopy <c@x>", fetchImpl });
+    const d = resendDelivery({ apiKey: "re_test", from: "Trov <c@x>", fetchImpl });
     await d.send({ ...MSG, unsubscribeUrl: undefined });
     const body = JSON.parse(String(calls[0].init.body)) as { headers?: unknown };
     expect(body.headers).toBeUndefined();
@@ -77,7 +77,7 @@ describe("deliveryFor — env gate, default local", () => {
     await run(env.DB, `UPDATE persons SET email = 'andres@example.com' WHERE handle = 'AndresL230'`);
     await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     const { fetchImpl } = capture(200, { id: "em_run" });
-    const delivery = deliveryFor({ ...base, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "re_x" }, { from: "Canopy <c@mail.example>", fetchImpl });
+    const delivery = deliveryFor({ ...base, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "re_x" }, { from: "Trov <c@mail.example>", fetchImpl });
     expect(delivery.mode).toBe("resend");
     await runDigest(env.DB, "daily", FRI, { delivery });
     const [row] = await all<NotificationOutboxRow>(env.DB, `SELECT * FROM notification_outbox`);

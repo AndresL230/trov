@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import { putMetrics, putSnapshot } from "../src/repo/store";
 import { emptyRepoDashboard } from "../src/tools/repo";
 import { DRIFT_GROUP_LIMIT, shapeRepoDashboard, type RepoAgentView } from "../src/tools/repo-agent";
@@ -42,7 +42,7 @@ const testEnv = (over: Partial<Record<keyof Env, unknown>> = {}): Env =>
   ({ ...(env as unknown as Env), ...SECRETS, ...over }) as Env;
 
 async function withClient<T>(handle: string, e: Env, fn: (c: Client) => Promise<T>): Promise<T> {
-  const server = buildCanopyMcpServer(e, { handle });
+  const server = buildTrovMcpServer(e, { handle });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

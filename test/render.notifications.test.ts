@@ -130,7 +130,7 @@ describe("notificationsMaintenanceSections", () => {
     { id: "my_work", label: "My Work", description: "d", allowedCadences: ["daily", "weekly", "off"], registryDefault: "daily", enabled: true, default_cadence: "daily", updated_at: null, updated_by: null },
     { id: "review_queue", label: "Review queue", description: "d", allowedCadences: ["daily", "off"], registryDefault: "daily", enabled: false, default_cadence: "daily", updated_at: null, updated_by: null },
   ];
-  const settings: NotificationSettingsRow = { id: 1, send_hour: 8, timezone: "America/New_York", from_address: "Canopy <c@mail.example>" };
+  const settings: NotificationSettingsRow = { id: 1, send_hour: 8, timezone: "America/New_York", from_address: "Trov <c@mail.example>" };
   const outbox: NotificationOutboxRow[] = [
     { idempotency_key: "jose:daily:2026-09-11", user_id: "jose", cadence: "daily", window_id: "2026-09-11", kinds: '["my_work"]', status: "sent", resend_id: "em_1", error: null, created_at: "2026-09-11T12:00:00Z", sent_at: "2026-09-11T12:00:01Z" },
     { idempotency_key: "dev:daily:2026-09-11", user_id: "dev", cadence: "daily", window_id: "2026-09-11", kinds: '["my_work"]', status: "failed", resend_id: null, error: "send: resend 422: mailbox unavailable", created_at: "2026-09-11T12:00:00Z", sent_at: null },
@@ -154,7 +154,7 @@ describe("notificationsMaintenanceSections", () => {
     expect(v).toContain("NOTIFICATIONS · SCHEDULE");
     expect(v).toMatch(/<option value="8" selected>08:00<\/option>/);
     expect(v).toMatch(/<option value="America\/New_York" selected>/);
-    expect(v).toContain('value="Canopy &lt;c@mail.example&gt;"');
+    expect(v).toContain('value="Trov &lt;c@mail.example&gt;"');
     expect(v).toContain('data-act="schedFrom"');
   });
 

@@ -19,7 +19,7 @@
 // focus to it by its `data-field`.
 //
 // Pure markup plus `tabKeyTarget`; `syncTabBars` and `onTabBarKey` are the only DOM code,
-// the styles live in canopy.css.
+// the styles live in trov.css.
 
 import { esc, attr } from "./ui";
 

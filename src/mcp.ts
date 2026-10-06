@@ -72,15 +72,15 @@ async function runTool(fn: () => Promise<unknown>) {
 }
 
 /**
- * Build a fully-registered Canopy MCP server for one principal. Exported so tests
+ * Build a fully-registered Trov MCP server for one principal. Exported so tests
  * can drive the REAL registered tools (e.g. over an in-memory transport) rather
  * than re-implementing the tool bodies — the same closures production runs.
  *
  * A fresh McpServer per request is required (SDK 1.26+ guards against reuse), so
  * this must NOT be hoisted to global scope.
  */
-export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { origin?: string } = {}): McpServer {
-  const server = new McpServer({ name: "canopy", version: "1.0.0" });
+export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origin?: string } = {}): McpServer {
+  const server = new McpServer({ name: "trov", version: "1.0.0" });
   // Absolute links in artifact results: PUBLIC_ORIGIN, else the /mcp request's origin.
   // COOKIE_SECRET is only the ROOT of the download-URL key (derived with a purpose label).
   const artifactCtx = {
@@ -89,7 +89,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "query",
-    "Retrieve assembled context from the team brain (Canopy): whole authoritative bodies for the top hits plus ranked pointers to the rest, over docs, decisions, feed, sprints and artifacts (an artifact's id is its slug — open it with artifact_get; its body starts `Status: <draft|published|ratified> · v<n>`). Each result is flagged live / staged_pending / unpromoted / draft — treat anything not 'live' as not-yet-settled. Use this to orient before working an existing area and ALWAYS before proposing a doc change. Read-only and safe to call freely.",
+    "Retrieve assembled context from the team brain (Trov): whole authoritative bodies for the top hits plus ranked pointers to the rest, over docs, decisions, feed, sprints and artifacts (an artifact's id is its slug — open it with artifact_get; its body starts `Status: <draft|published|ratified> · v<n>`). Each result is flagged live / staged_pending / unpromoted / draft — treat anything not 'live' as not-yet-settled. Use this to orient before working an existing area and ALWAYS before proposing a doc change. Read-only and safe to call freely.",
     {
       q: z.string().optional(),
       types: z.array(QueryType).optional(),
@@ -176,7 +176,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
   // org's queue is how an agent orients before it does anything.
   server.tool(
     "list_tickets",
-    "Read-only: the org's ticket queue. Tickets are Canopy D1 rows the whole org files into (ADR-007, amended): a ticket may LINK to GitHub or Figma work, and may be SOURCED from a GitHub issue, but is never the issue itself. A mirrored ticket has source 'github' and source_ref 'owner/repo#n'; its title/body/assignees were copied at import and are Canopy's since, while closing or reopening the issue on GitHub closes or reopens it. Its source link is locked (never removable). Filter with seg ('open' = submitted + in_progress + testing, the default / 'closed' = done + declined / 'all'), assignee ('anyone' default, 'me' = you, the bearer principal, 'unassigned') and category. Newest-updated first; each row carries its assignees, link/sub-ticket counts and sprint label. Reading is unscoped: you see the whole org's queue. WRITING is scoped to your own lane — see create_ticket and transition_ticket.",
+    "Read-only: the org's ticket queue. Tickets are Trov D1 rows the whole org files into (ADR-007, amended): a ticket may LINK to GitHub or Figma work, and may be SOURCED from a GitHub issue, but is never the issue itself. A mirrored ticket has source 'github' and source_ref 'owner/repo#n'; its title/body/assignees were copied at import and are Trov's since, while closing or reopening the issue on GitHub closes or reopens it. Its source link is locked (never removable). Filter with seg ('open' = submitted + in_progress + testing, the default / 'closed' = done + declined / 'all'), assignee ('anyone' default, 'me' = you, the bearer principal, 'unassigned') and category. Newest-updated first; each row carries its assignees, link/sub-ticket counts and sprint label. Reading is unscoped: you see the whole org's queue. WRITING is scoped to your own lane — see create_ticket and transition_ticket.",
     {
       seg: TicketSeg.optional(),
       assignee: TicketAssigneeFilter.optional(),
@@ -189,7 +189,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "get_ticket",
-    "Read-only: one whole ticket by id — body, category, priority, status, requester, assignees, linked work, comments, the full status history, its parent and sub-tickets, its sprint, and `artifacts` ([{slug, title, kind, status, version}] — the artifact pages linked to it that you can see; open one with artifact_get). A ticket is a Canopy D1 row that may be sourced from a GitHub issue but is never the issue itself (ADR-007, amended) — `source`, `source_ref` and each link's `locked` say whether it is mirrored and which link is its source. Read this BEFORE any write: its `assignees` tell you whether the ticket is in your lane at all.",
+    "Read-only: one whole ticket by id — body, category, priority, status, requester, assignees, linked work, comments, the full status history, its parent and sub-tickets, its sprint, and `artifacts` ([{slug, title, kind, status, version}] — the artifact pages linked to it that you can see; open one with artifact_get). A ticket is a Trov D1 row that may be sourced from a GitHub issue but is never the issue itself (ADR-007, amended) — `source`, `source_ref` and each link's `locked` say whether it is mirrored and which link is its source. Read this BEFORE any write: its `assignees` tell you whether the ticket is in your lane at all.",
     { id: z.number() },
     async ({ id }) =>
       runTool(async () => {
@@ -253,7 +253,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "edit_ticket",
-    "Edit a ticket's title and/or body (markdown). SCOPED: only on a ticket already assigned to you, else `forbidden` and nothing is written. Pass at least one of `title` / `body`; the other is left as it is. A ticket mirrored from a GitHub issue is editable too — its title and body were copied from the issue when it was imported and are Canopy's from then on (GitHub edits never overwrite them). Records no history row (history is status moves). Returns the whole ticket.",
+    "Edit a ticket's title and/or body (markdown). SCOPED: only on a ticket already assigned to you, else `forbidden` and nothing is written. Pass at least one of `title` / `body`; the other is left as it is. A ticket mirrored from a GitHub issue is editable too — its title and body were copied from the issue when it was imported and are Trov's from then on (GitHub edits never overwrite them). Records no history row (history is status moves). Returns the whole ticket.",
     { id: z.number(), ...TicketEdit.shape },
     async ({ id, title, body }) => runTool(async () => {
       await agentEditTicket(env.DB, env, id, { title, body }, principal.handle);
@@ -313,7 +313,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "assign_ticket",
-    "Add (`on: true`) or remove (`on: false`) ONE assignee on an existing ticket. `login` is a person HANDLE — take it from `list_people`, matching the work to each person's role and responsibilities; an unknown handle is `bad_request`. SCOPED by its own rule, not the lane: only an ADMIN, the ticket's REQUESTER or one of its CURRENT assignees may (re)assign it, else `forbidden` and nothing is written. Idempotent: adding someone already assigned, or removing someone who isn't, succeeds and writes nothing. It never changes status (assigning a submitted ticket does not start it — use transition_ticket), and records no history row — history is status moves, so nothing records who (un)assigned, exactly as with the web UI's picker. Works on a ticket mirrored from a GitHub issue — its assignees are Canopy's after import. Removing yourself takes the ticket out of your lane. Returns the whole ticket; read `assignees` back. Confirm who with the person before calling.",
+    "Add (`on: true`) or remove (`on: false`) ONE assignee on an existing ticket. `login` is a person HANDLE — take it from `list_people`, matching the work to each person's role and responsibilities; an unknown handle is `bad_request`. SCOPED by its own rule, not the lane: only an ADMIN, the ticket's REQUESTER or one of its CURRENT assignees may (re)assign it, else `forbidden` and nothing is written. Idempotent: adding someone already assigned, or removing someone who isn't, succeeds and writes nothing. It never changes status (assigning a submitted ticket does not start it — use transition_ticket), and records no history row — history is status moves, so nothing records who (un)assigned, exactly as with the web UI's picker. Works on a ticket mirrored from a GitHub issue — its assignees are Trov's after import. Removing yourself takes the ticket out of your lane. Returns the whole ticket; read `assignees` back. Confirm who with the person before calling.",
     { id: z.number(), ...TicketAssigneeToggle.shape },
     async ({ id, login, on }) => runTool(async () => {
       await agentAssignTicket(env.DB, env, id, login, on, principal.handle);
@@ -357,7 +357,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
   // (POST /admin/backfill) stay session-cookie + admin routes, NEVER MCP tools.
   server.tool(
     "get_repo_dashboard",
-    "The Repo dashboard for the org's main repository: environments and deploys, CI, code activity, usage (requests, errors, hosting, active users), the app's product metrics, and planning — read from Canopy's own database, never live GitHub. Every section is `ok`, `empty` (connected, nothing to show) or `not_connected` (never captured): treat anything not `ok` as unknown, never as zero. The same holds INSIDE an `ok` section: a `null` figure (`usage[].requests` / `errorRate` / `users`, a `product` value, `contributors[].reviews`, `ciFailures.rate`, `prs.openCount` (open PRs not captured yet), a `null` or empty delta, a `null` sha or checks) is unknown / not captured — never zero — and `usage[].seen` says whether that source has EVER reported (`null` + not seen = not connected; `null` + seen = no recent reading). Optional `tab` (overview | code | ci | usage | planning) returns only the sections that tab shows; `range` (24h | 7d | 30d, default 7d) picks the one view the usage / cloudflare / product sections return; `include_trends` (default false) adds the sparkline `trend` arrays and the full drift breakdown — without it `drift.groups` is the first 20 groups, each with a `commitCount` instead of its commits, and `drift.groupCount` is the full number; with `include_trends: true` every group is returned with its commits. Leave it off unless you need the series. Returns { repo, generatedAt, degraded, tab, range, sections }; `degraded: true` means a database read failed and the sections fell back. Read-only and safe to call freely.",
+    "The Repo dashboard for the org's main repository: environments and deploys, CI, code activity, usage (requests, errors, hosting, active users), the app's product metrics, and planning — read from Trov's own database, never live GitHub. Every section is `ok`, `empty` (connected, nothing to show) or `not_connected` (never captured): treat anything not `ok` as unknown, never as zero. The same holds INSIDE an `ok` section: a `null` figure (`usage[].requests` / `errorRate` / `users`, a `product` value, `contributors[].reviews`, `ciFailures.rate`, `prs.openCount` (open PRs not captured yet), a `null` or empty delta, a `null` sha or checks) is unknown / not captured — never zero — and `usage[].seen` says whether that source has EVER reported (`null` + not seen = not connected; `null` + seen = no recent reading). Optional `tab` (overview | code | ci | usage | planning) returns only the sections that tab shows; `range` (24h | 7d | 30d, default 7d) picks the one view the usage / cloudflare / product sections return; `include_trends` (default false) adds the sparkline `trend` arrays and the full drift breakdown — without it `drift.groups` is the first 20 groups, each with a `commitCount` instead of its commits, and `drift.groupCount` is the full number; with `include_trends: true` every group is returned with its commits. Leave it off unless you need the series. Returns { repo, generatedAt, degraded, tab, range, sections }; `degraded: true` means a database read failed and the sections fell back. Read-only and safe to call freely.",
     {
       tab: z.enum(Object.keys(REPO_TAB_SECTIONS) as [RepoTab, ...RepoTab[]]).optional(),
       range: z.enum(REPO_RANGES).optional(),
@@ -373,7 +373,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "record_session",
-    "Record a whole Claude Code session into Canopy in ONE reconciled batch: pass a full IngestPayload (session + feed_entries / doc_proposals / adr_drafts / needs_triage, and optional artifact_links). A doc proposal may embed only uploaded doc images (`![alt](/img/<sha256>)`, uploaded with upload_asset destination \"doc\" BEFORE this call); one that breaks that rule is listed under `refused` with its reason and is not ledgered, so re-sending the same batch after uploading stages it. Routes through the SAME gate as /ingest — drops no-ops, stages real deltas, classifies each doc change, and is replay-safe on session.id. The author is your authenticated bearer principal; session.author is advisory and ignored. Returns per-type outcome counts. `artifact_links` ([{slug, target_type: ticket|sprint|pr|issue, target_ref}], for artifacts this session produced) are NOT staged: after the batch is reconciled each is linked directly, as you, and reported in `artifact_links` as linked / not_found / error (idempotent — a replay re-links nothing). Used by the record-session skill at session end; you only ever stage knowledge — humans confirm.",
+    "Record a whole Claude Code session into Trov in ONE reconciled batch: pass a full IngestPayload (session + feed_entries / doc_proposals / adr_drafts / needs_triage, and optional artifact_links). A doc proposal may embed only uploaded doc images (`![alt](/img/<sha256>)`, uploaded with upload_asset destination \"doc\" BEFORE this call); one that breaks that rule is listed under `refused` with its reason and is not ledgered, so re-sending the same batch after uploading stages it. Routes through the SAME gate as /ingest — drops no-ops, stages real deltas, classifies each doc change, and is replay-safe on session.id. The author is your authenticated bearer principal; session.author is advisory and ignored. Returns per-type outcome counts. `artifact_links` ([{slug, target_type: ticket|sprint|pr|issue, target_ref}], for artifacts this session produced) are NOT staged: after the batch is reconciled each is linked directly, as you, and reported in `artifact_links` as linked / not_found / error (idempotent — a replay re-links nothing). Used by the record-session skill at session end; you only ever stage knowledge — humans confirm.",
     IngestPayload.shape,
     // Same reconciling path as the cookie /ingest route: forward the full payload to
     // consume() under the bearer principal already in scope. Re-parse with the contract
@@ -411,7 +411,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "upload_asset",
-    "Put something into Canopy: an ARTIFACT page, or an IMAGE for a doc. `destination` picks which (default \"artifact\").\n\n" +
+    "Put something into Trov: an ARTIFACT page, or an IMAGE for a doc. `destination` picks which (default \"artifact\").\n\n" +
       "destination \"doc\" — an image a doc embeds. Pass `sha256` (hex, `shasum -a 256 img.png`), `size_bytes` and `content_type` (image/png | image/jpeg | image/gif | image/webp; ≤ 10 MB); `kind` may be omitted (it is always image) and page fields (title, area, …) are refused. → { destination, ref: \"/img/<sha256>\", markdown, sha256, uploaded }. uploaded: true = that exact image is already stored, nothing to PUT. Otherwise also { upload_url, expires_at }: PUT the exact bytes (single use, 5 minutes, e.g. `curl -X PUT --data-binary @img.png -H \"Content-Type: image/png\" \"<upload_url>\"`). THEN reference it in the doc body as `![what it shows](/img/<sha256>)` and propose the doc (propose_doc_update / record_session). The doc gate REFUSES a body whose image is not uploaded yet, and any other image source (an external URL, a data: URI) — upload first, then propose. Images are immutable: a new picture is a new sha256.\n\n" +
       "destination \"artifact\" (default) — create an artifact page (v1, status draft): a rendered HTML page, markdown doc, SVG, mermaid diagram, image, PDF or file the team keeps and versions. Needs `title`, `kind`, `area`, `repo`, `visibility`. Text kinds (html | markdown | svg | mermaid; ≤ 750 KB): pass `content` → { id, slug, url, version }. Binary kinds (image | pdf | file; ≤ 10 MB): pass `size_bytes` and `sha256`, NOT content → { id, slug, url, upload_url, expires_at }; then PUT the exact bytes to upload_url (single use, 5 minutes) — the page does not exist to anyone until that PUT lands. `area` is one of auth | architecture | infra | api | ui | data; `repo` is owner/repo or \"\"; `visibility` org (the whole org) or private (only you). Optional `links` ([{target_type: ticket|sprint|pr|issue, target_ref}]) and `summary`. You author it; a PERSON ratifies it on the web — there is no ratify tool. Contract: docs/artifact-contract.md.\n\n" +
       "Every result has `warnings` — non-empty when artifact content calls something only claude.ai has (window.claude, window.storage, api.anthropic.com); the page is still created.",
@@ -446,7 +446,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "artifact_get",
-    "Read one artifact: metadata (title, kind, area, repo, author, status draft | published | ratified, visibility, versions, links, ratified_version) plus, for text kinds, `content` of the requested version (binary kinds: `content` is null). A text version over 64 KB is NOT inlined: `content` is null and `content_omitted` is true — pull it with `download_url` and grep / read the slices you need, or pass `include_content: true` only when you genuinely need the whole text in context (`content_omitted` is false on every other result). To get the FILE — any kind, binary included — use `download_url`: absolute, signed for you, reusable for 5 minutes (`download_expires_at`), no header needed: `curl -fsSL \"$download_url\" -o <path>` returns the exact stored bytes as an attachment named `download_filename`. Verify it against `sha256` / `size_bytes` (this version's; `shasum -a 256 <path>`). Expired → HTTP 410: call artifact_get again. `raw_url` is the browser view (signed-in session only — it does not take your bearer). `slug` may name a version (`slug@v3` or `slug/v3`), or pass `version`; default the latest. `url` is the page in the Canopy web app — share that when a person just wants the link. `warnings` flags claude.ai-only calls in the content. Only `ratified` is team-confirmed; draft / published are one person's word. An unknown, private-to-someone-else or not-yet-uploaded slug is { error: \"not_found\", code: \"not_found\" }.",
+    "Read one artifact: metadata (title, kind, area, repo, author, status draft | published | ratified, visibility, versions, links, ratified_version) plus, for text kinds, `content` of the requested version (binary kinds: `content` is null). A text version over 64 KB is NOT inlined: `content` is null and `content_omitted` is true — pull it with `download_url` and grep / read the slices you need, or pass `include_content: true` only when you genuinely need the whole text in context (`content_omitted` is false on every other result). To get the FILE — any kind, binary included — use `download_url`: absolute, signed for you, reusable for 5 minutes (`download_expires_at`), no header needed: `curl -fsSL \"$download_url\" -o <path>` returns the exact stored bytes as an attachment named `download_filename`. Verify it against `sha256` / `size_bytes` (this version's; `shasum -a 256 <path>`). Expired → HTTP 410: call artifact_get again. `raw_url` is the browser view (signed-in session only — it does not take your bearer). `slug` may name a version (`slug@v3` or `slug/v3`), or pass `version`; default the latest. `url` is the page in the Trov web app — share that when a person just wants the link. `warnings` flags claude.ai-only calls in the content. Only `ratified` is team-confirmed; draft / published are one person's word. An unknown, private-to-someone-else or not-yet-uploaded slug is { error: \"not_found\", code: \"not_found\" }.",
     { slug: z.string().min(1), version: z.number().int().min(1).optional(), include_content: z.boolean().optional() },
     async (input) => runTool(() => agentArtifactGet(artifactCtx, input)),
   );
@@ -627,7 +627,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 
   server.tool(
     "save_prompt",
-    "Stage a prompt in the team's Prompt Library — a new slug creates v1, an existing slug appends the next version. ALWAYS lands as 'staged' (whatever you intend): a human must publish it in Canopy before it is settled, and you cannot rename a slug. Only save instructions you have had to write out twice; the slug is 2–60 chars of a-z, 0-9 and '-'. Write {{name}} for anything the caller fills in. Pass `branch` (your git branch) for the default version note. Returns { slug, version, status }.",
+    "Stage a prompt in the team's Prompt Library — a new slug creates v1, an existing slug appends the next version. ALWAYS lands as 'staged' (whatever you intend): a human must publish it in Trov before it is settled, and you cannot rename a slug. Only save instructions you have had to write out twice; the slug is 2–60 chars of a-z, 0-9 and '-'. Write {{name}} for anything the caller fills in. Pass `branch` (your git branch) for the default version note. Returns { slug, version, status }.",
     {
       slug: z.string(), title: z.string(), body: z.string(),
       tags: z.array(z.string()).optional(), summary: z.string().optional(), branch: z.string().optional(),
@@ -658,7 +658,7 @@ export function buildCanopyMcpServer(env: Env, principal: Principal, opts: { ori
 }
 
 export function handleMcp(request: Request, env: Env, ctx: ExecutionContext, principal: Principal): Promise<Response> {
-  const server = buildCanopyMcpServer(env, principal, { origin: new URL(request.url).origin });
+  const server = buildTrovMcpServer(env, principal, { origin: new URL(request.url).origin });
   // createMcpHandler wraps @modelcontextprotocol/sdk over Streamable HTTP, stateless (no McpAgent/DO).
   const handler = createMcpHandler(server, { route: "/mcp" });
   return handler(request, env, ctx);

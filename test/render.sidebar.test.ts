@@ -96,7 +96,7 @@ describe("sidebar — groups and order (the design's five sections)", () => {
     const html = sidebarView(props());
     expect(html).not.toContain('data-act="goSearch"');
     expect(html).toContain('data-field="sideSearch"');
-    expect(html).toContain('placeholder="Search Canopy"');
+    expect(html).toContain('placeholder="Search Trov"');
   });
 });
 

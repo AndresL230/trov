@@ -65,7 +65,7 @@ function issuePayload(number: number, state: "open" | "closed", action: string) 
       user: { login: "AndresL230" },
       assignees: [],
       labels: [],
-      milestone: null, // GitHub's own key — not Canopy vocabulary
+      milestone: null, // GitHub's own key — not Trov vocabulary
     },
   };
 }
@@ -127,7 +127,7 @@ describe("recomputeAllProgress", () => {
 
     const fetchImpl = ((url: string | URL | Request) => {
       const u = String(url);
-      if (u.endsWith("/milestones/5")) { // GitHub's own REST path — not Canopy vocabulary
+      if (u.endsWith("/milestones/5")) { // GitHub's own REST path — not Trov vocabulary
         return Promise.resolve(
           new Response(JSON.stringify({ open_issues: 2, closed_issues: 8 }), { status: 200, headers: { "content-type": "application/json" } })
         );

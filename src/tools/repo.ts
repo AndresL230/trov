@@ -42,7 +42,7 @@ import { CF_POLLED, cfCovered, type RepoEventRow, type RepoPrRow } from "../repo
 // environment picked out in memory and shown only while it is current.
 //
 // Active users (Task 18) ride it too: hourly `active_users_<range>` GAUGES the
-// minute-0 tick asks Sapling's own backend for — Canopy cannot compute them —
+// minute-0 tick asks Sapling's own backend for — Trov cannot compute them —
 // shown, like hosting, only while the latest reading is current.
 //
 // Product metrics (contract v2) are the same poll's OTHER half: whatever
@@ -69,7 +69,7 @@ const RECENT_PR_DAYS = 90; // recentPrRows' bound — a PR untouched this long n
  *  as absent, both for display and for the environment pill. */
 const HEALTH_STALE_MS = 30 * 60_000;
 
-/** Event time: the payload's own clock, else when Canopy recorded it. */
+/** Event time: the payload's own clock, else when Trov recorded it. */
 const AT = `COALESCE(occurred_at, recorded_at)`;
 
 const ok = <T>(data: T): RepoSection<T> => ({ status: "ok", data });

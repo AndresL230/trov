@@ -1,6 +1,6 @@
 # The artifact contract
 
-What an agent (or a person) can do with Canopy **artifacts** — versioned pages the team keeps next to
+What an agent (or a person) can do with Trov **artifacts** — versioned pages the team keeps next to
 its tickets and sprints: a rendered HTML page, a markdown doc, an SVG, a mermaid diagram, an image, a
 PDF or any other file. Issue #52; implementation spec:
 `docs/superpowers/specs/2026-09-24-artifacts-implementation.md`. The shared vocabulary and caps live
@@ -93,10 +93,10 @@ the web library's filters: `q` is full text over title / summary / body or a tit
 `{ artifacts: [{ slug, title, kind, status, version, updated_at, url, area, author, visibility }], total,
 truncated }`.
 
-`url` is the page in the Canopy web app (`<origin>/#artifacts/<slug>`) — the link to hand a person;
+`url` is the page in the Trov web app (`<origin>/#artifacts/<slug>`) — the link to hand a person;
 `upload_url`, `download_url` and `raw_url` are absolute too. **Every result carries `warnings: string[]`** — non-empty when text content calls into
 something only claude.ai provides (`window.claude`, `window.storage`, `api.anthropic.com`). That is a
-warning, never a rejection: the write has already happened, and the page will not work in Canopy's
+warning, never a rejection: the write has already happened, and the page will not work in Trov's
 viewer until you remove the call. It is also non-empty for a **bundled Claude Design export** (the hi-fi
 clickable ones, marked by `<script type="__bundler/manifest">`): its loader unpacks its scripts into
 `blob:` URLs and its runtime compiles code with `new Function`, and the viewer's CSP allows neither, so
@@ -122,7 +122,7 @@ wc -c < threat-model.pdf
 # 2. upload_asset (or artifact_update for a new version) with the size and hash
 #    { "title": "Threat model", "kind": "pdf", "area": "infra", "repo": "", "visibility": "org",
 #      "size_bytes": 482113, "sha256": "9f2c…e41a", "filename": "threat-model.pdf" }
-#    → { "slug": "threat-model", "upload_url": "https://canopy…/api/artifacts/upload/<token>", "expires_at": "…" }
+#    → { "slug": "threat-model", "upload_url": "https://trov…/api/artifacts/upload/<token>", "expires_at": "…" }
 
 # 3. PUT the bytes
 curl -X PUT --data-binary @threat-model.pdf -H "Content-Type: application/pdf" "<upload_url>"
@@ -143,13 +143,13 @@ it with no header, then check the hash:
 
 ```bash
 # artifact_get { "slug": "checkout-mockup" }
-#   → { "download_url": "https://canopy…/api/artifacts/download/<token>", "download_filename": "checkout-mockup-v3.html",
+#   → { "download_url": "https://trov…/api/artifacts/download/<token>", "download_filename": "checkout-mockup-v3.html",
 #       "sha256": "5d8f…", "size_bytes": 4821, "version": { "version_no": 3, … }, … }
-mkdir -p .canopy/artifacts/checkout-mockup
-curl -fsSL "<download_url>" -o .canopy/artifacts/checkout-mockup/v3.html
-shasum -a 256 .canopy/artifacts/checkout-mockup/v3.html      # must equal "sha256"
+mkdir -p .trov/artifacts/checkout-mockup
+curl -fsSL "<download_url>" -o .trov/artifacts/checkout-mockup/v3.html
+shasum -a 256 .trov/artifacts/checkout-mockup/v3.html      # must equal "sha256"
 # spin an html page up locally:
-python3 -m http.server 8000 --bind 127.0.0.1 --directory .canopy/artifacts/checkout-mockup
+python3 -m http.server 8000 --bind 127.0.0.1 --directory .trov/artifacts/checkout-mockup
 ```
 
 - The URL is the credential: **signed for your person, that page and that version, valid 5 minutes, and
@@ -161,9 +161,9 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory .canopy/artifacts/check
 - The body is the **exact stored bytes** (no viewer script injected), served as an attachment with the
   stored content type, `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store` and
   `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; sandbox` — nothing it serves can
-  run in Canopy's origin. `HEAD` works too.
-- The default place for a pulled artifact is `.canopy/artifacts/<slug>/v<n>.<ext>` (the `artifacts`
-  skill); keep `.canopy/` in `.gitignore`.
+  run in Trov's origin. `HEAD` works too.
+- The default place for a pulled artifact is `.trov/artifacts/<slug>/v<n>.<ext>` (the `artifacts`
+  skill); keep `.trov/` in `.gitignore`.
 
 ## The raw route
 
@@ -175,7 +175,7 @@ at. It does not take an MCP bearer; an agent uses `download_url` (above).
 
 ## Doc images
 
-A doc (not an artifact) may embed images, and only ones uploaded to Canopy. The same tool, the same PUT:
+A doc (not an artifact) may embed images, and only ones uploaded to Trov. The same tool, the same PUT:
 
 ```bash
 sha=$(shasum -a 256 flow.png | cut -d' ' -f1); size=$(wc -c < flow.png)

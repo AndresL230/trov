@@ -261,7 +261,7 @@ describe("Settings › Profile — the photo; no role or responsibilities", () =
     expect(html).not.toContain('data-act="avatarRemove"');
     expect(html).toContain("Square crop · PNG, JPEG, WebP, GIF");
     s.me = ME({ avatar_url: "https://avatars.githubusercontent.com/u/1" });
-    html = profileSection(s); // the provider's picture is not Canopy's to remove
+    html = profileSection(s); // the provider's picture is not Trov's to remove
     expect(html).toContain("Upload photo");
     expect(html).not.toContain('data-act="avatarRemove"');
     s.me = ME({ avatar_url: "/avatar/abc" });
@@ -294,7 +294,7 @@ describe("Settings › Profile — the photo; no role or responsibilities", () =
     expect(html).not.toContain('data-act="saveAbout"');
   });
 
-  it("isUploadedAvatar: only a Canopy-stored photo", () => {
+  it("isUploadedAvatar: only a Trov-stored photo", () => {
     expect(isUploadedAvatar("/avatar/abc")).toBe(true);
     expect(isUploadedAvatar("https://x/y.png")).toBe(false);
     expect(isUploadedAvatar(null)).toBe(false);

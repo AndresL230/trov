@@ -20,7 +20,7 @@ import type { Env } from "../src/env";
 
 const FRI_8_ET = new Date("2026-09-11T12:00:00.000Z");
 const MON_8_ET = new Date("2026-09-14T12:00:00.000Z");
-const SETTINGS: NotificationSettingsRow = { id: 1, send_hour: 8, timezone: "America/New_York", from_address: "Canopy <canopy@mail.example>" };
+const SETTINGS: NotificationSettingsRow = { id: 1, send_hour: 8, timezone: "America/New_York", from_address: "Trov <trov@mail.example>" };
 
 const outbox = () => all<NotificationOutboxRow>(env.DB, `SELECT * FROM notification_outbox ORDER BY idempotency_key`);
 const bodies = () => all<{ idempotency_key: string; html: string; text: string }>(env.DB, `SELECT * FROM notification_outbox_bodies`);
@@ -34,7 +34,7 @@ async function pendingDecision(): Promise<void> {
   await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
 }
 const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
-const localEnv = (): Env => ({ ...(env as unknown as Env), NOTIFICATIONS_MODE: undefined, PUBLIC_ORIGIN: "https://canopy.example" });
+const localEnv = (): Env => ({ ...(env as unknown as Env), NOTIFICATIONS_MODE: undefined, PUBLIC_ORIGIN: "https://trov.example" });
 
 describe("cron triggers", () => {
   it("wrangler.toml declares both notification triggers", () => {
@@ -73,7 +73,7 @@ describe("scheduled() dispatch (local mode)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ cadence: "daily", window_id: "2026-09-11", status: "sent", resend_id: null });
     const [b] = await bodies();
-    expect(b.html).toContain("https://canopy.example/#review");
+    expect(b.html).toContain("https://trov.example/#review");
   });
 
   it("the daily trigger at another hour, and the weekly trigger on a Friday, do nothing", async () => {
@@ -179,7 +179,7 @@ describe("signed one-click unsubscribe token", () => {
     expect(await verifyUnsubscribeToken(t.replace("AndresL230", "lpcooper-arch"), "s3cret")).toBeNull();
   });
   it("builds the /u/<token> URL on the public origin", async () => {
-    const url = await unsubscribeUrl("https://canopy.example", "AndresL230", "s3cret");
-    expect(url.startsWith("https://canopy.example/u/AndresL230.")).toBe(true);
+    const url = await unsubscribeUrl("https://trov.example", "AndresL230", "s3cret");
+    expect(url.startsWith("https://trov.example/u/AndresL230.")).toBe(true);
   });
 });

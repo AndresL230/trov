@@ -1,4 +1,4 @@
-// Canonical data-table reset for Canopy, shared by the test harness
+// Canonical data-table reset for Trov, shared by the test harness
 // (test/apply-migrations.ts) and the dev seed loader. FK-safe delete order;
 // re-seeds the people identity map. When a migration adds a data table, add
 // its DELETE here.
@@ -52,7 +52,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM notification_outbox",
   "DELETE FROM notification_prefs",
   "DELETE FROM notification_policy",
-  "UPDATE notification_settings SET send_hour = 8, timezone = 'America/New_York', from_address = 'Canopy <canopy@canopy.saplinglearn.com>' WHERE id = 1",
+  "UPDATE notification_settings SET send_hour = 8, timezone = 'America/New_York', from_address = 'Trov <canopy@canopy.saplinglearn.com>' WHERE id = 1",
   "DELETE FROM oauth_tokens",
   "DELETE FROM oauth_codes",
   "DELETE FROM oauth_grants",
@@ -72,7 +72,7 @@ export const RESET_STATEMENTS = [
   "INSERT INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES ('google', 'google-sub-meilin', 'meilin@saplinglearn.org', 'meilin', '2026-01-01T00:00:00Z', 'seed'), ('google', 'google-sub-sanaok', 'sanaok@saplinglearn.org', 'sanaok', '2026-01-01T00:00:00Z', 'seed')",
   // …each with a profile (0036): a role, and the responsibilities an agent reads through
   // MCP `list_people` when it chooses assignees. Illustrative, not the real team's.
-  "UPDATE persons SET role = 'Founding engineer', responsibilities = 'Canopy itself: the Worker, D1 migrations, MCP tools and auth. Deploys and production incidents.' WHERE handle = 'AndresL230'",
+  "UPDATE persons SET role = 'Founding engineer', responsibilities = 'Trov itself: the Worker, D1 migrations, MCP tools and auth. Deploys and production incidents.' WHERE handle = 'AndresL230'",
   "UPDATE persons SET role = 'Backend engineer', responsibilities = 'The Sapling API on Railway: the tutor, quizzes and the RAG pipeline. LLM cost and backend errors.' WHERE handle = 'Jose-Gael-Cruz-Lopez'",
   "UPDATE persons SET role = 'Frontend engineer', responsibilities = 'The Sapling web app: study screens, flashcards, onboarding, accessibility and bundle size.' WHERE handle = 'lpcooper-arch'",
   "UPDATE persons SET role = 'Infrastructure engineer', responsibilities = 'CI, the Cloudflare Workers builds, environments and health checks, the metrics endpoint.' WHERE handle = 'Darkest-Teddy'",

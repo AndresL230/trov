@@ -153,9 +153,9 @@ describe("admin routes: policy, settings, outbox, user email", () => {
     let res = await app.request("/api/notifications/settings", { headers: { cookie } }, env);
     expect(await res.json()).toMatchObject({ send_hour: 8, timezone: "America/New_York" });
 
-    res = await app.request("/api/notifications/settings", json("PUT", { send_hour: 7, timezone: "Europe/Berlin", from_address: "Canopy <digest@mail.example>" }, cookie), env);
+    res = await app.request("/api/notifications/settings", json("PUT", { send_hour: 7, timezone: "Europe/Berlin", from_address: "Trov <digest@mail.example>" }, cookie), env);
     expect(res.status).toBe(200);
-    expect(await first<NotificationSettingsRow>(env.DB, `SELECT * FROM notification_settings WHERE id = 1`)).toMatchObject({ send_hour: 7, timezone: "Europe/Berlin", from_address: "Canopy <digest@mail.example>" });
+    expect(await first<NotificationSettingsRow>(env.DB, `SELECT * FROM notification_settings WHERE id = 1`)).toMatchObject({ send_hour: 7, timezone: "Europe/Berlin", from_address: "Trov <digest@mail.example>" });
 
     expect((await app.request("/api/notifications/settings", json("PUT", { send_hour: 24 }, cookie), env)).status).toBe(400);
     expect((await app.request("/api/notifications/settings", json("PUT", { timezone: "Mars/Olympus" }, cookie), env)).status).toBe(400);
@@ -200,7 +200,7 @@ describe("signed one-click unsubscribe (/u/:token) — no cookie", () => {
     await seedPerson("u1", { name: "U", email: "me@example.com" });
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('u1', 'my_work', 'weekly', 'x')`);
     const token = await unsubscribeToken("u1", "test-cookie-secret");
-    const res = await worker.fetch(new Request(`https://canopy.example/u/${token}`, { method: "POST", body: "List-Unsubscribe=One-Click", headers: { "content-type": "application/x-www-form-urlencoded" } }), wenv, ctx);
+    const res = await worker.fetch(new Request(`https://trov.example/u/${token}`, { method: "POST", body: "List-Unsubscribe=One-Click", headers: { "content-type": "application/x-www-form-urlencoded" } }), wenv, ctx);
     expect(res.status).toBe(200);
     const u = (await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u1'`))!;
     expect(u.email_unsubscribed).toBe(1);
@@ -211,7 +211,7 @@ describe("signed one-click unsubscribe (/u/:token) — no cookie", () => {
   it("POST with a tampered or foreign token changes nothing and 401s", async () => {
     await seedPerson("u1", { name: "U", email: "me@example.com" });
     const token = await unsubscribeToken("u1", "wrong-secret");
-    const res = await worker.fetch(new Request(`https://canopy.example/u/${token}`, { method: "POST" }), wenv, ctx);
+    const res = await worker.fetch(new Request(`https://trov.example/u/${token}`, { method: "POST" }), wenv, ctx);
     expect(res.status).toBe(401);
     expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u1'`))!.email_unsubscribed).toBe(0);
   });
@@ -219,9 +219,9 @@ describe("signed one-click unsubscribe (/u/:token) — no cookie", () => {
   it("GET redirects to the in-app (cookie-gated) unsubscribe screen without flipping anything", async () => {
     await seedPerson("u1", { name: "U", email: "me@example.com" });
     const token = await unsubscribeToken("u1", "test-cookie-secret");
-    const res = await worker.fetch(new Request(`https://canopy.example/u/${token}`), wenv, ctx);
+    const res = await worker.fetch(new Request(`https://trov.example/u/${token}`), wenv, ctx);
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("https://canopy.example/#unsubscribe");
+    expect(res.headers.get("location")).toBe("https://trov.example/#unsubscribe");
     expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u1'`))!.email_unsubscribed).toBe(0);
   });
 });

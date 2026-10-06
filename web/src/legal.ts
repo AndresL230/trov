@@ -20,7 +20,7 @@ import { siteFooter, siteMark } from "./site-chrome";
 
 /** Who runs the service (the landing footer's copyright line). */
 export const LEGAL_OPERATOR = "Andres Lopez";
-/** Where questions and privacy requests go — the address Canopy already sends its mail from. */
+/** Where questions and privacy requests go — the address Trov already sends its mail from. */
 export const LEGAL_CONTACT = "canopy@canopy.saplinglearn.com";
 
 export type LegalKind = "terms" | "privacy";
@@ -49,14 +49,14 @@ export const TERMS: LegalDoc = {
   kind: "terms",
   title: "Terms of Service",
   updated: "2026-10-06",
-  lede: `These terms cover your use of Canopy, the shared context store for teams and their coding agents, run by ${LEGAL_OPERATOR}. By signing in you agree to them. If you use Canopy on behalf of a team or company, you agree for it too.`,
+  lede: `These terms cover your use of Trov, the shared context store for teams and their coding agents, run by ${LEGAL_OPERATOR}. By signing in you agree to them. If you use Trov on behalf of a team or company, you agree for it too.`,
   sections: [
     {
       id: "service",
       title: "1. The service",
       body: [
-        p("Canopy stores your team's working memory — docs, decisions, a feed of sessions, tickets, sprints, handoffs, prompts and artifacts — and lets people and the coding agents they connect read and propose changes to it. Agents only ever stage changes; a person confirms the consequential ones."),
-        p("Canopy is offered to the teams that have been given access. Access can be limited, changed or withdrawn as the service evolves."),
+        p("Trov stores your team's working memory — docs, decisions, a feed of sessions, tickets, sprints, handoffs, prompts and artifacts — and lets people and the coding agents they connect read and propose changes to it. Agents only ever stage changes; a person confirms the consequential ones."),
+        p("Trov is offered to the teams that have been given access. Access can be limited, changed or withdrawn as the service evolves."),
       ],
     },
     {
@@ -64,15 +64,15 @@ export const TERMS: LegalDoc = {
       title: "2. Accounts and sign-in",
       body: [
         p("You sign in with GitHub or Google. You must give accurate information, keep your accounts secure, and tell us promptly if you think someone else has used your account or one of your agent connections."),
-        p("You are responsible for what happens under your account, <b>including everything an agent does with a connection you authorized</b>. An agent connected to Canopy acts as you: its writes are recorded under your name, exactly as if you had made them. Revoke a connection in Settings › MCP access as soon as you no longer trust it."),
-        p("You must be at least 16 years old to use Canopy."),
+        p("You are responsible for what happens under your account, <b>including everything an agent does with a connection you authorized</b>. An agent connected to Trov acts as you: its writes are recorded under your name, exactly as if you had made them. Revoke a connection in Settings › MCP access as soon as you no longer trust it."),
+        p("You must be at least 16 years old to use Trov."),
       ],
     },
     {
       id: "content",
       title: "3. Your content",
       body: [
-        p("You keep every right you have in what you and your agents put into Canopy (\"your content\"). You give the operator a limited, worldwide, non-exclusive licence to host, copy, process, index, display and transmit your content only as needed to run, secure and improve the service for you and your team — for example to store it, search it, render it, send digest emails and generate summaries."),
+        p("You keep every right you have in what you and your agents put into Trov (\"your content\"). You give the operator a limited, worldwide, non-exclusive licence to host, copy, process, index, display and transmit your content only as needed to run, secure and improve the service for you and your team — for example to store it, search it, render it, send digest emails and generate summaries."),
         p("Content you add to a team's workspace is visible to the other members of that team, and team admins can manage it. Make sure you have the right to add what you add, and do not put secrets (passwords, API keys, personal data you are not allowed to share) into docs, tickets, prompts or artifacts."),
         p("Content you connect from GitHub (pull requests, issues, commits, reviews, CI results) stays subject to GitHub's terms and your repository's own permissions."),
       ],
@@ -81,7 +81,7 @@ export const TERMS: LegalDoc = {
       id: "use",
       title: "4. Acceptable use",
       body: [
-        p("Don't use Canopy to:"),
+        p("Don't use Trov to:"),
         ul(
           "break the law or infringe anyone's rights;",
           "upload malware, or artifacts designed to attack the people who open them;",
@@ -96,50 +96,50 @@ export const TERMS: LegalDoc = {
       id: "ai",
       title: "5. AI-generated summaries",
       body: [
-        p("Canopy uses an AI model to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete; they are a convenience, not a record. Check the underlying pull request or issue before relying on one."),
+        p("Trov uses an AI model to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete; they are a convenience, not a record. Check the underlying pull request or issue before relying on one."),
       ],
     },
     {
       id: "third-parties",
       title: "6. Third-party services",
       body: [
-        p("Canopy depends on other services — GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Google Gemini for summaries and Resend for email. Their availability and terms are outside our control, and your use of them is governed by their own terms."),
+        p("Trov depends on other services — GitHub and Google for sign-in, GitHub for repository data, Cloudflare for hosting, Google Gemini for summaries and Resend for email. Their availability and terms are outside our control, and your use of them is governed by their own terms."),
       ],
     },
     {
       id: "open-source",
       title: "7. Open source",
       body: [
-        p("Canopy's source code is published under the GNU Affero General Public License v3.0. That licence governs the code. These terms govern your use of this hosted service; nothing in them limits the rights the AGPL gives you in the code."),
+        p("Trov's source code is published under the GNU Affero General Public License v3.0. That licence governs the code. These terms govern your use of this hosted service; nothing in them limits the rights the AGPL gives you in the code."),
       ],
     },
     {
       id: "availability",
       title: "8. Availability and changes",
       body: [
-        p("We work to keep Canopy running and your content safe, but the service may change, be interrupted, or lose data. Keep your own copies of anything you cannot afford to lose. We may add, change or remove features at any time."),
+        p("We work to keep Trov running and your content safe, but the service may change, be interrupted, or lose data. Keep your own copies of anything you cannot afford to lose. We may add, change or remove features at any time."),
       ],
     },
     {
       id: "disclaimer",
       title: "9. Disclaimer and limitation of liability",
       body: [
-        p("Canopy is provided <b>\"as is\" and \"as available\"</b>, without warranties of any kind, express or implied — including merchantability, fitness for a particular purpose and non-infringement — to the fullest extent the law allows."),
-        p("To the fullest extent the law allows, the operator is not liable for indirect, incidental, special, consequential or punitive damages, or for lost profits, revenue, data or goodwill, arising from your use of Canopy. Nothing in these terms limits liability that cannot be limited by law."),
+        p("Trov is provided <b>\"as is\" and \"as available\"</b>, without warranties of any kind, express or implied — including merchantability, fitness for a particular purpose and non-infringement — to the fullest extent the law allows."),
+        p("To the fullest extent the law allows, the operator is not liable for indirect, incidental, special, consequential or punitive damages, or for lost profits, revenue, data or goodwill, arising from your use of Trov. Nothing in these terms limits liability that cannot be limited by law."),
       ],
     },
     {
       id: "ending",
       title: "10. Ending your use",
       body: [
-        p(`You can stop using Canopy at any time, and ask for your account to be deleted by writing to ${mail}. We may suspend or end your access if you break these terms or if we stop offering the service; where we can, we will give notice and a chance to export your content first. Sections 3, 9 and 11 survive the end of your use.`),
+        p(`You can stop using Trov at any time, and ask for your account to be deleted by writing to ${mail}. We may suspend or end your access if you break these terms or if we stop offering the service; where we can, we will give notice and a chance to export your content first. Sections 3, 9 and 11 survive the end of your use.`),
       ],
     },
     {
       id: "changes",
       title: "11. Changes to these terms",
       body: [
-        p("We may update these terms. The date at the top of this page says when they last changed, and we will tell you in the app or by email before a material change takes effect. If you keep using Canopy after that, you accept the new terms."),
+        p("We may update these terms. The date at the top of this page says when they last changed, and we will tell you in the app or by email before a material change takes effect. If you keep using Trov after that, you accept the new terms."),
       ],
     },
     {
@@ -154,7 +154,7 @@ export const PRIVACY: LegalDoc = {
   kind: "privacy",
   title: "Privacy Policy",
   updated: "2026-10-06",
-  lede: `This policy explains what Canopy collects, why, who processes it, how long it is kept and what you can ask for. Canopy is run by ${LEGAL_OPERATOR}, who is responsible for the personal data described here. We do not sell personal data, and Canopy shows no ads and uses no tracking or analytics cookies.`,
+  lede: `This policy explains what Trov collects, why, who processes it, how long it is kept and what you can ask for. Trov is run by ${LEGAL_OPERATOR}, who is responsible for the personal data described here. We do not sell personal data, and Trov shows no ads and uses no tracking or analytics cookies.`,
   sections: [
     {
       id: "collect",
@@ -162,7 +162,7 @@ export const PRIVACY: LegalDoc = {
       body: [
         p("<b>Your account.</b> When you sign in with GitHub we receive your GitHub username, display name, profile picture and your primary, verified email address (the <code>read:user</code>, <code>user:email</code> and <code>read:org</code> permissions). With Google we receive your Google account id, name, picture and verified email (<code>openid email profile</code>). We use the provider's access token during sign-in and do not store it. You choose a handle and a color; you may upload a profile photo; an admin may record your role and responsibilities on the team."),
         p("<b>What you and your agents write.</b> Docs and their versions, decisions, feed entries, tickets and comments, sprints, handoffs, prompts, artifacts and the images and files you upload — together with who wrote each one and when."),
-        p("<b>Connected repository data.</b> When a team connects a GitHub repository, Canopy captures pull requests, issues, pushes, reviews, deployments and CI results from it, including the GitHub usernames of the people involved. That can include people who never signed in to Canopy, such as outside contributors; their usernames appear in a list team members can link or discard."),
+        p("<b>Connected repository data.</b> When a team connects a GitHub repository, Trov captures pull requests, issues, pushes, reviews, deployments and CI results from it, including the GitHub usernames of the people involved. That can include people who never signed in to Trov, such as outside contributors; their usernames appear in a list team members can link or discard."),
         p("<b>Agent connections.</b> When you connect an agent we keep a record of the connection (the app's name, when it was created and last used). Access tokens are stored only as one-way hashes."),
         p("<b>Email preferences</b> — which digests you get and how often, and whether you unsubscribed."),
         p("<b>Technical data.</b> Our host, Cloudflare, processes your IP address and request details to serve and protect the service, and keeps operational logs."),
@@ -174,7 +174,7 @@ export const PRIVACY: LegalDoc = {
       body: [
         ul(
           "to sign you in, keep you signed in and keep accounts secure;",
-          "to provide Canopy — store, search, show and attribute your team's content, and let connected agents read and propose changes as you;",
+          "to provide Trov — store, search, show and attribute your team's content, and let connected agents read and propose changes as you;",
           "to summarize captured pull requests and issues;",
           "to send the emails you can control in Settings (digests) and the service emails that go with an account (an invitation, a welcome message);",
           "to run, debug and protect the service.",
@@ -187,7 +187,7 @@ export const PRIVACY: LegalDoc = {
       title: "3. Who can see it",
       body: [
         p("<b>Your team.</b> What you add to a team's workspace is visible to its members; an artifact you mark private is visible only to you. Team admins can manage content and members."),
-        p("<b>Service providers</b> that process data for us, only to run Canopy:"),
+        p("<b>Service providers</b> that process data for us, only to run Trov:"),
         ul(
           "<b>Cloudflare</b> — hosting, database and file storage, and request logs;",
           "<b>Google (Gemini API)</b> — the text of captured pull requests and issues is sent to Google to generate summaries;",
@@ -202,7 +202,7 @@ export const PRIVACY: LegalDoc = {
       id: "cookies",
       title: "4. Cookies and local storage",
       body: [
-        p("Canopy uses only cookies it needs to work: <code>session</code> keeps you signed in (30 days), and a few short-lived cookies carry a sign-in in progress (about 10 minutes). Your browser's local storage keeps interface preferences such as the theme and the sidebar's state; they never leave your device. There are no analytics, advertising or third-party tracking cookies."),
+        p("Trov uses only cookies it needs to work: <code>session</code> keeps you signed in (30 days), and a few short-lived cookies carry a sign-in in progress (about 10 minutes). Your browser's local storage keeps interface preferences such as the theme and the sidebar's state; they never leave your device. There are no analytics, advertising or third-party tracking cookies."),
       ],
     },
     {
@@ -244,7 +244,7 @@ export const PRIVACY: LegalDoc = {
     {
       id: "children",
       title: "9. Children",
-      body: [p("Canopy is a tool for working teams and is not meant for anyone under 16. We do not knowingly collect their data.")],
+      body: [p("Trov is a tool for working teams and is not meant for anyone under 16. We do not knowingly collect their data.")],
     },
     {
       id: "changes",
@@ -285,7 +285,7 @@ export function legalView(doc: LegalDoc, dark: boolean): string {
       <div class="site-navin" style="max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
         <a href="/" style="display:flex;align-items:center;gap:9px;color:var(--fg);text-decoration:none">
           ${siteMark(20)}
-          <span style="font-size:16.5px;font-weight:650;letter-spacing:-0.01em">Canopy</span>
+          <span style="font-size:16.5px;font-weight:650;letter-spacing:-0.01em">Trov</span>
         </a>
         <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
           <a href="/${other.kind}" class="site-navlink">${esc(other.title)}</a>

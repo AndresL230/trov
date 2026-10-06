@@ -21,7 +21,7 @@ export const TICKET_CATEGORIES = ["bug", "request", "question", "access", "other
 export const TICKET_PRIORITIES = ["low", "normal", "high"] as const;
 export const TICKET_STATUSES = ["submitted", "in_progress", "testing", "done", "declined"] as const;
 export const TICKET_LINK_KINDS = ["github", "figma", "plain"] as const;
-/** Where a ticket came from (0032): filed in Canopy, or mirrored from a GitHub issue. */
+/** Where a ticket came from (0032): filed in Trov, or mirrored from a GitHub issue. */
 export const TICKET_SOURCES = ["canopy", "github"] as const;
 
 export type TicketCategory = (typeof TICKET_CATEGORIES)[number];

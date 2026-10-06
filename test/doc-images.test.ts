@@ -11,7 +11,7 @@ import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import worker from "../src/index";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { all, first } from "../src/db";
 import { sha256Hex } from "../src/tools/artifacts";
@@ -22,13 +22,13 @@ import { IngestPayload } from "@shared/contract";
 import { seedPerson, cookieFor } from "./helpers/persons";
 
 const ME = "img-author";
-const ORIGIN = "https://canopy.test"; // PUBLIC_ORIGIN in vitest.config.ts
+const ORIGIN = "https://trov.test"; // PUBLIC_ORIGIN in vitest.config.ts
 type ToolRes = { content: Array<{ type: string; text: string }>; isError?: boolean };
 const ctx = { waitUntil() {}, passThroughException() {} } as unknown as ExecutionContext;
 
 async function call(name: string, args: Record<string, unknown>, handle = ME): Promise<{ body: any; isError: boolean }> {
   await seedPerson(handle);
-  const server = buildCanopyMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, { handle });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -104,7 +104,7 @@ describe("upload_asset destination doc", () => {
     expect(d.isError).toBe(false);
     const sha = await sha256Hex(bytes);
     expect(d.body).toMatchObject({ destination: "doc", ref: `/img/${sha}`, sha256: sha, uploaded: false, warnings: [] });
-    expect(d.body.upload_url).toMatch(/^https:\/\/canopy\.test\/api\/artifacts\/upload\/[A-Za-z0-9_-]{43}$/);
+    expect(d.body.upload_url).toMatch(/^https:\/\/trov\.test\/api\/artifacts\/upload\/[A-Za-z0-9_-]{43}$/);
     expect(d.body.markdown).toBe(`![<describe the image>](/img/${sha})`);
     // Nothing is stored until the PUT lands — and no artifact page was made.
     expect(await first(env.DB, `SELECT 1 AS x FROM doc_images WHERE sha256 = ?`, sha)).toBeNull();
@@ -176,7 +176,7 @@ describe("upload_asset destination doc", () => {
 
   it("the old name is gone: there is one upload tool", async () => {
     await seedPerson(ME);
-    const server = buildCanopyMcpServer(env as unknown as Env, { handle: ME });
+    const server = buildTrovMcpServer(env as unknown as Env, { handle: ME });
     const client = new Client({ name: "test", version: "1.0.0" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);
@@ -205,7 +205,7 @@ describe("the doc gate's image rule", () => {
     for (const src of ["https://tracker.example/pixel.png", "data:image/png;base64,iVBOR"]) {
       const r = await call("propose_doc_update", doc("with-external", `![x](${src})`));
       expect(r.body.outcome).toBe("refused");
-      expect(r.body.reason).toMatch(/must be uploaded to Canopy/);
+      expect(r.body.reason).toMatch(/must be uploaded to Trov/);
     }
   });
 
@@ -261,7 +261,7 @@ describe("the doc gate's image rule", () => {
       body: JSON.stringify({ title: "Pictured", section: "reference", space: "technical", body: "![x](https://x.io/a.png)" }),
     });
     expect(r.status).toBe(400);
-    expect(((await r.json()) as { error: string }).error).toMatch(/must be uploaded to Canopy/);
+    expect(((await r.json()) as { error: string }).error).toMatch(/must be uploaded to Trov/);
   });
 });
 
