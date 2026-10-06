@@ -37,7 +37,7 @@ export default defineConfig({
           GOOGLE_CLIENT_ID: "test-google-client-id",
           GOOGLE_CLIENT_SECRET: "test-google-secret",
           GITHUB_WEBHOOK_SECRET: "test-webhook-secret",
-          ADMIN_LOGINS: "admin-user", // the admin allowlist the admin-gated route + isAdmin() test against
+          ADMIN_LOGINS: "admin-user", // MT: read ONLY by the MCP `update_plan` registration now (Phase 5a rebinds it); session routes gate on the org role — `admin-user` is seeded as an org admin (test/helpers/persons.ts)
           DEV_LOGIN: "", // override .dev.vars: tests exercise REAL auth, never the dev bypass
           NOTIFICATIONS_MODE: "", // override wrangler.toml [vars]: tests always run email in LOCAL mode
           // The pool loads `.dev.vars` through the wrangler config, so every secret

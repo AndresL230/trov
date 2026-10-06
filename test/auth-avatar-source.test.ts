@@ -66,7 +66,7 @@ describe("the provider picture has ONE owner", () => {
   });
 
   it("the email branch (a new identity auto-linked by address) does not take the picture either", async () => {
-    await seedPerson("priya", { email: "andres@gmail.com" });
+    await seedPerson("priya", { email: "andres@gmail.com", verified: true }); // the address GitHub verified for them — what the link matches (§5.1)
     await completeSignIn(platformCtx(), github({ subject: "priya", label: "priya" }));
     expect(await completeSignIn(platformCtx(), google())).toEqual({ kind: "session", handle: "priya" });
     expect(await person("priya")).toMatchObject({ avatar_url: GH_PIC, avatar_source: "github", name: "priya" });
