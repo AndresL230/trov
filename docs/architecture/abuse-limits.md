@@ -12,7 +12,7 @@ racing requests cannot both take the last unit. D1 only: no Durable Object, no Q
 
 | `LIMITS` key | Limit | Counted on |
 |---|---|---|
-| `invite` | 50 / person / UTC day | `POST /api/o/:slug/invites`, `POST /invites`, `POST /invites/:email/resend` — ONE allowance across every org and all three |
+| `invite` | 50 / person / UTC day | `POST /api/o/:slug/invites`, `POST /api/o/:slug/invites/:id/resend`, and the aliases `POST /invites`, `POST /invites/:email/resend` — ONE allowance across every org and all four. The superadmin's owner invite (`POST /api/platform/orgs`, `…/admin`) asks the same limit; a superadmin is exempt |
 | `test_send` | 20 / person / UTC day | `POST …/notifications/test-send` |
 | `email_change` | 5 / person / UTC day | `PUT …/notifications/prefs` and `PUT …/notifications/persons/:handle`, only when the address CHANGES to a non-empty one (the admin route spends the admin's) |
 | `avatar_upload` | 20 / person / UTC day | `POST …/people/me/avatar`, before the body is read |
@@ -77,9 +77,12 @@ changes. The cost is that an address can be on two people's rows; nothing reads 
    new holder of that login is refused at sign-in (`/?denied=1`) until the old row is unlinked.
 4. **`org_login_map` attributes by login.** An org admin maps a GitHub login to a member for My Work; a login
    that changes hands mis-attributes that login's events inside that org. It grants no access.
-5. **The invite and welcome mails are fixed copy** that still says "the Sapling team's shared workspace", and
-   carry the inviter's display name (up to 120 characters, HTML-escaped) — text a stranger chooses, in a mail
-   from the platform address to any address, 50 a day.
+5. **The invite mail carries text a stranger chooses**, to any address, from the platform address, 50 a day
+   per person: the ORG's name (up to its cap, in the subject and the headline), the inviter's display name and
+   the invitee's name as the inviter typed it (each up to 120 characters). All are HTML-escaped, the subject is
+   one line, and the only link is the site root — but the words are theirs. Every org's e-mail invite is mailed
+   now (0047), not only SaplingLearn's, so this is live for any org anyone creates. The WELCOME goes only to a
+   provider-verified address of the person who just joined, so it cannot be aimed at a third party.
 6. **Shared platform resources.** Summaries for every org's Sync GitHub and webhook use the Worker's one
    `GEMINI_API_KEY`; the repo cron's 900-subrequest budget is shared by rotation, so many orgs with 10
    environments each slow everyone's health pings; `/mcp` and the tenant routes are metered

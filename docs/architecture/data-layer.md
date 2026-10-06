@@ -2,7 +2,8 @@
 
 Spec: `canopy-multitenancy.md` §4–§8. Code: `src/data/`, `src/routes.ts`. Phases 3–5 are complete: every statement in `src/` runs
 through a context, every tenant statement names its org, and `test/data-layer.static.test.ts` enforces both.
-What is left (Phase 6 SPA, Phase 7 cleanup) and the deploy runbook: `HANDOFF.md`. Rate limits and mail: `abuse-limits.md`.
+What is left (Phase 7 cleanup) and the deploy runbook: `HANDOFF.md`. Rate limits and mail: `abuse-limits.md`.
+The flow a human operator follows — add an org, name its admin, set it up, invite the team: `organizations.md`.
 
 ## The two contexts
 
@@ -49,6 +50,26 @@ Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`
   `src/tools/repo-agent.ts` — it may not import `src/integrations`, see `test/secrets.mcp.test.ts`); a bare
   `#214` resolves against the org's primary repo (`ticketLinkRepo`, `src/tools/tickets.ts`).
 
+## A ticket's and a handoff's two ids (spec §12 Q2)
+
+`tickets.number` / `handoffs.number` (0038: allocated per org by an AFTER INSERT trigger from `org_counters`)
+is the id a person or an agent SEES and TYPES. **The wire's `id` IS that number** — every route param and
+body field (`/tickets/:id`, `child_id`, `after_id`, `/handoffs/:id`), every MCP argument and result, quick
+search (`#12`), My Work, a sprint's ticket list, `parent_id`, each sub-row's `ticket_id`, and an artifact's
+link ref (`artifact_links.target_ref` stores the number; the row has its own `org_id`). The global row `id`
+never leaves the Worker: the exported functions of `src/tools/tickets.ts`, `reads.ts`, `tickets-agent.ts`
+and `handoffs.ts` take and return numbers, resolve the row once (`WHERE number = ? AND org_id = ?`) and use
+its `id` for joins and foreign keys (`parent_id`, `ticket_assignees.ticket_id`, `tickets_fts`). Sprints,
+comments, links and history rows have no per-org number: their ids are still global.
+
+SaplingLearn's numbers equal its ids (0038's backfill; `test/migrations.multitenancy.test.ts` asserts it and
+`scripts/mt/verify-migration.mjs` checks it on a production export), so its existing links name the same
+rows. `test/numbers.per-org.test.ts` drives every route and tool with row ids that differ from numbers.
+
+**Links into an org** (`src/tools/org-links.ts`): a URL the Worker hands out — an MCP result's `url` /
+`raw_url`, a digest's deep link — is `<origin>/o/<slug>/#…` (`<origin>/api/o/<slug>/raw/a/…`), built from the
+org of the context that produced it.
+
 ## Which tables are which
 
 The lists are derived from the live schema — every table with an `org_id` column is **org-keyed**.
@@ -75,7 +96,10 @@ The lists are derived from the live schema — every table with an `org_id` colu
 - ``fanOut(ctx, ids, (ph) => `… WHERE org_id = ? AND id IN (${ph})`, [ctx.orgId])`` — the org goes in `leading`.
 - A handle from input that must be a person in the org goes through `requireMember(ctx, handle)` /
   `memberHandle` / `memberPerson` (`src/auth/persons.ts`): unknown, reserved and non-member read the same
-  (`PersonError`, a `bad_request` on HTTP and MCP).
+  (`PersonError`, a `bad_request` on HTTP and MCP). A ticket's assignees and requester, a handoff's recipient
+  and a sprint's `lead` (`sprintLead` — `create_sprint` and the plan write) all do.
+- A bare issue ref (`#214`) resolves against the org's PRIMARY repository (`ticketLinkRepo`) or is refused:
+  there is no default repository.
 - SQL keywords are upper-case, and a file that imports BOTH surfaces aliases one of them (`platformFirst`).
 
 ## The static test (`test/data-layer.static.test.ts`)
@@ -107,7 +131,7 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 | `src/platform/usage.ts` (whole file); `src/platform/repo.ts` `listAudit` (`org_audit`) | the superadmin's cross-org counts and merged audit trail — no content, no secret |
 | `src/orgs/repo.ts` `removeMember` | revokes the removed person's tokens / grants for that org, in the same batch |
 | `src/auth/persons.ts` `renamePerson` (interpolated) | the `HANDLE_COLUMNS` update — a rename must span every org |
-| `src/tools/artifacts.ts` `normalizeLinkRef` (interpolated, tenant) | `tickets` or `sprints` from a two-value literal, with `org_id = ?` |
+| `src/tools/artifacts.ts` `normalizeLinkRef` (interpolated, tenant) | `tickets WHERE number` or `sprints WHERE id` from a two-value literal, with `org_id = ?` |
 | `src/tools/progress.ts` upsert on `sprint_progress` | its PK is `sprint_id` alone; guarded by `WHERE sprint_progress.org_id = excluded.org_id` (asserted) |
 
 ## Background jobs (Phase 5b — spec §8.3–§8.5)
@@ -187,9 +211,14 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
   mounted under `/api/o/:org` and at the old prefix. A handler reads `c.var.ctx`, never the path. The org
   segment is `:org` on those mounts because many routes have a `:slug` of their own; `tenantGate` reads its
   own `:slug`. A sub-app mounted at `/` takes no `use("*")`.
-- **Alias-only** (`legacyOnly`): `/invites…` (→ `/api/o/:slug/invites…`), `PUT /api/people/:handle`
-  (→ `PUT /api/o/:slug/members/:handle`), and `/raw/a/*` (→ the artifact origin, §8.6). Phase 7 deletes the
-  aliases and `soleTenantGate`.
+- **Alias-only** (`legacyOnly`): `/invites…` (→ `/api/o/:slug/invites…`) and `PUT /api/people/:handle`
+  (→ `PUT /api/o/:slug/members/:handle`). Phase 7 deletes the aliases and `soleTenantGate`.
+- **Raw artifact bytes** (`src/artifacts/raw.ts`) are ONE sub-app mounted at `/api/o/:slug/raw/a/…` and, as
+  its alias, at `/raw/a/…`: the same lock-down headers, sandbox / CSP and access rules on both, wrapped by
+  `rawHeaders` BEFORE the gates so the session gate's 401 and the tenant gate's 404 carry them too. Another
+  org's slug is the same 404 as an unknown one. Still the app's own origin — moving them off it is §8.6.
+- **The SPA shell** is answered by `src/index.ts` for `GET /o/*` and `GET /platform*` (the superadmin's area
+  outside any org); neither path reaches the session gate, and both hold no data.
 - **Roles** (§5.2): admin means `hasRole(ctx, "admin")` (admin or owner of the request's org) — in the repository
   (`requireRole` → `RoleError` → 403 `forbidden`) or, on a route whose 403 body predates roles, `adminGate`
   (403 `{ error: "admin only" }`). `isAdmin` and the `ADMIN_LOGINS` var are deleted.
@@ -213,9 +242,16 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
 - **Onboarding creates a person, never a membership** — a new person accepts an invite (`/api/invites`) or creates
   an org (`/api/orgs`). The ONE exception: a live legacy invite for their verified email is consumed as a
   SaplingLearn membership (`consumeLegacyInvite`), and only then is the welcome mail sent.
+- **Invitation and welcome mail** (`src/orgs/mail.ts`, 0047). An e-mail invite created through
+  `POST /api/o/:slug/invites` — or by the superadmin naming an owner — is MAILED as the inviting org, and the
+  outcome is on its row: `name`, `mail_status` (`sent` / `failed` / null = none), `mail_at`, `mail_error`.
+  `POST …/invites/:id/resend` mails a pending one again (409 `no_address` for a GitHub-login invite, which is
+  never mailed). The mail's only link is the site root. The welcome is sent on a person's FIRST membership of
+  any org (`neverJoined`, asked before the join is written) to a provider-verified address. Neither can fail
+  the request that caused it.
 - **The legacy `/invites…` routes** (`src/orgs/legacy-invites.ts`) are a view of the caller's org's EMAIL
-  `org_invites` rows in the old `InviteRow` shape. The invitee's name and the mail's delivery outcome stay in the
-  global `invites` table, read and written for org #1 only; for any other org they are null.
+  `org_invites` rows in the old `InviteRow` shape, and send through the same code. The global `invites` table
+  is still read for org #1 only: a pre-0047 row's name and outcome, and the row a first sign-in consumes.
 - **Attribution** (C-1): Maintenance › Identity's map writes `org_login_map` (admin+), never `identities`.
   `resolvePersonForLogin(ctx, login)` / `memberGithubLogins` read the map first, then a MEMBER's own GitHub identity.
 - **`persons.email`**: the person sets their own (`PUT …/notifications/prefs`); an org admin may set it only for a
@@ -231,10 +267,9 @@ No entry point acts on "the" org any more. `src/data/legacy.ts` is the only file
 things that predate orgs:
 
 - **The legacy `invites` table** — `liveLegacyInvite` / `consumeLegacyInvite` (a new person with a live legacy
-  invite joins SaplingLearn at onboarding and gets its welcome mail) and `isLegacyOrg` (the sidecar's invitee
-  name and mail outcome are read and written for org #1 only). Callers, each marked `// MT:` and listed with
-  its reason in the static test: `src/auth/onboard.ts`, `src/auth/routes.ts`, `src/orgs/legacy-invites.ts`,
-  `src/notifications/invite.ts`.
+  invite joins SaplingLearn at onboarding and gets its welcome mail) and `isLegacyOrg` (the sidecar is read and
+  written for org #1 only). Callers, each marked `// MT:` and listed with its reason in the static test:
+  `src/auth/onboard.ts`, `src/auth/routes.ts`, `src/orgs/legacy-invites.ts`.
 - **The env-secret fallback** — `SAPLINGLEARN_ORG_ID`, imported only by `src/data/secrets.ts`
   (`resolveCredential`, `hasLegacyCredential`, `resolveCloudflareAccountId`).
 
