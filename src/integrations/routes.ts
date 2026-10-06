@@ -9,13 +9,13 @@
 // Cookie only, never a token: a request that carries an `Authorization` header is refused outright
 // (like ratify, src/artifacts/routes.ts), and there is no MCP tool for any of this. Gates, in order:
 // sessionGate (401) → tenantGate (404 for an unknown org AND for a non-member) → the Authorization
-// refusal (403) → the role (403).
+// refusal (403) → the role (403). The first two are the app's (src/routes.ts mounts `tenantGate` ONCE
+// on `/api/o/:slug/*`, which also meters the request); this sub-app adds only the last two.
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { isIntegrationKind, type IntegrationKind } from "@shared/integrations";
 import type { AppEnv } from "../auth/principal";
 import { RoleError, hasRole, requireRole } from "../data/context";
-import { tenantGate } from "../data/gate";
 import {
   SecretAccessError, SecretConflictError, SecretDecryptError, SecretNotFoundError, SecretValueError, SecretsUnavailableError,
   deleteSecret, listOrgAudit, rotateOrgKey, rotateSecret, secretValueProblem, setIntegrationConfig, setSecret,
@@ -213,12 +213,12 @@ function environmentRoutes(r: Hono<AppEnv>): void {
   }));
 }
 
-/** Mounted at `/api/o/:slug`. The gates name these three prefixes only, so a sibling sub-app mounted
- *  on the same base is not gated twice. */
+/** Mounted at `/api/o/:slug`, behind the app's `tenantGate`. The Authorization refusal names these three
+ *  prefixes only, so a sibling sub-app mounted on the same base is not affected. */
 export const orgSettingsApp = (() => {
   const r = new Hono<AppEnv>();
   for (const prefix of ["/integrations", "/repos", "/environments"]) {
-    for (const path of [prefix, `${prefix}/*`]) r.use(path, tenantGate, personOnly);
+    for (const path of [prefix, `${prefix}/*`]) r.use(path, personOnly);
   }
   integrationRoutes(r);
   repoRoutes(r);

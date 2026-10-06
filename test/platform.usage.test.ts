@@ -86,6 +86,19 @@ describe("metering", () => {
     ]);
   });
 
+  // `tenantGate` is mounted once, in src/routes.ts; a sub-app that applied it again (as the integration
+  // routes once did) would resolve the tenant twice and count every request double.
+  it("one request meters once on every /api/o/:slug sub-app — orgs, integrations, repos, environments", async () => {
+    const meilin = await cookieFor("meilin");
+    const ctx = createExecutionContext();
+    for (const path of ["/me", "/repos", "/environments"]) {
+      expect((await call("GET", `/api/o/saplinglearn${path}`, meilin, undefined, { exec: ctx })).status).toBe(200);
+    }
+    expect((await call("GET", "/api/o/saplinglearn/integrations", meilin, undefined, { exec: ctx })).status).toBe(403); // admin+: refused, but it reached the org
+    await waitOnExecutionContext(ctx);
+    expect(await usageRows()).toEqual([{ org_id: ORG_A, day: today(), metric: "api_read", actor: "meilin", count: 4 }]);
+  });
+
   it("a request with no ExecutionContext is served and simply not metered", async () => {
     expect((await call("GET", "/api/o/saplinglearn/me", await cookieFor("meilin"))).status).toBe(200);
     expect(await usageRows()).toEqual([]);
