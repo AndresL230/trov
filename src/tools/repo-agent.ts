@@ -21,7 +21,7 @@ import {
   REPO_TAB_SECTIONS,
   type RepoDashboard, type RepoDrift, type RepoProduct, type RepoRange, type RepoSection, type RepoSectionName, type RepoTab,
 } from "@shared/repo";
-import type { DB } from "../db";
+import type { TenantContext } from "../data/sql";
 import type { RepoEnvConfig } from "../repo/config";
 import { emptyRepoDashboard, getRepoDashboard } from "./repo";
 
@@ -129,7 +129,7 @@ export function shapeRepoDashboard(dash: RepoDashboard, opts: RepoAgentOptions =
 /** The route's behaviour, mirrored: a projection throw is the degraded empty
  *  dashboard, never an error to the caller. D1 only — nothing here may fetch. */
 export async function getRepoDashboardForAgent(
-  db: DB,
+  ctx: TenantContext,
   repo: string,
   envs: RepoEnvConfig[],
   opts: RepoAgentOptions = {},
@@ -137,7 +137,7 @@ export async function getRepoDashboardForAgent(
 ): Promise<RepoAgentView> {
   let dash: RepoDashboard;
   try {
-    dash = await getRepoDashboard(db, repo, now, envs);
+    dash = await getRepoDashboard(ctx, repo, now, envs);
   } catch {
     dash = emptyRepoDashboard(repo, true);
   }

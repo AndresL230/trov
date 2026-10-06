@@ -1,7 +1,8 @@
 // Service-token reads of the GitHub API for the repo dashboard. NEVER on the
 // render path: called from the webhook handler (event-triggered) and scheduled().
-import type { DB } from "../db";
-import { fanOut, first, run } from "../db";
+import type { TenantContext } from "../data/sql";
+import { fanOut, first, run } from "../data/sql";
+import { legacyDb } from "../data/legacy";
 import { ingestRepoEvent } from "../consumer";
 import { putMetric, putSnapshot } from "./store";
 import { untitledFailedRuns } from "./reads";
@@ -196,13 +197,13 @@ const MAX_STATUSES_PER_CONTEXT = 10;
  * commit, head checks). The callers' budgets (src/repo/cron.ts) build on this
  * number: the `:20` tick is 19 + 4N with its pings, "Poll now" 19 + 7N.
  */
-export async function reconcileRepo(db: DB, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now()): Promise<ReconcileResult> {
+export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now()): Promise<ReconcileResult> {
   const out: ReconcileResult = { written: 0, unchanged: 0, failed: [] };
   /** Every event goes through the SAME gate the webhook uses; a redelivery or a
    *  backfill overlap drops as `unchanged` on the UNIQUE semantic key. */
   const take = async (events: RepoEvent[]): Promise<void> => {
     for (const ev of events) {
-      const res = await ingestRepoEvent(db, ev);
+      const res = await ingestRepoEvent(legacyDb(ctx), ev);
       if (res.outcome === "written") out.written++; else out.unchanged++;
     }
   };
@@ -226,7 +227,7 @@ export async function reconcileRepo(db: DB, opts: GhOpts, envs: RepoEnvConfig[],
   await safely("open_prs", async () => {
     const openPrs = await ghJson<GhPull[]>(opts, `/pulls?state=open&sort=updated&direction=desc&per_page=100`);
     await take(openPrs.map(prEvent));
-    await putSnapshot(db, "prs_reconciled", { at: new Date(now).toISOString() }, new Date(now).toISOString());
+    await putSnapshot(ctx, "prs_reconciled", { at: new Date(now).toISOString() }, new Date(now).toISOString());
   });
   await safely("closed_prs", async () => { await take((await ghJson<GhPull[]>(opts, `/pulls?state=closed&sort=updated&direction=desc&per_page=50`)).map(prEvent)); });
 
@@ -237,7 +238,7 @@ export async function reconcileRepo(db: DB, opts: GhOpts, envs: RepoEnvConfig[],
   // capture began (a gap from a webhook outage, say) — that stays lost.
   await safely("commits", async () => {
     const branch = envs[0]?.branch ?? "main";
-    const earliest = await first<{ at: string }>(db, `SELECT MIN(occurred_at) AS at FROM repo_events WHERE kind = 'push' AND provenance = 'webhook'`);
+    const earliest = await first<{ at: string }>(ctx, `SELECT MIN(occurred_at) AS at FROM repo_events WHERE org_id = ? AND kind = 'push' AND provenance = 'webhook'`, ctx.orgId);
     const since = new Date(now - 14 * DAY).toISOString();
     const until = earliest?.at ?? new Date(now).toISOString();
     if (until <= since) return;
@@ -285,8 +286,8 @@ export async function reconcileRepo(db: DB, opts: GhOpts, envs: RepoEnvConfig[],
   // MAX_JOB_LOOKUPS. A first Sync's leftovers therefore drain over later Syncs
   // instead of staying nameless forever. `fillFailedJob` never throws.
   await safely("job_titles", async () => {
-    const backlog = await untitledFailedRuns(db, new Date(now - JOB_LOOKUP_DAYS * DAY).toISOString(), MAX_JOB_LOOKUPS);
-    for (const r of backlog) await fillFailedJob(db, opts, r.number, r.semantic_key);
+    const backlog = await untitledFailedRuns(ctx, new Date(now - JOB_LOOKUP_DAYS * DAY).toISOString(), MAX_JOB_LOOKUPS);
+    for (const r of backlog) await fillFailedJob(ctx, opts, r.number, r.semantic_key);
   });
 
   // Each configured environment branch's HEAD, as ONE `env_heads` snapshot
@@ -307,7 +308,7 @@ export async function reconcileRepo(db: DB, opts: GhOpts, envs: RepoEnvConfig[],
   // Only what this reconcile actually observed: a branch whose fetch failed is
   // dropped rather than carried forward under a fresh `computed_at` (which would
   // let a stale sha outrank a newer captured push).
-  if (heads.size) await safely("env_heads", () => putSnapshot(db, "env_heads", Object.fromEntries(heads), new Date(now).toISOString()));
+  if (heads.size) await safely("env_heads", () => putSnapshot(ctx, "env_heads", Object.fromEntries(heads), new Date(now).toISOString()));
 
   // Each environment head's check runs (also the frontend deploy record: a
   // Workers Builds check IS a deploy, but only on the branch that environment
@@ -365,7 +366,7 @@ export async function reconcileRepo(db: DB, opts: GhOpts, envs: RepoEnvConfig[],
       }, envs);
       if (outcome.dropped) console.warn("reconcileRepo: dropped status", outcome.dropped.context, "-", outcome.dropped.reason);
       for (const m of outcome.metrics) {
-        if (await putMetric(db, m)) out.written++; else out.unchanged++;
+        if (await putMetric(ctx, m)) out.written++; else out.unchanged++;
       }
     }
   });
@@ -394,7 +395,7 @@ export async function reconcileRepo(db: DB, opts: GhOpts, envs: RepoEnvConfig[],
   // computeBranches degrades correctly with envs: [] (empty exclusion set,
   // "main" as head), so a repo with no REPO_ENVIRONMENTS configured still
   // gets a branches list instead of losing it for no structural reason.
-  await safely("branches", () => computeBranches(db, opts, envs, now));
+  await safely("branches", () => computeBranches(ctx, opts, envs, now));
 
   // Branch drift (`<base>...<head>`, e.g. `production...main`), so the
   // Overview strip has data even before any push webhook lands on an
@@ -402,7 +403,7 @@ export async function reconcileRepo(db: DB, opts: GhOpts, envs: RepoEnvConfig[],
   // calls it directly, not the never-throwing `refreshDrift` wrapper, so a
   // failing compare lands in `failed` instead of vanishing into a swallowed
   // catch (Task 11 carry-over fix: it used to be invisible here).
-  await safely("drift", () => computeDrift(db, opts, envs));
+  await safely("drift", () => computeDrift(ctx, opts, envs));
 
   return out;
 }
@@ -410,13 +411,13 @@ export async function reconcileRepo(db: DB, opts: GhOpts, envs: RepoEnvConfig[],
 interface GhJobs { jobs: { name: string; conclusion: string | null; steps?: { name: string; conclusion: string | null }[] }[] }
 
 /** Enrichment, not capture: the run row already landed. A failure here costs a label, nothing else. */
-export async function fillFailedJob(db: DB, opts: GhOpts, runId: number, semanticKey: string): Promise<void> {
+export async function fillFailedJob(ctx: TenantContext, opts: GhOpts, runId: number, semanticKey: string): Promise<void> {
   try {
     const { jobs } = await ghJson<GhJobs>(opts, `/actions/runs/${runId}/jobs?filter=latest&per_page=100`);
     const job = jobs.find((j) => j.conclusion === "failure" || j.conclusion === "timed_out");
     if (!job) return;
     const step = job.steps?.find((s) => s.conclusion === "failure")?.name;
-    await run(db, `UPDATE repo_events SET title = ? WHERE semantic_key = ?`, step ? `${job.name} · ${step}` : job.name, semanticKey);
+    await run(ctx, `UPDATE repo_events SET title = ? WHERE org_id = ? AND semantic_key = ?`, step ? `${job.name} · ${step}` : job.name, ctx.orgId, semanticKey);
   } catch (e) {
     console.error("fillFailedJob", runId, scrubbedMessage(e, opts.token));
   }
@@ -432,7 +433,7 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
  * never-throwing `refreshDrift` wrapper below is what callers outside
  * `reconcileRepo`'s `safely` arm should use.
  */
-async function computeDrift(db: DB, opts: GhOpts, envs: RepoEnvConfig[]): Promise<void> {
+async function computeDrift(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[]): Promise<void> {
   if (envs.length < 2) return;
   const head = envs[0].branch;
   const base = envs[envs.length - 1].branch;
@@ -459,8 +460,9 @@ async function computeDrift(db: DB, opts: GhOpts, envs: RepoEnvConfig[]): Promis
   // every sibling id-list read (src/db.ts).
   const numbers = [...byPr.keys()];
   const titles = await fanOut<{ number: number; title: string | null; actor_login: string | null }>(
-    db, numbers,
-    (p) => `SELECT number, MAX(title) AS title, MAX(actor_login) AS actor_login FROM repo_events WHERE kind = 'pr' AND number IN (${p}) GROUP BY number`
+    ctx, numbers,
+    (p) => `SELECT number, MAX(title) AS title, MAX(actor_login) AS actor_login FROM repo_events WHERE org_id = ? AND kind = 'pr' AND number IN (${p}) GROUP BY number`,
+    [ctx.orgId]
   );
 
   const groups: RepoDriftGroup[] = [];
@@ -487,7 +489,7 @@ async function computeDrift(db: DB, opts: GhOpts, envs: RepoEnvConfig[]): Promis
   // which would under-report the real gap; and no DTO change, because nothing
   // on screen claims the breakdown is exhaustive.
   const drift: RepoDrift = { head, base, ahead: ahead.ahead_by, behind: ahead.behind_by, groups };
-  await putSnapshot(db, "drift", drift);
+  await putSnapshot(ctx, "drift", drift);
 }
 
 /**
@@ -497,9 +499,9 @@ async function computeDrift(db: DB, opts: GhOpts, envs: RepoEnvConfig[]): Promis
  * above). Never throws — GitHub failing leaves the previous snapshot (if any)
  * standing.
  */
-export async function refreshDrift(db: DB, opts: GhOpts, envs: RepoEnvConfig[]): Promise<void> {
+export async function refreshDrift(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[]): Promise<void> {
   try {
-    await computeDrift(db, opts, envs);
+    await computeDrift(ctx, opts, envs);
   } catch (e) {
     console.error("refreshDrift", scrubbedMessage(e, opts.token)); // the last good snapshot stands
   }
@@ -537,7 +539,7 @@ const BRANCH_PAGES = 5;
 /** Computes and stores the branches snapshot. THROWS on any GitHub failure;
  *  the never-throwing `refreshBranches` wrapper below is what
  *  `reconcileRepo`'s outside callers (the webhook, later the cron) should use. */
-async function computeBranches(db: DB, opts: GhOpts, envs: RepoEnvConfig[], now: number): Promise<void> {
+async function computeBranches(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number): Promise<void> {
   const [owner, name] = opts.repo.split("/");
   const head = envs[0]?.branch ?? "main";
   const skip = new Set(envs.map((e) => e.branch));
@@ -583,13 +585,13 @@ async function computeBranches(db: DB, opts: GhOpts, envs: RepoEnvConfig[], now:
   const shown = [...fresh.slice(0, BRANCH_ROWS - worthDeleting.length), ...worthDeleting];
   // `head` travels with the counts it qualifies: the screen says "vs <head>".
   const data: RepoBranches = { active: fresh.length, stale: stale.length, head, rows: shown };
-  await putSnapshot(db, "branches", data);
+  await putSnapshot(ctx, "branches", data);
 }
 
 /** Never throws — GitHub failing leaves the previous snapshot (if any) standing. */
-export async function refreshBranches(db: DB, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now()): Promise<void> {
+export async function refreshBranches(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now()): Promise<void> {
   try {
-    await computeBranches(db, opts, envs, now);
+    await computeBranches(ctx, opts, envs, now);
   } catch (e) {
     console.error("refreshBranches", scrubbedMessage(e, opts.token)); // the last good snapshot stands
   }
