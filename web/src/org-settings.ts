@@ -20,10 +20,10 @@
 //
 // "The current org" is ONE function, `currentOrg`: the org the page's path names.
 
-import { esc, attr, relTime, surface, statusBadge } from "./ui";
+import { esc, attr, relTime, surface } from "./ui";
 import {
-  O_LABEL, O_FIELD, O_HELP, O_ERR, YOU, accentBtn, quietBtn, dangerBtn, goLink, orgHead, orgEmpty, orgBanner, loadingNote, failedNote,
-  sliceNote, roleChip, roleAtLeast, sameHandle, textField, type OrgSlice,
+  O_LABEL, O_FIELD, O_HELP, O_ERR, YOU, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, loadingNote, failedNote,
+  sliceNote, roleChip, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, chip, type OrgSlice,
 } from "./org-ui";
 export { roleAtLeast };
 export type { OrgSlice };
@@ -125,6 +125,9 @@ export interface OrgUi {
   secretForm: SecretFormState | null;
   tests: Record<string, TestState>;
   auditOpen: boolean;
+  /** The rows whose details are open (org-ui.ts `openRow`), by key: an integration's
+   *  `<kind>:<scope>`, `key`, `history`, `repo:<id>`. */
+  openRows: string[];
   confirm: OrgConfirm | null;
 }
 
@@ -136,7 +139,7 @@ export function initialOrgUi(): OrgUi {
     memberEdit: null, inviteBy: "github", inviteDraft: "", inviteName: "", inviteRole: "member", inviteBusy: false, inviteError: null, mailBusy: null,
     repoDraft: "", repoBusy: false, repoError: null,
     envEdit: null, envBusy: false,
-    secretForm: null, tests: {}, auditOpen: false, confirm: null,
+    secretForm: null, tests: {}, auditOpen: false, openRows: [], confirm: null,
   };
 }
 
@@ -187,29 +190,26 @@ export function setupSteps(ui: OrgUi): SetupStep[] | null {
   ];
 }
 
-const STEP_DONE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12.5 2.5 2.5 4.5-5"></path></svg>`;
-const STEP_TODO = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="2" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="9"></circle></svg>`;
+const STEP_DONE = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12.5 2.5 2.5 4.5-5"></path></svg>`;
+const STEP_TODO = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="2" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="9"></circle></svg>`;
 
-/** The checklist card above the tabs — admins only, and only until every step is done. */
+/** The checklist above the tabs — admins only, and only until every step is done. ONE line:
+ *  what it is and how far along, then the four steps; a step still to do is a button to the tab
+ *  where it is done (why it matters is its tooltip — the tab itself says the rest). */
 export function setupChecklist(org: MyOrg, ui: OrgUi): string {
   if (!roleAtLeast(org.role, "admin")) return "";
   const steps = setupSteps(ui);
   if (!steps || steps.every((s) => s.done)) return "";
-  const left = steps.filter((s) => !s.done).length;
-  const rows = steps.map((s) => `<li class="cnpy-org-step" style="border-top:1px solid var(--border)">
-      ${s.done ? STEP_DONE : STEP_TODO}
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13.5px;font-weight:500;color:${s.done ? "var(--fg-55)" : "var(--fg)"}">${esc(s.title)} <span style="font-size:11.5px;font-weight:500;color:var(--fg-40);white-space:nowrap">&middot; ${s.done ? "Done" : "To do"}</span></div>
-        <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55)">${esc(s.why)}</div>
-      </div>
-      ${s.done ? "" : quietBtn(s.go, "orgTab", { arg: s.tab })}
-    </li>`).join("");
-  return `<section${surface("padding:16px 18px 4px;margin-bottom:22px")} data-org-setup aria-labelledby="org-setup-t">
-    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:12px">
-      <h2 id="org-setup-t" style="margin:0;font-size:15px;font-weight:600;letter-spacing:-0.01em">Finish setting up ${esc(org.name)}</h2>
-      <span style="font-size:12px;color:var(--fg-55)">${left} of ${steps.length} left</span>
+  const done = steps.filter((s) => s.done).length;
+  const items = steps.map((s) => s.done
+    ? `<li><span class="cnpy-setup-step" data-step="${s.key}" data-done="1">${STEP_DONE}<span>${esc(s.title)}</span><span class="cnpy-sr">: done</span></span></li>`
+    : `<li><button type="button" data-act="orgTab" data-arg="${attr(s.tab)}" data-field="${attr(`orgStep:${s.key}`)}" data-step="${s.key}" data-done="0" title="${attr(s.why)}" aria-label="${attr(`${s.title}: to do. ${s.go}`)}" class="cnpy-setup-step" style="border-radius:8px">${STEP_TODO}<span>${esc(s.title)}</span></button></li>`).join("");
+  return `<section${surface("", { cls: "cnpy-setup" })} data-org-setup aria-labelledby="org-setup-t">
+    <div style="min-width:0">
+      <h2 id="org-setup-t" style="margin:0;font-size:13.5px;font-weight:600;letter-spacing:-0.005em;overflow-wrap:anywhere">Finish setting up ${esc(org.name)}</h2>
+      <div style="font-size:12px;color:var(--fg-55);margin-top:1px">${done} of ${steps.length} done</div>
     </div>
-    <ol style="list-style:none;margin:0;padding:0">${rows}</ol>
+    <ol class="cnpy-setup-steps">${items}</ol>
   </section>`;
 }
 
@@ -223,11 +223,11 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
   const draft = ui.nameDraft ?? stored;
   const changed = draft.trim() !== stored && draft.trim().length > 0;
   const nameRow = canEdit
-    ? `${textField({ id: "org-name", label: "Name", act: "orgNameDraft", field: "orgName", value: draft, max: ORG_NAME_MAX, enter: "orgNameSave", error: ui.nameError, help: "Shown wherever the org is named. Changing it does not change the slug or any link." })}
+    ? `${textField({ id: "org-name", label: "Name", act: "orgNameDraft", field: "orgName", value: draft, max: ORG_NAME_MAX, enter: "orgNameSave", error: ui.nameError, help: "Changing it does not change the slug or any link." })}
        <div style="display:flex;gap:8px;margin-top:14px">${accentBtn(ui.nameSaving ? "Saving…" : "Save name", "orgNameSave", { disabled: !changed || ui.nameSaving, busy: ui.nameSaving })}${ui.nameDraft !== null && !ui.nameSaving ? quietBtn("Cancel", "orgNameCancel") : ""}</div>`
-    : `<div style="${O_LABEL}">Name</div><div style="font-size:14px;margin-top:7px;overflow-wrap:anywhere">${esc(stored)}</div>
-       <div style="${O_HELP}">Only an admin or an owner can rename the org.</div>`;
-  return `<div class="cnpy-org-narrow">
+    : `<div style="${O_LABEL}">Name</div><div style="font-size:14px;margin-top:7px;overflow-wrap:anywhere">${esc(stored)}</div>`;
+  return `${tabLead(`Created ${esc(relTime(s.data.org.created_at))} by <strong>${esc(s.data.org.created_by)}</strong> &middot; you are ${org.role === "member" ? "a" : "an"} ${roleChip(org.role)} here${canEdit ? "" : ". Only an admin or an owner can rename the org."}`)}
+    <div class="cnpy-org-narrow">
     <section${surface("padding:18px 20px")}>
       ${nameRow}
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
@@ -235,7 +235,6 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
         <div style="margin-top:7px"><code style="font-family:var(--code);font-size:12.5px;color:var(--fg);overflow-wrap:anywhere">${esc(s.data.org.slug)}</code></div>
         <div style="${O_HELP}">The org's permanent address in links and in the API. It cannot be changed.</div>
       </div>
-      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-55)">Created ${esc(relTime(s.data.org.created_at))} by ${esc(s.data.org.created_by)} &middot; your role here: ${roleChip(org.role)}</div>
     </section>
   </div>`;
 }
@@ -245,53 +244,55 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
 const REPO_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
 export const repoDraftOk = (v: string): boolean => REPO_RE.test(v.trim());
 
+const READ_ONLY = " You can read this; an admin or an owner can change it.";
+const LIST = "overflow:hidden;list-style:none;margin:0;padding:0";
+
 export function reposTab(org: MyOrg, ui: OrgUi): string {
   const admin = roleAtLeast(org.role, "admin");
   const repos = ui.repos.data;
   const note = sliceNote(ui.repos, "repositories", repos.length > 0 || ui.repos.status === "ok");
   if (note) return note;
+  // The tab's primary action: the name, and Add. The field's rule is its placeholder and its
+  // tooltip; a refusal is said under the lead.
   const add = admin ? `<div class="cnpy-org-addbar">
-      <div style="flex:1;min-width:0">
-        <label for="org-repo" style="${O_LABEL}">Add a repository</label>
-        <input id="org-repo" data-act="orgRepoDraft" data-field="orgRepo" data-enter="orgRepoAdd" value="${attr(ui.repoDraft)}" placeholder="owner/repo" autocomplete="off" autocapitalize="off" spellcheck="false"${ui.repoError ? ' aria-invalid="true" aria-describedby="org-repo-e"' : ""} class="cnpy-input" style="${O_FIELD};margin-top:7px;${ui.repoError ? "border-color:var(--red);" : ""}" />
-      </div>
-      ${accentBtn(ui.repoBusy ? "Adding…" : "Add repository", "orgRepoAdd", { disabled: !repoDraftOk(ui.repoDraft) || ui.repoBusy, busy: ui.repoBusy, extra: "height:36px" })}
-    </div>
-    ${ui.repoError ? `<div id="org-repo-e" role="alert" style="${O_ERR}">${esc(ui.repoError)}</div>` : `<div style="${O_HELP}">The name as it appears on GitHub, for example <code style="font-family:var(--code)">acme/web</code>. The first one you add becomes the primary.</div>`}` : "";
+      <input id="org-repo" data-act="orgRepoDraft" data-field="orgRepo" data-enter="orgRepoAdd" value="${attr(ui.repoDraft)}" placeholder="owner/repo" aria-label="Repository to add, as owner/repo" title="The name as it appears on GitHub, for example acme/web" autocomplete="off" autocapitalize="off" spellcheck="false"${ui.repoError ? ' aria-invalid="true" aria-describedby="org-repo-e"' : ""} class="cnpy-input" style="${O_FIELD};height:32px;width:220px;flex:1 1 180px;font-size:13px;${ui.repoError ? "border-color:var(--red);" : ""}" />
+      ${accentBtn(ui.repoBusy ? "Adding…" : "Add repository", "orgRepoAdd", { disabled: !repoDraftOk(ui.repoDraft) || ui.repoBusy, busy: ui.repoBusy })}
+    </div>` : "";
+  const err = ui.repoError ? `<div id="org-repo-e" role="alert" style="${O_ERR};margin:-14px 0 20px">${esc(ui.repoError)}</div>` : "";
+  const primary = repos.find((r) => r.is_primary);
+  const unsigned = admin ? repos.filter((r) => !r.webhook_secret_configured).length : 0;
+  const lead = tabLead(repos.length === 0
+    ? `No repository connected.${admin ? " The first one you add becomes the primary." : READ_ONLY}`
+    : `<strong>${repos.length}</strong> ${repos.length === 1 ? "repository" : "repositories"}${primary ? ` &middot; primary <code title="The Repo dashboard, Sync GitHub and drift read the primary repository">${esc(primary.repo_full_name)}</code>` : ""}${unsigned ? ` &middot; ${leadFlag(`${unsigned} without a webhook secret`, "amber")}` : ""}.${admin ? "" : READ_ONLY}`, add);
   if (repos.length === 0) {
-    return `${add}<div style="margin-top:${admin ? "20px" : "0"}">${orgEmpty("No repository connected", admin ? "Add the repository your team ships from. Trov reads its deployments, checks, pull requests and issues." : "An admin has not connected a repository yet.")}</div>`;
+    return `${lead}${err}${orgEmpty("No repository connected", admin ? "Add the repository your team ships from. Trov reads its deployments, checks, pull requests and issues." : "An admin has not connected a repository yet.")}`;
   }
   const rows = repos.map((r) => {
     const id = r.id ?? "";
     // The primary can only be removed last (the API's `primary_repo`): say so instead of offering a button that fails.
     const locked = r.is_primary && repos.length > 1;
-    const hook = admin && r.webhook_url ? `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-55)">
+    const hook = admin && r.webhook_url ? `<div style="margin-top:10px">
         <span style="${O_LABEL};font-size:10px">Webhook URL</span>
         <code class="cnpy-org-code">${esc(r.webhook_url)}</code>
-        <span style="display:block;color:var(--fg-40)">${r.webhook_secret_configured ? "The payload URL of this repository's GitHub webhook. Deliveries are checked against the secret set in Integrations." : "Deliveries to this URL are rejected until its webhook secret is set in Integrations. Set the secret first, then add the webhook on GitHub."}</span>
+        <span style="display:block;font-size:12px;color:var(--fg-40)">${r.webhook_secret_configured ? "The payload URL of this repository's GitHub webhook. Deliveries are checked against the secret set in Integrations." : "Deliveries to this URL are rejected until its webhook secret is set in Integrations. Set the secret first, then add the webhook on GitHub."}</span>
       </div>` : "";
-    const secret = admin ? `<span style="font-size:12px;color:var(--fg-55)">Webhook secret: ${r.webhook_secret_configured ? "set" : "not set"}</span>` : "";
-    const actions = admin ? `<div class="cnpy-org-actions">
+    const actions = admin ? `<div class="cnpy-xrow-acts">
         ${r.is_primary ? "" : quietBtn("Make primary", "orgRepoPrimary", { arg: r.repo_full_name, disabled: ui.repoBusy, label: `Make ${r.repo_full_name} the primary repository` })}
-        ${dangerBtn("Remove", "orgConfirm", { arg: `repo:${id}`, disabled: locked, label: `Remove ${r.repo_full_name}`, field: `orgConfirm:repo:${id}`, title: locked ? "Make another repository the primary first" : undefined })}
+        ${r.webhook_secret_configured ? "" : quietBtn("Set its webhook secret", "orgTab", { arg: "integrations" })}
+        ${dangerLink("Remove", "orgConfirm", { arg: `repo:${id}`, disabled: locked, label: `Remove ${r.repo_full_name}`, field: `orgConfirm:repo:${id}`, title: locked ? "Make another repository the primary first" : undefined })}
       </div>` : "";
-    return `<li class="cnpy-org-row">
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <span style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">${esc(r.repo_full_name)}</span>
-          ${r.is_primary ? statusBadge("Primary", "var(--accent)", "font-size:10.5px;border-radius:5px;padding:2px 7px") : ""}
-        </div>
-        <div style="display:flex;gap:6px 14px;flex-wrap:wrap;margin-top:3px;font-size:12px;color:var(--fg-40)"><span>Added ${esc(relTime(r.created_at))} by ${esc(r.created_by)}</span>${secret}</div>
-        ${locked && admin ? `<div style="font-size:12px;color:var(--fg-40);margin-top:3px">To remove it, make another repository the primary first.</div>` : ""}
-        ${hook}
-      </div>
-      ${actions}
-    </li>`;
+    const key = `repo:${r.repo_full_name}`;
+    return openRow({
+      key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${r.repo_full_name}${r.is_primary ? ", primary" : ""}`,
+      head: `<span>${esc(r.repo_full_name)}</span>${r.is_primary ? chip("Primary", "var(--accent)") : ""}`,
+      meta: admin ? `Webhook secret ${r.webhook_secret_configured ? "set" : "not set"}` : `Added ${esc(relTime(r.created_at))}`,
+      body: `<div>Added ${esc(relTime(r.created_at))} by ${esc(r.created_by)}.${locked && admin ? " To remove it, make another repository the primary first." : ""}</div>${hook}${actions}`,
+      attrs: ` data-org-repo="${attr(r.repo_full_name)}"`,
+    });
   }).join("");
-  return `${add}
-    <div style="margin-top:${admin ? "20px" : "0"}">${orgHead("Connected repositories", "The primary repository is the one the Repo dashboard, Sync GitHub and drift read.", repos.length)}</div>
-    <ul${surface("overflow:hidden;list-style:none;margin:10px 0 0;padding:0")}>${rows}</ul>
-    ${admin ? `<div style="margin-top:12px">${goLink("Set each repository's webhook secret in Integrations", "orgTab", "integrations")}</div>` : ""}`;
+  return `${lead}${err}
+    ${orgHead("Connected", "", repos.length)}
+    <ul${surface(LIST)}>${rows}</ul>`;
 }
 
 // ── ENVIRONMENTS ─────────────────────────────────────────────────────────────
@@ -327,7 +328,7 @@ const ENV_ADVANCED: EnvField[] = ["railway_env", "worker", "worker_check", "rail
 
 /** The add / edit form. `current` is the stored environment (null when adding); `metricsSet`
  *  whether its app metrics token is stored — what an API URL change would delete. */
-export function envForm(d: EnvDraft, current: OrgEnvironmentDTO | null, metricsSet: boolean): string {
+export function envForm(d: EnvDraft, current: OrgEnvironmentDTO | null, metricsSet: boolean, framed = true): string {
   const adding = d.key === null;
   const f = (k: EnvField) => {
     const m = ENV_META[k];
@@ -341,8 +342,8 @@ export function envForm(d: EnvDraft, current: OrgEnvironmentDTO | null, metricsS
   const general = d.error && (d.errorField === null || !(d.errorField === "key" || (ENV_TEXT_FIELDS as readonly string[]).includes(d.errorField)));
   const advErr = !!d.errorField && (ENV_ADVANCED as string[]).includes(d.errorField);
   const open = d.advanced || advErr;
-  return `<section${surface("padding:18px 20px;margin-top:14px")} data-org-envform aria-labelledby="org-envform-t">
-    <h3 id="org-envform-t" style="margin:0 0 14px;font-size:14px;font-weight:600">${adding ? "Add an environment" : `Edit ${esc(current?.label ?? d.key ?? "")}`}</h3>
+  return `<section${framed ? surface("padding:18px 20px;margin-bottom:24px") : ` style="padding:4px 0 2px"`} data-org-envform aria-labelledby="org-envform-t">
+    <h3 id="org-envform-t" style="margin:0 0 14px;font-size:13.5px;font-weight:600">${adding ? "Add an environment" : `Edit ${esc(current?.label ?? d.key ?? "")}`}</h3>
     <div class="cnpy-org-grid">
       ${adding ? textField({ id: "org-env-key", label: "Key", act: "orgEnvKey", field: "orgEnvKey", value: d.keyDraft, help: "Its permanent id: lowercase letters, digits, - or _. For example <code style=\"font-family:var(--code)\">staging</code>.", placeholder: "staging", max: 32, required: true, disabled: d.saving, error: d.errorField === "key" ? d.error : null }) : ""}
       ${ENV_BASIC.map(f).join("")}
@@ -356,9 +357,10 @@ export function envForm(d: EnvDraft, current: OrgEnvironmentDTO | null, metricsS
       <div class="cnpy-org-grid">${ENV_ADVANCED.map(f).join("")}</div>
     </div>
     ${general ? `<div role="alert" style="${O_ERR};margin-top:14px">${esc(d.error ?? "")}</div>` : ""}
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:18px">
+    <div class="cnpy-xrow-acts" style="margin-top:18px">
       ${accentBtn(d.saving ? "Saving…" : adding ? "Add environment" : moves && metricsSet ? "Save and delete token" : "Save changes", "orgEnvSave", { disabled: !envDraftOk(d) || d.saving, busy: d.saving })}
       ${quietBtn("Cancel", "orgEnvCancel", { disabled: d.saving })}
+      ${current ? dangerLink("Delete environment", "orgConfirm", { arg: `env:${current.key}`, disabled: d.saving, label: `Delete ${current.label}`, field: `orgConfirm:env:${current.key}` }) : ""}
     </div>
   </section>`;
 }
@@ -376,10 +378,11 @@ export function environmentsTab(org: MyOrg, ui: OrgUi): string {
     !!ui.integrations.data?.integrations.some((i) => i.kind === kind && i.scope === key && i.configured);
   const edit = ui.envEdit;
   const adding = edit && edit.key === null ? envForm(edit, null, false) : "";
-  const addBtn = admin && !edit ? `<div style="margin-bottom:18px">${accentBtn("Add environment", "orgEnvNew", { field: "orgEnvNew" })}</div>` : "";
+  const addBtn = admin ? accentBtn("Add environment", "orgEnvNew", { field: "orgEnvNew", disabled: !!edit }) : "";
   if (envs.length === 0) {
-    return `${adding || `${orgEmpty("No environments yet", admin ? "Add the places your app runs, such as staging and production, so the Repo dashboard can report on each." : "An admin has not added an environment yet.", admin ? accentBtn("Add environment", "orgEnvNew", { field: "orgEnvNew" }) : "")}`}`;
+    return `${tabLead(`No environments yet.${admin ? " Add the places your app runs, such as staging and production." : READ_ONLY}`, addBtn)}${adding || orgEmpty("No environments yet", admin ? "The Repo dashboard reports on each one you add." : "An admin has not added an environment yet.")}`;
   }
+  const lead = tabLead(`<strong>${envs.length}</strong> ${envs.length === 1 ? "environment" : "environments"}${envs.length > 1 ? ` &middot; drift is measured from <strong>${esc(envs[0].label)}</strong> (the head, first) to <strong>${esc(envs[envs.length - 1].label)}</strong> (the base, last)` : ""}.${admin ? "" : READ_ONLY}`, addBtn);
   const rows = envs.map((e, i) => {
     const editing = edit && edit.key === e.key;
     const role = envs.length > 1 ? (i === 0 ? "Drift head" : i === envs.length - 1 ? "Drift base" : "") : "";
@@ -388,32 +391,30 @@ export function environmentsTab(org: MyOrg, ui: OrgUi): string {
       e.frontend_url ? `<span style="overflow-wrap:anywhere">${esc(e.frontend_url)}</span>` : "",
       e.api_url ? `<span style="overflow-wrap:anywhere">API ${esc(e.api_url)}${esc(e.health_path === "/" ? "" : e.health_path)}</span>` : `<span>No API URL</span>`,
     ].filter(Boolean).join("");
-    const actions = admin ? `<div class="cnpy-org-actions">
+    const actions = admin ? `<div class="cnpy-org-actions" style="align-items:center">
         ${moveBtn(true, e, i === 0 || ui.envBusy || !!edit)}${moveBtn(false, e, i === envs.length - 1 || ui.envBusy || !!edit)}
         ${quietBtn(editing ? "Editing" : "Edit", "orgEnvEdit", { arg: e.key, disabled: !!edit, label: `Edit ${e.label}`, field: `orgEnvEdit:${e.key}` })}
-        ${dangerBtn("Delete", "orgConfirm", { arg: `env:${e.key}`, disabled: !!edit, label: `Delete ${e.label}`, field: `orgConfirm:env:${e.key}` })}
       </div>` : "";
     return `<li style="border-bottom:1px solid var(--border);margin-bottom:-1px">
-      <div class="cnpy-org-row" style="border-bottom:0;margin-bottom:0">
+      <div class="cnpy-org-row" style="border-bottom:0;margin-bottom:0;align-items:center">
         <span aria-hidden="true" style="flex:none;width:22px;height:22px;display:grid;place-items:center;border-radius:6px;background:var(--hover);font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-55)">${i + 1}</span>
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div style="flex:1 1 260px;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap">
             <span style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">${esc(e.label)}</span>
+            ${role ? chip(role, "var(--fg-55)") : ""}
             <code style="font-family:var(--code);font-size:11.5px;color:var(--fg-40)">${esc(e.key)}</code>
-            ${e.note ? `<span style="font-size:12px;color:var(--fg-55)">${esc(e.note)}</span>` : ""}
-            ${role ? statusBadge(role, "var(--fg-55)", "font-size:10.5px;border-radius:5px;padding:2px 7px") : ""}
+            ${e.note ? `<span style="font-size:12px;color:var(--fg-40)">${esc(e.note)}</span>` : ""}
           </div>
-          <div style="display:flex;gap:4px 14px;flex-wrap:wrap;margin-top:3px;font-size:12px;color:var(--fg-40)">${facts}</div>
+          <div style="display:flex;gap:2px 14px;flex-wrap:wrap;margin-top:2px;font-size:12px;color:var(--fg-40)">${facts}</div>
         </div>
         ${actions}
       </div>
-      ${editing && edit ? `<div style="padding:0 16px 16px">${envForm(edit, e, stored("metrics_endpoint", e.key))}</div>` : ""}
+      ${editing && edit ? `<div style="padding:4px 16px 16px;border-top:1px solid var(--border)">${envForm(edit, e, stored("metrics_endpoint", e.key), false)}</div>` : ""}
     </li>`;
   }).join("");
-  return `${addBtn}${adding ? `<div style="margin-bottom:18px">${adding}</div>` : ""}
-    ${orgHead("Environments", "Order matters: drift is measured from the first environment (the head) to the last (the base). Put the branch that ships first at the top.", envs.length)}
-    <ol${surface("overflow:hidden;list-style:none;margin:10px 0 0;padding:0")}>${rows}</ol>
-    ${admin ? `<div style="margin-top:12px">${goLink("Set each environment's Railway and app metrics tokens in Integrations", "orgTab", "integrations")}</div>` : ""}`;
+  return `${lead}${adding}
+    ${orgHead("In drift order", admin ? goLink("Set their tokens in Integrations", "orgTab", "integrations") : "", envs.length)}
+    <ol${surface(LIST)}>${rows}</ol>`;
 }
 
 // ── MEMBERS ──────────────────────────────────────────────────────────────────
@@ -456,11 +457,10 @@ function memberEditor(m: OrgMember, d: MemberDraft, viewer: OrgRole, soleOwner: 
       <div id="org-member-resp-h" style="${O_HELP}">Never shown in the app, not even to them. Agents read it when deciding whom to assign work.</div>
     </div>
     ${d.error ? `<div role="alert" style="${O_ERR};margin-top:12px">${esc(d.error)}</div>` : ""}
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px">
+    <div class="cnpy-xrow-acts" style="margin-top:16px">
       ${accentBtn(d.saving ? "Saving…" : "Save", "orgMemberSave", { disabled: !changed || d.saving, busy: d.saving })}
       ${quietBtn("Cancel", "orgMemberCancel", { disabled: d.saving })}
-      <span style="flex:1"></span>
-      ${dangerBtn("Remove from org", "orgConfirm", { arg: `member:${m.handle}`, disabled: d.saving || soleOwner || (m.role === "owner" && !owner), field: `orgConfirm:member:${m.handle}`, title: soleOwner ? "The only owner cannot be removed" : undefined })}
+      ${dangerLink("Remove from org", "orgConfirm", { arg: `member:${m.handle}`, disabled: d.saving || soleOwner || (m.role === "owner" && !owner), field: `orgConfirm:member:${m.handle}`, title: soleOwner ? "The only owner cannot be removed" : undefined })}
     </div>
   </div>`;
 }
@@ -479,12 +479,12 @@ export function unmatchedLogins(admin: boolean, identity: IdentityProps | null |
   if (!admin || !identity) return "";
   const body = identitySection(identity);
   if (identity.groups.length === 0) {
-    return identity.status === "error" ? `<section data-org-identity style="margin-bottom:24px">${failedNote("the unmatched logins")}</section>`
-      : body ? `<section data-org-identity="discarded" aria-label="Discarded logins" style="margin-top:22px">${body}</section>` : "";
+    return identity.status === "error" ? `<section data-org-identity>${failedNote("the unmatched logins")}</section>`
+      : body ? `<section data-org-identity="discarded" aria-label="Discarded logins">${body}</section>` : "";
   }
-  return `<section data-org-identity aria-labelledby="org-identity-t" style="margin-bottom:28px">
-      <div class="cnpy-org-head"><h2 id="org-identity-t" style="margin:0;font-size:14px;font-weight:600;letter-spacing:-0.005em;display:flex;align-items:center;gap:8px">Unmatched logins<span class="cnpy-badge" data-n="${identity.groups.length}">${identity.groups.length}</span></h2><p style="margin:3px 0 0;font-size:12.5px;line-height:1.5;color:var(--fg-55)">GitHub logins in this org's captured activity that don't belong to anyone yet. Say who each one is, or discard it.</p></div>
-      <div style="margin-top:10px">${body}</div>
+  return `<section data-org-identity aria-labelledby="org-identity-t">
+      ${orgHead("Unmatched logins", "GitHub logins in captured activity that belong to no one yet", identity.groups.length, "org-identity-t")}
+      ${body}
     </section>`;
 }
 
@@ -495,27 +495,32 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
   if (note) return note;
   const owners = members.filter((m) => m.role === "owner").length;
   const canSend = inviteDraftOk(ui.inviteBy, ui.inviteDraft) && !ui.inviteBusy;
-  const invite = admin ? `<section aria-labelledby="org-invite-t" style="margin-bottom:24px">
-      ${orgHead("Invite someone", ui.inviteBy === "email"
-        ? "Trov emails them the invitation. They join when they sign in with that address and accept. A Google account can only sign in once it is invited."
-        : "They see the invitation the next time they sign in with that GitHub account, and join when they accept. No email is sent: tell them it is waiting.")}
-      <div class="cnpy-org-invite" style="margin-top:12px">
-        ${segmented({ id: "org-invite-by", ariaLabel: "Invite by", act: "orgInviteBy", value: ui.inviteBy, size: "sm", inertOn: true, options: [{ value: "github", label: "GitHub login" }, { value: "email", label: "Email" }] })}
-        <input id="org-invite" data-act="orgInviteDraft" data-field="orgInvite" data-enter="orgInviteSend" value="${attr(ui.inviteDraft)}" placeholder="${ui.inviteBy === "github" ? "octocat" : "name@example.com"}" aria-label="${ui.inviteBy === "github" ? "GitHub login to invite" : "Email address to invite"}"${ui.inviteBy === "email" ? ' type="email" inputmode="email"' : ""} autocomplete="off" autocapitalize="off" spellcheck="false"${ui.inviteError ? ' aria-invalid="true" aria-describedby="org-invite-e"' : ""} class="cnpy-input" style="${O_FIELD};flex:1 1 200px;width:auto;min-width:0;${ui.inviteError ? "border-color:var(--red);" : ""}" />
-        ${ui.inviteBy === "email" ? `<input id="org-invite-name" data-act="orgInviteName" data-field="orgInviteName" data-enter="orgInviteSend" value="${attr(ui.inviteName)}" maxlength="${INVITE_NAME_MAX}" placeholder="Their name (optional)" aria-label="Their name, for the email's greeting (optional)" autocomplete="off" class="cnpy-input" style="${O_FIELD};flex:1 1 160px;width:auto;min-width:0" />` : ""}
-        ${select("org-invite-role", "orgInviteRole", ui.inviteRole, [["member", "As member"], ["admin", "As admin"]], { label: "Role the invite grants" })}
-        ${accentBtn(ui.inviteBusy ? "Inviting…" : "Invite", "orgInviteSend", { disabled: !canSend, busy: ui.inviteBusy, extra: "height:36px" })}
+  // Inviting is this tab's primary action (its one accent button): one line of controls in
+  // one surface, with what happens next said once, under them.
+  const invite = admin ? `<section aria-labelledby="org-invite-t">
+      ${orgHead("Invite someone", "", null, "org-invite-t")}
+      <div${surface("padding:14px 16px")}>
+        <div class="cnpy-org-invite">
+          ${segmented({ id: "org-invite-by", ariaLabel: "Invite by", act: "orgInviteBy", value: ui.inviteBy, size: "sm", inertOn: true, options: [{ value: "github", label: "GitHub login" }, { value: "email", label: "Email" }] })}
+          <input id="org-invite" data-act="orgInviteDraft" data-field="orgInvite" data-enter="orgInviteSend" value="${attr(ui.inviteDraft)}" placeholder="${ui.inviteBy === "github" ? "octocat" : "name@example.com"}" aria-label="${ui.inviteBy === "github" ? "GitHub login to invite" : "Email address to invite"}"${ui.inviteBy === "email" ? ' type="email" inputmode="email"' : ""} autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="org-invite-h${ui.inviteError ? " org-invite-e" : ""}"${ui.inviteError ? ' aria-invalid="true"' : ""} class="cnpy-input" style="${O_FIELD};flex:1 1 200px;width:auto;min-width:0;${ui.inviteError ? "border-color:var(--red);" : ""}" />
+          ${ui.inviteBy === "email" ? `<input id="org-invite-name" data-act="orgInviteName" data-field="orgInviteName" data-enter="orgInviteSend" value="${attr(ui.inviteName)}" maxlength="${INVITE_NAME_MAX}" placeholder="Their name (optional)" aria-label="Their name, for the email's greeting (optional)" autocomplete="off" class="cnpy-input" style="${O_FIELD};flex:1 1 160px;width:auto;min-width:0" />` : ""}
+          ${select("org-invite-role", "orgInviteRole", ui.inviteRole, [["member", "As member"], ["admin", "As admin"]], { label: "Role the invite grants" })}
+          ${accentBtn(ui.inviteBusy ? "Inviting…" : "Invite", "orgInviteSend", { disabled: !canSend, busy: ui.inviteBusy, extra: "height:36px" })}
+        </div>
+        ${ui.inviteError ? `<div id="org-invite-e" role="alert" style="${O_ERR}">${esc(ui.inviteError)}</div>` : ""}
+        <div id="org-invite-h" style="${O_HELP};margin-top:9px">${ui.inviteBy === "email"
+          ? "Trov emails them the invitation. They join when they sign in with that address and accept. A Google account can only sign in once it is invited."
+          : "They see the invitation the next time they sign in with that GitHub account, and join when they accept. No email is sent: tell them it is waiting."}</div>
       </div>
-      ${ui.inviteError ? `<div id="org-invite-e" role="alert" style="${O_ERR}">${esc(ui.inviteError)}</div>` : ""}
     </section>` : "";
 
   const rows = members.map((m) => {
     const d = admin && ui.memberEdit && sameHandle(ui.memberEdit.handle, m.handle) ? ui.memberEdit : null;
     const name = m.name ?? m.handle;
     return `<li style="border-bottom:1px solid var(--border);margin-bottom:-1px${d ? ";background:var(--hover)" : ""}">
-      <div class="cnpy-org-row" style="border-bottom:0;margin-bottom:0;align-items:center">
-        <button type="button" data-act="openPerson" data-arg="${attr(m.handle)}" class="cnpy-maint-person" aria-label="Open ${attr(name)}'s card" style="flex:1 1 220px;min-width:0;display:flex;align-items:center;gap:12px;text-align:left;padding:0">${personChip(m, 28, m.handle)}<span style="flex:1;min-width:0;line-height:1.3"><span style="display:block;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</span><span style="display:flex;align-items:center;gap:8px;min-width:0">${handleTag(m, m.handle, 11.5)}${m.title ? `<span style="font-size:12px;color:var(--fg-55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">&middot; ${esc(m.title)}</span>` : ""}</span></span></button>
-        <div class="cnpy-org-actions" style="align-items:center">
+      <div class="cnpy-org-row" style="border-bottom:0;margin-bottom:0;align-items:center;padding-top:10px;padding-bottom:10px">
+        <button type="button" data-act="openPerson" data-arg="${attr(m.handle)}" class="cnpy-maint-person" aria-label="Open ${attr(name)}'s card" style="flex:1 1 150px;min-width:0;display:flex;align-items:center;gap:12px;text-align:left;padding:0">${personChip(m, 28, m.handle)}<span style="flex:1;min-width:0;line-height:1.3"><span style="display:block;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</span><span style="display:flex;align-items:center;gap:8px;min-width:0">${handleTag(m, m.handle, 11.5)}${m.title ? `<span style="font-size:12px;color:var(--fg-40);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">&middot; ${esc(m.title)}</span>` : ""}</span></span></button>
+        <div class="cnpy-org-actions is-inline" style="align-items:center;flex-wrap:nowrap">
           ${sameHandle(m.handle, me) ? YOU : ""}
           ${roleChip(m.role)}
           ${admin ? quietBtn(d ? "Close" : "Edit", d ? "orgMemberCancel" : "orgMemberEdit", { arg: m.handle, label: `${d ? "Close the editor for" : "Edit"} ${name}`, field: `orgMemberEdit:${m.handle}` }) : ""}
@@ -529,36 +534,34 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
   const inviteRows = pending.map((i) => {
     const who = i.github_login ? `@${i.github_login}` : i.email ?? "";
     const mail = inviteMailNote(i);
-    return `<li class="cnpy-org-row" style="align-items:center">
+    return `<li class="cnpy-org-row" style="align-items:center;padding-top:10px;padding-bottom:10px">
       <div aria-hidden="true" style="width:28px;height:28px;border-radius:50%;border:1px dashed var(--border-strong);display:grid;place-items:center;color:var(--fg-40);font-size:12px;flex:none">?</div>
-      <div style="flex:1 1 200px;min-width:0;line-height:1.3">
-        <div style="font-size:13.5px;font-weight:500;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.name ? `${esc(i.name)} <span style="font-weight:400;color:var(--fg-55)">&middot; ${esc(who)}</span>` : esc(who)}</div>
-        <div style="font-size:11.5px;color:var(--fg-40)">${i.github_login ? "GitHub login" : "Email"} &middot; invited ${esc(relTime(i.created_at))} by ${esc(i.invited_by)}</div>
-        <div data-invite-mail="${i.mail_status ?? "none"}" style="font-size:11.5px;color:${mail.bad ? "var(--red)" : "var(--fg-55)"};overflow-wrap:anywhere">${esc(mail.text)}${mail.bad && i.mail_error ? `: ${esc(i.mail_error)}` : ""}</div>
+      <div style="flex:1 1 200px;min-width:0;line-height:1.35">
+        <div style="font-size:13.5px;font-weight:600;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.name ? `${esc(i.name)} <span style="font-weight:400;color:var(--fg-55)">&middot; ${esc(who)}</span>` : esc(who)}</div>
+        <div style="font-size:12px;color:var(--fg-40);overflow-wrap:anywhere">Invited ${esc(relTime(i.created_at))} by ${esc(i.invited_by)} &middot; <span data-invite-mail="${i.mail_status ?? "none"}" style="color:${mail.bad ? "var(--red)" : "inherit"}">${esc(mail.text)}${mail.bad && i.mail_error ? `: ${esc(i.mail_error)}` : ""}</span></div>
       </div>
       <div class="cnpy-org-actions" style="align-items:center">
-        ${statusBadge("Pending", "var(--amber)", "font-size:10.5px;border-radius:5px;padding:2px 7px")}
         ${roleChip(i.role)}
         ${i.email ? quietBtn(ui.mailBusy === i.id ? "Sending…" : "Resend email", "orgInviteMail", { arg: String(i.id), disabled: ui.mailBusy !== null, busy: ui.mailBusy === i.id, label: `Email the invitation to ${who} again` }) : ""}
-        ${dangerBtn("Revoke", "orgInviteRevoke", { arg: String(i.id), label: `Revoke the invite for ${who}` })}
+        ${dangerLink("Revoke", "orgInviteRevoke", { arg: String(i.id), label: `Revoke the invite for ${who}` })}
       </div>
     </li>`;
   }).join("");
+  // Pending invites are a section only while someone IS waiting (or the read has not answered).
   const invitesBlock = !admin ? ""
-    : `<section style="margin-top:28px">
-        ${orgHead("Pending invites", "", pending.length)}
-        ${pending.length ? `<ul${surface("overflow:hidden;list-style:none;margin:10px 0 0;padding:0")}>${inviteRows}</ul>`
-          : ui.invites.status === "error" ? failedNote("invites")
-          : ui.invites.status !== "ok" ? loadingNote("invites")
-          : `<div style="font-size:12.5px;color:var(--fg-40);margin-top:8px">Nobody is waiting on an invite.</div>`}
-      </section>`;
+    : pending.length ? `${orgHead("Pending invites", "", pending.length)}<ul${surface(LIST)}>${inviteRows}</ul>`
+    : ui.invites.status === "error" ? `${orgHead("Pending invites")}${failedNote("invites")}`
+    : ui.invites.status !== "ok" ? `${orgHead("Pending invites")}${loadingNote("invites")}`
+    : "";
 
-  const waiting = !!identity && identity.groups.length > 0;
-  return `${waiting ? unmatchedLogins(admin, identity) : ""}${invite}
-    ${orgHead("Members", admin ? "Owners manage owners and the encryption key. Admins manage everything else on this page. Members read." : "", members.length)}
-    <ul${surface("overflow:hidden;list-style:none;margin:10px 0 0;padding:0")}>${rows}</ul>
+  const waiting = admin ? identity?.groups.length ?? 0 : 0;
+  const lead = tabLead(`<strong>${members.length}</strong> ${members.length === 1 ? "member" : "members"}${admin ? ` &middot; ${pending.length ? `<strong>${pending.length}</strong> ${pending.length === 1 ? "invite" : "invites"} pending` : "no invite pending"}` : ""}${waiting ? ` &middot; ${leadFlag(`${waiting} ${waiting === 1 ? "login" : "logins"} to match`, "amber")}` : ""}.${admin ? "" : READ_ONLY}`);
+  const logins = unmatchedLogins(admin, identity);
+  return `${lead}${waiting ? logins : ""}${invite}
+    ${orgHead("Members", admin ? "Owners manage owners and the encryption key; admins everything else here" : "", members.length)}
+    <ul${surface(LIST)}>${rows}</ul>
     ${invitesBlock}
-    ${waiting ? "" : unmatchedLogins(admin, identity)}`;
+    ${waiting ? "" : logins ? `<div style="margin-top:18px">${logins}</div>` : ""}`;
 }
 
 // ── NOTIFICATIONS ────────────────────────────────────────────────────────────
@@ -638,15 +641,6 @@ export function orgOverlays(p: OrgSettingsProps): string {
 
 // ── the screen ───────────────────────────────────────────────────────────────
 
-const INTRO: Record<OrgTab, string> = {
-  integrations: "The credentials Trov uses on this org's behalf. A value is write-only: once saved it is never shown again, only its last four characters.",
-  repos: "The repositories this org's activity comes from.",
-  environments: "The places your app runs, as the Repo dashboard reports on them.",
-  members: "Who is in this org, what they may do, and who has been invited.",
-  notifications: "The e-mail digests this org sends: which exist, when they go out and what was sent. Each person picks their own cadence in Settings.",
-  general: "The org's name and address.",
-};
-
 /** The tab bar. Two tabs carry a count of what needs an admin there: integrations with an error,
  *  and (Members) logins waiting to be matched — `logins` is 0 for anyone who is not an admin. */
 export function orgTabBar(tab: OrgTab, role: OrgRole | null, ui: OrgUi, logins = 0): string {
@@ -661,7 +655,8 @@ export function orgTabBar(tab: OrgTab, role: OrgRole | null, ui: OrgUi, logins =
   });
 }
 
-/** Org settings, whole: the setup checklist (admins, until done), the tab bar, the tab. */
+/** Org settings, whole: the setup checklist (admins, until done), the tab bar, the tab — each tab
+ *  opening with its lead line (org-ui.ts `tabLead`), never an intro paragraph. */
 export function orgSettingsView(p: OrgSettingsProps): string {
   const shell = (inner: string) => `<div data-screen-label="Org settings" class="cnpy-org" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">${inner}</div>`;
   if (!p.org) {
@@ -681,8 +676,5 @@ export function orgSettingsView(p: OrgSettingsProps): string {
   // the same child of the page on every paint — the page is patched in place (morph.ts).
   return shell(`<div data-setup-slot>${setupChecklist(p.org, p.ui)}</div>
     ${orgTabBar(tab, p.org.role, p.ui, logins)}
-    <div${tabPanelAttrs("org-tab", tab)} style="padding-top:20px">
-      <p style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin:0 0 18px;max-width:720px">${esc(INTRO[tab])}${roleAtLeast(p.org.role, "admin") ? "" : " You can read this; an admin or an owner can change it."}</p>
-      ${body}
-    </div>`);
+    <div${tabPanelAttrs("org-tab", tab)} style="padding-top:18px">${body}</div>`);
 }

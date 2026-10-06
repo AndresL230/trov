@@ -23,6 +23,7 @@ import { tabBar, tabPanelAttrs } from "./tabs";
 import { segmented } from "./segmented";
 import { confirmModal } from "./confirm";
 import { usageView, orgUsageBlock, type UsageWindow } from "./platform-usage";
+import { tabLead, leadFlag, dangerLink } from "./org-ui";
 
 // ── state ────────────────────────────────────────────────────────────────────
 export type PlatTab = "orgs" | "usage" | "admins" | "audit";
@@ -71,6 +72,8 @@ export interface PlatState {
   auditOrg: string;
   add: AddOrgDraft | null;
   owner: OwnerDraft;
+  /** The org page's "Add an owner" form is open (it is behind a button: rarely needed). */
+  ownerOpen: boolean;
   suspendArm: "suspend" | "unsuspend" | null;
   suspendBusy: boolean;
   grantDraft: string;
@@ -96,7 +99,7 @@ export function initialPlat(): PlatState {
     usage: { status: "idle", data: null }, usageDays: 30, usageOpen: null,
     admins: { status: "idle", data: [] },
     audit: { status: "idle", data: [] }, auditOrg: "",
-    add: null, owner: blankOwner(),
+    add: null, owner: blankOwner(), ownerOpen: false,
     suspendArm: null, suspendBusy: false,
     grantDraft: "", grantBusy: false, grantError: null,
     revokeArm: null, revokeBusy: false, revokeError: null,
@@ -195,8 +198,10 @@ const PLUS = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke
 function goBtn(label: string, on: boolean, act: string, extra = ""): string {
   return `<button type="button" data-act="${attr(act)}"${on ? ` class="cnpy-accentbtn"` : " disabled"} style="${BTN};${on ? "border:1px solid transparent;background:var(--accent);color:var(--accent-fg);cursor:pointer" : "border:1px solid var(--border);background:transparent;color:var(--fg-40);cursor:default"}${extra}">${esc(label)}</button>`;
 }
-const sectionHead = (title: string, aside = "", first = false): string =>
-  `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:${first ? 0 : 28}px 0 10px"><h2 style="${LABEL};margin:0">${esc(title)}</h2>${aside ? `<span style="${QUIET}">${aside}</span>` : ""}</div>`;
+/** A section's heading — the same eyebrow as Org settings' (`.cnpy-sechead`): a count beside
+ *  it, and a quiet aside (markup: a phrase, or a small action) at the right. */
+const sectionHead = (title: string, aside = "", first = false, count: number | null = null): string =>
+  `<div class="cnpy-sechead${first ? " is-first" : ""}"><h2 style="${LABEL};margin:0">${esc(title)}</h2>${count === null ? "" : `<span class="cnpy-badge" data-n="${count}">${count}</span>`}${aside ? `<span class="cnpy-sechead-a">${aside}</span>` : ""}</div>`;
 const emptyCard = (title: string, sub: string): string =>
   `<div style="border:1px dashed var(--border-strong);border-radius:11px;padding:22px 24px;text-align:center"><div style="font-size:13.5px;font-weight:600;color:var(--fg-70)">${esc(title)}</div><div style="font-size:12.5px;color:var(--fg-40);margin-top:4px;line-height:1.5">${esc(sub)}</div></div>`;
 const loadingLine = (what: string): string => `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0">Loading ${esc(what)}…</div>`;
@@ -244,33 +249,35 @@ function orgRow(o: PlatformOrgRow): string {
     ? o.owners.map((w) => `<span style="white-space:nowrap">${esc(w.name ?? w.handle)} <span style="color:var(--fg-40)">@${esc(w.handle)}</span></span>`).join(`<span style="color:var(--fg-40)">, </span>`)
     : `<span style="color:var(--amber)">No owner yet${o.pending_invites ? " — invite pending" : ""}</span>`;
   const cell = (label: string, inner: string, cls = "") => `<div class="plat-c${cls ? ` ${cls}` : ""}" style="min-width:0"><span class="plat-cl">${label}</span>${inner}</div>`;
-  const n = (v: number) => `<span style="font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:600;color:${v ? "var(--fg-70)" : "var(--fg-40)"}">${v}</span>`;
+  const n = (v: number) => `<span style="font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:500;color:${v ? "var(--fg-70)" : "var(--fg-40)"}">${v}</span>`;
   const sus = o.status === "suspended";
   return `<button type="button" data-act="platOpenOrg" data-arg="${attr(o.slug)}" class="plat-row plat-orgs-grid${sus ? " is-suspended" : ""}" aria-label="${attr(`${o.name}${sus ? ", suspended" : ""} — open`)}" style="width:100%;text-align:left;padding:12px 20px;border-bottom:1px solid var(--border);margin-bottom:-1px">
     <div class="plat-c plat-c-name" style="min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:${sus ? "var(--fg-55)" : "var(--fg)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.name)}</span><span style="display:block;font-family:var(--code);font-size:11.5px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.slug)}</span></div>
     ${cell("Status", orgStatus(o))}
-    ${cell("Owners", `<span style="display:block;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${owners}</span>`, "plat-c-wide")}
+    ${cell("Owners", `<span style="display:block;font-size:12.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${owners}</span>`, "plat-c-wide")}
     ${cell("Members", n(o.member_count))}
     ${cell("Invites", n(o.pending_invites))}
-    ${cell("Created", `<span style="font-size:12px;color:var(--fg-55);white-space:nowrap"${dateTitle(o.created_at)}>${esc(shortDate(o.created_at))}</span>`)}
-    ${cell("Last activity", `<span style="font-size:12px;color:var(--fg-55);white-space:nowrap"${dateTitle(o.last_activity_at)}>${o.last_activity_at ? esc(relTime(o.last_activity_at)) : "Never"}</span>`)}
+    ${cell("Created", `<span style="font-size:12px;color:var(--fg-40);white-space:nowrap"${dateTitle(o.created_at)}>${esc(shortDate(o.created_at))}</span>`)}
+    ${cell("Last activity", `<span style="font-size:12px;color:var(--fg-40);white-space:nowrap"${dateTitle(o.last_activity_at)}>${o.last_activity_at ? esc(relTime(o.last_activity_at)) : "Never"}</span>`)}
   </button>`;
 }
 
+const ADD_ORG = `<button type="button" data-act="platAddOpen" data-plat-add-trigger class="cnpy-accentbtn" style="display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap">${PLUS}Add organization</button>`;
+
 export function orgsTab(p: Pick<PlatState, "orgs">): string {
-  const intro = `<div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">Every organization on Trov. Add one and name its admin; they invite their team and set it up from there.</div>`;
-  if (p.orgs.status === "error" && !p.orgs.data.length) return intro + errorLine("organizations");
-  if (p.orgs.status !== "ok" && !p.orgs.data.length) return intro + loadingLine("organizations");
+  if (p.orgs.status === "error" && !p.orgs.data.length) return errorLine("organizations");
+  if (p.orgs.status !== "ok" && !p.orgs.data.length) return loadingLine("organizations");
   if (!p.orgs.data.length) {
-    return `${intro}<div style="display:flex;justify-content:center;padding:40px 0"><div style="max-width:420px;width:100%">${emptyCard("No organizations yet", "Add the first one and name its admin. They take it from there.")}
-      <div style="display:flex;justify-content:center;margin-top:14px"><button type="button" data-act="platAddOpen" class="cnpy-accentbtn" style="${BTN};display:inline-flex;align-items:center;gap:7px;background:var(--accent);color:var(--accent-fg)">${PLUS}Add organization</button></div></div></div>`;
+    return `${tabLead("No organizations yet. Add the first one and name its admin; they take it from there.", ADD_ORG)}${emptyCard("No organizations yet", "An organization is a team's own Trov: its docs, tickets, roadmap and feed.")}`;
   }
   const suspended = p.orgs.data.filter((o) => o.status === "suspended").length;
-  return `${intro}<div${surface("overflow:hidden", { cls: "plat-table" })}>
+  const ownerless = p.orgs.data.filter((o) => o.owners.length === 0).length;
+  const n = p.orgs.data.length;
+  return `${tabLead(`<strong>${n}</strong> ${n === 1 ? "organization" : "organizations"}${suspended ? ` &middot; ${leadFlag(`${suspended} suspended`)}` : ""}${ownerless ? ` &middot; ${leadFlag(`${ownerless} with no owner yet`, "amber")}` : ""}. Select one to manage it.`, ADD_ORG)}
+    <div${surface("overflow:hidden", { cls: "plat-table" })}>
       <div class="plat-thead plat-orgs-grid" aria-hidden="true" style="padding:12px 20px 9px;border-bottom:1px solid var(--border)"><span>Organization</span><span>Status</span><span>Owners</span><span>Members</span><span>Invites</span><span>Created</span><span>Last activity</span></div>
       ${p.orgs.data.map(orgRow).join("")}
-    </div>
-    <div style="${QUIET};margin-top:10px">${p.orgs.data.length} ${p.orgs.data.length === 1 ? "organization" : "organizations"}${suspended ? `, ${suspended} suspended` : ""}. Select one to manage it.</div>`;
+    </div>`;
 }
 
 // ── one organization ─────────────────────────────────────────────────────────
@@ -305,44 +312,48 @@ export function platformOrgView(p: PlatState): string {
   }
   const o = d.org;
   const sus = o.status === "suspended";
+  // Suspending is the page's one consequential act, and rare: it is text until pointed at.
   const action = sus
-    ? `<button type="button" data-act="platSuspendArm" data-arg="unsuspend" data-confirm-trigger class="cnpy-outlinebtn" aria-haspopup="dialog" aria-expanded="${p.suspendArm === "unsuspend"}" aria-controls="plat-suspend-confirm" style="${OUTLINE}">Unsuspend</button>`
-    : `<button type="button" data-act="platSuspendArm" data-arg="suspend" data-confirm-trigger class="cnpy-dangerbtn" aria-haspopup="dialog" aria-expanded="${p.suspendArm === "suspend"}" aria-controls="plat-suspend-confirm" style="${OUTLINE};color:var(--fg-55)">Suspend</button>`;
+    ? `<button type="button" data-act="platSuspendArm" data-arg="unsuspend" data-confirm-trigger class="cnpy-outlinebtn" aria-haspopup="dialog" aria-expanded="${p.suspendArm === "unsuspend"}" aria-controls="plat-suspend-confirm" style="${OUTLINE};height:32px">Unsuspend</button>`
+    : dangerLink("Suspend", "platSuspendArm", { arg: "suspend", label: `Suspend ${o.name}` }).replace("<button ", `<button data-confirm-trigger aria-expanded="${p.suspendArm === "suspend"}" aria-controls="plat-suspend-confirm" `);
+  const pending = d.invites.filter((i) => i.status === "pending");
+  const owners = d.members.filter((m) => m.role === "owner").length;
+  // The head: who this is and its state, then its figures in one quiet line — the page's summary.
   const head = `<div${surface("padding:18px 20px")}>
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">
       <div style="min-width:0">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0;font-size:19px;font-weight:600;letter-spacing:-0.01em;overflow-wrap:anywhere">${esc(o.name)}</h2>${orgStatus(o)}</div>
-        <div style="margin-top:4px;font-size:12.5px;color:var(--fg-55);line-height:1.5"><span style="font-family:var(--code);font-size:12px">${esc(o.slug)}</span> · created ${esc(shortDate(o.created_at))} by @${esc(o.created_by)}${o.last_activity_at ? ` · last activity ${esc(relTime(o.last_activity_at))}` : " · no activity yet"}</div>
+        <div style="margin-top:4px;font-size:12.5px;color:var(--fg-55);line-height:1.5"><span style="font-family:var(--code);font-size:12px">${esc(o.slug)}</span> · <strong style="font-weight:600;color:var(--fg-70)">${d.members.length}</strong> ${d.members.length === 1 ? "member" : "members"}${owners === 0 ? ` · <span style="color:var(--amber);font-weight:500">no owner yet</span>` : ""}${pending.length ? ` · ${pending.length} pending ${pending.length === 1 ? "invite" : "invites"}` : ""} · created ${esc(shortDate(o.created_at))} by @${esc(o.created_by)}${o.last_activity_at ? ` · last activity ${esc(relTime(o.last_activity_at))}` : " · no activity yet"}</div>
       </div>
       ${action}
     </div>
     ${sus ? `<div role="status" style="margin-top:14px;padding:10px 12px;border:1px solid color-mix(in srgb,var(--red) 40%,transparent);background:color-mix(in srgb,var(--red) 8%,transparent);border-radius:9px;font-size:12.5px;line-height:1.5;color:var(--fg-70)">Suspended${o.suspended_at ? ` ${esc(relTime(o.suspended_at))}` : ""}${o.suspended_by ? ` by @${esc(o.suspended_by)}` : ""}. Members can't open it and its MCP tokens and connected apps don't work. No data was deleted.</div>` : ""}
-  </div>
-  <div style="margin-top:12px">${infoNote(NOT_A_MEMBER)}</div>`;
-
-  const members = d.members.length
-    ? `<div${surface("overflow:hidden")}>${d.members.map((m) => `<div style="${ROW}">
-        <div style="flex:1;min-width:0;line-height:1.35"><div style="font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name ?? m.handle)}</div><div style="display:flex;gap:8px;min-width:0;${QUIET}">${handleText(m.handle)}${m.title ? `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">· ${esc(m.title)}</span>` : ""}</div></div>
-        <span class="plat-hide-sm" style="${QUIET};white-space:nowrap"${dateTitle(m.joined_at)}>joined ${esc(relTime(m.joined_at))}</span>
-        ${roleBadge(m.role)}
-      </div>`).join("")}</div>`
-    : emptyCard("No members yet", "The organization has no one in it until an invited owner signs in and accepts.");
-  const pending = d.invites.filter((i) => i.status === "pending");
-  const invites = pending.length
-    ? `<div${surface("overflow:hidden")}>${pending.map(inviteRow).join("")}</div>`
-    : `<div style="${QUIET};padding:2px 0">No pending invites.</div>`;
+    <div role="note" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;line-height:1.5;color:var(--fg-40)">${esc(NOT_A_MEMBER)}</div>
+  </div>`;
 
   const w = p.owner;
   const canAdd = !w.busy && adminError(w.kind, w.value) === null;
-  const ownerForm = `<div${surface("padding:16px 20px")}>
+  const ownerOpen = p.ownerOpen || w.busy || !!w.error || !!w.done || owners === 0;
+  const ownerForm = ownerOpen ? `<div id="plat-owner-form"${surface("padding:16px 20px;margin-bottom:10px")}>
     <div style="max-width:520px">
       ${adminField({ segId: "plat-owner-kind", kindAct: "platOwnerKind", valueAct: "platOwnerValue", field: "platOwnerValue", enter: "platOwnerSubmit", kind: w.kind, value: w.value, error: w.error, disabled: w.busy, inputId: "plat-owner-input" })}
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px">
-        ${goBtn(w.busy ? "Adding…" : "Add owner", canAdd, "platOwnerSubmit")}
+        ${goBtn(w.busy ? "Adding…" : "Add owner", canAdd, "platOwnerSubmit", ";height:32px")}
         ${w.done ? `<span role="status" style="font-size:12.5px;color:var(--fg-70)">${esc(assignmentSentence(w.done, true))}</span>` : ""}
       </div>
     </div>
-  </div>`;
+  </div>` : "";
+  const ownerToggle = `<button type="button" data-act="platOwnerToggle" data-field="platOwnerToggle" aria-expanded="${ownerOpen}" aria-controls="plat-owner-form" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--fg-55)">${ownerOpen ? "Close" : "Add an owner"}</button>`;
+
+  // People: members and the invitations still out, in ONE list.
+  const memberRows = d.members.map((m) => `<div style="${ROW}">
+        <div style="flex:1;min-width:0;line-height:1.35"><div style="font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name ?? m.handle)}</div><div style="display:flex;gap:8px;min-width:0;${QUIET}">${handleText(m.handle)}${m.title ? `<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">· ${esc(m.title)}</span>` : ""}</div></div>
+        <span class="plat-hide-sm" style="${QUIET};white-space:nowrap"${dateTitle(m.joined_at)}>joined ${esc(relTime(m.joined_at))}</span>
+        ${roleBadge(m.role)}
+      </div>`).join("");
+  const people = d.members.length || pending.length
+    ? `<div${surface("overflow:hidden")}>${memberRows}${pending.map(inviteRow).join("")}</div>`
+    : emptyCard("No members yet", "The organization has no one in it until an invited owner signs in and accepts.");
 
   const audit = p.orgAudit.status === "error" ? errorLine("the audit entries")
     : p.orgAudit.status !== "ok" ? loadingLine("audit entries")
@@ -350,28 +361,27 @@ export function platformOrgView(p: PlatState): string {
     : `<div style="${QUIET};padding:2px 0">No audit entries for this organization.</div>`;
 
   return wrap(`${head}
-    ${sectionHead("Members", `${d.members.length}`)}${members}
-    ${sectionHead("Pending invites", `${pending.length}`)}${invites}
-    ${sectionHead("Add another owner")}${ownerForm}
+    ${sectionHead("People", ownerToggle, false, d.members.length + pending.length)}${ownerForm}${people}
     ${sectionHead("Usage", "last 30 days")}${orgUsageBlock(d.usage, 30)}
     ${sectionHead("Recent audit entries")}${audit}`);
 }
 
 // ── ADMINS & LIMITS ──────────────────────────────────────────────────────────
 export function adminsTab(p: PlatState, me: string | null): string {
-  const intro = `<div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">Superadmins run the Platform area: they add and suspend organizations and see usage. It is not a membership of any organization.</div>`;
+  const n = p.admins.data.length;
+  const intro = tabLead(`${n ? `<strong>${n}</strong> ${n === 1 ? "superadmin" : "superadmins"}. ` : ""}They add and suspend organizations and see usage; it is not a membership of any organization.`);
   const list = p.admins.status === "error" && !p.admins.data.length ? errorLine("the superadmins")
     : p.admins.status !== "ok" && !p.admins.data.length ? loadingLine("superadmins")
     : `<div${surface("overflow:hidden")}>${p.admins.data.map((a) => `<div style="${ROW}">
         <div style="flex:1;min-width:0;line-height:1.35"><div style="font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name ?? a.handle)}</div><div style="${QUIET};overflow-wrap:anywhere">${handleText(a.handle)} · granted ${esc(relTime(a.granted_at))} by @${esc(a.granted_by)}</div></div>
         ${me && a.handle.toLowerCase() === me.toLowerCase() ? `<span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:2px 6px">YOU</span>` : ""}
-        <button type="button" data-act="platRevokeArm" data-arg="${attr(a.handle)}" data-field="platRevoke:${attr(a.handle)}"${p.revokeArm === a.handle ? " data-confirm-trigger" : ""} class="cnpy-rejectbtn" aria-haspopup="dialog" aria-label="Remove @${attr(a.handle)} as superadmin" style="font-size:12px;color:var(--fg-55);padding:5px 10px;border-radius:6px;border:1px solid var(--border);white-space:nowrap">Remove</button>
+        ${dangerLink("Remove", "platRevokeArm", { arg: a.handle, field: `platRevoke:${a.handle}`, label: `Remove @${a.handle} as superadmin` }).replace("<button ", `<button${p.revokeArm === a.handle ? " data-confirm-trigger" : ""} `)}
       </div>`).join("")}</div>`;
   const canGrant = !p.grantBusy && cleanHandle(p.grantDraft) !== "";
   const limitHandleOk = cleanHandle(p.limitHandle) !== "";
   const limitOk = /^\d{1,4}$/.test(p.limitValue.trim()) && Number(p.limitValue.trim()) <= 1000;
   return `${intro}
-    ${sectionHead("Superadmins", `${p.admins.data.length}`, true)}
+    ${sectionHead("Superadmins", "", true, p.admins.data.length)}
     ${list}
     ${p.revokeError ? `<div role="alert" style="font-size:12.5px;line-height:1.5;color:var(--red);margin-top:10px">${esc(p.revokeError)}</div>` : ""}
     <div${surface("padding:16px 20px;margin-top:12px")}>
@@ -383,9 +393,8 @@ export function adminsTab(p: PlatState, me: string | null): string {
       ${fieldError("plat-grant-err", p.grantError)}
       <div style="${QUIET};margin-top:8px;line-height:1.45">They can then do everything on this page, including removing other superadmins.</div>
     </div>
-    ${sectionHead("Organization limit")}
+    ${sectionHead("Organization limit", `How many a person may create themselves · default ${DEFAULT_ORG_LIMIT}`)}
     <div${surface("padding:16px 20px")}>
-      <div style="font-size:12.5px;color:var(--fg-55);line-height:1.5;margin-bottom:14px">How many organizations a person may create by themselves. The default is ${DEFAULT_ORG_LIMIT}; superadmins have no limit. Organizations you add here don't count against anyone.</div>
       <div class="plat-inline" style="align-items:flex-end">
         <div style="flex:2;min-width:0"><label for="plat-limit-handle" style="${FIELD_LABEL}">Person</label><input id="plat-limit-handle" data-act="platLimitHandle" data-field="platLimitHandle" value="${attr(p.limitHandle)}" placeholder="Their Trov handle" autocomplete="off" autocapitalize="off" spellcheck="false" class="cnpy-input" style="${FIELD}" /></div>
         <div style="flex:1;min-width:0"><label for="plat-limit-value" style="${FIELD_LABEL}">Limit</label><input id="plat-limit-value" type="number" inputmode="numeric" min="0" max="1000" step="1" data-act="platLimitValue" data-field="platLimitValue" data-enter="platLimitSubmit" value="${attr(p.limitValue)}" placeholder="0 to 1000" class="cnpy-input" style="${FIELD}" /></div>
@@ -394,6 +403,7 @@ export function adminsTab(p: PlatState, me: string | null): string {
       </div>
       ${p.limitError ? `<div role="alert" style="font-size:12px;line-height:1.45;color:var(--red);margin-top:8px">${esc(p.limitError)}</div>` : ""}
       ${p.limitDone ? `<div role="status" style="font-size:12.5px;color:var(--fg-70);margin-top:8px">${esc(p.limitDone)}</div>` : ""}
+      <div style="${QUIET};margin-top:10px;line-height:1.45">Superadmins have no limit, and organizations you add here don't count against anyone.</div>
     </div>`;
 }
 
@@ -401,10 +411,9 @@ export function adminsTab(p: PlatState, me: string | null): string {
 export function auditTab(p: Pick<PlatState, "audit" | "auditOrg" | "orgs">): string {
   const options = [`<option value=""${p.auditOrg === "" ? " selected" : ""}>All organizations</option>`]
     .concat(p.orgs.data.map((o) => `<option value="${attr(o.slug)}"${p.auditOrg === o.slug ? " selected" : ""}>${esc(o.name)} (${esc(o.slug)})</option>`)).join("");
-  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-    <div style="font-size:12.5px;color:var(--fg-55);min-width:0">Who changed what: organizations, members, invites, superadmins, limits and integration secrets. Newest first.</div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--fg-55);min-width:0"><span style="white-space:nowrap">Organization</span><select data-act="platAuditOrg" data-field="platAuditOrg" class="cnpy-select" style="max-width:240px;min-width:0;height:32px">${options}</select></label>
-  </div>`;
+  const n = p.audit.data.length;
+  const head = tabLead(`${p.audit.status === "ok" ? `<strong>${n}${n >= 100 ? "+" : ""}</strong> ${n === 1 ? "entry" : "entries"}, newest first. ` : ""}Who changed an organization, a member, an invite, a superadmin, a limit or an integration secret.`,
+    `<label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--fg-55);min-width:0"><span style="white-space:nowrap">Organization</span><select data-act="platAuditOrg" data-field="platAuditOrg" class="cnpy-select" style="max-width:240px;min-width:0;height:32px">${options}</select></label>`);
   const body = p.audit.status === "error" ? errorLine("the audit log")
     : p.audit.status !== "ok" && !p.audit.data.length ? loadingLine("the audit log")
     : p.audit.data.length ? auditList(p.audit.data, p.auditOrg === "")
@@ -432,14 +441,14 @@ export function platformView(p: PlatState, me: string | null = null): string {
     : orgsTab(p);
   return `<div class="plat" data-screen-label="Platform" style="${FRAME}">
     ${platformTabBar(p.tab)}
-    <div${tabPanelAttrs("plat-tab", p.tab)} style="padding-top:20px">${body}</div>
+    <div${tabPanelAttrs("plat-tab", p.tab)} style="padding-top:18px">${body}</div>
   </div>`;
 }
 
-/** The header's primary action: Add organization, on the Organizations tab. */
-export function platformHeaderControls(p: Pick<PlatState, "superadmin" | "tab">, screen: string): string {
-  if (screen !== "platform" || p.superadmin !== true || p.tab !== "orgs") return "";
-  return `<button type="button" data-act="platAddOpen" data-plat-add-trigger class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease">${PLUS}Add organization</button>`;
+/** Platform puts nothing in the header: each tab's ONE primary action is in its lead line
+ *  (Add organization on Organizations), the same place as on Org settings. */
+export function platformHeaderControls(_p: Pick<PlatState, "superadmin" | "tab">, _screen: string): string {
+  return "";
 }
 /** The detail page's "›" crumb. */
 export function platformCrumb(p: Pick<PlatState, "detail" | "orgSlug">): string {

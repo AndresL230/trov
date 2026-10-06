@@ -131,14 +131,15 @@ describe("Organizations", () => {
     expect(html).toContain("No owner yet — invite pending");
     expect(html).toContain("Never");
     expect(html).toContain("Beta &lt;Co&gt;");
-    expect(html).toContain("2 organizations. Select one to manage it.");
+    expect(html).toMatch(/<strong>2<\/strong> organizations &middot; <span class="cnpy-lead-flag"[^>]*>[\s\S]*?1 with no owner yet<\/span>\. Select one to manage it\./);
   });
   it("marks a suspended org clearly: a red badge, a muted name, and it is said in the row's name and the count", () => {
     const html = orgsTab({ orgs: { status: "ok", data: [org({ status: "suspended", suspended_at: "2026-10-02T10:00:00.000Z", suspended_by: "andres" })] } });
     expect(html).toContain("SUSPENDED");
     expect(html).toContain("var(--red)");
     expect(html).toContain('class="plat-row plat-orgs-grid is-suspended" aria-label="Acme, suspended — open"');
-    expect(html).toContain("1 organization, 1 suspended.");
+    expect(html).toContain("<strong>1</strong> organization");
+    expect(html).toMatch(/class="cnpy-lead-flag"[^>]*>[\s\S]*?1 suspended<\/span>/);
   });
   it("empty, loading and failed states", () => {
     const empty = orgsTab({ orgs: { status: "ok", data: [] } });
@@ -150,13 +151,16 @@ describe("Organizations", () => {
     expect(failed).toContain("Couldn't load organizations.");
     expect(failed).toContain('data-act="platReload"');
   });
-  it("the header carries Add organization on the Organizations tab only", () => {
-    expect(platformHeaderControls({ superadmin: true, tab: "orgs" }, "platform")).toContain('data-act="platAddOpen"');
-    expect(platformHeaderControls({ superadmin: true, tab: "usage" }, "platform")).toBe("");
-    expect(platformHeaderControls({ superadmin: true, tab: "orgs" }, "platformorg")).toBe("");
-    const s = app({ screen: "platform" }); s.plat.superadmin = true;
+  it("Add organization is the Organizations tab's lead action — the page's one accent button — and nowhere else", () => {
+    expect(platformHeaderControls({ superadmin: true, tab: "orgs" }, "platform")).toBe("");
+    const lead = (html: string) => { const at = html.indexOf('class="cnpy-lead"'); return at < 0 ? "" : html.slice(at, html.indexOf("</div></div>", at)); };
+    expect(lead(orgsTab({ orgs: { status: "ok", data: [org()] } }))).toContain('data-act="platAddOpen" data-plat-add-trigger class="cnpy-accentbtn"');
+    expect(lead(orgsTab({ orgs: { status: "ok", data: [] } }))).toContain('data-act="platAddOpen"');
+    expect(usageView({ status: "ok", usage: report([usageOf()]), days: 30, open: null })).not.toContain("platAddOpen");
+    const s = app({ screen: "platform" }); s.plat.superadmin = true; s.plat.orgs = { status: "ok", data: [org()] };
     const html = render(s);
     expect(html).toContain(">Platform</h1>");
+    expect(html.slice(html.indexOf("<header"), html.indexOf("</header>"))).not.toContain("platAddOpen");
     expect(html).toContain("Add organization");
     expect(html).toContain('role="tablist" aria-label="Platform sections"');
   });
@@ -260,7 +264,7 @@ describe("Add organization", () => {
 describe("one organization", () => {
   const open = (over: Partial<PlatState> = {}) => plat({ orgSlug: "acme", detail: { status: "ok", data: detailOf() }, orgAudit: { status: "ok", data: [audit()] }, ...over });
 
-  it("shows the header, members with roles, pending invites only, add another owner, usage and audit", () => {
+  it("shows the header, members and pending invites in one People list, usage and audit; adding an owner is behind a button", () => {
     const html = platformOrgView(open());
     expect(html).toContain(">Acme</h2>");
     expect(html).toContain("ACTIVE");
@@ -271,8 +275,12 @@ describe("one organization", () => {
     expect(html).toContain("octocat");
     expect(html).toContain("PENDING");
     expect(html).not.toContain("old@acme.example");
-    expect(html).toContain("Add another owner");
-    expect(html).toContain('data-act="platOwnerSubmit"');
+    expect(html).toMatch(/<h2[^>]*>People<\/h2><span class="cnpy-badge" data-n="\d+">/);
+    expect(html).toContain('data-act="platOwnerToggle" data-field="platOwnerToggle" aria-expanded="false"');
+    expect(html).not.toContain('data-act="platOwnerSubmit"');
+    const adding = platformOrgView(open({ ownerOpen: true }));
+    expect(adding).toContain('aria-expanded="true"');
+    expect(adding).toContain('data-act="platOwnerSubmit"');
     expect(html).toContain("Top MCP tools");
     expect(html).toContain("get_feed");
     expect(html).toContain("org.create");
@@ -285,7 +293,8 @@ describe("one organization", () => {
   });
   it("an active org offers Suspend; a suspended one says so and offers Unsuspend", () => {
     const active = platformOrgView(open());
-    expect(active).toContain('data-act="platSuspendArm" data-arg="suspend" data-confirm-trigger class="cnpy-dangerbtn" aria-haspopup="dialog"');
+    // Suspend is text until pointed at (`cnpy-org-danger`), never a button at the weight of the page's actions.
+    expect(active).toMatch(/<button data-confirm-trigger aria-expanded="false" aria-controls="plat-suspend-confirm" type="button" data-act="platSuspendArm" data-arg="suspend"[^>]*class="cnpy-org-danger" aria-haspopup="dialog"[^>]*>Suspend<\/button>/);
     const sus = platformOrgView(open({ detail: { status: "ok", data: detailOf({ org: org({ status: "suspended", suspended_at: "2026-10-02T10:00:00.000Z", suspended_by: "andres" }) }) } }));
     expect(sus).toContain("SUSPENDED");
     expect(sus).toContain("by @andres");
@@ -318,7 +327,9 @@ describe("one organization", () => {
   it("empty, loading and failed states", () => {
     const bare = platformOrgView(open({ detail: { status: "ok", data: detailOf({ members: [], invites: [] }) }, orgAudit: { status: "ok", data: [] } }));
     expect(bare).toContain("No members yet");
-    expect(bare).toContain("No pending invites.");
+    expect(bare).not.toContain("PENDING");
+    // With no owner the form to add one is simply there.
+    expect(bare).toContain('data-act="platOwnerSubmit"');
     expect(bare).toContain("No audit entries for this organization.");
     expect(platformOrgView(plat({ orgSlug: "acme", detail: { status: "loading", data: null } }))).toContain("Loading the organization…");
     expect(platformOrgView(plat({ orgSlug: "acme", detail: { status: "error", data: null } }))).toContain("Couldn't load this organization.");
@@ -456,7 +467,7 @@ describe("Admins & limits", () => {
     const blank = adminsTab(admins(), null);
     expect(blank).toContain('<label for="plat-limit-handle"');
     expect(blank).toContain('<label for="plat-limit-value"');
-    expect(blank).toContain("The default is 3");
+    expect(blank).toContain("default 3");
     expect(blank).toMatch(/data-act="platLimitSubmit" disabled/);
     expect(blank).toMatch(/data-act="platLimitDefault" disabled/);
     const ready = adminsTab(admins({ limitHandle: "maya", limitValue: "5" }), null);

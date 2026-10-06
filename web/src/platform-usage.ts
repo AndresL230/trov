@@ -10,6 +10,7 @@
 import type { OrgUsage, PlatformUsageResponse, UsageActivity, UsageCreated, UsageDay } from "@shared/orgs";
 import { esc, attr, relTime, statusBadge, surface } from "./ui";
 import { segmented } from "./segmented";
+import { tabLead } from "./org-ui";
 
 export const USAGE_WINDOWS = [7, 30, 90] as const;
 export type UsageWindow = (typeof USAGE_WINDOWS)[number];
@@ -150,8 +151,9 @@ const CHEV = (open: boolean): string => `<svg class="plat-chev" width="12" heigh
 function orgRow(u: OrgUsage, days: number, open: boolean): string {
   const a = u.activity, z = u.sizes;
   const cell = (label: string, inner: string, cls = "") => `<div class="plat-c${cls ? ` ${cls}` : ""}" style="min-width:0"><span class="plat-cl">${label}</span>${inner}</div>`;
-  const metric = (n: number, spark: string) => `<div style="display:flex;align-items:center;gap:10px;min-width:0"><span style="${NUM};font-size:13px;min-width:44px"${exact(n)}>${formatNumber(n)}</span><span style="flex:1;min-width:40px;max-width:120px">${spark}</span></div>`;
-  const num = (n: number) => `<span style="${NUM};font-size:12.5px;color:${n ? "var(--fg-70)" : "var(--fg-40)"}">${formatNumber(n)}</span>`;
+  const metric = (n: number, spark: string) => `<div style="display:flex;align-items:center;gap:10px;min-width:0"><span style="${NUM};font-size:14px;color:${n ? "var(--fg)" : "var(--fg-40)"};min-width:46px"${exact(n)}>${formatNumber(n)}</span><span style="flex:1;min-width:40px;max-width:120px">${spark}</span></div>`;
+  // The figures that matter are the two metered ones; the sizes beside them are context.
+  const num = (n: number) => `<span style="font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:400;white-space:nowrap;color:${n ? "var(--fg-55)" : "var(--fg-40)"}">${formatNumber(n)}</span>`;
   const id = `plat-usage-${u.slug}`;
   return `<div class="plat-urow" data-open="${open ? "1" : "0"}">
     <button type="button" data-act="platUsageToggle" data-arg="${attr(u.slug)}" data-field="platUsageRow:${attr(u.slug)}" aria-expanded="${open}" aria-controls="${attr(id)}" class="plat-row plat-usage-grid" style="width:100%;text-align:left;padding:12px 20px">
@@ -163,9 +165,9 @@ function orgRow(u: OrgUsage, days: number, open: boolean): string {
       ${cell("Docs", num(z.docs))}
       ${cell("Tickets", num(z.tickets_total))}
       ${cell("Artifacts", `<span style="white-space:nowrap">${num(z.artifacts)} <span style="${QUIET}">· ${formatBytes(z.artifact_bytes)}</span></span>`)}
-      ${cell("Last activity", `<span style="font-size:12px;color:var(--fg-55);white-space:nowrap">${u.last_activity_at ? esc(relTime(u.last_activity_at)) : "Never"}</span>`)}
+      ${cell("Last activity", `<span style="font-size:12px;color:var(--fg-40);white-space:nowrap">${u.last_activity_at ? esc(relTime(u.last_activity_at)) : "Never"}</span>`)}
     </button>
-    ${open ? `<div id="${attr(id)}" style="padding:4px 20px 18px 41px" class="plat-urow-body">${usageBreakdown(a, days)}
+    ${open ? `<div id="${attr(id)}" style="padding:16px 20px 18px 41px;border-top:1px solid var(--border);background:var(--bg)" class="plat-urow-body">${usageBreakdown(a, days)}
       <button type="button" data-act="platOpenOrg" data-arg="${attr(u.slug)}" class="cnpy-mutelink" style="margin-top:12px;padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">Open ${esc(u.name)}</button></div>` : ""}
   </div>`;
 }
@@ -182,11 +184,11 @@ const dashed = (title: string, sub: string): string =>
   `<div style="border:1px dashed var(--border-strong);border-radius:11px;padding:22px 24px;text-align:center"><div style="font-size:13.5px;font-weight:600;color:var(--fg-70)">${esc(title)}</div><div style="font-size:12.5px;color:var(--fg-40);margin-top:4px;line-height:1.5">${esc(sub)}</div></div>`;
 
 export function usageView(p: UsageProps): string {
-  const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-    <div style="font-size:12.5px;color:var(--fg-55);min-width:0">Sizes and counts for every organization. No organization's content is read or shown here.</div>
-    ${usageWindowSwitch(p.days)}
-  </div>`;
   const u = p.usage;
+  const ranked = u ? sortByActivity(u.orgs) : [];
+  const active = ranked.filter((o) => !noActivity(o.activity)).length;
+  // The lead says what the tiles under it do not: how many organizations did anything, and which most.
+  const head = tabLead(`${u ? `<strong>${active} of ${u.orgs.length}</strong> ${u.orgs.length === 1 ? "organization" : "organizations"} active in ${u.days} days${active ? ` &middot; busiest <strong>${esc(ranked[0].name)}</strong>` : ""}. ` : ""}Sizes and counts only: no organization's content is read here.`, usageWindowSwitch(p.days));
   if (!u) {
     return head + (p.status === "error"
       ? `<div role="alert" style="font-size:13px;color:var(--fg-70)">Couldn't load usage. <button type="button" data-act="platReload" class="cnpy-mutelink" style="padding:0;font-size:13px;font-weight:500;color:var(--accent)">Try again</button></div>`
@@ -211,6 +213,6 @@ export function usageView(p: UsageProps): string {
       </div>
       ${rows.map((o) => orgRow(o, u.days, p.open === o.slug)).join("")}
     </div>
-    <div style="${QUIET};margin-top:10px">${esc(u.since)} to ${esc(u.until)} (UTC), most active first. Select a row for what was created and the most used MCP tools.</div>` : "";
+    <div style="${QUIET};margin-top:10px">${esc(u.since)} to ${esc(u.until)} (UTC), most active first. Open a row for what was created and its most used MCP tools.</div>` : "";
   return `${head}<div${surface("overflow:hidden", { cls: `plat-cq${p.status === "loading" ? " plat-busy" : ""}` })}>${top}</div>${empty}${table}`;
 }

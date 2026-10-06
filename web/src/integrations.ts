@@ -2,9 +2,13 @@
 //
 // Every integration the org is EXPECTED to have is listed, set or not, grouped: GitHub
 // (the token, one webhook secret per repository), Cloudflare, then one group per
-// environment (Railway, app metrics). Each row says what the credential is for, its status
-// in words, who set it and when, when it was last used, and its last error — and offers
-// Set / Rotate / Delete / Test connection.
+// environment (Railway, app metrics). The tab reads top-down as a summary: a lead line
+// (how many are set, how many have an error), then per group a list of ROWS that each show
+// a name, its status in words and ONE action — Set while it has no value, Test once it
+// does. A row opens (org-ui.ts `openRow`) to the rest: what the credential is for, who set
+// it and when, its settings, its webhook URL, and Edit settings / Rotate / Delete. A last
+// error and a test's answer show without opening it. The org's encryption key and the
+// history are two more rows at the foot, not sections of their own.
 //
 // THE RULE OF THIS FILE: a secret's value is never in the markup. The API is write-only, so
 // nothing here could show a stored one; and the value being typed is not in the props either
@@ -15,9 +19,10 @@
 //
 // Pure: props in, markup out. Acts are dispatched in main.ts to org-actions.ts.
 
-import { esc, attr, relTime, surface, statusBadge } from "./ui";
+import { esc, attr, relTime, surface } from "./ui";
 import {
-  O_LABEL, O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerBtn, goLink, orgHead, orgEmpty, orgBanner, roleAtLeast, sliceNote, textField,
+  O_LABEL, O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, roleAtLeast, sliceNote, textField,
+  tabLead, leadFlag, openRow, chip,
 } from "./org-ui";
 import type { MyOrg } from "@shared/orgs";
 import type { IntegrationDTO, IntegrationKind, OrgAuditDTO } from "@shared/integrations";
@@ -85,12 +90,22 @@ export function integrationLabel(i: Pick<IntegrationDTO, "label" | "scope_label"
 export type IntegrationState = "unset" | "set" | "legacy" | "error" | "orphan";
 /** One status per row, in words (a colour only ever repeats what the words say). */
 export function integrationStatus(i: IntegrationDTO): { state: IntegrationState; word: string; tone: string } {
-  const tail = i.hint_last4 ? ` · ends in ${i.hint_last4}` : "";
-  if (i.configured && !i.expected) return { state: "orphan", word: `No longer used${tail}`, tone: "var(--fg-55)" };
-  if (i.configured && i.last_error) return { state: "error", word: `Error${tail}`, tone: "var(--red)" };
-  if (i.configured) return { state: "set", word: `Set${tail}`, tone: "var(--green)" };
+  if (i.configured && !i.expected) return { state: "orphan", word: "No longer used", tone: "var(--fg-55)" };
+  if (i.configured && i.last_error) return { state: "error", word: "Error", tone: "var(--red)" };
+  if (i.configured) return { state: "set", word: "Set", tone: "var(--green)" };
   if (i.legacy_fallback) return { state: "legacy", word: "Using legacy credential", tone: "var(--amber)" };
   return { state: "unset", word: "Not set", tone: "var(--fg-55)" };
+}
+/** The tab's figures: how many expected credentials are set (a legacy fallback counts as
+ *  answered), how many of those report an error, and how many are stored for nothing. */
+export function integrationCounts(list: IntegrationDTO[]): { expected: number; set: number; errors: number; orphans: number } {
+  const expected = list.filter((i) => i.expected);
+  return {
+    expected: expected.length,
+    set: expected.filter((i) => i.configured || i.legacy_fallback).length,
+    errors: expected.filter((i) => i.configured && i.last_error).length,
+    orphans: list.filter((i) => !i.expected).length,
+  };
 }
 
 export interface IntegrationGroup { key: string; title: string; hint: string; rows: IntegrationDTO[] }
@@ -132,12 +147,12 @@ function testResult(t: TestState | undefined, kind: IntegrationKind): string {
   </div>`;
 }
 
-export interface RowOpts { secretsAvailable: boolean; test?: TestState }
+export interface RowOpts { secretsAvailable: boolean; test?: TestState; open?: boolean }
 
 export function integrationRow(i: IntegrationDTO, o: RowOpts): string {
   const st = integrationStatus(i);
   const key = integrationKey(i);
-  const name = i.kind === "github_webhook" && i.scope_label ? `${i.label} · ${i.scope_label}` : i.label;
+  const name = i.label;
   const full = integrationLabel(i);
   const meta: string[] = [];
   if (i.configured) {
@@ -147,73 +162,80 @@ export function integrationRow(i: IntegrationDTO, o: RowOpts): string {
   }
   const settings = i.config_fields.map((f) => {
     const v = i.config[f.key];
-    return `<div style="font-size:12px;color:var(--fg-55);margin-top:4px">${esc(f.label)}: ${v ? `<code style="font-family:var(--code);color:var(--fg-70);overflow-wrap:anywhere">${esc(v)}</code>` : `<span style="color:var(--fg-40)">${st.state === "legacy" ? "the platform's, until you set your own" : `not set${f.required ? " (required)" : ""}`}</span>`}</div>`;
+    return `<div style="margin-top:6px">${esc(f.label)}: ${v ? `<code style="font-family:var(--code);font-size:12px;color:var(--fg-70);overflow-wrap:anywhere">${esc(v)}</code>` : `<span style="color:var(--fg-40)">${st.state === "legacy" ? "the platform's, until you set your own" : `not set${f.required ? " (required)" : ""}`}</span>`}</div>`;
   }).join("");
   const legacy = st.state === "legacy"
-    ? `<div data-org-legacy style="font-size:12.5px;line-height:1.5;color:var(--fg-70);margin-top:6px">Using the platform's legacy credential &mdash; set your own to replace it.</div>` : "";
+    ? `<div data-org-legacy style="color:var(--fg-70);margin-top:6px">Using the platform's legacy credential &mdash; set your own to replace it.</div>` : "";
   const error = i.last_error
-    ? `<div data-org-lasterror style="${box("var(--red)")}">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last error.</strong> ${esc(i.last_error)}</div></div>` : "";
+    ? `<div data-org-lasterror style="${box("var(--red)")};margin-top:0">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last error.</strong> ${esc(i.last_error)}</div></div>` : "";
   const orphan = st.state === "orphan"
-    ? `<div style="font-size:12px;color:var(--fg-40);margin-top:6px">Its environment or repository no longer exists, so nothing reads it. Delete it.</div>` : "";
+    ? `<div style="margin-top:6px">Its environment or repository no longer exists, so nothing reads it. Delete it.</div>` : "";
   const hook = i.kind !== "github_webhook" || !i.webhook_url ? ""
     : WEBHOOKS_LIVE
-    ? `<div data-org-hookurl style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-55)">
+    ? `<div data-org-hookurl style="margin-top:10px">
         <span style="${O_LABEL};font-size:10px">Webhook URL</span>
         <code class="cnpy-org-code">${esc(i.webhook_url)}</code>
-        <span style="display:block;color:var(--fg-40)">${i.configured ? "The Payload URL of this repository's webhook on GitHub. Every delivery must be signed with this secret; anything else is rejected." : st.state === "legacy" ? "This repository's own Payload URL. Its current GitHub webhook keeps working with the platform's credential; to move it here, set a secret, then point the webhook at this URL with the same secret." : "Set the secret first, then add a webhook on GitHub with this Payload URL and the same secret. Until then deliveries to it are rejected."}</span>
+        <span style="display:block;font-size:12px;color:var(--fg-40)">${i.configured ? "The Payload URL of this repository's webhook on GitHub. Every delivery must be signed with this secret; anything else is rejected." : st.state === "legacy" ? "This repository's own Payload URL. Its current GitHub webhook keeps working with the platform's credential; to move it here, set a secret, then point the webhook at this URL with the same secret." : "Set the secret first, then add a webhook on GitHub with this Payload URL and the same secret. Until then deliveries to it are rejected."}</span>
       </div>`
-    : `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-55)">
+    : `<div style="margin-top:10px">
         <span style="${O_LABEL};font-size:10px">Webhook URL &middot; available soon</span>
         <code class="cnpy-org-code">${esc(i.webhook_url)}</code>
-        <span style="display:block;color:var(--fg-40)">Per-repository webhooks are not live yet. You can save the secret now; leave your GitHub webhook as it is.</span>
+        <span style="display:block;font-size:12px;color:var(--fg-40)">Per-repository webhooks are not live yet. You can save the secret now; leave your GitHub webhook as it is.</span>
       </div>`;
 
   const off = !o.secretsAvailable;
   const why = off ? "Secrets can't be saved until the platform's encryption key is configured" : undefined;
   const testable = (i.configured || i.legacy_fallback) && i.expected && (i.kind !== "github_webhook" || WEBHOOKS_LIVE);
   const running = o.test?.status === "running";
-  const actions: string[] = [];
   // A webhook secret is checked by what GitHub has delivered, not by a call Trov makes.
   const hookTest = i.kind === "github_webhook";
-  if (testable) actions.push(quietBtn(running ? (hookTest ? "Checking…" : "Testing…") : hookTest ? "Check deliveries" : "Test connection", "orgSecretTest", { arg: key, disabled: off || running, busy: running, label: hookTest ? `Check deliveries for the ${full}` : `Test the ${full}`, field: `orgSecretTest:${key}`, title: why }));
-  if (i.configured && i.expected && i.config_fields.length) actions.push(quietBtn("Edit settings", "orgSecretOpen", { arg: `config:${key}`, label: `Edit the settings of the ${full}`, field: `orgSecretOpen:config:${key}` }));
-  if (i.configured && i.expected) actions.push(quietBtn("Rotate", "orgSecretOpen", { arg: `rotate:${key}`, disabled: off, label: `Rotate the ${full}`, field: `orgSecretOpen:rotate:${key}`, title: why }));
-  if (!i.configured) actions.push(accentBtn(st.state === "legacy" ? "Set your own" : "Set", "orgSecretOpen", { arg: `set:${key}`, disabled: off, label: `Set the ${full}`, field: `orgSecretOpen:set:${key}`, title: why }));
-  if (i.configured) actions.push(dangerBtn("Delete", "orgConfirm", { arg: `secret:${key}`, label: `Delete the ${full}`, field: `orgConfirm:secret:${key}` }));
+  const testBtn = testable ? quietBtn(running ? (hookTest ? "Checking…" : "Testing…") : hookTest ? "Check deliveries" : "Test connection", "orgSecretTest", { arg: key, disabled: off || running, busy: running, label: hookTest ? `Check deliveries for the ${full}` : `Test the ${full}`, field: `orgSecretTest:${key}`, title: why }) : "";
+  // The row's ONE visible action: give it a value while it has none (the page's accent
+  // button is the lead's; this one is quiet), check it once it has one.
+  const setBtn = !i.configured ? quietBtn(st.state === "legacy" ? "Set your own" : "Set", "orgSecretOpen", { arg: `set:${key}`, disabled: off, label: `Set the ${full}`, field: `orgSecretOpen:set:${key}`, title: why, extra: "color:var(--fg);border-color:var(--border-strong)" }) : "";
+  const lead = setBtn || testBtn;
+  // Behind the row: the less-used actions, the destructive one last and as text.
+  const more: string[] = [];
+  if (setBtn && testBtn) more.push(testBtn);
+  if (i.configured && i.expected && i.config_fields.length) more.push(quietBtn("Edit settings", "orgSecretOpen", { arg: `config:${key}`, label: `Edit the settings of the ${full}`, field: `orgSecretOpen:config:${key}` }));
+  if (i.configured && i.expected) more.push(quietBtn("Rotate", "orgSecretOpen", { arg: `rotate:${key}`, disabled: off, label: `Rotate the ${full}`, field: `orgSecretOpen:rotate:${key}`, title: why }));
+  if (i.configured) more.push(dangerLink("Delete", "orgConfirm", { arg: `secret:${key}`, label: `Delete the ${full}`, field: `orgConfirm:secret:${key}` }));
 
-  return `<li class="cnpy-org-row" data-org-integration="${attr(key)}" data-state="${st.state}">
-    <div style="flex:1 1 320px;min-width:0">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">${esc(name)}</span>
-        ${statusBadge(st.word, st.tone, "font-size:10.5px;border-radius:5px;padding:2px 7px")}
-      </div>
-      <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:4px;max-width:680px">${esc(i.description)}</div>
-      ${meta.length ? `<div style="font-size:12px;color:var(--fg-40);margin-top:5px">${meta.join(" &middot; ")}</div>` : ""}
-      ${settings}${orphan}${hook}${legacy}${error}${testResult(o.test, i.kind)}
-    </div>
-    <div class="cnpy-org-actions">${actions.join("")}</div>
-  </li>`;
+  const quiet = [i.hint_last4 ? `ends in ${esc(i.hint_last4)}` : "", i.configured && i.last_used_at ? `used ${esc(relTime(i.last_used_at))}` : ""].filter(Boolean).join(" &middot; ");
+  const answer = testResult(o.test, i.kind);
+  return openRow({
+    key, open: o.open === true, act: "orgRowToggle", label: `${full}, ${st.word.toLowerCase()}`,
+    // Under GITHUB a webhook secret is named by its repository; the group says the rest.
+    head: `${i.kind === "github_webhook" && i.scope_label ? `<span>Webhook secret <span style="font-weight:500;color:var(--fg-55)">&middot; ${esc(i.scope_label)}</span></span>` : `<span>${esc(name)}</span>`}${chip(st.word, st.tone)}`,
+    meta: quiet, action: lead,
+    always: error || answer ? `${error}${answer}` : "",
+    body: `<div style="max-width:680px">${esc(i.description)}</div>
+      ${meta.length ? `<div style="font-size:12px;color:var(--fg-40);margin-top:6px">${meta.join(" &middot; ")}</div>` : ""}
+      ${settings}${orphan}${hook}${legacy}
+      ${more.length ? `<div class="cnpy-xrow-acts">${more.join("")}</div>` : ""}`,
+    attrs: ` data-org-integration="${attr(key)}" data-state="${st.state}"`,
+  });
 }
 
 // ── the encryption key, and the history ──────────────────────────────────────
 
-function keySection(org: MyOrg, ui: OrgUi): string {
+/** The org's encryption key, as one row: its version, and (opened) what rotating does and the
+ *  owner's Rotate. */
+function keyRow(org: MyOrg, ui: OrgUi): string {
   const d = ui.integrations.data;
   if (!d) return "";
   const owner = org.role === "owner";
   const none = d.key_version === null;
-  return `<section style="margin-top:32px" aria-labelledby="org-key-t">
-    <div class="cnpy-org-head"><h2 id="org-key-t" style="margin:0;font-size:14px;font-weight:600">Encryption key</h2></div>
-    <div${surface("padding:16px 18px;margin-top:10px")}>
-      <div class="cnpy-org-row" style="padding:0;border:0;margin:0">
-        <div style="flex:1 1 320px;min-width:0;font-size:12.5px;line-height:1.6;color:var(--fg-70);max-width:680px">
-          <p style="margin:0">Every secret here is encrypted with a key that belongs to this org${none ? "" : ` (now version ${d.key_version})`}. Rotating makes a new key and re-encrypts every stored secret with it. Your integrations keep working and no value is shown.</p>
-          <p style="margin:6px 0 0;color:var(--fg-55)">${none ? "There is no key yet. It is created when the first secret is saved." : "Rotate it if someone who could reach the key has left, or on whatever schedule your policy asks for."}${owner ? "" : " Only an owner can rotate it."}</p>
-        </div>
-        ${owner ? `<div class="cnpy-org-actions">${quietBtn("Rotate encryption key", "orgConfirm", { arg: "key:", disabled: none || !d.secrets_available, field: "orgConfirm:key:", title: none ? "Nothing to rotate yet" : undefined })}</div>` : ""}
+  return openRow({
+    key: "key", open: ui.openRows.includes("key"), act: "orgRowToggle", label: `Encryption key, ${none ? "not created yet" : `version ${d.key_version}`}`,
+    head: `<span>Encryption key</span>`, meta: none ? "Created with the first secret" : `Version ${d.key_version}`,
+    body: `<div style="max-width:680px">
+        <p style="margin:0">Every secret here is encrypted with a key that belongs to this org${none ? "" : ` (now version ${d.key_version})`}. Rotating makes a new key and re-encrypts every stored secret with it. Your integrations keep working and no value is shown.</p>
+        <p style="margin:6px 0 0">${none ? "There is no key yet. It is created when the first secret is saved." : "Rotate it if someone who could reach the key has left, or on whatever schedule your policy asks for."}${owner ? "" : " Only an owner can rotate it."}</p>
       </div>
-    </div>
-  </section>`;
+      ${owner ? `<div class="cnpy-xrow-acts">${quietBtn("Rotate encryption key", "orgConfirm", { arg: "key:", disabled: none || !d.secrets_available, field: "orgConfirm:key:", title: none ? "Nothing to rotate yet" : undefined })}</div>` : ""}`,
+    attrs: " data-org-key",
+  });
 }
 
 const REASON: Record<string, string> = {
@@ -251,25 +273,30 @@ export function auditSentence(a: OrgAuditDTO, list: IntegrationDTO[]): string {
 }
 
 const AUDIT_SHORT = 8;
-function auditSection(ui: OrgUi): string {
+/** The history, as one row: how many changes and when the last was; opened, who did what. */
+function auditRow(ui: OrgUi): string {
   const rows = ui.audit.data;
   const list = ui.integrations.data?.integrations ?? [];
   const note = sliceNote(ui.audit, "the history", rows.length > 0 || ui.audit.status === "ok");
   const shown = ui.auditOpen ? rows : rows.slice(0, AUDIT_SHORT);
   const body = note ? note
-    : rows.length === 0 ? `<div style="font-size:12.5px;color:var(--fg-40);margin-top:8px">Nothing yet. Every secret set, rotated or deleted is recorded here.</div>`
-    : `<ol${surface("overflow:hidden;list-style:none;margin:10px 0 0;padding:0")}>${shown.map((a) => `<li class="cnpy-org-row" style="padding-top:9px;padding-bottom:9px;align-items:baseline">
-        <div style="flex:1 1 260px;min-width:0;font-size:12.5px;line-height:1.5;color:var(--fg-70);overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">${esc(a.actor)}</strong> ${esc(auditSentence(a, list))}</div>
+    : rows.length === 0 ? `<div style="color:var(--fg-40)">Nothing yet. Every secret set, rotated or deleted is recorded here.</div>`
+    : `<ol class="cnpy-org-audit" style="list-style:none;margin:0;padding:0">${shown.map((a) => `<li style="display:flex;align-items:baseline;gap:4px 14px;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--border)">
+        <div style="flex:1 1 260px;min-width:0;color:var(--fg-70);overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">${esc(a.actor)}</strong> ${esc(auditSentence(a, list))}</div>
         <time datetime="${attr(a.at)}" title="${attr(a.at)}" style="flex:none;font-size:12px;color:var(--fg-40)">${esc(relTime(a.at))}</time>
       </li>`).join("")}</ol>
-      ${rows.length > AUDIT_SHORT ? `<button type="button" data-act="orgAuditToggle" data-field="orgAuditToggle" aria-expanded="${ui.auditOpen}" class="cnpy-mutelink" style="margin-top:10px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55)">${ui.auditOpen ? "Show fewer" : `Show all ${rows.length}`}</button>` : ""}`;
-  return `<section style="margin-top:32px" aria-labelledby="org-audit-t">
-    <div class="cnpy-org-head"><h2 id="org-audit-t" style="margin:0;font-size:14px;font-weight:600">History</h2><p style="margin:3px 0 0;font-size:12.5px;line-height:1.5;color:var(--fg-55)">Who set, rotated or deleted what, newest first. Values are never recorded.</p></div>
-    ${body}
-  </section>`;
+      ${rows.length > AUDIT_SHORT ? `<button type="button" data-act="orgAuditToggle" data-field="orgAuditToggle" aria-expanded="${ui.auditOpen}" class="cnpy-mutelink" style="margin-top:8px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55)">${ui.auditOpen ? "Show fewer" : `Show all ${rows.length}`}</button>` : ""}`;
+  return openRow({
+    key: "history", open: ui.openRows.includes("history"), act: "orgRowToggle", label: `History, ${rows.length} ${rows.length === 1 ? "change" : "changes"}`,
+    head: `<span>History</span>`, meta: rows.length ? `${rows.length}${rows.length >= 50 ? "+" : ""} ${rows.length === 1 ? "change" : "changes"} &middot; last ${esc(relTime(rows[0].at))}` : "Nothing yet",
+    body: `<div style="margin-bottom:8px">Who set, rotated or deleted what, newest first. Values are never recorded.</div>${body}`,
+    attrs: " data-org-history",
+  });
 }
 
 // ── the tab ──────────────────────────────────────────────────────────────────
+
+const LIST = "overflow:hidden;list-style:none;margin:0;padding:0";
 
 export function integrationsTab(org: MyOrg, ui: OrgUi): string {
   if (!roleAtLeast(org.role, "admin")) return orgEmpty("Admins only", "Integrations hold the org's credentials, so only an admin or an owner can open them.");
@@ -280,18 +307,32 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
     "This Trov's encryption key is not configured, so it cannot store or use a credential for any org. Ask whoever runs this Trov to set <code style=\"font-family:var(--code)\">TROV_KEK</code>, then reload this page. Nothing you set earlier is lost.",
   )}</div>`;
   const groups = groupIntegrations(d.integrations);
+  const n = integrationCounts(d.integrations);
   const noRepo = ui.repos.status === "ok" && ui.repos.data.length === 0;
   const noEnv = ui.envs.status === "ok" && ui.envs.data.length === 0;
+  // The lead: the state of the whole tab in one sentence. Its action is the one credential
+  // nothing works without — the GitHub token — while that has no value.
+  const token = d.integrations.find((i) => i.kind === "github_token" && i.expected);
+  const needToken = !!token && !token.configured && !token.legacy_fallback;
+  const lead = tabLead(
+    `<strong>${n.set} of ${n.expected}</strong> ${n.expected === 1 ? "credential" : "credentials"} set${n.errors ? ` &middot; ${leadFlag(`${n.errors} with an error`)}` : ""}${n.orphans ? ` &middot; ${n.orphans} no longer used` : ""}. A saved value is never shown again, only its last four characters.`,
+    needToken && token ? accentBtn("Set the GitHub token", "orgSecretOpen", { arg: `set:${integrationKey(token)}`, disabled: !d.secrets_available, field: "orgLeadToken", label: "Set the GitHub token" }) : "",
+  );
   const sections = groups.map((g) => {
+    const done = g.rows.filter((i) => i.configured || i.legacy_fallback).length;
     const extra = g.key === "github" && noRepo
       ? `<li class="cnpy-org-row" style="align-items:center"><div style="flex:1 1 260px;min-width:0;font-size:12.5px;color:var(--fg-55)">Each repository gets its own webhook secret. None is connected yet.</div><div class="cnpy-org-actions">${goLink("Connect a repository", "orgTab", "repos")}</div></li>` : "";
-    return `<section style="margin-bottom:26px" aria-labelledby="org-int-${attr(g.key)}">
-      <div class="cnpy-org-head"><h2 id="org-int-${attr(g.key)}" style="margin:0;font-size:14px;font-weight:600">${esc(g.title)}</h2><p style="margin:3px 0 0;font-size:12.5px;line-height:1.5;color:var(--fg-55)">${esc(g.hint)}</p></div>
-      <ul${surface("overflow:hidden;list-style:none;margin:10px 0 0;padding:0")}>${g.rows.map((i) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)] })).join("")}${extra}</ul>
+    return `<section aria-labelledby="org-int-${attr(g.key)}" data-org-group="${attr(g.key)}">
+      ${orgHead(g.title, g.key === "orphans" ? "can only be deleted" : `${done} of ${g.rows.length} set`, null, `org-int-${g.key}`)}
+      <ul${surface(LIST)} title="${attr(g.hint)}">${g.rows.map((i) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) })).join("")}${extra}</ul>
     </section>`;
   }).join("");
-  const envHint = noEnv ? `<div style="margin-bottom:26px">${orgEmpty("No environment tokens yet", "Each environment gets a Railway project token and an app metrics token. Add an environment first.", quietBtn("Open Environments", "orgTab", { arg: "environments" }))}</div>` : "";
-  return `${banner}${sections}${envHint}${keySection(org, ui)}${auditSection(ui)}`;
+  const envHint = noEnv ? `<div style="margin-top:30px">${orgEmpty("No environment tokens yet", "Each environment gets a Railway project token and an app metrics token. Add an environment first.", quietBtn("Open Environments", "orgTab", { arg: "environments" }))}</div>` : "";
+  return `${banner}${lead}${sections}${envHint}
+    <section aria-labelledby="org-int-safe" data-org-group="safe">
+      ${orgHead("Key and history", "", null, "org-int-safe")}
+      <ul${surface(LIST)}>${keyRow(org, ui)}${auditRow(ui)}</ul>
+    </section>`;
 }
 
 // ── the Set / Rotate / Edit-settings form ────────────────────────────────────

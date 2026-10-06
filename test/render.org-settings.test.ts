@@ -201,10 +201,15 @@ describe("the setup checklist", () => {
     expect(steps.map((s) => [s.key, s.tab, s.done])).toEqual([["repo", "repos", false], ["env", "environments", false], ["token", "integrations", false], ["team", "members", false]]);
     const html = view(emptyUi());
     expect(html).toContain("Finish setting up Acme Robotics");
-    expect(html).toContain("4 of 4 left");
+    expect(html).toContain("0 of 4 done");
     for (const t of ["repos", "environments", "integrations", "members"]) expect(html).toContain(`data-act="orgTab" data-arg="${t}"`);
-    // Status is words, not a colour.
-    expect(html).toContain("To do");
+    // Status is words, not a colour: each step's name says it, and why it matters is its tooltip.
+    expect(html).toContain('aria-label="Connect a repository: to do. Open Repositories"');
+    expect(html).toContain('title="Trov reads its deployments, checks, pull requests and issues."');
+    // ONE line above the tabs: a single heading, no paragraph per step.
+    const card = html.slice(html.indexOf("data-org-setup "), html.indexOf("</section>"));
+    expect(card.match(/<h2/g)?.length).toBe(1);
+    expect(card).not.toContain("<p");
   });
   it("derives each step from live data", () => {
     const ui = emptyUi({ repos: ok([repo()]), invites: ok([invite()]) });
@@ -213,8 +218,8 @@ describe("the setup checklist", () => {
     expect(steps.find((s) => s.key === "team")!.done).toBe(true);
     expect(steps.find((s) => s.key === "env")!.done).toBe(false);
     const html = setupChecklist(org(), ui);
-    expect(html).toContain("2 of 4 left");
-    expect(html).toContain("Done");
+    expect(html).toContain("2 of 4 done");
+    expect(html).toMatch(/data-step="repo" data-done="1">[\s\S]*?<span class="cnpy-sr">: done<\/span>/);
     // A finished step keeps no button.
     expect(html).not.toContain('data-arg="repos"');
   });
@@ -242,10 +247,10 @@ describe("the setup checklist", () => {
 describe("Integrations — status in words", () => {
   it("names each state", () => {
     expect(integrationStatus(integ("github_token"))).toMatchObject({ state: "unset", word: "Not set" });
-    expect(integrationStatus(set("github_token", "1a2b"))).toMatchObject({ state: "set", word: "Set · ends in 1a2b" });
+    expect(integrationStatus(set("github_token", "1a2b"))).toMatchObject({ state: "set", word: "Set" });
     expect(integrationStatus(set("github_token", ""))).toMatchObject({ state: "set", word: "Set" });
     expect(integrationStatus(integ("github_token", { legacy_fallback: true }))).toMatchObject({ state: "legacy", word: "Using legacy credential" });
-    expect(integrationStatus(set("github_token", "1a2b", { last_error: "github 401" }))).toMatchObject({ state: "error", word: "Error · ends in 1a2b" });
+    expect(integrationStatus(set("github_token", "1a2b", { last_error: "github 401" }))).toMatchObject({ state: "error", word: "Error" });
     expect(integrationStatus(set("railway", "beef", { expected: false }))).toMatchObject({ state: "orphan" });
   });
   it("groups GitHub, Cloudflare, then one group per environment, then what nothing claims", () => {
@@ -272,7 +277,8 @@ describe("Integrations — the states of the page", () => {
   it("fully configured: last four, who and when, the actions, the key and the history", () => {
     const html = tabView(fullUi(), "integrations");
     expect(html).toContain('data-org-integration="github_token:" data-state="set"');
-    expect(html).toContain("Set · ends in 1a2b");
+    expect(html).toMatch(/<span>GitHub token<\/span><span[^>]*>Set<\/span>/);
+    expect(html).toContain("ends in 1a2b");
     expect(html).toContain("Set by andres");
     expect(html).toContain("last used");
     expect(html).toContain('aria-label="Test the GitHub token"');
@@ -283,6 +289,10 @@ describe("Integrations — the states of the page", () => {
     expect(html).toContain('aria-label="Edit the settings of the Cloudflare analytics"');
     expect(html).toContain("Staging environment");
     expect(html).toContain("Production environment");
+    // The lead: the tab's state in one sentence, and no accent button once the token is set.
+    expect(html).toMatch(/<strong>\d+ of \d+<\/strong> credentials set/);
+    expect(html).not.toContain('data-field="orgLeadToken"');
+    expect(html).not.toContain("cnpy-accentbtn");
     expect(html).toContain("now version 2");
     expect(html).toContain('data-act="orgConfirm" data-arg="key:"');
     // History: who did what, never a value.
@@ -307,7 +317,12 @@ describe("Integrations — the states of the page", () => {
     const ui = fullUi({ integrations: ok({ integrations: [set("github_token", "1a2b", { last_error: "github 401 for acme/web — the token is not valid" })], secrets_available: true, key_version: 1 }) });
     const html = tabView(ui, "integrations");
     expect(html).toContain('data-state="error"');
-    expect(html).toContain("Error · ends in 1a2b");
+    expect(html).toMatch(/<span>GitHub token<\/span><span[^>]*>Error<\/span>/);
+    expect(html).toContain("1 with an error");
+    // The error is on the row WITHOUT opening it; the description is behind it.
+    const row = html.slice(html.indexOf('data-org-integration="github_token:"'), html.indexOf("</li>", html.indexOf('data-org-integration="github_token:"')));
+    expect(row.indexOf("data-org-lasterror")).toBeLessThan(row.indexOf('class="cnpy-xrow-b" hidden'));
+    expect(row.indexOf("What GitHub token is used for.")).toBeGreaterThan(row.indexOf('class="cnpy-xrow-b" hidden'));
     expect(html).toContain("data-org-lasterror");
     expect(html).toContain("github 401 for acme/web — the token is not valid");
     // The tab's badge counts it.
@@ -503,7 +518,7 @@ describe("a secret's value is never in the markup", () => {
       myOrgs: { status: "ok", data: { orgs: [org()], invites: [], superadmin: false, can_create: true, created: 1, limit: 3 } }, org: saved,
     };
     const html = render(s);
-    expect(html).toContain("Set · ends in 1a2b");
+    expect(html).toContain("ends in 1a2b");
     expect(html).toContain("set the GitHub token (ends in 1a2b)");
     expect(html).not.toContain(SECRET);
     expect(html).not.toContain(SECRET.slice(0, -4));
@@ -517,7 +532,8 @@ describe("a secret's value is never in the markup", () => {
 describe("Repositories", () => {
   it("empty: an add field for an admin, and what a repository is for", () => {
     const html = tabView(emptyUi(), "repos");
-    expect(html).toContain('<label for="org-repo"');
+    expect(html).toContain('id="org-repo"');
+    expect(html).toContain('aria-label="Repository to add, as owner/repo"');
     expect(html).toContain("No repository connected");
     expect(html).toMatch(/data-act="orgRepoAdd"[^>]* disabled/);
     expect(repoDraftOk("acme/web")).toBe(true);
@@ -530,8 +546,12 @@ describe("Repositories", () => {
     expect(html).toContain('aria-label="Make acme/api the primary repository"');
     expect(html).toMatch(/aria-label="Remove acme\/web"[^>]*|data-field="orgConfirm:repo:hook_0123[^"]*" disabled/);
     expect(html).toContain("To remove it, make another repository the primary first.");
-    expect(html).toContain("Webhook secret: set");
-    expect(html).toContain("Webhook secret: not set");
+    expect(html).toContain("Webhook secret set");
+    expect(html).toContain("Webhook secret not set");
+    expect(html).toContain("1 without a webhook secret");
+    // Remove is text, last, behind the row; nothing on the page is a bordered Delete.
+    expect(html).toMatch(/aria-label="Remove acme\/api"[^>]*class="cnpy-org-danger"/);
+    expect(html).not.toContain("cnpy-rejectbtn");
   });
   it("removing one says its webhook secret goes too", () => {
     const ui = fullUi();
@@ -559,7 +579,12 @@ describe("Environments", () => {
   it("lists them in order and says what the order means; reorder is up / down buttons", () => {
     const html = tabView(fullUi(), "environments");
     expect(html.indexOf(">Staging<")).toBeLessThan(html.indexOf(">Production<"));
-    expect(html).toContain("drift is measured from the first environment (the head) to the last (the base)");
+    expect(html).toContain("drift is measured from <strong>Staging</strong> (the head, first) to <strong>Production</strong> (the base, last)");
+    // Add environment is the tab's one accent button; Delete is in the edit form, not on every row.
+    expect(html.match(/cnpy-accentbtn/g)?.length).toBe(1);
+    expect(html).not.toContain("orgConfirm:env:");
+    const editing = tabView(fullUi({ envEdit: { key: "staging", keyDraft: "staging", fields: envFieldsOf(env("staging", 0)), advanced: false, saving: false, error: null, errorField: null } }), "environments");
+    expect(editing).toMatch(/data-field="orgConfirm:env:staging"[^>]*aria-label="Delete Staging"[^>]*class="cnpy-org-danger"/);
     expect(html).toContain("Drift head");
     expect(html).toContain("Drift base");
     // Real buttons with names; the ends are disabled rather than missing.
@@ -618,7 +643,10 @@ describe("Members and invites", () => {
     expect(html).toContain("@octocat");
     expect(html).toContain("sam@acme.dev");
     expect(html).toContain('aria-label="Revoke the invite for sam@acme.dev"');
-    expect(html).toContain(">Pending<");
+    expect(html).toMatch(/<h2[^>]*>Pending invites<\/h2><span class="cnpy-badge" data-n="2">2<\/span>/);
+    expect(html).toContain("<strong>3</strong> members &middot; <strong>2</strong> invites pending");
+    // Inviting is the tab's one accent action; Revoke is text.
+    expect(html).toMatch(/data-act="orgInviteRevoke"[^>]*class="cnpy-org-danger"/);
     // A click on a person opens the same person card as everywhere else.
     expect(html).toContain('data-act="openPerson" data-arg="mira"');
   });
@@ -719,5 +747,78 @@ describe("phone width and accessibility hooks", () => {
     expect(block).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
     expect(block).not.toMatch(/rgba?\(/);
     expect(block).not.toContain("border-radius");
+  });
+});
+
+describe("the hierarchy every tab keeps (org-ui.ts)", () => {
+  const TABS = ["integrations", "repos", "environments", "members", "notifications", "general"] as const;
+  const notif = { policy: [], settings: null, outbox: [], outboxExpanded: null, fromDraft: null };
+  const page = (tab: OrgUi["tab"], role: OrgRole = "owner") => orgSettingsView({ ...props({ ...fullUi(), tab }, role), notif: role === "member" ? null : notif });
+  const panel = (html: string) => html.slice(html.indexOf('role="tabpanel"'));
+
+  it("a tab opens with its lead line — one sentence — never an intro paragraph or a heading", () => {
+    for (const tab of TABS) {
+      const body = panel(page(tab));
+      expect(body, tab).toMatch(/^role="tabpanel"[^>]*><div class="cnpy-lead"><p class="cnpy-lead-t">/);
+      expect(body.match(/class="cnpy-lead"/g)?.length, tab).toBe(1);
+    }
+  });
+  it("has ONE heading level inside a tab: the eyebrow", () => {
+    for (const tab of TABS) {
+      const body = panel(page(tab));
+      const heads = body.match(/<h2[^>]*>/g) ?? [];
+      for (const h of heads) expect(h, tab).toContain("text-transform:uppercase");
+      expect(body, tab).not.toMatch(/<h[13456]/);
+    }
+  });
+  it("has at most one accent button per tab, and no bordered destructive button anywhere", () => {
+    for (const tab of TABS) {
+      const body = panel(page(tab));
+      expect((body.match(/class="cnpy-accentbtn"/g) ?? []).length, tab).toBeLessThanOrEqual(1);
+      expect(body, tab).not.toContain("cnpy-rejectbtn");
+      expect(body, tab).not.toContain("cnpy-dangerbtn");
+    }
+  });
+  it("Integrations: a row is a name, a status and ONE action; the rest is behind a real toggle", () => {
+    const html = page("integrations");
+    const at = html.indexOf('data-org-integration="cloudflare_analytics:"');
+    const row = html.slice(at, html.indexOf("</li>", at));
+    const head = row.slice(0, row.indexOf('class="cnpy-xrow-b"'));
+    expect(head).toContain('data-act="orgRowToggle" data-arg="cloudflare_analytics:"');
+    expect(head).toContain('aria-expanded="false" aria-controls="xrow-cloudflare_analytics-"');
+    expect(head).toMatch(/aria-label="Cloudflare analytics, set: show details"/);
+    expect((head.match(/<button/g) ?? []).length).toBe(2);                 // the toggle, and Test connection
+    expect(head).toContain(">Test connection<");
+    for (const behind of ["Edit settings", ">Rotate<", ">Delete<", "Account ID:", "What Cloudflare analytics is used for."]) {
+      expect(head, behind).not.toContain(behind);
+      expect(row, behind).toContain(behind);
+    }
+    expect(row).toContain('id="xrow-cloudflare_analytics-" class="cnpy-xrow-b" hidden');
+    // Opened: the same row, its body shown, the toggle saying so.
+    const open = orgSettingsView(props({ ...fullUi(), tab: "integrations", openRows: ["cloudflare_analytics:"] }));
+    expect(open).toContain('aria-expanded="true" aria-controls="xrow-cloudflare_analytics-" aria-label="Cloudflare analytics, set: hide details"');
+    expect(open).toMatch(/id="xrow-cloudflare_analytics-" class="cnpy-xrow-b">/);
+  });
+  it("Integrations: the key and the history are two rows at the foot, not sections; the GitHub token leads while it is missing", () => {
+    const html = page("integrations");
+    expect(html).toMatch(/<h2[^>]*>Key and history<\/h2>/);
+    expect(html).toContain("data-org-key");
+    expect(html).toContain("data-org-history");
+    expect(html).not.toMatch(/<h2[^>]*>Encryption key<\/h2>/);
+    const fresh = orgSettingsView(props({ ...emptyUi(), tab: "integrations" }));
+    expect(fresh).toMatch(/class="cnpy-lead-a"><button[^>]*data-field="orgLeadToken"[^>]*class="cnpy-accentbtn"[^>]*>Set the GitHub token</);
+    expect((fresh.match(/class="cnpy-accentbtn"/g) ?? []).length).toBe(1);
+  });
+  it("a member's tabs say once that they are read-only, in the lead", () => {
+    for (const tab of ["repos", "environments", "members"] as const) {
+      const body = panel(page(tab, "member"));
+      expect(body.match(/You can read this; an admin or an owner can change it\./g)?.length, tab).toBe(1);
+      expect(body, tab).not.toContain("cnpy-accentbtn");
+    }
+  });
+  it("the styles: a lead, an eyebrow row and an opening row, with the phone layout", () => {
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ");
+    for (const cls of [".cnpy-lead {", ".cnpy-lead-t {", ".cnpy-sechead {", ".cnpy-xrow {", ".cnpy-xrow-t {", ".cnpy-xrow-b[hidden] { display:none; }", ".cnpy-org-danger:hover, .cnpy-org-danger:focus-visible { color:var(--red) !important; }"]) expect(rules).toContain(cls);
+    expect(rules).toMatch(/@media \(max-width:640px\) \{[^@]*\.cnpy-xrow-t \{ flex:1 1 100%; display:grid;/);
   });
 });

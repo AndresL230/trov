@@ -129,6 +129,19 @@ describe("Org settings — switching tabs", () => {
     expect(h.slices().repos).toBe("loading");
   });
 
+  it("opening a row's details is one paint and no request", () => {
+    const h = orgHarness();
+    h.ctl.load(); h.settle(); asked = [];
+    const before = h.paints();
+    h.ctl.act("orgRowToggle", "github_token:", null);
+    h.ctl.act("orgRowToggle", "history", null);
+    expect(h.state.org.openRows).toEqual(["github_token:", "history"]);
+    h.ctl.act("orgRowToggle", "github_token:", null);
+    expect(h.state.org.openRows).toEqual(["history"]);
+    expect(h.paints()).toBe(before + 3);
+    expect(asked).toEqual([]);
+  });
+
   it("a member's tab switch is just as quiet (no admin-only read is ever asked)", () => {
     const h = orgHarness("member");
     h.ctl.load();

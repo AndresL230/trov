@@ -135,7 +135,7 @@ export function createPlatform(h: PlatformHost) {
     const p = s();
     p.add = null;
     h.state.screen = "platformorg";
-    p.orgSlug = slug; p.suspendArm = null;
+    p.orgSlug = slug; p.suspendArm = null; p.ownerOpen = false;
     load();
     h.mount.querySelector<HTMLElement>("#cnpy-main")?.scrollTo(0, 0);
     if (h.state.view === "platform") window.scrollTo(0, 0); // the standalone page scrolls the window
@@ -315,6 +315,7 @@ export function createPlatform(h: PlatformHost) {
         if (!(ADMIN_KINDS as readonly string[]).includes(arg ?? "")) return;
         p.owner = { ...blankOwner(), kind: arg as AdminKind };
         break;
+      case "platOwnerToggle": p.ownerOpen = !p.ownerOpen; if (!p.ownerOpen) p.owner = blankOwner(); h.rerender(); if (p.ownerOpen) focus("#plat-owner-input"); return;
       case "platOwnerValue": p.owner.value = value ?? ""; p.owner.error = null; p.owner.done = null; break;
       case "platOwnerSubmit": submitOwner(); return;
 

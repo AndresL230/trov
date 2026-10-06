@@ -217,7 +217,7 @@ describe("the org picker / first run", () => {
     const html = orgPickerView({ me: me([]), mine: [], orgs: none, status: "ok", ui: ui(), hash: "", superadmin: true });
     expect(html).toContain("data-orgs-platform");
     expect(html).toMatch(/<a href="\/platform\/"[^>]*>Open Platform<\/a>/);
-    expect(html).toContain("You do not need to belong to an organization.");
+    expect(html).toContain("No membership needed.");
     expect(picker(mine({ orgs: [], invites: [], created: 0 }))).not.toContain("/platform/");
   });
   it("NOTHING AT ALL: says what Trov is for, offers to create an org, and says how to get invited — by this person's own login", () => {

@@ -8,7 +8,7 @@ import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 import { esc, attr, surface } from "./ui";
 import { tenantHref } from "./api";
-import { maintSectionHeader, maintEmpty } from "./maintenance";
+import { O_LABEL, O_HELP, orgHead, orgEmpty, tabLead, quietBtn, chip } from "./org-ui";
 import { segmented } from "./segmented";
 import { PLATFORM_FROM_ADDRESS, PLATFORM_SENDER_NAME, SENDER_NAME_MAX, senderNamePart } from "@shared/sender";
 
@@ -21,7 +21,7 @@ const knobStyle = (on: boolean): string =>
 const switchBtn = (act: string, arg: string | null, on: boolean): string =>
   `<button data-act="${act}"${arg ? ` data-arg="${attr(arg)}"` : ""} role="switch" aria-checked="${on ? "true" : "false"}" style="${trackStyle(on)}"><span style="${knobStyle(on)}"></span></button>`;
 
-const CHEVRON_BG = `var(--bg) url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23888' stroke-width='2'><path d='M2 4l4 4 4-4'/></svg>\") no-repeat right 9px center`;
+const CHEVRON_BG = `var(--surface) url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23888' stroke-width='2'><path d='M2 4l4 4 4-4'/></svg>\") no-repeat right 9px center`;
 const SELECT = `appearance:none;-webkit-appearance:none;padding:5px 28px 5px 11px;border-radius:7px;font-size:12.5px;font-weight:500;border:1px solid var(--border);color:var(--fg-70);background:${CHEVRON_BG};cursor:pointer`;
 const FORM_SELECT = `appearance:none;-webkit-appearance:none;width:100%;height:36px;padding:0 30px 0 12px;border-radius:8px;font-size:12.5px;font-weight:500;${LABEL};border:1px solid var(--border-strong);color:var(--fg);background:${CHEVRON_BG};cursor:pointer`;
 const INPUT = `height:40px;padding:0 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;${LABEL};outline:none`;
@@ -176,13 +176,13 @@ const TIMEZONES = ["America/Los_Angeles", "America/Denver", "America/Chicago", "
 function policyRow(k: PolicyKindView): string {
   const nonOff = k.allowedCadences.filter((c) => c !== "off");
   const opts = nonOff.map((c) => `<option value="${c}"${c === k.default_cadence ? " selected" : ""}>${cadCap(c)}</option>`).join("");
-  return `<div style="display:flex;align-items:center;gap:20px;padding:15px 0;border-bottom:1px solid var(--border)">
-    ${switchBtn("policyToggle", k.id, k.enabled)}
-    <div style="flex:1;min-width:0">
-      <div style="font-size:13.5px;font-weight:500;color:${k.enabled ? "var(--fg)" : "var(--fg-55)"}">${esc(k.label)}</div>
-      <div style="font-size:12px;color:var(--fg-55);margin-top:2px">${esc(k.description)}</div>
+  return `<div class="cnpy-org-row" style="align-items:center;gap:10px 16px">
+    ${switchBtn("policyToggle", k.id, k.enabled).replace("<button ", `<button aria-label="${attr(`${k.label}: send org-wide`)}" `)}
+    <div style="flex:1 1 220px;min-width:0">
+      <div style="font-size:13.5px;font-weight:600;color:${k.enabled ? "var(--fg)" : "var(--fg-55)"}">${esc(k.label)}</div>
+      <div style="font-size:12px;color:var(--fg-40);margin-top:1px">${esc(k.description)}</div>
     </div>
-    <select data-act="policyCadence" data-arg="${attr(k.id)}"${k.enabled ? "" : " disabled"} style="${SELECT}${k.enabled ? "" : ";opacity:.4;pointer-events:none"}">${opts}</select>
+    <select data-act="policyCadence" data-arg="${attr(k.id)}" aria-label="${attr(`${k.label}: default cadence`)}"${k.enabled ? "" : " disabled"} style="${SELECT}${k.enabled ? "" : ";opacity:.4;pointer-events:none"}">${opts}</select>
   </div>`;
 }
 
@@ -193,78 +193,92 @@ function fmtWhen(iso: string | null): string {
   return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
 }
 
+const OUTBOX_GRID = "display:grid;grid-template-columns:1.1fr .6fr 1fr .9fr .9fr;gap:12px;align-items:center;padding:10px 16px";
 function outboxRow(o: NotificationOutboxRow, expanded: boolean): string {
   const failed = o.status === "failed";
-  const statusStyle = `font-size:12.5px;font-weight:${failed ? 600 : 500};color:${o.status === "sent" ? "var(--accent)" : failed ? "var(--fg)" : "var(--fg-55)"};display:inline-flex;align-items:center;gap:6px`;
-  const cells = `<div style="${LABEL};font-size:12.5px;color:var(--fg-70)">${esc(o.user_id)}</div>
+  const status = o.status === "sent" ? chip("Sent", "var(--green)") : failed ? chip("Failed", "var(--red)") : chip(o.status === "pending" ? "Queued" : o.status, "var(--fg-55)");
+  const cells = `<div style="font-size:12.5px;font-weight:500;color:var(--fg-70);min-width:0;overflow:hidden;text-overflow:ellipsis">${esc(o.user_id)}</div>
     <div style="font-size:12.5px;color:var(--fg-55)">${esc(o.cadence)}</div>
-    <div style="${LABEL};font-size:12px;color:var(--fg-55)">${esc(o.window_id)}</div>
-    <div style="${statusStyle}">${esc(o.status)}${failed ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="transform:${expanded ? "rotate(180deg)" : "none"};transition:transform .15s ease;flex:none;color:var(--fg-40)"><path d="m6 9 6 6 6-6"></path></svg>` : ""}</div>
-    <div style="font-size:12px;color:var(--fg-55);text-align:right">${esc(o.status === "pending" ? "queued" : fmtWhen(o.sent_at ?? o.created_at))}</div>`;
-  const grid = "display:grid;grid-template-columns:1.1fr .6fr 1fr .9fr .9fr;gap:12px;align-items:center;padding:11px 0";
+    <div style="font-size:12px;color:var(--fg-55)">${esc(o.window_id)}</div>
+    <div style="display:inline-flex;align-items:center;gap:6px" data-status="${attr(o.status)}">${status}${failed ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" style="transform:${expanded ? "rotate(180deg)" : "none"};transition:transform .15s ease;flex:none;color:var(--fg-40)"><path d="m6 9 6 6 6-6"></path></svg>` : ""}</div>
+    <div style="font-size:12px;color:var(--fg-40);text-align:right">${esc(o.status === "pending" ? "queued" : fmtWhen(o.sent_at ?? o.created_at))}</div>`;
   const row = failed
-    ? `<button data-act="outboxToggle" data-arg="${attr(o.idempotency_key)}" class="cnpy-hoverrow" style="${grid};width:100%;text-align:left">${cells}</button>`
-    : `<div style="${grid}">${cells}</div>`;
+    ? `<button type="button" data-act="outboxToggle" data-arg="${attr(o.idempotency_key)}" aria-expanded="${expanded}" class="cnpy-hoverrow" style="${OUTBOX_GRID};width:100%;box-sizing:border-box;text-align:left">${cells}</button>`
+    : `<div style="${OUTBOX_GRID}">${cells}</div>`;
   const detail = failed && expanded
-    ? `<div style="margin:2px 0 14px;border:1px solid var(--border-strong);border-radius:9px;padding:12px 14px">
-        <div style="${LABEL};font-size:12px;line-height:1.7;color:var(--fg)">${esc(o.error ?? "failed")}</div>
-        <div style="font-size:11.5px;color:var(--fg-40);margin-top:6px">Retried hourly for 48 hours, then left as is. The next window sends normally once the cause is fixed.</div>
+    ? `<div style="margin:0 16px 12px;border:1px solid color-mix(in srgb,var(--red) 40%,transparent);background:color-mix(in srgb,var(--red) 7%,transparent);border-radius:8px;padding:9px 11px">
+        <div style="font-size:12.5px;line-height:1.55;color:var(--fg);overflow-wrap:anywhere">${esc(o.error ?? "failed")}</div>
+        <div style="font-size:11.5px;color:var(--fg-55);margin-top:4px">Retried hourly for 48 hours, then left as is. The next window sends normally once the cause is fixed.</div>
       </div>`
     : "";
-  return `<div style="border-bottom:1px solid var(--border)">${row}${detail}</div>`;
+  return `<div style="border-bottom:1px solid var(--border);margin-bottom:-1px">${row}${detail}</div>`;
 }
 
+const FIELD_LABEL = `display:block;${O_LABEL};margin-bottom:7px`;
+const linkBtn = (text: string, href: string): string =>
+  `<a href="${attr(href)}" target="_blank" rel="noopener" class="cnpy-ghostbtn" style="display:inline-flex;align-items:center;height:32px;padding:0 13px;border-radius:8px;border:1px solid var(--border);font-size:12.5px;font-weight:500;color:var(--fg-70);text-decoration:none;white-space:nowrap;box-sizing:border-box">${esc(text)}</a>`;
+
+/** Org settings › Notifications: the lead (how many digests are on, when and as whom they
+ *  send, what failed), then four sections in the page's one idiom — Digests, Schedule and
+ *  sender, Preview and test, Outbox. */
 export function notificationsAdminSections(p: NotifAdminProps): string {
   const enabled = p.policy.filter((k) => k.enabled).length;
-  const policy = p.policy.length
-    ? p.policy.map(policyRow).join("") +
-      `<div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">Turning a kind off removes it from every member's Settings &mdash; rows there are absent, never greyed.</div>`
-    : maintEmpty("Loading policy…", "");
-
   const s = p.settings;
+  const failed = p.outbox.filter((o) => o.status === "failed").length;
+  const sender = p.fromDraft ?? (s ? senderNamePart(s.from_address) : PLATFORM_SENDER_NAME);
+  const lead = tabLead(`${p.policy.length ? `<strong>${enabled} of ${p.policy.length}</strong> digests on` : "Loading the digests…"}${s ? ` &middot; sent at <strong>${String(s.send_hour).padStart(2, "0")}:00</strong> ${esc(s.timezone)} as <strong>${esc(senderNamePart(s.from_address))}</strong>` : ""}${failed ? ` &middot; <span data-outbox-failed style="color:var(--red);font-weight:500">${failed} recent ${failed === 1 ? "send" : "sends"} failed</span>` : ""}. Each person picks their own cadence in Settings.`);
+
+  const policy = p.policy.length
+    ? `<div${surface("overflow:hidden")}>${p.policy.map(policyRow).join("")}</div>`
+    : `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0">Loading policy…</div>`;
+
   const hours = Array.from({ length: 24 }, (_, h) => `<option value="${h}"${s && s.send_hour === h ? " selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("");
   const tzList = s && !TIMEZONES.includes(s.timezone) ? [s.timezone, ...TIMEZONES] : TIMEZONES;
   const tzs = tzList.map((tz) => `<option value="${attr(tz)}"${s && s.timezone === tz ? " selected" : ""}>${esc(tz)}</option>`).join("");
-  const schedule = `<div class="cnpy-sched" style="display:grid;grid-template-columns:140px 230px minmax(0,1fr);gap:16px;padding:18px 0;border-bottom:1px solid var(--border)">
-    <div>
-      <div style="${LABEL};font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--fg-40);margin-bottom:8px">SEND HOUR</div>
-      <select data-act="schedHour" style="${FORM_SELECT}"${s ? "" : " disabled"}>${hours}</select>
+  const schedule = `<div${surface("padding:16px")}>
+    <div class="cnpy-sched" style="display:grid;grid-template-columns:140px 230px minmax(0,1fr);gap:16px">
+      <div>
+        <label for="sched-hour" style="${FIELD_LABEL}">Send hour</label>
+        <select id="sched-hour" data-act="schedHour" style="${FORM_SELECT}"${s ? "" : " disabled"}>${hours}</select>
+      </div>
+      <div>
+        <label for="sched-tz" style="${FIELD_LABEL}">Timezone</label>
+        <select id="sched-tz" data-act="schedTz" style="${FORM_SELECT}"${s ? "" : " disabled"}>${tzs}</select>
+      </div>
+      <div>
+        <label for="sched-from" style="${FIELD_LABEL}">Sender name</label>
+        <input id="sched-from" data-act="schedFrom" data-field="schedFrom" data-commit="1" maxlength="${SENDER_NAME_MAX}" autocomplete="off" spellcheck="false" value="${attr(p.fromDraft ?? (s ? senderNamePart(s.from_address) : ""))}"${s ? "" : " disabled"}${p.fromError ? ' aria-invalid="true"' : ""} aria-describedby="sched-from-h" title="Letters, digits, spaces and . &amp; ' + _ - , up to ${SENDER_NAME_MAX} characters. Saves when you leave the field." class="cnpy-input" style="width:100%;box-sizing:border-box;height:36px;padding:0 12px;border:1px solid ${p.fromError ? "var(--red)" : "var(--border-strong)"};border-radius:8px;background:transparent;color:var(--fg);font-size:12.5px;font-family:var(--sans);outline:none" />
+        <div id="sched-from-h" data-sender-address style="${O_HELP};overflow-wrap:anywhere">Sent from <span style="color:var(--fg-70)">${esc(sender)} &lt;${PLATFORM_FROM_ADDRESS}&gt;</span>. The address is Trov's and can't be changed.</div>
+        ${p.fromError ? `<div role="alert" data-sender-error style="font-size:11.5px;line-height:1.5;color:var(--red);margin-top:4px">${esc(p.fromError)}</div>` : ""}
+      </div>
     </div>
-    <div>
-      <div style="${LABEL};font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--fg-40);margin-bottom:8px">TIMEZONE</div>
-      <select data-act="schedTz" style="${FORM_SELECT}"${s ? "" : " disabled"}>${tzs}</select>
+  </div>`;
+
+  const tryIt = `<div${surface("overflow:hidden")}>
+    <div class="cnpy-org-row" style="align-items:center">
+      <div style="flex:1 1 240px;min-width:0"><div style="font-size:13.5px;font-weight:600">Preview</div><div style="font-size:12px;color:var(--fg-40);margin-top:1px">Your own digest in a new tab, with live data. Your preferences are ignored.</div></div>
+      <div class="cnpy-org-actions" style="align-items:center">${linkBtn("Daily", tenantHref("/api/notifications/preview?cadence=daily"))}${linkBtn("Weekly", tenantHref("/api/notifications/preview?cadence=weekly"))}${linkBtn("Sample data", tenantHref("/api/notifications/preview?cadence=daily&sample=1"))}</div>
     </div>
-    <div>
-      <label for="sched-from" style="display:block;${LABEL};font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--fg-40);margin-bottom:8px">SENDER NAME</label>
-      <input id="sched-from" data-act="schedFrom" data-field="schedFrom" data-commit="1" maxlength="${SENDER_NAME_MAX}" autocomplete="off" spellcheck="false" value="${attr(p.fromDraft ?? (s ? senderNamePart(s.from_address) : ""))}"${s ? "" : " disabled"}${p.fromError ? ' aria-invalid="true"' : ""} aria-describedby="sched-from-h" class="cnpy-input" style="width:100%;box-sizing:border-box;height:36px;padding:0 12px;border:1px solid ${p.fromError ? "var(--red)" : "var(--border-strong)"};border-radius:8px;background:transparent;color:var(--fg);font-size:12.5px;font-family:var(--sans);outline:none" />
-      <div id="sched-from-h" data-sender-address style="font-size:11.5px;line-height:1.5;color:var(--fg-40);margin-top:6px;overflow-wrap:anywhere">Sent from <span style="color:var(--fg-70)">${esc(p.fromDraft ?? (s ? senderNamePart(s.from_address) : PLATFORM_SENDER_NAME))} &lt;${PLATFORM_FROM_ADDRESS}&gt;</span>. The address is Trov's and can't be changed.</div>
-      ${p.fromError ? `<div role="alert" data-sender-error style="font-size:11.5px;line-height:1.5;color:var(--red);margin-top:4px">${esc(p.fromError)}</div>` : ""}
+    <div class="cnpy-org-row" style="align-items:center">
+      <div style="flex:1 1 240px;min-width:0"><div style="font-size:13.5px;font-weight:600">Send a test to me</div><div style="font-size:12px;color:var(--fg-40);margin-top:1px">Through the real delivery path, to your address; it appears in the outbox. With nothing new it sends sample data.</div></div>
+      <div class="cnpy-org-actions" style="align-items:center">${quietBtn("Daily", "testSend", { arg: "daily", label: "Send me a test of the daily digest" })}${quietBtn("Weekly", "testSend", { arg: "weekly", label: "Send me a test of the weekly digest" })}</div>
     </div>
-  </div>
-  <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">Digests assemble on the hour. A window with nothing to say is skipped, not sent empty. The sender name saves when you leave the field: letters, digits, spaces and . &amp; ' + _ - , up to ${SENDER_NAME_MAX} characters.</div>
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px">
-    <span style="${LABEL};font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">PREVIEW</span>
-    <a href="${attr(tenantHref("/api/notifications/preview?cadence=daily"))}" target="_blank" rel="noopener" class="cnpy-ghostbtn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg);text-decoration:none">Daily</a>
-    <a href="${attr(tenantHref("/api/notifications/preview?cadence=weekly"))}" target="_blank" rel="noopener" class="cnpy-ghostbtn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg);text-decoration:none">Weekly</a>
-    <a href="${attr(tenantHref("/api/notifications/preview?cadence=daily&sample=1"))}" target="_blank" rel="noopener" class="cnpy-ghostbtn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);font-size:12px;font-weight:500;color:var(--fg-55);text-decoration:none">Sample data</a>
-    <span style="width:1px;height:18px;background:var(--border)"></span>
-    <span style="${LABEL};font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">SEND TEST TO ME</span>
-    <button data-act="testSend" data-arg="daily" class="cnpy-accentbtn" style="padding:6px 12px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12px;font-weight:600">Daily</button>
-    <button data-act="testSend" data-arg="weekly" class="cnpy-accentbtn" style="padding:6px 12px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12px;font-weight:600">Weekly</button>
-  </div>
-  <div style="font-size:11.5px;color:var(--fg-40);margin-top:8px">Preview renders your own digest with live data (prefs ignored). A test send goes to your address through the real delivery path and shows up in the outbox below; when nothing has changed it falls back to sample data.</div>`;
+  </div>`;
 
   // `.cnpy-hscroll`: at phone width the five columns keep their room and scroll sideways.
   const outbox = p.outbox.length
-    ? `<div class="cnpy-hscroll"><div><div style="display:grid;grid-template-columns:1.1fr .6fr 1fr .9fr .9fr;gap:12px;padding:10px 0 8px;border-bottom:1px solid var(--border);${LABEL};font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">
-        <div>USER</div><div>CADENCE</div><div>WINDOW</div><div>STATUS</div><div style="text-align:right">AT</div>
-      </div>` + p.outbox.map((o) => outboxRow(o, p.outboxExpanded === o.idempotency_key)).join("") + `</div></div>`
-    : maintEmpty("No sends yet", "Runs appear here after the first scheduled window.");
+    ? `<div${surface("overflow:hidden")}><div class="cnpy-hscroll"><div><div style="${OUTBOX_GRID};padding-top:11px;padding-bottom:8px;border-bottom:1px solid var(--border);${O_LABEL};font-size:10px">
+        <div>User</div><div>Cadence</div><div>Window</div><div>Status</div><div style="text-align:right">At</div>
+      </div>` + p.outbox.map((o) => outboxRow(o, p.outboxExpanded === o.idempotency_key)).join("") + `</div></div></div>`
+    : orgEmpty("No sends yet", "Runs appear here after the first scheduled window.");
 
-  return `${maintSectionHeader("NOTIFICATIONS · POLICY", "which digests exist org-wide, and their default cadence", `${enabled} of ${p.policy.length} enabled`, false)}
+  return `${lead}
+    ${orgHead("Digests", "Turning one off removes it from everyone's Settings", null)}
     ${policy}
-    ${maintSectionHeader("NOTIFICATIONS · SCHEDULE", "one send per user per window", "", false)}
+    ${orgHead("Schedule and sender", "One send per person per window, on the hour; an empty window is skipped")}
     ${schedule}
-    ${maintSectionHeader("NOTIFICATIONS · OUTBOX", "recent runs, newest first", p.outbox.length ? `${p.outbox.length} run${p.outbox.length === 1 ? "" : "s"}` : "", false)}
+    ${orgHead("Preview and test")}
+    ${tryIt}
+    ${orgHead("Outbox", "Newest first", p.outbox.length)}
     ${outbox}`;
 }

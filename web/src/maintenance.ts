@@ -70,17 +70,6 @@ function pickChip(label: string, on: boolean, act: string, arg: string, mono = f
   return `<button data-act="${attr(act)}" data-arg="${attr(arg)}" style="${st}">${esc(label)}</button>`;
 }
 
-/** A label-face section header with a hint and a count (Org settings › Notifications uses it). */
-export function maintSectionHeader(label: string, hint: string, countLabel: string, first: boolean): string {
-  return `<div style="display:flex;align-items:baseline;justify-content:space-between;margin-top:${first ? "38px" : "44px"};padding-bottom:9px;border-bottom:1px solid var(--border-strong)">
-    <div style="display:flex;align-items:baseline;gap:10px">
-      <div style="font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--fg-55)">${esc(label)}</div>
-      <div style="font-size:11.5px;color:var(--fg-40)">${esc(hint)}</div>
-    </div>
-    <div style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40)">${esc(countLabel)}</div>
-  </div>`;
-}
-
 /** A dashed, centred empty-state card (the normal state of this queue). */
 export function maintEmpty(title: string, sub: string): string {
   return `<div style="display:flex;justify-content:center;padding:56px 0"><div style="border:1px dashed var(--border-strong);border-radius:13px;padding:36px 44px;text-align:center;max-width:380px"><div style="font-size:15px;font-weight:600;color:var(--fg-70)">${esc(title)}</div><div style="font-size:12.5px;color:var(--fg-40);margin-top:6px">${esc(sub)}</div></div></div>`;

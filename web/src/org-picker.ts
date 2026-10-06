@@ -283,28 +283,27 @@ export function orgPickerView(p: OrgPickerProps): string {
   const google = ids.find((i) => i.provider === "google");
   const askFor = gh && google ? `your GitHub login (${gh.label}) or your email (${google.label})` : gh ? `your GitHub login (${gh.label})` : google ? `your email (${google.label})` : "your GitHub login or email";
   const canCreate = p.orgs?.can_create === true;
-  const createBlock = !p.orgs ? ""
-    : `${sectionHead(orgs.length ? "Start another" : invites.length ? "Or start your own" : "Get started", 0)}
-      <div${surface("padding:16px 18px;display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap")}>
-        <div style="flex:1 1 240px;min-width:0">
-          <div style="font-size:13.5px;font-weight:600">${nothing ? "Create an organization for your team" : "Create an organization"}</div>
-          <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:2px">${canCreate ? "You become its owner. Then connect a repository and invite your team." : esc(orgCapSentence(p.orgs))}</div>
-        </div>
-        ${canCreate ? accentBtn("Create an organization", "orgsCreateOpen", { field: "orgsCreateOpen", extra: "height:36px" }) : ""}
+  // What else can be done from here, in ONE surface: start an organization, wait for an
+  // invitation, run the platform. Creating is the page's primary action (the accent button)
+  // only for someone with no organization to open; otherwise opening one is, and this is quiet.
+  const optRow = (title: string, sub: string, action: string, attrs = "") => `<li class="cnpy-orgs-opt"${attrs}>
+      <div style="flex:1 1 240px;min-width:0">
+        <div style="font-size:13.5px;font-weight:600">${title}</div>
+        <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:1px;overflow-wrap:anywhere">${sub}</div>
       </div>
-      ${nothing ? `<div${surface("padding:16px 18px;margin-top:10px")}>
-        <div style="font-size:13.5px;font-weight:600">Or wait for an invitation</div>
-        <div style="font-size:12.5px;line-height:1.55;color:var(--fg-55);margin-top:2px;overflow-wrap:anywhere">If your team already uses Trov, ask one of its admins to invite ${esc(askFor)}. The invitation appears on this page the next time you open it.</div>
-      </div>` : ""}`;
-
-  const platformBlock = p.superadmin ? `${sectionHead("Platform", 0)}
-      <div${surface("padding:16px 18px;display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap")} data-orgs-platform>
-        <div style="flex:1 1 240px;min-width:0">
-          <div style="font-size:13.5px;font-weight:600">Run this Trov</div>
-          <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:2px">You are a superadmin. Add an organization and name its admin, suspend one, and see usage. You do not need to belong to an organization.</div>
-        </div>
-        <a href="${PLATFORM_HREF}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;height:36px;padding:0 14px;border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;font-weight:600;color:var(--fg-70);text-decoration:none;white-space:nowrap;box-sizing:border-box">Open Platform</a>
-      </div>` : "";
+      ${action}
+    </li>`;
+  const createBtn = !canCreate ? ""
+    : orgs.length === 0 ? accentBtn("Create an organization", "orgsCreateOpen", { field: "orgsCreateOpen", extra: "height:36px" })
+    : quietBtn("Create an organization", "orgsCreateOpen", { field: "orgsCreateOpen", extra: "height:36px;color:var(--fg)" });
+  const options = [
+    p.orgs ? optRow(nothing ? "Create an organization for your team" : "Create an organization", canCreate ? "You become its owner. Then connect a repository and invite your team." : esc(orgCapSentence(p.orgs)), createBtn) : "",
+    p.orgs && nothing ? optRow("Or wait for an invitation", `If your team already uses Trov, ask one of its admins to invite ${esc(askFor)}. The invitation appears on this page the next time you open it.`, "") : "",
+    p.superadmin ? optRow("Platform", "You are a superadmin: add an organization and name its admin, suspend one, and see usage. No membership needed.",
+      `<a href="${PLATFORM_HREF}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;height:36px;padding:0 14px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;font-weight:500;color:var(--fg-70);text-decoration:none;white-space:nowrap;box-sizing:border-box">Open Platform</a>`, " data-orgs-platform") : "",
+  ].filter(Boolean).join("");
+  const createBlock = options ? `${sectionHead(orgs.length ? "More" : invites.length ? "Or start your own" : "Get started", 0)}<ul${surface("overflow:hidden;list-style:none;margin:0;padding:0")}>${options}</ul>` : "";
+  const platformBlock = "";
 
   const state = loading ? `<div style="font-size:12.5px;color:var(--fg-40);padding:22px 0 0">Loading your organizations&hellip;</div>`
     : p.status === "error" && !p.orgs ? `<div role="alert" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--fg-55);padding:22px 0 0">Couldn't load your invitations. Check your connection, then ${quietBtn("Try again", "orgsReload")}</div>` : "";

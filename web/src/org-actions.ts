@@ -202,6 +202,7 @@ export function createOrgController(host: OrgHost): OrgController {
       deleteOrgEnvironment(o.slug, arg)
         .then((r) => {
           ui().envs = { status: "ok", data: r.environments };
+          if (ui().envEdit?.key === arg) ui().envEdit = null;   // Delete is in the edit form's footer
           const n = r.removed_secrets.length;
           done(n ? `Deleted ${label} and ${n === 1 ? "its secret" : `its ${n} secrets`}` : `Deleted ${label}`);
           loadAdmin();
@@ -657,6 +658,11 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgSecretSave": saveSecret(); return;
       case "orgSecretTest": if (admin && arg) testSecret(arg); return;
       case "orgAuditToggle": u.auditOpen = !u.auditOpen; break;
+      // A row's details (org-ui.ts `openRow`): any number may be open at once.
+      case "orgRowToggle":
+        if (!arg) return;
+        u.openRows = u.openRows.includes(arg) ? u.openRows.filter((k) => k !== arg) : [...u.openRows, arg];
+        break;
 
       // The confirmation modal
       case "orgConfirm": {

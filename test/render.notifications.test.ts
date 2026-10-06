@@ -140,8 +140,11 @@ describe("notificationsAdminSections", () => {
 
   it("policy rows carry a switch, a cadence select limited to allowed non-off cadences, disabled when off", () => {
     const v = notificationsAdminSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: null });
-    expect(v).toContain("NOTIFICATIONS · POLICY");
-    expect(v).toContain("1 of 2 enabled");
+    // The lead says the state in one sentence; the section is an eyebrow, like every other.
+    expect(v).toContain("<strong>1 of 2</strong> digests on");
+    expect(v).toMatch(/class="cnpy-sechead"><h2[^>]*>Digests<\/h2>/);
+    expect(v).toContain('aria-label="My Work: send org-wide"');
+    expect(v).toContain('aria-label="My Work: default cadence"');
     expect(v).toContain('data-act="policyToggle" data-arg="my_work"');
     const selectOf = (id: string) => { const i = v.indexOf(`data-act="policyCadence" data-arg="${id}"`); return v.slice(i, v.indexOf("</select>", i)); };
     const mw = selectOf("my_work");
@@ -153,11 +156,14 @@ describe("notificationsAdminSections", () => {
 
   it("schedule shows the current hour, timezone and from address as editable controls", () => {
     const v = notificationsAdminSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: null });
-    expect(v).toContain("NOTIFICATIONS · SCHEDULE");
+    expect(v).toMatch(/<h2[^>]*>Schedule and sender<\/h2>/);
+    expect(v).toContain("sent at <strong>08:00</strong> America/New_York as <strong>Trov</strong>");
+    expect(v).toContain('<label for="sched-hour"');
+    expect(v).toContain('<label for="sched-tz"');
     expect(v).toMatch(/<option value="8" selected>08:00<\/option>/);
     expect(v).toMatch(/<option value="America\/New_York" selected>/);
     // The sender field takes a NAME only — whatever address is stored, the one shown is the platform's.
-    expect(v).toContain("SENDER NAME");
+    expect(v).toMatch(/<label for="sched-from"[^>]*>Sender name<\/label>/);
     expect(v).toMatch(/<input id="sched-from" data-act="schedFrom"[^>]*maxlength="64"[^>]*value="Trov"/);
     expect(v).not.toContain("c@mail.example");
     expect(v).toContain("Trov &lt;hello@trov.dev&gt;");
@@ -189,7 +195,13 @@ describe("notificationsAdminSections", () => {
 
   it("outbox lists rows newest first with status; a failed row expands to its error", () => {
     const collapsed = notificationsAdminSections({ policy, settings, outbox, outboxExpanded: null, fromDraft: null });
-    expect(collapsed).toContain("2 runs");
+    expect(collapsed).toMatch(/<h2[^>]*>Outbox<\/h2><span class="cnpy-badge" data-n="2">2<\/span>/);
+    // A failure is in the lead (seen without scrolling) and on its row, in words.
+    expect(collapsed).toContain("data-outbox-failed");
+    expect(collapsed).toContain("1 recent send failed");
+    expect(collapsed).toMatch(/data-status="failed">[\s\S]*?>Failed<\/span>/);
+    expect(collapsed).toMatch(/data-status="sent">[\s\S]*?>Sent<\/span>/);
+    expect(collapsed).toContain('aria-expanded="false"');
     expect(collapsed).toContain('data-act="outboxToggle" data-arg="dev:daily:2026-09-11"');
     expect(collapsed).not.toContain("mailbox unavailable");
     const expanded = notificationsAdminSections({ policy, settings, outbox, outboxExpanded: "dev:daily:2026-09-11", fromDraft: null });
