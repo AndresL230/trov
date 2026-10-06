@@ -51,6 +51,9 @@ import {
 } from "./artifacts";
 import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
+// Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
+import { orgSettingsView, orgOverlays, orgPeopleLink, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
+import type { MyOrgsResponse } from "@shared/orgs";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -75,7 +78,9 @@ export type Screen =
   // Docs › New doc.
   | "newdoc"
   // Help › What's new: the release grid, and each release's notes / patch notes (releases.ts, static data).
-  | "releases";
+  | "releases"
+  // Org settings: one screen, five tabs (`#org[/<tab>]`, web/src/org-settings.ts).
+  | "org";
 
 /** Async data slice: a screen's fetched payload plus its load status. */
 export interface Loadable<T> {
@@ -363,6 +368,11 @@ export interface AppState {
   avatarBusy: "upload" | "remove" | null;
   /** Settings › Profile: the photo menu the avatar opens (upload / change / remove). */
   avatarMenu: boolean;
+  // ── Org settings (web/src/org-settings.ts) ─────────────────────────────────
+  /** `GET /api/orgs`: my orgs (with my role in each), my invites, the superadmin flag. */
+  myOrgs: Loadable<MyOrgsResponse | null>;
+  /** Org settings' own state. It never holds a secret's value (org-actions.ts). */
+  org: OrgUi;
 }
 
 /** Sync GitHub modal state: "starting" from the click until the first batch
@@ -487,6 +497,8 @@ export function initialState(): AppState {
     personSaving: false,
     avatarBusy: null,
     avatarMenu: false,
+    myOrgs: { status: "idle", data: null },
+    org: initialOrgUi(),
   };
 }
 
@@ -733,6 +745,7 @@ function header(s: AppState): string {
     prompts: "Prompt Library", prompt: "Prompt Library", promptedit: "Prompt Library",
     newdoc: "Docs",
     releases: "What's new",
+    org: "Org settings",
   };
   // dark = "show the moon icon".
   const dark = resolved(s) !== "light";
@@ -2164,7 +2177,7 @@ function maintenanceScreen(s: AppState): string {
   // People: the directory for everyone; invites (and the admin-only email
   // notification sections that used to close the single column) for admins.
   const admin = s.me?.admin === true;
-  const people = s.maintTab !== "people" ? "" : peopleSection({
+  const people = s.maintTab !== "people" ? "" : orgPeopleLink() + peopleSection({
     persons: s.persons.data,
     invites: admin ? s.invites.data : [],
     inviteDraft: s.inviteDraft,
@@ -2307,8 +2320,15 @@ function screenBody(s: AppState): string {
     });
     case "promptedit": return promptEditorView({ draft: s.promptEd, takenSlugs: s.promptList.data.map((p) => p.slug) });
     case "newdoc": return newDocView({ draft: s.nd, spaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })), sections: ASSIGN_OPTIONS.sections });
+    case "org": return orgSettingsView(orgProps(s));
     default: return feedView(s);
   }
+}
+
+/** Project the app state onto Org settings' props. The current org is `currentOrg` — one place. */
+function orgProps(s: AppState): OrgSettingsProps {
+  const status = s.myOrgs.status === "unauth" ? "error" : s.myOrgs.status;
+  return { org: currentOrg(s.myOrgs.data), orgsStatus: status, me: s.me?.handle ?? "", ui: s.org };
 }
 
 /** Project the app state onto the Repo dashboard's props (its components never see AppState). */
@@ -2403,6 +2423,7 @@ export function render(s: AppState): string {
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
+    ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}

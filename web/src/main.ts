@@ -67,6 +67,7 @@ import {
 } from "./artifacts";
 import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
+import { createOrgController } from "./org-actions";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
@@ -82,6 +83,9 @@ const qs = createQuickSearch({
   theme: () => resolvedTheme(),
   railCollapsed: () => railCollapsed(state), // on a phone the drawer is the full, expanded rail
 });
+
+// Org settings (web/src/org-actions.ts): every `org…` act, its loads, and the secret form's draft.
+const orgCtl = createOrgController({ state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then) });
 
 // ── persisted client prefs (theme + sidebar only; not backend state) ─────────
 migrateBrowserStorage(); // canopy.* → trov.* (the rename) before the first read
@@ -288,6 +292,7 @@ function rerender(): void {
   restoreScroll(mount, scroll, state.screen);
   markEnter();
   syncRoleEdit();
+  orgCtl.afterPaint();
   if (pendingFlash) {
     for (const el of Array.from(mount.querySelectorAll(pendingFlash))) el.classList.add("cnpy-flash");
     pendingFlash = null;
@@ -439,6 +444,7 @@ function currentRoute(): Route {
     if (state.promptMode !== "new" && state.promptSlug) r.promptSlug = state.promptSlug;
   }
   if (state.screen === "maintenance") r.maintTab = state.maintTab;
+  if (state.screen === "org") r.orgTab = state.org.tab;
   return r;
 }
 function applyRoute(r: Route): void {
@@ -463,6 +469,7 @@ function applyRoute(r: Route): void {
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
   if (r.maintTab) state.maintTab = r.maintTab;
+  if (r.orgTab) state.org.tab = r.orgTab;
 }
 
 // Kick off the data load for a screen (mirrors the go* dispatch cases).
@@ -486,6 +493,7 @@ function loadForScreen(screen: Screen): void {
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
     case "settings": loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); break;
     case "unsubscribe": runUnsubscribe(); break;
+    case "org": orgCtl.load(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
     case "newticket": loadSprintsIfNeeded(); rerender(); break;
@@ -3449,6 +3457,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "inviteRevoke": { if (!arg) return; revokeInvite(arg).then(() => { flash("Invite revoked"); loadInvites(); }).catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } flash("Couldn't revoke"); }); return; }
 
     default:
+      // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
+      if (act.startsWith("org")) { orgCtl.act(act, arg, value); return; }
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;
