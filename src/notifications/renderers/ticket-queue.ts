@@ -1,7 +1,7 @@
 import type { NotificationKind, Section, Window } from "@shared/notifications";
 import type { TicketCategory, TicketPriority, TicketStatus } from "@shared/tickets";
 import { TICKET_STATUS_LABEL } from "@shared/tickets";
-import { type DB, all } from "../../db";
+import { type TenantContext, all } from "../../data/sql";
 import { listAssignedTickets } from "../../tools/mywork";
 import { escapeHtml } from "../html";
 import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP, type ChipTone } from "../assemble";
@@ -47,16 +47,18 @@ interface UnassignedRow {
  * the top of the list is the thing filed most recently. NATIVE tickets only: a
  * mirrored ticket (0032) is a GitHub issue, and GitHub's own triage covers it.
  */
-async function unassignedTickets(db: DB): Promise<UnassignedRow[]> {
+async function unassignedTickets(ctx: TenantContext): Promise<UnassignedRow[]> {
   return all<UnassignedRow>(
-    db,
+    ctx,
     `SELECT t.id, t.title, t.category, t.priority, t.created_at, t.requester,
             COALESCE(NULLIF(p.name, ''), t.requester) AS requester_name
        FROM tickets t
        LEFT JOIN persons p ON p.handle = t.requester
-      WHERE t.status = 'submitted' AND t.source = 'canopy'
-        AND NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.ticket_id = t.id)
-      ORDER BY t.created_at DESC, t.id DESC`
+      WHERE t.org_id = ? AND t.status = 'submitted' AND t.source = 'canopy'
+        AND NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.ticket_id = t.id AND a.org_id = ?)
+      ORDER BY t.created_at DESC, t.id DESC`,
+    ctx.orgId,
+    ctx.orgId
   );
 }
 
@@ -68,9 +70,9 @@ async function unassignedTickets(db: DB): Promise<UnassignedRow[]> {
  * mirrored ticket (already a GitHub issue) is never mailed twice; My Work lists
  * both sources. Pure read; null when both halves are empty.
  */
-async function render(db: DB, handle: string, window: Window): Promise<Section | null> {
-  const unassigned = await unassignedTickets(db);
-  const mine = await listAssignedTickets(db, handle, { sources: "canopy" });
+async function render(ctx: TenantContext, handle: string, window: Window): Promise<Section | null> {
+  const unassigned = await unassignedTickets(ctx);
+  const mine = await listAssignedTickets(ctx, handle, { sources: "canopy" });
   if (unassigned.length === 0 && mine.length === 0) return null;
 
   const html: string[] = [];
@@ -136,7 +138,7 @@ async function render(db: DB, handle: string, window: Window): Promise<Section |
   return { heading: "Ticket queue", summary, html: html.join(""), text: text.join("\n"), deepLink: DEEP_LINK, linkLabel: "Tickets" };
 }
 
-export const ticketQueueKind: NotificationKind<DB> = {
+export const ticketQueueKind: NotificationKind<TenantContext> = {
   id: "ticketq",
   label: "Ticket queue",
   description: "New and unassigned tickets across the org.",

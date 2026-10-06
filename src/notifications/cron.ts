@@ -4,21 +4,22 @@
 // only when the org-local hour equals send_hour on the right weekday.
 import type { RunCadence } from "@shared/notifications";
 import type { NotificationSettingsRow } from "@shared/rows";
-import { type DB, first } from "../db";
+import { type TenantContext, first } from "../data/sql";
 import type { Env } from "../env";
-import { legacyDb, legacySystemTenant } from "../data/legacy";
+import { platform } from "../data/context";
+import { legacySystemTenant } from "../data/legacy";
 import { localDate } from "./window";
 import { runDigest, type RunReport } from "./run";
 import { retryFailed, type RetryReport } from "./retry";
 import { deliveryFor } from "./resend";
 import { unsubscribeUrl } from "./unsubscribe";
-import { LEGACY_ORG_ID } from "../legacy-org";
 
 export const DAILY_CRON = "0 * * * *";     // hourly, every day — gated to Mon–Fri local
 export const WEEKLY_CRON = "0 * * * SUN,MON";  // hourly Sun+Mon UTC — gated to Monday local
 
-export const DEFAULT_SETTINGS: NotificationSettingsRow = {
-  org_id: LEGACY_ORG_ID, send_hour: 8, timezone: "America/New_York", from_address: "Trov <hello@trov.dev>",
+/** What an org with no settings row runs on. */
+export const DEFAULT_SETTINGS: Omit<NotificationSettingsRow, "org_id"> = {
+  send_hour: 8, timezone: "America/New_York", from_address: "Trov <hello@trov.dev>",
 };
 
 export function dueCadence(cron: string, now: Date, settings: Pick<NotificationSettingsRow, "send_hour" | "timezone">): RunCadence | null {
@@ -29,8 +30,9 @@ export function dueCadence(cron: string, now: Date, settings: Pick<NotificationS
   return null;
 }
 
-export async function loadSettings(db: DB): Promise<NotificationSettingsRow> {
-  return (await first<NotificationSettingsRow>(db, `SELECT * FROM notification_settings WHERE org_id = ?`, LEGACY_ORG_ID)) ?? DEFAULT_SETTINGS;
+export async function loadSettings(ctx: TenantContext): Promise<NotificationSettingsRow> {
+  return (await first<NotificationSettingsRow>(ctx, `SELECT * FROM notification_settings WHERE org_id = ?`, ctx.orgId))
+    ?? { org_id: ctx.orgId, ...DEFAULT_SETTINGS };
 }
 
 /**
@@ -41,15 +43,16 @@ export async function handleNotificationCron(env: Env, cron: string, now: Date):
   // MT: one digest run, one org — the legacy org, as system. Phase 5b runs it per org, each on its own
   // send_hour + timezone (§8.4).
   const ctx = legacySystemTenant(env, "system");
-  const settings = await loadSettings(legacyDb(ctx));
+  const p = platform(env, "system");
+  const settings = await loadSettings(ctx);
   const origin = env.PUBLIC_ORIGIN ?? "";
   const cadence = dueCadence(cron, now, settings);
   const opts = {
-    delivery: deliveryFor(env, { from: settings.from_address }),
+    delivery: deliveryFor(ctx, env, { from: settings.from_address }),
     origin,
     unsubscribeUrl: (login: string) => unsubscribeUrl(origin, login, env.COOKIE_SECRET),
   };
-  const run = cadence ? await runDigest(legacyDb(ctx), cadence, now, opts) : null;
-  const retry = cron === DAILY_CRON ? await retryFailed(legacyDb(ctx), opts) : null;
+  const run = cadence ? await runDigest(ctx, p, cadence, now, opts) : null;
+  const retry = cron === DAILY_CRON ? await retryFailed(ctx, p, opts) : null;
   return { run, retry };
 }

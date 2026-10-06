@@ -45,6 +45,7 @@ export interface MyWorkTodo {
  */
 export interface MyWorkTicket {
   id: number;
+  number: number; // the per-org display number (`#12`); `id` is the internal key
   title: string;
   body: string; // the ticket's description, rendered as escaped prose (never markdown)
   category: TicketCategory;

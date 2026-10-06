@@ -1,5 +1,5 @@
 import type { SprintRow, SprintProgressRow } from "@shared/rows";
-import { type DB, all, run, nowIso } from "../db";
+import { type TenantContext, all, run, nowIso } from "../data/sql";
 import { progressFromIssueEvent } from "../webhook";
 import { isIssueGone } from "./issue-gone";
 
@@ -64,24 +64,27 @@ export async function fetchGithubRefProgress(opts: {
 /**
  * Absolute overwrite of one sprint's cached progress. `closed`/`total` are
  * always the FULL current counts (never deltas), so replays and out-of-order
- * writes are all safe — the last write simply wins.
+ * writes are all safe — the last write simply wins. The cache is keyed by the
+ * sprint's (global) id, so the overwrite is confined to this org's own row.
  */
 export async function upsertProgress(
-  db: DB,
+  ctx: TenantContext,
   sprintId: number,
   closed: number,
   total: number,
   source: "event" | "recompute"
 ): Promise<void> {
   await run(
-    db,
-    `INSERT INTO sprint_progress (sprint_id, closed, total, source, computed_at)
-     VALUES (?, ?, ?, ?, ?)
+    ctx,
+    `INSERT INTO sprint_progress (org_id, sprint_id, closed, total, source, computed_at)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(sprint_id) DO UPDATE SET
        closed = excluded.closed,
        total = excluded.total,
        source = excluded.source,
-       computed_at = excluded.computed_at`,
+       computed_at = excluded.computed_at
+     WHERE sprint_progress.org_id = excluded.org_id`,
+    ctx.orgId,
     sprintId,
     closed,
     total,
@@ -91,8 +94,8 @@ export async function upsertProgress(
 }
 
 /** The full progress cache, keyed by sprint id. */
-export async function getProgress(db: DB): Promise<Map<number, SprintProgressRow>> {
-  const rows = await all<SprintProgressRow>(db, `SELECT * FROM sprint_progress`);
+export async function getProgress(ctx: TenantContext): Promise<Map<number, SprintProgressRow>> {
+  const rows = await all<SprintProgressRow>(ctx, `SELECT * FROM sprint_progress WHERE org_id = ?`, ctx.orgId);
   return new Map(rows.map((r) => [r.sprint_id, r]));
 }
 
@@ -103,7 +106,7 @@ function latestIssueSnapshotSql(count: number): string {
   return `
     SELECT ref_number, raw FROM (
       SELECT ref_number, raw, ROW_NUMBER() OVER (PARTITION BY ref_number ORDER BY occurred_at DESC, id DESC) rn
-      FROM events WHERE event_type = 'issue' AND ref_number IN (${placeholders})
+      FROM events WHERE org_id = ? AND event_type = 'issue' AND ref_number IN (${placeholders})
     ) WHERE rn = 1
   `;
 }
@@ -122,16 +125,17 @@ function latestIssueSnapshotSql(count: number): string {
  *
  * Never throws on a malformed payload — both branches simply no-op.
  */
-export async function applyEventProgress(db: DB, payload: unknown): Promise<void> {
+export async function applyEventProgress(ctx: TenantContext, payload: unknown): Promise<void> {
   const derived = progressFromIssueEvent(payload);
   if (derived) {
     const matches = await all<SprintRow>(
-      db,
-      `SELECT * FROM sprints WHERE github_ref = ?`,
+      ctx,
+      `SELECT * FROM sprints WHERE org_id = ? AND github_ref = ?`,
+      ctx.orgId,
       JSON.stringify(derived.groupNumber)   // the GitHub issue-group number
     );
     for (const sp of matches) {
-      await upsertProgress(db, sp.id, derived.closed, derived.total, "event");
+      await upsertProgress(ctx, sp.id, derived.closed, derived.total, "event");
     }
   }
 
@@ -141,7 +145,7 @@ export async function applyEventProgress(db: DB, payload: unknown): Promise<void
       : undefined;
   if (typeof issueNumber !== "number") return;
 
-  const candidates = await all<SprintRow>(db, `SELECT * FROM sprints WHERE github_ref IS NOT NULL`);
+  const candidates = await all<SprintRow>(ctx, `SELECT * FROM sprints WHERE org_id = ? AND github_ref IS NOT NULL`, ctx.orgId);
   for (const sp of candidates) {
     let ref: unknown;
     try {
@@ -151,7 +155,9 @@ export async function applyEventProgress(db: DB, payload: unknown): Promise<void
     }
     if (!Array.isArray(ref) || !ref.includes(issueNumber)) continue;
 
-    const rows = ref.length > 0 ? await all<{ ref_number: number; raw: string }>(db, latestIssueSnapshotSql(ref.length), ...ref) : [];
+    const rows = ref.length > 0
+      ? await all<{ ref_number: number; raw: string }>(ctx, latestIssueSnapshotSql(ref.length), ctx.orgId, ...ref)
+      : [];
     let closed = 0;
     for (const row of rows) {
       try {
@@ -163,7 +169,7 @@ export async function applyEventProgress(db: DB, payload: unknown): Promise<void
         // malformed snapshot — treat as not-closed rather than throw
       }
     }
-    await upsertProgress(db, sp.id, closed, ref.length, "event");
+    await upsertProgress(ctx, sp.id, closed, ref.length, "event");
   }
 }
 
@@ -174,10 +180,10 @@ export async function applyEventProgress(db: DB, payload: unknown): Promise<void
  * row untouched — this never wipes progress, and never 500s.
  */
 export async function recomputeAllProgress(
-  db: DB,
+  ctx: TenantContext,
   opts: { token: string; repo: string; fetchImpl?: typeof fetch }
 ): Promise<{ updated: number }> {
-  const sprints = await all<SprintRow>(db, `SELECT * FROM sprints WHERE github_ref IS NOT NULL`);
+  const sprints = await all<SprintRow>(ctx, `SELECT * FROM sprints WHERE org_id = ? AND github_ref IS NOT NULL`, ctx.orgId);
   let updated = 0;
   for (const sp of sprints) {
     const progress = await fetchGithubRefProgress({
@@ -187,7 +193,7 @@ export async function recomputeAllProgress(
       fetchImpl: opts.fetchImpl,
     });
     if (progress) {
-      await upsertProgress(db, sp.id, progress.closed, progress.total, "recompute");
+      await upsertProgress(ctx, sp.id, progress.closed, progress.total, "recompute");
       updated++;
     }
   }

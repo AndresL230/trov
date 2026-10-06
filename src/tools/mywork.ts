@@ -1,7 +1,9 @@
 import type { DashboardData, MyWorkPr, MyWorkTodo, MyWorkTicket } from "@shared/dashboard";
 import type { EventRow, PersonRow } from "@shared/rows";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
-import { type DB, all, first } from "../db";
+import { type TenantContext, all, first } from "../data/sql";
+import { type PlatformContext, first as platformFirst } from "../data/platform-sql";
+import { legacyDb } from "../data/legacy";
 import { getPerson, listIdentities } from "../auth/persons";
 import { isIssueGone } from "./issue-gone";
 
@@ -31,8 +33,8 @@ export function stripPriority(title: string): string {
 }
 
 /** The person a GitHub login belongs to, via the github identity row; null when unmapped. */
-export async function resolvePersonForLogin(db: DB, login: string): Promise<PersonRow | null> {
-  return first<PersonRow>(db,
+export async function resolvePersonForLogin(p: PlatformContext, login: string): Promise<PersonRow | null> {
+  return platformFirst<PersonRow>(p,
     `SELECT p.* FROM identities i JOIN persons p ON p.handle = i.person WHERE i.provider = 'github' AND i.subject = ?`, login);
 }
 
@@ -69,10 +71,11 @@ interface RawIssue {
  * is a list of issue numbers and claims no group). First sprint wins if two
  * claim the same number; a malformed ref claims nothing.
  */
-async function sprintTitlesByGroupNumber(db: DB): Promise<Map<number, string>> {
+async function sprintTitlesByGroupNumber(ctx: TenantContext): Promise<Map<number, string>> {
   const rows = await all<{ title: string; github_ref: string }>(
-    db,
-    `SELECT title, github_ref FROM sprints WHERE github_ref IS NOT NULL ORDER BY id ASC`
+    ctx,
+    `SELECT title, github_ref FROM sprints WHERE org_id = ? AND github_ref IS NOT NULL ORDER BY id ASC`,
+    ctx.orgId
   );
   const out = new Map<number, string>();
   for (const r of rows) {
@@ -117,19 +120,21 @@ export function toMyWorkPr(row: PrEventJoinRow): MyWorkPr {
  * candidate). `logins` is every GitHub identity of one person (usually one).
  * The dashboard caps this; the email renderer lists it whole.
  */
-export async function listOpenAssignedIssues(db: DB, logins: string[]): Promise<MyWorkTodo[]> {
+export async function listOpenAssignedIssues(ctx: TenantContext, logins: string[]): Promise<MyWorkTodo[]> {
   const issueRows = await all<IssueSnapshotRow>(
-    db,
+    ctx,
     `SELECT e.ref_number, e.raw, s.summary AS summary, s.title AS s_title, s.next_step AS s_next_step
      FROM (
        SELECT ref_number, raw, ROW_NUMBER() OVER (PARTITION BY ref_number ORDER BY occurred_at DESC, id DESC) rn
-       FROM events WHERE event_type = 'issue'
+       FROM events WHERE org_id = ? AND event_type = 'issue'
      ) e
-     LEFT JOIN issue_summaries s ON s.issue_number = e.ref_number
+     LEFT JOIN issue_summaries s ON s.issue_number = e.ref_number AND s.org_id = ?
      WHERE e.rn = 1
-     ORDER BY e.ref_number ASC`
+     ORDER BY e.ref_number ASC`,
+    ctx.orgId,
+    ctx.orgId
   );
-  const sprintByGroup = await sprintTitlesByGroupNumber(db);
+  const sprintByGroup = await sprintTitlesByGroupNumber(ctx);
   const todo: MyWorkTodo[] = [];
   for (const row of issueRows) {
     const parsed = JSON.parse(row.raw) as RawIssue;
@@ -167,6 +172,7 @@ export async function listOpenAssignedIssues(db: DB, logins: string[]): Promise<
 
 interface AssignedTicketRow {
   id: number;
+  number: number;
   title: string;
   body: string;
   category: MyWorkTicket["category"];
@@ -193,11 +199,13 @@ export interface AssignedTicketOpts { limit?: number; sources?: AssignedTicketSo
 
 // The shared FROM/WHERE of the list and its count, so the two can never disagree.
 // (The sprint LEFT JOIN is on a primary key, so it never changes the count.)
+// Binds, in order: org, handle, org, org — `assignedBinds`.
 const assignedFrom = (sources: AssignedTicketSources): string =>
   `FROM tickets t
-       JOIN ticket_assignees a ON a.ticket_id = t.id AND a.login = ? COLLATE NOCASE
-       LEFT JOIN sprints s ON s.id = t.sprint_id
-      WHERE t.status IN ${OPEN_STATUS_SQL}${sources === "canopy" ? " AND t.source = 'canopy'" : ""}`;
+       JOIN ticket_assignees a ON a.ticket_id = t.id AND a.org_id = ? AND a.login = ? COLLATE NOCASE
+       LEFT JOIN sprints s ON s.id = t.sprint_id AND s.org_id = ?
+      WHERE t.org_id = ? AND t.status IN ${OPEN_STATUS_SQL}${sources === "canopy" ? " AND t.source = 'canopy'" : ""}`;
+const assignedBinds = (ctx: TenantContext, handle: string): string[] => [ctx.orgId, handle, ctx.orgId, ctx.orgId];
 
 /**
  * The OPEN tickets `handle` is an assignee of, most recently updated first.
@@ -212,19 +220,20 @@ const assignedFrom = (sources: AssignedTicketSources): string =>
  * `sources` defaults to `"canopy"` (NATIVE only) — the ticket-queue digest's rule,
  * which reuses this read. My Work passes `"all"`.
  */
-export async function listAssignedTickets(db: DB, handle: string, opts: AssignedTicketOpts = {}): Promise<MyWorkTicket[]> {
+export async function listAssignedTickets(ctx: TenantContext, handle: string, opts: AssignedTicketOpts = {}): Promise<MyWorkTicket[]> {
   const limit = opts.limit ?? TICKET_LIMIT;
   const rows = await all<AssignedTicketRow>(
-    db,
-    `SELECT t.id, t.title, t.body, t.category, t.priority, t.status, t.source, t.requester,
+    ctx,
+    `SELECT t.id, t.number, t.title, t.body, t.category, t.priority, t.status, t.source, t.requester,
             t.sprint_id, s.title AS sprint_label, t.created_at, t.updated_at
        ${assignedFrom(opts.sources ?? "canopy")}
       ORDER BY t.updated_at DESC, t.id DESC
       LIMIT ${Math.trunc(limit)}`,
-    handle
+    ...assignedBinds(ctx, handle)
   );
   return rows.map((r) => ({
     id: r.id,
+    number: r.number,
     title: r.title,
     body: r.body,
     category: r.category,
@@ -239,8 +248,8 @@ export async function listAssignedTickets(db: DB, handle: string, opts: Assigned
 }
 
 /** How many tickets `listAssignedTickets` would list with no cap — the same rule, counted. */
-export async function countAssignedTickets(db: DB, handle: string, sources: AssignedTicketSources = "canopy"): Promise<number> {
-  const row = await first<{ n: number }>(db, `SELECT COUNT(*) AS n ${assignedFrom(sources)}`, handle);
+export async function countAssignedTickets(ctx: TenantContext, handle: string, sources: AssignedTicketSources = "canopy"): Promise<number> {
+  const row = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n ${assignedFrom(sources)}`, ...assignedBinds(ctx, handle));
   return row?.n ?? 0;
 }
 
@@ -255,9 +264,9 @@ export async function countAssignedTickets(db: DB, handle: string, sources: Assi
  * Any D1 failure degrades the whole projection to empty with degraded:true
  * rather than throwing.
  */
-export async function getMyWork(db: DB, handle: string): Promise<MyWork> {
+export async function getMyWork(ctx: TenantContext, handle: string): Promise<MyWork> {
   try {
-    const me = await getPerson(db, handle);
+    const me = await getPerson(legacyDb(ctx), handle);
     if (!me) return EMPTY(false);
 
     // Tickets are keyed on the person HANDLE, not on a GitHub login, so they are
@@ -265,25 +274,28 @@ export async function getMyWork(db: DB, handle: string): Promise<MyWork> {
     // has no PRs and no assigned issues but can still own half the queue.
     // ALL sources: the screen shows no issue list any more, so a mirrored ticket
     // (0032) reaches My Work only as a ticket. `ticketsTotal` is the uncapped count.
-    const tickets = await listAssignedTickets(db, me.handle, { sources: "all" });
-    const ticketsTotal = await countAssignedTickets(db, me.handle, "all");
+    const tickets = await listAssignedTickets(ctx, me.handle, { sources: "all" });
+    const ticketsTotal = await countAssignedTickets(ctx, me.handle, "all");
 
-    const logins = (await listIdentities(db, handle)).filter((i) => i.provider === "github").map((i) => i.subject);
+    const logins = (await listIdentities(legacyDb(ctx), handle)).filter((i) => i.provider === "github").map((i) => i.subject);
     if (logins.length === 0) return { person: me.name ?? me.handle, previousActivity: [], todo: [], tickets, ticketsTotal, degraded: false };
 
     const prRows = await all<PrEventJoinRow>(
-      db,
+      ctx,
       `SELECT e.*, s.title AS s_title, s.what AS s_what, s.why AS s_why, s.impact AS s_impact
          FROM events e
-         LEFT JOIN pr_summaries s ON s.semantic_key = e.semantic_key
-        WHERE e.event_type IN ('pr_merged', 'pr_closed')
+         LEFT JOIN pr_summaries s ON s.semantic_key = e.semantic_key AND s.org_id = ?
+        WHERE e.org_id = ?
+          AND e.event_type IN ('pr_merged', 'pr_closed')
           AND e.subject_login IN (${logins.map(() => "?").join(",")})
         ORDER BY e.occurred_at DESC, e.id DESC
         LIMIT ${PR_LIMIT}`,
+      ctx.orgId,
+      ctx.orgId,
       ...logins
     );
     const previousActivity: MyWorkPr[] = prRows.map(toMyWorkPr);
-    const todo = await listOpenAssignedIssues(db, logins);
+    const todo = await listOpenAssignedIssues(ctx, logins);
 
     return { person: me.name ?? me.handle, previousActivity, todo: todo.slice(0, TODO_LIMIT), tickets, ticketsTotal, degraded: false };
   } catch {
@@ -294,11 +306,11 @@ export async function getMyWork(db: DB, handle: string): Promise<MyWork> {
 /** Recent captured GitHub events, optionally filtered by type/subject. The raw
  *  log behind My Work and roadmap progress. */
 export async function list_events(
-  db: DB,
+  ctx: TenantContext,
   filter?: { type?: "pr_merged" | "pr_closed" | "issue"; subject?: string; limit?: number }
 ): Promise<EventRow[]> {
-  const clauses: string[] = [];
-  const params: unknown[] = [];
+  const clauses: string[] = [`org_id = ?`];
+  const params: unknown[] = [ctx.orgId];
   if (filter?.type) {
     clauses.push(`event_type = ?`);
     params.push(filter.type);
@@ -307,12 +319,11 @@ export async function list_events(
     clauses.push(`subject_login = ?`);
     params.push(filter.subject);
   }
-  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   const limit = Math.trunc(Math.min(Math.max(filter?.limit ?? 50, 1), 500));
 
   return all<EventRow>(
-    db,
-    `SELECT * FROM events ${where} ORDER BY occurred_at DESC, id DESC LIMIT ${limit}`,
+    ctx,
+    `SELECT * FROM events WHERE ${clauses.join(" AND ")} ORDER BY occurred_at DESC, id DESC LIMIT ${limit}`,
     ...params
   );
 }
