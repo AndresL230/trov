@@ -194,7 +194,7 @@ export function orgMenu(p: OrgMenuProps): string {
 
 // ── the create dialog ────────────────────────────────────────────────────────
 const FIELD = "display:block;width:100%;box-sizing:border-box;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;font-family:var(--sans);outline:none";
-const FIELD_LABEL = "display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);margin-bottom:6px";
+const FIELD_LABEL = "display:block;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:7px";
 const BTN = "height:38px;padding:0 16px;border-radius:8px;font-size:12.5px;font-weight:600;white-space:nowrap";
 
 /** "Create an organization": a name and its address. The person who creates it is its owner. */

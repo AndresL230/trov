@@ -187,7 +187,8 @@ export const lastSuperadminSentence = (handle: string): string =>
 const LABEL = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap";
 const QUIET = "font-size:11.5px;color:var(--fg-40)";
 const FIELD = "display:block;width:100%;box-sizing:border-box;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;font-family:var(--sans);outline:none";
-const FIELD_LABEL = "display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);margin-bottom:6px";
+// A field's label: the same uppercase eyebrow as Org settings' fields (org-ui.ts `O_LABEL`).
+const FIELD_LABEL = "display:block;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:7px";
 const BTN = "height:38px;padding:0 16px;border-radius:8px;font-size:12.5px;font-weight:600;white-space:nowrap";
 const OUTLINE = `${BTN};border:1px solid var(--border-strong);font-weight:500;color:var(--fg-70)`;
 const ROW = "display:flex;align-items:center;gap:12px;padding:11px 20px;border-bottom:1px solid var(--border);margin-bottom:-1px";

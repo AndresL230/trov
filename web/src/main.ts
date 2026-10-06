@@ -362,7 +362,13 @@ window.addEventListener("hashchange", () => {
   if (state.view !== "app") return;
   const r = parseHash(location.hash);
   const cur = currentRoute();
-  if (sameRoute(r, cur)) return;
+  if (sameRoute(r, cur)) {
+    // Already there — but an old spelling of it (`#maintenance/people` while on Org settings ›
+    // Members) should not stay in the address bar.
+    const want = hashForRoute(cur);
+    if (location.hash !== want) history.replaceState(null, "", want);
+    return;
+  }
   applyRoute(r);
   // Back / Forward between two tabs of Org settings: the page is already loaded, so the tab's
   // body swaps in place — exactly what clicking the tab does. (Every other screen's loader is

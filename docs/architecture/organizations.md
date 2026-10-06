@@ -106,6 +106,31 @@ the one organization that token was made for, and may only write to tickets assi
 Tickets and handoffs are numbered **per organization**: a new organization's first ticket is `#1`. That
 number is the id everywhere — the address bar, a link, an agent's tool call [`src/tools/tickets.ts`].
 
+### Where an organization is administered
+
+One place: **Org settings**, opened from the switcher at the top of the sidebar (`#org[/<tab>]`,
+`web/src/org-settings.ts`). There is no separate Maintenance area any more.
+
+| Tab | What it holds | Who sees it |
+|---|---|---|
+| Integrations | the organization's credentials; its encryption key and the history of changes | admin, owner |
+| Repositories | connected repositories, one primary; each one's webhook URL | everyone (read), admin+ (write) |
+| Environments | the environments the Repo dashboard reports on, in drift order | everyone (read), admin+ (write) |
+| Members | the people directory; for admins also invitations, roles and titles, removal, and **Unmatched logins** — GitHub logins in captured activity to map to a person or discard [`web/src/identity.ts`] | everyone (read), admin+ (write) |
+| Notifications | the e-mail digests: which exist and their default cadence, send hour, timezone and sender name, preview, test send, the outbox [`web/src/notifications.ts`] | admin, owner |
+| General | the name; the slug, read-only | everyone (read), admin+ (rename) |
+
+A person's own digest preferences stay in their Settings. The daily queue of things an agent could not
+place is not administration: it is **Triage › Unplaced** in the sidebar (`#unplaced`). Old links —
+`#maintenance`, `#maintenance/identity`, `#maintenance/people` — still open the right place
+[`web/src/hash.ts`]. Logins waiting to be matched are counted, for admins only, on the switcher, on its
+Org settings row and on the Members tab.
+
+Every tab is laid out the same way [`web/src/org-ui.ts`]: one lead sentence saying what is there and
+what needs attention, with the tab's one primary action beside it; sections under an uppercase eyebrow;
+rows that show a name, a status and one action, and open to the rest. Platform's tabs follow the same
+rules.
+
 ## 5. Suspension
 
 Platform › the organization › **Suspend** [`POST /api/platform/orgs/:slug/suspend`]. From that moment, for

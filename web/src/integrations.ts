@@ -324,7 +324,7 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
       ? `<li class="cnpy-org-row" style="align-items:center"><div style="flex:1 1 260px;min-width:0;font-size:12.5px;color:var(--fg-55)">Each repository gets its own webhook secret. None is connected yet.</div><div class="cnpy-org-actions">${goLink("Connect a repository", "orgTab", "repos")}</div></li>` : "";
     return `<section aria-labelledby="org-int-${attr(g.key)}" data-org-group="${attr(g.key)}">
       ${orgHead(g.title, g.key === "orphans" ? "can only be deleted" : `${done} of ${g.rows.length} set`, null, `org-int-${g.key}`)}
-      <ul${surface(LIST)} title="${attr(g.hint)}">${g.rows.map((i) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) })).join("")}${extra}</ul>
+      <ul${surface(LIST)}>${g.rows.map((i) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) })).join("")}${extra}</ul>
     </section>`;
   }).join("");
   const envHint = noEnv ? `<div style="margin-top:30px">${orgEmpty("No environment tokens yet", "Each environment gets a Railway project token and an app metrics token. Add an environment first.", quietBtn("Open Environments", "orgTab", { arg: "environments" }))}</div>` : "";

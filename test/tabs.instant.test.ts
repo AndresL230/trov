@@ -51,6 +51,9 @@ describe("pageKey — the page a route is on, without its tab", () => {
 });
 
 describe("main.ts — the entrance and Back / Forward", () => {
+  it("an old spelling of the place already on screen is rewritten in the address bar, with no reload", () => {
+    expect(mainSrc).toMatch(/if \(sameRoute\(r, cur\)\) \{[\s\S]{0,260}const want = hashForRoute\(cur\);\s*if \(location\.hash !== want\) history\.replaceState\(null, "", want\);\s*return;/);
+  });
   it("keys the screen entrance on pageKey, so a tab switch never replays it", () => {
     expect(mainSrc).toMatch(/const key = `\$\{pageKey\(currentRoute\(\)\)\}\|/);
     // No hand-written list of tabs to forget one from.

@@ -80,10 +80,10 @@ export function discardedLogins(items: DiscardedLogin[], open: boolean): string 
 /** One unmatched login: the activity sample that identifies the person, beside the picker. */
 export function identityCard(g: IdentityGroup, people: Person[], pick: string | null, confirming: boolean): string {
   const sample = g.sample.map((ev) => `<div style="display:flex;align-items:baseline;gap:9px;min-width:0"><span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 6px;flex:none">${esc(ev.kind)}</span><span style="font-size:12.5px;color:var(--fg-70);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ev.text)}</span><span style="font-size:11px;color:var(--fg-40);flex:none;white-space:nowrap">${esc(ev.when)}</span></div>`).join("");
-  return `<div style="display:flex;flex-wrap:wrap;gap:20px 36px;padding:20px 22px;border-bottom:1px solid var(--border);margin-bottom:-1px">
+  return `<div style="display:flex;flex-wrap:wrap;gap:14px 32px;padding:14px 16px 16px;border-bottom:1px solid var(--border);margin-bottom:-1px">
     <div style="flex:1 1 280px;min-width:0">
-      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><div style="font-family:var(--label);font-size:15px;font-weight:600;color:var(--fg);white-space:nowrap">${esc(g.login)}</div><div style="font-size:11.5px;color:var(--fg-40);white-space:nowrap">${esc(g.meta)}</div></div>
-      <div style="display:flex;flex-direction:column;gap:7px;margin-top:12px">${sample}</div>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><div style="font-size:13.5px;font-weight:600;color:var(--fg);white-space:nowrap">${esc(g.login)}</div><div style="font-size:11.5px;color:var(--fg-40);white-space:nowrap">${esc(g.meta)}</div></div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">${sample}</div>
     </div>
     <div style="flex:1 1 380px;min-width:0">${personPicker(g.id, people, pick, confirming)}</div>
   </div>`;
