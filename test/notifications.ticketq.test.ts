@@ -218,7 +218,7 @@ describe("ticketq renderer", () => {
 describe("runDigest with ticketq", () => {
   const delivery = () => localDelivery(systemCtx());
 
-  it("writes ONE outbox row carrying ticketq, keyed user:cadence:window_id, with the ticket in the body — a re-run adds nothing", async () => {
+  it("writes ONE outbox row carrying ticketq, keyed org:user:cadence:window_id, with the ticket in the body — a re-run adds nothing", async () => {
     await user(LOGIN, "andres@example.com");
     await file("Projector in room 3 is dead", { at: "2026-09-10T12:00:00Z" });
 
@@ -227,7 +227,7 @@ describe("runDigest with ticketq", () => {
 
     const rows = await outbox();
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ idempotency_key: `${LOGIN}:daily:2026-09-11`, status: "sent", user_id: LOGIN, cadence: "daily", window_id: "2026-09-11" });
+    expect(rows[0]).toMatchObject({ idempotency_key: `org_saplinglearn:${LOGIN}:daily:2026-09-11`, status: "sent", user_id: LOGIN, cadence: "daily", window_id: "2026-09-11" });
     expect(kindsOf(rows[0])).toContain("ticketq");
 
     const b = await bodies();

@@ -43,7 +43,7 @@ const PERSONS: PersonSummary[] = [
 ];
 function makeTicket(overrides: Partial<MyWorkTicket> = {}): MyWorkTicket {
   return {
-    id: 12, title: "SSO login loops on Safari", body: "It bounces me back to the sign-in page.",
+    id: 12, number: 12, title: "SSO login loops on Safari", body: "It bounces me back to the sign-in page.",
     category: "bug", priority: "high", status: "submitted", source: "canopy", requester: "meilin",
     sprint: { id: 3, label: "Sprint 13 — Tickets" },
     updatedAt: new Date(Date.now() - 3600_000).toISOString(),

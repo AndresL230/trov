@@ -107,7 +107,7 @@ describe("runDigest (local mode)", () => {
     const r2 = await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
     const rows = await outbox();
     expect(rows).toHaveLength(2);
-    expect(rows.map((r) => r.idempotency_key).sort()).toEqual(["AndresL230:daily:2026-09-11", "lpcooper-arch:daily:2026-09-11"]);
+    expect(rows.map((r) => r.idempotency_key).sort()).toEqual(["org_saplinglearn:AndresL230:daily:2026-09-11", "org_saplinglearn:lpcooper-arch:daily:2026-09-11"]);
     expect(rows.every((r) => r.status === "sent")).toBe(true);
     expect(r1.sent).toBe(2);
     expect(r2.alreadyRan).toBe(2);
