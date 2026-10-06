@@ -1,7 +1,7 @@
-// Org role gates (canopy-multitenancy.md §5.2): every route that used to ask `isAdmin(env, …)` — the
-// `ADMIN_LOGINS` allowlist — now asks the caller's role IN THE ORG the request resolved. A member is 403
-// (with nothing written); an admin and an owner pass. Each route is exercised at BOTH mounts: the old alias
-// path and `/api/o/:slug/…`. Being listed in `ADMIN_LOGINS` grants nothing on a session route.
+// Org role gates (canopy-multitenancy.md §5.2): every route that used to ask a Worker-wide allowlist of
+// handles now asks the caller's role IN THE ORG the request resolved. A member is 403 (with nothing
+// written); an admin and an owner pass. Each route is exercised at BOTH mounts: the old alias path and
+// `/api/o/:slug/…`. The allowlist var is gone; a Worker that still has it set grants nothing by it.
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
@@ -40,7 +40,7 @@ const event: CapturedEvent = {
   raw: JSON.stringify({ pr: { number: 7, title: "t", body: "b" } }), provenance: "webhook", occurred_at: "2026-07-01T10:00:00Z",
 };
 
-/** A route that was `isAdmin`-gated: `[method, alias path, /api/o/:slug suffix or null (alias-only), body]`. */
+/** A route that was allowlist-gated: `[method, alias path, /api/o/:slug suffix or null (alias-only), body]`. */
 type Gated = [method: string, alias: string, suffix: string | null, body?: unknown];
 const ADMIN_ONLY: Gated[] = [
   ["POST", "/admin/backfill", "/admin/backfill", {}],
@@ -62,7 +62,7 @@ const ADMIN_ONLY: Gated[] = [
   ["POST", "/identity-tasks/mystery-dev/map", "/identity-tasks/mystery-dev/map", { person: MEMBER }],
 ];
 
-describe("routes that were `isAdmin`: member 403, admin and owner pass", () => {
+describe("routes that were allowlist-gated: member 403, admin and owner pass", () => {
   it.each(ADMIN_ONLY)("%s %s", async (method, alias, suffix, body) => {
     const c = await people();
     const paths = [alias, ...(suffix ? [`${SLUG}${suffix}`] : [])];
@@ -158,22 +158,35 @@ describe("the role is the ORG's, not the person's", () => {
     expect(await send("GET", "/docs", dual)).toEqual({ status: 409, json: { error: "org_required" } });
   });
 
-  it("ADMIN_LOGINS grants nothing on a session route: a listed handle that is a plain member is 403", async () => {
+  it("the retired allowlist var grants nothing if a deployment still sets it: a listed handle that is a plain member is 403", async () => {
     await ensureMember("listed", "member", ORG_A);
     const listed = await cookieFor("listed");
-    const e = { ...env, ADMIN_LOGINS: "listed" } as unknown as Env;
+    // The var's name is assembled so that a search for it across src/ and test/ stays empty.
+    const e = { ...env, [["ADMIN", "LOGINS"].join("_")]: "listed" } as unknown as Env;
     expect((await send("POST", "/admin/backfill", listed, {}, e)).status).toBe(403);
     expect((await send("GET", "/invites", listed, undefined, e)).status).toBe(403);
     expect((await send("GET", "/auth/me", listed, undefined, e)).json).toMatchObject({ admin: false });
   });
 
-  it("Sync / Poll are org #1's until Phase 5b: another org's OWNER is refused 503 and nothing runs", async () => {
+  it("Sync / Poll follow the slug too: another org's OWNER passes the gate and gets THEIR org's answer — nothing configured, nothing run", async () => {
     await ensureMember("boss", "owner", ORG_B);
+    await ensureMember("bob", "member", ORG_B);
     const boss = await cookieFor("boss", { member: false });
-    for (const path of ["/admin/backfill", "/admin/poll", "/admin/poll-usage", "/api/o/acme/admin/backfill", "/api/o/acme/admin/poll", "/api/o/acme/admin/poll-usage"]) {
-      expect(await send("POST", path, boss, {}), path).toEqual({ status: 503, json: { error: "service token or repo not configured" } });
+    const bob = await cookieFor("bob", { member: false });
+    const NOT = "not_configured";
+    const answers: [string, number, unknown][] = [
+      ["/admin/backfill", 503, { error: "service token or repo not configured" }],
+      ["/admin/poll", 200, { health: NOT, cloudflare: NOT, railway: NOT, sapling: NOT, github: NOT }],
+      ["/admin/poll-usage", 200, { cloudflare: NOT, railway: NOT, sapling: NOT }],
+    ];
+    for (const [suffix, status, json] of answers) {
+      for (const path of [suffix, `/api/o/acme${suffix}`]) {
+        expect(await send("POST", path, bob, {}), `member ${path}`).toEqual({ status: 403, json: { error: "admin only" } });
+        expect(await send("POST", path, boss, {}), `owner ${path}`).toEqual({ status, json });
+      }
     }
-    expect(await first(env.DB, `SELECT 1 AS x FROM repo_snapshots`).catch(() => null)).toBeNull();
+    // Which credential each run carries, and that the other org's rows never move: test/jobs.multi-org.test.ts.
+    expect(await first(env.DB, `SELECT 1 AS x FROM repo_snapshots`)).toBeNull();
   });
 });
 

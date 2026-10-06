@@ -13,9 +13,9 @@ export interface SeedPersonOpts {
   verified?: boolean;
 }
 
-/** The suite's "an org admin": the handle that was the one `ADMIN_LOGINS` entry before org roles replaced
- *  the allowlist (§5.2). `seedPerson` / `cookieFor` give it the ADMIN role in SaplingLearn; every other
- *  seeded handle is a plain member (and `AndresL230`, from the reset seed, is the owner). */
+/** The suite's "an org admin" (§5.2): `seedPerson` / `cookieFor` give this handle the ADMIN role in
+ *  SaplingLearn; every other seeded handle is a plain member (and `AndresL230`, from the reset seed, is
+ *  the owner). The role is the membership's — nothing reads the handle itself. */
 export const FIXTURE_ADMIN = "admin-user";
 
 /** Insert if missing (INSERT OR IGNORE; pass explicit UPDATEs for pre-seeded handles) a person, and by default its github identity = handle

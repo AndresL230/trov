@@ -20,7 +20,7 @@ import { bearerCtx, platformCtx, systemCtx } from "./helpers/tenant";
 
 const AUTHOR = "pauthor";
 const OTHER = "pother";
-const ADMIN = "admin-user"; // ADMIN_LOGINS in vitest.config.ts
+const ADMIN = "admin-user"; // FIXTURE_ADMIN: seeded as an org admin (test/helpers/persons.ts)
 const SLUG = "zebra-review";
 
 beforeEach(async () => {

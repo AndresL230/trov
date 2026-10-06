@@ -23,7 +23,6 @@ declare global {
       GITHUB_SERVICE_TOKEN?: string;
       GEMINI_API_KEY?: string;
       RESEND_API_KEY?: string;
-      ADMIN_LOGINS?: string;
       PUBLIC_ORIGIN?: string;
       NOTIFICATIONS_MODE?: "local" | "resend";
       REPO_ENVIRONMENTS?: string;

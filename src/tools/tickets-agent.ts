@@ -64,7 +64,7 @@ export type AgentVerb =
 /**
  * "An admin" in both rules below is the ORG's (§7.2): the bearer context's own role in the org the
  * token is bound to — admin or owner there, re-read on every request — and only for the context's own
- * person. Being an admin of another org, or on the retired `ADMIN_LOGINS` allowlist, grants nothing.
+ * person. Being an admin of another org grants nothing.
  * (`env` stays in the signatures for the callers; nothing here reads it any more.)
  */
 const isOrgAdmin = (ctx: TenantContext, handle: string): boolean =>

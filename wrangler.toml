@@ -27,9 +27,6 @@ bucket_name = "trov-artifacts"
 # GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are secrets, not vars. Set them via
 # `wrangler secret put GOOGLE_CLIENT_ID` / `wrangler secret put GOOGLE_CLIENT_SECRET`.
 GITHUB_REPO = "SaplingLearn/sapling"
-# MT: retired on every session route — admin is the ORG role now (memberships.role, canopy-multitenancy.md §5.2).
-# One reader is left, the MCP `update_plan` registration (src/mcp.ts); Phase 5a rebinds it, then delete this var.
-ADMIN_LOGINS = "AndresL230,andres"
 # Absolute origin used for links inside email and artifact results.
 # Set to your workers.dev URL after the first deploy; switch to https://trov.dev once the domain is attached.
 PUBLIC_ORIGIN = "https://trov.dev"

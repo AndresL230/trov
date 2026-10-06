@@ -15,7 +15,6 @@ export interface Env {
   DEV_LOGIN?: string;     // LOCAL DEV ONLY (set in .dev.vars): bypass OAuth, act as this seeded user. Never set in prod.
   GEMINI_API_KEY?: string; // Google Gemini key for capture-time PR/issue summaries (REST generateContent); absent → excerpt fallback.
   GITHUB_SERVICE_TOKEN?: string; // app-level token for the scheduled progress-cache recompute backstop; absent → scheduled() no-ops
-  ADMIN_LOGINS?: string;  // MT: RETIRED on every HTTP route (org roles, §5.2). One reader left — MCP `update_plan` (src/mcp.ts, Phase 5a) — then delete it.
   PUBLIC_ORIGIN?: string; // absolute origin for links in email (deep links, unsubscribe); absent → relative links
   NOTIFICATIONS_MODE?: "local" | "resend"; // delivery gate; absent → local (bodies to the dev table, Resend never called)
   RESEND_API_KEY?: string; // Resend API key; required only when NOTIFICATIONS_MODE = "resend"

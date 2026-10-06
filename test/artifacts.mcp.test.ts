@@ -18,7 +18,7 @@ import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const ME = "arti-author";
 const YOU = "arti-teammate";
-const ADMIN = "admin-user"; // the one ADMIN_LOGINS handle in vitest.config.ts
+const ADMIN = "admin-user"; // FIXTURE_ADMIN: seeded as an org admin (test/helpers/persons.ts)
 const ORIGIN = "https://trov.test"; // PUBLIC_ORIGIN in vitest.config.ts
 
 type ToolRes = { content: Array<{ type: string; text: string }>; isError?: boolean };

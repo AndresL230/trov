@@ -1,7 +1,7 @@
 // Person profiles (0036; the contract is shared/people.ts): GET|PUT /api/people/:handle,
 // the avatar upload / remove, GET /avatar/<sha>, and the avatar rule (`avatarSrc`) on
 // every surface that sends a person's picture to the SPA. Real D1 + local R2, through
-// the real Hono app. ADMIN_LOGINS binds only "admin-user" (vitest.config.ts).
+// the real Hono app. "admin-user" is the one seeded org admin (test/helpers/persons.ts).
 
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";

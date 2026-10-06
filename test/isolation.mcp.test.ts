@@ -28,7 +28,7 @@ import { pkce, sha256Hex } from "../src/auth/crypto";
 import { registerClient, refreshAccessToken, OAuthError, ACCESS_TTL_MS } from "../src/auth/oauth";
 import { removeMember } from "../src/orgs/repo";
 import { promote_doc } from "../src/tools/writes";
-import { cookieFor, seedPerson } from "./helpers/persons";
+import { cookieFor, seedPerson, FIXTURE_ADMIN } from "./helpers/persons";
 import { ENVS, seedOrgRepoConfig } from "./helpers/repo";
 import { ORG_A, ORG_B, ensureMember, mintTokenFor, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
 
@@ -504,11 +504,19 @@ describe("membership lifecycle over a bearer", () => {
     expect(await names(FX[ORG_A].token)).toContain("update_plan");
   });
 
-  it("the retired ADMIN_LOGINS allowlist grants nothing over MCP: only the org role does", async () => {
-    await seedPerson("admin-user"); // on the allowlist (vitest.config.ts), a plain member of SaplingLearn
-    const raw = (await mintTokenFor("admin-user")).raw;
-    expect((await ctxOf(raw)).role).toBe("member");
-    expect(registeredTools(await ctxOf(raw))).not.toContain("update_plan");
+  it("nothing but the org role grants update_plan: a plain member has none, whatever their handle; the fixture's org admin has it", async () => {
+    // `seedPerson` makes FIXTURE_ADMIN an org ADMIN (test/helpers/persons.ts) — so the plain member here is someone else.
+    await seedPerson("plain-member");
+    const member = (await mintTokenFor("plain-member")).raw;
+    expect((await ctxOf(member)).role).toBe("member");
+    expect(registeredTools(await ctxOf(member))).not.toContain("update_plan");
+    await seedPerson(FIXTURE_ADMIN);
+    const admin = (await mintTokenFor(FIXTURE_ADMIN)).raw;
+    expect((await ctxOf(admin)).role).toBe("admin");
+    expect(registeredTools(await ctxOf(admin))).toContain("update_plan");
+    // The same handle demoted is a plain member on its next request: the handle itself carries nothing.
+    await env.DB.prepare(`UPDATE memberships SET role = 'member' WHERE org_id = ? AND user_id = ?`).bind(ORG_A, FIXTURE_ADMIN).run();
+    expect(registeredTools(await ctxOf(admin))).not.toContain("update_plan");
   });
 });
 

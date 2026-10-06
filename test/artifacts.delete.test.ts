@@ -22,7 +22,7 @@ import { systemCtx, platformCtx } from "./helpers/tenant";
 
 const AUTHOR = "adel-author";
 const OTHER = "adel-other";
-const ADMIN = "admin-user"; // ADMIN_LOGINS in vitest.config.ts
+const ADMIN = "admin-user"; // FIXTURE_ADMIN: seeded as an org admin (test/helpers/persons.ts)
 const SLUG = "zebra-page";
 
 let tid = 0;
