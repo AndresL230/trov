@@ -13,9 +13,13 @@ export interface Principal {
 export type AppEnv = { Bindings: Env; Variables: { principal: Principal; p: PlatformContext; ctx: TenantContext } };
 
 /**
- * Is this login an admin? ADMIN_LOGINS is a comma-separated allowlist of GitHub
- * logins permitted to run admin actions (e.g. the server-side backfill). An
- * absent/empty var means nobody is an admin — fails closed.
+ * MT: RETIRED everywhere but ONE caller — the `update_plan` registration in src/mcp.ts, which Phase 5a
+ * rebinds to the bearer context's org role; delete this function, `Env.ADMIN_LOGINS` and the
+ * `wrangler.toml` / `vitest.config.ts` vars with that change. Every HTTP route and every other module
+ * now gates on the ORG role instead (`hasRole(ctx, "admin")` / `requireRole` — §5.2): being listed
+ * here grants nothing on any session route.
+ *
+ * ADMIN_LOGINS is a comma-separated allowlist of handles. An absent/empty var means nobody — fails closed.
  */
 export function isAdmin(env: Env, login: string): boolean {
   const allow = (env.ADMIN_LOGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);

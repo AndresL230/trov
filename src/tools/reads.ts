@@ -203,17 +203,21 @@ export interface DiscardedIdentity {
 
 /**
  * Discarded identity tasks, newest discard first — what Undo can still bring
- * back. A login linked since (a GitHub sign-in) is left out: restoring it would
- * list a task there is nothing left to map.
+ * back. A login this org attributes since (a MEMBER's GitHub sign-in, or the org's
+ * attribution map — `resolvePersonForLogin`'s two sources) is left out: restoring it
+ * would list a task there is nothing left to map.
  */
 export async function list_discarded_identities(ctx: TenantContext): Promise<DiscardedIdentity[]> {
   return all<DiscardedIdentity>(
     ctx,
     `SELECT t.login, t.resolved_at, t.resolved_by FROM identity_tasks t
      WHERE t.org_id = ? AND t.status = 'discarded'
-       AND NOT EXISTS (SELECT 1 FROM identities i WHERE i.provider = 'github' AND i.subject = t.login)
+       AND NOT EXISTS (SELECT 1 FROM identities i JOIN memberships m ON m.user_id = i.person AND m.org_id = ?
+                        WHERE i.provider = 'github' AND i.subject = t.login)
+       AND NOT EXISTS (SELECT 1 FROM org_login_map l JOIN memberships m ON m.user_id = l.person AND m.org_id = ?
+                        WHERE l.org_id = ? AND l.github_login = t.login)
      ORDER BY t.resolved_at DESC, t.login ASC`,
-    ctx.orgId
+    ctx.orgId, ctx.orgId, ctx.orgId, ctx.orgId
   );
 }
 

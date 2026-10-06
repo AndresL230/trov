@@ -1,6 +1,5 @@
 import type { Env } from "../env";
 
-export const SAPLING_ORG = "SaplingLearn";
 const USER_AGENT = "trov";
 const GH_API = "application/vnd.github+json";
 
@@ -14,8 +13,9 @@ export function buildAuthorizeUrl(opts: {
   u.searchParams.set("client_id", opts.clientId);
   u.searchParams.set("redirect_uri", opts.redirectUri);
   // user:email: the teammate email is seeded from GET /user/emails at first login
-  // (canopy-email.md §7) — the profile email is unreliable (private / noreply).
-  u.searchParams.set("scope", "read:org read:user user:email");
+  // (canopy-email.md §7) — the profile email is unreliable (private / noreply). No
+  // `read:org`: sign-in is not tied to any GitHub org's membership (§5.1).
+  u.searchParams.set("scope", "read:user user:email");
   u.searchParams.set("state", opts.state);
   u.searchParams.set("code_challenge", opts.challenge);
   u.searchParams.set("code_challenge_method", "S256");
@@ -55,16 +55,6 @@ export async function getUser(token: string, fetchImpl: typeof fetch = fetch): P
   if (!res.ok) return null;
   const data = (await res.json()) as { login?: string; name?: string | null; avatar_url?: string | null };
   return data.login ? { login: data.login, name: data.name ?? null, avatar_url: data.avatar_url ?? null } : null;
-}
-
-/** True only if the token's owner is an ACTIVE member of SAPLING_ORG. */
-export async function isActiveOrgMember(token: string, fetchImpl: typeof fetch = fetch): Promise<boolean> {
-  const res = await fetchImpl(`https://api.github.com/user/memberships/orgs/${SAPLING_ORG}`, {
-    headers: { authorization: `Bearer ${token}`, accept: GH_API, "user-agent": USER_AGENT },
-  });
-  if (!res.ok) return false; // 404 => not a member
-  const data = (await res.json()) as { state?: string };
-  return data.state === "active"; // a pending invite does not count
 }
 
 /**

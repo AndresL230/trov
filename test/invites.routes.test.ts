@@ -69,7 +69,7 @@ describe("renderInviteEmail", () => {
 
 describe("/invites (admin, session-cookie)", () => {
   it("non-admin → 403; unauthenticated → 401", async () => {
-    expect((await app.request("/invites", { headers: { cookie: await cookieFor("AndresL230") } }, env)).status).toBe(403);
+    expect((await app.request("/invites", { headers: { cookie: await cookieFor("casey") } }, env)).status).toBe(403); // a plain member (AndresL230 is the org's OWNER — §5.2)
     expect((await app.request("/invites", {}, env)).status).toBe(401);
   });
   it("POST creates the invite and sends the email through local delivery; GET lists it", async () => {

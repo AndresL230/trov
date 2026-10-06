@@ -41,7 +41,7 @@
 //      The scope check must not double as an existence oracle.
 
 import type { Env } from "../env";
-import { isAdmin } from "../auth/principal";
+import { hasRole } from "../data/context";
 import { type TenantContext, first } from "../data/sql";
 import {
   TicketError,
@@ -89,7 +89,7 @@ export async function assertTicketWritable(
   const exists = await first<{ id: number }>(ctx, `SELECT id FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId);
   if (!exists) throw new TicketError("not_found", `no such ticket: ${id}`);
 
-  if (verb === "set_ticket_sprint" && isAdmin(env, handle)) return;
+  if (verb === "set_ticket_sprint" && hasRole(ctx, "admin")) return;
 
   const mine = await first<{ n: number }>(
     ctx,
@@ -125,7 +125,7 @@ export async function assertTicketAssignable(ctx: TenantContext, env: Env, id: n
   );
   if (!t) throw new TicketError("not_found", `no such ticket: ${id}`);
 
-  if (isAdmin(env, handle) || t.requester || t.assignee) return;
+  if (hasRole(ctx, "admin") || t.requester || t.assignee) return;
   throw new TicketError("forbidden", `ticket ${id} can be (re)assigned only by an admin, its requester or one of its assignees`);
 }
 

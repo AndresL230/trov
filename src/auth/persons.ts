@@ -58,31 +58,75 @@ export async function memberPerson(ctx: TenantContext, handle: string): Promise<
   return row && !RESERVED_HANDLES.includes(row.handle.toLowerCase()) ? row : null;
 }
 
-/** The GitHub logins linked to a MEMBER (what My Work joins events on); none for a non-member. */
+/** The GitHub logins this org attributes to a MEMBER (what My Work joins events on): their own sign-in
+ *  identity, then the logins the org's attribution map (`org_login_map`, §5.3) gives them. None for a
+ *  non-member. */
 export async function memberGithubLogins(ctx: TenantContext, handle: string): Promise<string[]> {
   const rows = await tenantAll<{ subject: string }>(ctx,
-    `SELECT i.subject FROM identities i JOIN memberships m ON m.user_id = i.person AND m.org_id = ?
-      WHERE i.person = ? COLLATE NOCASE AND i.provider = 'github' ORDER BY i.linked_at ASC`, ctx.orgId, handle);
-  return rows.map((r) => r.subject);
+    `SELECT i.subject, i.linked_at AS at FROM identities i JOIN memberships m ON m.user_id = i.person AND m.org_id = ?
+      WHERE i.person = ? COLLATE NOCASE AND i.provider = 'github'
+      UNION ALL
+     SELECT l.github_login AS subject, l.mapped_at AS at FROM org_login_map l JOIN memberships m ON m.user_id = l.person AND m.org_id = ?
+      WHERE l.org_id = ? AND l.person = ? COLLATE NOCASE
+      ORDER BY at ASC`, ctx.orgId, handle, ctx.orgId, ctx.orgId, handle);
+  const out: string[] = [];
+  for (const r of rows) if (!out.some((s) => s.toLowerCase() === r.subject.toLowerCase())) out.push(r.subject);
+  return out;
 }
 
 export function findIdentity(p: PlatformContext, provider: IdentityProvider, subject: string): Promise<IdentityRow | null> {
   return first<IdentityRow>(p, `SELECT * FROM identities WHERE provider = ? AND subject = ?`, provider, subject);
 }
 
-/** The person a GitHub login belongs to, via the github identity row; null when unmapped. */
-export async function resolvePersonForLogin(p: PlatformContext, login: string): Promise<PersonRow | null> {
-  return first<PersonRow>(p,
-    `SELECT p.* FROM identities i JOIN persons p ON p.handle = i.person WHERE i.provider = 'github' AND i.subject = ?`, login);
+/**
+ * The person THIS ORG attributes a GitHub login to (§5.3, C-1), or null. The org's own attribution map
+ * (`org_login_map` — Maintenance › Identity) is read first; failing that, the global GitHub sign-in
+ * identity counts ONLY when its person is a member of the org — so a member's own login attributes their
+ * PRs with no manual map, and a stranger's identity never names anyone inside an org they are not in.
+ * A mapped person who has since left the org reads as unmapped.
+ */
+export async function resolvePersonForLogin(ctx: TenantContext, login: string): Promise<PersonRow | null> {
+  const mapped = await tenantFirst<PersonRow>(ctx,
+    `SELECT p.* FROM org_login_map l JOIN persons p ON p.handle = l.person
+       JOIN memberships m ON m.user_id = p.handle AND m.org_id = ?
+      WHERE l.org_id = ? AND l.github_login = ?`, ctx.orgId, ctx.orgId, login);
+  if (mapped) return mapped;
+  return tenantFirst<PersonRow>(ctx,
+    `SELECT p.* FROM identities i JOIN persons p ON p.handle = i.person
+       JOIN memberships m ON m.user_id = p.handle AND m.org_id = ?
+      WHERE i.provider = 'github' AND i.subject = ?`, ctx.orgId, login);
 }
 
-/** Ambiguous (more than one person sharing the address, e.g. via the admin-edit path
- *  bypassing the self-service guard) returns null rather than guessing — every caller
- *  (the sign-in fork's branch 2, the email-guard checks) falls through to its next
- *  step (invite/denied, or "address free") instead of auto-linking the wrong person. */
+/** The person whose `persons.email` this is — the NOTIFICATION address, which the person (and, while they
+ *  are in one org, its admin) can edit. It is NOT an auth matcher: sign-in links on
+ *  `findPersonByVerifiedEmail` below. Ambiguous (more than one person sharing the address, e.g. via the
+ *  admin-edit path bypassing the self-service guard) returns null rather than guessing — the callers
+ *  (the email-guard checks) then treat the address as free. */
 export async function findPersonByEmail(p: PlatformContext, email: string): Promise<PersonRow | null> {
   const rows = await all<PersonRow>(p, `SELECT * FROM persons WHERE lower(email) = lower(?) LIMIT 2`, email);
   return rows.length === 1 ? rows[0] : null;
+}
+
+/**
+ * The person a PROVIDER-VERIFIED email belongs to: the one person with an identity whose
+ * `verified_email` (what GitHub / Google asserted at that identity's last sign-in) is this address.
+ * This — never `persons.email`, which is editable — is what the sign-in fork links a new identity on
+ * (§5.1): with sign-in open to anyone, an editable address there would let whoever can write it take
+ * the account over, or park an address and capture its owner's first sign-in. Ambiguous → null.
+ */
+export async function findPersonByVerifiedEmail(p: PlatformContext, email: string): Promise<PersonRow | null> {
+  const rows = await all<PersonRow>(p,
+    `SELECT pe.* FROM persons pe
+      WHERE pe.handle IN (SELECT person FROM identities WHERE verified_email IS NOT NULL AND lower(verified_email) = lower(?))
+      LIMIT 2`, email);
+  return rows.length === 1 ? rows[0] : null;
+}
+
+/** Record the email the provider VERIFIED at this sign-in on the identity (Q1) — what an email invite is
+ *  matched against, and what `findPersonByVerifiedEmail` reads. A sign-in that asserts none keeps the last one. */
+export async function recordVerifiedEmail(p: PlatformContext, provider: IdentityProvider, subject: string, email: string | null): Promise<void> {
+  if (!email) return;
+  await run(p, `UPDATE identities SET verified_email = ? WHERE provider = ? AND subject = ?`, email.trim().toLowerCase(), provider, subject);
 }
 
 /** The title a person holds in their ONLY org (`memberships.title`, Q9) — what `/auth/me` carries as
@@ -130,9 +174,10 @@ export async function createPerson(p: PlatformContext, n: { handle: string; name
   return (await getPerson(p, n.handle))!;
 }
 
-export async function linkIdentity(p: PlatformContext, i: { provider: IdentityProvider; subject: string; label: string; person: string; linkedBy: string }): Promise<void> {
-  await run(p, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES (?, ?, ?, ?, ?, ?)`,
-    i.provider, i.subject, i.label, i.person, nowIso(), i.linkedBy);
+/** `verifiedEmail` is the address the provider asserted as verified at this sign-in, or absent / null. */
+export async function linkIdentity(p: PlatformContext, i: { provider: IdentityProvider; subject: string; label: string; person: string; linkedBy: string; verifiedEmail?: string | null }): Promise<void> {
+  await run(p, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by, verified_email) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    i.provider, i.subject, i.label, i.person, nowIso(), i.linkedBy, i.verifiedEmail ? i.verifiedEmail.trim().toLowerCase() : null);
 }
 
 export async function unlinkIdentity(p: PlatformContext, person: string, provider: IdentityProvider): Promise<"ok" | "last_identity" | "not_found"> {

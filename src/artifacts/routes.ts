@@ -20,7 +20,8 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { z } from "zod";
-import { isAdmin, type AppEnv } from "../auth/principal";
+import type { AppEnv } from "../auth/principal";
+import { hasRole } from "../data/context";
 import {
   AddTextVersionSchema, ArtifactBinaryKindSchema, ArtifactLinkInputSchema, ArtifactListFiltersSchema,
   ArtifactPageFieldsSchema, ARTIFACT_BINARY_CAP, ARTIFACT_FILENAME_MAX, ARTIFACT_SUMMARY_MAX, ARTIFACT_TEXT_CAP,
@@ -296,13 +297,13 @@ export function createArtifactsApp(deps: ArtifactsAppDeps = {}): Hono<AppEnv> {
     const refused = personOnly(c);
     if (refused) return refused;
     const me = who(c);
-    return c.json({ ok: true, ...(await deletePage(c.var.ctx, c.req.param("slug"), me, isAdmin(c.env, me))) });
+    return c.json({ ok: true, ...(await deletePage(c.var.ctx, c.req.param("slug"), me, hasRole(c.var.ctx, "admin"))) });
   }));
   r.post("/:slug/restore", (c) => guard(async () => {
     const refused = personOnly(c);
     if (refused) return refused;
     const me = who(c);
-    return c.json({ ok: true, artifact: await restorePage(c.var.ctx, c.req.param("slug"), me, isAdmin(c.env, me)) });
+    return c.json({ ok: true, artifact: await restorePage(c.var.ctx, c.req.param("slug"), me, hasRole(c.var.ctx, "admin")) });
   }));
 
   return r;

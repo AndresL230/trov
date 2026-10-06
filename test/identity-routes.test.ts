@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { platformCtx, systemCtx } from "./helpers/tenant";
+import { ensureMember, platformCtx, systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
@@ -11,6 +11,9 @@ import { seedPerson } from "./helpers/persons";
 import type { IdentityTaskWithSample } from "../src/tools/reads";
 import type { IdentityTaskRow, IdentityRow } from "@shared/rows";
 import type { CapturedEvent } from "@shared/contract";
+
+// `POST /identity-tasks/:login/map` is org ADMIN+ (§6.3): `andres`, this file's actor, is one.
+beforeEach(() => ensureMember("andres", "admin"));
 
 async function authedCookie(login: string): Promise<string> {
   await seedPerson(login);
@@ -91,7 +94,9 @@ describe("POST /identity-tasks/:login/map", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, login: "mystery-dev", person: "casey", status: "resolved" });
 
-    expect((await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE provider = 'github' AND subject = 'mystery-dev'`))?.person).toBe("casey");
+    // The mapping is the ORG's attribution (`org_login_map`), never a sign-in identity (§5.3, C-1).
+    expect(await first(env.DB, `SELECT org_id, person, mapped_by FROM org_login_map WHERE github_login = 'mystery-dev'`)).toEqual({ org_id: "org_saplinglearn", person: "casey", mapped_by: "andres" });
+    expect(await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE provider = 'github' AND subject = 'mystery-dev'`)).toBeNull();
     const { tasks } = await getJson<{ tasks: unknown[] }>("/identity-tasks", cookie);
     expect(tasks.length).toBe(0); // leaves the queue
     const row = await first<IdentityTaskRow>(env.DB, `SELECT * FROM identity_tasks WHERE login = 'mystery-dev'`);
@@ -154,7 +159,7 @@ describe("POST /identity-tasks/:login/map", () => {
     await ingestEvent(systemCtx(), platformCtx(), prEvent(1, "mystery-dev", "t", "2026-07-01T00:00:00Z"), "github-webhook");
     const ok = await post("/identity-tasks/mystery-dev/map", cookie, { person: "casey" });
     expect(ok.status).toBe(200);
-    expect((await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE subject = 'mystery-dev'`))?.person).toBe("casey");
+    expect((await first<{ person: string }>(env.DB, `SELECT person FROM org_login_map WHERE github_login = 'mystery-dev'`))?.person).toBe("casey");
     await ingestEvent(systemCtx(), platformCtx(), prEvent(2, "other-dev", "t", "2026-07-01T00:00:00Z"), "github-webhook");
     expect((await post("/identity-tasks/other-dev/map", cookie, { person: "ghost" })).status).toBe(400);
   });

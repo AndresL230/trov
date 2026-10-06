@@ -262,12 +262,18 @@ describe("data layer — static enforcement (§4.4)", () => {
     expect(stale, `allowlist entries that excuse nothing: ${stale.join("; ")}`).toEqual([]);
   });
 
-  // The cut-over: an entry point that cannot name its org yet acts on org #1 through src/data/legacy.ts.
-  // Each such call is marked `// MT:` (what replaces it, and in which phase) and lives in one of the
-  // files below — so the list of what Phases 4 / 5b still have to replace is this test, not a grep.
+  // The cut-over: an entry point that cannot name its org yet acts on org #1 through src/data/legacy.ts,
+  // and so does the little that is still org #1's alone (its legacy invite table, the Worker's own
+  // GitHub / poller configuration). Each such call is marked `// MT:` (what replaces it, and in which
+  // phase) and lives in one of the files below — so the list of what Phases 5b / 7 still have to replace
+  // is this test, not a grep. Phase 4 removed onboarding's `joinLegacyOrg` (a new person joins NO org);
+  // what it left in src/auth is the legacy-invite rule (`liveLegacyInvite`, `consumeLegacyInvite`).
   it("only the marked cut-over entry points reach for the legacy org", () => {
     const ENTRY_POINTS = [
-      "src/index.ts", "src/webhook.ts", "src/tools/backfill.ts", "src/repo/cron.ts", "src/notifications/cron.ts", "src/auth/routes.ts",
+      "src/index.ts", "src/webhook.ts", "src/tools/backfill.ts", "src/repo/cron.ts", "src/notifications/cron.ts",
+      "src/auth/routes.ts", "src/auth/onboard.ts",                       // the legacy invite at sign-in / onboarding; the welcome mail
+      "src/orgs/legacy-invites.ts", "src/notifications/invite.ts",       // the legacy `invites` sidecar — org #1's alone
+      "src/routes.ts",                                                   // Sync / Poll / the Repo dashboard's env config — org #1's alone
     ];
     const found = new Set<string>();
     const unmarked: string[] = [];
@@ -275,7 +281,7 @@ describe("data layer — static enforcement (§4.4)", () => {
       if (file === "src/data/legacy.ts") continue;
       const lines = src.split("\n");
       lines.forEach((line, i) => {
-        if (!/\b(legacySystemTenant|joinLegacyOrg)\(/.test(line)) return;
+        if (!/\b(legacySystemTenant|isLegacyOrg|liveLegacyInvite|consumeLegacyInvite)\(/.test(line)) return;
         found.add(file);
         if (!lines.slice(Math.max(0, i - 3), i + 1).some((l) => l.includes("// MT:"))) unmarked.push(`${file}:${i + 1}  ${line.trim()}`);
       });
