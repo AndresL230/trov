@@ -461,13 +461,16 @@ export const PROGRESS_COST_ESTIMATE = 40;
  * org id) and recorded on THAT org's integration row, and the loop moves on. An
  * org with no environment and no repo has no unit: it costs nothing and logs
  * nothing. A suspended org is not listed. Nothing throws out of here.
+ *
+ * `limit` is the invocation's subrequest budget — a parameter only so a test can
+ * make it small enough to watch the rotation.
  */
-export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?: typeof fetch): Promise<void> {
+export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?: typeof fetch, limit: number = CRON_SUBREQUEST_BUDGET): Promise<void> {
   const when = new Date(scheduledTime);
   const minute = when.getUTCMinutes();
   const hour = when.getUTCHours();
   const p = platform(env, "system");
-  const budget = newBudget(fetchImpl);
+  const budget = newBudget(fetchImpl, limit);
   const safely = async (label: string, fn: () => Promise<unknown>) => {
     try {
       await fn();
@@ -483,7 +486,7 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
   let envUnits: (Unit & { envKey: string })[] = [];
   await safely("health", async () => {
     envUnits = (await listEnvUnits(p)).map((u) => ({ key: `${u.org_id}/${u.key}`, orgId: u.org_id, envKey: u.key, cost: HEALTH_COST }));
-    await serveJob(p, "health", envUnits, budget, heavy ? CRON_SUBREQUEST_BUDGET / 2 : CRON_SUBREQUEST_BUDGET,
+    await serveJob(p, "health", envUnits, budget, heavy ? limit / 2 : limit,
       (u) => runEnvJob(env, u.orgId, u.envKey, "health", scheduledTime, budget.fetch));
   });
   // Every tick: pending handoffs past their expires_at flip to expired — in EVERY org (a cross-org,
@@ -496,7 +499,7 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
     // so these pollers get an invocation of their own. The outcomes are for the
     // on-demand route; the pollers already log every failure, so the cron logs
     // nothing new.
-    await safely("usage polls", () => serveJob(p, "usage", envUnits.map((u) => ({ ...u, cost: USAGE_COST })), budget, CRON_SUBREQUEST_BUDGET,
+    await safely("usage polls", () => serveJob(p, "usage", envUnits.map((u) => ({ ...u, cost: USAGE_COST })), budget, limit,
       (u) => runEnvJob(env, u.orgId, u.envKey, "usage", scheduledTime, budget.fetch)));
     return;
   }
@@ -508,7 +511,7 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
   if (heavy) {
     await safely(heavy, async () => {
       const units = (await listRepoUnits(p)).map((u) => ({ key: u.org_id, orgId: u.org_id, cost: heavy === "reconcile" ? reconcileCost(u.envs) : PROGRESS_COST_ESTIMATE }));
-      await serveJob(p, heavy, units, budget, CRON_SUBREQUEST_BUDGET, (u) => runOrgJob(env, u.orgId, heavy, scheduledTime, budget.fetch));
+      await serveJob(p, heavy, units, budget, limit, (u) => runOrgJob(env, u.orgId, heavy, scheduledTime, budget.fetch));
     });
   }
 

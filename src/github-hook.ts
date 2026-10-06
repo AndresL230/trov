@@ -51,10 +51,11 @@ function payloadRepo(rawBody: string): string | null {
  *   2. the HMAC over the raw body, against that repo's secret. No secret, a secret that cannot be
  *      read, or a bad signature → bare 401, NO WWW-Authenticate (the /mcp bearer failure's shape),
  *      and NO rows.
- *   3. the payload's repository must be the row's (case-insensitively, as GitHub compares names);
- *      otherwise the delivery is acknowledged and ignored (202, no rows) — a hook of org B can never
- *      write a delivery about org A's repo into either org. A payload naming NO repository is
- *      ignored the same way on a per-org hook; the legacy hook keeps accepting one, as it always did.
+ *   3. on a per-org hook the payload's repository must be the row's (case-insensitively, as GitHub
+ *      compares names); a payload naming another repository — or none — is acknowledged and ignored
+ *      (202, no rows), so a hook of org B can never write a delivery about org A's repo into either
+ *      org. The LEGACY hook does not apply this check: it behaves exactly as it did before (the
+ *      ticket mirror alone is scoped to the repo), so production's existing webhook is unaffected.
  *   4. only the org's PRIMARY repo is captured today: the capture's keys (`gh:pr:<n>:…`) do not carry
  *      the repo, so a second repo's PR #7 would collide with the first's. A verified delivery for a
  *      non-primary repo is acknowledged and ignored.
@@ -76,9 +77,7 @@ export async function handleGithubWebhook(request: Request, env: Env, opts?: Del
   if (!secret || !(await verifyGithubSignature(secret.reveal(), rawBody, sig))) return json({ error: "unauthorized" }, 401);
   await markSecretUsed(ctx, "github_webhook", row.id).catch(() => undefined);
 
-  const named = payloadRepo(rawBody);
-  const sameRepo = named === null ? hookId === null : named.toLowerCase() === row.repo_full_name.toLowerCase();
-  if (!sameRepo) return json({ ok: true, ignored: true }, 202);
+  if (hookId !== null && payloadRepo(rawBody)?.toLowerCase() !== row.repo_full_name.toLowerCase()) return json({ ok: true, ignored: true }, 202);
   if (row.is_primary !== 1) return json({ ok: true, ignored: true }, 202);
 
   return captureDelivery(ctx, env, {
