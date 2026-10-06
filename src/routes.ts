@@ -10,6 +10,7 @@ import { mcpTokensApp } from "./auth/token-routes";
 import { notificationsApp } from "./notifications/routes";
 import { artifactsApp } from "./artifacts/routes";
 import { orgSettingsApp } from "./integrations/routes";
+import { githubAppSetupApp, githubAppTenantApp } from "./github-app/routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runBackfill, isFinalBackfillBatch } from "./tools/backfill";
@@ -149,6 +150,11 @@ app.route("/auth", authApp);
 // MCP OAuth (/.well-known/oauth-*, /oauth/*): public per the gate's prefix check;
 // /oauth/authorize reads the session itself.
 app.route("/", oauthApp);
+
+// The GitHub App's install callback (`GET /github/app/setup`, issue #95): person-level — the org comes from
+// its sealed `gh_install` cookie and the admin role is re-checked there. Public to `sessionGate` like
+// /oauth/authorize, and for the same reason: it reads the session itself, so a missing one is a page.
+app.route("/", githubAppSetupApp);
 
 // Orgs (§5.3) and the superadmin surface (§5.4): person-level, no membership needed.
 app.route("/api/orgs", orgsApp);
@@ -1102,6 +1108,7 @@ tenantRoot.post("/sprints/:id/complete", async (c) => {
 // repos, environments; cookie only, secrets write-only and admin+), then every tenant route above.
 app.route("/api/o/:slug", orgTenantApp);
 app.route("/api/o/:slug", orgSettingsApp);
+app.route("/api/o/:slug", githubAppTenantApp); // the GitHub App panel: /github… (src/github-app/routes.ts; admin, cookie only)
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
 // their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name

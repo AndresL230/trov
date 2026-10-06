@@ -7,7 +7,7 @@
 
 import { trovMark } from "@shared/mark";
 
-const esc = (s: string): string =>
+export const esc = (s: string): string =>
   s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 
 const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`
@@ -63,12 +63,14 @@ const GOOGLE = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="tru
 const APP = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="m7 9 3 3-3 3M13 15h4"></path></svg>`;
 const CHECK = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>`;
 
-function shell(title: string, body: string): string {
+/** The page frame every Worker-rendered page wears (here, and the GitHub App's install callback —
+ *  src/github-app/pages.ts). `body` is trusted markup: escape every dynamic value before it gets here. */
+export function shell(title: string, body: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">`
     + `<title>${esc(title)} · Trov</title>${FONTS}<style>${CSS}</style></head><body><main class="card">${body}</main></body></html>`;
 }
 
-const head = (title: string) => `<div class="head">${MARK}<span class="title">${esc(title)}</span></div>`;
+export const head = (title: string) => `<div class="head">${MARK}<span class="title">${esc(title)}</span></div>`;
 
 export function errorPage(message: string): string {
   return shell("Can't connect", head("Can't connect this app")

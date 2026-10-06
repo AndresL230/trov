@@ -15,6 +15,7 @@ const PUBLIC_PATHS = new Set([
   "/auth/login", "/auth/callback",
   "/auth/google/login", "/auth/google/callback",
   "/auth/onboard", "/auth/handle-check", // gate themselves on the onboard cookie
+  "/github/app/setup", // the GitHub App's install callback: reads the session itself (src/github-app/install.ts)
 ]);
 
 /** The OAuth endpoints take no session cookie (/oauth/authorize checks the session

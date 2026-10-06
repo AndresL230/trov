@@ -4,9 +4,11 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
 import type { IntegrationDTO, IntegrationsListDTO, OrgAuditDTO, OrgEnvironmentDTO, OrgRepoDTO } from "@shared/integrations";
 import { orgSettingsApp } from "../src/integrations/routes";
+import { githubAppTenantApp } from "../src/github-app/routes";
 import { HOOK_A, SLOTS, call, ownerCookie, roleCookie, seedOrgSettings, slotPath } from "./helpers/integrations";
 import { ORG_A, ORG_B, platformCtx } from "./helpers/tenant";
 import { listAudit } from "../src/platform/repo";
+import { seedInstallation } from "./helpers/github-app";
 
 const TOKEN = "tok_" + "Q7w8E9r0".repeat(8);
 const OTHER = "tok_" + "m1N2b3V4".repeat(8);
@@ -211,7 +213,8 @@ describe("config and the org's data key", () => {
 });
 
 describe("who may call it", () => {
-  // One concrete request per route the sub-app registers.
+  // One concrete request per route the two Org settings sub-apps register (src/integrations/routes.ts and the
+  // GitHub App panel's, src/github-app/routes.ts).
   const REQUESTS: readonly (readonly [method: string, path: string, body?: unknown])[] = [
     ["GET", "/integrations"],
     ["GET", "/integrations/audit"],
@@ -230,27 +233,32 @@ describe("who may call it", () => {
     ["PUT", "/environments", { order: ["production", "staging"] }],
     ["PUT", "/environments/preview", { branch: "preview" }],
     ["DELETE", "/environments/staging"],
+    ["GET", "/github"],
+    ["POST", "/github/install"],
+    ["POST", "/github/installations/4242/refresh"],
+    ["POST", "/github/installations/4242/disconnect"],
   ];
   const digest = async () => {
     const out: Record<string, unknown> = {};
-    for (const t of ["org_secrets", "org_keys", "org_audit", "org_integration_config", "org_repos", "org_environments"]) {
+    for (const t of ["org_secrets", "org_keys", "org_audit", "org_integration_config", "org_repos", "org_environments", "github_installations", "github_installation_repos", "org_admin_audit"]) {
       out[t] = (await env.DB.prepare(`SELECT * FROM ${t}`).all()).results;
     }
     return JSON.stringify(out);
   };
 
-  it("REQUESTS covers every route the sub-app registers", () => {
-    const registered = orgSettingsApp.routes.filter((r) => r.method !== "ALL").map((r) => `${r.method} ${r.path}`);
+  it("REQUESTS covers every route the sub-apps register", () => {
+    const registered = [...orgSettingsApp.routes, ...githubAppTenantApp.routes].filter((r) => r.method !== "ALL").map((r) => `${r.method} ${r.path}`);
     expect(registered.length).toBe(REQUESTS.length);
     for (const route of registered) {
       const [method, pattern] = route.split(" ");
-      const re = new RegExp("^" + pattern.replace(/:[a-z]+/g, "[^/]+") + "$");
+      const re = new RegExp("^" + pattern.replace(/:[A-Za-z]+/g, "[^/]+") + "$");
       expect(REQUESTS.some(([m, p]) => m === method && re.test(p)), route).toBe(true);
     }
   });
 
   it("a member is refused on every integrations route and every write; nothing changes", async () => {
     await seedOrgSettings();
+    await seedInstallation(ORG_A, 4242, [{ id: 1, full_name: "SaplingLearn/sapling" }]);
     await call(await ownerCookie(), "/integrations/github_token", { method: "PUT", body: { secret: OTHER } });
     const member = await roleCookie("sanaok", "member");
     const before = await digest();
@@ -268,6 +276,7 @@ describe("who may call it", () => {
 
   it("an Authorization header is refused on every route — even the owner's, even beside a valid cookie", async () => {
     await seedOrgSettings();
+    await seedInstallation(ORG_A, 4242, [{ id: 1, full_name: "SaplingLearn/sapling" }]);
     const me = await ownerCookie();
     const before = await digest();
     for (const [method, path, body] of REQUESTS) {
