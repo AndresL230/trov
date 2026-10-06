@@ -285,7 +285,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
 
   server.tool(
     "add_ticket_link",
-    "Attach linked work to a ticket (GitHub issue/PR, Figma file, or any URL). SCOPED: only on a ticket already assigned to you. `raw` is parsed by the same parser the web UI uses: a bare '#214' or '214' resolves against the default repo, github.com and figma.com URLs are labelled by kind, anything else is a plain link. An unusable input is `bad_request`.",
+    "Attach linked work to a ticket (GitHub issue/PR, Figma file, or any URL). SCOPED: only on a ticket already assigned to you. `raw` is parsed by the same parser the web UI uses: a bare '#214' or '214' resolves against the org's primary repository, github.com and figma.com URLs are labelled by kind, anything else is a plain link. An unusable input is `bad_request`.",
     { id: z.number(), ...TicketLinkAdd.shape },
     async ({ id, raw }) => runTool(async () => {
       await agentAddTicketLink(ctx, env, id, raw, principal.handle);

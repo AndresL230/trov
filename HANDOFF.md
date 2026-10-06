@@ -46,6 +46,14 @@ their global `id`, not the per-org `number`.
   `test/isolation.*.test.ts` files and the `test/secrets.*.test.ts` suite. Also on the branch, ahead of their
   phase: orgs / members / invites and the superadmin surface (`src/orgs`, `src/platform`, migration
   `0043_platform_orgs`), per-org secrets and the Integrations API (`src/integrations`, `/api/o/:slug/…`).
+- **Phase 5a** (spec §7; branch `mt/p5a-mcp`): a bearer is bound to (user, org) — `resolveBearerTenant` reads
+  the org off the token row / OAuth grant and checks the membership live (removed member, suspended org → 401;
+  no 409 on `/mcp`); tokens are minted / listed / revoked per org at `/api/o/:slug/mcp-tokens…`
+  (`src/auth/token-routes.ts`; `/auth/mcp-token…` is the one-org alias); the OAuth consent page has an org
+  picker and the grant carries the chosen org through code → token → refresh; `update_plan` and the lane's
+  admin exceptions read the org role; `get_repo_dashboard` and bare `#N` links read the org's own repo config.
+  `test/isolation.mcp.test.ts` runs every registered tool with the other org's ids. No migration.
+  Detail: `docs/architecture/data-layer.md` › Bearer.
 
 ### Next, in order
 
@@ -53,9 +61,11 @@ their global `id`, not the per-org `number`.
    behind `tenantGate` (keep the old paths as compat aliases through `soleTenantGate`), replace `isAdmin` /
    `ADMIN_LOGINS` with `requireRole(ctx, …)`, replace `joinLegacyOrg` with org invites at sign-in, add
    route-level isolation tests.
-2. **Phase 5a — MCP** (§7): org-scoped bearer tokens and the OAuth org picker; `resolveBearerTenant` reads the
-   org off the token / grant row instead of the sole membership (then drop the `src/auth/tokens.ts` /
-   `oauth.ts` whole-file entries from the static allowlist).
+2. **Phase 5a — MCP** (§7): DONE (see above). Left for later phases: the SPA's Settings › MCP access still calls
+   the `/auth/mcp-token…` aliases and does not show a grant's `org` (Phase 6); handoff / artifact URLs in tool
+   results are still `<origin>/#…`, not `<origin>/o/<slug>/#…` (Phase 6, with the SPA routes); a sprint's `lead`
+   is stored unchecked, so it can name a non-member; `DEFAULT_TICKET_REPO` is still the fallback for an org with
+   no primary repo, and the tool descriptions still say "the team" (Phase 7 copy pass).
 3. **Phase 5b — cron, webhooks, pollers** (§8.3, §8.5, §8.7): the rotation dispatcher over (org, environment)
    jobs, the webhook resolving its org from `org_repos`, the pollers reading credentials through
    `resolveCredential` — this removes every `legacySystemTenant` caller.

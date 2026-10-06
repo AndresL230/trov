@@ -125,8 +125,10 @@ The sprint vocabulary (the DTO's words, not the column names):
 
 ## Hard rules (invariants)
 
-- **Server-gated to `ADMIN_LOGINS`.** `update_plan` is only registered for admin principals — a
-  non-admin bearer doesn't have the tool at all (absent from `tools/list`, tool-not-found if called).
+- **Server-gated to the organization's admins.** `update_plan` is only registered when the connection's
+  person is an **admin or owner of the organization the connection is for** (their role there today —
+  set in Org settings › Members) — any other bearer doesn't have the tool at all (absent from
+  `tools/list`, tool-not-found if called).
   This skill's own instructions are a second layer, not the enforcement boundary.
 - **Explicit only.** Never fire without a direct admin ask.
 - **Read before write, every time** — step 1 is not optional, even for a small edit.

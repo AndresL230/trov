@@ -454,7 +454,9 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
   Settings; the last identity can't be unlinked.
 - **Bearer token** (agents, `/mcp`): either a pasted per-person `canopy_mcp_` token (stored hashed) or an
   OAuth access token (`canopy_oat_`) obtained through Trov's own OAuth server — both resolve to the same
-  person handle in `resolveBearerPrincipal`, so OAuth is how a bearer is OBTAINED, not a fourth class.
+  (person, org) in `resolveBearerTenant` (`src/data/bearer.ts`), so OAuth is how a bearer is OBTAINED, not a
+  fourth class. **A bearer is bound to ONE org** — the org on its token row / OAuth grant, never a request
+  value — through a live membership check: removed member, suspended org → 401 (`docs/architecture/data-layer.md`).
   **The Settings UI is OAuth-only** (the owner's call, 2026-09-27): nothing in the SPA mints, lists or revokes a
   `canopy_mcp_` token any more — the Get connection command modal, the token list and their web client calls are
   gone. The token routes REMAIN, so a token already in use keeps working: `POST /auth/mcp-token` still mints,

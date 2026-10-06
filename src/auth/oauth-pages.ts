@@ -44,7 +44,7 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;back
 .perms li{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;color:var(--fg-70);line-height:1.5}
 .perms svg{flex:none;margin-top:3px;color:var(--accent)}
 .orgs{margin:0;padding:0;border:0;min-width:0;display:flex;flex-direction:column;gap:8px}
-.orgs .label{padding:0;margin:20px 0 2px}
+.orgs .label{padding:0}
 .org{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;font-size:14px;cursor:pointer;transition:background .12s,border-color .12s}
 .org:hover{background:var(--hover)}
 .org:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}

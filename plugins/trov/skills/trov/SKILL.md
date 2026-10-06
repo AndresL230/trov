@@ -229,6 +229,14 @@ claude plugin install trov@trov
 Then run `/mcp` in Claude Code, choose **trov → Authenticate**, sign in to Trov in the browser and
 click **Allow**. (Headless clients can still use a token from Settings › MCP access.)
 
+A connection is for **one organization**. If you belong to several, the Allow page asks which one this
+connection is for (with one, there is nothing extra to choose); a token from Settings › MCP access is
+minted for the organization you are in when you create it. Everything the tools read and write is that
+organization's — no tool takes an organization argument, and nothing from another one is ever returned.
+To work in a second organization from the same machine, add the server again under another name
+(`claude mcp add --transport http trov-<org> <same url>`), authenticate it and choose that organization.
+If you leave or are removed from an organization, its connections and tokens stop working at once.
+
 **Manual fallback** — wire the MCP server and copy the skills yourself:
 
 ```bash
