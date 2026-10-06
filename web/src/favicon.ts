@@ -3,7 +3,7 @@
  *
  * Two colourways of the Trov mark (shared/mark.ts):
  *   light — the brand purple
- *   dark  — the same mark in the lifted purple
+ *   dark  — the same mark in the dark theme's green
  * web/public/favicon.svg carries both behind `prefers-color-scheme` (right before JS
  * runs); after every paint main.ts calls `syncFavicon` with the resolved app theme,
  * which points the SVG icon link at a `data:` URL of that theme's colourway.

@@ -184,7 +184,7 @@ export const RELEASES: Release[] = [
     patches: {
       added: [
         "Terms of Service and Privacy Policy: two public pages at `/terms` and `/privacy` (Vite inputs `web/terms.html` / `web/privacy.html`, content and renderer in `web/src/legal.ts`, boot in `web/src/legal-page.ts`), linked from the landing page's footer (`siteFooter`, now in `web/src/site-chrome.ts` and shared with both pages); readable signed out, following the app's stored theme",
-        "The Trov mark (`shared/mark.ts`: one path, brand purple `#616ACB` on light and `#8991D7` on dark through a `--mark` token) replaces the three-bar mark in the sidebar, sign-in, landing, legal and OAuth pages; the tab icon (`favicon.svg`, `favicon.ico` in place of `favicon-32.png`, an apple-touch icon); the email banner draws it as table cells",
+        "The Trov mark (`shared/mark.ts`: one path, brand purple `#616ACB` on light and the dark theme's green `#9aab65` on dark, through a `--mark` token) replaces the three-bar mark in the sidebar, sign-in, landing, legal and OAuth pages; the tab icon (`favicon.svg`, `favicon.ico` in place of `favicon-32.png`, an apple-touch icon); the email banner draws it as table cells",
         "`web/src/storage-migrate.ts`: moves every `canopy.*` browser key (theme, feed / prompt view, rail, open nav groups, sign-in return-to) to `trov.*` once, at boot",
       ],
       changed: [
