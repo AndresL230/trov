@@ -71,6 +71,71 @@ export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
   {
+    version: "0.18",
+    date: "2026-10-06",
+    title: "Organizations",
+    headline: "Trov now runs for any number of teams: create an organization, invite people, and switch between the ones you're in.",
+    highlights: [
+      "Trov now holds more than one organization. Each has its own docs, tickets, roadmap, feed, handoffs, prompts and artifacts, and nothing crosses from one to another. The switcher at the top of the sidebar shows the one you're in and takes you to the others.",
+      "Anyone with a GitHub account can sign in and create an organization for their team (up to three), or accept an invitation to one. A new page lists your organizations and your invitations when you belong to none, or to several.",
+      "Org settings › Members is where a team is run: invite people by GitHub login or email, make them an admin or a member, give them a title, or remove them. Owners manage other owners.",
+      "Org settings also holds what used to be set by whoever deploys Trov: the repositories an organization tracks, the environments its Repo dashboard reports on, and the credentials Trov uses for it. A credential is write-only: once saved, only its last four characters are ever shown.",
+      "Connecting Claude Code is per organization: you pick the organization when you allow the connection, and Settings › MCP access shows which one each connected app reaches.",
+      "A new organization's admin gets a short checklist: connect a repository, add an environment, set the GitHub token, invite the team.",
+    ],
+    headsUp: [
+      "The address of every page now starts with your organization, like /o/your-org/. Old links and links in emails still open, in your organization if you have one, or the last one you used.",
+      "Inviting people and editing their role moved from Maintenance › People to Org settings › Members, which you open from the switcher at the top of the sidebar. Maintenance › People is now the directory only.",
+      "Admin now means admin or owner of the organization you're in. If you could sync GitHub, change the email digest or delete other people's prompts and artifacts before and can't now, ask an owner to make you an admin in Org settings › Members.",
+      "Signing in with GitHub no longer requires being in a particular GitHub organization. Signing in with Google still needs an invitation.",
+      "A person's title is set per organization, and an invitation by email no longer takes the invitee's name.",
+      "If you belong to more than one organization, previews of HTML, image and PDF artifacts don't open yet, and an invitation by email isn't emailed for you: tell the person yourself.",
+    ],
+    ops: [
+      "Before applying the multitenancy migrations (`0037`–`0046`, in order), take `wrangler d1 export` (data, base tables — see `scripts/mt/verify-migration.mjs`) and note the D1 Time Travel bookmark; run `node scripts/mt/verify-migration.mjs` on the export; then `npm run db:migrate:remote`. Rollback: Time Travel + `wrangler rollback`, or by hand `scripts/mt/rollback/0043.down.sql` FIRST, then `scripts/mt/rollback/0037-0040.down.sql`.",
+      "Set the `TROV_KEK` secret before this deploys: 32 random bytes, base64 (`openssl rand -base64 32`, then `wrangler secret put TROV_KEK`). It encrypts every organization's stored credentials; without it Org settings › Integrations answers 503 `secrets_unavailable` and no credential can be saved. Keep a copy: losing it loses every stored credential.",
+      "Confirm the Worker is on Workers Paid before a second organization adds environments: the background jobs spend up to 900 subrequests per cron invocation (`CRON_SUBREQUEST_BUDGET`, `src/repo/dispatch.ts`); the free plan's cap is 50.",
+      "Enter SaplingLearn's credentials in Org settings › Integrations: the GitHub token, the webhook secret, the Cloudflare analytics token and account id, and each environment's Railway and app metrics tokens. Until each is stored, the Worker secret it replaces still answers for SaplingLearn only (`GITHUB_SERVICE_TOKEN`, `GITHUB_WEBHOOK_SECRET`, `CF_ANALYTICS_TOKEN` + `CF_ANALYTICS_ACCOUNT_ID`, `RAILWAY_TOKEN_<ENV>`, `SAPLING_METRICS_TOKEN`). Then re-point SaplingLearn's GitHub webhook at `/webhook/github/hook_saplinglearn_sapling`; the legacy `/webhook/github` keeps working until then.",
+      "Promote SaplingLearn's admins: `0037` makes andres the owner and everyone else a member, and `ADMIN_LOGINS` no longer grants anything on a signed-in route. Anyone who should keep admin rights is made an admin in Org settings › Members.",
+      "`0042_platform_admins` seeds andres as the one superadmin (the Platform area); a superadmin has no access to an organization's content. `0045_identity_provider_uid` pins a GitHub identity to the account's numeric id at each person's next sign-in.",
+      "The Worker now answers `GET /o/*` with the app shell. `GITHUB_REPO` and `REPO_ENVIRONMENTS` are read only as SaplingLearn's seed (`0037` copied them into its repository and environment rows); change them in Org settings from now on.",
+    ],
+    patches: {
+      added: [
+        "Multitenancy schema, Phase 2 (`canopy-multitenancy.md`): migrations `0037_orgs` (orgs, memberships, org invites, repos, environments, integration-secret tables, per-org attribution map, counters; SaplingLearn seeded as `org_saplinglearn`), `0038_tenant_columns`, `0039_tenant_rebuilds` (20 tables re-keyed by org, ending in a foreign-key guard) and `0040_tenant_fts` (every search index org-scoped); per-org ticket and handoff numbers; a generated rollback (`scripts/mt/build-rollback.py`) and a production-copy check (`scripts/mt/verify-migration.mjs`); CI on every push (`.github/workflows/ci.yml`). Nothing on screen changes yet",
+        "Data layer (`src/data/`): every repository takes a `TenantContext` or a `PlatformContext` and every tenant statement binds its org; D1 is reachable only there, enforced by `test/data-layer.static.test.ts`; cross-org isolation suites `test/isolation.*.test.ts`",
+        "Routes: every tenant route is served at `/api/o/:slug/<suffix>` behind a membership gate (404 for a non-member) and, for the cut-over, at its old path for a person in exactly one org (409 `org_required` otherwise); `GET /api/orgs`, `POST /api/orgs`, `POST /api/invites/:id/accept|decline`, `GET /api/o/:slug/me` (role, title, connected repositories); org roles replace `ADMIN_LOGINS` on every session route; migration `0045_identity_provider_uid`",
+        "Orgs, members, invites and the superadmin surface (`src/orgs`, `src/platform`, migrations `0042_platform_admins`, `0043_platform_orgs`): Platform › Organizations (add, suspend / unsuspend, owners), Usage, Admins & limits, Audit — `web/src/platform*.ts`",
+        "Per-org integrations (`src/integrations`, `shared/integrations.ts`): envelope-encrypted, write-only secrets under `TROV_KEK`, Test connection, an audit trail, key rotation; Org settings (`web/src/org-settings.ts`, `integrations.ts`, `org-actions.ts`): Integrations, Repositories, Environments, Members, General, and the setup checklist",
+        "MCP: a token and an OAuth grant are bound to (person, org); `GET/POST /api/o/:slug/mcp-tokens`, the consent page's org picker, `GET /auth/oauth-grants` rows carry their org",
+        "Background work per org: the rotation dispatcher (`src/repo/dispatch.ts`), per-(org, environment) jobs, `POST /webhook/github/:hookId`, one digest per (person, org)",
+        "The SPA at `/o/<slug>/` with the hash route after it: `src/index.ts` answers `GET /o/*` with `index.html` from the assets binding; `/` opens the person's only org, the last one opened in the browser (`trov.org`) or the org picker; sign-in returns to the org it started from (`web/src/org-context.ts`)",
+        "One API prefix: `web/src/api.ts` `apiUrl` puts every tenant request under `/api/o/<slug>/` and one sender carries them all; a 404 confirmed by the membership gate lands on the picker; `test/api.prefix.test.ts` calls every exported request function and fails on an unprefixed tenant path",
+        "The org switcher in the sidebar header, the org picker / first run and the create-organization dialog (`web/src/org-picker.ts`, `org-picker-actions.ts`)",
+        "Settings › MCP access: each connected app shows its org; the caller's access tokens for the current org are listed with Revoke",
+        "`confirmModal` takes `tone: \"neutral\"` (the accent button); Platform's Unsuspend uses it",
+      ],
+      changed: [
+        "Admin-only controls (Sync GitHub, Poll now, the email digest settings, deleting someone else's prompt or artifact) read the role in the org on screen (`viewerIsAdmin`); `/auth/me`'s `admin` / `org` / `role` are no longer read by the SPA",
+        "Maintenance › People is the directory with a pointer to Org settings › Members; its invite box, Resend / Revoke and the inline role editor are gone. Org settings › Members sends the invitation email (and Resend email) through the legacy `/invites/:email/resend` alias, which answers only for an admin in exactly one org",
+        "Issue, pull request and commit links, the new-artifact repo list and a new handoff's default repo come from `GET /api/o/:slug/me` (`web/src/github.ts`); with no repository connected a bare `#12` is plain text and the Repo dashboard, the artifact form and the handoff form link to Org settings › Repositories",
+        "The Repo dashboard's not-connected sentences name Org settings › Environments / Integrations instead of Worker variables and secrets",
+        "Per-repository webhook URLs are shown as live (`WEBHOOKS_LIVE`); a webhook secret's test is \"Check deliveries\", and no delivery yet reads as waiting, not failed",
+        "`GET /api/orgs` is loaded once at boot into `state.myOrgs`; the Platform and Org settings controllers both read it",
+        "The landing page, the sign-in dialog, the two refused-sign-in screens and the Get Started guide state the new rules: any GitHub account signs in; Google needs an invitation",
+        "The sidebar: Org settings moved into the switcher's menu; below 990px and again below 850px of height the rail tightens so every entry, Platform included, stays on screen at 800px",
+        "Sign-in checks no GitHub org; onboarding creates a person with no membership (a live legacy SaplingLearn invite is still consumed as one)",
+      ],
+      fixed: [
+        "A doc image in Review's Rendered view was requested at `/img/<sha>`; it is the org's, at `/api/o/<slug>/img/<sha>`",
+      ],
+      removed: [
+        "`REPO_URL`, `ARTIFACT_REPOS` and the hardcoded handoff repo in the SPA; the `admin_handle_not_allowlisted` toast (the Worker no longer sends it); the landing dialog's \"Preview the non-member screen\" link",
+        "`PUT /api/people/:handle` and the legacy `/invites` list / create / revoke are no longer called by the SPA (alias-only on the Worker until the cleanup phase)",
+      ],
+    },
+  },
+  {
     version: "0.17",
     date: "2026-10-06",
     title: "Canopy is now Trov",
@@ -87,7 +152,6 @@ export const RELEASES: Release[] = [
     ],
     ops: [
       "Apply migration `0041_trov_name`: the untouched default sender becomes `Trov <hello@trov.dev>` (digests, invites, welcome mail, the unsubscribe mailto, and the Terms / Privacy contact). BEFORE it deploys, verify trov.dev as a Resend sending domain (SPF / DKIM) and make sure hello@trov.dev receives mail — otherwise every send fails and lands as `failed` in the outbox.",
-      "Multitenancy schema: before applying `0037`–`0040`, take `wrangler d1 export` (data, base tables — see `scripts/mt/verify-migration.mjs`) and note the D1 Time Travel bookmark; run `node scripts/mt/verify-migration.mjs` on the export; then `npm run db:migrate:remote`. Rollback: Time Travel + `wrangler rollback`, or `scripts/mt/rollback/0037-0040.down.sql`.",
       "Apply migration `0042_platform_admins`: the superadmin role, seeded with andres (no screen reads it yet; it grants no access to any org's content).",
       "Trov plugin 0.7.0 — the plugin, its marketplace and the auto-wired MCP server are renamed `trov`. Everyone reinstalls: `/plugin uninstall canopy`, `/plugin marketplace add AndresL230/trov`, `/plugin install trov@trov`, then `/mcp` → trov → Authenticate. Agent tools are now `mcp__trov__…`; a by-hand `claude mcp add … canopy` server must be re-added as `trov`.",
       "Unchanged on purpose: the canopy.saplinglearn.com domain the app is served from, the Worker / D1 `canopy` / R2 `canopy-artifacts` names, the `canopy/coverage|bundle-kb|todo` commit statuses Sapling's CI posts, the `canopy-health` / `canopy-metrics` user-agents in the metrics contract, and tickets' stored `source = 'canopy'`.",
@@ -95,7 +159,6 @@ export const RELEASES: Release[] = [
     patches: {
       added: [
         "Terms of Service and Privacy Policy: two public pages at `/terms` and `/privacy` (Vite inputs `web/terms.html` / `web/privacy.html`, content and renderer in `web/src/legal.ts`, boot in `web/src/legal-page.ts`), linked from the landing page's footer (`siteFooter`, now in `web/src/site-chrome.ts` and shared with both pages); readable signed out, following the app's stored theme",
-        "Multitenancy schema, Phase 2 (`canopy-multitenancy.md`): migrations `0037_orgs` (orgs, memberships, org invites, repos, environments, integration-secret tables, per-org attribution map, counters; SaplingLearn seeded as `org_saplinglearn`), `0038_tenant_columns`, `0039_tenant_rebuilds` (20 tables re-keyed by org, ending in a foreign-key guard) and `0040_tenant_fts` (every search index org-scoped); per-org ticket and handoff numbers; a generated rollback (`scripts/mt/build-rollback.py`) and a production-copy check (`scripts/mt/verify-migration.mjs`); CI on every push (`.github/workflows/ci.yml`). Nothing on screen changes yet",
         "The Trov mark (`shared/mark.ts`: one path, brand purple `#616ACB` on light and `#8991D7` on dark through a `--mark` token) replaces the three-bar mark in the sidebar, sign-in, landing, legal and OAuth pages; the tab icon (`favicon.svg`, `favicon.ico` in place of `favicon-32.png`, an apple-touch icon); the email banner draws it as table cells",
         "`web/src/storage-migrate.ts`: moves every `canopy.*` browser key (theme, feed / prompt view, rail, open nav groups, sign-in return-to) to `trov.*` once, at boot",
       ],
