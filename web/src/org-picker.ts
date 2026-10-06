@@ -263,7 +263,7 @@ export function orgPickerView(p: OrgPickerProps): string {
   const askFor = gh && google ? `your GitHub login (${gh.label}) or your email (${google.label})` : gh ? `your GitHub login (${gh.label})` : google ? `your email (${google.label})` : "your GitHub login or email";
   const canCreate = p.orgs?.can_create === true;
   const createBlock = !p.orgs ? ""
-    : `${sectionHead(orgs.length || invites.length ? "Start another" : "Get started", 0)}
+    : `${sectionHead(orgs.length ? "Start another" : invites.length ? "Or start your own" : "Get started", 0)}
       <div${surface("padding:16px 18px;display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap")}>
         <div style="flex:1 1 240px;min-width:0">
           <div style="font-size:13.5px;font-weight:600">${nothing ? "Create an organization for your team" : "Create an organization"}</div>
