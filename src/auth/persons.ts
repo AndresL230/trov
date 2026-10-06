@@ -1,4 +1,8 @@
-import { type DB, first, all, run, nowIso } from "../db";
+import { type PlatformContext, stmt, batch, nowIso } from "../data/platform-sql";
+import * as platformSql from "../data/platform-sql";
+import { type TenantContext, first as tenantFirst, all as tenantAll } from "../data/sql";
+import type { legacyDb } from "../data/legacy";
+import * as legacySql from "../db";
 import { PERSON_COLORS, type PersonColor, type PersonRow, type IdentityRow, type IdentityProvider } from "@shared/rows";
 import { avatarSrc, type PersonSummary } from "@shared/people";
 
@@ -21,27 +25,71 @@ export function defaultColor(seed: string): PersonColor {
   return PERSON_COLORS[h % PERSON_COLORS.length];
 }
 
-export function getPerson(db: DB, handle: string): Promise<PersonRow | null> {
-  return first<PersonRow>(db, `SELECT * FROM persons WHERE handle = ? COLLATE NOCASE`, handle);
+// MT: DELETE WITH `legacyDb` (end of Phase 3). `getPerson`, `findIdentity`, `linkIdentity` and `listIdentities`
+// (and `recordInviteEmail`, ./invites.ts) are also called by modules that are not ported yet and hold a bare
+// D1 handle (`db`, later `legacyDb(ctx)`) with no PlatformContext in scope. Until those callers are handed
+// one, these five take either.
+export type PersonReader = PlatformContext | ReturnType<typeof legacyDb>;
+const isPlatform = (p: PersonReader): p is PlatformContext => "actor" in p;
+const first = <T>(p: PersonReader, query: string, ...params: unknown[]): Promise<T | null> =>
+  isPlatform(p) ? platformSql.first<T>(p, query, ...params) : legacySql.first<T>(p, query, ...params);
+const all = <T>(p: PersonReader, query: string, ...params: unknown[]): Promise<T[]> =>
+  isPlatform(p) ? platformSql.all<T>(p, query, ...params) : legacySql.all<T>(p, query, ...params);
+export const runEither = (p: PersonReader, query: string, ...params: unknown[]): Promise<D1Result> =>
+  isPlatform(p) ? platformSql.run(p, query, ...params) : legacySql.run(p, query, ...params);
+const run = runEither;
+
+export function getPerson(p: PersonReader, handle: string): Promise<PersonRow | null> {
+  return first<PersonRow>(p, `SELECT * FROM persons WHERE handle = ? COLLATE NOCASE`, handle);
 }
 
-export function findIdentity(db: DB, provider: IdentityProvider, subject: string): Promise<IdentityRow | null> {
-  return first<IdentityRow>(db, `SELECT * FROM identities WHERE provider = ? AND subject = ?`, provider, subject);
+export class PersonError extends Error {
+  readonly code = "bad_request" as const;
+  constructor(message: string) { super(message); this.name = "PersonError"; }
+}
+
+/** `handle` as a MEMBER of the context's org, in its canonical `persons.handle` spelling — or null:
+ *  an unknown handle, a RESERVED one (a system principal is not a person) and a real person who is
+ *  not in this org all read the same, so a handle is never an existence oracle across orgs. */
+export async function memberHandle(ctx: TenantContext, handle: string): Promise<string | null> {
+  const row = await tenantFirst<{ handle: string }>(ctx,
+    `SELECT p.handle FROM persons p JOIN memberships m ON m.user_id = p.handle AND m.org_id = ?
+      WHERE p.handle = ? COLLATE NOCASE`, ctx.orgId, handle);
+  return row && !RESERVED_HANDLES.includes(row.handle.toLowerCase()) ? row.handle : null;
+}
+
+/** Every handle taken from input that must be a person IN THE ORG goes through this (§4.3): the
+ *  canonical handle, or `bad_request` "no such person" — one refusal for all three cases above. */
+export async function requireMember(ctx: TenantContext, handle: string): Promise<string> {
+  const member = await memberHandle(ctx, handle);
+  if (!member) throw new PersonError(`no such person: ${handle}`);
+  return member;
+}
+
+export function findIdentity(p: PersonReader, provider: IdentityProvider, subject: string): Promise<IdentityRow | null> {
+  return first<IdentityRow>(p, `SELECT * FROM identities WHERE provider = ? AND subject = ?`, provider, subject);
 }
 
 /** Ambiguous (more than one person sharing the address, e.g. via the admin-edit path
  *  bypassing the self-service guard) returns null rather than guessing — every caller
  *  (the sign-in fork's branch 2, the email-guard checks) falls through to its next
  *  step (invite/denied, or "address free") instead of auto-linking the wrong person. */
-export async function findPersonByEmail(db: DB, email: string): Promise<PersonRow | null> {
-  const rows = await all<PersonRow>(db, `SELECT * FROM persons WHERE lower(email) = lower(?) LIMIT 2`, email);
+export async function findPersonByEmail(p: PlatformContext, email: string): Promise<PersonRow | null> {
+  const rows = await all<PersonRow>(p, `SELECT * FROM persons WHERE lower(email) = lower(?) LIMIT 2`, email);
   return rows.length === 1 ? rows[0] : null;
 }
 
-export async function handleAvailable(db: DB, handle: string): Promise<{ available: boolean; reason?: HandleProblem }> {
+/** The title a person holds in their ONLY org (`memberships.title`, Q9) — what `/auth/me` carries as
+ *  `role` through the cut-over. Null with no membership or with several: no one org to speak for. */
+export async function soleTitle(p: PlatformContext, handle: string): Promise<string | null> {
+  const rows = await all<{ title: string | null }>(p, `SELECT title FROM memberships WHERE user_id = ? COLLATE NOCASE LIMIT 2`, handle);
+  return rows.length === 1 ? rows[0].title : null;
+}
+
+export async function handleAvailable(p: PlatformContext, handle: string): Promise<{ available: boolean; reason?: HandleProblem }> {
   if (!isValidHandle(handle)) return { available: false, reason: "invalid" };
   if (RESERVED_HANDLES.includes(handle)) return { available: false, reason: "reserved" };
-  if (await getPerson(db, handle)) return { available: false, reason: "taken" };
+  if (await getPerson(p, handle)) return { available: false, reason: "taken" };
   return { available: true };
 }
 
@@ -53,69 +101,71 @@ export async function handleAvailable(db: DB, handle: string): Promise<{ availab
  *  onboarding and edited in Settings (`updateProfile`), and a sign-in must not clobber
  *  it. An uploaded avatar (`avatar_sha`, 0036) is never touched and keeps outranking all
  *  of it. (SQLite evaluates every SET against the OLD row, so both CASEs see the old owner.) */
-export async function recordSignIn(db: DB, handle: string, p: { provider: IdentityProvider; avatar_url: string | null; email: string | null }): Promise<void> {
-  await run(db, `UPDATE persons SET
+export async function recordSignIn(p: PlatformContext, handle: string, s: { provider: IdentityProvider; avatar_url: string | null; email: string | null }): Promise<void> {
+  await run(p, `UPDATE persons SET
       avatar_url = CASE WHEN ? IS NOT NULL AND (avatar_source IS NULL OR avatar_source = ?) THEN ? ELSE avatar_url END,
       avatar_source = CASE WHEN ? IS NOT NULL AND avatar_source IS NULL THEN ? ELSE avatar_source END,
       email = COALESCE(email, ?)
     WHERE handle = ? COLLATE NOCASE`,
-    p.avatar_url, p.provider, p.avatar_url, p.avatar_url, p.provider, p.email, handle);
+    s.avatar_url, s.provider, s.avatar_url, s.avatar_url, s.provider, s.email, handle);
 }
 
 /** `avatar_source` names the provider `avatar_url` came from (onboarding passes its own);
  *  it is stored only beside a picture, so a person with none is claimable at sign-in. */
-export async function createPerson(db: DB, p: { handle: string; name: string | null; color: PersonColor; avatar_url: string | null; avatar_source?: IdentityProvider | null; email: string | null }): Promise<PersonRow> {
+export async function createPerson(p: PlatformContext, n: { handle: string; name: string | null; color: PersonColor; avatar_url: string | null; avatar_source?: IdentityProvider | null; email: string | null }): Promise<PersonRow> {
   const now = nowIso();
   try {
-    await run(db, `INSERT INTO persons (handle, name, color, avatar_url, avatar_source, email, email_unsubscribed, created_at, onboarded_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-      p.handle, p.name, p.color, p.avatar_url, p.avatar_url ? p.avatar_source ?? null : null, p.email, now, now);
+    await run(p, `INSERT INTO persons (handle, name, color, avatar_url, avatar_source, email, email_unsubscribed, created_at, onboarded_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      n.handle, n.name, n.color, n.avatar_url, n.avatar_url ? n.avatar_source ?? null : null, n.email, now, now);
   } catch (e) {
-    if (/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) throw new HandleTakenError(p.handle);
+    if (/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) throw new HandleTakenError(n.handle);
     throw e;
   }
-  return (await getPerson(db, p.handle))!;
+  return (await getPerson(p, n.handle))!;
 }
 
-export async function linkIdentity(db: DB, i: { provider: IdentityProvider; subject: string; label: string; person: string; linkedBy: string }): Promise<void> {
-  await run(db, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES (?, ?, ?, ?, ?, ?)`,
+export async function linkIdentity(p: PersonReader, i: { provider: IdentityProvider; subject: string; label: string; person: string; linkedBy: string }): Promise<void> {
+  await run(p, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES (?, ?, ?, ?, ?, ?)`,
     i.provider, i.subject, i.label, i.person, nowIso(), i.linkedBy);
 }
 
-export async function unlinkIdentity(db: DB, person: string, provider: IdentityProvider): Promise<"ok" | "last_identity" | "not_found"> {
-  const mine = await listIdentities(db, person);
+export async function unlinkIdentity(p: PlatformContext, person: string, provider: IdentityProvider): Promise<"ok" | "last_identity" | "not_found"> {
+  const mine = await listIdentities(p, person);
   const target = mine.find((i) => i.provider === provider);
   if (!target) return "not_found";
   if (mine.length <= 1) return "last_identity";
   // Unlinking the provider that owns the picture releases it (0036 PART B): the picture
   // stays, and the remaining provider claims — and from then on refreshes — it at its next
   // sign-in, rather than the picture freezing with no owner left to refresh it.
-  await db.batch([
-    db.prepare(`DELETE FROM identities WHERE provider = ? AND subject = ?`).bind(target.provider, target.subject),
-    db.prepare(`UPDATE persons SET avatar_source = NULL WHERE handle = ? COLLATE NOCASE AND avatar_source = ?`).bind(person, target.provider),
+  await batch(p, [
+    stmt(p, `DELETE FROM identities WHERE provider = ? AND subject = ?`, target.provider, target.subject),
+    stmt(p, `UPDATE persons SET avatar_source = NULL WHERE handle = ? COLLATE NOCASE AND avatar_source = ?`, person, target.provider),
   ]);
   return "ok";
 }
 
-export function listIdentities(db: DB, person: string): Promise<IdentityRow[]> {
-  return all<IdentityRow>(db, `SELECT * FROM identities WHERE person = ? COLLATE NOCASE ORDER BY linked_at ASC`, person);
+export function listIdentities(p: PersonReader, person: string): Promise<IdentityRow[]> {
+  return all<IdentityRow>(p, `SELECT * FROM identities WHERE person = ? COLLATE NOCASE ORDER BY linked_at ASC`, person);
 }
 
-export async function updateProfile(db: DB, handle: string, patch: { name?: string | null; color?: PersonColor }): Promise<PersonRow | null> {
-  const row = await getPerson(db, handle);
+export async function updateProfile(p: PlatformContext, handle: string, patch: { name?: string | null; color?: PersonColor }): Promise<PersonRow | null> {
+  const row = await getPerson(p, handle);
   if (!row) return null;
-  await run(db, `UPDATE persons SET name = ?, color = ? WHERE handle = ? COLLATE NOCASE`,
+  await run(p, `UPDATE persons SET name = ?, color = ? WHERE handle = ? COLLATE NOCASE`,
     patch.name === undefined ? row.name : patch.name, patch.color ?? row.color, handle);
-  return getPerson(db, handle);
+  return getPerson(p, handle);
 }
 
-/** The people directory (pickers, avatars). A RESERVED handle is a system principal,
+/** The org's people directory (pickers, avatars): its MEMBERS, with the title each holds in it
+ *  (`memberships.title`, Q9 — it travels as `role`). A RESERVED handle is a system principal,
  *  not a person — `github-webhook` has a row only because the GitHub mirror files
  *  tickets as it (0032) — so it is never listed and never offered as an assignee. */
-export async function listPersons(db: DB): Promise<PersonSummary[]> {
-  const rows = await all<Pick<PersonRow, "handle" | "name" | "color" | "avatar_url" | "avatar_sha" | "role">>(db,
-    `SELECT handle, name, color, avatar_url, avatar_sha, role FROM persons
-      WHERE handle NOT IN (${RESERVED_HANDLES.map(() => "?").join(", ")})
-      ORDER BY handle COLLATE NOCASE ASC`, ...RESERVED_HANDLES);
+export async function listPersons(ctx: TenantContext): Promise<PersonSummary[]> {
+  const rows = await tenantAll<Pick<PersonRow, "handle" | "name" | "color" | "avatar_url" | "avatar_sha" | "role">>(ctx,
+    `SELECT p.handle, p.name, p.color, p.avatar_url, p.avatar_sha, m.title AS role FROM persons p
+       JOIN memberships m ON m.user_id = p.handle AND m.org_id = ?
+      WHERE p.handle NOT IN (${RESERVED_HANDLES.map(() => "?").join(", ")})
+      ORDER BY p.handle COLLATE NOCASE ASC`, ctx.orgId, ...RESERVED_HANDLES);
   // `avatar_url` goes out RESOLVED: an uploaded avatar (0036) outranks the provider's.
   return rows.map((r) => ({ handle: r.handle, name: r.name, color: r.color, avatar_url: avatarSrc(r), role: r.role }));
 }
@@ -164,15 +214,15 @@ export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "
  * Validation: unknown `from` → "not_found"; `to` equal to `from` (case-insensitively) → "same";
  * otherwise `to` must pass handleAvailable (regex, reserved, case-insensitive uniqueness).
  */
-export async function renamePerson(db: DB, from: string, to: string): Promise<RenameResult> {
-  if (!(await getPerson(db, from))) return { ok: false, reason: "not_found" };
+export async function renamePerson(p: PlatformContext, from: string, to: string): Promise<RenameResult> {
+  if (!(await getPerson(p, from))) return { ok: false, reason: "not_found" };
   if (from.toLowerCase() === to.toLowerCase()) return { ok: false, reason: "same" };
-  const avail = await handleAvailable(db, to);
+  const avail = await handleAvailable(p, to);
   if (!avail.available) return { ok: false, reason: avail.reason! };
-  await db.batch([
-    db.prepare("PRAGMA defer_foreign_keys = true"),
-    db.prepare("UPDATE persons SET handle = ? WHERE handle = ? COLLATE NOCASE").bind(to, from),
-    ...HANDLE_COLUMNS.map(([t, c]) => db.prepare(`UPDATE ${t} SET ${c} = ? WHERE ${c} = ? COLLATE NOCASE`).bind(to, from)),
+  await batch(p, [
+    stmt(p, "PRAGMA defer_foreign_keys = true"),
+    stmt(p, "UPDATE persons SET handle = ? WHERE handle = ? COLLATE NOCASE", to, from),
+    ...HANDLE_COLUMNS.map(([t, c]) => stmt(p, `UPDATE ${t} SET ${c} = ? WHERE ${c} = ? COLLATE NOCASE`, to, from)),
   ]);
   return { ok: true };
 }

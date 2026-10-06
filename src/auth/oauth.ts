@@ -4,7 +4,7 @@
 // `trov_mcp_` token, so /mcp stays the bearer auth class. D1 only, no fetch,
 // and every clock read is a `nowMs` parameter so tests control time. Raw codes
 // and tokens are returned once and stored only as SHA-256 hashes.
-import { type DB, all, first, run } from "../db";
+import { type PlatformContext, all, first, run, stmt, batch } from "../data/platform-sql";
 import { randomToken, sha256Hex, pkceChallenge } from "./crypto";
 import type { OAuthGrantSummary } from "@shared/rows";
 
@@ -132,16 +132,16 @@ export function validateRegistration(body: unknown): { client_name: string; redi
   return { client_name: name || "Unnamed client", redirect_uris: uris as string[] };
 }
 
-export async function registerClient(db: DB, meta: { client_name: string; redirect_uris: string[] }, nowMs: number): Promise<RegisteredClient> {
+export async function registerClient(p: PlatformContext, meta: { client_name: string; redirect_uris: string[] }, nowMs: number): Promise<RegisteredClient> {
   const client_id = randomToken(32);
-  await run(db, `INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at) VALUES (?, ?, ?, ?)`,
+  await run(p, `INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at) VALUES (?, ?, ?, ?)`,
     client_id, meta.client_name, JSON.stringify(meta.redirect_uris), iso(nowMs));
   return { client_id, client_name: meta.client_name, redirect_uris: meta.redirect_uris };
 }
 
-export async function getClient(db: DB, clientId: string): Promise<RegisteredClient | null> {
+export async function getClient(p: PlatformContext, clientId: string): Promise<RegisteredClient | null> {
   const row = await first<{ client_id: string; client_name: string; redirect_uris: string }>(
-    db, `SELECT client_id, client_name, redirect_uris FROM oauth_clients WHERE client_id = ?`, clientId);
+    p, `SELECT client_id, client_name, redirect_uris FROM oauth_clients WHERE client_id = ?`, clientId);
   if (!row) return null;
   return { client_id: row.client_id, client_name: row.client_name, redirect_uris: JSON.parse(row.redirect_uris) as string[] };
 }
@@ -175,10 +175,10 @@ export type AuthorizeCheck =
  * redirects back with invalid_request. `scope` is deliberately lenient: every token
  * is issued with scope `mcp` whatever was asked for (RFC 6749 §3.3).
  */
-export async function checkAuthorizeRequest(db: DB, q: URLSearchParams, origin: string): Promise<AuthorizeCheck> {
+export async function checkAuthorizeRequest(p: PlatformContext, q: URLSearchParams, origin: string): Promise<AuthorizeCheck> {
   const clientId = q.get("client_id") ?? "";
   const redirect = q.get("redirect_uri") ?? "";
-  const client = clientId ? await getClient(db, clientId) : null;
+  const client = clientId ? await getClient(p, clientId) : null;
   if (!client) return { ok: false, kind: "page", message: "Trov doesn't recognise this app's registration. In Claude Code, run /mcp, choose trov → Clear authentication, then Authenticate again." };
   if (!redirectMatches(client.redirect_uris, redirect)) {
     return { ok: false, kind: "page", message: "This app asked to return to an address it never registered, so Trov won't send you there." };
@@ -196,18 +196,19 @@ export async function checkAuthorizeRequest(db: DB, q: URLSearchParams, origin: 
 }
 
 /** Consent given: the grant (the connection Settings lists) exists from here; the
- *  code is single-use, lives 60 s, and carries the grant id. */
+ *  code is single-use, lives 60 s, and carries the grant id. `orgId` is the org the
+ *  connection acts in (§7.1): the caller names it, and the grant and its code record it. */
 export async function issueAuthorization(
-  db: DB, a: { client: RegisteredClient; params: AuthorizeParams; person: string; nowMs: number },
+  p: PlatformContext, a: { client: RegisteredClient; params: AuthorizeParams; person: string; orgId: string; nowMs: number },
 ): Promise<{ code: string; grantId: number }> {
-  const g = await run(db, `INSERT INTO oauth_grants (person, client_id, client_name, created_at) VALUES (?, ?, ?, ?)`,
-    a.person, a.client.client_id, a.client.client_name, iso(a.nowMs));
+  const g = await run(p, `INSERT INTO oauth_grants (org_id, person, client_id, client_name, created_at) VALUES (?, ?, ?, ?, ?)`,
+    a.orgId, a.person, a.client.client_id, a.client.client_name, iso(a.nowMs));
   const grantId = Number(g.meta.last_row_id);
   const code = randomToken(32);
-  await run(db,
-    `INSERT INTO oauth_codes (code_hash, client_id, person, grant_id, redirect_uri, code_challenge, resource, created_at, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    await sha256Hex(code), a.client.client_id, a.person, grantId, a.params.redirect_uri, a.params.code_challenge,
+  await run(p,
+    `INSERT INTO oauth_codes (org_id, code_hash, client_id, person, grant_id, redirect_uri, code_challenge, resource, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    a.orgId, await sha256Hex(code), a.client.client_id, a.person, grantId, a.params.redirect_uri, a.params.code_challenge,
     a.params.resource, iso(a.nowMs), iso(a.nowMs + CODE_TTL_MS));
   return { code, grantId };
 }
@@ -219,29 +220,29 @@ export interface TokenResponse { access_token: string; token_type: "Bearer"; exp
 const invalidGrant = (d: string) => new OAuthError("invalid_grant", d);
 
 /** A fresh access (1 h) + refresh (90 d from now — the idle window) pair on a grant. */
-async function mintPair(db: DB, grantId: number, nowMs: number): Promise<TokenResponse> {
+async function mintPair(p: PlatformContext, grantId: number, nowMs: number): Promise<TokenResponse> {
   const access = ACCESS_PREFIX + randomToken(32);
   const refresh = REFRESH_PREFIX + randomToken(32);
   const insert = `INSERT INTO oauth_tokens (token_hash, grant_id, kind, created_at, expires_at) VALUES (?, ?, ?, ?, ?)`;
-  await db.batch([
-    db.prepare(insert).bind(await sha256Hex(access), grantId, "access", iso(nowMs), iso(nowMs + ACCESS_TTL_MS)),
-    db.prepare(insert).bind(await sha256Hex(refresh), grantId, "refresh", iso(nowMs), iso(nowMs + REFRESH_TTL_MS)),
+  await batch(p, [
+    stmt(p, insert, await sha256Hex(access), grantId, "access", iso(nowMs), iso(nowMs + ACCESS_TTL_MS)),
+    stmt(p, insert, await sha256Hex(refresh), grantId, "refresh", iso(nowMs), iso(nowMs + REFRESH_TTL_MS)),
   ]);
   return { access_token: access, token_type: "Bearer", expires_in: ACCESS_TTL_MS / 1000, refresh_token: refresh, scope: OAUTH_SCOPE };
 }
 
-async function grantRevoked(db: DB, grantId: number): Promise<boolean> {
-  const g = await first<{ revoked_at: string | null }>(db, `SELECT revoked_at FROM oauth_grants WHERE id = ?`, grantId);
+async function grantRevoked(p: PlatformContext, grantId: number): Promise<boolean> {
+  const g = await first<{ revoked_at: string | null }>(p, `SELECT revoked_at FROM oauth_grants WHERE id = ?`, grantId);
   return !g || g.revoked_at !== null;
 }
 
 /** authorization_code grant. The code is burned by ONE conditional UPDATE before any
  *  check, so a failed check still spends it and a race has one winner. */
 export async function exchangeAuthorizationCode(
-  db: DB, r: { code: string; code_verifier: string; redirect_uri: string; client_id: string; resource: string | null },
+  p: PlatformContext, r: { code: string; code_verifier: string; redirect_uri: string; client_id: string; resource: string | null },
   origin: string, nowMs: number,
 ): Promise<TokenResponse> {
-  const row = await first<{ client_id: string; grant_id: number; redirect_uri: string; code_challenge: string; resource: string | null }>(db,
+  const row = await first<{ client_id: string; grant_id: number; redirect_uri: string; code_challenge: string; resource: string | null }>(p,
     `UPDATE oauth_codes SET used_at = ? WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?
      RETURNING client_id, grant_id, redirect_uri, code_challenge, resource`,
     iso(nowMs), await sha256Hex(r.code), iso(nowMs));
@@ -250,16 +251,16 @@ export async function exchangeAuthorizationCode(
   if ((await pkceChallenge(r.code_verifier)) !== row.code_challenge) throw invalidGrant("code_verifier does not match the code_challenge");
   const expected = (row.resource ?? mcpResource(origin)).replace(/\/+$/, "");
   if (r.resource && r.resource.replace(/\/+$/, "") !== expected) throw invalidGrant("resource does not match the authorization");
-  if (await grantRevoked(db, row.grant_id)) throw invalidGrant("this connection was revoked");
-  return mintPair(db, row.grant_id, nowMs);
+  if (await grantRevoked(p, row.grant_id)) throw invalidGrant("this connection was revoked");
+  return mintPair(p, row.grant_id, nowMs);
 }
 
 /** A `trov_oat_` (or legacy `canopy_oat_`) bearer → its person, while unexpired and its grant unrevoked. ONE
  *  read; `last_used_at` is written at most once a minute so MCP traffic isn't a write
  *  per call. */
-export async function resolveOAuthAccessToken(db: DB, raw: string, nowMs: number): Promise<{ handle: string } | null> {
+export async function resolveOAuthAccessToken(p: PlatformContext, raw: string, nowMs: number): Promise<{ handle: string } | null> {
   if (!isAccessToken(raw)) return null;
-  const row = await first<{ grant_id: number; person: string; last_used_at: string | null }>(db,
+  const row = await first<{ grant_id: number; person: string; last_used_at: string | null }>(p,
     `SELECT g.id AS grant_id, g.person, g.last_used_at FROM oauth_tokens t JOIN oauth_grants g ON g.id = t.grant_id
      WHERE t.token_hash = ? AND t.kind = 'access' AND t.expires_at > ? AND g.revoked_at IS NULL`,
     await sha256Hex(raw), iso(nowMs));
@@ -268,7 +269,7 @@ export async function resolveOAuthAccessToken(db: DB, raw: string, nowMs: number
     // Best-effort: the bump is a courtesy for the Connected apps list, never load-bearing
     // for auth, so a failed write here must not cost the caller their resolved principal.
     try {
-      await run(db, `UPDATE oauth_grants SET last_used_at = ? WHERE id = ?`, iso(nowMs), row.grant_id);
+      await run(p, `UPDATE oauth_grants SET last_used_at = ? WHERE id = ?`, iso(nowMs), row.grant_id);
     } catch (e) {
       console.error("oauth last_used_at: " + (e instanceof Error ? e.message : String(e)));
     }
@@ -284,64 +285,64 @@ export async function resolveOAuthAccessToken(db: DB, raw: string, nowMs: number
  * Claude Code sessions share one credential); later than that is treated as theft
  * and revokes the whole grant.
  */
-export async function refreshAccessToken(db: DB, r: { refresh_token: string; client_id: string | null }, nowMs: number): Promise<TokenResponse> {
+export async function refreshAccessToken(p: PlatformContext, r: { refresh_token: string; client_id: string | null }, nowMs: number): Promise<TokenResponse> {
   const hash = await sha256Hex(r.refresh_token);
-  const row = await first<{ grant_id: number; expires_at: string; rotated_at: string | null; client_id: string; revoked_at: string | null }>(db,
+  const row = await first<{ grant_id: number; expires_at: string; rotated_at: string | null; client_id: string; revoked_at: string | null }>(p,
     `SELECT t.grant_id, t.expires_at, t.rotated_at, g.client_id, g.revoked_at FROM oauth_tokens t
      JOIN oauth_grants g ON g.id = t.grant_id WHERE t.token_hash = ? AND t.kind = 'refresh'`, hash);
   if (!row || row.revoked_at !== null || row.expires_at <= iso(nowMs)) throw invalidGrant("the refresh token is unknown, expired, or revoked");
   if (r.client_id && r.client_id !== row.client_id) throw invalidGrant("client_id does not match the refresh token");
   let rotatedAt = row.rotated_at;
   if (rotatedAt === null) {
-    const res = await run(db, `UPDATE oauth_tokens SET rotated_at = ? WHERE token_hash = ? AND rotated_at IS NULL`, iso(nowMs), hash);
-    if (res.meta.changes > 0) return mintPair(db, row.grant_id, nowMs);
-    rotatedAt = (await first<{ rotated_at: string | null }>(db, `SELECT rotated_at FROM oauth_tokens WHERE token_hash = ?`, hash))?.rotated_at ?? null;
+    const res = await run(p, `UPDATE oauth_tokens SET rotated_at = ? WHERE token_hash = ? AND rotated_at IS NULL`, iso(nowMs), hash);
+    if (res.meta.changes > 0) return mintPair(p, row.grant_id, nowMs);
+    rotatedAt = (await first<{ rotated_at: string | null }>(p, `SELECT rotated_at FROM oauth_tokens WHERE token_hash = ?`, hash))?.rotated_at ?? null;
   }
-  if (rotatedAt !== null && nowMs - Date.parse(rotatedAt) <= REUSE_INTERVAL_MS) return mintPair(db, row.grant_id, nowMs);
-  await run(db, `UPDATE oauth_grants SET revoked_at = ?, revoked_reason = 'reuse' WHERE id = ? AND revoked_at IS NULL`, iso(nowMs), row.grant_id);
+  if (rotatedAt !== null && nowMs - Date.parse(rotatedAt) <= REUSE_INTERVAL_MS) return mintPair(p, row.grant_id, nowMs);
+  await run(p, `UPDATE oauth_grants SET revoked_at = ?, revoked_reason = 'reuse' WHERE id = ? AND revoked_at IS NULL`, iso(nowMs), row.grant_id);
   throw invalidGrant("this refresh token was already used; the connection has been revoked");
 }
 
 /** RFC 7009. A refresh token revokes its grant; an access token is expired in place;
  *  anything else is a no-op (the endpoint always answers 200). */
-export async function revokeOAuthToken(db: DB, raw: string, nowMs: number): Promise<void> {
+export async function revokeOAuthToken(p: PlatformContext, raw: string, nowMs: number): Promise<void> {
   const hash = await sha256Hex(raw);
-  const row = await first<{ grant_id: number; kind: string }>(db, `SELECT grant_id, kind FROM oauth_tokens WHERE token_hash = ?`, hash);
+  const row = await first<{ grant_id: number; kind: string }>(p, `SELECT grant_id, kind FROM oauth_tokens WHERE token_hash = ?`, hash);
   if (!row) return;
   if (row.kind === "refresh") {
-    await run(db, `UPDATE oauth_grants SET revoked_at = ?, revoked_reason = 'user' WHERE id = ? AND revoked_at IS NULL`, iso(nowMs), row.grant_id);
+    await run(p, `UPDATE oauth_grants SET revoked_at = ?, revoked_reason = 'user' WHERE id = ? AND revoked_at IS NULL`, iso(nowMs), row.grant_id);
   } else {
-    await run(db, `UPDATE oauth_tokens SET expires_at = ? WHERE token_hash = ?`, iso(nowMs), hash);
+    await run(p, `UPDATE oauth_tokens SET expires_at = ? WHERE token_hash = ?`, iso(nowMs), hash);
   }
 }
 
 /** Settings › Connected apps: the caller's live connections, newest first. */
-export function listGrants(db: DB, handle: string): Promise<OAuthGrantSummary[]> {
-  return all<OAuthGrantSummary>(db,
+export function listGrants(p: PlatformContext, handle: string): Promise<OAuthGrantSummary[]> {
+  return all<OAuthGrantSummary>(p,
     `SELECT id, client_name, created_at, last_used_at FROM oauth_grants
      WHERE person = ? COLLATE NOCASE AND revoked_at IS NULL ORDER BY created_at DESC, id DESC`, handle);
 }
 
 /** Revoke one of the caller's OWN grants. False for an unknown id and someone else's
  *  alike (never an existence oracle); true again on a repeat, like revokeToken. */
-export async function revokeGrant(db: DB, handle: string, id: number, nowMs: number): Promise<boolean> {
-  const res = await run(db,
+export async function revokeGrant(p: PlatformContext, handle: string, id: number, nowMs: number): Promise<boolean> {
+  const res = await run(p,
     `UPDATE oauth_grants SET revoked_at = COALESCE(revoked_at, ?), revoked_reason = COALESCE(revoked_reason, 'user')
      WHERE id = ? AND person = ? COLLATE NOCASE`, iso(nowMs), id, handle);
   return res.meta.changes > 0;
 }
 
 /** The repo cron's 6-hourly :30 tick. D1 only. Grants are never deleted. */
-export async function pruneOAuth(db: DB, nowMs: number): Promise<void> {
+export async function pruneOAuth(p: PlatformContext, nowMs: number): Promise<void> {
   const hourAgo = iso(nowMs - 60 * 60 * 1000);
   const dayAgo = iso(nowMs - 24 * 60 * 60 * 1000);
   const ungrantedClientCutoff = iso(nowMs - UNGRANTED_CLIENT_TTL_MS);
-  await db.batch([
-    db.prepare(`DELETE FROM oauth_codes WHERE expires_at < ? OR used_at < ?`).bind(hourAgo, hourAgo),
-    db.prepare(`DELETE FROM oauth_tokens WHERE kind = 'access' AND expires_at < ?`).bind(dayAgo),
-    db.prepare(`DELETE FROM oauth_tokens WHERE kind = 'refresh' AND expires_at < ?`).bind(iso(nowMs)),
-    db.prepare(`DELETE FROM oauth_clients WHERE created_at < ?
-      AND client_id NOT IN (SELECT client_id FROM oauth_grants) AND client_id NOT IN (SELECT client_id FROM oauth_codes)`).bind(ungrantedClientCutoff),
+  await batch(p, [
+    stmt(p, `DELETE FROM oauth_codes WHERE expires_at < ? OR used_at < ?`, hourAgo, hourAgo),
+    stmt(p, `DELETE FROM oauth_tokens WHERE kind = 'access' AND expires_at < ?`, dayAgo),
+    stmt(p, `DELETE FROM oauth_tokens WHERE kind = 'refresh' AND expires_at < ?`, iso(nowMs)),
+    stmt(p, `DELETE FROM oauth_clients WHERE created_at < ?
+      AND client_id NOT IN (SELECT client_id FROM oauth_grants) AND client_id NOT IN (SELECT client_id FROM oauth_codes)`, ungrantedClientCutoff),
   ]);
 }
 

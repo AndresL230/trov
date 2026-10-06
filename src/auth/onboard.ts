@@ -1,4 +1,4 @@
-import type { DB } from "../db";
+import type { PlatformContext } from "../data/platform-sql";
 import type { IdentityProvider } from "@shared/rows";
 import { hmacSeal, hmacUnseal, b64uEncode, b64uDecode } from "./crypto";
 import { findIdentity, findPersonByEmail, linkIdentity, listIdentities, recordSignIn, isValidHandle } from "./persons";
@@ -58,30 +58,30 @@ export async function openOnboard(sealed: string, secret: string, now: () => num
  * 1 known identity → session. 2 verified email matches a person → link + session.
  * 3 live invite (Google) / org member (GitHub) → onboard. 4 otherwise → denied.
  *
- * Contract: `p.email` MUST already be provider-verified by the CALLER before this
+ * Contract: `profile.email` MUST already be provider-verified by the CALLER before this
  * runs (GitHub: the primary + verified address from `GET /user/emails`; Google:
  * the ID token claim with `email_verified === true`) or passed as `null` — branch 2
  * links a new identity onto whichever person owns that address, so an unverified
  * email here would let an attacker hijack someone else's account by claiming their
  * address.
  */
-export async function completeSignIn(db: DB, p: ProviderProfile): Promise<ForkResult> {
-  const known = await findIdentity(db, p.provider, p.subject);
+export async function completeSignIn(p: PlatformContext, profile: ProviderProfile): Promise<ForkResult> {
+  const known = await findIdentity(p, profile.provider, profile.subject);
   if (known) {
-    await recordSignIn(db, known.person, { provider: p.provider, avatar_url: p.avatar_url, email: p.email });
+    await recordSignIn(p, known.person, { provider: profile.provider, avatar_url: profile.avatar_url, email: profile.email });
     return { kind: "session", handle: known.person };
   }
-  if (p.email) {
-    const byEmail = await findPersonByEmail(db, p.email);
+  if (profile.email) {
+    const byEmail = await findPersonByEmail(p, profile.email);
     if (byEmail) {
-      await linkIdentity(db, { provider: p.provider, subject: p.subject, label: p.label, person: byEmail.handle, linkedBy: byEmail.handle });
-      await recordSignIn(db, byEmail.handle, { provider: p.provider, avatar_url: p.avatar_url, email: p.email });
+      await linkIdentity(p, { provider: profile.provider, subject: profile.subject, label: profile.label, person: byEmail.handle, linkedBy: byEmail.handle });
+      await recordSignIn(p, byEmail.handle, { provider: profile.provider, avatar_url: profile.avatar_url, email: profile.email });
       return { kind: "session", handle: byEmail.handle };
     }
   }
-  const invite = p.email ? await findLiveInvite(db, p.email) : null;
-  if (p.provider === "github" || invite) {
-    return { kind: "onboard", payload: { ...p, name: p.name ?? invite?.name ?? null, suggested_handle: suggestHandle(p), invite_email: invite?.email ?? null } };
+  const invite = profile.email ? await findLiveInvite(p, profile.email) : null;
+  if (profile.provider === "github" || invite) {
+    return { kind: "onboard", payload: { ...profile, name: profile.name ?? invite?.name ?? null, suggested_handle: suggestHandle(profile), invite_email: invite?.email ?? null } };
   }
   return { kind: "denied" };
 }
@@ -92,11 +92,11 @@ export async function completeSignIn(db: DB, p: ProviderProfile): Promise<ForkRe
  * gets at most one github + one google identity — `unlinkIdentity` couldn't otherwise
  * disambiguate which one to remove).
  */
-export async function linkSignIn(db: DB, handle: string, p: ProviderProfile): Promise<"linked" | "belongs_to_other" | "provider_already_linked"> {
-  const known = await findIdentity(db, p.provider, p.subject);
+export async function linkSignIn(p: PlatformContext, handle: string, profile: ProviderProfile): Promise<"linked" | "belongs_to_other" | "provider_already_linked"> {
+  const known = await findIdentity(p, profile.provider, profile.subject);
   if (known) return known.person.toLowerCase() === handle.toLowerCase() ? "linked" : "belongs_to_other";
-  const mine = await listIdentities(db, handle);
-  if (mine.some((i) => i.provider === p.provider)) return "provider_already_linked";
-  await linkIdentity(db, { provider: p.provider, subject: p.subject, label: p.label, person: handle, linkedBy: handle });
+  const mine = await listIdentities(p, handle);
+  if (mine.some((i) => i.provider === profile.provider)) return "provider_already_linked";
+  await linkIdentity(p, { provider: profile.provider, subject: profile.subject, label: profile.label, person: handle, linkedBy: handle });
   return "linked";
 }
