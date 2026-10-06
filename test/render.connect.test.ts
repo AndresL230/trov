@@ -50,7 +50,7 @@ describe("Get Started guide — Connect your agent", () => {
 });
 
 describe("grantListBody", () => {
-  const grant = { id: 7, client_name: "Claude <Code>", created_at: "2026-09-20T00:00:00.000Z", last_used_at: null };
+  const grant = { id: 7, client_name: "Claude <Code>", created_at: "2026-09-20T00:00:00.000Z", last_used_at: null, org: { slug: "saplinglearn", name: "SaplingLearn" } };
   it("empty, loading and error states", () => {
     expect(grantListBody({ grants: { status: "ok", data: [] }, grantRevokeArm: null })).toContain("No apps connected");
     expect(grantListBody({ grants: { status: "loading", data: [] }, grantRevokeArm: null })).toContain("Loading");

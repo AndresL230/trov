@@ -20,7 +20,7 @@
 // is the one table, shared with the SPA.
 
 import type { TicketCreate, TicketEdit, TicketStatus } from "@shared/tickets";
-import { canTransition, parseTicketLink, placeInColumn } from "@shared/tickets";
+import { canTransition, parseTicketLink, placeInColumn, DEFAULT_TICKET_REPO } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
 import { type TenantContext, type Stmt, first, all, run, stmt, batch, nowIso } from "../data/sql";
 import { requireMember } from "../auth/persons";
@@ -70,9 +70,19 @@ async function requireSprint(ctx: TenantContext, sprintId: number): Promise<void
   if (!sp) throw new TicketError("not_found", `no such sprint: ${sprintId}`);
 }
 
+/**
+ * The repository a BARE issue ref (`#214`) resolves against: the org's primary repository (`org_repos`,
+ * D16) — never another org's. An org that has not configured one still gets the pre-multitenancy
+ * default (`DEFAULT_TICKET_REPO`); the Phase 7 cleanup removes that fallback with the constant.
+ */
+export async function ticketLinkRepo(ctx: TenantContext): Promise<string> {
+  const row = await first<{ repo_full_name: string }>(ctx, `SELECT repo_full_name FROM org_repos WHERE org_id = ? AND is_primary = 1`, ctx.orgId);
+  return row?.repo_full_name ?? DEFAULT_TICKET_REPO;
+}
+
 /** Parse a raw link input, or 400. A blank raw is the caller's business, not this helper's. */
-function requireParsedLink(raw: string) {
-  const parsed = parseTicketLink(raw);
+async function requireParsedLink(ctx: TenantContext, raw: string) {
+  const parsed = parseTicketLink(raw, await ticketLinkRepo(ctx));
   if (!parsed) throw new TicketError("bad_request", `unusable link: ${raw}`);
   return parsed;
 }
@@ -98,7 +108,7 @@ export async function create_ticket(ctx: TenantContext, input: TicketCreate, req
   const sprintId = input.sprint_id ?? null;
   if (sprintId !== null) await requireSprint(ctx, sprintId);
   const rawLink = (input.link ?? "").trim();
-  const link = rawLink ? requireParsedLink(rawLink) : null;
+  const link = rawLink ? await requireParsedLink(ctx, rawLink) : null;
 
   const now = nowIso();
   const res = await run(
@@ -218,7 +228,7 @@ export async function toggle_assignee(ctx: TenantContext, id: number, login: str
 export async function add_ticket_link(ctx: TenantContext, id: number, raw: string, by: string): Promise<number> {
   await getTicketRow(ctx, id);
   const who = await requireMember(ctx, by);
-  const link = requireParsedLink(raw);
+  const link = await requireParsedLink(ctx, raw);
   const now = nowIso();
   const res = await run(
     ctx,

@@ -38,6 +38,7 @@ import { normalizeSprintDate, sprintDatesProblem } from "@shared/sprints-core";
 import { parseTicketLink } from "@shared/tickets";
 import { type TenantContext, first, all, run, stmt, batch, nowIso, ph, fanOut } from "../data/sql";
 import { getProgress } from "./progress";
+import { ticketLinkRepo } from "./tickets";
 
 /**
  * A typed failure the sprint routes map onto an HTTP status — the same three
@@ -443,7 +444,7 @@ export async function delete_sprint(ctx: TenantContext, id: number): Promise<{ i
  */
 export async function add_sprint_resource(ctx: TenantContext, id: number, raw: string): Promise<SprintDetail> {
   await requireSprint(ctx, id);
-  const link = parseTicketLink(raw);
+  const link = parseTicketLink(raw, await ticketLinkRepo(ctx));
   if (!link) throw new SprintError("bad_request", `unusable link: ${raw}`);
 
   const existing = await first<{ id: number }>(
