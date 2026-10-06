@@ -10,7 +10,9 @@
 --     optional: both tables are dropped whole by 0037-0040.down.sql, and on their own the columns are
 --     NULL / 0 for every row and unread by a pre-0043 Worker;
 --   • 0041 (a data change: the mail sender) and 0042 (`platform_admins`, which references only persons) —
---     neither blocks the 0037-0040 rollback; drop `platform_admins` by hand if a full return to 0036 is wanted.
+--     neither blocks the 0037-0040 rollback; drop `platform_admins` by hand if a full return to 0036 is wanted;
+--   • 0045 (`identities.provider_uid`, one nullable column, unread by an older Worker) — no down file;
+--   • 0046 (`abuse_counters`) — its own free-standing file, 0046.down.sql, in any order.
 
 DROP INDEX IF EXISTS idx_org_usage_daily_day;
 DROP TABLE IF EXISTS org_usage_daily;

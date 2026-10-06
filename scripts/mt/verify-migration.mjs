@@ -29,6 +29,7 @@
 // `npm run db:migrate:remote` after the export + Time Travel bookmark in the runbook (§3.5).
 // Rolling back by hand (past Time Travel's window): scripts/mt/rollback/0043.down.sql FIRST, then
 // scripts/mt/rollback/0037-0040.down.sql — the order, and what neither undoes, is in 0043.down.sql's header.
+// scripts/mt/rollback/0046.down.sql (the abuse counters) is free-standing: run it at any point, or not at all.
 
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";

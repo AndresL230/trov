@@ -1,7 +1,8 @@
 # Data layer — tenant and platform contexts
 
-Spec: `canopy-multitenancy.md` §4–§6. Code: `src/data/`, `src/routes.ts`. Phases 3 and 4 are complete: every statement in `src/` runs
+Spec: `canopy-multitenancy.md` §4–§8. Code: `src/data/`, `src/routes.ts`. Phases 3–5 are complete: every statement in `src/` runs
 through a context, every tenant statement names its org, and `test/data-layer.static.test.ts` enforces both.
+What is left (Phase 6 SPA, Phase 7 cleanup) and the deploy runbook: `HANDOFF.md`. Rate limits and mail: `abuse-limits.md`.
 
 ## The two contexts
 
@@ -43,7 +44,7 @@ Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`
   membership that is gone refuses AND revokes the grant (`member_removed`); a suspended org refuses without
   revoking. `GET /auth/oauth-grants` stays user-level and each row carries `org: { slug, name }`.
 - "Admin" over MCP is `hasRole(ctx, "admin")` — `update_plan`'s registration and the lane's two admin
-  exceptions (`src/tools/tickets-agent.ts`). `ADMIN_LOGINS` grants nothing over MCP.
+  exceptions (`src/tools/tickets-agent.ts`). There is no allowlist of handles anywhere.
 - `get_repo_dashboard` reads the org's own `org_repos` / `org_environments` (`orgRepoConfig`,
   `src/tools/repo-agent.ts` — it may not import `src/integrations`, see `test/secrets.mcp.test.ts`); a bare
   `#214` resolves against the org's primary repo (`ticketLinkRepo`, `src/tools/tickets.ts`).
@@ -60,7 +61,7 @@ The lists are derived from the live schema — every table with an `org_id` colu
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
 - **Global tables** (no `org_id`): `persons`, `identities`, `sessions`, `invites`, `oauth_clients`,
-  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `sections`, `tags`.
+  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0046), `sections`, `tags`.
 
 ## Writing a statement
 
@@ -140,8 +141,7 @@ suspended org is absent from every list, and its hook reads as unknown.
 
 **Configuration and credentials.** The repo is the org's primary `org_repos` row (`orgPrimaryRepo`), the
 environments are `org_environments` in `position` order (`orgEnvironments`) — `GITHUB_REPO` and
-`REPO_ENVIRONMENTS` are read by no background job (the two dashboard READS in `src/routes.ts` /
-`src/mcp.ts` still parse the var; they move with their phases). Every credential comes from
+`REPO_ENVIRONMENTS` are read by NOTHING any more (the dashboard reads use the same rows). Every credential comes from
 `resolveCredential(ctx, env, kind, scope)`: `github_token` (`""`), `github_webhook` (the hook id),
 `cloudflare_analytics` (`""`, + `resolveCloudflareAccountId`), `railway` and `metrics_endpoint` (the
 environment key). It is resolved ONLY in modules that `src/mcp.ts` cannot reach — `src/repo/cron.ts`,
@@ -149,16 +149,18 @@ environment key). It is resolved ONLY in modules that `src/mcp.ts` cannot reach 
 (`src/webhook.ts` and `src/repo/github.ts` ARE reachable from MCP; `test/secrets.mcp.test.ts`). Every log
 line and stored `last_error` is scrubbed of every credential the unit revealed.
 
-**Webhooks.** `POST /webhook/github/:hookId`: look the row up (unknown or suspended → 404), verify the HMAC
-against that repo's secret (none / wrong → bare 401, NOTHING written), require the payload to name that
-repo (else 202 ignored), then `captureDelivery` as the org. Only the org's PRIMARY repo is captured today —
+**Webhooks.** `POST /webhook/github/:hookId`: look the row up, verify the HMAC against that repo's secret,
+require the payload to name that repo (else 202 ignored), then `captureDelivery` as the org. Every refusal —
+unknown hook id, suspended org, no (readable) secret, bad signature — is the SAME bare 401
+`{ "error": "unauthorized" }` with NOTHING written, so a hook id cannot be probed (§8.5). Only the org's PRIMARY repo is captured today —
 the capture's keys (`gh:pr:<n>:…`) carry no repo — so a non-primary repo's verified delivery is ignored.
 The legacy `POST /webhook/github` delivers to the one `legacy_hook = 1` row with no repository check,
 exactly as before.
 
 **Email.** One digest per (person, org): each org is due on its own `notification_settings`, the outbox key
-is `org:user:cadence:window`, the unsubscribe is global. The From ADDRESS is the platform's — an org's
-`from_address` contributes its display name only (`platformFrom`). `notification_policy` is seeded by
+is `org:user:cadence:window`, the unsubscribe is global. The From ADDRESS is the platform's on EVERY mail
+path (digest, test send, invite, welcome): `deliveryFor` builds the header, and an org's `from_address`
+contributes a sanitised display name only (`platformFrom`, `abuse-limits.md`). `notification_policy` is seeded by
 `createOrg` and topped up per org by the cron; the per-isolate seed in `src/index.ts` is gone.
 
 **SaplingLearn's fallback (owner steps).** These Worker secrets are now read ONLY by `resolveCredential`'s
@@ -168,18 +170,13 @@ being read the moment SaplingLearn's admin stores that integration on the Integr
 secret wins). The cleanup phase deletes the fallback, those secrets, the legacy hook route and the
 `legacy_hook` flag.
 
-## Cut-over entry points (not shims — replaced in later phases)
-
-`src/data/legacy.ts` keeps `legacySystemTenant(env, actor)` and `joinLegacyOrg(p, handle)`: the entry points
-that cannot name their org yet act on SaplingLearn. After Phase 5b the only caller left is `src/auth/routes.ts`
-(onboarding → Phase 4). `resolveSoleTenant` / `soleTenantGate` are the route alias Phase 4 replaces.
 ## Routes and gates (Phase 4 — spec §5, §6)
 
 Every session request passes `sessionGate`, then exactly one of three things (`src/routes.ts`, `src/data/gate.ts`):
 
 | Path | Gate | Tenant |
 |---|---|---|
-| `/api/o/:slug/*` | `tenantGate` | the org the path names, if the caller is a member — else 404 `{ error: "not_found" }` (unknown slug, non-member, suspended: all alike) |
+| `/api/o/:slug/*` — the tenant routes, the org surface (`src/orgs`, `src/integrations`) and a member's own MCP tokens (`src/auth/token-routes.ts`) | `tenantGate` | the org the path names, if the caller is a member — else 404 `{ error: "not_found" }` (unknown slug, non-member, suspended: all alike) |
 | `/auth/*`, `/avatar/*`, `/api/orgs`, `/api/invites`, `/api/platform/*` | none (person-level) | none: these read and write the caller's own person, or are `requireSuperadmin` |
 | every OTHER path | `soleTenantGate` (the cut-over alias) | the caller's ONE org — 409 `{ error: "org_required" }` with none or several, 404 if it is suspended |
 
@@ -195,13 +192,15 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
   aliases and `soleTenantGate`.
 - **Roles** (§5.2): admin means `hasRole(ctx, "admin")` (admin or owner of the request's org) — in the repository
   (`requireRole` → `RoleError` → 403 `forbidden`) or, on a route whose 403 body predates roles, `adminGate`
-  (403 `{ error: "admin only" }`). `ADMIN_LOGINS` / `isAdmin` grant nothing on a session route; ONE reader is
-  left — the MCP `update_plan` registration in `src/mcp.ts` (Phase 5a).
+  (403 `{ error: "admin only" }`). `isAdmin` and the `ADMIN_LOGINS` var are deleted.
 - **Confirm verbs** (D6) — promote / reject a doc, ratify / reject an ADR, publish a prompt, ratify an artifact —
   and the whole org surface refuse a request that carries an `Authorization` header (`cookieOnly`).
-- **Org #1 only, for now** (`isLegacyOrg`, each marked `MT:`): `POST …/admin/{backfill,poll,poll-usage}` answer
-  503 for any other org (what they call acts on SaplingLearn until Phase 5b), and the Repo dashboard gives another
-  org its own primary repo with no environment config.
+- **Sync / Poll are the caller's org's**: `POST …/admin/{backfill,poll,poll-usage}` (admin+) run the same job
+  functions as the cron for `c.var.ctx`'s org — its repo, environments and stored credentials. An org with
+  nothing configured gets "not configured" (503 from Sync GitHub, `"not_configured"` per source from the two
+  polls) and no outbound request (`test/jobs.multi-org.test.ts`).
+- **Rate limits** (`abuse-limits.md`): a route that sends mail, stores bytes or answers a lookup takes one unit
+  with `rateLimited(c, "<key>")` after its validation and role gate — 429 `{ error: "rate_limited", retry_after }`.
 
 ### People, invites, attribution
 
@@ -221,17 +220,26 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
   `resolvePersonForLogin(ctx, login)` / `memberGithubLogins` read the map first, then a MEMBER's own GitHub identity.
 - **`persons.email`**: the person sets their own (`PUT …/notifications/prefs`); an org admin may set it only for a
   member who is in NO other org (`PUT …/notifications/persons/:handle` — 404 for a non-member, 409 otherwise).
+  It is a notification address, not an identity and not unique: neither route says whether an address is on
+  someone else's row (`abuse-limits.md`).
+- **Residue of login-based identity** (invites by GitHub login, `org_login_map`, identities not yet pinned):
+  `abuse-limits.md` › Residual risks.
 
-## Cut-over entry points (not shims — replaced in later phases)
+## What is still org #1's alone (Phase 7 removes it)
 
-`src/data/legacy.ts` is the only file that names org #1. It keeps `legacySystemTenant(env, actor)` (the entry
-points that cannot name their org yet), `isLegacyOrg(ctx)` (what is still org #1's alone) and the legacy-invite
-rule (`liveLegacyInvite`, `consumeLegacyInvite`). Callers, each marked `// MT:` and listed in the static test:
-`src/index.ts` (policy seed), `src/webhook.ts`, `src/tools/backfill.ts`, `src/repo/cron.ts`,
-`src/notifications/cron.ts` (→ Phase 5b); `src/routes.ts` (Sync / Poll / dashboard config → 5b);
-`src/auth/routes.ts`, `src/auth/onboard.ts`, `src/orgs/legacy-invites.ts`, `src/notifications/invite.ts` (the
-legacy invite table and the welcome mail → Phase 7 / 5b). `resolveSoleTenant` / `soleTenantGate` stay until
-Phase 7 deletes the aliases.
+No entry point acts on "the" org any more. `src/data/legacy.ts` is the only file that names org #1, for two
+things that predate orgs:
+
+- **The legacy `invites` table** — `liveLegacyInvite` / `consumeLegacyInvite` (a new person with a live legacy
+  invite joins SaplingLearn at onboarding and gets its welcome mail) and `isLegacyOrg` (the sidecar's invitee
+  name and mail outcome are read and written for org #1 only). Callers, each marked `// MT:` and listed with
+  its reason in the static test: `src/auth/onboard.ts`, `src/auth/routes.ts`, `src/orgs/legacy-invites.ts`,
+  `src/notifications/invite.ts`.
+- **The env-secret fallback** — `SAPLINGLEARN_ORG_ID`, imported only by `src/data/secrets.ts`
+  (`resolveCredential`, `hasLegacyCredential`, `resolveCloudflareAccountId`).
+
+Also cut-over, with no org named: the legacy `POST /webhook/github` (`legacyHookRepo`, the `legacy_hook` flag),
+and `resolveSoleTenant` / `soleTenantGate` behind the old-path aliases.
 
 ## Tests
 
@@ -247,6 +255,8 @@ assertion in `test/isolation.*.test.ts`: write through `systemCtx(ORG_B)`, read 
 
 `test/isolation.http.test.ts` is the route-level matrix (§10.2), generated from the Hono route registry: a route
 registered on the app with no entry in `TENANT` / `LEGACY_ONLY` / `PLATFORM` fails the suite. Add the entry — a
-body that would succeed against org A — with the route. `seedPerson("admin-user")` is the suite's org ADMIN
+body that would succeed against org A — with the route (and its prefix to `NO_ALIAS` if it has no old-path
+twin). `seedPerson("admin-user")` is the suite's org ADMIN
 (`FIXTURE_ADMIN`); `AndresL230` is SaplingLearn's owner; `seedPerson(h, { email, verified: true })` records the
-address as provider-verified. Role gates: `test/role-gates.http.test.ts`; sign-in: `test/signin.multitenant.test.ts`.
+address as provider-verified. Role gates: `test/role-gates.http.test.ts`; sign-in: `test/signin.multitenant.test.ts`;
+limits and mail: `test/abuse-limits.test.ts`.
