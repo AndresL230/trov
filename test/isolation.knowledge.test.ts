@@ -149,11 +149,17 @@ describe("search", () => {
     expect((await quickSearch(B, `#${ticket}`, WHO)).groups).toEqual([]);
     expect((await quickSearch(A, `#${ticket}`, WHO)).groups.find((g) => g.type === "ticket")?.hits.map((h) => h.id)).toEqual([String(ticket)]);
 
-    // A person is a hit only in an org they are a member of.
+    // A person is a hit only in an org they are a member of — and the line under their name is the
+    // title they hold in THAT org (`memberships.title`), never `persons.role` and never the other org's.
     await ensureMember("wombatfan", "member", ORG_B);
+    await run(env.DB, `UPDATE persons SET role = 'stale global role' WHERE handle = 'wombatfan'`);
+    await run(env.DB, `UPDATE memberships SET title = 'Marsupial lead' WHERE org_id = ? AND user_id = 'wombatfan'`, ORG_A);
     expect((await quickSearch(B, "wombat", WHO)).groups).toEqual([
-      { type: "person", hits: [expect.objectContaining({ id: "wombatfan" })] },
+      { type: "person", hits: [expect.objectContaining({ id: "wombatfan", snippet: null })] },
     ]);
+    await run(env.DB, `UPDATE memberships SET title = 'Contractor' WHERE org_id = ? AND user_id = 'wombatfan'`, ORG_B);
+    const person = async (ctx: typeof A) => (await quickSearch(ctx, "wombat", WHO, { types: ["person"] })).groups[0]?.hits[0]?.snippet;
+    expect([await person(A), await person(B)]).toEqual(["Marsupial lead", "Contractor"]);
   });
 
   it("tickets as reads.ts serves them: list, detail and badge are per org", async () => {

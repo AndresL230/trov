@@ -196,14 +196,16 @@ export async function quickSearch(ctx: TenantContext, q: string, viewer: string,
 
   if (want.has("person")) {
     // The whole query (an @ dropped) as a prefix of the handle, the name, or any word of the name.
+    // A person is a hit only as a MEMBER of this org, and the line under their name is the title they
+    // hold HERE (`memberships.title`, Q9) — `persons.role` is no longer written.
     const whole = likeEsc(trimmed.replace(/^@/, "").replace(/\s+/g, " "));
     plan.push({ type: "person", stmt: stmt(ctx,
-      `SELECT handle, name, color, avatar_url, avatar_sha, role FROM persons
-        WHERE handle NOT IN (${RESERVED_HANDLES.map(() => "?").join(", ")})
-          AND EXISTS (SELECT 1 FROM memberships m WHERE m.org_id = ? AND m.user_id = persons.handle COLLATE NOCASE)
-          AND (handle LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\')
-        ORDER BY (handle LIKE ? ESCAPE '\\') DESC, handle COLLATE NOCASE LIMIT ${n}`,
-      ...RESERVED_HANDLES, ctx.orgId, `${whole}%`, `${whole}%`, `% ${whole}%`, `${whole}%`),
+      `SELECT p.handle, p.name, p.color, p.avatar_url, p.avatar_sha, m.title AS role
+         FROM persons p JOIN memberships m ON m.org_id = ? AND m.user_id = p.handle COLLATE NOCASE
+        WHERE p.handle NOT IN (${RESERVED_HANDLES.map(() => "?").join(", ")})
+          AND (p.handle LIKE ? ESCAPE '\\' OR p.name LIKE ? ESCAPE '\\' OR p.name LIKE ? ESCAPE '\\')
+        ORDER BY (p.handle LIKE ? ESCAPE '\\') DESC, p.handle COLLATE NOCASE LIMIT ${n}`,
+      ctx.orgId, ...RESERVED_HANDLES, `${whole}%`, `${whole}%`, `% ${whole}%`, `${whole}%`),
       map: (r) => ({ type: "person", id: str(r.handle) ?? "", title: str(r.name) || (str(r.handle) ?? ""), snippet: str(r.role), status: null, by: null, at: null, color: str(r.color), avatar_url: avatarSrc({ avatar_sha: str(r.avatar_sha), avatar_url: str(r.avatar_url) }) }) });
   }
 

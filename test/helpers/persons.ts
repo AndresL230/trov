@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { run } from "../../src/db";
+import { run } from "./db";
 import { createSession } from "../../src/auth/session";
 import { hmacSeal } from "../../src/auth/crypto";
 import type { PersonColor } from "@shared/rows";

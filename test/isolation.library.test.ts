@@ -552,6 +552,22 @@ describe("handoffs", () => {
     expect((await claimHandoff(A(), h.id, "iso-carl", "sess-a")).claimed_by).toBe("iso-carl");
   });
 
+  it("a recipient must be a member of the handoff's org: another org's person reads as unknown", async () => {
+    await ensureMember(BOB, "member", ORG_B); // a real person — in B only
+    const refused = { code: "bad_request", message: `unknown recipient: ${BOB}` };
+    await expect(createHandoff(A(), ANN, { body: "x", recipient: BOB })).rejects.toMatchObject(refused);
+    await expect(createHandoff(A(), ANN, { body: "x", recipient: "nobody-at-all" })).rejects.toMatchObject({ code: "bad_request" });
+    expect((await createHandoff(B(), BOB, { body: "x", recipient: `@${BOB}` })).handoff.recipient).toBe(BOB);
+  });
+
+  it("the \"left a handoff\" feed line lands in the handoff's org, and only there", async () => {
+    const before = await all<{ id: number }>(env.DB, `SELECT id FROM feed`);
+    const b = await leave(B(), BOB);
+    const lines = (await all<{ id: number; org_id: string; author: string; summary: string }>(env.DB, `SELECT id, org_id, author, summary FROM feed`))
+      .filter((f) => !before.some((x) => x.id === f.id));
+    expect(lines).toEqual([{ id: expect.any(Number), org_id: ORG_B, author: BOB, summary: expect.stringContaining(`left a handoff for anyone: #${b.id}`) }]);
+  });
+
   // The ONE deliberately cross-org statement here (§4.4): the cron's expiry sweep is a platform-level,
   // write-only retention sweep, so a single run covers every org — and only what is actually due.
   it("the expiry sweep is cross-org by design: one run expires every org's due handoffs, and nothing else", async () => {
