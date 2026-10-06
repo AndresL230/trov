@@ -16,7 +16,7 @@ import { ensureNotificationPolicySeeded } from "./policy";
 import { localDate } from "./window";
 import { runDigest, type RunReport } from "./run";
 import { retryFailed, type RetryReport } from "./retry";
-import { bareAddress, deliveryFor } from "./resend";
+import { PLATFORM_FROM, deliveryFor } from "./resend";
 import { unsubscribeUrl } from "./unsubscribe";
 
 export const DAILY_CRON = "0 * * * *";     // hourly, every day — gated to Mon–Fri local
@@ -24,7 +24,7 @@ export const WEEKLY_CRON = "0 * * * SUN,MON";  // hourly Sun+Mon UTC — gated t
 
 /** What an org with no settings row runs on. */
 export const DEFAULT_SETTINGS: Omit<NotificationSettingsRow, "org_id"> = {
-  send_hour: 8, timezone: "America/New_York", from_address: "Trov <hello@trov.dev>",
+  send_hour: 8, timezone: "America/New_York", from_address: PLATFORM_FROM,
 };
 
 export function dueCadence(cron: string, now: Date, settings: Pick<NotificationSettingsRow, "send_hour" | "timezone">): RunCadence | null {
@@ -40,17 +40,6 @@ export async function loadSettings(ctx: TenantContext): Promise<NotificationSett
     ?? { org_id: ctx.orgId, ...DEFAULT_SETTINGS };
 }
 
-/**
- * The From header of an org's digest: the org's own display NAME, the PLATFORM's address. The
- * sending domain is the platform's (one Resend account, one verified domain), so an org's
- * `from_address` setting contributes its display name only — whatever address it carries is replaced.
- */
-export function platformFrom(orgFrom: string): string {
-  const address = bareAddress(DEFAULT_SETTINGS.from_address);
-  const name = /^\s*([^<]*?)\s*</.exec(orgFrom)?.[1]?.replace(/["\r\n]/g, "").trim();
-  return `${name || "Trov"} <${address}>`;
-}
-
 export interface OrgNotificationReport { run: RunReport | null; retry: RetryReport | null }
 
 /**
@@ -64,7 +53,7 @@ export async function runOrgNotifications(env: Env, ctx: TenantContext, p: Platf
   const origin = env.PUBLIC_ORIGIN ?? "";
   const cadence = dueCadence(cron, now, settings);
   const opts = {
-    delivery: deliveryFor(ctx, env, { from: platformFrom(settings.from_address) }),
+    delivery: deliveryFor(ctx, env, { from: settings.from_address }),
     origin,
     unsubscribeUrl: (login: string) => unsubscribeUrl(origin, login, env.COOKIE_SECRET),
   };

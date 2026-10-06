@@ -14,7 +14,8 @@ import { seedPerson } from "./helpers/persons";
 import { ORG_A, ORG_B, ensureMember, systemCtx } from "./helpers/tenant";
 import { ingestAdrDraft } from "../src/consumer";
 import { create_ticket } from "../src/tools/tickets";
-import { DAILY_CRON, WEEKLY_CRON, handleNotificationCron, platformFrom } from "../src/notifications/cron";
+import { DAILY_CRON, WEEKLY_CRON, handleNotificationCron } from "../src/notifications/cron";
+import { platformFrom } from "../src/notifications/resend";
 
 const FRI_8_ET = new Date("2026-09-11T12:00:00.000Z");
 const FRI_9_ET = new Date("2026-09-11T13:00:00.000Z");
