@@ -85,9 +85,9 @@ export const RELEASES: Release[] = [
       "If you connected Claude Code without the plugin, connect it again under the new name from Settings › MCP access. Tokens you already use keep working.",
     ],
     ops: [
-      "Apply migration `0041_trov_name` (renames the untouched default digest sender to \"Trov\"; the address is unchanged).",
+      "Apply migration `0041_trov_name`: the untouched default sender becomes `Trov <hello@trov.dev>` (digests, invites, welcome mail, the unsubscribe mailto, and the Terms / Privacy contact). BEFORE it deploys, verify trov.dev as a Resend sending domain (SPF / DKIM) and make sure hello@trov.dev receives mail — otherwise every send fails and lands as `failed` in the outbox.",
       "Trov plugin 0.7.0 — the plugin, its marketplace and the auto-wired MCP server are renamed `trov`. Everyone reinstalls: `/plugin uninstall canopy`, `/plugin marketplace add AndresL230/trov`, `/plugin install trov@trov`, then `/mcp` → trov → Authenticate. Agent tools are now `mcp__trov__…`; a by-hand `claude mcp add … canopy` server must be re-added as `trov`.",
-      "Unchanged on purpose: the canopy.saplinglearn.com domain (and the sending address on it), the Worker / D1 `canopy` / R2 `canopy-artifacts` names, the `canopy/coverage|bundle-kb|todo` commit statuses Sapling's CI posts, the `canopy-health` / `canopy-metrics` user-agents in the metrics contract, and tickets' stored `source = 'canopy'`.",
+      "Unchanged on purpose: the canopy.saplinglearn.com domain the app is served from, the Worker / D1 `canopy` / R2 `canopy-artifacts` names, the `canopy/coverage|bundle-kb|todo` commit statuses Sapling's CI posts, the `canopy-health` / `canopy-metrics` user-agents in the metrics contract, and tickets' stored `source = 'canopy'`.",
     ],
     patches: {
       added: [

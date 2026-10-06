@@ -1,6 +1,6 @@
--- The rename to Trov: the digest sender's DISPLAY name. Only the untouched default changes — an admin's own
--- from_address is left alone — and the address stays on canopy.saplinglearn.com (the domain move is a
--- separate, owner-run change: DNS, the Resend sending domain, the GitHub/Google OAuth redirect URLs).
+-- The rename to Trov: the digest / invite / welcome SENDER. Only the untouched default changes — an admin's
+-- own from_address is left alone. The new address is on trov.dev, so the Resend sending domain must be
+-- trov.dev (verified) before this deploys; the app itself stays on canopy.saplinglearn.com for now.
 UPDATE notification_settings
-   SET from_address = 'Trov <canopy@canopy.saplinglearn.com>'
+   SET from_address = 'Trov <hello@trov.dev>'
  WHERE from_address = 'Canopy <canopy@canopy.saplinglearn.com>';

@@ -16,7 +16,7 @@ export const DAILY_CRON = "0 * * * *";     // hourly, every day — gated to Mon
 export const WEEKLY_CRON = "0 * * * SUN,MON";  // hourly Sun+Mon UTC — gated to Monday local
 
 export const DEFAULT_SETTINGS: NotificationSettingsRow = {
-  id: 1, send_hour: 8, timezone: "America/New_York", from_address: "Trov <canopy@canopy.saplinglearn.com>",
+  id: 1, send_hour: 8, timezone: "America/New_York", from_address: "Trov <hello@trov.dev>",
 };
 
 export function dueCadence(cron: string, now: Date, settings: Pick<NotificationSettingsRow, "send_hour" | "timezone">): RunCadence | null {

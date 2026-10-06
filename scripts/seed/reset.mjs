@@ -52,7 +52,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM notification_outbox",
   "DELETE FROM notification_prefs",
   "DELETE FROM notification_policy",
-  "UPDATE notification_settings SET send_hour = 8, timezone = 'America/New_York', from_address = 'Trov <canopy@canopy.saplinglearn.com>' WHERE id = 1",
+  "UPDATE notification_settings SET send_hour = 8, timezone = 'America/New_York', from_address = 'Trov <hello@trov.dev>' WHERE id = 1",
   "DELETE FROM oauth_tokens",
   "DELETE FROM oauth_codes",
   "DELETE FROM oauth_grants",
