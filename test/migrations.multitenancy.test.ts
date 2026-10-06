@@ -248,6 +248,25 @@ describe("the rollback (scripts/mt/rollback/0037-0040.down.sql)", () => {
     expect((await one<{ n: number }>(`SELECT COUNT(*) AS n FROM memberships`))!.n).toBe(2);
   });
 
+  // 0041–0043 came after the generator: 0043's two tables reference orgs(id), so its hand-written
+  // rollback (scripts/mt/rollback/0043.down.sql) runs FIRST, then the generated file.
+  it("0043.down.sql, then the generated rollback: a database at 0043 is back on the 0036 schema (plus 0042's platform_admins)", async () => {
+    await at0036WithData();
+    await applyD1Migrations(db(), before0037());
+    const schema0 = await schema();
+    await applyD1Migrations(db(), upTo("0043"));
+    await db().prepare(`INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-10-06', 'api_read', 'x', 1, 't')`).bind(LEGACY).run();
+    await db().prepare(`INSERT INTO org_admin_audit (org_id, actor, action, target, at) VALUES (?, 'x', 'org.update', 'settings', 't')`).bind(LEGACY).run();
+    const inOrder = [...env.MT_ROLLBACK].sort((a, b) => b.name.localeCompare(a.name)); // 0043 first
+    expect(inOrder.map((m) => m.name)).toEqual(["0043.down.sql", "0037-0040.down.sql"]);
+    await db().batch(inOrder[0].queries.map((q) => db().prepare(q)));
+    expect(await rows(`SELECT name FROM sqlite_master WHERE name LIKE 'org_usage_daily%' OR name LIKE '%org_admin_audit%'`)).toEqual([]);
+    expect(await one(`SELECT name FROM sqlite_master WHERE name = 'orgs'`)).toEqual({ name: "orgs" }); // nothing else was touched
+    await db().batch(inOrder[1].queries.map((q) => db().prepare(q)));
+    expect((await schema()).filter((o) => !o.includes("platform_admins"))).toEqual(schema0);
+    expect((await rows<{ name: string }>(`SELECT name FROM d1_migrations`)).map((r) => r.name.slice(0, 4)).filter((n) => n >= "0037").sort()).toEqual(["0041", "0042"]);
+  });
+
   it("refuses to run once a second org exists (its rows would be lost)", async () => {
     await at0036WithData();
     await applyD1Migrations(db(), upTo("0040"));

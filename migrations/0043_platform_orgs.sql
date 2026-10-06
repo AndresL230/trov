@@ -36,7 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_org_usage_daily_day ON org_usage_daily(day);
 -- ── the org-administration audit trail ───────────────────────────────────────
 -- `org_audit` (0037) is the integration-secrets trail, and its `action` CHECK admits only the five secret
 -- actions; widening a CHECK takes a table rebuild, which this migration does not do. Membership, invite,
--- settings and platform actions are therefore recorded here, in the same shape, with the action list
+-- settings, repository / environment and platform actions are therefore recorded here, in the same shape, with the action list
 -- kept in code (shared/orgs.ts ORG_AUDIT_ACTIONS) so it can grow. `org_id` is NULL for a platform-level
 -- action that concerns no org (a superadmin grant, a person's org limit). Never holds a secret.
 CREATE TABLE IF NOT EXISTS org_admin_audit (
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS org_admin_audit (
   org_id  TEXT REFERENCES orgs(id),
   actor   TEXT NOT NULL,                              -- a handle (HANDLE_COLUMNS)
   action  TEXT NOT NULL,
-  target  TEXT NOT NULL,                              -- a handle, `invite:<id>`, or the org slug
+  target  TEXT NOT NULL,                              -- a handle, `invite:<id>`, the org slug, a repo, an environment key
   detail  TEXT NOT NULL DEFAULT '{}',                 -- JSON
   at      TEXT NOT NULL
 );

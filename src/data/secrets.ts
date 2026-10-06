@@ -273,11 +273,23 @@ const parseObject = (json: string): Record<string, unknown> => {
   } catch { return {}; }
 };
 
-/** The org's recent audit rows, newest first. */
+/**
+ * The org's recent audit rows, newest first: this module's secret trail (`org_audit`) merged with the
+ * repository / environment changes src/integrations/settings.ts records in `org_admin_audit` (0043 —
+ * `org_audit.action` has a CHECK that admits only the five secret actions). One list, the way
+ * `GET /api/platform/audit` merges the same two tables; ids are `s<n>` / `a<n>`. Rows of one batch share
+ * their `at`: there the secret rows come first (a removed environment's secret deletions, then the
+ * removal), each trail in its own id order.
+ */
 export async function listOrgAudit(ctx: TenantContext, limit = 50): Promise<OrgAuditDTO[]> {
-  const rows = await all<Omit<OrgAuditDTO, "detail"> & { detail: string }>(ctx,
-    `SELECT id, actor, action, target, detail, at FROM org_audit WHERE org_id = ? ORDER BY id DESC LIMIT ?`, ctx.orgId, limit);
-  return rows.map((r) => ({ ...r, detail: parseObject(r.detail) }));
+  const rows = await all<Omit<OrgAuditDTO, "detail"> & { detail: string; n: number; secret: number }>(ctx,
+    `SELECT * FROM (
+       SELECT 's' || s.id AS id, s.actor, s.action, s.target, s.detail, s.at, s.id AS n, 1 AS secret FROM org_audit s WHERE s.org_id = ?
+       UNION ALL
+       SELECT 'a' || a.id AS id, a.actor, a.action, a.target, a.detail, a.at, a.id AS n, 0 AS secret FROM org_admin_audit a
+        WHERE a.org_id = ? AND (a.action LIKE 'repo.%' OR a.action LIKE 'environment.%')
+     ) ORDER BY at DESC, secret DESC, n DESC LIMIT ?`, ctx.orgId, ctx.orgId, limit);
+  return rows.map(({ n: _n, secret: _secret, ...r }) => ({ ...r, detail: parseObject(r.detail) }));
 }
 
 // ── non-secret config (org_integration_config) ───────────────────────────────
@@ -369,10 +381,9 @@ export async function rotateSecret(ctx: TenantContext, kind: IntegrationKind, sc
  * repo deletes its secrets with it, §8.7.3). Empty when none is stored.
  */
 export async function secretDeleteStmts(
-  ctx: TenantContext, targets: readonly { kind: IntegrationKind; scope: string }[], reason?: string
+  ctx: TenantContext, targets: readonly { kind: IntegrationKind; scope: string }[], reason?: string, at: string = nowIso()
 ): Promise<Stmt[]> {
   requireRole(ctx, "admin");
-  const at = nowIso();
   const out: Stmt[] = [];
   for (const t of targets) {
     const meta = await getSecretMeta(ctx, t.kind, t.scope);

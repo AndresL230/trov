@@ -34,6 +34,8 @@ export const ORG_AUDIT_ACTIONS = [
   "org.create", "org.update", "org.suspend", "org.unsuspend",
   "member.add", "member.update", "member.remove", "member.leave",
   "invite.create", "invite.revoke", "invite.accept", "invite.decline",
+  // Org settings › Repositories / Environments (src/integrations/settings.ts).
+  "repo.add", "repo.remove", "repo.primary", "environment.set", "environment.delete", "environment.reorder",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];

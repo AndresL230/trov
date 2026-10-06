@@ -53,11 +53,17 @@ export interface IntegrationsListDTO {
 
 export type OrgAuditAction = "secret.set" | "secret.rotate" | "secret.delete" | "integration.config" | "key.rotate";
 
+/** The repository / environment changes recorded beside the secret trail (`org_admin_audit`, shared/orgs.ts). */
+export type OrgSettingsAuditAction =
+  | "repo.add" | "repo.remove" | "repo.primary" | "environment.set" | "environment.delete" | "environment.reorder";
+
+/** One row of `GET /api/o/:slug/integrations/audit`: the secret trail and the repository / environment
+ *  trail as ONE list, newest first. `id` is unique across both: `s<n>` (secrets) or `a<n>` (settings). */
 export interface OrgAuditDTO {
-  id: number;
+  id: string;
   actor: string;
-  action: OrgAuditAction;
-  target: string;                     // `${kind}:${scope}`, or `org_keys` for key.rotate
+  action: OrgAuditAction | OrgSettingsAuditAction;
+  target: string;                     // `${kind}:${scope}` / `org_keys`; a repo's `owner/name`; an environment key
   detail: Record<string, unknown>;    // { hint_last4?, key_version?, … } — never a secret
   at: string;
 }

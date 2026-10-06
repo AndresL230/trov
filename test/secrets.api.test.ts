@@ -5,7 +5,8 @@ import { env } from "cloudflare:test";
 import type { IntegrationDTO, IntegrationsListDTO, OrgAuditDTO, OrgEnvironmentDTO, OrgRepoDTO } from "@shared/integrations";
 import { orgSettingsApp } from "../src/integrations/routes";
 import { HOOK_A, SLOTS, call, ownerCookie, roleCookie, seedOrgSettings, slotPath } from "./helpers/integrations";
-import { ORG_A, ORG_B } from "./helpers/tenant";
+import { ORG_A, ORG_B, platformCtx } from "./helpers/tenant";
+import { listAudit } from "../src/platform/repo";
 
 const TOKEN = "tok_" + "Q7w8E9r0".repeat(8);
 const OTHER = "tok_" + "m1N2b3V4".repeat(8);
@@ -613,5 +614,81 @@ describe("/environments", () => {
     expect(moved.removed_secrets).toEqual(["metrics_endpoint:staging"]);
     expect((await env.DB.prepare(`SELECT kind FROM org_secrets`).all()).results).toEqual([{ kind: "railway" }]);
     expect((await audit(me))[0]).toMatchObject({ action: "secret.delete", target: "metrics_endpoint:staging", detail: { reason: "api_url_changed" } });
+  });
+});
+
+// ── the repository / environment audit trail (org_admin_audit, merged into the page's history) ──
+describe("repository and environment changes are audited", () => {
+  const adminRows = async (orgId: string) => (await env.DB.prepare(`SELECT actor, action, target, detail FROM org_admin_audit WHERE org_id = ? ORDER BY id`).bind(orgId)
+    .all<{ actor: string; action: string; target: string; detail: string }>()).results.map((r) => [r.action, r.target, JSON.parse(r.detail)]);
+
+  it("every repo / environment write records who did what, in the batch that did it — and a refused write records nothing", async () => {
+    const me = await ownerCookie();
+    const post = (body: unknown) => call(me, "/repos", { method: "POST", body });
+    const a = (await json<{ repo: OrgRepoDTO }>(await post({ repo_full_name: "acme/widgets" }))).repo;
+    const b = (await json<{ repo: OrgRepoDTO }>(await post({ repo_full_name: "acme/gadgets" }))).repo;
+    expect((await post({ repo_full_name: "acme/gadgets", is_primary: true })).status).toBe(200); // promote
+    expect((await post({ repo_full_name: "acme/gadgets", is_primary: true })).status).toBe(200); // already primary: no change, no row
+    expect((await post({ repo_full_name: "acme/gadgets" })).status).toBe(409);                    // refused
+    await call(me, `/integrations/github_webhook/${a.id}`, { method: "PUT", body: { secret: "w".repeat(40) } });
+    expect((await call(me, `/repos/${a.id}`, { method: "DELETE" })).status).toBe(200);
+    expect((await call(me, `/repos/${b.id}`, { method: "DELETE" })).status).toBe(200);
+
+    expect((await call(me, "/environments/preview", { method: "PUT", body: { branch: "preview", api_url: "https://api.preview.example.com" } })).status).toBe(201);
+    expect((await call(me, "/environments/preview", { method: "PUT", body: { label: "Preview" } })).status).toBe(200);
+    expect((await call(me, "/environments/preview", { method: "PUT", body: { branch: "has space" } })).status).toBe(400); // refused
+    expect((await call(me, "/environments/edge", { method: "PUT", body: { branch: "edge" } })).status).toBe(201);
+    expect((await call(me, "/environments", { method: "PUT", body: { order: ["edge", "preview"] } })).status).toBe(200);
+    expect((await call(me, "/environments/edge", { method: "DELETE" })).status).toBe(200);
+    const member = await roleCookie("sanaok", "member");
+    expect((await call(member, "/environments/preview", { method: "DELETE" })).status).toBe(403);
+
+    expect(await adminRows(ORG_A)).toEqual([
+      ["repo.add", "acme/widgets", { primary: true }],
+      ["repo.add", "acme/gadgets", { primary: false }],
+      ["repo.primary", "acme/gadgets", {}],
+      ["repo.remove", "acme/widgets", { removed_secrets: [`github_webhook:${a.id}`] }],
+      ["repo.remove", "acme/gadgets", { removed_secrets: [] }],
+      ["environment.set", "preview", { created: true, fields: expect.arrayContaining(["branch", "api_url"]), removed_secrets: [] }],
+      ["environment.set", "preview", { created: false, fields: ["label"], removed_secrets: [] }],
+      ["environment.set", "edge", { created: true, fields: expect.any(Array), removed_secrets: [] }],
+      ["environment.reorder", "environments", { order: ["edge", "preview"] }],
+      ["environment.delete", "edge", { removed_secrets: [] }],
+    ]);
+    // A row says WHICH fields changed, never what to: no URL, no branch name.
+    const raw = (await env.DB.prepare(`SELECT group_concat(detail) AS d FROM org_admin_audit`).first<{ d: string }>())!.d;
+    expect(raw).not.toContain("example.com");
+    expect((await env.DB.prepare(`SELECT DISTINCT actor FROM org_admin_audit`).all()).results).toEqual([{ actor: "AndresL230" }]);
+  });
+
+  it("GET /integrations/audit is ONE list — secret rows and settings rows, newest first, this org's only", async () => {
+    await seedOrgSettings();
+    await seedOrgSettings(ORG_B, "hook_b");
+    await env.DB.prepare(`INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, 'bob-b', 'environment.set', 'b-only', '{}', '2099-01-01T00:00:00.000Z')`).bind(ORG_B).run();
+    const me = await ownerCookie();
+    await call(me, slotPath("railway", "staging"), { method: "PUT", body: { secret: TOKEN } });
+    await call(me, "/environments/preview", { method: "PUT", body: { branch: "preview" } });
+    await call(me, slotPath("github_token", ""), { method: "PUT", body: { secret: TOKEN } });
+    await call(me, "/environments/staging", { method: "DELETE" });
+
+    const log = await audit(me);
+    expect(log.map((r) => [r.action, r.target])).toEqual([
+      ["secret.delete", "railway:staging"],   // one batch: the secret it removed…
+      ["environment.delete", "staging"],      // …then the removal itself
+      ["secret.set", "github_token:"],
+      ["environment.set", "preview"],
+      ["secret.set", "railway:staging"],
+    ]);
+    expect(log.map((r) => r.id[0])).toEqual(["s", "a", "s", "a", "s"]);
+    expect(new Set(log.map((r) => r.id)).size).toBe(5);
+    expect(log.every((r) => r.actor === "AndresL230")).toBe(true);
+    // A membership change is in the org's admin trail, but it is not this page's history.
+    await env.DB.prepare(`INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, 'AndresL230', 'member.add', 'sanaok', '{}', '2099-01-01T00:00:00.000Z')`).bind(ORG_A).run();
+    expect((await audit(me)).map((r) => r.action)).not.toContain("member.add");
+    expect((await json<{ audit: OrgAuditDTO[] }>(await call(me, "/integrations/audit?limit=2"))).audit).toHaveLength(2);
+
+    // The superadmin's audit page sees the same rows through its own merge.
+    const platform = (await listAudit(platformCtx(), { orgSlug: "saplinglearn" })).map((r) => r.action);
+    expect(platform).toEqual(expect.arrayContaining(["environment.delete", "environment.set", "secret.set", "secret.delete", "member.add"]));
   });
 });

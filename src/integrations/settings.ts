@@ -3,9 +3,12 @@
 // webhook path id and its `github_webhook` scope; an environment's key is the `railway` /
 // `metrics_endpoint` scope — so removing one removes its secrets in the SAME batch, audited.
 //
-// `org_audit.action` (0037) only knows the five secret / key actions, so a repo or environment change
-// itself has no audit row; the secret deletions it causes do.
-import type { IntegrationKind, OrgEnvironmentDTO, OrgRepoDTO } from "@shared/integrations";
+// Every change here writes an audit row in the SAME batch. `org_audit.action` (0037) has a CHECK that
+// admits only the five secret / key actions, so a repo or environment change goes to `org_admin_audit`
+// (0043; actions in shared/orgs.ts) and the secret deletions it causes stay in `org_audit`; the page's
+// history (`listOrgAudit`, src/data/secrets.ts) reads both as one list. A row names WHAT changed — a
+// repo, an environment key, the fields touched — never a field's value.
+import type { IntegrationKind, OrgEnvironmentDTO, OrgRepoDTO, OrgSettingsAuditAction } from "@shared/integrations";
 import { checkFetchUrl, FetchUrlError } from "../artifacts/fetch-url";
 import { requireRole } from "../data/context";
 import { listSecretMeta, secretDeleteStmts } from "../data/secrets";
@@ -19,6 +22,11 @@ export class SettingsError extends Error {
   }
 }
 const invalid = (field: string, message: string) => new SettingsError("invalid", 400, message, field);
+
+/** One `org_admin_audit` row for this org, by the acting member — always a statement of the change's own batch. */
+const auditStmt = (ctx: TenantContext, action: OrgSettingsAuditAction, target: string, detail: Record<string, unknown>, at: string): Stmt =>
+  stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, ?, ?, ?, ?)`,
+    ctx.orgId, ctx.userId, action, target, JSON.stringify(detail), at);
 
 // ── repos ────────────────────────────────────────────────────────────────────
 
@@ -75,17 +83,23 @@ export async function addRepo(ctx: TenantContext, input: { repo_full_name: unkno
   if (held) {
     if (input.is_primary !== true) throw new SettingsError("repo_exists", 409, "that repository is already connected");
     if (held.is_primary !== 1) {
-      await batch(ctx, [unsetPrimary, stmt(ctx, `UPDATE org_repos SET is_primary = 1 WHERE org_id = ? AND id = ?`, ctx.orgId, held.id)]);
+      await batch(ctx, [
+        unsetPrimary,
+        stmt(ctx, `UPDATE org_repos SET is_primary = 1 WHERE org_id = ? AND id = ?`, ctx.orgId, held.id),
+        auditStmt(ctx, "repo.primary", held.repo_full_name, {}, nowIso()),
+      ]);
     }
     return { id: held.id, created: false };
   }
   if (rows.length >= MAX_ORG_REPOS) throw new SettingsError("too_many_repos", 409, `an org can connect at most ${MAX_ORG_REPOS} repositories`);
   const primary = rows.length === 0 || input.is_primary === true;
   const id = newHookId();
+  const at = nowIso();
   await batch(ctx, [
     ...(primary && rows.length > 0 ? [unsetPrimary] : []),
     stmt(ctx, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES (?, ?, ?, ?, 0, ?, ?)`,
-      id, ctx.orgId, name, primary ? 1 : 0, nowIso(), ctx.userId),
+      id, ctx.orgId, name, primary ? 1 : 0, at, ctx.userId),
+    auditStmt(ctx, "repo.add", name, { primary }, at),
   ]);
   return { id, created: true };
 }
@@ -98,9 +112,15 @@ export async function removeRepo(ctx: TenantContext, id: string): Promise<string
   const row = rows.find((r) => r.id === id);
   if (!row) throw new SettingsError("not_found", 404, "no such repository");
   if (row.is_primary === 1 && rows.length > 1) throw new SettingsError("primary_repo", 409, "make another repository the primary before removing this one");
-  const secrets = await secretDeleteStmts(ctx, [{ kind: "github_webhook", scope: id }], "repo_removed");
-  await batch(ctx, [...secrets, stmt(ctx, `DELETE FROM org_repos WHERE org_id = ? AND id = ?`, ctx.orgId, id)]);
-  return secrets.length ? [`github_webhook:${id}`] : [];
+  const at = nowIso();
+  const secrets = await secretDeleteStmts(ctx, [{ kind: "github_webhook", scope: id }], "repo_removed", at);
+  const removed = secrets.length ? [`github_webhook:${id}`] : [];
+  await batch(ctx, [
+    ...secrets,
+    stmt(ctx, `DELETE FROM org_repos WHERE org_id = ? AND id = ?`, ctx.orgId, id),
+    auditStmt(ctx, "repo.remove", row.repo_full_name, { removed_secrets: removed }, at),
+  ]);
+  return removed;
 }
 
 // ── environments ─────────────────────────────────────────────────────────────
@@ -191,7 +211,7 @@ export async function putEnvironment(ctx: TenantContext, key: string, body: Reco
     next.health_path, next.railway_environment_id, next.railway_service_id];
   let secrets: Stmt[] = [];
   if (current && current.api_url && originOf(current.api_url) !== originOf(next.api_url)) {
-    secrets = await secretDeleteStmts(ctx, [{ kind: "metrics_endpoint", scope: key }], "api_url_changed");
+    secrets = await secretDeleteStmts(ctx, [{ kind: "metrics_endpoint", scope: key }], "api_url_changed", at);
   }
   const write = current
     ? stmt(ctx, `UPDATE org_environments SET label = ?, note = ?, branch = ?, railway_env = ?, worker = ?, worker_check = ?, frontend_url = ?, api_url = ?,
@@ -201,10 +221,13 @@ export async function putEnvironment(ctx: TenantContext, key: string, body: Reco
                  health_path, railway_environment_id, railway_service_id, created_at, updated_at, updated_by)
                  VALUES (?, ?, (SELECT COALESCE(MAX(e.position), -1) + 1 FROM org_environments e WHERE e.org_id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ctx.orgId, key, ctx.orgId, ...values, at, at, ctx.userId);
-  await batch(ctx, [...secrets, write]);
+  const removed = secrets.length ? [`metrics_endpoint:${key}`] : [];
+  // The audit row lists the FIELDS that changed, not their values.
+  const fields = (Object.keys(FIELD_MAX) as (keyof EnvFields)[]).filter((f) => !current || current[f] !== next[f]);
+  await batch(ctx, [...secrets, write, auditStmt(ctx, "environment.set", key, { created: !current, fields, removed_secrets: removed }, at)]);
   const environment = (await listEnvironments(ctx)).find((e) => e.key === key);
   if (!environment) throw new SettingsError("not_found", 404, "no such environment");
-  return { environment, created: !current, removed_secrets: secrets.length ? [`metrics_endpoint:${key}`] : [] };
+  return { environment, created: !current, removed_secrets: removed };
 }
 
 // Positions are UNIQUE per org, so a renumbering goes through the negatives: every moved row is parked
@@ -224,6 +247,7 @@ export async function reorderEnvironments(ctx: TenantContext, order: unknown): P
     await batch(ctx, [
       ...(order as string[]).map((key, i) => stmt(ctx, `UPDATE org_environments SET position = ? WHERE org_id = ? AND key = ?`, -(i + 1), ctx.orgId, key)),
       unparkStmt(ctx),
+      auditStmt(ctx, "environment.reorder", "environments", { order }, nowIso()),
     ]);
   }
   return listEnvironments(ctx);
@@ -237,13 +261,16 @@ export async function deleteEnvironment(ctx: TenantContext, key: string): Promis
   if (!row) throw new SettingsError("not_found", 404, "no such environment");
   const targets = ENV_SECRET_KINDS.map((kind) => ({ kind, scope: key }));
   const held = new Set((await listSecretMeta(ctx)).map((s) => `${s.kind}:${s.scope}`));
-  const secrets = await secretDeleteStmts(ctx, targets, "environment_deleted");
+  const at = nowIso();
+  const secrets = await secretDeleteStmts(ctx, targets, "environment_deleted", at);
+  const removed = targets.map((t) => `${t.kind}:${t.scope}`).filter((t) => held.has(t));
   await batch(ctx, [
     ...secrets,
     stmt(ctx, `DELETE FROM org_integration_config WHERE org_id = ? AND scope = ? AND kind IN ('railway', 'metrics_endpoint')`, ctx.orgId, key),
     stmt(ctx, `DELETE FROM org_environments WHERE org_id = ? AND key = ?`, ctx.orgId, key),
     stmt(ctx, `UPDATE org_environments SET position = -position WHERE org_id = ? AND position > ?`, ctx.orgId, row.position),
     unparkStmt(ctx),
+    auditStmt(ctx, "environment.delete", key, { removed_secrets: removed }, at),
   ]);
-  return targets.map((t) => `${t.kind}:${t.scope}`).filter((t) => held.has(t));
+  return removed;
 }
