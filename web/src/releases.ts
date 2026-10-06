@@ -71,6 +71,44 @@ export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
   {
+    version: "0.19",
+    date: "2026-10-06",
+    title: "GitHub App",
+    headline: "Connect GitHub by installing Trov on your repositories: no token to paste, no webhook to add by hand.",
+    highlights: [
+      "Org settings › Repositories has an Install on GitHub button. Pick the repositories on GitHub, come back, and connect one from the list Trov now shows you. It works the same for a personal account and for a GitHub organization, where an owner approves the install once.",
+      "Trov reads your repositories with a short-lived, read-only key it asks GitHub for each time, instead of a long-lived token tied to one person. Nothing breaks when that person leaves.",
+      "Every installed repository's activity arrives on its own: pull requests, issues, pushes, reviews, deploys and checks. The panel shows when the last one came in, and Refresh or Manage on GitHub changes which repositories Trov can see.",
+      "Only someone whose own GitHub account can read every repository in an install can connect it to an organization, and one install belongs to one organization.",
+    ],
+    headsUp: [
+      "Once your organization's main repository is connected through the app, the GitHub token and webhook rows leave Org settings › Integrations. Anything already saved there stays listed so you can delete it.",
+      "Only the main repository's activity is recorded, as before: connecting more repositories lists them, but their events are not captured yet.",
+    ],
+    ops: [
+      "Apply `0048_github_app` (two tables and `org_repos.installation_id`; additive). Its rollback `scripts/mt/rollback/0048.down.sql` runs BEFORE `0043.down.sql`.",
+      "Register the GitHub App — URLs, read-only permissions and events in `docs/superpowers/specs/2026-10-06-github-app-design.md` §11 — then `wrangler secret put` each of `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY` and `GITHUB_APP_WEBHOOK_SECRET`. Until all six are set the App is not configured and nothing changes. The permission list was not checked against a live App: after installing, a Poll now with a `failed` arm names a missing permission.",
+      "Then install it on SaplingLearn/sapling from Org settings › Repositories: the existing repository row attaches, and the legacy webhook and `GITHUB_SERVICE_TOKEN` keep answering beside it until the cleanup phase removes them.",
+    ],
+    patches: {
+      added: [
+        "The GitHub App (`src/github-app/`, spec `docs/superpowers/specs/2026-10-06-github-app-design.md`): migration `0048_github_app` (`github_installations` keyed by GitHub's installation id — one org per installation — `github_installation_repos`, `org_repos.installation_id`); RS256 App JWTs signed in the Worker (PKCS#1 or PKCS#8 keys); one-hour installation tokens minted per job, scoped to the one repository and to read",
+        "`resolveGithubToken` / `githubCredential`: the one GitHub credential for reconcile, progress, backfill and both webhooks' follow-up reads — an attached installation's token, else the pasted `github_token`; refused to bearer and member contexts; nothing in `src/github-app/` is reachable from MCP (`test/secrets.mcp.test.ts`)",
+        "`POST /webhook/github-app`: one App webhook for every org, verified with the App's secret, the org resolved from the installation; `installation` / `installation_repositories` events keep the binding true (uninstall, suspend, repositories added / removed); capture through the same `captureDelivery`, primary repository only",
+        "The install flow: `POST /api/o/:slug/github/install` and `GET /github/app/setup` — binds only for an org admin whose own GitHub user token (an OAuth hop with a state nonce, revoked, never stored) can read every repository the installation covers; a forged or foreign installation id is refused",
+        "`GET /api/o/:slug/github`, `POST …/github/installations/:installationId/refresh|disconnect`; Org settings › Repositories' GitHub App panel (`web/src/org-github.ts`), the `#org/repos?github=connected|requested` landing toast, the setup checklist's \"Install the GitHub App\" step",
+        "Audit actions `github.connect|disconnect|uninstall|suspend|unsuspend|repos` and `repo.attach|detach`",
+      ],
+      changed: [
+        "`reconcileCost` is 20 + 2N and Poll now's budget 20 + 7N (one installation-token mint)",
+        "Org settings › Integrations: an org whose primary repository is on the App no longer expects a `github_token` or the App-connected repositories' `github_webhook` secrets; `OrgRepoDTO` carries `connection` / `installation_id`",
+        "`addRepo` attaches a repository an installation of the org covers",
+      ],
+      fixed: [],
+      removed: [],
+    },
+  },
+  {
     version: "0.18",
     date: "2026-10-06",
     title: "Organizations",

@@ -47,17 +47,29 @@ organization lands on the **org picker**, which lists their invitations; **Accep
 [`POST /api/invites/:id/accept`]. A new owner lands on **Org settings**, which opens with
 *Finish setting up <org>* [`web/src/org-settings.ts` `setupChecklist`]:
 
-1. **Connect a repository** — Org settings › Repositories: `owner/repo`. The first one is the primary; a bare
-   `#214` anywhere in the app resolves against it.
+1. **Connect a repository** — Org settings › Repositories. With the GitHub App registered (below), **Install on
+   GitHub**, pick the repositories, then *Connect* one from the installation's list; otherwise type `owner/repo`.
+   The first one is the primary; a bare `#214` anywhere in the app resolves against it.
 2. **Add an environment** — Org settings › Environments: a key (`staging`, `production`), the branch it
    deploys from, its web and API URLs. The Repo dashboard reports on each.
-3. **Set the GitHub token** — Org settings › Integrations. Credentials are **write-only**: once saved only
+3. **Install the GitHub App** (when the platform has registered it — step 1 did it) **or set the GitHub token** —
+   Org settings › Integrations. Credentials are **write-only**: once saved only
    the last four characters are ever shown, to anyone [`src/data/secrets.ts`, envelope-encrypted under the
    deployment's `TROV_KEK`]. *Test connection* checks it. The other integrations are optional: Cloudflare
    analytics, and per environment the Railway token and the app-metrics token.
 4. **Invite your team** — next section.
 
-**The GitHub webhook.** Each repository row shows its own delivery URL, `/webhook/github/<id>`, and a
+**The GitHub App** (issue #95; `docs/superpowers/specs/2026-10-06-github-app-design.md`). *Install on GitHub*
+sends the admin to GitHub to pick the repositories, then through a one-time GitHub sign-in that proves their own
+account can read every repository the installation covers — only then is the installation bound to the
+organization, and an installation belongs to exactly one. From then on Trov mints a one-hour, read-only token per
+job and every installed repository delivers through the App's one webhook: no token to paste, no webhook to add.
+The Repositories panel lists each installation's repositories (*Connect*, *Make primary*), the last delivery,
+*Refresh*, *Manage on GitHub* (to change which repositories it covers) and *Disconnect*. A GitHub organization
+member who cannot install asks an owner, who approves it on GitHub. Uninstalling or suspending on GitHub is
+reflected at once. Only the primary repository's events are captured, as before.
+
+**The GitHub webhook** (the path without the App). Each repository row shows its own delivery URL, `/webhook/github/<id>`, and a
 webhook secret (Integrations › *Set* generates one). In the repository's GitHub settings add a webhook to
 that URL with that secret, content type JSON; pull requests, issues, pushes, reviews, deployments, checks,
 workflow runs and commit statuses are what Trov reads. *Check deliveries* reports the last one received. Until it is set up,

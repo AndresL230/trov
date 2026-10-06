@@ -89,11 +89,15 @@ holds; the SPA now handles each.
 ### Next, in order
 
 1. **The owner's deploy** (steps below), after the decisions under "Decide before a production deploy".
+   **The GitHub App (issue #95)** rides it: migration `0048_github_app`, then register the App and set its six
+   secrets (step 12), then install it on SaplingLearn/sapling — the existing repo row attaches and the legacy
+   webhook + `GITHUB_SERVICE_TOKEN` keep answering beside it until Phase 7.
 2. **Phase 7 — cleanup** (spec §11), one cleanup migration and the deletions it allows:
    - remove the old-path aliases, `soleTenantGate` / `resolveSoleTenant`, `/auth/mcp-token…`, the `legacyOnly`
      routes, the `/raw/a/*` alias mount and `src/orgs/legacy-invites.ts`; drop the legacy `invites` table,
      `src/auth/invites.ts`, `src/data/legacy.ts` (the sidecar's columns already live on `org_invites`);
-   - remove the legacy `POST /webhook/github` route and `org_repos.legacy_hook`, and `resolveCredential`'s
+   - once SaplingLearn's repo reads "via GitHub App" and the App panel shows deliveries: remove the legacy
+     `POST /webhook/github` route and `org_repos.legacy_hook`, and `resolveCredential`'s
      env-secret fallback with its Worker secrets and the dead vars `GITHUB_REPO` / `REPO_ENVIRONMENTS`
      (+ `repoEnvironments`);
    - drop every tenant table's transitional `org_id DEFAULT 'org_saplinglearn'`;
@@ -183,6 +187,15 @@ the rollback headers now say `trov` too. Check `database_name` in `wrangler.toml
     address. See decision 1 above first.
 11. **Take on the first outside org**: `/platform/` › Add organization, as `docs/architecture/organizations.md`
     describes.
+12. **Register the GitHub App** (issue #95) — `docs/superpowers/specs/2026-10-06-github-app-design.md` §11 lists
+    the URLs, the read-only permissions and the events. Apply `0048_github_app` (with the others in step 4; its
+    rollback `scripts/mt/rollback/0048.down.sql` runs BEFORE `0043.down.sql`), then `wrangler secret put` each of
+    `GITHUB_APP_ID`, `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`,
+    `GITHUB_APP_PRIVATE_KEY` (`< app.private-key.pem`) and `GITHUB_APP_WEBHOOK_SECRET`. Until all six are set the
+    App is "not configured" and nothing changes. Then, as SaplingLearn's admin, Org settings › Repositories ›
+    **Install on GitHub** on SaplingLearn/sapling. Check: the repo row reads "via GitHub App"; *Poll now* reports no
+    `failed` arm (a failed arm names a permission the App lacks — the permission list was NOT verified against a
+    live App); the panel shows a recent delivery. Leave the legacy webhook in place until then.
 
 Still open from before: the operator name on the legal pages ("Andres Lopez"); re-capturing the Get Started
 screenshots (`scripts/capture-guide.mjs`), which still show "Canopy".

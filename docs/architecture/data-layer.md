@@ -182,7 +182,11 @@ unknown hook id, suspended org, no (readable) secret, bad signature — is the S
 `{ "error": "unauthorized" }` with NOTHING written, so a hook id cannot be probed (§8.5). Only the org's PRIMARY repo is captured today —
 the capture's keys (`gh:pr:<n>:…`) carry no repo — so a non-primary repo's verified delivery is ignored.
 The legacy `POST /webhook/github` delivers to the one `legacy_hook = 1` row with no repository check,
-exactly as before.
+exactly as before. `POST /webhook/github-app` (the GitHub App, `src/github-app/webhook.ts`) verifies the App's ONE
+secret first — a bad signature or an unconfigured App is the same bare 401, nothing written — then resolves the org
+from `installation.id` (`installationOwner`, the one platform read; unbound → 202 ignored); lifecycle events update
+the binding, and a capture event is taken only for the org's primary repo attached to that installation, as
+`systemTenant(…, "github-webhook")`.
 
 **Email.** One digest per (person, org): each org is due on its own `notification_settings`, the outbox key
 is `org:user:cadence:window`, the unsubscribe is global. The From ADDRESS is the platform's on EVERY mail

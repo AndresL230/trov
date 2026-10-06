@@ -78,10 +78,11 @@ GitHub endpoints used (REST, `https://api.github.com`):
 
 ## 5. `installations.ts` — the repository
 
-- `bindInstallation(ctx, input)` — admin session ctx. `input = { installation, repos, by }` where `installation`
+- `bindInstallation(ctx, p, input)` — admin session ctx (and the platform context its "bound elsewhere?" read needs). `input = { installation, repos, by }` where `installation`
   is GitHub's object (`id`, `account { login, id, type }`, `repository_selection`, `suspended_at`) and `repos` is
   the full list. Refuses with `InstallationBoundElsewhereError` when the id is bound to ANOTHER org (platform
-  read; the message never names that org). Otherwise ONE batch: upsert the installation row, replace its repo
+  read — the same `installationOwner` statement; the message never names that org; a race lost between the check
+  and the write fails the batch and reads as bound elsewhere too). Otherwise ONE batch: upsert the installation row, replace its repo
   list, ATTACH every `org_repos` row of this org whose `repo_full_name` is in the list and whose
   `installation_id` is NULL (`repo.attach` audit each), `github.connect` audit.
 - `syncInstallationRepos(ctx, installationId, repos | { added, removed }, actor)` — a full list replaces; a delta
@@ -111,7 +112,9 @@ resolveGithubToken(ctx: TenantContext, env: Env, repo: { id: string; repo: strin
    A mint failure is logged (scrubbed) and falls through — the pasted token is the fallback during a cut-over.
 3. Else `resolveCredential(ctx, env, "github_token", "")` (the stored token, or SaplingLearn's env fallback).
 
-Callers (all already outside MCP's reach): `runReconcileJob` + the progress unit (`src/repo/cron.ts`),
+`githubCredential` is the same lookup returning `{ token, source: "installation" | "pasted" }`, for the callers that
+keep the pasted secret's bookkeeping (`markSecretUsed` / `recordSecretOutcome` run only for `pasted`). Callers (all
+already outside MCP's reach): `runReconcileJob` + the progress unit (`src/repo/cron.ts`),
 `runBackfill` (`src/tools/backfill.ts`), the per-repo hook's lazy `githubToken` thunk (`src/github-hook.ts`),
 the App webhook's thunk, and Test connection for `github_token` (`src/integrations/probe.ts`, which keeps testing
 the PASTED token). Each pushes the returned `Secret` into its scrub list as today. Minting costs ONE subrequest:
@@ -124,8 +127,9 @@ Dispatched in `src/index.ts` beside `webhookPath` (`/webhook/github-app` never m
 1. App not configured, or a missing / bad `X-Hub-Signature-256` (HMAC over the raw body with
    `GITHUB_APP_WEBHOOK_SECRET`, the existing `verifyGithubSignature`) → bare `401 {error:"unauthorized"}`,
    NOTHING written.
-2. `installation.id` → `installationOwner`. Unbound, the org suspended, or (except for `installation` events)
-   the installation suspended → `202 { ok: true, ignored: true }`, nothing written.
+2. `installation.id` → `installationOwner`. Unbound → `202 { ok: true, ignored: true }`, nothing written. The
+   lifecycle events of step 3 apply even when the org is suspended (they keep the binding true to GitHub); a
+   capture event (step 4) for a suspended org or a suspended installation is 202 ignored.
 3. `installation`: `deleted` → `unbindInstallation(…, "github.uninstall")`; `suspend` / `unsuspend` →
    `setInstallationSuspended`; `created` / `new_permissions_accepted` → `syncInstallationRepos` from the
    payload's `repositories` when present. `installation_repositories`: `added` / `removed` → the delta, and
