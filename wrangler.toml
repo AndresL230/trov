@@ -1,4 +1,5 @@
-name = "canopy"
+name = "trov"
+account_id = "0bda3a2560ca48711ef7336cc421abed"
 main = "src/index.ts"
 compatibility_date = "2025-11-01"
 compatibility_flags = ["nodejs_compat"]
@@ -9,63 +10,46 @@ compatibility_flags = ["nodejs_compat"]
 directory = "./web/dist"
 binding = "ASSETS"
 
-# D1. For local dev and tests the id is a placeholder (Miniflare uses a local sqlite).
-# Run `npm run db:create` to provision the real database and paste its id here before deploy.
+# D1. For local dev and tests Miniflare uses a local sqlite; this id is the real remote DB.
 [[d1_databases]]
 binding = "DB"
-database_name = "canopy"
-database_id = "80386dc4-deef-461d-932a-0670d22ddf83"
+database_name = "trov"
+database_id = "6c71838c-18f7-4f68-8513-b58e86c237b9"
 
-# R2 — binary artifact bytes (image / pdf / file), content-addressed at
+# R2: binary artifact bytes (image / pdf / file), content-addressed at
 # `artifacts/<sha256>` (src/tools/artifacts.ts). Tests and `wrangler dev` get a
-# local bucket from Miniflare. OWNER STEP before any prod deploy that carries this
-# binding: `wrangler r2 bucket create canopy-artifacts` — a deploy that binds a
-# bucket that does not exist fails.
+# local bucket from Miniflare. The bucket must exist before deploy, or the deploy fails.
 [[r2_buckets]]
 binding = "ARTIFACTS_BUCKET"
-bucket_name = "canopy-artifacts"
+bucket_name = "trov-artifacts"
 
 [vars]
-# GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are secrets, not vars — set them via
+# GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are secrets, not vars. Set them via
 # `wrangler secret put GOOGLE_CLIENT_ID` / `wrangler secret put GOOGLE_CLIENT_SECRET`.
 GITHUB_REPO = "SaplingLearn/sapling"
 # Comma-separated handles allowed to run admin actions (e.g. the server-side backfill).
-# Both listed through the handle rename (self-service rename requires the new handle to
-# already be allowlisted before an admin renames) — drop "AndresL230" once "andres" sticks.
 ADMIN_LOGINS = "AndresL230,andres"
-# Absolute origin used for links inside email (deep links + the unsubscribe URL).
-PUBLIC_ORIGIN = "https://canopy.saplinglearn.com"
-# Email delivery gate: "local" (default when absent — bodies go to the dev-only
-# notification_outbox_bodies table, Resend is never called) or "resend"
-# (requires the RESEND_API_KEY secret). Set to "resend" only in production.
-NOTIFICATIONS_MODE = "resend"
-# The environments the repo dashboard reports on (src/repo/config.ts): which
-# branch deploys where, and its Worker/URLs. Absent → repoEnvironments() → [].
+# Absolute origin used for links inside email and artifact results.
+# Set to your workers.dev URL after the first deploy; switch to https://trov.dev once the domain is attached.
+PUBLIC_ORIGIN = "https://trov.dev"
+# Email delivery gate. "local" while this copy runs alongside Canopy, so the team
+# never gets duplicate digests. Flip to "resend" at cutover (needs RESEND_API_KEY).
+NOTIFICATIONS_MODE = "local"
+# The environments the repo dashboard reports on (src/repo/config.ts).
 REPO_ENVIRONMENTS = "[{\"key\":\"staging\",\"label\":\"staging\",\"note\":\"main\",\"branch\":\"main\",\"railwayEnv\":\"Sapling / staging\",\"worker\":\"frontend-staging\",\"workerCheck\":\"Workers Builds: frontend-staging\",\"frontendUrl\":\"https://staging.saplinglearn.com\",\"apiUrl\":\"https://api.staging.saplinglearn.com\",\"healthPath\":\"/api/health\",\"railwayEnvironmentId\":\"76bb36e5-cf12-4b1e-b47f-d276a56c3b85\",\"railwayServiceId\":\"c67bfc38-32a9-41a7-9440-f033d255af30\"},{\"key\":\"production\",\"label\":\"production\",\"note\":\"production\",\"branch\":\"production\",\"railwayEnv\":\"Sapling / production\",\"worker\":\"frontend\",\"workerCheck\":\"Workers Builds: frontend\",\"frontendUrl\":\"https://saplinglearn.com\",\"apiUrl\":\"https://api.saplinglearn.com\",\"healthPath\":\"/api/health\",\"railwayEnvironmentId\":\"dd058398-45bc-4c7d-80b1-12d46e3f28fb\",\"railwayServiceId\":\"c67bfc38-32a9-41a7-9440-f033d255af30\"}]"
 
 [observability]
 enabled = true
 
 # Capture-time PR/issue summaries come from Google Gemini over REST (GEMINI_API_KEY
-# secret) — a plain fetch(), not a Cloudflare binding, so no [ai] block is needed.
+# secret), a plain fetch(), not a Cloudflare binding, so no [ai] block is needed.
 
 # Cron triggers, dispatched by expression in src/index.ts scheduled():
-#   "*/10 * * * *" — the repo dashboard trigger (src/repo/cron.ts), several cadences
-#                    folded into one, gated in code on the fire time's minute/hour —
-#                    ONE heavy job per invocation, never stacked (Cloudflare caps an
-#                    invocation at 50 subrequests): every tick pings environment
-#                    health (src/repo/poll.ts); :00 runs the three hourly pollers
-#                    (Cloudflare, Railway, Sapling) and NOTHING else may join that
-#                    tick; every 6th hour, :10 runs the sprint progress cache
-#                    backstop (event-derived writes are primary), :20 the GitHub
-#                    reconcile (deploys/checks/runs/branches/drift/open-PRs) and :30
-#                    the capture prune (src/repo/store.ts pruneRepoCapture).
-#   "0 * * * *"    — DAILY digest candidate: fires hourly; runs only when the org-local
-#                    hour equals notification_settings.send_hour on a Mon–Fri
-#   "0 * * * SUN,MON"  — WEEKLY digest candidate: hourly on Sun+Mon UTC (covers a local
-#                    Monday in any timezone); runs only Monday at send_hour
-# Cron expressions are static UTC, so the schedule itself (send_hour + timezone)
-# is read from D1 at fire time — see src/notifications/cron.ts. The outbox
-# idempotency key makes an extra fire harmless.
+#   "*/10 * * * *"     repo dashboard: health pings every tick; hourly pollers at :00;
+#                      every 6th hour: progress backstop :10, GitHub reconcile :20, capture prune :30.
+#                      One heavy job per invocation (50-subrequest cap on the free plan).
+#   "0 * * * *"        daily digest candidate (runs at notification_settings.send_hour, Mon to Fri)
+#   "0 * * * SUN,MON"  weekly digest candidate (runs Monday at send_hour)
+# The outbox idempotency key makes an extra fire harmless.
 [triggers]
 crons = ["*/10 * * * *", "0 * * * *", "0 * * * SUN,MON"]

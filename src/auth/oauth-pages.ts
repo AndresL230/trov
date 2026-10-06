@@ -5,6 +5,8 @@
 // buttons — copied here because the Worker cannot import from web/. Radii are the
 // app's authored values at its `--corner-scale` (.4), since trov.css isn't loaded.
 
+import { trovMark } from "@shared/mark";
+
 const esc = (s: string): string =>
   s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 
@@ -12,8 +14,8 @@ const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com"><link 
   + `<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650&family=Archivo+Narrow:wght@400;500;600&display=swap" rel="stylesheet">`;
 
 const CSS = `
-:root{--bg:#faf8f3;--card:#fffdf8;--fg:#1a1814;--fg-70:rgba(26,24,20,.72);--fg-55:rgba(26,24,20,.55);--fg-40:rgba(26,24,20,.40);--border:rgba(42,39,31,.10);--border-strong:rgba(42,39,31,.18);--hover:rgba(42,39,31,.05);--accent:#8a9a5b;--accent-fg:#fff;--accent-soft:rgba(138,154,91,.12);--red:#a83a3a;--red-soft:rgba(168,58,58,.08);--shadow:0 32px 64px -24px rgba(42,39,31,.18),0 4px 12px -4px rgba(42,39,31,.08);--label:'Archivo Narrow',system-ui,sans-serif;--code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-@media (prefers-color-scheme:dark){:root{--bg:#1c1a16;--card:#211f1a;--fg:#ede9e2;--fg-70:rgba(237,233,226,.72);--fg-55:rgba(237,233,226,.55);--fg-40:rgba(237,233,226,.40);--border:rgba(237,233,226,.11);--border-strong:rgba(237,233,226,.20);--hover:rgba(237,233,226,.06);--accent:#9aab65;--accent-fg:#131a07;--accent-soft:rgba(154,171,101,.14);--red:#cc6262;--red-soft:rgba(204,98,98,.10);--shadow:0 32px 64px -24px rgba(0,0,0,.55),0 4px 12px -4px rgba(0,0,0,.3)}}
+:root{--bg:#faf8f3;--card:#fffdf8;--fg:#1a1814;--fg-70:rgba(26,24,20,.72);--fg-55:rgba(26,24,20,.55);--fg-40:rgba(26,24,20,.40);--border:rgba(42,39,31,.10);--border-strong:rgba(42,39,31,.18);--hover:rgba(42,39,31,.05);--accent:#8a9a5b;--mark:#616ACB;--accent-fg:#fff;--accent-soft:rgba(138,154,91,.12);--red:#a83a3a;--red-soft:rgba(168,58,58,.08);--shadow:0 32px 64px -24px rgba(42,39,31,.18),0 4px 12px -4px rgba(42,39,31,.08);--label:'Archivo Narrow',system-ui,sans-serif;--code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1a16;--card:#211f1a;--fg:#ede9e2;--fg-70:rgba(237,233,226,.72);--fg-55:rgba(237,233,226,.55);--fg-40:rgba(237,233,226,.40);--border:rgba(237,233,226,.11);--border-strong:rgba(237,233,226,.20);--hover:rgba(237,233,226,.06);--accent:#9aab65;--mark:#8991D7;--accent-fg:#131a07;--accent-soft:rgba(154,171,101,.14);--red:#cc6262;--red-soft:rgba(204,98,98,.10);--shadow:0 32px 64px -24px rgba(0,0,0,.55),0 4px 12px -4px rgba(0,0,0,.3)}}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--bg);color:var(--fg);font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
 .card{width:min(400px,100%);border:1px solid var(--border-strong);border-radius:5.6px;padding:32px 30px 26px;background:var(--card);box-shadow:var(--shadow)}
@@ -45,8 +47,8 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;back
 .row .btn{flex:1}
 .err{margin-top:20px;padding:12px 14px;border-radius:4px;background:var(--red-soft);border:1px solid var(--border);color:var(--red);font-size:13.5px;line-height:1.55;overflow-wrap:anywhere}`;
 
-/** The Trov mark (web/src/landing.ts `mark`). */
-const MARK = `<svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true" style="flex:none"><rect x="2" y="4.5" width="20" height="3.4" rx="1.7" fill="var(--accent)"></rect><rect x="5" y="10.3" width="14" height="3.4" rx="1.7" fill="currentColor"></rect><rect x="8" y="16.1" width="8" height="3.4" rx="1.7" fill="currentColor" opacity="0.5"></rect></svg>`;
+/** The Trov mark (shared/mark.ts), in the page's own `--mark`. */
+const MARK = trovMark(26);
 const GITHUB = `<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.19 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>`;
 const GOOGLE = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5c-.3 1.5-1.1 2.7-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.7z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.2v3.1C3.2 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.3 14.3c-.5-1.5-.5-3.1 0-4.6V6.6H1.2c-1.6 3.3-1.6 7.3 0 10.6l4.1-2.9z"/><path fill="#EA4335" d="M12 4.7c1.7 0 3.3.6 4.5 1.7l3.4-3.4C17.9 1.1 15.1 0 12 0 7.3 0 3.2 2.7 1.2 6.6l4.1 3.1c.9-2.9 3.6-5 6.7-5z"/></svg>`;
 const APP = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="m7 9 3 3-3 3M13 15h4"></path></svg>`;

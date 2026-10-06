@@ -74,10 +74,11 @@ export const RELEASES: Release[] = [
     version: "0.17",
     date: "2026-10-06",
     title: "Canopy is now Trov",
-    headline: "Same tool, new name — plus public Terms of Service and Privacy Policy pages.",
+    headline: "Same tool, new name and a new logo — plus public Terms of Service and Privacy Policy pages.",
     highlights: [
       "Canopy is now called Trov — in the app, on the site, in every email and in the Claude Code plugin. Your docs, tickets, sprints, handoffs, prompts and artifacts are exactly where they were.",
       "Your theme and sidebar settings carry over to the new name on their own.",
+      "A new logo: the Trov mark replaces the three bars in the app, on the site, in the tab icon and in every email.",
       "Terms of Service and Privacy Policy now have their own pages, linked from the site's footer.",
     ],
     headsUp: [
@@ -95,6 +96,7 @@ export const RELEASES: Release[] = [
       added: [
         "Terms of Service and Privacy Policy: two public pages at `/terms` and `/privacy` (Vite inputs `web/terms.html` / `web/privacy.html`, content and renderer in `web/src/legal.ts`, boot in `web/src/legal-page.ts`), linked from the landing page's footer (`siteFooter`, now in `web/src/site-chrome.ts` and shared with both pages); readable signed out, following the app's stored theme",
         "Multitenancy schema, Phase 2 (`canopy-multitenancy.md`): migrations `0037_orgs` (orgs, memberships, org invites, repos, environments, integration-secret tables, per-org attribution map, counters; SaplingLearn seeded as `org_saplinglearn`), `0038_tenant_columns`, `0039_tenant_rebuilds` (20 tables re-keyed by org, ending in a foreign-key guard) and `0040_tenant_fts` (every search index org-scoped); per-org ticket and handoff numbers; a generated rollback (`scripts/mt/build-rollback.py`) and a production-copy check (`scripts/mt/verify-migration.mjs`); CI on every push (`.github/workflows/ci.yml`). Nothing on screen changes yet",
+        "The Trov mark (`shared/mark.ts`: one path, brand purple `#616ACB` on light and `#8991D7` on dark through a `--mark` token) replaces the three-bar mark in the sidebar, sign-in, landing, legal and OAuth pages; the tab icon (`favicon.svg`, `favicon.ico` in place of `favicon-32.png`, an apple-touch icon); the email banner draws it as table cells",
         "`web/src/storage-migrate.ts`: moves every `canopy.*` browser key (theme, feed / prompt view, rail, open nav groups, sign-in return-to) to `trov.*` once, at boot",
       ],
       changed: [

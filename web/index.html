@@ -6,11 +6,12 @@
     <!-- viewport-fit=cover: the app draws edge to edge on a notched phone and keeps its own
          content clear with env(safe-area-inset-*) (trov.css, the phone rules). -->
     <title>Trov</title>
-    <!-- The PNG is for browsers without SVG favicons (Safari); the SVG, listed last, wins
+    <!-- favicon.ico is for browsers without SVG favicons (Safari); the SVG, listed last, wins
          everywhere else. Before JS runs it follows prefers-color-scheme; once the app paints,
-         web/src/favicon.ts repoints it at the app's OWN resolved theme (green top bar = --green). -->
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+         web/src/favicon.ts repoints it at the app's OWN resolved theme. -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650;700&family=Archivo+Narrow:wght@400;500;600;700&display=swap" rel="stylesheet" />

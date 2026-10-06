@@ -3,6 +3,7 @@
 // `.map().join('')`, `sc-if` to ternaries, and `onClick="{{ fn }}"` to
 // `data-act` / `data-arg` attributes dispatched in main.ts.
 
+import { trovMark } from "@shared/mark";
 import type { Me, StagedProposal, IdentityTask, DiscardedIdentity, PersonSummary, PersonProfile, InviteRow } from "./api";
 import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary } from "@shared/rows";
 import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
@@ -554,7 +555,7 @@ function personFor(s: AppState, handle: string): PersonSummary | null {
 }
 
 function logo(size: number): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" style="flex:none"><rect x="2" y="4.5" width="20" height="3.4" rx="1.7" fill="var(--accent)"></rect><rect x="5" y="10.3" width="14" height="3.4" rx="1.7" fill="currentColor"></rect><rect x="8" y="16.1" width="8" height="3.4" rx="1.7" fill="currentColor" opacity="0.5"></rect></svg>`;
+  return trovMark(size);
 }
 
 // ── real-data helpers (authors are github logins; no curated display map) ─────

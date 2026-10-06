@@ -62,11 +62,11 @@ describe("email shell — site theming", () => {
 });
 
 describe("email header — Trov branding", () => {
-  it("renders the three-bar mark as HTML blocks (no SVG) with the wordmark beside it", () => {
+  it("renders the Trov mark as table cells (no SVG) with the wordmark beside it", () => {
     const { html } = msg();
     expect(html).not.toContain("<svg");
     expect(html).toContain('data-mark="trov"');
-    expect((html.match(/data-bar="/g) ?? []).length).toBe(3);
+    expect((html.match(/data-cell="on"/g) ?? []).length).toBe(5);
     expect(html).toMatch(/data-mark="trov"[\s\S]*?Trov<\/(span|strong|td)>/);
   });
 
@@ -169,8 +169,8 @@ describe("email banner — the brand band", () => {
   });
 
   it("drops the accent-coloured bar: it would vanish against an accent band", () => {
-    expect(emailBanner()).not.toMatch(/data-bar="[0-9]"[^>]*background-color:#8a9a5b/);
-    expect((emailBanner().match(/data-bar="/g) ?? []).length).toBe(3);
+    expect(emailBanner()).not.toMatch(/data-cell="on"[^>]*background-color:#8a9a5b/);
+    expect((emailBanner().match(/data-cell="on"/g) ?? []).length).toBe(5);
   });
 
   it("uses literal whites on the band, never theme tokens the dark swap would flip into the olive", () => {

@@ -21,11 +21,11 @@ describe("renderInviteEmail", () => {
     expect(m.html).not.toContain("Unsubscribe");
   });
 
-  it("carries the same Trov banner as the digests: three-bar mark, no SVG, wordmark beside it", () => {
+  it("carries the same Trov banner as the digests: the mark as table cells, no SVG, wordmark beside it", () => {
     const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://trov.test/x", host: "trov.test" });
     expect(m.html).not.toContain("<svg");
     expect(m.html).toContain('data-mark="trov"');
-    expect((m.html.match(/data-bar="/g) ?? []).length).toBe(3);
+    expect((m.html.match(/data-cell="on"/g) ?? []).length).toBe(5);
     expect(m.html).toMatch(/data-mark="trov"[\s\S]*?Trov<\/(span|strong|td)>/);
   });
 
