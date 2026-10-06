@@ -5,8 +5,10 @@ import type { PersonColor } from "./rows";
 export type OrgRole = "owner" | "admin" | "member";
 export type OrgStatus = "active" | "suspended";
 
-/** How many orgs a person may CREATE when `persons.org_limit` is NULL (Q6). A superadmin is exempt. */
-export const DEFAULT_ORG_LIMIT = 3;
+/** How many orgs a person may CREATE when `persons.org_limit` is NULL. Zero: only a superadmin adds an
+ *  organization (Platform › Add organization) until self-serve creation is opened; a superadmin is exempt,
+ *  and `persons.org_limit` (Platform › Admins & limits) lets one named person create some. */
+export const DEFAULT_ORG_LIMIT = 0;
 export const ORG_NAME_MAX = 80;
 
 /** The `orgs.slug` CHECK (0037): 2–39 of [a-z0-9-], starting with a letter or digit. */

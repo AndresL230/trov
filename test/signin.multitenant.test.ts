@@ -89,7 +89,7 @@ describe("an existing SaplingLearn member", () => {
 });
 
 describe("a new GitHub account", () => {
-  it("with no invite: onboards (no GitHub org is asked about), joins NO org, reaches nothing tenant-scoped, can create an org", async () => {
+  it("with no invite: onboards (no GitHub org is asked about), joins NO org, reaches nothing tenant-scoped, cannot create an org without an allowance", async () => {
     const session = await onboard(await github("stranger", VERIFIED("stranger@example.com")), "stranger");
     expect(await memberships("stranger")).toEqual([]);
     expect(await first(env.DB, `SELECT verified_email FROM identities WHERE subject = 'stranger'`)).toEqual({ verified_email: "stranger@example.com" });
@@ -105,7 +105,10 @@ describe("a new GitHub account", () => {
     // No welcome mail: mail goes out as an org, and they are in none.
     expect(await first(env.DB, `SELECT 1 AS x FROM notification_outbox_bodies`)).toBeNull();
 
-    // The way in: their own org (cap 3 — test/orgs.routes.test.ts), where they are the owner and see only its content.
+    // They cannot make themselves an org either: creation is the superadmin's until self-serve opens.
+    expect((await json("POST", "/api/orgs", session, { slug: "stranger-co", name: "Stranger Co" })).status).toBe(403);
+    // With an allowance from the superadmin (persons.org_limit) they can, and see only its content.
+    await env.DB.prepare(`UPDATE persons SET org_limit = 1 WHERE handle = 'stranger'`).run();
     expect((await json("POST", "/api/orgs", session, { slug: "stranger-co", name: "Stranger Co" })).status).toBe(201);
     expect((await json("GET", "/auth/me", session)).json).toMatchObject({ org: "Stranger Co", admin: true, orgs: [{ slug: "stranger-co", name: "Stranger Co", role: "owner" }] });
     expect((await json("GET", "/docs", session)).json).toEqual({ docs: [] });

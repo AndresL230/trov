@@ -19,9 +19,9 @@ different role in each. Being a superadmin is **not** a membership: it grants no
 ## 1. The superadmin adds an organization and names its admin
 
 Platform › Organizations › **Add organization** [`web/src/platform.ts`, `POST /api/platform/orgs`,
-`src/platform/repo.ts` `createOrgWithAdmin`]. Platform is reachable two ways: the sidebar's Platform entry
-inside any organization the superadmin belongs to, and **`/platform/`**, a page outside every organization —
-so a superadmin who belongs to none still reaches it (the org picker and the switcher's menu link to it).
+`src/platform/repo.ts` `createOrgWithAdmin`]. Platform lives at **`/platform/`**, a page outside every
+organization — so a superadmin who belongs to none still reaches it; the org switcher's menu and the org
+picker link to it.
 
 Give the organization a name, a slug (its address: `/o/<slug>/`, not editable later) and its first owner:
 
@@ -36,8 +36,8 @@ Give the organization a name, a slug (its address: `/o/<slug>/`, not editable la
 The superadmin is **not** made a member. To rescue an organization whose owner left, open it in Platform and
 use **Add another owner** [`POST /api/platform/orgs/:slug/admin`].
 
-Anyone can also create an organization for themselves from the org picker (three per person by default;
-Platform › Admins & limits changes one person's cap).
+Nobody else can create an organization: self-serve creation is off (`DEFAULT_ORG_LIMIT = 0`,
+`shared/orgs.ts`). Platform › Admins & limits can give one named person an allowance.
 
 ## 2. The owner signs in, accepts, and lands on the setup checklist
 

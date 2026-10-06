@@ -447,7 +447,7 @@ describe("Admins & limits", () => {
     const blank = adminsTab(admins(), null);
     expect(blank).toContain('<label for="plat-limit-handle"');
     expect(blank).toContain('<label for="plat-limit-value"');
-    expect(blank).toContain("default 3");
+    expect(blank).toContain("default 0");
     expect(blank).toMatch(/data-act="platLimitSubmit" disabled/);
     expect(blank).toMatch(/data-act="platLimitDefault" disabled/);
     const ready = adminsTab(admins({ limitHandle: "maya", limitValue: "5" }), null);

@@ -74,10 +74,10 @@ export const RELEASES: Release[] = [
     version: "0.18",
     date: "2026-10-06",
     title: "Organizations",
-    headline: "Trov now runs for any number of teams: create an organization, invite people, and switch between the ones you're in.",
+    headline: "Trov now runs for any number of teams: each has its own organization, invites its own people, and you switch between the ones you're in.",
     highlights: [
       "Trov now holds more than one organization. Each has its own docs, tickets, roadmap, feed, handoffs, prompts and artifacts, and nothing crosses from one to another. Tickets and handoffs are numbered from #1 in each organization. The switcher at the top of the sidebar shows the one you're in and takes you to the others.",
-      "Anyone with a GitHub account can sign in and create an organization for their team (up to three), or accept an invitation to one. A new page lists your organizations and your invitations when you belong to none, or to several.",
+      "Anyone with a GitHub account can sign in and accept an invitation to an organization. New organizations are added by whoever runs Trov for now. A new page lists your organizations and your invitations when you belong to none, or to several.",
       "Org settings is the one place an organization is run from: Members is the people directory, Notifications holds the email digest settings, and Maintenance is gone (its queue is now Triage › Unplaced). In Members, invite people by GitHub login or email, make them an admin or a member, give them a title, or remove them. An email invitation is sent by Trov, names your organization, and the page shows whether it went out; you can send it again. Owners manage other owners.",
       "Org settings also holds what used to be set by whoever deploys Trov: the repositories an organization tracks, the environments its Repo dashboard reports on, and the credentials Trov uses for it. A credential is write-only: once saved, only its last four characters are ever shown.",
       "Connecting Claude Code is per organization: you pick the organization when you allow the connection, and Settings › MCP access shows which one each connected app reaches.",

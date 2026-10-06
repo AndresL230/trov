@@ -232,6 +232,7 @@ describe("the welcome mail — a person's FIRST membership of any org", () => {
     await exec(`DELETE FROM notification_outbox_bodies`);
     expect((await call("POST", `/api/invites/${invite.id}/decline`, me)).status).toBe(200);
     expect(await bodies()).toEqual([]);
+    await exec(`UPDATE persons SET org_limit = 1 WHERE handle = 'solo'`); // self-serve creation is off by default
     expect((await call("POST", "/api/orgs", me, { slug: "solo-co", name: "Solo Co" })).status).toBe(201);
     const sent = await bodies();
     expect(sent.map((m) => [m.to_address, m.subject])).toEqual([["solo@x.io", "Welcome to Solo Co on Trov"]]);
@@ -246,6 +247,7 @@ describe("the welcome mail — a person's FIRST membership of any org", () => {
 
   it("goes only to a provider-VERIFIED address: a person with just an editable notification address gets none, and still joins", async () => {
     const me = await cookieFor("unver", { member: false, email: "typed@x.io" }); // persons.email only
+    await exec(`UPDATE persons SET org_limit = 1 WHERE handle = 'unver'`); // self-serve creation is off by default
     expect((await call("POST", "/api/orgs", me, { slug: "unver-co", name: "Unver Co" })).status).toBe(201);
     expect(await bodies()).toEqual([]);
     expect(await one(`SELECT role FROM memberships WHERE user_id = 'unver'`)).toEqual({ role: "owner" });
@@ -259,6 +261,7 @@ describe("the welcome mail — a person's FIRST membership of any org", () => {
 
   it("a mailer that is misconfigured never costs the join", async () => {
     const me = await newcomer("brk", "brk@x.io");
+    await exec(`UPDATE persons SET org_limit = 1 WHERE handle = 'brk'`); // self-serve creation is off by default
     const res = await app.request("/api/orgs", { method: "POST", headers: { cookie: me, "content-type": "application/json" }, body: JSON.stringify({ slug: "brk-co", name: "Brk Co" }) },
       { ...env, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "" });
     expect(res.status).toBe(201);

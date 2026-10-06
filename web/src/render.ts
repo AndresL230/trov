@@ -1641,7 +1641,7 @@ function guideView(s: AppState): string {
 
     ${sec("Step 1", "Sign in", "Sign in")}
     <ul style="${gList}">
-      <li>${gStrong("Sign in with GitHub.")} Any GitHub account can. If you aren't in an organization yet, you land on a page that lists your invitations and lets you create one.</li>
+      <li>${gStrong("Sign in with GitHub.")} Any GitHub account can. If you aren't in an organization yet, you land on a page that lists your invitations.</li>
       <li>${gStrong("Or sign in with Google")}, once an admin of your organization has invited that exact address from ${gStrong("Org settings › Members")}.</li>
       <li>${gStrong("In more than one organization?")} The switcher at the top of the sidebar shows the one you're in and takes you to the others. Each has its own docs, tickets, roadmap and feed.</li>
       <li>The first time, you pick a ${gStrong("handle")} and a ${gStrong("color")}. The handle starts as your GitHub login, and you can change it later in Settings.</li>
@@ -1753,7 +1753,7 @@ function guideView(s: AppState): string {
 
     ${sec("Troubleshooting", "When something doesn't work", "Troubleshooting")}
     <ul style="${gList}">
-      <li>${gStrong("You signed in and see no organization.")} Ask an admin of your team's organization to invite your GitHub login or email from ${gStrong("Org settings › Members")}; the invitation appears the next time you open Trov. Or create an organization yourself.</li>
+      <li>${gStrong("You signed in and see no organization.")} Ask an admin of your team's organization to invite your GitHub login or email from ${gStrong("Org settings › Members")}; the invitation appears the next time you open Trov.</li>
       <li>${gStrong("Google sign-in says you're not invited.")} Ask an admin of your organization to invite the exact address you signed in with, or sign in with GitHub.</li>
       <li>${gStrong("Trov shows as needing authentication in Claude Code.")} Run ${gCode("/mcp")}, pick ${gStrong("trov")} and choose ${gStrong("Authenticate")}. If the browser says Trov doesn't recognise the app, choose ${gStrong("Clear authentication")} first, then Authenticate again. A connection you revoked in Settings needs the same.</li>
       <li>${gStrong("An agent set up with an older access token (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $TROV_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. Settings no longer creates tokens, so if the agent can sign in through the browser, reconnect it that way instead.</li>

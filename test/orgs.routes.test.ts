@@ -15,7 +15,7 @@ describe("GET /api/orgs — reachable with no org, and with several", () => {
   it("a person in no org gets an empty picker, not org_required", async () => {
     const { status, json } = await call<MyOrgsResponse>("GET", "/api/orgs", await loner("nomad"));
     expect(status).toBe(200);
-    expect(json).toEqual({ orgs: [], invites: [], superadmin: false, can_create: true, created: 0, limit: 3 });
+    expect(json).toEqual({ orgs: [], invites: [], superadmin: false, can_create: false, created: 0, limit: 0 });
   });
 
   it("lists every membership with its role, and says who is superadmin", async () => {
@@ -33,8 +33,18 @@ describe("GET /api/orgs — reachable with no org, and with several", () => {
 });
 
 describe("POST /api/orgs", () => {
+  it("by default nobody but a superadmin creates one: a person with no allowance is refused and nothing is written", async () => {
+    const cookie = await loner("hopeful");
+    const before = await one(`SELECT COUNT(*) AS n FROM orgs`);
+    const r = await call("POST", "/api/orgs", cookie, { slug: "hopeful-co", name: "Hopeful Co" });
+    expect([r.status, r.json.error]).toEqual([403, "org_limit"]);
+    expect(await one(`SELECT COUNT(*) AS n FROM orgs`)).toEqual(before);
+    expect(await one(`SELECT COUNT(*) AS n FROM memberships WHERE user_id = 'hopeful'`)).toEqual({ n: 0 });
+  });
+
   it("creates the org, makes the creator its owner, and seeds every per-org singleton", async () => {
     const cookie = await loner("founder");
+    await exec(`UPDATE persons SET org_limit = 3 WHERE handle = 'founder'`);
     const { status, json } = await call("POST", "/api/orgs", cookie, { slug: "birch", name: "  Birch Labs " });
     expect(status).toBe(201);
     expect(json).toEqual({ ok: true, org: { slug: "birch", name: "Birch Labs", role: "owner" } });
@@ -66,6 +76,7 @@ describe("POST /api/orgs", () => {
 
   it("refuses invalid and reserved slugs, a bad name, and a taken slug", async () => {
     const cookie = await loner("founder");
+    await exec(`UPDATE persons SET org_limit = 3 WHERE handle = 'founder'`);
     for (const slug of ["a", "-lead", "Has-Caps", "under_score", "x".repeat(40), "", 7]) {
       const r = await call("POST", "/api/orgs", cookie, { slug, name: "N" });
       expect([r.status, r.json.error], String(slug)).toEqual([400, "invalid_slug"]);
@@ -82,8 +93,9 @@ describe("POST /api/orgs", () => {
     expect(await one(`SELECT COUNT(*) AS n FROM orgs`)).toEqual({ n: 2 });
   });
 
-  it("caps a person at 3 created orgs; persons.org_limit overrides; a superadmin is exempt", async () => {
+  it("caps a person at their allowance; persons.org_limit sets it; a superadmin is exempt", async () => {
     const cookie = await loner("founder");
+    await exec(`UPDATE persons SET org_limit = 3 WHERE handle = 'founder'`);
     for (const slug of ["one-co", "two-co", "three-co"]) expect((await call("POST", "/api/orgs", cookie, { slug, name: slug })).status).toBe(201);
     const fourth = await call("POST", "/api/orgs", cookie, { slug: "four-co", name: "Four" });
     expect([fourth.status, fourth.json.error]).toEqual([403, "org_limit"]);

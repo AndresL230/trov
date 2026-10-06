@@ -263,7 +263,7 @@ export function createPlatform(h: PlatformHost) {
       const q = s();
       q.limitBusy = false; q.limitValue = "";
       q.limitDone = r.org_limit === null
-        ? `@${r.handle} is back on the default: ${DEFAULT_ORG_LIMIT} organizations.`
+        ? (DEFAULT_ORG_LIMIT === 0 ? `@${r.handle} is back on the default: they can't create organizations.` : `@${r.handle} is back on the default: ${DEFAULT_ORG_LIMIT} organizations.`)
         : `@${r.handle} can now create up to ${r.org_limit} ${r.org_limit === 1 ? "organization" : "organizations"}.`;
       h.rerender();
     }).catch((e) => {

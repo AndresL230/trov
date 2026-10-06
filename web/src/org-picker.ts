@@ -178,6 +178,7 @@ export function orgMenu(p: OrgMenuProps): string {
   const settings = here ? `<button type="button" data-act="orgsSettings" data-orgs-item class="cnpy-menurow" style="${MENU_ROW}">${GEAR}<span style="flex:1;min-width:0">Org settings</span><span class="cnpy-badge" data-n="${p.logins ?? 0}" title="${p.logins ?? 0} ${p.logins === 1 ? "login" : "logins"} to match">${p.logins ?? 0}</span></button>` : "";
   const create = !p.orgs ? (p.status === "error" ? `<div role="alert" style="font-size:12px;line-height:1.45;color:var(--fg-55);padding:8px 10px">Couldn't load your invitations. <button type="button" data-act="orgsReload" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--accent)">Try again</button></div>` : "")
     : p.orgs.can_create ? `<button type="button" data-act="orgsCreateOpen" data-orgs-item class="cnpy-menurow" style="${MENU_ROW}">${PLUS}<span style="flex:1;min-width:0">Create organization</span></button>`
+    : (p.orgs.limit ?? DEFAULT_ORG_LIMIT) === 0 ? ""
     : `<div style="font-size:12px;line-height:1.45;color:var(--fg-40);padding:8px 10px">${esc(orgCapSentence(p.orgs))}</div>`;
   return `<div data-overlay="orgs-menu" class="cnpy-orgmenu-layer">
     <div data-act="orgsMenuClose" class="cnpy-orgmenu-back" aria-hidden="true"></div>
@@ -259,7 +260,7 @@ export function orgPickerView(p: OrgPickerProps): string {
   const first = (p.me?.name ?? "").trim().split(/\s+/)[0] || (p.me ? `@${p.me.handle}` : "");
   const title = orgs.length === 0 ? `Welcome to Trov${first ? `, ${first}` : ""}` : "Choose an organization";
   const lead = orgs.length > 0 ? "Everything in Trov belongs to an organization. Pick the one you want to work in; you can switch at any time from the sidebar."
-    : invites.length > 0 ? "You've been invited. Accept an invitation to join that team's Trov, or create an organization of your own."
+    : invites.length > 0 ? (p.orgs?.can_create ? "You've been invited. Accept an invitation to join that team's Trov, or create an organization of your own." : "You've been invited. Accept an invitation to join that team's Trov.")
     : "Trov is a team's working memory: what its coding agents did, the docs and decisions that came out of it, and the tickets and roadmap that say what's next. Everything in it belongs to an organization.";
   const sectionHead = (text: string, n: number) => `<h2 style="${LABEL};margin:26px 0 8px;display:flex;align-items:center;gap:8px">${esc(text)}<span class="cnpy-badge" data-n="${n}">${n}</span></h2>`;
 
@@ -283,6 +284,7 @@ export function orgPickerView(p: OrgPickerProps): string {
   const google = ids.find((i) => i.provider === "google");
   const askFor = gh && google ? `your GitHub login (${gh.label}) or your email (${google.label})` : gh ? `your GitHub login (${gh.label})` : google ? `your email (${google.label})` : "your GitHub login or email";
   const canCreate = p.orgs?.can_create === true;
+  const noCreate = !canCreate && (p.orgs?.limit ?? DEFAULT_ORG_LIMIT) === 0;
   // What else can be done from here, in ONE surface: start an organization, wait for an
   // invitation, run the platform. Creating is the page's primary action (the accent button)
   // only for someone with no organization to open; otherwise opening one is, and this is quiet.
@@ -297,12 +299,13 @@ export function orgPickerView(p: OrgPickerProps): string {
     : orgs.length === 0 ? accentBtn("Create an organization", "orgsCreateOpen", { field: "orgsCreateOpen", extra: "height:36px" })
     : quietBtn("Create an organization", "orgsCreateOpen", { field: "orgsCreateOpen", extra: "height:36px;color:var(--fg)" });
   const options = [
-    p.orgs ? optRow(nothing ? "Create an organization for your team" : "Create an organization", canCreate ? "You become its owner. Then connect a repository and invite your team." : esc(orgCapSentence(p.orgs)), createBtn) : "",
-    p.orgs && nothing ? optRow("Or wait for an invitation", `If your team already uses Trov, ask one of its admins to invite ${esc(askFor)}. The invitation appears on this page the next time you open it.`, "") : "",
+    // An account that may not create any (the default until self-serve creation opens) is not offered it at all.
+    p.orgs && !noCreate ? optRow(nothing ? "Create an organization for your team" : "Create an organization", canCreate ? "You become its owner. Then connect a repository and invite your team." : esc(orgCapSentence(p.orgs)), createBtn) : "",
+    p.orgs && nothing ? optRow(noCreate ? "Wait for an invitation" : "Or wait for an invitation", `If your team already uses Trov, ask one of its admins to invite ${esc(askFor)}. The invitation appears on this page the next time you open it.`, "") : "",
     p.superadmin ? optRow("Platform", "You are a superadmin: add an organization and name its admin, suspend one, and see usage. No membership needed.",
       `<a href="${PLATFORM_HREF}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;height:36px;padding:0 14px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;font-weight:500;color:var(--fg-70);text-decoration:none;white-space:nowrap;box-sizing:border-box">Open Platform</a>`, " data-orgs-platform") : "",
   ].filter(Boolean).join("");
-  const createBlock = options ? `${sectionHead(orgs.length ? "More" : invites.length ? "Or start your own" : "Get started", 0)}<ul${surface("overflow:hidden;list-style:none;margin:0;padding:0")}>${options}</ul>` : "";
+  const createBlock = options ? `${sectionHead(orgs.length || noCreate && invites.length ? "More" : invites.length ? "Or start your own" : "Get started", 0)}<ul${surface("overflow:hidden;list-style:none;margin:0;padding:0")}>${options}</ul>` : "";
   const platformBlock = "";
 
   const state = loading ? `<div style="font-size:12.5px;color:var(--fg-40);padding:22px 0 0">Loading your organizations&hellip;</div>`
