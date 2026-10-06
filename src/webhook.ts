@@ -416,7 +416,7 @@ export async function handleGithubWebhook(
           console.warn("repo capture: dropped status", outcome.dropped.context, "-", outcome.dropped.reason);
         }
         for (const m of outcome.metrics) {
-          if (await putMetric(legacyDb(ctx), m)) repo.captured++; else repo.unchanged++;
+          if (await putMetric(ctx, m)) repo.captured++; else repo.unchanged++;
         }
       } else {
         for (const ev of repoEventsFromDelivery(eventName, payload, cfgs)) {
@@ -424,12 +424,12 @@ export async function handleGithubWebhook(
           if (res.outcome !== "written") { repo.unchanged++; continue; }
           repo.captured++;
           if (ev.kind === "run" && (ev.state === "failure" || ev.state === "timed_out") && ev.number && env.GITHUB_SERVICE_TOKEN && env.GITHUB_REPO) {
-            const job = fillFailedJob(legacyDb(ctx), { token: env.GITHUB_SERVICE_TOKEN, repo: env.GITHUB_REPO, fetchImpl: opts?.fetchImpl }, ev.number, ev.semantic_key);
+            const job = fillFailedJob(ctx, { token: env.GITHUB_SERVICE_TOKEN, repo: env.GITHUB_REPO, fetchImpl: opts?.fetchImpl }, ev.number, ev.semantic_key);
             // Off the response path when the runtime allows; GitHub gives a hook 10s.
             if (opts?.waitUntil) opts.waitUntil(job); else await job;
           }
           if (ev.kind === "push" && cfgs.some((c) => c.branch === ev.ref) && env.GITHUB_SERVICE_TOKEN && env.GITHUB_REPO) {
-            const drift = refreshDrift(legacyDb(ctx), { token: env.GITHUB_SERVICE_TOKEN, repo: env.GITHUB_REPO, fetchImpl: opts?.fetchImpl }, cfgs);
+            const drift = refreshDrift(ctx, { token: env.GITHUB_SERVICE_TOKEN, repo: env.GITHUB_REPO, fetchImpl: opts?.fetchImpl }, cfgs);
             if (opts?.waitUntil) opts.waitUntil(drift); else await drift;
           }
         }

@@ -6,13 +6,19 @@
 // owner's call, 2026-09-27 — Maintenance › People), never by the person themselves. The ONE agent surface is the read `listPeopleForAgents`
 // (handle, name, role, responsibilities — nothing else about a person reaches MCP).
 //
+// A person is ONE row across every org; what an org sees of them is its MEMBERS, and the role
+// and responsibilities are per org (Q9): `memberships.title` (it still travels as `role`) and
+// `memberships.responsibilities`. A person who is not a member of the context's org is
+// `not_found` here, exactly like an unknown handle. The photo is the person's own, in every org.
+//
 // An avatar is content-addressed and immutable, like a doc image: bytes in R2
 // (`ARTIFACTS_BUCKET`) at `avatars/<sha256>`, never deleted — "remove" only clears
 // `persons.avatar_sha`, so the provider picture shows again. There is no avatars table:
 // the R2 object's own `httpMetadata.contentType` (the SNIFFED type) is what is served.
 
-import { first, all, run, type DB } from "../db";
-import { RESERVED_HANDLES } from "../auth/persons";
+import { type TenantContext, all, run, stmt, batch } from "../data/sql";
+import { type PlatformContext, first as platformFirst, run as platformRun } from "../data/platform-sql";
+import { RESERVED_HANDLES, memberHandle } from "../auth/persons";
 import { sha256Hex } from "./artifacts";
 import type { PersonColor } from "@shared/rows";
 import {
@@ -43,17 +49,18 @@ interface ProfileRow {
  * Maintenance › People's editor). An unknown or RESERVED handle is `not_found` (a system
  * principal is not a person). `responsibilities` travels only to admins — the editor fills
  * from it; no page renders it, and the person themselves does not get it (they cannot edit
- * it). D1 only: the person and their GitHub login in ONE batch.
+ * it). D1 only: the member and their GitHub login in ONE batch.
  */
 export async function getPersonProfile(
-  db: DB, handle: string, viewer: string, isAdmin: (h: string) => boolean,
+  ctx: TenantContext, handle: string, viewer: string, isAdmin: (h: string) => boolean,
 ): Promise<PersonProfile> {
   if (isReserved(handle)) throw new PeopleError("not_found", "not found");
-  const [p, g] = await db.batch([
-      db.prepare(`SELECT handle, name, color, avatar_url, avatar_sha, role, responsibilities, created_at
-                    FROM persons WHERE handle = ? COLLATE NOCASE`).bind(handle),
-      db.prepare(`SELECT subject FROM identities WHERE provider = 'github' AND person = ? COLLATE NOCASE
-                   ORDER BY linked_at ASC LIMIT 1`).bind(handle),
+  const [p, g] = await batch(ctx, [
+      stmt(ctx, `SELECT p.handle, p.name, p.color, p.avatar_url, p.avatar_sha, m.title AS role, m.responsibilities, p.created_at
+                   FROM persons p JOIN memberships m ON m.user_id = p.handle AND m.org_id = ?
+                  WHERE p.handle = ? COLLATE NOCASE`, ctx.orgId, handle),
+      stmt(ctx, `SELECT subject FROM identities WHERE provider = 'github' AND person = ? COLLATE NOCASE
+                  ORDER BY linked_at ASC LIMIT 1`, handle),
   ]);
   const person = p.results?.[0] as ProfileRow | undefined;
   const gh = g.results?.[0] as { subject: string } | undefined;
@@ -88,14 +95,16 @@ function field(v: unknown, name: string, max: number): { set: false } | { set: t
 /**
  * `PUT /api/people/:handle` — ADMINS only (role and responsibilities are admin-set);
  * anyone else, the person themselves included, is `forbidden` and nothing is written. Every field is validated BEFORE the one UPDATE,
- * so an over-cap value writes nothing (not even the other, valid field).
+ * so an over-cap value writes nothing (not even the other, valid field). The write lands on the
+ * person's MEMBERSHIP of this org, so it says nothing about them anywhere else.
  */
 export async function writePersonProfile(
-  db: DB, handle: string, viewer: string, isAdmin: (h: string) => boolean, body: unknown,
+  ctx: TenantContext, handle: string, viewer: string, isAdmin: (h: string) => boolean, body: unknown,
 ): Promise<PersonProfile> {
   if (isReserved(handle)) throw new PeopleError("not_found", "not found");
-  const person = await first<{ handle: string }>(db, `SELECT handle FROM persons WHERE handle = ? COLLATE NOCASE`, handle);
-  if (!person) throw new PeopleError("not_found", "not found");
+  const member = await memberHandle(ctx, handle);
+  if (!member) throw new PeopleError("not_found", "not found");
+  const person = { handle: member };
   if (!isAdmin(viewer)) throw new PeopleError("forbidden", "only an admin may set a person's role and responsibilities");
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new PeopleError("bad_request", "the body must be a JSON object");
   const b = body as PersonProfileWrite;
@@ -103,10 +112,10 @@ export async function writePersonProfile(
   const resp = field(b.responsibilities, "responsibilities", RESPONSIBILITIES_MAX);
   const sets: string[] = [];
   const binds: unknown[] = [];
-  if (role.set) { sets.push("role = ?"); binds.push(role.value); }
+  if (role.set) { sets.push("title = ?"); binds.push(role.value); }
   if (resp.set) { sets.push("responsibilities = ?"); binds.push(resp.value); }
-  if (sets.length) await run(db, `UPDATE persons SET ${sets.join(", ")} WHERE handle = ?`, ...binds, person.handle);
-  return getPersonProfile(db, person.handle, viewer, isAdmin);
+  if (sets.length) await run(ctx, `UPDATE memberships SET ${sets.join(", ")} WHERE org_id = ? AND user_id = ?`, ...binds, ctx.orgId, person.handle);
+  return getPersonProfile(ctx, person.handle, viewer, isAdmin);
 }
 
 /**
@@ -130,7 +139,7 @@ export function sniffAvatarType(b: Uint8Array): AvatarType | null {
  * exists (the same bytes are the same image) — then `persons.avatar_sha` points at it.
  */
 export async function setAvatar(
-  db: DB, bucket: R2Bucket, viewer: string, file: { type: string; size: number; arrayBuffer(): Promise<ArrayBuffer> } | null,
+  p: PlatformContext, bucket: R2Bucket, viewer: string, file: { type: string; size: number; arrayBuffer(): Promise<ArrayBuffer> } | null,
 ): Promise<{ avatar_url: string }> {
   if (!file) throw new PeopleError("bad_request", "a `file` part is required");
   if (file.size > AVATAR_MAX_BYTES) throw new PeopleError("too_large", `an avatar is at most ${AVATAR_MAX_BYTES} bytes`);
@@ -147,14 +156,14 @@ export async function setAvatar(
   if (!(await bucket.head(avatarKey(sha)))) {
     await bucket.put(avatarKey(sha), bytes, { sha256: sha, httpMetadata: { contentType: sniffed } });
   }
-  await run(db, `UPDATE persons SET avatar_sha = ? WHERE handle = ? COLLATE NOCASE`, sha, viewer);
+  await platformRun(p, `UPDATE persons SET avatar_sha = ? WHERE handle = ? COLLATE NOCASE`, sha, viewer);
   return { avatar_url: avatarSrc({ avatar_sha: sha }) as string };
 }
 
 /** Clear the viewer's uploaded avatar (the R2 bytes stay); returns the picture that now shows. */
-export async function clearAvatar(db: DB, viewer: string): Promise<{ avatar_url: string | null }> {
-  await run(db, `UPDATE persons SET avatar_sha = NULL WHERE handle = ? COLLATE NOCASE`, viewer);
-  const row = await first<{ avatar_url: string | null }>(db, `SELECT avatar_url FROM persons WHERE handle = ? COLLATE NOCASE`, viewer);
+export async function clearAvatar(p: PlatformContext, viewer: string): Promise<{ avatar_url: string | null }> {
+  await platformRun(p, `UPDATE persons SET avatar_sha = NULL WHERE handle = ? COLLATE NOCASE`, viewer);
+  const row = await platformFirst<{ avatar_url: string | null }>(p, `SELECT avatar_url FROM persons WHERE handle = ? COLLATE NOCASE`, viewer);
   return { avatar_url: row?.avatar_url ?? null };
 }
 
@@ -168,9 +177,10 @@ export async function readAvatar(bucket: R2Bucket, sha: string): Promise<{ body:
   return { body: obj.body, content_type: ct, size_bytes: obj.size };
 }
 
-/** MCP `list_people`: every non-reserved person's handle, name, role and responsibilities — nothing else. */
-export function listPeopleForAgents(db: DB): Promise<PersonForAgents[]> {
-  return all<PersonForAgents>(db, `SELECT handle, name, role, responsibilities FROM persons
-                                    WHERE handle NOT IN (${RESERVED_HANDLES.map(() => "?").join(", ")})
-                                    ORDER BY handle COLLATE NOCASE ASC`, ...RESERVED_HANDLES);
+/** MCP `list_people`: every non-reserved MEMBER's handle, name, role and responsibilities — nothing else. */
+export function listPeopleForAgents(ctx: TenantContext): Promise<PersonForAgents[]> {
+  return all<PersonForAgents>(ctx, `SELECT p.handle, p.name, m.title AS role, m.responsibilities FROM persons p
+                                      JOIN memberships m ON m.user_id = p.handle AND m.org_id = ?
+                                     WHERE p.handle NOT IN (${RESERVED_HANDLES.map(() => "?").join(", ")})
+                                     ORDER BY p.handle COLLATE NOCASE ASC`, ctx.orgId, ...RESERVED_HANDLES);
 }
