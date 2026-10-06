@@ -270,3 +270,12 @@ describe("0041 — the sender's rename", () => {
     expect(await one(`SELECT from_address FROM notification_settings WHERE org_id = ?`, LEGACY)).toEqual({ from_address: "Team <team@example.org>" });
   });
 });
+
+describe("0042 — the superadmin", () => {
+  it("andres is the one platform admin, and still the only owner of SaplingLearn", async () => {
+    await at0036WithData();
+    await applyD1Migrations(db(), upTo("0042"));
+    expect(await rows(`SELECT person, granted_by FROM platform_admins`)).toEqual([{ person: "andres", granted_by: "migration" }]);
+    expect(await rows(`SELECT user_id, role FROM memberships WHERE role IN ('owner', 'admin')`)).toEqual([{ user_id: "andres", role: "owner" }]);
+  });
+});

@@ -124,6 +124,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `INSERT INTO org_secrets (org_id, kind, scope, ciphertext, iv, key_version, created_by, created_at) VALUES (?, 'github_token', '', 'c', 'iv', 1, ?, ?)`, org, handle, nowIso());
   await run(env.DB, `INSERT INTO org_integration_config (org_id, kind, scope, config, updated_at, updated_by) VALUES (?, 'cloudflare_analytics', '', '{}', ?, ?)`, org, nowIso(), handle);
   await run(env.DB, `INSERT INTO org_audit (org_id, actor, action, target, at) VALUES (?, ?, 'secret.set', 'github_token:', ?)`, org, handle, nowIso());
+  await run(env.DB, `INSERT INTO platform_admins (person, granted_at, granted_by) VALUES (?, ?, ?)`, handle, nowIso(), handle); // 0042
 }
 
 describe("renamePerson", () => {

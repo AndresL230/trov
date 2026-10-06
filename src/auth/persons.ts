@@ -153,6 +153,7 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["org_login_map", "person"], ["org_login_map", "mapped_by"],
   ["org_repos", "created_by"], ["org_environments", "updated_by"],
   ["org_secrets", "created_by"], ["org_integration_config", "updated_by"], ["org_audit", "actor"],
+  ["platform_admins", "person"], ["platform_admins", "granted_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

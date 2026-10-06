@@ -10,7 +10,7 @@ import { all, first } from "../src/db";
 import type { PersonRow, IdentityRow, IdentityTaskRow } from "@shared/rows";
 
 const OLD_SHAPE = `
-DELETE FROM memberships; DELETE FROM org_login_map;
+DELETE FROM memberships; DELETE FROM org_login_map; DELETE FROM platform_admins;
 DROP TABLE IF EXISTS identities; DROP TABLE IF EXISTS invites; DROP TABLE IF EXISTS persons;
 DROP TABLE IF EXISTS sessions; DROP TABLE IF EXISTS mcp_tokens; DROP TABLE IF EXISTS notification_outbox_bodies;
 CREATE TABLE users (github_login TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL, avatar_url TEXT, email TEXT, email_unsubscribed INTEGER NOT NULL DEFAULT 0);

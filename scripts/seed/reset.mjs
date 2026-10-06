@@ -17,6 +17,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM org_invites",
   "DELETE FROM memberships",
   "DELETE FROM org_counters",
+  "DELETE FROM platform_admins",
   "UPDATE cron_cursor SET last_key = ''",
   // Tickets (0024) first: the ticket_* children reference tickets, and tickets
   // references persons(handle) (and, from 0025, sprints(id)) — so the whole tree
@@ -107,4 +108,6 @@ export const RESET_STATEMENTS = [
   "INSERT INTO memberships (org_id, user_id, role, title, responsibilities, created_at, created_by) SELECT 'org_saplinglearn', handle, CASE WHEN handle = 'AndresL230' THEN 'owner' ELSE 'member' END, role, responsibilities, created_at, 'seed' FROM persons WHERE handle <> 'github-webhook'",
   "INSERT INTO org_login_map (org_id, github_login, person, mapped_at, mapped_by) SELECT 'org_saplinglearn', subject, person, linked_at, 'seed' FROM identities WHERE provider = 'github'",
   "UPDATE identities SET verified_email = lower(label) WHERE provider = 'google'",
+  // …and the one superadmin (0042), as production has it: the SaplingLearn owner.
+  "INSERT INTO platform_admins (person, granted_at, granted_by) VALUES ('AndresL230', '2026-10-06T00:00:00.000Z', 'seed')",
 ];

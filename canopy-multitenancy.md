@@ -262,10 +262,11 @@ slug and `roadmap_fts` `ref = 'plan'` would otherwise delete other orgs' rows). 
 | File | Content |
 |---|---|
 | `0037_orgs.sql` | §2.1 tables + `persons.org_limit` / `identities.verified_email`; `INSERT OR IGNORE` the SaplingLearn org (`org_saplinglearn`, slug `saplinglearn`); one `memberships` row per non-reserved person (role `member`, `title`/`responsibilities` copied from `persons.role/responsibilities`), then `owner` for `andres` (Q3 — a one-time data seed, commented as such); the SaplingLearn `org_repos` row (`SaplingLearn/sapling`, `is_primary = 1`, `legacy_hook = 1`) and its `org_environments` rows (today's `REPO_ENVIRONMENTS`, D16); `org_login_map` from every `identities` row with `provider = 'github'`; `org_invites` from live `invites` rows (email); `org_counters` from `sqlite_sequence` (tickets, handoffs). No secret is migrated in SQL — encryption needs `TROV_KEK` (§8.7.6). |
-| `0038_tenant_columns.sql` *(as built)* | `ALTER TABLE … ADD COLUMN org_id TEXT NOT NULL DEFAULT 'org_saplinglearn'` on the 21 tenant tables whose keys do not change (ADD COLUMN cannot carry a REFERENCES clause with a non-NULL default, so their FK to `orgs` and the composite in-org FKs come with 0042); `tickets.number` / `handoffs.number` + the allocation triggers (Q2); `UNIQUE(org_id, id)` on sprints/tickets; `source_ref` unique per org. |
+| `0038_tenant_columns.sql` *(as built)* | `ALTER TABLE … ADD COLUMN org_id TEXT NOT NULL DEFAULT 'org_saplinglearn'` on the 21 tenant tables whose keys do not change (ADD COLUMN cannot carry a REFERENCES clause with a non-NULL default, so their FK to `orgs` and the composite in-org FKs come with 0043); `tickets.number` / `handoffs.number` + the allocation triggers (Q2); `UNIQUE(org_id, id)` on sprints/tickets; `source_ref` unique per org. |
 | `0039_tenant_rebuilds.sql` *(as built)* | Rebuild (create `x_new` → copy with `org_id = 'org_saplinglearn'` → drop → rename, carrying `sqlite_sequence` like `0033:56`) of the 20 tables whose key must include `org_id`: `docs`, `doc_versions`, `entry_tags`, `processed_items`, `events`, `pr_summaries`, `issue_summaries`, `plan`, `plan_versions`, `identity_tasks`, `notification_policy` / `_settings` / `_prefs`, `repo_events` / `_snapshots` / `_metrics`, `prompts`, `prompt_versions`, `artifact_pages`, `doc_images`. Ends with a guard: `pragma_foreign_key_check` of every touched table into a `CHECK (violations = 0)` column, so a dangling reference fails the file (verified atomic on D1). |
 | `0040_tenant_fts.sql` | Drop + re-create the seven FTS tables (`org_id UNINDEXED` as the LAST column, so positional bm25 weights and snippet columns are unchanged) and their triggers; repopulate (artifacts_fts carried over verbatim). |
-| `0042_drop_org_defaults.sql` (Phase 7; 0041 went to the rename) | Rebuild to remove the transitional `DEFAULT 'org_saplinglearn'` (§3.2), add the FK to `orgs` and the composite in-org FKs on the 0038 tables, and drop `persons.role/responsibilities`, `invites`. |
+| `0041_trov_name.sql`, `0042_platform_admins.sql` *(as built)* | the rename's sender (`Trov <hello@trov.dev>`), and the superadmin table seeded with andres (§5.4). |
+| `0043_drop_org_defaults.sql` (Phase 7) | Rebuild to remove the transitional `DEFAULT 'org_saplinglearn'` (§3.2), add the FK to `orgs` and the composite in-org FKs on the 0038 tables, and drop `persons.role/responsibilities`, `invites`. |
 
 Every rebuild runs under `PRAGMA defer_foreign_keys = true` (the `0033` pattern) and ends with
 `PRAGMA foreign_key_check` asserted empty by the migration test.
@@ -276,7 +277,7 @@ Main deploys on merge. Between Phase 2 (schema) and Phase 3 (queries ported) the
 name `org_id`. So Phase 2 creates `org_id TEXT NOT NULL DEFAULT 'org_saplinglearn' REFERENCES orgs(id)`:
 production keeps working as a single org, the suite stays green, and no unported write can produce a NULL.
 Phase 3 adds the static test "every INSERT into a tenant table names `org_id`", after which the default is
-dead; `0042` removes it so a missed column fails loudly rather than landing in SaplingLearn.
+dead; `0043` removes it so a missed column fails loudly rather than landing in SaplingLearn.
 
 ### 3.3 Idempotency
 
@@ -426,8 +427,8 @@ m.user_id = ? COLLATE NOCASE`. No row (unknown slug OR not a member) → **404 `
 
 - **Create**: `POST /api/orgs { slug, name }` — any signed-in person; creator becomes `owner`; seeds the
   org's `notification_policy` / `notification_settings` / `plan` rows and `org_counters`. Cap (Q6): 3 orgs
-  created per person, `persons.org_limit` overrides it; a PLATFORM admin (env `PLATFORM_ADMINS`, handles —
-  no tenant route reads it) raises it with `PUT /api/platform/persons/:handle/org-limit`.
+  created per person, `persons.org_limit` overrides it; the SUPERADMIN (§5.4) raises it with
+  `PUT /api/platform/persons/:handle/org-limit`.
 - **Invite**: `POST /api/o/:slug/invites { github_login | email, role }` (admin+). Validates the login shape
   (`^[A-Za-z0-9-]{1,39}$`) or the address; does not call GitHub. An email invite may send a notice linking the
   site root — no link ever carries a token (D4).
@@ -448,6 +449,21 @@ m.user_id = ? COLLATE NOCASE`. No row (unknown slug OR not a member) → **404 `
   (`src/tools/writes.ts:214` loses its `linkIdentity` call). `resolvePersonForLogin(ctx, login)` reads
   `org_login_map` first, then falls back to the global GitHub identity **only if that person is a member of
   the org** (so a member's own sign-in identity attributes their PRs without a manual map).
+
+### 5.4 The superadmin (owner decision, 2026-10-06)
+
+One platform-wide role above every org: `platform_admins (person PK → persons(handle), granted_at, granted_by)`
+(`0042`), seeded with `andres` and nobody else. It is NOT an org role — `memberships.role` stays owner / admin /
+member per org — and it is NOT an env allowlist, so a handle rename carries it (`HANDLE_COLUMNS`).
+
+- **Powers** (screens later, under `/api/platform/*`, session cookie only, never MCP, `requireSuperadmin`): list
+  orgs with their sizes and owners, raise a person's org-creation cap (`persons.org_limit`), grant / revoke
+  superadmin, and (later) suspend an org.
+- **Not a backdoor into tenant content**: being superadmin grants NO read or write inside an org — `tenantGate`
+  still requires a membership, and the isolation suite (§10.2) runs one extra principal, a superadmin with no
+  membership in org A, through every route and tool, expecting org A's 404s like anyone else's. Any future
+  "support access" is an explicit, time-boxed, audited membership, decided when its screen is designed.
+- **Grants**: only an existing superadmin, from the future screens; nothing in the app grants it today.
 
 ## 6. Route map
 
@@ -789,7 +805,7 @@ its lines to `web/src/releases.ts` per `CLAUDE.md`.
 | **5a · MCP** | org-scoped tokens + OAuth org picker; server bound to ctx | MCP isolation tests | existing tokens backfilled to SaplingLearn |
 | **5b · Gate, FTS, cron, email, webhooks, integrations** | §8.1–8.5, §8.7: per-(org, environment) job functions + rotation dispatcher; envelope encryption + Integrations API + Test connection; legacy hook | remaining isolation rows; cron/email multi-org tests; §10.5 secret tests | owner sets `TROV_KEK`, then enters SaplingLearn's secrets through the API BEFORE the env fallback is removed (§8.7.6) |
 | **6 · SPA** | `/o/:slug/` + hash routing (the Worker answers `GET /o/*` with `env.ASSETS.fetch("/index.html")` — no reliance on assets SPA-mode semantics); org switcher; create-org; invite + accept; members page with roles; org settings (repos, environments, webhook URL) and the **Integrations page** (D18: set / rotate / delete / Test connection per integration, browser-side secret generation for webhooks, last used / last error, audit history); copy without "Sapling" | render tests; Playwright smoke | deploy flips the SPA to the new paths |
-| **7 · Isolation suite + CI + cleanup** | full matrix generated from registries; mutation job; CI workflow; `0042` drops defaults/legacy columns; delete aliases, legacy webhook, env fallbacks; artifact origin on `trovusercontent.com` | matrix covers 100% routes/tools; mutation sample all killed; `--all` run clean | — |
+| **7 · Isolation suite + CI + cleanup** | full matrix generated from registries; mutation job; CI workflow; `0043` drops defaults/legacy columns; delete aliases, legacy webhook, env fallbacks; artifact origin on `trovusercontent.com` | matrix covers 100% routes/tools; mutation sample all killed; `--all` run clean | — |
 
 The isolation suite grows from Phase 4 onward (each phase adds its rows); Phase 7 makes it exhaustive and
 CI-enforced. The CI workflow itself can land in Phase 2 so every later phase runs under it — recommended.
@@ -799,8 +815,8 @@ CI-enforced. The CI workflow itself can land in Phase 2 so every later phase run
 1. **Q1** — Keep Google sign-in. Invites by GitHub login OR email; accepting requires the signed-in user's
    GitHub login or a provider-VERIFIED email (`identities.verified_email`) to match (§5.3).
 2. **Q2** — Per-org ticket and handoff numbers (`number`, `org_counters`); global ids stay internal.
-3. **Q3** — `andres` = owner; everyone else member. *Open: the answer left "[list any other admins]" blank — no
-   other admin is seeded until named.*
+3. **Q3** — `andres` is the ONLY admin of SaplingLearn (its owner); everyone else is a member. `andres` is also the
+   platform SUPERADMIN (§5.4); its screens come later.
 4. **Q4** — Workers Paid. One job function per (org, environment), dispatched by rotation; Queues later; the
    `CLAUDE.md` deferred-seam rule stands. Amends D17 (§8.3).
 5. **Q5** — `ARTIFACT_ORIGIN` = `https://trovusercontent.com`, a separate registrable domain (§8.6).
