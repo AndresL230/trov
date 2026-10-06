@@ -252,11 +252,11 @@ describe("never in a log line or in D1", () => {
       await expectCleanResponse(res, "rotate");
     }
     await expectCleanD1("rotate");
-    expect(await rotateOrgKey(await tenantCtx("AndresL230"), e)).toMatchObject({ rotated: true, secrets: 7 });
+    expect(await rotateOrgKey(await tenantCtx("AndresL230"))).toMatchObject({ rotated: true, secrets: 7 });
     await expectCleanD1("rotate-key");
     // The secrets really are there, and really are the canaries — the scans above were not vacuous.
     for (const [kind, scope] of SLOTS) {
-      expect((await getSecret(systemCtx(), e, kind as "railway", scope))!.reveal()).toBe(await canary(`v2:${kind}:${scope}`));
+      expect((await getSecret(systemCtx(), kind as "railway", scope))!.reveal()).toBe(await canary(`v2:${kind}:${scope}`));
     }
     for (const [kind, scope] of SLOTS) expect((await call(me, slotPath(kind, scope), { method: "DELETE" })).status).toBe(200);
     await expectCleanD1("delete");
@@ -293,7 +293,7 @@ describe("never in a log line or in D1", () => {
     const me = await ownerCookie();
     await setEveryCanary(me);
     const ctx = systemCtx();
-    const secret = (await getSecret(ctx, e, "railway", "staging"))!;
+    const secret = (await getSecret(ctx, "railway", "staging"))!;
     const v = secret.reveal();
     await recordSecretOutcome(ctx, "railway", "staging", { ok: false, revealed: secret, message: `HTTP 401 Project-Access-Token: ${v} / ${encodeURIComponent(v)} / ${"z".repeat(280)}${v}` });
     const stored = await env.DB.prepare(`SELECT last_error FROM org_secrets WHERE kind = 'railway' AND scope = 'staging'`).first<{ last_error: string }>();

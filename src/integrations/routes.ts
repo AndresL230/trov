@@ -111,7 +111,7 @@ async function integrationWrite(c: C): Promise<Response> {
     const body = await jsonObject(c);
     if (!body) return badJson(c);
     if (t.verb === "rotate") {
-      await rotateSecret(ctx, c.env, t.kind, t.scope, body.secret as string);
+      await rotateSecret(ctx, t.kind, t.scope, body.secret as string);
       return c.json(await row(c, t));
     }
     // set / config name a scope that must exist NOW: a secret is never stored for an environment or
@@ -129,7 +129,7 @@ async function integrationWrite(c: C): Promise<Response> {
     }
     const problem = secretValueProblem(t.kind, body.secret);
     if (problem) return c.json({ error: "invalid_secret", field: "secret", message: problem }, 400);
-    await setSecret(ctx, c.env, t.kind, t.scope, body.secret as string, config);
+    await setSecret(ctx, t.kind, t.scope, body.secret as string, config);
     return c.json(await row(c, t), 201);
   });
 }
@@ -150,7 +150,7 @@ function integrationRoutes(r: Hono<AppEnv>): void {
   // DEK rotation (§8.7.1): owner only.
   r.post("/integrations/rotate-key", (c) => guard(c, async () => {
     requireRole(c.var.ctx, "owner");
-    return c.json(await rotateOrgKey(c.var.ctx, c.env));
+    return c.json(await rotateOrgKey(c.var.ctx));
   }));
 
   r.put("/integrations/:kind", integrationWrite);

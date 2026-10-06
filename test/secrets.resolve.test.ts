@@ -59,8 +59,8 @@ describe("resolveCredential", () => {
   it("a stored secret wins over the Worker secret, kind and scope by kind and scope", async () => {
     await seedOrgSettings();
     const owner = await tenantCtx("AndresL230");
-    await setSecret(owner, e, "github_token", "", STORED);
-    await setSecret(owner, e, "railway", "staging", STORED + "-rw");
+    await setSecret(owner, "github_token", "", STORED);
+    await setSecret(owner, "railway", "staging", STORED + "-rw");
     await setIntegrationConfig(owner, "cloudflare_analytics", "", { account_id: "0123456789abcdef0123456789abcdef" });
     const ctx = systemCtx(ORG_A);
     expect(await reveal(resolveCredential(ctx, LEGACY, "github_token", ""))).toBe(STORED);
@@ -78,7 +78,7 @@ describe("resolveCredential", () => {
     }
     expect(await resolveCloudflareAccountId(ctx, LEGACY)).toBeNull();
     // Its own stored secret is what it gets.
-    await setSecret(await tenantCtx("bob-b", "owner", { orgId: ORG_B }), e, "github_token", "", STORED);
+    await setSecret(await tenantCtx("bob-b", "owner", { orgId: ORG_B }), "github_token", "", STORED);
     expect(await reveal(resolveCredential(ctx, LEGACY, "github_token", ""))).toBe(STORED);
     expect(await reveal(resolveCredential(systemCtx(ORG_A), LEGACY, "github_token", ""))).toBe("legacy-github-service-token");
   });
@@ -104,9 +104,9 @@ describe("resolveCredential", () => {
   it("keeps working without TROV_KEK while nothing is stored; a stored row then fails closed, never falls back", async () => {
     await seedOrgSettings();
     const noKek = { ...LEGACY, TROV_KEK: "" } as Env;
-    const ctx = systemCtx(ORG_A);
+    const ctx = systemCtx(ORG_A, "system", noKek); // the KEK is read off the context's own Env
     expect(await reveal(resolveCredential(ctx, noKek, "github_token", ""))).toBe("legacy-github-service-token");
-    await setSecret(await tenantCtx("AndresL230"), e, "github_token", "", STORED);
+    await setSecret(await tenantCtx("AndresL230"), "github_token", "", STORED);
     await expect(resolveCredential(ctx, noKek, "github_token", "")).rejects.toBeInstanceOf(SecretsUnavailableError);
     expect(await reveal(resolveCredential(ctx, noKek, "railway", "staging"))).toBe("legacy-railway-staging"); // other kinds are unaffected
   });

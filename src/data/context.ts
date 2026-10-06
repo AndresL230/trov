@@ -32,6 +32,12 @@ export interface PlatformContext {
 /** …except through this accessor, which is for `src/data/*` ONLY (sql.ts, platform-sql.ts, legacy.ts). */
 export const d1Of = (ctx: TenantContext | PlatformContext): D1Database => ctx[DB];
 
+/** The key-encryption keys, for src/data/secrets.ts ONLY: a secret is sealed and opened with the KEK of
+ *  the Env its context was built from, so no caller has to hand an Env to `getSecret` (§8.7). It returns
+ *  those two values and nothing else — the rest of the Env stays out of a repository's reach. */
+export const kekOf = (ctx: TenantContext): Pick<Env, "TROV_KEK" | "TROV_KEK_PREVIOUS"> =>
+  ({ TROV_KEK: ctx[ENV].TROV_KEK, TROV_KEK_PREVIOUS: ctx[ENV].TROV_KEK_PREVIOUS });
+
 // A context holds the Env and reads `env.DB` at each use, as the code it replaces did: building one
 // costs nothing and cannot throw, so a broken binding still fails inside the caller's own guarded read.
 const tenant = (env: Env, orgId: string, userId: string, role: OrgRole | "system", via: Via): TenantContext =>

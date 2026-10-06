@@ -69,11 +69,11 @@ describe("the import graph", () => {
 
 describe("a bearer context", () => {
   it("cannot read a secret, whatever its role — neither the stored one nor the legacy fallback", async () => {
-    await setSecret(await tenantCtx("AndresL230"), e, "github_token", "", "tok_0123456789abcdef0123456789abcdef");
+    await setSecret(await tenantCtx("AndresL230"), "github_token", "", "tok_0123456789abcdef0123456789abcdef");
     const legacy: Env = { ...e, GITHUB_SERVICE_TOKEN: "ghs_legacy_token_value_000000000000" };
     for (const ctx of [await bearerCtx("AndresL230"), await bearerCtx("meilin", "admin"), await bearerCtx("sanaok", "member")]) {
       expect(ctx.via).toBe("bearer");
-      await expect(getSecret(ctx, e, "github_token", "")).rejects.toBeInstanceOf(SecretAccessError);
+      await expect(getSecret(ctx, "github_token", "")).rejects.toBeInstanceOf(SecretAccessError);
       await expect(resolveCredential(ctx, legacy, "github_token", "")).rejects.toBeInstanceOf(SecretAccessError);
       await expect(resolveCredential(ctx, legacy, "railway", "staging")).rejects.toBeInstanceOf(SecretAccessError);
     }

@@ -7,12 +7,13 @@
 // of a change is written in the SAME batch as the change (§2.1). NOTHING REACHABLE FROM src/mcp.ts MAY
 // IMPORT THIS FILE (test/secrets.mcp.test.ts walks the import graph).
 //
-// `env` is a parameter because a TenantContext does not expose the Env it was built from (the handle is
-// private to ./context.ts); it is only ever read for TROV_KEK / TROV_KEK_PREVIOUS and, in
-// `resolveCredential`, the legacy Worker secrets.
+// The key-encryption key comes from the context (`kekOf`, ./context.ts — the Env a context was built
+// from, narrowed to TROV_KEK / TROV_KEK_PREVIOUS), so the API is the spec's: `getSecret(ctx, kind, scope)`.
+// Only the cut-over fallbacks at the bottom (`resolveCredential` …) take an `env`: they read the legacy
+// Worker secrets, which a context deliberately does not expose.
 import type { IntegrationKind, OrgAuditAction, OrgAuditDTO } from "@shared/integrations";
 import type { Env } from "../env";
-import { requireRole } from "./context";
+import { kekOf, requireRole } from "./context";
 import { all, batch, first, nowIso, run, stmt, type Stmt, type TenantContext } from "./sql";
 
 export type KekEnv = Pick<Env, "TROV_KEK" | "TROV_KEK_PREVIOUS">;
@@ -175,8 +176,8 @@ const keyAad = (orgId: string, version: number): Uint8Array => utf8.encode(`org_
 
 /** A fresh random DEK, wrapped under the CURRENT KEK for (org, version). The raw key exists only inside
  *  WebCrypto: it is generated extractable so `wrapKey` can export it, and that handle is dropped here. */
-async function wrapNewDek(ctx: TenantContext, env: KekEnv, version: number): Promise<KeyRow> {
-  const { key, fingerprint } = await currentKek(env);
+async function wrapNewDek(ctx: TenantContext, version: number): Promise<KeyRow> {
+  const { key, fingerprint } = await currentKek(kekOf(ctx));
   const dek = (await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"])) as CryptoKey;
   const iv = randomIv();
   const wrapped = await crypto.subtle.wrapKey("raw", dek, key, { name: "AES-GCM", iv, additionalData: keyAad(ctx.orgId, version) });
@@ -185,8 +186,8 @@ async function wrapNewDek(ctx: TenantContext, env: KekEnv, version: number): Pro
 
 /** Unwrap a key row as a NON-extractable encrypt/decrypt key. The AAD names `ctx.orgId`, so another
  *  org's wrapped key fails here. No cross-request cache: a DEK lives for the call that needs it. */
-async function unwrapDek(ctx: TenantContext, env: KekEnv, row: KeyRow): Promise<CryptoKey> {
-  const { key } = await kekFor(env, row.kek_fingerprint);
+async function unwrapDek(ctx: TenantContext, row: KeyRow): Promise<CryptoKey> {
+  const { key } = await kekFor(kekOf(ctx), row.kek_fingerprint);
   try {
     return await crypto.subtle.unwrapKey(
       "raw", unb64(row.wrapped_key), key,
@@ -206,15 +207,15 @@ const insertKeyStmt = (ctx: TenantContext, row: KeyRow, at: string, orIgnore = f
 
 /** The org's current DEK — created on its FIRST secret write. Two first writes racing both insert
  *  version N; OR IGNORE keeps one, and both then unwrap the row that is actually stored. */
-async function activeDek(ctx: TenantContext, env: KekEnv): Promise<{ version: number; key: CryptoKey }> {
+async function activeDek(ctx: TenantContext): Promise<{ version: number; key: CryptoKey }> {
   let row = await activeKeyRow(ctx);
   if (!row) {
     const top = await first<{ v: number | null }>(ctx, `SELECT MAX(key_version) AS v FROM org_keys WHERE org_id = ?`, ctx.orgId);
-    await batch(ctx, [insertKeyStmt(ctx, await wrapNewDek(ctx, env, (top?.v ?? 0) + 1), nowIso(), true)]);
+    await batch(ctx, [insertKeyStmt(ctx, await wrapNewDek(ctx, (top?.v ?? 0) + 1), nowIso(), true)]);
     row = await activeKeyRow(ctx);
     if (!row) throw new SecretsUnavailableError("the org's data key could not be created");
   }
-  return { version: row.key_version, key: await unwrapDek(ctx, env, row) };
+  return { version: row.key_version, key: await unwrapDek(ctx, row) };
 }
 
 // ── encrypt / decrypt ────────────────────────────────────────────────────────
@@ -317,13 +318,13 @@ const isUniqueViolation = (e: unknown): boolean => e instanceof Error && /UNIQUE
 /** Store a NEW secret (admin+). An existing one is a `SecretConflictError` — rotation is its own verb.
  *  `config`, when given, is written (and audited) in the same batch. */
 export async function setSecret(
-  ctx: TenantContext, env: KekEnv, kind: IntegrationKind, scope: string, value: string, config?: IntegrationConfig
+  ctx: TenantContext, kind: IntegrationKind, scope: string, value: string, config?: IntegrationConfig
 ): Promise<SecretMeta> {
   requireRole(ctx, "admin");
   const problem = secretValueProblem(kind, value);
   if (problem) throw new SecretValueError(problem);
   if (await getSecretMeta(ctx, kind, scope)) throw new SecretConflictError();
-  const dek = await activeDek(ctx, env);
+  const dek = await activeDek(ctx);
   const sealed = await seal(dek.key, secretAad(ctx.orgId, kind, scope), value);
   const at = nowIso();
   const hint = hintOf(value);
@@ -343,12 +344,12 @@ export async function setSecret(
 
 /** Replace an existing secret (admin+): new ciphertext, fresh IV, `rotated_at`, and the old value's
  *  `last_error` cleared. None stored → `SecretNotFoundError`. */
-export async function rotateSecret(ctx: TenantContext, env: KekEnv, kind: IntegrationKind, scope: string, value: string): Promise<SecretMeta> {
+export async function rotateSecret(ctx: TenantContext, kind: IntegrationKind, scope: string, value: string): Promise<SecretMeta> {
   requireRole(ctx, "admin");
   const problem = secretValueProblem(kind, value);
   if (problem) throw new SecretValueError(problem);
   if (!(await getSecretMeta(ctx, kind, scope))) throw new SecretNotFoundError();
-  const dek = await activeDek(ctx, env);
+  const dek = await activeDek(ctx);
   const sealed = await seal(dek.key, secretAad(ctx.orgId, kind, scope), value);
   const at = nowIso();
   const hint = hintOf(value);
@@ -399,7 +400,7 @@ export async function deleteSecret(ctx: TenantContext, kind: IntegrationKind, sc
  * session contexts (Test connection, Poll now, Sync GitHub). Writes nothing — a caller that USED the
  * credential reports it with `recordSecretOutcome` / `markSecretUsed`.
  */
-export async function getSecret(ctx: TenantContext, env: KekEnv, kind: IntegrationKind, scope: string): Promise<Secret | null> {
+export async function getSecret(ctx: TenantContext, kind: IntegrationKind, scope: string): Promise<Secret | null> {
   if (ctx.via === "bearer" || ctx.role === "member") throw new SecretAccessError();
   const row = await first<{ ciphertext: string; iv: string; key_version: number }>(ctx,
     `SELECT ciphertext, iv, key_version FROM org_secrets WHERE org_id = ? AND kind = ? AND scope = ?`, ctx.orgId, kind, scope);
@@ -407,7 +408,7 @@ export async function getSecret(ctx: TenantContext, env: KekEnv, kind: Integrati
   const target = targetOf(kind, scope);
   const key = await first<KeyRow>(ctx, `SELECT ${KEY_COLS} FROM org_keys WHERE org_id = ? AND key_version = ?`, ctx.orgId, row.key_version);
   if (!key) throw new SecretDecryptError(target);
-  const dek = await unwrapDek(ctx, env, key);
+  const dek = await unwrapDek(ctx, key);
   return new Secret(await open(dek, secretAad(ctx.orgId, kind, scope), row.ciphertext, row.iv, target));
 }
 
@@ -453,15 +454,15 @@ export interface KeyRotation { rotated: boolean; key_version: number | null; sec
  * rotate that one, then retry. A secret written while this runs keeps its (retired, still readable)
  * version: the re-encrypt is guarded on the IV it read.
  */
-export async function rotateOrgKey(ctx: TenantContext, env: KekEnv): Promise<KeyRotation> {
+export async function rotateOrgKey(ctx: TenantContext): Promise<KeyRotation> {
   requireRole(ctx, "owner");
   const old = await activeKeyRow(ctx);
   if (!old) return { rotated: false, key_version: null, secrets: 0 };
-  const oldDek = await unwrapDek(ctx, env, old);
+  const oldDek = await unwrapDek(ctx, old);
   const top = await first<{ v: number }>(ctx, `SELECT MAX(key_version) AS v FROM org_keys WHERE org_id = ?`, ctx.orgId);
   const version = (top?.v ?? old.key_version) + 1;
-  const wrapped = await wrapNewDek(ctx, env, version);
-  const newDek = await unwrapDek(ctx, env, wrapped);
+  const wrapped = await wrapNewDek(ctx, version);
+  const newDek = await unwrapDek(ctx, wrapped);
   const rows = await all<{ kind: IntegrationKind; scope: string; ciphertext: string; iv: string; key_version: number }>(ctx,
     `SELECT kind, scope, ciphertext, iv, key_version FROM org_secrets WHERE org_id = ? AND key_version = ?`, ctx.orgId, old.key_version);
   const at = nowIso();
@@ -518,7 +519,7 @@ async function legacyEnvValue(ctx: TenantContext, env: Env, kind: IntegrationKin
  * `getSecret` (it throws for a bearer or member context before anything is looked up).
  */
 export async function resolveCredential(ctx: TenantContext, env: Env, kind: IntegrationKind, scope: string): Promise<Secret | null> {
-  const stored = await getSecret(ctx, env, kind, scope);
+  const stored = await getSecret(ctx, kind, scope);
   if (stored) return stored;
   if (ctx.orgId !== LEGACY_ENV_ORG) return null;
   const legacy = await legacyEnvValue(ctx, env, kind, scope);
