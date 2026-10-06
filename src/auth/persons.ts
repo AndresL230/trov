@@ -174,10 +174,18 @@ export async function createPerson(p: PlatformContext, n: { handle: string; name
   return (await getPerson(p, n.handle))!;
 }
 
-/** `verifiedEmail` is the address the provider asserted as verified at this sign-in, or absent / null. */
-export async function linkIdentity(p: PlatformContext, i: { provider: IdentityProvider; subject: string; label: string; person: string; linkedBy: string; verifiedEmail?: string | null }): Promise<void> {
-  await run(p, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by, verified_email) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    i.provider, i.subject, i.label, i.person, nowIso(), i.linkedBy, i.verifiedEmail ? i.verifiedEmail.trim().toLowerCase() : null);
+/** `verifiedEmail` is the address the provider asserted as verified at this sign-in, or absent / null;
+ *  `providerUid` the account's immutable id where the subject is not one (GitHub — 0045). */
+export async function linkIdentity(p: PlatformContext, i: { provider: IdentityProvider; subject: string; label: string; person: string; linkedBy: string; verifiedEmail?: string | null; providerUid?: string | null }): Promise<void> {
+  await run(p, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by, verified_email, provider_uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    i.provider, i.subject, i.label, i.person, nowIso(), i.linkedBy, i.verifiedEmail ? i.verifiedEmail.trim().toLowerCase() : null, i.providerUid ?? null);
+}
+
+/** Pin an identity to the provider account that just signed in with it (0045) — once: a row that already
+ *  names an account keeps it, so a later holder of the same login can never re-bind it. */
+export async function bindProviderUid(p: PlatformContext, provider: IdentityProvider, subject: string, uid: string | null | undefined): Promise<void> {
+  if (!uid) return;
+  await run(p, `UPDATE identities SET provider_uid = ? WHERE provider = ? AND subject = ? AND provider_uid IS NULL`, uid, provider, subject);
 }
 
 export async function unlinkIdentity(p: PlatformContext, person: string, provider: IdentityProvider): Promise<"ok" | "last_identity" | "not_found"> {

@@ -31,8 +31,8 @@ function authWith(fetchImpl: typeof fetch): Hono<AppEnv> {
 const tx = async () => `oauth_tx=${await hmacSeal("st.ver.signin", "test-cookie-secret")}`;
 const cookieOf = (res: Response, name: string): string | null => new RegExp(`${name}=[^;,]+`).exec(res.headers.get("set-cookie") ?? "")?.[0] ?? null;
 
-const github = async (login: string, emails: { email: string; primary: boolean; verified: boolean }[] = []) =>
-  authWith(fakeGithubFetch({ login, name: null, avatar_url: null }, emails)).request("/auth/callback?code=c&state=st", { headers: { cookie: await tx() } }, env);
+const github = async (login: string, emails: { email: string; primary: boolean; verified: boolean }[] = [], id?: number) =>
+  authWith(fakeGithubFetch({ login, name: null, avatar_url: null, id }, emails)).request("/auth/callback?code=c&state=st", { headers: { cookie: await tx() } }, env);
 const google = async (claims: Record<string, unknown> = {}) => {
   const keys = await makeGoogleKeys();
   return authWith(googleFetch(keys, { idToken: await signIdToken(keys, { ...CLAIMS, ...claims }) }).fetchImpl)
@@ -258,5 +258,32 @@ describe("an editable address is never a way into someone else's account", () =>
     const res = await google();
     expect([res.status, res.headers.get("location")]).toEqual([302, "/"]);
     expect(await first(env.DB, `SELECT person, verified_email FROM identities WHERE subject = 'g-123'`)).toEqual({ person: "priya", verified_email: "priya.n@gmail.com" });
+  });
+});
+
+// 0045: a GitHub identity is the LOGIN, and a login can be renamed away and re-registered. With sign-in
+// open to every GitHub account, the row is pinned to the account's immutable numeric id at its next sign-in.
+describe("a GitHub login that changed hands", () => {
+  const uidOf = (login: string) => first<{ provider_uid: string | null }>(env.DB, `SELECT provider_uid FROM identities WHERE provider = 'github' AND subject = ?`, login);
+
+  it("an existing identity is bound to its account at the next sign-in; another account with the same login is refused", async () => {
+    expect(await uidOf("AndresL230")).toEqual({ provider_uid: null }); // pre-0045 row
+    expect((await github("AndresL230", [], 1001)).headers.get("location")).toBe("/");
+    expect(await uidOf("AndresL230")).toEqual({ provider_uid: "1001" });
+
+    // Someone else now holds the login (a different numeric id): no session, the binding stands.
+    const stolen = await github("AndresL230", [], 2002);
+    expect([stolen.status, stolen.headers.get("location")]).toEqual([302, "/?denied=1"]);
+    expect(cookieOf(stolen, "session")).toBeNull();
+    expect(cookieOf(stolen, "onboard")).toBeNull();
+    expect(await uidOf("AndresL230")).toEqual({ provider_uid: "1001" });
+    // The real account still signs in.
+    expect(cookieOf(await github("AndresL230", [], 1001), "session")).not.toBeNull();
+  });
+
+  it("a new person's identity is bound from the start", async () => {
+    await onboard(await github("fresh-dev", [], 3003), "fresh-dev");
+    expect(await uidOf("fresh-dev")).toEqual({ provider_uid: "3003" });
+    expect((await github("fresh-dev", [], 4004)).headers.get("location")).toBe("/?denied=1");
   });
 });

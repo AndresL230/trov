@@ -106,7 +106,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     const gh = await getUser(token, f);
     if (!gh) return c.json({ error: "identity_failed" }, 401);
     // No org gate (§5.1): any GitHub account signs in. `email` is the primary VERIFIED address or null.
-    const profile: ProviderProfile = { provider: "github", subject: gh.login, label: gh.login, email: await getPrimaryEmail(token, f), name: gh.name, avatar_url: gh.avatar_url };
+    const profile: ProviderProfile = { provider: "github", subject: gh.login, label: gh.login, email: await getPrimaryEmail(token, f), name: gh.name, avatar_url: gh.avatar_url, uid: gh.id };
     return finish(c, tx.mode, profile, "/?denied=1");
   });
 
@@ -176,7 +176,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     }
     try {
       // `p.email` is provider-verified (completeSignIn's contract) — recorded on the identity (Q1).
-      await linkIdentity(c.var.p, { provider: p.provider, subject: p.subject, label: p.label, person: parsed.data.handle, linkedBy: parsed.data.handle, verifiedEmail: p.email });
+      await linkIdentity(c.var.p, { provider: p.provider, subject: p.subject, label: p.label, person: parsed.data.handle, linkedBy: parsed.data.handle, verifiedEmail: p.email, providerUid: p.uid });
     } catch (e) {
       // The findIdentity pre-check above closes the common replay window, but a second
       // request racing between that check and this insert can still collide on the

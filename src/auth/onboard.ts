@@ -1,10 +1,12 @@
 import { type PlatformContext, first } from "../data/platform-sql";
-import type { IdentityProvider } from "@shared/rows";
+import type { IdentityProvider, IdentityRow } from "@shared/rows";
 import { hmacSeal, hmacUnseal, b64uEncode, b64uDecode } from "./crypto";
 import { liveLegacyInvite } from "../data/legacy";
-import { findIdentity, findPersonByVerifiedEmail, linkIdentity, listIdentities, recordSignIn, recordVerifiedEmail, isValidHandle } from "./persons";
+import { findIdentity, findPersonByVerifiedEmail, linkIdentity, listIdentities, recordSignIn, recordVerifiedEmail, bindProviderUid, isValidHandle } from "./persons";
 
-export interface ProviderProfile { provider: IdentityProvider; subject: string; label: string; email: string | null; name: string | null; avatar_url: string | null }
+// `uid` is the provider's IMMUTABLE account id where `subject` is not one already: GitHub's numeric id
+// (its `subject` is the login, which can be renamed away and re-registered — 0045). Absent for Google.
+export interface ProviderProfile { provider: IdentityProvider; subject: string; label: string; email: string | null; name: string | null; avatar_url: string | null; uid?: string | null }
 // `exp` is added internally by sealOnboard (not supplied by callers building a payload
 // to hand to it) and is present once a sealed cookie has been opened by openOnboard.
 // `invite_email` is set when onboarding REQUIRES a pending invite for that address — a Google sign-in
@@ -53,6 +55,11 @@ export async function openOnboard(sealed: string, secret: string, now: () => num
   return o as unknown as OnboardPayload;
 }
 
+/** The identity row was bound to one provider account (0045) and this sign-in comes from ANOTHER with the
+ *  same login. Unbound rows (never signed in since 0045) and providers with no `uid` never mismatch. */
+const uidMismatch = (known: IdentityRow, profile: ProviderProfile): boolean =>
+  !!known.provider_uid && !!profile.uid && known.provider_uid !== profile.uid;
+
 /**
  * Is there a PENDING invite addressed to this (provider-verified) email — an `org_invites` row of any
  * org that is not suspended, or a live legacy invite (org #1's old `invites` table)? This is what lets a
@@ -88,6 +95,10 @@ export async function hasPendingEmailInvite(p: PlatformContext, email: string): 
 export async function completeSignIn(p: PlatformContext, profile: ProviderProfile): Promise<ForkResult> {
   const known = await findIdentity(p, profile.provider, profile.subject);
   if (known) {
+    // The login is on file — but is it the same ACCOUNT? A GitHub login that was renamed away and
+    // re-registered by someone else must not sign in as the person the row names (0045).
+    if (uidMismatch(known, profile)) return { kind: "denied" };
+    await bindProviderUid(p, profile.provider, profile.subject, profile.uid);
     await recordSignIn(p, known.person, { provider: profile.provider, avatar_url: profile.avatar_url, email: profile.email });
     await recordVerifiedEmail(p, profile.provider, profile.subject, profile.email);
     return { kind: "session", handle: known.person };
@@ -95,7 +106,7 @@ export async function completeSignIn(p: PlatformContext, profile: ProviderProfil
   if (profile.email) {
     const byEmail = await findPersonByVerifiedEmail(p, profile.email);
     if (byEmail) {
-      await linkIdentity(p, { provider: profile.provider, subject: profile.subject, label: profile.label, person: byEmail.handle, linkedBy: byEmail.handle, verifiedEmail: profile.email });
+      await linkIdentity(p, { provider: profile.provider, subject: profile.subject, label: profile.label, person: byEmail.handle, linkedBy: byEmail.handle, verifiedEmail: profile.email, providerUid: profile.uid });
       await recordSignIn(p, byEmail.handle, { provider: profile.provider, avatar_url: profile.avatar_url, email: profile.email });
       return { kind: "session", handle: byEmail.handle };
     }
@@ -117,9 +128,9 @@ export async function completeSignIn(p: PlatformContext, profile: ProviderProfil
  */
 export async function linkSignIn(p: PlatformContext, handle: string, profile: ProviderProfile): Promise<"linked" | "belongs_to_other" | "provider_already_linked"> {
   const known = await findIdentity(p, profile.provider, profile.subject);
-  if (known) return known.person.toLowerCase() === handle.toLowerCase() ? "linked" : "belongs_to_other";
+  if (known) return known.person.toLowerCase() === handle.toLowerCase() && !uidMismatch(known, profile) ? "linked" : "belongs_to_other";
   const mine = await listIdentities(p, handle);
   if (mine.some((i) => i.provider === profile.provider)) return "provider_already_linked";
-  await linkIdentity(p, { provider: profile.provider, subject: profile.subject, label: profile.label, person: handle, linkedBy: handle, verifiedEmail: profile.email });
+  await linkIdentity(p, { provider: profile.provider, subject: profile.subject, label: profile.label, person: handle, linkedBy: handle, verifiedEmail: profile.email, providerUid: profile.uid });
   return "linked";
 }

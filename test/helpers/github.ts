@@ -1,4 +1,5 @@
-export interface FakeGithubUser { login: string; name?: string | null; avatar_url?: string | null }
+/** `id` is GitHub's immutable numeric account id (0045); omitted = the API returns none, as before. */
+export interface FakeGithubUser { login: string; name?: string | null; avatar_url?: string | null; id?: number }
 
 /**
  * A fake GitHub fetch for exercising the /auth/callback route end-to-end (token
@@ -14,7 +15,7 @@ export function fakeGithubFetch(
   return (async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (url.startsWith("https://github.com/login/oauth/access_token")) return json({ access_token: "t" });
-    if (url === "https://api.github.com/user") return json({ login: user.login, name: user.name ?? null, avatar_url: user.avatar_url ?? null });
+    if (url === "https://api.github.com/user") return json({ ...(user.id === undefined ? {} : { id: user.id }), login: user.login, name: user.name ?? null, avatar_url: user.avatar_url ?? null });
     if (url === "https://api.github.com/user/emails") return json(emails);
     return new Response("not found", { status: 404 });
   }) as typeof fetch;
