@@ -44,7 +44,8 @@ import { draftFromPrompt, blankPromptDraft, slugify, tagOptions } from "./prompt
 import { blankDoc, defaultSection } from "./newdoc";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
 import type { SprintDetail } from "@shared/sprints";
-import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
+import { parseHash, hashForRoute, sameRoute, pageKey, splitHashQuery, type Route } from "./hash";
+import { githubInstallNotice } from "./org-github";
 import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
 import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
@@ -96,7 +97,7 @@ const qs = createQuickSearch({
 // Org settings (web/src/org-actions.ts): every `org…` act, its loads, and the secret form's draft.
 const orgCtl = createOrgController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
-  reloadOrgs: () => loadMyOrgs(), leaveOrg: () => showPicker(null),
+  reloadOrgs: () => loadMyOrgs(), leaveOrg: () => showPicker(null), go: (url) => { window.location.assign(url); },
 });
 // Organizations as a person meets them (web/src/org-picker-actions.ts): the switcher's menu, the
 // picker, the create dialog — every `orgs…` act. Opening an org is a page load.
@@ -360,6 +361,16 @@ window.addEventListener("hashchange", () => {
   closeLightbox(); // Back/Forward under an open figure: it belongs to the old route
   if (state.view === "platform") { enterPlatform(location.hash); return; }
   if (state.view !== "app") return;
+  // A one-time notice in the hash's query (the GitHub App's install landing): the query leaves the
+  // address before the route is read, so neither Back nor a reload says it again — and the toast
+  // comes AFTER the route is applied (a paint before that would write the old route's hash back).
+  const notice = githubInstallNotice(splitHashQuery(location.hash).query);
+  if (notice) history.replaceState(null, "", splitHashQuery(location.hash).path || "#");
+  followHash();
+  if (notice) flash(notice.text, notice.ms);
+});
+/** The address's hash → the screen it names (the hashchange handler's routing). */
+function followHash(): void {
   const r = parseHash(location.hash);
   const cur = currentRoute();
   if (sameRoute(r, cur)) {
@@ -375,7 +386,7 @@ window.addEventListener("hashchange", () => {
   // already a no-op once its data is in; Platform's reads only what the tab has not got yet.)
   if (r.screen === "org" && cur.screen === "org") { orgCtl.act("orgTab", r.orgTab ?? "integrations", null); return; }
   loadForScreen(r.screen);
-});
+}
 
 // Minimal CSS.escape shim for id selectors (heading ids are already slug-safe).
 function cssEscape(v: string): string {
@@ -712,6 +723,10 @@ function enterPlatform(hash: string): void {
  *  `/o/<slug>/` with the hash route after it, and this browser remembers it as last used. */
 function enterOrg(slug: string, hash: string): void {
   const link = new URLSearchParams(location.search).get("link");
+  // The GitHub App's install callback lands on `#org/repos?github=connected|requested`: the notice
+  // is flashed once, below, and the query never reaches the address bar — a reload is quiet.
+  const notice = githubInstallNotice(splitHashQuery(hash).query);
+  hash = splitHashQuery(hash).path;
   state.orgSlug = slug;
   setApiOrg(slug);
   try { localStorage.setItem(LAST_ORG_KEY, slug); } catch { /* ignore */ }
@@ -743,6 +758,7 @@ function enterOrg(slug: string, hash: string): void {
   // The persons directory backs every colored chip (sidebar, feed, docs,
   // Settings › Profile, Org settings › Members) — load it on every screen too.
   loadPersons();
+  if (notice) flash(notice.text, notice.ms);
 }
 /** A write's failure as a toast: the server's `{ error }` (a 409's "handoff is claimed"), else a fallback. */
 function writeErr(e: unknown, fallback: string): void {
