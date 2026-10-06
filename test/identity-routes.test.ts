@@ -14,7 +14,7 @@ import type { CapturedEvent } from "@shared/contract";
 
 async function authedCookie(login: string): Promise<string> {
   await seedPerson(login);
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 

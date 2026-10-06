@@ -9,13 +9,12 @@
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../auth/principal";
-import { RoleError } from "../data/context";
+import { RoleError, hasRole } from "../data/context";
 import {
   OrgError, ORG_ERROR_STATUS, myOrgs, listMyInvites, createOrgForSelf, respondToInvite,
   orgMe, getOrgSettings, updateOrgSettings, listMembers, updateMember, removeMember,
   listOrgInvites, createInvite, revokeInvite,
 } from "./repo";
-import { hasRole } from "../data/context";
 
 /** Refuse a bearer-shaped caller before anything else runs (the artifact-ratify rule). */
 export const cookieOnly: MiddlewareHandler<AppEnv> = async (c, next) =>

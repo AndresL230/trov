@@ -16,6 +16,7 @@ import { RAW_CSP_ACTIVE, RAW_CSP_PASSIVE, HEIGHT_SCRIPT, injectHeightScript } fr
 import { checkFetchUrl, expandIpv6, fetchArtifactUrl, FetchUrlError, inferFetchedKind } from "../src/artifacts/fetch-url";
 import { ARTIFACT_BINARY_CAP, ARTIFACT_TEXT_CAP, type ArtifactDetailDTO } from "@shared/artifacts";
 import { cookieFor } from "./helpers/persons";
+import { platformCtx, ORG_A } from "./helpers/tenant";
 
 const ME = "AndresL230";
 const YOU = "Jose-Gael-Cruz-Lopez";
@@ -52,7 +53,7 @@ async function seedTicket(title = "Fix login"): Promise<number> {
 
 describe("auth", () => {
   it("every route is session-gated (401), and a bearer token does not count", async () => {
-    const { raw } = await mintToken(env.DB, ME);
+    const { raw } = await mintToken(platformCtx(), ME, ORG_A);
     for (const [method, path] of [
       ["GET", "/api/artifacts"], ["GET", "/api/artifacts/x"], ["POST", "/api/artifacts"], ["PATCH", "/api/artifacts/x"],
       ["POST", "/api/artifacts/x/versions"], ["GET", "/api/artifacts/x/diff?a=1&b=1"], ["POST", "/api/artifacts/x/links"],
@@ -236,7 +237,7 @@ describe("ratify — the session-only confirm gate", () => {
     await req("/api/artifacts/auth-flow/versions", json("POST", { content: "v2" }, me));
     expect((await req("/api/artifacts/auth-flow/ratify", json("POST", { version: 1 }, you))).status).toBe(409);
     expect((await req("/api/artifacts/auth-flow/ratify", json("POST", {}, you))).status).toBe(400);
-    const { raw } = await mintToken(env.DB, YOU);
+    const { raw } = await mintToken(platformCtx(), YOU, ORG_A);
     const withBearer = await req("/api/artifacts/auth-flow/ratify", json("POST", { version: 2 }, you, { authorization: `Bearer ${raw}` }));
     expect(withBearer.status).toBe(403);
     const ok = await req("/api/artifacts/auth-flow/ratify", json("POST", { version: 2 }, you));

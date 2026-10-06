@@ -4,7 +4,7 @@
 // repo_metrics (the Cloudflare poll also its `cf_polled` snapshot); none may
 // throw — a dead target or a bad token costs one data point, never the cron tick.
 import type { PollOutcome } from "@shared/repo";
-import type { DB } from "../db";
+import type { TenantContext } from "../data/sql";
 import type { RepoEnvConfig } from "./config";
 import { countMetric, totalMetric } from "./product";
 import { getSnapshot, putMetric, putMetrics, putSnapshot } from "./store";
@@ -63,7 +63,7 @@ const PING_TIMEOUT_MS = 8_000;
  *  45 days): a poll every 2 minutes for a day is 720 × 2 rows per target —
  *  5,760 rows for two environments, beside the cron's own 1,152. */
 export const HEALTH_ON_DEMAND_BUCKET_MS = 1_000;
-export async function pingHealth(db: DB, envs: RepoEnvConfig[], now: number, fetchImpl: typeof fetch = fetch, bucketMs: number = TEN_MIN): Promise<PollOutcome[]> {
+export async function pingHealth(ctx: TenantContext, envs: RepoEnvConfig[], now: number, fetchImpl: typeof fetch = fetch, bucketMs: number = TEN_MIN): Promise<PollOutcome[]> {
   const at = new Date(Math.floor(now / bucketMs) * bucketMs).toISOString();
   const targets = envs.flatMap((cfg) =>
     ([["frontend", cfg.frontendUrl], ["backend", cfg.apiUrl + cfg.healthPath]] as const).map(([part, url]) => ({ env: cfg.key, part, url }))
@@ -90,8 +90,8 @@ export async function pingHealth(db: DB, envs: RepoEnvConfig[], now: number, fet
   const out: PollOutcome[] = [];
   for (const r of readings) {
     const wrote = [
-      await putMetric(db, { metric: "health_up", env: r.env, part: r.part, value: r.up, at }),
-      await putMetric(db, { metric: "health_ms", env: r.env, part: r.part, value: r.ms, at }),
+      await putMetric(ctx, { metric: "health_up", env: r.env, part: r.part, value: r.up, at }),
+      await putMetric(ctx, { metric: "health_ms", env: r.env, part: r.part, value: r.ms, at }),
     ].filter(Boolean).length;
     out.push(r.up ? { env: r.env, part: r.part, status: "ok", written: wrote } : { env: r.env, part: r.part, status: "failed", written: wrote, detail: r.why });
   }
@@ -236,7 +236,7 @@ const count = (v: unknown): number | null => (typeof v === "number" && Number.is
  * first time it advances. A failure here is logged and costs only the marker.
  */
 export async function pollCloudflare(
-  db: DB, cf: { token: string; accountId: string }, envs: RepoEnvConfig[], now: number, fetchImpl: typeof fetch = fetch
+  ctx: TenantContext, cf: { token: string; accountId: string }, envs: RepoEnvConfig[], now: number, fetchImpl: typeof fetch = fetch
 ): Promise<PollOutcome[]> {
   const to = Math.floor(now / HOUR) * HOUR - HOUR;
   const from = to - CF_POLL_HOURS * HOUR;
@@ -288,8 +288,8 @@ export async function pollCloudflare(
         // first malformed in-window hour and end this poll's covered `to` there.
         if (!Number.isFinite(at) || at < from || at >= to || requests === null || errors === null) continue;
         const iso = new Date(at).toISOString();
-        if (await putMetric(db, { metric: "cf_requests", env: cfg.key, part: "frontend", value: requests, at: iso })) written++;
-        if (await putMetric(db, { metric: "cf_errors", env: cfg.key, part: "frontend", value: errors, at: iso })) written++;
+        if (await putMetric(ctx, { metric: "cf_requests", env: cfg.key, part: "frontend", value: requests, at: iso })) written++;
+        if (await putMetric(ctx, { metric: "cf_errors", env: cfg.key, part: "frontend", value: errors, at: iso })) written++;
       }
       succeeded.push(cfg.key);
       outcomes.push(okOutcome(cfg.key, written));
@@ -314,7 +314,7 @@ export async function pollCloudflare(
     // draws unknown — never a fabricated zero) and the next successful poll
     // re-extends the interval. Beyond that a lost update is harmless anyway: every writer inside one hour computes the SAME
     // window, so the loser's interval is re-written identically next tick.
-    const bounds = { ...record((await getSnapshot<unknown>(db, CF_POLLED))?.data) } as Record<string, unknown>;
+    const bounds = { ...record((await getSnapshot<unknown>(ctx, CF_POLLED))?.data) } as Record<string, unknown>;
     let changed = false;
     for (const key of succeeded) {
       const prev = cfCovered(bounds[key]);
@@ -323,7 +323,7 @@ export async function pollCloudflare(
       bounds[key] = { from: new Date(next.from).toISOString(), to: new Date(next.to).toISOString() };
       changed = true;
     }
-    if (changed) await putSnapshot(db, CF_POLLED, bounds as CfPolled, new Date(now).toISOString());
+    if (changed) await putSnapshot(ctx, CF_POLLED, bounds as CfPolled, new Date(now).toISOString());
   } catch (e) {
     // The message only, scrubbed — the rule every other log line in this file keeps.
     console.error("pollCloudflare", CF_POLLED, scrub(e instanceof Error ? e.message : String(e)));
@@ -381,7 +381,7 @@ const RW_MEASUREMENTS: Record<string, { metric: string; max: number; store: (v: 
  * implausible value is skipped on its own and never aborts the rows after it.
  */
 export async function pollRailway(
-  db: DB, tokens: Record<string, string | undefined>, envs: RepoEnvConfig[], now: number, fetchImpl: typeof fetch = fetch
+  ctx: TenantContext, tokens: Record<string, string | undefined>, envs: RepoEnvConfig[], now: number, fetchImpl: typeof fetch = fetch
 ): Promise<PollOutcome[]> {
   const to = Math.floor(now / HOUR) * HOUR;
   const from = to - RW_HOURS * HOUR;
@@ -437,7 +437,7 @@ export async function pollRailway(
       }
       let written = 0;
       for (const p of picked.values()) {
-        if (await putMetric(db, { metric: p.metric, env: cfg.key, part: "backend", value: p.value, at: new Date(p.at).toISOString() })) written++;
+        if (await putMetric(ctx, { metric: p.metric, env: cfg.key, part: "backend", value: p.value, at: new Date(p.at).toISOString() })) written++;
       }
       outcomes.push(okOutcome(cfg.key, written));
     } catch (e) {
@@ -627,7 +627,7 @@ export function saplingProductMetrics(body: unknown, clean: (s: string) => strin
  * cut (the validator takes this poller's `scrub`).
  */
 export async function pollSaplingMetrics(
-  db: DB, token: string, envs: RepoEnvConfig[], now: number, fetchImpl: typeof fetch = fetch
+  ctx: TenantContext, token: string, envs: RepoEnvConfig[], now: number, fetchImpl: typeof fetch = fetch
 ): Promise<PollOutcome[]> {
   const at = new Date(Math.floor(now / HOUR) * HOUR).toISOString();
   const outcomes: PollOutcome[] = [];
@@ -669,7 +669,7 @@ export async function pollSaplingMetrics(
         gauge(countMetric(key, "30d"), c.d30);
       }
       for (const key of Object.keys(product.totals)) gauge(totalMetric(key), product.totals[key]);
-      written = await putMetrics(db, rows);
+      written = await putMetrics(ctx, rows);
       // Dropped keys: NAMES only, handed to the outcome. Each name was scrubbed
       // INSIDE the validator, before it was cut to 40 characters — this second
       // scrub is belt and braces, and could not catch a token already cut.

@@ -79,7 +79,7 @@ describe("reconcileRepo — the statuses arm (coverage / bundle / TODO)", () => 
         status("canopy/todo", "2", "2026-09-20T09:07:00Z"),
       ],
     });
-    const res = await reconcileRepo(env.DB, OPTS(gh.fetchImpl), ENVS, NOW);
+    const res = await reconcileRepo(systemCtx(), OPTS(gh.fetchImpl), ENVS, NOW);
     expect(res.failed).toEqual([]);
     expect(res.written).toBe(3);
     expect(await metrics()).toEqual([
@@ -91,7 +91,7 @@ describe("reconcileRepo — the statuses arm (coverage / bundle / TODO)", () => 
     expect(asked).toEqual([`https://api.github.com/repos/o/r/commits/${HEAD}/statuses?per_page=100`]);
 
     // A second reconcile re-reads the same statuses: nothing new, all unchanged.
-    const again = await reconcileRepo(env.DB, OPTS(gh.fetchImpl), ENVS, NOW);
+    const again = await reconcileRepo(systemCtx(), OPTS(gh.fetchImpl), ENVS, NOW);
     expect(again.written).toBe(0);
     expect(again.unchanged).toBe(3);
     expect(await metrics()).toHaveLength(3);
@@ -101,12 +101,12 @@ describe("reconcileRepo — the statuses arm (coverage / bundle / TODO)", () => 
     const noHead = fakeGithub({ "/statuses": [] });
     const failHead = (async (u: RequestInfo | URL, init?: RequestInit) =>
       String(u).endsWith("&per_page=1") ? new Response("", { status: 500 }) : noHead.fetchImpl(u, init)) as typeof fetch;
-    const { out } = await quietly(() => reconcileRepo(env.DB, OPTS(failHead), ENVS, NOW));
+    const { out } = await quietly(() => reconcileRepo(systemCtx(), OPTS(failHead), ENVS, NOW));
     expect(out.failed).toEqual(["env_heads"]);
     expect(noHead.calls.filter((c) => c.includes("/statuses"))).toEqual(["https://api.github.com/repos/o/r/commits/main/statuses?per_page=100"]);
 
     const bare = fakeGithub({ "/statuses": [status("canopy/todo", "7", "2026-09-20T09:07:00Z")] });
-    await reconcileRepo(env.DB, OPTS(bare.fetchImpl), [], NOW);
+    await reconcileRepo(systemCtx(), OPTS(bare.fetchImpl), [], NOW);
     expect(bare.calls.filter((c) => c.includes("/statuses"))).toEqual(["https://api.github.com/repos/o/r/commits/main/statuses?per_page=100"]);
     expect(await metrics()).toEqual([{ metric: "todo_count", value: 7, at: "2026-09-20T09:07:00.000Z" }]);
   });
@@ -123,7 +123,7 @@ describe("reconcileRepo — the statuses arm (coverage / bundle / TODO)", () => 
       "/commits?sha=main&per_page=1": [headCommit],
       "/statuses": [status("canopy/coverage", "78.4", "2026-09-20T09:07:00+00:00"), status("canopy/todo", "5", "2026-09-20T09:06:00Z")],
     });
-    const res = await reconcileRepo(env.DB, OPTS(gh.fetchImpl), ENVS, NOW);
+    const res = await reconcileRepo(systemCtx(), OPTS(gh.fetchImpl), ENVS, NOW);
     expect(res.written).toBe(1); // the TODO count is new
     expect(res.unchanged).toBe(1); // the coverage point is the webhook's own
     expect(await metrics()).toEqual([
@@ -146,7 +146,7 @@ describe("reconcileRepo — the statuses arm (coverage / bundle / TODO)", () => 
         status("canopy/todo", "1e3", "2026-09-20T09:07:00Z"), // not a strict decimal
       ],
     });
-    const { out, logged } = await quietly(() => reconcileRepo(env.DB, OPTS(gh.fetchImpl), ENVS, NOW));
+    const { out, logged } = await quietly(() => reconcileRepo(systemCtx(), OPTS(gh.fetchImpl), ENVS, NOW));
     expect(out.failed).toEqual([]);
     expect(out.written).toBe(0);
     expect(await metrics()).toEqual([]);
@@ -157,7 +157,7 @@ describe("reconcileRepo — the statuses arm (coverage / bundle / TODO)", () => 
   it("keeps at most the newest 10 per context", async () => {
     const many = Array.from({ length: 14 }, (_, i) => status("canopy/todo", String(40 - i), new Date(NOW - i * 60_000).toISOString()));
     const gh = fakeGithub({ "/commits?sha=main&per_page=1": [headCommit], "/statuses": [...many, status("canopy/coverage", "80", "2026-09-20T08:00:00Z")] });
-    const res = await reconcileRepo(env.DB, OPTS(gh.fetchImpl), ENVS, NOW);
+    const res = await reconcileRepo(systemCtx(), OPTS(gh.fetchImpl), ENVS, NOW);
     expect(res.written).toBe(11);
     const todo = (await metrics()).filter((m) => m.metric === "todo_count");
     expect(todo).toHaveLength(10);
@@ -166,12 +166,12 @@ describe("reconcileRepo — the statuses arm (coverage / bundle / TODO)", () => 
 
   it("a 404 and an empty list are not failures", async () => {
     const empty = fakeGithub({ "/commits?sha=main&per_page=1": [headCommit], "/statuses": [] });
-    expect((await reconcileRepo(env.DB, OPTS(empty.fetchImpl), ENVS, NOW)).failed).toEqual([]);
+    expect((await reconcileRepo(systemCtx(), OPTS(empty.fetchImpl), ENVS, NOW)).failed).toEqual([]);
 
     const base = fakeGithub({ "/commits?sha=main&per_page=1": [headCommit] });
     const notFound = (async (u: RequestInfo | URL, init?: RequestInit) =>
       String(u).includes("/statuses") ? new Response(JSON.stringify({ message: "Not Found" }), { status: 404 }) : base.fetchImpl(u, init)) as typeof fetch;
-    expect((await reconcileRepo(env.DB, OPTS(notFound), ENVS, NOW)).failed).toEqual([]);
+    expect((await reconcileRepo(systemCtx(), OPTS(notFound), ENVS, NOW)).failed).toEqual([]);
     expect(await metrics()).toEqual([]);
   });
 
@@ -179,7 +179,7 @@ describe("reconcileRepo — the statuses arm (coverage / bundle / TODO)", () => 
     const base = fakeGithub({ "/commits?sha=main&per_page=1": [headCommit], reviewsGraphql: reviews({ number: 480, nodes: [reviewNode()] }) });
     const broken = (async (u: RequestInfo | URL, init?: RequestInit) =>
       String(u).includes("/statuses") ? new Response("boom", { status: 502 }) : base.fetchImpl(u, init)) as typeof fetch;
-    const { out } = await quietly(() => reconcileRepo(env.DB, OPTS(broken), ENVS, NOW));
+    const { out } = await quietly(() => reconcileRepo(systemCtx(), OPTS(broken), ENVS, NOW));
     expect(out.failed).toEqual(["statuses"]);
     expect(await reviewRows()).toHaveLength(1); // the reviews arm, right after it, still ran
     expect((await all(env.DB, `SELECT kind FROM repo_snapshots WHERE kind = 'branches'`))).toHaveLength(1);
@@ -196,7 +196,7 @@ describe("reconcileRepo — every GitHub read is bounded", () => {
       if (String(u).endsWith("/graphql") && String(init?.body ?? "").includes("pullRequests(")) throw Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
       return base.fetchImpl(u, init);
     }) as typeof fetch;
-    const { out } = await quietly(() => reconcileRepo(env.DB, OPTS(hanging), ENVS, NOW));
+    const { out } = await quietly(() => reconcileRepo(systemCtx(), OPTS(hanging), ENVS, NOW));
     expect(out.failed).toEqual(["statuses", "reviews"]);
     expect(signals.length).toBeGreaterThan(10);
     for (const signal of signals) expect(signal).toBeInstanceOf(AbortSignal);
@@ -212,7 +212,7 @@ describe("reconcileRepo — the reviews arm", () => {
     expect(fromWebhook.semantic_key).toBe("gh:review:3001:submitted");
 
     const gh = fakeGithub({ reviewsGraphql: reviews({ number: 480, nodes: [reviewNode()] }) });
-    const res = await reconcileRepo(env.DB, OPTS(gh.fetchImpl), ENVS, NOW);
+    const res = await reconcileRepo(systemCtx(), OPTS(gh.fetchImpl), ENVS, NOW);
     expect(res.failed).toEqual([]);
     expect(await reviewRows()).toEqual([{
       semantic_key: fromWebhook.semantic_key, number: fromWebhook.number, state: fromWebhook.state,
@@ -230,7 +230,7 @@ describe("reconcileRepo — the reviews arm", () => {
     await deliver("pull_request_review", reviewFixture, withEnvs);
     const gh = fakeGithub({ reviewsGraphql: reviews({ number: 480, nodes: [reviewNode()] }) });
     const before = (await reviewRows())[0];
-    const res = await reconcileRepo(env.DB, OPTS(gh.fetchImpl), ENVS, NOW);
+    const res = await reconcileRepo(systemCtx(), OPTS(gh.fetchImpl), ENVS, NOW);
     expect(res.written).toBe(0);
     expect(await reviewRows()).toEqual([before]); // still the webhook's row, provenance and all
     expect(before.provenance).toBe("webhook");
@@ -238,7 +238,7 @@ describe("reconcileRepo — the reviews arm", () => {
 
   it("asks ONE GraphQL question: the 30 most recently updated open PRs, their last 10 reviews", async () => {
     const gh = fakeGithub({});
-    await reconcileRepo(env.DB, OPTS(gh.fetchImpl), ENVS, NOW);
+    await reconcileRepo(systemCtx(), OPTS(gh.fetchImpl), ENVS, NOW);
     const asked = gh.graphql.filter((c) => c.query.includes("pullRequests("));
     expect(asked).toHaveLength(1);
     expect(asked[0].variables).toEqual({ owner: "o", name: "r" });
@@ -260,7 +260,7 @@ describe("reconcileRepo — the reviews arm", () => {
       ] },
       { number: 659, nodes: [reviewNode({ databaseId: 16, author: { login: "already[bot]", __typename: "Bot" } })] },
     ) });
-    const res = await reconcileRepo(env.DB, OPTS(gh.fetchImpl), ENVS, NOW);
+    const res = await reconcileRepo(systemCtx(), OPTS(gh.fetchImpl), ENVS, NOW);
     expect(res.failed).toEqual([]);
     expect((await reviewRows()).map((r) => [r.semantic_key, r.number, r.state, r.actor_login])).toEqual([
       ["gh:review:11:submitted", 658, "changes_requested", "meilin"],
@@ -278,7 +278,7 @@ describe("reconcileRepo — the reviews arm", () => {
   // contributors' `R` from "—" (unknown) into a number, where everyone the arm
   // could not see would read a hard 0.
   const contributors = async () => {
-    const d = await getRepoDashboard(env.DB, "o/r", NOW, ENVS);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
     return d.contributors.status === "ok"
       ? (d.contributors as { data: { person: { login: string }; pushes: number; reviews: number | null }[] }).data.map((r) => [r.person.login, r.reviews])
       : d.contributors.status;
@@ -292,10 +292,10 @@ describe("reconcileRepo — the reviews arm", () => {
     await aPush("alice"); // reviewed a PR that was merged before the poll — the arm can never see it
     await aPush("Darkest-Teddy");
     const gh = fakeGithub({ reviewsGraphql: reviews({ number: 480, nodes: [reviewNode()] }) });
-    await reconcileRepo(env.DB, OPTS(gh.fetchImpl), ENVS, NOW);
-    expect(await hasCaptured(env.DB, "review")).toBe(true);
-    expect(await hasCaptured(env.DB, "review", "backfill")).toBe(true);
-    expect(await hasCaptured(env.DB, "review", "webhook")).toBe(false);
+    await reconcileRepo(systemCtx(), OPTS(gh.fetchImpl), ENVS, NOW);
+    expect(await hasCaptured(systemCtx(), "review")).toBe(true);
+    expect(await hasCaptured(systemCtx(), "review", "backfill")).toBe(true);
+    expect(await hasCaptured(systemCtx(), "review", "webhook")).toBe(false);
     expect(await contributors()).toEqual([["alice", null], ["Darkest-Teddy", null]]);
   });
 
@@ -305,7 +305,7 @@ describe("reconcileRepo — the reviews arm", () => {
       reviewNode(),
       reviewNode({ databaseId: 3002, state: "COMMENTED", author: { login: "meilin", __typename: "User" } }),
     ] }) });
-    await reconcileRepo(env.DB, OPTS(gh.fetchImpl), ENVS, NOW);
+    await reconcileRepo(systemCtx(), OPTS(gh.fetchImpl), ENVS, NOW);
     // Gate closed: a hidden tally neither orders the list nor adds a row for
     // someone known only by a polled review.
     expect(await contributors()).toEqual([["alice", null]]);
@@ -313,10 +313,10 @@ describe("reconcileRepo — the reviews arm", () => {
     // The hook gets subscribed: a delivery for a review the poll already stored
     // is `unchanged` — it must NOT open the gate (no webhook row was written)…
     await deliver("pull_request_review", reviewFixture, withEnvs);
-    expect(await hasCaptured(env.DB, "review", "webhook")).toBe(false);
+    expect(await hasCaptured(systemCtx(), "review", "webhook")).toBe(false);
     // …a NEW review's delivery does.
     await deliver("pull_request_review", { ...reviewFixture, review: { ...reviewFixture.review, id: 3003, user: { login: "alice" } } }, withEnvs);
-    expect(await hasCaptured(env.DB, "review", "webhook")).toBe(true);
+    expect(await hasCaptured(systemCtx(), "review", "webhook")).toBe(true);
     expect(await contributors()).toEqual([["alice", 1], ["Darkest-Teddy", 1], ["meilin", 1]]); // two of them polled rows
   });
 
@@ -325,18 +325,18 @@ describe("reconcileRepo — the reviews arm", () => {
   it("Awaiting review reacts to a polled approval at once", async () => {
     const pr = (number: number) => ({ number, title: `PR ${number}`, html_url: `https://github.com/o/r/pull/${number}`, state: "open", draft: false, merged_at: null, updated_at: "2026-09-20T09:10:00Z", user: { login: "lpcooper-arch" }, head: { ref: `b${number}`, sha: `s${number}` }, base: { ref: "main" } });
     const awaiting = async () => {
-      const d = await getRepoDashboard(env.DB, "o/r", NOW, ENVS);
+      const d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
       return (d.stats as { data: { label: string; value: number }[] }).data.find((t) => t.label === "Awaiting review")?.value;
     };
     const prsOnly = fakeGithub({ "/pulls?state=open": [pr(480), pr(481)] });
-    await reconcileRepo(env.DB, OPTS(prsOnly.fetchImpl), ENVS, NOW);
+    await reconcileRepo(systemCtx(), OPTS(prsOnly.fetchImpl), ENVS, NOW);
     expect(await awaiting()).toBe(2);
 
     const withApproval = fakeGithub({ "/pulls?state=open": [pr(480), pr(481)], reviewsGraphql: reviews({ number: 480, nodes: [reviewNode()] }) });
-    await reconcileRepo(env.DB, OPTS(withApproval.fetchImpl), ENVS, NOW);
-    expect(await hasCaptured(env.DB, "review", "webhook")).toBe(false);
+    await reconcileRepo(systemCtx(), OPTS(withApproval.fetchImpl), ENVS, NOW);
+    expect(await hasCaptured(systemCtx(), "review", "webhook")).toBe(false);
     expect(await awaiting()).toBe(1);
-    const d = await getRepoDashboard(env.DB, "o/r", NOW, ENVS);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
     expect((d.prs as { data: { rows: { number: number; state: string }[] } }).data.rows.map((r) => [r.number, r.state]).sort()).toEqual([[480, "approved"], [481, "review"]]);
   });
 
@@ -349,12 +349,12 @@ describe("reconcileRepo — the reviews arm", () => {
         ? new Response(JSON.stringify({ errors: [{ message: `denied ${JSON.stringify(init?.headers)}` }] }), { status: 200 })
         : base.fetchImpl(u, init);
     }) as typeof fetch;
-    const { out, logged } = await quietly(() => reconcileRepo(env.DB, OPTS(broken, token), ENVS, NOW));
+    const { out, logged } = await quietly(() => reconcileRepo(systemCtx(), OPTS(broken, token), ENVS, NOW));
     expect(out.failed).toEqual(["reviews"]);
     expect(await metrics()).toHaveLength(1); // the statuses arm before it ran
     expect((await all(env.DB, `SELECT kind FROM repo_snapshots WHERE kind IN ('branches', 'drift') ORDER BY kind`)).map((r) => (r as { kind: string }).kind)).toEqual(["branches", "drift"]);
     expect(logged).toContain("[redacted]");
     expect(leakedFragments(logged, token)).toEqual([]);
-    expect(await hasCaptured(env.DB, "review")).toBe(false);
+    expect(await hasCaptured(systemCtx(), "review")).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 import type { Env } from "../env";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
-import { first } from "../db";
+import { first } from "../data/sql";
 import { legacyDb, legacySystemTenant } from "../data/legacy";
 import { platform } from "../data/context";
 import { ingestEvent } from "../consumer";
@@ -314,9 +314,9 @@ export async function runBackfill(
       if (!isAssigned) continue; // unassigned issues never appear in anyone's to-do
 
       const existing = await first<IssueSummaryRow>(
-        legacyDb(ctx),
-        `SELECT model, title FROM issue_summaries WHERE issue_number = ?`,
-        issue.number
+        ctx,
+        `SELECT model, title FROM issue_summaries WHERE org_id = ? AND issue_number = ?`,
+        ctx.orgId, issue.number
       );
       const alreadySummarized = existing !== null && existing.model !== "excerpt" && existing.title !== null;
       if (alreadySummarized) {
@@ -362,9 +362,9 @@ export async function runBackfill(
       // event-capture outcome so a Sync also migrates PRs that fell back to the
       // excerpt summary, not just brand-new ones.
       const existing = await first<PrSummaryRow>(
-        legacyDb(ctx),
-        `SELECT model, title FROM pr_summaries WHERE semantic_key = ?`,
-        ev.semantic_key
+        ctx,
+        `SELECT model, title FROM pr_summaries WHERE org_id = ? AND semantic_key = ?`,
+        ctx.orgId, ev.semantic_key
       );
       // "Done" = a real (non-excerpt) summary that is ALSO structured — title
       // doubles as the structured-generation marker (0018), so prose-era rows

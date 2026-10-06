@@ -4,7 +4,6 @@ import { readSessionCookie, getSessionUser } from "./session";
 import { resolveToken } from "./tokens";
 import { isAccessToken, resolveOAuthAccessToken } from "./oauth";
 import { platform, type PlatformContext, type TenantContext } from "../data/context";
-import { legacyDb } from "../data/legacy";
 
 export interface Principal {
   handle: string;
@@ -38,7 +37,7 @@ const isPublicPath = (path: string): boolean =>
 export async function resolveSessionPrincipal(c: Context<AppEnv>): Promise<Principal | null> {
   const id = await readSessionCookie(c, c.env.COOKIE_SECRET);
   if (!id) return null;
-  const handle = await getSessionUser(legacyDb(platform(c.env, "anonymous")), id);
+  const handle = await getSessionUser(platform(c.env, "anonymous"), id);
   return handle ? { handle } : null;
 }
 
@@ -51,8 +50,8 @@ export async function resolveBearerPrincipal(request: Request, env: Env): Promis
   if (!match) return null;
   const raw = match[1].trim();
   const p = platform(env, "anonymous");
-  if (isAccessToken(raw)) return resolveOAuthAccessToken(legacyDb(p), raw, Date.now());
-  return resolveToken(legacyDb(p), raw);
+  if (isAccessToken(raw)) return resolveOAuthAccessToken(p, raw, Date.now());
+  return resolveToken(p, raw);
 }
 
 /**

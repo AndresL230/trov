@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { systemCtx } from "./helpers/tenant";
+import { systemCtx, platformCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
@@ -16,7 +16,7 @@ import type { NotificationOutboxRow } from "@shared/rows";
 
 async function cookieFor(login: string, email: string | null = "me@example.com"): Promise<string> {
   await seedPerson(login, { email });
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 const pending = () => ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");

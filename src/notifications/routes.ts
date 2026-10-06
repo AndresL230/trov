@@ -78,7 +78,7 @@ notificationsApp.put("/prefs", async (c) => {
   // on someone ELSE's row is refused (409) before anything is written. Re-saving your
   // own address is fine (case-insensitive compare against the caller's own handle).
   if (body.email) {
-    const existing = await findPersonByEmail(legacyDb(c.var.p), body.email);
+    const existing = await findPersonByEmail(c.var.p, body.email);
     if (existing && existing.handle.toLowerCase() !== login.toLowerCase()) {
       return c.json({ error: "email_in_use" }, 409);
     }
@@ -195,7 +195,7 @@ notificationsApp.put("/persons/:handle", async (c) => {
   // Same email-matcher guard as self-service PUT /prefs: a different handle already
   // holding this address is refused, never silently reassigned.
   if (parsed.data.email) {
-    const existing = await findPersonByEmail(legacyDb(c.var.p), parsed.data.email);
+    const existing = await findPersonByEmail(c.var.p, parsed.data.email);
     if (existing && existing.handle.toLowerCase() !== handle.toLowerCase()) {
       return c.json({ error: "email_in_use" }, 409);
     }

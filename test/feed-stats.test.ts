@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { systemCtx } from "./helpers/tenant";
+import { systemCtx, platformCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
@@ -16,7 +16,7 @@ import type { FeedStats } from "@shared/feed-stats";
 
 async function cookieFor(login: string): Promise<string> {
   await seedPerson(login);
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 

@@ -20,7 +20,7 @@ const ago = (days: number, hours = 0): string => new Date(NOW - days * 86_400_00
 
 async function cookieFor(login: string): Promise<string> {
   await seedPerson(login);
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 
@@ -68,7 +68,7 @@ const data = <T>(s: { status: string; data?: T }): T => {
 
 describe("getRepoDashboard — a D1-only projection", () => {
   it("an empty store is all `empty` / `not_connected`, never an error", async () => {
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     expect(d.repo).toBe("o/r");
     expect(d.degraded).toBe(false);
     expect(d.prs.status).toBe("empty");
@@ -80,7 +80,7 @@ describe("getRepoDashboard — a D1-only projection", () => {
   });
 
   it("on a cold start every captured section is not_connected — never guessed", async () => {
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     for (const k of ["environments", "drift", "health", "branches", "deploys", "ciFailures", "coverage", "bundle", "usage", "cloudflare", "hosting", "todos"] as const) {
       expect(d[k].status, k).toBe("not_connected");
     }
@@ -93,7 +93,7 @@ describe("getRepoDashboard — a D1-only projection", () => {
       prEvent(13, "meilin", ago(4), false),
       prEvent(5, "jose-a", ago(9)),
     ]);
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     const merged = data(d.stats)[0];
     expect(merged).toMatchObject({ label: "Merged PRs", value: 3, delta: 2 });
 
@@ -117,15 +117,15 @@ describe("getRepoDashboard — a D1-only projection", () => {
   // Task 12: `refreshBranches` (src/repo/github.ts) writes a `branches`
   // snapshot; the projection only reads it back — never guessed.
   it("reads the branches snapshot back as `ok`, and swaps the 4th code tile to Active branches once one exists", async () => {
-    const before = await getRepoDashboard(env.DB, "o/r", NOW);
+    const before = await getRepoDashboard(systemCtx(), "o/r", NOW);
     expect(before.branches.status).toBe("not_connected");
     expect(data(before.codeStats)[3]).toMatchObject({ label: "Issues closed" });
 
-    await putSnapshot(env.DB, "branches", {
+    await putSnapshot(systemCtx(), "branches", {
       active: 5, stale: 2,
       rows: [{ name: "feature/x", at: "2026-09-19T00:00:00Z", ahead: 3, behind: 1, stale: false }],
     });
-    const after = await getRepoDashboard(env.DB, "o/r", NOW);
+    const after = await getRepoDashboard(systemCtx(), "o/r", NOW);
     expect(data(after.branches)).toEqual({
       active: 5, stale: 2,
       rows: [{ name: "feature/x", at: "2026-09-19T00:00:00Z", ahead: 3, behind: 1, stale: false }],
@@ -134,14 +134,14 @@ describe("getRepoDashboard — a D1-only projection", () => {
   });
 
   it("tones the Active branches tile neutral when nothing is stale", async () => {
-    await putSnapshot(env.DB, "branches", { active: 3, stale: 0, rows: [] });
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    await putSnapshot(systemCtx(), "branches", { active: 3, stale: 0, rows: [] });
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     expect(data(d.codeStats)[3]).toEqual({ label: "Active branches", value: 3, sub: "0 stale", tone: "neutral" });
   });
 
   it("buckets merges into 14 UTC days, oldest first", async () => {
     await ingestAll([prEvent(1, "a", ago(0, 1)), prEvent(2, "a", ago(0, 2)), prEvent(3, "a", ago(13))]);
-    const bars = data((await getRepoDashboard(env.DB, "o/r", NOW)).bars);
+    const bars = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).bars);
     expect(bars.days).toHaveLength(14);
     expect(bars.days[13]).toEqual({ date: "2026-09-20", count: 2 });
     expect(bars.days[0]).toEqual({ date: "2026-09-07", count: 1 });
@@ -156,7 +156,7 @@ describe("getRepoDashboard — a D1-only projection", () => {
       issueEvent(3, "a", ago(1), "opened", "open", ["bug", "infra"]),
       issueEvent(3, "a", ago(0, 3), "edited", "open", ["bug", "infra"]),
     ]);
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     const [, issues, bugs] = data(d.stats);
     expect(issues).toMatchObject({ value: 2, delta: 0, tone: "neutral" }); // was {1,2}, now {1,3}
     expect(bugs).toMatchObject({ value: 2, delta: 1, tone: "warn" });
@@ -174,7 +174,7 @@ describe("getRepoDashboard — a D1-only projection", () => {
       issueEvent(3, "jose-a", ago(0, 2), "edited", "open"),
       issueEvent(4, "jose-a", ago(0, 3), "closed", "closed"),
     ]);
-    const feed = data((await getRepoDashboard(env.DB, "o/r", NOW)).activity);
+    const feed = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).activity);
     expect(feed.map((a) => a.kind)).toEqual(["issue", "close", "merge"]);
     expect(feed[0]).toMatchObject({ text: "opened #3 “Issue 3”", actor: { handle: "jose-a" } });
     // Nothing captured says who closed or merged — so the row never claims an actor.
@@ -188,25 +188,25 @@ describe("getRepoDashboard — a D1-only projection", () => {
       prEvent(4, "b", ago(12)), // outside the week
       issueEvent(9, "b", ago(1), "closed", "closed"), // has NO effect on the tally below
     ]);
-    const rows = data((await getRepoDashboard(env.DB, "o/r", NOW)).contributors);
+    const rows = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).contributors);
     expect(rows.map((r) => [r.person.login, r.pushes, r.merged, r.reviews])).toEqual([["a", 0, 2, null], ["b", 0, 1, null]]);
   });
 
   it("the current sprint is the one a person marked active, with the Roadmap's ticket progress", async () => {
     await seedPerson("jose-a");
     const sp = await create_sprint(env.DB, SprintCreate.parse({ label: "Notifications GA" }), "jose-a");
-    expect((await getRepoDashboard(env.DB, "o/r", NOW)).sprint.status).toBe("empty");
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW)).sprint.status).toBe("empty");
     await set_sprint_active(env.DB, sp.id, true);
-    const sprint = data((await getRepoDashboard(env.DB, "o/r", NOW)).sprint);
+    const sprint = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).sprint);
     expect(sprint).toMatchObject({ id: sp.id, label: "Notifications GA", closed: 0, total: 0, pct: 0 });
   });
 
   it("coverage, bundle and TODO read as value + trend + delta from repo_metrics", async () => {
     const pts: [string, number][] = [[ago(30), 77.2], [ago(10), 78.0], [ago(1), 78.4]];
-    for (const [at, value] of pts) await putMetric(env.DB, { metric: "coverage", env: "", part: "", value, at });
-    await putMetric(env.DB, { metric: "todo_count", env: "", part: "", value: 61, at: ago(40) });
-    await putMetric(env.DB, { metric: "todo_count", env: "", part: "", value: 43, at: ago(1) });
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    for (const [at, value] of pts) await putMetric(systemCtx(), { metric: "coverage", env: "", part: "", value, at });
+    await putMetric(systemCtx(), { metric: "todo_count", env: "", part: "", value: 61, at: ago(40) });
+    await putMetric(systemCtx(), { metric: "todo_count", env: "", part: "", value: 43, at: ago(1) });
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     expect(data(d.coverage)).toMatchObject({ value: "78.4%", trend: [77.2, 78, 78.4], delta: "+1.2", tone: "good" });
     expect(data(d.todos)).toMatchObject({ count: 43, delta: -18, trend: [61, 43] });
     expect(d.bundle.status).toBe("not_connected");
@@ -216,21 +216,21 @@ describe("getRepoDashboard — a D1-only projection", () => {
   // holds ≥2 points whose first and last are ≥7 days apart — never guess a
   // trend off a single reading or two readings a day apart.
   it("a single coverage point shows the value with no delta claim", async () => {
-    await putMetric(env.DB, { metric: "coverage", env: "", part: "", value: 80.1, at: ago(1) });
-    const cov = data((await getRepoDashboard(env.DB, "o/r", NOW)).coverage);
+    await putMetric(systemCtx(), { metric: "coverage", env: "", part: "", value: 80.1, at: ago(1) });
+    const cov = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).coverage);
     expect(cov).toMatchObject({ value: "80.1%", trend: [80.1], delta: "", tone: "neutral" });
   });
 
   it("two coverage points less than 7 days apart also show no delta claim", async () => {
-    await putMetric(env.DB, { metric: "coverage", env: "", part: "", value: 77.0, at: ago(3) });
-    await putMetric(env.DB, { metric: "coverage", env: "", part: "", value: 77.5, at: ago(1) });
-    const cov = data((await getRepoDashboard(env.DB, "o/r", NOW)).coverage);
+    await putMetric(systemCtx(), { metric: "coverage", env: "", part: "", value: 77.0, at: ago(3) });
+    await putMetric(systemCtx(), { metric: "coverage", env: "", part: "", value: 77.5, at: ago(1) });
+    const cov = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).coverage);
     expect(cov).toMatchObject({ trend: [77, 77.5], delta: "", tone: "neutral" });
   });
 
   it("a single TODO point shows the count with no delta and no since text", async () => {
-    await putMetric(env.DB, { metric: "todo_count", env: "", part: "", value: 50, at: ago(1) });
-    const todos = data((await getRepoDashboard(env.DB, "o/r", NOW)).todos);
+    await putMetric(systemCtx(), { metric: "todo_count", env: "", part: "", value: 50, at: ago(1) });
+    const todos = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).todos);
     expect(todos).toMatchObject({ count: 50, delta: null, trend: [50] });
   });
 
@@ -240,20 +240,20 @@ describe("getRepoDashboard — a D1-only projection", () => {
   // scans this at all"). Only checked on the empty path (latestMetric costs
   // nothing when the window already has points).
   it("coverage reads empty, not not_connected, once a reading exists outside the 30-day window (I2)", async () => {
-    await putMetric(env.DB, { metric: "coverage", env: "", part: "", value: 70, at: ago(40) });
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    await putMetric(systemCtx(), { metric: "coverage", env: "", part: "", value: 70, at: ago(40) });
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     expect(d.coverage.status).toBe("empty");
   });
 
   it("bundle reads empty, not not_connected, once a reading exists outside the 30-day window (I2)", async () => {
-    await putMetric(env.DB, { metric: "bundle_kb", env: "", part: "", value: 400, at: ago(40) });
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    await putMetric(systemCtx(), { metric: "bundle_kb", env: "", part: "", value: 400, at: ago(40) });
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     expect(d.bundle.status).toBe("empty");
   });
 
   it("todos reads empty, not not_connected, once a reading exists outside the 90-day window (I2)", async () => {
-    await putMetric(env.DB, { metric: "todo_count", env: "", part: "", value: 50, at: ago(100) });
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    await putMetric(systemCtx(), { metric: "todo_count", env: "", part: "", value: 50, at: ago(100) });
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     expect(d.todos.status).toBe("empty");
   });
 });
@@ -289,7 +289,7 @@ const ingestRepo = async (rows: RepoEvent[]) => { for (const r of rows) await in
 // (written by reconcileRepo, see test/repo-reconcile.test.ts), not on "any pr
 // row exists" — write it explicitly wherever a test needs the captured
 // ("Open PRs") tiles rather than the merged-PR fallback.
-const markPrsReconciled = async (at: string = new Date(NOW).toISOString()) => putSnapshot(env.DB, "prs_reconciled", { at }, at);
+const markPrsReconciled = async (at: string = new Date(NOW).toISOString()) => putSnapshot(systemCtx(), "prs_reconciled", { at }, at);
 // F2: ingestRepoEvent always stamps `recorded_at` with the real wall clock, so
 // a freshly-ingested `pr`/`push` row always looks like capture "just began" —
 // backdate it to make a week-over-week delta observable in a test.
@@ -308,7 +308,7 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
     // F2: and the delta only turns on once capture was recording a week ago —
     // backdate these rows' `recorded_at` (stamped "now" at ingest) to prove it.
     await backdateRecording("pr", ago(20));
-    const [openPrs, awaiting] = data((await getRepoDashboard(env.DB, "o/r", NOW)).stats);
+    const [openPrs, awaiting] = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).stats);
     expect(openPrs).toMatchObject({ label: "Open PRs", value: 3, delta: 1 });       // was {1,2}, now {1,3,4}
     expect(awaiting).toMatchObject({ label: "Awaiting review", value: 2, delta: 0 }); // non-draft open: was {1,2}, now {1,4}
   });
@@ -324,7 +324,7 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
     // so the value still reads 3, but the delta must read 0, not the spurious
     // spike attributable to when capture happened to begin.
     await markPrsReconciled();
-    const [openPrs, awaiting] = data((await getRepoDashboard(env.DB, "o/r", NOW)).stats);
+    const [openPrs, awaiting] = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).stats);
     expect(openPrs).toMatchObject({ label: "Open PRs", value: 3, delta: 0 });
     expect(awaiting).toMatchObject({ label: "Awaiting review", value: 2, delta: 0 });
   });
@@ -333,7 +333,7 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
     await seedPerson("jose-a");
     await ingestRepo([prRow(7, "draft", ago(3)), prRow(7, "review", ago(1)), prRow(8, "merged", ago(2))]);
     await markPrsReconciled();
-    const prs = data((await getRepoDashboard(env.DB, "o/r", NOW)).prs).rows;
+    const prs = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).prs).rows;
     expect(prs.map((p) => [p.number, p.state, p.branch])).toEqual([[7, "review", "feat/7"], [8, "merged", "feat/8"]]);
     expect(prs[0].author.handle).toBe("jose-a");
   });
@@ -342,13 +342,13 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
     await seedPerson("jose-a");
     await ingestRepo([prRow(7, "review", ago(1)), prRow(9, "some-new-github-state", ago(1))]);
     await markPrsReconciled();
-    const prs = data((await getRepoDashboard(env.DB, "o/r", NOW)).prs).rows;
+    const prs = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).prs).rows;
     expect(prs.map((p) => p.number)).toEqual([7]);
   });
 
   it("draws the 14-day bars from COMMITS once pushes are captured", async () => {
     await ingestRepo([pushRow("a1", "main", 3, ago(0, 2)), pushRow("a2", "feat/x", 2, ago(0, 3)), pushRow("a3", "main", 4, ago(13))]);
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     const bars = data(d.bars);
     expect(bars.title).toBe("Commit activity — last 14 days");
     expect(bars.days[13].count).toBe(5);
@@ -360,21 +360,21 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
   it("F2: shows the commits week-over-week delta once push capture predates the two-week window", async () => {
     await ingestRepo([pushRow("a1", "main", 3, ago(0, 2)), pushRow("a2", "main", 2, ago(9))]);
     await backdateRecording("push", ago(20));
-    const commits = data((await getRepoDashboard(env.DB, "o/r", NOW)).codeStats).find((s) => s.label === "Commits this week")!;
+    const commits = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).codeStats).find((s) => s.label === "Commits this week")!;
     expect(commits.sub).toBe("▲ 1 vs last week"); // 3 this week vs 2 last week
   });
 
   it("F2: drops the commits delta comparison until push capture predates the two-week window", async () => {
     await ingestRepo([pushRow("a1", "main", 3, ago(0, 2))]);
     // recorded_at is "now" (this run), well inside the two-week window.
-    const commits = data((await getRepoDashboard(env.DB, "o/r", NOW)).codeStats).find((s) => s.label === "Commits this week")!;
+    const commits = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).codeStats).find((s) => s.label === "Commits this week")!;
     expect(commits.sub).toBe("this week");
   });
 
   it("puts pushes in the feed and in the contributor columns", async () => {
     await seedPerson("jose-a");
     await ingestRepo([pushRow("a1", "fix/sse-auth", 1, ago(0, 1)), pushRow("a2", "main", 3, ago(0, 2))]);
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     const feed = data(d.activity);
     expect(feed[0]).toMatchObject({ kind: "push", text: "pushed 1 commit to fix/sse-auth", actor: { handle: "jose-a" } });
     expect(feed[1].text).toBe("pushed 3 commits to main");
@@ -391,7 +391,7 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
       pushRow("bf2", "main", 1, ago(0, 2), "jose-a", "backfill"),
       pushRow("bf3", "main", 1, ago(0, 2), "jose-a", "backfill"),
     ]);
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     // Feed: only the real push.
     const pushLines = data(d.activity).filter((a) => a.kind === "push");
     expect(pushLines).toHaveLength(1);
@@ -407,20 +407,20 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
   });
 
   it("before any PR capture exists, keeps the merged-PR tiles instead of claiming 0 open PRs", async () => {
-    const labels = data((await getRepoDashboard(env.DB, "o/r", NOW)).stats).map((s) => s.label);
+    const labels = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).stats).map((s) => s.label);
     expect(labels).toEqual(["Merged PRs", "Open issues", "Open bugs", "Open tickets"]);
   });
 
   it("F1 pinned: a single webhook pr row never flips the tiles or the PR list until prs_reconciled exists", async () => {
     await ingestRepo([prRow(7, "review", ago(1))]);
-    const before = await getRepoDashboard(env.DB, "o/r", NOW);
+    const before = await getRepoDashboard(systemCtx(), "o/r", NOW);
     expect(data(before.stats).map((s) => s.label)).toEqual(["Merged PRs", "Open issues", "Open bugs", "Open tickets"]);
     // The PR list must not come from repo_events either, while uncaptured —
     // nothing was ingested into `events`, so the merged/closed fallback is empty.
     expect(before.prs.status).toBe("empty");
 
     await markPrsReconciled();
-    const after = await getRepoDashboard(env.DB, "o/r", NOW);
+    const after = await getRepoDashboard(systemCtx(), "o/r", NOW);
     expect(data(after.stats).map((s) => s.label)).toEqual(["Open PRs", "Awaiting review", "Open issues", "Open bugs"]);
     expect(data(after.prs).rows.map((p) => p.number)).toEqual([7]);
     expect(data(after.prs).openCount).toBe(1);
@@ -429,7 +429,7 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
   it("bounds recentPrRows to 90 days but not prStatesAsOf — a PR untouched for 120 days is still open but absent from the recent list", async () => {
     await ingestRepo([prRow(50, "review", ago(120))]);
     await markPrsReconciled();
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     const [openPrs] = data(d.stats);
     expect(openPrs).toMatchObject({ label: "Open PRs", value: 1 });
     // The list is empty but the count is KNOWN, so the section still carries it —
@@ -444,7 +444,7 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
       prRow(200, "merged", ago(0.5)), prRow(201, "merged", ago(0.6)),
     ]);
     await markPrsReconciled();
-    const d = await getRepoDashboard(env.DB, "o/r", NOW);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
     const list = data(d.prs);
     expect(list.rows.length).toBe(8);
     expect(list.rows.filter((r) => r.state !== "merged").length).toBeLessThan(10);
@@ -454,6 +454,6 @@ describe("getRepoDashboard — pushes and PR state (sources A, B)", () => {
 
   it("with the marker and nothing open, openCount is a real 0 (known), not null", async () => {
     await markPrsReconciled();
-    expect(data((await getRepoDashboard(env.DB, "o/r", NOW)).prs)).toEqual({ rows: [], openCount: 0 });
+    expect(data((await getRepoDashboard(systemCtx(), "o/r", NOW)).prs)).toEqual({ rows: [], openCount: 0 });
   });
 });

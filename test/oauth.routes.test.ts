@@ -9,19 +9,20 @@ import { app } from "../src/routes";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import type { Env } from "../src/env";
 
+import { platformCtx, ORG_A, ORG_B, ensureMember } from "./helpers/tenant";
 const REDIRECT = "http://localhost:4444/callback";
 const bearer = (t: string) => new Request("https://example.com/mcp", { headers: { authorization: `Bearer ${t}` } });
 
 async function oauthAccessToken(person: string): Promise<string> {
   await seedPerson(person);
-  const c = await registerClient(env.DB, { client_name: "Claude Code", redirect_uris: [REDIRECT] }, Date.now());
+  const c = await registerClient(platformCtx(), { client_name: "Claude Code", redirect_uris: [REDIRECT] }, Date.now());
   const { verifier, challenge } = await pkce();
-  const check = await checkAuthorizeRequest(env.DB, new URLSearchParams({
+  const check = await checkAuthorizeRequest(platformCtx(), new URLSearchParams({
     response_type: "code", client_id: c.client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256",
   }), "https://example.com");
   if (!check.ok) throw new Error("expected ok");
-  const { code } = await issueAuthorization(env.DB, { client: c, params: check.params, person, nowMs: Date.now() });
-  const t = await exchangeAuthorizationCode(env.DB, { code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id, resource: null }, "https://example.com", Date.now());
+  const { code } = await issueAuthorization(platformCtx(), { client: c, params: check.params, person, orgId: ORG_A, nowMs: Date.now() });
+  const t = await exchangeAuthorizationCode(platformCtx(), { code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id, resource: null }, "https://example.com", Date.now());
   return t.access_token;
 }
 
@@ -30,7 +31,7 @@ describe("bearer dispatch", () => {
     const oat = await oauthAccessToken("oauth-user");
     expect(await resolveBearerPrincipal(bearer(oat), env as unknown as Env)).toEqual({ handle: "oauth-user" });
     await seedPerson("token-user");
-    const { raw } = await mintToken(env.DB, "token-user");
+    const { raw } = await mintToken(platformCtx(), "token-user", ORG_A);
     expect(await resolveBearerPrincipal(bearer(raw), env as unknown as Env)).toEqual({ handle: "token-user" });
   });
   it("/mcp lets an OAuth access token through (not a 401)", async () => {
@@ -105,13 +106,13 @@ describe("POST /oauth/register", () => {
 describe("POST /oauth/token", () => {
   async function codeFor(person: string) {
     await seedPerson(person);
-    const c = await registerClient(env.DB, { client_name: "Claude Code", redirect_uris: [REDIRECT] }, Date.now());
+    const c = await registerClient(platformCtx(), { client_name: "Claude Code", redirect_uris: [REDIRECT] }, Date.now());
     const { verifier, challenge } = await pkce();
-    const check = await checkAuthorizeRequest(env.DB, new URLSearchParams({
+    const check = await checkAuthorizeRequest(platformCtx(), new URLSearchParams({
       response_type: "code", client_id: c.client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256",
     }), "https://example.com");
     if (!check.ok) throw new Error("expected ok");
-    const { code } = await issueAuthorization(env.DB, { client: c, params: check.params, person, nowMs: Date.now() });
+    const { code } = await issueAuthorization(platformCtx(), { client: c, params: check.params, person, orgId: ORG_A, nowMs: Date.now() });
     return { c, verifier, code };
   }
   it("authorization_code then refresh_token, form-encoded; no-store; CORS", async () => {
@@ -154,7 +155,7 @@ describe("POST /oauth/revoke", () => {
 });
 
 async function registered() {
-  const c = await registerClient(env.DB, { client_name: "Claude <Code>", redirect_uris: [REDIRECT] }, Date.now());
+  const c = await registerClient(platformCtx(), { client_name: "Claude <Code>", redirect_uris: [REDIRECT] }, Date.now());
   const { verifier, challenge } = await pkce();
   const qs = new URLSearchParams({ response_type: "code", client_id: c.client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256", state: "st-9", scope: "mcp" });
   return { c, verifier, qs };
@@ -194,7 +195,7 @@ describe("GET /oauth/authorize", () => {
     expect(r.headers.get("set-cookie") ?? "").toContain("oauth_pending=");
   });
   it("escapes HTML-significant characters in the client name, including a bare quote", async () => {
-    const c = await registerClient(env.DB, { client_name: "O'Brien <x>", redirect_uris: [REDIRECT] }, Date.now());
+    const c = await registerClient(platformCtx(), { client_name: "O'Brien <x>", redirect_uris: [REDIRECT] }, Date.now());
     const { challenge } = await pkce();
     const qs = new URLSearchParams({ response_type: "code", client_id: c.client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256" });
     const r = await SELF.fetch(`https://example.com/oauth/authorize?${qs}`, manual());
@@ -232,6 +233,31 @@ describe("POST /oauth/authorize", () => {
     const t = await SELF.fetch("https://example.com/oauth/token", form({ grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id }));
     const { access_token } = (await t.json()) as { access_token: string };
     expect(await resolveBearerPrincipal(bearer(access_token), env as unknown as Env)).toEqual({ handle: "oauth-user" });
+  });
+  it("Allow records the person's org on the grant and its code; a person in no org gets a 409 page and no grant", async () => {
+    const allow = async (handle: string, o: Parameters<typeof cookieFor>[1] = {}) => {
+      const { qs } = await registered();
+      const cookie = await cookieFor(handle, o);
+      const page = await (await SELF.fetch(`https://example.com/oauth/authorize?${qs}`, manual({ headers: { cookie } }))).text();
+      return SELF.fetch("https://example.com/oauth/authorize", manual({
+        method: "POST", headers: { cookie, "content-type": "application/x-www-form-urlencoded" }, body: consentForm(qs, csrfOf(page), "allow").toString(),
+      }));
+    };
+    await seedPerson("acme-user", { member: false });
+    await ensureMember("acme-user", "member", ORG_B);
+    expect((await allow("acme-user", { member: false })).status).toBe(302);
+    expect((await allow("oauth-user")).status).toBe(302);
+    const orgs = async (table: string) =>
+      (await env.DB.prepare(`SELECT person, org_id FROM ${table} ORDER BY person`).all<{ person: string; org_id: string }>()).results;
+    const expected = [{ person: "acme-user", org_id: ORG_B }, { person: "oauth-user", org_id: ORG_A }];
+    expect(await orgs("oauth_grants")).toEqual(expected);
+    expect(await orgs("oauth_codes")).toEqual(expected);
+
+    const r = await allow("drifter", { member: false });
+    expect(r.status).toBe(409);
+    expect(r.headers.get("location")).toBeNull();
+    expect(await r.text()).toContain("aren&#39;t a member of an organization");
+    expect(await orgs("oauth_grants")).toEqual(expected);
   });
   it("Deny → access_denied, nothing granted", async () => {
     const { qs } = await registered();

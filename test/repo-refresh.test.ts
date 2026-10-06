@@ -23,6 +23,7 @@ import { ENVS, LONG_TOKEN, fakeGithub, leakedFragments } from "./helpers/repo";
 import type { Env } from "../src/env";
 import type { RepoRefreshResult } from "@shared/repo";
 
+import { platformCtx, systemCtx } from "./helpers/tenant";
 const NOW = Date.parse("2026-09-20T12:37:12Z");
 const CF_URL = "https://api.cloudflare.com/client/v4/graphql";
 const RW_URL = "https://backboard.railway.com/graphql/v2";
@@ -146,7 +147,7 @@ describe("runRepoRefresh", () => {
     const tick = Date.parse("2026-09-20T12:30:00Z");
     await handleRepoCron(refreshEnv(NONE), tick, world().fetchImpl);
     const backend = ENVS[0].apiUrl + ENVS[0].healthPath;
-    const before = await getRepoDashboard(env.DB, "o/r", tick + 5_000, ENVS);
+    const before = await getRepoDashboard(systemCtx(), "o/r", tick + 5_000, ENVS);
     expect((before.environments as { data: { name: string; pill: string }[] }).data.map((e) => e.pill)).not.toContain("DOWN");
 
     const at = Date.parse("2026-09-20T12:30:40Z");
@@ -156,9 +157,9 @@ describe("runRepoRefresh", () => {
 
     expect(await all(env.DB, `SELECT value, at FROM repo_metrics WHERE metric = 'health_up' AND env = 'staging' AND part = 'backend' ORDER BY at`))
       .toEqual([{ value: 1, at: "2026-09-20T12:30:00.000Z" }, { value: 0, at: "2026-09-20T12:30:40.000Z" }]);
-    expect((await latestHealth(env.DB)).get("health_up:staging:backend")).toEqual({ at: "2026-09-20T12:30:40.000Z", value: 0 });
+    expect((await latestHealth(systemCtx())).get("health_up:staging:backend")).toEqual({ at: "2026-09-20T12:30:40.000Z", value: 0 });
 
-    const after = await getRepoDashboard(env.DB, "o/r", at + 5_000, ENVS);
+    const after = await getRepoDashboard(systemCtx(), "o/r", at + 5_000, ENVS);
     const pills = (after.environments as { data: { name: string; pill: string; tone: string }[] }).data;
     expect(pills.map((e) => [e.name, e.pill, e.tone])[0]).toEqual(["staging", "DOWN", "bad"]);
     expect(pills[1].pill).not.toBe("DOWN");
@@ -166,8 +167,8 @@ describe("runRepoRefresh", () => {
     // The cron's NEXT tick is newer still, and the 45-day prune treats a
     // second-stamped row like any other.
     await handleRepoCron(refreshEnv(NONE), tick + 600_000, world().fetchImpl);
-    expect((await latestHealth(env.DB)).get("health_up:staging:backend")).toEqual({ at: "2026-09-20T12:40:00.000Z", value: 1 });
-    await pruneRepoCapture(env.DB, at + 46 * 86_400_000);
+    expect((await latestHealth(systemCtx())).get("health_up:staging:backend")).toEqual({ at: "2026-09-20T12:40:00.000Z", value: 1 });
+    await pruneRepoCapture(platformCtx(), at + 46 * 86_400_000);
     expect(await all(env.DB, `SELECT 1 FROM repo_metrics WHERE metric IN ('health_up', 'health_ms')`)).toEqual([]);
   });
 
@@ -338,15 +339,17 @@ describe("the repo cron's own log sites never print a secret", () => {
     expect(logged).not.toContain("    at "); // the message only — never the Error object and its stack
   });
 
-  // The pollers never throw, so the only way INTO runUsagePolls' arm logger (and
-  // the health arm's) is for the arm's own closure to throw: `env.DB` itself.
-  it("every arm of the `:00` tick throwing — health and the three pollers — logs scrubbed messages only", async () => {
-    const tick = Date.parse("2026-09-20T12:00:00Z");
+  // A context reads `env.DB` at each use, so a dead binding fails inside the first guarded read that
+  // needs it. On a quiet tick that is the cron's own `safely` — health (its write is outside the ping's
+  // own guard) and the handoff sweep. The three pollers never throw: the same failure lands in their own
+  // logger, with their own scrub (the per-poller tests below), never in runUsagePolls' arm.
+  it("the every-tick arms throwing — health and the handoff sweep — log scrubbed messages only", async () => {
+    const tick = Date.parse("2026-09-20T12:40:00Z");
     const noDb = Object.defineProperty({ ...refreshEnv() }, "DB", {
       get() { throw new Error(`no database for ${Object.values(SECRETS).join(" / ")}`); },
     }) as Env;
     const { logged } = await captured(() => handleRepoCron(noDb, tick, world().fetchImpl));
-    for (const label of ["health", "cloudflare", "railway", "sapling"]) expect(logged, label).toContain(`"repo cron","${label}","no database for [redacted]`);
+    for (const label of ["health", "handoff expiry"]) expect(logged, label).toContain(`"repo cron","${label}","no database for [redacted]`);
     for (const secret of Object.values(SECRETS)) expect(logged).not.toContain(secret);
     expect(leakedFragments(logged, GH_TOKEN)).toEqual([]);
     expect(logged).not.toContain("    at ");

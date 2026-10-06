@@ -16,6 +16,7 @@ import { AVATAR_MAX_BYTES, RESPONSIBILITIES_MAX, ROLE_MAX, type PersonProfile, t
 import type { PersonRow } from "@shared/rows";
 import { cookieFor, seedPerson } from "./helpers/persons";
 
+import { platformCtx, ORG_A } from "./helpers/tenant";
 const PROVIDER = "https://avatars.githubusercontent.com/u/1?v=4";
 
 const get = async (path: string, cookie: string, e: unknown = env) => app.request(path, { headers: { cookie } }, e as Env);
@@ -27,6 +28,9 @@ const profileOf = async (handle: string, cookie: string): Promise<PersonProfile>
   return res.json() as Promise<PersonProfile>;
 };
 const personRow = async (handle: string) => (await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = ?`, handle))!;
+/** What the org holds about a member (Q9): `memberships.title` — it travels as `role` — and `responsibilities`. */
+const memberRow = async (handle: string) =>
+  (await first<{ role: string | null; responsibilities: string | null }>(env.DB, `SELECT title AS role, responsibilities FROM memberships WHERE org_id = ? AND user_id = ?`, ORG_A, handle))!;
 
 // Minimal images: only the magic bytes are sniffed, the rest is padding.
 const PNG = (seed = "a") => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...new TextEncoder().encode(`png-${seed}`)]);
@@ -111,36 +115,36 @@ describe("PUT /api/people/:handle", () => {
     const p = await res.json() as PersonProfile;
     expect(p.role).toBe("Support lead");
     expect(p.responsibilities).toBe("Tickets from users.");
-    expect((await personRow("sanaok")).role).toBe("Support lead");
+    expect((await memberRow("sanaok")).role).toBe("Support lead");
   });
 
   it("an absent field is untouched; \"\" and null clear", async () => {
     const cookie = await cookieFor("admin-user");
     await put("/api/people/sanaok", cookie, { role: "" });
-    let row = await personRow("sanaok");
+    let row = await memberRow("sanaok");
     expect(row.role).toBeNull();
     expect(row.responsibilities).toMatch(/Student and teacher support/);
     await put("/api/people/sanaok", cookie, { responsibilities: null });
-    row = await personRow("sanaok");
+    row = await memberRow("sanaok");
     expect(row.responsibilities).toBeNull();
     // Whitespace alone is empty.
     await put("/api/people/sanaok", cookie, { role: "Lead" });
     await put("/api/people/sanaok", cookie, { role: "   " });
-    expect((await personRow("sanaok")).role).toBeNull();
+    expect((await memberRow("sanaok")).role).toBeNull();
   });
 
   it("an admin edits anyone's profile", async () => {
     const res = await put("/api/people/meilin", await cookieFor("admin-user"), { role: "Head of product" });
     expect(res.status).toBe(200);
-    expect((await personRow("meilin")).role).toBe("Head of product");
+    expect((await memberRow("meilin")).role).toBe("Head of product");
   });
 
   it("anyone else is 403 and nothing is written — the person themselves included", async () => {
     for (const [target, viewer] of [["meilin", "sanaok"], ["sanaok", "sanaok"], ["sanaok", "me"]] as const) {
-      const before = await personRow(target);
+      const before = await memberRow(target);
       const res = await put(`/api/people/${viewer === "me" ? "me" : target}`, await cookieFor("sanaok", { github: false }), { role: "Intruder", responsibilities: "x" });
       expect(res.status, `${viewer} → ${target}`).toBe(403);
-      const after = await personRow(target);
+      const after = await memberRow(target);
       expect(after.role).toBe(before.role);
       expect(after.responsibilities).toBe(before.responsibilities);
     }
@@ -148,12 +152,12 @@ describe("PUT /api/people/:handle", () => {
 
   it("over a cap is 400 and writes NOTHING — not even the other, valid field", async () => {
     const cookie = await cookieFor("admin-user");
-    const before = await personRow("sanaok");
+    const before = await memberRow("sanaok");
     let res = await put("/api/people/sanaok", cookie, { role: "r".repeat(ROLE_MAX + 1), responsibilities: "fine" });
     expect(res.status).toBe(400);
     res = await put("/api/people/sanaok", cookie, { role: "Fine", responsibilities: "x".repeat(RESPONSIBILITIES_MAX + 1) });
     expect(res.status).toBe(400);
-    const after = await personRow("sanaok");
+    const after = await memberRow("sanaok");
     expect([after.role, after.responsibilities]).toEqual([before.role, before.responsibilities]);
     // Exactly at the caps is fine.
     res = await put("/api/people/sanaok", cookie, { role: "r".repeat(ROLE_MAX), responsibilities: "x".repeat(RESPONSIBILITIES_MAX) });
@@ -303,7 +307,7 @@ describe("the avatar rule on every person surface", () => {
     const cookie = await cookieFor("uploader", { avatar_url: PROVIDER });
     await upload(cookie, PNG("keep"), "image/png");
     const sha = await sha256Hex(PNG("keep"));
-    await recordSignIn(env.DB, "uploader", { provider: "github", avatar_url: "https://new/picture.png", email: null });
+    await recordSignIn(platformCtx(), "uploader", { provider: "github", avatar_url: "https://new/picture.png", email: null });
     const row = await personRow("uploader");
     expect(row.avatar_url).toBe("https://new/picture.png");
     expect(row.avatar_sha).toBe(sha);

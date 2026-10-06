@@ -19,6 +19,7 @@ import {
   sha256Hex, uploadUrl, wf,
 } from "./helpers/artifacts";
 
+import { platformCtx } from "./helpers/tenant";
 const AUTHOR = "adel-author";
 const OTHER = "adel-other";
 const ADMIN = "admin-user"; // ADMIN_LOGINS in vitest.config.ts
@@ -259,7 +260,7 @@ describe("a deleted page's slug stays reserved", () => {
 describe("a handle rename rewrites deleted_by", () => {
   it("deleted_by follows the person, and they can still restore", async () => {
     await del(AUTHOR);
-    expect(await renamePerson(env.DB, AUTHOR, "adel-renamed")).toEqual({ ok: true });
+    expect(await renamePerson(platformCtx(), AUTHOR, "adel-renamed")).toEqual({ ok: true });
     expect(await first(env.DB, `SELECT author_id, deleted_by FROM artifact_pages WHERE slug = ?`, SLUG)).toEqual({ author_id: "adel-renamed", deleted_by: "adel-renamed" });
     expect((await restore("adel-renamed")).status).toBe(200);
   });

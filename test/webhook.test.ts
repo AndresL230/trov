@@ -24,6 +24,7 @@ import { getSnapshot } from "../src/repo/store";
 import type { RepoDrift } from "@shared/repo";
 import { ENVS } from "./helpers/repo";
 
+import { systemCtx } from "./helpers/tenant";
 const SECRET = "test-webhook-secret"; // matches vitest.config.ts binding
 
 // GitHub's own signing recipe — HMAC-SHA256 hex, prefixed `sha256=`.
@@ -423,7 +424,7 @@ describe("handleGithubWebhook — drift snapshot on a push to an environment bra
     }) as typeof fetch;
     const res = await postWebhook("push", pushFixture, withRepoConfig, { fetchImpl });
     expect(res.status).toBe(200);
-    const snap = await getSnapshot<RepoDrift>(env.DB, "drift");
+    const snap = await getSnapshot<RepoDrift>(systemCtx(), "drift");
     expect(snap?.data).toMatchObject({ head: "main", base: "production", ahead: 2, behind: 0 });
   });
 
@@ -433,7 +434,7 @@ describe("handleGithubWebhook — drift snapshot on a push to an environment bra
     const offBranchPush = { ...pushFixture, ref: "refs/heads/feature/off-environment" };
     await postWebhook("push", offBranchPush, withRepoConfig, { fetchImpl });
     expect(calls).toBe(0);
-    expect(await getSnapshot(env.DB, "drift")).toBeNull();
+    expect(await getSnapshot(systemCtx(), "drift")).toBeNull();
   });
 
   it("with no GITHUB_SERVICE_TOKEN, no fetch is attempted and no snapshot is written", async () => {
@@ -442,6 +443,6 @@ describe("handleGithubWebhook — drift snapshot on a push to an environment bra
     const noToken = { ...env, GITHUB_REPO: "o/r", REPO_ENVIRONMENTS: JSON.stringify(ENVS) } as Env;
     await postWebhook("push", pushFixture, noToken, { fetchImpl });
     expect(calls).toBe(0);
-    expect(await getSnapshot(env.DB, "drift")).toBeNull();
+    expect(await getSnapshot(systemCtx(), "drift")).toBeNull();
   });
 });

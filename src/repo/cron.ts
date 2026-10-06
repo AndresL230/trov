@@ -8,7 +8,7 @@ import type { Env } from "../env";
 import { pruneOAuth } from "../auth/oauth";
 import { recomputeAllProgress } from "../tools/progress";
 import { repoEnvironments, type RepoEnvConfig } from "./config";
-import { run } from "../db";
+import { run } from "../data/sql";
 import { platform } from "../data/context";
 import { legacyDb, legacySystemTenant } from "../data/legacy";
 import { reconcileRepo, scrubbedMessage } from "./github";
@@ -92,20 +92,20 @@ export async function runUsagePolls(env: Env, now: number, fetchImpl?: typeof fe
   // Cloudflare: BOTH values, or not called.
   const { CF_ANALYTICS_TOKEN: token, CF_ANALYTICS_ACCOUNT_ID: accountId } = env;
   const cloudflare = token && accountId
-    ? await arm("cloudflare", () => pollCloudflare(legacyDb(ctx), { token, accountId }, envs, now, fetchImpl))
+    ? await arm("cloudflare", () => pollCloudflare(ctx, { token, accountId }, envs, now, fetchImpl))
     : "not_configured";
   // Railway: a token PER environment; an environment without one is skipped
   // inside the poller, and with none at all the poller is not called.
   const tokens = railwayTokens(env, envs);
   const railway = Object.values(tokens).some(Boolean)
-    ? await arm("railway", () => pollRailway(legacyDb(ctx), tokens, envs, now, fetchImpl))
+    ? await arm("railway", () => pollRailway(ctx, tokens, envs, now, fetchImpl))
     : "not_configured";
   // Sapling's active users AND product metrics (one response carries both):
   // ONE token for every environment. Absent or empty → not called, and Active
   // users / the Product blocks stay "not connected".
   const saplingToken = env.SAPLING_METRICS_TOKEN;
   const sapling = saplingToken
-    ? await arm("sapling", () => pollSaplingMetrics(legacyDb(ctx), saplingToken, envs, now, fetchImpl))
+    ? await arm("sapling", () => pollSaplingMetrics(ctx, saplingToken, envs, now, fetchImpl))
     : "not_configured";
   return { cloudflare, railway, sapling };
 }
@@ -174,7 +174,7 @@ export async function runRepoRefresh(env: Env, now: number, fetchImpl?: typeof f
   let health: UsagePollSource = "not_configured";
   if (envs.length) {
     try {
-      health = await pingHealth(legacyDb(ctx), envs, now, fetchImpl, HEALTH_ON_DEMAND_BUCKET_MS);
+      health = await pingHealth(ctx, envs, now, fetchImpl, HEALTH_ON_DEMAND_BUCKET_MS);
     } catch (e) {
       console.error("repo refresh", "health", scrubbedLog(e, env));
       health = UNEXPECTED;
@@ -198,7 +198,7 @@ export async function runRepoRefresh(env: Env, now: number, fetchImpl?: typeof f
       github = { written: 0, unchanged: 0, failed: [BUDGET_SKIP] };
     } else {
       try {
-        const res = await reconcile(legacyDb(ctx), { token, repo, fetchImpl }, envs, now);
+        const res = await reconcile(ctx, { token, repo, fetchImpl }, envs, now);
         if (res.failed.length) console.error("repo refresh reconcile: arms failed", res.failed);
         github = { written: res.written, unchanged: res.unchanged, failed: res.failed };
       } catch (e) {
@@ -248,19 +248,19 @@ export async function runLockedRepoRefresh(env: Env, by: string, now: number, fe
   const at = new Date(now).toISOString();
   const mine = JSON.stringify({ by, at });
   const staleBefore = new Date(now - REFRESH_LOCK_MS).toISOString();
-  const took = await run(legacyDb(ctx),
-    `INSERT INTO repo_snapshots (kind, json, computed_at) VALUES (?, ?, ?)
+  const took = await run(ctx,
+    `INSERT INTO repo_snapshots (org_id, kind, json, computed_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(org_id, kind) DO UPDATE SET json = excluded.json, computed_at = excluded.computed_at
      WHERE repo_snapshots.computed_at <= ?`,
-    REFRESH_LOCK, mine, at, staleBefore);
+    ctx.orgId, REFRESH_LOCK, mine, at, staleBefore);
   if (!took.meta.changes) {
-    const held = await getSnapshot<{ at?: unknown }>(legacyDb(ctx), REFRESH_LOCK);
+    const held = await getSnapshot<{ at?: unknown }>(ctx, REFRESH_LOCK);
     return { ok: false, since: held?.computedAt ?? at };
   }
   try {
     return { ok: true, result: await refresh(env, now, fetchImpl) };
   } finally {
-    await run(legacyDb(ctx), `DELETE FROM repo_snapshots WHERE kind = ? AND json = ?`, REFRESH_LOCK, mine).catch(() => undefined);
+    await run(ctx, `DELETE FROM repo_snapshots WHERE org_id = ? AND kind = ? AND json = ?`, ctx.orgId, REFRESH_LOCK, mine).catch(() => undefined);
   }
 }
 
@@ -328,7 +328,7 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
 
   // Every tick: a dead target or a bad token costs one data point, never the
   // cron — pingHealth itself never throws.
-  await safely("health", () => pingHealth(legacyDb(ctx), envs, scheduledTime, fetchImpl));
+  await safely("health", () => pingHealth(ctx, envs, scheduledTime, fetchImpl));
   // Every tick: pending handoffs past their expires_at flip to expired. D1 only
   // (no subrequest), so it adds nothing to any tick's budget, and it runs BEFORE
   // the :00 early return so no hour is skipped.
@@ -357,17 +357,18 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
   // the requests, not add coverage.
   if (minute === 20 && gh) {
     await safely("reconcile", async () => {
-      const res = await reconcileRepo(legacyDb(ctx), gh, envs, scheduledTime);
+      const res = await reconcileRepo(ctx, gh, envs, scheduledTime);
       if (res.failed.length) console.error("repo cron reconcile: arms failed", res.failed);
     });
   }
 
   if (minute === 30) {
-    // MT: the two retention sweeps (and the handoff expiry above) are deliberately CROSS-ORG and write-only
-    // (§4.4's allowlist): ported, they take the platform context, not one org's.
-    await safely("prune", () => pruneRepoCapture(legacyDb(ctx), scheduledTime));
+    // The two retention sweeps (and the handoff expiry above) are deliberately CROSS-ORG and write-only
+    // (§4.4's allowlist): they take the platform context, not one org's.
+    const p = platform(env, "system");
+    await safely("prune", () => pruneRepoCapture(p, scheduledTime));
     // MCP OAuth housekeeping rides the same D1-only tick: spent codes, dead tokens,
     // never-used client registrations. Grants are never deleted.
-    await safely("oauth-prune", () => pruneOAuth(legacyDb(platform(env, "system")), scheduledTime));
+    await safely("oauth-prune", () => pruneOAuth(p, scheduledTime));
   }
 }

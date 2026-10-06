@@ -531,7 +531,7 @@ app.post("/identity-tasks/:login/restore", async (c) => {
 });
 
 // Person directory (session-gated): the avatar-chip source for every screen and the identity picker.
-app.get("/persons", async (c) => c.json({ persons: await listPersons(legacyDb(c.var.p)) }));
+app.get("/persons", async (c) => c.json({ persons: await listPersons(c.var.ctx) }));
 
 // ── People profiles (0036; the contract is shared/people.ts) — session cookie, NEVER MCP ──
 // Read: any signed-in member; `responsibilities` only to the person and admins. Write:
@@ -546,12 +546,12 @@ const profileHandle = (c: Context<AppEnv>): string => {
 };
 const adminCheck = (c: Context<AppEnv>) => (h: string) => isAdmin(c.env, h);
 app.get("/api/people/:handle", async (c) => {
-  try { return c.json(await getPersonProfile(legacyDb(c.var.ctx), profileHandle(c), c.get("principal").handle, adminCheck(c))); }
+  try { return c.json(await getPersonProfile(c.var.ctx, profileHandle(c), c.get("principal").handle, adminCheck(c))); }
   catch (e) { return peopleFail(c, e); }
 });
 app.put("/api/people/:handle", async (c) => {
   const body = await c.req.json().catch(() => undefined);
-  try { return c.json(await writePersonProfile(legacyDb(c.var.ctx), profileHandle(c), c.get("principal").handle, adminCheck(c), body)); }
+  try { return c.json(await writePersonProfile(c.var.ctx, profileHandle(c), c.get("principal").handle, adminCheck(c), body)); }
   catch (e) { return peopleFail(c, e); }
 });
 // Multipart, field `file`. A declared length past the cap (plus multipart framing) is
@@ -567,11 +567,11 @@ app.post("/api/people/me/avatar", async (c) => {
   } catch {
     return c.json({ error: "the body must be multipart/form-data" }, 400);
   }
-  try { return c.json({ ok: true, ...(await setAvatar(legacyDb(c.var.ctx), c.env.ARTIFACTS_BUCKET, c.get("principal").handle, file)) }); }
+  try { return c.json({ ok: true, ...(await setAvatar(c.var.p, c.env.ARTIFACTS_BUCKET, c.get("principal").handle, file)) }); }
   catch (e) { return peopleFail(c, e); }
 });
 app.post("/api/people/me/avatar/remove", async (c) => {
-  try { return c.json({ ok: true, ...(await clearAvatar(legacyDb(c.var.ctx), c.get("principal").handle)) }); }
+  try { return c.json({ ok: true, ...(await clearAvatar(c.var.p, c.get("principal").handle)) }); }
   catch (e) { return peopleFail(c, e); }
 });
 
@@ -581,13 +581,13 @@ const adminGate = async (c: Context<AppEnv>, next: () => Promise<void>) =>
   isAdmin(c.env, c.get("principal").handle) ? next() : c.json({ error: "admin only" }, 403);
 app.use("/invites", adminGate);
 app.use("/invites/*", adminGate);
-app.get("/invites", async (c) => c.json({ invites: await listInvites(legacyDb(c.var.p)) }));
+app.get("/invites", async (c) => c.json({ invites: await listInvites(c.var.p) }));
 app.post("/invites", async (c) => {
   const parsed = InviteWrite.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   let invite: InviteRow;
   try {
-    invite = await createInvite(legacyDb(c.var.p), { email: parsed.data.email, name: parsed.data.name ?? null, invitedBy: c.get("principal").handle });
+    invite = await createInvite(c.var.p, { email: parsed.data.email, name: parsed.data.name ?? null, invitedBy: c.get("principal").handle });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "invite_exists" || msg === "already_a_person") return c.json({ error: msg }, 409);
@@ -598,7 +598,7 @@ app.post("/invites", async (c) => {
   return c.json({ ok: true, invite: (await first<InviteRow>(legacyDb(c.var.p), `SELECT * FROM invites WHERE email = ?`, invite.email))!, email });
 });
 app.post("/invites/:email/revoke", async (c) => {
-  const ok = await revokeInvite(legacyDb(c.var.p), decodeURIComponent(c.req.param("email")));
+  const ok = await revokeInvite(c.var.p, decodeURIComponent(c.req.param("email")));
   return ok ? c.json({ ok: true }) : c.json({ error: "no such invite" }, 404);
 });
 app.post("/invites/:email/resend", async (c) => {
@@ -638,7 +638,7 @@ app.get("/me/dashboard", async (c) => {
 app.get("/repo/dashboard", async (c) => {
   const repo = c.env.GITHUB_REPO ?? "";
   try {
-    return c.json(await getRepoDashboard(legacyDb(c.var.ctx), repo, Date.now(), repoEnvironments(c.env)));
+    return c.json(await getRepoDashboard(c.var.ctx, repo, Date.now(), repoEnvironments(c.env)));
   } catch {
     return c.json(emptyRepoDashboard(repo, true));
   }
@@ -671,7 +671,7 @@ app.post("/admin/backfill", async (c) => {
   // nothing to do.
   let repo: ReconcileResult | undefined;
   if (isFinalBackfillBatch(res, batch, of) && c.env.GITHUB_SERVICE_TOKEN && c.env.GITHUB_REPO) {
-    repo = await reconcileRepo(legacyDb(c.var.ctx), { token: c.env.GITHUB_SERVICE_TOKEN, repo: c.env.GITHUB_REPO }, repoEnvironments(c.env)).catch(() => undefined);
+    repo = await reconcileRepo(c.var.ctx, { token: c.env.GITHUB_SERVICE_TOKEN, repo: c.env.GITHUB_REPO }, repoEnvironments(c.env)).catch(() => undefined);
   }
   return c.json(repo ? { ...res, repo } : res);
 });

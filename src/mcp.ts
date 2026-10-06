@@ -341,7 +341,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "list_people",
     "Read-only: every person in the org as { handle, name, role, responsibilities }. Call this BEFORE choosing `assignees` on create_ticket: match the work to each person's `role` and `responsibilities` and use their `handle`. `role` / `responsibilities` may be null — that means unknown, never guess what someone owns from their name or handle; if nobody clearly fits, file the ticket unassigned (or ask the person you are working for) rather than pick someone. Returns { people }.",
     {},
-    async () => runTool(async () => ({ people: await listPeopleForAgents(legacyDb(ctx)) })),
+    async () => runTool(async () => ({ people: await listPeopleForAgents(ctx) })),
   );
 
   server.tool(
@@ -369,7 +369,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     },
     async ({ tab, range, include_trends }) =>
       runTool(() =>
-        getRepoDashboardForAgent(legacyDb(ctx), env.GITHUB_REPO ?? "", repoEnvironments(env), {
+        getRepoDashboardForAgent(ctx, env.GITHUB_REPO ?? "", repoEnvironments(env), {
           tab, range, includeTrends: include_trends,
         })
       ),
