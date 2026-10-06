@@ -5,3 +5,7 @@ web/dist/
 *.log
 .superpowers/
 .canopy/
+
+wrangler.old.toml
+*-dump.sql
+*-dump.counts.json
