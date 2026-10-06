@@ -229,3 +229,17 @@ Capturing NON-primary repos (the capture tables already key on `(org_id, repo, s
 writes `repo`, every row carries the transitional default, and no reader filters on it: writing it, a backfill
 of existing rows and repo-filtered readers is its own change). Sign-in through the App. Deleting the legacy
 token / webhook path (Phase 7).
+
+## 14. Residual risks (accepted, as built)
+
+- **The read check is made once, at bind.** A repository the installation gains LATER — an owner adding it on
+  GitHub, or a new repository under an "All repositories" installation — arrives through `installation_repositories`
+  and is listed for the org's admins to connect without re-checking that any of them can read it on GitHub. The
+  GitHub owner's choice to give the App that repository is what grants it. Re-checking would need a person's user
+  token at connect time (an OAuth hop per connect); deferred until it is asked for.
+- **The first hop accepts a missing `state`.** GitHub's forwarding of the install URL's `state` to the Setup URL is
+  not guaranteed, so a present one must match and an absent one is allowed; the CODE hop requires it. The worst a
+  forged first hop can do is make the victim's own browser — with its own pending `gh_install` cookie — verify an
+  installation against the victim's OWN GitHub account, which binds only what that account can already read.
+- **Installation tokens are not cached**: every job mints one (one subrequest), so a revoked or suspended
+  installation takes effect on the next job, and no token outlives the request that minted it.

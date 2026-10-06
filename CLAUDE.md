@@ -557,6 +557,10 @@ and while one cuts over. Everything lives in `src/github-app/` — and NOTHING t
   ADMIN of the org (re-checked at the callback), whose OWN GitHub user token — obtained by an OAuth hop with a state
   nonce, used once, revoked, never stored — can read EVERY repository the installation covers. An installation id in
   the query string is never trusted: one the person's token cannot see is refused, as is one bound to another org.
+  `GET /github/app/setup` reads the session itself (it is in `PUBLIC_PATHS`, like `/oauth/authorize`), so every
+  refusal is a page (`pages.ts`: 400 / 403 / 409 / 503, never a 500), and a success is a 302 to
+  `/o/<slug>/#org/repos?github=connected|requested`. The read check is made ONCE, at bind — a repository the
+  installation gains later is connectable without re-checking (the spec's §14 residual risks).
 - **The App webhook**: verified → `installationOwner` (unbound → 202 ignored) → `installation` / `installation_repositories`
   events keep the binding true to GitHub (deleted → unbind, suspend / unsuspend, repos added / removed), even for a
   suspended org; any other event is captured ONLY for the org's PRIMARY repo attached to THIS installation, through
