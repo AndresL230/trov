@@ -82,7 +82,7 @@ app.get("/img/:sha", async (c) => {
   const sha = c.req.param("sha");
   const lockdown = { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" };
   if (!/^[0-9a-f]{64}$/.test(sha)) return c.json({ error: "not_found" }, 404, lockdown);
-  const img = await readDocImage(legacyDb(c.var.ctx), c.env.ARTIFACTS_BUCKET, sha);
+  const img = await readDocImage(c.var.ctx, c.env.ARTIFACTS_BUCKET, sha);
   if (!img) return c.json({ error: "not_found" }, 404, lockdown);
   return new Response(img.body, {
     headers: {
@@ -254,11 +254,11 @@ const handoffId = (raw: string): number | null => (/^\d+$/.test(raw) && Number(r
 app.get("/api/handoffs", async (c) => {
   const box = c.req.query("box") ?? "mine";
   if (!(HANDOFF_BOXES as readonly string[]).includes(box)) return c.json({ error: "unknown box" }, 400);
-  return c.json({ handoffs: await listHandoffs(legacyDb(c.var.ctx), c.get("principal").handle, box as HandoffBox) });
+  return c.json({ handoffs: await listHandoffs(c.var.ctx, c.get("principal").handle, box as HandoffBox) });
 });
 app.get("/api/handoffs/:id", async (c) => {
   const id = handoffId(c.req.param("id"));
-  const handoff = id === null ? null : await getHandoff(legacyDb(c.var.ctx), id);
+  const handoff = id === null ? null : await getHandoff(c.var.ctx, id);
   return handoff ? c.json({ handoff }) : c.json({ error: "not found" }, 404);
 });
 app.post("/api/handoffs", async (c) => {
@@ -271,7 +271,7 @@ app.post("/api/handoffs", async (c) => {
     ? { sessionId: sess.id, itemIndex: Number.isInteger(raw?.item_index) ? (raw!.item_index as number) : 0 }
     : undefined;
   try {
-    const { handoff } = await createHandoff(legacyDb(c.var.ctx), c.get("principal").handle, parsed.data, ledger);
+    const { handoff } = await createHandoff(c.var.ctx, c.get("principal").handle, parsed.data, ledger);
     return c.json({ ok: true, handoff });
   } catch (e) { return handoffFail(c, e); }
 });
@@ -280,13 +280,13 @@ app.post("/api/handoffs/:id/claim", async (c) => {
   if (id === null) return c.json({ error: "not found" }, 404);
   const body = (await c.req.json().catch(() => ({}))) as { session?: unknown };
   const session = typeof body.session === "string" && body.session.trim() ? body.session.trim().slice(0, 120) : `web_${crypto.randomUUID().slice(0, 8)}`;
-  try { return c.json({ ok: true, handoff: await claimHandoff(legacyDb(c.var.ctx), id, c.get("principal").handle, session) }); }
+  try { return c.json({ ok: true, handoff: await claimHandoff(c.var.ctx, id, c.get("principal").handle, session) }); }
   catch (e) { return handoffFail(c, e); }
 });
 app.post("/api/handoffs/:id/expire", async (c) => {
   const id = handoffId(c.req.param("id"));
   if (id === null) return c.json({ error: "not found" }, 404);
-  try { return c.json({ ok: true, handoff: await expireHandoff(legacyDb(c.var.ctx), id, c.get("principal").handle) }); }
+  try { return c.json({ ok: true, handoff: await expireHandoff(c.var.ctx, id, c.get("principal").handle) }); }
   catch (e) { return handoffFail(c, e); }
 });
 
@@ -294,27 +294,27 @@ app.get("/api/prompts", async (c) => {
   const tags = (c.req.query("tags") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
   const want = c.req.query("sort");
   const sort = want === "updated_asc" || want === "used" ? want : "updated_desc";
-  return c.json({ prompts: await listPrompts(legacyDb(c.var.ctx), { q: c.req.query("q") ?? "", tags, sort }) });
+  return c.json({ prompts: await listPrompts(c.var.ctx, { q: c.req.query("q") ?? "", tags, sort }) });
 });
 app.get("/api/prompts/:slug", async (c) => {
-  const prompt = await getPrompt(legacyDb(c.var.ctx), c.req.param("slug"));
+  const prompt = await getPrompt(c.var.ctx, c.req.param("slug"));
   return prompt ? c.json({ prompt }) : c.json({ error: "not found" }, 404);
 });
 app.get("/api/prompts/:slug/versions", async (c) => {
   const slug = c.req.param("slug");
-  if (!(await getPrompt(legacyDb(c.var.ctx), slug))) return c.json({ error: "not found" }, 404);
-  return c.json({ versions: await listPromptVersions(legacyDb(c.var.ctx), slug) });
+  if (!(await getPrompt(c.var.ctx, slug))) return c.json({ error: "not found" }, 404);
+  return c.json({ versions: await listPromptVersions(c.var.ctx, slug) });
 });
 app.post("/api/prompts", async (c) => {
   const parsed = PromptSaveInput.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
-  try { return c.json({ ok: true, prompt: await savePrompt(legacyDb(c.var.ctx), c.get("principal").handle, parsed.data, "human") }); }
+  try { return c.json({ ok: true, prompt: await savePrompt(c.var.ctx, c.get("principal").handle, parsed.data, "human") }); }
   catch (e) { return handoffFail(c, e); }
 });
 app.post("/api/prompts/:slug/tags", async (c) => {
   const body = (await c.req.json().catch(() => null)) as { tags?: unknown } | null;
   if (!body || !Array.isArray(body.tags) || !body.tags.every((t) => typeof t === "string")) return c.json({ error: "tags (string[]) required" }, 400);
-  try { return c.json({ ok: true, prompt: await setPromptTags(legacyDb(c.var.ctx), c.req.param("slug"), body.tags as string[]) }); }
+  try { return c.json({ ok: true, prompt: await setPromptTags(c.var.ctx, c.req.param("slug"), body.tags as string[]) }); }
   catch (e) { return handoffFail(c, e); }
 });
 // One USE of a prompt (the web Copy button; MCP get_prompt counts its own): one
@@ -322,8 +322,8 @@ app.post("/api/prompts/:slug/tags", async (c) => {
 // 503, never a 500 — a lost count must not break the copy.
 app.post("/api/prompts/:slug/used", async (c) => {
   try {
-    if (!(await recordPromptUse(legacyDb(c.var.ctx), c.req.param("slug")))) return c.json({ error: "not found" }, 404);
-    const prompt = await getPrompt(legacyDb(c.var.ctx), c.req.param("slug"));
+    if (!(await recordPromptUse(c.var.ctx, c.req.param("slug")))) return c.json({ error: "not found" }, 404);
+    const prompt = await getPrompt(c.var.ctx, c.req.param("slug"));
     return prompt ? c.json({ ok: true, use_count: prompt.use_count, last_used_at: prompt.last_used_at }) : c.json({ error: "not found" }, 404);
   } catch {
     return c.json({ error: "temporarily unavailable" }, 503);
@@ -335,7 +335,7 @@ app.post("/api/prompts/:slug/publish", async (c) => {
   const body = (await c.req.json().catch(() => null)) as { version?: unknown } | null;
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
-  try { return c.json({ ok: true, prompt: await publishPrompt(legacyDb(c.var.ctx), c.req.param("slug"), version) }); }
+  try { return c.json({ ok: true, prompt: await publishPrompt(c.var.ctx, c.req.param("slug"), version) }); }
   catch (e) { return handoffFail(c, e); }
 });
 // Soft delete + restore (0035 PART C): the prompt's author or an admin; anyone else
@@ -344,12 +344,12 @@ app.post("/api/prompts/:slug/publish", async (c) => {
 // it is a 409), and restore is the one way back.
 app.post("/api/prompts/:slug/delete", async (c) => {
   const me = c.get("principal").handle;
-  try { return c.json({ ok: true, ...(await deletePrompt(legacyDb(c.var.ctx), c.req.param("slug"), me, isAdmin(c.env, me))) }); }
+  try { return c.json({ ok: true, ...(await deletePrompt(c.var.ctx, c.req.param("slug"), me, isAdmin(c.env, me))) }); }
   catch (e) { return handoffFail(c, e); }
 });
 app.post("/api/prompts/:slug/restore", async (c) => {
   const me = c.get("principal").handle;
-  try { return c.json({ ok: true, prompt: await restorePrompt(legacyDb(c.var.ctx), c.req.param("slug"), me, isAdmin(c.env, me)) }); }
+  try { return c.json({ ok: true, prompt: await restorePrompt(c.var.ctx, c.req.param("slug"), me, isAdmin(c.env, me)) }); }
   catch (e) { return handoffFail(c, e); }
 });
 

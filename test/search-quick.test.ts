@@ -14,6 +14,7 @@ import { createHandoff } from "../src/tools/handoffs";
 import { quickSearch, buildPrefixMatch } from "../src/tools/quick-search";
 import { createText, wf, jsonInit } from "./helpers/artifacts";
 import type { QuickSearchResult, QuickType } from "@shared/quick-search";
+import { systemCtx } from "./helpers/tenant";
 
 const ME = "quickme";
 const OTHER = "quickother";
@@ -50,8 +51,8 @@ describe("GET /search/quick — every type", () => {
     await ratify_adr(env.DB, adr);
     const sp = await create_sprint(env.DB, { label: "Zebra sprint", urgency: "normal" }, ME);
     await publishedText(await cookieFor(ME), { title: "Zebra diagram", content: "# zebra" });
-    await savePrompt(env.DB, ME, { slug: "zebra-review", title: "Zebra review", body: "Review the zebra", status: "published", description: "Checks stripes" }, "human");
-    const { handoff } = await createHandoff(env.DB, OTHER, { recipient: ME, body: "Finish the zebra migration" });
+    await savePrompt(systemCtx(), ME, { slug: "zebra-review", title: "Zebra review", body: "Review the zebra", status: "published", description: "Checks stripes" }, "human");
+    const { handoff } = await createHandoff(systemCtx(), OTHER, { recipient: ME, body: "Finish the zebra migration" });
     await append_feed(env.DB, { author: ME, summary: "Shipped the zebra importer", brief: "Imports zebras now." });
 
     const r = await quick("zebra");
@@ -128,19 +129,19 @@ describe("GET /search/quick — visibility", () => {
   });
 
   it("a prompt with no published version is withheld; publishing it makes it findable", async () => {
-    await savePrompt(env.DB, ME, { slug: "narwhal", title: "Narwhal prompt", body: "narwhal body", status: "staged" }, "human");
+    await savePrompt(systemCtx(), ME, { slug: "narwhal", title: "Narwhal prompt", body: "narwhal body", status: "staged" }, "human");
     expect(ids(await quick("narwhal"), "prompt")).toEqual([]);
-    await savePrompt(env.DB, ME, { slug: "narwhal", title: "Narwhal prompt", body: "narwhal body v2", status: "published" }, "human");
+    await savePrompt(systemCtx(), ME, { slug: "narwhal", title: "Narwhal prompt", body: "narwhal body v2", status: "published" }, "human");
     expect(ids(await quick("narwhal"), "prompt")).toEqual(["narwhal"]);
   });
 
   it("handoffs: mine, anyone's and ones I sent are found; one between two other people never is; expired never", async () => {
     await seedPerson(ME); await seedPerson(OTHER); await seedPerson("third");
-    const toMe = (await createHandoff(env.DB, OTHER, { recipient: ME, body: "Ibex work for you" })).handoff.id;
-    const toAnyone = (await createHandoff(env.DB, OTHER, { recipient: "anyone", body: "Ibex work for anyone" })).handoff.id;
-    const sent = (await createHandoff(env.DB, ME, { recipient: OTHER, body: "Ibex work I sent" })).handoff.id;
-    const private3 = (await createHandoff(env.DB, OTHER, { recipient: "third", body: "Ibex work for third" })).handoff.id;
-    const expired = (await createHandoff(env.DB, OTHER, { recipient: ME, body: "Ibex expired" })).handoff.id;
+    const toMe = (await createHandoff(systemCtx(), OTHER, { recipient: ME, body: "Ibex work for you" })).handoff.id;
+    const toAnyone = (await createHandoff(systemCtx(), OTHER, { recipient: "anyone", body: "Ibex work for anyone" })).handoff.id;
+    const sent = (await createHandoff(systemCtx(), ME, { recipient: OTHER, body: "Ibex work I sent" })).handoff.id;
+    const private3 = (await createHandoff(systemCtx(), OTHER, { recipient: "third", body: "Ibex work for third" })).handoff.id;
+    const expired = (await createHandoff(systemCtx(), OTHER, { recipient: ME, body: "Ibex expired" })).handoff.id;
     await env.DB.prepare(`UPDATE handoffs SET status = 'expired' WHERE id = ?`).bind(expired).run();
     const got = ids(await quick("ibex"), "handoff").map(Number).sort((a, b) => a - b);
     expect(got).toEqual([toMe, toAnyone, sent].sort((a, b) => a - b));

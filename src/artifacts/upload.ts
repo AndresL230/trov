@@ -16,7 +16,7 @@ import { ARTIFACT_BINARY_CAP } from "@shared/artifacts";
 import { consumeUploadToken } from "../tools/artifacts";
 import { consumeDocImageToken } from "../tools/doc-images";
 import type { Env } from "../env";
-import { legacyDb, legacySystemTenant } from "../data/legacy";
+import { legacySystemTenant } from "../data/legacy";
 import { artifactErrorResponse, jsonResponse } from "./http";
 
 export const UPLOAD_PREFIX = "/api/artifacts/upload/";
@@ -45,15 +45,16 @@ export async function handleArtifactUpload(request: Request, env: Env): Promise<
   if (len !== null && Number(len) > ARTIFACT_BINARY_CAP) {
     return jsonResponse({ error: "too_large", message: `file exceeds ${ARTIFACT_BINARY_CAP} bytes` }, 413);
   }
-  // MT: no session — the single-use token is the auth, and it will carry its org (the token row's
-  // org_id). Until the token tables are ported, an upload lands in the legacy org, as system.
+  // MT: no session — the single-use token is the auth, and its row carries its org. Until this
+  // resolves the org from that row (a platform lookup by hash), only the legacy org's tokens are
+  // found here: another org's token is the unknown-token 404, never a cross-org write.
   const ctx = legacySystemTenant(env, "system");
   try {
     // ONE upload route for every asset: a doc-image token (MCP upload_asset with
     // destination "doc") is looked up first; any other token is an artifact's.
-    const image = await consumeDocImageToken(legacyDb(ctx), env.ARTIFACTS_BUCKET, token, request.body);
+    const image = await consumeDocImageToken(ctx, env.ARTIFACTS_BUCKET, token, request.body);
     if (image) return jsonResponse(image, 200);
-    const result = await consumeUploadToken(legacyDb(ctx), env.ARTIFACTS_BUCKET, token, request.body);
+    const result = await consumeUploadToken(ctx, env.ARTIFACTS_BUCKET, token, request.body);
     return jsonResponse(result, 200);
   } catch (e) {
     const res = artifactErrorResponse(e);

@@ -13,6 +13,7 @@ import type { Principal } from "./auth/principal";
 import type { RepoEvent } from "./repo/types";
 import { applyArtifactLinks, type ArtifactLinkOutcome } from "./tools/artifacts-agent";
 import { docImageProblems } from "./tools/doc-images";
+import { legacyCtxOf } from "./data/legacy-ctx";
 
 // Per-type, per-outcome counts surfaced on /ingest so a re-run reads, e.g.,
 // "3 docs: 1 staged, 2 unchanged".
@@ -128,7 +129,7 @@ export async function ingestDocProposal(db: DB, proposal: DocProposal, author: s
 
   // Images: every one must be an uploaded doc image (/img/<sha256>) — checked first,
   // since neither staging nor triage can fix a missing upload.
-  const imageProblem = await docImageProblems(db, proposal.body);
+  const imageProblem = await docImageProblems(legacyCtxOf(db), proposal.body);
   if (imageProblem) return { outcome: "refused", slug: proposal.slug, reason: imageProblem };
 
   if (!isSection(proposal.section)) {
@@ -350,6 +351,6 @@ export interface RecordBatchResult extends IngestResult {
 export async function recordBatch(db: DB, payload: IngestPayload, principal: Principal): Promise<RecordBatchResult> {
   const result: RecordBatchResult = await consume(db, payload, principal);
   const links = payload.artifact_links ?? [];
-  if (links.length) result.artifact_links = await applyArtifactLinks(db, links, principal.handle);
+  if (links.length) result.artifact_links = await applyArtifactLinks(legacyCtxOf(db), links, principal.handle);
   return result;
 }

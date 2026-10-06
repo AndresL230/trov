@@ -332,7 +332,7 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
   // Every tick: pending handoffs past their expires_at flip to expired. D1 only
   // (no subrequest), so it adds nothing to any tick's budget, and it runs BEFORE
   // the :00 early return so no hour is skipped.
-  await safely("handoff expiry", () => expireDueHandoffs(legacyDb(ctx), scheduledTime));
+  await safely("handoff expiry", () => expireDueHandoffs(ctx, scheduledTime));
 
   if (minute === 0) {
     // The hourly polls — and NOTHING else may join this tick: the slot exists

@@ -34,6 +34,7 @@
 import type { DB } from "../db";
 import { RESERVED_HANDLES } from "../auth/persons";
 import { searchArtifactsStmt } from "./artifacts";
+import { legacyCtxOf } from "../data/legacy-ctx";
 import { avatarSrc } from "@shared/people";
 import {
   QUICK_TYPES, QUICK_MIN_CHARS, QUICK_LIMIT_DEFAULT, QUICK_LIMIT_MAX,
@@ -152,7 +153,7 @@ export async function quickSearch(db: DB, q: string, viewer: string, opts: Quick
   }
 
   if (want.has("artifact")) {
-    plan.push({ type: "artifact", stmt: searchArtifactsStmt(db, match, viewer, n, true),
+    plan.push({ type: "artifact", stmt: searchArtifactsStmt(legacyCtxOf(db), match, viewer, n, true),
       map: (r) => ({ type: "artifact", id: str(r.slug) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.description)) ?? oneLine(str(r.snippet)), status: str(r.kind), by: str(r.author_id), at: str(r.updated_at) }) });
   }
 

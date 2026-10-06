@@ -14,7 +14,7 @@ import { create_ticket } from "../src/tools/tickets";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { app } from "../src/routes";
 import { ARTIFACT_INLINE_MAX } from "@shared/artifacts";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const ME = "arti-author";
 const YOU = "arti-teammate";
@@ -292,7 +292,7 @@ describe("binary artifacts — the upload_url flow", () => {
 
     // the minted token is the real one: land the bytes the way Track B's PUT does
     const token = r.body.upload_url.split("/").pop();
-    await consumeUploadToken(env.DB, env.ARTIFACTS_BUCKET, token, new Response(PDF).body!);
+    await consumeUploadToken(systemCtx(), env.ARTIFACTS_BUCKET, token, new Response(PDF).body!);
     const g = await call(YOU, "artifact_get", { slug: "threat-model" });
     expect(g.body.kind).toBe("pdf");
     expect(g.body.content).toBeNull();
@@ -311,7 +311,7 @@ describe("binary artifacts — the upload_url flow", () => {
   });
 
   it("artifact_update on a binary page → upload_url; text inputs are refused", async () => {
-    await createPage(env.DB, { title: "Logo", kind: "image", area: "ui", bytes: new TextEncoder().encode("PNG-track-c-1"), content_type: "image/png" }, ME, env.ARTIFACTS_BUCKET);
+    await createPage(systemCtx(), { title: "Logo", kind: "image", area: "ui", bytes: new TextEncoder().encode("PNG-track-c-1"), content_type: "image/png" }, ME, env.ARTIFACTS_BUCKET);
     const noType = await call(YOU, "artifact_update", { slug: "logo", size_bytes: 13, sha256: "b".repeat(64), summary: "v2" });
     expect(noType.body.code).toBe("bad_request"); // an image needs a type (or a filename to infer it from)
     const r = await call(YOU, "artifact_update", { slug: "logo", size_bytes: 13, sha256: "b".repeat(64), filename: "logo-v2.png", summary: "v2" });
@@ -321,7 +321,7 @@ describe("binary artifacts — the upload_url flow", () => {
   });
 
   it("the author may re-mint an upload for their own pending page; anyone else gets not_found", async () => {
-    await mintUploadToken(env.DB, { kind: "file", size_bytes: 4, sha256: "c".repeat(64), title: "Dump", area: "data" }, ME);
+    await mintUploadToken(systemCtx(), { kind: "file", size_bytes: 4, sha256: "c".repeat(64), title: "Dump", area: "data" }, ME);
     const mine = await call(ME, "artifact_update", { slug: "dump", size_bytes: 4, sha256: "c".repeat(64), summary: "retry" });
     expect(mine.body.upload_url).toBeTruthy();
     const theirs = await call(YOU, "artifact_update", { slug: "dump", size_bytes: 4, sha256: "c".repeat(64), summary: "x" });
