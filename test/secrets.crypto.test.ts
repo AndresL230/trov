@@ -7,8 +7,10 @@ import type { Env } from "../src/env";
 import {
   Secret, SecretAccessError, SecretConflictError, SecretDecryptError, SecretNotFoundError, SecretValueError, SecretsUnavailableError,
   deleteSecret, getSecret, getSecretMeta, lastErrorText, listOrgAudit, markSecretUsed, recordSecretOutcome,
-  rotateOrgKey, rotateSecret, scrub, secretsAvailable, setSecret,
+  rotateOrgKey, rotateSecret, scrub, secretsAvailable, setSecret, getIntegrationConfig, setIntegrationConfig,
 } from "../src/data/secrets";
+import { deleteEnvironment, listEnvironments, putEnvironment, reorderEnvironments } from "../src/integrations/settings";
+import { seedOrgSettings } from "./helpers/integrations";
 import { RoleError } from "../src/data/context";
 import { ORG_A, ORG_B, bearerCtx, systemCtx, tenantCtx } from "./helpers/tenant";
 
@@ -350,5 +352,62 @@ describe("last_used_at / last_error", () => {
     const ok = (await getSecretMeta(a, "github_token", ""))!;
     expect(ok.last_error).toBeNull();
     expect(ok.last_used_at).not.toBeNull();
+  });
+});
+
+// Two orgs holding the SAME (kind, scope) and the same environment keys: every write and every
+// by-name read below is keyed on names both orgs share, so only its org predicate keeps them apart.
+// (Added from the mutation spot check: each of these predicates survived being neutralised.)
+describe("two orgs with identical kinds, scopes and environment keys", () => {
+  const both = async () => {
+    await seedOrgSettings(ORG_A);
+    await seedOrgSettings(ORG_B, "hook_b");
+    const [a, b] = [await owner(), await ownerB()];
+    for (const [ctx, value] of [[a, TOKEN], [b, OTHER]] as const) {
+      await setSecret(ctx, "github_token", "", value);
+      await setSecret(ctx, "railway", "staging", value);
+    }
+    return { a, b };
+  };
+
+  it("non-secret config, last_used_at and the data key are per org", async () => {
+    const { a, b } = await both();
+    await setIntegrationConfig(a, "railway", "staging", { project: "a-project" });
+    await setIntegrationConfig(b, "railway", "staging", { project: "b-project" });
+    expect([await getIntegrationConfig(a, "railway", "staging"), await getIntegrationConfig(b, "railway", "staging")])
+      .toEqual([{ project: "a-project" }, { project: "b-project" }]);
+
+    await markSecretUsed(a, "github_token", "");
+    expect((await row(ORG_A, "github_token", ""))!.last_used_at).not.toBeNull();
+    expect((await row(ORG_B, "github_token", ""))!.last_used_at).toBeNull();
+
+    // Rotating A's key retires A's version 1 — not B's version 1 — and each org counts its own versions.
+    expect((await rotateOrgKey(a)).key_version).toBe(2);
+    expect((await keyRows(ORG_B)).map((k) => [k.key_version, k.retired_at])).toEqual([[1, null]]);
+    expect((await rotateOrgKey(a)).key_version).toBe(3);
+    expect((await rotateOrgKey(b)).key_version).toBe(2); // not 4
+    expect((await getSecret(a, "github_token", ""))!.reveal()).toBe(TOKEN);
+    expect((await getSecret(b, "github_token", ""))!.reveal()).toBe(OTHER);
+  });
+
+  it("editing, reordering and deleting an environment in A leaves B's environment, config and secrets alone", async () => {
+    const { a, b } = await both();
+    await setIntegrationConfig(b, "railway", "staging", { project: "b-project" });
+    const snapshotB = async () => ({
+      envs: (await listEnvironments(b)).map((x) => [x.key, x.position, x.label, x.updated_by]),
+      secret: (await getSecret(b, "railway", "staging"))?.reveal(),
+      config: await getIntegrationConfig(b, "railway", "staging"),
+    });
+    const before = await snapshotB();
+
+    await putEnvironment(a, "staging", { label: "A staging" });
+    await reorderEnvironments(a, ["production", "staging"]);
+    expect(await snapshotB()).toEqual(before);
+    expect((await listEnvironments(a)).map((x) => [x.key, x.label])).toEqual([["production", "production"], ["staging", "A staging"]]);
+
+    expect(await deleteEnvironment(a, "staging")).toEqual(["railway:staging"]);
+    expect(await snapshotB()).toEqual(before);
+    expect(await getSecret(a, "railway", "staging")).toBeNull();
+    expect((await listEnvironments(a)).map((x) => x.key)).toEqual(["production"]);
   });
 });

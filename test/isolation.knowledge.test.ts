@@ -18,6 +18,8 @@ import {
   ratify_adr, reject_adr, reject_doc_version, resolve_triage, restore_identity_task, route_triage, stage_adr,
 } from "../src/tools/writes";
 import { quickSearch } from "../src/tools/quick-search";
+import { savePrompt } from "../src/tools/prompts";
+import { write_plan } from "../src/tools/plan";
 import { feedStats } from "../src/tools/feed-stats";
 import { storeIssueSummary, storePrSummary } from "../src/tools/summarize";
 import { cookieFor, seedPerson } from "./helpers/persons";
@@ -351,5 +353,56 @@ describe("over HTTP: a member of B only", () => {
     expect((await versionsOf(ORG_A, "http-doc")).map((v) => v.status)).toEqual(["staged"]);
     expect((await first<AdrRow>(env.DB, `SELECT * FROM adrs WHERE id = ?`, adrId))?.status).toBe("draft");
     expect((await first<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage WHERE id = ?`, triageId))?.resolved).toBe(0);
+  });
+});
+
+// Both orgs hold the SAME names — a doc slug, a prompt slug, the plan's fixed `plan` ref — so nothing
+// but the org predicate tells their rows apart. (From the mutation spot check: each statement below
+// survived having one org predicate neutralised while the two orgs' keys never collided.)
+describe("two orgs with the same slugs and refs", () => {
+  it("a doc proposal is deduped against THIS org's staged version, not a same-slug one elsewhere", async () => {
+    await propose_doc_update(A, doc("shared", "first body"), WHO);
+    await promote_doc(A, "shared", 1, WHO);
+    await propose_doc_update(B, doc("shared", "second body"), WHO); // staged in B: the very body A is about to propose
+    const r = await ingestDocProposal(A, doc("shared", "second body"), WHO);
+    expect(r.outcome).toBe("written");
+    expect((await versionsOf(ORG_A, "shared")).map((v) => v.status)).toEqual(["promoted", "staged"]);
+    expect((await versionsOf(ORG_B, "shared")).map((v) => v.status)).toEqual(["staged"]);
+  });
+
+  it("quick search joins a doc and a prompt to THIS org's row of that slug", async () => {
+    // B first, so a join that ignored the org would meet B's row first.
+    await propose_doc_update(B, { ...doc("shared", "nothing to see"), title: "B title" }, WHO);
+    await promote_doc(B, "shared", 1, WHO);
+    await propose_doc_update(A, { ...doc("shared", "the numbat pipeline"), title: "A title" }, WHO);
+    await promote_doc(A, "shared", 1, WHO);
+    const docs = (await quickSearch(A, "numbat", WHO, { types: ["doc"], limit: 8 })).groups[0]?.hits ?? [];
+    expect(docs.map((h) => [h.id, h.title])).toEqual([["shared", "A title"]]);
+    expect((await quickSearch(B, "numbat", WHO, { types: ["doc"] })).groups).toEqual([]);
+
+    // A prompt is searchable once it has a PUBLISHED version — in this org. B publishing the same slug
+    // does not surface A's draft, and A's hit carries A's title.
+    await savePrompt(B, WHO, { slug: "shared-prompt", title: "B numbat review", body: "Review the numbat", status: "published" }, "human");
+    await savePrompt(A, WHO, { slug: "shared-prompt", title: "A numbat draft", body: "Draft about the numbat", status: "draft" }, "human");
+    expect((await quickSearch(A, "numbat", WHO, { types: ["prompt"] })).groups).toEqual([]);
+    expect(((await quickSearch(B, "numbat", WHO, { types: ["prompt"] })).groups[0]?.hits ?? []).map((h) => h.title)).toEqual(["B numbat review"]);
+    // Published in both: each org's hit is its own row of that slug (title, author), never the other's.
+    await savePrompt(A, "iso-a-author", { slug: "shared-prompt", title: "A numbat review", body: "Review the numbat, A's way", status: "published" }, "human");
+    const hit = async (ctx: typeof A) => ((await quickSearch(ctx, "numbat", WHO, { types: ["prompt"] })).groups[0]?.hits ?? []).map((h) => [h.id, h.title]);
+    expect(await hit(A)).toEqual([["shared-prompt", "A numbat review"]]);
+    expect(await hit(B)).toEqual([["shared-prompt", "B numbat review"]]);
+  });
+
+  it("query(): another org's plan text never surfaces this org's plan, and its feed never crowds this org's browse", async () => {
+    await write_plan(A, { narrative: "Ship the importer.", sprints: [] }, WHO);
+    await write_plan(B, { narrative: "Adopt the quokka strategy.", sprints: [] }, WHO);
+    expect((await query(A, { q: "quokka", types: ["sprint"] })).primary).toEqual([]);
+    expect((await query(B, { q: "quokka", types: ["sprint"] })).primary.length).toBe(1);
+
+    const mine = await append_feed(A, { author: WHO, summary: "A's only entry" });
+    await run(env.DB, `UPDATE feed SET created_at = '2026-01-01T00:00:00.000Z' WHERE id = ?`, mine);
+    for (let i = 0; i < 3; i++) await append_feed(B, { author: WHO, summary: `B's newer entry ${i}` });
+    const browse = await query(A, { q: "", types: ["feed"], limit: 1, pointer_limit: 0 });
+    expect(browse.primary.map((p) => p.id)).toEqual([String(mine)]);
   });
 });

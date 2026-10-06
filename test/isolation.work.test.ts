@@ -255,6 +255,64 @@ describe("sprints", () => {
   });
 });
 
+// From the mutation spot check: these predicates survived while the two orgs never shared a group number,
+// and while no plan write named another org's sprint.
+describe("shared GitHub group numbers and foreign sprint ids", () => {
+  it("a group-number event moves only its own org's sprint, though both orgs claim that number", async () => {
+    await write_plan(A, { narrative: "", sprints: [{ label: "A", due: "", status: "upcoming", github_ref: 3 }] }, "alice");
+    await write_plan(B, { narrative: "", sprints: [{ label: "B", due: "", status: "upcoming", github_ref: 3 }] }, "bob");
+    const payload = { action: "closed", issue: { number: 41, state: "closed", milestone: { number: 3, open_issues: 1, closed_issues: 4 } } };
+    await applyEventProgress(A, payload);
+    expect([...(await getProgress(A)).values()].map((p) => [p.closed, p.total])).toEqual([[4, 5]]);
+    expect((await getProgress(B)).size).toBe(0);
+    expect(await count("sprint_progress", ORG_B)).toBe(0);
+  });
+
+  it("a plan write cannot edit another org's sprint by naming its id", async () => {
+    const b = (await create_sprint(B, sprint("B sprint"), "bob")).id;
+    await expect(write_plan(A, { narrative: "x", sprints: [{ id: b, label: "Hijacked", due: "", status: "done" }] }, "alice")).rejects.toThrow(`no such sprint: ${b}`);
+    expect(await first(env.DB, `SELECT org_id, title, status FROM sprints WHERE id = ?`, b)).toMatchObject({ org_id: ORG_B, title: "B sprint" });
+    expect(await count("sprints", ORG_A)).toBe(0);
+  });
+
+  it("My Work is a MEMBER's: a person who is only in B has no projection in A — not even their name", async () => {
+    await run(env.DB, `INSERT OR IGNORE INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES ('github', 'bob-gh', 'bob-gh', 'bob', 't', 'seed')`);
+    await run(env.DB, `INSERT INTO events (org_id, repo, semantic_key, event_type, ref_number, subject_login, raw, provenance, occurred_at, recorded_at, recorded_by)
+                       VALUES (?, 'o/r', 'gh:pr:9:merged', 'pr_merged', 9, 'bob-gh', ?, 'webhook', '2026-09-10T00:00:00Z', '2026-09-10T00:00:00Z', 'github-webhook')`,
+      ORG_A, JSON.stringify({ action: "closed", pr: { number: 9, title: "PR 9", html_url: "https://github.com/o/r/pull/9", merged: true, merged_at: "2026-09-10T00:00:00Z", user: { login: "bob-gh" } } }));
+    const inA = await getMyWork(A, "bob");
+    expect(inA).toMatchObject({ person: null, previousActivity: [], todo: [], tickets: [], degraded: false });
+    // Once bob joins A, the same event is his there.
+    await ensureMember("bob", "member", ORG_A);
+    const joined = await getMyWork(A, "bob");
+    expect(joined).toMatchObject({ degraded: false, person: "bob" });
+    expect(joined.previousActivity.length).toBe(1);
+  });
+});
+
+describe("My Work when both orgs captured the same PR key and claim the same group number", () => {
+  it("a PR card carries THIS org's summary, and an issue THIS org's sprint", async () => {
+    await run(env.DB, `INSERT OR IGNORE INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES ('github', 'carol-gh', 'carol-gh', 'carol', 't', 'seed')`);
+    await write_plan(B, { narrative: "", sprints: [{ label: "B sprint", due: "", status: "upcoming", github_ref: 5 }] }, "bob"); // B first: the lower sprint id
+    await write_plan(A, { narrative: "", sprints: [{ label: "A sprint", due: "", status: "upcoming", github_ref: 5 }] }, "alice");
+    const pr = JSON.stringify({ action: "closed", pr: { number: 9, title: "PR 9", html_url: "https://github.com/o/r/pull/9", merged: true, merged_at: "2026-09-10T00:00:00Z", user: { login: "carol-gh" } } });
+    const issue = JSON.stringify({ action: "assigned", issue: { number: 12, title: "Issue 12", html_url: "https://github.com/o/r/issues/12", state: "open", updated_at: "2026-09-10T00:00:00Z",
+      user: { login: "carol-gh" }, assignees: [{ login: "carol-gh" }], labels: [], milestone: { number: 5, title: "GH group", open_issues: 1, closed_issues: 0 } } });
+    for (const [org, title] of [[ORG_B, "B's summary"], [ORG_A, "A's summary"]] as const) {
+      await run(env.DB, `INSERT INTO events (org_id, repo, semantic_key, event_type, ref_number, subject_login, raw, provenance, occurred_at, recorded_at, recorded_by)
+                         VALUES (?, 'o/r', 'gh:pr:9:merged', 'pr_merged', 9, 'carol-gh', ?, 'webhook', '2026-09-10T00:00:00Z', '2026-09-10T00:00:00Z', 'github-webhook'),
+                                (?, 'o/r', 'gh:issue:12:assigned:t', 'issue', 12, 'carol-gh', ?, 'webhook', '2026-09-10T00:00:00Z', '2026-09-10T00:00:00Z', 'github-webhook')`, org, pr, org, issue);
+      await run(env.DB, `INSERT INTO pr_summaries (org_id, repo, semantic_key, pr_number, model, created_at, title, what, why, impact) VALUES (?, 'o/r', 'gh:pr:9:merged', 9, 'm', 't', ?, 'w', 'y', 'i')`, org, title);
+    }
+    for (const [ctx, summary, label] of [[A, "A's summary", "A sprint"], [B, "B's summary", "B sprint"]] as const) {
+      const mine = await getMyWork(ctx, "carol");
+      expect(mine.degraded).toBe(false);
+      expect(mine.previousActivity.map((p) => [p.number, p.displayTitle])).toEqual([[9, summary]]);
+      expect(mine.todo.map((t) => [t.number, t.sprint?.title])).toEqual([[12, label]]);
+    }
+  });
+});
+
 describe("the plan", () => {
   it("each org has its own narrative, versions and sprints", async () => {
     await write_plan(A, { narrative: "A's plan", sprints: [{ label: "A sprint", due: "", status: "upcoming" }] }, "alice");
