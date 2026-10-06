@@ -8,6 +8,7 @@ import { authApp } from "./auth/routes";
 import { oauthApp } from "./auth/oauth-routes";
 import { notificationsApp } from "./notifications/routes";
 import { artifactsApp } from "./artifacts/routes";
+import { orgSettingsApp } from "./integrations/routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runBackfill, isFinalBackfillBatch } from "./tools/backfill";
@@ -132,6 +133,9 @@ app.route("/api/orgs", orgsApp);
 app.route("/api/invites", myInvitesApp);
 app.route("/api/o/:slug", orgTenantApp);
 app.route("/api/platform", platformApp);
+// Org settings › Integrations / Repositories / Environments (src/integrations/routes.ts): cookie only,
+// behind tenantGate; the per-org secrets are write-only and admin+.
+app.route("/api/o/:slug", orgSettingsApp);
 
 app.post("/ingest", async (c) => {
   const json = await c.req.json().catch(() => null);
