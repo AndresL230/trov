@@ -2,7 +2,7 @@
 //
 // A jump list, not the Search screen: per type a SMALL ranked lookup that returns a
 // title and one short excerpt — never a body — so the whole answer is a few KB and
-// every lookup is bounded by a LIMIT. All of them run in ONE `db.batch` (one D1 round
+// every lookup is bounded by a LIMIT. All of them run in ONE `batch` (one D1 round
 // trip), and a query with fewer than QUICK_MIN_CHARS characters (or nothing
 // matchable in it) returns no groups WITHOUT touching D1: the panel's Screens list is
 // static and lives in the SPA.
@@ -24,14 +24,15 @@
 //   handoff  — no FTS: a LIKE over the viewer's OWN handoffs (the union of the
 //              inbox's boxes — left for me, left for anyone, or sent by me), pending
 //              or claimed. A small, bounded set; one statement.
-//   person   — persons by handle / name prefix; reserved system handles never listed.
+//   person   — the org's MEMBERS by handle / name prefix; reserved system handles never listed.
 //   feed     — feed_fts. Always live.
 //
 // FTS input is never passed through: `buildPrefixMatch` keeps word characters only
 // and quotes every token, so operators, quotes and parentheses typed by a person are
 // just text and can never be a syntax error (a 500).
 
-import type { DB } from "../db";
+import { type TenantContext, type Stmt, stmt, batch } from "../data/sql";
+import { legacyDb } from "../data/legacy";
 import { RESERVED_HANDLES } from "../auth/persons";
 import { searchArtifactsStmt } from "./artifacts";
 import { avatarSrc } from "@shared/people";
@@ -90,7 +91,7 @@ export interface QuickSearchOpts {
   types?: readonly QuickType[];
 }
 
-export async function quickSearch(db: DB, q: string, viewer: string, opts: QuickSearchOpts = {}): Promise<QuickSearchResult> {
+export async function quickSearch(ctx: TenantContext, q: string, viewer: string, opts: QuickSearchOpts = {}): Promise<QuickSearchResult> {
   const raw = (q ?? "").slice(0, 200);
   const trimmed = raw.trim();
   const out: QuickSearchResult = { q: trimmed, groups: [] };
@@ -104,8 +105,8 @@ export async function quickSearch(db: DB, q: string, viewer: string, opts: Quick
   const idMatch = /^#?(\d{1,9})$/.exec(trimmed);
   const id = idMatch ? Number(idMatch[1]) : null;
 
-  // Each entry: the group it feeds and the statement. ONE db.batch runs them all.
-  const plan: { type: QuickType; stmt: D1PreparedStatement; map: (r: Row) => QuickHit }[] = [];
+  // Each entry: the group it feeds and the statement. ONE batch runs them all.
+  const plan: { type: QuickType; stmt: Stmt; map: (r: Row) => QuickHit }[] = [];
 
   if (want.has("ticket")) {
     const map = (r: Row): QuickHit => ({
@@ -114,58 +115,58 @@ export async function quickSearch(db: DB, q: string, viewer: string, opts: Quick
     });
     // An exact number first: `#12` or `12` is how people name a ticket.
     if (id !== null) {
-      plan.push({ type: "ticket", map, stmt: db.prepare(
-        `SELECT id, title, status, requester AS by, updated_at AS at, NULL AS snippet FROM tickets WHERE id = ?`).bind(id) });
+      plan.push({ type: "ticket", map, stmt: stmt(ctx,
+        `SELECT id, title, status, requester AS by, updated_at AS at, NULL AS snippet FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId) });
     }
-    plan.push({ type: "ticket", map, stmt: db.prepare(
+    plan.push({ type: "ticket", map, stmt: stmt(ctx,
       `SELECT t.id, t.title, t.status, t.requester AS by, t.updated_at AS at, snippet(tickets_fts, 2, ${SNIP}) AS snippet
-         FROM tickets_fts JOIN tickets t ON t.id = CAST(tickets_fts.ticket_id AS INTEGER)
-        WHERE tickets_fts MATCH ? ORDER BY bm25(tickets_fts, 1.0, 5.0, 1.0) LIMIT ${n}`).bind(match) });
+         FROM tickets_fts JOIN tickets t ON t.id = CAST(tickets_fts.ticket_id AS INTEGER) AND t.org_id = ?
+        WHERE tickets_fts MATCH ? AND tickets_fts.org_id = ? ORDER BY bm25(tickets_fts, 1.0, 5.0, 1.0) LIMIT ${n}`, ctx.orgId, match, ctx.orgId) });
   }
 
   if (want.has("doc")) {
-    plan.push({ type: "doc", stmt: db.prepare(
+    plan.push({ type: "doc", stmt: stmt(ctx,
       `SELECT d.slug AS id, d.title, d.section, d.updated_at AS at, d.updated_by AS by, snippet(docs_fts, 3, ${SNIP}) AS snippet
-         FROM docs_fts JOIN docs d ON d.slug = docs_fts.slug
-        WHERE docs_fts MATCH ? AND d.current_version > 0
-        ORDER BY bm25(docs_fts, 1.0, 5.0, 1.0, 1.0) LIMIT ${n}`).bind(match),
+         FROM docs_fts JOIN docs d ON d.slug = docs_fts.slug AND d.org_id = ?
+        WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND d.current_version > 0
+        ORDER BY bm25(docs_fts, 1.0, 5.0, 1.0, 1.0) LIMIT ${n}`, ctx.orgId, match, ctx.orgId),
       map: (r) => ({ type: "doc", id: str(r.id) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)), status: str(r.section), by: str(r.by), at: str(r.at) }) });
   }
 
   if (want.has("decision")) {
-    plan.push({ type: "decision", stmt: db.prepare(
+    plan.push({ type: "decision", stmt: stmt(ctx,
       `SELECT a.id, a.title, a.created_by AS by, a.created_at AS at, snippet(adrs_fts, 3, ${SNIP}) AS snippet
-         FROM adrs_fts JOIN adrs a ON a.id = CAST(adrs_fts.adr_id AS INTEGER)
-        WHERE adrs_fts MATCH ? AND a.status = 'ratified'
-        ORDER BY bm25(adrs_fts, 1.0, 5.0, 1.0, 1.0, 1.0) LIMIT ${n}`).bind(match),
+         FROM adrs_fts JOIN adrs a ON a.id = CAST(adrs_fts.adr_id AS INTEGER) AND a.org_id = ?
+        WHERE adrs_fts MATCH ? AND adrs_fts.org_id = ? AND a.status = 'ratified'
+        ORDER BY bm25(adrs_fts, 1.0, 5.0, 1.0, 1.0, 1.0) LIMIT ${n}`, ctx.orgId, match, ctx.orgId),
       map: (r) => ({ type: "decision", id: String(r.id), title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)), status: "ratified", by: str(r.by), at: str(r.at) }) });
   }
 
   if (want.has("sprint")) {
-    plan.push({ type: "sprint", stmt: db.prepare(
+    plan.push({ type: "sprint", stmt: stmt(ctx,
       `SELECT roadmap_fts.ref AS id, roadmap_fts.title AS title, snippet(roadmap_fts, 2, ${SNIP}) AS snippet,
               s.status AS status, COALESCE(s.updated_at, s.created_at) AS at
          FROM roadmap_fts
-         LEFT JOIN sprints s ON roadmap_fts.ref LIKE 'sprint:%' AND s.id = CAST(substr(roadmap_fts.ref, 8) AS INTEGER)
-        WHERE roadmap_fts MATCH ? ORDER BY bm25(roadmap_fts, 1.0, 5.0, 1.0) LIMIT ${n}`).bind(match),
+         LEFT JOIN sprints s ON roadmap_fts.ref LIKE 'sprint:%' AND s.id = CAST(substr(roadmap_fts.ref, 8) AS INTEGER) AND s.org_id = ?
+        WHERE roadmap_fts MATCH ? AND roadmap_fts.org_id = ? ORDER BY bm25(roadmap_fts, 1.0, 5.0, 1.0) LIMIT ${n}`, ctx.orgId, match, ctx.orgId),
       map: (r) => ({ type: "sprint", id: str(r.id) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)), status: str(r.status), by: null, at: str(r.at) }) });
   }
 
   if (want.has("artifact")) {
-    plan.push({ type: "artifact", stmt: searchArtifactsStmt(db, match, viewer, n, true),
+    plan.push({ type: "artifact", stmt: searchArtifactsStmt(legacyDb(ctx), match, viewer, n, true),
       map: (r) => ({ type: "artifact", id: str(r.slug) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.description)) ?? oneLine(str(r.snippet)), status: str(r.kind), by: str(r.author_id), at: str(r.updated_at) }) });
   }
 
   if (want.has("prompt")) {
-    plan.push({ type: "prompt", stmt: db.prepare(
+    plan.push({ type: "prompt", stmt: stmt(ctx,
       `SELECT p.slug AS id, p.title, p.description, p.author AS by, p.updated_at AS at, v.status AS status,
               snippet(prompts_fts, 3, ${SNIP}) AS snippet
-         FROM prompts_fts JOIN prompts p ON p.slug = prompts_fts.slug
-         LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version
-        WHERE prompts_fts MATCH ?
+         FROM prompts_fts JOIN prompts p ON p.slug = prompts_fts.slug AND p.org_id = ?
+         LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version AND v.org_id = ?
+        WHERE prompts_fts MATCH ? AND prompts_fts.org_id = ?
           AND p.deleted_at IS NULL
-          AND EXISTS (SELECT 1 FROM prompt_versions pv WHERE pv.slug = p.slug AND pv.status = 'published')
-        ORDER BY bm25(prompts_fts, 2.0, 5.0, 1.0, 1.0, 1.0) LIMIT ${n}`).bind(match),
+          AND EXISTS (SELECT 1 FROM prompt_versions pv WHERE pv.org_id = ? AND pv.slug = p.slug AND pv.status = 'published')
+        ORDER BY bm25(prompts_fts, 2.0, 5.0, 1.0, 1.0, 1.0) LIMIT ${n}`, ctx.orgId, ctx.orgId, match, ctx.orgId, ctx.orgId),
       map: (r) => ({ type: "prompt", id: str(r.id) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.description)), status: str(r.status), by: str(r.by), at: str(r.at) }) });
   }
 
@@ -175,14 +176,14 @@ export async function quickSearch(db: DB, q: string, viewer: string, opts: Quick
     const hay = `(h.body || ' ' || COALESCE(h.prompt_title, '') || ' ' || COALESCE(json_extract(h.context, '$.task'), '')
                   || ' ' || COALESCE(json_extract(h.context, '$.repo'), '') || ' ' || COALESCE(json_extract(h.context, '$.branch'), ''))`;
     const likes = toks.map(() => `${hay} LIKE ? ESCAPE '\\'`).join(" AND ");
-    plan.push({ type: "handoff", stmt: db.prepare(
+    plan.push({ type: "handoff", stmt: stmt(ctx,
       `SELECT h.id, h.sender, h.recipient, h.status, h.body, h.created_at AS at, json_extract(h.context, '$.task') AS task
          FROM handoffs h
-        WHERE h.status IN ('pending', 'claimed')
+        WHERE h.org_id = ? AND h.status IN ('pending', 'claimed')
           AND (h.recipient = ? COLLATE NOCASE OR h.sender = ? COLLATE NOCASE OR h.recipient = 'anyone')
           AND ((${likes})${id !== null ? " OR h.id = ?" : ""})
-        ORDER BY (h.status = 'pending') DESC, h.created_at DESC LIMIT ${n}`)
-      .bind(viewer, viewer, ...toks.map((t) => `%${likeEsc(t)}%`), ...(id !== null ? [id] : [])),
+        ORDER BY (h.status = 'pending') DESC, h.created_at DESC LIMIT ${n}`,
+      ctx.orgId, viewer, viewer, ...toks.map((t) => `%${likeEsc(t)}%`), ...(id !== null ? [id] : [])),
       map: (r) => {
         const to = str(r.recipient) ?? "";
         const task = oneLine(str(r.task), 100);
@@ -197,25 +198,26 @@ export async function quickSearch(db: DB, q: string, viewer: string, opts: Quick
   if (want.has("person")) {
     // The whole query (an @ dropped) as a prefix of the handle, the name, or any word of the name.
     const whole = likeEsc(trimmed.replace(/^@/, "").replace(/\s+/g, " "));
-    plan.push({ type: "person", stmt: db.prepare(
+    plan.push({ type: "person", stmt: stmt(ctx,
       `SELECT handle, name, color, avatar_url, avatar_sha, role FROM persons
         WHERE handle NOT IN (${RESERVED_HANDLES.map(() => "?").join(", ")})
+          AND EXISTS (SELECT 1 FROM memberships m WHERE m.org_id = ? AND m.user_id = persons.handle COLLATE NOCASE)
           AND (handle LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\')
-        ORDER BY (handle LIKE ? ESCAPE '\\') DESC, handle COLLATE NOCASE LIMIT ${n}`)
-      .bind(...RESERVED_HANDLES, `${whole}%`, `${whole}%`, `% ${whole}%`, `${whole}%`),
+        ORDER BY (handle LIKE ? ESCAPE '\\') DESC, handle COLLATE NOCASE LIMIT ${n}`,
+      ...RESERVED_HANDLES, ctx.orgId, `${whole}%`, `${whole}%`, `% ${whole}%`, `${whole}%`),
       map: (r) => ({ type: "person", id: str(r.handle) ?? "", title: str(r.name) || (str(r.handle) ?? ""), snippet: str(r.role), status: null, by: null, at: null, color: str(r.color), avatar_url: avatarSrc({ avatar_sha: str(r.avatar_sha), avatar_url: str(r.avatar_url) }) }) });
   }
 
   if (want.has("feed")) {
-    plan.push({ type: "feed", stmt: db.prepare(
+    plan.push({ type: "feed", stmt: stmt(ctx,
       `SELECT f.id, f.summary AS title, f.brief, f.author AS by, f.created_at AS at, snippet(feed_fts, 2, ${SNIP}) AS snippet
-         FROM feed_fts JOIN feed f ON f.id = CAST(feed_fts.feed_id AS INTEGER)
-        WHERE feed_fts MATCH ? ORDER BY bm25(feed_fts, 1.0, 5.0, 1.0) LIMIT ${n}`).bind(match),
+         FROM feed_fts JOIN feed f ON f.id = CAST(feed_fts.feed_id AS INTEGER) AND f.org_id = ?
+        WHERE feed_fts MATCH ? AND feed_fts.org_id = ? ORDER BY bm25(feed_fts, 1.0, 5.0, 1.0) LIMIT ${n}`, ctx.orgId, match, ctx.orgId),
       map: (r) => ({ type: "feed", id: String(r.id), title: str(r.title) ?? "", snippet: oneLine(str(r.brief)) ?? oneLine(str(r.snippet)), status: null, by: str(r.by), at: str(r.at) }) });
   }
 
   if (!plan.length) return out;
-  const results = await db.batch<Row>(plan.map((p) => p.stmt));
+  const results = await batch<Row>(ctx, plan.map((p) => p.stmt));
 
   const byType = new Map<QuickType, QuickHit[]>();
   plan.forEach((p, i) => {

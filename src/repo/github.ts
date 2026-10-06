@@ -3,6 +3,7 @@
 import type { DB } from "../db";
 import { fanOut, first, run } from "../db";
 import { ingestRepoEvent } from "../consumer";
+import { legacyCtx } from "../data/legacy-bridge";
 import { putMetric, putSnapshot } from "./store";
 import { untitledFailedRuns } from "./reads";
 import type { RepoEnvConfig } from "./config";
@@ -202,7 +203,7 @@ export async function reconcileRepo(db: DB, opts: GhOpts, envs: RepoEnvConfig[],
    *  backfill overlap drops as `unchanged` on the UNIQUE semantic key. */
   const take = async (events: RepoEvent[]): Promise<void> => {
     for (const ev of events) {
-      const res = await ingestRepoEvent(db, ev);
+      const res = await ingestRepoEvent(legacyCtx(db), ev);
       if (res.outcome === "written") out.written++; else out.unchanged++;
     }
   };

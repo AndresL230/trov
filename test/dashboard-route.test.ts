@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
@@ -73,14 +74,14 @@ describe("GET /me/dashboard (session-gated)", () => {
   it("returns the two-list My Work projection for the principal", async () => {
     const now = new Date().toISOString();
     const pr = mergedPrEvent(1, "AndresL230", now);
-    await ingestEvent(env.DB, pr, "github-webhook");
-    await storePrSummary(env.DB, null, {
+    await ingestEvent(systemCtx(), platformCtx(), pr, "github-webhook");
+    await storePrSummary(systemCtx(), null, {
       semantic_key: pr.semantic_key,
       pr_number: 1,
       title: "PR 1",
       body: "some body",
     });
-    await ingestEvent(env.DB, openIssueEvent(7, "AndresL230", now), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), openIssueEvent(7, "AndresL230", now), "github-webhook");
 
     const res = await app.request("/me/dashboard", { headers: { cookie: await cookieFor("AndresL230") } }, env);
     expect(res.status).toBe(200);

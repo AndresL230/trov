@@ -131,19 +131,19 @@ app.post("/ingest", async (c) => {
   }
   // SEAM: a Cloudflare Queue producer.send({ payload, principal }) would slot in here.
   // recordBatch = consume() + the post-batch artifact_links step, identical to MCP record_session.
-  const result = await recordBatch(legacyDb(c.var.ctx), parsed.data, c.get("principal"));
+  const result = await recordBatch(c.var.ctx, parsed.data, c.get("principal"));
   return c.json({ ok: true, result });
 });
 
 app.get("/docs", async (c) => {
   // `?fields=meta` drops the bodies (and ignores `section`) — a list-only read.
-  if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(legacyDb(c.var.ctx)) });
-  const docs = await list_docs(legacyDb(c.var.ctx), c.req.query("section"));
+  if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(c.var.ctx) });
+  const docs = await list_docs(c.var.ctx, c.req.query("section"));
   return c.json({ docs });
 });
 
 app.get("/doc/:slug", async (c) => {
-  const found = await get_doc(legacyDb(c.var.ctx), c.req.param("slug"));
+  const found = await get_doc(c.var.ctx, c.req.param("slug"));
   if (!found) return c.json({ error: "not found" }, 404);
   return c.json(found);
 });
@@ -151,7 +151,7 @@ app.get("/doc/:slug", async (c) => {
 app.get("/feed", async (c) => {
   const tags = c.req.query("tags");
   const limit = c.req.query("limit");
-  const feed = await get_feed(legacyDb(c.var.ctx), {
+  const feed = await get_feed(c.var.ctx, {
     author: c.req.query("author"),
     tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
     since: c.req.query("since"),
@@ -172,7 +172,7 @@ app.get("/feed/stats", async (c) => {
   const tz = tzRaw === undefined ? 0 : /^-?\d{1,4}$/.test(tzRaw) ? Number(tzRaw) : NaN;
   if (!isFeedStatsTz(tz)) return c.json({ error: "tz must be whole minutes east of UTC, within ±840" }, 400);
   try {
-    return c.json(await feedStats(legacyDb(c.var.ctx), { days, tzOffsetMin: tz }));
+    return c.json(await feedStats(c.var.ctx, { days, tzOffsetMin: tz }));
   } catch (e) {
     console.error("feed stats failed", e instanceof Error ? e.message : String(e));
     return c.json({ error: "Couldn't read the feed stats" }, 503);
@@ -189,7 +189,7 @@ app.get("/search", async (c) => {
   const spaceRaw = c.req.query("space");
   const space = spaceRaw === "technical" || spaceRaw === "product" ? spaceRaw : undefined;
   const limit = c.req.query("limit");
-  const result = await query(legacyDb(c.var.ctx), {
+  const result = await query(c.var.ctx, {
     q: c.req.query("q") ?? "",
     types: types && types.length ? types : undefined,
     section: c.req.query("section"),
@@ -213,7 +213,7 @@ app.get("/search/quick", async (c) => {
   const q = c.req.query("q") ?? "";
   c.header("cache-control", "private, no-store");
   try {
-    const result = await quickSearch(legacyDb(c.var.ctx), q, c.get("principal").handle, {
+    const result = await quickSearch(c.var.ctx, q, c.get("principal").handle, {
       limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
       types,
     });
@@ -226,9 +226,9 @@ app.get("/search/quick", async (c) => {
 
 // SEAM: POST /ask — retrieve via query(), synthesize a grounded, slug-citing answer. Out of scope.
 
-app.get("/needs-triage", async (c) => c.json({ items: await list_needs_triage(legacyDb(c.var.ctx)) }));
+app.get("/needs-triage", async (c) => c.json({ items: await list_needs_triage(c.var.ctx) }));
 
-app.get("/adrs", async (c) => c.json({ adrs: await list_adrs(legacyDb(c.var.ctx), c.req.query("status")) }));
+app.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.var.ctx, c.req.query("status")) }));
 
 // ── Review group (session-cookie only, NEVER MCP): Proposals (staged doc
 // versions) + Decisions (ADR drafts) — GET /proposals, GET /adrs, and their
@@ -237,7 +237,7 @@ app.get("/adrs", async (c) => c.json({ adrs: await list_adrs(legacyDb(c.var.ctx)
 // The Proposals queue (Phase 3): staged doc versions newer than their live doc,
 // not rejected, server-joined with both bodies + reconciler metadata. Kills the
 // old web N+1 (audit G9) and is the data source Phase 4's detail pane renders.
-app.get("/proposals", async (c) => c.json({ proposals: await list_proposals(legacyDb(c.var.ctx)) }));
+app.get("/proposals", async (c) => c.json({ proposals: await list_proposals(c.var.ctx) }));
 
 // ── Handoffs + Prompt Library (session-cookie; the MCP tools are the agent side) ──
 // A handoff is an addressed message, not knowledge: its writers are direct (NOT
@@ -371,15 +371,15 @@ app.post("/api/docs/propose", async (c) => {
   if (!isSection(d.section)) return c.json({ error: `unknown section: ${d.section}` }, 400);
   const slug = d.slug ?? d.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
   if (!slug) return c.json({ error: "title has no usable slug" }, 400);
-  if (await first(legacyDb(c.var.ctx), `SELECT 1 FROM docs WHERE slug = ?`, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
+  if (await get_doc(c.var.ctx, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
   const result = await ingestDocProposal(
-    legacyDb(c.var.ctx),
+    c.var.ctx,
     { slug, section: d.section, space: d.space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high" },
     c.get("principal").handle,
   );
   if (result.outcome === "refused") return c.json({ error: result.reason }, 400);
   if (result.outcome !== "written") return c.json({ error: result.outcome === "triaged" ? result.reason : "nothing to stage" }, 409);
-  const proposal = (await list_proposals(legacyDb(c.var.ctx))).find((p) => p.slug === slug && p.version === result.version) ?? null;
+  const proposal = (await list_proposals(c.var.ctx)).find((p) => p.slug === slug && p.version === result.version) ?? null;
   return c.json({ ok: true, proposal });
 });
 
@@ -389,7 +389,7 @@ app.post("/doc/:slug/promote", async (c) => {
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
   try {
-    const res = await promote_doc(legacyDb(c.var.ctx), c.req.param("slug"), version, c.get("principal").handle);
+    const res = await promote_doc(c.var.ctx, c.req.param("slug"), version, c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -403,7 +403,7 @@ app.post("/doc/:slug/reject", async (c) => {
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
   try {
-    const res = await reject_doc_version(legacyDb(c.var.ctx), c.req.param("slug"), version);
+    const res = await reject_doc_version(c.var.ctx, c.req.param("slug"), version);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -415,7 +415,7 @@ app.post("/adr/:id/ratify", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const res = await ratify_adr(legacyDb(c.var.ctx), id);
+    const res = await ratify_adr(c.var.ctx, id);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -428,7 +428,7 @@ app.post("/adr/:id/reject", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const res = await reject_adr(legacyDb(c.var.ctx), id);
+    const res = await reject_adr(c.var.ctx, id);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -441,7 +441,7 @@ app.post("/needs-triage/:id/discard", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const res = await resolve_triage(legacyDb(c.var.ctx), id, c.get("principal").handle, "discarded");
+    const res = await resolve_triage(c.var.ctx, id, c.get("principal").handle, "discarded");
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -458,7 +458,7 @@ app.post("/needs-triage/:id/assign", async (c) => {
     type?: AssignType; section?: string; space?: "technical" | "product"; tags?: string[];
   } | null;
   try {
-    const res = await assign_triage(legacyDb(c.var.ctx), id, c.get("principal").handle, {
+    const res = await assign_triage(c.var.ctx, id, c.get("principal").handle, {
       type: body?.type,
       section: body?.section,
       space: body?.space,
@@ -477,7 +477,7 @@ app.post("/needs-triage/:id/assign", async (c) => {
 // pulled from `events` at read time — activity is never copied onto the task —
 // plus the discarded logins Undo can still restore.
 app.get("/identity-tasks", async (c) =>
-  c.json({ tasks: await list_identity_tasks(legacyDb(c.var.ctx)), discarded: await list_discarded_identities(legacyDb(c.var.ctx)) }));
+  c.json({ tasks: await list_identity_tasks(c.var.ctx), discarded: await list_discarded_identities(c.var.ctx) }));
 
 // Human placement (session-gated): link a login to an EXISTING person (by
 // handle) as a github identity (a direct authored write, not a gate re-run),
@@ -488,7 +488,7 @@ app.post("/identity-tasks/:login/map", async (c) => {
   const person = typeof body?.person === "string" ? body.person.trim() : "";
   if (!person) return c.json({ error: "person (non-empty string) required" }, 400);
   try {
-    const res = await map_identity(legacyDb(c.var.ctx), c.req.param("login"), person, c.get("principal").handle);
+    const res = await map_identity(c.var.ctx, c.var.p, c.req.param("login"), person, c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -505,7 +505,7 @@ const identityFail = (c: Context<AppEnv>, e: unknown) =>
     : c.json({ error: "temporarily unavailable" }, 503);
 app.post("/identity-tasks/:login/discard", async (c) => {
   try {
-    const res = await discard_identity_task(legacyDb(c.var.ctx), c.req.param("login"), c.get("principal").handle);
+    const res = await discard_identity_task(c.var.ctx, c.req.param("login"), c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return identityFail(c, e);
@@ -513,7 +513,7 @@ app.post("/identity-tasks/:login/discard", async (c) => {
 });
 app.post("/identity-tasks/:login/restore", async (c) => {
   try {
-    const res = await restore_identity_task(legacyDb(c.var.ctx), c.req.param("login"));
+    const res = await restore_identity_task(c.var.ctx, c.var.p, c.req.param("login"));
     return c.json({ ok: true, ...res });
   } catch (e) {
     return identityFail(c, e);
@@ -733,7 +733,7 @@ const ticketId = (c: Context<AppEnv>): number | null => {
 
 /** Every write answers with the freshly re-read detail DTO, so one round-trip repaints. */
 const ticketDetailResponse = async (c: Context<AppEnv>, id: number): Promise<Response> => {
-  const ticket = await get_ticket(legacyDb(c.var.ctx), id);
+  const ticket = await get_ticket(c.var.ctx, id);
   if (!ticket) return c.json({ error: "not found" }, 404);
   return c.json({ ok: true, ticket });
 };
@@ -769,7 +769,7 @@ app.get("/tickets", async (c) => {
     category = parsed.data;
   }
 
-  const tickets = await list_tickets(legacyDb(c.var.ctx), {
+  const tickets = await list_tickets(c.var.ctx, {
     seg: seg.data,
     assignee: assignee.data,
     category,
@@ -780,12 +780,12 @@ app.get("/tickets", async (c) => {
 
 // REGISTERED BEFORE /tickets/:id ON PURPOSE: Hono matches in registration order,
 // so a later ':id' route would otherwise swallow the literal '/tickets/badge'.
-app.get("/tickets/badge", async (c) => c.json({ count: await ticket_badge(legacyDb(c.var.ctx)) }));
+app.get("/tickets/badge", async (c) => c.json({ count: await ticket_badge(c.var.ctx) }));
 
 app.get("/tickets/:id", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
-  const ticket = await get_ticket(legacyDb(c.var.ctx), id);
+  const ticket = await get_ticket(c.var.ctx, id);
   if (!ticket) return c.json({ error: "not found" }, 404);
   return c.json(ticket);
 });

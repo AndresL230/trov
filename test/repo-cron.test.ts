@@ -10,6 +10,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import wranglerToml from "../wrangler.toml?raw";
 import { all, run, nowIso } from "../src/db";
 import { ingestRepoEvent } from "../src/consumer";
@@ -46,7 +47,7 @@ async function seedSprint(): Promise<void> {
 }
 
 const base = { raw: "{}", provenance: "webhook" as const };
-const put = async (rows: RepoEvent[]) => { for (const r of rows) await ingestRepoEvent(env.DB, r); };
+const put = async (rows: RepoEvent[]) => { for (const r of rows) await ingestRepoEvent(systemCtx(), r); };
 const deploy = (id: number, state: string, mins: number): RepoEvent =>
   ({ ...base, semantic_key: `gh:deploy:${id}:${state}`, kind: "deploy", number: id, env: "staging", part: "backend", sha: "abc", state, actor_login: "railway-app[bot]", occurred_at: new Date(T - mins * 60_000).toISOString() });
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { first } from "../src/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { fillFailedJob } from "../src/repo/github";
@@ -11,7 +12,7 @@ const jobs = { jobs: [
 
 describe("fillFailedJob", () => {
   it("records the first failing job and its first failing step", async () => {
-    await ingestRepoEvent(env.DB, { semantic_key: "gh:run:9:1", kind: "run", number: 9, name: "e2e", state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-20T09:20:00Z" });
+    await ingestRepoEvent(systemCtx(), { semantic_key: "gh:run:9:1", kind: "run", number: 9, name: "e2e", state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-20T09:20:00Z" });
     const fetchImpl = (async (u: RequestInfo | URL) => {
       expect(String(u)).toBe("https://api.github.com/repos/o/r/actions/runs/9/jobs?filter=latest&per_page=100");
       return new Response(JSON.stringify(jobs), { status: 200 });
@@ -21,7 +22,7 @@ describe("fillFailedJob", () => {
   });
 
   it("leaves the row alone when GitHub fails", async () => {
-    await ingestRepoEvent(env.DB, { semantic_key: "gh:run:9:1", kind: "run", number: 9, state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-20T09:20:00Z" });
+    await ingestRepoEvent(systemCtx(), { semantic_key: "gh:run:9:1", kind: "run", number: 9, state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-20T09:20:00Z" });
     const fetchImpl = (async () => new Response("no", { status: 502 })) as typeof fetch;
     await expect(fillFailedJob(env.DB, { token: "t", repo: "o/r", fetchImpl }, 9, "gh:run:9:1")).resolves.toBeUndefined();
     expect(await first(env.DB, `SELECT title FROM repo_events WHERE semantic_key = 'gh:run:9:1'`)).toEqual({ title: null });

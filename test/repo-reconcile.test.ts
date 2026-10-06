@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { all, first } from "../src/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { reconcileRepo } from "../src/repo/github";
@@ -160,15 +161,15 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
   // the rows this Sync happened to write — so a first Sync's leftovers drain
   // over later Syncs instead of staying nameless forever.
   it("labels a failed run left untitled by an earlier Sync, even though this Sync writes nothing new", async () => {
-    await ingestRepoEvent(env.DB, { semantic_key: "gh:run:77:1", kind: "run", number: 77, name: "CI", state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-19T09:00:00Z" });
+    await ingestRepoEvent(systemCtx(), { semantic_key: "gh:run:77:1", kind: "run", number: 77, name: "CI", state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-19T09:00:00Z" });
     const gh = fakeGithub({ "/jobs": { jobs: [{ name: "e2e", conclusion: "failure", steps: [{ name: "run suite", conclusion: "failure" }] }] } });
     await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(await first(env.DB, `SELECT title FROM repo_events WHERE semantic_key = 'gh:run:77:1'`)).toEqual({ title: "e2e · run suite" });
   });
 
   it("never looks up a run outside the last 7 days, or one that already has a title", async () => {
-    await ingestRepoEvent(env.DB, { semantic_key: "gh:run:70:1", kind: "run", number: 70, state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-01T09:00:00Z" });
-    await ingestRepoEvent(env.DB, { semantic_key: "gh:run:71:1", kind: "run", number: 71, state: "failure", title: "e2e", raw: "{}", provenance: "webhook", occurred_at: "2026-09-19T09:00:00Z" });
+    await ingestRepoEvent(systemCtx(), { semantic_key: "gh:run:70:1", kind: "run", number: 70, state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-01T09:00:00Z" });
+    await ingestRepoEvent(systemCtx(), { semantic_key: "gh:run:71:1", kind: "run", number: 71, state: "failure", title: "e2e", raw: "{}", provenance: "webhook", occurred_at: "2026-09-19T09:00:00Z" });
     const gh = fakeGithub({});
     await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(gh.calls.filter((c) => c.includes("/jobs")).length).toBe(0);

@@ -4,6 +4,8 @@
 // humans), the per-group limit, and a short query answering without touching D1.
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
+import { ORG_A, systemCtx } from "./helpers/tenant";
+import type { Env } from "../src/env";
 import { app } from "../src/routes";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { propose_doc_update, promote_doc, append_feed, stage_adr, ratify_adr } from "../src/tools/writes";
@@ -37,8 +39,8 @@ async function publishedText(cookie: string, o: Record<string, unknown>): Promis
 }
 
 async function liveDoc(slug: string, title: string, body: string): Promise<void> {
-  await propose_doc_update(env.DB, { slug, section: "reference", title, body, change_summary: "s", confidence: "high" }, "agent");
-  await promote_doc(env.DB, slug, 1, "agent");
+  await propose_doc_update(systemCtx(), { slug, section: "reference", title, body, change_summary: "s", confidence: "high" }, "agent");
+  await promote_doc(systemCtx(), slug, 1, "agent");
 }
 
 describe("GET /search/quick — every type", () => {
@@ -46,13 +48,13 @@ describe("GET /search/quick — every type", () => {
     await seedPerson("zebrafan", { name: "Zebra Person" });
     const tid = await create_ticket(env.DB, { title: "Zebra crossing is broken", body: "", category: "bug", priority: "normal", assignees: [] }, ME);
     await liveDoc("zebra-doc", "Zebra runbook", "how the zebra pipeline deploys");
-    const adr = await stage_adr(env.DB, { title: "Adopt zebra stripes", context: "c", decision: "use zebra", rationale: "r", confidence: "high" }, "agent");
-    await ratify_adr(env.DB, adr);
+    const adr = await stage_adr(systemCtx(), { title: "Adopt zebra stripes", context: "c", decision: "use zebra", rationale: "r", confidence: "high" }, "agent");
+    await ratify_adr(systemCtx(), adr);
     const sp = await create_sprint(env.DB, { label: "Zebra sprint", urgency: "normal" }, ME);
     await publishedText(await cookieFor(ME), { title: "Zebra diagram", content: "# zebra" });
     await savePrompt(env.DB, ME, { slug: "zebra-review", title: "Zebra review", body: "Review the zebra", status: "published", description: "Checks stripes" }, "human");
     const { handoff } = await createHandoff(env.DB, OTHER, { recipient: ME, body: "Finish the zebra migration" });
-    await append_feed(env.DB, { author: ME, summary: "Shipped the zebra importer", brief: "Imports zebras now." });
+    await append_feed(systemCtx(), { author: ME, summary: "Shipped the zebra importer", brief: "Imports zebras now." });
 
     const r = await quick("zebra");
     expect(ids(r, "ticket")).toEqual([String(tid)]);
@@ -119,8 +121,8 @@ describe("GET /search/quick — visibility", () => {
 
   it("a draft artifact, an unpromoted doc and a draft decision are withheld (live-only, like /search)", async () => {
     await createText(await cookieFor(ME), { title: "Walrus draft", content: "walrus" }); // v1 = draft
-    await propose_doc_update(env.DB, { slug: "walrus-doc", section: "reference", title: "Walrus doc", body: "walrus", change_summary: "s", confidence: "high" }, "agent");
-    await stage_adr(env.DB, { title: "Walrus decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await propose_doc_update(systemCtx(), { slug: "walrus-doc", section: "reference", title: "Walrus doc", body: "walrus", change_summary: "s", confidence: "high" }, "agent");
+    await stage_adr(systemCtx(), { title: "Walrus decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     const r = await quick("walrus");
     expect(ids(r, "artifact")).toEqual([]);
     expect(ids(r, "doc")).toEqual([]);
@@ -160,7 +162,7 @@ describe("GET /search/quick — limits and short queries", () => {
   });
 
   it("an empty, 1-character or symbols-only query answers with no groups and never touches D1", async () => {
-    const noDb = new Proxy({}, { get() { throw new Error("D1 touched"); } }) as unknown as D1Database;
+    const noDb = systemCtx(ORG_A, "system", { get DB(): D1Database { throw new Error("D1 touched"); } } as unknown as Env);
     for (const q of ["", " ", "a", "  z ", "!!", "@@"]) {
       expect(await quickSearch(noDb, q, ME)).toEqual({ q: q.trim(), groups: [] });
     }

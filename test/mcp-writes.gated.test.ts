@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { ingestFeedEntry, ingestDocProposal } from "../src/consumer";
 import { get_feed } from "../src/tools/reads";
 import { all } from "../src/db";
@@ -15,13 +16,13 @@ const AUTHOR = "real-user";
 describe("gate functions (consumer.ts) enforce the vocabulary/confidence gate", () => {
   it("ingestFeedEntry: an in-vocab tag is written to the feed, nothing triaged", async () => {
     const r = await ingestFeedEntry(
-      env.DB,
+      systemCtx(),
       { summary: "ok", body: "b", tags: ["auth"], artifacts: { prs: [], commits: [], issues: [] } },
       AUTHOR
     );
     expect(r.outcome).toBe("written");
 
-    const feed = await get_feed(env.DB, {});
+    const feed = await get_feed(systemCtx(), {});
     expect(feed.length).toBe(1);
     expect(feed[0].author).toBe(AUTHOR);
 
@@ -31,13 +32,13 @@ describe("gate functions (consumer.ts) enforce the vocabulary/confidence gate", 
 
   it("ingestFeedEntry: an out-of-vocab tag routes the whole entry to needs_triage and writes no feed row", async () => {
     const r = await ingestFeedEntry(
-      env.DB,
+      systemCtx(),
       { summary: "bad", body: "b", tags: ["not-a-real-tag"], artifacts: { prs: [], commits: [], issues: [] } },
       AUTHOR
     );
     expect(r.outcome).toBe("triaged");
 
-    const feed = await get_feed(env.DB, {});
+    const feed = await get_feed(systemCtx(), {});
     expect(feed.length).toBe(0);
 
     const triage = await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`);
@@ -48,7 +49,7 @@ describe("gate functions (consumer.ts) enforce the vocabulary/confidence gate", 
 
   it("ingestDocProposal: in-vocab high-confidence stages a version (non-destructive), nothing triaged", async () => {
     const r = await ingestDocProposal(
-      env.DB,
+      systemCtx(),
       { slug: "architecture", section: "reference", title: "Architecture", body: "# v1", change_summary: "s", confidence: "high" },
       AUTHOR
     );
@@ -67,7 +68,7 @@ describe("gate functions (consumer.ts) enforce the vocabulary/confidence gate", 
 
   it("ingestDocProposal: an out-of-vocab section routes to triage and writes no doc/version", async () => {
     const r = await ingestDocProposal(
-      env.DB,
+      systemCtx(),
       { slug: "bad-section", section: "made-up", body: "x", change_summary: "s", confidence: "high" },
       AUTHOR
     );
@@ -85,7 +86,7 @@ describe("gate functions (consumer.ts) enforce the vocabulary/confidence gate", 
 
   it("ingestDocProposal: a low-confidence proposal routes to triage and writes no doc/version", async () => {
     const r = await ingestDocProposal(
-      env.DB,
+      systemCtx(),
       { slug: "low-conf", section: "reference", body: "x", change_summary: "s", confidence: "low" },
       AUTHOR
     );

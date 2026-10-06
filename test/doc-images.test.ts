@@ -20,7 +20,7 @@ import { recordBatch } from "../src/consumer";
 import { scanDocImages, docImageKey } from "@shared/doc-images";
 import { IngestPayload } from "@shared/contract";
 import { seedPerson, cookieFor } from "./helpers/persons";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const ME = "img-author";
 const ORIGIN = "https://trov.test"; // PUBLIC_ORIGIN in vitest.config.ts
@@ -231,18 +231,18 @@ describe("the doc gate's image rule", () => {
       feed_entries: [], adr_drafts: [], needs_triage: [],
       doc_proposals: [doc("batched", `![shot](/img/${sha})`), doc("plain", "no images")],
     });
-    const first1 = await recordBatch(env.DB, payload, { handle: ME });
+    const first1 = await recordBatch(systemCtx(), payload, { handle: ME });
     expect(first1.docs).toEqual({ staged: 1, unchanged: 0, triaged: 0 });
     expect(first1.refused).toEqual([{ slug: "batched", reason: expect.stringContaining(`/img/${sha}`) }]);
 
     await upload(bytes);
-    const again = await recordBatch(env.DB, payload, { handle: ME });
+    const again = await recordBatch(systemCtx(), payload, { handle: ME });
     expect(again.docs).toEqual({ staged: 1, unchanged: 1, triaged: 0 }); // "plain" replays; "batched" stages now
     expect(again.refused).toBeUndefined();
   });
 
   it("a batch with no images reads exactly as before (no `refused` key)", async () => {
-    const r = await recordBatch(env.DB, IngestPayload.parse({
+    const r = await recordBatch(systemCtx(), IngestPayload.parse({
       session: { id: crypto.randomUUID(), author: ME, ended_at: new Date().toISOString(), skill_version: "test" },
       doc_proposals: [doc("text-only", "hello")],
     }), { handle: ME });
@@ -251,8 +251,8 @@ describe("the doc gate's image rule", () => {
 
   it("placing a triage item as a doc re-runs the rule and refuses a dangling image", async () => {
     await seedPerson(ME);
-    const id = await route_triage(env.DB, { raw: doc("from-triage", `![x](/img/${"d".repeat(64)})`), reason: "test" });
-    await expect(assign_triage(env.DB, id, ME, { type: "doc", section: "reference" })).rejects.toThrow(/could not place doc: .*not uploaded yet/);
+    const id = await route_triage(systemCtx(), { raw: doc("from-triage", `![x](/img/${"d".repeat(64)})`), reason: "test" });
+    await expect(assign_triage(systemCtx(), id, ME, { type: "doc", section: "reference" })).rejects.toThrow(/could not place doc: .*not uploaded yet/);
   });
 
   it("a person's New doc (POST /api/docs/propose) gets the refusal as a 400", async () => {

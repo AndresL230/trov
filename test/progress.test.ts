@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 import { run, all, first, nowIso } from "../src/db";
 import type { SprintProgressRow } from "@shared/rows";
 import type { Env } from "../src/env";
@@ -109,8 +110,8 @@ describe("applyEventProgress — array ref", () => {
 
     const [event7] = eventsFromDelivery("issues", issuePayload(7, "closed", "closed"));
     const [event8] = eventsFromDelivery("issues", issuePayload(8, "open", "opened"));
-    await ingestEvent(env.DB, event7, "github-webhook");
-    await ingestEvent(env.DB, event8, "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), event7, "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), event8, "github-webhook");
 
     await applyEventProgress(env.DB, issuePayload(7, "closed", "closed"));
 

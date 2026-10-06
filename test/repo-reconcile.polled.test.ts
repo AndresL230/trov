@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { all } from "../src/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { reconcileRepo } from "../src/repo/github";
@@ -282,7 +283,7 @@ describe("reconcileRepo — the reviews arm", () => {
       ? (d.contributors as { data: { person: { login: string }; pushes: number; reviews: number | null }[] }).data.map((r) => [r.person.login, r.reviews])
       : d.contributors.status;
   };
-  const aPush = (login: string) => ingestRepoEvent(env.DB, {
+  const aPush = (login: string) => ingestRepoEvent(systemCtx(), {
     semantic_key: `gh:push:${login}`, kind: "push", ref: "main", sha: `sha-${login}`, actor_login: login, count: 1, title: "work",
     raw: "{}", provenance: "webhook", occurred_at: "2026-09-20T08:00:00Z",
   });

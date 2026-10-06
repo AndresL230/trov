@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { all } from "../src/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { repoEnvironments } from "../src/repo/config";
@@ -13,15 +14,15 @@ const push = (over: Partial<RepoEvent> = {}): RepoEvent => ({
 
 describe("ingestRepoEvent — the repo capture gate", () => {
   it("writes once and drops a redelivery as unchanged", async () => {
-    expect((await ingestRepoEvent(env.DB, push())).outcome).toBe("written");
-    expect((await ingestRepoEvent(env.DB, push())).outcome).toBe("unchanged");
+    expect((await ingestRepoEvent(systemCtx(), push())).outcome).toBe("written");
+    expect((await ingestRepoEvent(systemCtx(), push())).outcome).toBe("unchanged");
     const rows = await all<RepoEventRow>(env.DB, `SELECT * FROM repo_events`);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ kind: "push", ref: "main", sha: "abc1234", count: 2, env: null, part: null });
   });
 
   it("never raises an identity task — bots and CI are not people", async () => {
-    await ingestRepoEvent(env.DB, push({ actor_login: "railway-app[bot]" }));
+    await ingestRepoEvent(systemCtx(), push({ actor_login: "railway-app[bot]" }));
     expect(await all(env.DB, `SELECT * FROM identity_tasks`)).toHaveLength(0);
   });
 });
@@ -206,8 +207,8 @@ describe("snapshots and metrics", () => {
     const old = "2026-07-01T00:00:00Z";
     await putMetric(env.DB, { metric: "health_ms", env: "staging", part: "backend", value: 1, at: old });
     await putMetric(env.DB, { metric: "coverage", env: "", part: "", value: 78.4, at: old });
-    await ingestRepoEvent(env.DB, push({ semantic_key: "k1", kind: "check", occurred_at: old }));
-    await ingestRepoEvent(env.DB, push({ semantic_key: "k2", kind: "deploy", occurred_at: old }));
+    await ingestRepoEvent(systemCtx(), push({ semantic_key: "k1", kind: "check", occurred_at: old }));
+    await ingestRepoEvent(systemCtx(), push({ semantic_key: "k2", kind: "deploy", occurred_at: old }));
     await pruneRepoCapture(env.DB, now);
     expect((await all<{ metric: string }>(env.DB, `SELECT metric FROM repo_metrics`)).map((r) => r.metric)).toEqual(["coverage"]);
     expect((await all<{ kind: string }>(env.DB, `SELECT kind FROM repo_events`)).map((r) => r.kind)).toEqual(["deploy"]);
@@ -221,8 +222,8 @@ describe("snapshots and metrics", () => {
   it("keeps an old frontend-deploy check row (part='frontend'), prunes a plain CI check (part=null)", async () => {
     const now = Date.parse("2026-09-20T12:00:00Z");
     const old = "2026-07-01T00:00:00Z";
-    await ingestRepoEvent(env.DB, push({ semantic_key: "plain-ci", kind: "check", part: null, occurred_at: old }));
-    await ingestRepoEvent(env.DB, push({ semantic_key: "frontend-deploy", kind: "check", env: "staging", part: "frontend", occurred_at: old }));
+    await ingestRepoEvent(systemCtx(), push({ semantic_key: "plain-ci", kind: "check", part: null, occurred_at: old }));
+    await ingestRepoEvent(systemCtx(), push({ semantic_key: "frontend-deploy", kind: "check", env: "staging", part: "frontend", occurred_at: old }));
     await pruneRepoCapture(env.DB, now);
     const kept = await all<{ semantic_key: string }>(env.DB, `SELECT semantic_key FROM repo_events`);
     expect(kept.map((r) => r.semantic_key)).toEqual(["frontend-deploy"]);

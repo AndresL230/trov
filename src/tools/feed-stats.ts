@@ -5,7 +5,7 @@ import {
   FEED_STATS_MAX_DAYS, FEED_STATS_MIN_DAYS, FEED_STATS_MAX_TZ_MIN, FEED_STATS_TOP_AUTHORS, FEED_STATS_TOP_TAGS,
   type FeedStats,
 } from "@shared/feed-stats";
-import { type DB, all } from "../db";
+import { type TenantContext, all } from "../data/sql";
 
 const DAY_MS = 86_400_000;
 
@@ -37,7 +37,7 @@ export function isFeedStatsTz(n: number): boolean {
   return Number.isInteger(n) && Math.abs(n) <= FEED_STATS_MAX_TZ_MIN;
 }
 
-export async function feedStats(db: DB, opts: FeedStatsOptions): Promise<FeedStats> {
+export async function feedStats(ctx: TenantContext, opts: FeedStatsOptions): Promise<FeedStats> {
   const tz = opts.tzOffsetMin ?? 0;
   if (!isFeedStatsDays(opts.days)) throw new RangeError(`days must be an integer from ${FEED_STATS_MIN_DAYS} to ${FEED_STATS_MAX_DAYS}`);
   if (!isFeedStatsTz(tz)) throw new RangeError("tz out of range");
@@ -46,17 +46,17 @@ export async function feedStats(db: DB, opts: FeedStatsOptions): Promise<FeedSta
   const shift = `${tz >= 0 ? "+" : "-"}${Math.abs(tz)} minutes`;
 
   const [byDayAuthor, byTag] = await Promise.all([
-    all<{ day: string | null; author: string; n: number }>(db,
+    all<{ day: string | null; author: string; n: number }>(ctx,
       `SELECT date(created_at, ?) AS day, author, COUNT(*) AS n
-         FROM feed WHERE created_at >= ? AND created_at < ?
+         FROM feed WHERE org_id = ? AND created_at >= ? AND created_at < ?
         GROUP BY day, author`,
-      shift, since, until),
-    all<{ tag: string; n: number }>(db,
+      shift, ctx.orgId, since, until),
+    all<{ tag: string; n: number }>(ctx,
       `SELECT et.tag AS tag, COUNT(*) AS n
-         FROM feed f JOIN entry_tags et ON et.entry_type = 'feed' AND et.entry_id = CAST(f.id AS TEXT)
-        WHERE f.created_at >= ? AND f.created_at < ?
+         FROM feed f JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'feed' AND et.entry_id = CAST(f.id AS TEXT)
+        WHERE f.org_id = ? AND f.created_at >= ? AND f.created_at < ?
         GROUP BY et.tag ORDER BY n DESC, et.tag ASC LIMIT ${FEED_STATS_TOP_TAGS}`,
-      since, until),
+      ctx.orgId, ctx.orgId, since, until),
   ]);
 
   const perDay = new Map<string, number>(dates.map((d) => [d, 0]));

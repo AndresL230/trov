@@ -6,7 +6,7 @@ import { buildTrovMcpServer } from "../src/mcp";
 import { promote_doc } from "../src/tools/writes";
 import { all, first } from "../src/db";
 import type { DocRow, DocVersionRow, NeedsTriageRow } from "@shared/rows";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const AUTHOR = "agent";
 
@@ -278,7 +278,7 @@ describe("registered MCP propose_doc_update tool — reconciler behaviors", () =
       confidence: "high",
     });
     // Promote it — a human action, never an MCP tool.
-    await promote_doc(env.DB, "base-version-doc", 1, "human");
+    await promote_doc(systemCtx(), "base-version-doc", 1, "human");
 
     // Now current_version = 1. Propose v2 and pass base_version: 1 through the tool.
     const result = await propose({

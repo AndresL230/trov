@@ -12,6 +12,7 @@
 import { z } from "zod";
 import { all, first, run, nowIso, type DB } from "../db";
 import { append_feed } from "./writes";
+import { legacyCtx } from "../data/legacy-bridge";
 import { getPerson } from "../auth/persons";
 import {
   EMPTY_CONTEXT, firstLine,
@@ -138,7 +139,7 @@ export async function createHandoff(
   }
   // The feed shows the handoff happened (who → whom, and its title). Direct
   // writer, no tags: an addressed message is not topic-tagged knowledge.
-  await append_feed(db, {
+  await append_feed(legacyCtx(db), {
     author: sender,
     summary: `${sender} left a handoff for ${recipient === "anyone" ? "anyone" : recipient}: #${id} ${firstLine(input.body)}`.slice(0, 300),
     body: context.task ? `Task: ${context.task}${context.branch ? ` (\`${context.branch}\`)` : ""}` : undefined,

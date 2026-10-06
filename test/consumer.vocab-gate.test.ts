@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { IngestPayload } from "@shared/contract";
 import { consume } from "../src/consumer";
 import { get_feed } from "../src/tools/reads";
@@ -18,11 +19,11 @@ describe("vocabulary gate", () => {
       ],
     });
 
-    const result = await consume(env.DB, payload, { handle: "andres" });
+    const result = await consume(systemCtx(), payload, { handle: "andres" });
     expect(result.feed.written).toBe(1);
     expect(result.feed.triaged).toBe(1);
 
-    const feed = await get_feed(env.DB, {});
+    const feed = await get_feed(systemCtx(), {});
     expect(feed.some((f) => f.summary === "known")).toBe(true);
     expect(feed.some((f) => f.summary === "unknown")).toBe(false);
 
@@ -46,7 +47,7 @@ describe("vocabulary gate", () => {
       needs_triage: [{ raw: "raw blob", reason: "ambiguous section" }],
     });
 
-    const result = await consume(env.DB, payload, { handle: "andres" });
+    const result = await consume(systemCtx(), payload, { handle: "andres" });
     expect(result.docs.staged).toBe(1);
     expect(result.adrs.staged).toBe(1);
     // bad-section + low-conf doc (docs.triaged) + weak adr (adrs.triaged) + explicit

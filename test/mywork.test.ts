@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 import { all, run, nowIso } from "../src/db";
 import { ingestEvent } from "../src/consumer";
 import { storePrSummary, storeIssueSummary, type Summarizer, type PrSummary, type IssueSummary } from "../src/tools/summarize";
@@ -86,9 +87,9 @@ function issueEvent(over: {
 describe("getMyWork — previous activity cap", () => {
   it("returns only the 6 most recent merged/closed PR events, with the stored structured columns joined", async () => {
     for (let n = 1; n <= 7; n++) {
-      await ingestEvent(env.DB, prEvent({ number: n, login: "AndresL230", occurred_at: daysBefore(NOW, 7 - n) }), "github-webhook");
+      await ingestEvent(systemCtx(), platformCtx(), prEvent({ number: n, login: "AndresL230", occurred_at: daysBefore(NOW, 7 - n) }), "github-webhook");
     }
-    await storePrSummary(env.DB, null, { semantic_key: "gh:pr:7:merged", pr_number: 7, title: "PR 7", body: "some body" });
+    await storePrSummary(systemCtx(), null, { semantic_key: "gh:pr:7:merged", pr_number: 7, title: "PR 7", body: "some body" });
 
     const work = await getMyWork(env.DB, "AndresL230");
     expect(work.degraded).toBe(false);
@@ -111,8 +112,8 @@ describe("getMyWork — previous activity cap", () => {
   it("does not surface another person's PR events", async () => {
     const mine = prEvent({ number: 3, login: "AndresL230", occurred_at: daysBefore(NOW, 2) });
     const theirs = prEvent({ number: 4, login: "Jose-Gael-Cruz-Lopez", occurred_at: daysBefore(NOW, 2) });
-    await ingestEvent(env.DB, mine, "github-webhook");
-    await ingestEvent(env.DB, theirs, "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), mine, "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), theirs, "github-webhook");
 
     const work = await getMyWork(env.DB, "AndresL230");
     expect(work.previousActivity.map((p) => p.number)).toEqual([3]);
@@ -130,7 +131,7 @@ describe("getMyWork — todo latest-snapshot semantics", () => {
       title: "[P1] Fix bug",
       labels: ["bug"],
     });
-    await ingestEvent(env.DB, opened, "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), opened, "github-webhook");
 
     let work = await getMyWork(env.DB, "AndresL230");
     expect(work.todo).toHaveLength(1);
@@ -155,7 +156,7 @@ describe("getMyWork — todo latest-snapshot semantics", () => {
       title: "[P1] Fix bug",
       labels: ["bug"],
     });
-    await ingestEvent(env.DB, closed, "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), closed, "github-webhook");
 
     work = await getMyWork(env.DB, "AndresL230");
     expect(work.todo).toHaveLength(0);
@@ -169,7 +170,7 @@ describe("getMyWork — todo latest-snapshot semantics", () => {
       title: "[P1] Fix bug",
       labels: ["bug"],
     });
-    await ingestEvent(env.DB, reopened, "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), reopened, "github-webhook");
 
     work = await getMyWork(env.DB, "AndresL230");
     expect(work.todo).toHaveLength(1);
@@ -181,7 +182,8 @@ describe("getMyWork — todo cap", () => {
   it("returns only the 6 most recently updated open assigned issues, newest first", async () => {
     for (let n = 1; n <= 7; n++) {
       await ingestEvent(
-        env.DB,
+        systemCtx(),
+        platformCtx(),
         issueEvent({
           number: n,
           login: "AndresL230",
@@ -201,7 +203,7 @@ describe("getMyWork — todo cap", () => {
 describe("getMyWork — unmapped login", () => {
   it("returns an empty, non-degraded projection but leaves captured events in place", async () => {
     const ev = prEvent({ number: 9, login: "stranger", occurred_at: daysBefore(NOW, 1) });
-    await ingestEvent(env.DB, ev, "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), ev, "github-webhook");
 
     const work = await getMyWork(env.DB, "stranger");
     expect(work).toEqual({ person: null, previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false });
@@ -229,12 +231,12 @@ describe("getMyWork — todo carries the issue summary", () => {
       state: "open",
       updatedAt: "2026-07-01T10:00:00.000Z",
     });
-    await ingestEvent(env.DB, assigned, "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), assigned, "github-webhook");
 
     let work = await getMyWork(env.DB, "AndresL230");
     expect(work.todo.find((t) => t.number === 8)?.summary).toBeNull();
 
-    await storeIssueSummary(env.DB, null, { issue_number: 8, title: "Issue 8", body: "some body" });
+    await storeIssueSummary(systemCtx(), null, { issue_number: 8, title: "Issue 8", body: "some body" });
     work = await getMyWork(env.DB, "AndresL230");
     expect(work.todo.find((t) => t.number === 8)?.summary).toBe("some body"); // excerpt fallback (no summarizer)
   });
@@ -243,12 +245,12 @@ describe("getMyWork — todo carries the issue summary", () => {
 describe("getMyWork — structured fields", () => {
   it("projects the structured PR summary columns and base.ref into the DTO", async () => {
     await seedPerson("dev", { name: "Dev" });
-    await ingestEvent(env.DB, prEvent({ number: 7, login: "dev", baseRef: "main" }), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent({ number: 7, login: "dev", baseRef: "main" }), "github-webhook");
     const stub: Summarizer<PrSummary> = {
       model: "stub-model",
       summarize: async () => ({ title: "Humanized seven", what: "Did the thing.", why: "It was broken.", impact: "Users can log in." }),
     };
-    await storePrSummary(env.DB, stub, { semantic_key: "gh:pr:7:merged", pr_number: 7, title: "t", body: "b" });
+    await storePrSummary(systemCtx(), stub, { semantic_key: "gh:pr:7:merged", pr_number: 7, title: "t", body: "b" });
 
     const work = await getMyWork(env.DB, "dev");
     expect(work.previousActivity[0]).toMatchObject({
@@ -264,7 +266,8 @@ describe("getMyWork — structured fields", () => {
   it("projects the structured issue summary columns and the SPRINT into the todo", async () => {
     await seedPerson("dev", { name: "Dev" });
     await ingestEvent(
-      env.DB,
+      systemCtx(),
+      platformCtx(),
       issueEvent({ number: 9, login: "dev", action: "assigned", state: "open", updatedAt: NOW, milestone: { number: 3, title: "Reliable event capture", due_on: "2026-07-20T07:00:00Z" } }),
       "github-webhook"
     );
@@ -272,7 +275,7 @@ describe("getMyWork — structured fields", () => {
       model: "stub-model",
       summarize: async () => ({ title: "Humanized nine", summary: "What it is.", next_step: "Do the fix." }),
     };
-    await storeIssueSummary(env.DB, stub, { issue_number: 9, title: "t", body: "b" });
+    await storeIssueSummary(systemCtx(), stub, { issue_number: 9, title: "t", body: "b" });
 
     const work = await getMyWork(env.DB, "dev");
     expect(work.todo[0]).toMatchObject({
@@ -291,7 +294,8 @@ describe("getMyWork — structured fields", () => {
     await run(env.DB, `INSERT INTO sprints (title, target_date, status, github_ref, created_at, created_by) VALUES ('Other sprint', '2026-07-01', 'upcoming', '9', ?, 'dev')`, NOW);
     await run(env.DB, `INSERT INTO sprints (title, target_date, status, github_ref, created_at, created_by) VALUES ('Sprint 12', '2026-07-20', 'in_progress', '3', ?, 'dev')`, NOW);
     await ingestEvent(
-      env.DB,
+      systemCtx(),
+      platformCtx(),
       issueEvent({ number: 11, login: "dev", action: "assigned", state: "open", updatedAt: NOW, milestone: { number: 3, title: "Reliable event capture", due_on: "2026-07-20T07:00:00Z" } }),
       "github-webhook"
     );
@@ -307,7 +311,8 @@ describe("getMyWork — structured fields", () => {
     // `[3]` is a list of ISSUE numbers, not a group number: it must not claim 3.
     await run(env.DB, `INSERT INTO sprints (title, target_date, status, github_ref, created_at, created_by) VALUES ('Issue list sprint', '2026-07-20', 'in_progress', '[3]', ?, 'dev')`, NOW);
     await ingestEvent(
-      env.DB,
+      systemCtx(),
+      platformCtx(),
       issueEvent({ number: 12, login: "dev", action: "assigned", state: "open", updatedAt: NOW, milestone: { number: 3, title: "Reliable event capture", due_on: null } }),
       "github-webhook"
     );
@@ -318,9 +323,10 @@ describe("getMyWork — structured fields", () => {
 
   it("yields nulls for a legacy raw (no base, GitHub group without a title) and a prose-era summary row", async () => {
     await seedPerson("dev", { name: "Dev" });
-    await ingestEvent(env.DB, prEvent({ number: 8, login: "dev" }), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent({ number: 8, login: "dev" }), "github-webhook");
     await ingestEvent(
-      env.DB,
+      systemCtx(),
+      platformCtx(),
       issueEvent({ number: 10, login: "dev", action: "assigned", state: "open", updatedAt: NOW, milestone: { number: 3 } }),
       "github-webhook"
     );

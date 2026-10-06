@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { run } from "../src/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { getRepoDashboard } from "../src/tools/repo";
@@ -18,7 +19,7 @@ import { ENVS } from "./helpers/repo";
 
 const NOW = Date.parse("2026-09-20T12:00:00Z");
 const at = (minsAgo: number) => new Date(NOW - minsAgo * 60_000).toISOString();
-const put = async (rows: RepoEvent[]) => { for (const r of rows) await ingestRepoEvent(env.DB, r); };
+const put = async (rows: RepoEvent[]) => { for (const r of rows) await ingestRepoEvent(systemCtx(), r); };
 const base = { raw: "{}", provenance: "webhook" as const };
 const deploy = (id: number, state: string, sha: string, mins: number, envKey = "staging"): RepoEvent =>
   ({ ...base, semantic_key: `gh:deploy:${id}:${state}`, kind: "deploy", number: id, env: envKey, part: "backend", sha, state, actor_login: "railway-app[bot]", occurred_at: at(mins) });

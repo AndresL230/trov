@@ -2,6 +2,7 @@ import type { CapturedEvent } from "@shared/contract";
 import type { Env } from "./env";
 import { type DB } from "./db";
 import { legacyDb, legacySystemTenant } from "./data/legacy";
+import { platform, type TenantContext } from "./data/context";
 import { ingestEvent, ingestRepoEvent } from "./consumer";
 import { type Summarizer, type PrSummary, type IssueSummary, geminiPrSummarizer, geminiIssueSummarizer, storePrSummary, storeIssueSummary } from "./tools/summarize";
 import { applyEventProgress } from "./tools/progress";
@@ -268,9 +269,9 @@ export function progressFromIssueEvent(
 // store a capture-time summary. `summarizer` is already resolved by the
 // caller (an explicit `opts.summarizer` — null included — else the env's Gemini one, else null);
 // storePrSummary itself never throws, so a summary failure never fails capture.
-async function summarizePrSeam(db: DB, summarizer: Summarizer<PrSummary> | null, event: CapturedEvent): Promise<void> {
+async function summarizePrSeam(ctx: TenantContext, summarizer: Summarizer<PrSummary> | null, event: CapturedEvent): Promise<void> {
   const parsed = JSON.parse(event.raw) as { pr: { number: number; title: string; body: string | null } };
-  await storePrSummary(db, summarizer, {
+  await storePrSummary(ctx, summarizer, {
     semantic_key: event.semantic_key,
     pr_number: parsed.pr.number,
     title: parsed.pr.title,
@@ -283,10 +284,10 @@ async function summarizePrSeam(db: DB, summarizer: Summarizer<PrSummary> | null,
 // appear in anyone's to-do). Action isn't distinguishable from event_type
 // alone (every issue action is captured as event_type:"issue"), so it's read
 // back off the event's own raw JSON.
-async function summarizeIssueSeam(db: DB, summarizer: Summarizer<IssueSummary> | null, event: CapturedEvent): Promise<void> {
+async function summarizeIssueSeam(ctx: TenantContext, summarizer: Summarizer<IssueSummary> | null, event: CapturedEvent): Promise<void> {
   const parsed = JSON.parse(event.raw) as { action: string; issue: { number: number; title: string; body: string | null } };
   if (parsed.action !== "assigned") return;
-  await storeIssueSummary(db, summarizer, {
+  await storeIssueSummary(ctx, summarizer, {
     issue_number: parsed.issue.number,
     title: parsed.issue.title,
     body: parsed.issue.body ?? "",
@@ -360,7 +361,7 @@ export async function handleGithubWebhook(
   let unchanged = 0;
   if (forWork) {
     for (const ev of eventsFromDelivery(eventName, payload)) {
-      const res = await ingestEvent(legacyDb(ctx), ev, "github-webhook");
+      const res = await ingestEvent(ctx, platform(env, "github-webhook"), ev, "github-webhook");
       if (res.outcome !== "written") { unchanged++; continue; }
       captured++;
       if (ev.event_type === "pr_merged" || ev.event_type === "pr_closed") {
@@ -369,13 +370,13 @@ export async function handleGithubWebhook(
         const summarizer = opts?.summarizer !== undefined
           ? opts.summarizer
           : env.GEMINI_API_KEY ? geminiPrSummarizer(env.GEMINI_API_KEY) : null;
-        await summarizePrSeam(legacyDb(ctx), summarizer, ev);
+        await summarizePrSeam(ctx, summarizer, ev);
       } else if (ev.event_type === "issue") {
         await progressSeam(legacyDb(ctx), payload);
         const issueSummarizer = opts?.issueSummarizer !== undefined
           ? opts.issueSummarizer
           : env.GEMINI_API_KEY ? geminiIssueSummarizer(env.GEMINI_API_KEY) : null;
-        await summarizeIssueSeam(legacyDb(ctx), issueSummarizer, ev);
+        await summarizeIssueSeam(ctx, issueSummarizer, ev);
       }
     }
 
@@ -420,7 +421,7 @@ export async function handleGithubWebhook(
         }
       } else {
         for (const ev of repoEventsFromDelivery(eventName, payload, cfgs)) {
-          const res = await ingestRepoEvent(legacyDb(ctx), ev);
+          const res = await ingestRepoEvent(ctx, ev);
           if (res.outcome !== "written") { repo.unchanged++; continue; }
           repo.captured++;
           if (ev.kind === "run" && (ev.state === "failure" || ev.state === "timed_out") && ev.number && env.GITHUB_SERVICE_TOKEN && env.GITHUB_REPO) {

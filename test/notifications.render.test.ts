@@ -4,6 +4,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 import { all, first, run } from "../src/db";
 import { ingestEvent, ingestDocProposal, ingestAdrDraft } from "../src/consumer";
 import { promote_doc } from "../src/tools/writes";
@@ -70,15 +71,15 @@ describe("my_work renderer", () => {
   const kind = () => getKind("my_work")!;
 
   it("returns null when the user has no merged PRs in the window and no open assigned issues", async () => {
-    await ingestEvent(env.DB, prEvent(1, LOGIN, BEFORE_WINDOW), "github-webhook");
-    await ingestEvent(env.DB, issueEvent(2, LOGIN, "closed", IN_WINDOW), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(1, LOGIN, BEFORE_WINDOW), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), issueEvent(2, LOGIN, "closed", IN_WINDOW), "github-webhook");
     expect(await kind().render(env.DB, LOGIN, WINDOW)).toBeNull();
   });
 
   it("includes a merged PR in the window with its stored structured summary, excluding PRs before the window", async () => {
-    await ingestEvent(env.DB, prEvent(10, LOGIN, IN_WINDOW, "Raw PR title"), "github-webhook");
-    await storePrSummary(env.DB, stubSummarizer({ title: "Humanized ten", what: "Did the thing", why: "Because", impact: "Users win" }), { semantic_key: "gh:pr:10:merged", pr_number: 10, title: "Raw PR title", body: "b" });
-    await ingestEvent(env.DB, prEvent(11, LOGIN, BEFORE_WINDOW, "Old PR"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(10, LOGIN, IN_WINDOW, "Raw PR title"), "github-webhook");
+    await storePrSummary(systemCtx(), stubSummarizer({ title: "Humanized ten", what: "Did the thing", why: "Because", impact: "Users win" }), { semantic_key: "gh:pr:10:merged", pr_number: 10, title: "Raw PR title", body: "b" });
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(11, LOGIN, BEFORE_WINDOW, "Old PR"), "github-webhook");
 
     const before = await tableCounts();
     const s = await kind().render(env.DB, LOGIN, WINDOW);
@@ -95,18 +96,18 @@ describe("my_work renderer", () => {
   });
 
   it("falls back to the raw PR title and a placeholder when the summary is an excerpt-fallback row", async () => {
-    await ingestEvent(env.DB, prEvent(12, LOGIN, IN_WINDOW, "Only raw"), "github-webhook");
-    await storePrSummary(env.DB, null, { semantic_key: "gh:pr:12:merged", pr_number: 12, title: "Only raw", body: "b" });
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(12, LOGIN, IN_WINDOW, "Only raw"), "github-webhook");
+    await storePrSummary(systemCtx(), null, { semantic_key: "gh:pr:12:merged", pr_number: 12, title: "Only raw", body: "b" });
     const s = await kind().render(env.DB, LOGIN, WINDOW);
     expect(s!.html).toContain("Only raw");
     expect(s!.html).toContain("No summary recorded");
   });
 
   it("lists open assigned issues (latest snapshot wins) and omits closed and other people's issues", async () => {
-    await ingestEvent(env.DB, issueEvent(20, LOGIN, "open", BEFORE_WINDOW, "Mine open"), "github-webhook");
-    await ingestEvent(env.DB, issueEvent(21, LOGIN, "open", BEFORE_WINDOW, "Was open"), "github-webhook");
-    await ingestEvent(env.DB, issueEvent(21, LOGIN, "closed", IN_WINDOW, "Was open"), "github-webhook");
-    await ingestEvent(env.DB, issueEvent(22, "lpcooper-arch", "open", IN_WINDOW, "Lukes"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), issueEvent(20, LOGIN, "open", BEFORE_WINDOW, "Mine open"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), issueEvent(21, LOGIN, "open", BEFORE_WINDOW, "Was open"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), issueEvent(21, LOGIN, "closed", IN_WINDOW, "Was open"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), issueEvent(22, "lpcooper-arch", "open", IN_WINDOW, "Lukes"), "github-webhook");
 
     const s = await kind().render(env.DB, LOGIN, WINDOW);
     expect(s).not.toBeNull();
@@ -117,14 +118,14 @@ describe("my_work renderer", () => {
   });
 
   it("escapes HTML in titles", async () => {
-    await ingestEvent(env.DB, issueEvent(30, LOGIN, "open", IN_WINDOW, "<script>alert(1)</script>"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), issueEvent(30, LOGIN, "open", IN_WINDOW, "<script>alert(1)</script>"), "github-webhook");
     const s = await kind().render(env.DB, LOGIN, WINDOW);
     expect(s!.html).not.toContain("<script>");
     expect(s!.html).toContain("&lt;script&gt;");
   });
 
   it("returns null for a login not in the identity map, matching My Work", async () => {
-    await ingestEvent(env.DB, prEvent(40, "unmapped-login", IN_WINDOW), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(40, "unmapped-login", IN_WINDOW), "github-webhook");
     expect(await kind().render(env.DB, "unmapped-login", WINDOW)).toBeNull();
   });
 
@@ -133,8 +134,8 @@ describe("my_work renderer", () => {
     // Content exists in the window, but it belongs to someone else — proves the
     // identity gate short-circuits render before any event is queried for
     // priya, not merely that there happens to be nothing to show.
-    await ingestEvent(env.DB, prEvent(41, LOGIN, IN_WINDOW), "github-webhook");
-    await ingestEvent(env.DB, issueEvent(42, LOGIN, "open", IN_WINDOW), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(41, LOGIN, IN_WINDOW), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), issueEvent(42, LOGIN, "open", IN_WINDOW), "github-webhook");
     expect(await kind().render(env.DB, "priya", WINDOW)).toBeNull();
   });
 });
@@ -148,14 +149,14 @@ describe("review_queue renderer", () => {
 
   it("reports counts and top items for staged doc versions and draft ADRs, excluding ratified/promoted", async () => {
     // A promoted v1 (live), then a staged v2 → one open proposal.
-    await ingestDocProposal(env.DB, { slug: "auth-flow", section: "reference", title: "Auth flow", body: "v1", change_summary: "init", confidence: "high" }, "agent");
-    await promote_doc(env.DB, "auth-flow", 1, "human");
-    await ingestDocProposal(env.DB, { slug: "auth-flow", section: "reference", title: "Auth flow", body: "v2 proposed", change_summary: "edit", confidence: "high" }, "agent");
+    await ingestDocProposal(systemCtx(), { slug: "auth-flow", section: "reference", title: "Auth flow", body: "v1", change_summary: "init", confidence: "high" }, "agent");
+    await promote_doc(systemCtx(), "auth-flow", 1, "human");
+    await ingestDocProposal(systemCtx(), { slug: "auth-flow", section: "reference", title: "Auth flow", body: "v2 proposed", change_summary: "edit", confidence: "high" }, "agent");
     // A fully promoted doc contributes nothing to the queue.
-    await ingestDocProposal(env.DB, { slug: "settled-doc", section: "reference", title: "Settled doc", body: "s", change_summary: "init", confidence: "high" }, "agent");
-    await promote_doc(env.DB, "settled-doc", 1, "human");
-    await ingestAdrDraft(env.DB, { title: "Use D1 for outbox", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
-    await ingestAdrDraft(env.DB, { title: "Already ratified", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await ingestDocProposal(systemCtx(), { slug: "settled-doc", section: "reference", title: "Settled doc", body: "s", change_summary: "init", confidence: "high" }, "agent");
+    await promote_doc(systemCtx(), "settled-doc", 1, "human");
+    await ingestAdrDraft(systemCtx(), { title: "Use D1 for outbox", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await ingestAdrDraft(systemCtx(), { title: "Already ratified", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     await run(env.DB, `UPDATE adrs SET status = 'ratified' WHERE title = 'Already ratified'`);
 
     const before = await tableCounts();

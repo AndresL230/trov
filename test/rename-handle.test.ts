@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { all, run, nowIso } from "../src/db";
 import { renamePerson, HANDLE_COLUMNS, getPerson } from "../src/auth/persons";
@@ -26,13 +27,13 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await seedPerson(handle); // persons + identities.person (github identity)
   await createSession(env.DB, handle); // sessions.person
   await mintToken(env.DB, handle); // mcp_tokens.person
-  await append_feed(env.DB, { author: handle, summary: "did a thing" }); // feed.author
+  await append_feed(systemCtx(), { author: handle, summary: "did a thing" }); // feed.author
   await propose_doc_update(
-    env.DB,
+    systemCtx(),
     { slug: "rename-test-doc", section: "reference", title: "T", body: "b", change_summary: "s", confidence: "high" },
     handle
   ); // docs.updated_by + docs.owner (0035) + doc_versions.created_by
-  await stage_adr(env.DB, { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, handle); // adrs.created_by
+  await stage_adr(systemCtx(), { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, handle); // adrs.created_by
   // sprints.created_by + sprints.lead — the admin plan write is the real writer
   // of both (0025 added `lead`; the proposal path that used to create these rows
   // is gone along with the whole proposal queue).
@@ -41,20 +42,21 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     { narrative: "n", sprints: [{ label: "Rename test sprint", due: "2026-01-01", status: "upcoming", lead: handle }] },
     handle
   );
-  const tid = await route_triage(env.DB, { raw: "x", reason: "y" });
-  await resolve_triage(env.DB, tid, handle); // needs_triage.resolved_by
+  const tid = await route_triage(systemCtx(), { raw: "x", reason: "y" });
+  await resolve_triage(systemCtx(), tid, handle); // needs_triage.resolved_by
   // needs_triage.source_author: route an out-of-vocab feed entry through the REAL
   // gate (src/consumer.ts ingestFeedEntry), not a direct insert — this is the
   // actual writer of that column on every triage-routing path.
   await ingestFeedEntry(
-    env.DB,
+    systemCtx(),
     { summary: "bad", body: "b", tags: ["not-a-real-tag"], artifacts: { prs: [], commits: [], issues: [] } },
     handle
   ); // needs_triage.source_author
-  await ensure_identity_task(env.DB, "unmapped-login-1");
-  await map_identity(env.DB, "unmapped-login-1", handle, handle); // identities.linked_by + identity_tasks.resolved_by
+  await ensure_identity_task(systemCtx(), platformCtx(), "unmapped-login-1");
+  await map_identity(systemCtx(), platformCtx(), "unmapped-login-1", handle, handle); // identities.linked_by + identity_tasks.resolved_by
   await ingestEvent(
-    env.DB,
+    systemCtx(),
+    platformCtx(),
     { semantic_key: "gh:pr:777:merged", event_type: "pr_merged", ref_number: 777, subject_login: "someone-else", raw: "{}", provenance: "backfill" },
     handle
   ); // events.recorded_by

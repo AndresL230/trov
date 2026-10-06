@@ -106,22 +106,22 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     // Agent default include_staged:true — the agent should see staged/unpromoted
     // context (flagged), unlike the human Search which defaults false.
     // The bearer principal is the viewer: a private artifact reaches only its author.
-    async (args) => runTool(() => query(legacyDb(ctx), { ...args, q: args.q ?? "", include_staged: args.include_staged ?? true }, principal.handle)),
+    async (args) => runTool(() => query(ctx, { ...args, q: args.q ?? "", include_staged: args.include_staged ?? true }, principal.handle)),
   );
 
   server.tool("get_doc", "Get a doc and all its versions by slug.", { slug: z.string() }, async ({ slug }) =>
-    runTool(() => get_doc(legacyDb(ctx), slug))
+    runTool(() => get_doc(ctx, slug))
   );
 
   server.tool("list_docs", "List docs, optionally filtered by section.", { section: z.string().optional() }, async ({ section }) =>
-    runTool(() => list_docs(legacyDb(ctx), section))
+    runTool(() => list_docs(ctx, section))
   );
 
   server.tool(
     "get_feed",
     "Read the feed with optional author/tags/since/limit filters.",
     { author: z.string().optional(), tags: z.array(z.string()).optional(), since: z.string().optional(), limit: z.number().optional() },
-    async (args) => runTool(() => get_feed(legacyDb(ctx), args))
+    async (args) => runTool(() => get_feed(ctx, args))
   );
 
   server.tool(
@@ -141,7 +141,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
       // (carrying prs/commits/issues), then the gate decides write-vs-triage.
       runTool(() =>
         ingestFeedEntry(
-          legacyDb(ctx),
+          ctx,
           feedEntryFromMcpArgs({ summary, brief, body, tags, prs, commits, issues }),
           principal.handle,
           ephemeralLedger()
@@ -163,7 +163,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
       base_version: z.number().optional(),
       force: z.boolean().optional(),
     },
-    async (proposal) => runTool(() => ingestDocProposal(legacyDb(ctx), proposal, principal.handle, ephemeralLedger()))
+    async (proposal) => runTool(() => ingestDocProposal(ctx, proposal, principal.handle, ephemeralLedger()))
   );
 
   server.tool(
@@ -188,7 +188,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     },
     // `me` is bound to the authenticated bearer principal, never a client
     // argument — the same rule the cookie route applies to its session.
-    async (args) => runTool(() => list_tickets(legacyDb(ctx), { ...args, me: principal.handle })),
+    async (args) => runTool(() => list_tickets(ctx, { ...args, me: principal.handle })),
   );
 
   server.tool(
@@ -197,7 +197,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     { id: z.number() },
     async ({ id }) =>
       runTool(async () => {
-        const ticket = await get_ticket(legacyDb(ctx), id);
+        const ticket = await get_ticket(ctx, id);
         if (!ticket) throw new Error(`no such ticket: ${id}`);
         return { ...ticket, artifacts: await artifactsForTicket(legacyDb(ctx), id, principal.handle) };
       }),
@@ -243,7 +243,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
 
   /** Every write returns the whole ticket, exactly like the cookie routes do. */
   const ticketDetail = async (id: number) => {
-    const ticket = await get_ticket(legacyDb(ctx), id);
+    const ticket = await get_ticket(ctx, id);
     if (!ticket) throw new TicketError("not_found", `no such ticket: ${id}`);
     return ticket;
   };
@@ -385,7 +385,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     // the SDK already validated against IngestPayload.shape, so this never throws.
     // recordBatch = consume() (the gate) + the post-batch artifact_links step — the same
     // function /ingest calls, so the two surfaces cannot drift.
-    async (payload) => runTool(() => recordBatch(legacyDb(ctx), IngestPayload.parse(payload), principal)),
+    async (payload) => runTool(() => recordBatch(ctx, IngestPayload.parse(payload), principal)),
   );
 
   // ── Artifacts: for every principal (issue #52; docs/artifact-contract.md) ─────

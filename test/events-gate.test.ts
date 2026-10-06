@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 import { all } from "../src/db";
 import { ingestEvent, consume } from "../src/consumer";
 import type { EventRow } from "@shared/rows";
@@ -18,8 +19,8 @@ const ev = (over: Partial<CapturedEvent> = {}): CapturedEvent => ({
 
 describe("ingestEvent gate arm", () => {
   it("writes once; an identical semantic_key is unchanged (INSERT OR IGNORE)", async () => {
-    expect((await ingestEvent(env.DB, ev(), "github-webhook")).outcome).toBe("written");
-    expect((await ingestEvent(env.DB, ev(), "github-webhook")).outcome).toBe("unchanged");
+    expect((await ingestEvent(systemCtx(), platformCtx(), ev(), "github-webhook")).outcome).toBe("written");
+    expect((await ingestEvent(systemCtx(), platformCtx(), ev(), "github-webhook")).outcome).toBe("unchanged");
     const rows = await all<EventRow>(env.DB, `SELECT * FROM events`);
     expect(rows.length).toBe(1);
     expect(rows[0].subject_login).toBe("AndresL230");   // subject preserved
@@ -39,7 +40,7 @@ describe("ingestEvent gate arm", () => {
     const parsed = IngestPayload.parse(structuredClone(payloadWithEvents));
     expect(parsed).not.toHaveProperty("events");
 
-    const result = await consume(env.DB, parsed, { handle: "AndresL230" });
+    const result = await consume(systemCtx(), parsed, { handle: "AndresL230" });
     expect(result).not.toHaveProperty("events");
     expect((await all<EventRow>(env.DB, `SELECT * FROM events`)).length).toBe(0);
   });

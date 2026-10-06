@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import wranglerToml from "../wrangler.toml?raw";
 import worker from "../src/index";
 import { all, first, run } from "../src/db";
@@ -31,7 +32,7 @@ async function user(login: string, email: string, unsubscribed: 0 | 1 = 0): Prom
   await run(env.DB, `UPDATE persons SET email = ?, email_unsubscribed = ? WHERE handle = ?`, email, unsubscribed, login);
 }
 async function pendingDecision(): Promise<void> {
-  await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+  await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
 }
 const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
 const localEnv = (): Env => ({ ...(env as unknown as Env), NOTIFICATIONS_MODE: undefined, PUBLIC_ORIGIN: "https://trov.example" });

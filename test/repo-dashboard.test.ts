@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
@@ -59,7 +60,7 @@ function issueEvent(number: number, login: string, at: string, action: string, s
   };
 }
 
-const ingestAll = async (events: CapturedEvent[]) => { for (const e of events) await ingestEvent(env.DB, e, "github-webhook"); };
+const ingestAll = async (events: CapturedEvent[]) => { for (const e of events) await ingestEvent(systemCtx(), platformCtx(), e, "github-webhook"); };
 const data = <T>(s: { status: string; data?: T }): T => {
   expect(s.status).toBe("ok");
   return (s as { data: T }).data;
@@ -282,7 +283,7 @@ const prRow = (number: number, state: string, at: string, over: Partial<RepoEven
 const pushRow = (sha: string, ref: string, count: number, at: string, actor = "jose-a", provenance: RepoEvent["provenance"] = "webhook"): RepoEvent => ({
   semantic_key: `gh:push:${sha}:${ref}`, kind: "push", ref, sha, actor_login: actor, count, title: `commit ${sha}`, raw: "{}", provenance, occurred_at: at,
 });
-const ingestRepo = async (rows: RepoEvent[]) => { for (const r of rows) await ingestRepoEvent(env.DB, r); };
+const ingestRepo = async (rows: RepoEvent[]) => { for (const r of rows) await ingestRepoEvent(systemCtx(), r); };
 
 // F1: getRepoDashboard's `prCaptured` gates on the `prs_reconciled` snapshot
 // (written by reconcileRepo, see test/repo-reconcile.test.ts), not on "any pr

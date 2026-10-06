@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { refreshDrift } from "../src/repo/github";
 import { getSnapshot } from "../src/repo/store";
 import { ingestRepoEvent } from "../src/consumer";
@@ -10,7 +11,7 @@ const c = (sha: string, message: string, date: string, login = "AndresL230") => 
 
 describe("refreshDrift", () => {
   it("groups ahead commits by squash-merge PR number, keeps direct pushes and the behind side apart", async () => {
-    await ingestRepoEvent(env.DB, { semantic_key: "gh:prs:482:opened:x", kind: "pr", number: 482, state: "merged", title: "Batch D1 reads in usage rollup", actor_login: "lpcooper-arch", raw: "{}", provenance: "webhook", occurred_at: "2026-09-20T08:00:00Z" });
+    await ingestRepoEvent(systemCtx(), { semantic_key: "gh:prs:482:opened:x", kind: "pr", number: 482, state: "merged", title: "Batch D1 reads in usage rollup", actor_login: "lpcooper-arch", raw: "{}", provenance: "webhook", occurred_at: "2026-09-20T08:00:00Z" });
     const fetchImpl = (async (u: RequestInfo | URL) => {
       const url = String(u);
       if (url.endsWith("/compare/production...main")) return new Response(JSON.stringify({ ahead_by: 3, behind_by: 1, commits: [
@@ -40,7 +41,7 @@ describe("refreshDrift", () => {
   // lost. It must fan out (src/db.ts `fanOut`) like every sibling read.
   it("chunks the PR-title lookup over more than 100 squash merges in one compare", async () => {
     const numbers = Array.from({ length: 120 }, (_, i) => 100 + i);
-    await ingestRepoEvent(env.DB, { semantic_key: "gh:prs:219:opened:x", kind: "pr", number: 219, state: "merged", title: "The hundred-and-twentieth", actor_login: "meilin", raw: "{}", provenance: "webhook", occurred_at: "2026-09-20T08:00:00Z" });
+    await ingestRepoEvent(systemCtx(), { semantic_key: "gh:prs:219:opened:x", kind: "pr", number: 219, state: "merged", title: "The hundred-and-twentieth", actor_login: "meilin", raw: "{}", provenance: "webhook", occurred_at: "2026-09-20T08:00:00Z" });
     const commits = numbers.map((n, i) => c(`sha${n}`, `change ${n} (#${n})`, new Date(Date.parse("2026-09-20T00:00:00Z") + i * 60_000).toISOString()));
     const fetchImpl = (async (u: RequestInfo | URL) => {
       if (String(u).endsWith("/compare/production...main")) return new Response(JSON.stringify({ ahead_by: commits.length, behind_by: 0, commits }), { status: 200 });

@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
@@ -18,7 +19,7 @@ async function cookieFor(login: string, email: string | null = "me@example.com")
   const { id } = await createSession(env.DB, login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
-const pending = () => ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+const pending = () => ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
 
 describe("GET /api/notifications/preview", () => {
   it("403s for a non-admin", async () => {

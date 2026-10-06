@@ -1,6 +1,7 @@
 import type { NotificationKind, Section } from "@shared/notifications";
 import type { DB } from "../../db";
 import { list_proposals, list_adrs } from "../../tools/reads";
+import { legacyCtx } from "../../data/legacy-bridge";
 import { escapeHtml } from "../html";
 import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP, THEME } from "../assemble";
 
@@ -16,8 +17,8 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  * the userId is not consulted. Null when both queues are empty.
  */
 async function render(db: DB): Promise<Section | null> {
-  const proposals = await list_proposals(db);
-  const decisions = await list_adrs(db, "draft");
+  const proposals = await list_proposals(legacyCtx(db));
+  const decisions = await list_adrs(legacyCtx(db), "draft");
   if (proposals.length === 0 && decisions.length === 0) return null;
 
   const items = [

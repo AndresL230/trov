@@ -1,5 +1,5 @@
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
-import { type DB, run, nowIso } from "../db";
+import { type TenantContext, run, nowIso } from "../data/sql";
 
 // Capture-time completed-PR summarizer. Runs ONCE, when the webhook captures a
 // newly-written pr_merged/pr_closed event (src/webhook.ts) — never at render
@@ -218,7 +218,7 @@ export function excerptSummary(title: string, body: string): string {
  * the webhook capture that triggered it.
  */
 export async function storePrSummary(
-  db: DB,
+  ctx: TenantContext,
   summarizer: Summarizer<PrSummary> | null,
   pr: { semantic_key: string; pr_number: number; title: string; body: string }
 ): Promise<PrSummaryRow> {
@@ -234,9 +234,10 @@ export async function storePrSummary(
   }
   const created_at = nowIso();
   await run(
-    db,
-    `INSERT OR REPLACE INTO pr_summaries (semantic_key, pr_number, model, created_at, title, what, why, impact)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ctx,
+    `INSERT OR REPLACE INTO pr_summaries (org_id, semantic_key, pr_number, model, created_at, title, what, why, impact)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ctx.orgId,
     pr.semantic_key,
     pr.pr_number,
     model,
@@ -264,7 +265,7 @@ export async function storePrSummary(
  * REPLACE keeps one row per issue_number. NEVER throws.
  */
 export async function storeIssueSummary(
-  db: DB,
+  ctx: TenantContext,
   summarizer: Summarizer<IssueSummary> | null,
   issue: { issue_number: number; title: string; body: string }
 ): Promise<IssueSummaryRow> {
@@ -281,9 +282,10 @@ export async function storeIssueSummary(
   const summary = structured ? structured.summary : excerptSummary(issue.title, issue.body);
   const created_at = nowIso();
   await run(
-    db,
-    `INSERT OR REPLACE INTO issue_summaries (issue_number, summary, model, created_at, title, next_step)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    ctx,
+    `INSERT OR REPLACE INTO issue_summaries (org_id, issue_number, summary, model, created_at, title, next_step)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ctx.orgId,
     issue.issue_number,
     summary,
     model,

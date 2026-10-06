@@ -7,7 +7,7 @@ import { ingestEvent } from "../src/consumer";
 import { create_ticket } from "../src/tools/tickets";
 import { seedPerson } from "./helpers/persons";
 import type { CapturedEvent } from "@shared/contract";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, platformCtx, systemCtx } from "./helpers/tenant";
 
 const NOW = new Date().toISOString();
 
@@ -80,8 +80,8 @@ async function callTool(login: string, name: string, args: Record<string, unknow
 
 describe("registered MCP get_my_work tool", () => {
   it("returns only the CALLING principal's projection", async () => {
-    await ingestEvent(env.DB, prEvent(101, "AndresL230"), "github-webhook");
-    await ingestEvent(env.DB, prEvent(102, "Jose-Gael-Cruz-Lopez"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(101, "AndresL230"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(102, "Jose-Gael-Cruz-Lopez"), "github-webhook");
 
     const res = await callTool("AndresL230", "get_my_work", {});
     const data = JSON.parse(res.text);
@@ -109,8 +109,8 @@ describe("registered MCP get_my_work tool", () => {
 
 describe("registered MCP get_events tool", () => {
   it("respects the type filter", async () => {
-    await ingestEvent(env.DB, prEvent(201, "AndresL230"), "github-webhook");
-    await ingestEvent(env.DB, issueEvent(7, "AndresL230"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(201, "AndresL230"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), issueEvent(7, "AndresL230"), "github-webhook");
 
     const res = await callTool("AndresL230", "get_events", { type: "issue" });
     const data = JSON.parse(res.text) as Array<{ event_type: string; ref_number: number }>;

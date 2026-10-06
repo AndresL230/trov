@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 import { first } from "../src/db";
 import { mirrorIssue } from "../src/tools/ticket-mirror";
 import { create_ticket, set_ticket_sprint } from "../src/tools/tickets";
@@ -35,7 +36,7 @@ function issueDelivery(action: string, number: number, o: { assignees?: string[]
 
 /** What the webhook does for an issues delivery: capture the event, then mirror. */
 async function deliver(payload: ReturnType<typeof issueDelivery>): Promise<void> {
-  for (const ev of eventsFromDelivery("issues", payload)) await ingestEvent(env.DB, ev, "github-webhook");
+  for (const ev of eventsFromDelivery("issues", payload)) await ingestEvent(systemCtx(), platformCtx(), ev, "github-webhook");
   await mirrorIssue(env.DB, REPO, payload);
 }
 
@@ -61,9 +62,9 @@ describe("the badge and the digest count native tickets only", () => {
   it("an unassigned mirrored ticket does not raise the badge; an unassigned native one does", async () => {
     await deliver(issueDelivery("opened", 1));
     await deliver(issueDelivery("opened", 2));
-    expect(await ticket_badge(env.DB)).toBe(0);
+    expect(await ticket_badge(systemCtx())).toBe(0);
     await native("Needs a person");
-    expect(await ticket_badge(env.DB)).toBe(1);
+    expect(await ticket_badge(systemCtx())).toBe(1);
   });
 
   it("the ticketq digest lists neither half of a mirrored ticket", async () => {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { query } from "../src/tools/reads";
 import { write_plan } from "../src/tools/plan";
 import { upsertProgress } from "../src/tools/progress";
@@ -36,7 +37,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
     const sid = sprints[0].id;
 
     // 1. A term unique to the sprint → a sprint-typed hit for it.
-    const r1 = await query(env.DB, { q: "vectorize", include_staged: true });
+    const r1 = await query(systemCtx(), { q: "vectorize", include_staged: true });
     const hit = r1.primary.find((p) => p.id === `sprint:${sid}`);
     expect(hit).toBeDefined();
     expect(hit!.type).toBe("sprint");
@@ -45,7 +46,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
     expect(hit!.body).toContain("Ship the Vectorize index");
 
     // 2. A phrase only in the narrative → the plan row, carrying the narrative body.
-    const r2 = await query(env.DB, { q: "semantic retrieval online", include_staged: true });
+    const r2 = await query(systemCtx(), { q: "semantic retrieval online", include_staged: true });
     const plan = r2.primary.find((p) => p.id === "plan");
     expect(plan).toBeDefined();
     expect(plan!.type).toBe("sprint");
@@ -63,7 +64,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
       },
       AUTHOR
     );
-    const r = await query(env.DB, { q: "quokka", include_staged: true }); // no types → defaults include sprint
+    const r = await query(systemCtx(), { q: "quokka", include_staged: true }); // no types → defaults include sprint
     expect(r.primary.some((p) => p.type === "sprint" && p.title === "Quokka Launch")).toBe(true);
   });
 
@@ -79,7 +80,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
     const sid = sprints[0].id;
     await upsertProgress(env.DB, sid, 2, 5, "recompute");
 
-    const r = await query(env.DB, { q: "aardvark", types: ["sprint"], include_staged: true });
+    const r = await query(systemCtx(), { q: "aardvark", types: ["sprint"], include_staged: true });
     const hit = r.primary.find((p) => p.id === `sprint:${sid}`)!;
     // The sprint holds no tickets, so there is no progress to report at all —
     // the 2/5 issue cache never becomes a claim about the sprint.
@@ -104,7 +105,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
     // No sprint_progress row exists for this sprint at all.
     expect(await all(env.DB, `SELECT * FROM sprint_progress WHERE sprint_id = ?`, sid)).toHaveLength(0);
 
-    const r = await query(env.DB, { q: "wombat", types: ["sprint"], include_staged: true });
+    const r = await query(systemCtx(), { q: "wombat", types: ["sprint"], include_staged: true });
     const hit = r.primary.find((p) => p.id === `sprint:${sid}`)!;
     expect(hit.body).toContain("Progress: 1/1 closed");
   });
@@ -129,7 +130,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
     await transition_ticket(env.DB, done, "in_progress", "tester");
     await transition_ticket(env.DB, done, "done", "tester");
 
-    const r = await query(env.DB, { q: "numbat bilby", types: ["sprint"], include_staged: true });
+    const r = await query(systemCtx(), { q: "numbat bilby", types: ["sprint"], include_staged: true });
     // 1 of 2 TICKETS done. The 1/2 issue cache is not added in (the old combined
     // line read 2/4), and it is not reported in the body at all.
     const numbatBody = r.primary.find((p) => p.id === `sprint:${numbat.id}`)!.body;
@@ -145,7 +146,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
       { narrative: "n", sprints: [{ label: "Mango Sprint", description: "mango note", due: "2026-11-01", status: "upcoming" }] },
       AUTHOR
     );
-    const r = await query(env.DB, { q: "mango", section: "reference", include_staged: true });
+    const r = await query(systemCtx(), { q: "mango", section: "reference", include_staged: true });
     expect(r.primary.some((p) => p.type === "sprint")).toBe(false);
     expect(r.pointers.some((p) => p.type === "sprint")).toBe(false);
   });

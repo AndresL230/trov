@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 import { all, first } from "../src/db";
 import { ingestEvent } from "../src/consumer";
 import { map_identity } from "../src/tools/writes";
@@ -15,8 +16,8 @@ const ev = (over: Partial<CapturedEvent> = {}): CapturedEvent => ({
 describe("map_identity — the identities table's human write path", () => {
   it("links the login to an existing person and soft-resolves the task", async () => {
     await seedPerson("casey");
-    await ingestEvent(env.DB, ev(), "github-webhook");
-    const res = await map_identity(env.DB, "mystery-dev", "casey", "andres");
+    await ingestEvent(systemCtx(), platformCtx(), ev(), "github-webhook");
+    const res = await map_identity(systemCtx(), platformCtx(), "mystery-dev", "casey", "andres");
     expect(res).toEqual({ login: "mystery-dev", person: "casey", status: "resolved" });
     const id = await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE provider = 'github' AND subject = 'mystery-dev'`);
     expect(id?.person).toBe("casey");
@@ -27,20 +28,20 @@ describe("map_identity — the identities table's human write path", () => {
   });
   it("double-map is idempotent-safe: the first mapping stands", async () => {
     await seedPerson("casey"); await seedPerson("other");
-    await ingestEvent(env.DB, ev(), "github-webhook");
-    await map_identity(env.DB, "mystery-dev", "casey", "andres");
-    const second = await map_identity(env.DB, "mystery-dev", "other", "jose");
+    await ingestEvent(systemCtx(), platformCtx(), ev(), "github-webhook");
+    await map_identity(systemCtx(), platformCtx(), "mystery-dev", "casey", "andres");
+    const second = await map_identity(systemCtx(), platformCtx(), "mystery-dev", "other", "jose");
     expect(second).toEqual({ login: "mystery-dev", person: "casey", status: "resolved" });
     expect((await all(env.DB, `SELECT * FROM identities WHERE subject = 'mystery-dev'`)).length).toBe(1);
   });
   it("throws on a login with no identity task, and on an unknown person", async () => {
-    await expect(map_identity(env.DB, "nobody-here", "casey", "andres")).rejects.toThrow("no such identity task: nobody-here");
-    await ingestEvent(env.DB, ev(), "github-webhook");
-    await expect(map_identity(env.DB, "mystery-dev", "ghost", "andres")).rejects.toThrow("no such person: ghost");
+    await expect(map_identity(systemCtx(), platformCtx(), "nobody-here", "casey", "andres")).rejects.toThrow("no such identity task: nobody-here");
+    await ingestEvent(systemCtx(), platformCtx(), ev(), "github-webhook");
+    await expect(map_identity(systemCtx(), platformCtx(), "mystery-dev", "ghost", "andres")).rejects.toThrow("no such person: ghost");
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'mystery-dev'`)).toBeNull();
   });
   it("a login already linked never raises a task", async () => {
-    await ingestEvent(env.DB, ev({ subject_login: "AndresL230", semantic_key: "gh:pr:8:merged", ref_number: 8 }), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), ev({ subject_login: "AndresL230", semantic_key: "gh:pr:8:merged", ref_number: 8 }), "github-webhook");
     expect(await first(env.DB, `SELECT 1 AS x FROM identity_tasks WHERE login = 'AndresL230'`)).toBeNull();
   });
   it("a login already linked (stale/unresolved task pointing at an existing identity) rejects cleanly, no second row", async () => {
@@ -52,7 +53,7 @@ describe("map_identity — the identities table's human write path", () => {
       `INSERT INTO identity_tasks (login, first_seen, status) VALUES ('mystery-dev', '2026-01-01T00:00:00Z', 'pending')`
     ).run();
     await seedPerson("other");
-    await expect(map_identity(env.DB, "mystery-dev", "other", "andres")).rejects.toThrow("login already linked to casey");
+    await expect(map_identity(systemCtx(), platformCtx(), "mystery-dev", "other", "andres")).rejects.toThrow("login already linked to casey");
     expect((await all(env.DB, `SELECT * FROM identities WHERE subject = 'mystery-dev'`)).length).toBe(1);
   });
 });

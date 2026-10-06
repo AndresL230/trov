@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { all, run } from "../src/db";
 import { ingestAdrDraft } from "../src/consumer";
 import { resendDelivery, deliveryFor } from "../src/notifications/resend";
@@ -75,7 +76,7 @@ describe("deliveryFor — env gate, default local", () => {
     // INSERT OR IGNORE, so force the email with an explicit UPDATE too.
     await seedPerson("AndresL230", { name: "a", email: "andres@example.com" });
     await run(env.DB, `UPDATE persons SET email = 'andres@example.com' WHERE handle = 'AndresL230'`);
-    await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     const { fetchImpl } = capture(200, { id: "em_run" });
     const delivery = deliveryFor({ ...base, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "re_x" }, { from: "Trov <c@mail.example>", fetchImpl });
     expect(delivery.mode).toBe("resend");

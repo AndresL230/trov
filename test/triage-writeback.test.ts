@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { all, first } from "../src/db";
 import type { DocVersionRow, AdrRow, NeedsTriageRow } from "@shared/rows";
@@ -25,9 +26,9 @@ describe("GET /proposals", () => {
     // v1 promoted (live), v2 staged as a one-line edit on top (changed/max < 0.5).
     const v1Body = Array.from({ length: 10 }, (_, i) => `line ${i}`).join("\n");
     const v2Body = v1Body.replace("line 5", "line FIVE");
-    await ingestDocProposal(env.DB, { ...docBase, slug: "architecture", title: "Architecture", body: v1Body }, "andres");
-    await promote_doc(env.DB, "architecture", 1, "andres");
-    await ingestDocProposal(env.DB, { ...docBase, slug: "architecture", body: v2Body }, "andres");
+    await ingestDocProposal(systemCtx(), { ...docBase, slug: "architecture", title: "Architecture", body: v1Body }, "andres");
+    await promote_doc(systemCtx(), "architecture", 1, "andres");
+    await ingestDocProposal(systemCtx(), { ...docBase, slug: "architecture", body: v2Body }, "andres");
 
     const { proposals } = await getJson<{ proposals: Array<Record<string, unknown>> }>("/proposals", cookie);
     expect(proposals.length).toBe(1);
@@ -53,7 +54,7 @@ describe("GET /proposals", () => {
 describe("POST /doc/:slug/reject", () => {
   it("flips a staged version to 'rejected', drops it from /proposals, and never deletes it", async () => {
     const cookie = await authedCookie("andres");
-    await propose_doc_update(env.DB, { ...docBase, slug: "spec", title: "Spec", body: "# draft" }, "andres");
+    await propose_doc_update(systemCtx(), { ...docBase, slug: "spec", title: "Spec", body: "# draft" }, "andres");
 
     let proposals = (await getJson<{ proposals: unknown[] }>("/proposals", cookie)).proposals;
     expect(proposals.length).toBe(1);
@@ -74,7 +75,7 @@ describe("POST /doc/:slug/reject", () => {
 
   it("double-reject is idempotent-safe (no error, still rejected)", async () => {
     const cookie = await authedCookie("andres");
-    await propose_doc_update(env.DB, { ...docBase, slug: "idem", title: "Idem", body: "x" }, "andres");
+    await propose_doc_update(systemCtx(), { ...docBase, slug: "idem", title: "Idem", body: "x" }, "andres");
     expect((await post("/doc/idem/reject", cookie, { version: 1 })).status).toBe(200);
     const second = await post("/doc/idem/reject", cookie, { version: 1 });
     expect(second.status).toBe(200);
@@ -84,7 +85,7 @@ describe("POST /doc/:slug/reject", () => {
   });
 
   it("returns 401 without a session cookie (and does not mutate)", async () => {
-    await propose_doc_update(env.DB, { ...docBase, slug: "guarded", title: "G", body: "x" }, "andres");
+    await propose_doc_update(systemCtx(), { ...docBase, slug: "guarded", title: "G", body: "x" }, "andres");
     const res = await app.request("/doc/guarded/reject", { method: "POST" }, env);
     expect(res.status).toBe(401);
     const v = await first<DocVersionRow>(env.DB, `SELECT * FROM doc_versions WHERE slug = 'guarded' AND version = 1`);
@@ -96,7 +97,7 @@ describe("POST /doc/:slug/reject", () => {
 describe("POST /adr/:id/reject", () => {
   it("flips a draft to 'rejected', drops it from the decisions queue, and never deletes it", async () => {
     const cookie = await authedCookie("andres");
-    const id = await stage_adr(env.DB, { title: "Use X", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
+    const id = await stage_adr(systemCtx(), { title: "Use X", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
 
     let drafts = (await getJson<{ adrs: unknown[] }>("/adrs?status=draft", cookie)).adrs;
     expect(drafts.length).toBe(1);
@@ -114,12 +115,12 @@ describe("POST /adr/:id/reject", () => {
 
   it("double-reject is idempotent-safe; cannot reject a ratified decision", async () => {
     const cookie = await authedCookie("andres");
-    const id = await stage_adr(env.DB, { title: "T", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
+    const id = await stage_adr(systemCtx(), { title: "T", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
     expect((await post(`/adr/${id}/reject`, cookie)).status).toBe(200);
     expect((await post(`/adr/${id}/reject`, cookie)).status).toBe(200); // idempotent
 
-    const ratifiedId = await stage_adr(env.DB, { title: "R", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
-    await ratify_adr(env.DB, ratifiedId);
+    const ratifiedId = await stage_adr(systemCtx(), { title: "R", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
+    await ratify_adr(systemCtx(), ratifiedId);
     const res = await post(`/adr/${ratifiedId}/reject`, cookie);
     expect(res.status).toBe(400); // a ratified decision is not rejectable
   });
@@ -128,7 +129,7 @@ describe("POST /adr/:id/reject", () => {
 describe("POST /needs-triage/:id/discard", () => {
   it("resolves the item (audit cols set), drops it from /needs-triage, and never deletes it", async () => {
     const cookie = await authedCookie("andres");
-    const id = await route_triage(env.DB, { raw: "some free text", reason: "out of vocab" });
+    const id = await route_triage(systemCtx(), { raw: "some free text", reason: "out of vocab" });
 
     let items = (await getJson<{ items: unknown[] }>("/needs-triage", cookie)).items;
     expect(items.length).toBe(1);
@@ -149,7 +150,7 @@ describe("POST /needs-triage/:id/discard", () => {
 
   it("double-discard is idempotent-safe", async () => {
     const cookie = await authedCookie("andres");
-    const id = await route_triage(env.DB, { raw: "x", reason: "y" });
+    const id = await route_triage(systemCtx(), { raw: "x", reason: "y" });
     expect((await post(`/needs-triage/${id}/discard`, cookie)).status).toBe(200);
     expect((await post(`/needs-triage/${id}/discard`, cookie)).status).toBe(200);
     const rows = await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage WHERE id = ?`, id);
@@ -163,7 +164,7 @@ describe("POST /needs-triage/:id/assign", () => {
     const cookie = await authedCookie("andres");
     // Triage an out-of-vocab section so it lands in the queue.
     const r = await ingestDocProposal(
-      env.DB,
+      systemCtx(),
       { slug: "orphan", section: "made-up-section", title: "Orphan", body: "hello world", change_summary: "s", confidence: "high" },
       "agent-x"
     );
@@ -192,7 +193,7 @@ describe("POST /needs-triage/:id/assign", () => {
   it("a low-confidence-new doc assigns successfully (the human's assignment vouches for it)", async () => {
     const cookie = await authedCookie("andres");
     const r = await ingestDocProposal(
-      env.DB,
+      systemCtx(),
       { slug: "shy", section: "reference", body: "tentative", change_summary: "s", confidence: "low" },
       "agent-x"
     );
@@ -208,7 +209,7 @@ describe("POST /needs-triage/:id/assign", () => {
   it("double-assign is idempotent-safe: no second version is materialized", async () => {
     const cookie = await authedCookie("andres");
     await ingestDocProposal(
-      env.DB,
+      systemCtx(),
       { slug: "twice", section: "bogus", body: "b", change_summary: "s", confidence: "high" },
       "agent-x"
     );
@@ -223,7 +224,7 @@ describe("POST /needs-triage/:id/assign", () => {
   it("refuses (400) to place a doc with no valid section, leaving no stray triage row and no doc", async () => {
     const cookie = await authedCookie("andres");
     await ingestDocProposal(
-      env.DB,
+      systemCtx(),
       { slug: "nope", section: "still-bogus", body: "b", change_summary: "s", confidence: "high" },
       "agent-x"
     );
@@ -240,7 +241,7 @@ describe("POST /needs-triage/:id/assign", () => {
   });
 
   it("returns 401 without a session cookie", async () => {
-    const id = await route_triage(env.DB, { raw: "{}", reason: "r" });
+    const id = await route_triage(systemCtx(), { raw: "{}", reason: "r" });
     const res = await app.request(`/needs-triage/${id}/assign`, { method: "POST" }, env);
     expect(res.status).toBe(401);
   });
@@ -248,7 +249,7 @@ describe("POST /needs-triage/:id/assign", () => {
   it("assign on an already-discarded item reports resolution:'discarded', not 'assigned'", async () => {
     const cookie = await authedCookie("andres");
     // Triage a free-form item (cannot be placed via assign — but first we discard it).
-    const id = await route_triage(env.DB, { raw: "some free text", reason: "out of vocab" });
+    const id = await route_triage(systemCtx(), { raw: "some free text", reason: "out of vocab" });
 
     // Discard it first.
     const discardRes = await post(`/needs-triage/${id}/discard`, cookie);

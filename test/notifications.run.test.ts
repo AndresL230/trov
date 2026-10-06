@@ -5,6 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 import { all, first, run } from "../src/db";
 import { ingestEvent, ingestAdrDraft } from "../src/consumer";
 import { seedNotificationPolicy } from "../src/notifications/policy";
@@ -100,7 +101,7 @@ describe("runDigest (local mode)", () => {
   it("running the same window twice yields exactly one outbox row per eligible user", async () => {
     await user("AndresL230", "andres@example.com");
     await user("lpcooper-arch", "luke@example.com");
-    await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
 
     const r1 = await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
     const r2 = await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
@@ -126,7 +127,7 @@ describe("runDigest (local mode)", () => {
     await user("AndresL230", "andres@example.com", 1);
     await user("lpcooper-arch", null);
     await user("Darkest-Teddy", "");
-    await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
     expect(await outbox()).toHaveLength(0);
     expect(await bodies()).toHaveLength(0);
@@ -137,8 +138,8 @@ describe("runDigest (local mode)", () => {
     await seedNotificationPolicy(env.DB);
     await run(env.DB, `UPDATE notification_policy SET enabled = 0 WHERE kind = 'review_queue'`);
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('AndresL230', 'review_queue', 'daily', 'now')`);
-    await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
-    await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
+    await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await ingestEvent(systemCtx(), platformCtx(), openIssue(1, "AndresL230"), "github-webhook");
 
     await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
     const [row] = await outbox();
@@ -152,7 +153,7 @@ describe("runDigest (local mode)", () => {
   it("a weekly pref on my_work excludes it from the daily run and includes it in the weekly run", async () => {
     await user("AndresL230", "andres@example.com");
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('AndresL230', 'my_work', 'weekly', 'now')`);
-    await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), openIssue(1, "AndresL230"), "github-webhook");
 
     await runDigest(env.DB, "daily", MON, { delivery: delivery() });
     await runDigest(env.DB, "weekly", MON, { delivery: delivery() });
@@ -169,8 +170,8 @@ describe("runDigest (local mode)", () => {
 
   it("assembles one message per user with the spec subject, all sections, and absolute deep links", async () => {
     await user("AndresL230", "andres@example.com");
-    await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
-    await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
+    await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await ingestEvent(systemCtx(), platformCtx(), openIssue(1, "AndresL230"), "github-webhook");
 
     await runDigest(env.DB, "daily", FRI, { delivery: delivery(), origin: "https://trov.example" });
     const [row] = await outbox();
@@ -190,7 +191,7 @@ describe("runDigest (local mode)", () => {
 
   it("weekly subject names the work week", async () => {
     await user("AndresL230", "andres@example.com");
-    await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), openIssue(1, "AndresL230"), "github-webhook");
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('AndresL230', 'my_work', 'weekly', 'now')`);
     await runDigest(env.DB, "weekly", MON, { delivery: delivery() });
     const [body] = await bodies();
@@ -212,7 +213,7 @@ describe("runDigest (local mode)", () => {
 
   it("a delivery failure marks the row failed with the error", async () => {
     await user("AndresL230", "andres@example.com");
-    await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     await runDigest(env.DB, "daily", FRI, { delivery: { send: async () => { throw new Error("smtp down"); } } });
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "failed", resend_id: null, sent_at: null });
@@ -221,7 +222,7 @@ describe("runDigest (local mode)", () => {
 
   it("never sends to the same user twice even if the first run failed (retry is a separate job)", async () => {
     await user("AndresL230", "andres@example.com");
-    await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     await runDigest(env.DB, "daily", FRI, { delivery: { send: async () => { throw new Error("smtp down"); } } });
     const r = await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
     expect(r.alreadyRan).toBe(1);
@@ -234,8 +235,8 @@ describe("runDigest (local mode)", () => {
 describe("assembled message follows the designed template", () => {
   it("carries a preheader, the section sublines, the footer unsubscribe link, and the text layout", async () => {
     await user("AndresL230", "andres@example.com");
-    await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
-    await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
+    await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await ingestEvent(systemCtx(), platformCtx(), openIssue(1, "AndresL230"), "github-webhook");
     await runDigest(env.DB, "daily", FRI, {
       delivery: localDelivery(env.DB), origin: "https://trov.example",
       unsubscribeUrl: async (login) => `https://trov.example/u/${login}.sig`,

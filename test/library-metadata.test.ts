@@ -23,7 +23,7 @@ import combined from "../migrations/0035_library_and_sprint_dates.sql?raw";
 const migration = combined.split("-- ═══ PART B")[0].split("-- ═══ PART C")[0];
 import type { DocRow } from "../shared/rows";
 import type { PromptDetail, PromptSummary } from "../shared/handoffs";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 /** The migration's backfill UPDATE statements, re-run against the current rows. */
 async function runBackfill(): Promise<void> {
@@ -43,18 +43,18 @@ const docProposal = (slug: string, body: string) =>
 
 describe("docs.owner", () => {
   it("is the proposer of the first version, and survives later edits and promotions", async () => {
-    await propose_doc_update(env.DB, docProposal("owned-doc", "v1"), "meilin");
-    await promote_doc(env.DB, "owned-doc", 1, "AndresL230");
-    await propose_doc_update(env.DB, docProposal("owned-doc", "v2"), "sanaok");
-    await promote_doc(env.DB, "owned-doc", 2, "Darkest-Teddy");
+    await propose_doc_update(systemCtx(), docProposal("owned-doc", "v1"), "meilin");
+    await promote_doc(systemCtx(), "owned-doc", 1, "AndresL230");
+    await propose_doc_update(systemCtx(), docProposal("owned-doc", "v2"), "sanaok");
+    await promote_doc(systemCtx(), "owned-doc", 2, "Darkest-Teddy");
     const row = await first<{ owner: string; updated_by: string }>(env.DB, `SELECT owner, updated_by FROM docs WHERE slug = 'owned-doc'`);
     expect(row).toEqual({ owner: "meilin", updated_by: "Darkest-Teddy" });
   });
 
   it("the gate (ingestDocProposal) stamps the authenticated principal, and every docs read returns it", async () => {
-    const r = await ingestDocProposal(env.DB, docProposal("gated-doc", "hello"), "sanaok");
+    const r = await ingestDocProposal(systemCtx(), docProposal("gated-doc", "hello"), "sanaok");
     expect(r.outcome).toBe("written");
-    await ingestDocProposal(env.DB, docProposal("gated-doc", "hello, edited"), "meilin");
+    await ingestDocProposal(systemCtx(), docProposal("gated-doc", "hello, edited"), "meilin");
     const one = (await (await get("/doc/gated-doc")).json()) as { doc: DocRow };
     expect(one.doc.owner).toBe("sanaok");
     const list = (await (await get("/docs")).json()) as { docs: DocRow[] };
@@ -76,7 +76,7 @@ describe("docs.owner", () => {
     await run(env.DB, `INSERT INTO doc_versions (slug, version, body, status, created_at, created_by) VALUES ('old-doc', 2, 'b2', 'promoted', '2026-01-02', 'second')`);
     await run(env.DB, `INSERT INTO doc_versions (slug, version, body, status, created_at, created_by) VALUES ('old-doc', 1, 'b1', 'promoted', '2026-01-01', 'first')`);
     await run(env.DB, `INSERT INTO docs (slug, section, title, body, current_version, updated_at, updated_by) VALUES ('bare-doc', 'reference', 'Bare', 'b', 0, '2026-01-01', 'lonely')`);
-    await propose_doc_update(env.DB, docProposal("kept-doc", "b"), "meilin");
+    await propose_doc_update(systemCtx(), docProposal("kept-doc", "b"), "meilin");
     await runBackfill();
     const owners = await all<{ slug: string; owner: string }>(env.DB, `SELECT slug, owner FROM docs ORDER BY slug`);
     expect(owners).toEqual([
@@ -88,7 +88,7 @@ describe("docs.owner", () => {
 
   it("a handle rename rewrites it", async () => {
     await seedPerson("old-owner");
-    await propose_doc_update(env.DB, docProposal("renamed-doc", "b"), "old-owner");
+    await propose_doc_update(systemCtx(), docProposal("renamed-doc", "b"), "old-owner");
     expect(await renamePerson(env.DB, "old-owner", "new-owner")).toEqual({ ok: true });
     expect((await first<{ owner: string }>(env.DB, `SELECT owner FROM docs WHERE slug = 'renamed-doc'`))?.owner).toBe("new-owner");
   });

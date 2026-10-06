@@ -2,6 +2,7 @@ import type { Env } from "../env";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import { first } from "../db";
 import { legacyDb, legacySystemTenant } from "../data/legacy";
+import { platform } from "../data/context";
 import { ingestEvent } from "../consumer";
 import { mirrorIssue } from "./ticket-mirror";
 import { eventsFromDelivery } from "../webhook";
@@ -301,7 +302,7 @@ export async function runBackfill(
 
     for (const base of eventsFromDelivery("issues", payload)) {
       const ev = { ...base, provenance: "backfill" as const };
-      const res = await ingestEvent(legacyDb(ctx), ev, principalLogin);
+      const res = await ingestEvent(ctx, platform(env, principalLogin), ev, principalLogin);
       if (res.outcome === "written") {
         captured++;
         // Mirror handleGithubWebhook's progress seam for newly-written issues.
@@ -330,7 +331,7 @@ export async function runBackfill(
         continue;
       }
 
-      const stored = await storeIssueSummary(legacyDb(ctx), issueSummarizer, {
+      const stored = await storeIssueSummary(ctx, issueSummarizer, {
         issue_number: issue.number,
         title: issue.title,
         body: issue.body ?? "",
@@ -350,7 +351,7 @@ export async function runBackfill(
     const payload = prClosedDelivery(pr);
     for (const base of eventsFromDelivery("pull_request", payload)) {
       const ev = { ...base, provenance: "backfill" as const };
-      const res = await ingestEvent(legacyDb(ctx), ev, principalLogin);
+      const res = await ingestEvent(ctx, platform(env, principalLogin), ev, principalLogin);
       if (res.outcome === "written") {
         captured++;
       } else {
@@ -380,7 +381,7 @@ export async function runBackfill(
       }
 
       const parsed = JSON.parse(ev.raw) as { pr: { number: number; title: string; body: string | null } };
-      const stored = await storePrSummary(legacyDb(ctx), summarizer, {
+      const stored = await storePrSummary(ctx, summarizer, {
         semantic_key: ev.semantic_key,
         pr_number: parsed.pr.number,
         title: parsed.pr.title,
