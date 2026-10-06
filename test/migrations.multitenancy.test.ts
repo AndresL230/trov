@@ -15,6 +15,7 @@ const UP = ["0037", "0038", "0039", "0040"];
 const db = () => env.MT_DB;
 
 const before0037 = () => env.TEST_MIGRATIONS.filter((m) => m.name < "0037");
+// The four files under test (0041 onward are later, unrelated changes — e.g. 0041 renames a sender).
 const upTo = (prefix: string) => env.TEST_MIGRATIONS.filter((m) => m.name.slice(0, 4) <= prefix);
 
 const SEED_0036 = [
@@ -124,7 +125,7 @@ describe("0037–0040 on a populated 0036 database", () => {
 
   it("keeps every row and every value, and gives every tenant row to SaplingLearn", async () => {
     const pre = await dump();
-    await applyD1Migrations(db(), env.TEST_MIGRATIONS);
+    await applyD1Migrations(db(), upTo("0040"));
     const post = await dump({ withoutOrg: true });
 
     for (const [table, raw] of Object.entries(pre)) {
@@ -154,7 +155,7 @@ describe("0037–0040 on a populated 0036 database", () => {
   });
 
   it("rebuilds every search index with the org, and search still finds the same things", async () => {
-    await applyD1Migrations(db(), env.TEST_MIGRATIONS);
+    await applyD1Migrations(db(), upTo("0040"));
     const counts = async (fts: string, base: string, where = "") => [
       (await one<{ n: number }>(`SELECT COUNT(*) AS n FROM ${fts} WHERE org_id = ?`, LEGACY))!.n,
       (await one<{ n: number }>(`SELECT COUNT(*) AS n FROM ${base} ${where}`))!.n,
@@ -174,7 +175,7 @@ describe("0037–0040 on a populated 0036 database", () => {
   });
 
   it("seeds SaplingLearn: members (andres owner, roles moved), attribution, invites, repo and environments", async () => {
-    await applyD1Migrations(db(), env.TEST_MIGRATIONS);
+    await applyD1Migrations(db(), upTo("0040"));
     expect(await rows(`SELECT id, slug, name FROM orgs`)).toEqual([{ id: LEGACY, slug: "saplinglearn", name: "SaplingLearn" }]);
     expect(await rows(`SELECT user_id, role, title, responsibilities FROM memberships ORDER BY user_id`)).toEqual([
       { user_id: "andres", role: "owner", title: "Founder", responsibilities: "All" },
@@ -188,7 +189,7 @@ describe("0037–0040 on a populated 0036 database", () => {
   });
 
   it("per-org numbers: existing tickets keep #id, the next one continues — a deleted number is never reissued", async () => {
-    await applyD1Migrations(db(), env.TEST_MIGRATIONS);
+    await applyD1Migrations(db(), upTo("0040"));
     expect(await rows(`SELECT id, number FROM tickets ORDER BY id`)).toEqual([{ id: 1, number: 1 }, { id: 2, number: 2 }]);
     await db().prepare(`INSERT INTO tickets (title, requester, created_at, updated_at) VALUES ('next', 'andres', 't', 't')`).run();
     expect(await one(`SELECT number FROM tickets WHERE title = 'next'`)).toEqual({ number: 4 }); // #3 was deleted at 0036
@@ -196,10 +197,10 @@ describe("0037–0040 on a populated 0036 database", () => {
   });
 
   it("is convergent: two independent runs end in identical databases", async () => {
-    await applyD1Migrations(db(), env.TEST_MIGRATIONS);
+    await applyD1Migrations(db(), upTo("0040"));
     const first = await dump();
     await at0036WithData();
-    await applyD1Migrations(db(), env.TEST_MIGRATIONS);
+    await applyD1Migrations(db(), upTo("0040"));
     const second = await dump();
     expect(second).toEqual(first);
   });
@@ -234,7 +235,7 @@ describe("the rollback (scripts/mt/rollback/0037-0040.down.sql)", () => {
     await applyD1Migrations(db(), before0037()); // records 0001–0036 in d1_migrations
     const schema0 = await schema();
     const data0 = await dump();
-    await applyD1Migrations(db(), env.TEST_MIGRATIONS);
+    await applyD1Migrations(db(), upTo("0040"));
     await runDown();
     const schema1 = await schema();
     expect(schema1).toEqual(schema0);
@@ -243,13 +244,13 @@ describe("the rollback (scripts/mt/rollback/0037-0040.down.sql)", () => {
     const recorded = (await rows<{ name: string }>(`SELECT name FROM d1_migrations`)).map((r) => r.name.slice(0, 4));
     for (const n of UP) expect(recorded).not.toContain(n);
     // …so applying again works, and lands in the same place.
-    await applyD1Migrations(db(), env.TEST_MIGRATIONS);
+    await applyD1Migrations(db(), upTo("0040"));
     expect((await one<{ n: number }>(`SELECT COUNT(*) AS n FROM memberships`))!.n).toBe(2);
   });
 
   it("refuses to run once a second org exists (its rows would be lost)", async () => {
     await at0036WithData();
-    await applyD1Migrations(db(), env.TEST_MIGRATIONS);
+    await applyD1Migrations(db(), upTo("0040"));
     await db().prepare(`INSERT INTO orgs (id, slug, name, created_at, created_by) VALUES ('org_b', 'acme', 'Acme', 't', 'x')`).run();
     await expect(runDown()).rejects.toThrow();
     expect(await one(`SELECT id FROM orgs WHERE id = 'org_b'`)).toEqual({ id: "org_b" });

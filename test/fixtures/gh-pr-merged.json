@@ -5,7 +5,7 @@
     "number": 42,
     "title": "Wire the milestone progress cache",
     "body": "## What\n\nWires the absolute-value progress cache written by the webhook.\n\n- event-derived writes on each issue delivery\n- a scheduled recompute backstop\n\nCloses #17.",
-    "html_url": "https://github.com/SaplingLearn/canopy/pull/42",
+    "html_url": "https://github.com/AndresL230/trov/pull/42",
     "merged": true,
     "merged_at": "2026-07-01T18:24:00Z",
     "closed_at": "2026-07-01T18:24:00Z",

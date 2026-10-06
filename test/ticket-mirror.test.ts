@@ -216,20 +216,20 @@ describe("the mirror, through the webhook", () => {
     expect(rows[0].status).toBe("declined");
   });
 
-  it("title, body, assignees and a person's status are Canopy's after import — later deliveries never overwrite them", async () => {
+  it("title, body, assignees and a person's status are Trov's after import — later deliveries never overwrite them", async () => {
     await deliver(issuePayload("opened", { updated_at: "2026-09-20T10:00:00Z" }));
     const id = (await tickets())[0].id;
-    await run(env.DB, `UPDATE tickets SET title = 'Canopy title', body = 'Canopy body' WHERE id = ?`, id);
+    await run(env.DB, `UPDATE tickets SET title = 'Trov title', body = 'Trov body' WHERE id = ?`, id);
     await transition_ticket(env.DB, id, "in_progress", "meilin");
 
     await deliver(issuePayload("edited", { title: "[P3] GitHub retitled", body: "GitHub body", updated_at: "2026-09-20T11:00:00Z" }));
     await deliver(issuePayload("assigned", { assignees: ["Darkest-Teddy"], updated_at: "2026-09-20T12:00:00Z" }));
 
-    expect((await tickets())[0]).toMatchObject({ title: "Canopy title", body: "Canopy body", status: "in_progress", priority: "high", source_updated_at: "2026-09-20T12:00:00Z" });
+    expect((await tickets())[0]).toMatchObject({ title: "Trov title", body: "Trov body", status: "in_progress", priority: "high", source_updated_at: "2026-09-20T12:00:00Z" });
     expect(await assignees()).toEqual([]);
   });
 
-  it("a redelivery of an already-applied close does not undo a later status change in Canopy", async () => {
+  it("a redelivery of an already-applied close does not undo a later status change in Trov", async () => {
     await deliver(issuePayload("opened", { updated_at: "2026-09-20T10:00:00Z" }));
     await deliver(issuePayload("closed", { state: "closed", state_reason: "completed", updated_at: "2026-09-20T11:00:00Z" }));
     const id = (await tickets())[0].id;

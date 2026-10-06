@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import { all, first } from "../src/db";
 import type { SprintRow, PlanRow, PlanVersionRow } from "@shared/rows";
 import { PLAN_NARRATIVE_MAX } from "@shared/sprints";
@@ -14,7 +14,7 @@ const AUTHOR = "admin-user";
 // client/server pair — the same closure production runs (mirrors
 // test/mcp.append_feed.test.ts's callTool helper).
 async function withClient<T>(login: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildCanopyMcpServer(env as unknown as import("../src/env").Env, { handle: login });
+  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: login });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

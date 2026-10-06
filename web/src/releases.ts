@@ -7,7 +7,7 @@
 //
 // ── How to add the next release ──────────────────────────────────────────────
 // Every PR that ships something adds its lines to the FIRST entry, "Unreleased":
-// The RELEASE NOTES (the index cards, `#releases/<v>`) are for Canopy's USERS; the PATCH
+// The RELEASE NOTES (the index cards, `#releases/<v>`) are for Trov's USERS; the PATCH
 // NOTES (`#releases/<v>/patches`) are for the people who build and deploy it.
 //   • `highlights` — for users: what you can now do, in product words (no files,
 //     routes, tables, migrations or PR numbers). 3–6 lines per release.
@@ -17,7 +17,7 @@
 //     updates. Shown as "Upgrade notes" at the top of the patch notes only.
 //   • `patches`    — the granular log, grouped added / changed / fixed / removed. Terse,
 //     may name files, routes and migrations; `code` in backticks; end a line with
-//     `(#123)` to link that pull request on GitHub (github.com/SaplingLearn/canopy).
+//     `(#123)` to link that pull request on GitHub (github.com/AndresL230/trov — the repo moved from SaplingLearn/canopy; GitHub redirects old PR links).
 //   • `prs`        — the pull requests the release carries (listed on the patch notes).
 // A merge to `main` IS a production deploy, so the PR that merges a batch also cuts it:
 // set `version` to the next `0.N`, `date` to the merge day (YYYY-MM-DD) and drop
@@ -62,14 +62,51 @@ export interface Release {
    *  Shown only at the top of the release's PATCH notes. */
   ops?: string[];
   patches: ReleasePatches;
-  /** Pull requests on SaplingLearn/canopy. */
+  /** Pull requests on AndresL230/trov (formerly SaplingLearn/canopy — PR numbers carried over). */
   prs?: number[];
 }
 
-export const CANOPY_REPO_URL = "https://github.com/SaplingLearn/canopy";
-export const prUrl = (n: number): string => `${CANOPY_REPO_URL}/pull/${n}`;
+export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
+export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  {
+    version: "0.17",
+    date: "2026-10-06",
+    title: "Canopy is now Trov",
+    headline: "Same tool, new name — plus public Terms of Service and Privacy Policy pages.",
+    highlights: [
+      "Canopy is now called Trov — in the app, on the site, in every email and in the Claude Code plugin. Your docs, tickets, sprints, handoffs, prompts and artifacts are exactly where they were.",
+      "Your theme and sidebar settings carry over to the new name on their own.",
+      "Terms of Service and Privacy Policy now have their own pages, linked from the site's footer.",
+    ],
+    headsUp: [
+      "The Claude Code plugin is now called Trov. Remove the old Canopy plugin and install Trov — Settings › MCP access shows the two commands — then sign in again from Claude Code.",
+      "If you connected Claude Code without the plugin, connect it again under the new name from Settings › MCP access. Tokens you already use keep working.",
+    ],
+    ops: [
+      "Apply migration `0041_trov_name` (renames the untouched default digest sender to \"Trov\"; the address is unchanged).",
+      "Multitenancy schema: before applying `0037`–`0040`, take `wrangler d1 export` (data, base tables — see `scripts/mt/verify-migration.mjs`) and note the D1 Time Travel bookmark; run `node scripts/mt/verify-migration.mjs` on the export; then `npm run db:migrate:remote`. Rollback: Time Travel + `wrangler rollback`, or `scripts/mt/rollback/0037-0040.down.sql`.",
+      "Trov plugin 0.7.0 — the plugin, its marketplace and the auto-wired MCP server are renamed `trov`. Everyone reinstalls: `/plugin uninstall canopy`, `/plugin marketplace add AndresL230/trov`, `/plugin install trov@trov`, then `/mcp` → trov → Authenticate. Agent tools are now `mcp__trov__…`; a by-hand `claude mcp add … canopy` server must be re-added as `trov`.",
+      "Unchanged on purpose: the canopy.saplinglearn.com domain (and the sending address on it), the Worker / D1 `canopy` / R2 `canopy-artifacts` names, the `canopy/coverage|bundle-kb|todo` commit statuses Sapling's CI posts, the `canopy-health` / `canopy-metrics` user-agents in the metrics contract, and tickets' stored `source = 'canopy'`.",
+    ],
+    patches: {
+      added: [
+        "Terms of Service and Privacy Policy: two public pages at `/terms` and `/privacy` (Vite inputs `web/terms.html` / `web/privacy.html`, content and renderer in `web/src/legal.ts`, boot in `web/src/legal-page.ts`), linked from the landing page's footer (`siteFooter`, now in `web/src/site-chrome.ts` and shared with both pages); readable signed out, following the app's stored theme",
+        "Multitenancy schema, Phase 2 (`canopy-multitenancy.md`): migrations `0037_orgs` (orgs, memberships, org invites, repos, environments, integration-secret tables, per-org attribution map, counters; SaplingLearn seeded as `org_saplinglearn`), `0038_tenant_columns`, `0039_tenant_rebuilds` (20 tables re-keyed by org, ending in a foreign-key guard) and `0040_tenant_fts` (every search index org-scoped); per-org ticket and handoff numbers; a generated rollback (`scripts/mt/build-rollback.py`) and a production-copy check (`scripts/mt/verify-migration.mjs`); CI on every push (`.github/workflows/ci.yml`). Nothing on screen changes yet",
+        "`web/src/storage-migrate.ts`: moves every `canopy.*` browser key (theme, feed / prompt view, rail, open nav groups, sign-in return-to) to `trov.*` once, at boot",
+      ],
+      changed: [
+        "Renamed Canopy → Trov across the app, landing page, legal pages, emails, OAuth consent pages, MCP server name and tool descriptions, skills (the `canopy` skill is now `trov`), plugin and marketplace (`plugins/trov`), README / AGENTS / CLAUDE.md; `canopy.css` → `trov.css`; repo links → AndresL230/trov",
+        "New MCP and OAuth tokens are minted `trov_mcp_` / `trov_oat_` / `trov_ort_`; `canopy_*` tokens issued before the rename still resolve",
+        "`trov` is a reserved handle (beside `canopy`)",
+      ],
+      fixed: [
+        "The record-session skill and the `query` reference named the doc spaces `sapling` / `canopy`; they are `product` / `technical` (0020)",
+      ],
+      removed: [],
+    },
+  },
   {
     version: "0.16",
     date: "2026-09-27",
@@ -93,7 +130,6 @@ export const RELEASES: Release[] = [
     ops: [
       "Apply migration `0036_person_profiles` with `npm run db:migrate:remote` before this deploys.",
       "Canopy plugin 0.6.8.",
-      "Multitenancy schema: before applying `0037`–`0040`, take `wrangler d1 export` (data, base tables — see `scripts/mt/verify-migration.mjs`) and note the D1 Time Travel bookmark; run `node scripts/mt/verify-migration.mjs` on the export; then `npm run db:migrate:remote`. Rollback: Time Travel + `wrangler rollback`, or `scripts/mt/rollback/0037-0040.down.sql`.",
     ],
     patches: {
       added: [
@@ -103,8 +139,6 @@ export const RELEASES: Release[] = [
         "Settings › Profile: the avatar is the photo control — a hover veil with a camera, and a click menu with Upload (Change) photo, Remove photo over an uploaded one and the accepted types (`web/src/avatar.ts` centre-crops to a 512px square and encodes WebP, else PNG, before upload) (#89)",
         "Tickets: `POST /tickets/:id/delete` hard-deletes a native ticket (any member, never MCP; a ticket mirrored from GitHub is a 403); Delete ticket in the rail, through the confirmation modal (#89)",
         "Maintenance › Identity: `POST /identity-tasks/:login/discard` / `restore` — a soft, sticky discard (`identity_tasks.status = 'discarded'` + `resolved_at` / `resolved_by`, no migration; the login's PK keeps it from being re-raised, its events are still captured); a Discard on each card, a \"Discarded @login · Undo\" toast, and an \"N discarded\" list with Restore; `GET /identity-tasks` adds `discarded` (#89)",
-        "Multitenancy schema, Phase 2 (`canopy-multitenancy.md`): migrations `0037_orgs` (orgs, memberships, org invites, repos, environments, integration-secret tables, per-org attribution map, counters; SaplingLearn seeded as `org_saplinglearn`), `0038_tenant_columns`, `0039_tenant_rebuilds` (20 tables re-keyed by org, ending in a foreign-key guard) and `0040_tenant_fts` (every search index org-scoped); per-org ticket and handoff numbers; a generated rollback (`scripts/mt/build-rollback.py`) and a production-copy check (`scripts/mt/verify-migration.mjs`); CI on every push (`.github/workflows/ci.yml`). Nothing on screen changes yet",
-        "Terms of Service and Privacy Policy: two public pages at `/terms` and `/privacy` (Vite inputs `web/terms.html` / `web/privacy.html`, content and renderer in `web/src/legal.ts`, boot in `web/src/legal-page.ts`), linked from the landing page's footer (`siteFooter`, now in `web/src/site-chrome.ts` and shared with both pages); readable signed out, following the app's stored theme",
         "MCP `assign_ticket { id, login, on }` (issue #90): adds or removes one assignee over the web's `toggle_assignee`, scoped to an admin, the ticket's requester or a current assignee (`assertTicketAssignable`); idempotent with no write, never changes status; the `tickets` / `canopy` skills and `create_ticket`'s description say so (#89)",
       ],
       changed: [
@@ -847,8 +881,8 @@ function indexCard(r: Release, i: number): string {
 export function releasesIndex(releases: readonly Release[] = RELEASES): string {
   return `<div class="cnpy-relidx">
     <div class="cnpy-relidx-head">
-      <h1 class="cnpy-relidx-title">What's new in Canopy</h1>
-      <p class="cnpy-relidx-intro">Every release, newest first. Open one for its notes, and switch to Patch notes for the full list of changes with links to the pull requests on <a href="${attr(CANOPY_REPO_URL)}" target="_blank" rel="noopener noreferrer" class="cnpy-rel-pr">GitHub</a>.</p>
+      <h1 class="cnpy-relidx-title">What's new in Trov</h1>
+      <p class="cnpy-relidx-intro">Every release, newest first. Open one for its notes, and switch to Patch notes for the full list of changes with links to the pull requests on <a href="${attr(TROV_REPO_URL)}" target="_blank" rel="noopener noreferrer" class="cnpy-rel-pr">GitHub</a>.</p>
     </div>
     <div class="cnpy-relgrid">${releases.map(indexCard).join("")}</div>
   </div>`;
@@ -878,7 +912,7 @@ function docHead(r: Release, page: ReleasePage): string {
   const facts = `${plural(r.highlights.length, "highlight")} · ${plural(patchCount(r), "patch line")}${page === "patches" && r.prs?.length ? ` · ${plural(r.prs.length, "pull request")}` : ""}`;
   // The page's note sits in the header, to the right of the title block: the Heads-up on the
   // release notes, the Upgrade notes on the patch notes. Below ~900px of page it drops under
-  // the lede (canopy.css, a container query). The Release notes / Patch notes switch sits on
+  // the lede (trov.css, a container query). The Release notes / Patch notes switch sits on
   // the back link's row, right-aligned — its right edge on the note's.
   const note = page === "notes" ? headsUp(r) : upgradeNotes(r);
   return `<header class="cnpy-reldoc-head cnpy-rise${note ? " has-heads" : ""}">
@@ -926,7 +960,7 @@ function prChips(r: Release): string {
  *  change counts as large figures — each opens that group on the patch notes), then the
  *  highlights (the Heads-up lives in the page header, `docHead`) —
  *  in two balanced columns when there are LONG_HIGHLIGHTS or more and the card is very
- *  wide (canopy.css, a container query). */
+ *  wide (trov.css, a container query). */
 const LONG_HIGHLIGHTS = 5;
 function notesDoc(r: Release): string {
   const slug = releaseSlug(r);
@@ -954,7 +988,7 @@ function notesDoc(r: Release): string {
  *  full-width section (Added, Changed, Fixed, Removed) — one row per line, a quiet heading
  *  (dot, label, count), hairlines only between groups — then the PRs as one line of chips.
  *  A long group (LONG_GROUP lines or more) may flow into two balanced columns on a very
- *  wide card (canopy.css, a container query); never more. */
+ *  wide card (trov.css, a container query); never more. */
 const LONG_GROUP = 8;
 function patchesDoc(r: Release): string {
   const present = GROUPS.filter((g) => r.patches[g.key].length);

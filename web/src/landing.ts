@@ -5,7 +5,7 @@
 // (GitHub for engineers, Google by invitation — both stay reachable).
 //
 // Deltas from the canvas file, all deliberate:
-//   • `style-hover` pseudo-props → the `.site-*` classes in canopy.css.
+//   • `style-hover` pseudo-props → the `.site-*` classes in trov.css.
 //   • In-page links are `siteJump` buttons, not `#how` anchors: the URL hash is
 //     the app's route AND the sign-in return-to (an email deep link must survive
 //     a visit to the landing page), so the landing never writes it.
@@ -14,10 +14,10 @@
 //   • Sign in lives ONLY in the nav (top right); the hero keeps the canvas's CTAs.
 //   • Motion (not in the canvas): the mockups act out the product. Elements carry
 //     `data-rv` and render hidden; landing-motion.ts plays them as they scroll in
-//     and the CSS in canopy.css runs the choreography, each step timed by `--d`.
+//     and the CSS in trov.css runs the choreography, each step timed by `--d`.
 
 import { esc } from "./ui";
-import { CANOPY_REPO, siteFooter, siteMark as mark } from "./site-chrome";
+import { TROV_REPO, siteFooter, siteMark as mark } from "./site-chrome";
 
 
 // Reveal keys already played, for THIS render (set by landingView). A played
@@ -90,13 +90,13 @@ function nav(dark: boolean, signedIn: boolean): string {
     <div class="site-navin" style="max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
       <button data-act="siteJump" data-arg="top" style="display:flex;align-items:center;gap:9px;padding:0;color:var(--fg)">
         ${mark(20)}
-        <span style="font-size:16.5px;font-weight:650;letter-spacing:-0.01em">Canopy</span>
+        <span style="font-size:16.5px;font-weight:650;letter-spacing:-0.01em">Trov</span>
       </button>
       <div class="site-hide-sm" style="display:flex;gap:4px;margin-left:8px">
         ${link("how", "How it works")}${link("tour", "Tour")}${link("agents", "For agents")}${link("security", "Security")}
       </div>
       <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
-        <a href="${CANOPY_REPO}" target="_blank" rel="noopener" title="GitHub" class="site-iconbtn">${GH_MARK(17)}</a>
+        <a href="${TROV_REPO}" target="_blank" rel="noopener" title="GitHub" class="site-iconbtn">${GH_MARK(17)}</a>
         <button data-act="cycleTheme" title="Toggle theme" class="site-iconbtn" style="border:1px solid var(--border)">${dark ? MOON : SUN}</button>
         <button data-act="${signedIn ? "siteBack" : "openSignIn"}" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">${signedIn ? "Back to the app" : "Sign in"}</button>
       </div>
@@ -139,7 +139,7 @@ function hero(): string {
       <p class="site-st" style="margin:22px auto 0;max-width:620px;font-size:17.5px;line-height:1.6;color:var(--fg-70);text-wrap:pretty;${at(520)}">Agents load what your team already decided, record what actually shipped, and wait for a person to approve anything that becomes official.</p>
       <div class="site-st" style="margin-top:34px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap;${at(640)}">
         <button data-act="siteGuide" class="site-btn site-btn-solid">Get started</button>
-        <a href="${CANOPY_REPO}" target="_blank" rel="noopener" class="site-btn site-btn-outline">${GH_MARK(15)}Read the code</a>
+        <a href="${TROV_REPO}" target="_blank" rel="noopener" class="site-btn site-btn-outline">${GH_MARK(15)}Read the code</a>
       </div>
     </div>
 
@@ -153,7 +153,7 @@ function hero(): string {
         <div class="site-hide-sm" style="width:212px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--border);padding:14px 12px 12px">
           <div style="display:flex;align-items:center;gap:8px;padding:2px 8px 14px">
             ${mark(17)}
-            <span style="font-size:14.5px;font-weight:650;letter-spacing:-0.01em">Canopy</span>
+            <span style="font-size:14.5px;font-weight:650;letter-spacing:-0.01em">Trov</span>
           </div>
           ${sideHead("Workspace", "4px")}
           <div style="display:flex;flex-direction:column;gap:1px">
@@ -278,7 +278,7 @@ function loop(): string {
       </div>
       <div style="padding:12px 14px 14px;font-family:var(--code);font-size:11px;line-height:1.75">
         <div style="color:rgba(237,233,226,0.6)">${cmd}</div>
-        ${tline("⏺ canopy · load-context", "#9aab65", cmdEnd + 250)}
+        ${tline("⏺ trov · load-context", "#9aab65", cmdEnd + 250)}
         ${tline("Read: Rate limiting on the public API", "rgba(237,233,226,0.85)", cmdEnd + 650)}
         <div class="site-st" style="color:rgba(237,233,226,0.85);${at(cmdEnd + 1000)}">Building on ADR-0012, token bucket per org.<span class="site-caret" style="${at(cmdEnd + 1150)}"></span></div>
       </div>
@@ -298,7 +298,7 @@ function loop(): string {
   return `<section id="site-how" style="${section(140)}">
     ${heading("how-head", "Orient, work, record.", "The loop that keeps the store current: agents read before they start and write back when they finish.")}
     <div style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:16px;align-items:stretch">
-      ${step(0, "01 · Orient", "Before touching an existing area, the agent searches Canopy and reads the relevant docs and decisions.", orient)}
+      ${step(0, "01 · Orient", "Before touching an existing area, the agent searches Trov and reads the relevant docs and decisions.", orient)}
       ${step(1, "02 · Work", "The agent builds on what the team decided instead of guessing.", work)}
       ${step(2, "03 · Record", "On request, the agent reads what actually shipped from git and GitHub and sends one batch of updates.", record)}
     </div>
@@ -470,7 +470,7 @@ function tour(): string {
         ${hsec("Done", ["429s carry Retry-After from the bucket's reset time"], S + 150)}
         ${hsec("Next", ["Add limiter tests for the reset edge", "Note the header in the API doc"], S + 330)}
         <div class="site-st" style="margin-top:14px;border-radius:8px;background:var(--term);color:var(--term-fg);padding:10px 12px;font-family:var(--code);font-size:10.5px;line-height:1.75;${at(S + 800)}">
-          <div style="color:#9aab65">⏺ canopy · load-context</div>
+          <div style="color:#9aab65">⏺ trov · load-context</div>
           <div style="color:rgba(237,233,226,0.85)">1 handoff waiting: #17 from @leo. Claim it?</div>
           <div class="site-st" style="color:rgba(237,233,226,0.6);${at(S + 1350)}">&gt; yes</div>
         </div>
@@ -554,9 +554,9 @@ function agents(): string {
           ${group("Artifacts and doc images", ["upload_asset", "artifact_update", "artifact_get", "artifact_list"])}
           ${group("Admin", ["update_plan"], true)}`;
   n = 0;
-  const skills = chips(["canopy", "load-context", "record-session", "my-work", "tickets", "handoff", "prompts", "artifacts", "read-plan", "update-plan"]);
-  const [cmd1, cmd1End] = typed("/plugin marketplace add SaplingLearn/canopy", 700, 28);
-  const [cmd2, cmd2End] = typed("/plugin install canopy@canopy", cmd1End + 300, 28);
+  const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "prompts", "artifacts", "read-plan", "update-plan"]);
+  const [cmd1, cmd1End] = typed("/plugin marketplace add AndresL230/trov", 700, 28);
+  const [cmd2, cmd2End] = typed("/plugin install trov@trov", cmd1End + 300, 28);
   const prompt = `<span style="color:rgba(237,233,226,0.45)">$</span> `;
 
   return `<section id="site-agents" style="${section()}">
@@ -581,7 +581,7 @@ function agents(): string {
             <div style="white-space:nowrap">${prompt}${cmd1}</div>
             <div style="white-space:nowrap">${prompt}${cmd2}<span class="site-caret" style="${at(cmd2End + 150)}"></span></div>
           </div>
-          <p style="margin:12px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55)">Wires the MCP server and loads all ten skills. Then connect by browser sign-in: run <span style="font-family:var(--label);font-size:11.5px">/mcp</span>, pick canopy, and choose Authenticate.</p>
+          <p style="margin:12px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55)">Wires the MCP server and loads all ten skills. Then connect by browser sign-in: run <span style="font-family:var(--label);font-size:11.5px">/mcp</span>, pick trov, and choose Authenticate.</p>
           <button data-act="siteGuide" class="site-btn site-btn-outline" style="margin-top:16px">Setup steps in Get Started</button>
         </div>
       </div>
@@ -617,9 +617,9 @@ function signInDialog(): string {
       </button>
       <div style="display:flex;align-items:center;justify-content:center;gap:10px">
         ${mark(26)}
-        <span id="signin-title" style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Sign in to Canopy</span>
+        <span id="signin-title" style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Sign in to Trov</span>
       </div>
-      <div style="margin-top:12px;font-size:14px;color:var(--fg-70);text-align:center;line-height:1.55">Canopy is limited to the Sapling team for now.</div>
+      <div style="margin-top:12px;font-size:14px;color:var(--fg-70);text-align:center;line-height:1.55">Trov is limited to the Sapling team for now.</div>
       <div style="margin-top:24px;display:flex;flex-direction:column;gap:18px">
         <button data-act="signIn" class="cnpy-accentbtn" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px 16px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600">
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.37.5 0 5.78 0 12.29c0 5.2 3.44 9.6 8.21 11.16.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.72-4.04-1.61-4.04-1.61-.55-1.38-1.34-1.75-1.34-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.81 1.3 3.49.99.11-.77.42-1.3.76-1.6-2.67-.3-5.47-1.32-5.47-5.87 0-1.3.47-2.36 1.23-3.19-.12-.3-.53-1.51.12-3.15 0 0 1.01-.32 3.3 1.22a11.5 11.5 0 0 1 6 0c2.29-1.54 3.3-1.22 3.3-1.22.65 1.64.24 2.85.12 3.15.77.83 1.23 1.89 1.23 3.19 0 4.56-2.81 5.57-5.49 5.86.43.37.81 1.1.81 2.22 0 1.6-.01 2.89-.01 3.29 0 .32.22.7.83.58A12.01 12.01 0 0 0 24 12.29C24 5.78 18.63.5 12 .5z"></path></svg>

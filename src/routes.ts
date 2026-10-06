@@ -366,7 +366,7 @@ app.post("/api/docs/propose", async (c) => {
   if (await first(c.env.DB, `SELECT 1 FROM docs WHERE slug = ?`, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
   const result = await ingestDocProposal(
     c.env.DB,
-    { slug, section: d.section, space: d.space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Canopy", confidence: "high" },
+    { slug, section: d.section, space: d.space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high" },
     c.get("principal").handle,
   );
   if (result.outcome === "refused") return c.json({ error: result.reason }, 400);
@@ -615,7 +615,7 @@ app.get("/me/dashboard", async (c) => {
 
 // The Repo dashboard — the same class of read as /me/dashboard: a D1-only
 // projection over captured events, tickets and sprints (src/tools/repo.ts). No
-// live GitHub; whatever Canopy has no capture path for is `not_connected`.
+// live GitHub; whatever Trov has no capture path for is `not_connected`.
 // Stored nowhere; never 500s.
 app.get("/repo/dashboard", async (c) => {
   const repo = c.env.GITHUB_REPO ?? "";
@@ -783,7 +783,7 @@ app.get("/tickets/:id", async (c) => {
 });
 
 // Edit the title and/or body — a mirrored ticket's too (seeded from the issue at
-// import, Canopy's afterwards). A patch that changes neither is a 400.
+// import, Trov's afterwards). A patch that changes neither is a 400.
 app.post("/tickets/:id/edit", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);

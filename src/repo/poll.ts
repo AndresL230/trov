@@ -255,7 +255,7 @@ export async function pollCloudflare(
       const res = await fetchImpl(CF_GRAPHQL, {
         method: "POST",
         signal: AbortSignal.timeout(CF_TIMEOUT_MS),
-        headers: { authorization: `Bearer ${cf.token}`, "content-type": "application/json", "user-agent": "canopy-analytics" },
+        headers: { authorization: `Bearer ${cf.token}`, "content-type": "application/json", "user-agent": "trov-analytics" },
         body: JSON.stringify({ query: CF_QUERY, variables: { a: cf.accountId, s: cfg.worker, from: new Date(from).toISOString(), to: new Date(to).toISOString() } }),
       });
       if (!res.ok) {
@@ -398,7 +398,7 @@ export async function pollRailway(
       const res = await fetchImpl(RW_GRAPHQL, {
         method: "POST",
         signal: AbortSignal.timeout(RW_TIMEOUT_MS),
-        headers: { "Project-Access-Token": token, "content-type": "application/json", "user-agent": "canopy-hosting" },
+        headers: { "Project-Access-Token": token, "content-type": "application/json", "user-agent": "trov-hosting" },
         body: JSON.stringify({ query: RW_QUERY, variables: { e: cfg.railwayEnvironmentId, s: cfg.railwayServiceId, start: new Date(from).toISOString() } }),
       });
       if (!res.ok) throw new Error(`railway metrics ${res.status}${await failureReason(res, scrub)}`);
@@ -579,7 +579,7 @@ export function saplingProductMetrics(body: unknown, clean: (s: string) => strin
 
 /**
  * Hourly `active_users_24h` / `_7d` / `_30d` per environment, `env` = the
- * config key, `part` = "". Canopy cannot compute these — only Sapling's
+ * config key, `part` = "". Trov cannot compute these — only Sapling's
  * database knows who signed in — so each environment's BACKEND is asked:
  * `GET {apiUrl}/api/internal/metrics`, `Authorization: Bearer <token>`, and a
  * `200` carrying `{ "active_users": { "24h": n, "7d": n, "30d": n } }` (the

@@ -3,7 +3,7 @@
 //
 //   #123                 → this org's main repo (REPO_URL)
 //   owner/repo#123       → THAT repo — never REPO_URL. Linking the `#123` of
-//                          `SaplingLearn/canopy#51` to the sapling repo's issue
+//                          `AndresL230/trov#51` to the sapling repo's issue
 //                          51 sends the reader to the wrong issue.
 
 const CROSS = /^([A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+)#(\d+)\b/;

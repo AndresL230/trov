@@ -28,7 +28,7 @@
 //
 // Env:
 //   GEMINI_API_KEY         else read from .dev.vars.
-//   CLOUDFLARE_ACCOUNT_ID  needed by wrangler for --remote (Canopy prod: 6a5f361bfafdb29f00faf0c49dd1a240);
+//   CLOUDFLARE_ACCOUNT_ID  needed by wrangler for --remote (Trov prod: 6a5f361bfafdb29f00faf0c49dd1a240);
 //                          passed through to wrangler as-is. Not needed with --local.
 //
 // The D1 database name is read from wrangler.toml (the `DB` binding's `database_name`).
@@ -75,7 +75,7 @@ function databaseName() {
   } catch {
     /* fall through */
   }
-  return "canopy";
+  return "canopy"; // the D1 database keeps its name through the rename to Trov
 }
 
 function geminiKey() {
@@ -98,7 +98,7 @@ if (!API_KEY) {
 }
 if (!LOCAL && !process.env.CLOUDFLARE_ACCOUNT_ID) {
   console.warn(
-    "warning: CLOUDFLARE_ACCOUNT_ID is not set — wrangler --remote may fail (Canopy prod: 6a5f361bfafdb29f00faf0c49dd1a240)."
+    "warning: CLOUDFLARE_ACCOUNT_ID is not set — wrangler --remote may fail (Trov prod: 6a5f361bfafdb29f00faf0c49dd1a240)."
   );
 }
 
@@ -264,7 +264,7 @@ async function main() {
   const lines = done.map(
     ({ id, brief }) => `UPDATE feed SET brief = ${sqlString(brief)} WHERE id = ${Number(id)} AND brief IS NULL;`
   );
-  const file = join(tmpdir(), `canopy-feed-briefs-${Date.now()}.sql`);
+  const file = join(tmpdir(), `trov-feed-briefs-${Date.now()}.sql`);
   writeFileSync(file, lines.join("\n") + "\n", "utf8");
   console.log(`Wrote ${lines.length} UPDATE(s) to ${file}; running it ${TARGET}…`);
   process.stdout.write(wrangler(["--file", file]));

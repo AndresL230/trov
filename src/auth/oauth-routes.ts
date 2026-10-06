@@ -194,7 +194,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
   // page as a known refusal, just at 503 — logging only the message, never request data.
   const unavailable = (c: Context<AppEnv>, e: unknown) => {
     console.error("oauth authorize: unexpected error", e instanceof Error ? e.message : "unknown");
-    return page(c, errorPage("Canopy couldn't finish this right now. Try again from the app."), 503);
+    return page(c, errorPage("Trov couldn't finish this right now. Try again from the app."), 503);
   };
 
   o.get("/oauth/authorize", async (c) => {

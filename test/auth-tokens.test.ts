@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { mintToken, resolveToken, listTokens, revokeToken } from "../src/auth/tokens";
+import { sha256Hex } from "../src/auth/crypto";
+import { resolveBearerPrincipal } from "../src/auth/principal";
 import { app } from "../src/routes";
 import { first } from "../src/db";
 import { seedPerson, cookieFor } from "./helpers/persons";
@@ -9,7 +11,7 @@ describe("mcp tokens", () => {
   it("mints a prefixed token, stores only its hash, and resolves it to the owner (bumping last_used_at)", async () => {
     await seedPerson("real-user");
     const { raw } = await mintToken(env.DB, "real-user");
-    expect(raw.startsWith("canopy_mcp_")).toBe(true);
+    expect(raw.startsWith("trov_mcp_")).toBe(true);
 
     expect(await resolveToken(env.DB, raw)).toEqual({ handle: "real-user" });
 
@@ -17,6 +19,17 @@ describe("mcp tokens", () => {
       env.DB, `SELECT last_used_at, token_hash FROM mcp_tokens WHERE person = ?`, "real-user");
     expect(row?.last_used_at).not.toBeNull();
     expect(row?.token_hash).not.toBe(raw); // never the raw token
+  });
+
+  // The rename to Trov: new tokens start `trov_mcp_`, but a `canopy_mcp_` token already pasted into an
+  // agent's config is the SAME lookup (the hash of the whole string) and must keep working.
+  it("a token minted before the rename (`canopy_mcp_…`) still resolves, over /mcp's bearer path too", async () => {
+    await seedPerson("real-user");
+    const legacy = "canopy_mcp_minted-before-the-rename-0123456789";
+    await env.DB.prepare(`INSERT INTO mcp_tokens (person, token_hash, created_at) VALUES (?, ?, ?)`).bind("real-user", await sha256Hex(legacy), "2026-09-01T00:00:00.000Z").run();
+    expect(await resolveToken(env.DB, legacy)).toEqual({ handle: "real-user" });
+    const req = new Request("https://trov.test/mcp", { headers: { authorization: `Bearer ${legacy}` } });
+    expect(await resolveBearerPrincipal(req, env)).toEqual({ handle: "real-user" });
   });
 
   it("rejects an unknown token", async () => {
@@ -38,7 +51,7 @@ describe("mcp tokens", () => {
     const b = await mintToken(env.DB, "real-user");
 
     const list = await listTokens(env.DB, "real-user");
-    expect(list.map((t) => t.hint)).toEqual([b.raw.slice(11, 15), a.raw.slice(11, 15)]);
+    expect(list.map((t) => t.hint)).toEqual([b.raw.slice(9, 13), a.raw.slice(9, 13)]);
     expect(Object.keys(list[0]).sort()).toEqual(["created_at", "hint", "id", "last_used_at"]);
     expect(list[0].last_used_at).toBeNull();
   });
@@ -78,7 +91,7 @@ describe("GET /auth/mcp-tokens · POST /auth/mcp-tokens/:id/revoke", () => {
 
     const { tokens } = await (await get(me)).json() as { tokens: { id: number; hint: string | null }[] };
     expect(tokens).toHaveLength(1);
-    expect(tokens[0].hint).toBe(token.slice(11, 15));
+    expect(tokens[0].hint).toBe(token.slice(9, 13)); // after `trov_mcp_`
     expect(JSON.stringify(tokens)).not.toContain(token);
 
     expect((await post(`/auth/mcp-tokens/${tokens[0].id}/revoke`, other)).status).toBe(404);

@@ -3,14 +3,14 @@
 //
 // ADR-007, amended (0032): a ticket may link to GitHub work, and may be SOURCED
 // from a GitHub issue, but is never the issue itself. A mirrored ticket is a D1
-// row Canopy owns, and this module is a COMPUTED write from a verified delivery
+// row Trov owns, and this module is a COMPUTED write from a verified delivery
 // (the webhook, post-HMAC, or the admin backfill) — no `consume()`, no gate.
 //
 // Who owns what (the owner's ruling, 2026-09-24):
 //   - title, body, category, priority, requester, assignees: seeded from the
-//     issue when the ticket is CREATED, then Canopy's — a later GitHub edit never
-//     overwrites a Canopy edit, and a GitHub (un)assign never touches assignees.
-//   - status: Canopy's, under the normal transition table — EXCEPT that GitHub
+//     issue when the ticket is CREATED, then Trov's — a later GitHub edit never
+//     overwrites a Trov edit, and a GitHub (un)assign never touches assignees.
+//   - status: Trov's, under the normal transition table — EXCEPT that GitHub
 //     drives closure. A `closed` delivery forces the final state (done /
 //     declined), a `deleted` / `transferred` one forces declined, and a
 //     `reopened` one reopens a resolved ticket to `submitted`. Those forced moves
@@ -170,7 +170,7 @@ export async function mirrorIssue(db: DB, repo: string | undefined, payload: unk
   let wrote = await healMirrored(db, existing.id, m, existing.status);
 
   // A delivery ALREADY applied (same updated_at) forces nothing: a person may
-  // have moved the status in Canopy since, and a redelivery must not undo that.
+  // have moved the status in Trov since, and a redelivery must not undo that.
   // The move and the new source_updated_at land in ONE batch, so a failure
   // leaves source_updated_at behind and the redelivery re-applies the move.
   const alreadyApplied = existing.source_updated_at === m.updatedAt;
@@ -188,7 +188,7 @@ export async function mirrorIssue(db: DB, repo: string | undefined, payload: unk
 /**
  * The status GitHub FORCES on an existing ticket, or null. Only the actions that
  * change an issue's open/closed state force anything — every other delivery
- * (edited, labeled, assigned…) leaves the Canopy-owned status alone.
+ * (edited, labeled, assigned…) leaves the Trov-owned status alone.
  */
 function forcedStatus(m: IssueMirror, current: TicketStatus): TicketStatus | null {
   if ((m.action === "closed" || isIssueGone(m.action)) && m.final && current !== m.final) return m.final;
@@ -229,7 +229,7 @@ const sourceLink = (m: IssueMirror) => parseTicketLink(m.htmlUrl);
  * guarded, so if a concurrent delivery created the ticket first (the parent
  * INSERT OR IGNOREs) nothing is duplicated. Assignees are part of the opening
  * unit — inserted only while the ticket has no history yet — so a replay can
- * never re-add someone a person has since unassigned in Canopy.
+ * never re-add someone a person has since unassigned in Trov.
  */
 async function createMirrored(db: DB, m: IssueMirror): Promise<void> {
   const requester = (await resolvePersonForLogin(db, m.authorLogin))?.handle ?? MIRROR_ACTOR;

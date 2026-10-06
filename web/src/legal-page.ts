@@ -1,17 +1,20 @@
 // The DOM boot for the two legal pages (web/terms.html, web/privacy.html). The page
 // says which document it is (`data-doc` on #legal); everything it renders comes from
 // the pure web/src/legal.ts. The theme follows the app's own stored choice
-// (`canopy.theme`, the same key and reading as web/src/main.ts), and the toggle flips
+// (`trov.theme`, the same key and reading as web/src/main.ts), and the toggle flips
 // Light ⇄ Dark and stores it, so the app and these pages always agree.
-import "./canopy.css";
+import "./trov.css";
 import { LEGAL_DOCS, legalView, type LegalKind } from "./legal";
 import { syncFavicon } from "./favicon";
+import { migrateBrowserStorage } from "./storage-migrate";
+
+migrateBrowserStorage(); // canopy.* → trov.* before the theme is read
 
 type Theme = "light" | "dark" | "system";
 
 function storedTheme(): Theme {
   try {
-    const t = localStorage.getItem("canopy.theme");
+    const t = localStorage.getItem("trov.theme");
     if (t === "dark" || t === "light" || t === "system") return t;
     if (t === "midnight") return "dark"; // retired theme, read like the app reads it
   } catch { /* storage unavailable */ }
@@ -34,13 +37,13 @@ if (mount && doc) {
     syncFavicon(t);
   };
 
-  document.title = `${doc.title} · Canopy`;
+  document.title = `${doc.title} · Trov`;
   paint();
   media?.addEventListener?.("change", () => { if (theme === "system") paint(); });
   mount.addEventListener("click", (e) => {
     if (!(e.target as Element).closest("[data-legal-theme]")) return;
     theme = resolved() === "light" ? "dark" : "light";
-    try { localStorage.setItem("canopy.theme", theme); } catch { /* ignore */ }
+    try { localStorage.setItem("trov.theme", theme); } catch { /* ignore */ }
     paint();
   });
   // A deep link to a section (/privacy#cookies) lands on it once the page has rendered.

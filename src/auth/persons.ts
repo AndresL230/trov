@@ -3,7 +3,7 @@ import { PERSON_COLORS, type PersonColor, type PersonRow, type IdentityRow, type
 import { avatarSrc, type PersonSummary } from "@shared/people";
 
 export const HANDLE_RE = /^[a-z][a-z0-9-]{1,23}$/;
-export const RESERVED_HANDLES: readonly string[] = ["github-webhook", "system", "admin", "canopy", "me"];
+export const RESERVED_HANDLES: readonly string[] = ["github-webhook", "system", "admin", "canopy", "trov", "me"];
 export type HandleProblem = "invalid" | "reserved" | "taken";
 
 export class HandleTakenError extends Error {

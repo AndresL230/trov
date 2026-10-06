@@ -8,7 +8,7 @@ import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { app } from "../src/routes";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { all, first } from "../src/db";
 import { savePrompt, deletePrompt, recordPromptUse, PromptSaveInput } from "../src/tools/prompts";
@@ -38,7 +38,7 @@ const del = (who: string, slug = SLUG) => req("POST", `/api/prompts/${slug}/dele
 const restore = (who: string, slug = SLUG) => req("POST", `/api/prompts/${slug}/restore`, who, {});
 
 async function mcp(handle: string, name: string, args: Record<string, unknown> = {}): Promise<{ text: string; isError?: boolean }> {
-  const server = buildCanopyMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://canopy.example/" } as Env, { handle });
+  const server = buildTrovMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://trov.example/" } as Env, { handle });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -127,7 +127,7 @@ describe("POST /api/prompts/:slug/delete", () => {
   });
 
   it("is never an MCP tool — no agent can delete or restore a prompt", async () => {
-    const server = buildCanopyMcpServer(env as unknown as Env, { handle: ADMIN });
+    const server = buildTrovMcpServer(env as unknown as Env, { handle: ADMIN });
     const client = new Client({ name: "test", version: "1.0.0" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);

@@ -10,7 +10,7 @@ import type { TicketCreate } from "@shared/tickets";
 import { app } from "../src/routes";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { cookieFor, seedPerson } from "./helpers/persons";
 
@@ -53,7 +53,7 @@ describe("fetchGithubRefProgress", () => {
   });
 
   it("reads counts directly from a GitHub issue-group object", async () => {
-    // `/milestones/` is GitHub's own REST path — not Canopy vocabulary.
+    // `/milestones/` is GitHub's own REST path — not Trov vocabulary.
     const fetchImpl = stubFetch({ "/milestones/5": { open_issues: 3, closed_issues: 7, state: "open" } });
     const p = await fetchGithubRefProgress({ token: "t", repo: "o/r", ref: "5", fetchImpl });
     expect(p).toEqual({ closed: 7, total: 10 });
@@ -188,7 +188,7 @@ describe("registered MCP get_roadmap tool", () => {
     );
     await upsertProgress(env.DB, sprints[0].id, 4, 6, "event");
 
-    const server = buildCanopyMcpServer(env as unknown as Env, { handle: "andres" });
+    const server = buildTrovMcpServer(env as unknown as Env, { handle: "andres" });
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -222,7 +222,7 @@ describe("registered MCP get_roadmap tool", () => {
     await transition_ticket(env.DB, a, "in_progress", "andres");
     await transition_ticket(env.DB, a, "done", "andres");
 
-    const server = buildCanopyMcpServer(env as unknown as Env, { handle: "andres" });
+    const server = buildTrovMcpServer(env as unknown as Env, { handle: "andres" });
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -248,7 +248,7 @@ describe("registered MCP get_roadmap tool", () => {
   });
 
   it("MCP registers no agent-PROPOSED sprint tool — sprints are authored, never staged", async () => {
-    const server = buildCanopyMcpServer(env as unknown as Env, { handle: "andres" });
+    const server = buildTrovMcpServer(env as unknown as Env, { handle: "andres" });
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);

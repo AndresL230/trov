@@ -2,7 +2,7 @@
 -- KEYS do not change, and the per-org display numbers (Q2).
 --
 -- These tables keep their shape and gain one column. SQLite's ADD COLUMN cannot carry a REFERENCES clause
--- with a non-NULL default, so here `org_id` has no foreign key to orgs(id); the 0041 rebuild (Phase 7) that
+-- with a non-NULL default, so here `org_id` has no foreign key to orgs(id); the 0042 rebuild (Phase 7) that
 -- removes the transitional DEFAULT adds it, together with the composite in-org foreign keys
 -- (ticket_* → tickets(org_id, id), …). Until then the org is guaranteed by the default and, from Phase 3, by
 -- the data layer. Every existing row becomes SaplingLearn's (the column default fills it).
@@ -31,7 +31,7 @@ ALTER TABLE doc_image_upload_tokens ADD COLUMN org_id TEXT NOT NULL DEFAULT 'org
 ALTER TABLE notification_outbox ADD COLUMN org_id TEXT NOT NULL DEFAULT 'org_saplinglearn';
 ALTER TABLE notification_outbox_bodies ADD COLUMN org_id TEXT NOT NULL DEFAULT 'org_saplinglearn';
 
--- ── in-org uniqueness on surrogate ids (the targets of 0041's composite foreign keys) ──
+-- ── in-org uniqueness on surrogate ids (the targets of 0042's composite foreign keys) ──
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sprints_org_id ON sprints(org_id, id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tickets_org_id ON tickets(org_id, id);
 

@@ -1,16 +1,16 @@
 {
-  "name": "canopy",
+  "name": "trov",
   "owner": {
     "name": "SaplingLearn",
     "url": "https://github.com/SaplingLearn"
   },
-  "description": "Canopy — the team's shared context store. Skills + MCP wiring to read, orient against, and record into the team brain.",
+  "description": "Trov — the team's shared context store. Skills + MCP wiring to read, orient against, and record into the team brain.",
   "plugins": [
     {
-      "name": "canopy",
-      "source": "./plugins/canopy",
-      "description": "Skills: canopy, load-context, record-session (orient→work→record), my-work, tickets, read-plan + update-plan (admin), handoff, prompts, artifacts — plus the auto-wired Canopy MCP server. Connects by browser sign-in: run /mcp and choose Authenticate.",
-      "keywords": ["canopy", "context", "mcp", "team-memory", "tickets", "handoffs", "prompts", "artifacts"]
+      "name": "trov",
+      "source": "./plugins/trov",
+      "description": "Skills: trov, load-context, record-session (orient→work→record), my-work, tickets, read-plan + update-plan (admin), handoff, prompts, artifacts — plus the auto-wired Trov MCP server. Connects by browser sign-in: run /mcp and choose Authenticate.",
+      "keywords": ["trov", "context", "mcp", "team-memory", "tickets", "handoffs", "prompts", "artifacts"]
     }
   ]
 }

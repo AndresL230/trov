@@ -30,7 +30,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 
 import { planNarrativeBlock, render, initialState } from "../web/src/render";
-import canopyCss from "../web/src/canopy.css?raw";
+import trovCss from "../web/src/trov.css?raw";
 import mainSrc from "../web/src/main.ts?raw";
 import type { PlanView, SprintView, FeedRow } from "../web/src/api";
 
@@ -374,7 +374,7 @@ describe("render() — Roadmap: the tab bar heading the page body, not a header 
       expect(tabs(render(stateWithPlan(makePlanView({ sprints: [onTime] }), tab))), tab).toContain(">Timeline</button>");
     }
     // A status dot is an element, and its radius has a rule in the Corners block.
-    expect(canopyCss).toContain('[style*="border-radius:50%"]');
+    expect(trovCss).toContain('[style*="border-radius:50%"]');
   });
 
   it("heads the page BODY (not the header), and the labelled panel follows its line", () => {
@@ -466,10 +466,10 @@ describe("render() — Recent happenings GitHub chips", () => {
 
   it("keeps the correct href for a cross-repo PR URL (not rewritten to REPO_URL)", () => {
     const html = render(stateWithFeed(
-      JSON.stringify({ prs: ["https://github.com/SaplingLearn/canopy/pull/7"], commits: [], issues: [] }),
+      JSON.stringify({ prs: ["https://github.com/AndresL230/trov/pull/7"], commits: [], issues: [] }),
     ));
     expect(html).toContain(">#7<");
-    expect(html).toContain("https://github.com/SaplingLearn/canopy/pull/7");
+    expect(html).toContain("https://github.com/AndresL230/trov/pull/7");
   });
 
   it("shortens a full commit SHA to 7 chars in the label, keeps the full SHA in the href", () => {
@@ -614,7 +614,7 @@ describe("render() — the Now box renders the description as markdown, clamped"
   });
 
   it("the clamp is CSS: three lines with an ellipsis", () => {
-    expect(canopyCss).toMatch(/\.cnpy-md\.rm-now-about \{[^}]*-webkit-line-clamp:3/);
+    expect(trovCss).toMatch(/\.cnpy-md\.rm-now-about \{[^}]*-webkit-line-clamp:3/);
   });
 
   it("no description → no wrapper", () => {
@@ -642,10 +642,10 @@ describe("render() — Roadmap Narrative uses the shared two-column helper", () 
   });
 
   it("the shared CSS: a 360px aside, sticky at the page's own top padding, one column under 880px", () => {
-    expect(canopyCss).toMatch(/\.cnpy-cols \{[^}]*grid-template-columns:minmax\(0,1fr\) 360px/);
-    expect(canopyCss).toMatch(/\.cnpy-cols-page \{[^}]*--cols-pad-top:28px/);
-    expect(canopyCss).toMatch(/\.cnpy-cols-aside \{[^}]*position:sticky; top:var\(--cols-pad-top\)/);
-    expect(canopyCss).toMatch(/@container colspage \(max-width: 880px\)/);
+    expect(trovCss).toMatch(/\.cnpy-cols \{[^}]*grid-template-columns:minmax\(0,1fr\) 360px/);
+    expect(trovCss).toMatch(/\.cnpy-cols-page \{[^}]*--cols-pad-top:28px/);
+    expect(trovCss).toMatch(/\.cnpy-cols-aside \{[^}]*position:sticky; top:var\(--cols-pad-top\)/);
+    expect(trovCss).toMatch(/@container colspage \(max-width: 880px\)/);
     // NOT the sidebar's .cnpy-aside, whose width and border-right would leak onto it.
     const html = render(stateWithPlan(makePlanView(), "narrative"));
     expect(html).not.toContain('<aside class="cnpy-aside cnpy-stagger">');

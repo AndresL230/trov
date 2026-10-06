@@ -2,8 +2,8 @@
 // session cookie via the Chrome DevTools Protocol so the SPA's same-origin fetches are
 // authed. Verification-only; no app code depends on it.
 //
-//   CANOPY_COOKIE=$(node scripts/dev-cookie.mjs | sed 's/^session=//') \
-//   CANOPY_SHOT_DIR=/path node scripts/dev-shot.mjs <outName> ['<jsToEvalBeforeShot>']
+//   TROV_COOKIE=$(node scripts/dev-cookie.mjs | sed 's/^session=//') \
+//   TROV_SHOT_DIR=/path node scripts/dev-shot.mjs <outName> ['<jsToEvalBeforeShot>']
 //
 // e.g. ... node scripts/dev-shot.mjs roadmap 'document.querySelector("[data-act=goRoadmap]").click()'
 import { spawn } from "node:child_process";
@@ -13,19 +13,19 @@ import { join } from "node:path";
 
 const CHROME = process.env.CHROME_BIN ?? "/home/andresl/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome";
 const PORT = Number(process.env.CDP_PORT ?? 9333);
-const BASE = process.env.CANOPY_URL ?? "http://localhost:8787";
+const BASE = process.env.TROV_URL ?? "http://localhost:8787";
 const OUT = process.argv[2] ?? "shot";
 const EVAL_JS = process.argv[3] ?? null;
-const COOKIE = process.env.CANOPY_COOKIE; // "<id>.<sig>" (cookie VALUE only)
-const DIR = process.env.CANOPY_SHOT_DIR ?? process.cwd();
-if (!COOKIE) throw new Error("CANOPY_COOKIE env (cookie value) required");
+const COOKIE = process.env.TROV_COOKIE; // "<id>.<sig>" (cookie VALUE only)
+const DIR = process.env.TROV_SHOT_DIR ?? process.cwd();
+if (!COOKIE) throw new Error("TROV_COOKIE env (cookie value) required");
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const chrome = spawn(CHROME, [
   "--headless=new", "--disable-gpu", "--no-sandbox", "--hide-scrollbars",
   `--remote-debugging-port=${PORT}`, "--remote-allow-origins=*",
-  `--user-data-dir=${mkdtempSync(join(tmpdir(), "canopy-cdp-"))}`,
+  `--user-data-dir=${mkdtempSync(join(tmpdir(), "trov-cdp-"))}`,
   "--window-size=1200,760", "about:blank",
 ], { stdio: "ignore" });
 

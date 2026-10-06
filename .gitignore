@@ -4,6 +4,7 @@ web/dist/
 .dev.vars
 *.log
 .superpowers/
+.trov/
 .canopy/
 
 # multitenancy migration checks: local production exports (scripts/mt/verify-migration.mjs) — never commit

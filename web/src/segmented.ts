@@ -10,7 +10,7 @@
 // (FLIP). Until it runs (first paint), the picked button carries the fill itself, so the
 // markup is right with no script at all. Off under prefers-reduced-motion.
 //
-// Pure markup here; `syncSegments` is the only DOM code, the styles live in canopy.css.
+// Pure markup here; `syncSegments` is the only DOM code, the styles live in trov.css.
 
 import { esc, attr } from "./ui";
 

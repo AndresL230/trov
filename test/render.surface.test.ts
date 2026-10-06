@@ -1,7 +1,7 @@
 /**
  * The surface card — the app's ONE card look (white in light, a lifted tone in dark, a
  * hairline border, a small shadow). It is defined ONCE, as `.cnpy-surface` in
- * web/src/canopy.css, and markup opts in through `surface()` in web/src/ui.ts. These tests
+ * web/src/trov.css, and markup opts in through `surface()` in web/src/ui.ts. These tests
  * pin the definition and that the migrated cards render the class instead of an inline copy
  * of the look — and none still carries the old tinted card background.
  */
@@ -14,7 +14,7 @@ vi.mock("../web/src/markdown", () => ({
   sanitizeSvg: (s: string) => s,
 }));
 
-import css from "../web/src/canopy.css?raw";
+import css from "../web/src/trov.css?raw";
 import { surface, SURFACE } from "../web/src/ui";
 import { render, initialState, planNarrativeBlock, profileSection, accountSection, mcpAccessSection } from "../web/src/render";
 import { ticketsTile } from "../web/src/mywork";
@@ -44,7 +44,7 @@ function signedIn(): ReturnType<typeof initialState> {
   } as ReturnType<typeof initialState>;
 }
 
-describe("the surface card — defined once (web/src/canopy.css)", () => {
+describe("the surface card — defined once (web/src/trov.css)", () => {
   const plain = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const design = plain.slice(0, plain.indexOf("--corner-scale:"));
 

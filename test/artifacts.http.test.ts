@@ -19,7 +19,7 @@ import { cookieFor } from "./helpers/persons";
 
 const ME = "AndresL230";
 const YOU = "Jose-Gael-Cruz-Lopez";
-const ORIGIN = "https://canopy.test";
+const ORIGIN = "https://trov.test";
 
 const req = (path: string, init: RequestInit = {}) => app.request(`${ORIGIN}${path}`, init, env);
 const json = (method: string, body: unknown, cookie: string, extra: Record<string, string> = {}): RequestInit => ({
@@ -270,7 +270,7 @@ describe("raw route", () => {
     const dl = await req("/raw/a/login-mock?download=1", { headers: { cookie: me } });
     expect(dl.headers.get("content-disposition")).toBe(`attachment; filename="login-mock-v1.html"`);
     expect(await dl.text()).toBe("<html><body><p>hi</p></body></html>");
-    expect(HEIGHT_SCRIPT).toContain("canopy:height");
+    expect(HEIGHT_SCRIPT).toContain("trov:height");
     expect(HEIGHT_SCRIPT).toContain("ResizeObserver");
     expect(injectHeightScript("<p>no body</p>")).toBe(`<p>no body</p>${HEIGHT_SCRIPT}`);
     expect(injectHeightScript("<body>a</BODY >b</body>")).toBe(`<body>a</BODY >b${HEIGHT_SCRIPT}</body>`);
@@ -287,7 +287,7 @@ describe("raw route", () => {
       expect(res.headers.get("content-type")).toBe(ct);
       expect(res.headers.get("content-security-policy")).toBe(RAW_CSP_ACTIVE);
       expect(res.headers.get("content-disposition")).toBe(`inline; filename="${slug}-v1.${ext}"`);
-      expect(await res.text()).not.toContain("canopy:height");
+      expect(await res.text()).not.toContain("trov:height");
     }
   });
 
@@ -361,7 +361,7 @@ describe("upload-url + the token PUT", () => {
     const t = (await mint.json()) as { id: number; slug: string; upload_url: string; expires_at: string; token?: string };
     expect(t.slug).toBe("round-trip");
     expect(t.token).toBeUndefined();
-    expect(t.upload_url).toMatch(/^https:\/\/canopy\.test\/api\/artifacts\/upload\/[A-Za-z0-9_-]{43}$/);
+    expect(t.upload_url).toMatch(/^https:\/\/trov\.test\/api\/artifacts\/upload\/[A-Za-z0-9_-]{43}$/);
     const path = new URL(t.upload_url).pathname;
 
     // Other methods on the token path: 405.

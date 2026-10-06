@@ -33,7 +33,7 @@ const prEvent = (n: number, login: string, title: string, occurredAt: string): C
   event_type: "pr_merged",
   ref_number: n,
   subject_login: login,
-  // `milestone` below is GitHub's own key — not Canopy vocabulary.
+  // `milestone` below is GitHub's own key — not Trov vocabulary.
   raw: JSON.stringify({
     pr: { number: n, title, body: "b", html_url: `https://github.com/SaplingLearn/sapling/pull/${n}`, merged: true, merged_at: occurredAt, closed_at: occurredAt, user: { login }, milestone: null },
   }),

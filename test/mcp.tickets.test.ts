@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { TicketCreate, type TicketDetail, type TicketListItem } from "@shared/tickets";
 import { SprintCreate, type SprintDetail, type SprintView } from "@shared/sprints";
@@ -54,7 +54,7 @@ const ISSUE_214 = "https://github.com/SaplingLearn/sapling/issues/214";
 const FIGMA_URL = "https://www.figma.com/file/abc/Queue-board";
 
 async function withClient<T>(handle: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildCanopyMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, { handle });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

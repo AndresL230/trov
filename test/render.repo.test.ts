@@ -1184,8 +1184,8 @@ describe("Poll now — the Repo top bar, every tab", () => {
     expect(bar).not.toContain("every source"); // it does not: issues refresh with Sync GitHub
     // While it runs, the title says so too — not only the label a narrow bar hides.
     expect(repoControls(props({ admin: true, poll: { status: "polling" } }))).toContain('data-act="repoPollNow" title="Polling…" aria-label="Polling…"');
-    expect(bar).toMatch(/data-act="repoRefresh" title="Reload from Canopy's database"/);
-    // Narrow widths hide the label by CLASS (canopy.css) — the markup is the same at every width.
+    expect(bar).toMatch(/data-act="repoRefresh" title="Reload from Trov's database"/);
+    // Narrow widths hide the label by CLASS (trov.css) — the markup is the same at every width.
     expect(bar).toContain('class="cnpy-outlinebtn repo-pollbtn"');
   });
 

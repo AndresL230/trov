@@ -145,7 +145,7 @@ export function agentCreateTicket(db: DB, input: TicketCreate, requester: string
 }
 
 /** Edit a ticket's title and/or body, inside the lane. A mirrored ticket's title
- *  and body are Canopy's after import, so this works on those too. */
+ *  and body are Trov's after import, so this works on those too. */
 export async function agentEditTicket(db: DB, env: Env, id: number, patch: TicketEdit, actor: string): Promise<void> {
   await assertTicketWritable(db, env, id, actor, "edit_ticket");
   await edit_ticket(db, id, patch, actor);
@@ -208,7 +208,7 @@ export async function agentSetTicketParent(db: DB, env: Env, parentId: number, c
  * someone who is not, returns having written nothing — not even the `updated_at`
  * bump the web writer makes on every toggle, so a repeated call never reorders the
  * queue. The handle is still validated on that path, so a typo is never a silent
- * success. A mirrored ticket's assignees are Canopy's after import, so this works
+ * success. A mirrored ticket's assignees are Trov's after import, so this works
  * on those too.
  */
 export async function agentAssignTicket(db: DB, env: Env, id: number, login: string, on: boolean, actor: string): Promise<void> {

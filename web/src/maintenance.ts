@@ -293,7 +293,7 @@ export function personEditChanged(draft: PersonEditDraft | null, base: PersonEdi
  *  ONE place either is edited (a person never edits their own) and the one place
  *  responsibilities are shown. While the read is in flight it is the SAME form, disabled
  *  and shimmering, so nothing moves when the draft lands. The open / close motion is
- *  canopy.css `.cnpy-roleedit`, played only while main.ts `syncRoleEdit` marks the element
+ *  trov.css `.cnpy-roleedit`, played only while main.ts `syncRoleEdit` marks the element
  *  `data-anim` — so the rerender every keystroke causes never replays the opening. */
 export function personRoleEditor(name: string, e: PersonEditView): string {
   const out = e.phase === "out";

@@ -11,14 +11,14 @@
 import { describe, it, expect } from "vitest";
 import { grantListBody, mcpAccessSection, mcpSetupModal, MCP_LIST_CAP, PLUGIN_INSTALL, browserConnectCommand, render, initialState } from "../web/src/render";
 import { esc } from "../web/src/ui";
-import css from "../web/src/canopy.css?raw";
+import css from "../web/src/trov.css?raw";
 
-const URL = "https://canopy.example.com/mcp";
+const URL = "https://trov.example.com/mcp";
 const ME = { handle: "alice", name: null, avatar_url: null, color: "moss" as const, identities: [], org: "SaplingLearn", admin: false };
 
 describe("browserConnectCommand", () => {
   it("adds the server with no header — Claude Code signs in through the browser", () => {
-    expect(browserConnectCommand(URL)).toBe(`claude mcp add --transport http --scope user canopy ${URL}`);
+    expect(browserConnectCommand(URL)).toBe(`claude mcp add --transport http --scope user trov ${URL}`);
   });
 });
 
@@ -27,7 +27,7 @@ describe("Get Started guide — Connect your agent", () => {
 
   it("leads with the plugin and the browser sign-in, the same three steps as Settings", () => {
     const html = render(guideState());
-    const install = html.indexOf("/plugin install canopy@canopy");
+    const install = html.indexOf("/plugin install trov@trov");
     const auth = html.indexOf("Authenticate", install);
     const allow = html.indexOf("Allow", auth);
     expect(install).toBeGreaterThan(-1);
@@ -44,8 +44,8 @@ describe("Get Started guide — Connect your agent", () => {
     expect(html).not.toContain("/guide/connect-");
     // The variable may be named for an agent still on an older token (troubleshooting),
     // but the setup never asks anyone to export it.
-    expect(html).not.toContain("export CANOPY_MCP_TOKEN");
-    expect(html).not.toContain("set -Ux CANOPY_MCP_TOKEN");
+    expect(html).not.toContain("export TROV_MCP_TOKEN");
+    expect(html).not.toContain("set -Ux TROV_MCP_TOKEN");
   });
 });
 
@@ -98,7 +98,7 @@ describe("Settings › MCP access — the browser sign-in, then Connected apps",
       at(">MCP access<"),
       at('data-act="mcpSetupOpen"'),
       at("Sign Claude Code in with your browser"),
-      at("Install the Canopy plugin"),
+      at("Install the Trov plugin"),
       at("/mcp"),
       at("Click <strong"),
       at('data-list="grants"'),
@@ -135,7 +135,7 @@ describe("Settings › MCP access — the browser sign-in, then Connected apps",
     expect(html).toMatch(/^<div data-overlay="mcp-setup" class="cnpy-cmodal">/);
     expect(html).toContain('<div data-act="mcpSetupClose" class="cnpy-cmodal-back" aria-hidden="true"></div>');
     expect(html).toContain('class="cnpy-cmodal-wrap"');
-    // role="dialog" + aria-modal is also what makes it a bottom sheet at phone width (canopy.css).
+    // role="dialog" + aria-modal is also what makes it a bottom sheet at phone width (trov.css).
     expect(html).toMatch(/role="dialog" aria-modal="true" aria-labelledby="mcp-setup-t" aria-describedby="mcp-setup-d" tabindex="-1" data-mcp-setup class="cnpy-surface cnpy-cmodal-box"/);
     expect(html).toContain('id="mcp-setup-t"');
     expect(html).toContain(">Set it up without the plugin<");
@@ -143,7 +143,7 @@ describe("Settings › MCP access — the browser sign-in, then Connected apps",
     expect(html).toContain('data-act="copyBrowserConnect"');
     const follow = html.indexOf("Then run ");
     expect(follow).toBeGreaterThan(html.indexOf("claude mcp add"));
-    expect(html.slice(follow)).toMatch(/\/mcp[\s\S]*canopy[\s\S]*Authenticate/);
+    expect(html.slice(follow)).toMatch(/\/mcp[\s\S]*trov[\s\S]*Authenticate/);
     // The backdrop and the × both close it (Escape is main.ts's).
     expect(html.match(/data-act="mcpSetupClose"/g)).toHaveLength(2);
     expect(html).toContain('aria-label="Close"');

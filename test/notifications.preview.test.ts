@@ -44,7 +44,7 @@ describe("GET /api/notifications/preview", () => {
     await pending();
     const res = await app.request("/api/notifications/preview?cadence=weekly&format=text", { headers: { cookie } }, env);
     expect(res.headers.get("content-type")).toContain("text/plain");
-    expect(await res.text()).toContain("CANOPY WEEKLY");
+    expect(await res.text()).toContain("TROV WEEKLY");
   });
 
   it("says so when nothing renders, and sample=1 renders the canned sample instead", async () => {
@@ -93,7 +93,7 @@ describe("POST /api/notifications/test-send", () => {
     expect(rows[0]).toMatchObject({ user_id: "admin-user", cadence: "daily", status: "sent" });
     const bodies = await all<{ to_address: string; subject: string; html: string }>(env.DB, `SELECT * FROM notification_outbox_bodies`);
     expect(bodies[0].to_address).toBe("admin@example.com");
-    expect(bodies[0].subject).toMatch(/^Canopy daily, /);
+    expect(bodies[0].subject).toMatch(/^Trov daily, /);
     expect(bodies[0].html).toContain("Pending decision");
   });
 

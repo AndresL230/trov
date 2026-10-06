@@ -9,7 +9,7 @@
 // it is what agents read when deciding whom to assign work, and it (with the role) is set
 // only by an ADMIN in Maintenance › People (maintenance.ts `personRoleEditor`).
 //
-// The shell is the confirmation modal's (`.cnpy-cmodal` in canopy.css — a dimmed backdrop,
+// The shell is the confirmation modal's (`.cnpy-cmodal` in trov.css — a dimmed backdrop,
 // a centered card, a bottom sheet at phone width), rendered at the app ROOT as a
 // `data-overlay` so morph keeps it across rerenders. The backdrop, the × and Escape close it.
 

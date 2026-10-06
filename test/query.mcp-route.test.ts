@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import { app } from "../src/routes";
 import { propose_doc_update, promote_doc } from "../src/tools/writes";
 import type { QueryResult } from "@shared/contract";
@@ -14,7 +14,7 @@ const AUTHOR = "agent";
 // Drive the ACTUAL registered MCP `query` tool through an in-memory MCP
 // client/server pair — the same closures production runs, not a re-impl.
 async function callQuery(args: Record<string, unknown>): Promise<QueryResult> {
-  const server = buildCanopyMcpServer(env as unknown as import("../src/env").Env, { handle: AUTHOR });
+  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: AUTHOR });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -97,7 +97,7 @@ describe("registered MCP query tool + live GET /search route", () => {
     );
 
     // The registered MCP tool's `types` enum lists exactly four types — no ticket.
-    const server = buildCanopyMcpServer(env as unknown as import("../src/env").Env, { handle: AUTHOR });
+    const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: AUTHOR });
     const client = new Client({ name: "test", version: "1.0.0" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);

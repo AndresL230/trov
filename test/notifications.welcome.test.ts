@@ -21,50 +21,50 @@ const bodies = () => all<{ idempotency_key: string; to_address: string; subject:
   env.DB, `SELECT * FROM notification_outbox_bodies ORDER BY created_at`);
 
 describe("renderWelcomeEmail", () => {
-  const m = renderWelcomeEmail({ name: "Priya Natarajan", handle: "priya", origin: "https://canopy.test", host: "canopy.test" });
+  const m = renderWelcomeEmail({ name: "Priya Natarajan", handle: "priya", origin: "https://trov.test", host: "trov.test" });
 
   it("greets them, names their handle, and points at Get Started", () => {
-    expect(m.subject).toBe("Welcome to Canopy");
+    expect(m.subject).toBe("Welcome to Trov");
     expect(m.html).toContain("Hi Priya Natarajan,");
     expect(m.html).toContain("@priya");
-    expect(m.html).toContain('href="https://canopy.test/#guide"');
-    expect(m.text).toContain("https://canopy.test/#guide");
+    expect(m.html).toContain('href="https://trov.test/#guide"');
+    expect(m.text).toContain("https://trov.test/#guide");
     // Settings is where the handle/colour and the digest cadence live.
-    expect(m.html).toContain("https://canopy.test/#settings");
+    expect(m.html).toContain("https://trov.test/#settings");
   });
 
   it("is transactional — no unsubscribe, and the digests' banner", () => {
     expect(m.html).not.toContain("Unsubscribe");
     expect(m.html).not.toContain("<svg");
-    expect(m.html).toContain('data-mark="canopy"');
+    expect(m.html).toContain('data-mark="trov"');
     expect((m.html.match(/data-bar="/g) ?? []).length).toBe(3);
   });
 
   it("drops the name when there isn't one", () => {
-    const anon = renderWelcomeEmail({ name: null, handle: "priya", origin: "https://canopy.test", host: "canopy.test" });
+    const anon = renderWelcomeEmail({ name: null, handle: "priya", origin: "https://trov.test", host: "trov.test" });
     expect(anon.html).toContain("Hi,");
     expect(anon.text).toContain("Hi,");
   });
 
   it("welcomeUrl is the Get Started hash route the app lands a new person on", () => {
-    expect(welcomeUrl("https://canopy.test")).toBe("https://canopy.test/#guide");
+    expect(welcomeUrl("https://trov.test")).toBe("https://trov.test/#guide");
   });
 });
 
 describe("sendWelcome", () => {
   it("writes the rendered body in local mode and reports sent", async () => {
-    const r = await sendWelcome(env, env.DB, { email: "p@x.io", name: "P", handle: "priya", origin: "https://canopy.test" });
+    const r = await sendWelcome(env, env.DB, { email: "p@x.io", name: "P", handle: "priya", origin: "https://trov.test" });
     expect(r.status).toBe("sent");
     const rows = await bodies();
     expect(rows.length).toBe(1);
     expect(rows[0].to_address).toBe("p@x.io");
-    expect(rows[0].subject).toBe("Welcome to Canopy");
+    expect(rows[0].subject).toBe("Welcome to Trov");
     expect(rows[0].idempotency_key).toContain("welcome:priya:");
   });
 
   it("never throws on a misconfigured mode — it reports failed", async () => {
     const r = await sendWelcome({ ...env, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: undefined } as unknown as typeof env,
-      env.DB, { email: "p@x.io", name: null, handle: "priya", origin: "https://canopy.test" });
+      env.DB, { email: "p@x.io", name: null, handle: "priya", origin: "https://trov.test" });
     expect(r.status).toBe("failed");
     expect(r.error).toContain("RESEND_API_KEY");
     expect((await bodies()).length).toBe(0);
@@ -79,7 +79,7 @@ describe("POST /auth/onboard → welcome", () => {
     const rows = await bodies();
     expect(rows.length).toBe(1);
     expect(rows[0].to_address).toBe("priya.n@gmail.com");
-    expect(rows[0].subject).toBe("Welcome to Canopy");
+    expect(rows[0].subject).toBe("Welcome to Trov");
     expect(rows[0].html).toContain("@priya");          // the handle they just chose, not the suggestion
     expect(rows[0].html).toContain("Hi Priya N,");     // the name they just typed
   });

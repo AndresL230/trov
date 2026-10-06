@@ -2,7 +2,9 @@ import { type DB, first, all, run, nowIso } from "../db";
 import type { McpTokenSummary } from "@shared/rows";
 import { randomToken, sha256Hex } from "./crypto";
 
-const TOKEN_PREFIX = "canopy_mcp_";
+// Tokens minted since the rename to Trov carry `trov_mcp_`. A token is looked up by the hash of the WHOLE
+// string, so every `canopy_mcp_` token already pasted into an agent's config keeps working unchanged.
+const TOKEN_PREFIX = "trov_mcp_";
 /** How much of the random part is kept in the clear to label a token in Settings:
  *  4 of 43 base64url characters — enough to tell tokens apart, nothing to guess from. */
 const HINT_LENGTH = 4;

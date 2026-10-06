@@ -10,7 +10,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { app } from "../src/routes";
 import { all, first, run } from "../src/db";
@@ -32,7 +32,7 @@ const sprintCount = async () => (await first<{ n: number }>(env.DB, `SELECT COUN
 const planVersions = async () => (await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM plan_versions`))!.n;
 
 async function callTool(handle: string, name: string, args: Record<string, unknown>) {
-  const server = buildCanopyMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, { handle });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(b);

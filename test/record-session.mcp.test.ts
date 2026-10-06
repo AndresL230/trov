@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import { resolveBearerPrincipal } from "../src/auth/principal";
 import type { Principal } from "../src/auth/principal";
 import { mintToken } from "../src/auth/tokens";
@@ -24,7 +24,7 @@ async function seedUserWithBearer(login: string): Promise<string> {
 // Authorization header, NO cookie, through the real resolveBearerPrincipal. The
 // principal handed to the server is the resolver's output, never a hand-written literal.
 async function bearerPrincipal(rawToken: string): Promise<Principal> {
-  const req = new Request("https://canopy.example/mcp", {
+  const req = new Request("https://trov.example/mcp", {
     method: "POST",
     headers: { authorization: `Bearer ${rawToken}` },
   });
@@ -40,7 +40,7 @@ async function callRecordSession(
   principal: Principal,
   payload: unknown
 ): Promise<{ result: IngestResult; isError?: boolean }> {
-  const server = buildCanopyMcpServer(env as unknown as Env, principal);
+  const server = buildTrovMcpServer(env as unknown as Env, principal);
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -129,7 +129,7 @@ describe("record_session MCP tool — the real bearer-only agent write path", ()
     const raw = await seedUserWithBearer("bearer-agent-narrow");
     const principal = await bearerPrincipal(raw);
 
-    const server = buildCanopyMcpServer(env as unknown as Env, principal);
+    const server = buildTrovMcpServer(env as unknown as Env, principal);
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);

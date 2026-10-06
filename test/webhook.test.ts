@@ -147,7 +147,7 @@ describe("handleGithubWebhook — the third auth class", () => {
   it("captures the issue GROUP's number, title and due date in raw (the Sprint row's source)", async () => {
     await postWebhook("issues", issueAssigned, env);
     const rows = await all<EventRow>(env.DB, `SELECT * FROM events WHERE event_type = 'issue'`);
-    // `milestone` is GitHub's own key — not Canopy vocabulary (the stored raw mirrors it).
+    // `milestone` is GitHub's own key — not Trov vocabulary (the stored raw mirrors it).
     const raw = JSON.parse(rows[0].raw) as { issue: { milestone: { number: number; title: string | null; due_on: string | null } } };
     expect(raw.issue.milestone).toMatchObject({ number: 3, title: "Reliable event capture", due_on: "2026-07-20T07:00:00Z" });
   });
@@ -180,7 +180,7 @@ describe("eventsFromDelivery — pure derivation", () => {
     const raw = JSON.parse(e.raw);
     expect(raw.action).toBe("assigned");
     expect(raw.issue.labels).toEqual(["P1", "backend"]); // label objects flattened to names
-    // `milestone` is GitHub's own key — not Canopy vocabulary.
+    // `milestone` is GitHub's own key — not Trov vocabulary.
     expect(raw.issue.milestone).toEqual({
       number: 3,
       title: "Reliable event capture",
@@ -202,7 +202,7 @@ describe("eventsFromDelivery — pure derivation", () => {
     expect(e.occurred_at).toBe("2026-07-01T18:24:00Z");
     const raw = JSON.parse(e.raw);
     expect(raw.pr.merged).toBe(true);
-    // `milestone` is GitHub's own key — not Canopy vocabulary; the PR slice is number-only.
+    // `milestone` is GitHub's own key — not Trov vocabulary; the PR slice is number-only.
     expect(raw.pr.milestone).toEqual({ number: 3 });
   });
 

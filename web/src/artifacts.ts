@@ -9,7 +9,7 @@
 // ZOD-FREE core; this module never imports shared/artifacts, so zod stays out of
 // the browser bundle). Bodies are never inlined from a string the page trusts:
 //   • html  → <iframe src="/raw/a/<slug>@v<n>" sandbox="allow-scripts">, sized by
-//             the raw route's injected `canopy:height` postMessage (main.ts listens,
+//             the raw route's injected `trov:height` postMessage (main.ts listens,
 //             matching e.source to the frame). NEVER srcdoc, NEVER allow-same-origin.
 //   • svg   → inline, only after DOMPurify's svg profile (sanitizeSvg).
 //   • markdown → renderMarkdown (marked + DOMPurify).
@@ -37,7 +37,7 @@ import {
 } from "@shared/artifacts-core";
 
 export { ARTIFACT_AREAS, ARTIFACT_KINDS };
-export const ARTIFACT_REPOS = ["SaplingLearn/canopy", "SaplingLearn/sapling"] as const;
+export const ARTIFACT_REPOS = ["AndresL230/trov", "SaplingLearn/sapling"] as const;
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -425,7 +425,7 @@ function thumb(a: ArtifactSummaryDTO): string {
     // forms) — because a page that renders WITH JavaScript (a flattened Claude Design
     // export) otherwise previews as its unrendered template. An svg renders without
     // script, so its frame stays `sandbox=""`: it can do nothing. No allow-modals, no
-    // top navigation, pointer-events off; its `canopy:height` posts are ignored (main.ts
+    // top navigation, pointer-events off; its `trov:height` posts are ignored (main.ts
     // only resizes `.art-frame` iframes).
     const sandbox = a.kind === "html" ? "allow-scripts" : "";
     return `<iframe title="${attr(a.title)} preview" src="${attr(raw)}" sandbox="${sandbox}" tabindex="-1" loading="lazy" referrerpolicy="no-referrer" style="position:absolute;top:0;left:0;width:400%;height:400%;border:0;transform:scale(.25);transform-origin:0 0;pointer-events:none;background:#fff"></iframe>`;
@@ -634,7 +634,7 @@ function contentBlock(p: ArtProps, d: ArtifactDetailDTO): string {
       // for a pdf, pinned in test/artifacts.security-raw.test.ts: ALWAYS
       // `application/pdf` (whatever type was declared at upload), `nosniff`, and
       // `default-src 'none'` — the browser's PDF viewer renders it, and nothing in it
-      // can run as a page in Canopy's origin.
+      // can run as a page in Trov's origin.
       return `<div style="background:var(--bg)">
         <iframe title="${attr(d.title)}" src="${attr(raw)}" style="display:block;width:100%;height:78vh;min-height:480px;border:0;background:#fff"></iframe>
         <div style="padding:10px 14px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-55)"><a href="${attr(raw)}" target="_blank" rel="noopener" class="cnpy-link" style="color:var(--accent);font-weight:500">Open PDF in a new tab</a></div>
@@ -909,14 +909,14 @@ function contentChecks(text: string, bytes: number, kind: ArtifactKind): string 
   ${hits.length ? `<div style="display:flex;align-items:flex-start;gap:14px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:9px">
     <span style="font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;${tagTint("var(--amber)")};border-radius:5px;padding:3px 7px;flex:none">CLAUDE.AI ONLY</span>
     <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.55">
-      This page calls features that only exist inside claude.ai. Canopy renders artifacts in a sandbox with no network, so these calls will fail and parts of the page may render empty. You can still upload it.
+      This page calls features that only exist inside claude.ai. Trov renders artifacts in a sandbox with no network, so these calls will fail and parts of the page may render empty. You can still upload it.
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${hits.map((h) => `<code style="font-family:var(--code);font-size:11px;color:var(--fg);background:color-mix(in srgb,var(--fg) 6%,transparent);border:1px solid var(--border);border-radius:5px;padding:1.5px 6px">${esc(h)}</code>`).join("")}</div>
     </div>
   </div>` : ""}
   ${bundled ? `<div style="display:flex;align-items:flex-start;gap:14px;margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:9px">
     <span style="font-size:10.5px;font-weight:600;font-family:var(--label);letter-spacing:.04em;${tagTint("var(--amber)")};border-radius:5px;padding:3px 7px;flex:none">FLATTEN FIRST</span>
     <div style="flex:1;font-size:12.5px;color:var(--fg-70);line-height:1.55">
-      This is a bundled Claude Design export (a hi-fi clickable prototype). It loads its scripts from blob: URLs and compiles code at runtime, which Canopy's sandbox blocks, so it will render blank. Flatten it first, with every script inline and no eval, then upload that. You can still upload it as is.
+      This is a bundled Claude Design export (a hi-fi clickable prototype). It loads its scripts from blob: URLs and compiles code at runtime, which Trov's sandbox blocks, so it will render blank. Flatten it first, with every script inline and no eval, then upload that. You can still upload it as is.
     </div>
   </div>` : ""}`;
 }
@@ -956,7 +956,7 @@ function createView(p: ArtProps): string {
         <input data-act="artCUrl" data-field="artCUrl" data-enter="artCFetch" class="cnpy-input" value="${attr(c.url)}" placeholder="https://…/page.html" style="flex:1;min-width:0;height:40px;padding:0 12px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:12.5px;font-family:var(--label);outline:none">
         <button data-act="artCFetch" class="cnpy-outlinebtn" style="padding:0 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">${c.fetching ? "Fetching…" : "Fetch"}</button>
       </div>
-      <div style="font-size:12px;color:var(--fg-40);margin-top:7px">Canopy fetches the page once and stores a copy. Later changes at the URL don't update the artifact.</div>
+      <div style="font-size:12px;color:var(--fg-40);margin-top:7px">Trov fetches the page once and stores a copy. Later changes at the URL don't update the artifact.</div>
       ${c.urlErr ? `<div style="font-size:12px;color:var(--red);margin-top:7px">${esc(c.urlErr)}</div>` : ""}
       ${c.urlFetched ? prePreview(12) : ""}`;
   }
@@ -972,7 +972,7 @@ function createView(p: ArtProps): string {
 
   return `<div data-screen-label="New artifact" style="${SHELL}">
     <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">New artifact</h2>
-    <div style="font-size:13px;color:var(--fg-55);margin-top:6px">One self-contained page, stored and versioned in Canopy. Agents upload over MCP; this form is for people.</div>
+    <div style="font-size:13px;color:var(--fg-55);margin-top:6px">One self-contained page, stored and versioned in Trov. Agents upload over MCP; this form is for people.</div>
     <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,0.9fr) minmax(0,1.2fr);gap:34px;margin-top:24px">
       <div style="display:flex;flex-direction:column;gap:22px;min-width:0">
         <div>
@@ -1163,7 +1163,7 @@ function newVersionDialog(p: ArtProps, d: ArtifactDetailDTO, nv: ArtNewVersion):
       ${source}
       ${contentChecks(text, bytes, d.kind)}
       <label style="display:block;font-size:13px;font-weight:500;margin:18px 0 8px">What changed <span style="font-weight:400;color:var(--fg-40)">(optional)</span></label>
-      <input data-act="artNvSummary" data-field="artNvSummary" class="cnpy-input" value="${attr(nv.summary)}" maxlength="${ARTIFACT_SUMMARY_MAX}" placeholder="Flattened the export so it renders in Canopy" style="width:100%;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;outline:none">
+      <input data-act="artNvSummary" data-field="artNvSummary" class="cnpy-input" value="${attr(nv.summary)}" maxlength="${ARTIFACT_SUMMARY_MAX}" placeholder="Flattened the export so it renders in Trov" style="width:100%;height:38px;padding:0 12px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;outline:none">
     </div>
     <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:16px 24px 20px;border-top:1px solid var(--border);margin-top:16px;flex-wrap:wrap">
       <span style="flex:1;min-width:200px;font-size:12px;color:var(--fg-40)">Saves as v${next}. ${after}</span>
@@ -1427,7 +1427,7 @@ export function artifactsAct(
       return {
         write: {
           op: "create",
-          fields: { title: c.title.trim(), kind: c.kind, area: c.area, repo: c.repo, visibility: c.vis, summary: "Uploaded from Canopy" },
+          fields: { title: c.title.trim(), kind: c.kind, area: c.area, repo: c.repo, visibility: c.vis, summary: "Uploaded from Trov" },
           content: binary ? null : createText(c),
           file: binary ? c.file?.blob ?? null : null,
           filename: binary ? c.file?.name ?? null : null,

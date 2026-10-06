@@ -4,7 +4,7 @@
 //
 // Same contract as tickets.ts / review.ts / maintenance.ts: every function here
 // is PURELY presentational. Data arrives through props, output is an HTML string
-// in the app's template-string idiom (inline styles over the canopy.css custom
+// in the app's template-string idiom (inline styles over the trov.css custom
 // properties), and interactions dispatch through data-act / data-arg handled in
 // main.ts. No fetching, no state, no inline data.
 //
@@ -210,13 +210,13 @@ export interface NewSprintState {
 const NS_LABEL = "display:block;font-size:12.5px;font-weight:500;margin-bottom:7px";
 const NS_INPUT =
   "width:100%;height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:8px;background:transparent;color:var(--fg);font-size:13px;outline:none";
-/** A native date field on the same box. `cnpy-date` (canopy.css) sets `color-scheme`
+/** A native date field on the same box. `cnpy-date` (trov.css) sets `color-scheme`
  *  to the app's theme so the browser's own picker and calendar icon are dark in dark. */
 const nsDateInput = (arg: "start" | "due", value: string, label: string, invalid: boolean): string =>
   `<input type="date" class="cnpy-date" data-act="nsField" data-arg="${arg}" data-field="ns-${arg}" value="${attr(value)}" aria-label="${attr(label)}"${invalid ? ` aria-invalid="true" aria-describedby="ns-date-error"` : ""} style="${NS_INPUT};font-family:inherit;${invalid ? "border-color:var(--red);" : ""}" />`;
 const chipStyle = (on: boolean) =>
   `padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid ${on ? "var(--accent);color:var(--accent);background:var(--accent-soft)" : "var(--border);color:var(--fg-55);background:transparent"}`;
-/** The chip hover hook (canopy.css), exactly as the ticket form uses it: the
+/** The chip hover hook (trov.css), exactly as the ticket form uses it: the
  *  picked chip is painted inline and carries `is-on`, so the hover rule only firms
  *  up the ones that are NOT the current choice. (Urgency is the shared `segmented()`.) */
 const chipClass = (on: boolean) => `cnpy-pickchip${on ? " is-on" : ""}`;

@@ -1,4 +1,4 @@
-# Canopy
+# Trov
 
 Shared context store. One Cloudflare Worker on one origin serves the HTTP API,
 a stateless MCP endpoint at `/mcp`, and a full single-page app (TypeScript + Vite,
@@ -10,11 +10,11 @@ served via the ASSETS binding). Live at `canopy.saplinglearn.com`.
 - `web/` — Full SPA with screens: My Work (default dashboard), Feed, Docs, Roadmap,
   Triage, Search, Settings, and a Get Started guide. Built to `web/dist`.
 - `migrations/` — D1 SQL (`0001_init` … `0010_triage_resolve`)
-- `plugins/canopy/` + `.claude-plugin/marketplace.json` — the Canopy **plugin** and the marketplace
-  that distributes it (see **Install the Canopy plugin**). Bundles the three skills — `canopy`
+- `plugins/trov/` + `.claude-plugin/marketplace.json` — the Trov **plugin** and the marketplace
+  that distributes it (see **Install the Trov plugin**). Bundles the three skills — `trov`
   (umbrella + `query` reference), `load-context` (read/orient), `record-session` (session-end batch
-  writer) — under `plugins/canopy/skills/`, plus the auto-wired MCP server.
-- `.claude/skills/` — symlinks into `plugins/canopy/skills/` so this repo's own sessions load the
+  writer) — under `plugins/trov/skills/`, plus the auto-wired MCP server.
+- `.claude/skills/` — symlinks into `plugins/trov/skills/` so this repo's own sessions load the
   bundled skills directly (single source of truth; nothing to keep in sync)
 
 ## Read side
@@ -24,7 +24,7 @@ top hits, and returns ranked pointers for the rest. Backs `GET /search` and MCP 
 `get_doc` fetches a single doc with all its versions; `get_feed` streams the activity feed;
 `get_roadmap` merges live GitHub progress at read time (degrades gracefully if token absent).
 `get_repo_dashboard` is the Repo dashboard's read (deploys, CI, code activity, usage, product metrics,
-planning) from Canopy's own database — optional `tab` / `range` / `include_trends`; every section is
+planning) from Trov's own database — optional `tab` / `range` / `include_trends`; every section is
 `ok`, `empty` or `not_connected`, and anything not `ok` is unknown, never zero.
 
 ## Write side (agents stage, humans confirm)
@@ -41,7 +41,7 @@ routes only — MCP never gets one.
 
 ## The living loop (the skills)
 
-Canopy stays current because agents continuously feed it and humans curate it. Three skills under
+Trov stays current because agents continuously feed it and humans curate it. Three skills under
 `.claude/skills/` drive that loop — **this is the root of how the context system stays alive**, not a
 side feature:
 
@@ -50,7 +50,7 @@ side feature:
    builds on what's already there instead of guessing.
 2. **Work** — the agent does the task.
 3. **Record — `record-session`** (explicit: "record this session"). At the end it observes what actually
-   shipped (`git`/`gh`), reads the affected docs back from Canopy for a true base, and stages **one**
+   shipped (`git`/`gh`), reads the affected docs back from Trov for a true base, and stages **one**
    reconciled batch through the `record_session` MCP tool (same gate as `POST /ingest`, reachable over
    the agent's bearer).
 
@@ -59,10 +59,10 @@ and routes out-of-vocab or low-confidence entries to Triage. A human then promot
 assigns / discards. **Staging + confirmation is what keeps the store trustworthy as it grows**: nothing
 goes live unreviewed, and nothing rots, because every session writes back what it learned.
 
-`canopy` is the umbrella skill (the map, plus the full `query` reference in `references/querying.md`);
+`trov` is the umbrella skill (the map, plus the full `query` reference in `references/querying.md`);
 `load-context` and `record-session` are the two halves it composes — kept separate because one must
 auto-fire and the other must never. They live in this repo so they version with the tools they wrap.
-To use them from another machine or repo, install the **Canopy plugin** (below) — it bundles all three
+To use them from another machine or repo, install the **Trov plugin** (below) — it bundles all three
 skills and auto-wires the MCP server in one step, so there's nothing to copy by hand.
 
 ## Develop
@@ -85,36 +85,36 @@ only active members of the `SaplingLearn` GitHub org. Set these Wrangler secrets
 Production: `wrangler secret put GITHUB_CLIENT_ID` (and the others).
 Local dev: copy `.dev.vars.example` to `.dev.vars` (git-ignored) and fill it in.
 
-Mint an MCP token from a logged-in session: `POST /auth/mcp-token` → `{ "token": "canopy_mcp_..." }`
+Mint an MCP token from a logged-in session: `POST /auth/mcp-token` → `{ "token": "trov_mcp_..." }` (tokens minted before the rename start `canopy_mcp_` and keep working)
 (shown once). The web app no longer mints tokens — Settings › MCP access connects agents by browser sign-in (OAuth) —
 but the route and any token already minted keep working.
 
-## Install the Canopy plugin (skills + MCP in one step)
+## Install the Trov plugin (skills + MCP in one step)
 
 The three skills and the MCP wiring ship as a Claude Code **plugin**, distributed from this repo as a
 marketplace. Anyone on the team gets both in two commands inside Claude Code:
 
 ```text
-/plugin marketplace add SaplingLearn/canopy
-/plugin install canopy@canopy
+/plugin marketplace add AndresL230/trov
+/plugin install trov@trov
 ```
 
 The plugin connects by **browser sign-in** — no token to export. In Claude Code, run `/mcp`, pick
-`canopy`, and choose **Authenticate**; your browser opens Canopy, sign in if asked, then click
+`trov`, and choose **Authenticate**; your browser opens Trov, sign in if asked, then click
 **Allow**.
 
-That auto-wires the `canopy` MCP server (`query` / `get_doc` / `record_session` …) and loads the
-`canopy`, `load-context`, and `record-session` skills — no manual `claude mcp add`, no copying skill
+That auto-wires the `trov` MCP server (`query` / `get_doc` / `record_session` …) and loads the
+`trov`, `load-context`, and `record-session` skills — no manual `claude mcp add`, no copying skill
 folders. (Not using the plugin, or connecting a headless client like Codex or CI? The pasted-token
-path still works: `claude mcp add --transport http canopy https://canopy.saplinglearn.com/mcp --header "Authorization: Bearer canopy_mcp_..."`.)
+path still works: `claude mcp add --transport http trov https://canopy.saplinglearn.com/mcp --header "Authorization: Bearer canopy_mcp_..."`.)
 
-> **Maintainers:** the plugin is at `plugins/canopy/`; the marketplace manifest at
+> **Maintainers:** the plugin is at `plugins/trov/`; the marketplace manifest at
 > `.claude-plugin/marketplace.json`. Validate either with `claude plugin validate <path>`. The real
-> skill files live under `plugins/canopy/skills/`; the in-repo `.claude/skills/*` entries are symlinks
+> skill files live under `plugins/trov/skills/`; the in-repo `.claude/skills/*` entries are symlinks
 > into that bundle, so there is a single source of truth and the two can never drift — edit the files
-> under `plugins/canopy/skills/`.
+> under `plugins/trov/skills/`.
 
 ## License
 
-Copyright (C) 2026 Andres Lopez. Canopy is licensed under the GNU Affero General Public License
+Copyright (C) 2026 Andres Lopez. Trov is licensed under the GNU Affero General Public License
 v3.0 (`AGPL-3.0-only`); see [`LICENSE`](LICENSE).

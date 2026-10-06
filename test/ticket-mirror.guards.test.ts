@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { app } from "../src/routes";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { all, first } from "../src/db";
 import { mirrorIssue } from "../src/tools/ticket-mirror";
@@ -14,7 +14,7 @@ import { cookieFor } from "./helpers/persons";
 // Phase 3 (0032): the lock and what stays writable on a mirrored ticket. The
 // owner's ruling: ONLY the source link is locked. Title, body, status (under the
 // normal table), assignees, sprint, parent, comments and extra links are all
-// Canopy's. Every assertion reads rows.
+// Trov's. Every assertion reads rows.
 
 const REPO = "SaplingLearn/sapling";
 
@@ -38,7 +38,7 @@ const get = (path: string, cookie: string) => app.request(path, { headers: { coo
 const linksOf = (id: number) => all<{ id: number; url: string; locked: number }>(env.DB, `SELECT id, url, locked FROM ticket_links WHERE ticket_id = ? ORDER BY id`, id);
 
 async function callTool(handle: string, name: string, args: Record<string, unknown> = {}) {
-  const server = buildCanopyMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, { handle });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -52,7 +52,7 @@ async function callTool(handle: string, name: string, args: Record<string, unkno
   }
 }
 async function toolNames(handle: string): Promise<string[]> {
-  const server = buildCanopyMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, { handle });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -97,14 +97,14 @@ describe("what stays writable on a mirrored ticket", () => {
     const cookie = await cookieFor("meilin", { github: false });
     const id = await mirrored();
 
-    const edited = await post(`/tickets/${id}/edit`, cookie, { title: "Canopy title", body: "Canopy notes" });
+    const edited = await post(`/tickets/${id}/edit`, cookie, { title: "Trov title", body: "Trov notes" });
     expect(edited.status).toBe(200);
     expect(await post(`/tickets/${id}/status`, cookie, { to: "in_progress" })).toHaveProperty("status", 200);
     expect(await post(`/tickets/${id}/assignees`, cookie, { login: "lpcooper-arch", on: true })).toHaveProperty("status", 200);
     expect(await post(`/tickets/${id}/comment`, cookie, { body: "hi" })).toHaveProperty("status", 200);
 
     const t = await first<{ title: string; body: string; status: string }>(env.DB, `SELECT title, body, status FROM tickets WHERE id = ?`, id);
-    expect(t).toEqual({ title: "Canopy title", body: "Canopy notes", status: "in_progress" });
+    expect(t).toEqual({ title: "Trov title", body: "Trov notes", status: "in_progress" });
     expect(await all(env.DB, `SELECT login FROM ticket_assignees WHERE ticket_id = ?`, id)).toEqual([{ login: "lpcooper-arch" }]);
   });
 

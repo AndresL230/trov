@@ -3,7 +3,7 @@
 // MODAL (`confirmModal`): a centered `.cnpy-surface` dialog over a dimmed backdrop
 // (role="alertdialog", aria-modal, labelled by its title, described by its explanation)
 // with Cancel and a red Delete — at phone width a bottom sheet (the modal/sheet rule in
-// canopy.css) clear of the home indicator. Purely presentational: the caller holds the
+// trov.css) clear of the home indicator. Purely presentational: the caller holds the
 // "armed" / "busy" flags in state and renders the modal at the app ROOT as a
 // `data-overlay` (web/src/morph.ts keeps it — and its focus — across rerenders).
 //

@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 // End-to-end check of agent access to artifacts (issue #52 · Track F) against a LIVE
-// Canopy Worker — normally a local `wrangler dev`. It does what an agent (and the
+// Trov Worker — normally a local `wrangler dev`. It does what an agent (and the
 // `artifacts` skill) does, over the real wire:
 //
 //   MCP over streamable HTTP at <base>/mcp with a bearer: initialize → tools/list →
 //   tools/call upload_asset (markdown, html, and a binary PNG) → PUT the PNG's bytes to
 //   its upload_url → artifact_list shows all three → artifact_get → download_url →
 //   download each, check sha256 + size + byte equality against what was sent → save the
-//   html where the skill would (.canopy/artifacts/<slug>/v<n>.html, under a temp dir),
+//   html where the skill would (.trov/artifacts/<slug>/v<n>.html, under a temp dir),
 //   serve it with `python3 -m http.server` on a free port and fetch it back → a tampered
 //   download token is a 404.
 //
-//   usage:  CANOPY_MCP_TOKEN=canopy_mcp_… node scripts/e2e/artifacts-agent.mjs [baseUrl]
+//   usage:  TROV_MCP_TOKEN=trov_mcp_… node scripts/e2e/artifacts-agent.mjs [baseUrl]
 //           (baseUrl default http://127.0.0.1:8811)
 //
 // SAFETY: it writes artifacts as the token's person. Every upload/download URL the server
@@ -29,7 +29,7 @@ import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 
 const BASE = (process.argv[2] ?? "http://127.0.0.1:8811").replace(/\/+$/, "");
-const TOKEN = process.env.CANOPY_MCP_TOKEN ?? "";
+const TOKEN = process.env.TROV_MCP_TOKEN ?? "";
 const ORIGIN = new URL(BASE).origin;
 const RUN = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
 
@@ -156,11 +156,11 @@ async function serveAndFetch(dir, file) {
 // ── the run ──────────────────────────────────────────────────────────────────
 
 async function main() {
-  check(TOKEN, "CANOPY_MCP_TOKEN is not set");
+  check(TOKEN, "TROV_MCP_TOKEN is not set");
   console.log(`artifacts-agent e2e against ${BASE} (run ${RUN})`);
 
   const init = await rpc("initialize", {
-    protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "canopy-e2e", version: "1.0.0" },
+    protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "trov-e2e", version: "1.0.0" },
   });
   ok(`initialize → server ${init.serverInfo?.name} ${init.serverInfo?.version}`);
 
@@ -201,11 +201,11 @@ async function main() {
   const gHtml = await tool("artifact_get", { slug: html.slug });
   const htmlBack = await download(gHtml, Buffer.from(HTML, "utf8"), `html ${html.slug}`);
 
-  // Spin it up the way the `artifacts` skill does: save under .canopy/artifacts/<slug>/,
+  // Spin it up the way the `artifacts` skill does: save under .trov/artifacts/<slug>/,
   // serve that folder, fetch it back.
-  const root = mkdtempSync(join(tmpdir(), "canopy-e2e-"));
+  const root = mkdtempSync(join(tmpdir(), "trov-e2e-"));
   try {
-    const dir = join(root, ".canopy", "artifacts", html.slug);
+    const dir = join(root, ".trov", "artifacts", html.slug);
     mkdirSync(dir, { recursive: true });
     const ext = gHtml.download_filename.split(".").pop();
     const file = `v${gHtml.version.version_no}.${ext}`;
@@ -213,7 +213,7 @@ async function main() {
     const served = await serveAndFetch(dir, file);
     check(served.body.equals(Buffer.from(HTML, "utf8")), "served html differs from the artifact");
     check(served.body.toString("utf8").includes(`Spin me up ${RUN}`), "served html lacks its heading");
-    ok(`html spun up: .canopy/artifacts/${html.slug}/${file} served at ${served.url} (${served.type}), identical`);
+    ok(`html spun up: .trov/artifacts/${html.slug}/${file} served at ${served.url} (${served.type}), identical`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

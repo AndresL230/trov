@@ -10,8 +10,8 @@
 //
 // Writes web/public/guide/<name>-<theme>.png for each surface × theme (dark/light),
 // so the guide can show the variant matching the viewer's active theme. Override the target
-// dir with CANOPY_SHOT_DIR, the base URL with CANOPY_URL, or the theme list with
-// CANOPY_THEMES (comma-separated). `node scripts/capture-guide.mjs docs search` captures
+// dir with TROV_SHOT_DIR, the base URL with TROV_URL, or the theme list with
+// TROV_THEMES (comma-separated). `node scripts/capture-guide.mjs docs search` captures
 // only those figures.
 import { mkdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -19,9 +19,9 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const BASE = process.env.CANOPY_URL ?? "http://localhost:8787";
-const OUT_DIR = process.env.CANOPY_SHOT_DIR ?? join(HERE, "..", "web", "public", "guide");
-const THEMES = (process.env.CANOPY_THEMES ?? "dark,light").split(",").map((t) => t.trim()).filter(Boolean);
+const BASE = process.env.TROV_URL ?? "http://localhost:8787";
+const OUT_DIR = process.env.TROV_SHOT_DIR ?? join(HERE, "..", "web", "public", "guide");
+const THEMES = (process.env.TROV_THEMES ?? "dark,light").split(",").map((t) => t.trim()).filter(Boolean);
 
 // Forge the dev session cookie the same way scripts/dev-cookie.mjs does, so the SPA's
 // same-origin fetches are authed even if DEV_LOGIN weren't set.
@@ -134,9 +134,9 @@ for (const theme of THEMES) {
   // The SPA reads its theme and sidebar state from localStorage on boot; pin them so every
   // figure shows the expanded rail in the requested theme.
   await context.addInitScript((t) => {
-    localStorage.setItem("canopy.theme", t);
-    localStorage.setItem("canopy.collapsed", "0");
-    localStorage.removeItem("canopy.navOpen");
+    localStorage.setItem("trov.theme", t);
+    localStorage.setItem("trov.collapsed", "0");
+    localStorage.removeItem("trov.navOpen");
   }, theme);
   for (const shot of shots) {
     const page = await context.newPage();

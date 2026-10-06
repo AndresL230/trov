@@ -9,7 +9,7 @@ import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import worker from "../src/index";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { consumeUploadToken, patchPage, sha256Hex } from "../src/tools/artifacts";
 import { create_ticket } from "../src/tools/tickets";
@@ -22,7 +22,7 @@ import { seedPerson } from "./helpers/persons";
 
 const ME = "dl-author";
 const YOU = "dl-teammate";
-const ORIGIN = "https://canopy.test";
+const ORIGIN = "https://trov.test";
 const SECRET = "test-cookie-secret"; // COOKIE_SECRET in vitest.config.ts
 
 type ToolRes = { content: Array<{ type: string; text: string }>; isError?: boolean };
@@ -30,7 +30,7 @@ const ctx = { waitUntil() {}, passThroughException() {} } as unknown as Executio
 
 async function call(handle: string, name: string, args: Record<string, unknown>): Promise<{ body: any; isError: boolean; text: string }> {
   await seedPerson(handle);
-  const server = buildCanopyMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, { handle });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -155,7 +155,7 @@ describe("artifact_get → download_url", () => {
   it("no COOKIE_SECRET → download_url is null (fails closed), the rest of the read is unchanged", async () => {
     const { slug } = await textPage(ME);
     await seedPerson(ME);
-    const server = buildCanopyMcpServer({ ...(env as unknown as Env), COOKIE_SECRET: "" }, { handle: ME });
+    const server = buildTrovMcpServer({ ...(env as unknown as Env), COOKIE_SECRET: "" }, { handle: ME });
     const client = new Client({ name: "t", version: "1" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);
@@ -302,7 +302,7 @@ describe("artifact_list", () => {
     expect(one.body.artifacts[0].slug).toBe("notes"); // newest version first
     // an unknown kind is refused by the tool's input schema
     await seedPerson(ME);
-    const server = buildCanopyMcpServer(env as unknown as Env, { handle: ME });
+    const server = buildTrovMcpServer(env as unknown as Env, { handle: ME });
     const client = new Client({ name: "t", version: "1" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);
@@ -314,7 +314,7 @@ describe("artifact_list", () => {
 
   it("is registered for every principal", async () => {
     await seedPerson(YOU);
-    const server = buildCanopyMcpServer(env as unknown as Env, { handle: YOU });
+    const server = buildTrovMcpServer(env as unknown as Env, { handle: YOU });
     const client = new Client({ name: "t", version: "1" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);

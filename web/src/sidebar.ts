@@ -3,7 +3,7 @@
 //
 // ONE RULE shapes this file: the structure is STABLE. Every label, badge, chevron
 // and sub-page list is always emitted, and the collapsed / closed / inactive
-// states are expressed as attributes and classes that canopy.css animates. The
+// states are expressed as attributes and classes that trov.css animates. The
 // <aside> survives rerenders (web/src/morph.ts patches it in place), so a state
 // change becomes an attribute flip on a living element — which is the only thing
 // a CSS transition can run on. Emitting a node conditionally would swap it out
@@ -18,7 +18,7 @@ import { personChip, handleTag } from "./people";
  *  Timeline, removed from the rail 2026-09-26; Tickets' Board / Table and Submit a ticket,
  *  removed 2026-09-27; Maintenance's Unplaced / Identity / People and Repo's Overview /
  *  Code / CI / Usage / Planning — each a tab bar heading the page body — removed
- *  2026-09-27). A stored `canopy.navOpen` naming a retired group is simply not read back
+ *  2026-09-27). A stored `trov.navOpen` naming a retired group is simply not read back
  *  (main.ts). */
 export const NAV_GROUPS = ["docs"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
@@ -76,7 +76,7 @@ const ICONS: Record<NavKey | "search" | "collapse", string> = {
   // A sparkle: what's new.
   releases: ICON(`<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path>`),
   search: `<svg class="cnpy-nav-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>`,
-  // Drawn in its "expanded" pose; canopy.css mirrors it (scaleX(-1)) when collapsed,
+  // Drawn in its "expanded" pose; trov.css mirrors it (scaleX(-1)) when collapsed,
   // which is exactly the design's second icon — so the swap is a flip, not a cut.
   collapse: ICON(`<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="M14.5 9.5 12 12l2.5 2.5"></path>`),
 };
@@ -101,7 +101,7 @@ function subPages(p: SidebarProps, g: NavGroup): { key: string; label: string }[
   }
 }
 
-/** Section header. Collapsed, canopy.css folds it into the design's hairline divider. */
+/** Section header. Collapsed, trov.css folds it into the design's hairline divider. */
 const section = (label: string, first = false): string =>
   `<div class="cnpy-sec${first ? " is-first" : ""}"><span class="cnpy-lbl">${esc(label)}</span></div>`;
 
@@ -135,13 +135,13 @@ export function sidebarView(p: SidebarProps): string {
 
   return `<aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
-      <button data-act="goSite" aria-label="About Canopy" data-tip="About Canopy" class="cnpy-logo-b">${p.logo}<span class="cnpy-lbl cnpy-logo-t">Canopy</span></button>
+      <button data-act="goSite" aria-label="About Trov" data-tip="About Trov" class="cnpy-logo-b">${p.logo}<span class="cnpy-lbl cnpy-logo-t">Trov</span></button>
     </div>
     <nav class="cnpy-navlist" aria-label="Primary">
       <div class="cnpy-searchwrap" data-tip="Search">
         <div data-act="sideSearchFocus" class="cnpy-search${p.screen === "search" ? " is-active" : ""}">
           ${ICONS.search}
-          <input data-act="sideSearch" data-field="sideSearch" class="cnpy-lbl cnpy-search-in" placeholder="Search Canopy" aria-label="Search Canopy" autocomplete="off" spellcheck="false" tabindex="${p.collapsed ? -1 : 0}" />
+          <input data-act="sideSearch" data-field="sideSearch" class="cnpy-lbl cnpy-search-in" placeholder="Search Trov" aria-label="Search Trov" autocomplete="off" spellcheck="false" tabindex="${p.collapsed ? -1 : 0}" />
           <kbd class="cnpy-lbl cnpy-kbd">${isMac() ? "⌘K" : "Ctrl K"}</kbd>
         </div>
       </div>

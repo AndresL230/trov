@@ -12,7 +12,7 @@
 //    panel's options in from the direction you moved. A rerender would rebuild the
 //    popover and kill all three.
 //  • Closing plays a short exit before the state flips (main.ts `closeFilterMenu`).
-// Pure markup here; the behavior lives in main.ts, the keyframes in canopy.css.
+// Pure markup here; the behavior lives in main.ts, the keyframes in trov.css.
 
 import { esc, attr } from "./ui";
 
@@ -174,5 +174,5 @@ export function searchFilterBar(p: SearchFilterBarProps): string {
     </div>`;
 }
 
-/** Row pitch the highlight moves by (canopy.css reads it as `--fm-step`). */
+/** Row pitch the highlight moves by (trov.css reads it as `--fm-step`). */
 export const FILTER_MENU_STEP = ROW_H + ROW_GAP;

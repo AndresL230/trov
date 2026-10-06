@@ -11,7 +11,7 @@ import { sha256Hex } from "../../src/tools/artifacts";
 import type { ArtifactDetailDTO } from "@shared/artifacts";
 import { cookieFor, seedPerson } from "./persons";
 
-export const ORIGIN = "https://canopy.test";
+export const ORIGIN = "https://trov.test";
 export const NOT_FOUND = JSON.stringify({ error: "not_found" });
 export const MCP_NOT_FOUND = JSON.stringify({ error: "not_found", code: "not_found" });
 

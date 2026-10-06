@@ -60,7 +60,7 @@ const LEFT = "border-left:1px solid var(--border)";
 
 const TONE: Record<RepoTone, string> = { neutral: "var(--fg-55)", good: "var(--green)", warn: "var(--amber)", bad: "var(--red)" };
 /** A status dot beside the ✓ / ✕ glyphs, drawn as an element rather than a "●" character
- *  so the corners layer shapes it like every other dot (canopy.css .repo-gdot). */
+ *  so the corners layer shapes it like every other dot (trov.css .repo-gdot). */
 const GDOT = `<span class="repo-gdot" aria-hidden="true"></span>`;
 
 /** Stagger index for the enter animation. */
@@ -198,7 +198,7 @@ export function repoControls(p: RepoProps): string {
   // else this bar is byte-for-byte what it was (pinned by a test), which is why
   // the refresh icon takes its longer title only when there are two controls to
   // tell apart. When the BAR is too narrow for crumb + labelled controls (a
-  // container query in canopy.css, `.repo-pollbtn` — the room depends on the
+  // container query in trov.css, `.repo-pollbtn` — the room depends on the
   // rail, not only the viewport) the label is hidden and the button is the
   // icon's size; narrower still, the "updated …" text gives up its room, so at
   // phone width an admin's controls are narrower than a non-admin's.
@@ -784,7 +784,7 @@ function productSection(p: RepoProps, i: number): string {
 const POLL_SOURCES: ["cloudflare" | "railway" | "sapling", string][] = [["cloudflare", "Cloudflare"], ["railway", "Railway"], ["sapling", "App metrics"]];
 const MUTED = "var(--fg-40)";
 /** The two top-bar controls say different things: one re-reads D1, one goes out to the sources. */
-const REFRESH_TITLE = "Reload from Canopy's database";
+const REFRESH_TITLE = "Reload from Trov's database";
 // TRUE, not tidy: the issue-derived blocks (open issues / bugs, issues by label,
 // the feed's issue lines) read `events`, which only Sync GitHub refreshes.
 const POLL_TITLE = "Poll deploys, CI, usage and health now (admin) — issues refresh with Sync GitHub";
