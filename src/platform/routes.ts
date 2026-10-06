@@ -15,7 +15,9 @@ import {
   setSuspended, setOrgLimit, listAdmins, grantAdmin, revokeAdmin, listAudit,
 } from "./repo";
 import { platformUsage, usageDays, USAGE_DEFAULT_DAYS } from "./usage";
-import type { PlatformOrgDetail, PlatformOrgRow } from "@shared/orgs";
+import { mailInvite, mailOrigin, welcomeFirstJoin } from "../orgs/mail";
+import { rateLimited } from "./limits";
+import type { AdminAssignment, PlatformOrgDetail, PlatformOrgRow } from "@shared/orgs";
 
 export const platformApp = new Hono<AppEnv>();
 
@@ -42,6 +44,20 @@ const body = async (c: Context<AppEnv>): Promise<Record<string, unknown> | null>
 const invalid = (c: Context<AppEnv>) => c.json({ error: "invalid payload" }, 400);
 const publicRow = ({ id: _id, ...row }: PlatformOrgRow & { id: string }): PlatformOrgRow => row;
 
+/**
+ * Tell the person just named an org's owner. An e-mail owner invite is mailed ("you have been made the
+ * owner of <org>") and its outcome recorded on the invite; a GitHub-login invite has no address — they
+ * see it when they sign in. An existing person made owner directly gets the welcome if this is their
+ * first org. The invite limit is taken like any invite's (a superadmin is exempt, so it never refuses
+ * here); neither mail can fail the request.
+ */
+async function notifyAdmin(c: Context<AppEnv>, orgId: string, admin: AdminAssignment, firstJoin: boolean): Promise<void> {
+  const origin = mailOrigin(c.env, c.req.url);
+  if (admin.status === "owner") return welcomeFirstJoin(c.env, c.var.p, orgId, admin.handle, firstJoin, origin);
+  if (admin.email === null || (await rateLimited(c, "invite"))) return;
+  await mailInvite(c.env, c.var.p, orgId, { id: admin.invite_id, email: admin.email, name: null, role: "owner" }, origin);
+}
+
 // ── orgs ─────────────────────────────────────────────────────────────────────
 platformApp.get("/orgs", async (c) => c.json({ orgs: (await listPlatformOrgs(c.var.p)).map(publicRow) }));
 
@@ -49,7 +65,8 @@ platformApp.post("/orgs", async (c) => {
   const b = await body(c);
   if (!b) return invalid(c);
   try {
-    const { org, admin } = await createOrgWithAdmin(c.var.p, { slug: b.slug as string, name: b.name as string, admin: b.admin });
+    const { org, admin, first_join } = await createOrgWithAdmin(c.var.p, { slug: b.slug as string, name: b.name as string, admin: b.admin });
+    await notifyAdmin(c, org.id, admin, first_join);
     return c.json({ ok: true, org: publicRow((await listPlatformOrgs(c.var.p, org.slug))[0]), admin }, 201);
   } catch (e) { return fail(c, e); }
 });
@@ -70,7 +87,9 @@ platformApp.post("/orgs/:slug/admin", async (c) => {
   const b = await body(c);
   if (!b) return invalid(c);
   try {
-    return c.json({ ok: true, admin: await assignOrgAdmin(c.var.p, c.req.param("slug"), b) });
+    const { org_id, first_join, admin } = await assignOrgAdmin(c.var.p, c.req.param("slug"), b);
+    await notifyAdmin(c, org_id, admin, first_join);
+    return c.json({ ok: true, admin });
   } catch (e) { return fail(c, e); }
 });
 

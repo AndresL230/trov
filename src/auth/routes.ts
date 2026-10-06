@@ -13,7 +13,7 @@ import { mintToken, listTokens, revokeToken } from "./tokens";
 import { getPerson, listIdentities, findIdentity, handleAvailable, createPerson, HandleTakenError, linkIdentity, unlinkIdentity, updateProfile, renamePerson, soleTitle } from "./persons";
 import { run } from "../data/platform-sql";
 import { completeSignIn, linkSignIn, hasPendingEmailInvite, sealOnboard, openOnboard, ONBOARD_COOKIE, ONBOARD_TTL_S, type ProviderProfile, type ForkResult } from "./onboard";
-import { sendWelcome } from "../notifications/welcome";
+import { mailOrigin, welcomeFirstJoin } from "../orgs/mail";
 import { takeOAuthPending } from "./oauth-routes";
 import { listGrants, revokeGrant } from "./oauth";
 import { platformContext } from "../data/gate";
@@ -201,18 +201,11 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     deleteCookie(c, ONBOARD_COOKIE, { path: "/" });
     const { id } = await createSession(c.var.p, parsed.data.handle);
     await setSessionCookie(c, id, c.env.COOKIE_SECRET);
-    // The welcome email, once the person exists and their session is in hand. It
-    // is a courtesy, not part of the write: `sendWelcome` never throws, and its
-    // outcome is deliberately ignored here so a mailer problem can never cost
-    // somebody their sign-up. No address on file (GitHub returned none) = no mail.
-    // Mail is sent AS an org (its display name, its outbox), and a new person has none — so the welcome
-    // goes only to someone who just joined org #1 through a legacy invite, under that org.
-    const email = p.email;
-    if (email && joinedLegacy) {
-      const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-      await sendWelcome(c.env, joinedLegacy, {
-        email, name: parsed.data.name ?? p.name, handle: parsed.data.handle, origin, fetchImpl: deps.fetchImpl,
-      });
+    // The welcome email, once the person exists and their session is in hand: sent when a person FIRST
+    // joins an org (src/orgs/mail.ts), which for a new person is here only on the legacy path — everyone
+    // else gets it when they accept an invitation or create an org. A courtesy, never part of the write.
+    if (joinedLegacy) {
+      await welcomeFirstJoin(c.env, c.var.p, joinedLegacy.orgId, parsed.data.handle, true, mailOrigin(c.env, c.req.url), deps.fetchImpl);
     }
     // Signed up from an MCP client's authorize link: the SPA follows `redirect` back
     // to the consent screen instead of Get Started.

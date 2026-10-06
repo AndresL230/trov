@@ -137,7 +137,7 @@ describe("a new GitHub account", () => {
     expect((await json("GET", "/auth/me", session)).json).toMatchObject({ org: "SaplingLearn", admin: false, pending_invites: 0, orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" }] });
     expect((await json("GET", "/docs", session)).status).toBe(200);
     // The welcome goes out, under SaplingLearn's settings.
-    expect((await all<{ subject: string }>(env.DB, `SELECT subject FROM notification_outbox_bodies ORDER BY created_at`)).map((b) => b.subject)).toContain("Welcome to Trov");
+    expect((await all<{ subject: string }>(env.DB, `SELECT subject FROM notification_outbox_bodies ORDER BY created_at`)).map((b) => b.subject)).toContain("Welcome to SaplingLearn on Trov");
     // The old screen shows it accepted.
     const list = (await json("GET", "/invites", owner)).json as unknown as { invites: { email: string; name: string | null; accepted_by: string | null }[] };
     expect(list.invites).toEqual([expect.objectContaining({ email: "new.hire@example.com", name: "New Hire", accepted_by: "newhire" })]);

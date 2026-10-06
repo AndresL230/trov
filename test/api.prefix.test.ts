@@ -42,7 +42,7 @@ const any: unknown = new Proxy(function () { /* callable */ }, {
   ownKeys: () => [],
 });
 /** Not request functions: the prefix's own controls, and the error classes. */
-const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError"]);
+const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText"]);
 /** Functions whose arguments must be real values (a Blob for a multipart body). */
 const SPECIAL: Record<string, unknown[]> = {
   uploadAvatar: [new Blob(["x"]), "a.png"],
@@ -50,8 +50,9 @@ const SPECIAL: Record<string, unknown[]> = {
   createArtifact: [{ title: "t", kind: "markdown", area: "ui", repo: "", visibility: "org", summary: "s" }, { content: "c" }],
   addArtifactVersion: ["slug", { content: "c", summary: "s" }],
 };
-/** The ONE alias-only request (no `/api/o/:slug` form on the server yet): the invitation e-mail. */
-const ALIAS_ONLY: Record<string, RegExp> = { mailOrgInvite: /^\/invites\/x\/resend$/ };
+/** Alias-only requests (no `/api/o/:slug` form on the server). There are none: the invitation e-mail
+ *  (`resendOrgInvite`) and raw artifact serving both have an org route now. */
+const ALIAS_ONLY: Record<string, RegExp> = {};
 
 const requestFns = Object.entries(api).filter(([name, v]) => typeof v === "function" && !NOT_REQUESTS.has(name)) as [string, (...a: unknown[]) => unknown][];
 

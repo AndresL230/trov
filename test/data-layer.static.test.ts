@@ -282,8 +282,7 @@ describe("data layer — static enforcement (§4.4)", () => {
     const ENTRY_POINTS: Record<string, string> = {
       "src/auth/onboard.ts": "liveLegacyInvite — a legacy invite lets a Google account reach onboarding and seeds the invitee's name",
       "src/auth/routes.ts": "consumeLegacyInvite — a new person with a live legacy invite joins org #1 at onboarding (and gets its welcome mail)",
-      "src/orgs/legacy-invites.ts": "isLegacyOrg — the legacy `invites` sidecar (invitee name, mail outcome) is read and written for org #1 only",
-      "src/notifications/invite.ts": "isLegacyOrg — the invite mail's outcome is stamped on that sidecar for org #1 only",
+      "src/orgs/legacy-invites.ts": "isLegacyOrg — the legacy `invites` sidecar (a pre-0047 row's invitee name and mail outcome; the row a first sign-in consumes) is read and written for org #1 only",
     };
     // …and the ONE importer of the org's id: the env-secret fallback (`resolveCredential`, §8.7.6).
     const ID_IMPORTERS = ["src/data/secrets.ts"];

@@ -35,7 +35,27 @@ export class Unauthorized extends Error {
 }
 export class ApiError extends Error {
   status: number;
+  /** A 429 `rate_limited`'s `retry_after`: whole seconds until the caller's limit turns over. */
+  retryAfter: number | null = null;
   constructor(status: number, message: string) { super(message); this.status = status; }
+}
+const retryAfterOf = (j: { retry_after?: unknown }): number | null =>
+  typeof j.retry_after === "number" && Number.isFinite(j.retry_after) && j.retry_after > 0 ? j.retry_after : null;
+
+/** Is this the per-person limit's refusal (docs/architecture/abuse-limits.md)? */
+export const isRateLimited = (e: unknown): e is ApiError => e instanceof ApiError && (e.message === "rate_limited" || e.status === 429);
+/**
+ * The ONE sentence a limited route's refusal is shown as, wherever it is called (invites, the test
+ * send, the notification address, an avatar upload, the handle check); null for any other error.
+ * The time is the viewer's local clock, with the weekday when it is not today.
+ */
+export function rateLimitText(e: unknown, now: Date = new Date()): string | null {
+  if (!isRateLimited(e)) return null;
+  if (e.retryAfter === null) return "You've hit today's limit for this; try again later.";
+  const at = new Date(now.getTime() + e.retryAfter * 1000);
+  const time = at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const day = at.toDateString() === now.toDateString() ? "" : `${at.toLocaleDateString(undefined, { weekday: "long" })} `;
+  return `You've hit today's limit for this; try again after ${day}${time}.`;
 }
 export class NotFound extends Error {}
 
@@ -51,8 +71,8 @@ export const apiOrgSlug = (): string | null => apiOrg;
 /** Person-level and platform routes: not an org's, so never prefixed (docs/architecture/data-layer.md › Routes and gates). */
 const GLOBAL_PATH = /^\/(?:auth|avatar)\/|^\/api\/(?:orgs|invites|platform|o)(?:[/?]|$)/;
 /** Routes with NO `/api/o/:slug` form yet: they answer only for a person in exactly one org
- *  (409 `org_required` otherwise). The legacy invite mail, and the raw artifact frame. */
-export const ALIAS_ONLY_PATH = /^\/(?:invites|raw\/a)(?:[/?]|$)/;
+ *  (409 `org_required` otherwise). The raw artifact frame. */
+export const ALIAS_ONLY_PATH = /^\/raw\/a(?:[/?]|$)/;
 export const isGlobalPath = (path: string): boolean => GLOBAL_PATH.test(path);
 
 /** The URL a route is requested at: a tenant route under the current org, anything else as written.
@@ -97,8 +117,11 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
 /** A refused call's error code: the body's `error`, else the status. */
 async function refusal(res: Response): Promise<ApiError> {
   let msg = String(res.status);
-  try { const j = (await res.json()) as { error?: string }; if (j.error) msg = j.error; } catch { /* non-JSON */ }
-  return new ApiError(res.status, msg);
+  let retryAfter: number | null = null;
+  try { const j = (await res.json()) as { error?: string; retry_after?: unknown }; if (j.error) msg = j.error; retryAfter = retryAfterOf(j); } catch { /* non-JSON */ }
+  const err = new ApiError(res.status, msg);
+  err.retryAfter = retryAfter;
+  return err;
 }
 
 async function getJson<T>(path: string): Promise<T> {
@@ -259,15 +282,6 @@ export function removeAvatar(): Promise<{ ok: true; avatar_url: string | null }>
   return postJson("/api/people/me/avatar/remove");
 }
 
-// ── the invitation e-mail (ALIAS ONLY) ───────────────────────────────────────
-// `POST /api/o/:slug/invites` records an invite and sends nothing; the mail is still sent by the
-// legacy route, which has no `/api/o/:slug` form and answers only for a person in exactly ONE org
-// (409 `org_required` otherwise). Org settings › Members offers it when `canMailInvites(me)`.
-export type InviteMail = { status: "sent" | "failed"; error: string | null };
-export function mailOrgInvite(email: string): Promise<InviteMail> {
-  return postJson<{ ok: true; email: InviteMail }>(`/invites/${encodeURIComponent(email)}/resend`).then((r) => r.email);
-}
-
 // ── Org settings (/api/orgs, /api/o/:slug/… — web/src/org-settings.ts, integrations.ts) ──
 // Self-contained: its own sender, so a refusal keeps the server's `message` and `field` (they
 // never carry a submitted value). Nothing here ever RECEIVES a secret: the API is write-only.
@@ -284,9 +298,11 @@ async function orgSend<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: strin
   if (body !== undefined) { init.body = JSON.stringify(body); init.headers = { "content-type": "application/json" }; }
   const res = await call(path, init);
   if (!res.ok) {
-    let j: { error?: unknown; message?: unknown; field?: unknown } = {};
+    let j: { error?: unknown; message?: unknown; field?: unknown; retry_after?: unknown } = {};
     try { j = (await res.json()) as typeof j; } catch { /* non-JSON */ }
-    throw new OrgApiError(res.status, typeof j.error === "string" ? j.error : String(res.status), typeof j.message === "string" ? j.message : null, typeof j.field === "string" ? j.field : null);
+    const err = new OrgApiError(res.status, typeof j.error === "string" ? j.error : String(res.status), typeof j.message === "string" ? j.message : null, typeof j.field === "string" ? j.field : null);
+    err.retryAfter = retryAfterOf(j);
+    throw err;
   }
   return res.json() as Promise<T>;
 }
@@ -315,8 +331,13 @@ export function updateOrgMember(slug: string, handle: string, patch: { role?: Or
 }
 export function removeOrgMember(slug: string, handle: string): Promise<{ ok: true; left: boolean }> { return orgSend("DELETE", orgPath(slug, `/members/${encodeURIComponent(handle)}`)); }
 export function listOrgInvites(slug: string): Promise<OrgT.OrgInvite[]> { return orgSend<{ invites: OrgT.OrgInvite[] }>("GET", orgPath(slug, "/invites")).then((r) => r.invites); }
-export function createOrgInvite(slug: string, body: ({ github_login: string } | { email: string }) & { role: "admin" | "member" }): Promise<OrgT.OrgInvite> {
+/** Invite by GitHub login or e-mail. An e-mail invite is MAILED by the same call — the row's `mail_status` says how that went. */
+export function createOrgInvite(slug: string, body: ({ github_login: string } | { email: string; name?: string }) & { role: "admin" | "member" }): Promise<OrgT.OrgInvite> {
   return orgSend<{ invite: OrgT.OrgInvite }>("POST", orgPath(slug, "/invites"), body).then((r) => r.invite);
+}
+/** Mail a pending e-mail invite again; the row comes back with the new outcome. 409 `no_address` for a GitHub-login invite. */
+export function resendOrgInvite(slug: string, id: number): Promise<OrgT.OrgInvite> {
+  return orgSend<{ invite: OrgT.OrgInvite }>("POST", orgPath(slug, `/invites/${id}/resend`)).then((r) => r.invite);
 }
 export function revokeOrgInvite(slug: string, id: number): Promise<{ ok: true }> { return orgSend("POST", orgPath(slug, `/invites/${id}/revoke`)); }
 export function listOrgRepos(slug: string): Promise<IntT.OrgRepoDTO[]> { return orgSend<{ repos: IntT.OrgRepoDTO[] }>("GET", orgPath(slug, "/repos")).then((r) => r.repos); }

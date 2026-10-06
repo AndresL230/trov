@@ -11,8 +11,8 @@
 
 import type { AppState } from "./render";
 import {
-  ApiError, OrgApiError, Unauthorized,
-  mailOrgInvite, getOrgSettings, putOrgSettings, listOrgMembers, updateOrgMember, removeOrgMember, listOrgInvites, createOrgInvite, revokeOrgInvite,
+  ApiError, OrgApiError, Unauthorized, rateLimitText,
+  resendOrgInvite, getOrgSettings, putOrgSettings, listOrgMembers, updateOrgMember, removeOrgMember, listOrgInvites, createOrgInvite, revokeOrgInvite,
   listOrgRepos, addOrgRepo, removeOrgRepo, listOrgEnvironments, putOrgEnvironment, reorderOrgEnvironments, deleteOrgEnvironment,
   listOrgIntegrations, setOrgIntegration, rotateOrgIntegration, deleteOrgIntegration, putOrgIntegrationConfig, testOrgIntegration, rotateOrgKey, listOrgAudit,
   type OrgEnvironmentWrite,
@@ -23,7 +23,7 @@ import {
 } from "./org-settings";
 import { GENERATED_KINDS, integrationKey, integrationLabel } from "./integrations";
 import { isIntegrationKind, type IntegrationDTO, type IntegrationKind } from "@shared/integrations";
-import type { OrgRole } from "@shared/orgs";
+import type { OrgInvite, OrgRole } from "@shared/orgs";
 
 export interface OrgHost {
   state: AppState;
@@ -64,6 +64,8 @@ const sentence = (s: string): string => {
 export function orgErrorText(e: unknown, fallback: string): string {
   if (!(e instanceof ApiError)) return `${fallback} Check your connection and try again.`;
   const detail = e instanceof OrgApiError ? e.detail : null;
+  const limited = rateLimitText(e);
+  if (limited) return limited;
   switch (e.message) {
     case "forbidden": return "You don't have permission to do that here. Ask an owner of this org.";
     case "secrets_unavailable": return "Trov can't store or use secrets yet: its encryption key is not configured. Ask whoever runs this Trov to set it, then try again.";
@@ -381,43 +383,50 @@ export function createOrgController(host: OrgHost): OrgController {
     const who = u.inviteDraft.trim().replace(/^@/, "");
     u.inviteBusy = true; u.inviteError = null;
     rerender();
-    createOrgInvite(o.slug, u.inviteBy === "github" ? { github_login: who, role: u.inviteRole } : { email: who, role: u.inviteRole })
+    const name = u.inviteName.trim();
+    createOrgInvite(o.slug, u.inviteBy === "github" ? { github_login: who, role: u.inviteRole } : { email: who, role: u.inviteRole, ...(name ? { name } : {}) })
       .then((invite) => {
-        u.inviteBusy = false; u.inviteDraft = "";
+        u.inviteBusy = false; u.inviteDraft = ""; u.inviteName = "";
         u.invites = { status: "ok", data: [invite, ...u.invites.data] };
         const whom = invite.github_login ? `@${invite.github_login}` : invite.email ?? who;
-        // An e-mail invite is mailed where the mail route answers (the viewer's only org);
-        // a GitHub one is never mailed — Trov knows a login, not an address.
-        if (invite.email && canMail()) { mailInvite(invite.id, invite.email, `Invited ${whom} as ${invite.role}.`); return; }
-        host.flash(invite.email ? `Invited ${whom} as ${invite.role}. No email was sent: tell them to sign in with that address.` : `Invited ${whom} as ${invite.role}. They see it the next time they sign in.`, 5000);
+        // An e-mail invite is mailed by the same request; a GitHub one never is — Trov knows a login, not an address.
+        host.flash(`Invited ${whom} as ${invite.role}. ${mailSentence(invite)}`, 6000);
       })
       .catch((e) => {
         u.inviteBusy = false;
         if (fail(e)) return;
         u.inviteError = e instanceof ApiError && e.message === "invalid_invite"
-          ? (u.inviteBy === "github" ? "That is not a GitHub login. Use the name after github.com/, without the @." : "That is not an email address.")
+          ? (u.inviteBy === "github" ? "That is not a GitHub login. Use the name after github.com/, without the @." : e instanceof OrgApiError && e.detail && /name/.test(e.detail) ? sentence(e.detail) : "That is not an email address.")
           : orgErrorText(e, "Couldn't send the invite.");
         rerender();
       });
   }
 
-  /** The legacy mail route answers only for a person in exactly one org (api.ts `mailOrgInvite`). */
-  const canMail = (): boolean => (state.me?.orgs.length ?? 0) === 1;
-  function mailInvite(id: number, email: string, lead = ""): void {
+  /** What became of an invite's e-mail, as a sentence for the toast. */
+  const mailSentence = (i: OrgInvite): string =>
+    i.github_login ? "They see it the next time they sign in."
+      : i.mail_status === "sent" ? `The invitation was emailed to ${i.email}.`
+      : `The email to ${i.email} was not sent${i.mail_error ? `: ${i.mail_error}` : ""}. Use Resend email to try again.`;
+
+  function mailInvite(id: number): void {
+    const o = org();
     const u = ui();
-    if (u.mailBusy !== null) return;
+    if (!o || u.mailBusy !== null) return;
     u.mailBusy = id;
     rerender();
-    const say = (m: string) => host.flash(lead ? `${lead} ${m}` : m, 5000);
-    mailOrgInvite(email)
-      .then((r) => { u.mailBusy = null; say(r.status === "sent" ? `Invitation emailed to ${email}.` : `The email to ${email} was not sent${r.error ? `: ${r.error}` : ""}. Use Resend email to try again.`); })
+    resendOrgInvite(o.slug, id)
+      .then((invite) => {
+        u.mailBusy = null;
+        u.invites = { ...u.invites, data: u.invites.data.map((i) => (i.id === invite.id ? invite : i)) };
+        host.flash(mailSentence(invite), 6000);
+      })
       .catch((e) => {
         u.mailBusy = null;
         if (fail(e)) return;
-        say(e instanceof ApiError && e.message === "org_required" ? "No email was sent: Trov can only email invitations for people in a single organization for now. Tell them to sign in with that address."
-          : e instanceof ApiError && (e.message === "revoked" || e.message === "accepted" || e.status === 404) ? "That invitation is no longer pending, so no email was sent."
-          : `The email to ${email} was not sent. Use Resend email to try again.`);
-        if (e instanceof ApiError && (e.status === 404 || e.status === 409)) loadInvites();
+        host.flash(e instanceof ApiError && e.message === "not_found" ? "That invitation is no longer pending, so no email was sent."
+          : e instanceof ApiError && e.message === "no_address" ? "That invite has no email address. They see it when they sign in."
+          : orgErrorText(e, "The email was not sent."), 6000);
+        if (e instanceof ApiError && (e.status === 404 || e.status === 409)) loadInvites(); else rerender();
       });
   }
 
@@ -579,11 +588,12 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgMemberSave": saveMember(); return;
       case "orgInviteBy": if (arg === "github" || arg === "email") { u.inviteBy = arg; u.inviteError = null; } break;
       case "orgInviteDraft": u.inviteDraft = value ?? ""; u.inviteError = null; break;
+      case "orgInviteName": u.inviteName = value ?? ""; u.inviteError = null; break;
       case "orgInviteRole": if (value === "member" || value === "admin") u.inviteRole = value; break;
       case "orgInviteSend": sendInvite(); return;
       case "orgInviteMail": {
         const inv = u.invites.data.find((i) => String(i.id) === arg && i.status === "pending");
-        if (admin && inv?.email && canMail()) mailInvite(inv.id, inv.email);
+        if (admin && inv?.email) mailInvite(inv.id);
         return;
       }
       case "orgInviteRevoke": {

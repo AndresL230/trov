@@ -109,7 +109,17 @@ export interface OrgInvite {
   created_at: string;
   responded_at: string | null;
   responded_by: string | null;
+  /** The invitee's name as the inviter typed it (the mail's greeting). */
+  name: string | null;
+  /** The invitation e-mail's LAST attempt. `null` = none was sent: a GitHub-login invite has no address
+   *  (the person sees it when they sign in), and a row from before 0047 was never mailed from here. */
+  mail_status: InviteMailStatus | null;
+  mail_at: string | null;
+  /** The provider's refusal when `mail_status` is `failed`. */
+  mail_error: string | null;
 }
+export type InviteMailStatus = "sent" | "failed";
+export const INVITE_NAME_MAX = 120;
 
 // ── superadmin: /api/platform/… ──────────────────────────────────────────────
 

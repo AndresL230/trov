@@ -66,8 +66,8 @@ const detailOf = (over: Partial<PlatformOrgDetail> = {}): PlatformOrgDetail => (
     { handle: "sam", name: null, role: "member", title: null, joined_at: "2026-09-02T10:00:00.000Z" },
   ],
   invites: [
-    { id: 7, github_login: "octocat", email: null, role: "owner", status: "pending", invited_by: "andres", created_at: "2026-10-01T10:00:00.000Z", responded_at: null, responded_by: null },
-    { id: 8, github_login: null, email: "old@acme.example", role: "member", status: "revoked", invited_by: "maya", created_at: "2026-09-01T10:00:00.000Z", responded_at: null, responded_by: null },
+    { id: 7, github_login: "octocat", email: null, role: "owner", status: "pending", invited_by: "andres", created_at: "2026-10-01T10:00:00.000Z", responded_at: null, responded_by: null, name: null, mail_status: null, mail_at: null, mail_error: null },
+    { id: 8, github_login: null, email: "old@acme.example", role: "member", status: "revoked", invited_by: "maya", created_at: "2026-09-01T10:00:00.000Z", responded_at: null, responded_by: null, name: null, mail_status: null, mail_at: null, mail_error: null },
   ],
   usage: usageOf(),
   ...over,
@@ -239,8 +239,8 @@ describe("Add organization", () => {
   });
   it("says plainly what happened: an existing person is the owner; anyone else was invited", () => {
     expect(assignmentSentence({ status: "owner", handle: "maya" })).toBe("@maya is now the owner.");
-    expect(assignmentSentence({ status: "invited", invite_id: 3, github_login: "octocat", email: null })).toBe("Invited octocat — they become the owner when they sign in and accept.");
-    expect(assignmentSentence({ status: "invited", invite_id: 3, github_login: null, email: "a@b.co" }, true)).toBe("Invited a@b.co — they become an owner when they sign in and accept.");
+    expect(assignmentSentence({ status: "invited", invite_id: 3, github_login: "octocat", email: null })).toBe("Invited octocat — they become the owner when they sign in and accept. No email is sent for a GitHub login: tell them it is waiting.");
+    expect(assignmentSentence({ status: "invited", invite_id: 3, github_login: null, email: "a@b.co" }, true)).toBe("Invited a@b.co — they become an owner when they sign in and accept. Trov emailed them the invitation.");
     const owner = addOrgModal({ ...blankAddOrg(), done: { name: "Acme", slug: "acme", admin: { status: "owner", handle: "maya" } } });
     expect(owner).toContain("Acme was created");
     expect(owner).toContain("@maya is now the owner.");

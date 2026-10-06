@@ -6,7 +6,8 @@
 -- A pre-0046 Worker never reads the table; dropping it only forgets the current windows' counts.
 --
 -- Not undone here, on purpose: 0045 (`identities.provider_uid`, one nullable column — NULL or an
--- account id for every row and unread by a pre-0045 Worker). There is no 0045.down.sql and no 0044.
+-- account id for every row and unread by a pre-0045 Worker) and 0047 (four nullable columns on
+-- `org_invites`, unread by a pre-0047 Worker). There is no 0045.down.sql, no 0047.down.sql and no 0044.
 
 DROP INDEX IF EXISTS idx_abuse_counters_bucket;
 DROP TABLE IF EXISTS abuse_counters;

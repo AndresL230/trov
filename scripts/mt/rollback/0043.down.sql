@@ -12,7 +12,9 @@
 --   • 0041 (a data change: the mail sender) and 0042 (`platform_admins`, which references only persons) —
 --     neither blocks the 0037-0040 rollback; drop `platform_admins` by hand if a full return to 0036 is wanted;
 --   • 0045 (`identities.provider_uid`, one nullable column, unread by an older Worker) — no down file;
---   • 0046 (`abuse_counters`) — its own free-standing file, 0046.down.sql, in any order.
+--   • 0046 (`abuse_counters`) — its own free-standing file, 0046.down.sql, in any order;
+--   • 0047 (`org_invites.name` / `mail_status` / `mail_at` / `mail_error`, four nullable columns on a table
+--     0037-0040.down.sql drops whole, unread by an older Worker) — no down file.
 
 DROP INDEX IF EXISTS idx_org_usage_daily_day;
 DROP TABLE IF EXISTS org_usage_daily;

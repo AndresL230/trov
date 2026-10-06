@@ -14,16 +14,16 @@ import type { PersonColor } from "@shared/rows";
 import {
   DEFAULT_ORG_LIMIT, ORG_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, orgSlugProblem,
   type OrgRole, type OrgAuditAction, type MyOrg, type MyInvite, type MyOrgsResponse, type OrgSettings,
-  type OrgMember, type OrgInvite, type OrgMeResponse,
+  type OrgMember, type OrgInvite, type OrgMeResponse, type InviteMailStatus, INVITE_NAME_MAX,
 } from "@shared/orgs";
 
 export type OrgErrorCode =
   | "invalid_slug" | "reserved_slug" | "invalid_name" | "invalid_invite" | "invalid_member"
-  | "slug_taken" | "org_limit" | "not_found" | "last_owner" | "invite_exists" | "already_member";
+  | "slug_taken" | "org_limit" | "not_found" | "last_owner" | "invite_exists" | "already_member" | "no_address";
 
 export const ORG_ERROR_STATUS: Record<OrgErrorCode, 400 | 403 | 404 | 409> = {
   invalid_slug: 400, reserved_slug: 400, invalid_name: 400, invalid_invite: 400, invalid_member: 400,
-  slug_taken: 409, org_limit: 403, not_found: 404, last_owner: 409, invite_exists: 409, already_member: 409,
+  slug_taken: 409, org_limit: 403, not_found: 404, last_owner: 409, invite_exists: 409, already_member: 409, no_address: 409,
 };
 
 export class OrgError extends Error {
@@ -182,16 +182,17 @@ export async function myOrgs(p: PlatformContext, handle: string): Promise<MyOrgs
  * `not_found` for all alike. Accepting inserts the membership and stamps the invite in one batch; an
  * `as_owner` invite (0043, a superadmin's) grants OWNER, and lifts an existing member to owner.
  */
-export async function respondToInvite(p: PlatformContext, handle: string, id: number, accept: boolean): Promise<{ org: { slug: string; name: string }; role: OrgRole | null }> {
+export async function respondToInvite(p: PlatformContext, handle: string, id: number, accept: boolean): Promise<{ org: { slug: string; name: string }; role: OrgRole | null; org_id: string; first_join: boolean }> {
   const inv = await first<InviteJoinRow>(p, `${INVITE_JOIN} AND i.id = ?2`, handle, id);
   if (!inv) throw new OrgError("not_found");
+  const firstJoin = accept && (await neverJoined(p, handle));
   const at = nowIso();
   const role = grantedRole(inv);
   const stamp = stmt(p, `UPDATE org_invites SET status = ?, responded_at = ?, responded_by = ? WHERE id = ? AND status = 'pending'`,
     accept ? "accepted" : "declined", at, handle, id);
   if (!accept) {
     await batch(p, [stamp, auditStmt(p, inv.org_id, "invite.decline", `invite:${id}`, {}, at)]);
-    return { org: { slug: inv.slug, name: inv.name }, role: null };
+    return { org: { slug: inv.slug, name: inv.name }, role: null, org_id: inv.org_id, first_join: false };
   }
   await batch(p, [
     stamp,
@@ -202,7 +203,7 @@ export async function respondToInvite(p: PlatformContext, handle: string, id: nu
     auditStmt(p, inv.org_id, "invite.accept", `invite:${id}`, { role }, at),
     auditStmt(p, inv.org_id, "member.add", handle, { role, invite: id }, at),
   ]);
-  return { org: { slug: inv.slug, name: inv.name }, role };
+  return { org: { slug: inv.slug, name: inv.name }, role, org_id: inv.org_id, first_join: firstJoin };
 }
 
 // ── inside one org: me, settings ─────────────────────────────────────────────
@@ -334,12 +335,29 @@ export async function removeMember(p: PlatformContext, ctx: TenantContext, handl
 interface InviteRow {
   id: number; github_login: string | null; email: string | null; role: "admin" | "member"; as_owner: number; status: OrgInvite["status"];
   invited_by: string; created_at: string; responded_at: string | null; responded_by: string | null;
+  name: string | null; mail_status: InviteMailStatus | null; mail_at: string | null; mail_error: string | null;
 }
-const INVITE_COLS = `id, github_login, email, role, as_owner, status, invited_by, created_at, responded_at, responded_by`;
+const INVITE_COLS = `id, github_login, email, role, as_owner, status, invited_by, created_at, responded_at, responded_by, name, mail_status, mail_at, mail_error`;
 const toInvite = (r: InviteRow): OrgInvite => ({
   id: r.id, github_login: r.github_login, email: r.email, role: grantedRole(r), status: r.status,
   invited_by: r.invited_by, created_at: r.created_at, responded_at: r.responded_at, responded_by: r.responded_by,
+  name: r.name, mail_status: r.mail_status, mail_at: r.mail_at, mail_error: r.mail_error,
 });
+
+/** One invite of this org by id, whatever its status (the row a send or a resend reports back). */
+export async function getOrgInvite(p: PlatformContext, orgId: string, id: number): Promise<OrgInvite | null> {
+  const row = await first<InviteRow>(p, `SELECT ${INVITE_COLS} FROM org_invites WHERE id = ? AND org_id = ?`, id, orgId);
+  return row ? toInvite(row) : null;
+}
+
+/** The invitee's name: optional, trimmed, at most `INVITE_NAME_MAX` characters; blank is none. */
+export function cleanInviteName(v: unknown): string | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== "string") throw new OrgError("invalid_invite", "name must be text");
+  const t = v.trim();
+  if (t.length > INVITE_NAME_MAX) throw new OrgError("invalid_invite", `a name is at most ${INVITE_NAME_MAX} characters`);
+  return t === "" ? null : t;
+}
 
 /** An org's invites, pending first, then newest. `orgId` comes from a resolved context or a superadmin lookup. */
 export async function listOrgInvites(p: PlatformContext, orgId: string, opts: { pendingOnly?: boolean } = {}): Promise<OrgInvite[]> {
@@ -373,15 +391,16 @@ export async function personForAddress(p: PlatformContext, a: InviteAddress): Pr
 }
 
 /** The pending-invite INSERT; `asOwner` is the superadmin's flag (src/platform) and nobody else's. */
-export function inviteStmt(p: PlatformContext, orgId: string, a: InviteAddress, role: "admin" | "member", asOwner: boolean, at: string): Stmt {
-  return stmt(p, `INSERT INTO org_invites (org_id, github_login, email, role, as_owner, invited_by, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
-    orgId, a.github_login ?? null, a.email ?? null, role, asOwner ? 1 : 0, p.actor, at);
+export function inviteStmt(p: PlatformContext, orgId: string, a: InviteAddress, role: "admin" | "member", asOwner: boolean, at: string, name: string | null = null): Stmt {
+  return stmt(p, `INSERT INTO org_invites (org_id, github_login, email, role, as_owner, invited_by, status, created_at, name) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+    orgId, a.github_login ?? null, a.email ?? null, role, asOwner ? 1 : 0, p.actor, at, name);
 }
 
 /** Admin+ invites by GitHub login or email, as admin or member. Never an owner: that is the superadmin's. */
-export async function createInvite(p: PlatformContext, ctx: TenantContext, input: { github_login?: unknown; email?: unknown; role?: unknown }): Promise<OrgInvite> {
+export async function createInvite(p: PlatformContext, ctx: TenantContext, input: { github_login?: unknown; email?: unknown; role?: unknown; name?: unknown }): Promise<OrgInvite> {
   requireRole(ctx, "admin");
   const address = parseInviteAddress(input);
+  const name = cleanInviteName(input.name);
   const role = input.role === undefined ? "member" : input.role;
   if (role !== "admin" && role !== "member") throw new OrgError("invalid_invite", "role must be admin or member");
   const person = await personForAddress(p, address);
@@ -390,7 +409,7 @@ export async function createInvite(p: PlatformContext, ctx: TenantContext, input
   let id: number;
   try {
     const [res] = await batch(p, [
-      inviteStmt(p, ctx.orgId, address, role, false, at),
+      inviteStmt(p, ctx.orgId, address, role, false, at, name),
       stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at)
                VALUES (?, ?, 'invite.create', 'invite:' || last_insert_rowid(), ?, ?)`, ctx.orgId, p.actor, JSON.stringify({ ...address, role }), at),
     ]);
@@ -399,7 +418,42 @@ export async function createInvite(p: PlatformContext, ctx: TenantContext, input
     if (isUniqueViolation(e)) throw new OrgError("invite_exists");
     throw e;
   }
-  return toInvite((await first<InviteRow>(p, `SELECT ${INVITE_COLS} FROM org_invites WHERE id = ? AND org_id = ?`, id, ctx.orgId))!);
+  return (await getOrgInvite(p, ctx.orgId, id))!;
+}
+
+/**
+ * Admin+: the PENDING e-mail invite a resend mails again. `not_found` for an unknown id, another org's,
+ * or one already answered or revoked; `no_address` (409) for a GitHub-login invite — there is nothing
+ * to mail, the person sees it when they sign in.
+ */
+export async function resendableInvite(p: PlatformContext, ctx: TenantContext, id: number): Promise<OrgInvite & { email: string }> {
+  requireRole(ctx, "admin");
+  const inv = await getOrgInvite(p, ctx.orgId, id);
+  if (!inv || inv.status !== "pending") throw new OrgError("not_found");
+  if (inv.email === null) throw new OrgError("no_address", "a GitHub-login invite has no address to mail — the person sees it when they sign in");
+  return inv as OrgInvite & { email: string };
+}
+
+// ── joining for the first time (the welcome mail) ────────────────────────────
+
+/**
+ * Has `handle` never been a member of ANY org? Asked BEFORE a join is written: no membership today and
+ * no `member.add` in the audit trail (so leaving every org and joining another is not a second "first").
+ * People from before orgs have a membership (0037), so they never read as new.
+ */
+export async function neverJoined(p: PlatformContext, handle: string): Promise<boolean> {
+  const row = await first<{ n: number }>(p,
+    `SELECT (SELECT COUNT(*) FROM memberships WHERE user_id = ?1 COLLATE NOCASE)
+          + (SELECT COUNT(*) FROM org_admin_audit WHERE action = 'member.add' AND target = ?1 COLLATE NOCASE) AS n`, handle);
+  return (row?.n ?? 0) === 0;
+}
+
+/** Who a welcome is addressed to: the person's name and a provider-VERIFIED address (never the editable
+ *  notification address — abuse-limits.md), newest sign-in first. Null when no provider gave one. */
+export async function welcomeRecipient(p: PlatformContext, handle: string): Promise<{ handle: string; name: string | null; email: string } | null> {
+  return first<{ handle: string; name: string | null; email: string }>(p,
+    `SELECT pe.handle, pe.name, d.verified_email AS email FROM persons pe JOIN identities d ON d.person = pe.handle
+      WHERE pe.handle = ? COLLATE NOCASE AND d.verified_email IS NOT NULL ORDER BY d.linked_at DESC LIMIT 1`, handle);
 }
 
 /** Admin+ revokes a PENDING invite of this org; anything else is `not_found`. */

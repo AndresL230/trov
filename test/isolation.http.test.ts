@@ -269,7 +269,7 @@ const TENANT: Record<string, Row> = {
   // src/orgs/routes.ts
   "GET /me": {}, "GET /settings": {}, "PUT /settings": J({ name: "Acme (renamed)" }),
   "GET /members": {}, "PUT /members/:handle": J({ title: "hijacked", role: "admin" }), "DELETE /members/:handle": {},
-  "GET /invites": {}, "POST /invites": J({ email: INVITED }), "POST /invites/:id/revoke": J({}),
+  "GET /invites": {}, "POST /invites": J({ email: INVITED }), "POST /invites/:id/revoke": J({}), "POST /invites/:id/resend": J({}),
   // src/integrations/routes.ts
   "GET /integrations": {}, "GET /integrations/audit": {}, "POST /integrations/rotate-key": J({}),
   "PUT /integrations/:kind": J({ secret: "x" }), "PUT /integrations/:kind/:a": J({ secret: "x" }), "PUT /integrations/:kind/:a/:b": J({ secret: "x" }),
@@ -455,9 +455,10 @@ describe("the legacy alias-only routes are org-scoped", () => {
     expectClean("POST /invites", created);
     const listed = await send("GET", "/invites", fx.cookies.boss);
     expectClean("GET /invites", listed);
-    // One row, B's own; the name and delivery state live on a sidecar that is org #1's alone, so they are null here.
+    // One row, B's own, with the name B gave and B's own mail outcome (columns of its `org_invites` row, 0047) —
+    // never the name A's admin typed for the same address, which lives on A's row and A's sidecar.
     expect((JSON.parse(listed.text) as { invites: unknown[] }).invites).toEqual([
-      expect.objectContaining({ email: INVITED, name: null, invited_by: "boss", accepted_by: null, revoked_at: null, email_sent_at: null }),
+      expect.objectContaining({ email: INVITED, name: "B's name for them", invited_by: "boss", accepted_by: null, revoked_at: null, email_sent_at: expect.any(String), email_error: null }),
     ]);
     expect((await send("POST", `/invites/${encodeURIComponent(INVITED)}/resend`, fx.cookies.boss)).status).toBe(200);
     expect((await send("POST", `/invites/${encodeURIComponent(INVITED)}/revoke`, fx.cookies.boss)).status).toBe(200);

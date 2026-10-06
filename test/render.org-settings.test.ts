@@ -53,7 +53,7 @@ const member = (handle: string, role: OrgRole, o: Partial<OrgMember> = {}): OrgM
   handle, name: handle[0].toUpperCase() + handle.slice(1), color: "moss", avatar_url: null, role, title: null, joined_at: "2026-10-01T10:00:00.000Z", ...o,
 });
 const invite = (o: Partial<OrgInvite> = {}): OrgInvite => ({
-  id: 7, github_login: "octocat", email: null, role: "member", status: "pending", invited_by: "andres", created_at: "2026-10-05T10:00:00.000Z", responded_at: null, responded_by: null, ...o,
+  id: 7, github_login: "octocat", email: null, role: "member", status: "pending", invited_by: "andres", created_at: "2026-10-05T10:00:00.000Z", responded_at: null, responded_by: null, name: null, mail_status: null, mail_at: null, mail_error: null, ...o,
 });
 const ok = <T,>(data: T) => ({ status: "ok" as const, data });
 

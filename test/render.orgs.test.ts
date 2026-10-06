@@ -372,26 +372,37 @@ describe("Org settings › Members holds what Maintenance › People used to", (
     ...initialOrgUi(), slug: "acme", tab: "members",
     members: { status: "ok", data: [{ handle: "ines", name: "Ines", color: "fern", avatar_url: null, role: "owner", title: null, joined_at: "2026-10-01T10:00:00.000Z" }] },
     invites: { status: "ok", data: [
-      { id: 8, github_login: null, email: "sam@acme.dev", role: "member", status: "pending", invited_by: "ines", created_at: "2026-10-05T10:00:00.000Z", responded_at: null, responded_by: null },
-      { id: 9, github_login: "octocat", email: null, role: "admin", status: "pending", invited_by: "ines", created_at: "2026-10-05T10:00:00.000Z", responded_at: null, responded_by: null },
+      { id: 8, github_login: null, email: "sam@acme.dev", role: "member", status: "pending", invited_by: "ines", created_at: "2026-10-05T10:00:00.000Z", responded_at: null, responded_by: null, name: "Sam Okoro", mail_status: "sent", mail_at: "2026-10-05T10:00:01.000Z", mail_error: null },
+      { id: 9, github_login: "octocat", email: null, role: "admin", status: "pending", invited_by: "ines", created_at: "2026-10-05T10:00:00.000Z", responded_at: null, responded_by: null, name: null, mail_status: null, mail_at: null, mail_error: null },
+      { id: 10, github_login: null, email: "kai@acme.dev", role: "member", status: "pending", invited_by: "ines", created_at: "2026-10-05T10:00:00.000Z", responded_at: null, responded_by: null, name: null, mail_status: "failed", mail_at: "2026-10-05T10:00:01.000Z", mail_error: "resend 403: domain not verified" },
     ] },
   };
-  it("where the mail route answers (the admin is in ONE org) an email invite can be mailed again; a GitHub one never is", () => {
-    const html = membersTab(acme("owner"), members, "ines", true);
+  it("an email invite can be mailed again from any org (the org route), whatever the admin's org count; a GitHub one never is", () => {
+    const html = membersTab(acme("owner"), members, "ines");
     expect(html).toMatch(/data-act="orgInviteMail" data-arg="8"[^>]*aria-label="Email the invitation to sam@acme.dev again"[^>]*>Resend email<\/button>/);
+    expect(html).toContain('data-act="orgInviteMail" data-arg="10"');
     expect(html).not.toContain('data-act="orgInviteMail" data-arg="9"');
     expect(html).toContain('data-act="orgInviteRevoke" data-arg="8"');
-    expect(membersTab(acme("owner"), { ...members, mailBusy: 8 }, "ines", true)).toContain("Sending…");
+    expect(membersTab(acme("owner"), { ...members, mailBusy: 8 }, "ines")).toContain("Sending…");
   });
-  it("an admin in several orgs is told plainly that Trov does not email the invitation from here", () => {
-    const html = membersTab(acme("owner"), { ...members, inviteBy: "email" }, "ines", false);
-    expect(html).not.toContain("orgInviteMail");
-    expect(html).toContain("Trov does not email it from here: tell them yourself.");
-    expect(membersTab(acme("owner"), { ...members, inviteBy: "email" }, "ines", true)).toContain("Trov emails them the invitation.");
-    expect(membersTab(acme("owner"), { ...members, inviteBy: "github" }, "ines", true)).toContain("No email is sent: tell them it is waiting.");
+  it("each pending invite says what became of its email: sent and when, failed and why, or none for a GitHub login", () => {
+    const html = membersTab(acme("owner"), members, "ines");
+    expect(html).toMatch(/data-invite-mail="sent"[^>]*>Email sent /);
+    expect(html).toMatch(/data-invite-mail="failed"[^>]*>Email not sent \(tried [^)]+\): resend 403: domain not verified</);
+    expect(html).toMatch(/data-invite-mail="none"[^>]*>No email: they see it when they sign in</);
+    expect(html).toContain("Sam Okoro"); // the name the inviter gave
+  });
+  it("the invite box says the truth for each kind, and takes an optional name for an email invite only", () => {
+    const byEmail = membersTab(acme("owner"), { ...members, inviteBy: "email" }, "ines");
+    expect(byEmail).toContain("Trov emails them the invitation.");
+    expect(byEmail).toContain('data-act="orgInviteName"');
+    expect(byEmail).not.toContain("does not email it from here");
+    const byLogin = membersTab(acme("owner"), { ...members, inviteBy: "github" }, "ines");
+    expect(byLogin).toContain("No email is sent: tell them it is waiting.");
+    expect(byLogin).not.toContain('data-act="orgInviteName"');
   });
   it("a member sees neither", () => {
-    const html = membersTab(acme("member"), members, "ines", true);
+    const html = membersTab(acme("member"), members, "ines");
     expect(html).not.toContain("orgInviteMail");
     expect(html).not.toContain("orgInviteSend");
   });

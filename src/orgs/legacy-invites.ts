@@ -6,11 +6,13 @@
 // (`InviteRow`, addressed by email instead of id), so the list an org sees here is exactly its own, and
 // the same invite shows on, and can be revoked from, either route.
 //
-// What `org_invites` has no column for — the invitee's NAME and the invite email's delivery outcome —
-// stays where it was: the legacy `invites` table, a sidecar keyed by email. That table is GLOBAL, so it
-// is read and written for org #1 ONLY (`isLegacyOrg`, src/data/legacy.ts): for any other org those four
-// fields are null here, and nothing an org does can touch or reveal another org's row. Phase 7 moves the
-// sidecar's columns onto `org_invites` and drops the table.
+// The invitee's NAME and the invite email's delivery outcome are columns of `org_invites` since 0047
+// (`name`, `mail_status` / `mail_at` / `mail_error`), written for every org by the same code as the org
+// routes (src/orgs/mail.ts). The legacy `invites` table — GLOBAL, keyed by email — is still a sidecar
+// for org #1 ONLY (`isLegacyOrg`, src/data/legacy.ts): a row from before 0047 shows its name and outcome
+// from there, and an invite made HERE for org #1 still writes it, because a new person's first sign-in
+// consumes it (`consumeLegacyInvite`). Nothing an org does can touch or reveal another org's row.
+// Phase 7 drops the table.
 //
 // Becoming a member: an `org_invites` row is accepted through `POST /api/invites/:id/accept` like any
 // other — except org #1's, which a NEW person's first sign-in still consumes (`consumeLegacyInvite`).
@@ -36,7 +38,10 @@ interface Row {
 
 // The LATEST invite of this org per address; the sidecar joins only when `?2` says this is org #1.
 const SELECT = `SELECT o.email, o.status, o.invited_by, o.created_at, o.responded_at, o.responded_by,
-       s.name, s.email_sent_at, s.email_id, s.email_error
+       COALESCE(o.name, s.name) AS name,
+       CASE WHEN o.mail_status IS NULL THEN s.email_sent_at ELSE o.mail_at END AS email_sent_at,
+       CASE WHEN o.mail_status IS NULL THEN s.email_id END AS email_id,
+       CASE WHEN o.mail_status IS NULL THEN s.email_error ELSE o.mail_error END AS email_error
   FROM org_invites o LEFT JOIN invites s ON ?2 = 1 AND s.email = o.email
  WHERE o.org_id = ?1 AND o.email IS NOT NULL
    AND o.id = (SELECT MAX(x.id) FROM org_invites x WHERE x.org_id = o.org_id AND x.email = o.email)`;
@@ -81,7 +86,7 @@ export async function createLegacyInvite(p: PlatformContext, ctx: TenantContext,
   if (await first(p, `SELECT 1 AS x FROM org_invites WHERE org_id = ? AND email = ? AND status = 'pending'`, ctx.orgId, email)) throw new LegacyInviteError("invite_exists");
   const at = nowIso();
   const stmts: Stmt[] = [
-    inviteStmt(p, ctx.orgId, { email }, "member", false, at),
+    inviteStmt(p, ctx.orgId, { email }, "member", false, at, i.name),
     stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at)
              VALUES (?, ?, 'invite.create', 'invite:' || last_insert_rowid(), ?, ?)`, ctx.orgId, p.actor, JSON.stringify({ email, role: "member" }), at),
   ];
@@ -99,6 +104,12 @@ export async function createLegacyInvite(p: PlatformContext, ctx: TenantContext,
     throw e;
   }
   return (await getLegacyInvite(p, ctx, email))!;
+}
+
+/** The id of this org's PENDING invite for `email` — what the alias's mail is recorded on. */
+export async function pendingInviteId(p: PlatformContext, ctx: TenantContext, email: string): Promise<number | null> {
+  requireRole(ctx, "admin");
+  return (await first<{ id: number }>(p, `SELECT id FROM org_invites WHERE org_id = ? AND email = ? AND status = 'pending'`, ctx.orgId, norm(email)))?.id ?? null;
 }
 
 /** Revoke this org's invite for `email`. False when the org has none; an invite that is no longer pending is left as it is. */

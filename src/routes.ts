@@ -49,9 +49,9 @@ import { platformContext, soleTenantGate, tenantGate } from "./data/gate";
 import { orgsApp, myInvitesApp, orgTenantApp, cookieOnly } from "./orgs/routes";
 import { hasRole } from "./data/context";
 import { platformApp } from "./platform/routes";
-import { listLegacyInvites, getLegacyInvite, createLegacyInvite, revokeLegacyInvite, LegacyInviteError } from "./orgs/legacy-invites";
+import { listLegacyInvites, getLegacyInvite, createLegacyInvite, revokeLegacyInvite, pendingInviteId, LegacyInviteError } from "./orgs/legacy-invites";
+import { mailInvite, mailOrigin } from "./orgs/mail";
 import { listPersons, PersonError } from "./auth/persons";
-import { sendInvite } from "./notifications/invite";
 import type { InviteRow } from "@shared/rows";
 import { readDocImage } from "./tools/doc-images";
 import { getPersonProfile, writePersonProfile, setAvatar, clearAvatar, readAvatar, PeopleError, PEOPLE_ERROR_STATUS } from "./tools/people";
@@ -617,6 +617,12 @@ tenantApi.post("/people/me/avatar/remove", async (c) => {
 // made here is an `org_invites` row of the caller's org, listed and revoked by address
 // (src/orgs/legacy-invites.ts — the model, and what the legacy `invites` table still holds).
 const InviteWrite = z.object({ email: z.string().trim().max(254).regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "invalid email"), name: z.string().trim().max(120).optional() });
+/** The alias's mail is the org route's (src/orgs/mail.ts), reported in the old `{ status, id, error }` shape. */
+async function mailLegacyInvite(c: Context<AppEnv>, email: string, name: string | null): Promise<{ status: "sent" | "failed"; id: string | null; error: string | null }> {
+  const id = await pendingInviteId(c.var.p, c.var.ctx, email);
+  const sent = id === null ? null : await mailInvite(c.env, c.var.p, c.var.ctx.orgId, { id, email, name, role: "member" }, mailOrigin(c.env, c.req.url));
+  return sent ? { status: sent.status, id: sent.id, error: sent.error } : { status: "failed", id: null, error: "no such invite" };
+}
 legacyOnly.use("/invites", adminGate);
 legacyOnly.use("/invites/*", adminGate);
 legacyOnly.get("/invites", async (c) => c.json({ invites: await listLegacyInvites(c.var.p, c.var.ctx) }));
@@ -632,8 +638,7 @@ legacyOnly.post("/invites", async (c) => {
     if (e instanceof LegacyInviteError) return c.json({ error: e.code }, 409);
     throw e;
   }
-  const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-  const email = await sendInvite(c.env, c.var.ctx, c.var.p, { email: invite.email, inviteeName: parsed.data.name ?? null, inviterHandle: c.get("principal").handle, origin });
+  const email = await mailLegacyInvite(c, invite.email, parsed.data.name ?? null);
   return c.json({ ok: true, invite: (await getLegacyInvite(c.var.p, c.var.ctx, invite.email))!, email });
 });
 legacyOnly.post("/invites/:email/revoke", async (c) => {
@@ -646,9 +651,7 @@ legacyOnly.post("/invites/:email/resend", async (c) => {
   if (row.revoked_at || row.accepted_by) return c.json({ error: row.revoked_at ? "revoked" : "accepted" }, 409);
   const refused = await rateLimited(c, "invite");
   if (refused) return refused;
-  const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-  const result = await sendInvite(c.env, c.var.ctx, c.var.p, { email: row.email, inviteeName: row.name, inviterHandle: c.get("principal").handle, origin });
-  return c.json({ ok: true, email: result });
+  return c.json({ ok: true, email: await mailLegacyInvite(c, row.email, row.name) });
 });
 
 // Roadmap read (session-gated): admin narrative + sprints in target-date order,

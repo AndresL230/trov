@@ -5,7 +5,7 @@
 // TENANT tables live in ./usage.ts, and only there.
 import { type PlatformContext, first, all, stmt, batch, nowIso } from "../data/platform-sql";
 import {
-  OrgError, auditStmt, createOrg, getOrgBySlug, inviteStmt, listOrgInvites, parseInviteAddress, personForAddress,
+  OrgError, auditStmt, createOrg, getOrgBySlug, inviteStmt, listOrgInvites, neverJoined, parseInviteAddress, personForAddress,
   type InviteAddress, type OrgRow,
 } from "../orgs/repo";
 import type {
@@ -56,11 +56,12 @@ async function resolveAdmin(p: PlatformContext, target: unknown): Promise<Resolv
  * Anyone else gets a pending `as_owner` invite (0043): when they sign in and accept, they are the owner.
  * The superadmin (`p.actor`, recorded as `created_by`) is never made a member.
  */
-export async function createOrgWithAdmin(p: PlatformContext, input: { slug: string; name: string; admin: unknown }): Promise<{ org: OrgRow; admin: AdminAssignment }> {
+export async function createOrgWithAdmin(p: PlatformContext, input: { slug: string; name: string; admin: unknown }): Promise<{ org: OrgRow; admin: AdminAssignment; first_join: boolean }> {
   const who = await resolveAdmin(p, input.admin);
   if ("person" in who) {
+    const firstJoin = await neverJoined(p, who.person);
     const org = await createOrg(p, { slug: input.slug, name: input.name, owner: who.person });
-    return { org, admin: { status: "owner", handle: who.person } };
+    return { org, admin: { status: "owner", handle: who.person }, first_join: firstJoin };
   }
   const org = await createOrg(p, {
     slug: input.slug, name: input.name, owner: null,
@@ -70,7 +71,7 @@ export async function createOrgWithAdmin(p: PlatformContext, input: { slug: stri
     ],
   });
   const invite = (await listOrgInvites(p, org.id, { pendingOnly: true }))[0];
-  return { org, admin: { status: "invited", invite_id: invite.id, github_login: invite.github_login, email: invite.email } };
+  return { org, admin: { status: "invited", invite_id: invite.id, github_login: invite.github_login, email: invite.email }, first_join: false };
 }
 
 /**
@@ -78,18 +79,19 @@ export async function createOrgWithAdmin(p: PlatformContext, input: { slug: stri
  * person becomes an owner now (a current member is lifted to owner); anyone else gets an owner invite,
  * and a pending invite to the same address is upgraded to one rather than refused.
  */
-export async function assignOrgAdmin(p: PlatformContext, slug: string, target: unknown): Promise<AdminAssignment> {
+export async function assignOrgAdmin(p: PlatformContext, slug: string, target: unknown): Promise<{ org_id: string; admin: AdminAssignment; first_join: boolean }> {
   const org = await getOrgBySlug(p, slug);
   if (!org) throw new PlatformError("not_found");
   const who = await resolveAdmin(p, target);
   const at = nowIso();
   if ("person" in who) {
+    const firstJoin = await neverJoined(p, who.person);
     await batch(p, [
       stmt(p, `INSERT INTO memberships (org_id, user_id, role, created_at, created_by) VALUES (?, ?, 'owner', ?, ?)
                ON CONFLICT(org_id, user_id) DO UPDATE SET role = 'owner'`, org.id, who.person, at, p.actor),
       auditStmt(p, org.id, "member.add", who.person, { role: "owner", by: "platform" }, at),
     ]);
-    return { status: "owner", handle: who.person };
+    return { org_id: org.id, admin: { status: "owner", handle: who.person }, first_join: firstJoin };
   }
   const a = who.address;
   const pending = `org_id = ? AND status = 'pending' AND ${a.github_login !== undefined ? "github_login" : "email"} = ?`;
@@ -102,7 +104,7 @@ export async function assignOrgAdmin(p: PlatformContext, slug: string, target: u
   ]);
   const row = await first<{ id: number; github_login: string | null; email: string | null }>(p,
     `SELECT id, github_login, email FROM org_invites WHERE ${pending}`, org.id, key);
-  return { status: "invited", invite_id: row!.id, github_login: row!.github_login, email: row!.email };
+  return { org_id: org.id, admin: { status: "invited", invite_id: row!.id, github_login: row!.github_login, email: row!.email }, first_join: false };
 }
 
 // ── the org list and one org ─────────────────────────────────────────────────

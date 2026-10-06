@@ -285,6 +285,25 @@ describe("the rollback (scripts/mt/rollback/0037-0040.down.sql)", () => {
     expect(await one(`SELECT name FROM sqlite_master WHERE name = 'abuse_counters'`)).toEqual({ name: "abuse_counters" });
   });
 
+  // 0047 is ADD COLUMN only: the invite 0037 copied from the legacy list is untouched, and reads "never mailed".
+  it("0047 adds the invite's name and mail outcome as nullable columns: existing invites keep every value and read NULL in the new four", async () => {
+    await at0036WithData();
+    await applyD1Migrations(db(), upTo("0046"));
+    const cols = async () => (await rows<{ name: string }>(`SELECT name FROM pragma_table_info('org_invites') ORDER BY cid`)).map((c) => c.name);
+    const colsBefore = await cols();
+    const before = await rows(`SELECT * FROM org_invites ORDER BY id`);
+    expect(before).toHaveLength(1);
+    await applyD1Migrations(db(), upTo("0047"));
+    expect(await cols()).toEqual([...colsBefore, "name", "mail_status", "mail_at", "mail_error"]);
+    expect(await rows(`SELECT * FROM org_invites ORDER BY id`)).toEqual(before.map((r) => ({ ...(r as object), name: null, mail_status: null, mail_at: null, mail_error: null })));
+    // The CHECKs hold: an outcome is 'sent' or 'failed', a name is at most 120 characters.
+    await db().prepare(`UPDATE org_invites SET mail_status = 'sent', mail_at = 't', name = 'New Person'`).run();
+    await expect(db().prepare(`UPDATE org_invites SET mail_status = 'queued'`).run()).rejects.toThrow(/CHECK/i);
+    await expect(db().prepare(`UPDATE org_invites SET name = ?`).bind("x".repeat(121)).run()).rejects.toThrow(/CHECK/i);
+    // No down file of its own: the generated rollback drops the table whole (and 0043's runs first, as ever).
+    expect(env.MT_ROLLBACK.map((m) => m.name)).not.toContain("0047.down.sql");
+  });
+
   it("refuses to run once a second org exists (its rows would be lost)", async () => {
     await at0036WithData();
     await applyD1Migrations(db(), upTo("0040"));

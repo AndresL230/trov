@@ -106,7 +106,8 @@ describe("invites: 50 per person per day, across every org and both routes", () 
     await expectLimited(await app.request("/api/o/saplinglearn/invites", json("POST", { email: "four@x.io" }, admin), env));
     await expectLimited(await app.request("/api/o/acme/invites", json("POST", { github_login: "octo-five" }, admin), env));
     expect(await all(env.DB, `SELECT id FROM org_invites`)).toEqual(before);
-    expect(await all(env.DB, `SELECT 1 FROM notification_outbox_bodies`)).toEqual([]);
+    // The two e-mail invites above were mailed (the org route sends since 0047); the refused ones sent nothing.
+    expect(await all(env.DB, `SELECT to_address FROM notification_outbox_bodies ORDER BY to_address`)).toEqual([{ to_address: "one@x.io" }, { to_address: "three@x.io" }]);
     expect(await countOf(FIXTURE_ADMIN, "invite")).toBe(LIMITS.invite.max);
   });
 
@@ -275,7 +276,7 @@ describe("the From header: an org's display name, the platform's address — nev
         await handleNotificationCron(resendEnv, DAILY_CRON, new Date("2026-09-11T12:00:00.000Z"));                                    // digest
         expect((await app.request("/api/notifications/test-send", json("POST", { cadence: "daily", sample: true }, admin), resendEnv)).status).toBe(200); // test send
         expect((await app.request("/invites", json("POST", { email: `inv-${i}@x.io` }, admin), resendEnv)).status).toBe(200);                 // invite
-        expect((await sendWelcome(resendEnv, systemCtx(), { email: "new@x.io", name: "New", handle: "newbie", origin: "https://trov.test" })).status).toBe("sent"); // welcome
+        expect((await sendWelcome(resendEnv, systemCtx(), { email: "new@x.io", name: "New", handle: "newbie", orgName: "Acme", orgSlug: "acme", origin: "https://trov.test" })).status).toBe("sent"); // welcome
         expect(sent, JSON.stringify(stored)).toHaveLength(4);
         for (const m of sent) {
           expect(m.from, JSON.stringify(stored)).toBe(from);

@@ -2392,7 +2392,7 @@ function screenBody(s: AppState): string {
 /** Project the app state onto Org settings' props. The current org is `currentOrg` — one place. */
 function orgProps(s: AppState): OrgSettingsProps {
   const status = s.myOrgs.status === "unauth" ? "error" : s.myOrgs.status;
-  return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org, canMail: (s.me?.orgs.length ?? 0) === 1 };
+  return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org };
 }
 
 /** Project the app state onto the Repo dashboard's props (its components never see AppState). */

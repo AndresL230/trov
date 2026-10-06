@@ -166,7 +166,7 @@ export function ownerServerError(code: string, d: Pick<OwnerDraft, "kind" | "val
 /** What naming an admin did, said plainly. `another` = an org that already had an owner. */
 export function assignmentSentence(a: AdminAssignment, another = false): string {
   if (a.status === "owner") return `@${a.handle} is now ${another ? "an" : "the"} owner.`;
-  return `Invited ${a.github_login ?? a.email ?? "them"} — they become ${another ? "an" : "the"} owner when they sign in and accept.`;
+  return `Invited ${a.github_login ?? a.email ?? "them"} — they become ${another ? "an" : "the"} owner when they sign in and accept. ${a.email ? "Trov emailed them the invitation." : "No email is sent for a GitHub login: tell them it is waiting."}`;
 }
 
 /** What suspension does, exactly — the confirmation's body. */
@@ -223,8 +223,8 @@ const infoNote = (text: string): string =>
 function adminField(o: { segId: string; kindAct: string; valueAct: string; field: string; enter: string; kind: AdminKind; value: string; error: string | null | undefined; disabled: boolean; inputId: string }): string {
   const meta: Record<AdminKind, { label: string; placeholder: string; help: string; type: string }> = {
     handle: { label: "Trov handle", placeholder: "maya", help: "Someone who already has a Trov account. They become an owner at once.", type: "text" },
-    github: { label: "GitHub login", placeholder: "octocat", help: "They get an invite, and become an owner when they sign in with this GitHub account and accept.", type: "text" },
-    email: { label: "Email address", placeholder: "name@example.com", help: "They get an invite, and become an owner when they sign in with this address and accept.", type: "email" },
+    github: { label: "GitHub login", placeholder: "octocat", help: "They see the invite when they sign in with this GitHub account, and become an owner when they accept. No email is sent: tell them it is waiting.", type: "text" },
+    email: { label: "Email address", placeholder: "name@example.com", help: "Trov emails them the invite. They become an owner when they sign in with this address and accept.", type: "email" },
   };
   const m = meta[o.kind];
   const errId = `${o.inputId}-err`;
@@ -275,7 +275,7 @@ export function orgsTab(p: Pick<PlatState, "orgs">): string {
 // ── one organization ─────────────────────────────────────────────────────────
 function inviteRow(i: OrgInvite): string {
   return `<div style="${ROW};flex-wrap:wrap">
-    <div style="flex:1;min-width:0;line-height:1.35"><div style="font-size:13.5px;font-weight:500;color:var(--fg-70);overflow-wrap:anywhere">${esc(i.github_login ?? i.email ?? "")}</div><div style="${QUIET}">${i.github_login ? "GitHub login" : "Email"} · invited ${esc(relTime(i.created_at))} by @${esc(i.invited_by)}</div></div>
+    <div style="flex:1;min-width:0;line-height:1.35"><div style="font-size:13.5px;font-weight:500;color:var(--fg-70);overflow-wrap:anywhere">${esc(i.github_login ?? i.email ?? "")}</div><div style="${QUIET}">${i.github_login ? "GitHub login" : "Email"} · invited ${esc(relTime(i.created_at))} by @${esc(i.invited_by)}${i.email ? ` · ${i.mail_status === "sent" ? "email sent" : i.mail_status === "failed" ? "email not sent" : "no email sent"}` : ""}</div></div>
     ${roleBadge(i.role)}${statusBadge("PENDING", "var(--amber)")}
   </div>`;
 }

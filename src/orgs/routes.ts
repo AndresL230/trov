@@ -16,8 +16,9 @@ import { rateLimited } from "../platform/limits";
 import {
   OrgError, ORG_ERROR_STATUS, myOrgs, listMyInvites, createOrgForSelf, respondToInvite,
   orgMe, getOrgSettings, updateOrgSettings, listMembers, updateMember, removeMember,
-  listOrgInvites, createInvite, revokeInvite,
+  listOrgInvites, createInvite, revokeInvite, resendableInvite, getOrgInvite, neverJoined,
 } from "./repo";
+import { mailInvite, mailOrigin, welcomeFirstJoin } from "./mail";
 
 /** Refuse a bearer-shaped caller before anything else runs (the artifact-ratify rule). */
 export const cookieOnly: MiddlewareHandler<AppEnv> = async (c, next) =>
@@ -53,7 +54,9 @@ orgsApp.post("/", async (c) => {
   const b = await body(c);
   if (!b) return invalid(c);
   try {
+    const firstJoin = await neverJoined(c.var.p, me(c));
     const org = await createOrgForSelf(c.var.p, me(c), { slug: b.slug as string, name: b.name as string });
+    await welcomeFirstJoin(c.env, c.var.p, org.id, me(c), firstJoin, mailOrigin(c.env, c.req.url));
     return c.json({ ok: true, org: { slug: org.slug, name: org.name, role: "owner" as const } }, 201);
   } catch (e) { return orgFail(c, e); }
 });
@@ -68,7 +71,9 @@ const respond = (accept: boolean) => async (c: Context<AppEnv>) => {
   const id = inviteId(c);
   if (id === null) return c.json({ error: "not_found" }, 404);
   try {
-    return c.json({ ok: true, ...(await respondToInvite(c.var.p, me(c), id, accept)) });
+    const { org_id, first_join, ...answer } = await respondToInvite(c.var.p, me(c), id, accept);
+    await welcomeFirstJoin(c.env, c.var.p, org_id, me(c), first_join, mailOrigin(c.env, c.req.url));
+    return c.json({ ok: true, ...answer });
   } catch (e) { return orgFail(c, e); }
 };
 myInvitesApp.post("/:id/accept", respond(true));
@@ -121,7 +126,21 @@ orgTenantApp.post("/invites", async (c) => {
   const refused = await rateLimited(c, "invite");
   if (refused) return refused;
   try {
-    return c.json({ ok: true, invite: await createInvite(c.var.p, c.var.ctx, { github_login: b.github_login, email: b.email, role: b.role }) }, 201);
+    const invite = await createInvite(c.var.p, c.var.ctx, { github_login: b.github_login, email: b.email, role: b.role, name: b.name });
+    // An e-mail invite is mailed now; a GitHub-login invite has no address and waits for the person's sign-in.
+    await mailInvite(c.env, c.var.p, c.var.ctx.orgId, invite, mailOrigin(c.env, c.req.url));
+    return c.json({ ok: true, invite: (await getOrgInvite(c.var.p, c.var.ctx.orgId, invite.id))! }, 201);
+  } catch (e) { return orgFail(c, e); }
+});
+orgTenantApp.post("/invites/:id/resend", async (c) => {
+  const id = inviteId(c);
+  if (id === null) return c.json({ error: "not_found" }, 404);
+  try {
+    const invite = await resendableInvite(c.var.p, c.var.ctx, id);
+    const refused = await rateLimited(c, "invite");
+    if (refused) return refused;
+    await mailInvite(c.env, c.var.p, c.var.ctx.orgId, invite, mailOrigin(c.env, c.req.url));
+    return c.json({ ok: true, invite: (await getOrgInvite(c.var.p, c.var.ctx.orgId, id))! });
   } catch (e) { return orgFail(c, e); }
 });
 orgTenantApp.post("/invites/:id/revoke", async (c) => {

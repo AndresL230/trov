@@ -27,7 +27,7 @@ import { segmented } from "./segmented";
 import { personChip, handleTag } from "./people";
 import { confirmModal } from "./confirm";
 import { ROLE_MAX, RESPONSIBILITIES_MAX } from "@shared/people";
-import { ORG_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, type MyOrg, type MyOrgsResponse, type OrgInvite, type OrgMember, type OrgRole, type OrgSettings } from "@shared/orgs";
+import { ORG_NAME_MAX, INVITE_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, type MyOrg, type MyOrgsResponse, type OrgInvite, type OrgMember, type OrgRole, type OrgSettings } from "@shared/orgs";
 import type { IntegrationDTO, IntegrationKind, IntegrationsListDTO, OrgAuditDTO, OrgEnvironmentDTO, OrgRepoDTO } from "@shared/integrations";
 import { integrationsTab, secretFormModal, integrationLabel, SECRET_DELETE_EFFECT, type SecretFormState, type TestState } from "./integrations";
 
@@ -98,6 +98,8 @@ export interface OrgUi {
   memberEdit: MemberDraft | null;
   inviteBy: "github" | "email";
   inviteDraft: string;
+  /** The invitee's name, for an e-mail invite's greeting (optional). */
+  inviteName: string;
   inviteRole: "member" | "admin";
   inviteBusy: boolean;
   inviteError: string | null;
@@ -122,7 +124,7 @@ export function initialOrgUi(): OrgUi {
     tab: "integrations", slug: null,
     settings: idle(null), members: idle([]), invites: idle([]), repos: idle([]), envs: idle([]), integrations: idle(null), audit: idle([]),
     nameDraft: null, nameSaving: false, nameError: null,
-    memberEdit: null, inviteBy: "github", inviteDraft: "", inviteRole: "member", inviteBusy: false, inviteError: null, mailBusy: null,
+    memberEdit: null, inviteBy: "github", inviteDraft: "", inviteName: "", inviteRole: "member", inviteBusy: false, inviteError: null, mailBusy: null,
     repoDraft: "", repoBusy: false, repoError: null,
     envEdit: null, envBusy: false,
     secretForm: null, tests: {}, auditOpen: false, confirm: null,
@@ -150,8 +152,6 @@ export interface OrgSettingsProps {
   orgsStatus: "idle" | "loading" | "ok" | "error";
   me: string;
   ui: OrgUi;
-  /** The invitation e-mail can be sent from here (api.ts `mailOrgInvite` — alias only: the viewer is in exactly one org). */
-  canMail?: boolean;
 }
 
 // ── setup checklist ──────────────────────────────────────────────────────────
@@ -452,7 +452,15 @@ function memberEditor(m: OrgMember, d: MemberDraft, viewer: OrgRole, soleOwner: 
   </div>`;
 }
 
-export function membersTab(org: MyOrg, ui: OrgUi, me: string, canMail = false): string {
+/** What happened to an invite's e-mail, as one short phrase for its row (and whether it needs attention). */
+export function inviteMailNote(i: OrgInvite): { text: string; bad: boolean } {
+  if (i.github_login) return { text: "No email: they see it when they sign in", bad: false };
+  if (i.mail_status === "sent") return { text: `Email sent ${i.mail_at ? relTime(i.mail_at) : ""}`.trim(), bad: false };
+  if (i.mail_status === "failed") return { text: `Email not sent${i.mail_at ? ` (tried ${relTime(i.mail_at)})` : ""}`, bad: true };
+  return { text: "No email sent yet", bad: false };
+}
+
+export function membersTab(org: MyOrg, ui: OrgUi, me: string): string {
   const admin = roleAtLeast(org.role, "admin");
   const members = ui.members.data;
   const note = sliceNote(ui.members, "members", members.length > 0);
@@ -461,11 +469,12 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, canMail = false): 
   const canSend = inviteDraftOk(ui.inviteBy, ui.inviteDraft) && !ui.inviteBusy;
   const invite = admin ? `<section aria-labelledby="org-invite-t" style="margin-bottom:24px">
       ${orgHead("Invite someone", ui.inviteBy === "email"
-        ? (canMail ? "Trov emails them the invitation. They join when they sign in with that address and accept. A Google account can only sign in once it is invited." : "They see the invitation when they sign in with that address, and join when they accept. Trov does not email it from here: tell them yourself.")
+        ? "Trov emails them the invitation. They join when they sign in with that address and accept. A Google account can only sign in once it is invited."
         : "They see the invitation the next time they sign in with that GitHub account, and join when they accept. No email is sent: tell them it is waiting.")}
       <div class="cnpy-org-invite" style="margin-top:12px">
         ${segmented({ id: "org-invite-by", ariaLabel: "Invite by", act: "orgInviteBy", value: ui.inviteBy, size: "sm", inertOn: true, options: [{ value: "github", label: "GitHub login" }, { value: "email", label: "Email" }] })}
         <input id="org-invite" data-act="orgInviteDraft" data-field="orgInvite" data-enter="orgInviteSend" value="${attr(ui.inviteDraft)}" placeholder="${ui.inviteBy === "github" ? "octocat" : "name@example.com"}" aria-label="${ui.inviteBy === "github" ? "GitHub login to invite" : "Email address to invite"}"${ui.inviteBy === "email" ? ' type="email" inputmode="email"' : ""} autocomplete="off" autocapitalize="off" spellcheck="false"${ui.inviteError ? ' aria-invalid="true" aria-describedby="org-invite-e"' : ""} class="cnpy-input" style="${O_FIELD};flex:1 1 200px;width:auto;min-width:0;${ui.inviteError ? "border-color:var(--red);" : ""}" />
+        ${ui.inviteBy === "email" ? `<input id="org-invite-name" data-act="orgInviteName" data-field="orgInviteName" data-enter="orgInviteSend" value="${attr(ui.inviteName)}" maxlength="${INVITE_NAME_MAX}" placeholder="Their name (optional)" aria-label="Their name, for the email's greeting (optional)" autocomplete="off" class="cnpy-input" style="${O_FIELD};flex:1 1 160px;width:auto;min-width:0" />` : ""}
         ${select("org-invite-role", "orgInviteRole", ui.inviteRole, [["member", "As member"], ["admin", "As admin"]], { label: "Role the invite grants" })}
         ${accentBtn(ui.inviteBusy ? "Inviting…" : "Invite", "orgInviteSend", { disabled: !canSend, busy: ui.inviteBusy, extra: "height:36px" })}
       </div>
@@ -491,16 +500,18 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, canMail = false): 
   const pending = admin ? ui.invites.data.filter((i) => i.status === "pending") : [];
   const inviteRows = pending.map((i) => {
     const who = i.github_login ? `@${i.github_login}` : i.email ?? "";
+    const mail = inviteMailNote(i);
     return `<li class="cnpy-org-row" style="align-items:center">
       <div aria-hidden="true" style="width:28px;height:28px;border-radius:50%;border:1px dashed var(--border-strong);display:grid;place-items:center;color:var(--fg-40);font-size:12px;flex:none">?</div>
       <div style="flex:1 1 200px;min-width:0;line-height:1.3">
-        <div style="font-size:13.5px;font-weight:500;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(who)}</div>
+        <div style="font-size:13.5px;font-weight:500;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.name ? `${esc(i.name)} <span style="font-weight:400;color:var(--fg-55)">&middot; ${esc(who)}</span>` : esc(who)}</div>
         <div style="font-size:11.5px;color:var(--fg-40)">${i.github_login ? "GitHub login" : "Email"} &middot; invited ${esc(relTime(i.created_at))} by ${esc(i.invited_by)}</div>
+        <div data-invite-mail="${i.mail_status ?? "none"}" style="font-size:11.5px;color:${mail.bad ? "var(--red)" : "var(--fg-55)"};overflow-wrap:anywhere">${esc(mail.text)}${mail.bad && i.mail_error ? `: ${esc(i.mail_error)}` : ""}</div>
       </div>
       <div class="cnpy-org-actions" style="align-items:center">
         ${statusBadge("Pending", "var(--amber)", "font-size:10.5px;border-radius:5px;padding:2px 7px")}
         ${roleChip(i.role)}
-        ${i.email && canMail ? quietBtn(ui.mailBusy === i.id ? "Sending…" : "Resend email", "orgInviteMail", { arg: String(i.id), disabled: ui.mailBusy !== null, busy: ui.mailBusy === i.id, label: `Email the invitation to ${who} again` }) : ""}
+        ${i.email ? quietBtn(ui.mailBusy === i.id ? "Sending…" : "Resend email", "orgInviteMail", { arg: String(i.id), disabled: ui.mailBusy !== null, busy: ui.mailBusy === i.id, label: `Email the invitation to ${who} again` }) : ""}
         ${dangerBtn("Revoke", "orgInviteRevoke", { arg: String(i.id), label: `Revoke the invite for ${who}` })}
       </div>
     </li>`;
@@ -628,7 +639,7 @@ export function orgSettingsView(p: OrgSettingsProps): string {
   const body = tab === "integrations" ? integrationsTab(p.org, p.ui)
     : tab === "repos" ? reposTab(p.org, p.ui)
     : tab === "environments" ? environmentsTab(p.org, p.ui)
-    : tab === "members" ? membersTab(p.org, p.ui, p.me, p.canMail === true)
+    : tab === "members" ? membersTab(p.org, p.ui, p.me)
     : generalTab(p.org, p.ui);
   return shell(`${setupChecklist(p.org, p.ui)}
     ${orgTabBar(tab, p.org.role, p.ui)}
