@@ -18,7 +18,7 @@ import { takeOAuthPending } from "./oauth-routes";
 import { listGrants, revokeGrant } from "./oauth";
 import { platformContext } from "../data/gate";
 import { hasRole, isSuperadmin, resolveSoleTenant } from "../data/context";
-import { consumeLegacyInvite, legacySystemTenant } from "../data/legacy";
+import { consumeLegacyInvite } from "../data/legacy";
 import { listMyOrgs, listMyInvites } from "../orgs/repo";
 
 const OAUTH_TX_COOKIE = "oauth_tx";
@@ -197,13 +197,12 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     // is a courtesy, not part of the write: `sendWelcome` never throws, and its
     // outcome is deliberately ignored here so a mailer problem can never cost
     // somebody their sign-up. No address on file (GitHub returned none) = no mail.
-    // Mail is sent AS an org (its settings, its outbox), and a new person has none — so the welcome
-    // goes only to someone who just joined org #1 through a legacy invite.
+    // Mail is sent AS an org (its display name, its outbox), and a new person has none — so the welcome
+    // goes only to someone who just joined org #1 through a legacy invite, under that org.
     const email = p.email;
     if (email && joinedLegacy) {
       const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-      // MT: under org #1's mail settings; a platform-level welcome for everyone else is Phase 5b's (§8.4).
-      await sendWelcome(c.env, legacySystemTenant(c.env, "system"), {
+      await sendWelcome(c.env, joinedLegacy, {
         email, name: parsed.data.name ?? p.name, handle: parsed.data.handle, origin, fetchImpl: deps.fetchImpl,
       });
     }

@@ -10,7 +10,7 @@ import {
 } from "../src/data/context";
 import { resolveBearerTenant } from "../src/data/bearer";
 import { tenantGate } from "../src/data/gate";
-import { consumeLegacyInvite, isLegacyOrg, legacySystemTenant } from "../src/data/legacy";
+import { consumeLegacyInvite, isLegacyOrg } from "../src/data/legacy";
 import * as sql from "../src/data/sql";
 import * as psql from "../src/data/platform-sql";
 import { cookieFor, seedPerson } from "./helpers/persons";
@@ -80,7 +80,7 @@ describe("TenantContext constructors", () => {
   });
 
   it("a system context has role and via `system`, and passes no human role gate", async () => {
-    const sys = legacySystemTenant(e, "github-webhook");
+    const sys = systemCtx(ORG_A, "github-webhook");
     expect(sys).toMatchObject({ orgId: ORG_A, userId: "github-webhook", role: "system", via: "system" });
     expect(hasRole(sys, "admin")).toBe(false);
     expect(() => requireRole(sys, "admin")).toThrow(RoleError);
@@ -188,13 +188,13 @@ describe("the gates", () => {
 describe("test + cut-over helpers", () => {
   it("consumeLegacyInvite: only a live legacy invite for the verified email makes a new person a SaplingLearn member, once", async () => {
     await seedPerson("newbie", { member: false });
-    expect(await consumeLegacyInvite(platformCtx(), "newbie", null)).toBe(false);
-    expect(await consumeLegacyInvite(platformCtx(), "newbie", "newbie@x.io")).toBe(false); // nobody invited that address
+    expect(await consumeLegacyInvite(platformCtx(), "newbie", null)).toBeNull();
+    expect(await consumeLegacyInvite(platformCtx(), "newbie", "newbie@x.io")).toBeNull(); // nobody invited that address
     expect(await resolveSoleTenant(e, "newbie", "session")).toEqual({ ok: false, reason: "no_membership" });
 
     await env.DB.prepare(`INSERT INTO invites (email, name, invited_by, invited_at) VALUES ('newbie@x.io', 'Newbie', 'AndresL230', '2026-10-01T00:00:00Z')`).run();
-    expect(await consumeLegacyInvite(platformCtx(), "newbie", "Newbie@X.io")).toBe(true);
-    expect(await consumeLegacyInvite(platformCtx(), "newbie", "newbie@x.io")).toBe(false); // spent
+    expect(await consumeLegacyInvite(platformCtx(), "newbie", "Newbie@X.io")).toMatchObject({ orgId: ORG_A, role: "system", via: "system" });
+    expect(await consumeLegacyInvite(platformCtx(), "newbie", "newbie@x.io")).toBeNull(); // spent
     expect(await resolveSoleTenant(e, "newbie", "session")).toMatchObject({ ok: true, ctx: { orgId: ORG_A, role: "member" } });
     expect(await env.DB.prepare(`SELECT accepted_by FROM invites WHERE email = 'newbie@x.io'`).first()).toEqual({ accepted_by: "newbie" });
   });

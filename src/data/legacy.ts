@@ -1,30 +1,16 @@
-// TRANSITIONAL — the cut-over entry points. The data layer itself is org-explicit (every statement
-// binds `ctx.orgId`); what is left here is the ONE place that still names an org: the entry points
-// that cannot resolve theirs yet, and what only org #1 ever had. Each caller is marked `// MT:`;
-// Phases 5b and 7 replace them.
-import type { Env } from "../env";
+// TRANSITIONAL — what only org #1 ever had. The data layer is org-explicit (every statement binds
+// `ctx.orgId`) and every entry point resolves its own org; this is the ONE place that still names an
+// org, for the two things that predate orgs: the legacy `invites` table (below) and the Worker secrets
+// SaplingLearn's credentials still fall back to (`SAPLINGLEARN_ORG_ID`, read by src/data/secrets.ts).
+// Each caller is marked `// MT:`; Phase 7 deletes both, and this file.
 import type { InviteRow } from "@shared/rows";
-import { platform, systemTenant, type PlatformContext, type SystemActor, type TenantContext } from "./context";
+import { systemTenant, type PlatformContext, type TenantContext } from "./context";
 import { first, stmt, batch, nowIso } from "./platform-sql";
 
-/** Org #1 (0037): every pre-multitenancy row belongs to it, and so does every org-less entry point. */
+/** Org #1 (0037): every pre-multitenancy row belongs to it. */
 export const SAPLINGLEARN_ORG_ID = "org_saplinglearn";
 
-/**
- * The single org every org-less entry point acts on until it can name one: the GitHub webhook (Phase
- * 5b resolves the org from `org_repos`), the crons (5b enumerates `orgs` by rotation, §8.3), and the
- * token-authenticated artifact upload (the token row will carry its org). Each caller is marked `MT:`.
- */
-export function legacySystemTenant(env: Env, actor: SystemActor): TenantContext {
-  return systemTenant(platform(env, actor), SAPLINGLEARN_ORG_ID, actor);
-}
-
-/**
- * Is `ctx` org #1? For the few things that are still ITS alone, each marked `MT:` at the caller: the
- * Worker's own GitHub / poller configuration (`GITHUB_REPO`, `REPO_ENVIRONMENTS`, the service token — the
- * admin Sync / Poll routes and the Repo dashboard, until Phase 5b reads `org_repos` / `org_environments` /
- * `org_secrets`), and the legacy `invites` table (below).
- */
+/** Is `ctx` org #1? Asked only for the legacy `invites` sidecar (below), each use marked `MT:` at the caller. */
 export function isLegacyOrg(ctx: TenantContext): boolean {
   return ctx.orgId === SAPLINGLEARN_ORG_ID;
 }
@@ -54,12 +40,13 @@ export function liveLegacyInvite(p: PlatformContext, email: string): Promise<Inv
  * Onboarding (§5.1): a new person has NO membership — except that a live legacy invite for their
  * provider-VERIFIED email is consumed as a membership of org #1, exactly as signing up with one always
  * made a person a SaplingLearn member. One batch: the membership (`member`), the legacy row and its
- * pending `org_invites` twin stamped accepted, and the audit rows. Returns whether it joined.
+ * pending `org_invites` twin stamped accepted, and the audit rows. Returns the system tenant of the org
+ * joined (what the welcome mail is sent under), or null when there was no invite.
  * Every OTHER invite — any org's, by login or email — waits for an explicit `POST /api/invites/:id/accept`.
  */
-export async function consumeLegacyInvite(p: PlatformContext, handle: string, verifiedEmail: string | null): Promise<boolean> {
+export async function consumeLegacyInvite(p: PlatformContext, handle: string, verifiedEmail: string | null): Promise<TenantContext | null> {
   const invite = verifiedEmail ? await liveLegacyInvite(p, verifiedEmail) : null;
-  if (!invite) return false;
+  if (!invite) return null;
   const at = nowIso();
   await batch(p, [
     stmt(p, `INSERT OR IGNORE INTO memberships (org_id, user_id, role, created_at, created_by) VALUES (?, ?, 'member', ?, ?)`,
@@ -70,5 +57,5 @@ export async function consumeLegacyInvite(p: PlatformContext, handle: string, ve
     stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, 'member.add', ?, ?, ?)`,
       SAPLINGLEARN_ORG_ID, handle, handle, JSON.stringify({ role: "member", invite: "legacy" }), at),
   ]);
-  return true;
+  return systemTenant(p, SAPLINGLEARN_ORG_ID, "system");
 }

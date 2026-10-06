@@ -275,31 +275,34 @@ describe("data layer — static enforcement (§4.4)", () => {
     expect(stale, `allowlist entries that excuse nothing: ${stale.join("; ")}`).toEqual([]);
   });
 
-  // The cut-over: an entry point that cannot name its org yet acts on org #1 through src/data/legacy.ts,
-  // and so does the little that is still org #1's alone (its legacy invite table, the Worker's own
-  // GitHub / poller configuration). Each such call is marked `// MT:` (what replaces it, and in which
-  // phase) and lives in one of the files below — so the list of what Phases 5b / 7 still have to replace
-  // is this test, not a grep. Phase 4 removed onboarding's `joinLegacyOrg` (a new person joins NO org);
-  // what it left in src/auth is the legacy-invite rule (`liveLegacyInvite`, `consumeLegacyInvite`).
+  // What is still org #1's alone, through src/data/legacy.ts — no entry point acts on "the" org any more
+  // (every job, hook and route resolves its own). Each call is marked `// MT:` and lives in one of the
+  // files below, with its reason — so the list of what Phase 7 still has to remove is this test, not a grep.
   it("only the marked cut-over entry points reach for the legacy org", () => {
-    const ENTRY_POINTS = [
-      "src/auth/routes.ts", "src/auth/onboard.ts",                       // the legacy invite at sign-in / onboarding; the welcome mail
-      "src/orgs/legacy-invites.ts", "src/notifications/invite.ts",       // the legacy `invites` sidecar — org #1's alone
-    ];
+    const ENTRY_POINTS: Record<string, string> = {
+      "src/auth/onboard.ts": "liveLegacyInvite — a legacy invite lets a Google account reach onboarding and seeds the invitee's name",
+      "src/auth/routes.ts": "consumeLegacyInvite — a new person with a live legacy invite joins org #1 at onboarding (and gets its welcome mail)",
+      "src/orgs/legacy-invites.ts": "isLegacyOrg — the legacy `invites` sidecar (invitee name, mail outcome) is read and written for org #1 only",
+      "src/notifications/invite.ts": "isLegacyOrg — the invite mail's outcome is stamped on that sidecar for org #1 only",
+    };
+    // …and the ONE importer of the org's id: the env-secret fallback (`resolveCredential`, §8.7.6).
+    const ID_IMPORTERS = ["src/data/secrets.ts"];
     const found = new Set<string>();
     const unmarked: string[] = [];
     for (const [file, src] of Object.entries(SOURCES)) {
       if (file === "src/data/legacy.ts") continue;
       const lines = src.split("\n");
       lines.forEach((line, i) => {
-        if (!/\b(legacySystemTenant|isLegacyOrg|liveLegacyInvite|consumeLegacyInvite)\(/.test(line)) return;
+        if (!/\b(isLegacyOrg|liveLegacyInvite|consumeLegacyInvite)\(/.test(line)) return;
         found.add(file);
         if (!lines.slice(Math.max(0, i - 3), i + 1).some((l) => l.includes("// MT:"))) unmarked.push(`${file}:${i + 1}  ${line.trim()}`);
       });
       if (/org_saplinglearn/.test(scanSource(file, src).code)) unmarked.push(`${file}: names org_saplinglearn outside src/data/legacy.ts`);
     }
     expect(unmarked, `\n${unmarked.join("\n")}\n`).toEqual([]);
-    expect([...found].sort()).toEqual([...ENTRY_POINTS].sort());
+    expect([...found].sort()).toEqual(Object.keys(ENTRY_POINTS).sort());
+    const importers = Object.entries(SOURCES).filter(([file, src]) => file !== "src/data/legacy.ts" && /\bSAPLINGLEARN_ORG_ID\b/.test(scanSource(file, src).code)).map(([file]) => file);
+    expect(importers).toEqual(ID_IMPORTERS);
   });
 
   it("the sprint_progress upsert is still there to be excused", () => {
