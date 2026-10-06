@@ -62,8 +62,8 @@ export async function resolveTenant(env: Env, userId: string, slug: string): Pro
   return row ? tenant(env, row.id, userId, row.role, "session") : null;
 }
 
-/** The same check by org ID, for a credential that names its org (a signed download URL today; an
- *  org-scoped token in Phase 5a): `userId`'s LIVE membership of a non-suspended `orgId`, or null. */
+/** The same check by org ID, for a credential that names its org (an MCP token or OAuth grant —
+ *  ./bearer.ts — or a signed download URL): `userId`'s LIVE membership of a non-suspended `orgId`, or null. */
 export async function resolveTenantById(env: Env, userId: string, orgId: string, via: "session" | "bearer"): Promise<TenantContext | null> {
   const row = await env.DB.prepare(
     `SELECT m.role FROM memberships m JOIN orgs o ON o.id = m.org_id

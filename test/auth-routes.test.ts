@@ -51,12 +51,8 @@ describe("GET /auth/callback", () => {
     expect(body.error).toBe("state_mismatch");
   });
 
-  // NOTE: Testing the non-member redirect (302 /?denied=1) requires stubbing the
-  // Miniflare worker's global fetch for exchangeCode / getUser / isActiveOrgMember.
-  // Those functions use the worker-sandbox's global fetch, which cannot be overridden
-  // from the test thread via vi.stubGlobal (different v8 context). No fetchImpl DI
-  // seam exists in src/auth/github.ts for these functions, and inventing new infra
-  // would violate scope discipline. The production change (c.redirect("/?denied=1", 302)
-  // replacing c.json({ error: "forbidden" }, 403)) is in place and verified by code review.
+  // What the callback does once the state checks out — sign-in, onboarding, and the one GitHub refusal
+  // left (`/?denied=1`: a known login presented by a different account, 0045) — is driven through
+  // `buildAuthApp({ fetchImpl })` in test/signin.multitenant.test.ts. No GitHub org is checked any more.
 });
 

@@ -19,9 +19,10 @@ export interface RepoEnvConfig {
 
 const REQUIRED = ["key", "label", "branch", "railwayEnv", "worker", "workerCheck", "frontendUrl", "apiUrl", "healthPath"] as const;
 
-/** Parse `REPO_ENVIRONMENTS`. Absent or malformed → [] (the dashboard then shows not_connected).
- *  LEGACY: the var is what 0037 copied into `org_environments`; only the two dashboard READS that
- *  have not moved to `orgEnvironments` yet (src/routes.ts, src/mcp.ts) still call this. */
+/** Parse `REPO_ENVIRONMENTS`. Absent or malformed → [].
+ *  LEGACY: the var is what 0037 copied into `org_environments`. Nothing in src/ calls this any more —
+ *  every reader uses `orgEnvironments` — only the SaplingLearn-era suites do, to seed those rows
+ *  (test/helpers/org-config.ts). Phase 7 deletes it with the var. */
 export function repoEnvironments(env: { REPO_ENVIRONMENTS?: string }): RepoEnvConfig[] {
   if (!env.REPO_ENVIRONMENTS) return [];
   try {

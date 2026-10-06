@@ -10,15 +10,17 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;     // Google OAuth client (second session-class provider); absent → /auth/google/login 503s
   GOOGLE_CLIENT_SECRET?: string; // Google OAuth client secret
   COOKIE_SECRET: string;
-  GITHUB_WEBHOOK_SECRET?: string; // HMAC key for the /webhook/github third auth class; absent → the surface 401s
-  GITHUB_REPO?: string;   // "owner/repo" for live roadmap progress; absent → sprints without progress
+  GITHUB_WEBHOOK_SECRET?: string; // LEGACY: SaplingLearn's fallback for the old /webhook/github hook (src/data/secrets.ts `resolveCredential`); Phase 7 deletes it
+  GITHUB_REPO?: string;   // LEGACY: read by nothing — an org's repo is its `org_repos` row (0037 copied this one); Phase 7 deletes it
   DEV_LOGIN?: string;     // LOCAL DEV ONLY (set in .dev.vars): bypass OAuth, act as this seeded user. Never set in prod.
   GEMINI_API_KEY?: string; // Google Gemini key for capture-time PR/issue summaries (REST generateContent); absent → excerpt fallback.
-  GITHUB_SERVICE_TOKEN?: string; // app-level token for the scheduled progress-cache recompute backstop; absent → scheduled() no-ops
+  GITHUB_SERVICE_TOKEN?: string; // LEGACY: SaplingLearn's `github_token` fallback until its admin stores one (`resolveCredential`); no other org ever reads it
   PUBLIC_ORIGIN?: string; // absolute origin for links in email (deep links, unsubscribe); absent → relative links
   NOTIFICATIONS_MODE?: "local" | "resend"; // delivery gate; absent → local (bodies to the dev table, Resend never called)
   RESEND_API_KEY?: string; // Resend API key; required only when NOTIFICATIONS_MODE = "resend"
-  REPO_ENVIRONMENTS?: string; // JSON RepoEnvConfig[] (src/repo/config.ts): which branch deploys to which environment, and its URLs
+  REPO_ENVIRONMENTS?: string; // LEGACY: read by nothing — environments are `org_environments` rows (0037 copied this one); Phase 7 deletes it
+  // The five below are LEGACY too: SaplingLearn's fallback credentials (`resolveCredential`), each read only until its
+  // admin stores that integration on Org settings › Integrations, and never for another org. What each one is:
   // Both SECRETS, and both needed: absent either → the hourly Cloudflare analytics poll (src/repo/poll.ts) is skipped
   // and the Usage tab's requests/error-rate + Cloudflare panel stay not_connected. Deliberately NOT named
   // CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID — those are the names the wrangler CLI authenticates with.
