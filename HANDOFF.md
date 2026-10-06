@@ -10,11 +10,6 @@ every background job runs per org with that org's own credentials. Admin is the 
 per-person rate limits and a fixed mail sender (`docs/architecture/abuse-limits.md`). Nothing is merged or
 deployed. `npm test` + `npm run typecheck` are green.
 
-**Before anything is pushed**: local commit `5f80af9` (the `mt/p4-routes` merge) contains `canopy-dump.sql` —
-Canopy's production data, session ids included. It is untracked again at the tip, but the blob is still in that
-commit: rewrite it out of the branch's history (redo the merge without the file, or `git filter-repo --path
-canopy-dump.sql --invert-paths` on the unpushed range) before `git push`. `mt/p6-spa` branches from it too.
-
 ## Context
 
 | Field | Value |
@@ -101,7 +96,7 @@ canopy-dump.sql --invert-paths` on the unpushed range) before `git push`. `mt/p6
 
 ### Do not
 
-- Do not push this branch before `canopy-dump.sql` is out of its history (top of this file).
+- Do not `git add -A` in this checkout: `canopy-dump.sql`, `wrangler.old.toml`, `copy-data.sh` and `scripts/cutover/` are the owner's local files (production data among them) and must stay untracked.
 - Do not activate Cloudflare Queues (`CLAUDE.md` deferred seam; Q4 amended D17 to rotation for now).
 - Do not rename these — they are contracts, not branding: the `canopy/coverage|bundle-kb|todo` commit statuses
   and the `canopy-health` / `canopy-metrics` user-agents (Sapling's contracts), the stored
@@ -161,8 +156,7 @@ The full list: `git diff --name-only origin/main...HEAD`. Start from: `canopy-mu
 ```text
 Read HANDOFF.md, docs/architecture/data-layer.md, docs/architecture/abuse-limits.md and canopy-multitenancy.md
 (§6 route map, §8.6 artifact origin, §11 phase plan). Multitenancy Phases 2–5 are on branch
-claude/sharp-hawking-m0jgdp and Phase 6 (the SPA) is in the mt/p6-spa worktree. First remove canopy-dump.sql
-from the branch's unpushed history (HANDOFF.md, top). Then start Phase 7: one cleanup migration and the
+claude/sharp-hawking-m0jgdp and Phase 6 (the SPA) is in the mt/p6-spa worktree. Start Phase 7: one cleanup migration and the
 deletions listed under "Next". Keep `npm test` (including test/data-layer.static.test.ts) and
 `npm run typecheck` green at each step, commit in small steps, and do not push, merge or open a PR without
 asking. When done, update HANDOFF.md and tell me what changed.
