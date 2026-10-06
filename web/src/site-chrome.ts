@@ -1,14 +1,16 @@
 // The site chrome the landing page (web/src/landing.ts) and the legal pages
-// (web/src/legal.ts) share: the three-bar mark and the footer. Its own module so the
+// (web/src/legal.ts) share: the Trov mark and the footer. Its own module so the
 // legal pages load this, not the landing and its mockups.
+
+import { trovMark } from "@shared/mark";
 
 /** The Trov source repo (the site's "Read the code"). Not ./github's REPO_URL —
  *  that one is the product repo whose issues the app links to. */
 export const TROV_REPO = "https://github.com/AndresL230/trov";
 
-/** The three-bar mark. */
+/** The Trov mark. */
 export function siteMark(size: number): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" style="flex:none"><rect x="2" y="4.5" width="20" height="3.4" rx="1.7" fill="var(--accent)"></rect><rect x="5" y="10.3" width="14" height="3.4" rx="1.7" fill="currentColor"></rect><rect x="8" y="16.1" width="8" height="3.4" rx="1.7" fill="currentColor" opacity="0.5"></rect></svg>`;
+  return trovMark(size);
 }
 
 // Shared with the legal pages (web/src/legal.ts). Terms and Privacy are PATHS

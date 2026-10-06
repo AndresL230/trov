@@ -8,6 +8,7 @@
 // renderers' inline styles flip too (Apple Mail / iOS / Outlook for Mac honor it;
 // Gmail ignores it and applies its own inversion). Plain-text alternative always
 // included.
+import { TROV_MARK_GRID } from "@shared/mark";
 import type { Section, Window } from "@shared/notifications";
 import { escapeHtml } from "./html";
 import { localDate } from "./window";
@@ -190,9 +191,8 @@ function dateRange(window: Window, timeZone: string): string {
 }
 
 /**
- * The Trov banner, shared by every email: the app's three-bar mark (22/15/9
- * wide, stacked and centred, top bar accent, bottom bar at half strength) built
- * from plain blocks because Gmail strips SVG, the wordmark beside it, and an
+ * The Trov banner, shared by every email: the Trov mark (shared/mark.ts) built
+ * as a 3 x 3 grid of table cells because Gmail strips SVG, the wordmark beside it, and an
  * optional subline underneath — all reversed out of a full-bleed accent band,
  * rounded into the top of the card. The band colour is tokenised so the dark
  * swap flips it; the ink on top of it is not (see BAND).
@@ -203,17 +203,23 @@ function dateRange(window: Window, timeZone: string): string {
  * sink them into the olive in a dark client. The band itself IS tokenised, so
  * it still swaps accent light -> dark.
  */
-const BAND = { ink: "#ffffff", bar2: "#e6ebd6", bar3: "#cfd8b4", subline: "#eceedd", dot: "#cfd8b4" } as const;
+const BAND = { ink: "#ffffff", subline: "#eceedd", dot: "#cfd8b4" } as const;
+
+/** The mark, `side` px square: one table, a filled cell per block of the mark. */
+function emailMark(side: number): string {
+  const px = TROV_MARK_GRID.tracks.map((t) => Math.round(t * side));
+  px[2] = side - px[0]! - px[1]!;
+  const rows = TROV_MARK_GRID.filled.map((row, r) =>
+    `<tr>` + row.map((on, c) =>
+      `<td${on ? ' data-cell="on"' : ""} width="${px[c]}" height="${px[r]}" style="width:${px[c]}px;height:${px[r]}px;padding:0;font-size:0;line-height:0;${on ? `background-color:${BAND.ink};` : ""}"></td>`).join("") + `</tr>`).join("");
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${side}" style="border-collapse:collapse;">${rows}</table>`;
+}
 
 export function emailBanner(sublineHtml?: string): string {
-  const bar = (n: number, w: number, inset: number, color: string, last = false) =>
-    `<div data-bar="${n}" style="width:${w}px;height:4px;border-radius:2px;background-color:${color};margin:0 0 ${last ? 0 : 2.5}px ${inset}px;font-size:0;line-height:0;"></div>`;
   return (
     `<tr><td style="padding:${SP.xl}px 28px ${SP.l}px 28px;background-color:${C.accent};border-radius:13px 13px 0 0;text-align:center;">` +
     `<table role="presentation" align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr>` +
-    `<td data-mark="trov" width="24" style="vertical-align:middle;padding-right:11px;">` +
-    bar(1, 22, 0, BAND.ink) + bar(2, 15, 3.5, BAND.bar2) + bar(3, 9, 6.5, BAND.bar3, true) +
-    `</td>` +
+    `<td data-mark="trov" width="22" style="vertical-align:middle;padding-right:11px;">` + emailMark(22) + `</td>` +
     `<td style="vertical-align:middle;${SANS}font-size:22px;font-weight:600;letter-spacing:-0.02em;line-height:1;color:${BAND.ink};">Trov</td>` +
     `</tr></table>` +
     (sublineHtml ? `<div style="${SANS}font-size:13px;line-height:20px;color:${BAND.subline};padding-top:${SP.s}px;">${sublineHtml}</div>` : "") +

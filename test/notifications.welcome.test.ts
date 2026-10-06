@@ -37,7 +37,7 @@ describe("renderWelcomeEmail", () => {
     expect(m.html).not.toContain("Unsubscribe");
     expect(m.html).not.toContain("<svg");
     expect(m.html).toContain('data-mark="trov"');
-    expect((m.html.match(/data-bar="/g) ?? []).length).toBe(3);
+    expect((m.html.match(/data-cell="on"/g) ?? []).length).toBe(5);
   });
 
   it("drops the name when there isn't one", () => {
