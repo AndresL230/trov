@@ -15,7 +15,7 @@ import {
   searchArtifacts, sha256Hex, uniqueSlug, versionFilename, writablePageKind,
 } from "../src/tools/artifacts";
 import { agentArtifactGet, agentArtifactList, artifactsForTicket } from "../src/tools/artifacts-agent";
-import { mintDownloadToken } from "../src/artifacts/download";
+import { mintDownloadToken, verifyDownloadToken } from "../src/artifacts/download";
 import { consumeDocImageToken, docImageProblems, mintDocImageUpload, readDocImage } from "../src/tools/doc-images";
 import {
   PromptError, deletePrompt, getPrompt, listPromptVersions, listPrompts, publishPrompt, recordPromptUse, restorePrompt,
@@ -257,7 +257,11 @@ describe("artifacts — search", () => {
     expect((await agentArtifactList(agentB)).artifacts).toEqual([]);
     await artifactNotFound(agentArtifactGet(agentB, { slug: a.slug }));
     const agentA = { tenant: A(), handle: ANN, origin: ORIGIN, downloadSecret: SECRET };
-    expect((await agentArtifactGet(agentA, { slug: a.slug })).slug).toBe(a.slug);
+    const got = await agentArtifactGet(agentA, { slug: a.slug });
+    expect(got.slug).toBe(a.slug);
+    // the download URL it mints is pinned to the org it was minted in
+    const verdict = await verifyDownloadToken(SECRET, got.download_url!.split("/").pop()!);
+    expect(verdict).toEqual({ ok: true, claims: { handle: ANN, org_id: ORG_A, page_id: a.id, version_no: 1 } });
   });
 });
 
@@ -335,6 +339,39 @@ describe("artifacts — binary pages, upload and download tokens, raw serving", 
     const other = await wf(await url(BOB));
     expect(other.status).toBe(404);
     expect(await other.text()).toBe(NOT_FOUND);
+  });
+
+  it("a download URL carries its org: it is honoured only for a live member of THAT org, and only for that org's page", async () => {
+    await cookies();
+    const a = await createPage(A(), text({ content: "A's bytes" }), ANN);
+    const get = async (claims: { handle: string; org_id?: string }) =>
+      wf(`/api/artifacts/download/${(await mintDownloadToken(SECRET, { ...claims, page_id: a.id, version_no: 1 })).token}`);
+    const gone = async (claims: { handle: string; org_id?: string }) => {
+      const res = await get(claims);
+      expect([res.status, await res.text()]).toEqual([404, NOT_FOUND]);
+    };
+
+    expect(await (await get({ handle: ANN, org_id: ORG_A })).text()).toBe("A's bytes");
+    await gone({ handle: ANN, org_id: ORG_B });  // not a member of the org the token names
+    await gone({ handle: BOB, org_id: ORG_A });  // B's member, holding a token that claims A
+    await gone({ handle: BOB, org_id: ORG_B });  // B's member in B: A's page id is not B's
+    await gone({ handle: ANN, org_id: "org_nope" });
+
+    // A person in TWO orgs: the claim picks the org; a pre-claim token (no org) cannot, and is refused.
+    await ensureMember(ANN, "member", ORG_B);
+    expect((await get({ handle: ANN, org_id: ORG_A })).status).toBe(200);
+    await gone({ handle: ANN, org_id: ORG_B });
+    await gone({ handle: ANN });
+    await run(env.DB, `DELETE FROM memberships WHERE org_id = ? AND user_id = ?`, ORG_B, ANN);
+    expect(await (await get({ handle: ANN })).text()).toBe("A's bytes"); // pre-claim shape, one org: still served
+
+    // The membership is re-read at download time, and a suspended org serves nothing.
+    await run(env.DB, `UPDATE orgs SET suspended_at = '2026-01-01T00:00:00Z' WHERE id = ?`, ORG_A);
+    await gone({ handle: ANN, org_id: ORG_A });
+    await gone({ handle: ANN });
+    await run(env.DB, `UPDATE orgs SET suspended_at = NULL WHERE id = ?`, ORG_A);
+    await run(env.DB, `DELETE FROM memberships WHERE org_id = ? AND user_id = ?`, ORG_A, ANN);
+    await gone({ handle: ANN, org_id: ORG_A });
   });
 
   it("the routes: A's slug is the one 404 for a member of B — detail, raw, list, write", async () => {

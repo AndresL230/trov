@@ -6,6 +6,7 @@ import { sessionGate, type AppEnv } from "../src/auth/principal";
 import type { Env } from "../src/env";
 import {
   hasRole, isSuperadmin, requireRole, requireSuperadmin, resolveSoleTenant, resolveTenant, RoleError,
+  resolveTenantById,
 } from "../src/data/context";
 import { resolveBearerTenant } from "../src/data/bearer";
 import { tenantGate } from "../src/data/gate";
@@ -36,6 +37,30 @@ describe("TenantContext constructors", () => {
     expect(await resolveSoleTenant(e, "drifter", "session")).toEqual({ ok: false, reason: "no_membership" });
     await ensureMember("meilin", "admin", ORG_B);
     expect(await resolveSoleTenant(e, "meilin", "session")).toEqual({ ok: false, reason: "org_required" });
+  });
+
+  it("a SUSPENDED org resolves for no one — read in the resolver's own statement, not a second query", async () => {
+    const queries: string[] = [];
+    const counting = { ...e, DB: new Proxy(env.DB, { get: (db, k) => k === "prepare" ? (q: string) => (queries.push(q), db.prepare(q)) : Reflect.get(db, k) }) } as Env;
+    const suspend = (on: boolean) => env.DB.prepare(`UPDATE orgs SET suspended_at = ? WHERE id = ?`).bind(on ? "2026-01-01T00:00:00Z" : null, ORG_A).run();
+    const token = (await mintToken(platformCtx(), "sanaok", ORG_A)).raw;
+    const bearer = () => resolveBearerTenant(e, new Request("https://trov.test/mcp", { headers: { authorization: `Bearer ${token}` } }));
+
+    await suspend(true);
+    expect(await resolveTenant(counting, "meilin", "saplinglearn")).toBeNull();
+    expect(await resolveTenantById(counting, "meilin", ORG_A, "bearer")).toBeNull();
+    expect(await resolveSoleTenant(counting, "meilin", "session")).toEqual({ ok: false, reason: "suspended" });
+    expect(queries).toHaveLength(3); // one statement each
+    expect(await bearer()).toEqual({ ok: false, reason: "unauthorized" });
+
+    await suspend(false);
+    queries.length = 0;
+    expect((await resolveTenant(counting, "meilin", "saplinglearn"))?.orgId).toBe(ORG_A);
+    expect(await resolveTenantById(counting, "meilin", ORG_A, "bearer")).toMatchObject({ orgId: ORG_A, userId: "meilin", role: "member", via: "bearer" });
+    expect(await resolveTenantById(counting, "meilin", ORG_B, "bearer")).toBeNull(); // not a member
+    expect((await resolveSoleTenant(counting, "meilin", "session")).ok).toBe(true);
+    expect(queries).toHaveLength(4);
+    expect((await bearer()).ok).toBe(true);
   });
 
   it("resolveBearerTenant: no / unknown token is unauthorized; a live token resolves the person's one org, via bearer", async () => {

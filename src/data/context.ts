@@ -45,30 +45,46 @@ export function platform(env: Env, actor: string): PlatformContext {
   return Object.freeze({ actor, [ENV]: env, get [DB]() { return env.DB; } });
 }
 
-/** HTTP (§5.2): the org named by `slug`, IF `userId` is a member of it. One statement; null for an
- *  unknown slug and for a non-member alike, so an org's existence is never disclosed. */
+/** HTTP (§5.2): the org named by `slug`, IF `userId` is a member of it and the org is not SUSPENDED
+ *  (0043). One statement; null for an unknown slug, a non-member and a suspended org alike, so an
+ *  org's existence — and its suspension — is never disclosed. */
 export async function resolveTenant(env: Env, userId: string, slug: string): Promise<TenantContext | null> {
   const row = await env.DB.prepare(
-    `SELECT o.id, m.role FROM orgs o JOIN memberships m ON m.org_id = o.id WHERE o.slug = ? AND m.user_id = ? COLLATE NOCASE`
+    `SELECT o.id, m.role FROM orgs o JOIN memberships m ON m.org_id = o.id
+      WHERE o.slug = ? AND m.user_id = ? COLLATE NOCASE AND o.suspended_at IS NULL`
   ).bind(slug, userId).first<{ id: string; role: OrgRole }>();
   return row ? tenant(env, row.id, userId, row.role, "session") : null;
 }
 
+/** The same check by org ID, for a credential that names its org (a signed download URL today; an
+ *  org-scoped token in Phase 5a): `userId`'s LIVE membership of a non-suspended `orgId`, or null. */
+export async function resolveTenantById(env: Env, userId: string, orgId: string, via: "session" | "bearer"): Promise<TenantContext | null> {
+  const row = await env.DB.prepare(
+    `SELECT m.role FROM memberships m JOIN orgs o ON o.id = m.org_id
+      WHERE m.org_id = ? AND m.user_id = ? COLLATE NOCASE AND o.suspended_at IS NULL`
+  ).bind(orgId, userId).first<{ role: OrgRole }>();
+  return row ? tenant(env, orgId, userId, row.role, via) : null;
+}
+
 export type SoleTenant =
   | { ok: true; ctx: TenantContext }
-  | { ok: false; reason: "no_membership" | "org_required" };
+  | { ok: false; reason: "no_membership" | "org_required" | "suspended" };
 
 /**
  * CUT-OVER ALIAS (§6.3, Phases 3–5): the tenant is "the caller's only org". Every pre-multitenancy
  * path resolves through this until the `/api/o/:slug` routes replace it; Phase 7 deletes it. A person
- * with no membership and a person with more than one are told apart, so a caller can answer each.
+ * with no membership and a person with more than one are told apart, so a caller can answer each —
+ * and so is a person whose one org is SUSPENDED (0043): the same statement reads `suspended_at`, and
+ * no context is built for it (each caller answers it as it answers an org that is not there).
  */
 export async function resolveSoleTenant(env: Env, userId: string, via: "session" | "bearer"): Promise<SoleTenant> {
   const { results } = await env.DB.prepare(
-    `SELECT org_id, role FROM memberships WHERE user_id = ? COLLATE NOCASE LIMIT 2`
-  ).bind(userId).all<{ org_id: string; role: OrgRole }>();
+    `SELECT m.org_id, m.role, o.suspended_at FROM memberships m JOIN orgs o ON o.id = m.org_id
+      WHERE m.user_id = ? COLLATE NOCASE LIMIT 2`
+  ).bind(userId).all<{ org_id: string; role: OrgRole; suspended_at: string | null }>();
   if (results.length === 0) return { ok: false, reason: "no_membership" };
   if (results.length > 1) return { ok: false, reason: "org_required" };
+  if (results[0].suspended_at !== null) return { ok: false, reason: "suspended" };
   return { ok: true, ctx: tenant(env, results[0].org_id, userId, results[0].role, via) };
 }
 

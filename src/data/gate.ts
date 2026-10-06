@@ -2,7 +2,6 @@
 import type { MiddlewareHandler } from "hono";
 import type { AppEnv } from "../auth/principal";
 import { platform, resolveSoleTenant, resolveTenant } from "./context";
-import { orgSuspended } from "./suspension";
 import { meterApiRequest } from "./meter";
 
 /** `c.var.p`: the PlatformContext for the global tables. Costs no query, so it is set on every request —
@@ -15,16 +14,16 @@ export const platformContext: MiddlewareHandler<AppEnv> = async (c, next) => {
 /**
  * `/api/o/:slug/*` (§5.2): session principal → membership of the org the path names → `c.var.ctx`.
  * No row — an unknown slug OR not a member — is 404 `{ error: "not_found" }`, never 403: an org's
- * existence is not disclosed — and a SUSPENDED org (0043) answers the same 404. Runs after sessionGate.
+ * existence is not disclosed — and a SUSPENDED org (0043) answers the same 404, from the same one
+ * statement (`resolveTenant`). Runs after sessionGate.
  * Meters the request (src/data/meter.ts) once the tenant is known.
  */
 export const tenantGate: MiddlewareHandler<AppEnv> = async (c, next) => {
   const handle = c.get("principal").handle;
   const ctx = await resolveTenant(c.env, handle, c.req.param("slug") ?? "");
-  const p = c.var.p ?? platform(c.env, handle); // the gate does not rely on `platformContext` having run
-  if (!ctx || (await orgSuspended(p, ctx.orgId))) return c.json({ error: "not_found" }, 404);
+  if (!ctx) return c.json({ error: "not_found" }, 404);
   c.set("ctx", ctx);
-  meterApiRequest(c, p, ctx);
+  meterApiRequest(c, c.var.p ?? platform(c.env, handle), ctx); // the gate does not rely on `platformContext` having run
   return next();
 };
 
@@ -46,10 +45,8 @@ export const soleTenantGate: MiddlewareHandler<AppEnv> = async (c, next) => {
   const principal = c.get("principal");
   if (!principal || isPlatformPath(c.req.path)) return next();
   const sole = await resolveSoleTenant(c.env, principal.handle, "session");
-  if (!sole.ok) return c.json({ error: "org_required" }, 409);
-  const p = c.var.p ?? platform(c.env, principal.handle);
-  if (await orgSuspended(p, sole.ctx.orgId)) return c.json({ error: "not_found" }, 404);
+  if (!sole.ok) return sole.reason === "suspended" ? c.json({ error: "not_found" }, 404) : c.json({ error: "org_required" }, 409);
   c.set("ctx", sole.ctx);
-  meterApiRequest(c, p, sole.ctx);
+  meterApiRequest(c, c.var.p ?? platform(c.env, principal.handle), sole.ctx);
   return next();
 };

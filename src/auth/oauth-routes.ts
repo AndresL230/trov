@@ -240,7 +240,8 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
       // that is the person's only org — the same cut-over alias every tenant route resolves through.
       const sole = await resolveSoleTenant(c.env, s.handle, "session");
       if (!sole.ok) {
-        return page(c, errorPage(sole.reason === "no_membership"
+        // A suspended org answers like one the person is not in (§5.4).
+        return page(c, errorPage(sole.reason !== "org_required"
           ? "You aren't a member of an organization on Trov yet, so there is nothing to connect this app to."
           : "You belong to more than one organization, and choosing one here isn't available yet."), 409);
       }

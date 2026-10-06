@@ -2,10 +2,9 @@
 // src/auth reaches D1 through src/data — context.ts importing it back would be a cycle.
 import type { Env } from "../env";
 import { resolveBearerPrincipal } from "../auth/principal";
-import { platform, resolveSoleTenant, type SoleTenant } from "./context";
-import { orgSuspended } from "./suspension";
+import { resolveSoleTenant, type SoleTenant } from "./context";
 
-export type BearerTenant = SoleTenant | { ok: false; reason: "unauthorized" };
+export type BearerTenant = Exclude<SoleTenant, { reason: "suspended" }> | { ok: false; reason: "unauthorized" };
 
 /**
  * Bearer token → (user, org), `via: "bearer"`. For now the token names only a PERSON (resolved exactly
@@ -17,6 +16,5 @@ export async function resolveBearerTenant(env: Env, request: Request): Promise<B
   const principal = await resolveBearerPrincipal(request, env);
   if (!principal) return { ok: false, reason: "unauthorized" };
   const sole = await resolveSoleTenant(env, principal.handle, "bearer");
-  if (sole.ok && (await orgSuspended(platform(env, principal.handle), sole.ctx.orgId))) return { ok: false, reason: "unauthorized" };
-  return sole;
+  return !sole.ok && sole.reason === "suspended" ? { ok: false, reason: "unauthorized" } : sole;
 }

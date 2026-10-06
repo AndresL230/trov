@@ -245,7 +245,7 @@ export async function agentArtifactGet(
   const filename = await versionFilename(ctx.tenant, d.id, v.version_no);
   const omit = isTextKind(d.kind) && typeof d.content === "string" && v.size_bytes > ARTIFACT_INLINE_MAX && input.include_content !== true;
   const dl = ctx.downloadSecret
-    ? await mintDownloadToken(ctx.downloadSecret, { handle: ctx.handle, page_id: d.id, version_no: v.version_no })
+    ? await mintDownloadToken(ctx.downloadSecret, { handle: ctx.handle, org_id: ctx.tenant.orgId, page_id: d.id, version_no: v.version_no })
     : null;
   return {
     ...d,
