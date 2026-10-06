@@ -22,6 +22,8 @@
 //   #releases         → Help › What's new: the grid of releases
 //   #releases/<v>     → one release's notes (<v> = "0.14" or "unreleased"); #releases/<v>/patches
 //                       its patch notes. The legacy #releases/patches opens the newest release's.
+//   #platform         → Platform (superadmin) › Organizations; #platform/usage, /admins, /audit
+//                       its other tabs; #platform/orgs/<slug> one organization
 //   #<screen>         → every other screen, named exactly as the Screen union
 //                       (`#site` is the landing page, reopened from inside the app)
 // Anything unrecognised falls back to My Work — the same rule the app has always
@@ -33,6 +35,8 @@ import type { ArtRoute } from "./artifacts";
 import { parseSlugVersion } from "@shared/artifacts-core";
 import { MAINT_TABS, type MaintTab } from "./maintenance";
 import { RELEASES, releaseSlug, type ReleasePage } from "./releases";
+import { PLAT_TABS, type PlatTab } from "./platform";
+import { ORG_SLUG_RE } from "@shared/orgs";
 
 /** Every screen addressable by its bare name (`#feed`). The compound ticket /
  *  sprint routes are parsed separately below. */
@@ -65,6 +69,10 @@ export interface Route {
   releaseVersion?: string;
   /** Set only with `releaseVersion`. */
   releasePage?: ReleasePage;
+  /** Set only on `platform` (the superadmin area's tab). */
+  platTab?: PlatTab;
+  /** Set only on `platformorg` (one organization's slug). */
+  platOrg?: string;
 }
 
 /** Whether two routes name the same place (the hashchange no-op check). */
@@ -72,6 +80,7 @@ export function sameRoute(a: Route, b: Route): boolean {
   return a.screen === b.screen && a.ticketId === b.ticketId && a.sprintId === b.sprintId && a.repoTab === b.repoTab
     && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.maintTab === b.maintTab && a.roadmapTab === b.roadmapTab
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
+    && a.platTab === b.platTab && a.platOrg === b.platOrg
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null);
 }
 
@@ -176,6 +185,13 @@ export function parseHash(hash: string): Route {
     if (parts.length === 2 && (MAINT_TABS as readonly string[]).includes(parts[1])) return { screen: "maintenance", ...base, maintTab: parts[1] as MaintTab };
     return none;
   }
+  if (parts[0] === "platform") {
+    if (parts.length === 1) return { screen: "platform", ...base, platTab: "orgs" };
+    // `#platform/orgs` is not canonical (the bare `#platform` is), but it still resolves.
+    if (parts.length === 2 && (PLAT_TABS as readonly string[]).includes(parts[1])) return { screen: "platform", ...base, platTab: parts[1] as PlatTab };
+    if (parts.length === 3 && parts[1] === "orgs" && ORG_SLUG_RE.test(parts[2])) return { screen: "platformorg", ...base, platOrg: parts[2] };
+    return none;
+  }
   if (parts.length === 1 && (PLAIN_SCREENS as string[]).includes(parts[0])) {
     return { screen: parts[0] as Screen, ticketId: null, sprintId: null };
   }
@@ -210,5 +226,7 @@ export function hashForRoute(r: Route): string {
     return `#releases/${encodeURIComponent(r.releaseVersion)}${r.releasePage === "patches" ? "/patches" : ""}`;
   }
   if (r.screen === "maintenance") return !r.maintTab || r.maintTab === "unplaced" ? "#maintenance" : `#maintenance/${r.maintTab}`;
+  if (r.screen === "platform") return !r.platTab || r.platTab === "orgs" ? "#platform" : `#platform/${r.platTab}`;
+  if (r.screen === "platformorg") return r.platOrg ? `#platform/orgs/${r.platOrg}` : "#platform";
   return `#${r.screen}`;
 }

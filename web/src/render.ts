@@ -50,6 +50,7 @@ import {
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
 } from "./artifacts";
 import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
+import { platformView, platformOrgView, platformDialogs, platformHeaderControls, platformCrumb, initialPlat, type PlatState } from "./platform";
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
@@ -68,6 +69,8 @@ export type Screen =
   // Artifacts (Knowledge › Artifacts): the library, the new-artifact form, and one
   // artifact (its viewer, or its version diff), over /api/artifacts (artifacts.ts).
   | "artifacts" | "artifactnew" | "artifact"
+  // Platform (superadmin only): the tabbed area, and one organization's page.
+  | "platform" | "platformorg"
   // Handoffs (Workspace): the inbox, one handoff, the new-handoff form.
   | "handoffs" | "handoff" | "newhandoff"
   // Prompt Library (Knowledge): the library, one prompt, the editor (new / edit / new version).
@@ -335,6 +338,8 @@ export interface AppState {
   nd: NewDocDraft;
   maintTab: MaintTab;
   maintDiscardArm: boolean;
+  // ── Platform (superadmin): everything its screens hold (platform.ts) ───────
+  plat: PlatState;
   /** The filter menu (web/src/filter-menu.ts) the NEXT paint opens — its entrance plays once, then main.ts clears this. */
   fmOpening: string | null;
   toast: string | null;
@@ -474,6 +479,7 @@ export function initialState(): AppState {
     promptMode: "new", promptEd: null,
     nd: blankDoc("technical", ""),
     maintTab: "unplaced", maintDiscardArm: false,
+    plat: initialPlat(),
     fmOpening: null,
     toast: null,
     toastAction: null,
@@ -693,6 +699,7 @@ function sidebar(s: AppState): string {
     me: s.me ? { handle: s.me.handle, name: s.me.name, color: s.me.color, avatar_url: s.me.avatar_url } : null,
     displayName: s.displayName,
     logo: logo(24),
+    superadmin: s.plat.superadmin === true,
   });
 }
 
@@ -713,6 +720,7 @@ function headerCrumb(s: AppState): string {
     return ed.mode === "new" ? "New prompt" : `${ed.mode === "edit" ? "Edit" : "New version"} · ${ed.title}`;
   }
   if (s.screen === "newdoc") return "New doc";
+  if (s.screen === "platformorg") return platformCrumb(s.plat);
   if (s.screen === "ticketdetail") return s.ticketDetail.data?.title ?? "";
   if (s.screen === "sprint") {
     return s.sprintDetail.data?.label ?? s.sprints.data.find((sp) => sp.id === s.sprintId)?.label ?? "";
@@ -733,6 +741,7 @@ function header(s: AppState): string {
     prompts: "Prompt Library", prompt: "Prompt Library", promptedit: "Prompt Library",
     newdoc: "Docs",
     releases: "What's new",
+    platform: "Platform", platformorg: "Platform",
   };
   // dark = "show the moon icon".
   const dark = resolved(s) !== "light";
@@ -797,13 +806,14 @@ function header(s: AppState): string {
   // the design's single `back` handler).
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
     || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
-    || (s.screen === "releases" && s.releaseVersion !== null);
+    || (s.screen === "releases" && s.releaseVersion !== null) || s.screen === "platformorg";
   // The act the title's back button fires: each child screen returns to its own parent.
   const backAct = s.screen === "handoff" || s.screen === "newhandoff" ? "goHandoffs"
     : s.screen === "prompt" ? "goPrompts"
     : s.screen === "promptedit" ? "edCancel"
     : s.screen === "newdoc" ? "goDocs"
     : s.screen === "releases" ? "goReleases"
+    : s.screen === "platformorg" ? "platGo"
     : "ticketsBack";
   const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : child
     ? `<span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:13px">›</span><span style="font-size:13px;font-weight:500;color:var(--fg-70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(headerCrumb(s))}</span></span>`
@@ -825,7 +835,7 @@ function header(s: AppState): string {
       ${art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${feedViewSwitch}${themeBtn}
+      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedViewSwitch}${themeBtn}
     </div>
   </header>`;
 }
@@ -2306,6 +2316,8 @@ function screenBody(s: AppState): string {
       canDelete: canDeletePrompt(s), deleteArm: s.promptDeleteArm, deleteBusy: s.promptDeleteBusy,
     });
     case "promptedit": return promptEditorView({ draft: s.promptEd, takenSlugs: s.promptList.data.map((p) => p.slug) });
+    case "platform": return platformView(s.plat, s.me?.handle ?? null);
+    case "platformorg": return platformOrgView(s.plat);
     case "newdoc": return newDocView({ draft: s.nd, spaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })), sections: ASSIGN_OPTIONS.sections });
     default: return feedView(s);
   }
@@ -2402,6 +2414,7 @@ export function render(s: AppState): string {
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}
+    ${s.view === "app" ? platformDialogs(s.plat, s.screen) : ""}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}

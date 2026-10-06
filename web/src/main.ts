@@ -58,6 +58,7 @@ import { PERSON_COLORS, type PersonColor } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
+import { createPlatform } from "./platform-actions";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
 import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo";
 import { isRepoTab, REPO_RANGES, type RepoRange } from "@shared/repo";
@@ -439,6 +440,8 @@ function currentRoute(): Route {
     if (state.promptMode !== "new" && state.promptSlug) r.promptSlug = state.promptSlug;
   }
   if (state.screen === "maintenance") r.maintTab = state.maintTab;
+  if (state.screen === "platform") r.platTab = state.plat.tab;
+  if (state.screen === "platformorg" && state.plat.orgSlug) r.platOrg = state.plat.orgSlug;
   return r;
 }
 function applyRoute(r: Route): void {
@@ -463,6 +466,8 @@ function applyRoute(r: Route): void {
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
   if (r.maintTab) state.maintTab = r.maintTab;
+  if (r.platTab) state.plat.tab = r.platTab;
+  if (r.platOrg) state.plat.orgSlug = r.platOrg;
 }
 
 // Kick off the data load for a screen (mirrors the go* dispatch cases).
@@ -486,6 +491,7 @@ function loadForScreen(screen: Screen): void {
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
     case "settings": loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); break;
     case "unsubscribe": runUnsubscribe(); break;
+    case "platform": case "platformorg": platform.load(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
     case "newticket": loadSprintsIfNeeded(); rerender(); break;
@@ -1712,6 +1718,13 @@ function confirmOut(then: () => void): void {
   layer.setAttribute("data-closing", "");
   setTimeout(then, CONFIRM_OUT_MS);
 }
+
+// ── Platform (superadmin): its loads and acts live in platform-actions.ts ────
+const platform = createPlatform({
+  state, mount, rerender, flash, unauth, confirmOut,
+  // Not a superadmin after all (a stale #platform link): My Work, as for any unknown hash.
+  leave: () => { state.screen = "mywork"; loadForScreen("mywork"); },
+});
 
 // ── Maintenance › People: the role editor's open / close motion ──────────────
 // The editor lives in <main>, which every rerender swaps — a keystroke in it builds a NEW
@@ -3449,6 +3462,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "inviteRevoke": { if (!arg) return; revokeInvite(arg).then(() => { flash("Invite revoked"); loadInvites(); }).catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } flash("Couldn't revoke"); }); return; }
 
     default:
+      // Every Platform (superadmin) act goes to its controller, platform-actions.ts.
+      if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;
@@ -4230,6 +4245,8 @@ if (params.get("denied") === "1") {
       // The persons directory backs every colored chip (sidebar, feed, docs,
       // Settings › Profile, Maintenance › People) — load it on every screen too.
       loadPersons();
+      // Is this person a platform superadmin? (the sidebar's Platform entry, its screens)
+      platform.boot();
     })
     .catch(() => {
       // Unauthorized or any error → show login
