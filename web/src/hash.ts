@@ -90,6 +90,16 @@ export function sameRoute(a: Route, b: Route): boolean {
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null);
 }
 
+/**
+ * The PAGE a route is on: its hash without the in-page view — a tab (Roadmap, Repo, Maintenance,
+ * Platform, Org settings) or a header switch (a release's Release / Patch notes). Two routes with
+ * the same key are the same page: moving between them swaps the tab's body in place, with no
+ * screen entrance and nothing to load again (main.ts `markEnter`, the hashchange handler).
+ */
+export function pageKey(r: Route): string {
+  return hashForRoute({ ...r, roadmapTab: undefined, releasePage: undefined, maintTab: undefined, repoTab: undefined, platTab: undefined, orgTab: undefined });
+}
+
 /** A URL path segment decoded, or null when it is malformed. */
 function seg(v: string): string | null {
   try { const d = decodeURIComponent(v); return d ? d : null; } catch { return null; }

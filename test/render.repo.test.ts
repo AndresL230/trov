@@ -12,6 +12,7 @@ import { productKeyInfo } from "../src/repo/product";
 import { render, initialState } from "../web/src/render";
 import { QUICK_SCREENS } from "../web/src/quicksearch";
 import mainSrc from "../web/src/main.ts?raw";
+import hashSrc from "../web/src/hash.ts?raw";
 import { REPO_TABS, type RepoDashboard, type RepoPerson, type RepoProductCount, type RepoProductEnv, type RepoRefreshResult } from "@shared/repo";
 
 const NC = { status: "not_connected" } as const;
@@ -601,7 +602,9 @@ describe("Repo — the tab bar heading the page (the sidebar has no sub-page lis
   });
 
   it("switching tabs never replays the screen's entrance (the underline slides unbroken)", () => {
-    expect(mainSrc).toMatch(/hashForRoute\(\{ \.\.\.currentRoute\(\), [^}]*repoTab: undefined[^}]*\}\)/);
+    // The entrance is keyed on the page WITHOUT its tab (hash.ts `pageKey`).
+    expect(mainSrc).toMatch(/const key = `\$\{pageKey\(currentRoute\(\)\)\}\|/);
+    expect(hashSrc).toMatch(/export function pageKey\(r: Route\): string \{\s*return hashForRoute\(\{ \.\.\.r, [^}]*repoTab: undefined[^}]*\}\);/);
   });
 
   it("quick search's Repo entries each land on their tab — goRepo with the tab, not the retired navSub", () => {

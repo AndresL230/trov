@@ -10,7 +10,9 @@
 // after every paint) remembers each bar's indicator box by its `id` and plays the slide
 // from the old box to the new one. Until it runs (first paint), the picked tab draws its
 // own underline, so the markup is right with no script at all. A bar new to the screen
-// does not slide in. Off under prefers-reduced-motion.
+// does not slide in. Off under prefers-reduced-motion. On a page that is patched in place
+// (morph.ts `data-morph`: Org settings, Platform) the bar is the SAME element across the
+// switch; its indicator is `data-keep`, so a later paint mid-slide leaves the slide running.
 //
 // Semantics: role="tablist" / "tab" with aria-selected and a roving tabindex (the picked
 // tab is the one Tab stop); `tabPanelAttrs` labels the panel by its tab. ←/→ move between
@@ -51,12 +53,14 @@ export function tabBar(p: TabBarProps): string {
     const on = t.value === p.value;
     return `<button type="button" role="tab" id="${attr(tabId(p.id, t.value))}" class="cnpy-tab${on ? " is-on" : ""}"${on ? "" : ` data-act="${attr(p.act)}" data-arg="${attr(t.value)}"`} aria-selected="${on}" aria-controls="${attr(panelId(p.id))}" tabindex="${on ? 0 : -1}" data-field="tab:${attr(p.id)}:${attr(t.value)}">${esc(t.label)}${t.trail ?? ""}</button>`;
   }).join("");
-  return `<div class="cnpy-tabs" data-tabs="${attr(p.id)}" role="tablist" aria-label="${attr(p.ariaLabel)}"><span class="cnpy-tabs-ind" aria-hidden="true"></span>${tabs}</div>`;
+  return `<div class="cnpy-tabs" data-tabs="${attr(p.id)}" data-morph-key="tabs:${attr(p.id)}" role="tablist" aria-label="${attr(p.ariaLabel)}"><span class="cnpy-tabs-ind" aria-hidden="true" data-keep></span>${tabs}</div>`;
 }
 
-/** The attributes of the element the bar controls: the tab panel, labelled by the picked tab. */
+/** The attributes of the element the bar controls: the tab panel, labelled by the picked tab.
+ *  `data-morph-key` names WHICH tab's panel it is, so a page patched in place (morph.ts) replaces
+ *  the panel on a tab switch instead of patching one tab's body into another's. */
 export function tabPanelAttrs(bar: string, value: string): string {
-  return ` role="tabpanel" id="${attr(panelId(bar))}" aria-labelledby="${attr(tabId(bar, value))}"`;
+  return ` role="tabpanel" id="${attr(panelId(bar))}" aria-labelledby="${attr(tabId(bar, value))}" data-morph-key="${attr(`${panelId(bar)}:${value}`)}"`;
 }
 
 /** Where a key moves focus from tab `at` of `count`: ←/→ step (wrapping), Home/End jump;
@@ -89,6 +93,8 @@ interface Box { x: number; w: number }
 const boxes = new Map<string, Box>();
 /** Each bar's horizontal scroll (a phone-width bar scrolls): the swap resets it to 0. */
 const scrolls = new Map<string, number>();
+/** The bars already listening for their own scroll (a patched bar outlives many paints). */
+const watched = new WeakSet<HTMLElement>();
 
 /** Place every bar's underline under its picked tab, sliding from where the same bar's
  *  underline was on the previous paint. Call after each paint. */
@@ -108,8 +114,8 @@ export function syncTabBars(root: ParentNode, opts: { instant?: boolean } = {}):
       bar.scrollLeft = Math.min(Math.max(left, min), on.offsetLeft);
     }
     scrolls.set(id, bar.scrollLeft);
-    if (!bar.dataset.tabsWatch) {
-      bar.dataset.tabsWatch = "1";
+    if (!watched.has(bar)) {
+      watched.add(bar);
       bar.addEventListener("scroll", () => scrolls.set(id, bar.scrollLeft), { passive: true });
     }
     const next: Box = { x: on.offsetLeft, w: on.offsetWidth };

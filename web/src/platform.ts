@@ -460,7 +460,8 @@ export function platformPage(p: PlatState, screen: string, me: string | null): s
   const title = child
     ? `<h1 class="cnpy-platpage-t"><button type="button" data-act="platGo" style="font:inherit;letter-spacing:inherit;padding:0;color:var(--fg-55);cursor:pointer">Platform</button></h1><span aria-hidden="true" style="color:var(--fg-40);font-size:13px">›</span><span style="font-size:13px;font-weight:500;color:var(--fg-70);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(platformCrumb(p))}</span>`
     : `<h1 class="cnpy-platpage-t">Platform</h1>`;
-  return `<div class="cnpy-platpage plat" data-screen-label="Platform (outside an organization)">
+  // `data-morph`: the page is patched in place while it stays the same screen (morph.ts `paint`).
+  return `<div class="cnpy-platpage plat" data-morph="${child ? "platformorg" : "platform"}" data-screen-label="Platform (outside an organization)">
     <header class="cnpy-platpage-hdr">
       <div class="cnpy-platpage-l">
         <a href="/" aria-label="Trov: back to your organizations" class="cnpy-platpage-home">${trovMark(22)}<span>Trov</span></a>

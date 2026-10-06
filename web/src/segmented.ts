@@ -8,7 +8,8 @@
 // the element on screen afterwards — `syncSegments` (run after every paint) remembers each
 // switch's indicator box by its `id` and plays the slide from the old box to the new one
 // (FLIP). Until it runs (first paint), the picked button carries the fill itself, so the
-// markup is right with no script at all. Off under prefers-reduced-motion.
+// markup is right with no script at all. Off under prefers-reduced-motion. The indicator is
+// `data-keep`: on a page patched in place (morph.ts) it is left to this module alone.
 //
 // Pure markup here; `syncSegments` is the only DOM code, the styles live in trov.css.
 
@@ -58,7 +59,7 @@ export function segmented(p: SegmentedProps): string {
     const live = !o.locked && !(on && p.inertOn);
     return `<button type="button" class="cnpy-seg-btn${on ? " is-on" : ""}"${live ? ` data-act="${attr(act)}" data-arg="${attr(o.arg ?? o.value)}"` : ""}${o.locked ? " disabled" : ""}${o.tone ? ` data-tone="${o.tone}"` : ""} aria-pressed="${on}"${o.title ? ` title="${attr(o.title)}"` : ""}>${o.icon ?? ""}${esc(o.label)}${o.trail ?? ""}</button>`;
   }).join("");
-  return `<div class="cnpy-seg cnpy-seg--${size}${p.fill ? " cnpy-seg--fill" : ""}${p.className ? ` ${attr(p.className)}` : ""}" data-seg="${attr(p.id)}" role="group" aria-label="${attr(p.ariaLabel)}"><span class="cnpy-seg-ind" aria-hidden="true"></span>${btns}</div>`;
+  return `<div class="cnpy-seg cnpy-seg--${size}${p.fill ? " cnpy-seg--fill" : ""}${p.className ? ` ${attr(p.className)}` : ""}" data-seg="${attr(p.id)}" data-morph-key="seg:${attr(p.id)}" role="group" aria-label="${attr(p.ariaLabel)}"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span>${btns}</div>`;
 }
 
 interface Box { x: number; y: number; w: number; h: number }

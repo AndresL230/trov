@@ -2427,7 +2427,10 @@ const isArtScreen = (screen: Screen): screen is ArtScreen => screen === "artifac
 // Artifacts screens, patched too while the SAME view stays up (`data-morph` = the
 // screen + its route): their previews are iframes, and a swapped iframe reloads.
 function appView(s: AppState): string {
-  const morphKey = isArtScreen(s.screen) ? `${s.screen}:${JSON.stringify(s.screen === "artifact" ? s.artRoute : null)}` : "";
+  // Org settings and Platform are patched too: their tab bar is the same element across a tab
+  // switch (its underline slides, focus stays on the tab), and only the panel under it is replaced.
+  const morphKey = isArtScreen(s.screen) ? `${s.screen}:${JSON.stringify(s.screen === "artifact" ? s.artRoute : null)}`
+    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" ? s.screen : "";
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
     ${sidebar(s)}
     <main${morphKey ? ` data-morph="${attr(morphKey)}"` : ""} style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">

@@ -112,12 +112,15 @@ export function createOrgController(host: OrgHost): OrgController {
   };
 
   // ── reads ──────────────────────────────────────────────────────────────────
-  /** Run one read into its slice; a slice for an org that is no longer current is dropped. */
+  /** Run one read into its slice; a slice for an org that is no longer current is dropped.
+   *  A slice that already holds an answer is REFRESHED: it stays "ok" with what it has until the
+   *  fresh answer lands, so coming back to the screen (or a write's follow-up read) never blanks
+   *  a tab, flips the setup checklist off and on, or shows "Loading…" over rows already there. */
   function read<T>(get: () => OrgSlice<T>, set: (v: OrgSlice<T>) => void, ask: (slug: string) => Promise<T>): void {
     const slug = ui().slug;
     if (!slug) return;
     const held = get().data;
-    set({ status: "loading", data: held });
+    if (get().status !== "ok") set({ status: "loading", data: held });
     ask(slug)
       .then((data) => { if (ui().slug !== slug) return; set({ status: "ok", data }); rerender(); })
       .catch((e) => { if (fail(e) || ui().slug !== slug) return; set({ status: "error", data: held, error: e instanceof Error ? e.message : String(e) }); rerender(); });

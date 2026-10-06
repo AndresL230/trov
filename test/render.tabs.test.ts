@@ -21,7 +21,7 @@ const bar = (value = "b") => tabBar({
 describe("tabBar — markup and semantics", () => {
   it("is a labelled tablist carrying ONE indicator, then the tabs in order", () => {
     const html = bar();
-    expect(html).toMatch(/^<div class="cnpy-tabs" data-tabs="demo" role="tablist" aria-label="Demo sections"><span class="cnpy-tabs-ind" aria-hidden="true"><\/span><button/);
+    expect(html).toMatch(/^<div class="cnpy-tabs" data-tabs="demo" data-morph-key="tabs:demo" role="tablist" aria-label="Demo sections"><span class="cnpy-tabs-ind" aria-hidden="true" data-keep><\/span><button/);
     expect(html.match(/role="tab"/g)?.length).toBe(3);
     expect(html.indexOf(">Alpha<")).toBeLessThan(html.indexOf(">Beta &amp; co<"));
     expect(html.indexOf(">Beta &amp; co<")).toBeLessThan(html.indexOf(">Gamma<"));
@@ -41,7 +41,7 @@ describe("tabBar — markup and semantics", () => {
   });
 
   it("labels the panel by the picked tab", () => {
-    expect(tabPanelAttrs("demo", "c")).toBe(' role="tabpanel" id="demo-panel" aria-labelledby="demo-c"');
+    expect(tabPanelAttrs("demo", "c")).toBe(' role="tabpanel" id="demo-panel" aria-labelledby="demo-c" data-morph-key="demo-panel:c"');
   });
 });
 

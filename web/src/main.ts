@@ -44,7 +44,7 @@ import { draftFromPrompt, blankPromptDraft, slugify, tagOptions } from "./prompt
 import { blankDoc, defaultSection } from "./newdoc";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
 import type { SprintDetail } from "@shared/sprints";
-import { parseHash, hashForRoute, sameRoute, type Route } from "./hash";
+import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
 import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
 import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
@@ -195,10 +195,11 @@ function markEnter(): void {
   if (!root || state.view !== "app") return;
   const settled = screenSettled();
   // An in-page view switch (the header's segmented switch — Roadmap Narrative/Timeline, a
-  // release's Release/Patch notes — or a page's tab bar, Maintenance's and Repo's tabs) is not
-  // a new page: key the entrance on the route WITHOUT it, so flipping the switch swaps the
-  // content in place instead of replaying the screen (and the tab bar's underline slides unbroken).
-  const key = `${hashForRoute({ ...currentRoute(), roadmapTab: undefined, releasePage: undefined, maintTab: undefined, repoTab: undefined })}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
+  // release's Release/Patch notes — or a page's tab bar: Maintenance's, Repo's, Org settings'
+  // and Platform's tabs) is not a new page: key the entrance on the route WITHOUT it (hash.ts
+  // `pageKey`), so flipping the switch swaps the content in place instead of replaying the
+  // screen (and the tab bar's underline slides unbroken).
+  const key = `${pageKey(currentRoute())}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
   const now = performance.now();
   // A still-loading paint does not enter: the entrance plays ONCE, when the screen's
   // read lands. Playing it for the loading paint too made every first visit (and every
@@ -363,6 +364,10 @@ window.addEventListener("hashchange", () => {
   const cur = currentRoute();
   if (sameRoute(r, cur)) return;
   applyRoute(r);
+  // Back / Forward between two tabs of Org settings: the page is already loaded, so the tab's
+  // body swaps in place — exactly what clicking the tab does. (Every other screen's loader is
+  // already a no-op once its data is in; Platform's reads only what the tab has not got yet.)
+  if (r.screen === "org" && cur.screen === "org") { orgCtl.act("orgTab", r.orgTab ?? "integrations", null); return; }
   loadForScreen(r.screen);
 });
 

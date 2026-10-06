@@ -215,7 +215,7 @@ describe("Add organization", () => {
     expect(html).toContain('<label for="plat-add-name"');
     expect(html).toContain('<label for="plat-add-slug"');
     expect(html).toContain('<label for="plat-add-admin"');
-    expect(html).toContain('data-seg="plat-add-kind" role="group" aria-label="How to name the org admin"');
+    expect(html).toContain('data-seg="plat-add-kind" data-morph-key="seg:plat-add-kind" role="group" aria-label="How to name the org admin"');
     for (const label of ["Existing person", "GitHub login", "Email"]) expect(html).toContain(label);
     expect(html).toContain('data-act="platAddSubmit"');
     expect(html).toContain('aria-label="Close"');
@@ -330,7 +330,7 @@ describe("one organization", () => {
 describe("Usage", () => {
   it("the window is the app's segmented control: 7 / 30 / 90 days", () => {
     const html = usageView({ status: "ok", usage: report([usageOf()]), days: 30, open: null });
-    expect(html).toContain('class="cnpy-seg cnpy-seg--sm" data-seg="plat-usage-days" role="group" aria-label="Usage window"');
+    expect(html).toContain('class="cnpy-seg cnpy-seg--sm" data-seg="plat-usage-days" data-morph-key="seg:plat-usage-days" role="group" aria-label="Usage window"');
     for (const d of ["7", "90"]) expect(html).toContain(`data-act="platUsageDays" data-arg="${d}"`);
     expect(html).toContain('class="cnpy-seg-btn is-on" aria-pressed="true">30 days</button>');
   });

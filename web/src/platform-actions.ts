@@ -45,6 +45,9 @@ export function createPlatform(h: PlatformHost) {
   };
   const focus = (sel: string): void => { h.mount.querySelector<HTMLElement>(sel)?.focus(); };
 
+  // Every read here is a REFRESH once its slice holds an answer: what is on screen stays (status
+  // "ok", the same rows) and the fresh answer replaces it when it lands. Only a first read — or
+  // one after a failure — says "loading". So switching tabs never blanks a tab that was loaded.
   function loadOrgs(): void {
     const p = s();
     p.orgs = { status: p.orgs.status === "ok" ? "ok" : "loading", data: p.orgs.data };
@@ -56,7 +59,7 @@ export function createPlatform(h: PlatformHost) {
     const p = s();
     const my = ++seq;
     const same = p.detail.data?.org.slug === slug;
-    p.detail = { status: "loading", data: same ? p.detail.data : null };
+    p.detail = same && p.detail.status === "ok" ? p.detail : { status: "loading", data: same ? p.detail.data : null };
     if (!same) { p.orgAudit = { status: "loading", data: [] }; p.owner = blankOwner(); }
     getPlatformOrg(slug).then((d) => { if (my !== seq) return; s().detail = { status: "ok", data: d }; h.rerender(); })
       .catch((e) => { if (readFailed(e) || my !== seq) return; s().detail = { status: "error", data: null }; h.rerender(); });
@@ -64,10 +67,12 @@ export function createPlatform(h: PlatformHost) {
       .catch((e) => { if (e instanceof Unauthorized || my !== seq) return; s().orgAudit = { status: "error", data: [] }; h.rerender(); });
   }
   let usageSeq = 0;
-  function loadUsage(): void {
+  /** `quiet` = a refresh of the window already shown (re-opening the tab): nothing dims. A new
+   *  window keeps the old figures on screen, dimmed (`plat-busy`), until its own arrive. */
+  function loadUsage(quiet = false): void {
     const p = s();
     const my = ++usageSeq;
-    p.usage = { status: "loading", data: p.usage.data };
+    if (!(quiet && p.usage.status === "ok")) p.usage = { status: "loading", data: p.usage.data };
     getPlatformUsage(p.usageDays).then((u) => { if (my !== usageSeq) return; s().usage = { status: "ok", data: u }; h.rerender(); })
       .catch((e) => { if (readFailed(e) || my !== usageSeq) return; s().usage = { status: "error", data: null }; h.rerender(); });
   }
@@ -78,10 +83,11 @@ export function createPlatform(h: PlatformHost) {
       .catch((e) => { if (readFailed(e)) return; s().admins = { status: "error", data: s().admins.data }; h.rerender(); });
   }
   let auditSeq = 0;
-  function loadAudit(): void {
+  /** `quiet` as for `loadUsage`: re-opening the tab keeps its rows; a new org filter shows "loading". */
+  function loadAudit(quiet = false): void {
     const p = s();
     const my = ++auditSeq;
-    p.audit = { status: "loading", data: [] };
+    p.audit = quiet && p.audit.status === "ok" ? p.audit : { status: "loading", data: [] };
     listPlatformAudit(p.auditOrg, 100).then((rows) => { if (my !== auditSeq) return; s().audit = { status: "ok", data: rows }; h.rerender(); })
       .catch((e) => { if (readFailed(e) || my !== auditSeq) return; s().audit = { status: "error", data: [] }; h.rerender(); });
   }
@@ -93,10 +99,18 @@ export function createPlatform(h: PlatformHost) {
     if (p.superadmin === false) { h.leave(); return; }
     if (p.superadmin === true) {
       if (h.state.screen === "platformorg") { if (p.orgSlug) loadDetail(p.orgSlug); }
-      else if (p.tab === "usage") loadUsage();
+      else if (p.tab === "usage") loadUsage(true);
       else if (p.tab === "admins") loadAdmins();
-      else if (p.tab === "audit") { loadAudit(); if (p.orgs.status === "idle") loadOrgs(); }
+      else if (p.tab === "audit") { loadAudit(true); if (p.orgs.status === "idle") loadOrgs(); }
       else loadOrgs();
+      // The other tabs' first read rides along with the page's (the Maintenance idiom: entering
+      // loads every tab), so opening one finds its rows already there instead of "Loading…".
+      if (h.state.screen === "platform") {
+        if (p.orgs.status === "idle") loadOrgs();
+        if (p.usage.status === "idle") loadUsage();
+        if (p.admins.status === "idle") loadAdmins();
+        if (p.audit.status === "idle") loadAudit();
+      }
     }
     h.rerender();
   }

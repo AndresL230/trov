@@ -18,6 +18,7 @@ import { reviewView, reviewDetail, reviewCard, unifiedDiff, renderedPreview, spl
 import { maintenanceView, assignPanel, personPicker, fileHint, type MaintenanceProps, type UnplacedItem, type IdentityGroup } from "../web/src/maintenance";
 import { render, initialState } from "../web/src/render";
 import mainSrc from "../web/src/main.ts?raw";
+import hashSrc from "../web/src/hash.ts?raw";
 
 // ── lineDiff ──────────────────────────────────────────────────────────────────
 
@@ -566,7 +567,9 @@ describe("Maintenance — the tab bar heading the page (the sidebar has no sub-p
   });
 
   it("switching tabs never replays the screen's entrance (the underline slides unbroken)", () => {
-    expect(mainSrc).toMatch(/hashForRoute\(\{ \.\.\.currentRoute\(\), [^}]*maintTab: undefined[^}]*\}\)/);
+    // The entrance is keyed on the page WITHOUT its tab (hash.ts `pageKey`).
+    expect(mainSrc).toMatch(/const key = `\$\{pageKey\(currentRoute\(\)\)\}\|/);
+    expect(hashSrc).toMatch(/export function pageKey\(r: Route\): string \{\s*return hashForRoute\(\{ \.\.\.r, [^}]*maintTab: undefined[^}]*\}\);/);
   });
 
   it("appears only on Maintenance", () => {

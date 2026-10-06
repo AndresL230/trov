@@ -33,6 +33,7 @@ import { planNarrativeBlock, render, initialState } from "../web/src/render";
 import { setPrimaryRepo } from "../web/src/github";
 import trovCss from "../web/src/trov.css?raw";
 import mainSrc from "../web/src/main.ts?raw";
+import hashSrc from "../web/src/hash.ts?raw";
 import type { PlanView, SprintView, FeedRow } from "../web/src/api";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -421,7 +422,9 @@ describe("render() — Roadmap: the tab bar heading the page body, not a header 
   });
 
   it("switching tabs never replays the screen's entrance (the underline slides unbroken)", () => {
-    expect(mainSrc).toMatch(/hashForRoute\(\{ \.\.\.currentRoute\(\), [^}]*roadmapTab: undefined[^}]*\}\)/);
+    // The entrance is keyed on the page WITHOUT its tab (hash.ts `pageKey`).
+    expect(mainSrc).toMatch(/const key = `\$\{pageKey\(currentRoute\(\)\)\}\|/);
+    expect(hashSrc).toMatch(/export function pageKey\(r: Route\): string \{\s*return hashForRoute\(\{ \.\.\.r, [^}]*roadmapTab: undefined[^}]*\}\);/);
   });
 
   it("the Feed keeps asideColumns' plain frame: no tab bar, no panel", () => {

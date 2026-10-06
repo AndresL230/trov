@@ -641,7 +641,9 @@ export function orgSettingsView(p: OrgSettingsProps): string {
     : tab === "environments" ? environmentsTab(p.org, p.ui)
     : tab === "members" ? membersTab(p.org, p.ui, p.me)
     : generalTab(p.org, p.ui);
-  return shell(`${setupChecklist(p.org, p.ui)}
+  // The checklist's slot is always there (empty once setup is done), so the tab bar under it is
+  // the same child of the page on every paint — the page is patched in place (morph.ts).
+  return shell(`<div data-setup-slot>${setupChecklist(p.org, p.ui)}</div>
     ${orgTabBar(tab, p.org.role, p.ui)}
     <div${tabPanelAttrs("org-tab", tab)} style="padding-top:20px">
       <p style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin:0 0 18px;max-width:720px">${esc(INTRO[tab])}${roleAtLeast(p.org.role, "admin") ? "" : " You can read this; an admin or an owner can change it."}</p>
