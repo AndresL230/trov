@@ -31,7 +31,6 @@ import type { AppEnv } from "../auth/principal";
 import { ARTIFACT_TEXT_EXT, isTextKind, parseSlugVersion, type ArtifactKind } from "@shared/artifacts";
 import { ArtifactError, ARTIFACT_NOT_FOUND, readRaw, type ArtifactRaw } from "../tools/artifacts";
 import { artifactErrorResponse } from "./http";
-import { legacyDb } from "../data/legacy";
 
 export const RAW_CSP_ACTIVE =
   "default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
@@ -88,7 +87,7 @@ async function serveRaw(c: Context<AppEnv>, ref: string): Promise<Response> {
   const parsed = parseSlugVersion(ref);
   try {
     if (!parsed) throw new ArtifactError("not_found", ARTIFACT_NOT_FOUND);
-    const r = await readRaw(legacyDb(c.var.ctx), c.env.ARTIFACTS_BUCKET, parsed.slug, parsed.version, c.get("principal").handle);
+    const r = await readRaw(c.var.ctx, c.env.ARTIFACTS_BUCKET, parsed.slug, parsed.version, c.get("principal").handle);
     const download = c.req.query("download") === "1";
     const attachment = download || r.kind === "file";
     const headers: Record<string, string> = {

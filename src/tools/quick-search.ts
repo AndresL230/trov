@@ -35,6 +35,7 @@ import { type TenantContext, type Stmt, stmt, batch } from "../data/sql";
 import { legacyDb } from "../data/legacy";
 import { RESERVED_HANDLES } from "../auth/persons";
 import { searchArtifactsStmt } from "./artifacts";
+import { legacyCtxOf } from "../data/legacy-ctx";
 import { avatarSrc } from "@shared/people";
 import {
   QUICK_TYPES, QUICK_MIN_CHARS, QUICK_LIMIT_DEFAULT, QUICK_LIMIT_MAX,
@@ -153,7 +154,7 @@ export async function quickSearch(ctx: TenantContext, q: string, viewer: string,
   }
 
   if (want.has("artifact")) {
-    plan.push({ type: "artifact", stmt: searchArtifactsStmt(legacyDb(ctx), match, viewer, n, true),
+    plan.push({ type: "artifact", stmt: searchArtifactsStmt(ctx, match, viewer, n, true),
       map: (r) => ({ type: "artifact", id: str(r.slug) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.description)) ?? oneLine(str(r.snippet)), status: str(r.kind), by: str(r.author_id), at: str(r.updated_at) }) });
   }
 

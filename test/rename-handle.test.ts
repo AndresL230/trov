@@ -87,16 +87,16 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // covers artifact_pages.author_id + artifact_versions.created_by + (with a link)
   // artifact_links.created_by; publish + ratify covers ratified_by; a minted upload
   // token covers artifact_upload_tokens.principal.
-  const art = await createArtifact(env.DB, {
+  const art = await createArtifact(systemCtx(), {
     title: "Rename test artifact", kind: "markdown", area: "ui", content: "# hi",
     links: [{ target_type: "ticket", target_ref: String(ticketId) }],
   }, handle);
-  await setArtifactStatus(env.DB, art.slug, "published", handle);
-  await ratifyArtifact(env.DB, art.slug, 1, handle);
-  await mintUploadToken(env.DB, { kind: "file", size_bytes: 1, sha256: "e".repeat(64), title: "Rename test upload", area: "ui" }, handle);
+  await setArtifactStatus(systemCtx(), art.slug, "published", handle);
+  await ratifyArtifact(systemCtx(), art.slug, 1, handle);
+  await mintUploadToken(systemCtx(), { kind: "file", size_bytes: 1, sha256: "e".repeat(64), title: "Rename test upload", area: "ui" }, handle);
   // artifact_pages.deleted_by (0035 PART D): a second page, soft-deleted by the person.
-  const gone = await createArtifact(env.DB, { title: "Rename test deleted artifact", kind: "markdown", area: "ui", content: "# bye" }, handle);
-  await deleteArtifact(env.DB, gone.slug, handle, false);
+  const gone = await createArtifact(systemCtx(), { title: "Rename test deleted artifact", kind: "markdown", area: "ui", content: "# bye" }, handle);
+  await deleteArtifact(systemCtx(), gone.slug, handle, false);
   // Handoffs + Prompt Library (0028): direct inserts for sender / recipient /
   // claimed_by and the prompt's author plus its version's (the real writers
   // take the principal from auth, which this seed does not have).

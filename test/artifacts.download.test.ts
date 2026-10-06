@@ -67,7 +67,7 @@ async function binaryPage(handle: string, bytes: Uint8Array, o: Record<string, u
   });
   expect(r.isError).toBe(false);
   const token = String(r.body.upload_url).split("/").pop()!;
-  await consumeUploadToken(env.DB, env.ARTIFACTS_BUCKET, token, new Response(bytes).body!);
+  await consumeUploadToken(systemCtx(), env.ARTIFACTS_BUCKET, token, new Response(bytes).body!);
   return { slug: r.body.slug as string, sha };
 }
 
@@ -231,7 +231,7 @@ describe("the download token", () => {
     const { slug, id } = await textPage(ME, { title: "Soon private" });
     const g = await call(YOU, "artifact_get", { slug });
     expect((await fetchUrl(g.body.download_url)).status).toBe(200);
-    await patchPage(env.DB, slug, { visibility: "private" }, ME);
+    await patchPage(systemCtx(), slug, { visibility: "private" }, ME);
     const res = await fetchUrl(g.body.download_url);
     expect(res.status).toBe(404);
     const bogus = await fetchUrl(`${ORIGIN}/api/artifacts/download/${(await mintDownloadToken("nope", { handle: YOU, page_id: id, version_no: 1 })).token}`);

@@ -18,8 +18,8 @@ import {
   MCP_NOT_FOUND, NOT_FOUND, cookieFor, createBinary, createText, get, jsonInit, mcpCall, mcpToolNames, put, seedPerson, uniqueBytes,
   sha256Hex, uploadUrl, wf,
 } from "./helpers/artifacts";
+import { systemCtx, platformCtx } from "./helpers/tenant";
 
-import { platformCtx, systemCtx } from "./helpers/tenant";
 const AUTHOR = "adel-author";
 const OTHER = "adel-other";
 const ADMIN = "admin-user"; // ADMIN_LOGINS in vitest.config.ts
@@ -139,7 +139,7 @@ describe("POST /api/artifacts/:slug/delete", () => {
   });
 
   it("the author check is case-insensitive, like every handle", async () => {
-    await expect(deletePage(env.DB, SLUG, AUTHOR.toUpperCase(), false)).resolves.toEqual({ slug: SLUG, title: "Zebra page", versions: 2 });
+    await expect(deletePage(systemCtx(), SLUG, AUTHOR.toUpperCase(), false)).resolves.toEqual({ slug: SLUG, title: "Zebra page", versions: 2 });
   });
 
   it("private pages keep their rule: only the author sees it, so only the author can delete it — an admin gets the plain 404", async () => {
@@ -239,7 +239,7 @@ describe("POST /api/artifacts/:slug/restore", () => {
     const res = await restore(AUTHOR);
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "conflict", message: "artifact is not deleted" });
-    await expect(restorePage(env.DB, "no-such-page", AUTHOR, false)).rejects.toMatchObject({ code: "not_found" });
+    await expect(restorePage(systemCtx(), "no-such-page", AUTHOR, false)).rejects.toMatchObject({ code: "not_found" });
   });
 });
 

@@ -2,6 +2,7 @@ import type { DocRow, DocMetaRow, DocVersionRow, FeedRow, AdrRow, NeedsTriageRow
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
+import { legacyCtxOf } from "../data/legacy-ctx";
 import type { TicketListItem, TicketDetail, TicketRef, TicketSeg, TicketAssigneeFilter, TicketCategory } from "@shared/tickets";
 import { OPEN_STATUSES, OPEN_STATUS_SQL, TICKET_STATUSES } from "@shared/tickets-core";
 import { type TenantContext, first, all, ph, fanOut } from "../data/sql";
@@ -654,10 +655,10 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
   // version-0 pages). section/space are doc-only, so artifacts drop out under docsOnly.
   if (types.includes("artifact") && !docsOnly) {
     if (match) {
-      const hits = fetchCap > 0 ? await searchArtifacts(legacyDb(ctx), req.q ?? "", artifactViewer, fetchCap) : [];
+      const hits = fetchCap > 0 ? await searchArtifacts(ctx, req.q ?? "", artifactViewer, fetchCap) : [];
       for (const h of hits) candidates.push({ type: "artifact", key: String(h.id), score: -h.rank, snippet: h.snippet });
     } else {
-      const pages = (await listPages(legacyDb(ctx), {}, artifactViewer)).slice(0, fetchCap);
+      const pages = (await listPages(ctx, {}, artifactViewer)).slice(0, fetchCap);
       for (const p of pages) candidates.push({ type: "artifact", key: String(p.id), score: 0, snippet: "" });
     }
   }

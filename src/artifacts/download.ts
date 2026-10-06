@@ -35,7 +35,6 @@ import { NOT_FOUND_BODY } from "./http";
 import { rawFilename } from "./raw";
 import type { Env } from "../env";
 import { resolveSoleTenant } from "../data/context";
-import { legacyDb } from "../data/legacy";
 
 export const DOWNLOAD_PREFIX = "/api/artifacts/download/";
 /** Domain separation: the download key is HMAC(COOKIE_SECRET, PURPOSE), never COOKIE_SECRET itself. */
@@ -149,7 +148,7 @@ export async function handleArtifactDownload(request: Request, env: Env, now = D
   if (!sole.ok) return notFound();
   let r: ArtifactRaw;
   try {
-    r = await readRawByPageId(legacyDb(sole.ctx), env.ARTIFACTS_BUCKET, page_id, version_no, handle);
+    r = await readRawByPageId(sole.ctx, env.ARTIFACTS_BUCKET, page_id, version_no, handle);
   } catch (e) {
     if (e instanceof ArtifactError) return notFound();
     throw e;

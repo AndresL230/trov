@@ -88,7 +88,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
   // Absolute links in artifact results: PUBLIC_ORIGIN, else the /mcp request's origin.
   // COOKIE_SECRET is only the ROOT of the download-URL key (derived with a purpose label).
   const artifactCtx = {
-    db: legacyDb(ctx), handle: principal.handle, origin: artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), downloadSecret: env.COOKIE_SECRET,
+    tenant: ctx, handle: principal.handle, origin: artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), downloadSecret: env.COOKIE_SECRET,
   };
 
   server.tool(
@@ -199,7 +199,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
       runTool(async () => {
         const ticket = await get_ticket(ctx, id);
         if (!ticket) throw new Error(`no such ticket: ${id}`);
-        return { ...ticket, artifacts: await artifactsForTicket(legacyDb(ctx), id, principal.handle) };
+        return { ...ticket, artifacts: await artifactsForTicket(ctx, id, principal.handle) };
       }),
   );
 
@@ -549,7 +549,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     async (args) => runTool(async () => {
       const input = HandoffCreateInput.parse({ body: args.body, recipient: args.recipient, context: args.context, prompt: args.prompt ?? null });
       const ledger = args.session ? { sessionId: args.session, itemIndex: 0 } : undefined;
-      const { handoff, replayed } = await createHandoff(legacyDb(ctx), principal.handle, input, ledger);
+      const { handoff, replayed } = await createHandoff(ctx, principal.handle, input, ledger);
       return { id: handoff.id, url: handoffUrl(handoff.id), ...(replayed ? { replayed: true } : {}) };
     }),
   );
@@ -559,11 +559,11 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "List handoffs waiting for you. With no `box`, returns the PENDING ones left for you ('me') plus open 'anyone' handoffs from other people — call this at session start and tell the person what is waiting; never claim one without asking. box: 'me' (left for you), 'anyone' (open to all, from others), 'mine' (sent by or left for you), 'sent' (what you sent — the only box that includes claimed and expired ones). Returns id, sender, recipient, status, created_at, task and a one-line excerpt. Read-only.",
     { box: z.enum(["mine", "me", "anyone", "sent"]).optional() },
     async ({ box }) => runTool(async () => {
-      if (box === "sent") return (await listHandoffs(legacyDb(ctx), principal.handle, "sent")).map(handoffLine);
-      if (box) return (await listHandoffs(legacyDb(ctx), principal.handle, box, ["pending"])).map(handoffLine);
+      if (box === "sent") return (await listHandoffs(ctx, principal.handle, "sent")).map(handoffLine);
+      if (box) return (await listHandoffs(ctx, principal.handle, box, ["pending"])).map(handoffLine);
       const [me, anyone] = await Promise.all([
-        listHandoffs(legacyDb(ctx), principal.handle, "me", ["pending"]),
-        listHandoffs(legacyDb(ctx), principal.handle, "anyone", ["pending"]),
+        listHandoffs(ctx, principal.handle, "me", ["pending"]),
+        listHandoffs(ctx, principal.handle, "anyone", ["pending"]),
       ]);
       return [...me, ...anyone].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).map(handoffLine);
     }),
@@ -574,7 +574,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "Read one handoff in full by its numeric id (body, context, inline prompt, status). Read-only: it does NOT claim it — use claim_handoff once the person has chosen to pick it up.",
     { id: z.number().int() },
     async ({ id }) => runTool(async () => {
-      const h = await getHandoff(legacyDb(ctx), id);
+      const h = await getHandoff(ctx, id);
       if (!h) throw new HandoffError("not_found", "handoff not found");
       return h;
     }),
@@ -586,11 +586,11 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     { id: z.number().int(), session: z.string().min(1) },
     async ({ id, session }) => {
       try {
-        const h = await claimHandoff(legacyDb(ctx), id, principal.handle, session);
+        const h = await claimHandoff(ctx, id, principal.handle, session);
         return { content: [{ type: "text" as const, text: `# Handoff #${h.id} — claimed\n\n${handoffAsTask(h)}` }] };
       } catch (err) {
         if (err instanceof HandoffError) {
-          const current = await getHandoff(legacyDb(ctx), id);
+          const current = await getHandoff(ctx, id);
           const body = { error: err.message, code: err.code, ...(current ? { status: current.status, claimed_by: current.claimed_by } : {}) };
           return { content: [{ type: "text" as const, text: JSON.stringify(body) }], isError: true as const };
         }
@@ -603,7 +603,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "expire_handoff",
     "Expire a PENDING handoff you sent or that was left for you, so nobody picks it up (the work was finished another way, or it no longer applies). Pending handoffs also expire on their own 7 days after they were sent. A claimed or already-expired handoff is an error naming its status.",
     { id: z.number().int() },
-    async ({ id }) => runTool(() => expireHandoff(legacyDb(ctx), id, principal.handle)),
+    async ({ id }) => runTool(() => expireHandoff(ctx, id, principal.handle)),
   );
 
   // ── Prompt Library (0028) ──────────────────────────────────────────────────
@@ -611,7 +611,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "search_prompts",
     "Search the team's Prompt Library for a reusable prompt. `q` is full-text over slug, title, description, body and tags; `tags` must ALL match. Returns summaries (slug, title, tags, author, version, status, updated_at, excerpt) — prefer 'published' ones; 'staged' and 'draft' are not settled yet. Use get_prompt to read one. Read-only.",
     { q: z.string().optional(), tags: z.array(z.string()).optional() },
-    async ({ q, tags }) => runTool(() => listPrompts(legacyDb(ctx), { q, tags })),
+    async ({ q, tags }) => runTool(() => listPrompts(ctx, { q, tags })),
   );
 
   server.tool(
@@ -620,8 +620,8 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     { slug: z.string(), vars: z.record(z.string(), z.string()).optional() },
     async ({ slug, vars }) => runTool(async () => {
       // One conditional UPDATE: counts this call once, and writes nothing for an unknown slug.
-      await recordPromptUse(legacyDb(ctx), slug);
-      const p = await getPrompt(legacyDb(ctx), slug);
+      await recordPromptUse(ctx, slug);
+      const p = await getPrompt(ctx, slug);
       if (!p) throw new PromptError("not_found", "prompt not found");
       const variables = detectVars(p.body);
       const values = vars ?? {};
@@ -637,7 +637,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
       tags: z.array(z.string()).optional(), summary: z.string().optional(), branch: z.string().optional(),
     },
     async ({ slug, title, body, tags, summary, branch }) => runTool(async () => {
-      const p = await savePrompt(legacyDb(ctx), principal.handle, PromptSaveInput.parse({ slug, title, body, tags, summary }), "agent", { branch });
+      const p = await savePrompt(ctx, principal.handle, PromptSaveInput.parse({ slug, title, body, tags, summary }), "agent", { branch });
       return { slug: p.slug, version: p.version, status: p.status };
     }),
   );

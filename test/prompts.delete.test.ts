@@ -16,7 +16,7 @@ import { renamePerson } from "../src/auth/persons";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import type { PromptDetail, PromptSummary } from "../shared/handoffs";
 import type { QuickSearchResult } from "@shared/quick-search";
-import { bearerCtx, platformCtx } from "./helpers/tenant";
+import { bearerCtx, platformCtx, systemCtx } from "./helpers/tenant";
 
 const AUTHOR = "pauthor";
 const OTHER = "pother";
@@ -25,8 +25,8 @@ const SLUG = "zebra-review";
 
 beforeEach(async () => {
   for (const h of [AUTHOR, OTHER, ADMIN]) await seedPerson(h);
-  await savePrompt(env.DB, AUTHOR, PromptSaveInput.parse({ slug: SLUG, title: "Zebra review", body: "Review the zebra {{thing}}.", status: "published", description: "Stripes" }), "human");
-  await savePrompt(env.DB, AUTHOR, PromptSaveInput.parse({ slug: SLUG, title: "Zebra review", body: "Review the zebra {{thing}} twice.", status: "published" }), "human");
+  await savePrompt(systemCtx(), AUTHOR, PromptSaveInput.parse({ slug: SLUG, title: "Zebra review", body: "Review the zebra {{thing}}.", status: "published", description: "Stripes" }), "human");
+  await savePrompt(systemCtx(), AUTHOR, PromptSaveInput.parse({ slug: SLUG, title: "Zebra review", body: "Review the zebra {{thing}} twice.", status: "published" }), "human");
 });
 
 async function req(method: string, path: string, who: string, body?: unknown): Promise<Response> {
@@ -102,7 +102,7 @@ describe("POST /api/prompts/:slug/delete", () => {
     expect((await req("POST", `/api/prompts/${SLUG}/tags`, AUTHOR, { tags: ["ui"] })).status).toBe(404);
     expect((await req("POST", `/api/prompts/${SLUG}/publish`, AUTHOR, { version: 2 })).status).toBe(404);
     expect((await req("POST", `/api/prompts/${SLUG}/used`, AUTHOR, {})).status).toBe(404);
-    expect(await recordPromptUse(env.DB, SLUG)).toBe(false);
+    expect(await recordPromptUse(systemCtx(), SLUG)).toBe(false);
     expect((await del(AUTHOR)).status).toBe(404);
   });
 
@@ -120,7 +120,7 @@ describe("POST /api/prompts/:slug/delete", () => {
   });
 
   it("the author check is case-insensitive, like every handle", async () => {
-    await expect(deletePrompt(env.DB, SLUG, AUTHOR.toUpperCase(), false)).resolves.toEqual({ slug: SLUG, title: "Zebra review" });
+    await expect(deletePrompt(systemCtx(), SLUG, AUTHOR.toUpperCase(), false)).resolves.toEqual({ slug: SLUG, title: "Zebra review" });
   });
 
   it("an unknown slug is 404", async () => {
@@ -182,7 +182,7 @@ describe("a deleted prompt's slug stays reserved", () => {
   });
 
   it("so is renaming another prompt onto it, and an agent's save_prompt", async () => {
-    await savePrompt(env.DB, OTHER, PromptSaveInput.parse({ slug: "other-one", title: "Other", body: "b" }), "human");
+    await savePrompt(systemCtx(), OTHER, PromptSaveInput.parse({ slug: "other-one", title: "Other", body: "b" }), "human");
     await del(AUTHOR);
     const rn = await save(OTHER, { slug: SLUG, base_slug: "other-one", title: "Other", body: "b2" });
     expect(rn.status).toBe(409);
