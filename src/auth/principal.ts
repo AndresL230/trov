@@ -3,12 +3,15 @@ import type { Env } from "../env";
 import { readSessionCookie, getSessionUser } from "./session";
 import { resolveToken } from "./tokens";
 import { isAccessToken, resolveOAuthAccessToken } from "./oauth";
+import { platform, type PlatformContext, type TenantContext } from "../data/context";
+import { legacyDb } from "../data/legacy";
 
 export interface Principal {
   handle: string;
 }
 
-export type AppEnv = { Bindings: Env; Variables: { principal: Principal } };
+// `p` (every request) and `ctx` (every tenant route) are set by the middlewares in src/data/gate.ts.
+export type AppEnv = { Bindings: Env; Variables: { principal: Principal; p: PlatformContext; ctx: TenantContext } };
 
 /**
  * Is this login an admin? ADMIN_LOGINS is a comma-separated allowlist of GitHub
@@ -35,7 +38,7 @@ const isPublicPath = (path: string): boolean =>
 export async function resolveSessionPrincipal(c: Context<AppEnv>): Promise<Principal | null> {
   const id = await readSessionCookie(c, c.env.COOKIE_SECRET);
   if (!id) return null;
-  const handle = await getSessionUser(c.env.DB, id);
+  const handle = await getSessionUser(legacyDb(platform(c.env, "anonymous")), id);
   return handle ? { handle } : null;
 }
 
@@ -47,8 +50,9 @@ export async function resolveBearerPrincipal(request: Request, env: Env): Promis
   const match = /^Bearer\s+(.+)$/i.exec(header);
   if (!match) return null;
   const raw = match[1].trim();
-  if (isAccessToken(raw)) return resolveOAuthAccessToken(env.DB, raw, Date.now());
-  return resolveToken(env.DB, raw);
+  const p = platform(env, "anonymous");
+  if (isAccessToken(raw)) return resolveOAuthAccessToken(legacyDb(p), raw, Date.now());
+  return resolveToken(legacyDb(p), raw);
 }
 
 /**
