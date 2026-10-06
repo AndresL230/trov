@@ -69,6 +69,9 @@ const PLATFORM_ALLOW: Allow[] = [
   // for the same reason until 5a scopes a token to an org (§7.1).
   { file: "src/auth/tokens.ts", fn: "*", tables: ["mcp_tokens"], why: "token lookup by hash; person-level token management until 5a" },
   { file: "src/auth/oauth.ts", fn: "*", tables: ["oauth_grants", "oauth_codes"], why: "grant / code lookup by hash; person-level grants until 5a" },
+  // The upload PUT has no session: its single-use token is looked up by hash to learn its org, and
+  // everything after runs as that org's system tenant.
+  { file: "src/artifacts/upload.ts", fn: "uploadTokenOrg", tables: ["doc_image_upload_tokens", "artifact_upload_tokens"], why: "upload-token lookup by hash, returning only its org_id" },
   // The superadmin (§5.4): the usage page counts rows per org — counts only, never content — and the
   // audit page merges both trails (`org_admin_audit` + the secret trail). A secret audit row names the
   // action, the kind and the actor, never a value.

@@ -295,13 +295,32 @@ describe("artifacts — binary pages, upload and download tokens, raw serving", 
     const mintB = await mintUploadToken(B(), input, BOB);
     await artifactNotFound(consumeUploadToken(A(), BUCKET(), mintB.token, stream(png)));
     expect(await first(env.DB, `SELECT used_at FROM artifact_upload_tokens WHERE org_id = ?`, ORG_B)).toEqual({ used_at: null });
-    // The PUT route has no session and acts on the legacy org until it resolves the org from the
-    // token row: B's token is the unknown-token 404 there — never a write into A.
-    const res = await wf(mintB.upload_url, { method: "PUT", body: png });
-    expect(res.status).toBe(404);
-    expect(await res.text()).toBe(NOT_FOUND);
+    // The PUT route has no session: it resolves the org from the token row, so B's token lands in B —
+    // and only there. A suspended org's token reads as unknown, like every other door into that org.
+    await run(env.DB, `UPDATE orgs SET suspended_at = '2026-01-01T00:00:00Z' WHERE id = ?`, ORG_B);
+    const suspended = await wf(mintB.upload_url, { method: "PUT", body: png });
+    expect([suspended.status, await suspended.text()]).toEqual([404, NOT_FOUND]);
     expect(await all(env.DB, `SELECT 1 FROM artifact_versions WHERE org_id = ?`, ORG_B)).toEqual([]);
-    expect((await consumeUploadToken(B(), BUCKET(), mintB.token, stream(png))).version_no).toBe(1);
+    await run(env.DB, `UPDATE orgs SET suspended_at = NULL WHERE id = ?`, ORG_B);
+
+    const res = await wf(mintB.upload_url, { method: "PUT", body: png });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ version_no: 1 });
+    expect(await all(env.DB, `SELECT org_id, version_no FROM artifact_versions WHERE page_id = (SELECT page_id FROM artifact_upload_tokens WHERE org_id = ?)`, ORG_B))
+      .toEqual([{ org_id: ORG_B, version_no: 1 }]);
+    expect((await getPage(B(), mintB.slug, null, BOB)).current_version).toBe(1);
+    expect(await all(env.DB, `SELECT version_no FROM artifact_versions WHERE org_id = ?`, ORG_A)).toEqual([{ version_no: 1 }]); // A's own, untouched
+    expect((await wf(mintB.upload_url, { method: "PUT", body: png })).status).toBe(410); // single-use, in its own org
+  });
+
+  it("a doc-image token PUT lands in the org that minted it", async () => {
+    const png = bytes("doc-image-by-put");
+    const sha = await sha256Hex(png);
+    const mint = await mintDocImageUpload(B(), { sha256: sha, size_bytes: png.byteLength, content_type: "image/png" }, BOB);
+    if (mint.uploaded) throw new Error("expected a pending upload");
+    const res = await wf(mint.upload_url, { method: "PUT", body: png });
+    expect(res.status).toBe(200);
+    expect(await all(env.DB, `SELECT org_id FROM doc_images WHERE sha256 = ?`, sha)).toEqual([{ org_id: ORG_B }]);
   });
 
   it("a signed download URL serves only a page of its holder's org", async () => {
