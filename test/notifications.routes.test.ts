@@ -155,7 +155,7 @@ describe("admin routes: policy, settings, outbox, user email", () => {
 
     res = await app.request("/api/notifications/settings", json("PUT", { send_hour: 7, timezone: "Europe/Berlin", from_address: "Canopy <digest@mail.example>" }, cookie), env);
     expect(res.status).toBe(200);
-    expect(await first<NotificationSettingsRow>(env.DB, `SELECT * FROM notification_settings WHERE id = 1`)).toMatchObject({ send_hour: 7, timezone: "Europe/Berlin", from_address: "Canopy <digest@mail.example>" });
+    expect(await first<NotificationSettingsRow>(env.DB, `SELECT * FROM notification_settings WHERE org_id = 'org_saplinglearn'`)).toMatchObject({ send_hour: 7, timezone: "Europe/Berlin", from_address: "Canopy <digest@mail.example>" });
 
     expect((await app.request("/api/notifications/settings", json("PUT", { send_hour: 24 }, cookie), env)).status).toBe(400);
     expect((await app.request("/api/notifications/settings", json("PUT", { timezone: "Mars/Olympus" }, cookie), env)).status).toBe(400);

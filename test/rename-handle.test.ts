@@ -110,6 +110,20 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   const grant = await run(env.DB, `INSERT INTO oauth_grants (person, client_id, client_name, created_at) VALUES (?, 'rename-client', 'C', ?)`, handle, nowIso());
   await run(env.DB, `INSERT INTO oauth_codes (code_hash, client_id, person, grant_id, redirect_uri, code_challenge, created_at, expires_at) VALUES (?, 'rename-client', ?, ?, 'http://localhost/cb', 'x', ?, ?)`,
     `rename-code-${handle}`, handle, grant.meta.last_row_id, nowIso(), nowIso());
+  // Multitenancy (0037): every org table that stores a handle — direct inserts; their writers land in
+  // later phases. One org the person created, their membership, an invite they sent and answered, an
+  // attribution they made, and the integration rows they last touched.
+  const org = `org_rename_${handle.replace(/[^a-z0-9]/g, "")}`;
+  await run(env.DB, `INSERT INTO orgs (id, slug, name, created_at, created_by) VALUES (?, ?, 'Rename', ?, ?)`, org, `rn-${handle}`, nowIso(), handle);
+  await run(env.DB, `INSERT INTO memberships (org_id, user_id, role, created_at, created_by) VALUES (?, ?, 'owner', ?, ?)`, org, handle, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_invites (org_id, github_login, invited_by, status, created_at, responded_at, responded_by) VALUES (?, 'someone', ?, 'accepted', ?, ?, ?)`, org, handle, nowIso(), nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_login_map (org_id, github_login, person, mapped_at, mapped_by) VALUES (?, 'rename-gh', ?, ?, ?)`, org, handle, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, created_at, created_by) VALUES (?, ?, 'o/r', ?, ?)`, `hook_${org}`, org, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_environments (org_id, key, position, label, branch, created_at, updated_at, updated_by) VALUES (?, 'staging', 0, 'staging', 'main', ?, ?, ?)`, org, nowIso(), nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_keys (org_id, key_version, wrapped_key, wrap_iv, kek_fingerprint, created_at) VALUES (?, 1, 'k', 'iv', 'fp', ?)`, org, nowIso());
+  await run(env.DB, `INSERT INTO org_secrets (org_id, kind, scope, ciphertext, iv, key_version, created_by, created_at) VALUES (?, 'github_token', '', 'c', 'iv', 1, ?, ?)`, org, handle, nowIso());
+  await run(env.DB, `INSERT INTO org_integration_config (org_id, kind, scope, config, updated_at, updated_by) VALUES (?, 'cloudflare_analytics', '', '{}', ?, ?)`, org, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_audit (org_id, actor, action, target, at) VALUES (?, ?, 'secret.set', 'github_token:', ?)`, org, handle, nowIso());
 }
 
 describe("renamePerson", () => {

@@ -242,7 +242,7 @@ export async function runLockedRepoRefresh(env: Env, by: string, now: number, fe
   const staleBefore = new Date(now - REFRESH_LOCK_MS).toISOString();
   const took = await run(env.DB,
     `INSERT INTO repo_snapshots (kind, json, computed_at) VALUES (?, ?, ?)
-     ON CONFLICT(kind) DO UPDATE SET json = excluded.json, computed_at = excluded.computed_at
+     ON CONFLICT(org_id, kind) DO UPDATE SET json = excluded.json, computed_at = excluded.computed_at
      WHERE repo_snapshots.computed_at <= ?`,
     REFRESH_LOCK, mine, at, staleBefore);
   if (!took.meta.changes) {

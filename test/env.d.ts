@@ -11,6 +11,8 @@ declare global {
       ASSETS: Fetcher;
       ARTIFACTS_BUCKET: R2Bucket;
       TEST_MIGRATIONS: D1Migration[];
+      MT_DB: D1Database;
+      MT_ROLLBACK: D1Migration[];
       COOKIE_SECRET: string;
       GITHUB_CLIENT_ID: string;
       GITHUB_CLIENT_SECRET: string;

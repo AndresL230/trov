@@ -225,7 +225,7 @@ describe("write_plan", () => {
     await run(env.DB, `DELETE FROM plan`);
     const r = await write_plan(env.DB, { narrative: "n", sprints: [] }, AUTHOR);
     expect(r.version).toBe(1);
-    const plan = await first(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    const plan = await first(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan).not.toBeNull();
   });
 });
@@ -311,7 +311,7 @@ describe("write_plan — the narrative cap (PLAN_NARRATIVE_MAX)", () => {
   }
   async function snapshot() {
     return {
-      plan: await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`),
+      plan: await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`),
       versions: await all<PlanVersionRow>(env.DB, `SELECT * FROM plan_versions ORDER BY version`),
       sprints: await all<SprintRow>(env.DB, `SELECT * FROM sprints ORDER BY id`),
     };
@@ -322,14 +322,14 @@ describe("write_plan — the narrative cap (PLAN_NARRATIVE_MAX)", () => {
     const narrative = "x".repeat(PLAN_NARRATIVE_MAX);
     const r = await write_plan(env.DB, { narrative, sprints: [] }, AUTHOR);
     expect(r.version).toBe(2);
-    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan?.narrative).toBe(narrative);
   });
 
   it("the length is counted after trim, and the trimmed narrative is what is stored", async () => {
     const narrative = "x".repeat(PLAN_NARRATIVE_MAX);
     await write_plan(env.DB, { narrative: `\n  ${narrative}  \n`, sprints: [] }, AUTHOR);
-    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan?.narrative).toBe(narrative);
     const v = await first<PlanVersionRow>(env.DB, `SELECT * FROM plan_versions WHERE version = 1`);
     expect(v?.narrative).toBe(narrative);
@@ -380,7 +380,7 @@ describe("write_plan — the narrative cap (PLAN_NARRATIVE_MAX)", () => {
 
   it("a narrative already stored over the cap still reads whole — the cap is a write rule only", async () => {
     const long = "y".repeat(PLAN_NARRATIVE_MAX * 4);
-    await run(env.DB, `UPDATE plan SET narrative = ? WHERE id = 1`, long);
+    await run(env.DB, `UPDATE plan SET narrative = ? WHERE org_id = 'org_saplinglearn'`, long);
     expect((await get_plan(env.DB)).narrative).toBe(long);
   });
 });

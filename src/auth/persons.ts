@@ -147,6 +147,12 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["prompts", "author"], ["prompts", "deleted_by"], ["prompt_versions", "author"],
   // MCP OAuth (0029): a rename carries a person's connections and in-flight codes.
   ["oauth_grants", "person"], ["oauth_codes", "person"],
+  // Multitenancy (0037): a handle is ONE person across every org, so a rename spans them all.
+  ["memberships", "user_id"], ["memberships", "created_by"], ["orgs", "created_by"],
+  ["org_invites", "invited_by"], ["org_invites", "responded_by"],
+  ["org_login_map", "person"], ["org_login_map", "mapped_by"],
+  ["org_repos", "created_by"], ["org_environments", "updated_by"],
+  ["org_secrets", "created_by"], ["org_integration_config", "updated_by"], ["org_audit", "actor"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

@@ -289,7 +289,8 @@ describe("GET /sprints/:id", () => {
     const triggers = await all<{ name: string; sql: string }>(
       env.DB, `SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'tickets'`
     );
-    expect(triggers.map((t) => t.name).sort()).toEqual(["tickets_fts_ad", "tickets_fts_ai", "tickets_fts_au"]);
+    // tickets_number_ai (0038) allocates the per-org display number — it touches no sprint either.
+    expect(triggers.map((t) => t.name).sort()).toEqual(["tickets_fts_ad", "tickets_fts_ai", "tickets_fts_au", "tickets_number_ai"]);
     expect(triggers.every((t) => !/sprint_id/i.test(t.sql))).toBe(true);
   });
 

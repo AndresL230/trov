@@ -5,3 +5,6 @@ web/dist/
 *.log
 .superpowers/
 .canopy/
+
+# multitenancy migration checks: local production exports (scripts/mt/verify-migration.mjs) — never commit
+.mt/

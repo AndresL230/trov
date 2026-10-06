@@ -3,6 +3,7 @@ import type { SprintView } from "@shared/sprints";
 import { planNarrativeProblem, normalizeSprintDate, sprintDateProblem, sprintDatesProblem } from "@shared/sprints-core";
 import { type DB, first, all, run, nowIso } from "../db";
 import { list_sprints, SprintError } from "./sprints";
+import { LEGACY_ORG_ID } from "../legacy-org";
 
 /**
  * One sprint as the ADMIN plan write receives it. This is the DTO vocabulary
@@ -83,9 +84,9 @@ export async function write_plan(
     if (order) throw new SprintError("bad_request", `sprint "${sp.label}": ${order}`);
   }
 
-  await run(db, `INSERT OR IGNORE INTO plan (id, narrative, current_version) VALUES (1, '', 0)`);
+  await run(db, `INSERT OR IGNORE INTO plan (org_id, narrative, current_version) VALUES (?, '', 0)`, LEGACY_ORG_ID);
 
-  const plan = await first<PlanRow>(db, `SELECT * FROM plan WHERE id = 1`);
+  const plan = await first<PlanRow>(db, `SELECT * FROM plan WHERE org_id = ?`, LEGACY_ORG_ID);
   const version = (plan?.current_version ?? 0) + 1;
   const now = nowIso();
 
@@ -150,15 +151,17 @@ export async function write_plan(
 
   await run(
     db,
-    `UPDATE plan SET narrative = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE id = 1`,
+    `UPDATE plan SET narrative = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE org_id = ?`,
     narrative,
     version,
     now,
-    author
+    author,
+    LEGACY_ORG_ID
   );
   await run(
     db,
-    `INSERT INTO plan_versions (version, narrative, sprints_json, created_at, created_by) VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO plan_versions (org_id, version, narrative, sprints_json, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
+    LEGACY_ORG_ID,
     version,
     narrative,
     JSON.stringify(sprints),
@@ -182,7 +185,7 @@ export async function write_plan(
  * One read model, shared by GET /roadmap, MCP get_roadmap and GET /sprints.
  */
 export async function get_plan(db: DB): Promise<PlanView> {
-  const plan = await first<PlanRow>(db, `SELECT * FROM plan WHERE id = 1`);
+  const plan = await first<PlanRow>(db, `SELECT * FROM plan WHERE org_id = ?`, LEGACY_ORG_ID);
   const sprints = await list_sprints(db);
 
   return {

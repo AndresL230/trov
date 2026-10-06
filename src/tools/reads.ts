@@ -8,6 +8,7 @@ import { type DB, first, all, ph, fanOut } from "../db";
 // The sprint read model lives next to the sprint writers; `query()` borrows its
 // progress RULE so the assembled sprint body and the Roadmap can never disagree.
 import { sprintProgress, ticketCountsBySprint } from "./sprints";
+import { LEGACY_ORG_ID } from "../legacy-org";
 
 export async function get_doc(
   db: DB,
@@ -614,7 +615,7 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
     } else {
       // Browse: the plan row first (only when it carries a narrative), then
       // sprints by recency (updated_at, then created_at).
-      const planRow = await first<PlanRow>(db, `SELECT * FROM plan WHERE id = 1`);
+      const planRow = await first<PlanRow>(db, `SELECT * FROM plan WHERE org_id = ?`, LEGACY_ORG_ID);
       if (planRow && planRow.narrative.trim() !== "") {
         candidates.push({ type: "sprint", key: "plan", score: 0, snippet: "" });
       }
@@ -679,7 +680,7 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
   // grouped query, sharing `sprintProgress`'s definition of "closed". The
   // `sprint_progress` cache is deliberately NOT read here.
   const sprintTicketCounts = await ticketCountsBySprint(db, sprintIds);
-  const planRow = needPlan ? await first<PlanRow>(db, `SELECT * FROM plan WHERE id = 1`) : null;
+  const planRow = needPlan ? await first<PlanRow>(db, `SELECT * FROM plan WHERE org_id = ?`, LEGACY_ORG_ID) : null;
 
   // Artifact hydration: each candidate page joined to its current version. The ids
   // came from visibility-checked reads; the rule is repeated here as a guard anyway.

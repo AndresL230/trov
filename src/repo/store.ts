@@ -1,6 +1,7 @@
 import { type DB, all, first, run, nowIso, ph, chunked } from "../db";
 import { PRODUCT_PREFIX } from "./product";
 import type { RepoMetric } from "./types";
+import { LEGACY_ORG_ID } from "../legacy-org";
 
 const DAY = 86_400_000;
 /** High-frequency series and rows that lose their value quickly. Deliberately
@@ -50,7 +51,7 @@ const BATCH_STATEMENTS = 50;
 export async function putSnapshot(db: DB, kind: string, data: unknown, now: string = nowIso()): Promise<void> {
   await run(db,
     `INSERT INTO repo_snapshots (kind, json, computed_at) VALUES (?, ?, ?)
-     ON CONFLICT(kind) DO UPDATE SET json = excluded.json, computed_at = excluded.computed_at`,
+     ON CONFLICT(org_id, kind) DO UPDATE SET json = excluded.json, computed_at = excluded.computed_at`,
     kind, JSON.stringify(data), now);
 }
 
@@ -229,6 +230,8 @@ export async function productReadings(
 ): Promise<{ metric: string; env: string; at: string; value: number }[]> {
   const fresh = normaliseAt(freshSinceIso);
   const trend = normaliseAt(trendSinceIso);
+  // `r.org_id = ?` (multitenancy): the per-org UNIQUE (org_id, metric, env, part, at) is the index both arms
+  // SEARCH by full equality — without the org term the planner falls back to an automatic index.
   if (fresh === null || trend === null || !envKeys.length) return [];
   const midnights: string[] = [];
   for (let t = Math.ceil(Date.parse(trend) / DAY) * DAY; t < Date.parse(fresh) && midnights.length < MAX_MIDNIGHTS; t += DAY) {
@@ -242,16 +245,16 @@ export async function productReadings(
      ),
      envs(e) AS (VALUES ${envKeys.map(() => "(?)").join(", ")})`;
   const freshArm = `SELECT r.metric, r.env, r.at, r.value FROM names CROSS JOIN envs CROSS JOIN repo_metrics r
-       WHERE names.m IS NOT NULL AND r.metric = names.m AND r.env = envs.e AND r.part = '' AND r.at >= ?`;
+       WHERE names.m IS NOT NULL AND r.org_id = ? AND r.metric = names.m AND r.env = envs.e AND r.part = '' AND r.at >= ?`;
   const trendArm = `SELECT r.metric, r.env, r.at, r.value FROM names CROSS JOIN envs CROSS JOIN mids CROSS JOIN repo_metrics r
        WHERE names.m IS NOT NULL AND (names.m GLOB '${PRODUCT_PREFIX}c_*_24h' OR names.m GLOB '${PRODUCT_PREFIX}t_*')
-         AND r.metric = names.m AND r.env = envs.e AND r.part = '' AND r.at = mids.a`;
+         AND r.org_id = ? AND r.metric = names.m AND r.env = envs.e AND r.part = '' AND r.at = mids.a`;
   return midnights.length
     ? all(db,
         `WITH RECURSIVE ${names}, mids(a) AS (VALUES ${midnights.map(() => "(?)").join(", ")})
          ${freshArm} UNION ALL ${trendArm} ORDER BY 3 ASC`,
-        ...envKeys, ...midnights, fresh)
-    : all(db, `WITH RECURSIVE ${names} ${freshArm} ORDER BY 3 ASC`, ...envKeys, fresh);
+        ...envKeys, ...midnights, LEGACY_ORG_ID, fresh, LEGACY_ORG_ID)
+    : all(db, `WITH RECURSIVE ${names} ${freshArm} ORDER BY 3 ASC`, ...envKeys, LEGACY_ORG_ID, fresh);
 }
 
 export async function latestMetric(db: DB, metric: string, env: string, part: string): Promise<{ at: string; value: number } | null> {

@@ -10,6 +10,7 @@ import { all, first } from "../src/db";
 import type { PersonRow, IdentityRow, IdentityTaskRow } from "@shared/rows";
 
 const OLD_SHAPE = `
+DELETE FROM memberships; DELETE FROM org_login_map;
 DROP TABLE IF EXISTS identities; DROP TABLE IF EXISTS invites; DROP TABLE IF EXISTS persons;
 DROP TABLE IF EXISTS sessions; DROP TABLE IF EXISTS mcp_tokens; DROP TABLE IF EXISTS notification_outbox_bodies;
 CREATE TABLE users (github_login TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL, avatar_url TEXT, email TEXT, email_unsubscribed INTEGER NOT NULL DEFAULT 0);
@@ -34,10 +35,11 @@ async function replay0023(): Promise<void> {
   const m = env.TEST_MIGRATIONS.find((x) => x.name.startsWith("0023"));
   if (!m) throw new Error("0023 migration not found");
   for (const q of m.queries) await env.DB.prepare(q).run();
-  // Re-add the columns LATER migrations put on persons (0036's profile columns and avatar_source), so the
+  // Re-add the columns LATER migrations put on persons (0036's profile columns and avatar_source, 0037's
+  // org_limit) and on identities (0037's verified_email), so the
   // rebuilt table is the shape the harness's per-test reset (scripts/seed/reset.mjs) writes.
   for (const later of env.TEST_MIGRATIONS.filter((x) => x.name > m.name)) {
-    for (const q of later.queries) if (/\bALTER TABLE persons\b/i.test(q)) await env.DB.prepare(q).run();
+    for (const q of later.queries) if (/\bALTER TABLE (persons|identities)\b/i.test(q)) await env.DB.prepare(q).run();
   }
 }
 

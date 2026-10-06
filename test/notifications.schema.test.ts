@@ -16,11 +16,11 @@ async function columns(table: string): Promise<string[]> {
 
 describe("migration 0021 — notification tables", () => {
   it("creates the four tables with the spec's columns", async () => {
-    expect(await columns("notification_policy")).toEqual(["kind", "default_cadence", "enabled", "updated_at", "updated_by"]);
-    expect(await columns("notification_settings")).toEqual(["id", "send_hour", "timezone", "from_address"]);
-    expect(await columns("notification_prefs")).toEqual(["user_id", "kind", "cadence", "updated_at"]);
+    expect(await columns("notification_policy")).toEqual(["org_id", "kind", "default_cadence", "enabled", "updated_at", "updated_by"]);
+    expect(await columns("notification_settings")).toEqual(["org_id", "send_hour", "timezone", "from_address"]);
+    expect(await columns("notification_prefs")).toEqual(["org_id", "user_id", "kind", "cadence", "updated_at"]);
     expect(await columns("notification_outbox")).toEqual([
-      "idempotency_key", "user_id", "cadence", "window_id", "kinds", "status", "resend_id", "error", "created_at", "sent_at",
+      "idempotency_key", "user_id", "cadence", "window_id", "kinds", "status", "resend_id", "error", "created_at", "sent_at", "org_id",
     ]);
   });
 
@@ -45,11 +45,14 @@ describe("migration 0021 — notification tables", () => {
     await expect(run(env.DB, ins)).rejects.toThrow();
   });
 
-  it("seeds the org-level settings singleton and refuses a second row", async () => {
-    const s = await first<NotificationSettingsRow>(env.DB, `SELECT * FROM notification_settings WHERE id = 1`);
-    expect(s).toMatchObject({ id: 1, send_hour: 8, timezone: "America/New_York" });
+  // 0039 (multitenancy): the singleton is per ORG — one row per org, keyed by org_id.
+  it("seeds the org-level settings singleton and refuses a second row for the same org", async () => {
+    const s = await first<NotificationSettingsRow>(env.DB, `SELECT * FROM notification_settings WHERE org_id = 'org_saplinglearn'`);
+    expect(s).toMatchObject({ org_id: "org_saplinglearn", send_hour: 8, timezone: "America/New_York" });
     expect(s!.from_address).toBeTruthy();
-    await expect(run(env.DB, `INSERT INTO notification_settings (id, send_hour, timezone, from_address) VALUES (2, 8, 'UTC', 'x@y')`)).rejects.toThrow();
+    await expect(run(env.DB, `INSERT INTO notification_settings (org_id, send_hour, timezone, from_address) VALUES ('org_saplinglearn', 8, 'UTC', 'x@y')`)).rejects.toThrow();
+    // …and a row for an org that does not exist is refused by the foreign key.
+    await expect(run(env.DB, `INSERT INTO notification_settings (org_id, send_hour, timezone, from_address) VALUES ('org_nope', 8, 'UTC', 'x@y')`)).rejects.toThrow();
   });
 });
 

@@ -574,9 +574,11 @@ export interface ArtifactVersionResult {
   page: ArtifactDetailDTO;
 }
 
+// The search row carries its page's org (0040, D9): read from the page itself, so it can never disagree.
 const ftsInsert = (db: DB, pageIdSql: string, pageIdParam: unknown, title: string, description: string, body: string) =>
-  db.prepare(`INSERT INTO artifacts_fts (page_id, title, description, body) VALUES (CAST((${pageIdSql}) AS TEXT), ?, ?, ?)`)
-    .bind(pageIdParam, title, description, body);
+  db.prepare(`INSERT INTO artifacts_fts (page_id, title, description, body, org_id)
+              VALUES (CAST((${pageIdSql}) AS TEXT), ?, ?, ?, (SELECT org_id FROM artifact_pages WHERE id = CAST((${pageIdSql}) AS INTEGER)))`)
+    .bind(pageIdParam, title, description, body, pageIdParam);
 
 async function textPayload(kind: ArtifactTextKind, content: string, summary: string): Promise<VersionPayload> {
   checkTextContent(content);

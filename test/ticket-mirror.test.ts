@@ -61,7 +61,7 @@ interface T { id: number; title: string; body: string; status: string; priority:
 const tickets = () => all<T>(env.DB, `SELECT * FROM tickets ORDER BY id`);
 const links = () => all<{ ticket_id: number; url: string; kind: string; label: string; locked: number; created_by: string }>(env.DB, `SELECT * FROM ticket_links ORDER BY id`);
 const events = () => all<{ ticket_id: number; actor: string; from_status: string | null; to_status: string }>(env.DB, `SELECT * FROM ticket_events ORDER BY id`);
-const assignees = () => all<{ ticket_id: number; login: string }>(env.DB, `SELECT * FROM ticket_assignees ORDER BY login`);
+const assignees = () => all<{ ticket_id: number; login: string }>(env.DB, `SELECT ticket_id, login FROM ticket_assignees ORDER BY login`);
 const counts = async () => ({ tickets: (await tickets()).length, links: (await links()).length, events: (await events()).length, assignees: (await assignees()).length });
 
 describe("ticketFromIssue — the pure mapping", () => {

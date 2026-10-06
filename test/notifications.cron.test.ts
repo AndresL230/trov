@@ -20,7 +20,7 @@ import type { Env } from "../src/env";
 
 const FRI_8_ET = new Date("2026-09-11T12:00:00.000Z");
 const MON_8_ET = new Date("2026-09-14T12:00:00.000Z");
-const SETTINGS: NotificationSettingsRow = { id: 1, send_hour: 8, timezone: "America/New_York", from_address: "Canopy <canopy@mail.example>" };
+const SETTINGS: NotificationSettingsRow = { org_id: "org_saplinglearn", send_hour: 8, timezone: "America/New_York", from_address: "Canopy <canopy@mail.example>" };
 
 const outbox = () => all<NotificationOutboxRow>(env.DB, `SELECT * FROM notification_outbox ORDER BY idempotency_key`);
 const bodies = () => all<{ idempotency_key: string; html: string; text: string }>(env.DB, `SELECT * FROM notification_outbox_bodies`);
@@ -87,7 +87,7 @@ describe("scheduled() dispatch (local mode)", () => {
   it("honours an admin-edited send_hour", async () => {
     await user("AndresL230", "andres@example.com");
     await pendingDecision();
-    await run(env.DB, `UPDATE notification_settings SET send_hour = 11 WHERE id = 1`);
+    await run(env.DB, `UPDATE notification_settings SET send_hour = 11 WHERE org_id = 'org_saplinglearn'`);
     await worker.scheduled({ cron: DAILY_CRON, scheduledTime: FRI_8_ET.getTime(), noRetry() {} }, localEnv(), ctx);
     expect(await outbox()).toHaveLength(0);
     await worker.scheduled({ cron: DAILY_CRON, scheduledTime: new Date("2026-09-11T15:00:00.000Z").getTime(), noRetry() {} }, localEnv(), ctx);

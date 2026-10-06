@@ -48,7 +48,7 @@ describe("registered MCP update_plan tool", () => {
     expect(body.version).toBe(1);
     expect(body.sprints).toHaveLength(1);
 
-    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan?.updated_by).toBe(AUTHOR);
     expect(plan?.narrative).toBe("shipped via MCP");
 
@@ -86,7 +86,7 @@ describe("registered MCP update_plan tool — the narrative cap", () => {
     const narrative = "x".repeat(PLAN_NARRATIVE_MAX);
     const res = await callTool(AUTHOR, "update_plan", { narrative });
     expect(res.isError).toBeFalsy();
-    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan?.narrative).toBe(narrative);
   });
 
@@ -99,7 +99,7 @@ describe("registered MCP update_plan tool — the narrative cap", () => {
     expect(res.text).toContain(`${PLAN_NARRATIVE_MAX + 1} characters`);
     expect(res.text).toContain(`the cap is ${PLAN_NARRATIVE_MAX}`);
 
-    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan?.narrative).toBe("");
     expect(plan?.current_version).toBe(0);
     expect(await all<PlanVersionRow>(env.DB, `SELECT * FROM plan_versions`)).toHaveLength(0);
@@ -135,7 +135,7 @@ describe("update_plan is admin-only — non-admin principals don't even get the 
     expect(res.text.toLowerCase()).toContain("not found");
 
     // Nothing was written — the seeded plan row is untouched.
-    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan?.narrative).not.toBe("should not land");
   });
 });

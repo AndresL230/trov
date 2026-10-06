@@ -16,6 +16,7 @@ import { renderSections, buildMessage, deliverRow } from "./run";
 import { deliveryFor } from "./resend";
 import { unsubscribeUrl } from "./unsubscribe";
 import { sampleSections } from "./sample";
+import { LEGACY_ORG_ID } from "../legacy-org";
 
 export const notificationsApp = new Hono<AppEnv>();
 
@@ -87,7 +88,7 @@ notificationsApp.put("/prefs", async (c) => {
   if (body.unsubscribed !== undefined) await run(c.env.DB, `UPDATE persons SET email_unsubscribed = ? WHERE handle = ?`, body.unsubscribed ? 1 : 0, login);
   for (const w of writes) {
     if (w.cadence === null) await run(c.env.DB, `DELETE FROM notification_prefs WHERE user_id = ? AND kind = ?`, login, w.kind);
-    else await run(c.env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, kind) DO UPDATE SET cadence = excluded.cadence, updated_at = excluded.updated_at`, login, w.kind, w.cadence, now);
+    else await run(c.env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(org_id, user_id, kind) DO UPDATE SET cadence = excluded.cadence, updated_at = excluded.updated_at`, login, w.kind, w.cadence, now);
   }
   return c.json(await prefsView(c.env.DB, login));
 });
@@ -135,7 +136,7 @@ notificationsApp.put("/policy", async (c) => {
   await run(
     c.env.DB,
     `INSERT INTO notification_policy (kind, default_cadence, enabled, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(kind) DO UPDATE SET default_cadence = excluded.default_cadence, enabled = excluded.enabled, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
+     ON CONFLICT(org_id, kind) DO UPDATE SET default_cadence = excluded.default_cadence, enabled = excluded.enabled, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
     kindId,
     default_cadence ?? existing?.default_cadence ?? kind.defaultCadence,
     enabled === undefined ? (existing?.enabled ?? 1) : enabled ? 1 : 0,
@@ -165,11 +166,12 @@ notificationsApp.put("/settings", async (c) => {
   const parsed = SettingsWrite.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   const cur = await loadSettings(c.env.DB);
-  const next: NotificationSettingsRow = { ...cur, ...parsed.data, id: 1 };
+  const next: NotificationSettingsRow = { ...cur, ...parsed.data, org_id: LEGACY_ORG_ID };
   await run(
     c.env.DB,
-    `INSERT INTO notification_settings (id, send_hour, timezone, from_address) VALUES (1, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET send_hour = excluded.send_hour, timezone = excluded.timezone, from_address = excluded.from_address`,
+    `INSERT INTO notification_settings (org_id, send_hour, timezone, from_address) VALUES (?, ?, ?, ?)
+     ON CONFLICT(org_id) DO UPDATE SET send_hour = excluded.send_hour, timezone = excluded.timezone, from_address = excluded.from_address`,
+    LEGACY_ORG_ID,
     next.send_hour,
     next.timezone,
     next.from_address

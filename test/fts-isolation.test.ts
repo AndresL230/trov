@@ -39,7 +39,7 @@ describe("FTS5 migration 0008 — tables, triggers, harness isolation", () => {
     await run(env.DB, `INSERT INTO feed (author, summary, body, artifacts, created_at) VALUES ('tester', 'iso feed', 'searchable feed body', NULL, ?)`, now);
     await run(env.DB, `INSERT INTO adrs (title, context, decision, rationale, status, confidence, created_at, created_by) VALUES ('Iso ADR', 'ctx', 'dec', 'why', 'draft', 'high', ?, 'tester')`, now);
     await run(env.DB, `INSERT INTO sprints (title, description, target_date, status, created_at, created_by) VALUES ('Iso Sprint', 'd', '2026-08-01', 'upcoming', ?, 'tester')`, now);
-    await run(env.DB, `UPDATE plan SET narrative = 'iso narrative' WHERE id = 1`);
+    await run(env.DB, `UPDATE plan SET narrative = 'iso narrative' WHERE org_id = 'org_saplinglearn'`);
 
     expect(await ftsCounts()).toEqual({ docs: 1, feed: 1, adrs: 1, roadmap: 2 });
   });
@@ -50,7 +50,7 @@ describe("FTS5 migration 0008 — tables, triggers, harness isolation", () => {
     await run(env.DB, `INSERT INTO feed (author, summary, body, artifacts, created_at) VALUES ('tester', 'iso feed 2', 'body', NULL, ?)`, now);
     await run(env.DB, `INSERT INTO adrs (title, context, decision, rationale, status, confidence, created_at, created_by) VALUES ('Iso ADR 2', 'c', 'd', 'r', 'draft', 'high', ?, 'tester')`, now);
     await run(env.DB, `INSERT INTO sprints (title, description, target_date, status, created_at, created_by) VALUES ('Iso Sprint 2', 'd', '2026-08-01', 'upcoming', ?, 'tester')`, now);
-    await run(env.DB, `UPDATE plan SET narrative = 'iso narrative 2' WHERE id = 1`);
+    await run(env.DB, `UPDATE plan SET narrative = 'iso narrative 2' WHERE org_id = 'org_saplinglearn'`);
     expect(await ftsCounts()).toEqual({ docs: 1, feed: 1, adrs: 1, roadmap: 2 });
 
     // Run the EXACT statement test/apply-migrations.ts runs beforeEach.

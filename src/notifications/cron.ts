@@ -11,12 +11,13 @@ import { runDigest, type RunReport } from "./run";
 import { retryFailed, type RetryReport } from "./retry";
 import { deliveryFor } from "./resend";
 import { unsubscribeUrl } from "./unsubscribe";
+import { LEGACY_ORG_ID } from "../legacy-org";
 
 export const DAILY_CRON = "0 * * * *";     // hourly, every day — gated to Mon–Fri local
 export const WEEKLY_CRON = "0 * * * SUN,MON";  // hourly Sun+Mon UTC — gated to Monday local
 
 export const DEFAULT_SETTINGS: NotificationSettingsRow = {
-  id: 1, send_hour: 8, timezone: "America/New_York", from_address: "Canopy <canopy@canopy.saplinglearn.com>",
+  org_id: LEGACY_ORG_ID, send_hour: 8, timezone: "America/New_York", from_address: "Canopy <canopy@canopy.saplinglearn.com>",
 };
 
 export function dueCadence(cron: string, now: Date, settings: Pick<NotificationSettingsRow, "send_hour" | "timezone">): RunCadence | null {
@@ -28,7 +29,7 @@ export function dueCadence(cron: string, now: Date, settings: Pick<NotificationS
 }
 
 export async function loadSettings(db: DB): Promise<NotificationSettingsRow> {
-  return (await first<NotificationSettingsRow>(db, `SELECT * FROM notification_settings WHERE id = 1`)) ?? DEFAULT_SETTINGS;
+  return (await first<NotificationSettingsRow>(db, `SELECT * FROM notification_settings WHERE org_id = ?`, LEGACY_ORG_ID)) ?? DEFAULT_SETTINGS;
 }
 
 /**

@@ -265,7 +265,7 @@ export interface IdentityTaskRow {
 
 // The plan singleton (0012).
 export interface PlanRow {
-  id: number;
+  org_id: string;
   narrative: string;
   current_version: number;
   updated_at: string | null;
@@ -294,7 +294,7 @@ export interface NotificationPolicyRow {
 
 // The org-level schedule singleton (id = 1).
 export interface NotificationSettingsRow {
-  id: 1;
+  org_id: string;
   send_hour: number;
   timezone: string;
   from_address: string;
