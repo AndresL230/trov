@@ -11,15 +11,15 @@ import {
 import type { TicketRow } from "@shared/rows";
 import { seedPerson } from "./helpers/persons";
 
-import { systemCtx, tenantCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx, tenantCtx } from "./helpers/tenant";
 // Phase 1: the SCOPE PRIMITIVE, unit level. An agent writes only inside its
 // principal's own lane — the bearer must already be an assignee of the ticket.
 // The MCP-level pass over the same rule is test/mcp.tickets.writes.test.ts; this
 // file proves the rule itself, including the property that matters most: a
 // REFUSAL WRITES NOTHING.
 //
-// Only "admin-user" is ever given an org-admin context (§7.2), so andres/beatrix are
-// plain principals and admin-user is the D6 exception's subject.
+// The D6 exception reads the ORG role off the context (§5.2): `admin-user` is seeded as an org admin
+// (test/helpers/persons.ts), andres/beatrix are plain members — and a system context is never an admin.
 
 const ENV = env as unknown as Env;
 const ISSUE_214 = "https://github.com/SaplingLearn/sapling/issues/214";

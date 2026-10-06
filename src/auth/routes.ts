@@ -4,22 +4,22 @@ import { z } from "zod";
 import { PERSON_COLORS } from "@shared/rows";
 import { avatarSrc } from "@shared/people";
 import type { AppEnv } from "./principal";
-import { isAdmin, resolveSessionPrincipal } from "./principal";
+import { resolveSessionPrincipal } from "./principal";
 import { pkce, randomToken, hmacSeal, hmacUnseal } from "./crypto";
-import { buildAuthorizeUrl, exchangeCode, getUser, getPrimaryEmail, isActiveOrgMember, SAPLING_ORG } from "./github";
+import { buildAuthorizeUrl, exchangeCode, getUser, getPrimaryEmail } from "./github";
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode, verifyGoogleIdToken } from "./google";
 import { createSession, setSessionCookie, readSessionCookie, deleteSession, clearSessionCookie } from "./session";
 import { mintToken, listTokens, revokeToken } from "./tokens";
 import { getPerson, listIdentities, findIdentity, handleAvailable, createPerson, HandleTakenError, linkIdentity, unlinkIdentity, updateProfile, renamePerson, soleTitle } from "./persons";
 import { run } from "../data/platform-sql";
-import { completeSignIn, linkSignIn, sealOnboard, openOnboard, ONBOARD_COOKIE, ONBOARD_TTL_S, type ProviderProfile, type ForkResult } from "./onboard";
-import { findLiveInvite, acceptInvite } from "./invites";
+import { completeSignIn, linkSignIn, hasPendingEmailInvite, sealOnboard, openOnboard, ONBOARD_COOKIE, ONBOARD_TTL_S, type ProviderProfile, type ForkResult } from "./onboard";
 import { sendWelcome } from "../notifications/welcome";
 import { takeOAuthPending } from "./oauth-routes";
 import { listGrants, revokeGrant } from "./oauth";
 import { platformContext } from "../data/gate";
-import { resolveSoleTenant } from "../data/context";
-import { joinLegacyOrg, legacySystemTenant } from "../data/legacy";
+import { hasRole, isSuperadmin, resolveSoleTenant } from "../data/context";
+import { consumeLegacyInvite, legacySystemTenant } from "../data/legacy";
+import { listMyOrgs, listMyInvites } from "../orgs/repo";
 
 const OAUTH_TX_COOKIE = "oauth_tx";
 export interface AuthDeps { fetchImpl?: typeof fetch; now?: () => number }
@@ -105,8 +105,8 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     if (!token) return c.json({ error: "exchange_failed" }, 401);
     const gh = await getUser(token, f);
     if (!gh) return c.json({ error: "identity_failed" }, 401);
-    if (!(await isActiveOrgMember(token, f))) return c.redirect("/?denied=1", 302);
-    const profile: ProviderProfile = { provider: "github", subject: gh.login, label: gh.login, email: await getPrimaryEmail(token, f), name: gh.name, avatar_url: gh.avatar_url };
+    // No org gate (§5.1): any GitHub account signs in. `email` is the primary VERIFIED address or null.
+    const profile: ProviderProfile = { provider: "github", subject: gh.login, label: gh.login, email: await getPrimaryEmail(token, f), name: gh.name, avatar_url: gh.avatar_url, uid: gh.id };
     return finish(c, tx.mode, profile, "/?denied=1");
   });
 
@@ -166,7 +166,8 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     }
     const avail = await handleAvailable(c.var.p, parsed.data.handle);
     if (!avail.available) return c.json({ error: avail.reason === "taken" ? "handle_taken" : `handle_${avail.reason}` }, avail.reason === "taken" ? 409 : 400);
-    if (p.invite_email && !(await findLiveInvite(c.var.p, p.invite_email))) return c.json({ error: "invite_revoked" }, 403);
+    // A Google account got here on a pending invite (`invite_email`); it must still be pending now.
+    if (p.invite_email && !(await hasPendingEmailInvite(c.var.p, p.invite_email))) return c.json({ error: "invite_revoked" }, 403);
     try {
       await createPerson(c.var.p, { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, avatar_source: p.provider, email: p.email });
     } catch (e) {
@@ -174,7 +175,8 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
       throw e;
     }
     try {
-      await linkIdentity(c.var.p, { provider: p.provider, subject: p.subject, label: p.label, person: parsed.data.handle, linkedBy: parsed.data.handle });
+      // `p.email` is provider-verified (completeSignIn's contract) — recorded on the identity (Q1).
+      await linkIdentity(c.var.p, { provider: p.provider, subject: p.subject, label: p.label, person: parsed.data.handle, linkedBy: parsed.data.handle, verifiedEmail: p.email, providerUid: p.uid });
     } catch (e) {
       // The findIdentity pre-check above closes the common replay window, but a second
       // request racing between that check and this insert can still collide on the
@@ -183,10 +185,11 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
       if (/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) return c.json({ error: "already_onboarded" }, 409);
       throw e;
     }
-    // MT: until org invites exist (Phase 4), signing up IS joining the legacy org — after the identity is
-    // linked, so the compensating DELETE above never meets a membership row.
-    await joinLegacyOrg(c.var.p, parsed.data.handle);
-    if (p.invite_email) await acceptInvite(c.var.p, p.invite_email, parsed.data.handle);
+    // A new person is in NO org (§5.1): they accept an invite (`/api/invites`) or create one (`/api/orgs`).
+    // MT: the one exception — a live LEGACY invite for their verified email is consumed as a membership of
+    // org #1, as it always was (src/data/legacy.ts). After the identity is linked, so the compensating
+    // DELETE above never meets a membership row.
+    const joinedLegacy = await consumeLegacyInvite(c.var.p, parsed.data.handle, p.email);
     deleteCookie(c, ONBOARD_COOKIE, { path: "/" });
     const { id } = await createSession(c.var.p, parsed.data.handle);
     await setSessionCookie(c, id, c.env.COOKIE_SECRET);
@@ -194,10 +197,12 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     // is a courtesy, not part of the write: `sendWelcome` never throws, and its
     // outcome is deliberately ignored here so a mailer problem can never cost
     // somebody their sign-up. No address on file (GitHub returned none) = no mail.
+    // Mail is sent AS an org (its settings, its outbox), and a new person has none — so the welcome
+    // goes only to someone who just joined org #1 through a legacy invite.
     const email = p.email;
-    if (email) {
+    if (email && joinedLegacy) {
       const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-      // MT: onboarding has no tenant yet — the welcome goes out under the legacy org's mail settings.
+      // MT: under org #1's mail settings; a platform-level welcome for everyone else is Phase 5b's (§8.4).
       await sendWelcome(c.env, legacySystemTenant(c.env, "system"), {
         email, name: parsed.data.name ?? p.name, handle: parsed.data.handle, origin, fetchImpl: deps.fetchImpl,
       });
@@ -215,7 +220,18 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     const identities = (await listIdentities(c.var.p, handle)).map((i) => ({ provider: i.provider, label: i.label, linked_at: i.linked_at }));
     // `avatar_url` goes out RESOLVED: an uploaded avatar (0036) outranks the provider's. `role` is the
     // title held in the person's only org (Q9: it lives on the membership) — null with none or several.
-    return c.json({ handle, name: row?.name ?? null, avatar_url: row ? avatarSrc(row) : null, role: row ? await soleTitle(c.var.p, handle) : null, color: row?.color ?? "stone", identities, org: SAPLING_ORG, admin: isAdmin(c.env, handle) });
+    // §5.1: `orgs` (each with the caller's role), `superadmin` and `pending_invites` are what the SPA routes
+    // on — an org picker when there is not exactly one. `org` and `admin` are kept for the current SPA and
+    // speak for the SOLE org the old paths resolve (`resolveSoleTenant`): its name, and whether the caller
+    // is its admin or owner — "" / false with no org, several, or a suspended one.
+    const [orgs, invites, superadmin, sole] = await Promise.all([
+      listMyOrgs(c.var.p, handle), listMyInvites(c.var.p, handle), isSuperadmin(c.var.p, handle), resolveSoleTenant(c.env, handle, "session"),
+    ]);
+    return c.json({
+      handle, name: row?.name ?? null, avatar_url: row ? avatarSrc(row) : null, role: row ? await soleTitle(c.var.p, handle) : null, color: row?.color ?? "stone", identities,
+      org: sole.ok ? orgs[0]?.name ?? "" : "", admin: sole.ok && hasRole(sole.ctx, "admin"),
+      orgs, superadmin, pending_invites: invites.length,
+    });
   });
   const ProfileWrite = z.object({ name: z.string().trim().max(120).nullable().optional(), color: z.enum(PERSON_COLORS).optional() });
   authApp.put("/me", async (c) => {
@@ -231,10 +247,9 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     if (!parsed.success) return c.json({ error: "invalid payload" }, 400);
     const oldHandle = c.get("principal").handle;
     const newHandle = parsed.data.handle;
-    // Case-insensitive "same" first: a no-op rename (including an admin re-submitting
-    // their own handle in a different case) is never an admin-allowlist question.
+    // Roles live on the membership and on `platform_admins`, both of which a rename carries
+    // (HANDLE_COLUMNS) — there is no allowlist of handles left for a rename to fall out of.
     if (oldHandle.toLowerCase() === newHandle.toLowerCase()) return c.json({ error: "handle_same" }, 400);
-    if (isAdmin(c.env, oldHandle) && !isAdmin(c.env, newHandle)) return c.json({ error: "admin_handle_not_allowlisted" }, 403);
     const r = await renamePerson(c.var.p, oldHandle, newHandle);
     if (!r.ok) {
       if (r.reason === "taken") return c.json({ error: "handle_taken" }, 409);

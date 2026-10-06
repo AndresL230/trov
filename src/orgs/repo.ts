@@ -207,7 +207,7 @@ export async function respondToInvite(p: PlatformContext, handle: string, id: nu
 
 // ── inside one org: me, settings ─────────────────────────────────────────────
 
-export async function orgMe(p: PlatformContext, ctx: TenantContext): Promise<OrgMeResponse | null> {
+export async function orgMe(p: PlatformContext, ctx: TenantContext): Promise<Omit<OrgMeResponse, "repos"> | null> {
   const row = await first<{ slug: string; name: string; role: OrgRole; title: string | null; responsibilities: string | null }>(p,
     `SELECT o.slug, o.name, m.role, m.title, m.responsibilities FROM orgs o JOIN memberships m ON m.org_id = o.id
       WHERE o.id = ? AND m.user_id = ? COLLATE NOCASE`, ctx.orgId, ctx.userId);

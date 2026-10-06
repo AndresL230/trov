@@ -60,7 +60,7 @@ describe("POST /api/orgs", () => {
 
     // …and it is a working tenant: the creator reaches it, a stranger gets 404.
     const me = await call<OrgMeResponse>("GET", "/api/o/birch/me", cookie);
-    expect(me.json).toEqual({ org: { slug: "birch", name: "Birch Labs" }, role: "owner", title: null, responsibilities: null });
+    expect(me.json).toEqual({ org: { slug: "birch", name: "Birch Labs" }, role: "owner", title: null, responsibilities: null, repos: { primary: null, all: [] } });
     expect((await call("GET", "/api/o/birch/me", await loner("stranger"))).status).toBe(404);
   });
 
@@ -191,7 +191,10 @@ describe("/api/o/:slug — settings, members, invites", () => {
   it("/me returns the caller's role, title and responsibilities in THIS org", async () => {
     const { member } = await acme();
     await exec(`UPDATE memberships SET title = 'Designer', responsibilities = 'The UI' WHERE org_id = ? AND user_id = 'mia'`, ORG_B);
-    expect((await call("GET", "/api/o/acme/me", member)).json).toEqual({ org: { slug: "acme", name: "Acme" }, role: "member", title: "Designer", responsibilities: "The UI" });
+    expect((await call("GET", "/api/o/acme/me", member)).json).toEqual({ org: { slug: "acme", name: "Acme" }, role: "member", title: "Designer", responsibilities: "The UI", repos: { primary: null, all: [] } });
+    // §9: the org's repositories — primary first — are what the SPA builds its GitHub URLs from.
+    await exec(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_a1', ?, 'acme/site', 0, '2026-10-01T00:00:00Z', 'seed'), ('hook_a2', ?, 'acme/widgets', 1, '2026-10-02T00:00:00Z', 'seed')`, ORG_B, ORG_B);
+    expect((await call<OrgMeResponse>("GET", "/api/o/acme/me", member)).json.repos).toEqual({ primary: "acme/widgets", all: ["acme/widgets", "acme/site"] });
   });
 
   it("settings: any member reads; only admin+ renames; the change is audited", async () => {

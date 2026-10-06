@@ -10,6 +10,8 @@ import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../auth/principal";
 import { RoleError, hasRole } from "../data/context";
+import { listRepoRows } from "../integrations/settings";
+import type { OrgMeResponse } from "@shared/orgs";
 import {
   OrgError, ORG_ERROR_STATUS, myOrgs, listMyInvites, createOrgForSelf, respondToInvite,
   orgMe, getOrgSettings, updateOrgSettings, listMembers, updateMember, removeMember,
@@ -77,8 +79,10 @@ export const orgTenantApp = new Hono<AppEnv>();
 for (const path of ["/me", "/settings", "/members", "/members/*", "/invites", "/invites/*"]) orgTenantApp.use(path, cookieOnly);
 
 orgTenantApp.get("/me", async (c) => {
-  const row = await orgMe(c.var.p, c.var.ctx);
-  return row ? c.json(row) : c.json({ error: "not_found" }, 404);
+  const [row, repos] = await Promise.all([orgMe(c.var.p, c.var.ctx), listRepoRows(c.var.ctx)]);
+  if (!row) return c.json({ error: "not_found" }, 404);
+  const names = repos.map((r) => r.repo_full_name); // primary first (listRepoRows' order)
+  return c.json({ ...row, repos: { primary: repos.find((r) => r.is_primary === 1)?.repo_full_name ?? null, all: names } } satisfies OrgMeResponse);
 });
 
 orgTenantApp.get("/settings", async (c) => c.json({ org: await getOrgSettings(c.var.p, c.var.ctx), can_edit: hasRole(c.var.ctx, "admin") }));

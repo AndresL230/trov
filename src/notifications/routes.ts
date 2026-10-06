@@ -1,12 +1,14 @@
-// Cookie-gated notification routes (canopy-email.md §8). Mounted under
-// /api/notifications by the Hono app, so every route here already passed
-// sessionGate; admin routes additionally check isAdmin. NEVER MCP tools.
-import { Hono } from "hono";
+// Cookie-gated notification routes (canopy-email.md §8). A tenant sub-app: mounted at
+// `/api/o/:slug/notifications` and, as the cut-over alias, `/api/notifications` (src/routes.ts), so
+// every route here already passed sessionGate and a tenant gate; admin routes additionally
+// check the ORG role (admin or owner of `c.var.ctx`'s org — §5.2). NEVER MCP tools.
+import { Hono, type MiddlewareHandler } from "hono";
 import { z } from "zod";
 import { Cadence, RunCadence, type PrefsKindView, type PrefsView, type PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationPolicyRow, NotificationSettingsRow, PersonRow } from "@shared/rows";
-import { type AppEnv, isAdmin } from "../auth/principal";
-import { findPersonByEmail } from "../auth/persons";
+import type { AppEnv } from "../auth/principal";
+import { findPersonByEmail, memberHandle } from "../auth/persons";
+import { hasRole } from "../data/context";
 import { type TenantContext, all, first, run, nowIso } from "../data/sql";
 import { type PlatformContext, first as platformFirst, run as platformRun } from "../data/platform-sql";
 import { REGISTRY, getKind } from "./registry";
@@ -97,12 +99,8 @@ notificationsApp.put("/prefs", async (c) => {
 
 // ── admin: policy / settings / outbox / teammate address ─────────────────────
 
-const adminOnly = notificationsApp.use("/policy", async (c, next) => (isAdmin(c.env, c.get("principal").handle) ? next() : c.json({ error: "admin only" }, 403)));
-adminOnly.use("/settings", async (c, next) => (isAdmin(c.env, c.get("principal").handle) ? next() : c.json({ error: "admin only" }, 403)));
-adminOnly.use("/outbox", async (c, next) => (isAdmin(c.env, c.get("principal").handle) ? next() : c.json({ error: "admin only" }, 403)));
-adminOnly.use("/persons/*", async (c, next) => (isAdmin(c.env, c.get("principal").handle) ? next() : c.json({ error: "admin only" }, 403)));
-adminOnly.use("/preview", async (c, next) => (isAdmin(c.env, c.get("principal").handle) ? next() : c.json({ error: "admin only" }, 403)));
-adminOnly.use("/test-send", async (c, next) => (isAdmin(c.env, c.get("principal").handle) ? next() : c.json({ error: "admin only" }, 403)));
+const adminOnly: MiddlewareHandler<AppEnv> = async (c, next) => (hasRole(c.var.ctx, "admin") ? next() : c.json({ error: "admin only" }, 403));
+for (const path of ["/policy", "/settings", "/outbox", "/persons/*", "/preview", "/test-send"]) notificationsApp.use(path, adminOnly);
 
 
 async function policyView(ctx: TenantContext): Promise<{ kinds: PolicyKindView[] }> {
@@ -192,10 +190,17 @@ notificationsApp.get("/outbox", async (c) => {
 
 const PersonEmailWrite = z.object({ email: Email });
 
+// A person is ONE row across every org, and `persons.email` is where EVERY org's digest for them goes —
+// so an org admin may set it only for a MEMBER of this org (anyone else is the same 404 as an unknown
+// handle) who belongs to NO other org. Once a person is in two orgs the address is theirs alone to set
+// (`PUT /prefs`): otherwise one org's admin could redirect another org's mail. 409 `email_not_yours_to_set`.
 notificationsApp.put("/persons/:handle", async (c) => {
   const parsed = PersonEmailWrite.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
-  const handle = c.req.param("handle");
+  const handle = await memberHandle(c.var.ctx, c.req.param("handle"));
+  if (!handle) return c.json({ error: "no such person" }, 404);
+  const elsewhere = await platformFirst<{ n: number }>(c.var.p, `SELECT COUNT(*) AS n FROM memberships WHERE user_id = ? COLLATE NOCASE AND org_id <> ?`, handle, c.var.ctx.orgId);
+  if ((elsewhere?.n ?? 0) > 0) return c.json({ error: "email_not_yours_to_set" }, 409);
   // Same email-matcher guard as self-service PUT /prefs: a different handle already
   // holding this address is refused, never silently reassigned.
   if (parsed.data.email) {

@@ -70,11 +70,17 @@ export interface MyOrgsResponse {
 
 export interface OrgSummary { slug: string; name: string }
 
+/** The org's connected repositories as `owner/repo` (§9): `primary` is what an issue `#214`, the Repo
+ *  dashboard and a handoff's default repo resolve against — null until one is connected; `all` lists
+ *  every one, primary first. The SPA builds its GitHub URLs from these, never from a constant. */
+export interface OrgRepos { primary: string | null; all: string[] }
+
 export interface OrgMeResponse {
   org: OrgSummary;
   role: OrgRole;
   title: string | null;
   responsibilities: string | null;
+  repos: OrgRepos;
 }
 
 export interface OrgSettings { slug: string; name: string; created_at: string; created_by: string }

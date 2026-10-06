@@ -1,3 +1,9 @@
+// The legacy `invites` table (0023) — GLOBAL, keyed by email; before multitenancy it was org #1's invite list.
+// Since Phase 4 an invite is an `org_invites` row: the old `/invites…` routes go through
+// src/orgs/legacy-invites.ts, and sign-in reads this table through src/data/legacy.ts (`liveLegacyInvite`).
+// What the Worker still calls here is `recordInviteEmail` (the delivery outcome on org #1's sidecar row);
+// the other functions are the table's original repository, kept for the rows already in it and the tests
+// that build them. Phase 7 moves the sidecar onto `org_invites` and deletes this module with the table.
 import { type PlatformContext, first, all, run, nowIso } from "../data/platform-sql";
 import type { InviteRow } from "@shared/rows";
 import { findPersonByEmail } from "./persons";

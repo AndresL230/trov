@@ -10,6 +10,7 @@ import { deliveryFor } from "./resend";
 import { loadSettings } from "./cron";
 import { getPerson } from "../auth/persons";
 import { recordInviteEmail } from "../auth/invites";
+import { isLegacyOrg } from "../data/legacy";
 
 /**
  * The invite lands on Trov's own sign-in screen, not Google's account chooser:
@@ -73,6 +74,8 @@ export async function sendInvite(env: Env, ctx: TenantContext, p: PlatformContex
   } catch (e) {
     result = { status: "failed", id: null, error: e instanceof Error ? e.message : String(e) };
   }
-  await recordInviteEmail(p, o.email, { id: result.id, error: result.error });
+  // MT: the outcome is recorded on the legacy `invites` sidecar, which is org #1's alone (src/orgs/legacy-invites.ts)
+  // — another org's send must never stamp it. Phase 7 moves these columns onto `org_invites`.
+  if (isLegacyOrg(ctx)) await recordInviteEmail(p, o.email, { id: result.id, error: result.error });
   return result;
 }

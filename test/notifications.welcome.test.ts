@@ -74,6 +74,9 @@ describe("sendWelcome", () => {
 
 describe("POST /auth/onboard → welcome", () => {
   it("sends it once the person exists, to the address the provider gave", async () => {
+    // Phase 4: mail goes out AS an org, so the welcome is for someone who joins one at onboarding —
+    // a legacy (SaplingLearn) invite for their verified address.
+    await env.DB.prepare(`INSERT INTO invites (email, name, invited_by, invited_at) VALUES ('priya.n@gmail.com', NULL, 'AndresL230', '2026-10-01T00:00:00Z')`).run();
     expect((await post("/auth/onboard", await cookie(), { handle: "priya", name: "Priya N", color: "plum" })).status).toBe(200);
     expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'priya'`))!.email).toBe("priya.n@gmail.com");
 
@@ -90,5 +93,12 @@ describe("POST /auth/onboard → welcome", () => {
     expect((await post("/auth/onboard", await cookie(noEmail), { handle: "priya", name: null, color: "plum" })).status).toBe(200);
     expect(await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'priya'`)).toBeTruthy();
     expect((await bodies()).length).toBe(0);
+  });
+
+  it("sends nothing to a new person who joined no org (no mail goes out under an org they are not in)", async () => {
+    expect((await post("/auth/onboard", await cookie(), { handle: "priya", name: "Priya N", color: "plum" })).status).toBe(200);
+    expect(await first(env.DB, `SELECT 1 AS x FROM memberships WHERE user_id = 'priya'`)).toBeNull();
+    expect((await bodies()).length).toBe(0);
+    expect(await first(env.DB, `SELECT 1 AS x FROM notification_outbox`)).toBeNull();
   });
 });

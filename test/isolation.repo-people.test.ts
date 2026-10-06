@@ -247,7 +247,6 @@ describe("people are an org's members", () => {
     ]);
   }
   const byHandle = (rows: PersonForAgents[], handle: string) => rows.find((r) => r.handle === handle);
-  const isAdmin = (h: string) => h === "AndresL230";
 
   it("the directory and the agents' list hold the org's members only, with the title held in THAT org", async () => {
     await seedPeople();
@@ -271,14 +270,15 @@ describe("people are an org's members", () => {
 
   it("a person card is not_found from an org they are not in, and a profile write lands on that org's membership", async () => {
     await seedPeople();
-    await expect(getPersonProfile(A(), "acme-only", "AndresL230", isAdmin)).rejects.toMatchObject({ code: "not_found" });
-    await expect(getPersonProfile(A(), "no-such-person", "AndresL230", isAdmin)).rejects.toMatchObject({ code: "not_found" });
-    await expect(writePersonProfile(A(), "acme-only", "AndresL230", isAdmin, { role: "Intruder" })).rejects.toBeInstanceOf(PeopleError);
-    expect((await getPersonProfile(B(), "acme-only", "AndresL230", isAdmin)).role).toBe("Widget engineer");
+    await expect(getPersonProfile(A(), "acme-only", "AndresL230")).rejects.toMatchObject({ code: "not_found" });
+    await expect(getPersonProfile(A(), "no-such-person", "AndresL230")).rejects.toMatchObject({ code: "not_found" });
+    await expect(writePersonProfile(A(), "acme-only", "AndresL230", { role: "Intruder" })).rejects.toBeInstanceOf(PeopleError);
+    expect((await getPersonProfile(B(), "acme-only", "AndresL230")).role).toBe("Widget engineer");
 
-    await writePersonProfile(B(), "meilin", "AndresL230", isAdmin, { role: "Board member" });
-    expect((await getPersonProfile(B(), "meilin", "AndresL230", isAdmin)).role).toBe("Board member");
-    expect((await getPersonProfile(A(), "meilin", "AndresL230", isAdmin)).role).toBe("Product manager");
+    // The write takes an ADMIN of that org (the gate reads the context's role — §5.2), so a real membership.
+    await writePersonProfile(await tenantCtx("AndresL230", "admin", { orgId: ORG_B }), "meilin", "AndresL230", { role: "Board member" });
+    expect((await getPersonProfile(B(), "meilin", "AndresL230")).role).toBe("Board member");
+    expect((await getPersonProfile(A(), "meilin", "AndresL230")).role).toBe("Product manager");
   });
 
   it("requireMember: a real person from another org is refused exactly like a handle nobody has", async () => {

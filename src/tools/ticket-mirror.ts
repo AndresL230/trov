@@ -216,10 +216,10 @@ async function forceStatus(ctx: TenantContext, id: number, from: TicketStatus, t
 }
 
 /** Resolve GitHub logins to person handles; an unmapped login is dropped. */
-async function handlesFor(p: PlatformContext, logins: string[]): Promise<string[]> {
+async function handlesFor(ctx: TenantContext, logins: string[]): Promise<string[]> {
   const out: string[] = [];
   for (const login of logins) {
-    const person = await resolvePersonForLogin(p, login);
+    const person = await resolvePersonForLogin(ctx, login);
     if (person && !out.includes(person.handle)) out.push(person.handle);
   }
   return out;
@@ -237,8 +237,8 @@ const sourceLink = (m: IssueMirror) => parseTicketLink(m.htmlUrl);
  * never re-add someone a person has since unassigned in Trov.
  */
 async function createMirrored(ctx: TenantContext, p: PlatformContext, m: IssueMirror): Promise<void> {
-  const requester = (await resolvePersonForLogin(p, m.authorLogin))?.handle ?? MIRROR_ACTOR;
-  const assignees = await handlesFor(p, m.assigneeLogins);
+  const requester = (await resolvePersonForLogin(ctx, m.authorLogin))?.handle ?? MIRROR_ACTOR;
+  const assignees = await handlesFor(ctx, m.assigneeLogins);
   const status: TicketStatus = m.final ?? (assignees.length > 0 ? "in_progress" : "submitted");
   const link = sourceLink(m);
   const now = nowIso();

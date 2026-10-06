@@ -9,3 +9,8 @@ web/dist/
 
 # multitenancy migration checks: local production exports (scripts/mt/verify-migration.mjs) — never commit
 .mt/
+
+# copy-data.sh: the read-only pointer at Canopy and its production dump — never commit
+wrangler.old.toml
+*-dump.sql
+*-dump.counts.json

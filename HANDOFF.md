@@ -9,10 +9,10 @@ Phases 2 and 3 are built and tested on this branch; nothing is merged. Every rep
 allowlist: `docs/architecture/data-layer.md`). No transitional shim is left — `legacyDb` and friends are
 deleted. The suite is green: `npm test` + `npm run typecheck`.
 
-**The trap**: the app still behaves as ONE org at its entry points. Session routes resolve "the caller's
-only org" (`resolveSoleTenant` / `soleTenantGate`), and the webhook, the crons, the backfill and onboarding
-act on SaplingLearn through `src/data/legacy.ts` (`legacySystemTenant`, `joinLegacyOrg` — every caller is
-marked `// MT:`, and the static test lists them). Every tenant `org_id` column also still has its transitional
+**The trap**: the non-HTTP entry points still behave as ONE org. The webhook, the crons and the backfill act on
+SaplingLearn through `src/data/legacy.ts` (`legacySystemTenant` — every caller is marked `// MT:`, and the
+static test lists them); the SPA still calls the old paths, which resolve "the caller's only org"
+(`soleTenantGate`) and answer 409 `org_required` to a person in none or several. Every tenant `org_id` column also still has its transitional
 `DEFAULT 'org_saplinglearn'` (spec §3.2): no statement relies on it any more, and the Phase 7 cleanup
 migration (a number after `0043_platform_orgs.sql`) removes it. Tickets and handoffs are still addressed by
 their global `id`, not the per-org `number`.
@@ -80,6 +80,33 @@ their global `id`, not the per-org `number`.
    used by `src/tools/tickets.ts` / `sprints.ts` — pass the org's primary repo; (d) capture for NON-primary
    repos needs the repo in the capture keys first; (e) `cf_polled` is still one snapshot row per org — split it
    per environment before Queues make units concurrent.
+- **Phase 4** (spec §5, §6; `docs/architecture/data-layer.md` › Routes and gates): every tenant route is defined
+  once and served at `/api/o/:slug/<suffix>` (`tenantGate`) and at its old path (`soleTenantGate`); org roles
+  replace `isAdmin` / `ADMIN_LOGINS` on every session route; the confirm verbs are cookie-only; sign-in checks
+  no GitHub org and onboarding creates a person with NO membership (a legacy SaplingLearn invite is still
+  consumed as one); `/auth/me` gains `orgs`, `superadmin`, `pending_invites` and keeps `admin` / `org` for the
+  current SPA; `GET /api/o/:slug/me` carries the org's `repos`; the legacy `/invites…` routes are org-scoped;
+  Maintenance › Identity writes `org_login_map`. Migration `0045_identity_provider_uid` (additive: pins a GitHub
+  identity to the account's numeric id). Tests: `test/isolation.http.test.ts` (generated from the route
+  registry), `test/role-gates.http.test.ts`, `test/signin.multitenant.test.ts`.
+
+### Next, in order
+
+1. **Phase 4 leftovers** (each is marked `// MT:` in the code): `isAdmin` / `ADMIN_LOGINS` have ONE reader left,
+   the MCP `update_plan` registration (`src/mcp.ts` → Phase 5a; then delete the function and the var);
+   `POST …/admin/{backfill,poll,poll-usage}` and the Repo dashboard's environment config serve org #1 only until
+   Phase 5b; mail is sent as an org, so a new person in no org gets no welcome (→ §8.4); the invite and
+   welcome copy still says "Sapling" (→ Phase 6); `/raw/a/*` has no `/api/o/:slug` form (→ §8.6). The SPA still
+   calls the old paths and shows `admin_handle_not_allowlisted`, which the Worker no longer returns (→ Phase 6).
+   Before deploy, the owner decides whether to backfill `identities.verified_email` for existing GitHub
+   identities (it is filled at each person's next GitHub sign-in; until then a first Google sign-in with the
+   same address is not auto-linked).
+2. **Phase 5a — MCP** (§7): org-scoped bearer tokens and the OAuth org picker; `resolveBearerTenant` reads the
+   org off the token / grant row instead of the sole membership (then drop the `src/auth/tokens.ts` /
+   `oauth.ts` whole-file entries from the static allowlist).
+3. **Phase 5b — cron, webhooks, pollers** (§8.3, §8.5, §8.7): the rotation dispatcher over (org, environment)
+   jobs, the webhook resolving its org from `org_repos`, the pollers reading credentials through
+   `resolveCredential` — this removes every `legacySystemTenant` caller.
 4. Switch ticket / handoff addressing from the global `id` to the per-org `number` (routes, MCP, the SPA).
 5. Phase 6 (SPA) and Phase 7 (isolation matrix, mutation job, cleanup migration) as in spec §11. Add each
    phase's lines to the top release in `web/src/releases.ts`.

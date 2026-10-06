@@ -137,6 +137,10 @@ export interface IdentityRow {
   person: string;
   linked_at: string;
   linked_by: string;
+  /** The email the provider VERIFIED at this identity's last sign-in (0037) — what invites and the sign-in link match. */
+  verified_email?: string | null;
+  /** The provider account's immutable id where `subject` is not one — GitHub's numeric id (0045); NULL until its next sign-in. */
+  provider_uid?: string | null;
 }
 
 // The Google gate (0023): only an invited, verified address may create a person.

@@ -4,7 +4,7 @@
 // events are still captured. Restore puts it back in the list and lifts both.
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { platformCtx, systemCtx } from "./helpers/tenant";
+import { ensureMember, platformCtx, systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { all, first } from "./helpers/db";
 import { ingestEvent } from "../src/consumer";
@@ -82,6 +82,7 @@ describe("POST /identity-tasks/:login/discard", () => {
   });
 
   it("404 for an unknown login; 409 for a mapped task (and it stays resolved)", async () => {
+    await ensureMember("andres", "admin"); // the map route is org admin+ (§6.3)
     const cookie = await cookieFor("andres");
     await seedPerson("casey");
     const unknown = await post("/identity-tasks/nobody-here/discard", cookie);
@@ -123,6 +124,7 @@ describe("POST /identity-tasks/:login/restore", () => {
   });
 
   it("a restored login can be mapped like any other", async () => {
+    await ensureMember("andres", "admin"); // the map route is org admin+ (§6.3)
     const cookie = await cookieFor("andres");
     await seedPerson("casey");
     await ingestEvent(systemCtx(), platformCtx(), prEvent(1, "rando"), "github-webhook");
@@ -133,6 +135,7 @@ describe("POST /identity-tasks/:login/restore", () => {
   });
 
   it("a restore of a pending task is an idempotent 200; unknown 404; mapped 409", async () => {
+    await ensureMember("andres", "admin"); // the map route is org admin+ (§6.3)
     const cookie = await cookieFor("andres");
     await seedPerson("casey");
     await ingestEvent(systemCtx(), platformCtx(), prEvent(1, "rando"), "github-webhook");

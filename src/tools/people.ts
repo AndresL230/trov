@@ -16,7 +16,8 @@
 // `persons.avatar_sha`, so the provider picture shows again. There is no avatars table:
 // the R2 object's own `httpMetadata.contentType` (the SNIFFED type) is what is served.
 
-import { type TenantContext, all, run, stmt, batch } from "../data/sql";
+import { type TenantContext, all, stmt, batch, nowIso } from "../data/sql";
+import { hasRole } from "../data/context";
 import { type PlatformContext, first as platformFirst, run as platformRun } from "../data/platform-sql";
 import { RESERVED_HANDLES, memberHandle } from "../auth/persons";
 import { sha256Hex } from "./artifacts";
@@ -41,7 +42,7 @@ const sameHandle = (a: string, b: string): boolean => a.toLowerCase() === b.toLo
 
 interface ProfileRow {
   handle: string; name: string | null; color: PersonColor; avatar_url: string | null; avatar_sha: string | null;
-  role: string | null; responsibilities: string | null; created_at: string;
+  role: string | null; responsibilities: string | null; created_at: string; org_role: "owner" | "admin" | "member";
 }
 
 /**
@@ -49,14 +50,13 @@ interface ProfileRow {
  * Maintenance › People's editor). An unknown or RESERVED handle is `not_found` (a system
  * principal is not a person). `responsibilities` travels only to admins — the editor fills
  * from it; no page renders it, and the person themselves does not get it (they cannot edit
- * it). D1 only: the member and their GitHub login in ONE batch.
+ * it). "Admin" is the ORG role (§5.2): `editable` is the caller's (`ctx.role` admin or owner),
+ * `admin` the viewed member's. D1 only: the member and their GitHub login in ONE batch.
  */
-export async function getPersonProfile(
-  ctx: TenantContext, handle: string, viewer: string, isAdmin: (h: string) => boolean,
-): Promise<PersonProfile> {
+export async function getPersonProfile(ctx: TenantContext, handle: string, viewer: string): Promise<PersonProfile> {
   if (isReserved(handle)) throw new PeopleError("not_found", "not found");
   const [p, g] = await batch(ctx, [
-      stmt(ctx, `SELECT p.handle, p.name, p.color, p.avatar_url, p.avatar_sha, m.title AS role, m.responsibilities, p.created_at
+      stmt(ctx, `SELECT p.handle, p.name, p.color, p.avatar_url, p.avatar_sha, m.title AS role, m.responsibilities, p.created_at, m.role AS org_role
                    FROM persons p JOIN memberships m ON m.user_id = p.handle AND m.org_id = ?
                   WHERE p.handle = ? COLLATE NOCASE`, ctx.orgId, handle),
       stmt(ctx, `SELECT subject FROM identities WHERE provider = 'github' AND person = ? COLLATE NOCASE
@@ -66,7 +66,7 @@ export async function getPersonProfile(
   const gh = g.results?.[0] as { subject: string } | undefined;
   if (!person) throw new PeopleError("not_found", "not found");
   const self = sameHandle(person.handle, viewer);
-  const editor = isAdmin(viewer);
+  const editor = hasRole(ctx, "admin");
   return {
     handle: person.handle,
     name: person.name,
@@ -75,7 +75,7 @@ export async function getPersonProfile(
     role: person.role,
     github: gh?.subject ?? null,
     joined: person.created_at,
-    admin: isAdmin(person.handle),
+    admin: person.org_role === "owner" || person.org_role === "admin",
     editable: editor,
     self,
     ...(editor ? { responsibilities: person.responsibilities } : {}),
@@ -93,19 +93,20 @@ function field(v: unknown, name: string, max: number): { set: false } | { set: t
 }
 
 /**
- * `PUT /api/people/:handle` — ADMINS only (role and responsibilities are admin-set);
- * anyone else, the person themselves included, is `forbidden` and nothing is written. Every field is validated BEFORE the one UPDATE,
+ * `PUT /api/people/:handle` — the cut-over alias of `PUT /api/o/:slug/members/:handle` for a member's
+ * TITLE (it travels as `role` here) and responsibilities: the org's admins and owners only (§5.2);
+ * anyone else, the person themselves included, is `forbidden` and nothing is written. It never changes a
+ * member's org role — that is the members route's alone. Every field is validated BEFORE the one UPDATE,
  * so an over-cap value writes nothing (not even the other, valid field). The write lands on the
- * person's MEMBERSHIP of this org, so it says nothing about them anywhere else.
+ * person's MEMBERSHIP of this org, so it says nothing about them anywhere else, and is audited as the
+ * members route audits it (`member.update`: the title, and the FACT that responsibilities changed).
  */
-export async function writePersonProfile(
-  ctx: TenantContext, handle: string, viewer: string, isAdmin: (h: string) => boolean, body: unknown,
-): Promise<PersonProfile> {
+export async function writePersonProfile(ctx: TenantContext, handle: string, viewer: string, body: unknown): Promise<PersonProfile> {
   if (isReserved(handle)) throw new PeopleError("not_found", "not found");
   const member = await memberHandle(ctx, handle);
   if (!member) throw new PeopleError("not_found", "not found");
   const person = { handle: member };
-  if (!isAdmin(viewer)) throw new PeopleError("forbidden", "only an admin may set a person's role and responsibilities");
+  if (!hasRole(ctx, "admin")) throw new PeopleError("forbidden", "only an admin may set a person's role and responsibilities");
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new PeopleError("bad_request", "the body must be a JSON object");
   const b = body as PersonProfileWrite;
   const role = field(b.role, "role", ROLE_MAX);
@@ -114,8 +115,15 @@ export async function writePersonProfile(
   const binds: unknown[] = [];
   if (role.set) { sets.push("title = ?"); binds.push(role.value); }
   if (resp.set) { sets.push("responsibilities = ?"); binds.push(resp.value); }
-  if (sets.length) await run(ctx, `UPDATE memberships SET ${sets.join(", ")} WHERE org_id = ? AND user_id = ?`, ...binds, ctx.orgId, person.handle);
-  return getPersonProfile(ctx, person.handle, viewer, isAdmin);
+  if (sets.length) {
+    const detail = { ...(role.set ? { title: role.value } : {}), ...(resp.set ? { responsibilities: true } : {}) };
+    await batch(ctx, [
+      stmt(ctx, `UPDATE memberships SET ${sets.join(", ")} WHERE org_id = ? AND user_id = ?`, ...binds, ctx.orgId, person.handle),
+      stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, 'member.update', ?, ?, ?)`,
+        ctx.orgId, ctx.userId, person.handle, JSON.stringify(detail), nowIso()),
+    ]);
+  }
+  return getPersonProfile(ctx, person.handle, viewer);
 }
 
 /**

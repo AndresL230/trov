@@ -10,7 +10,7 @@ import {
 } from "../src/data/context";
 import { resolveBearerTenant } from "../src/data/bearer";
 import { tenantGate } from "../src/data/gate";
-import { joinLegacyOrg, legacySystemTenant } from "../src/data/legacy";
+import { consumeLegacyInvite, isLegacyOrg, legacySystemTenant } from "../src/data/legacy";
 import * as sql from "../src/data/sql";
 import * as psql from "../src/data/platform-sql";
 import { cookieFor, seedPerson } from "./helpers/persons";
@@ -186,11 +186,22 @@ describe("the gates", () => {
 });
 
 describe("test + cut-over helpers", () => {
-  it("joinLegacyOrg makes a new person a SaplingLearn member, once", async () => {
+  it("consumeLegacyInvite: only a live legacy invite for the verified email makes a new person a SaplingLearn member, once", async () => {
     await seedPerson("newbie", { member: false });
-    await joinLegacyOrg(platformCtx(), "newbie");
-    await joinLegacyOrg(platformCtx(), "newbie");
+    expect(await consumeLegacyInvite(platformCtx(), "newbie", null)).toBe(false);
+    expect(await consumeLegacyInvite(platformCtx(), "newbie", "newbie@x.io")).toBe(false); // nobody invited that address
+    expect(await resolveSoleTenant(e, "newbie", "session")).toEqual({ ok: false, reason: "no_membership" });
+
+    await env.DB.prepare(`INSERT INTO invites (email, name, invited_by, invited_at) VALUES ('newbie@x.io', 'Newbie', 'AndresL230', '2026-10-01T00:00:00Z')`).run();
+    expect(await consumeLegacyInvite(platformCtx(), "newbie", "Newbie@X.io")).toBe(true);
+    expect(await consumeLegacyInvite(platformCtx(), "newbie", "newbie@x.io")).toBe(false); // spent
     expect(await resolveSoleTenant(e, "newbie", "session")).toMatchObject({ ok: true, ctx: { orgId: ORG_A, role: "member" } });
+    expect(await env.DB.prepare(`SELECT accepted_by FROM invites WHERE email = 'newbie@x.io'`).first()).toEqual({ accepted_by: "newbie" });
+  });
+
+  it("isLegacyOrg names org #1 and nothing else", async () => {
+    expect(isLegacyOrg(systemCtx(ORG_A))).toBe(true);
+    expect(isLegacyOrg(systemCtx(ORG_B))).toBe(false);
   });
 
   it("tenantCtx / bearerCtx create the person and membership they need", async () => {

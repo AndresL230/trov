@@ -1,9 +1,9 @@
 import type { DocRow, DocVersionRow, AdrRow, NeedsTriageRow, IdentityTaskRow } from "@shared/rows";
 import { DocProposal, AdrDraft, FeedEntry } from "@shared/contract";
 import { isSection, isTag } from "@shared/vocabulary";
-import { type TenantContext, first, run, nowIso } from "../data/sql";
+import { type TenantContext, first, run, stmt, batch, nowIso } from "../data/sql";
 import type { PlatformContext } from "../data/platform-sql";
-import { getPerson, findIdentity, linkIdentity } from "../auth/persons";
+import { memberPerson, resolvePersonForLogin } from "../auth/persons";
 // NOTE: writes.ts ↔ consumer.ts is a deliberate circular import. consumer.ts
 // imports the low-level writers below; assign_triage imports the gate functions.
 // It is safe because every reference is INSIDE a function body (resolved lazily
@@ -167,19 +167,21 @@ export async function route_triage(
  * for an unmapped GitHub login. Called by ingestEvent AFTER the event row lands,
  * so capture never depends on this. login is the PK — INSERT OR IGNORE collapses
  * many events from one unknown person into one task and never re-raises a
- * resolved one. A login already linked (an `identities` row) raises nothing.
+ * resolved one. A login this org already attributes (`resolvePersonForLogin`: its
+ * attribution map, or a MEMBER's own GitHub sign-in) raises nothing — a login that
+ * belongs to a person in some OTHER org is still unknown here.
  * That same PK makes a DISCARD sticky: a discarded row stays, so the IGNORE
  * swallows every later event from that login until a person restores it — the
  * event itself is captured all the same. NEVER throws: like storePrSummary, this is a post-capture side-task, and a
  * failure here must not break event capture or the caller's downstream
  * summary/progress seams.
  */
-export async function ensure_identity_task(ctx: TenantContext, p: PlatformContext, login: string): Promise<void> {
+export async function ensure_identity_task(ctx: TenantContext, _p: PlatformContext, login: string): Promise<void> {
   try {
     // GitHub reserves the "[bot]" suffix for app identities — bot activity is
     // captured in events but never raises an identity task (nobody maps a bot).
     if (login.endsWith("[bot]")) return;
-    if (await findIdentity(p, "github", login)) return;
+    if (await resolvePersonForLogin(ctx, login)) return;
     await run(
       ctx,
       `INSERT OR IGNORE INTO identity_tasks (org_id, login, first_seen, status) VALUES (?, ?, ?, 'pending')`,
@@ -193,17 +195,20 @@ export async function ensure_identity_task(ctx: TenantContext, p: PlatformContex
 }
 
 /**
- * Human placement (Maintenance group): resolve an identity task by linking the
- * login to an EXISTING person (by handle) as a github identity. A direct
- * authored write in the human-placement class — never a gate re-run. My Work
- * resolves login→person at read time via `identities`, so the mapping
- * retroactively surfaces every already-captured event for this login with no
- * backfill. Idempotent-safe: mapping an already-resolved task surfaces the
- * recorded mapping without re-writing anything.
+ * Human placement (Maintenance group, ADMIN+ at the route): resolve an identity
+ * task by ATTRIBUTING the login to an existing MEMBER of this org (by handle) in
+ * the org's own map, `org_login_map` (§5.3, C-1). It never writes the global
+ * `identities` table: that is sign-in, and a row there would let whoever holds
+ * the GitHub login sign in AS the person. A direct authored write in the
+ * human-placement class — never a gate re-run. My Work and the Repo dashboard
+ * resolve login→person at read time (the map, then a member's own identity), so
+ * the mapping retroactively surfaces every already-captured event for this login
+ * with no backfill. Idempotent-safe: mapping an already-resolved task surfaces
+ * the recorded mapping without re-writing anything.
  */
 export async function map_identity(
   ctx: TenantContext,
-  p: PlatformContext,
+  _p: PlatformContext,
   login: string,
   personHandle: string,
   by: string
@@ -212,24 +217,26 @@ export async function map_identity(
   if (!task) throw new Error(`no such identity task: ${login}`);
   if (task.status === "resolved") {
     // Already resolved — idempotent no-op, surface the recorded mapping.
-    const existing = await findIdentity(p, "github", login);
-    return { login, person: existing?.person ?? personHandle, status: "resolved" };
+    const existing = await resolvePersonForLogin(ctx, login);
+    return { login, person: existing?.handle ?? personHandle, status: "resolved" };
   }
-  const person = await getPerson(p, personHandle);
+  // A member of THIS org: an unknown handle, a reserved one and a person in another org read the same.
+  const person = await memberPerson(ctx, personHandle);
   if (!person) throw new Error(`no such person: ${personHandle}`);
-  // Pre-check so a stale/unresolved task pointing at an already-linked login fails
-  // with a clean message instead of surfacing the identities PK's raw SQL error.
-  const existing = await findIdentity(p, "github", login);
-  if (existing) throw new Error(`login already linked to ${existing.person}`);
-  await linkIdentity(p, { provider: "github", subject: login, label: login, person: person.handle, linkedBy: by });
-  await run(
-    ctx,
-    `UPDATE identity_tasks SET status = 'resolved', resolved_at = ?, resolved_by = ? WHERE org_id = ? AND login = ?`,
-    nowIso(),
-    by,
-    ctx.orgId,
-    login
-  );
+  // Pre-check so a stale/unresolved task pointing at an already-attributed login fails
+  // with a clean message instead of silently re-pointing it.
+  const existing = await resolvePersonForLogin(ctx, login);
+  if (existing) throw new Error(`login already linked to ${existing.handle}`);
+  const at = nowIso();
+  // The upsert covers a stale map row whose person has left the org (it reads as unmapped above).
+  await batch(ctx, [
+    stmt(ctx,
+      `INSERT INTO org_login_map (org_id, github_login, person, mapped_at, mapped_by) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(org_id, github_login) DO UPDATE SET person = excluded.person, mapped_at = excluded.mapped_at, mapped_by = excluded.mapped_by`,
+      ctx.orgId, login, person.handle, at, by),
+    stmt(ctx, `UPDATE identity_tasks SET status = 'resolved', resolved_at = ?, resolved_by = ? WHERE org_id = ? AND login = ?`,
+      at, by, ctx.orgId, login),
+  ]);
   return { login, person: person.handle, status: "resolved" };
 }
 
@@ -274,13 +281,13 @@ export async function discard_identity_task(
  * A mapped task, or a discarded login that has since been linked some other way
  * (a GitHub sign-in), is a conflict — there is nothing left to map.
  */
-export async function restore_identity_task(ctx: TenantContext, p: PlatformContext, login: string): Promise<{ login: string; status: "pending" }> {
+export async function restore_identity_task(ctx: TenantContext, _p: PlatformContext, login: string): Promise<{ login: string; status: "pending" }> {
   const task = await first<IdentityTaskRow>(ctx, `SELECT * FROM identity_tasks WHERE org_id = ? AND login = ?`, ctx.orgId, login);
   if (!task) throw new IdentityTaskError("not_found", `no such identity task: ${login}`);
   if (task.status === "pending") return { login, status: "pending" }; // idempotent no-op
   if (task.status === "resolved") throw new IdentityTaskError("conflict", `identity task ${login} is already mapped`);
-  const linked = await findIdentity(p, "github", login);
-  if (linked) throw new IdentityTaskError("conflict", `login already linked to ${linked.person}`);
+  const linked = await resolvePersonForLogin(ctx, login);
+  if (linked) throw new IdentityTaskError("conflict", `login already linked to ${linked.handle}`);
   await run(
     ctx,
     `UPDATE identity_tasks SET status = 'pending', resolved_at = NULL, resolved_by = NULL WHERE org_id = ? AND login = ? AND status = 'discarded'`,

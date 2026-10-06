@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { platformCtx, systemCtx, mintTokenFor, ORG_A } from "./helpers/tenant";
 import { app } from "../src/routes";
-import { all, run, nowIso } from "./helpers/db";
+import { all, first, run, nowIso } from "./helpers/db";
 import { renamePerson, HANDLE_COLUMNS, getPerson } from "../src/auth/persons";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { createSession } from "../src/auth/session";
@@ -52,7 +52,9 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     handle
   ); // needs_triage.source_author
   await ensure_identity_task(systemCtx(), platformCtx(), "unmapped-login-1");
-  await map_identity(systemCtx(), platformCtx(), "unmapped-login-1", handle, handle); // identities.linked_by + identity_tasks.resolved_by
+  await map_identity(systemCtx(), platformCtx(), "unmapped-login-1", handle, handle); // org_login_map.person / mapped_by + identity_tasks.resolved_by
+  // identities.linked_by: the map no longer writes `identities` (Phase 4, C-1) — a second provider the person linked themselves.
+  await run(env.DB, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES ('google', ?, ?, ?, ?, ?)`, `g-${handle}`, `${handle}@x.io`, handle, nowIso(), handle);
   await ingestEvent(
     systemCtx(),
     platformCtx(),
@@ -260,17 +262,20 @@ describe("POST /auth/me/handle", () => {
   });
 });
 
-describe("POST /auth/me/handle — admin guard", () => {
-  it("403s when the old handle is admin-allowlisted and the new one isn't; row unchanged", async () => {
+// Phase 4 (§5.2): there is no allowlist of handles to fall out of — the org role lives on the membership
+// and the superadmin grant on `platform_admins`, and a rename carries both (HANDLE_COLUMNS).
+describe("POST /auth/me/handle — an admin's rename", () => {
+  it("an org admin renames freely and is still that org's admin afterwards", async () => {
     const cookie = await cookieFor("admin-user");
     const res = await post("/auth/me/handle", cookie, { handle: "someone" });
-    expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "admin_handle_not_allowlisted" });
-    expect(await getPerson(platformCtx(), "admin-user")).not.toBeNull();
-    expect(await getPerson(platformCtx(), "someone")).toBeNull();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, handle: "someone" });
+    expect(await getPerson(platformCtx(), "admin-user")).toBeNull();
+    expect(await first(env.DB, `SELECT user_id, role FROM memberships WHERE org_id = ? AND user_id = 'someone'`, ORG_A)).toEqual({ user_id: "someone", role: "admin" });
+    expect((await app.request("/invites", { headers: { cookie } }, env)).status).toBe(200); // an admin-only route, same session
   });
 
-  it("the case-insensitive 'same' check runs before the admin guard: an admin re-submitting their own handle gets 400, not 403", async () => {
+  it("an admin re-submitting their own handle gets 400 handle_same", async () => {
     const cookie = await cookieFor("admin-user");
     const res = await post("/auth/me/handle", cookie, { handle: "admin-user" });
     expect(res.status).toBe(400);
