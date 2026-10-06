@@ -26,7 +26,7 @@ export type NavOpen = Record<NavGroup, boolean>;
 export const NAV_CLOSED: NavOpen = { docs: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
-export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases";
+export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases" | "platform";
 const NAV_OF: Record<string, NavKey> = {
   mywork: "mywork", feed: "feed", docs: "docs", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
   review: "review", maintenance: "maintenance", guide: "guide", releases: "releases",
@@ -35,6 +35,7 @@ const NAV_OF: Record<string, NavKey> = {
   handoffs: "handoffs", handoff: "handoffs", newhandoff: "handoffs",
   prompts: "prompts", prompt: "prompts", promptedit: "prompts",
   newdoc: "docs",
+  platform: "platform", platformorg: "platform",
 };
 export const navKeyOf = (screen: string): NavKey | null => NAV_OF[screen] ?? null;
 /** The group whose sub-pages a screen belongs to, or null. */
@@ -55,6 +56,8 @@ export interface SidebarProps {
   me: { handle: string; name: string | null; color: PersonColor; avatar_url?: string | null } | null;
   displayName: string;
   logo: string;
+  /** The viewer is a platform superadmin: the Platform entry shows (it is always emitted, hidden otherwise). */
+  superadmin?: boolean;
 }
 
 const ICON = (paths: string): string =>
@@ -75,6 +78,8 @@ const ICONS: Record<NavKey | "search" | "collapse", string> = {
   guide: ICON(`<path d="M2 4h7a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2z"></path><path d="M22 4h-7a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H22z"></path>`),
   // A sparkle: what's new.
   releases: ICON(`<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path>`),
+  // A globe: the whole platform, every organization.
+  platform: ICON(`<circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"></path>`),
   search: `<svg class="cnpy-nav-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>`,
   // Drawn in its "expanded" pose; trov.css mirrors it (scaleX(-1)) when collapsed,
   // which is exactly the design's second icon — so the swap is a flip, not a cut.
@@ -164,6 +169,7 @@ export function sidebarView(p: SidebarProps): string {
       ${item("guide", "goGuide", "Get Started")}
       ${item("releases", "goReleases", "What's new")}
     </nav>
+    <div class="cnpy-plat" data-on="${p.superadmin ? "1" : "0"}"${p.superadmin ? "" : " hidden"}>${item("platform", "platGo", "Platform")}</div>
     <div class="cnpy-collapse" data-tip="Expand sidebar">
       <button data-act="toggleCollapse" class="cnpy-nav-i" aria-label="${p.collapsed ? "Expand sidebar" : "Collapse sidebar"}" aria-expanded="${!p.collapsed}">${ICONS.collapse}<span class="cnpy-lbl cnpy-nav-t">Collapse</span></button>
     </div>

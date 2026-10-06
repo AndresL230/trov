@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildSeedStatements, targetsRemote } from "./seed/build.mjs";
+import { platformDevStatements } from "./seed/platform-dev.mjs";
 
 const argv = process.argv.slice(2);
 if (targetsRemote(argv)) {
@@ -30,12 +31,16 @@ const fx = {
   prompts: load("prompts.json"),
 };
 
-const statements = buildSeedStatements(fx);
-const sql = statements.map((s) => s + ";").join("\n");
+// …plus the Platform (superadmin) screens' demo rows: usage for both seed orgs, Acme's owner, audit.
+const statements = [...buildSeedStatements(fx), ...platformDevStatements()];
 
+// Applied 40 statements at a time, by the D1 BINDING: one file holding the whole seed is refused
+// by the local execute (SQLITE_TOOBIG), and the database's name has changed before.
+const CHUNK = 40;
 const file = join(mkdtempSync(join(tmpdir(), "trov-seed-")), "seed.sql");
-writeFileSync(file, sql, "utf8");
-
 console.log(`seed-dev: applying ${statements.length} statements to LOCAL D1…`);
-execFileSync("npx", ["wrangler", "d1", "execute", "canopy", "--local", `--file=${file}`], { stdio: "inherit" });
+for (let i = 0; i < statements.length; i += CHUNK) {
+  writeFileSync(file, statements.slice(i, i + CHUNK).map((s) => s + ";").join("\n"), "utf8");
+  execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", `--file=${file}`], { stdio: ["ignore", "ignore", "inherit"] });
+}
 console.log("seed-dev: done — local D1 seeded for every surface. Set DEV_LOGIN=AndresL230 and run `npm run dev`.");

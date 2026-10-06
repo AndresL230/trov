@@ -664,3 +664,56 @@ export async function proposeDoc(body: DocProposeBody): Promise<StagedProposal> 
   return (await postJson<{ ok: true; proposal: StagedProposal }>("/api/docs/propose", body)).proposal;
 }
 export type { HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody };
+
+// ── orgs + the superadmin surface (/api/orgs, /api/platform/*) ───────────────
+// Every /api/platform route answers 404 to a non-superadmin. A failed write throws an
+// `ApiError` whose message is the server's error CODE (`slug_taken`, `last_superadmin`, …).
+import type {
+  MyOrgsResponse, PlatformOrgRow, PlatformOrgDetail, AdminTarget, AdminAssignment,
+  PlatformAdmin, PlatformAuditRow, PlatformUsageResponse,
+} from "@shared/orgs";
+export function getMyOrgs(): Promise<MyOrgsResponse> {
+  return getJson<MyOrgsResponse>("/api/orgs");
+}
+export function listPlatformOrgs(): Promise<PlatformOrgRow[]> {
+  return getJson<{ orgs: PlatformOrgRow[] }>("/api/platform/orgs").then((r) => r.orgs);
+}
+export function getPlatformOrg(slug: string): Promise<PlatformOrgDetail> {
+  return getJson<PlatformOrgDetail>(`/api/platform/orgs/${encodeURIComponent(slug)}`);
+}
+export function createPlatformOrg(body: { slug: string; name: string; admin: AdminTarget }): Promise<{ org: PlatformOrgRow; admin: AdminAssignment }> {
+  return postJson<{ ok: true; org: PlatformOrgRow; admin: AdminAssignment }>("/api/platform/orgs", body);
+}
+export function assignPlatformOrgAdmin(slug: string, target: AdminTarget): Promise<AdminAssignment> {
+  return postJson<{ ok: true; admin: AdminAssignment }>(`/api/platform/orgs/${encodeURIComponent(slug)}/admin`, target).then((r) => r.admin);
+}
+export function setPlatformOrgSuspended(slug: string, suspended: boolean): Promise<PlatformOrgRow> {
+  return postJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/${suspended ? "suspend" : "unsuspend"}`).then((r) => r.org);
+}
+/** `limit` null = back to the default. */
+export function setPersonOrgLimit(handle: string, limit: number | null): Promise<{ handle: string; org_limit: number | null }> {
+  return putJson<{ ok: true; person: { handle: string; org_limit: number | null } }>(`/api/platform/persons/${encodeURIComponent(handle)}/org-limit`, { limit }).then((r) => r.person);
+}
+export function listPlatformAdmins(): Promise<PlatformAdmin[]> {
+  return getJson<{ admins: PlatformAdmin[] }>("/api/platform/admins").then((r) => r.admins);
+}
+export function grantPlatformAdmin(handle: string): Promise<PlatformAdmin[]> {
+  return postJson<{ ok: true; admins: PlatformAdmin[] }>("/api/platform/admins", { handle }).then((r) => r.admins);
+}
+/** 409 `last_superadmin` when it would leave the platform with none. */
+export async function revokePlatformAdmin(handle: string): Promise<PlatformAdmin[]> {
+  const res = await fetch(`/api/platform/admins/${encodeURIComponent(handle)}`, { method: "DELETE", credentials: "same-origin", headers: { accept: "application/json" } });
+  if (res.status === 401) throw new Unauthorized();
+  if (!res.ok) {
+    let msg = String(res.status);
+    try { const j = (await res.json()) as { error?: string }; if (j.error) msg = j.error; } catch { /* non-JSON */ }
+    throw new ApiError(res.status, msg);
+  }
+  return ((await res.json()) as { admins: PlatformAdmin[] }).admins;
+}
+export function listPlatformAudit(org = "", limit = 100): Promise<PlatformAuditRow[]> {
+  return getJson<{ audit: PlatformAuditRow[] }>(`/api/platform/audit?limit=${limit}${org ? `&org=${encodeURIComponent(org)}` : ""}`).then((r) => r.audit);
+}
+export function getPlatformUsage(days: number): Promise<PlatformUsageResponse> {
+  return getJson<PlatformUsageResponse>(`/api/platform/usage?days=${days}`);
+}
