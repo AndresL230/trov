@@ -2,9 +2,8 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { all, first, run } from "./helpers/db";
 import type { Env } from "../src/env";
-import { handleGithubWebhook } from "../src/webhook";
 import { ticketFromIssue, mirrorIssue } from "../src/tools/ticket-mirror";
-import { runBackfill } from "../src/tools/backfill";
+import { handleGithubWebhook, runBackfill } from "./helpers/org-config";
 import { listOpenAssignedIssues } from "../src/tools/mywork";
 import { transition_ticket } from "../src/tools/tickets";
 

@@ -65,9 +65,10 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   the SPA imports as a VALUE (`canTransition` / `legalMoves` / `TICKET_STATUS_LABEL` / `isOpenStatus`,
   the status/urgency/domain tuples) lives in the zod-free core so the browser bundle never drags zod in;
   the zod module re-exports it, so the server still has one definition.
-- `src/` — the Worker. `index.ts` (fetch entry: `/mcp` by bearer, `/webhook/github` by HMAC, everything
-  else to the Hono app; plus `scheduled()`, which dispatches the repo cron and the two digest crons by exact
-  cron expression), `routes.ts` (Hono HTTP), `mcp.ts` (MCP
+- `src/` — the Worker. `index.ts` (fetch entry: `/mcp` by bearer, `/webhook/github[/:hookId]` by HMAC
+  (`github-hook.ts`), everything else to the Hono app; plus `scheduled()`, which dispatches the repo cron and
+  the two digest crons by exact cron expression — each runs for EVERY active org, `docs/architecture/data-layer.md`
+  › Background jobs), `routes.ts` (Hono HTTP), `mcp.ts` (MCP
   tools), `consumer.ts` (THE GATE), `webhook.ts` (GitHub event capture), `tools/` (`writes.ts`, `reads.ts`,
   `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-agent.ts`, `progress.ts`, `summarize.ts`), `notifications/` (email digests — see the
   Email notifications section), `db.ts` (D1 helpers), `auth/` (`persons.ts` — the identity root;
@@ -89,10 +90,13 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   never on the render path), `poll.ts` (the four scheduled pulls, none of which may throw: `pingHealth` every tick,
   and the three hourly usage pollers `pollCloudflare`, `pollRailway`, `pollSaplingMetrics`, each returning a
   `PollOutcome` per environment), and `cron.ts`
-  (`handleRepoCron` — the repo trigger's one dispatcher, ONE heavy job per invocation, the subrequest budget
-  stated at the dispatcher — `runUsagePolls`, the one function behind the `:00` tick and the usage half of
-  the admin's "Poll now"; `runRepoRefresh` / `runLockedRepoRefresh`, the on-demand refresh of EVERY source
-  behind `POST /admin/poll`, which the cron never calls; and `railwayTokens`). Retention, the cron schedule and every capture path are
+  (`handleRepoCron` — the repo trigger's one dispatcher, ONE heavy job per invocation, each job run for every
+  org by ROTATION (`dispatch.ts`: units, budget, `cron_cursor`), the subrequest budget stated at the
+  dispatcher — the job functions `runEnvJob` / `runOrgJob` / `runReconcileJob`; `runUsagePolls`, the org's
+  usage job on demand; `runRepoRefresh` / `runLockedRepoRefresh`, the on-demand refresh of EVERY source
+  behind `POST /admin/poll`, which the cron never calls). A job reads its repo and environments from the
+  org's rows (`config.ts`: `orgPrimaryRepo`, `orgEnvironments`) and its credentials through
+  `resolveCredential` — never from `GITHUB_REPO` / `REPO_ENVIRONMENTS` / a Worker secret directly. Retention, the cron schedule and every capture path are
   described once, in the Repo dashboard section below.
 - `migrations/` — D1 SQL (`0001_init` … `0010_triage_resolve`, then `0011_fts_recreate`,
   `0012_events_plan` [events / pr_summaries / milestone_progress / people / plan / plan_versions +
@@ -501,9 +505,13 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
   deleted. An unknown `client_id` at authorize is an error PAGE naming the Claude Code fix (`/mcp` → trov
   → Clear authentication → Authenticate again), never a silent redirect. Every OAuth endpoint answers an unexpected error
   with `503 { error: "temporarily_unavailable" }` (the authorize pages with a 503 error page), never a 500.
-- **GitHub webhook** (`/webhook/github`, `src/webhook.ts`): a delivery authenticates by an HMAC-SHA256
-  `X-Hub-Signature-256` over the raw body against `GITHUB_WEBHOOK_SECRET` (NOT `COOKIE_SECRET`). HMAC is
-  verified in the branch BEFORE the gate; a bad/absent signature (or unset secret) is a bare `401`. The
+- **GitHub webhook** (`POST /webhook/github/:hookId`, `src/github-hook.ts` → `src/webhook.ts`): `hookId` is
+  the repo's `org_repos.id`; a delivery authenticates by an HMAC-SHA256 `X-Hub-Signature-256` over the raw
+  body against THAT repo's `github_webhook` secret (NOT `COOKIE_SECRET`), must name that repo (else 202,
+  ignored), and is captured as that org's system tenant. The legacy `POST /webhook/github` delivers only to
+  the `legacy_hook` repo (SaplingLearn's, on `GITHUB_WEBHOOK_SECRET` until its admin stores a secret). HMAC is
+  verified in the branch BEFORE the gate; a bad/absent signature (or no secret) is a bare `401` that writes
+  nothing; an unknown hook id is a `404`. The
   writer principal is the fixed string `"github-webhook"`; the delivery's own `subject_login` is trusted
   only post-verify. This branch never touches `sessionGate`.
 
@@ -1571,8 +1579,11 @@ Secrets (`wrangler secret put …`; local: `.dev.vars`): `GITHUB_CLIENT_ID`, `GI
 `GOOGLE_CLIENT_ID` (Google OAuth client id for the second session-class provider — absent →
 `/auth/google/login` itself returns 503), `GOOGLE_CLIENT_SECRET` (absent → the login redirect still
 happens, but the code exchange fails and `/auth/google/callback` 401s `exchange_failed`), `COOKIE_SECRET`,
-`GITHUB_WEBHOOK_SECRET` (HMAC for the webhook — absent → the surface 401s), `GITHUB_SERVICE_TOKEN`
-(app-level token for the sprint-progress backstop, for `reconcileRepo` — from Sync GitHub AND the repo cron
+`GITHUB_WEBHOOK_SECRET` (HMAC for the LEGACY webhook URL — absent → that surface 401s), `GITHUB_SERVICE_TOKEN`
+(**with `GITHUB_WEBHOOK_SECRET`, `CF_ANALYTICS_*`, `RAILWAY_TOKEN_*` and `SAPLING_METRICS_TOKEN`: read ONLY as
+SaplingLearn's fallback, through `resolveCredential`, until its admin enters each on the Integrations screen —
+every other org's credentials are per-org secrets; the cleanup phase deletes the fallback and these Worker
+secrets.** App-level token for the sprint-progress backstop, for `reconcileRepo` — from Sync GitHub AND the repo cron
 — and for the webhook's two follow-up reads, `fillFailedJob` and `refreshDrift`; absent → Sync GitHub 503s,
 the cron's 6-hourly `:10` and `:20` ticks and those follow-ups are skipped, while the `:30` prune and the
 health pings run regardless), `GEMINI_API_KEY`

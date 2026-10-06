@@ -1,12 +1,10 @@
 import { app } from "./routes";
 import { handleMcp } from "./mcp";
-import { handleGithubWebhook } from "./webhook";
+import { handleGithubWebhook, webhookPath } from "./github-hook";
 import { resolveBearerTenant } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
 import { platform } from "./data/context";
-import { legacySystemTenant } from "./data/legacy";
 import { mcpUnauthorized, oauthOrigin } from "./auth/oauth";
-import { ensureNotificationPolicySeeded } from "./notifications/policy";
 import { DAILY_CRON, WEEKLY_CRON, handleNotificationCron } from "./notifications/cron";
 import { REPO_CRON, handleRepoCron } from "./repo/cron";
 import { verifyUnsubscribeToken } from "./notifications/unsubscribe";
@@ -17,10 +15,8 @@ import type { Env } from "./env";
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    // Startup seeding (once per isolate): notification_policy gets a row for
-    // any registry kind missing one. Never overwrites; never fails a request.
-    // MT: the policy rows are per org; the legacy org's are seeded until org creation seeds its own (§5.3).
-    await ensureNotificationPolicySeeded(legacySystemTenant(env, "system")).catch(() => undefined);
+    // (notification_policy is seeded per org: by createOrg for a new org, and by the digest cron for
+    // any registry kind an org has no row for yet — src/notifications/cron.ts.)
     const url = new URL(request.url);
     // Static assets are served by the assets binding before this handler runs.
     if (url.pathname === "/mcp") {
@@ -38,10 +34,11 @@ export default {
       return handleMcp(request, env, ctx, bearer.ctx);
     }
     // Third auth class: GitHub webhook deliveries, HMAC-verified over the raw
-    // body against GITHUB_WEBHOOK_SECRET. Never touches sessionGate.
-    if (url.pathname === "/webhook/github" && request.method === "POST") {
-      return handleGithubWebhook(request, env, { waitUntil: (p) => ctx.waitUntil(p) });
-    }
+    // body against the `github_webhook` secret of the repo the URL names:
+    // `/webhook/github/<org_repos.id>` per org, and the legacy `/webhook/github`
+    // for the one `legacy_hook` repo (src/github-hook.ts). Never touches sessionGate.
+    const hook = request.method === "POST" ? webhookPath(url.pathname) : null;
+    if (hook) return handleGithubWebhook(request, env, { hookId: hook.hookId, waitUntil: (p) => ctx.waitUntil(p) });
     // Signed one-click unsubscribe (canopy-email.md §7): the single token
     // exception. POST (what List-Unsubscribe-Post mail clients send) verifies the
     // HMAC and can ONLY set email_unsubscribed = 1 for the login it names. A
@@ -67,17 +64,17 @@ export default {
   },
 
   // Dispatched by cron expression (see wrangler.toml [triggers]):
-  //  • the two notification triggers → the digest runner, gated in code by
-  //    notification_settings (send_hour + timezone) at fire time;
+  //  • the two notification triggers → the digest runner, for EVERY active org,
+  //    each gated in code by its own notification_settings (send_hour + timezone)
+  //    at fire time;
   //  • the repo trigger (every 10 minutes) → handleRepoCron (src/repo/cron.ts),
-  //    which spreads ONE heavy job per invocation across the ticks: health
-  //    pings every tick; the three hourly usage polls at :00; and, every
-  //    6th hour, the sprint-progress cache backstop at :10, the GitHub reconcile
-  //    (deploys/checks/runs/branches/drift/open-PRs) at :20 and the capture
-  //    prune at :30 — see the subrequest budget at that dispatcher.
+  //    which spreads ONE heavy job per invocation across the ticks and runs it
+  //    for every org by rotation: health pings every tick; the three hourly
+  //    usage polls at :00; and, every 6th hour, the sprint-progress cache
+  //    backstop at :10, the GitHub reconcile (deploys/checks/runs/branches/
+  //    drift/open-PRs) at :20 and the capture prune at :30 — see the subrequest
+  //    budget at that dispatcher.
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
-    // MT: as in fetch() — the legacy org's policy rows; a new org's are seeded by createOrg.
-    await ensureNotificationPolicySeeded(legacySystemTenant(env, "system")).catch(() => undefined);
     if (controller.cron === DAILY_CRON || controller.cron === WEEKLY_CRON) {
       await pruneUsage(platform(env, "system")).catch(() => undefined); // org_usage_daily retention (400 days)
       await handleNotificationCron(env, controller.cron, new Date(controller.scheduledTime));

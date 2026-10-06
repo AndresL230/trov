@@ -19,7 +19,7 @@ import {
   geminiIssueSummarizer,
 } from "../src/tools/summarize";
 import type { Summarizer } from "../src/tools/summarize";
-import { handleGithubWebhook } from "../src/webhook";
+import { handleGithubWebhook } from "./helpers/org-config";
 import prMerged from "./fixtures/gh-pr-merged.json";
 import issueAssigned from "./fixtures/gh-issue-assigned.json";
 

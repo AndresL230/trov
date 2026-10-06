@@ -41,9 +41,9 @@ import { quickSearch } from "./tools/quick-search";
 import { QUICK_TYPES, type QuickType } from "@shared/quick-search";
 import { feedStats, isFeedStatsDays, isFeedStatsTz } from "./tools/feed-stats";
 import { getRepoDashboard, emptyRepoDashboard } from "./tools/repo";
-import { reconcileRepo, type ReconcileResult } from "./repo/github";
+import type { ReconcileResult } from "./repo/github";
 import { repoEnvironments } from "./repo/config";
-import { runLockedRepoRefresh, runUsagePolls } from "./repo/cron";
+import { runLockedRepoRefresh, runReconcileJob, runUsagePolls } from "./repo/cron";
 import type { DashboardData } from "@shared/dashboard";
 import { platformContext, soleTenantGate, tenantGate } from "./data/gate";
 import { orgsApp, myInvitesApp, orgTenantApp } from "./orgs/routes";
@@ -655,7 +655,7 @@ app.get("/repo/dashboard", async (c) => {
 app.post("/admin/backfill", async (c) => {
   const login = c.get("principal").handle;
   if (!isAdmin(c.env, login)) return c.json({ error: "admin only" }, 403);
-  const res = await runBackfill(c.env, login);
+  const res = await runBackfill(c.env, c.var.ctx, login);
   if (!res.ok) return c.json({ error: res.error }, 503);
   // Best-effort, and only on the batch that ENDS a Sync (web/src/main.ts
   // re-POSTs this route up to 10 times while the summary budget stays
@@ -674,9 +674,7 @@ app.post("/admin/backfill", async (c) => {
   // so a Sync that silently lost one is distinguishable from one that had
   // nothing to do.
   let repo: ReconcileResult | undefined;
-  if (isFinalBackfillBatch(res, batch, of) && c.env.GITHUB_SERVICE_TOKEN && c.env.GITHUB_REPO) {
-    repo = await reconcileRepo(c.var.ctx, { token: c.env.GITHUB_SERVICE_TOKEN, repo: c.env.GITHUB_REPO }, repoEnvironments(c.env)).catch(() => undefined);
-  }
+  if (isFinalBackfillBatch(res, batch, of)) repo = (await runReconcileJob(c.env, c.var.ctx).catch(() => null)) ?? undefined;
   return c.json(repo ? { ...res, repo } : res);
 });
 
@@ -695,7 +693,7 @@ app.post("/admin/poll", async (c) => {
   const handle = c.get("principal").handle;
   if (!isAdmin(c.env, handle)) return c.json({ error: "admin only" }, 403);
   try {
-    const res = await runLockedRepoRefresh(c.env, handle, Date.now());
+    const res = await runLockedRepoRefresh(c.env, c.var.ctx, handle, Date.now());
     return res.ok ? c.json(res.result) : c.json({ error: "a refresh is already running", since: res.since }, 409);
   } catch (e) {
     // The lock statement itself failing (D1) — runRepoRefresh is total. Only
@@ -720,7 +718,7 @@ app.post("/admin/poll", async (c) => {
 app.post("/admin/poll-usage", async (c) => {
   if (!isAdmin(c.env, c.get("principal").handle)) return c.json({ error: "admin only" }, 403);
   try {
-    return c.json(await runUsagePolls(c.env, Date.now()));
+    return c.json(await runUsagePolls(c.env, c.var.ctx, Date.now()));
   } catch (e) {
     // Unreachable today (runUsagePolls is total) — but never swallow it silently.
     console.error("poll-usage", e instanceof Error ? e.message : String(e));

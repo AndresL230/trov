@@ -86,6 +86,10 @@ const PLATFORM_ALLOW: Allow[] = [
   // action, the kind and the actor, never a value.
   { file: "src/platform/repo.ts", fn: "listAudit", tables: ["org_audit"], why: "the superadmin's merged audit trail; org_audit holds no secret material" },
   { file: "src/platform/usage.ts", fn: "*", why: "the superadmin's cross-org usage COUNTS — no content column is selected" },
+  // Background work is per org (§8.3, §8.5): the cron's dispatcher lists its units — (org, environment)
+  // and org-with-a-primary-repo — and a webhook delivery finds its org by hook id, BEFORE any org is
+  // known. Ids, an environment key and a repo name only; everything after runs as that org's tenant.
+  { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments"], why: "the cron's unit lists and the webhook's hook lookup — ids and a repo name, no content, no secret" },
   // Removing a member revokes that person's tokens for the org in the same batch as the membership row.
   { file: "src/orgs/repo.ts", fn: "removeMember", tables: ["mcp_tokens", "oauth_grants"], why: "member removal revokes the person's credentials for that org, atomically" },
 ];
@@ -276,7 +280,7 @@ describe("data layer — static enforcement (§4.4)", () => {
   // files below — so the list of what Phases 4 / 5b still have to replace is this test, not a grep.
   it("only the marked cut-over entry points reach for the legacy org", () => {
     const ENTRY_POINTS = [
-      "src/index.ts", "src/webhook.ts", "src/tools/backfill.ts", "src/repo/cron.ts", "src/notifications/cron.ts", "src/auth/routes.ts",
+      "src/auth/routes.ts",
     ];
     const found = new Set<string>();
     const unmarked: string[] = [];

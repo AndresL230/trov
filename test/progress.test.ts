@@ -4,7 +4,8 @@ import { platformCtx, systemCtx } from "./helpers/tenant";
 import { run, all, first, nowIso } from "./helpers/db";
 import type { SprintProgressRow } from "@shared/rows";
 import type { Env } from "../src/env";
-import { eventsFromDelivery, handleGithubWebhook } from "../src/webhook";
+import { eventsFromDelivery } from "../src/webhook";
+import { handleGithubWebhook } from "./helpers/org-config";
 import { ingestEvent } from "../src/consumer";
 import worker from "../src/index";
 import {

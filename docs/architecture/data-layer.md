@@ -99,6 +99,7 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 | Where | Why |
 |---|---|
 | `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
+| `src/platform/jobs.ts` (`org_repos`, `org_environments`) | the cron's unit lists and the webhook's hook lookup, before any org is known — ids, an environment key and a repo name |
 | `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal` | credential lookup by HASH before any org is known (the row names the org), and the revoke of the one grant just found |
 | `src/auth/oauth.ts` `listGrants`, `revokeGrant` | Connected apps is user-level: a person's own grants across their orgs, keyed by person |
 | `src/artifacts/upload.ts` `uploadTokenOrg` | upload-token lookup by hash, returning only its `org_id` |
@@ -108,11 +109,69 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 | `src/tools/artifacts.ts` `normalizeLinkRef` (interpolated, tenant) | `tickets` or `sprints` from a two-value literal, with `org_id = ?` |
 | `src/tools/progress.ts` upsert on `sprint_progress` | its PK is `sprint_id` alone; guarded by `WHERE sprint_progress.org_id = excluded.org_id` (asserted) |
 
+## Background jobs (Phase 5b — spec §8.3–§8.5)
+
+No background entry point names an org any more: each one ENUMERATES the orgs (or finds the one a delivery
+belongs to) through `src/platform/jobs.ts`, then does its work as that org's `systemTenant`.
+
+| Entry point | Org comes from | Runs as |
+|---|---|---|
+| repo cron `handleRepoCron` (`src/repo/cron.ts`) | `listEnvUnits` / `listRepoUnits` — every non-suspended org | `systemTenant(p, org, "system")` per unit |
+| digest crons `handleNotificationCron` (`src/notifications/cron.ts`) | `listActiveOrgIds` | the same, per org |
+| `POST /webhook/github/:hookId`, legacy `/webhook/github` (`src/github-hook.ts`) | `hookRepo(p, id)` / `legacyHookRepo(p)` | `systemTenant(p, row.org_id, "github-webhook")` |
+| Poll now / Poll usage / Sync GitHub (`runLockedRepoRefresh`, `runUsagePolls`, `runBackfill`, `runReconcileJob`) | the caller's `ctx` | `jobTenant(env, ctx)` — that org's system tenant; a bearer context is refused |
+
+**The rotation dispatcher** (`src/repo/dispatch.ts`). The repo trigger keeps its cadence — `health` every
+tick, `usage` at `:00`, and every 6th hour `progress` at `:10`, `reconcile` at `:20`, the cross-org prune
+sweeps at `:30` — and each cadence is a JOB over UNITS: one per (org, environment) for `health` / `usage`
+(key `<org>/<env key>`, in org then `position` order), one per org with a primary repo for `progress` /
+`reconcile` (key `<org>`). One invocation serves units in order, starting after `cron_cursor.last_key` for
+that job, while the unit's worst-case cost still fits `CRON_SUBREQUEST_BUDGET` (900 fetches; what a unit
+really spent is counted through the budget's own `fetch`) and `CRON_WALL_BUDGET_MS` (8 min) is not spent;
+then it stores the last key served (`''` once every unit was served — so with few orgs the cursor is never
+written). `health` goes first and may use at most half the budget on a tick that also has a heavy job.
+Queues stay a deferred seam: a unit runner (`runEnvJob(env, orgId, envKey, job, now)`,
+`runOrgJob(env, orgId, job, now)`) is what a consumer would call, unchanged.
+
+**Isolation.** A unit is TOTAL: it catches its own failure, logs it with `org=<id>`, records it on THAT
+org's integration row (`recordSecretOutcome` → `last_error`; a success → `last_used_at`), and the loop moves
+on. An org with no environment and no primary repo has no unit — no statement, no request, no log line. A
+suspended org is absent from every list, and its hook reads as unknown.
+
+**Configuration and credentials.** The repo is the org's primary `org_repos` row (`orgPrimaryRepo`), the
+environments are `org_environments` in `position` order (`orgEnvironments`) — `GITHUB_REPO` and
+`REPO_ENVIRONMENTS` are read by no background job (the two dashboard READS in `src/routes.ts` /
+`src/mcp.ts` still parse the var; they move with their phases). Every credential comes from
+`resolveCredential(ctx, env, kind, scope)`: `github_token` (`""`), `github_webhook` (the hook id),
+`cloudflare_analytics` (`""`, + `resolveCloudflareAccountId`), `railway` and `metrics_endpoint` (the
+environment key). It is resolved ONLY in modules that `src/mcp.ts` cannot reach — `src/repo/cron.ts`,
+`src/github-hook.ts`, `src/tools/backfill.ts` — and the revealed value is passed down as a parameter
+(`src/webhook.ts` and `src/repo/github.ts` ARE reachable from MCP; `test/secrets.mcp.test.ts`). Every log
+line and stored `last_error` is scrubbed of every credential the unit revealed.
+
+**Webhooks.** `POST /webhook/github/:hookId`: look the row up (unknown or suspended → 404), verify the HMAC
+against that repo's secret (none / wrong → bare 401, NOTHING written), require the payload to name that
+repo (else 202 ignored), then `captureDelivery` as the org. Only the org's PRIMARY repo is captured today —
+the capture's keys (`gh:pr:<n>:…`) carry no repo — so a non-primary repo's verified delivery is ignored.
+The legacy `POST /webhook/github` delivers to the one `legacy_hook = 1` row with no repository check,
+exactly as before.
+
+**Email.** One digest per (person, org): each org is due on its own `notification_settings`, the outbox key
+is `org:user:cadence:window`, the unsubscribe is global. The From ADDRESS is the platform's — an org's
+`from_address` contributes its display name only (`platformFrom`). `notification_policy` is seeded by
+`createOrg` and topped up per org by the cron; the per-isolate seed in `src/index.ts` is gone.
+
+**SaplingLearn's fallback (owner steps).** These Worker secrets are now read ONLY by `resolveCredential`'s
+`org_saplinglearn` fallback (and by the cron's log scrubber): `GITHUB_SERVICE_TOKEN`, `GITHUB_WEBHOOK_SECRET`,
+`CF_ANALYTICS_TOKEN` + `CF_ANALYTICS_ACCOUNT_ID`, `RAILWAY_TOKEN_<ENV>`, `SAPLING_METRICS_TOKEN`. Each stops
+being read the moment SaplingLearn's admin stores that integration on the Integrations screen (a stored
+secret wins). The cleanup phase deletes the fallback, those secrets, the legacy hook route and the
+`legacy_hook` flag.
+
 ## Cut-over entry points (not shims — replaced in later phases)
 
 `src/data/legacy.ts` keeps `legacySystemTenant(env, actor)` and `joinLegacyOrg(p, handle)`: the entry points
-that cannot name their org yet act on SaplingLearn. Callers: `src/index.ts` (policy seed), `src/webhook.ts`,
-`src/tools/backfill.ts`, `src/repo/cron.ts`, `src/notifications/cron.ts` (→ Phase 5b), `src/auth/routes.ts`
+that cannot name their org yet act on SaplingLearn. After Phase 5b the only caller left is `src/auth/routes.ts`
 (onboarding → Phase 4). `resolveSoleTenant` / `soleTenantGate` are the route alias Phase 4 replaces.
 
 ## Tests
@@ -120,6 +179,9 @@ that cannot name their org yet act on SaplingLearn. Callers: `src/index.ts` (pol
 `test/helpers/tenant.ts`: `systemCtx(org?)`, `tenantCtx(handle, role?, { orgId, via, env })`,
 `bearerCtx(handle, role?, env?, orgId?)`, `mintTokenFor(handle, orgId?)`, `credentialOf(request)`,
 `platformCtx`, `ensureMember`, `ORG_A`, `ORG_B`. `test/isolation.mcp.test.ts` is the MCP matrix: its entries are
-checked against the server's own registry, so a new tool needs an entry (what to call it with from the other org). Fixture SQL may use `env.DB` directly; the raw `first` / `all` /
+checked against the server's own registry, so a new tool needs an entry (what to call it with from the other org). `test/helpers/org-config.ts`: an org's repo / environment rows
+(`addOrgRepo`, `setOrgEnvironments`), and the one-org call shapes of the background entry points for the
+SaplingLearn-only suites (`syncOrgConfig` copies the Env's `GITHUB_REPO` / `REPO_ENVIRONMENTS` into its rows,
+as 0037 did). Fixture SQL may use `env.DB` directly; the raw `first` / `all` /
 `run` helpers for it live in `test/helpers/db.ts` (production has none). Each module has an isolation
 assertion in `test/isolation.*.test.ts`: write through `systemCtx(ORG_B)`, read through `systemCtx()`, expect nothing.
