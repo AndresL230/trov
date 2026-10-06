@@ -365,17 +365,35 @@ describe("admin = admin or owner of the org on screen", () => {
     expect(render(two("owner", { screen: "mywork" }))).toContain('data-act="adminBackfill"');
     expect(render(two("member", { screen: "mywork" }))).not.toContain("adminBackfill");   // an OWNER of the other org
   });
-  it("Maintenance › People: the directory and the pointer for everyone, the email digest settings for an admin; no member management for anyone", () => {
-    const people = (role: OrgRole) => render(two(role, { screen: "maintenance", maintTab: "people", needsTriage: { status: "ok", data: [] }, identityTasks: { status: "ok", data: [] }, persons: { status: "ok", data: [{ handle: "ines", name: "Ines Vidal", color: "fern", avatar_url: null, role: "Designer" }] } }));
-    const admin = people("admin"), member = people("member");
+  it("Org settings: the member directory for everyone; the email digests, the logins to match and member management for an admin only", () => {
+    const task = { login: "octo-drifter", first_seen: "2026-09-27T00:00:00Z", status: "pending", resolved_at: null, resolved_by: null, sample: [] } as never;
+    const members = { status: "ok" as const, data: [{ handle: "ines", name: "Ines Vidal", color: "fern" as const, avatar_url: null, role: "member" as const, title: "Designer", joined_at: "2026-10-01T10:00:00.000Z" }] };
+    const page = (role: OrgRole, tab: "members" | "notifications") => render(two(role, {
+      screen: "org", org: { ...initialState().org, slug: "acme", tab, members, invites: { status: "ok", data: [] } },
+      identityTasks: { status: "ok", data: [task] }, persons: { status: "ok", data: [{ handle: "ines", name: "Ines Vidal", color: "fern", avatar_url: null, role: "Designer" }] },
+    }));
+    const main = (html: string) => html.slice(html.indexOf("</header>"), html.indexOf('class="cnpy-scrim"'));
+    const admin = main(page("admin", "members")), member = main(page("member", "members"));
     for (const html of [admin, member]) {
-      expect(html).toContain("data-people-pointer");
-      expect(html).toContain('data-act="orgGo" data-arg="members"');
-      expect(html).toContain("· Designer");
-      for (const gone of ["inviteSend", "inviteResend", "inviteRevoke", "personEditOpen", "Invite by Google email"]) expect(html, gone).not.toContain(gone);
+      expect(html).toContain('data-act="openPerson" data-arg="ines"');
+      expect(html).toContain("Designer");
+      expect(html).not.toContain("Maintenance");
     }
-    expect(admin).toContain('data-act="testSend"');
-    expect(member).not.toContain('data-act="testSend"');
+    // An admin matches logins and manages members here; a member sees neither.
+    expect(admin).toContain("Unmatched logins");
+    expect(admin).toContain('data-act="identityMap" data-arg="octo-drifter"');
+    expect(admin).toContain('data-act="orgMemberEdit"');
+    expect(admin).toMatch(/id="org-tab-members"[^>]*>Members<span class="cnpy-badge" data-n="1"/);
+    for (const gone of ["Unmatched logins", "identityMap", "identityDiscard", "octo-drifter", "orgMemberEdit", "orgInviteSend"]) expect(member, gone).not.toContain(gone);
+    expect(member).toMatch(/id="org-tab-members"[^>]*>Members<span class="cnpy-badge" data-n="0"/);
+    // The e-mail digests are a tab an admin has and a member does not: asking for it falls back.
+    const adminMail = main(page("admin", "notifications")), memberMail = main(page("member", "notifications"));
+    expect(adminMail).toContain('id="org-tab-notifications"');
+    expect(adminMail).toContain('data-act="testSend"');
+    expect(adminMail).toContain('data-act="schedHour"');
+    expect(memberMail).not.toContain('id="org-tab-notifications"');
+    for (const gone of ["testSend", "schedHour", "policyToggle", "outboxToggle"]) expect(memberMail, gone).not.toContain(gone);
+    expect(memberMail).toMatch(/id="org-tab-repos" class="cnpy-tab is-on"/);
   });
   it("Settings › Account says the role held in the org on screen", () => {
     const html = render(two("admin", { screen: "settings" }));

@@ -38,7 +38,7 @@ import {
 } from "./api";
 import { handoffAsPrompt, blankHandoff, docDraftFromHandoff, type NewHandoffDraft } from "./handoffs";
 import { normalizeTags, type HandoffView } from "@shared/handoffs";
-import { selectedUnplacedId, MAINT_TABS, type MaintTab } from "./maintenance";
+import { selectedUnplacedId } from "./maintenance";
 import { ASSIGN_OPTIONS } from "./triage-map";
 import { draftFromPrompt, blankPromptDraft, slugify, tagOptions } from "./prompts";
 import { blankDoc, defaultSection } from "./newdoc";
@@ -102,7 +102,7 @@ const orgCtl = createOrgController({
 // picker, the create dialog — every `orgs…` act. Opening an org is a page load.
 const orgsCtl = createOrgsController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
-  reloadOrgs: () => loadMyOrgs(), go: (url) => { window.location.assign(url); }, openSettings: () => orgCtl.act("orgGo", null, null),
+  reloadOrgs: () => loadMyOrgs(), go: (url) => { window.location.assign(url); }, openSettings: () => dispatch("orgGo", null, null),
 });
 
 // ── persisted client prefs (theme + sidebar only; not backend state) ─────────
@@ -195,7 +195,7 @@ function markEnter(): void {
   if (!root || state.view !== "app") return;
   const settled = screenSettled();
   // An in-page view switch (the header's segmented switch — Roadmap Narrative/Timeline, a
-  // release's Release/Patch notes — or a page's tab bar: Maintenance's, Repo's, Org settings'
+  // release's Release/Patch notes — or a page's tab bar: Roadmap's, Repo's, Org settings'
   // and Platform's tabs) is not a new page: key the entrance on the route WITHOUT it (hash.ts
   // `pageKey`), so flipping the switch swaps the content in place instead of replaying the
   // screen (and the tab bar's underline slides unbroken).
@@ -466,7 +466,6 @@ function currentRoute(): Route {
     r.promptMode = state.promptMode;
     if (state.promptMode !== "new" && state.promptSlug) r.promptSlug = state.promptSlug;
   }
-  if (state.screen === "maintenance") r.maintTab = state.maintTab;
   if (state.screen === "platform") r.platTab = state.plat.tab;
   if (state.screen === "platformorg" && state.plat.orgSlug) r.platOrg = state.plat.orgSlug;
   if (state.screen === "org") r.orgTab = state.org.tab;
@@ -493,7 +492,6 @@ function applyRoute(r: Route): void {
   if (r.handoffId) state.handoffId = r.handoffId;
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
-  if (r.maintTab) state.maintTab = r.maintTab;
   if (r.platTab) state.plat.tab = r.platTab;
   if (r.platOrg) state.plat.orgSlug = r.platOrg;
   if (r.orgTab) state.org.tab = r.orgTab;
@@ -506,7 +504,7 @@ function loadForScreen(screen: Screen): void {
     case "docs": loadDocsIfNeeded(); break;
     case "roadmap": loadRoadmapIfNeeded(); loadRoadmapFeed(); break;
     case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); break;
-    case "maintenance": loadNeedsTriageIfNeeded(); loadIdentityTasksIfNeeded(); loadFeedIfNeeded(); loadNotifAdminIfNeeded(); break;
+    case "maintenance": loadNeedsTriageIfNeeded(); break;
     case "handoffs": loadHandoffs(); break;
     case "handoff": if (state.handoffId) openHandoff(state.handoffId); else rerender(); break;
     case "newhandoff": state.nh = blankHandoff(primaryRepoName()); loadPersons(); break;
@@ -521,7 +519,7 @@ function loadForScreen(screen: Screen): void {
     case "settings": loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); break;
     case "unsubscribe": runUnsubscribe(); break;
     case "platform": case "platformorg": platform.load(); break;
-    case "org": orgCtl.load(); break;
+    case "org": loadOrgAdminExtras(); orgCtl.load(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
     case "newticket": loadSprintsIfNeeded(); rerender(); break;
@@ -734,7 +732,7 @@ function enterOrg(slug: string, hash: string): void {
   if (state.handoffs.status === "idle") loadHandoffs();
   if (state.promptList.status === "idle") loadPrompts();
   // The persons directory backs every colored chip (sidebar, feed, docs,
-  // Settings › Profile, Maintenance › People) — load it on every screen too.
+  // Settings › Profile, Org settings › Members) — load it on every screen too.
   loadPersons();
 }
 /** A write's failure as a toast: the server's `{ error }` (a 409's "handoff is claimed"), else a fallback. */
@@ -1002,9 +1000,13 @@ function loadNotifAdmin(): void {
     .then(({ rows }) => { state.notifOutbox = { status: "ok", data: rows }; rerender(); })
     .catch((e) => { unauth(e); state.notifOutbox = { status: "error", data: [], error: String(e) }; rerender(); });
 }
-function loadNotifAdminIfNeeded(): void {
-  if (viewerIsAdmin(state) && state.notifPolicy.status === "idle") loadNotifAdmin();
-  else rerender();
+/** What Org settings shows an ADMIN beyond the org controller's own reads: the e-mail digests
+ *  (its Notifications tab) and the logins to match (Members). Both are no-ops once loaded, and
+ *  entering the page reads them all, so no tab opens on "Loading…". */
+function loadOrgAdminExtras(): void {
+  if (!viewerIsAdmin(state)) return;
+  if (state.notifPolicy.status === "idle" || state.notifPolicy.status === "error") loadNotifAdmin();
+  if (state.identityTasks.status === "idle" || state.identityTasks.status === "error") loadIdentityTasks();
 }
 function writeSettings(body: Parameters<typeof putNotificationSettings>[0], done: string): void {
   putNotificationSettings(body)
@@ -1327,10 +1329,6 @@ function loadIdentityTasks(): void {
       rerender();
     });
 }
-function loadIdentityTasksIfNeeded(): void {
-  if (state.identityTasks.status === "idle" || state.identityTasks.status === "error") loadIdentityTasks();
-  else rerender();
-}
 
 // ── tickets + sprints ────────────────────────────────────────────────────────
 // The queue list is server-filtered, so every filter change refetches. Writes
@@ -1488,7 +1486,7 @@ function checkLinkConflict(link: string | null = new URLSearchParams(location.se
   }
 }
 
-// ── persons directory (Settings › Profile, Maintenance › People) ──
+// ── persons directory (Settings › Profile, the person pickers) ──
 let personsSeq = 0;
 function loadPersons(): void {
   const seq = ++personsSeq;
@@ -2222,7 +2220,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goFeed": state.screen = "feed"; loadFeedIfNeeded(); loadFeedStats(); return;
 
     // ── The person card: a click on anyone's name (the rail, the Feed, quick search,
-    // Maintenance › People) opens it over the page; the backdrop, × and Escape close it.
+    // Org settings › Members) opens it over the page; the backdrop, × and Escape close it.
     case "openPerson": if (!arg) return; openPersonCard(arg); return;
     case "personCardClose": state.personCard = null; break;
     case "goDocs": state.screen = "docs"; loadDocsIfNeeded(); return;
@@ -2741,19 +2739,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       break;
     case "roadmapTimeline": state.roadmapTab = "timeline"; break;
     case "goReview": state.screen = "review"; loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); return;
+    // Triage › Unplaced (the screen is still `maintenance`; its Identity and People tabs moved
+    // into Org settings, which a stale `goMaintenance identity|people` still reaches).
     case "goMaintenance":
+      if (arg === "identity" || arg === "people") { dispatch("orgGo", "members", null); return; }
       state.screen = "maintenance";
-      state.maintTab = arg === "identity" || arg === "people" ? arg : "unplaced";
       state.maintDiscardArm = false;
-      loadNeedsTriageIfNeeded(); loadIdentityTasksIfNeeded(); loadFeedIfNeeded(); loadNotifAdminIfNeeded();
+      loadNeedsTriageIfNeeded();
       return;
-    // The page's tab bar: entering Maintenance already loaded every tab, so a switch is ONE
-    // rerender — goMaintenance's several would each rebuild the bar and cut its slide.
-    case "setMaintTab":
-      if (!(MAINT_TABS as readonly string[]).includes(arg ?? "")) return;
-      state.maintTab = arg as MaintTab;
-      state.maintDiscardArm = false;
-      break;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
     case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
@@ -3206,7 +3199,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
 
-    // ── Maintenance › Unplaced: the list selects; the picks belong to the item on screen ──
+    // ── Unplaced: the list selects; the picks belong to the item on screen ──
     case "maintSelect":
       if (!arg) return;
       state.assignOpen = arg; state.assignKind = null; state.assignSection = null; state.assignSpace = null; state.assignTags = [];
@@ -3364,7 +3357,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "previewUnsub": state.unsub = { pending: false, error: null, preview: true }; state.screen = "unsubscribe"; break;
     case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); return;
 
-    // ── Maintenance › Notifications (admin) ──────────────────────────────────
+    // ── Org settings › Notifications (admin) ─────────────────────────────────
     case "policyToggle": {
       const row = state.notifPolicy.data.find((k) => k.id === arg);
       if (!row) return;
@@ -3559,7 +3552,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
-      if (act.startsWith("org")) { orgCtl.act(act, arg, value); return; }
+      if (act.startsWith("org")) { if (act === "orgGo") loadOrgAdminExtras(); orgCtl.act(act, arg, value); return; }
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;

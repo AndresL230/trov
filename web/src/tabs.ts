@@ -1,5 +1,5 @@
 // The underline tab bar — page-level navigation between a screen's SECTIONS
-// (Maintenance's Unplaced / Identity / People): a row of text tabs on a full-width
+// (Org settings' Integrations / Repositories / …, the Repo dashboard's, the Roadmap's): a row of text tabs on a full-width
 // hairline, the picked tab marked by a 2px accent underline that sits ON the hairline.
 // The hairline is the line between the tabs and the page's content. It is not
 // `segmented()`: that picks a VALUE or a view inside a page (a range, Board/Table);

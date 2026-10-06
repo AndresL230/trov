@@ -447,7 +447,7 @@ export function listStagedProposals(): Promise<StagedProposal[]> {
   return getJson<{ proposals: StagedProposal[] }>("/proposals").then((r) => r.proposals);
 }
 
-// Maintenance · Identity: pending unknown-login tasks, each with a small LIVE
+// Org settings › Members · Unmatched logins: pending unknown-login tasks, each with a small LIVE
 // activity sample. Mirrors src/tools/reads.ts IdentityTaskWithSample exactly
 // (web/ can't import src/, so it's re-declared here atop @shared/rows's
 // IdentityTaskRow shape). Envelope: { tasks, discarded }.
@@ -504,7 +504,7 @@ export function assignTriage(id: number, target: AssignTarget): Promise<{ ok: tr
   return postJson<{ ok: true }>(`/needs-triage/${id}/assign`, target);
 }
 
-// Maintenance · Identity: map a login to a person — the `people` table's only
+// Org settings › Members · Unmatched logins: map a login to a person — the `people` table's only
 // runtime write. `person` is a free non-empty string; the picker posts a
 // teammate's GitHub login as that value.
 export function mapIdentity(login: string, person: string): Promise<{ ok: true; login: string; person: string; status: "resolved" }> {

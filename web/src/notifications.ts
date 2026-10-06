@@ -1,6 +1,7 @@
 // Email-notification surfaces (canopy-email.md §8), componentized from
-// Canopy.dc.html: Settings › Email notifications, Maintenance › NOTIFICATIONS
-// (policy / schedule / outbox), and the unsubscribe confirmation view. Pure
+// Canopy.dc.html: Settings › Email notifications (a person's own), Org settings ›
+// Notifications (the org's policy / schedule / outbox — an admin's; it sat under
+// Maintenance › People until 2026-10-06), and the unsubscribe confirmation view. Pure
 // presentational functions over props — no fetch, no state.
 import { trovMark } from "@shared/mark";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
@@ -157,9 +158,9 @@ export function unsubscribeView(p: { email: string | null; pending: boolean; err
   </div>`;
 }
 
-// ── Maintenance › NOTIFICATIONS ──────────────────────────────────────────────
+// ── Org settings › Notifications (admin) ─────────────────────────────────────
 
-export interface NotifMaintenanceProps {
+export interface NotifAdminProps {
   policy: PolicyKindView[];
   settings: NotificationSettingsRow | null;
   outbox: NotificationOutboxRow[];
@@ -213,7 +214,7 @@ function outboxRow(o: NotificationOutboxRow, expanded: boolean): string {
   return `<div style="border-bottom:1px solid var(--border)">${row}${detail}</div>`;
 }
 
-export function notificationsMaintenanceSections(p: NotifMaintenanceProps): string {
+export function notificationsAdminSections(p: NotifAdminProps): string {
   const enabled = p.policy.filter((k) => k.enabled).length;
   const policy = p.policy.length
     ? p.policy.map(policyRow).join("") +

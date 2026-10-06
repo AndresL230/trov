@@ -8,8 +8,8 @@ vi.mock("../web/src/markdown", () => ({
   sanitizeSvg: (s: string) => s,
 }));
 
-import { peopleSection } from "../web/src/maintenance";
-import { orgPeopleLink } from "../web/src/org-settings";
+import { membersTab, initialOrgUi, type OrgUi } from "../web/src/org-settings";
+import type { OrgMember } from "@shared/orgs";
 import { profileSection, accountSection, initialState, render, isUploadedAvatar } from "../web/src/render";
 import { peopleFromPersons } from "../web/src/triage-map";
 import { handleTag, personChip, markAvatarFailed, AVATAR_IMG_CLASS } from "../web/src/people";
@@ -22,36 +22,46 @@ const persons = [
   { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null, role: null },
   { handle: "priya", name: "Priya Natarajan", color: "plum" as const, avatar_url: "https://a/p.png", role: null },
 ];
-describe("peopleSection — the directory", () => {
+// The people directory is Org settings › Members (it was Maintenance › People until 2026-10-06).
+// Everything that page showed a person about the people in their org is on this one.
+const orgMember = (o: Partial<OrgMember> & { handle: string }): OrgMember => ({ name: null, color: "moss", avatar_url: null, role: "member", title: null, joined_at: "2026-10-01T10:00:00.000Z", ...o });
+const directory = [
+  orgMember({ handle: "AndresL230", name: "Andres", role: "owner" }),
+  orgMember({ handle: "priya", name: "Priya Natarajan", color: "plum", avatar_url: "https://a/p.png" }),
+];
+const membersUi = (members: OrgMember[], over: Partial<OrgUi> = {}): OrgUi => ({ ...initialOrgUi(), slug: "acme", members: { status: "ok", data: members }, invites: { status: "ok", data: [] }, ...over });
+const asMember = (members = directory, over: Partial<OrgUi> = {}) => membersTab({ slug: "acme", name: "Acme", role: "member" }, membersUi(members, over), "AndresL230");
+const asAdmin = (members = directory, over: Partial<OrgUi> = {}) => membersTab({ slug: "acme", name: "Acme", role: "admin" }, membersUi(members, over), "AndresL230");
+
+describe("Org settings › Members — the directory", () => {
   it("lists everyone in the org with colored chips; the viewer's row carries YOU", () => {
-    const html = peopleSection({ persons, loading: false, me: "AndresL230" });
-    expect(html).toContain("YOU");
-    expect(html).toContain("@AndresL230");
-    expect(html).toContain("var(--p-plum)");
-    expect(html).toContain('data-act="openPerson" data-arg="priya"');
-  });
-  it("holds NO member management: no invite box, no Resend / Revoke, no Edit role — for anyone", () => {
-    const html = peopleSection({ persons, loading: false, me: "AndresL230" });
-    for (const gone of ["inviteSend", "inviteDraft", "inviteResend", "inviteRevoke", "personEditOpen", "Edit role", "Invite by"]) expect(html, gone).not.toContain(gone);
-  });
-  it("the pointer where those controls were sends an admin, and a member, to Org settings › Members", () => {
-    for (const admin of [true, false]) {
-      const html = orgPeopleLink(admin);
-      expect(html).toContain('data-act="orgGo" data-arg="members"');
-      expect(html).toContain("Open Org settings › Members");
+    for (const html of [asMember(), asAdmin()]) {
+      expect(html).toContain("YOU");
+      expect(html).toContain("@AndresL230");
+      expect(html).toContain("var(--p-plum)");
+      expect(html).toContain("Priya Natarajan");
+      expect(html).toContain('data-act="openPerson" data-arg="priya"');
     }
-    expect(orgPeopleLink(true)).toContain("Inviting people, their roles and titles, and removing a member are in Org settings now.");
-    expect(orgPeopleLink(false)).toContain("managed by this organization's admins");
   });
-  it("the directory list is one surface card with hairline rows inside", () => {
-    const html = peopleSection({ persons, loading: false });
+  it("is read-only for a member: no invite box, no Resend / Revoke, no Edit, no logins to match", () => {
+    const html = asMember();
+    for (const gone of ["orgInviteSend", "orgInviteDraft", "orgInviteMail", "orgInviteRevoke", "orgMemberEdit", "orgConfirm", "identityMap", "identityDiscard", "Unmatched logins"]) expect(html, gone).not.toContain(gone);
+  });
+  it("an admin manages members on the same page: no pointer to anywhere else", () => {
+    const html = asAdmin();
+    expect(html).toContain('data-act="orgMemberEdit" data-arg="priya"');
+    expect(html).toContain('data-act="orgInviteSend"');
+    for (const gone of ["goMaintenance", "Maintenance", "data-people-pointer"]) expect(html, gone).not.toContain(gone);
+    expect(asMember()).not.toContain("Maintenance");
+  });
+  it("the directory list is one surface card", () => {
+    const html = asMember();
     expect(html.match(/cnpy-surface/g)?.length).toBe(1);
-    expect(html).toMatch(/class="cnpy-surface" style="overflow:hidden">/);
     expect(html).not.toContain("border-radius:12px");
     expect(html).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
   });
   it("says so while the directory loads", () => {
-    expect(peopleSection({ persons: [], loading: true })).toContain("Loading people…");
+    expect(membersTab({ slug: "acme", name: "Acme", role: "member" }, { ...initialOrgUi(), slug: "acme", members: { status: "loading", data: [] } }, "x")).toContain("Loading members");
   });
 });
 
@@ -245,16 +255,17 @@ describe("avatar prep (web/src/avatar.ts)", () => {
   });
 });
 
-describe("Maintenance › People — the directory shows each person's title", () => {
+describe("Org settings › Members — the directory shows each person's title", () => {
   const dir = [
-    { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null, role: "Founder" },
-    { handle: "priya", name: "Priya Natarajan", color: "plum" as const, avatar_url: null, role: null },
+    orgMember({ handle: "AndresL230", name: "Andres", role: "owner", title: "Founder" }),
+    orgMember({ handle: "priya", name: "Priya Natarajan", color: "plum" }),
   ];
-  it("each row opens the person card and shows the title; titles are edited in Org settings › Members, never here", () => {
-    const html = peopleSection({ persons: dir, loading: false, me: "AndresL230" });
+  it("each row opens the person card and shows the title; only an admin gets the editor", () => {
+    const html = asMember(dir);
     expect(html).toContain('data-act="openPerson" data-arg="priya"');
-    expect(html).toContain("· Founder");
-    expect(html).not.toContain("personEdit");
+    expect(html).toContain("Founder");
+    expect(html).not.toContain("orgMemberEdit");
     expect(html).not.toContain("cnpy-roleedit");
+    expect(asAdmin(dir)).toContain('data-act="orgMemberEdit" data-arg="AndresL230"');
   });
 });

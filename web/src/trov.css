@@ -173,8 +173,6 @@ input, select { font-family: inherit; }
 .cnpy-logo { display:flex; align-items:center; padding:16px 14px 12px 17.5px; min-height:56px; transition:padding var(--side-t) var(--side-e); }
 [data-collapsed="1"] .cnpy-logo { padding-left:20px; padding-right:0; }
 .cnpy-logo-b { display:flex; align-items:center; gap:10px; overflow:hidden; padding:0; color:inherit; border-radius:7px; min-width:0; }
-.cnpy-logo-b svg { transition:transform .3s cubic-bezier(.34,1.56,.64,1); }
-.cnpy-logo-b:hover svg { transform:scale(1.08) rotate(-4deg); }
 .cnpy-logo-t { font-size:18px; font-weight:600; letter-spacing:-0.02em; white-space:nowrap; }
 
 .cnpy-navlist { display:flex; flex-direction:column; gap:3px; padding:0 10px 6px; flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-width:none; }
@@ -388,7 +386,7 @@ input, select { font-family: inherit; }
 @media (max-width:640px) {
   .cnpy-hscroll { overflow-x:auto; overscroll-behavior-x:contain; }
   .cnpy-hscroll > * { min-width:560px; }
-  /* Maintenance › Notifications › Schedule: hour + timezone, the from address under them. */
+  /* Org settings › Notifications › Schedule: hour + timezone, the from address under them. */
   .cnpy-sched { grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) !important; }
   .cnpy-sched > :nth-child(3) { grid-column:1 / -1; }
 }
@@ -795,7 +793,7 @@ input, select { font-family: inherit; }
 .cnpy-profile-grid { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:18px; align-items:start; margin-top:26px; }
 @media (max-width:900px) { .cnpy-profile-grid { grid-template-columns:minmax(0,1fr); } }
 @media (max-width:640px) { .cnpy-profile-opt { display:none; } }
-/* A person's name that opens their profile (the ticket rail, the feed, Maintenance › People). */
+/* A person's name that opens their profile (the ticket rail, the feed, Org settings › Members). */
 .cnpy-personlink { cursor:pointer; text-underline-offset:2px; }
 /* A person's photo + name as one chip (people.ts `personLink`): the pair lights up together. */
 .cnpy-personchip { cursor:pointer; transition:background .12s ease; }
@@ -1167,7 +1165,7 @@ input, select { font-family: inherit; }
 
 .repo-gdot { display:inline-block; width:.6em; height:.6em; border-radius:50%; background:currentColor; vertical-align:.05em; }
 .repo-dot { transition:box-shadow .15s ease, transform .15s ease; }
-.repo-dot:hover, .repo-dot:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb,var(--fg) 12%,transparent); transform:scale(1.12); outline:none; }
+.repo-dot:hover, .repo-dot:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb,var(--fg) 12%,transparent); outline:none; }
 [data-enter] .repo-dot { animation:cnpy-dot .3s cubic-bezier(.34,1.56,.64,1) both; animation-delay:calc(var(--i, 0) * 30ms + 140ms + var(--enter-t, 0ms)); }
 .repo-tip { position:absolute; bottom:24px; left:50%; z-index:30; display:block; background:var(--bg); border:1px solid var(--border-strong); border-radius:9px; padding:9px 12px; box-shadow:0 8px 30px rgba(0,0,0,.35); white-space:nowrap; pointer-events:none; opacity:0; visibility:hidden; transform:translate(-50%,6px) scale(.98); transition:opacity .15s ease, transform .15s ease, visibility 0s .15s; }
 .repo-dotwrap:hover .repo-tip, .repo-dot:focus-visible + .repo-tip { opacity:1; visibility:visible; transform:translate(-50%,0); transition-delay:0s; }

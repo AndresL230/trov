@@ -34,14 +34,15 @@ import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
-import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab } from "./maintenance";
+import { maintenanceView, type MaintenanceProps, type AssignKind } from "./maintenance";
+import type { IdentityProps } from "./identity";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
 import { newDocView, blankDoc, type NewDocDraft } from "./newdoc";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
-import { emailNotificationsSection, notificationsMaintenanceSections, unsubscribeView } from "./notifications";
+import { emailNotificationsSection, unsubscribeView, type NotifAdminProps } from "./notifications";
 import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
 import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
 import { repoView, repoControls, repoCrumb, type RepoProps, type RepoPollState } from "./repo";
@@ -53,7 +54,7 @@ import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
 import { platformView, platformOrgView, platformDialogs, platformHeaderControls, platformCrumb, platformPage, initialPlat, type PlatState } from "./platform";
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
-import { orgSettingsView, orgOverlays, orgPeopleLink, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
+import { orgSettingsView, orgOverlays, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
 import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 // Organizations as a person meets them (org-picker.ts): the switcher, the picker, the create dialog.
 import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsUi, type OrgsUi } from "./org-picker";
@@ -184,7 +185,7 @@ export interface AppState {
   /** Roadmap › Recent happenings: its OWN unfiltered read of the newest
    *  HAPPENINGS_LIMIT feed entries — never the Feed screen's (filterable) slice. */
   roadmapFeed: Loadable<FeedRow[]>;
-  // Triage surfaces (Review + Maintenance) — four Loadable slices, one per
+  // Triage surfaces (Review + Unplaced) and the logins to match — four Loadable slices, one per
   // list read; each surface's counts/props derive straight from these.
   proposals: Loadable<StagedProposal[]>;
   draftAdrs: Loadable<AdrRow[]>;
@@ -192,7 +193,7 @@ export interface AppState {
   identityTasks: Loadable<IdentityTask[]>;
   /** Discarded logins Undo can still restore — rides the identity-tasks read. */
   identityDiscarded: DiscardedIdentity[];
-  /** Maintenance › Identity's "N discarded" list is open. */
+  /** Org settings › Members › Unmatched logins: the "N discarded" list is open. */
   identityShowDiscarded: boolean;
   reviewFilter: ReviewFilter;
   reviewSel: string | null;
@@ -228,7 +229,7 @@ export interface AppState {
   notifPrefs: Loadable<PrefsView | null>;
   emailEditing: boolean;
   emailDraft: string;
-  // Email notifications (Maintenance, admin) — policy / schedule / recent outbox.
+  // Email notifications (Org settings › Notifications, admin) — policy / schedule / recent outbox.
   notifPolicy: Loadable<PolicyKindView[]>;
   notifSettings: Loadable<NotificationSettingsRow | null>;
   notifOutbox: Loadable<NotificationOutboxRow[]>;
@@ -354,9 +355,8 @@ export interface AppState {
   promptView: PromptView;
   promptMode: "new" | "edit" | "version";
   promptEd: PromptDraft | null;
-  // ── Docs › New doc / Maintenance tabs ──────────────────────────────────────
+  // ── Docs › New doc / Unplaced ──────────────────────────────────────
   nd: NewDocDraft;
-  maintTab: MaintTab;
   maintDiscardArm: boolean;
   // ── Platform (superadmin): everything its screens hold (platform.ts) ───────
   plat: PlatState;
@@ -501,7 +501,7 @@ export function initialState(): AppState {
     promptDiffV: null, promptTagMenu: false, promptTagDraft: "", promptDeleteArm: false, promptDeleteBusy: false, promptExpanded: false, promptView: "raw",
     promptMode: "new", promptEd: null,
     nd: blankDoc("technical", ""),
-    maintTab: "unplaced", maintDiscardArm: false,
+    maintDiscardArm: false,
     plat: initialPlat(),
     fmOpening: null,
     toast: null,
@@ -533,7 +533,6 @@ export function reviewProps(s: AppState): ReviewProps {
 
 export function maintenanceProps(s: AppState): MaintenanceProps {
   return {
-    tab: s.maintTab,
     discardArm: s.maintDiscardArm,
     unplaced: s.needsTriage.data.map(unplacedFromRow),
     assign: ASSIGN_OPTIONS,
@@ -542,21 +541,23 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
     assignSection: s.assignSection,
     assignSpace: s.assignSpace,
     assignTags: s.assignTags,
-    identity: s.identityTasks.data.map(identityFromTask),
-    discarded: s.identityDiscarded.map(discardedFromRow),
-    showDiscarded: s.identityShowDiscarded,
     people: peopleFromPersons(s.persons.data),
-    mapPicks: s.mapPicks,
-    mapConfirm: s.mapConfirm,
   };
 }
 
-/** Sidebar counts for the two triage entries — the lengths of the four list reads. */
+/** Sidebar counts for the two triage entries: Review's two reads, and the Unplaced queue (the
+ *  key is still `maintenance`). Unmatched logins are NOT in it — they wait in Org settings. */
 export function triageCounts(s: AppState): { review: number; maintenance: number } {
   return {
     review: s.proposals.data.length + s.draftAdrs.data.length,
-    maintenance: s.needsTriage.data.length + s.identityTasks.data.length,
+    maintenance: s.needsTriage.data.length,
   };
+}
+
+/** How many logins wait to be matched to a person — an ADMIN's count (Org settings › Members,
+ *  and the org switcher that leads there). 0 for everyone else: they cannot act on it. */
+export function identityCount(s: AppState): number {
+  return viewerIsAdmin(s) ? s.identityTasks.data.length : 0;
 }
 
 /** Sidebar count for Handoffs: pending handoffs left for ME — `handoffsForMe`, the
@@ -735,7 +736,7 @@ function sidebar(s: AppState): string {
     displayName: s.displayName,
     logo: logo(24),
     superadmin: s.plat.superadmin === true,
-    orgSwitcher: orgSwitcherButton({ org: viewerOrg(s), open: s.orgsUi.menu, invites: s.myOrgs.data?.invites.length ?? s.me?.pending_invites ?? 0, collapsed: railCollapsed(s) }),
+    orgSwitcher: orgSwitcherButton({ org: viewerOrg(s), open: s.orgsUi.menu, invites: s.myOrgs.data?.invites.length ?? s.me?.pending_invites ?? 0, logins: identityCount(s), collapsed: railCollapsed(s) }),
     orgActive: s.screen === "org",
   });
 }
@@ -768,7 +769,7 @@ function headerCrumb(s: AppState): string {
 function header(s: AppState): string {
   const titles: Record<Screen, string> = {
     mywork: "My Work", feed: "Feed", docs: "Docs", roadmap: "Roadmap", review: "Review",
-    maintenance: "Maintenance", search: "Search", settings: "Settings", guide: "Get Started",
+    maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Get Started",
     unsubscribe: "Unsubscribe", site: "Trov",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
@@ -1670,7 +1671,7 @@ function guideView(s: AppState): string {
     <ul style="${gList}">
       <li>${gStrong("trov")}: the overview. It explains the whole system and every tool. Ask about it when you're unsure where something lives.</li>
       <li>${gStrong("load-context")}: ${gStrong("runs on its own")} before your agent works on an area the team already knows about, and always before it proposes a doc change. It reads what Trov has, checks what's settled and what's only proposed, and at the start of a session shows your My Work and any handoffs waiting for you. It never writes.</li>
-      <li>${gStrong("record-session")}: ${gStrong("only when you ask")} ("record this session"). It checks what actually shipped with ${gCode("git")} and ${gCode("gh")}, reads back the docs it touched, and stages one batch of updates: feed entries, doc changes, and decisions. Repeats are dropped, and anything it can't place goes to Maintenance.</li>
+      <li>${gStrong("record-session")}: ${gStrong("only when you ask")} ("record this session"). It checks what actually shipped with ${gCode("git")} and ${gCode("gh")}, reads back the docs it touched, and stages one batch of updates: feed entries, doc changes, and decisions. Repeats are dropped, and anything it can't place goes to Triage › Unplaced.</li>
     </ul>
     <p style="${gP};margin-top:12px">The rest cover one surface each:</p>
     <ul style="${gList}">
@@ -1697,8 +1698,9 @@ function guideView(s: AppState): string {
     ${sub("Review: promote, ratify, or reject")}
     <p style="${gP}">${gStrong("Triage › Review")} is one queue for everything awaiting a decision. A doc proposal shows as a diff against the live version (unified, side by side, or rendered). ${gStrong("Promote")} makes it live; ${gStrong("Reject")} sets it aside. A drafted decision shows the proposed record: ${gStrong("Ratify")} or ${gStrong("Reject")} it. Nothing is deleted either way, and the sidebar count shows what's waiting.</p>
     ${gFig("review", `${gEm("Review")}: the queue on the left and the selected proposal's diff on the right.`)}
-    <p style="${gP};margin-top:14px">${gStrong("Maintenance")} is occasional housekeeping, and empty is its normal state. ${gStrong("Unplaced")} holds anything an agent couldn't confidently place: route it where it belongs or ${gStrong("Discard")} it. ${gStrong("Identity")} matches unrecognized GitHub logins to people. ${gStrong("People")} is the directory; admins also set the email digest there. Roles, titles and invites are in ${gStrong("Org settings › Members")}, from the switcher at the top of the sidebar.</p>
-    ${gFig("maintenance", `${gEm("Maintenance")}: the Unplaced queue, waiting to be routed or discarded.`)}
+    <p style="${gP};margin-top:14px">${gStrong("Triage › Unplaced")} holds anything an agent couldn't confidently place, and empty is its normal state: route an item where it belongs or ${gStrong("Discard")} it.</p>
+    ${gFig("maintenance", `${gEm("Unplaced")}: the queue, waiting to be routed or discarded.`)}
+    <p style="${gP};margin-top:14px">Running the organization itself is in one place: ${gStrong("Org settings")}, from the switcher at the top of the sidebar. ${gStrong("Members")} is the people directory. Admins also invite people there, set roles and titles, and match an unrecognized GitHub login to a person. ${gStrong("Notifications")} is where admins set the email digests: which exist, when they send, and what went out. Your own digest preferences stay in ${gStrong("Settings")}.</p>
 
     ${sec("Tour", "Every screen, top to bottom", "Tour")}
     <p style="${gP}">The sidebar groups screens into ${gStrong("Workspace")}, ${gStrong("Monitor")}, ${gStrong("Knowledge")}, ${gStrong("Triage")}, and ${gStrong("Help")} (this guide and What's new). A chevron opens a screen's sub-pages, ${gStrong("Collapse")} folds the rail to icons, and every screen has its own address (${gCode("#tickets/7")}, ${gCode("#artifacts")}) you can send to a teammate. On a phone the sidebar opens as a drawer.</p>
@@ -2239,31 +2241,11 @@ function reviewScreen(s: AppState): string {
   return `${hint}${reviewView(reviewProps(s))}`;
 }
 
-/** Maintenance screen with slice-level loading/error states around the pure view. */
+/** The Unplaced queue (the `maintenance` screen) with its slice's loading/error states around the pure view. */
 function maintenanceScreen(s: AppState): string {
-  if (slicePending(s.needsTriage) && slicePending(s.identityTasks)) return notice("Loading maintenance&hellip;");
-  if (s.needsTriage.status === "error" && s.identityTasks.status === "error") return notice("Couldn't load maintenance.");
-  const hint = s.maintTab === "unplaced" && s.needsTriage.status === "error" ? mwDegradedHint("Couldn't load the triage queue.")
-    : s.maintTab === "identity" && s.identityTasks.status === "error" ? mwDegradedHint("Couldn't load identity tasks.")
-    : "";
-  // People: the directory for everyone, under a pointer to Org settings › Members (roles, titles,
-  // invites and removal all live there now); the email digest settings below it for admins.
-  const admin = viewerIsAdmin(s);
-  const people = s.maintTab !== "people" ? "" : orgPeopleLink(admin) + peopleSection({
-    persons: s.persons.data,
-    loading: s.persons.status === "loading",
-    me: s.me?.handle ?? null,
-  }) + (admin
-    ? notificationsMaintenanceSections({
-        policy: s.notifPolicy.data,
-        settings: s.notifSettings.data,
-        outbox: s.notifOutbox.data,
-        outboxExpanded: s.outboxExpanded,
-        fromDraft: s.fromDraft,
-        fromError: s.fromError,
-      })
-    : "");
-  return maintenanceView(maintenanceProps(s), people, hint);
+  if (slicePending(s.needsTriage)) return notice("Loading the queue&hellip;");
+  if (s.needsTriage.status === "error" && s.needsTriage.data.length === 0) return notice("Couldn't load the Unplaced queue.");
+  return maintenanceView(maintenanceProps(s), s.needsTriage.status === "error" ? mwDegradedHint("Couldn't load the triage queue.") : "");
 }
 
 // ── tickets ──────────────────────────────────────────────────────────────────
@@ -2397,7 +2379,23 @@ function screenBody(s: AppState): string {
 /** Project the app state onto Org settings' props. The current org is `currentOrg` — one place. */
 function orgProps(s: AppState): OrgSettingsProps {
   const status = s.myOrgs.status === "unauth" ? "error" : s.myOrgs.status;
-  return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org };
+  // What an ADMIN administers beyond the org's own reads — both null for a member, who is
+  // shown neither: the logins to match to a person (Members), and the e-mail digests (Notifications).
+  const admin = viewerIsAdmin(s);
+  const identity: IdentityProps | null = admin ? {
+    status: s.identityTasks.status === "unauth" ? "error" : s.identityTasks.status,
+    groups: s.identityTasks.data.map(identityFromTask),
+    discarded: s.identityDiscarded.map(discardedFromRow),
+    showDiscarded: s.identityShowDiscarded,
+    people: peopleFromPersons(s.persons.data),
+    mapPicks: s.mapPicks,
+    mapConfirm: s.mapConfirm,
+  } : null;
+  const notif: NotifAdminProps | null = admin ? {
+    policy: s.notifPolicy.data, settings: s.notifSettings.data, outbox: s.notifOutbox.data,
+    outboxExpanded: s.outboxExpanded, fromDraft: s.fromDraft, fromError: s.fromError,
+  } : null;
+  return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org, identity, notif };
 }
 
 /** Project the app state onto the Repo dashboard's props (its components never see AppState). */
@@ -2496,7 +2494,7 @@ export function render(s: AppState): string {
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}
     ${s.view === "app" || s.view === "platform" ? platformDialogs(s.plat, s.screen) : ""}
-    ${s.view === "app" ? orgMenu({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], current: s.orgSlug, status: s.myOrgs.status, ui: s.orgsUi, superadmin: s.plat.superadmin === true }) : ""}
+    ${s.view === "app" ? orgMenu({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], current: s.orgSlug, status: s.myOrgs.status, ui: s.orgsUi, superadmin: s.plat.superadmin === true, logins: identityCount(s) }) : ""}
     ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}

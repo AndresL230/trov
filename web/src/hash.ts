@@ -18,14 +18,17 @@
 //   #prompts          → the Prompt Library; #prompts/new the editor; #prompts/<slug> one
 //                       prompt; #prompts/<slug>/edit and #prompts/<slug>/version its editor
 //   #docs/new         → the new-doc form
-//   #maintenance      → Maintenance › Unplaced; #maintenance/identity and #maintenance/people
+//   #unplaced         → Triage › Unplaced (the screen `maintenance`). Its old addresses still
+//                       resolve: #maintenance here, and #maintenance/identity and
+//                       #maintenance/people — two tabs it had until 2026-10-06 — to
+//                       Org settings › Members, where both now live
 //   #releases         → Help › What's new: the grid of releases
 //   #releases/<v>     → one release's notes (<v> = "0.14" or "unreleased"); #releases/<v>/patches
 //                       its patch notes. The legacy #releases/patches opens the newest release's.
 //   #platform         → Platform (superadmin) › Organizations; #platform/usage, /admins, /audit
 //                       its other tabs; #platform/orgs/<slug> one organization
 //   #org              → Org settings › Integrations; #org/repos, #org/environments,
-//                       #org/members and #org/general its other tabs
+//                       #org/members, #org/notifications and #org/general its other tabs
 //   #<screen>         → every other screen, named exactly as the Screen union
 //                       (`#site` is the landing page, reopened from inside the app)
 // Anything unrecognised falls back to My Work — the same rule the app has always
@@ -35,7 +38,6 @@ import type { Screen } from "./render";
 import { isRepoTab, type RepoTab } from "@shared/repo";
 import type { ArtRoute } from "./artifacts";
 import { parseSlugVersion } from "@shared/artifacts-core";
-import { MAINT_TABS, type MaintTab } from "./maintenance";
 import { RELEASES, releaseSlug, type ReleasePage } from "./releases";
 import { PLAT_TABS, type PlatTab } from "./platform";
 import { ORG_SLUG_RE } from "@shared/orgs";
@@ -64,8 +66,6 @@ export interface Route {
   promptSlug?: string;
   /** Set only on `promptedit`. */
   promptMode?: "new" | "edit" | "version";
-  /** Set only on `maintenance`. */
-  maintTab?: MaintTab;
   /** Set only on `roadmap`. */
   roadmapTab?: "narrative" | "timeline";
   /** Set only on a release's page (`releases` without it is the index). */
@@ -83,7 +83,7 @@ export interface Route {
 /** Whether two routes name the same place (the hashchange no-op check). */
 export function sameRoute(a: Route, b: Route): boolean {
   return a.screen === b.screen && a.ticketId === b.ticketId && a.sprintId === b.sprintId && a.repoTab === b.repoTab
-    && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.maintTab === b.maintTab && a.roadmapTab === b.roadmapTab
+    && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.roadmapTab === b.roadmapTab
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && a.platTab === b.platTab && a.platOrg === b.platOrg
     && a.orgTab === b.orgTab
@@ -91,13 +91,13 @@ export function sameRoute(a: Route, b: Route): boolean {
 }
 
 /**
- * The PAGE a route is on: its hash without the in-page view — a tab (Roadmap, Repo, Maintenance,
- * Platform, Org settings) or a header switch (a release's Release / Patch notes). Two routes with
+ * The PAGE a route is on: its hash without the in-page view — a tab (Roadmap, Repo, Platform,
+ * Org settings) or a header switch (a release's Release / Patch notes). Two routes with
  * the same key are the same page: moving between them swaps the tab's body in place, with no
  * screen entrance and nothing to load again (main.ts `markEnter`, the hashchange handler).
  */
 export function pageKey(r: Route): string {
-  return hashForRoute({ ...r, roadmapTab: undefined, releasePage: undefined, maintTab: undefined, repoTab: undefined, platTab: undefined, orgTab: undefined });
+  return hashForRoute({ ...r, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, platTab: undefined, orgTab: undefined });
 }
 
 /** A URL path segment decoded, or null when it is malformed. */
@@ -196,9 +196,12 @@ export function parseHash(hash: string): Route {
     if (parts[2] === "patches" || parts[2] === "notes") return { screen: "releases", ...base, releaseVersion: v, releasePage: parts[2] };
     return none;
   }
+  if (parts[0] === "unplaced") return parts.length === 1 ? { screen: "maintenance", ...base } : none;
+  // Legacy: the page was Maintenance, with three tabs. Unplaced is the page now; Identity and
+  // People moved into Org settings › Members, so an old link (or bookmark) lands there.
   if (parts[0] === "maintenance") {
-    if (parts.length === 1) return { screen: "maintenance", ...base, maintTab: "unplaced" };
-    if (parts.length === 2 && (MAINT_TABS as readonly string[]).includes(parts[1])) return { screen: "maintenance", ...base, maintTab: parts[1] as MaintTab };
+    if (parts.length === 1 || (parts.length === 2 && parts[1] === "unplaced")) return { screen: "maintenance", ...base };
+    if (parts.length === 2 && (parts[1] === "identity" || parts[1] === "people")) return { screen: "org", ...base, orgTab: "members" };
     return none;
   }
   if (parts[0] === "platform") {
@@ -247,7 +250,7 @@ export function hashForRoute(r: Route): string {
     if (!r.releaseVersion) return "#releases";
     return `#releases/${encodeURIComponent(r.releaseVersion)}${r.releasePage === "patches" ? "/patches" : ""}`;
   }
-  if (r.screen === "maintenance") return !r.maintTab || r.maintTab === "unplaced" ? "#maintenance" : `#maintenance/${r.maintTab}`;
+  if (r.screen === "maintenance") return "#unplaced";
   if (r.screen === "platform") return !r.platTab || r.platTab === "orgs" ? "#platform" : `#platform/${r.platTab}`;
   if (r.screen === "platformorg") return r.platOrg ? `#platform/orgs/${r.platOrg}` : "#platform";
   if (r.screen === "org") return !r.orgTab || r.orgTab === "integrations" ? "#org" : `#org/${r.orgTab}`;

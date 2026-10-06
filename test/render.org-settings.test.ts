@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import css from "../web/src/trov.css?raw";
 import {
   orgSettingsView, orgOverlays, setupSteps, setupChecklist, initialOrgUi, currentOrg, orgTabsFor, effectiveOrgTab, orgConfirmCopy,
-  apiUrlMoves, envForm, envFieldsOf, blankEnvFields, inviteDraftOk, repoDraftOk, lastOwnerSentence, orgPeopleLink,
+  apiUrlMoves, envForm, envFieldsOf, blankEnvFields, inviteDraftOk, repoDraftOk, lastOwnerSentence,
   type OrgUi, type OrgSettingsProps,
 } from "../web/src/org-settings";
 import {
@@ -148,12 +148,14 @@ describe("route, hash and sidebar", () => {
 });
 
 describe("who sees what — admin vs member", () => {
-  it("Integrations is admin+; a member's picked tab falls to the first they may open", () => {
-    expect(orgTabsFor("owner")).toEqual(["integrations", "repos", "environments", "members", "general"]);
-    expect(orgTabsFor("admin")).toContain("integrations");
+  it("Integrations and Notifications are admin+; a member's picked tab falls to the first they may open", () => {
+    expect(orgTabsFor("owner")).toEqual(["integrations", "repos", "environments", "members", "notifications", "general"]);
+    expect(orgTabsFor("admin")).toEqual(orgTabsFor("owner"));
     expect(orgTabsFor("member")).toEqual(["repos", "environments", "members", "general"]);
     expect(effectiveOrgTab("integrations", "member")).toBe("repos");
+    expect(effectiveOrgTab("notifications", "member")).toBe("repos");
     expect(effectiveOrgTab("integrations", "admin")).toBe("integrations");
+    expect(effectiveOrgTab("notifications", "admin")).toBe("notifications");
   });
 
   it("a member gets no Integrations tab, no checklist, and nothing that writes", () => {
@@ -163,8 +165,9 @@ describe("who sees what — admin vs member", () => {
       invites: { status: "idle", data: [] }, integrations: { status: "idle", data: null }, audit: { status: "idle", data: [] },
       settings: ok({ org: { slug: "acme", name: "Acme Robotics", created_at: "2026-10-01T10:00:00.000Z", created_by: "andres" }, can_edit: false }),
     });
-    const all = (["integrations", "repos", "environments", "members", "general"] as const).map((t) => tabView(ui, t, "member")).join("\n");
+    const all = (["integrations", "repos", "environments", "members", "notifications", "general"] as const).map((t) => tabView(ui, t, "member")).join("\n");
     expect(all).not.toContain('id="org-tab-integrations"');
+    expect(all).not.toContain('id="org-tab-notifications"');
     expect(all).not.toContain("data-org-setup");
     expect(all).not.toContain("data-org-integration");
     for (const act of ["orgRepoAdd", "orgRepoPrimary", "orgEnvNew", "orgEnvEdit", "orgEnvMove", "orgInviteSend", "orgInviteRevoke", "orgMemberEdit", "orgNameSave", "orgSecretOpen", "orgConfirm"]) {
@@ -647,11 +650,12 @@ describe("Members and invites", () => {
     expect(refused).toContain('role="alert"');
     expect(refused).toContain("Andres is the only owner. Make someone else an owner first, then try again.");
   });
-  it("links to Maintenance › People, and People links back", () => {
-    expect(tabView(fullUi(), "members")).toContain('data-act="goMaintenance" data-arg="people"');
-    expect(orgPeopleLink()).toContain('data-act="orgGo" data-arg="members"');
-    const s: AppState = { ...initialState(), view: "app", screen: "maintenance", maintTab: "people", needsTriage: { status: "ok", data: [] }, identityTasks: { status: "ok", data: [] }, persons: { status: "ok", data: [] } };
-    expect(render(s)).toContain("Open Org settings › Members");
+  it("is the one place people are managed: nothing points to Maintenance any more", () => {
+    for (const role of ["owner", "member"] as const) {
+      const html = tabView(fullUi(), "members", role);
+      expect(html, role).not.toContain("goMaintenance");
+      expect(html, role).not.toContain("Maintenance");
+    }
   });
 });
 

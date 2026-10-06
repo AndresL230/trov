@@ -80,7 +80,7 @@ Org settings › Members › **Invite someone** [`POST /api/o/:slug/invites`, `s
 An invitation is as **member** or **admin**; only the superadmin's invitation makes an owner. Pending
 invitations can be revoked. A person joining their first organization gets a welcome e-mail that links
 into it. Every organization's mail is sent from the platform's one address, under the sender **name** its
-admin sets in Maintenance › Notifications.
+admin sets in Org settings › Notifications.
 
 Each person may send 50 invitations (including resends) a day across all their organizations; the app says
 when the limit turns over [`abuse-limits.md`].

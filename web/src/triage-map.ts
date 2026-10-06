@@ -5,7 +5,8 @@
 
 import type { StagedProposal, AdrRow, NeedsTriageRow, IdentityTask, DiscardedIdentity, PersonSummary } from "./api";
 import type { ReviewItem } from "./review";
-import type { AssignOptions, UnplacedItem, IdentityGroup, DiscardedLogin, Person } from "./maintenance";
+import type { AssignOptions, UnplacedItem, Person } from "./maintenance";
+import type { IdentityGroup, DiscardedLogin } from "./identity";
 import { collapsedLineDiff } from "./diff";
 import { initialsOf, relTime } from "./ui";
 import { initialsOfName } from "./people";

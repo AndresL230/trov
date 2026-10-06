@@ -1,5 +1,5 @@
 // Platform — the SUPERADMIN's screens (canopy-multitenancy.md §5.4), over /api/platform/*.
-// One page with a tab bar (the Maintenance / Repo idiom):
+// One page with a tab bar (the Repo / Org settings idiom):
 //   ORGANIZATIONS — every org with its status, owners, members, invites; "Add organization"
 //                   (a modal: name, slug, the org admin) and, behind a row, the org's DETAIL
 //                   (suspend / unsuspend, members, invites, add another owner, usage, audit).

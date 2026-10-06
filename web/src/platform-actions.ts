@@ -103,7 +103,7 @@ export function createPlatform(h: PlatformHost) {
       else if (p.tab === "admins") loadAdmins();
       else if (p.tab === "audit") { loadAudit(true); if (p.orgs.status === "idle") loadOrgs(); }
       else loadOrgs();
-      // The other tabs' first read rides along with the page's (the Maintenance idiom: entering
+      // The other tabs' first read rides along with the page's (as Org settings does: entering
       // loads every tab), so opening one finds its rows already there instead of "Loading…".
       if (h.state.screen === "platform") {
         if (p.orgs.status === "idle") loadOrgs();

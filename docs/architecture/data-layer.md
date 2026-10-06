@@ -252,7 +252,7 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
 - **The legacy `/invites…` routes** (`src/orgs/legacy-invites.ts`) are a view of the caller's org's EMAIL
   `org_invites` rows in the old `InviteRow` shape, and send through the same code. The global `invites` table
   is still read for org #1 only: a pre-0047 row's name and outcome, and the row a first sign-in consumes.
-- **Attribution** (C-1): Maintenance › Identity's map writes `org_login_map` (admin+), never `identities`.
+- **Attribution** (C-1): Org settings › Members' login map (Unmatched logins) writes `org_login_map` (admin+), never `identities`.
   `resolvePersonForLogin(ctx, login)` / `memberGithubLogins` read the map first, then a MEMBER's own GitHub identity.
 - **`persons.email`**: the person sets their own (`PUT …/notifications/prefs`); an org admin may set it only for a
   member who is in NO other org (`PUT …/notifications/persons/:handle` — 404 for a non-member, 409 otherwise).

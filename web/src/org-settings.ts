@@ -1,12 +1,17 @@
-// Org settings — the area an org's admin runs their own org from (canopy-multitenancy.md
-// §5.3, §8.7): five tabs under one screen, `#org[/<tab>]`.
+// Org settings — the ONE place an org is administered from (canopy-multitenancy.md §5.3,
+// §8.7): six tabs under one screen, `#org[/<tab>]`.
 //   INTEGRATIONS  — the org's credentials (web/src/integrations.ts). Admin+ only.
 //   REPOSITORIES  — connected repos, one primary.
 //   ENVIRONMENTS  — the environments the Repo dashboard reports on, in drift order.
-//   MEMBERS       — org roles, titles, removal, and invites by GitHub login or email.
+//   MEMBERS       — the people directory: org roles, titles, removal, invites by GitHub login
+//                   or email, and (admins) the unmatched logins to map to a person
+//                   (web/src/identity.ts — Maintenance › Identity until 2026-10-06).
+//   NOTIFICATIONS — the e-mail digests: which exist and their default cadence, the send hour,
+//                   timezone and sender name, preview and test send, the outbox
+//                   (web/src/notifications.ts — under Maintenance › People until then). Admin+ only.
 //   GENERAL       — the org's name; its slug, read-only.
-// A member who is not an admin sees what the API lets them read: no Integrations tab, and
-// the other four read-only. Above the tabs an admin of a new org gets a setup checklist,
+// A member who is not an admin sees what the API lets them read: no Integrations and no
+// Notifications tab, and the other four read-only. Above the tabs an admin of a new org gets a setup checklist,
 // each item derived from live data, gone once all four are done.
 //
 // Purely presentational: props in, markup out (the app's idiom — template strings, inline
@@ -30,13 +35,17 @@ import { ROLE_MAX, RESPONSIBILITIES_MAX } from "@shared/people";
 import { ORG_NAME_MAX, INVITE_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, type MyOrg, type MyOrgsResponse, type OrgInvite, type OrgMember, type OrgRole, type OrgSettings } from "@shared/orgs";
 import type { IntegrationDTO, IntegrationKind, IntegrationsListDTO, OrgAuditDTO, OrgEnvironmentDTO, OrgRepoDTO } from "@shared/integrations";
 import { integrationsTab, secretFormModal, integrationLabel, SECRET_DELETE_EFFECT, type SecretFormState, type TestState } from "./integrations";
+import { identitySection, type IdentityProps } from "./identity";
+import { notificationsAdminSections, type NotifAdminProps } from "./notifications";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
-export type OrgTab = "integrations" | "repos" | "environments" | "members" | "general";
-export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "members", "general"];
+export type OrgTab = "integrations" | "repos" | "environments" | "members" | "notifications" | "general";
+export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "members", "notifications", "general"];
 export const isOrgTab = (v: unknown): v is OrgTab => typeof v === "string" && (ORG_TABS as readonly string[]).includes(v);
-const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", members: "Members", general: "General" };
+const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", members: "Members", notifications: "Notifications", general: "General" };
+/** The tabs only an admin or an owner may open (their APIs are admin+). */
+const ADMIN_TABS: readonly OrgTab[] = ["integrations", "notifications"];
 
 const idle = <T>(data: T): OrgSlice<T> => ({ status: "idle", data });
 
@@ -138,8 +147,8 @@ export function currentOrg(s: { orgSlug: string | null; myOrgs: { data: MyOrgsRe
   if (!s.orgSlug) return null;
   return s.myOrgs.data?.orgs.find((o) => o.slug === s.orgSlug) ?? s.me?.orgs.find((o) => o.slug === s.orgSlug) ?? null;
 }
-/** The tabs a role may open: Integrations is admin+ (its API is). */
-export const orgTabsFor = (role: OrgRole | null): OrgTab[] => ORG_TABS.filter((t) => t !== "integrations" || roleAtLeast(role, "admin"));
+/** The tabs a role may open: Integrations and Notifications are admin+ (their APIs are). */
+export const orgTabsFor = (role: OrgRole | null): OrgTab[] => ORG_TABS.filter((t) => !ADMIN_TABS.includes(t) || roleAtLeast(role, "admin"));
 /** The tab on screen: the picked one, or — when the role may not open it — the first it may. */
 export function effectiveOrgTab(tab: OrgTab, role: OrgRole | null): OrgTab {
   const tabs = orgTabsFor(role);
@@ -152,6 +161,10 @@ export interface OrgSettingsProps {
   orgsStatus: "idle" | "loading" | "ok" | "error";
   me: string;
   ui: OrgUi;
+  /** Members › Unmatched logins (render.ts builds it for an admin; null = not shown). */
+  identity?: IdentityProps | null;
+  /** The Notifications tab's reads (admins; null = not shown). */
+  notif?: NotifAdminProps | null;
 }
 
 // ── setup checklist ──────────────────────────────────────────────────────────
@@ -460,7 +473,22 @@ export function inviteMailNote(i: OrgInvite): { text: string; bad: boolean } {
   return { text: "No email sent yet", bad: false };
 }
 
-export function membersTab(org: MyOrg, ui: OrgUi, me: string): string {
+/** Members › Unmatched logins: only for an admin, and only while a login waits (or one was
+ *  discarded and can be restored) — empty is its normal state, and then it is not there. */
+export function unmatchedLogins(admin: boolean, identity: IdentityProps | null | undefined): string {
+  if (!admin || !identity) return "";
+  const body = identitySection(identity);
+  if (identity.groups.length === 0) {
+    return identity.status === "error" ? `<section data-org-identity style="margin-bottom:24px">${failedNote("the unmatched logins")}</section>`
+      : body ? `<section data-org-identity="discarded" aria-label="Discarded logins" style="margin-top:22px">${body}</section>` : "";
+  }
+  return `<section data-org-identity aria-labelledby="org-identity-t" style="margin-bottom:28px">
+      <div class="cnpy-org-head"><h2 id="org-identity-t" style="margin:0;font-size:14px;font-weight:600;letter-spacing:-0.005em;display:flex;align-items:center;gap:8px">Unmatched logins<span class="cnpy-badge" data-n="${identity.groups.length}">${identity.groups.length}</span></h2><p style="margin:3px 0 0;font-size:12.5px;line-height:1.5;color:var(--fg-55)">GitHub logins in this org's captured activity that don't belong to anyone yet. Say who each one is, or discard it.</p></div>
+      <div style="margin-top:10px">${body}</div>
+    </section>`;
+}
+
+export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: IdentityProps | null = null): string {
   const admin = roleAtLeast(org.role, "admin");
   const members = ui.members.data;
   const note = sliceNote(ui.members, "members", members.length > 0);
@@ -525,20 +553,19 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string): string {
           : `<div style="font-size:12.5px;color:var(--fg-40);margin-top:8px">Nobody is waiting on an invite.</div>`}
       </section>`;
 
-  return `${invite}
+  const waiting = !!identity && identity.groups.length > 0;
+  return `${waiting ? unmatchedLogins(admin, identity) : ""}${invite}
     ${orgHead("Members", admin ? "Owners manage owners and the encryption key. Admins manage everything else on this page. Members read." : "", members.length)}
     <ul${surface("overflow:hidden;list-style:none;margin:10px 0 0;padding:0")}>${rows}</ul>
     ${invitesBlock}
-    <div style="margin-top:22px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;align-items:flex-start">
-      <span style="font-size:12.5px;color:var(--fg-40)">Looking for the people directory, or mapping an unknown login to a person?</span>
-      ${goLink("Open Maintenance › People", "goMaintenance", "people")}
-    </div>`;
+    ${waiting ? "" : unmatchedLogins(admin, identity)}`;
 }
 
-/** The line Maintenance › People carries where its invite box and "Edit role" used to be: members
- *  are managed in ONE place now. */
-export function orgPeopleLink(admin = true): string {
-  return `<div data-people-pointer style="display:flex;align-items:baseline;gap:6px 10px;flex-wrap:wrap;margin:0 0 14px;font-size:12.5px;color:var(--fg-55)"><span>${admin ? "Inviting people, their roles and titles, and removing a member are in Org settings now." : "Roles, titles and invites are managed by this organization's admins in Org settings."}</span>${goLink("Open Org settings › Members", "orgGo", "members")}</div>`;
+// ── NOTIFICATIONS ────────────────────────────────────────────────────────────
+
+export function notificationsTab(org: MyOrg, notif: NotifAdminProps | null | undefined): string {
+  if (!roleAtLeast(org.role, "admin") || !notif) return orgEmpty("Admins only", "The org's e-mail digests are set by an admin or an owner. Your own preferences are in Settings.");
+  return notificationsAdminSections(notif);
 }
 
 // ── confirmation modal ───────────────────────────────────────────────────────
@@ -616,14 +643,21 @@ const INTRO: Record<OrgTab, string> = {
   repos: "The repositories this org's activity comes from.",
   environments: "The places your app runs, as the Repo dashboard reports on them.",
   members: "Who is in this org, what they may do, and who has been invited.",
+  notifications: "The e-mail digests this org sends: which exist, when they go out and what was sent. Each person picks their own cadence in Settings.",
   general: "The org's name and address.",
 };
 
-export function orgTabBar(tab: OrgTab, role: OrgRole | null, ui: OrgUi): string {
+/** The tab bar. Two tabs carry a count of what needs an admin there: integrations with an error,
+ *  and (Members) logins waiting to be matched — `logins` is 0 for anyone who is not an admin. */
+export function orgTabBar(tab: OrgTab, role: OrgRole | null, ui: OrgUi, logins = 0): string {
   const todo = ui.integrations.data ? ui.integrations.data.integrations.filter((i) => i.expected && (i.last_error !== null)).length : 0;
+  const badge = (n: number, title: string) => `<span class="cnpy-badge" data-n="${n}" title="${attr(title)}">${n}</span>`;
   return tabBar({
     id: "org-tab", ariaLabel: "Org settings sections", act: "orgTab", value: tab,
-    tabs: orgTabsFor(role).map((t) => ({ value: t, label: TAB_LABEL[t], trail: t === "integrations" ? `<span class="cnpy-badge" data-n="${todo}" title="${todo} with an error">${todo}</span>` : "" })),
+    tabs: orgTabsFor(role).map((t) => ({
+      value: t, label: TAB_LABEL[t],
+      trail: t === "integrations" ? badge(todo, `${todo} with an error`) : t === "members" ? badge(logins, `${logins} ${logins === 1 ? "login" : "logins"} to match`) : "",
+    })),
   });
 }
 
@@ -639,12 +673,14 @@ export function orgSettingsView(p: OrgSettingsProps): string {
   const body = tab === "integrations" ? integrationsTab(p.org, p.ui)
     : tab === "repos" ? reposTab(p.org, p.ui)
     : tab === "environments" ? environmentsTab(p.org, p.ui)
-    : tab === "members" ? membersTab(p.org, p.ui, p.me)
+    : tab === "members" ? membersTab(p.org, p.ui, p.me, p.identity ?? null)
+    : tab === "notifications" ? notificationsTab(p.org, p.notif)
     : generalTab(p.org, p.ui);
+  const logins = roleAtLeast(p.org.role, "admin") ? p.identity?.groups.length ?? 0 : 0;
   // The checklist's slot is always there (empty once setup is done), so the tab bar under it is
   // the same child of the page on every paint — the page is patched in place (morph.ts).
   return shell(`<div data-setup-slot>${setupChecklist(p.org, p.ui)}</div>
-    ${orgTabBar(tab, p.org.role, p.ui)}
+    ${orgTabBar(tab, p.org.role, p.ui, logins)}
     <div${tabPanelAttrs("org-tab", tab)} style="padding-top:20px">
       <p style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin:0 0 18px;max-width:720px">${esc(INTRO[tab])}${roleAtLeast(p.org.role, "admin") ? "" : " You can read this; an admin or an owner can change it."}</p>
       ${body}

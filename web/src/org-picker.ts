@@ -111,17 +111,26 @@ export interface OrgSwitcherProps {
   open: boolean;
   /** Pending invitations, as a count on the button (0 = none). */
   invites: number;
+  /** Logins waiting in Org settings › Members for an admin to match (0 for a member): they
+   *  join the button's count, since the menu behind it is the way to Org settings. */
+  logins?: number;
   collapsed: boolean;
+}
+/** What the switcher's count stands for, in words. */
+export function orgWaitingTitle(invites: number, logins: number): string {
+  const parts = [invites ? `${invites} pending ${invites === 1 ? "invitation" : "invitations"}` : "", logins ? `${logins} ${logins === 1 ? "login" : "logins"} to match in Org settings` : ""].filter(Boolean);
+  return parts.join(" · ") || "Nothing waiting";
 }
 /** The sidebar header's button: the current org's name; it opens the menu (`orgMenu`). Always
  *  emitted — collapsed, the rail keeps the tile and its tooltip names the org. */
 export function orgSwitcherButton(p: OrgSwitcherProps): string {
   const name = p.org?.name ?? "Organizations";
+  const waiting = p.invites + (p.logins ?? 0);
   return `<div class="cnpy-orgsw" data-tip="${attr(p.org ? `${name}: switch organization` : "Organizations")}">
     <button type="button" data-act="orgsMenu" data-field="orgsMenu" data-orgsw-trigger class="cnpy-orgsw-b${p.open ? " is-open" : ""}" style="border-radius:8px" aria-haspopup="dialog" aria-expanded="${p.open}" aria-controls="orgs-menu" aria-label="${attr(p.org ? `${name}: switch organization` : "Organizations")}">
       ${orgTile(name, 24)}
       <span class="cnpy-lbl cnpy-orgsw-n">${esc(name)}</span>
-      <span class="cnpy-lbl cnpy-badge" data-n="${p.invites}" title="${p.invites} pending ${p.invites === 1 ? "invitation" : "invitations"}">${p.invites}</span><span class="cnpy-dot" data-n="${p.invites}"></span>
+      <span class="cnpy-lbl cnpy-badge" data-n="${waiting}" title="${attr(orgWaitingTitle(p.invites, p.logins ?? 0))}">${waiting}</span><span class="cnpy-dot" data-n="${waiting}"></span>
       ${UPDOWN}
     </button>
   </div>`;
@@ -136,6 +145,8 @@ export interface OrgMenuProps {
   ui: OrgsUi;
   /** The viewer is a platform superadmin: the menu ends with a link to the Platform area (`/platform/`). */
   superadmin?: boolean;
+  /** Logins waiting to be matched (an admin's count; 0 = none): shown on the Org settings row. */
+  logins?: number;
 }
 /** The Platform area's own page, outside any org (platform.ts `PLATFORM_PATH`) — a plain link, a page load. */
 const PLATFORM_HREF = "/platform/";
@@ -164,7 +175,7 @@ export function orgMenu(p: OrgMenuProps): string {
       ${p.ui.inviteError ? `<div role="alert" style="font-size:12px;line-height:1.45;color:var(--red);padding:2px 10px 6px">${esc(p.ui.inviteError)}</div>` : ""}
     </div>` : "";
   const here = orgs.find((o) => o.slug === p.current) ?? null;
-  const settings = here ? `<button type="button" data-act="orgsSettings" data-orgs-item class="cnpy-menurow" style="${MENU_ROW}">${GEAR}<span style="flex:1;min-width:0">Org settings</span></button>` : "";
+  const settings = here ? `<button type="button" data-act="orgsSettings" data-orgs-item class="cnpy-menurow" style="${MENU_ROW}">${GEAR}<span style="flex:1;min-width:0">Org settings</span><span class="cnpy-badge" data-n="${p.logins ?? 0}" title="${p.logins ?? 0} ${p.logins === 1 ? "login" : "logins"} to match">${p.logins ?? 0}</span></button>` : "";
   const create = !p.orgs ? (p.status === "error" ? `<div role="alert" style="font-size:12px;line-height:1.45;color:var(--fg-55);padding:8px 10px">Couldn't load your invitations. <button type="button" data-act="orgsReload" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--accent)">Try again</button></div>` : "")
     : p.orgs.can_create ? `<button type="button" data-act="orgsCreateOpen" data-orgs-item class="cnpy-menurow" style="${MENU_ROW}">${PLUS}<span style="flex:1;min-width:0">Create organization</span></button>`
     : `<div style="font-size:12px;line-height:1.45;color:var(--fg-40);padding:8px 10px">${esc(orgCapSentence(p.orgs))}</div>`;

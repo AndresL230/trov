@@ -171,7 +171,7 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
   `web/src/markdown.ts` renders PR summaries, the roadmap narrative and a sprint description as styled HTML;
-  `web/src/notifications.ts` holds the Settings › Email notifications and Maintenance › Notifications views;
+  `web/src/notifications.ts` holds the Settings › Email notifications and Org settings › Notifications views;
   `web/src/tickets.ts` + `web/src/sprints.ts` are the (purely presentational) tickets/sprint components, and
   `web/src/hash.ts` is the hash-route seam (`parseHash` / `hashForRoute` — `#tickets/7`, `#sprints/3`,
   `#repo/<tab>`). `web/src/repo.ts` is the Repo dashboard (ported from the Claude Design `Trov Repo
@@ -527,8 +527,8 @@ with the GitHub login, and renameable from Settings (`renamePerson` rewrites eve
 atomically via `HANDLE_COLUMNS`, in one D1 batch with FK checks deferred for the transaction).
 `identities(provider, subject) → person` holds the GitHub login and Google `sub`. Event subjects
 (`events.subject_login`) resolve to a person through the github identity row at read time
-(`resolvePersonForLogin`); an unmapped login raises an `identity_tasks` row and Maintenance › Identity
-links it to an existing handle. Mapping a login there calls the same `linkIdentity` as sign-in linking, so
+(`resolvePersonForLogin`); an unmapped login raises an `identity_tasks` row and Org settings › Members
+(its Unmatched logins section, `web/src/identity.ts`) links it to an existing handle. Mapping a login there calls the same `linkIdentity` as sign-in linking, so
 it also grants that GitHub account sign-in as the mapped person, not just attribution — there is no undo
 route yet; fix a wrong mapping by deleting the `identities` row with `wrangler d1 execute`. A login that will
 never be a person (an outside contributor's PR) is DISCARDED instead: `POST /identity-tasks/:login/discard`
@@ -572,7 +572,7 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   is 404): `PersonProfile` — role, GitHub login, joined, `admin`, `editable` (the VIEWER is an admin), `self`, and
   nothing else (no tickets, sessions or docs — there is no profile page) — the person and their GitHub login in ONE
   `db.batch`. A D1 failure is 503 `{ error }`, never a 500.
-- **`responsibilities` is never rendered.** It travels only to admins (Maintenance › People's editor
+- **`responsibilities` is never rendered.** It travels only to admins (Org settings › Members' editor
   fills from it) and to MCP `list_people` — not even to the person themselves.
 - **Role and responsibilities are ADMIN-set** (the owner's call, 2026-09-27): a person changes only their own photo
   (and name / color / handle, as before). **Write** `PUT /api/people/:handle` (`PersonProfileWrite`): an admin
@@ -585,13 +585,12 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   it before choosing `assignees`, and that a null is unknown, never to be guessed.
 - `scripts/seed/reset.mjs` seeds a role + responsibilities for the six dev/test persons.
 - **On screen there is NO People screen and no profile page** (the owner's call, 2026-09-27): a click on anyone's
-  name — the ticket rail's people, Feed authors, quick search's person hits, Maintenance › People's rows — opens the
+  name — the ticket rail's people, Feed authors, quick search's person hits, Org settings › Members' rows — opens the
   **person card** (`personCardModal`, `web/src/profile.ts`): a modal in the confirm modal's `.cnpy-cmodal` shell,
   rendered at the app root (`state.personCard`), with the large avatar, name, handle and role painted at once from
   `GET /persons`, then joined / GitHub / the admin badge when `GET /api/people/:handle` lands; the backdrop, × and
-  Escape close it, and one's OWN card links to Settings (photo, name). Role + responsibilities are edited in ONE place: Maintenance › People, where
-  an admin's "Edit role" opens `personRoleEditor` (`web/src/maintenance.ts`) under that row, filled from the
-  person's profile read. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in the browser before
+  Escape close it, and one's OWN card links to Settings (photo, name). Role + responsibilities are edited in ONE place: Org settings › Members, where
+  an admin's "Edit" opens `memberEditor` (`web/src/org-settings.ts`) under that row. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in the browser before
   the POST — so a GIF loses its animation) and removes one (shown only for an `/avatar/` URL) — both from a small
   menu the AVATAR opens (`.cnpy-avbtn`: a camera veil on hover / focus, a spinner while a write is in flight, when
   it won't open; Escape closes, ↑/↓ move); it has no role or responsibilities field. A `personChip` whose image fails to load shows the initials under it. **Every name or
@@ -1271,9 +1270,10 @@ issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source 
 Ported from the Claude Design project `2c8cfa50`: **Handoffs** (Workspace; `#handoffs`, `#handoffs/new`,
 `#handoffs/<id>` — `web/src/handoffs.ts`), **Prompt Library** (Knowledge; `#prompts`, `#prompts/new`,
 `#prompts/<slug>`, `#prompts/<slug>/edit|version` — `web/src/prompts.ts`), **Docs › New doc** (`#docs/new`) and
-the tabbed **Maintenance** (Unplaced / Identity / People — `#maintenance[/identity|/people]`, switched by the
-underline tab bar heading its page body, not the header or the sidebar; the admin email-notification sections
-sit under People).
+**Unplaced** (Triage; `#unplaced` — `web/src/maintenance.ts`, the screen id is still `maintenance`). It was the
+tabbed Maintenance until 2026-10-06: Identity and People moved into Org settings › Members and the admin
+email-notification sections into Org settings › Notifications; `#maintenance`, `#maintenance/identity` and
+`#maintenance/people` still resolve (`web/src/hash.ts`).
 Storage is `0028_handoffs_prompts` (`handoffs` with an INTEGER id rendered `#12`, `context` JSON
 `{ repo, branch, task, done[], next[], files[] }`, an inline prompt that is both-or-neither, `expires_at` =
 created + 7 days; `prompts` / `prompt_versions`; standalone `prompts_fts` over slug/title/description/body/tags
@@ -1458,16 +1458,16 @@ node conditionally there swaps it out from under its own animation — `test/ren
 element tree across every state. `data-keep` marks a script-owned node (the collapsed-rail tooltip) the
 patcher leaves alone. A sub-page list the app opened on entry folds again on leaving; one opened by hand
 sticks and is what persists (`trov.navOpen`). Only **Docs** owns a sub-page list (`NAV_GROUPS`);
-Roadmap, Tickets, Maintenance and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's,
-Maintenance's and Repo's tabs head their page body), and a stored
+Roadmap, Tickets, Unplaced and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's
+and Repo's tabs head their page body), and a stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
 **Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, the queue's
 Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, form segments. Never
 hand-roll a segment group. It picks a VALUE or a view; moving between a page's own SECTIONS is the **underline
-tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Maintenance's Unplaced / Identity / People, `maintTabBar`,
-with the rail's count badges; the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
+tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Org settings' and Platform's tabs, patched in place so a switch replaces
+only the panel (`web/src/morph.ts` `data-morph` / `data-morph-key`); the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
 tab carrying the red overdue dot, in the same page frame on both tabs — `asideColumns`' optional `tabs` heads
 the Narrative's two columns with it — and New sprint staying in the header; the Repo dashboard's Overview / Code /
 CI & Deploys / Usage / Team & Planning, `repoTabBar`, in every state of the dashboard, its switch `setRepoTab`
