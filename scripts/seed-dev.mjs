@@ -34,9 +34,9 @@ const fx = {
 // …plus the Platform (superadmin) screens' demo rows: usage for both seed orgs, Acme's owner, audit.
 const statements = [...buildSeedStatements(fx), ...platformDevStatements()];
 
-// Applied 40 statements at a time, by the D1 BINDING: one file holding the whole seed is refused
+// Applied 8 statements at a time, by the D1 BINDING: one file holding the whole seed is refused
 // by the local execute (SQLITE_TOOBIG), and the database's name has changed before.
-const CHUNK = 40;
+const CHUNK = 8;
 const file = join(mkdtempSync(join(tmpdir(), "trov-seed-")), "seed.sql");
 console.log(`seed-dev: applying ${statements.length} statements to LOCAL D1…`);
 for (let i = 0; i < statements.length; i += CHUNK) {
