@@ -1545,6 +1545,7 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
 
 - `shared/vocabulary.ts` MUST match `migrations/0002_seed_vocab.sql` — it's the gate's source of truth.
 - D1 helpers live in `src/db.ts` (`first` / `all` / `run` / `nowIso`); writers in `src/tools/writes.ts`.
+- Multitenancy Phase 3 (in progress): D1 is reached through a context — `src/data/` — and porting a module is described in `docs/architecture/data-layer.md`.
 - Tests use real Miniflare D1 (a second, empty binding `MT_DB` exists only for `test/migrations.multitenancy.test.ts`,
   which builds 0036-era databases and applies 0037–0040 and the rollback to them); the reset seeds two orgs —
   `org_saplinglearn` (the six persons, AndresL230 owner) and an empty `org_b`. `test/apply-migrations.ts` truncates data tables `beforeEach` via
