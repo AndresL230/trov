@@ -20,8 +20,8 @@ import { siteFooter, siteMark } from "./site-chrome";
 
 /** Who runs the service (the landing footer's copyright line). */
 export const LEGAL_OPERATOR = "Andres Lopez";
-/** Where questions and privacy requests go — the address Trov already sends its mail from. */
-export const LEGAL_CONTACT = "canopy@canopy.saplinglearn.com";
+/** Where questions and privacy requests go — the same address Trov sends its mail from. */
+export const LEGAL_CONTACT = "hello@trov.dev";
 
 export type LegalKind = "terms" | "privacy";
 

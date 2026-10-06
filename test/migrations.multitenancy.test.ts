@@ -256,3 +256,17 @@ describe("the rollback (scripts/mt/rollback/0037-0040.down.sql)", () => {
     expect(await one(`SELECT id FROM orgs WHERE id = 'org_b'`)).toEqual({ id: "org_b" });
   });
 });
+
+describe("0041 — the sender's rename", () => {
+  it("moves the untouched default sender to Trov <hello@trov.dev>", async () => {
+    await at0036WithData();
+    await applyD1Migrations(db(), upTo("0041"));
+    expect(await one(`SELECT from_address FROM notification_settings WHERE org_id = ?`, LEGACY)).toEqual({ from_address: "Trov <hello@trov.dev>" });
+  });
+
+  it("leaves an admin's own sender alone", async () => {
+    await at0036WithData([`UPDATE notification_settings SET from_address = 'Team <team@example.org>' WHERE id = 1`]);
+    await applyD1Migrations(db(), upTo("0041"));
+    expect(await one(`SELECT from_address FROM notification_settings WHERE org_id = ?`, LEGACY)).toEqual({ from_address: "Team <team@example.org>" });
+  });
+});
