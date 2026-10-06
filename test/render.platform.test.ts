@@ -79,31 +79,11 @@ const plat = (over: Partial<PlatState> = {}): PlatState => ({ ...initialPlat(), 
 const app = (over: Partial<AppState> = {}): AppState => ({ ...initialState(), view: "app", ...over });
 
 describe("the superadmin gate", () => {
-  const side = (superadmin?: boolean) => sidebarView({
-    screen: "mywork", collapsed: false, navOpen: { ...NAV_CLOSED }, qView: "table", roadmapTab: "narrative", docSpace: "technical", docSpaces: [],
-    counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "", superadmin,
-  });
-  const skeleton = (html: string): string => (html.match(/<\/?[a-z][a-z0-9]*/gi) ?? []).join(" ");
-
-  it("the sidebar's Platform entry is hidden unless the viewer is a superadmin — same element tree either way", () => {
-    expect(side(false)).toContain('<div class="cnpy-plat" data-on="0" hidden>');
-    expect(side(undefined)).toContain('<div class="cnpy-plat" data-on="0" hidden>');
-    expect(side(true)).toContain('<div class="cnpy-plat" data-on="1">');
-    expect(side(true)).toContain('data-act="platGo" class="cnpy-nav-i" aria-label="Platform"');
-    expect(skeleton(side(true))).toBe(skeleton(side(false)));
-    expect(css).toContain(".cnpy-plat[hidden] { display:none; }");
-  });
-  it("sits apart from the org's navigation: after the nav list, above Collapse and Settings", () => {
-    const html = side(true);
-    expect(html.indexOf('class="cnpy-plat"')).toBeGreaterThan(html.indexOf("</nav>"));
-    expect(html.indexOf('class="cnpy-plat"')).toBeLessThan(html.indexOf('class="cnpy-collapse"'));
-    expect(navKeyOf("platform")).toBe("platform");
-    expect(navKeyOf("platformorg")).toBe("platform");
-  });
-  it("the app reads the flag from state: null (not answered) and false both hide the entry", () => {
-    expect(render(app())).toContain('class="cnpy-plat" data-on="0" hidden');
-    const s = app(); s.plat.superadmin = true;
-    expect(render(s)).toContain('class="cnpy-plat" data-on="1"');
+  it("Platform has one way in — the org menu's link to /platform/ — and no sidebar row", () => {
+    const html = render(app());
+    expect(html).not.toContain('class="cnpy-plat"');
+    expect(html).not.toContain('data-act="platGo" class="cnpy-nav-i"');
+    expect(css).not.toContain(".cnpy-plat ");
   });
   it("the screens render nothing of the area until the answer is yes", () => {
     const loading = platformView({ ...plat(), superadmin: null, orgs: { status: "ok", data: [org()] } });

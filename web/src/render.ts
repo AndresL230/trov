@@ -735,7 +735,6 @@ function sidebar(s: AppState): string {
     me: s.me ? { handle: s.me.handle, name: s.me.name, color: s.me.color, avatar_url: s.me.avatar_url } : null,
     displayName: s.displayName,
     logo: logo(24),
-    superadmin: s.plat.superadmin === true,
     orgSwitcher: orgSwitcherButton({ org: viewerOrg(s), open: s.orgsUi.menu, invites: s.myOrgs.data?.invites.length ?? s.me?.pending_invites ?? 0, logins: identityCount(s), collapsed: railCollapsed(s) }),
     orgActive: s.screen === "org",
   });

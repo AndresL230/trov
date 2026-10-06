@@ -57,8 +57,6 @@ export interface SidebarProps {
   me: { handle: string; name: string | null; color: PersonColor; avatar_url?: string | null } | null;
   displayName: string;
   logo: string;
-  /** The viewer is a platform superadmin: the Platform entry shows (it is always emitted, hidden otherwise). */
-  superadmin?: boolean;
   /** The org switcher's button (org-picker.ts `orgSwitcherButton`), under the logo. Its menu holds
    *  Org settings, so the rail has no Organization section of its own. */
   orgSwitcher?: string;
@@ -179,7 +177,6 @@ export function sidebarView(p: SidebarProps): string {
       ${item("guide", "goGuide", "Get Started")}
       ${item("releases", "goReleases", "What's new")}
     </nav>
-    <div class="cnpy-plat" data-on="${p.superadmin ? "1" : "0"}"${p.superadmin ? "" : " hidden"}>${item("platform", "platGo", "Platform")}</div>
     <div class="cnpy-collapse" data-tip="Expand sidebar">
       <button data-act="toggleCollapse" class="cnpy-nav-i" aria-label="${p.collapsed ? "Expand sidebar" : "Collapse sidebar"}" aria-expanded="${!p.collapsed}">${ICONS.collapse}<span class="cnpy-lbl cnpy-nav-t">Collapse</span></button>
     </div>

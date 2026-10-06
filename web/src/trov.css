@@ -1539,13 +1539,9 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 }
 
 /* ── Platform (web/src/platform.ts, platform-usage.ts) — the superadmin's screens ──────
-   The sidebar entry sits apart from the org's own navigation: its own block under the nav
-   list, ruled off, and present only for a superadmin (always emitted — the rail's tree is
-   stable — and `hidden` otherwise). The tables are grids that reflow BY THEIR OWN WIDTH
+   The tables are grids that reflow BY THEIR OWN WIDTH
    (`.plat-table` is the container): under 860px the header row goes and each row becomes
    a small card of labelled cells, so nothing scrolls sideways on a phone. */
-.cnpy-plat { flex:none; padding:6px 10px 4px; border-top:1px solid var(--border); }
-.cnpy-plat[hidden] { display:none; }
 
 /* ── organizations: the switcher, its menu, the picker (web/src/org-picker.ts) ──
    THE SWITCHER sits under the logo: the current org's initial and name. Collapsed, the rail
@@ -1608,7 +1604,6 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
   [data-phone="0"][data-collapsed="0"] .cnpy-sec { height:25px; padding-top:6px; }
   [data-phone="0"][data-collapsed="0"] .cnpy-sec.is-first { height:26px; padding-top:7px; }
   [data-phone="0"] .cnpy-ghost { display:none; }
-  [data-phone="0"] .cnpy-plat { padding:4px 10px 2px; }
   [data-phone="0"] .cnpy-collapse { padding-bottom:4px; }
   [data-phone="0"] .cnpy-foot { padding:6px 10px; }
 }

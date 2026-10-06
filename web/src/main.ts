@@ -524,7 +524,10 @@ function loadForScreen(screen: Screen): void {
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
     case "settings": loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); break;
     case "unsubscribe": runUnsubscribe(); break;
-    case "platform": case "platformorg": platform.load(); break;
+    // Platform has one home, `/platform/` (the org menu links there): an old in-app `#platform…` link goes to it.
+    case "platform": case "platformorg":
+      if (state.view === "app") { location.replace(`${PLATFORM_PATH}${hashForRoute(currentRoute())}`); break; }
+      platform.load(); break;
     case "org": loadOrgAdminExtras(); orgCtl.load(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
