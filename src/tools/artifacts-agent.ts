@@ -119,7 +119,10 @@ export async function agentUploadAsset(ctx: ArtifactAgentCtx, input: AgentCreate
   if (destination !== "artifact") throw bad(`destination must be "artifact" or "doc"`);
   const missing = (["title", "kind", "area", "repo", "visibility"] as const).filter((f) => input[f] === undefined);
   if (missing.length) throw bad(`an artifact needs ${missing.join(", ")}`);
-  return createArtifact(ctx, input as AgentCreateInput & { title: string; kind: ArtifactKind; area: ArtifactArea; repo: string; visibility: ArtifactVisibility });
+  // `return await`, not `return`: createArtifact refuses a bad shape BEFORE its first await, so the promise it
+  // hands back is already rejected. Returned bare, this function's own promise adopts it a microtask LATER —
+  // and for that tick the rejection has no handler, which workerd reports as an unhandled rejection.
+  return await createArtifact(ctx, input as AgentCreateInput & { title: string; kind: ArtifactKind; area: ArtifactArea; repo: string; visibility: ArtifactVisibility });
 }
 
 async function createArtifact(
