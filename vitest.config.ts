@@ -56,6 +56,10 @@ export default defineConfig({
           RAILWAY_TOKEN_PRODUCTION: "",
           SAPLING_METRICS_TOKEN: "",
           PUBLIC_ORIGIN: "https://trov.test",
+          // A FIXED key-encryption key (32 bytes, base64) for per-org secrets (src/data/secrets.ts), so the
+          // suite never depends on a developer's `.dev.vars`; TROV_KEK_PREVIOUS is blanked for the same reason.
+          TROV_KEK: "dGVzdC1rZWstMDEyMzQ1Njc4OWFiY2RlZi10cm92ISE=",
+          TROV_KEK_PREVIOUS: "",
         },
       },
     })),

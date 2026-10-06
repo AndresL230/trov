@@ -34,4 +34,11 @@ export interface Env {
   // an https `apiUrl` and never across a redirect. Absent/empty → the hourly active-users poll (src/repo/poll.ts)
   // is not called and the Usage tab's Active users stays "not connected".
   SAPLING_METRICS_TOKEN?: string;
+  // SECRET — the key-encryption key for per-org integration secrets (src/data/secrets.ts; canopy-multitenancy.md
+  // §8.7.1): 32 random bytes, base64 (`openssl rand -base64 32`). It wraps each org's data key and never encrypts
+  // a credential itself. Absent or malformed → every secret read and write fails closed (the Integrations API
+  // answers 503 `secrets_unavailable`); nothing is ever stored in plaintext instead. LOSING IT loses every org's
+  // stored credentials. TROV_KEK_PREVIOUS is set only during a KEK rotation: the old key, picked by fingerprint.
+  TROV_KEK?: string;
+  TROV_KEK_PREVIOUS?: string;
 }
