@@ -46,6 +46,12 @@ their global `id`, not the per-org `number`.
   `test/isolation.*.test.ts` files and the `test/secrets.*.test.ts` suite. Also on the branch, ahead of their
   phase: orgs / members / invites and the superadmin surface (`src/orgs`, `src/platform`, migration
   `0043_platform_orgs`), per-org secrets and the Integrations API (`src/integrations`, `/api/o/:slug/…`).
+- **Phase 5b** (spec §8.3–§8.5, branch `mt/p5b-jobs`): background work is per org — the rotation dispatcher
+  (`src/repo/dispatch.ts`, `src/platform/jobs.ts`), per-(org, environment) / per-org job functions reading
+  `org_repos` / `org_environments` and `resolveCredential`, `POST /webhook/github/:hookId` (+ the legacy
+  hook), per-org digests. No migration. `legacySystemTenant` is gone from every background entry point.
+  How it works: `docs/architecture/data-layer.md` › Background jobs. Tests: `test/jobs.multi-org.test.ts`,
+  `test/webhook.multi-org.test.ts`, `test/notifications.multi-org.test.ts`.
 
 ### Next, in order
 
@@ -56,9 +62,14 @@ their global `id`, not the per-org `number`.
 2. **Phase 5a — MCP** (§7): org-scoped bearer tokens and the OAuth org picker; `resolveBearerTenant` reads the
    org off the token / grant row instead of the sole membership (then drop the `src/auth/tokens.ts` /
    `oauth.ts` whole-file entries from the static allowlist).
-3. **Phase 5b — cron, webhooks, pollers** (§8.3, §8.5, §8.7): the rotation dispatcher over (org, environment)
-   jobs, the webhook resolving its org from `org_repos`, the pollers reading credentials through
-   `resolveCredential` — this removes every `legacySystemTenant` caller.
+3. **Phase 5b follow-ups** (the phase itself is done, above): (a) the two dashboard READS still parse the var —
+   swap `c.env.GITHUB_REPO` / `repoEnvironments(c.env)` for `orgPrimaryRepo(ctx)` / `orgEnvironments(ctx)`
+   in `src/routes.ts` (`/repo/dashboard`) and `src/mcp.ts` (`get_repo_dashboard`), then delete
+   `repoEnvironments`; (b) flip `WEBHOOKS_LIVE` to `true` in `web/src/integrations.ts` — the per-repo webhook
+   URL is live; (c) `parseTicketLink`'s default repo (`DEFAULT_TICKET_REPO`, `shared/tickets.ts`) is still
+   used by `src/tools/tickets.ts` / `sprints.ts` — pass the org's primary repo; (d) capture for NON-primary
+   repos needs the repo in the capture keys first; (e) `cf_polled` is still one snapshot row per org — split it
+   per environment before Queues make units concurrent.
 4. Switch ticket / handoff addressing from the global `id` to the per-org `number` (routes, MCP, the SPA).
 5. Phase 6 (SPA) and Phase 7 (isolation matrix, mutation job, cleanup migration) as in spec §11. Add each
    phase's lines to the top release in `web/src/releases.ts`.
@@ -73,6 +84,15 @@ their global `id`, not the per-org `number`.
 - Do not edit `0037`–`0040` without re-running `python3 scripts/mt/build-rollback.py`.
 
 ### Waiting on the owner (not blocking Phase 3)
+
+- Phase 5b: confirm the Worker is on **Workers Paid** before a second org adds environments
+  (`CRON_SUBREQUEST_BUDGET` = 900 per invocation, `src/repo/dispatch.ts`; the free plan's cap is 50).
+- Phase 5b: enter SaplingLearn's integrations on the Integrations screen (GitHub token, webhook secret,
+  Cloudflare token + account id, each environment's Railway and metrics tokens). Until then they are read
+  from the Worker secrets `GITHUB_SERVICE_TOKEN`, `GITHUB_WEBHOOK_SECRET`, `CF_ANALYTICS_TOKEN`,
+  `CF_ANALYTICS_ACCOUNT_ID`, `RAILWAY_TOKEN_<ENV>`, `SAPLING_METRICS_TOKEN` — SaplingLearn's fallback only.
+  Then re-point SaplingLearn's GitHub webhook at `/webhook/github/hook_saplinglearn_sapling`; the cleanup
+  phase deletes the fallback, those Worker secrets, the legacy `/webhook/github` route and `legacy_hook`.
 
 - Run `node scripts/mt/verify-migration.mjs` on a production data export (steps in its header) before merging.
 - Verify `trov.dev` as a Resend sending domain and make `hello@trov.dev` receive mail before `0041` deploys.
