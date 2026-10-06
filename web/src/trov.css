@@ -1488,6 +1488,60 @@ input, select { font-family: inherit; }
   .cnpy-qs-layer, .cnpy-qs { animation:none !important; transition:none !important; }
 }
 
+/* ── Platform (web/src/platform.ts, platform-usage.ts) — the superadmin's screens ──────
+   The sidebar entry sits apart from the org's own navigation: its own block under the nav
+   list, ruled off, and present only for a superadmin (always emitted — the rail's tree is
+   stable — and `hidden` otherwise). The tables are grids that reflow BY THEIR OWN WIDTH
+   (`.plat-table` is the container): under 860px the header row goes and each row becomes
+   a small card of labelled cells, so nothing scrolls sideways on a phone. */
+.cnpy-plat { flex:none; padding:6px 10px 4px; border-top:1px solid var(--border); }
+.cnpy-plat[hidden] { display:none; }
+.plat button:focus-visible, .plat select:focus-visible, [data-plat-dialog] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+.plat .plat-row:focus-visible { outline-offset:-2px; }
+.plat-table, .plat-cq { container-type:inline-size; }
+.plat-thead { display:grid; gap:12px; align-items:center; font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); white-space:nowrap; }
+.plat-thead > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.plat-row { display:grid; gap:12px; align-items:center; transition:background .12s ease; }
+.plat-row:hover { background:var(--hover); }
+.plat-orgs-grid { grid-template-columns:minmax(0,2fr) 92px minmax(0,1.7fr) 68px 60px 96px 96px; }
+.plat-usage-grid { grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr) 48px 62px 44px 54px minmax(0,.95fr) 88px; }
+.plat-cl { display:none; font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); margin-bottom:3px; }
+.plat-urow { border-bottom:1px solid var(--border); margin-bottom:-1px; }
+.plat-chev { color:var(--fg-40); transition:transform .2s ease; }
+.plat-tiles { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
+.plat-breakdown { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px 36px; }
+.plat-breakdown-foot { grid-column:1 / -1; }
+.plat-sizes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 36px; }
+.plat-busy { opacity:.6; transition:opacity .15s ease; }
+.plat-audit { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 14px; }
+.plat-audit > :nth-child(1) { flex:0 0 168px; }
+.plat-audit > :nth-child(2) { flex:1 1 240px; }
+.plat-au-org, .plat-au-actor { flex:0 0 112px; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.plat-au-time { flex:0 0 64px; text-align:right; }
+.plat-inline { display:flex; gap:8px; }
+@container (max-width: 860px) {
+  .plat-thead { display:none !important; }
+  .plat-row { grid-template-columns:repeat(6,minmax(0,1fr)) !important; gap:10px 14px; align-items:start; padding-top:14px !important; padding-bottom:14px !important; }
+  .plat-row > .plat-c { grid-column:span 2; }
+  .plat-row > .plat-c-name { grid-column:1 / -1; }
+  .plat-row > .plat-c-wide { grid-column:span 3; }
+  .plat-orgs-grid > .plat-c-wide { grid-column:span 4; }
+  .plat-cl { display:block; }
+  .plat-urow-body { padding-left:20px !important; }
+}
+@container (max-width: 620px) {
+  .plat-breakdown, .plat-sizes { grid-template-columns:minmax(0,1fr); }
+  .plat-tile-n { font-size:22px !important; }
+}
+@media (max-width:640px) {
+  .plat-inline { flex-direction:column; align-items:stretch !important; }
+  .plat-inline > * { flex:none !important; }
+  .plat-au-org, .plat-au-actor, .plat-au-time { flex:none; text-align:left; }
+  .plat-audit > :nth-child(1), .plat-audit > :nth-child(2) { flex:1 1 100%; }
+  .plat-hide-sm { display:none; }
+}
+@media (prefers-reduced-motion: reduce) { .plat-row, .plat-chev, .plat-busy { transition:none; } }
+
 /* ── corners: tightened ──────────────────────────────────────────────────────
    Trov's corners are TIGHTER than the design file's: every radius is shrunk by one
    factor, --corner-scale, so a card stays rounder than a chip and the hierarchy of the
