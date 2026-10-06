@@ -2,6 +2,7 @@ import { app } from "./routes";
 import { handleMcp } from "./mcp";
 import { handleGithubWebhook } from "./webhook";
 import { resolveBearerTenant } from "./data/bearer";
+import { meterMcp, pruneUsage } from "./data/meter";
 import { platform } from "./data/context";
 import { legacyDb, legacySystemTenant } from "./data/legacy";
 import { mcpUnauthorized, oauthOrigin } from "./auth/oauth";
@@ -33,6 +34,7 @@ export default {
         const presented = /^Bearer\s+\S/i.test(request.headers.get("authorization") ?? "");
         return mcpUnauthorized(oauthOrigin(request.url), presented);
       }
+      ctx.waitUntil(meterMcp(env, bearer.ctx, request)); // usage: one `mcp_request` + one `mcp_tool:<name>` per tool call
       return handleMcp(request, env, ctx, bearer.ctx);
     }
     // Third auth class: GitHub webhook deliveries, HMAC-verified over the raw
@@ -76,6 +78,7 @@ export default {
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     await ensureNotificationPolicySeeded(legacyDb(legacySystemTenant(env, "system"))).catch(() => undefined);
     if (controller.cron === DAILY_CRON || controller.cron === WEEKLY_CRON) {
+      await pruneUsage(platform(env, "system")).catch(() => undefined); // org_usage_daily retention (400 days)
       await handleNotificationCron(env, controller.cron, new Date(controller.scheduledTime));
       return;
     }
