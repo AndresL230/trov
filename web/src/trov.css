@@ -1685,6 +1685,7 @@ input, select { font-family: inherit; }
 [data-cnpy-theme] .cnpy-kbd,
 [data-cnpy-theme] .cnpy-qs-kbd,
 [data-cnpy-theme] .cnpy-treechev { border-radius:calc(4px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-platpage-home { border-radius:calc(6px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs-hl { border-radius:calc(3px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs-row { border-radius:calc(7px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs { border-radius:calc(12px * var(--corner-scale)) !important; }
