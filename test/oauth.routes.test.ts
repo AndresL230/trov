@@ -1,15 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { env, SELF } from "cloudflare:test";
 import { pkce } from "../src/auth/crypto";
-import { resolveBearerPrincipal } from "../src/auth/principal";
-import { mintToken } from "../src/auth/tokens";
 import { registerClient, checkAuthorizeRequest, issueAuthorization, exchangeAuthorizationCode } from "../src/auth/oauth";
 import { buildOAuthApp } from "../src/auth/oauth-routes";
 import { app } from "../src/routes";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import type { Env } from "../src/env";
 
-import { platformCtx, ORG_A, ORG_B, ensureMember } from "./helpers/tenant";
+import { platformCtx, tenantCtx, credentialOf, mintTokenFor, ORG_A, ORG_B, ensureMember } from "./helpers/tenant";
 const REDIRECT = "http://localhost:4444/callback";
 const bearer = (t: string) => new Request("https://example.com/mcp", { headers: { authorization: `Bearer ${t}` } });
 
@@ -21,7 +19,7 @@ async function oauthAccessToken(person: string): Promise<string> {
     response_type: "code", client_id: c.client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256",
   }), "https://example.com");
   if (!check.ok) throw new Error("expected ok");
-  const { code } = await issueAuthorization(platformCtx(), { client: c, params: check.params, person, orgId: ORG_A, nowMs: Date.now() });
+  const { code } = await issueAuthorization(await tenantCtx(person), { client: c, params: check.params, nowMs: Date.now() });
   const t = await exchangeAuthorizationCode(platformCtx(), { code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id, resource: null }, "https://example.com", Date.now());
   return t.access_token;
 }
@@ -29,10 +27,10 @@ async function oauthAccessToken(person: string): Promise<string> {
 describe("bearer dispatch", () => {
   it("an OAuth access token and a canopy_mcp_ token both resolve to their person", async () => {
     const oat = await oauthAccessToken("oauth-user");
-    expect(await resolveBearerPrincipal(bearer(oat), env as unknown as Env)).toEqual({ handle: "oauth-user" });
+    expect(await credentialOf(bearer(oat))).toEqual({ handle: "oauth-user", orgId: ORG_A });
     await seedPerson("token-user");
-    const { raw } = await mintToken(platformCtx(), "token-user", ORG_A);
-    expect(await resolveBearerPrincipal(bearer(raw), env as unknown as Env)).toEqual({ handle: "token-user" });
+    const { raw } = await mintTokenFor("token-user");
+    expect(await credentialOf(bearer(raw))).toEqual({ handle: "token-user", orgId: ORG_A });
   });
   it("/mcp lets an OAuth access token through (not a 401)", async () => {
     const oat = await oauthAccessToken("oauth-user");
@@ -112,7 +110,7 @@ describe("POST /oauth/token", () => {
       response_type: "code", client_id: c.client_id, redirect_uri: REDIRECT, code_challenge: challenge, code_challenge_method: "S256",
     }), "https://example.com");
     if (!check.ok) throw new Error("expected ok");
-    const { code } = await issueAuthorization(platformCtx(), { client: c, params: check.params, person, orgId: ORG_A, nowMs: Date.now() });
+    const { code } = await issueAuthorization(await tenantCtx(person), { client: c, params: check.params, nowMs: Date.now() });
     return { c, verifier, code };
   }
   it("authorization_code then refresh_token, form-encoded; no-store; CORS", async () => {
@@ -150,7 +148,7 @@ describe("POST /oauth/revoke", () => {
     const oat = await oauthAccessToken("oauth-user");
     expect((await SELF.fetch("https://example.com/oauth/revoke", form({ token: oat }))).status).toBe(200);
     expect((await SELF.fetch("https://example.com/oauth/revoke", form({ token: "junk" }))).status).toBe(200);
-    expect(await resolveBearerPrincipal(bearer(oat), env as unknown as Env)).toBeNull();
+    expect(await credentialOf(bearer(oat))).toBeNull();
   });
 });
 
@@ -232,7 +230,7 @@ describe("POST /oauth/authorize", () => {
     const code = loc.searchParams.get("code")!;
     const t = await SELF.fetch("https://example.com/oauth/token", form({ grant_type: "authorization_code", code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id }));
     const { access_token } = (await t.json()) as { access_token: string };
-    expect(await resolveBearerPrincipal(bearer(access_token), env as unknown as Env)).toEqual({ handle: "oauth-user" });
+    expect(await credentialOf(bearer(access_token))).toEqual({ handle: "oauth-user", orgId: ORG_A });
   });
   it("Allow records the person's org on the grant and its code; a person in no org gets a 409 page and no grant", async () => {
     const allow = async (handle: string, o: Parameters<typeof cookieFor>[1] = {}) => {
@@ -253,10 +251,17 @@ describe("POST /oauth/authorize", () => {
     expect(await orgs("oauth_grants")).toEqual(expected);
     expect(await orgs("oauth_codes")).toEqual(expected);
 
+    // In no org: the GET is the "join an organization first" page — no form, so no CSRF value to post —
+    // and a POST forged without one is the usual 403. (The picker cases: test/isolation.mcp.test.ts.)
+    const { qs } = await registered();
+    const page = await SELF.fetch(`https://example.com/oauth/authorize?${qs}`, manual({ headers: { cookie: await cookieFor("drifter", { member: false }) } }));
+    expect(page.status).toBe(409);
+    const html = await page.text();
+    expect(html).toContain("Join an organization first");
+    expect(html).not.toContain("<form");
     const r = await allow("drifter", { member: false });
-    expect(r.status).toBe(409);
+    expect(r.status).toBe(403);
     expect(r.headers.get("location")).toBeNull();
-    expect(await r.text()).toContain("aren&#39;t a member of an organization");
     expect(await orgs("oauth_grants")).toEqual(expected);
   });
   it("Deny → access_denied, nothing granted", async () => {

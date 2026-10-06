@@ -1,9 +1,11 @@
 import { env } from "cloudflare:test";
 import type { Env } from "../../src/env";
 import {
-  platform, resolveSoleTenant, resolveTenant, systemTenant,
+  platform, resolveTenant, resolveTenantById, systemTenant,
   type OrgRole, type PlatformContext, type SystemActor, type TenantContext,
 } from "../../src/data/context";
+import { mintToken } from "../../src/auth/tokens";
+import { resolveBearerCredential } from "../../src/data/bearer";
 
 /** The two orgs scripts/seed/reset.mjs keeps: SaplingLearn (every seeded person) and its empty neighbour. */
 export const ORG_A = "org_saplinglearn";
@@ -37,23 +39,31 @@ export interface TenantCtxOpts { via?: "session" | "bearer"; orgId?: string; env
 
 /**
  * A REAL member's TenantContext, through the production resolvers: `ensureMember(handle, role)`, then
- * `resolveTenant` (session) or `resolveSoleTenant` (bearer — the person must be in ONE org). With no
- * `role`, an existing membership keeps its role (AndresL230 stays the owner) and a new one is a member.
+ * `resolveTenant` (session) or `resolveTenantById` (bearer — the live-membership check a token's own
+ * org gets, src/data/bearer.ts). With no `role`, an existing membership keeps its role (AndresL230
+ * stays the owner) and a new one is a member.
  */
 export async function tenantCtx(handle = "AndresL230", role?: OrgRole, o: TenantCtxOpts = {}): Promise<TenantContext> {
   const orgId = o.orgId ?? ORG_A;
   const held = await env.DB.prepare(`SELECT role FROM memberships WHERE org_id = ? AND user_id = ? COLLATE NOCASE`).bind(orgId, handle).first<{ role: OrgRole }>();
   if (!held || (role && held.role !== role)) await ensureMember(handle, role ?? "member", orgId);
-  if (o.via === "bearer") {
-    const sole = await resolveSoleTenant(o.env ?? e, handle, "bearer");
-    if (!sole.ok) throw new Error(`tenantCtx(${handle}): ${sole.reason}`);
-    return sole.ctx;
-  }
-  const ctx = await resolveTenant(o.env ?? e, handle, SLUG[orgId] ?? orgId);
+  const ctx = o.via === "bearer"
+    ? await resolveTenantById(o.env ?? e, handle, orgId, "bearer")
+    : await resolveTenant(o.env ?? e, handle, SLUG[orgId] ?? orgId);
   if (!ctx) throw new Error(`tenantCtx(${handle}): not a member of ${orgId}`);
   return ctx;
 }
 
-/** The /mcp context for `handle`: `tenantCtx` via "bearer" — what `buildTrovMcpServer` is bound to. */
-export const bearerCtx = (handle: string, role?: OrgRole, envOver?: Env): Promise<TenantContext> =>
-  tenantCtx(handle, role, { via: "bearer", env: envOver });
+/** The /mcp context for `handle` IN `orgId` (default SaplingLearn): `tenantCtx` via "bearer" — what
+ *  `buildTrovMcpServer` is bound to for a token minted for that org. */
+export const bearerCtx = (handle: string, role?: OrgRole, envOver?: Env, orgId: string = ORG_A): Promise<TenantContext> =>
+  tenantCtx(handle, role, { via: "bearer", env: envOver, orgId });
+
+/** The (person, org) a bearer request's credential names (src/data/bearer.ts) — before the membership check. */
+export const credentialOf = (request: Request, envOver: Env = e): Promise<{ handle: string; orgId: string } | null> =>
+  resolveBearerCredential(envOver, request);
+
+/** Mint a personal MCP token for `handle` in `orgId`, as production does — through that member's own
+ *  session context (`handle` is made a member first if they are not one). */
+export const mintTokenFor = async (handle: string, orgId: string = ORG_A): Promise<{ raw: string }> =>
+  mintToken(await tenantCtx(handle, undefined, { orgId }));

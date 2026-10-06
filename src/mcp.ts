@@ -3,8 +3,7 @@ import { createMcpHandler } from "agents/mcp";
 import { z } from "zod";
 import type { Env } from "./env";
 import type { Principal } from "./auth/principal";
-import { isAdmin } from "./auth/principal";
-import type { TenantContext } from "./data/context";
+import { hasRole, type TenantContext } from "./data/context";
 import { get_doc, list_docs, get_feed, query, list_tickets, get_ticket, list_sprints, get_sprint } from "./tools/reads";
 import {
   TicketSeg, TicketAssigneeFilter, TicketCategory,
@@ -23,8 +22,7 @@ import {
 } from "./tools/tickets-agent";
 import { getMyWork, list_events } from "./tools/mywork";
 import { listPeopleForAgents } from "./tools/people";
-import { getRepoDashboardForAgent } from "./tools/repo-agent";
-import { repoEnvironments } from "./repo/config";
+import { getRepoDashboardForAgent, orgRepoConfig } from "./tools/repo-agent";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoTab } from "@shared/repo";
 import { ingestFeedEntry, ingestDocProposal, recordBatch } from "./consumer";
 import { feedEntryFromMcpArgs } from "./mcp-args";
@@ -367,12 +365,14 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
       range: z.enum(REPO_RANGES).optional(),
       include_trends: z.boolean().optional(),
     },
+    // Which repository and which environments is the ORG's configuration (`org_repos` /
+    // `org_environments`), never the Worker's `GITHUB_REPO` / `REPO_ENVIRONMENTS`: a token bound to
+    // another org must not be told org #1's repository name or environment list.
     async ({ tab, range, include_trends }) =>
-      runTool(() =>
-        getRepoDashboardForAgent(ctx, env.GITHUB_REPO ?? "", repoEnvironments(env), {
-          tab, range, includeTrends: include_trends,
-        })
-      ),
+      runTool(async () => {
+        const { repo, envs } = await orgRepoConfig(ctx);
+        return getRepoDashboardForAgent(ctx, repo, envs, { tab, range, includeTrends: include_trends });
+      }),
   );
 
   server.tool(
@@ -517,10 +517,6 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     async ({ id, raw }) => runTool(() => add_sprint_resource(ctx, id, raw)),
   );
 
-  // ADMIN-only: the plan write surface — non-admin principals don't even see the tool
-  // (conditional registration means it's absent from tools/list and calling it by
-  // name errors tool-not-found, since a fresh server is built per request with the
-  // principal already in scope).
   // ── Handoffs (0028): addressed messages between sessions ──────────────────
   //
   // Direct writers in src/tools/handoffs.ts, NOT the ingestion gate — a handoff is
@@ -642,7 +638,12 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     }),
   );
 
-  if (isAdmin(env, principal.handle)) {
+  // ADMIN-only: the plan write surface — non-admin principals don't even see the tool
+  // (conditional registration means it's absent from tools/list and calling it by
+  // name errors tool-not-found, since a fresh server is built per request with the
+  // context already in scope). "Admin" is the bearer's role IN THE TOKEN'S ORG today (§7.2) —
+  // admin or owner there; a role change shows on the very next request.
+  if (hasRole(ctx, "admin")) {
     server.tool(
       "update_plan",
       `ADMIN plan write: replace the roadmap narrative and create/update sprints (including status 'done') in one direct, non-destructively versioned write — same authored-write class as promote, NOT the ingestion gate. Sprints not listed are untouched. \`label\` is the sprint name, \`start\` its start date and \`due\` its target date — each a real calendar day written YYYY-MM-DD (\`due\` may be "" for unscheduled; \`start\` omitted keeps the stored one, null clears it), start on or before due, else the whole call is refused and nothing is written. \`dates\` is only a free-text display label. Which tickets are IN a sprint is set from the Tickets UI, not here. The narrative is SHORT — 2–3 sentences up to two short paragraphs (Now / Next / Later), at most ${PLAN_NARRATIVE_MAX} characters after trimming; leave out sprint-by-sprint detail, issue lists, dated status logs and ops steps (the sprints and the timeline carry those). Over the cap the whole call is refused and nothing is written — plan, versions and sprints alike. The narrative is always a full replacement, so an over-cap narrative already stored must be shortened, not resent. Use via the update-plan skill.`,

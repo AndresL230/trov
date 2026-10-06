@@ -18,13 +18,13 @@ import { bearerCtx, systemCtx, platformCtx } from "./helpers/tenant";
 // renamed registration is a failure rather than a green.
 //
 // The property this file exists for: an agent writes only inside its principal's
-// own lane, and a refusal writes NOTHING. ADMIN_LOGINS binds only "admin-user"
-// (vitest.config.ts), so andres/beatrix are plain principals.
+// own lane, and a refusal writes NOTHING. Only "admin-user" is bound as an org admin
+// (see the client below), so andres/beatrix are plain principals.
 
 const ISSUE_214 = "https://github.com/SaplingLearn/sapling/issues/214";
 
 async function withClient<T>(handle: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle, handle === "admin-user" ? "admin" : undefined));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

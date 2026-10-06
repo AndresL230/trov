@@ -64,11 +64,20 @@ const PLATFORM_ALLOW: Allow[] = [
   { file: "src/auth/oauth.ts", fn: "pruneOAuth", tables: ["oauth_grants", "oauth_codes"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "expireDueHandoffs", tables: ["handoffs"], why: "retention sweep, cross-org and write-only (§4.4)" },
-  // Bearer credentials are looked up by HASH before any org is known; the row then names the person
-  // (and, from Phase 5a, the org). Minting / listing / revoking a person's own tokens is person-level
-  // for the same reason until 5a scopes a token to an org (§7.1).
-  { file: "src/auth/tokens.ts", fn: "*", tables: ["mcp_tokens"], why: "token lookup by hash; person-level token management until 5a" },
-  { file: "src/auth/oauth.ts", fn: "*", tables: ["oauth_grants", "oauth_codes"], why: "grant / code lookup by hash; person-level grants until 5a" },
+  // Bearer credentials are looked up by HASH before any org is known: the row is what names the
+  // (person, org), and src/data/bearer.ts then checks that membership live (§7.1). Each lookup is listed
+  // by function. Minting / listing / revoking a personal token and writing a grant with its code run on
+  // the TENANT surface (rule 2 holds them to `org_id`), so they need — and have — no entry here.
+  { file: "src/auth/tokens.ts", fn: "resolveToken", tables: ["mcp_tokens"], why: "token lookup by hash (+ the last_used_at bump, by the id just read)" },
+  { file: "src/auth/oauth.ts", fn: "resolveOAuthAccessToken", tables: ["oauth_grants"], why: "access-token lookup by hash → its grant's (person, org) (+ the last_used_at bump)" },
+  { file: "src/auth/oauth.ts", fn: "exchangeAuthorizationCode", tables: ["oauth_codes", "oauth_grants"], why: "code lookup by hash at the public token endpoint; its grant read by the id on the code" },
+  { file: "src/auth/oauth.ts", fn: "refreshAccessToken", tables: ["oauth_grants"], why: "refresh-token lookup by hash → its grant; a reused token revokes that grant" },
+  { file: "src/auth/oauth.ts", fn: "revokeOAuthToken", tables: ["oauth_grants"], why: "RFC 7009: a presented refresh token, found by hash, revokes its own grant" },
+  { file: "src/auth/oauth.ts", fn: "grantRefusal", tables: ["oauth_grants"], why: "revokes the ONE grant just found by hash, when its person has left the grant's org" },
+  // Settings › Connected apps is USER-level (§6.3): a person's own connections across every org they
+  // made one into, each row naming its org — keyed by the person, never by an org.
+  { file: "src/auth/oauth.ts", fn: "listGrants", tables: ["oauth_grants"], why: "a person's own connections across their orgs; each row names its org" },
+  { file: "src/auth/oauth.ts", fn: "revokeGrant", tables: ["oauth_grants"], why: "a person revokes their OWN connection — by id AND person — whichever org it is into" },
   // The upload PUT has no session: its single-use token is looked up by hash to learn its org, and
   // everything after runs as that org's system tenant.
   { file: "src/artifacts/upload.ts", fn: "uploadTokenOrg", tables: ["doc_image_upload_tokens", "artifact_upload_tokens"], why: "upload-token lookup by hash, returning only its org_id" },

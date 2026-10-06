@@ -27,13 +27,13 @@ import { bearerCtx, systemCtx } from "./helpers/tenant";
  *  PART B and PART C marker lines (PART C, prompt soft delete, follows it). */
 const migration = (combined.split("-- ═══ PART B")[1] ?? "").split("-- ═══ PART C")[0];
 
-const ADMIN = "admin-user"; // ADMIN_LOGINS in vitest.config.ts
+const ADMIN = "admin-user"; // bound as an org admin by callTool
 
 const sprintCount = async () => (await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM sprints`))!.n;
 const planVersions = async () => (await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM plan_versions`))!.n;
 
 async function callTool(handle: string, name: string, args: Record<string, unknown>) {
-  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle, handle === "admin-user" ? "admin" : undefined));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(b);

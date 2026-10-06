@@ -64,3 +64,19 @@ export function fakeGithub(routes: Record<string, unknown>): { fetchImpl: typeof
   }) as typeof fetch;
   return { fetchImpl, calls, graphql };
 }
+
+/** Give `orgId` a primary repository and `envs` as its environments — the `org_repos` / `org_environments`
+ *  rows an org's dashboard is configured by (what 0037 wrote for SaplingLearn; the per-test reset clears them). */
+export async function seedOrgRepoConfig(db: D1Database, orgId: string, repo: string, envs: RepoEnvConfig[] = ENVS): Promise<void> {
+  const at = "2026-10-06T00:00:00.000Z";
+  await db.batch([
+    db.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES (?, ?, ?, 1, 0, ?, 'seed')`)
+      .bind(`hook_${orgId}`, orgId, repo, at),
+    ...envs.map((e, i) => db.prepare(
+      `INSERT INTO org_environments (org_id, key, position, label, note, branch, railway_env, worker, worker_check, frontend_url, api_url,
+         health_path, railway_environment_id, railway_service_id, created_at, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed')`,
+    ).bind(orgId, e.key, i, e.label, e.note, e.branch, e.railwayEnv, e.worker, e.workerCheck, e.frontendUrl, e.apiUrl, e.healthPath,
+      e.railwayEnvironmentId ?? null, e.railwayServiceId ?? null, at, at)),
+  ]);
+}

@@ -16,7 +16,7 @@ import { bearerCtx, systemCtx } from "./helpers/tenant";
 // The FIVE sprint write tools, driven through the REAL registered closures.
 // They are open to EVERY principal, matching the web (every sprint route sits
 // under sessionGate with no adminGate). Only update_plan stays admin-only.
-// ADMIN_LOGINS binds only "admin-user" (vitest.config.ts).
+// Only "admin-user" is bound as an org admin (see withClient).
 
 const ADMIN = "admin-user";
 const SPRINT_WRITE_TOOLS = [
@@ -24,7 +24,7 @@ const SPRINT_WRITE_TOOLS = [
 ] as const;
 
 async function withClient<T>(handle: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle, handle === "admin-user" ? "admin" : undefined));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

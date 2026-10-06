@@ -7,13 +7,12 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { all, first } from "./helpers/db";
-import { mintToken } from "../src/auth/tokens";
 import { ARTIFACT_BINARY_CAP, ARTIFACT_SLUG_MAX, ARTIFACT_TEXT_CAP, type ArtifactDetailDTO } from "@shared/artifacts";
 import {
   cookieFor, createBinary, createText, get, jsonInit, mcpCall, mcpRpc, mcpToolNames, multipart, put, sha256Hex,
   uniqueBytes, uploadUrl, wf,
 } from "./helpers/artifacts";
-import { platformCtx, ORG_A } from "./helpers/tenant";
+import { platformCtx, mintTokenFor, ORG_A } from "./helpers/tenant";
 
 const ME = "sec-author";
 const YOU = "sec-teammate";
@@ -324,7 +323,7 @@ describe("5 · ratify gating — session only, latest published only, never MCP"
 
   it("a bearer token — even the author's — is refused: alone 401, beside a cookie 403", async () => {
     const me = await published();
-    const { raw } = await mintToken(platformCtx(), ME, ORG_A);
+    const { raw } = await mintTokenFor(ME);
     const alone = await wf("/api/artifacts/gate/ratify", jsonInit("POST", { version: 2 }, undefined, { authorization: `Bearer ${raw}` }));
     expect(alone.status).toBe(401);
     const both = await wf("/api/artifacts/gate/ratify", jsonInit("POST", { version: 2 }, me, { authorization: `Bearer ${raw}` }));

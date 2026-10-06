@@ -11,9 +11,10 @@ import {
 } from "./oauth";
 import { readSessionCookie, getSessionUser } from "./session";
 import { hmacSeal, hmacUnseal, b64uEncode, b64uDecode } from "./crypto";
-import { errorPage, signInPage, consentPage } from "./oauth-pages";
+import { errorPage, signInPage, consentPage, noOrgPage } from "./oauth-pages";
 import { platformContext } from "../data/gate";
-import { resolveSoleTenant } from "../data/context";
+import { resolveSoleTenant, resolveTenant, type TenantContext } from "../data/context";
+import { listMyOrgs } from "../orgs/repo";
 
 const MAX_REGISTER_BYTES = 8 * 1024;
 const CORS: Record<string, string> = {
@@ -211,11 +212,17 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
         await setOAuthPending(c, q, now());
         return page(c, signInPage(check.client.client_name), 200);
       }
+      // A connection is made INTO one org (§7.1): the page offers the person's orgs — a choice when
+      // there are several, nothing extra to do when there is one — and with none there is nothing
+      // to connect to. Suspended orgs are not listed (`listMyOrgs`).
+      const orgs = await listMyOrgs(c.var.p, s.handle);
+      if (orgs.length === 0) return page(c, noOrgPage(check.client.client_name, s.handle), 409);
       const hidden: Record<string, string> = {};
       for (const k of AUTHORIZE_KEYS) { const v = q.get(k); if (v) hidden[k] = v; }
       const target = new URL(check.params.redirect_uri);
       return page(c, consentPage({
         clientName: check.client.client_name, redirectHost: target.hostname, handle: s.handle,
+        orgs: orgs.map((o) => ({ slug: o.slug, name: o.name })),
         hidden, csrf: await consentCsrf(c.env.COOKIE_SECRET, s.id, q),
       }), 200, target.origin);
     } catch (e) {
@@ -236,16 +243,26 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
         return page(c, errorPage("This approval form expired or didn't come from your session. Start the connection again from the app."), 403);
       }
       if (body.decision !== "allow") return c.redirect(back(check.params.redirect_uri, check.params.state, { error: "access_denied" }), 302);
-      // MT: a connection is granted FOR an org (§7.1). Until the consent page offers the choice (Phase 5a)
-      // that is the person's only org — the same cut-over alias every tenant route resolves through.
-      const sole = await resolveSoleTenant(c.env, s.handle, "session");
-      if (!sole.ok) {
-        // A suspended org answers like one the person is not in (§5.4).
-        return page(c, errorPage(sole.reason !== "org_required"
-          ? "You aren't a member of an organization on Trov yet, so there is nothing to connect this app to."
-          : "You belong to more than one organization, and choosing one here isn't available yet."), 409);
+      // The connection is granted FOR one org (§7.1): the `org` the form carries (a slug — the picker's
+      // radio, or the hidden field when the person has one org). It is only a REQUEST: the grant is
+      // bound to it through `resolveTenant`, the live-membership check every `/api/o/:slug` route makes,
+      // so a slug the person is not a member of — forged, unknown, or a suspended org (§5.4) — is
+      // refused in the same words and nothing is written.
+      const slug = typeof body.org === "string" ? body.org.trim() : "";
+      let tenant: TenantContext | null;
+      if (slug) {
+        tenant = await resolveTenant(c.env, s.handle, slug);
+        if (!tenant) return page(c, errorPage("You aren't a member of that organization, so this app can't be connected to it. Start the connection again from the app."), 403);
+      } else {
+        // No org named: fine for a person with exactly one (it is theirs), refused otherwise.
+        const sole = await resolveSoleTenant(c.env, s.handle, "session");
+        if (!sole.ok && sole.reason === "org_required") {
+          return page(c, errorPage("Choose which organization to connect this app to. Start the connection again from the app."), 400);
+        }
+        if (!sole.ok) return page(c, noOrgPage(check.client.client_name, s.handle), 409);
+        tenant = sole.ctx;
       }
-      const { code } = await issueAuthorization(c.var.p, { client: check.client, params: check.params, person: s.handle, orgId: sole.ctx.orgId, nowMs: now() });
+      const { code } = await issueAuthorization(tenant, { client: check.client, params: check.params, nowMs: now() });
       return c.redirect(back(check.params.redirect_uri, check.params.state, { code }), 302);
     } catch (e) {
       return unavailable(c, e);

@@ -6,11 +6,10 @@
 import { env } from "cloudflare:test";
 import { expect } from "vitest";
 import worker from "../../src/index";
-import { mintToken } from "../../src/auth/tokens";
 import { sha256Hex } from "../../src/tools/artifacts";
 import type { ArtifactDetailDTO } from "@shared/artifacts";
 import { cookieFor, seedPerson } from "./persons";
-import { platformCtx, ORG_A } from "./tenant";
+import { platformCtx, mintTokenFor, ORG_A } from "./tenant";
 
 export const ORIGIN = "https://trov.test";
 export const NOT_FOUND = JSON.stringify({ error: "not_found" });
@@ -79,7 +78,7 @@ export { sha256Hex, cookieFor, seedPerson };
 /** A bearer for `handle` (the person is seeded; a fresh token per test DB). */
 export async function bearerFor(handle: string): Promise<string> {
   await seedPerson(handle);
-  const { raw } = await mintToken(platformCtx(), handle, ORG_A);
+  const { raw } = await mintTokenFor(handle);
   return raw;
 }
 

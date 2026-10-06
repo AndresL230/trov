@@ -8,14 +8,14 @@ import type { SprintRow, PlanRow, PlanVersionRow } from "@shared/rows";
 import { PLAN_NARRATIVE_MAX } from "@shared/sprints";
 import { bearerCtx } from "./helpers/tenant";
 
-// ADMIN_LOGINS binds "admin-user" in vitest.config.ts — this login clears isAdmin().
+// update_plan registers for an org ADMIN (§7.2): the client below binds this handle as one.
 const AUTHOR = "admin-user";
 
 // Drive the ACTUAL registered MCP `update_plan` tool through an in-memory MCP
 // client/server pair — the same closure production runs (mirrors
 // test/mcp.append_feed.test.ts's callTool helper).
 async function withClient<T>(login: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, await bearerCtx(login));
+  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, await bearerCtx(login, login === AUTHOR ? "admin" : undefined));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

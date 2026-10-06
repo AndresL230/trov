@@ -49,13 +49,13 @@ const SPRINT_WRITE_TOOLS = [
 // unscoped pass-through of the cookie route's `toggle_assignee`.
 const BANNED_WRITE_TOOLS = ["toggle_assignee"] as const;
 
-// ADMIN_LOGINS binds ONLY "admin-user" in vitest.config.ts, so every handle used
+// Only "admin-user" is bound as an org ADMIN (see the client below), so every handle used
 // below is a plain, non-admin principal.
 const ISSUE_214 = "https://github.com/SaplingLearn/sapling/issues/214";
 const FIGMA_URL = "https://www.figma.com/file/abc/Queue-board";
 
 async function withClient<T>(handle: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle, handle === "admin-user" ? "admin" : undefined));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

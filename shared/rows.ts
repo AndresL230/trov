@@ -177,12 +177,14 @@ export interface McpTokenSummary {
   last_used_at: string | null;
 }
 
-/** Settings › Connected apps: one OAuth connection (a grant). Never a token. */
+/** Settings › Connected apps: one OAuth connection (a grant). Never a token. A connection is made
+ *  into ONE org (the consent page's choice, §7.1); `org` names it. */
 export interface OAuthGrantSummary {
   id: number;
   client_name: string;
   created_at: string;
   last_used_at: string | null;
+  org: { slug: string; name: string };
 }
 
 // The replay ledger (0009). One row per (session_id, item_index) the worker has

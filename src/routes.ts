@@ -6,6 +6,7 @@ import type { AppEnv } from "./auth/principal";
 import { sessionGate, isAdmin } from "./auth/principal";
 import { authApp } from "./auth/routes";
 import { oauthApp } from "./auth/oauth-routes";
+import { mcpTokensApp } from "./auth/token-routes";
 import { notificationsApp } from "./notifications/routes";
 import { artifactsApp } from "./artifacts/routes";
 import { orgSettingsApp } from "./integrations/routes";
@@ -134,6 +135,7 @@ app.route("/api/platform", platformApp);
 // Org settings › Integrations / Repositories / Environments (src/integrations/routes.ts): cookie only,
 // behind tenantGate; the per-org secrets are write-only and admin+.
 app.route("/api/o/:slug", orgSettingsApp);
+app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 
 app.post("/ingest", async (c) => {
   const json = await c.req.json().catch(() => null);

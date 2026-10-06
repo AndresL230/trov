@@ -27,10 +27,10 @@ export default {
       // Bearer class: a pasted `trov_mcp_` (or legacy `canopy_mcp_`) token or an OAuth access token. The 401
       // points MCP clients at the OAuth metadata (RFC 9728) so Claude Code / claude.ai
       // can sign the person in; `error="invalid_token"` when a token was presented.
-      // The token names a person; the tenant is their ONE org (the cut-over alias — src/data/bearer.ts).
+      // The token is bound to (person, org) — the org on its row / grant, never one from the request — and
+      // resolves only through a live membership of it (src/data/bearer.ts); anything else is this 401.
       const bearer = await resolveBearerTenant(env, request);
       if (!bearer.ok) {
-        if (bearer.reason !== "unauthorized") return new Response(JSON.stringify({ error: "org_required" }), { status: 409, headers: { "content-type": "application/json" } });
         const presented = /^Bearer\s+\S/i.test(request.headers.get("authorization") ?? "");
         return mcpUnauthorized(oauthOrigin(request.url), presented);
       }

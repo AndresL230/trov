@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { platformCtx, systemCtx, ORG_A } from "./helpers/tenant";
+import { platformCtx, systemCtx, mintTokenFor, ORG_A } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { all, run, nowIso } from "./helpers/db";
 import { renamePerson, HANDLE_COLUMNS, getPerson } from "../src/auth/persons";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { createSession } from "../src/auth/session";
-import { mintToken } from "../src/auth/tokens";
 import { createInvite, acceptInvite } from "../src/auth/invites";
 import { ingestEvent, ingestFeedEntry } from "../src/consumer";
 import { createPage as createArtifact, setStatus as setArtifactStatus, ratify as ratifyArtifact, mintUploadToken, deletePage as deleteArtifact } from "../src/tools/artifacts";
@@ -26,7 +25,7 @@ const post = (path: string, c: string, body: unknown) =>
 async function seedEveryHandleColumn(handle: string): Promise<void> {
   await seedPerson(handle); // persons + identities.person (github identity)
   await createSession(platformCtx(), handle); // sessions.person
-  await mintToken(platformCtx(), handle, ORG_A); // mcp_tokens.person
+  await mintTokenFor(handle); // mcp_tokens.person
   await append_feed(systemCtx(), { author: handle, summary: "did a thing" }); // feed.author
   await propose_doc_update(
     systemCtx(),

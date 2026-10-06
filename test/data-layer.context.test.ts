@@ -13,9 +13,9 @@ import { tenantGate } from "../src/data/gate";
 import { joinLegacyOrg, legacySystemTenant } from "../src/data/legacy";
 import * as sql from "../src/data/sql";
 import * as psql from "../src/data/platform-sql";
-import { mintToken } from "../src/auth/tokens";
 import { cookieFor, seedPerson } from "./helpers/persons";
-import { ORG_A, ORG_B, bearerCtx, ensureMember, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
+import { sha256Hex } from "../src/auth/crypto";
+import { ORG_A, ORG_B, bearerCtx, ensureMember, mintTokenFor, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
 
 const e = env as unknown as Env;
 
@@ -43,7 +43,7 @@ describe("TenantContext constructors", () => {
     const queries: string[] = [];
     const counting = { ...e, DB: new Proxy(env.DB, { get: (db, k) => k === "prepare" ? (q: string) => (queries.push(q), db.prepare(q)) : Reflect.get(db, k) }) } as Env;
     const suspend = (on: boolean) => env.DB.prepare(`UPDATE orgs SET suspended_at = ? WHERE id = ?`).bind(on ? "2026-01-01T00:00:00Z" : null, ORG_A).run();
-    const token = (await mintToken(platformCtx(), "sanaok", ORG_A)).raw;
+    const token = (await mintTokenFor("sanaok")).raw;
     const bearer = () => resolveBearerTenant(e, new Request("https://trov.test/mcp", { headers: { authorization: `Bearer ${token}` } }));
 
     await suspend(true);
@@ -63,15 +63,20 @@ describe("TenantContext constructors", () => {
     expect((await bearer()).ok).toBe(true);
   });
 
-  it("resolveBearerTenant: no / unknown token is unauthorized; a live token resolves the person's one org, via bearer", async () => {
+  it("resolveBearerTenant: no / unknown token is unauthorized; a live token resolves the org ON ITS ROW, via bearer", async () => {
     const req = (auth?: string) => new Request("https://trov.test/mcp", { headers: auth ? { authorization: auth } : {} });
     expect(await resolveBearerTenant(e, req())).toEqual({ ok: false, reason: "unauthorized" });
     expect(await resolveBearerTenant(e, req("Bearer trov_mcp_nope"))).toEqual({ ok: false, reason: "unauthorized" });
-    const { raw } = await mintToken(platformCtx(), "sanaok", ORG_A);
+    const { raw } = await mintTokenFor("sanaok");
     expect(await resolveBearerTenant(e, req(`Bearer ${raw}`))).toMatchObject({ ok: true, ctx: { orgId: ORG_A, userId: "sanaok", via: "bearer" } });
+    // A second membership no longer makes the token ambiguous: it is still the org it was minted for.
+    await ensureMember("sanaok", "admin", ORG_B);
+    expect(await resolveBearerTenant(e, req(`Bearer ${raw}`))).toMatchObject({ ok: true, ctx: { orgId: ORG_A, role: "member" } });
+    // A token row whose person is not a member of the row's org (here: of no org) is not a credential.
     await seedPerson("drifter", { member: false });
-    const orphan = await mintToken(platformCtx(), "drifter", ORG_A);
-    expect(await resolveBearerTenant(e, req(`Bearer ${orphan.raw}`))).toEqual({ ok: false, reason: "no_membership" });
+    await env.DB.prepare(`INSERT INTO mcp_tokens (org_id, person, token_hash, created_at) VALUES (?, 'drifter', ?, '2026-01-01T00:00:00Z')`)
+      .bind(ORG_A, await sha256Hex("trov_mcp_orphan")).run();
+    expect(await resolveBearerTenant(e, req("Bearer trov_mcp_orphan"))).toEqual({ ok: false, reason: "unauthorized" });
   });
 
   it("a system context has role and via `system`, and passes no human role gate", async () => {
@@ -169,13 +174,14 @@ describe("the gates", () => {
     }
   });
 
-  it("/mcp: a valid token for a person with no org is 409 org_required, not a 401", async () => {
+  it("/mcp: a token whose person has left its org is the same 401 invalid_token as an unknown one — never a 409", async () => {
     const { default: worker } = await import("../src/index");
-    await seedPerson("drifter", { member: false });
-    const { raw } = await mintToken(platformCtx(), "drifter", ORG_A);
+    const { raw } = await mintTokenFor("drifter");
+    await env.DB.prepare(`DELETE FROM memberships WHERE user_id = 'drifter'`).run(); // the row stays unrevoked
     const exec = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
     const res = await worker.fetch(new Request("https://trov.test/mcp", { method: "POST", headers: { authorization: `Bearer ${raw}` } }), e, exec);
-    expect([res.status, await res.json()]).toEqual([409, { error: "org_required" }]);
+    expect([res.status, await res.json()]).toEqual([401, { error: "unauthorized" }]);
+    expect(res.headers.get("www-authenticate")).toContain(`error="invalid_token"`);
   });
 });
 

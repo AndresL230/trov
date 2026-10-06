@@ -259,22 +259,34 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     clearSessionCookie(c);
     return c.json({ ok: true });
   });
-  authApp.post("/mcp-token", async (c) => {
-    // MT: a token is minted FOR an org (§7.1). Until `/api/o/:slug/mcp-tokens` exists (Phase 5a) that is the
-    // caller's only org — the same cut-over alias every tenant route resolves through.
+  // CUT-OVER ALIAS (§6.3): a token is minted, listed and revoked PER ORG at `/api/o/:slug/mcp-tokens…`
+  // (./token-routes.ts). These three old paths answer for a person with exactly ONE org — the same alias
+  // every tenant route resolves through, and the same refusals as `soleTenantGate`. Phase 7 deletes them.
+  const soleOrg = async (c: Context<AppEnv>) => {
     const sole = await resolveSoleTenant(c.env, c.get("principal").handle, "session");
-    if (!sole.ok) return c.json({ error: "org_required" }, 409);
-    const { raw } = await mintToken(c.var.p, c.get("principal").handle, sole.ctx.orgId);
-    return c.json({ token: raw });
+    if (sole.ok) return { ctx: sole.ctx };
+    return { refused: sole.reason === "suspended" ? c.json({ error: "not_found" }, 404) : c.json({ error: "org_required" }, 409) };
+  };
+  authApp.post("/mcp-token", async (c) => {
+    const sole = await soleOrg(c);
+    if (!sole.ctx) return sole.refused;
+    return c.json({ token: (await mintToken(sole.ctx)).raw });
   });
-  authApp.get("/mcp-tokens", async (c) => c.json({ tokens: await listTokens(c.var.p, c.get("principal").handle) }));
+  authApp.get("/mcp-tokens", async (c) => {
+    const sole = await soleOrg(c);
+    if (!sole.ctx) return sole.refused;
+    return c.json({ tokens: await listTokens(sole.ctx) });
+  });
   authApp.post("/mcp-tokens/:id/revoke", async (c) => {
+    const sole = await soleOrg(c);
+    if (!sole.ctx) return sole.refused;
     const id = Number(c.req.param("id"));
-    if (!Number.isInteger(id) || !(await revokeToken(c.var.p, c.get("principal").handle, id))) return c.json({ error: "not_found" }, 404);
+    if (!Number.isInteger(id) || !(await revokeToken(sole.ctx, id))) return c.json({ error: "not_found" }, 404);
     return c.json({ ok: true });
   });
-  // Settings › Connected apps: the caller's OAuth connections. Session-cookie only,
-  // never MCP. Someone else's id is the same 404 as an unknown one.
+  // Settings › Connected apps: the caller's OAuth connections — USER-level (every org the person
+  // connected an app into; each row names its org). Session-cookie only, never MCP. Someone else's
+  // id is the same 404 as an unknown one.
   authApp.get("/oauth-grants", async (c) => c.json({ grants: await listGrants(c.var.p, c.get("principal").handle) }));
   authApp.post("/oauth-grants/:id/revoke", async (c) => {
     const id = Number(c.req.param("id"));

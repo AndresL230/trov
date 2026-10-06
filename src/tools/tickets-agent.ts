@@ -41,7 +41,7 @@
 //      The scope check must not double as an existence oracle.
 
 import type { Env } from "../env";
-import { isAdmin } from "../auth/principal";
+import { hasRole } from "../data/context";
 import { type TenantContext, first } from "../data/sql";
 import {
   TicketError,
@@ -60,6 +60,15 @@ export type AgentVerb =
   | "add_ticket_link"
   | "set_ticket_sprint"
   | "set_ticket_parent";
+
+/**
+ * "An admin" in both rules below is the ORG's (§7.2): the bearer context's own role in the org the
+ * token is bound to — admin or owner there, re-read on every request — and only for the context's own
+ * person. Being an admin of another org, or on the retired `ADMIN_LOGINS` allowlist, grants nothing.
+ * (`env` stays in the signatures for the callers; nothing here reads it any more.)
+ */
+const isOrgAdmin = (ctx: TenantContext, handle: string): boolean =>
+  hasRole(ctx, "admin") && ctx.userId.toLowerCase() === handle.toLowerCase();
 
 /**
  * The lane rule, in one function.
@@ -89,7 +98,7 @@ export async function assertTicketWritable(
   const exists = await first<{ id: number }>(ctx, `SELECT id FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId);
   if (!exists) throw new TicketError("not_found", `no such ticket: ${id}`);
 
-  if (verb === "set_ticket_sprint" && isAdmin(env, handle)) return;
+  if (verb === "set_ticket_sprint" && isOrgAdmin(ctx, handle)) return;
 
   const mine = await first<{ n: number }>(
     ctx,
@@ -125,7 +134,7 @@ export async function assertTicketAssignable(ctx: TenantContext, env: Env, id: n
   );
   if (!t) throw new TicketError("not_found", `no such ticket: ${id}`);
 
-  if (isAdmin(env, handle) || t.requester || t.assignee) return;
+  if (isOrgAdmin(ctx, handle) || t.requester || t.assignee) return;
   throw new TicketError("forbidden", `ticket ${id} can be (re)assigned only by an admin, its requester or one of its assignees`);
 }
 

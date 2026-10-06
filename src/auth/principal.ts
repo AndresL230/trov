@@ -1,8 +1,6 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { Env } from "../env";
 import { readSessionCookie, getSessionUser } from "./session";
-import { resolveToken } from "./tokens";
-import { isAccessToken, resolveOAuthAccessToken } from "./oauth";
 import { platform, type PlatformContext, type TenantContext } from "../data/context";
 
 export interface Principal {
@@ -39,19 +37,6 @@ export async function resolveSessionPrincipal(c: Context<AppEnv>): Promise<Princ
   if (!id) return null;
   const handle = await getSessionUser(platform(c.env, "anonymous"), id);
   return handle ? { handle } : null;
-}
-
-/** The /mcp principal. Dispatches on the token prefix: an OAuth access token
- *  (`trov_oat_`, legacy `canopy_oat_`, obtained through /oauth/*) or a pasted `trov_mcp_` / legacy `canopy_mcp_` token — both
- *  resolve to the same `{ handle }`, so nothing downstream of /mcp can tell them apart. */
-export async function resolveBearerPrincipal(request: Request, env: Env): Promise<Principal | null> {
-  const header = request.headers.get("authorization") ?? "";
-  const match = /^Bearer\s+(.+)$/i.exec(header);
-  if (!match) return null;
-  const raw = match[1].trim();
-  const p = platform(env, "anonymous");
-  if (isAccessToken(raw)) return resolveOAuthAccessToken(p, raw, Date.now());
-  return resolveToken(p, raw);
 }
 
 /**

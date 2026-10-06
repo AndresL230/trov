@@ -17,8 +17,9 @@ import { emptyRepoDashboard } from "../src/tools/repo";
 import { DRIFT_GROUP_LIMIT, shapeRepoDashboard, type RepoAgentView } from "../src/tools/repo-agent";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoDashboard, type RepoDrift, type RepoRange, type RepoUsageEnv } from "@shared/repo";
 import type { Env } from "../src/env";
-import { LONG_TOKEN, leakedFragments } from "./helpers/repo";
-import { bearerCtx, systemCtx } from "./helpers/tenant";
+import { LONG_TOKEN, leakedFragments, seedOrgRepoConfig } from "./helpers/repo";
+import type { RepoEnvConfig } from "../src/repo/config";
+import { bearerCtx, systemCtx, ORG_A } from "./helpers/tenant";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -43,7 +44,7 @@ const testEnv = (over: Partial<Record<keyof Env, unknown>> = {}): Env =>
   ({ ...(env as unknown as Env), ...SECRETS, ...over }) as Env;
 
 async function withClient<T>(handle: string, e: Env, fn: (c: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(e, await bearerCtx(handle, undefined, e));
+  const server = buildTrovMcpServer(e, await bearerCtx(handle, handle === "admin-user" ? "admin" : undefined, e));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -90,6 +91,8 @@ function trendPaths(v: unknown, path = "$", out: string[] = []): string[] {
  *  snapshot — relative to the real clock, because the tool reads `Date.now()`.
  *  Hosting, branches, health, environments… are deliberately left uncaptured. */
 async function seedDashboard(): Promise<void> {
+  // The dashboard reads the ORG's configuration (org_repos / org_environments), as 0037 seeded it from these vars.
+  await seedOrgRepoConfig(env.DB, ORG_A, "SaplingLearn/sapling", JSON.parse((env as unknown as Env).REPO_ENVIRONMENTS ?? "[]") as RepoEnvConfig[]);
   const hourFloor = Math.floor(Date.now() / HOUR) * HOUR;
   const midnight = Math.floor(Date.now() / DAY) * DAY;
   const iso = (ms: number) => new Date(ms).toISOString();

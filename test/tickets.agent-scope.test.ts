@@ -11,14 +11,14 @@ import {
 import type { TicketRow } from "@shared/rows";
 import { seedPerson } from "./helpers/persons";
 
-import { systemCtx } from "./helpers/tenant";
+import { systemCtx, tenantCtx } from "./helpers/tenant";
 // Phase 1: the SCOPE PRIMITIVE, unit level. An agent writes only inside its
 // principal's own lane — the bearer must already be an assignee of the ticket.
 // The MCP-level pass over the same rule is test/mcp.tickets.writes.test.ts; this
 // file proves the rule itself, including the property that matters most: a
 // REFUSAL WRITES NOTHING.
 //
-// ADMIN_LOGINS binds only "admin-user" (vitest.config.ts), so andres/beatrix are
+// Only "admin-user" is ever given an org-admin context (§7.2), so andres/beatrix are
 // plain principals and admin-user is the D6 exception's subject.
 
 const ENV = env as unknown as Env;
@@ -175,24 +175,24 @@ describe("set_ticket_parent needs the lane on BOTH ids", () => {
 
 describe("D6 — the admin's set_ticket_sprint exception", () => {
   it("lets an admin re-home a ticket they are not assigned to", async () => {
-    await seedPerson("admin-user");
+    const admin = await tenantCtx("admin-user", "admin", { via: "bearer" });
     const id = await ticketFor("andres", ["andres"], "someone else's");
     const sprint = await seedSprint("Sprint C");
 
-    await agentSetTicketSprint(systemCtx(), ENV, id, sprint, "admin-user");
+    await agentSetTicketSprint(admin, ENV, id, sprint, "admin-user");
     const row = await first<TicketRow>(env.DB, `SELECT * FROM tickets WHERE id = ?`, id);
     expect(row!.sprint_id).toBe(sprint);
   });
 
   it("does NOT spread to any other verb", async () => {
-    await seedPerson("admin-user");
+    const admin = await tenantCtx("admin-user", "admin", { via: "bearer" });
     const id = await ticketFor("andres", ["andres"], "someone else's");
     const other = await ticketFor("andres", ["andres"], "another");
 
-    await refusesAndWritesNothing(id, "forbidden", () => agentTransitionTicket(systemCtx(), ENV, id, "in_progress", "admin-user"));
-    await refusesAndWritesNothing(id, "forbidden", () => agentAddTicketComment(systemCtx(), ENV, id, "hi", "admin-user"));
-    await refusesAndWritesNothing(id, "forbidden", () => agentAddTicketLink(systemCtx(), ENV, id, ISSUE_214, "admin-user"));
-    await refusesAndWritesNothing(id, "forbidden", () => agentSetTicketParent(systemCtx(), ENV, id, other, "admin-user"));
+    await refusesAndWritesNothing(id, "forbidden", () => agentTransitionTicket(admin, ENV, id, "in_progress", "admin-user"));
+    await refusesAndWritesNothing(id, "forbidden", () => agentAddTicketComment(admin, ENV, id, "hi", "admin-user"));
+    await refusesAndWritesNothing(id, "forbidden", () => agentAddTicketLink(admin, ENV, id, ISSUE_214, "admin-user"));
+    await refusesAndWritesNothing(id, "forbidden", () => agentSetTicketParent(admin, ENV, id, other, "admin-user"));
   });
 
   it("is admin-only — a non-admin still cannot re-home a ticket outside their lane", async () => {
