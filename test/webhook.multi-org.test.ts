@@ -135,14 +135,34 @@ describe("POST /webhook/github/:hookId", () => {
     expect(await everything()).toBe(before);
   });
 
-  it("an unknown hook id → 404 and no rows, whatever it is signed with", async () => {
+  it("an unknown hook id → the bare 401 and no rows, whatever it is signed with", async () => {
     await twoOrgs();
     const before = await everything();
     for (const secret of [LEGACY_SECRET, SECRET_B]) {
       const res = await deliver("hook_nobody", secret, "pull_request", pr(REPO_B));
-      expect(res.status).toBe(404);
-      expect(await res.json()).toEqual({ error: "not_found" });
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: "unauthorized" });
     }
+    expect(await everything()).toBe(before);
+  });
+
+  it("unknown, suspended, no secret stored and a bad signature are indistinguishable: status, body and headers (§8.5)", async () => {
+    await twoOrgs();
+    await addOrgRepo("beta-co/unset", ORG_B, { id: "hook_beta_unset", primary: false }); // a real hook id with no secret
+    await run(env.DB, `INSERT INTO orgs (id, slug, name, created_at, created_by, suspended_at, suspended_by) VALUES ('org_gone', 'gone', 'Gone', ?, 'test', ?, 'test')`, nowIso(), nowIso());
+    await addOrgRepo("gone-co/app", "org_gone", { id: "hook_gone_app" });
+    const before = await everything();
+    const refusals: [string, Response][] = [
+      ["unknown", await deliver("hook_nobody", SECRET_B, "pull_request", pr(REPO_B))],
+      ["suspended", await deliver("hook_gone_app", SECRET_B, "pull_request", pr("gone-co/app"))],
+      ["no secret", await deliver("hook_beta_unset", SECRET_B, "pull_request", pr("beta-co/unset"))],
+      ["bad signature", await deliver(HOOK_B, "not-the-secret", "pull_request", pr(REPO_B))],
+      ["legacy, bad signature", await deliver(null, "not-the-secret", "pull_request", pr(REPO_A))],
+    ];
+    const shape = async (res: Response) => JSON.stringify({ status: res.status, headers: [...res.headers].sort(), body: await res.text() });
+    const shapes = await Promise.all(refusals.map(([, res]) => shape(res)));
+    expect(shapes[0]).toBe(JSON.stringify({ status: 401, headers: [["content-type", "application/json"]], body: `{"error":"unauthorized"}` }));
+    refusals.forEach(([name], i) => expect(shapes[i], name).toBe(shapes[0]));
     expect(await everything()).toBe(before);
   });
 
@@ -227,7 +247,7 @@ describe("POST /webhook/github/:hookId", () => {
     await twoOrgs();
     await run(env.DB, `UPDATE orgs SET suspended_at = ?, suspended_by = 'AndresL230' WHERE id = ?`, nowIso(), ORG_B);
     const before = await everything();
-    expect((await deliver(HOOK_B, SECRET_B, "pull_request", pr(REPO_B))).status).toBe(404);
+    expect((await deliver(HOOK_B, SECRET_B, "pull_request", pr(REPO_B))).status).toBe(401);
     expect(await everything()).toBe(before);
   });
 

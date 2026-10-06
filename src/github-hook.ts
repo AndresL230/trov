@@ -15,7 +15,7 @@
 // test/secrets.mcp.test.ts): the revealed values go down to `captureDelivery` as parameters.
 //
 // A delivery that fails its signature writes NOTHING — unauthenticated traffic must not cause a write,
-// not even a `last_error`.
+// not even a `last_error` — and every refusal is the SAME bare 401 (§8.5), so a hook id cannot be probed.
 import type { Env } from "./env";
 import { platform, systemTenant } from "./data/context";
 import { markSecretUsed, resolveCredential } from "./data/secrets";
@@ -24,6 +24,9 @@ import { captureDelivery, verifyGithubSignature, type DeliveryOpts } from "./web
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+/** The one refusal: an unknown hook id, a suspended org's, a repo with no (readable) secret and a bad
+ *  signature all answer this — same status, body and headers, no WWW-Authenticate. */
+const unauthorized = (): Response => json({ error: "unauthorized" }, 401);
 
 /** `/webhook/github` → `{ hookId: null }` (the legacy hook); `/webhook/github/<id>` → that hook;
  *  anything else → null (not a webhook path). */
@@ -46,11 +49,10 @@ function payloadRepo(rawBody: string): string | null {
 /**
  * Verify one delivery and hand it to the capture. In order:
  *
- *   1. the hook's repo row — a platform read by id. Unknown id (or a suspended org's) → 404. The
- *      legacy URL with no `legacy_hook` row → the same bare 401 an unset secret always gave.
+ *   1. the hook's repo row — a platform read by id. Unknown id, a suspended org's, or the legacy URL
+ *      with no `legacy_hook` row → the bare 401 below.
  *   2. the HMAC over the raw body, against that repo's secret. No secret, a secret that cannot be
- *      read, or a bad signature → bare 401, NO WWW-Authenticate (the /mcp bearer failure's shape),
- *      and NO rows.
+ *      read, or a bad signature → the same bare 401, and NO rows.
  *   3. on a per-org hook the payload's repository must be the row's (case-insensitively, as GitHub
  *      compares names); a payload naming another repository — or none — is acknowledged and ignored
  *      (202, no rows), so a hook of org B can never write a delivery about org A's repo into either
@@ -69,12 +71,12 @@ export async function handleGithubWebhook(request: Request, env: Env, opts?: Del
   const p = platform(env, "github-webhook");
   const hookId = opts?.hookId ?? null;
   const row = hookId === null ? await legacyHookRepo(p) : await hookRepo(p, hookId);
-  if (!row) return hookId === null ? json({ error: "unauthorized" }, 401) : json({ error: "not_found" }, 404);
+  if (!row) return unauthorized();
 
   const ctx = systemTenant(p, row.org_id, "github-webhook");
   // Fixed-text errors only (src/data/secrets.ts); a secret that cannot be read verifies nothing.
   const secret = await resolveCredential(ctx, env, "github_webhook", row.id).catch(() => null);
-  if (!secret || !(await verifyGithubSignature(secret.reveal(), rawBody, sig))) return json({ error: "unauthorized" }, 401);
+  if (!secret || !(await verifyGithubSignature(secret.reveal(), rawBody, sig))) return unauthorized();
   await markSecretUsed(ctx, "github_webhook", row.id).catch(() => undefined);
 
   if (hookId !== null && payloadRepo(rawBody)?.toLowerCase() !== row.repo_full_name.toLowerCase()) return json({ ok: true, ignored: true }, 202);
