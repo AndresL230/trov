@@ -54,6 +54,9 @@ describe("the import graph", () => {
     expect(fromRoutes.has("src/integrations/routes.ts")).toBe(true);
     expect(fromRoutes.has("src/data/secrets.ts")).toBe(true);
     expect(reachable("src/integrations/probe.ts").has("src/data/secrets.ts")).toBe(true);
+    // …and the GitHub App's modules from the jobs that mint with them.
+    expect(reachable("src/repo/cron.ts").has("src/github-app/credential.ts")).toBe(true);
+    expect(reachable("src/github-hook.ts").has("src/github-app/client.ts")).toBe(true);
   });
 
   it("nothing reachable from src/mcp.ts imports src/data/secrets.ts, nor the Integrations API", () => {
@@ -62,8 +65,12 @@ describe("the import graph", () => {
     expect(fromMcp.has("src/tools/reads.ts")).toBe(true);
     expect(fromMcp.has("src/data/secrets.ts")).toBe(false);
     expect([...fromMcp].filter((f) => f.startsWith("src/integrations/"))).toEqual([]);
-    // …and no MCP-reachable file so much as names the decrypt path.
-    for (const file of fromMcp) expect(SOURCES.get(file), file).not.toMatch(/\b(getSecret|resolveCredential)\s*\(/);
+    // The GitHub App mints installation tokens and holds the App's private key (issue #95, spec §4): none
+    // of src/github-app/ is reachable either — src/repo/github.ts, src/webhook.ts and src/tools/progress.ts
+    // take the token as a plain string from callers MCP cannot reach.
+    expect([...fromMcp].filter((f) => f.startsWith("src/github-app/"))).toEqual([]);
+    // …and no MCP-reachable file so much as names the decrypt path or the mint.
+    for (const file of fromMcp) expect(SOURCES.get(file), file).not.toMatch(/\b(getSecret|resolveCredential|resolveGithubToken|githubCredential|mintInstallationToken)\s*\(/);
   });
 });
 

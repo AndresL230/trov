@@ -12,13 +12,16 @@
 //                                  phase deletes the route, the flag and the Worker secret.
 //
 // This module resolves credentials, so it must NOT be reachable from src/mcp.ts (src/webhook.ts is —
-// test/secrets.mcp.test.ts): the revealed values go down to `captureDelivery` as parameters.
+// test/secrets.mcp.test.ts): the revealed values go down to `captureDelivery` as parameters. The GitHub
+// token is `githubCredential`'s (src/github-app/credential.ts): an installation token when this repo is
+// attached to the GitHub App, else the pasted `github_token`.
 //
 // A delivery that fails its signature writes NOTHING — unauthenticated traffic must not cause a write,
 // not even a `last_error` — and every refusal is the SAME bare 401 (§8.5), so a hook id cannot be probed.
 import type { Env } from "./env";
 import { platform, systemTenant } from "./data/context";
 import { markSecretUsed, resolveCredential } from "./data/secrets";
+import { githubCredential } from "./github-app/credential";
 import { hookRepo, legacyHookRepo } from "./platform/jobs";
 import { captureDelivery, verifyGithubSignature, type DeliveryOpts } from "./webhook";
 
@@ -82,12 +85,15 @@ export async function handleGithubWebhook(request: Request, env: Env, opts?: Del
   if (hookId !== null && payloadRepo(rawBody)?.toLowerCase() !== row.repo_full_name.toLowerCase()) return json({ ok: true, ignored: true }, 202);
   if (row.is_primary !== 1) return json({ ok: true, ignored: true }, 202);
 
+  // LAZY and resolved at most ONCE per delivery: a delivery may ask more than once (a failed run, a push to
+  // an environment branch), and on the App each resolution is a mint.
+  let token: Promise<string | null> | undefined;
   return captureDelivery(ctx, env, {
     repo: row.repo_full_name,
-    githubToken: async () => {
-      const token = await resolveCredential(ctx, env, "github_token", "").catch(() => null);
-      if (token) await markSecretUsed(ctx, "github_token", "").catch(() => undefined);
-      return token?.reveal() ?? null;
-    },
+    githubToken: () => token ??= (async () => {
+      const cred = await githubCredential(ctx, env, { id: row.id, repo: row.repo_full_name }, { fetchImpl: opts?.fetchImpl }).catch(() => null);
+      if (cred?.source === "pasted") await markSecretUsed(ctx, "github_token", "").catch(() => undefined);
+      return cred?.token.reveal() ?? null;
+    })(),
   }, request.headers.get("x-github-event") ?? "", rawBody, opts);
 }

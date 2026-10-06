@@ -9,6 +9,7 @@ import {
   type IntegrationConfig, type SecretMeta,
 } from "../data/secrets";
 import type { TenantContext } from "../data/sql";
+import { githubAppConfig } from "../github-app/config";
 import { listEnvironments, listRepoRows, webhookUrl } from "./settings";
 
 interface KindInfo {
@@ -85,12 +86,27 @@ export function checkIntegrationConfig(kind: IntegrationKind, config: unknown): 
 
 interface Slot { kind: IntegrationKind; scope: string; scope_label: string | null; webhook_url: string | null; expected: boolean }
 
-/** The org's expected (kind, scope) slots, in page order, then any stored secret none of them claims. */
-async function slots(ctx: TenantContext, origin: string, secrets: SecretMeta[]): Promise<Slot[]> {
+/**
+ * The org's expected (kind, scope) slots, in page order, then any stored secret none of them claims.
+ *
+ * The GitHub App (spec §10) takes two kinds off the list: with the App configured, an org whose PRIMARY repo
+ * is attached to an installation reads GitHub with installation tokens, so `github_token` is not EXPECTED;
+ * and a repo attached to an installation gets its events on the App webhook, so its `github_webhook` is not
+ * either. A secret still stored for one keeps its row — `expected: false`, in its usual place — so it can be
+ * deleted (it is also the fallback while an installation is suspended). With the App unconfigured an
+ * attachment means nothing (every job is back on the pasted token), and both stay expected.
+ */
+async function slots(ctx: TenantContext, env: Env, origin: string, secrets: SecretMeta[]): Promise<Slot[]> {
   const [repos, envs] = [await listRepoRows(ctx), await listEnvironments(ctx)];
+  const app = githubAppConfig(env) !== null;
+  const onApp = (r: { installation_id: number | null }) => app && r.installation_id !== null;
+  const stored = (kind: IntegrationKind, scope: string) => secrets.some((s) => s.kind === kind && s.scope === scope);
+  const primaryOnApp = repos.some((r) => r.is_primary === 1 && onApp(r));
+  const token: Slot = { kind: "github_token", scope: "", scope_label: null, webhook_url: null, expected: !primaryOnApp };
   const out: Slot[] = [
-    { kind: "github_token", scope: "", scope_label: null, webhook_url: null, expected: true },
-    ...repos.map((r): Slot => ({ kind: "github_webhook", scope: r.id, scope_label: r.repo_full_name, webhook_url: webhookUrl(origin, r.id), expected: true })),
+    ...(token.expected || stored("github_token", "") ? [token] : []),
+    ...repos.filter((r) => !onApp(r) || stored("github_webhook", r.id))
+      .map((r): Slot => ({ kind: "github_webhook", scope: r.id, scope_label: r.repo_full_name, webhook_url: webhookUrl(origin, r.id), expected: !onApp(r) })),
     { kind: "cloudflare_analytics", scope: "", scope_label: null, webhook_url: null, expected: true },
     ...envs.flatMap((e): Slot[] => [
       { kind: "railway", scope: e.key, scope_label: e.label, webhook_url: null, expected: true },
@@ -133,14 +149,14 @@ async function describe(ctx: TenantContext, env: Env, slot: Slot, secrets: Secre
 export async function listIntegrations(ctx: TenantContext, env: Env, origin: string): Promise<IntegrationsListDTO> {
   const [secrets, configs] = [await listSecretMeta(ctx), await listIntegrationConfig(ctx)];
   const integrations: IntegrationDTO[] = [];
-  for (const slot of await slots(ctx, origin, secrets)) integrations.push(await describe(ctx, env, slot, secrets, configs));
+  for (const slot of await slots(ctx, env, origin, secrets)) integrations.push(await describe(ctx, env, slot, secrets, configs));
   return { integrations, secrets_available: await secretsAvailable(env), key_version: await currentKeyVersion(ctx) };
 }
 
 /** The metadata row every write answers with — also for a (kind, scope) the org no longer expects. */
 export async function integrationRow(ctx: TenantContext, env: Env, origin: string, kind: IntegrationKind, scope: string): Promise<IntegrationDTO> {
   const [secrets, configs] = [await listSecretMeta(ctx), await listIntegrationConfig(ctx)];
-  const slot = (await slots(ctx, origin, secrets)).find((s) => s.kind === kind && s.scope === scope)
+  const slot = (await slots(ctx, env, origin, secrets)).find((s) => s.kind === kind && s.scope === scope)
     ?? { kind, scope, scope_label: null, webhook_url: null, expected: false };
   return describe(ctx, env, slot, secrets, configs);
 }

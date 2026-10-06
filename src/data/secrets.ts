@@ -276,7 +276,8 @@ const parseObject = (json: string): Record<string, unknown> => {
 
 /**
  * The org's recent audit rows, newest first: this module's secret trail (`org_audit`) merged with the
- * repository / environment changes src/integrations/settings.ts records in `org_admin_audit` (0043 —
+ * repository / environment changes src/integrations/settings.ts — and the GitHub App's installation
+ * changes src/github-app/installations.ts — record in `org_admin_audit` (0043 —
  * `org_audit.action` has a CHECK that admits only the five secret actions). One list, the way
  * `GET /api/platform/audit` merges the same two tables; ids are `s<n>` / `a<n>`. Rows of one batch share
  * their `at`: there the secret rows come first (a removed environment's secret deletions, then the
@@ -288,7 +289,7 @@ export async function listOrgAudit(ctx: TenantContext, limit = 50): Promise<OrgA
        SELECT 's' || s.id AS id, s.actor, s.action, s.target, s.detail, s.at, s.id AS n, 1 AS secret FROM org_audit s WHERE s.org_id = ?
        UNION ALL
        SELECT 'a' || a.id AS id, a.actor, a.action, a.target, a.detail, a.at, a.id AS n, 0 AS secret FROM org_admin_audit a
-        WHERE a.org_id = ? AND (a.action LIKE 'repo.%' OR a.action LIKE 'environment.%')
+        WHERE a.org_id = ? AND (a.action LIKE 'repo.%' OR a.action LIKE 'environment.%' OR a.action LIKE 'github.%')
      ) ORDER BY at DESC, secret DESC, n DESC LIMIT ?`, ctx.orgId, ctx.orgId, limit);
   return rows.map(({ n: _n, secret: _secret, ...r }) => ({ ...r, detail: parseObject(r.detail) }));
 }

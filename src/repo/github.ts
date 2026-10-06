@@ -194,7 +194,9 @@ const MAX_STATUSES_PER_CONTEXT = 10;
  * workflow-run list + ≤5 job lookups + 1 commit-status list + 1 GraphQL reviews
  * + ≤5 GraphQL branch pages + ≤2 drift compares + 2 per environment (head
  * commit, head checks). The callers' budgets (src/repo/cron.ts) build on this
- * number: the `:20` tick is 19 + 4N with its pings, "Poll now" 19 + 7N.
+ * number plus the ONE installation-token mint an org on the GitHub App costs
+ * (src/github-app/credential.ts): the `:20` tick is 20 + 4N with its pings,
+ * "Poll now" 20 + 7N. The token arrives here as a plain string either way.
  */
 export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now()): Promise<ReconcileResult> {
   const out: ReconcileResult = { written: 0, unchanged: 0, failed: [] };

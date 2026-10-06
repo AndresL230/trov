@@ -125,6 +125,7 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 |---|---|
 | `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
 | `src/platform/jobs.ts` (`org_repos`, `org_environments`) | the cron's unit lists and the webhook's hook lookup, before any org is known — ids, an environment key and a repo name |
+| `src/github-app/installations.ts` `installationOwner` (`github_installations`) | which org a GitHub App installation is bound to — the App webhook's lookup and the bind's "bound elsewhere?" check, before any org is known; an org id and two suspension flags |
 | `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal` | credential lookup by HASH before any org is known (the row names the org), and the revoke of the one grant just found |
 | `src/auth/oauth.ts` `listGrants`, `revokeGrant` | Connected apps is user-level: a person's own grants across their orgs, keyed by person |
 | `src/artifacts/upload.ts` `uploadTokenOrg` | upload-token lookup by hash, returning only its `org_id` |
@@ -165,11 +166,13 @@ suspended org is absent from every list, and its hook reads as unknown.
 
 **Configuration and credentials.** The repo is the org's primary `org_repos` row (`orgPrimaryRepo`), the
 environments are `org_environments` in `position` order (`orgEnvironments`) — `GITHUB_REPO` and
-`REPO_ENVIRONMENTS` are read by NOTHING any more (the dashboard reads use the same rows). Every credential comes from
+`REPO_ENVIRONMENTS` are read by NOTHING any more (the dashboard reads use the same rows). The GitHub credential
+comes from `resolveGithubToken` / `githubCredential` (`src/github-app/credential.ts`): a one-hour installation token
+when the repo is attached to a GitHub App installation, else the pasted one. Every stored credential comes from
 `resolveCredential(ctx, env, kind, scope)`: `github_token` (`""`), `github_webhook` (the hook id),
 `cloudflare_analytics` (`""`, + `resolveCloudflareAccountId`), `railway` and `metrics_endpoint` (the
 environment key). It is resolved ONLY in modules that `src/mcp.ts` cannot reach — `src/repo/cron.ts`,
-`src/github-hook.ts`, `src/tools/backfill.ts` — and the revealed value is passed down as a parameter
+`src/github-hook.ts`, `src/tools/backfill.ts`, `src/github-app/*` — and the revealed value is passed down as a parameter
 (`src/webhook.ts` and `src/repo/github.ts` ARE reachable from MCP; `test/secrets.mcp.test.ts`). Every log
 line and stored `last_error` is scrubbed of every credential the unit revealed.
 

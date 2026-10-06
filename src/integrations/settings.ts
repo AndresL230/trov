@@ -69,10 +69,26 @@ export async function listRepos(ctx: TenantContext, origin: string, admin: boole
 const newHookId = (): string =>
   "hook_" + [...crypto.getRandomValues(new Uint8Array(20))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
+/** The installation of THIS org that covers `name` (`github_installation_repos`, 0048 — names compare
+ *  case-insensitively, the column is NOCASE), or null: a repo connected while it is covered is connected
+ *  through the GitHub App (src/github-app/installations.ts keeps the attachment from then on). */
+async function coveringInstallation(ctx: TenantContext, name: string): Promise<number | null> {
+  const row = await first<{ installation_id: number }>(ctx,
+    `SELECT installation_id FROM github_installation_repos WHERE org_id = ? AND repo_full_name = ? ORDER BY installation_id LIMIT 1`, ctx.orgId, name);
+  return row?.installation_id ?? null;
+}
+
+const attachStmts = (ctx: TenantContext, id: string, name: string, installationId: number, at: string): Stmt[] => [
+  stmt(ctx, `UPDATE org_repos SET installation_id = ? WHERE org_id = ? AND id = ? AND installation_id IS NULL`, installationId, ctx.orgId, id),
+  auditStmt(ctx, "repo.attach", name, { installation_id: installationId }, at),
+];
+
 /**
  * Add a repository (admin+). The org's FIRST repo is its primary; `is_primary: true` on a later one
  * moves the primary to it — and naming a repo the org already has, with `is_primary: true`, promotes
- * that one. Returns the row's id.
+ * that one. A repository one of the org's GitHub App installations covers is ATTACHED to it (a new row,
+ * or a promoted one that is not attached yet — `repo.attach`, same batch): its credential is then an
+ * installation token. Returns the row's id.
  */
 export async function addRepo(ctx: TenantContext, input: { repo_full_name: unknown; is_primary?: unknown }): Promise<{ id: string; created: boolean }> {
   requireRole(ctx, "admin");
@@ -84,24 +100,30 @@ export async function addRepo(ctx: TenantContext, input: { repo_full_name: unkno
   const unsetPrimary = stmt(ctx, `UPDATE org_repos SET is_primary = 0 WHERE org_id = ? AND is_primary = 1`, ctx.orgId);
   if (held) {
     if (input.is_primary !== true) throw new SettingsError("repo_exists", 409, "that repository is already connected");
-    if (held.is_primary !== 1) {
-      await batch(ctx, [
+    const at = nowIso();
+    const covering = held.installation_id === null ? await coveringInstallation(ctx, held.repo_full_name) : null;
+    const stmts: Stmt[] = [
+      ...(held.is_primary !== 1 ? [
         unsetPrimary,
         stmt(ctx, `UPDATE org_repos SET is_primary = 1 WHERE org_id = ? AND id = ?`, ctx.orgId, held.id),
-        auditStmt(ctx, "repo.primary", held.repo_full_name, {}, nowIso()),
-      ]);
-    }
+        auditStmt(ctx, "repo.primary", held.repo_full_name, {}, at),
+      ] : []),
+      ...(covering !== null ? attachStmts(ctx, held.id, held.repo_full_name, covering, at) : []),
+    ];
+    if (stmts.length) await batch(ctx, stmts);
     return { id: held.id, created: false };
   }
   if (rows.length >= MAX_ORG_REPOS) throw new SettingsError("too_many_repos", 409, `an org can connect at most ${MAX_ORG_REPOS} repositories`);
   const primary = rows.length === 0 || input.is_primary === true;
   const id = newHookId();
   const at = nowIso();
+  const covering = await coveringInstallation(ctx, name);
   await batch(ctx, [
     ...(primary && rows.length > 0 ? [unsetPrimary] : []),
     stmt(ctx, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES (?, ?, ?, ?, 0, ?, ?)`,
       id, ctx.orgId, name, primary ? 1 : 0, at, ctx.userId),
     auditStmt(ctx, "repo.add", name, { primary }, at),
+    ...(covering !== null ? attachStmts(ctx, id, name, covering, at) : []),
   ]);
   return { id, created: true };
 }

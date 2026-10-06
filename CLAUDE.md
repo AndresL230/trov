@@ -771,8 +771,8 @@ fire time's UTC minute/hour, each job in its own `safely` arm:
   sequentially, each fetch under its own timeout: worst case ≈ 64 s of wall clock for two environments, all
   I/O wait. The tick calls `runUsagePolls`, and the cron ignores what it returns.
 - **every 6th hour** (UTC hour % 6 = 0) — `:10` `recomputeAllProgress` alone (UNBOUNDED: one request per
-  issue number of every array-ref sprint); `:20` `reconcileRepo` alone (19 + 2N worst case, below — **19 + 4N with the tick's own
-  pings: 27 today, N ≤ 7 under the 50**; logs `failed` when non-empty); `:30` `pruneRepoCapture` (D1 only). `:10` and `:20` need `GITHUB_SERVICE_TOKEN`
+  issue number of every array-ref sprint); `:20` `reconcileRepo` alone (19 + 2N worst case, below, + 1 installation-token mint for an org on the
+  GitHub App — **20 + 4N with the tick's own pings: 28 today, N ≤ 7 under the 50**; logs `failed` when non-empty); `:30` `pruneRepoCapture` (D1 only). `:10` and `:20` need `GITHUB_SERVICE_TOKEN`
   + `GITHUB_REPO`; `:30` and the pings run regardless.
 - `:40` / `:50`, and `:10`–`:30` of any other hour, ping health and nothing else.
 `src/index.ts` dispatches by EXACT string equality on `controller.cron`, so `REPO_CRON` and the expression
@@ -990,8 +990,8 @@ and PR reviews). The result is
 words `timeout` / `HTTP <status>` / `unreachable`; `"not_configured"` with no environment) — and `github`:
 `{ written, unchanged, failed }` (`failed` = reconcile's ARM NAMES), `"not_configured"` without
 `GITHUB_SERVICE_TOKEN` + `GITHUB_REPO`, `failed: ["unexpected error"]` on an unexpected throw. **The cron
-does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage 3N + reconcile (19 + 2N) =
-19 + 7N subrequests — 33 for two environments, and the free plan's 50 caps it at N ≤ 4** (47; 54 at five); past that the
+does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage 3N + reconcile (1 installation-token mint + 19 + 2N) =
+20 + 7N subrequests — 34 for two environments, and the free plan's 50 caps it at N ≤ 4** (48; 55 at five); past that the
 github arm is SKIPPED and says so (`failed: ["skipped: would exceed the subrequest budget"]`) rather than
 risk the invocation, while health and usage still run. **Deliberately excluded**: `recomputeAllProgress`
 (UNBOUNDED — the reason it has a tick of its own — and it feeds the Roadmap, not this dashboard),

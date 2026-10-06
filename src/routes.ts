@@ -728,7 +728,7 @@ tenantRoot.post("/admin/backfill", async (c) => {
 // ADMIN action (session-gated + admin-gated, NEVER an MCP tool): "Poll now" —
 // refresh what the Repo dashboard shows, on demand: health pings, the three
 // usage pollers, then the GitHub reconcile (`runRepoRefresh`, src/repo/cron.ts
-// — the budget, 19 + 7N subrequests, is stated there). NOT the issue-derived
+// — the budget, 20 + 7N subrequests, is stated there). NOT the issue-derived
 // sections (open issues / bugs, issues by label, the feed's issue lines): those
 // read `events`, whose only non-webhook writer is Sync GitHub's runBackfill. No
 // request body. 200 even when every source failed — the body says so; it

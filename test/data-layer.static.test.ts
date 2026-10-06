@@ -90,6 +90,10 @@ const PLATFORM_ALLOW: Allow[] = [
   // and org-with-a-primary-repo — and a webhook delivery finds its org by hook id, BEFORE any org is
   // known. Ids, an environment key and a repo name only; everything after runs as that org's tenant.
   { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments"], why: "the cron's unit lists and the webhook's hook lookup — ids and a repo name, no content, no secret" },
+  // The GitHub App (0048): which org installation N is bound to, asked BEFORE any org is known — by the App
+  // webhook (which org does this delivery belong to?) and by the bind (is N already bound to ANOTHER org?),
+  // which reuses it. An org id and two suspension flags; every write after it is a tenant statement.
+  { file: "src/github-app/installations.ts", fn: "installationOwner", tables: ["github_installations"], why: "the App webhook's and the bind's owner lookup by installation id — an org id and suspension flags, no content, no secret" },
   // Removing a member revokes that person's tokens for the org in the same batch as the membership row.
   { file: "src/orgs/repo.ts", fn: "removeMember", tables: ["mcp_tokens", "oauth_grants"], why: "member removal revokes the person's credentials for that org, atomically" },
 ];

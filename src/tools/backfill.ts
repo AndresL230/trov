@@ -2,7 +2,8 @@ import type { Env } from "../env";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import { first } from "../data/sql";
 import { platform, type TenantContext } from "../data/context";
-import { markSecretUsed, resolveCredential } from "../data/secrets";
+import { markSecretUsed } from "../data/secrets";
+import { githubCredential } from "../github-app/credential";
 import { jobTenant } from "../platform/jobs";
 import { orgPrimaryRepo } from "../repo/config";
 import { ingestEvent } from "../consumer";
@@ -13,8 +14,10 @@ import { applyEventProgress } from "./progress";
 
 // Admin-triggered server-side GitHub backfill. Unlike scripts/backfill-events.mjs
 // (which signs synthetic webhook deliveries with the webhook secret), this runs
-// INSIDE the Worker with the org's `github_token` — the same credential the scheduled()
-// progress recompute uses — so it fetches GitHub REST directly, no webhook secret.
+// INSIDE the Worker with the org's GitHub credential — the same one the scheduled()
+// progress recompute uses (`githubCredential`: an installation token when the
+// primary repo is on the GitHub App, else the pasted `github_token`) — so it
+// fetches GitHub REST directly, no webhook secret.
 //
 // It reconstructs the SAME deliveries the webhook would have received, reuses the
 // PURE eventsFromDelivery() derivation (never duplicated here), post-maps each
@@ -219,13 +222,17 @@ export async function runBackfill(
     issuesToSummarize: 0,
   });
 
-  // The org's PRIMARY repo and its `github_token` (the org's stored secret; for SaplingLearn, until
-  // its admin enters one, the legacy GITHUB_SERVICE_TOKEN — src/data/secrets.ts). This module is not
-  // reachable from src/mcp.ts, so it may resolve one. A secret that cannot be read is "not configured".
-  const repo = (await orgPrimaryRepo(ctx))?.repo;
-  const token = repo ? (await resolveCredential(ctx, env, "github_token", "").catch(() => null))?.reveal() : undefined;
+  // The org's PRIMARY repo and its GitHub credential: an installation token when the repo is on the
+  // GitHub App (one more subrequest — the mint), else its `github_token` (the org's stored secret; for
+  // SaplingLearn, until its admin enters one, the legacy GITHUB_SERVICE_TOKEN — src/data/secrets.ts).
+  // This module is not reachable from src/mcp.ts, so it may resolve one. A secret that cannot be read
+  // is "not configured"; the pasted token is marked used only when it was the one used.
+  const primary = await orgPrimaryRepo(ctx);
+  const repo = primary?.repo;
+  const cred = primary ? await githubCredential(ctx, env, primary, { fetchImpl: opts?.fetchImpl }).catch(() => null) : null;
+  const token = cred?.token.reveal();
   if (!token || !repo) return failed("service token or repo not configured");
-  await markSecretUsed(ctx, "github_token", "").catch(() => undefined);
+  if (cred?.source === "pasted") await markSecretUsed(ctx, "github_token", "").catch(() => undefined);
 
   const doFetch = opts?.fetchImpl ?? fetch;
   const summarizer = opts?.summarizer ?? (env.GEMINI_API_KEY ? geminiPrSummarizer(env.GEMINI_API_KEY) : null);
