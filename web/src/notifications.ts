@@ -9,6 +9,7 @@ import { esc, attr, surface } from "./ui";
 import { tenantHref } from "./api";
 import { maintSectionHeader, maintEmpty } from "./maintenance";
 import { segmented } from "./segmented";
+import { PLATFORM_FROM_ADDRESS, PLATFORM_SENDER_NAME, SENDER_NAME_MAX, senderNamePart } from "@shared/sender";
 
 const LABEL = "font-family:var(--label)";
 const cadCap = (c: Cadence): string => (c === "off" ? "Off" : c.charAt(0).toUpperCase() + c.slice(1));
@@ -163,8 +164,10 @@ export interface NotifMaintenanceProps {
   settings: NotificationSettingsRow | null;
   outbox: NotificationOutboxRow[];
   outboxExpanded: string | null;
-  /** Live text of the from-address input while being edited; null = show the stored value. */
+  /** Live text of the sender-NAME input while being edited; null = show the stored name. */
   fromDraft: string | null;
+  /** Why the typed sender name was not saved (shared/sender.ts), under the field. */
+  fromError?: string | null;
 }
 
 const TIMEZONES = ["America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York", "UTC", "Europe/London", "Europe/Berlin", "Asia/Tokyo"];
@@ -231,11 +234,13 @@ export function notificationsMaintenanceSections(p: NotifMaintenanceProps): stri
       <select data-act="schedTz" style="${FORM_SELECT}"${s ? "" : " disabled"}>${tzs}</select>
     </div>
     <div>
-      <div style="${LABEL};font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--fg-40);margin-bottom:8px">FROM ADDRESS</div>
-      <input data-act="schedFrom" data-field="schedFrom" data-commit="1" value="${attr(p.fromDraft ?? s?.from_address ?? "")}"${s ? "" : " disabled"} style="width:100%;height:36px;padding:0 12px;border:1px solid var(--border-strong);border-radius:8px;background:transparent;color:var(--fg);font-size:12.5px;${LABEL};outline:none" />
+      <label for="sched-from" style="display:block;${LABEL};font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--fg-40);margin-bottom:8px">SENDER NAME</label>
+      <input id="sched-from" data-act="schedFrom" data-field="schedFrom" data-commit="1" maxlength="${SENDER_NAME_MAX}" autocomplete="off" spellcheck="false" value="${attr(p.fromDraft ?? (s ? senderNamePart(s.from_address) : ""))}"${s ? "" : " disabled"}${p.fromError ? ' aria-invalid="true"' : ""} aria-describedby="sched-from-h" class="cnpy-input" style="width:100%;box-sizing:border-box;height:36px;padding:0 12px;border:1px solid ${p.fromError ? "var(--red)" : "var(--border-strong)"};border-radius:8px;background:transparent;color:var(--fg);font-size:12.5px;font-family:var(--sans);outline:none" />
+      <div id="sched-from-h" data-sender-address style="font-size:11.5px;line-height:1.5;color:var(--fg-40);margin-top:6px;overflow-wrap:anywhere">Sent from <span style="color:var(--fg-70)">${esc(p.fromDraft ?? (s ? senderNamePart(s.from_address) : PLATFORM_SENDER_NAME))} &lt;${PLATFORM_FROM_ADDRESS}&gt;</span>. The address is Trov's and can't be changed.</div>
+      ${p.fromError ? `<div role="alert" data-sender-error style="font-size:11.5px;line-height:1.5;color:var(--red);margin-top:4px">${esc(p.fromError)}</div>` : ""}
     </div>
   </div>
-  <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">Digests assemble on the hour. A window with nothing to say is skipped, not sent empty. The from address saves when you leave the field.</div>
+  <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">Digests assemble on the hour. A window with nothing to say is skipped, not sent empty. The sender name saves when you leave the field: letters, digits, spaces and . &amp; ' + _ - , up to ${SENDER_NAME_MAX} characters.</div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px">
     <span style="${LABEL};font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">PREVIEW</span>
     <a href="${attr(tenantHref("/api/notifications/preview?cadence=daily"))}" target="_blank" rel="noopener" class="cnpy-ghostbtn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg);text-decoration:none">Daily</a>

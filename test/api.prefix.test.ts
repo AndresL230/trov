@@ -181,6 +181,49 @@ describe("the SPA sends nothing around the prefix", () => {
   });
 });
 
+describe("429 rate_limited — one sentence, wherever a limited route is called", () => {
+  const limited = (retry_after?: number) => () => new Response(JSON.stringify({ error: "rate_limited", ...(retry_after === undefined ? {} : { retry_after }) }), { status: 429, headers: { "content-type": "application/json" } });
+  const NOW = new Date(2026, 9, 6, 14, 30, 0); // a local 2:30 pm
+  const caught = async (p: Promise<unknown>) => p.then(() => null, (e: unknown) => e);
+
+  it("every limited call carries `retry_after`: invites, resend, test send, the notification address, an avatar upload, the handle check", async () => {
+    answer = limited(5400);
+    const calls: [string, () => Promise<unknown>][] = [
+      ["createOrgInvite", () => api.createOrgInvite("acme", { email: "a@b.co", role: "member" })],
+      ["resendOrgInvite", () => api.resendOrgInvite("acme", 3)],
+      ["testSendNotification", () => api.testSendNotification("daily")],
+      ["putNotificationPrefs", () => api.putNotificationPrefs({ email: "a@b.co" })],
+      ["uploadAvatar", () => api.uploadAvatar(new Blob(["x"]), "a.png")],
+      ["checkHandle", () => api.checkHandle("someone")],
+    ];
+    for (const [name, call] of calls) {
+      const e = await caught(call());
+      expect(api.isRateLimited(e), name).toBe(true);
+      expect((e as api.ApiError).retryAfter, name).toBe(5400);
+      expect(api.rateLimitText(e, NOW), name).toMatch(/^You've hit today's limit for this; try again after \d{1,2}[:.]\d\d/);
+    }
+  });
+
+  it("says the local time the limit turns over — with the weekday when that is not today — and never a raw code", () => {
+    const err = (retryAfter: number | null) => Object.assign(new api.ApiError(429, "rate_limited"), { retryAfter });
+    const at4 = new Date(NOW.getTime() + 5400_000).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    expect(api.rateLimitText(err(5400), NOW)).toBe(`You've hit today's limit for this; try again after ${at4}.`);
+    const tomorrow = new Date(NOW.getTime() + 20 * 3600_000);
+    expect(api.rateLimitText(err(20 * 3600), NOW)).toBe(
+      `You've hit today's limit for this; try again after ${tomorrow.toLocaleDateString(undefined, { weekday: "long" })} ${tomorrow.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}.`);
+    expect(api.rateLimitText(err(null), NOW)).toBe("You've hit today's limit for this; try again later.");
+    expect(api.rateLimitText(new api.ApiError(409, "invite_exists"), NOW)).toBeNull();
+    expect(api.rateLimitText(new Error("offline"), NOW)).toBeNull();
+  });
+
+  it("Org settings shows that sentence for a limited invite — and has no message for `email_in_use`, which is never returned any more", async () => {
+    const { orgErrorText } = await import("../web/src/org-actions");
+    const e = Object.assign(new api.OrgApiError(429, "rate_limited", null, null), { retryAfter: 60 });
+    expect(orgErrorText(e, "Couldn't send the invite.")).toMatch(/^You've hit today's limit for this; try again after /);
+    for (const [path, src] of Object.entries(sources)) expect(src, path).not.toContain("email_in_use");
+  });
+});
+
 describe("the raw artifact route is the current org's", () => {
   it("rawUrl and every place the SPA loads a raw page name /api/o/<slug>/raw/a/…, never the bare alias", async () => {
     const art = await import("../web/src/artifacts");

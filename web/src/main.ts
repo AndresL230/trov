@@ -19,7 +19,7 @@ import {
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
   listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, discardIdentity, restoreIdentity, type AssignTarget,
-  getMe, logout, adminBackfill, adminPoll,
+  getMe, logout, adminBackfill, adminPoll, isRateLimited, rateLimitText,
   getOnboardPrefill, checkHandle, submitOnboard,
   getNotificationPrefs, putNotificationPrefs, getNotificationPolicy, putNotificationPolicy,
   getNotificationSettings, putNotificationSettings, listNotificationOutbox, testSendNotification, type PrefsWrite,
@@ -59,6 +59,7 @@ import { PERSON_COLORS, type PersonColor } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
+import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { createPlatform } from "./platform-actions";
 import { PLATFORM_PATH, isPlatformPath } from "./platform";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
@@ -976,7 +977,7 @@ function writePrefs(body: PrefsWrite, done: string | null): void {
     .then((data) => { state.notifPrefs = { status: "ok", data }; if (done) flash(done); rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-      flash(e instanceof ApiError ? e.message : "Could not save email settings");
+      flash(refusalText(e, "Could not save email settings"), isRateLimited(e) ? 7000 : 2200);
     });
 }
 function loadNotifAdmin(): void {
@@ -1002,10 +1003,12 @@ function loadNotifAdminIfNeeded(): void {
 }
 function writeSettings(body: Parameters<typeof putNotificationSettings>[0], done: string): void {
   putNotificationSettings(body)
-    .then((data) => { state.notifSettings = { status: "ok", data }; state.fromDraft = null; flash(done); rerender(); })
+    .then((data) => { state.notifSettings = { status: "ok", data }; state.fromDraft = null; state.fromError = null; flash(done); rerender(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-      flash(e instanceof ApiError ? e.message : "Could not save schedule");
+      // A sender name the server refused (it checks again — shared/sender.ts): said under the field, not as a code.
+      if ("from_address" in body && e instanceof ApiError && e.status === 400) state.fromError = "That sender name can't be used. Use letters, digits, spaces and . & ' + _ - only, without \"trov\".";
+      else flash(refusalText(e, "Could not save schedule"), isRateLimited(e) ? 7000 : 2200);
       rerender();
     });
 }
@@ -1537,7 +1540,8 @@ function uploadAvatarFile(file: File | undefined | null): void {
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       state.avatarBusy = null;
-      if (e instanceof ApiError) flash(e.status === 413 ? "That photo is too large." : /^\d+$/.test(e.message) ? "Couldn't upload the photo" : e.message);
+      if (isRateLimited(e)) flash(rateLimitText(e) ?? "", 7000);
+      else if (e instanceof ApiError) flash(e.status === 413 ? "That photo is too large." : /^\d+$/.test(e.message) ? "Couldn't upload the photo" : e.message);
       else flash(errMsg(e));
     });
 }
@@ -1551,6 +1555,8 @@ function uploadAvatarFile(file: File | undefined | null): void {
 const artSeq = new Map<string, number>();
 const nextArtSeq = (k: string): number => { const n = (artSeq.get(k) ?? 0) + 1; artSeq.set(k, n); return n; };
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+/** A refused write as a toast: the per-person limit's one sentence (api.ts `rateLimitText`), else the server's code. */
+const refusalText = (e: unknown, fallback: string): string => rateLimitText(e) ?? (e instanceof ApiError ? e.message : fallback);
 
 function loadArtifactList(force = false): void {
   const cur = state.art.list;
@@ -1919,7 +1925,10 @@ async function runAdminBackfillLoop(): Promise<void> {
   } catch (e) {
     state.backfillSync = null;
     if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-    flash(e instanceof ApiError ? e.message : "Sync failed");
+    // 503 `service token or repo not configured`: THIS org has no repository or no GitHub token yet — a setup step, not a failure.
+    if (e instanceof ApiError && e.status === 503 && /not configured/i.test(e.message)) {
+      flash("This organization has no repository or GitHub token yet, so there is nothing to sync.", 9000, { label: "Open Org settings", act: "orgGo", arg: "integrations" });
+    } else flash(e instanceof ApiError ? e.message : "Sync failed");
     rerender();
   }
 }
@@ -1963,7 +1972,8 @@ function scheduleHandleCheck(): void {
   handleCheckTimer = window.setTimeout(() => {
     checkHandle(h)
       .then((r) => { if (seq !== handleCheckSeq) return; state.onboard.check = r.available ? "available" : (r.reason ?? "invalid"); rerender(); })
-      .catch(() => { if (seq !== handleCheckSeq) return; state.onboard.check = "idle"; rerender(); });
+      // The check is limited per person: say when it can be asked again, rather than going quiet.
+      .catch((e) => { if (seq !== handleCheckSeq) return; state.onboard.check = "idle"; if (isRateLimited(e)) state.onboard.error = rateLimitText(e); rerender(); });
   }, 250);
 }
 
@@ -1980,7 +1990,7 @@ function scheduleRenameCheck(): void {
   renameCheckTimer = window.setTimeout(() => {
     checkHandle(h)
       .then((r) => { if (seq !== renameCheckSeq) return; state.handleCheck = r.available ? "available" : (r.reason ?? "invalid"); rerender(); })
-      .catch(() => { if (seq !== renameCheckSeq) return; state.handleCheck = "idle"; rerender(); });
+      .catch((e) => { if (seq !== renameCheckSeq) return; state.handleCheck = "idle"; if (isRateLimited(e)) flash(rateLimitText(e) ?? "", 7000); else rerender(); });
   }, 250);
 }
 
@@ -3367,11 +3377,15 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     case "schedHour": { const h = Number(value); if (Number.isInteger(h)) writeSettings({ send_hour: h }, "Send hour saved"); return; }
     case "schedTz": if (value) writeSettings({ timezone: value }, "Timezone saved"); return;
-    case "schedFrom": state.fromDraft = value ?? ""; return; // live echo; commits on change (blur/enter)
+    case "schedFrom": state.fromDraft = value ?? ""; state.fromError = null; return; // live echo; commits on change (blur/enter)
     case "schedFromCommit": {
-      const v = (value ?? "").trim();
-      if (!v || v === state.notifSettings.data?.from_address) { state.fromDraft = null; break; }
-      writeSettings({ from_address: v }, "From address saved");
+      // A sender NAME only: the address is the platform's (shared/sender.ts). Checked here with the Worker's own rule.
+      const v = (value ?? "").trim().replace(/\s+/g, " ");
+      const stored = senderNamePart(state.notifSettings.data?.from_address ?? "");
+      if (!v || v === stored) { state.fromDraft = null; state.fromError = null; break; }
+      const problem = senderNameProblem(v);
+      if (problem) { state.fromDraft = v; state.fromError = SENDER_NAME_HELP[problem]; break; }
+      writeSettings({ from_address: v }, "Sender name saved");
       return;
     }
     case "outboxToggle": state.outboxExpanded = state.outboxExpanded === arg ? null : arg; break;
@@ -3386,7 +3400,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           flash(r.ok ? `Test ${cadence} sent to ${r.to}${r.mode === "local" ? " (local mode: see outbox bodies)" : ""}` : `Test send ${r.status}: ${r.error ?? "unknown error"}`);
           listNotificationOutbox().then(({ rows }) => { state.notifOutbox = { status: "ok", data: rows }; rerender(); }).catch(() => undefined);
         })
-        .catch((e) => flash(e instanceof ApiError ? e.message : "Could not send test"));
+        .catch((e) => flash(refusalText(e, "Could not send test"), isRateLimited(e) ? 7000 : 2200));
       return;
     }
 

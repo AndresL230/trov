@@ -234,6 +234,8 @@ export interface AppState {
   notifOutbox: Loadable<NotificationOutboxRow[]>;
   outboxExpanded: string | null;
   fromDraft: string | null;
+  /** Why the typed sender name was refused (shared/sender.ts `SENDER_NAME_HELP`, or the server's answer). */
+  fromError: string | null;
   /** The #unsubscribe screen: the flip in flight, its error, or a Settings preview (no flip). */
   unsub: { pending: boolean; error: string | null; preview: boolean };
   confirmedSprints: Record<string, boolean>;
@@ -465,6 +467,7 @@ export function initialState(): AppState {
     notifOutbox: { status: "idle", data: [] },
     outboxExpanded: null,
     fromDraft: null,
+    fromError: null,
     unsub: { pending: false, error: null, preview: false },
     confirmedSprints: {},
     // Tickets — defaults transcribed from the design's `state` block: the queue
@@ -2257,6 +2260,7 @@ function maintenanceScreen(s: AppState): string {
         outbox: s.notifOutbox.data,
         outboxExpanded: s.outboxExpanded,
         fromDraft: s.fromDraft,
+        fromError: s.fromError,
       })
     : "");
   return maintenanceView(maintenanceProps(s), people, hint);

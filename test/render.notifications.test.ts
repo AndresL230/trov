@@ -4,6 +4,7 @@
  * schedule / outbox), and the unsubscribe confirmation view. Pure functions,
  * mock-fed props, HTML-string assertions (pattern: render.review.test.ts).
  */
+import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { describe, it, expect, afterEach } from "vitest";
 import { setApiOrg } from "../web/src/api";
 import { emailNotificationsSection, notificationsMaintenanceSections, unsubscribeView } from "../web/src/notifications";
@@ -155,8 +156,35 @@ describe("notificationsMaintenanceSections", () => {
     expect(v).toContain("NOTIFICATIONS · SCHEDULE");
     expect(v).toMatch(/<option value="8" selected>08:00<\/option>/);
     expect(v).toMatch(/<option value="America\/New_York" selected>/);
-    expect(v).toContain('value="Trov &lt;c@mail.example&gt;"');
-    expect(v).toContain('data-act="schedFrom"');
+    // The sender field takes a NAME only — whatever address is stored, the one shown is the platform's.
+    expect(v).toContain("SENDER NAME");
+    expect(v).toMatch(/<input id="sched-from" data-act="schedFrom"[^>]*maxlength="64"[^>]*value="Trov"/);
+    expect(v).not.toContain("c@mail.example");
+    expect(v).toContain("Trov &lt;hello@trov.dev&gt;");
+    expect(v).toContain("The address is Trov's and can't be changed.");
+    expect(v).not.toContain("FROM ADDRESS");
+  });
+
+  it("the sender name echoes into the fixed address while typing, and a refused name is said under the field", () => {
+    const typing = notificationsMaintenanceSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: "Acme Robotics" });
+    expect(typing).toContain('value="Acme Robotics"');
+    expect(typing).toContain("Acme Robotics &lt;hello@trov.dev&gt;");
+    expect(typing).not.toContain("data-sender-error");
+    const bad = notificationsMaintenanceSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: "Trov Security", fromError: SENDER_NAME_HELP.reserved });
+    expect(bad).toMatch(/<input id="sched-from"[^>]*aria-invalid="true"/);
+    expect(bad).toMatch(/<div role="alert" data-sender-error[^>]*>A sender name can&#39;t contain &quot;trov&quot; unless it is exactly &quot;Trov&quot;\.<\/div>/);
+  });
+
+  it("the sender-name rule is the Worker's own (shared/sender.ts): letters, digits, space and . & ' + _ -, 64 at most, no 'trov' unless exactly Trov", () => {
+    for (const ok of ["Trov", "Acme Robotics", "R&D - Team_2", "O'Neil + Co.", "a".repeat(64)]) expect(senderNameProblem(ok), ok).toBeNull();
+    expect(senderNameProblem("")).toBe("empty");
+    expect(senderNameProblem("a".repeat(65))).toBe("too_long");
+    for (const bad of ["Acme <x@y.z>", "Acme, Inc", "Zoë", "a@b", 'Say "hi"', "line\nbreak", "semi;colon"]) expect(senderNameProblem(bad), bad).toBe("characters");
+    for (const bad of ["Trov Security", "trov", "T.r.o.v", "The TROV team"]) expect(senderNameProblem(bad), bad).toBe("reserved");
+    expect(senderNamePart("Acme Robotics <hello@trov.dev>")).toBe("Acme Robotics");
+    expect(senderNamePart("someone@example.com")).toBe("");
+    expect(senderNamePart('"Quoted Name" <x@y.z>')).toBe("Quoted Name");
+    expect(Object.keys(SENDER_NAME_HELP).sort()).toEqual(["characters", "empty", "reserved", "too_long"]);
   });
 
   it("outbox lists rows newest first with status; a failed row expands to its error", () => {

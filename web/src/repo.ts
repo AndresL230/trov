@@ -813,8 +813,10 @@ function pollOutcome(o: PollOutcome): string {
   // "*" is the whole source (an arm that threw), not an environment called "*".
   return `<span><span style="font-family:var(--label);font-weight:600;color:var(--fg-70)">${esc(o.env === "*" ? "all" : o.env)}</span> <span style="color:${color}">${esc(text)}</span>${landed}</span>`;
 }
+/** A source the org has not set up: said plainly, with the way to set it up — never as a failure. */
+export const NOT_CONNECTED = `<span data-poll-off style="color:${MUTED}">Not connected — <button type="button" data-act="orgGo" data-arg="integrations" class="cnpy-mutelink" style="padding:0;font:inherit;color:var(--fg-70);text-decoration:underline;text-underline-offset:2px;cursor:pointer">set it up in Org settings › Integrations</button></span>`;
 const pollSource = (s: UsagePollSource): string =>
-  s === "not_configured" || !Array.isArray(s) ? `<span style="color:${MUTED}">not configured</span>`
+  s === "not_configured" || !Array.isArray(s) ? NOT_CONNECTED
   : !s.length ? `<span style="color:${MUTED}">no environment configured</span>`
   : s.map(pollOutcome).join(SEP);
 
@@ -822,7 +824,7 @@ const SEP = `<span style="color:${MUTED}"> · </span>`;
 const PART_NAME: Record<string, string> = { backend: "api", frontend: "web" };
 /** Health, summarised: how many targets are up, and each one that is not, by name — `4 up` / `3 up · staging api ✗ timeout`. */
 function pollHealth(s: UsagePollSource | undefined): string {
-  if (!Array.isArray(s)) return `<span style="color:${MUTED}">not configured</span>`;
+  if (!Array.isArray(s)) return NOT_CONNECTED;
   if (!s.length) return `<span style="color:${MUTED}">no environment configured</span>`;
   const up = s.filter((o) => o.status === "ok").length;
   const downs = s.filter((o) => o.status !== "ok").map((o) =>
@@ -831,7 +833,7 @@ function pollHealth(s: UsagePollSource | undefined): string {
 }
 /** GitHub: the reconcile's counts, or the arms that failed BY NAME, or why it did not run. */
 function pollGithub(g: RepoRefreshGithub | "not_configured" | undefined): string {
-  if (!g || g === "not_configured") return `<span style="color:${MUTED}">not configured</span>`;
+  if (!g || g === "not_configured") return NOT_CONNECTED;
   const failed = Array.isArray(g.failed) ? g.failed.map(String) : [];
   const counts = `${Number(g.written) || 0} new · ${Number(g.unchanged) || 0} unchanged`;
   if (!failed.length) return `<span style="color:${TONE.good}">${esc(counts)}</span>`;

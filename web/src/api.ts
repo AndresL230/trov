@@ -123,7 +123,12 @@ async function refusal(res: Response): Promise<ApiError> {
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await call(path);
-  if (!res.ok) throw new ApiError(res.status, `${path} -> ${res.status}`);
+  if (!res.ok) {
+    const err = new ApiError(res.status, `${path} -> ${res.status}`);
+    // A limited read (the handle check) says when it may be asked again.
+    if (res.status === 429) { try { err.retryAfter = retryAfterOf((await res.json()) as { retry_after?: unknown }); } catch { /* non-JSON */ } }
+    throw err;
+  }
   return res.json() as Promise<T>;
 }
 

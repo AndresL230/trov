@@ -1240,7 +1240,7 @@ describe("Poll now — the Repo top bar, every tab", () => {
     expect(stripText(allDown)).toContain("Health — staging web ✗ HTTP 503 · staging api ✗ unreachable");
     expect(stripText(allDown)).not.toContain("0 up");
 
-    expect(stripText(view({ poll: done(NOT) }))).toContain("Health — not configured");
+    expect(stripText(view({ poll: done(NOT) }))).toContain("Health — Not connected — set it up in Org settings › Integrations");
     expect(stripText(view({ poll: done({ ...NOT, health: [{ env: "*", status: "failed", written: 0, detail: "unexpected error" }] }) }))).toContain("Health — all ✗ unexpected error");
   });
 
@@ -1254,7 +1254,7 @@ describe("Poll now — the Repo top bar, every tab", () => {
     const skipped = view({ poll: done({ ...NOT, github: { written: 0, unchanged: 0, failed: ["skipped: would exceed the subrequest budget"] } }) });
     expect(stripText(skipped)).toContain("GitHub — – skipped: would exceed the subrequest budget");
     expect(skipped).not.toContain("✗ failed");
-    expect(stripText(view({ poll: done(NOT) }))).toContain("GitHub — not configured");
+    expect(stripText(view({ poll: done(NOT) }))).toContain("GitHub — Not connected — set it up in Org settings › Integrations");
   });
 
   it("the usage sources read as they always did: new rows, up to date, a failure's detail, a skip, not configured", () => {
@@ -1265,7 +1265,7 @@ describe("Poll now — the Repo top bar, every tab", () => {
     }) });
     const text = stripText(html);
     expect(text).toContain("Cloudflare — staging ✓ 3 new · production ✗ cloudflare analytics 403");
-    expect(text).toContain("Railway — not configured");
+    expect(text).toContain("Railway — Not connected — set it up in Org settings › Integrations");
     expect(text).toContain("App metrics — staging ✓ up to date · production – skipped: apiUrl is not https");
     // The five lines, in the order the sources ran.
     expect(text.indexOf("Health")).toBeLessThan(text.indexOf("Cloudflare"));
@@ -1273,7 +1273,9 @@ describe("Poll now — the Repo top bar, every tab", () => {
     // Tone comes from the existing variables: good / bad / muted.
     expect(html).toMatch(/color:var\(--green\)[^>]*>✓ 3 new/);
     expect(html).toMatch(/color:var\(--red\)[^>]*>✗ cloudflare analytics 403/);
-    expect(html).toMatch(/color:var\(--fg-40\)[^>]*>not configured/);
+    // A source the org has not set up is not a failure: muted, and it links to where it is set up.
+    expect(html).toMatch(/<span data-poll-off style="color:var\(--fg-40\)">Not connected — <button type="button" data-act="orgGo" data-arg="integrations"[^>]*>set it up in Org settings › Integrations<\/button><\/span>/);
+    expect(html).not.toMatch(/color:var\(--red\)[^>]*>[^<]*Not connected/);
   });
 
   it("an ok outcome's detail (dropped product keys) and a failed one's partial write are both said — escaped", () => {
@@ -1316,8 +1318,8 @@ describe("Poll now — the Repo top bar, every tab", () => {
   it("a malformed result (an older Worker's three-key body) renders without throwing", () => {
     const old = { cloudflare: "not_configured", railway: "not_configured", sapling: "not_configured" } as unknown as RepoRefreshResult;
     const text = stripText(view({ poll: done(old) }));
-    expect(text).toContain("Health — not configured");
-    expect(text).toContain("GitHub — not configured");
+    expect(text).toContain("Health — Not connected — set it up in Org settings › Integrations");
+    expect(text).toContain("GitHub — Not connected — set it up in Org settings › Integrations");
   });
 
   it("a 409 is one line — another refresh holds the lock — still dismissible", () => {
