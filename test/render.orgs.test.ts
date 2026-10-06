@@ -22,7 +22,7 @@ import {
 import { render, initialState, viewerIsAdmin, viewerOrg, mcpAccessSection, grantListBody, tokenListBody, type AppState } from "../web/src/render";
 import { repoView, type RepoProps } from "../web/src/repo";
 import { newHandoffView, blankHandoff } from "../web/src/handoffs";
-import { artifactsView, artifactRepoOptions, initialArtUi, initialArtCreate, setRawAvailable, rawUnavailable, ART_ROUTE_NONE, type ArtProps } from "../web/src/artifacts";
+import { artifactsView, artifactRepoOptions, initialArtUi, initialArtCreate, ART_ROUTE_NONE, type ArtProps } from "../web/src/artifacts";
 import { membersTab, initialOrgUi, type OrgUi } from "../web/src/org-settings";
 import { confirmModal } from "../web/src/confirm";
 import { platformDialogs, initialPlat } from "../web/src/platform";
@@ -47,7 +47,7 @@ const ui = (o: Partial<OrgsUi> = {}): OrgsUi => ({ ...initialOrgsUi(), ...o });
 const app = (o: Partial<AppState> = {}): AppState => ({ ...initialState(), view: "app", me: me([acme("member")]), orgSlug: "acme", ...o });
 const rules = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ");
 
-afterEach(() => { setPrimaryRepo(null); setRawAvailable(true); });
+afterEach(() => { setPrimaryRepo(null); });
 
 // ── where a page load lands ──────────────────────────────────────────────────
 describe("the org in the URL", () => {
@@ -470,11 +470,6 @@ describe("the repository comes from the org", () => {
     expect(html).toContain("No repository is connected to this organization.");
     expect(html).toContain('data-act="orgGo" data-arg="repos"');
     expect(html).not.toContain('data-act="artCRepo"');
-  });
-  it("the raw artifact route is alias-only: a person in several orgs gets a plain sentence, not a broken frame", () => {
-    expect(rawUnavailable()).toContain("This preview can&#39;t open here yet".replace("&#39;", "'"));
-    expect(rawUnavailable()).toContain("exactly one organization");
-    expect(rawUnavailable(true)).toContain("Preview unavailable");
   });
 });
 

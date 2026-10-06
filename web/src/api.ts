@@ -70,15 +70,12 @@ export const apiOrgSlug = (): string | null => apiOrg;
 
 /** Person-level and platform routes: not an org's, so never prefixed (docs/architecture/data-layer.md › Routes and gates). */
 const GLOBAL_PATH = /^\/(?:auth|avatar)\/|^\/api\/(?:orgs|invites|platform|o)(?:[/?]|$)/;
-/** Routes with NO `/api/o/:slug` form yet: they answer only for a person in exactly one org
- *  (409 `org_required` otherwise). The raw artifact frame. */
-export const ALIAS_ONLY_PATH = /^\/raw\/a(?:[/?]|$)/;
 export const isGlobalPath = (path: string): boolean => GLOBAL_PATH.test(path);
 
 /** The URL a route is requested at: a tenant route under the current org, anything else as written.
  *  The old `/api/` of handoffs / prompts / docs / people / artifacts / notifications is dropped. */
 export function apiUrl(path: string): string {
-  if (GLOBAL_PATH.test(path) || ALIAS_ONLY_PATH.test(path)) return path;
+  if (GLOBAL_PATH.test(path)) return path;
   if (!apiOrg) throw new ApiError(409, "org_required");
   return `/api/o/${encodeURIComponent(apiOrg)}${path.replace(/^\/api(?=\/)/, "")}`;
 }

@@ -1,12 +1,14 @@
 // The raw route (issue #52 · Track B; spec:
 // docs/superpowers/specs/2026-09-24-artifacts-implementation.md): the bytes of one
 // artifact version, served from Trov's own origin — which is why every response is
-// locked down. Mounted at `/raw/a` in src/routes.ts, behind `sessionGate`.
+// locked down. Mounted TWICE in src/routes.ts, behind `sessionGate`: at `/api/o/:slug/raw/a`
+// (the org the path names — `tenantGate`, 404 for a non-member) and, as the cut-over alias for
+// a person with exactly one org, at `/raw/a`. `<raw>` below is either prefix.
 //
-//   GET /raw/a/:slug          the latest version
-//   GET /raw/a/:slug@v:n      version n   (both spellings — `parseSlugVersion`)
-//   GET /raw/a/:slug/v:n      version n
-//   ?download=1               attachment, `<slug>-v<n>.<ext>`
+//   GET <raw>/:slug          the latest version
+//   GET <raw>/:slug@v:n      version n   (both spellings — `parseSlugVersion`)
+//   GET <raw>/:slug/v:n      version n
+//   ?download=1              attachment, `<slug>-v<n>.<ext>`
 //
 // Text kinds come from D1 with `ARTIFACT_TEXT_CONTENT_TYPE[kind]`; binary kinds stream
 // from R2 with their stored content_type (which the repository has already made safe:
@@ -109,8 +111,9 @@ async function serveRaw(c: Context<AppEnv>, ref: string): Promise<Response> {
 }
 
 /**
- * Registered on `/raw/*` BEFORE `sessionGate` (src/routes.ts), so even the gate's 401
- * carries the lock-down headers; a header a handler already set is left alone.
+ * Registered on `/raw/*` and `/api/o/:slug/raw/*` BEFORE `sessionGate` (src/routes.ts), so even
+ * the session gate's 401 and the tenant gate's 404 carry the lock-down headers; a header a
+ * handler already set is left alone.
  */
 export const rawHeaders: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();

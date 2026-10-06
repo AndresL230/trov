@@ -169,10 +169,31 @@ describe("the SPA sends nothing around the prefix", () => {
       if (f.name === "api.ts" || f.name === "releases.ts") continue;
       const bare = f.src.replace(/(?:apiUrl|tenantHref)\(`\/img\/\$\{[^}]+\}`\)/g, "");
       const hits = bare.split("\n").filter((l) => literal.test(l));
-      // artifacts.ts `rawUrl`: alias-only on the server (no /api/o/:slug form yet), gated by `setRawAvailable`.
-      if (f.name === "artifacts.ts") { expect(hits).toHaveLength(1); expect(hits[0]).toContain("export const rawUrl"); }
-      else expect(hits, f.name).toEqual([]);
+      // artifacts.ts: the raw route is named in ONE place — `rawUrl` and its `rawOf` twin for the API's own
+      // `raw_url` — and both go through `tenantHref`, so a raw page is always the current org's.
+      if (f.name === "artifacts.ts") {
+        expect(hits).toHaveLength(2);
+        expect(hits[0]).toContain("export const rawUrl");
+        expect(hits[0]).toContain("tenantHref(`/raw/a/");
+        expect(hits[1]).toContain('apiRawUrl.startsWith("/raw/a/") ? tenantHref(apiRawUrl)');
+      } else expect(hits, f.name).toEqual([]);
     }
+  });
+});
+
+describe("the raw artifact route is the current org's", () => {
+  it("rawUrl and every place the SPA loads a raw page name /api/o/<slug>/raw/a/…, never the bare alias", async () => {
+    const art = await import("../web/src/artifacts");
+    api.setApiOrg("acme");
+    expect(art.rawUrl("login mock", 3)).toBe("/api/o/acme/raw/a/login%20mock@v3");
+    expect(api.apiUrl("/raw/a/x@v1?download=1")).toBe("/api/o/acme/raw/a/x@v1?download=1");
+    api.setApiOrg("other-org");
+    expect(art.rawUrl("x", 1)).toBe("/api/o/other-org/raw/a/x@v1");
+    api.setApiOrg(null);
+    expect(art.rawUrl("x", 1)).toBe("#"); // no org open: inert, never the unprefixed alias
+    api.setApiOrg("acme");
+    const src = Object.entries(sources).find(([path]) => path.endsWith("/artifacts.ts"))![1];
+    expect(src).not.toMatch(/rawAvailable|rawUnavailable|only open for people in exactly one organization/);
   });
 });
 

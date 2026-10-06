@@ -266,6 +266,8 @@ const TENANT: Record<string, Row> = {
   "POST /prompts/:slug/delete": J({}), "POST /prompts/:slug/restore": J({}),
   "POST /docs/propose": J({ title: "From the matrix", section: "reference", space: "technical", body: "b" }),
   "GET /people/:handle": {}, "POST /people/me/avatar": J({}), "POST /people/me/avatar/remove": J({}),
+  // src/artifacts/raw.ts — the bytes of A's artifact, by slug (`:ref`, `:slug/:ver`); the alias is `/raw/a/…`
+  "GET /raw/a/:ref": {}, "GET /raw/a/:slug/:ver": {},
   // src/orgs/routes.ts
   "GET /me": {}, "GET /settings": {}, "PUT /settings": J({ name: "Acme (renamed)" }),
   "GET /members": {}, "PUT /members/:handle": J({ title: "hijacked", role: "admin" }), "DELETE /members/:handle": {},
@@ -292,7 +294,6 @@ const LEGACY_ONLY: Record<string, Row> = {
   "GET /invites": {}, "POST /invites": J({ email: INVITED, name: "B's invitee" }),
   "POST /invites/:email/revoke": J({}), "POST /invites/:email/resend": J({}),
   "PUT /api/people/:handle": J({ role: "hijacked", responsibilities: "hijacked" }),
-  "GET /raw/a/:ref": {}, "GET /raw/a/:slug/:ver": {},
 };
 
 /** Session routes that are neither `tenantGate`'s nor `soleTenantGate`'s — and why each is safe with no membership. */

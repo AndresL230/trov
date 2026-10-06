@@ -74,7 +74,6 @@ import { createOrgsController } from "./org-picker-actions";
 import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { setPrimaryRepo } from "./github";
-import { setRawAvailable } from "./artifacts";
 import type { MyOrgsResponse } from "@shared/orgs";
 
 const root = document.getElementById("app");
@@ -684,8 +683,6 @@ function enterOrg(slug: string, hash: string): void {
   state.orgSlug = slug;
   setApiOrg(slug);
   try { localStorage.setItem(LAST_ORG_KEY, slug); } catch { /* ignore */ }
-  // The raw artifact route has no per-org form yet: it answers only for a person in one org.
-  setRawAvailable((state.me?.orgs.length ?? 0) === 1);
   const want = orgHref(slug, hash);
   if (`${location.pathname}${location.search}${location.hash}` !== want) history.replaceState(null, "", want);
   state.view = "app";

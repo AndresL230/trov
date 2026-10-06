@@ -80,8 +80,9 @@ const legacyOnly = new Hono<AppEnv>();
 const adminGate = async (c: Context<AppEnv>, next: () => Promise<void>) =>
   hasRole(c.var.ctx, "admin") ? next() : c.json({ error: "admin only" }, 403);
 
-// The raw artifact route's lock-down headers wrap EVERYTHING under /raw/, the gate's
-// own 401 included — so this one middleware runs before the gate.
+// The raw artifact route's lock-down headers wrap EVERYTHING under its two mounts — the session gate's
+// own 401 and the tenant gate's 404 included — so this one middleware runs before both gates.
+app.use("/api/o/:slug/raw/*", rawHeaders);
 app.use("/raw/*", rawHeaders);
 
 // Gate first: everything except /auth/login and /auth/callback requires a session.
@@ -97,8 +98,13 @@ app.use("*", platformContext);
 app.use("*", soleTenantGate);
 app.use("/api/o/:slug/*", tenantGate);
 
-// The raw artifact bytes (issue #52), session-gated. Alias only: they move to the artifact origin (§8.6),
-// not under `/api/o/:slug`. The token-authenticated upload PUT is dispatched in src/index.ts, before this app.
+// The raw artifact bytes (issue #52), session-gated: `/api/o/:slug/raw/a/…` for the org the path names
+// (`tenantGate`), and `/raw/a/…` as the cut-over alias for a person with exactly one org. ONE sub-app, so
+// the two mounts share every header and access rule (src/artifacts/raw.ts); a slug that is another org's
+// is the same 404 as an unknown one. Still on the app origin — moving them to an artifact origin (§8.6)
+// is a later phase. The org segment is `:org` here because the sub-app has a `:slug` of its own.
+// The token-authenticated upload PUT is dispatched in src/index.ts, before this app.
+app.route("/api/o/:org/raw/a", rawApp);
 app.route("/raw/a", rawApp);
 
 // Doc images: the bytes behind `![alt](/img/<sha256>)` in a doc body, session-gated like

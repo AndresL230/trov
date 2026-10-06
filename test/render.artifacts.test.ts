@@ -10,7 +10,7 @@
  * the create body — JSON for text, multipart for binary); and the caps are
  * per-kind (750 KB text, 10 MB binary).
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // marked + DOMPurify need DOM globals this pool does not have (as in render.docs.test.ts):
 // the stand-ins mark that a body went through the markdown / svg sanitizer.
@@ -28,6 +28,11 @@ import { render, initialState } from "../web/src/render";
 import type { ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactVersionDTO, ArtifactKind, ArtifactDiffDTO } from "@shared/artifacts-core";
 import { ARTIFACT_TEXT_CAP } from "@shared/artifacts-core";
 import { canDeleteArtifact } from "../web/src/artifacts";
+import { setApiOrg } from "../web/src/api";
+
+// A raw page is loaded from the CURRENT org's route (`/api/o/<org>/raw/a/…`); the API's `raw_url` is its suffix.
+beforeEach(() => { setApiOrg("acme"); });
+afterEach(() => { setApiOrg(null); });
 import artifactsSrc from "../web/src/artifacts.ts?raw";
 import mainSrc from "../web/src/main.ts?raw";
 
@@ -106,13 +111,13 @@ describe("artifacts — library", () => {
 
   it("thumbnails per kind: html framed from the raw route at its latest version with scripts (never same-origin), svg in an empty sandbox, image as an image, text as the excerpt, pdf as its icon", () => {
     const html = artifactsView(props("artifacts"));
-    expect(html).toContain('src="/raw/a/google-signin-design@v3" sandbox="allow-scripts" tabindex="-1" loading="lazy"');
+    expect(html).toContain('src="/api/o/acme/raw/a/google-signin-design@v3" sandbox="allow-scripts" tabindex="-1" loading="lazy"');
     expect(html).not.toContain("srcdoc");
     expect(html).not.toContain("allow-same-origin");
     const withSvg = props("artifacts");
     withSvg.ui.list = { status: "ok", data: [summary("logo-mark", { kind: "svg", current_version: 2 })] };
-    expect(artifactsView(withSvg)).toContain('src="/raw/a/logo-mark@v2" sandbox="" tabindex="-1" loading="lazy"');
-    expect(html).toContain('<img src="/raw/a/login-mock@v1"');
+    expect(artifactsView(withSvg)).toContain('src="/api/o/acme/raw/a/logo-mark@v2" sandbox="" tabindex="-1" loading="lazy"');
+    expect(html).toContain('<img src="/api/o/acme/raw/a/login-mock@v1"');
     expect(html).toContain("Auth audit\nFindings");
     expect(html).toContain("PDF · 2.00 MB");
   });
@@ -192,7 +197,7 @@ describe("artifacts — library", () => {
 describe("artifacts — viewer per kind", () => {
   it("html: an iframe on the raw route, scripts allowed, never same-origin, never srcdoc", () => {
     const html = artifactsView(viewer(detail("google-signin-design", "html")));
-    expect(html).toContain('src="/raw/a/google-signin-design@v3" sandbox="allow-scripts"');
+    expect(html).toContain('src="/api/o/acme/raw/a/google-signin-design@v3" sandbox="allow-scripts"');
     expect(html).toContain('class="art-frame" data-art-key="google-signin-design@3"');
     expect(html).not.toContain("allow-same-origin");
     expect(html).not.toContain("srcdoc");
@@ -213,9 +218,9 @@ describe("artifacts — viewer per kind", () => {
   });
 
   it("image as <img>, pdf in an unsandboxed frame (Chrome draws no PDF in a sandbox) with a new-tab link, file as a download card", () => {
-    expect(artifactsView(viewer(detail("login-mock", "image")))).toContain('<img src="/raw/a/login-mock@v3" alt="login mock"');
+    expect(artifactsView(viewer(detail("login-mock", "image")))).toContain('<img src="/api/o/acme/raw/a/login-mock@v3" alt="login mock"');
     const pdf = artifactsView(viewer(detail("rfc", "pdf")));
-    expect(pdf).toContain('src="/raw/a/rfc@v3" style=');
+    expect(pdf).toContain('src="/api/o/acme/raw/a/rfc@v3" style=');
     expect(pdf).not.toMatch(/src="\/raw\/a\/rfc@v3"[^>]*sandbox/);
     expect(pdf).toContain("Open PDF in a new tab");
     const f = detail("bundle", "file");
@@ -316,8 +321,8 @@ describe("artifacts — reducer", () => {
 
   it("open in a new tab and download go to the raw route", () => {
     const p = viewer(detail("a", "html", {}, 3, 2), 2);
-    expect(artifactsAct(p.ui, ctx(p), "artOpenTab", null, null)).toEqual({ openUrl: "/raw/a/a@v2" });
-    expect(artifactsAct(p.ui, ctx(p), "artDownload", null, null)).toEqual({ download: { url: "/raw/a/a@v2?download=1", name: "a-v2.html" } });
+    expect(artifactsAct(p.ui, ctx(p), "artOpenTab", null, null)).toEqual({ openUrl: "/api/o/acme/raw/a/a@v2" });
+    expect(artifactsAct(p.ui, ctx(p), "artDownload", null, null)).toEqual({ download: { url: "/api/o/acme/raw/a/a@v2?download=1", name: "a-v2.html" } });
   });
 
   it("navigates: both version spellings, and a diff pair from the selects", () => {
@@ -496,8 +501,8 @@ describe("artifacts — diff", () => {
   });
   it("image side by side; pdf/file metadata only; loading until it lands", () => {
     const img = artifactsView(diffProps("image", pair("image", null, null)));
-    expect(img).toContain('<img src="/raw/a/x@v1"');
-    expect(img).toContain('<img src="/raw/a/x@v2"');
+    expect(img).toContain('<img src="/api/o/acme/raw/a/x@v1"');
+    expect(img).toContain('<img src="/api/o/acme/raw/a/x@v2"');
     const pdf = artifactsView(diffProps("pdf", pair("pdf", null, null, { sha256: "cd".repeat(32), size_bytes: 4096 })));
     expect(pdf).toContain("can't be compared line by line");
     expect(pdf).toContain("SHA-256");
