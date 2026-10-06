@@ -110,6 +110,14 @@ async function seedOrg(org: Org): Promise<Fixture> {
      VALUES (?, 'x/y', 'gh:issue:7:opened', 'issue', 7, 'dana', ?, 'webhook', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z', 'github-webhook')`,
   ).bind(org, JSON.stringify(issue)).run();
 
+  // A ticket's and a handoff's id over MCP is its per-org NUMBER, and both orgs count from 1 — so to make
+  // "the other org's id" name NOTHING in the caller's own org (the matrix expects a refusal), org A's
+  // counters start far ahead: A's rows are #101…, B's #1… The matrix therefore proves both halves: a
+  // number that is only the other org's is not found, and no response ever carries the other org's canary.
+  if (org === ORG_A) {
+    await env.DB.prepare(`INSERT INTO org_counters (org_id, name, value) VALUES (?, 'ticket', 100), (?, 'handoff', 100)
+                          ON CONFLICT(org_id, name) DO UPDATE SET value = 100`).bind(org, org).run();
+  }
   const token = (await mintTokenFor("dana", org)).raw;
   const ids = await withServer(await ctxOf(token), async (call) => {
     const ok = async <T>(name: string, args: Record<string, unknown>): Promise<T> => {

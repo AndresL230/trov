@@ -194,6 +194,13 @@ describe("0037–0040 on a populated 0036 database", () => {
     await db().prepare(`INSERT INTO tickets (title, requester, created_at, updated_at) VALUES ('next', 'andres', 't', 't')`).run();
     expect(await one(`SELECT number FROM tickets WHERE title = 'next'`)).toEqual({ number: 4 }); // #3 was deleted at 0036
     expect(await one(`SELECT number FROM handoffs`)).toEqual({ number: 1 });
+    // THE claim the number-addressed routes rest on (`/tickets/:id` now means the per-org number): for every
+    // row that existed before orgs — all of them SaplingLearn's — the number IS the old id, so an existing
+    // link, bookmark, mention or agent note that says `#2` still names the same ticket. Asked of the data:
+    expect(await one(`SELECT COUNT(*) AS n FROM tickets WHERE org_id <> '${LEGACY}' OR number IS NULL OR number <> id`)).toEqual({ n: 0 });
+    expect(await one(`SELECT COUNT(*) AS n FROM handoffs WHERE org_id <> '${LEGACY}' OR number IS NULL OR number <> id`)).toEqual({ n: 0 });
+    // …and its counters sit at the highest id ever issued (the deleted #3 included), so the next number is the next id.
+    expect(await rows(`SELECT name, value FROM org_counters WHERE org_id = '${LEGACY}' ORDER BY name`)).toEqual([{ name: "handoff", value: 1 }, { name: "ticket", value: 4 }]);
   });
 
   it("is convergent: two independent runs end in identical databases", async () => {

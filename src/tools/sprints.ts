@@ -234,9 +234,13 @@ export async function get_sprint(ctx: TenantContext, id: number): Promise<Sprint
   const row = await first<SprintRow>(ctx, `SELECT * FROM sprints WHERE id = ? AND org_id = ?`, id, ctx.orgId);
   if (!row) return null;
 
-  const inSprint = await all<TicketRow>(
+  // Rows as stored: `id` / `parent_id` are row ids (the tree and the joins below); what goes out is
+  // each ticket's per-org NUMBER and its parent's (`out`, at the end — src/tools/tickets.ts).
+  const inSprint = await all<TicketRow & { number: number; parent_number: number | null }>(
     ctx,
-    `SELECT * FROM tickets WHERE sprint_id = ? AND org_id = ? ORDER BY updated_at DESC, id DESC`,
+    `SELECT t.*, (SELECT p.number FROM tickets p WHERE p.id = t.parent_id AND p.org_id = ?) AS parent_number
+       FROM tickets t WHERE t.sprint_id = ? AND t.org_id = ? ORDER BY t.updated_at DESC, t.id DESC`,
+    ctx.orgId,
     id,
     ctx.orgId
   );
@@ -256,9 +260,11 @@ export async function get_sprint(ctx: TenantContext, id: number): Promise<Sprint
     list.push(a.login);
     asgByTicket.set(a.ticket_id, list);
   }
-  const withAsg = (t: TicketRow, depth: 0 | 1): SprintTicketRow => ({ ...t, depth, assignees: asgByTicket.get(t.id) ?? [] });
+  type Stored = (typeof inSprint)[number];
+  const withAsg = (t: Stored, depth: 0 | 1): Stored & { depth: 0 | 1; assignees: string[] } => ({ ...t, depth, assignees: asgByTicket.get(t.id) ?? [] });
+  const out = ({ number, parent_number, ...t }: ReturnType<typeof withAsg>): SprintTicketRow => ({ ...t, id: number, parent_id: parent_number });
 
-  const ordered: SprintTicketRow[] = [];
+  const ordered: ReturnType<typeof withAsg>[] = [];
   for (const t of inSprint) {
     if (t.parent_id !== null && present.has(t.parent_id)) continue; // emitted under its root below
     ordered.push(withAsg(t, 0));
@@ -302,7 +308,7 @@ export async function get_sprint(ctx: TenantContext, id: number): Promise<Sprint
   const members = await sprintMembers(ctx, id);
   const view = viewOf(row, { total: ordered.length, closed }, cache ?? undefined, members);
 
-  return { ...view, tickets: ordered, resources };
+  return { ...view, tickets: ordered.map(out), resources };
 }
 
 // ── writers ──────────────────────────────────────────────────────────────────

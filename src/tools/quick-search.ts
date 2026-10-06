@@ -112,13 +112,14 @@ export async function quickSearch(ctx: TenantContext, q: string, viewer: string,
       type: "ticket", id: String(r.id), title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)),
       status: str(r.status), by: str(r.by), at: str(r.at),
     });
-    // An exact number first: `#12` or `12` is how people name a ticket.
+    // An exact number first: `#12` or `12` is how people name a ticket — its per-org NUMBER, which is
+    // also what every hit's `id` is (the FTS row is keyed by the row id; that never goes out).
     if (id !== null) {
       plan.push({ type: "ticket", map, stmt: stmt(ctx,
-        `SELECT id, title, status, requester AS by, updated_at AS at, NULL AS snippet FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId) });
+        `SELECT number AS id, title, status, requester AS by, updated_at AS at, NULL AS snippet FROM tickets WHERE number = ? AND org_id = ?`, id, ctx.orgId) });
     }
     plan.push({ type: "ticket", map, stmt: stmt(ctx,
-      `SELECT t.id, t.title, t.status, t.requester AS by, t.updated_at AS at, snippet(tickets_fts, 2, ${SNIP}) AS snippet
+      `SELECT t.number AS id, t.title, t.status, t.requester AS by, t.updated_at AS at, snippet(tickets_fts, 2, ${SNIP}) AS snippet
          FROM tickets_fts JOIN tickets t ON t.id = CAST(tickets_fts.ticket_id AS INTEGER) AND t.org_id = ?
         WHERE tickets_fts MATCH ? AND tickets_fts.org_id = ? ORDER BY bm25(tickets_fts, 1.0, 5.0, 1.0) LIMIT ${n}`, ctx.orgId, match, ctx.orgId) });
   }
@@ -176,11 +177,11 @@ export async function quickSearch(ctx: TenantContext, q: string, viewer: string,
                   || ' ' || COALESCE(json_extract(h.context, '$.repo'), '') || ' ' || COALESCE(json_extract(h.context, '$.branch'), ''))`;
     const likes = toks.map(() => `${hay} LIKE ? ESCAPE '\\'`).join(" AND ");
     plan.push({ type: "handoff", stmt: stmt(ctx,
-      `SELECT h.id, h.sender, h.recipient, h.status, h.body, h.created_at AS at, json_extract(h.context, '$.task') AS task
+      `SELECT h.number AS id, h.sender, h.recipient, h.status, h.body, h.created_at AS at, json_extract(h.context, '$.task') AS task
          FROM handoffs h
         WHERE h.org_id = ? AND h.status IN ('pending', 'claimed')
           AND (h.recipient = ? COLLATE NOCASE OR h.sender = ? COLLATE NOCASE OR h.recipient = 'anyone')
-          AND ((${likes})${id !== null ? " OR h.id = ?" : ""})
+          AND ((${likes})${id !== null ? " OR h.number = ?" : ""})
         ORDER BY (h.status = 'pending') DESC, h.created_at DESC LIMIT ${n}`,
       ctx.orgId, viewer, viewer, ...toks.map((t) => `%${likeEsc(t)}%`), ...(id !== null ? [id] : [])),
       map: (r) => {

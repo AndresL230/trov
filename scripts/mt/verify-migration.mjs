@@ -134,6 +134,12 @@ for (const [name, seq] of seqBefore) {
   const now = get("SELECT seq FROM sqlite_sequence WHERE name = ?", name)?.seq ?? 0;
   check(now >= seq, `sqlite_sequence ${name}: ${seq} → ${now}`);
 }
+// The app addresses a ticket and a handoff by its per-org NUMBER (`/tickets/12`, `#12` — src/tools/tickets.ts).
+// Existing links and bookmarks keep working only because, for every pre-existing row, that number IS the old id.
+for (const t of ["tickets", "handoffs"]) {
+  const off = get(`SELECT COUNT(*) AS n FROM "${t}" WHERE number IS NULL OR number <> id`).n;
+  check(off === 0, `${t}: ${off} rows whose per-org number differs from their id (old #links would point elsewhere)`);
+}
 for (const [fts, base, where] of [["docs_fts", "docs", ""], ["feed_fts", "feed", ""], ["adrs_fts", "adrs", ""], ["tickets_fts", "tickets", ""],
   ["prompts_fts", "prompts", "WHERE deleted_at IS NULL"], ["artifacts_fts", "artifact_pages", "WHERE deleted_at IS NULL"]]) {
   const a = get(`SELECT COUNT(*) AS n FROM ${fts} WHERE org_id = ?`, LEGACY).n;

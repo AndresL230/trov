@@ -191,7 +191,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
 
   server.tool(
     "get_ticket",
-    "Read-only: one whole ticket by id — body, category, priority, status, requester, assignees, linked work, comments, the full status history, its parent and sub-tickets, its sprint, and `artifacts` ([{slug, title, kind, status, version}] — the artifact pages linked to it that you can see; open one with artifact_get). A ticket is a Trov D1 row that may be sourced from a GitHub issue but is never the issue itself (ADR-007, amended) — `source`, `source_ref` and each link's `locked` say whether it is mirrored and which link is its source. Read this BEFORE any write: its `assignees` tell you whether the ticket is in your lane at all.",
+    "Read-only: one whole ticket by id — a ticket's `id` is its NUMBER within your organization (`#12`), here and in every ticket tool's arguments and results (`parent_id`, sub-tickets, `ticket_id`) — body, category, priority, status, requester, assignees, linked work, comments, the full status history, its parent and sub-tickets, its sprint, and `artifacts` ([{slug, title, kind, status, version}] — the artifact pages linked to it that you can see; open one with artifact_get). A ticket is a Trov D1 row that may be sourced from a GitHub issue but is never the issue itself (ADR-007, amended) — `source`, `source_ref` and each link's `locked` say whether it is mirrored and which link is its source. Read this BEFORE any write: its `assignees` tell you whether the ticket is in your lane at all.",
     { id: z.number() },
     async ({ id }) =>
       runTool(async () => {
@@ -567,7 +567,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
 
   server.tool(
     "get_handoff",
-    "Read one handoff in full by its numeric id (body, context, inline prompt, status). Read-only: it does NOT claim it — use claim_handoff once the person has chosen to pick it up.",
+    "Read one handoff in full by its numeric id — its number within your organization, as send_handoff and list_handoffs return it (body, context, inline prompt, status). Read-only: it does NOT claim it — use claim_handoff once the person has chosen to pick it up.",
     { id: z.number().int() },
     async ({ id }) => runTool(async () => {
       const h = await getHandoff(ctx, id);

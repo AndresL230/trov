@@ -39,6 +39,9 @@ export type TicketSource = z.infer<typeof TicketSource>;
 
 // ── rows (one schema per D1 table in 0024_tickets.sql) ───────────────────────
 
+// A ticket's `id` ON THE WIRE — here, in `parent_id`, in a TicketRef and in every `ticket_id` below — is
+// its per-org NUMBER (`#12`: what a person or an agent sees and types). The global row id the tables are
+// keyed by never leaves the Worker (src/tools/tickets.ts › a ticket's two ids).
 export const TicketRow = z.object({
   id: z.number(),
   title: z.string(),

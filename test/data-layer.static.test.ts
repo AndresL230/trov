@@ -100,7 +100,7 @@ const PLATFORM_ALLOW: Allow[] = [
  */
 const INTERPOLATED_ALLOW: (Allow & { surface: Surface })[] = [
   { file: "src/tools/artifacts.ts", fn: "normalizeLinkRef", surface: "tenant",
-    why: "`tickets` or `sprints`, picked from a two-value literal — WHERE id = ? AND org_id = ?" },
+    why: "`tickets WHERE number` or `sprints WHERE id`, picked from a two-value literal — … = ? AND org_id = ?" },
   { file: "src/auth/persons.ts", fn: "renamePerson", surface: "platform",
     why: "the HANDLE_COLUMNS update: a rename MUST rewrite the handle in every org's rows (C-14)" },
 ];

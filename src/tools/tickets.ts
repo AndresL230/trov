@@ -48,9 +48,26 @@ export class TicketError extends Error {
 
 export const TICKET_ERROR_STATUS = { not_found: 404, conflict: 409, bad_request: 400, forbidden: 403 } as const;
 
-const getTicketRow = async (ctx: TenantContext, id: number): Promise<TicketRow> => {
-  const t = await first<TicketRow>(ctx, `SELECT * FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId);
-  if (!t) throw new TicketError("not_found", `no such ticket: ${id}`);
+// ── a ticket's two ids (canopy-multitenancy.md §12 Q2) ───────────────────────
+// `tickets.number` is the per-org number — what a person or an agent SEES and TYPES: every route
+// param and body field, every MCP argument and result, `#12` in the app, a link, an e-mail. The
+// wire's `id` IS that number. `tickets.id` is the global row id: it is what `parent_id`,
+// `ticket_assignees.ticket_id`, the links / comments / history rows and `tickets_fts` are keyed by,
+// and it NEVER leaves the server. So every exported function in this file and in ./reads.ts takes
+// and returns NUMBERS, resolves the row once (`getTicketRow`) and works on its `id` inside.
+// (`artifact_links.target_ref` holds the number: that row carries its own `org_id`.)
+
+/** A `tickets` row as stored: `id` is the global row id, `number` the per-org number. */
+export type TicketDbRow = TicketRow & { number: number };
+
+/** A ticket of this org by its NUMBER, or null. Another org's number is simply not there. */
+export function ticketByNumber(ctx: TenantContext, number: number): Promise<TicketDbRow | null> {
+  return first<TicketDbRow>(ctx, `SELECT * FROM tickets WHERE number = ? AND org_id = ?`, number, ctx.orgId);
+}
+
+const getTicketRow = async (ctx: TenantContext, number: number): Promise<TicketDbRow> => {
+  const t = await ticketByNumber(ctx, number);
+  if (!t) throw new TicketError("not_found", `no such ticket: ${number}`);
   return t;
 };
 
@@ -94,7 +111,8 @@ async function requireParsedLink(ctx: TenantContext, raw: string) {
  * Writes, in one logical unit: the ticket row (status 'submitted'), its
  * assignees, the OPENING `ticket_events` row (from_status NULL → 'submitted',
  * which the detail screen renders as "opened this ticket"), and the parsed link
- * when one was given.
+ * when one was given. Returns the new ticket's per-org NUMBER (allocated by 0038's trigger in the
+ * same statement as the insert).
  */
 export async function create_ticket(ctx: TenantContext, input: TicketCreate, requester: string): Promise<number> {
   const author = await requireMember(ctx, requester);
@@ -149,7 +167,7 @@ export async function create_ticket(ctx: TenantContext, input: TicketCreate, req
     );
   }
 
-  return id;
+  return (await first<{ number: number }>(ctx, `SELECT number FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId))!.number;
 }
 
 /**
@@ -157,8 +175,9 @@ export async function create_ticket(ctx: TenantContext, input: TicketCreate, req
  * table in shared/tickets.ts) — an illegal one throws and writes NOTHING, not
  * even the history row.
  */
-export async function transition_ticket(ctx: TenantContext, id: number, to: TicketStatus, actor: string): Promise<void> {
-  const t = await getTicketRow(ctx, id);
+export async function transition_ticket(ctx: TenantContext, number: number, to: TicketStatus, actor: string): Promise<void> {
+  const t = await getTicketRow(ctx, number);
+  const id = t.id;
   const who = await requireMember(ctx, actor);
   if (!canTransition(t.status, to)) {
     throw new TicketError("conflict", `illegal transition: ${t.status} → ${to}`);
@@ -175,8 +194,8 @@ export async function transition_ticket(ctx: TenantContext, id: number, to: Tick
 }
 
 /**
- * A board drop: move a ticket to column `to` (a status) right after `afterId`
- * (null = the top), in one write. A status change must be legal per
+ * A board drop: move a ticket to column `to` (a status) right after ticket NUMBER
+ * `afterNumber` (null = the top), in one write. A status change must be legal per
  * `canTransition` and appends the same history row as `transition_ticket`; a drop
  * back into its own column only reorders. The position comes from the ONE
  * `placeInColumn` the board uses for its optimistic drop, over the WHOLE column —
@@ -184,21 +203,24 @@ export async function transition_ticket(ctx: TenantContext, id: number, to: Tick
  * keep their order. When the column had to be renumbered, every renumbered row is
  * written in the same batch.
  */
-export async function move_ticket(ctx: TenantContext, id: number, to: TicketStatus, afterId: number | null, actor: string): Promise<void> {
-  const t = await getTicketRow(ctx, id);
+export async function move_ticket(ctx: TenantContext, number: number, to: TicketStatus, afterNumber: number | null, actor: string): Promise<void> {
+  const t = await getTicketRow(ctx, number);
+  const id = t.id;
   const who = await requireMember(ctx, actor);
   if (to !== t.status && !canTransition(t.status, to)) {
     throw new TicketError("conflict", `illegal transition: ${t.status} → ${to}`);
   }
+  // The column is read, placed and renumbered BY NUMBER (`number AS id`): the same key the board's
+  // optimistic drop places with, so the two always agree — ties included.
   const column = await all<{ id: number; board_rank: number | null; updated_at: string }>(
     ctx,
-    `SELECT id, board_rank, updated_at FROM tickets WHERE org_id = ? AND status = ? AND id != ?`,
+    `SELECT number AS id, board_rank, updated_at FROM tickets WHERE org_id = ? AND status = ? AND id != ?`,
     ctx.orgId, to, id
   );
-  const { rank, renumber } = placeInColumn(column, afterId);
+  const { rank, renumber } = placeInColumn(column, afterNumber);
   const now = nowIso();
   const stmts: Stmt[] = [];
-  for (const [rid, r] of renumber ?? []) stmts.push(stmt(ctx, `UPDATE tickets SET board_rank = ? WHERE id = ? AND org_id = ?`, r, rid, ctx.orgId));
+  for (const [n, r] of renumber ?? []) stmts.push(stmt(ctx, `UPDATE tickets SET board_rank = ? WHERE number = ? AND org_id = ?`, r, n, ctx.orgId));
   if (to !== t.status) {
     stmts.push(stmt(ctx, `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
       ctx.orgId, id, who, t.status, to, now));
@@ -213,8 +235,8 @@ export async function move_ticket(ctx: TenantContext, id: number, to: TicketStat
  * (ticket_id, login) PK / an unconditional DELETE), because the design's picker
  * toggles with no confirm step and may fire twice.
  */
-export async function toggle_assignee(ctx: TenantContext, id: number, login: string, on: boolean): Promise<void> {
-  await getTicketRow(ctx, id);
+export async function toggle_assignee(ctx: TenantContext, number: number, login: string, on: boolean): Promise<void> {
+  const { id } = await getTicketRow(ctx, number);
   const handle = await requireMember(ctx, login);
   if (on) {
     await run(ctx, `INSERT OR IGNORE INTO ticket_assignees (org_id, ticket_id, login) VALUES (?, ?, ?)`, ctx.orgId, id, handle);
@@ -225,8 +247,8 @@ export async function toggle_assignee(ctx: TenantContext, id: number, login: str
 }
 
 /** Attach one linked-work reference, parsed by the SHARED parser the SPA also uses. */
-export async function add_ticket_link(ctx: TenantContext, id: number, raw: string, by: string): Promise<number> {
-  await getTicketRow(ctx, id);
+export async function add_ticket_link(ctx: TenantContext, number: number, raw: string, by: string): Promise<number> {
+  const { id } = await getTicketRow(ctx, number);
   const who = await requireMember(ctx, by);
   const link = await requireParsedLink(ctx, raw);
   const now = nowIso();
@@ -251,11 +273,11 @@ export async function add_ticket_link(ctx: TenantContext, id: number, raw: strin
  * the test harness truncates ticket_links), so keep it the only one. The DELETE
  * repeats `locked = 0`, so even a lock set between the read and the write holds.
  */
-export async function remove_ticket_link(ctx: TenantContext, id: number, linkId: number): Promise<void> {
-  await getTicketRow(ctx, id);
+export async function remove_ticket_link(ctx: TenantContext, number: number, linkId: number): Promise<void> {
+  const { id } = await getTicketRow(ctx, number);
   const link = await first<{ locked: number }>(
     ctx, `SELECT locked FROM ticket_links WHERE id = ? AND ticket_id = ? AND org_id = ?`, linkId, id, ctx.orgId);
-  if (!link) throw new TicketError("not_found", `no such link on ticket ${id}: ${linkId}`);
+  if (!link) throw new TicketError("not_found", `no such link on ticket ${number}: ${linkId}`);
   if (link.locked) throw new TicketError("forbidden", "this is the GitHub issue the ticket mirrors — its link cannot be removed");
   const res = await run(ctx, `DELETE FROM ticket_links WHERE id = ? AND ticket_id = ? AND org_id = ? AND locked = 0`, linkId, id, ctx.orgId);
   if (!res.meta.changes) throw new TicketError("forbidden", "this link is locked");
@@ -270,8 +292,9 @@ export async function remove_ticket_link(ctx: TenantContext, id: number, linkId:
  * row — `ticket_events` audits status moves only. The tickets_fts_au trigger
  * re-indexes the new text.
  */
-export async function edit_ticket(ctx: TenantContext, id: number, patch: TicketEdit, actor: string): Promise<void> {
-  const t = await getTicketRow(ctx, id);
+export async function edit_ticket(ctx: TenantContext, number: number, patch: TicketEdit, actor: string): Promise<void> {
+  const t = await getTicketRow(ctx, number);
+  const id = t.id;
   await requireMember(ctx, actor);
   const title = patch.title !== undefined ? patch.title.trim() : undefined;
   if (title !== undefined && !title) throw new TicketError("bad_request", "title is empty");
@@ -281,15 +304,16 @@ export async function edit_ticket(ctx: TenantContext, id: number, patch: TicketE
 }
 
 /** Move a ticket into a sprint, or back to the backlog (`null`). */
-export async function set_ticket_sprint(ctx: TenantContext, id: number, sprintId: number | null): Promise<void> {
-  await getTicketRow(ctx, id);
+export async function set_ticket_sprint(ctx: TenantContext, number: number, sprintId: number | null): Promise<void> {
+  const { id } = await getTicketRow(ctx, number);
   if (sprintId !== null) await requireSprint(ctx, sprintId);
   const now = nowIso();
   await run(ctx, `UPDATE tickets SET sprint_id = ?, updated_at = ? WHERE id = ? AND org_id = ?`, sprintId, now, id, ctx.orgId);
 }
 
 /**
- * Nest `childId` under `parentId`. Tickets nest EXACTLY ONE level, so four
+ * Nest ticket NUMBER `childNumber` under ticket NUMBER `parentNumber` (`parent_id` stores the
+ * parent's row id). Tickets nest EXACTLY ONE level, so four
  * rejections guard the write (plus the degenerate self-parent):
  *   - the parent itself has a parent      → that would be level two
  *   - the child already has a parent      → it is already nested somewhere
@@ -297,9 +321,9 @@ export async function set_ticket_sprint(ctx: TenantContext, id: number, sprintId
  *   - the child has children of its own   → it is a parent, and would become level two
  * Every rejection leaves the database untouched.
  */
-export async function set_ticket_parent(ctx: TenantContext, parentId: number, childId: number): Promise<void> {
-  const parent = await getTicketRow(ctx, parentId);
-  const child = await getTicketRow(ctx, childId);
+export async function set_ticket_parent(ctx: TenantContext, parentNumber: number, childNumber: number): Promise<void> {
+  const parent = await getTicketRow(ctx, parentNumber);
+  const child = await getTicketRow(ctx, childNumber);
 
   if (parent.id === child.id) throw new TicketError("conflict", "a ticket cannot be its own sub-ticket");
   if (parent.parent_id !== null) throw new TicketError("conflict", "tickets nest one level: this ticket already has a parent");
@@ -315,8 +339,8 @@ export async function set_ticket_parent(ctx: TenantContext, parentId: number, ch
 }
 
 /** Append one comment. The body is trimmed and must survive it (min 1 char). */
-export async function add_ticket_comment(ctx: TenantContext, id: number, body: string, author: string): Promise<number> {
-  await getTicketRow(ctx, id);
+export async function add_ticket_comment(ctx: TenantContext, number: number, body: string, author: string): Promise<number> {
+  const { id } = await getTicketRow(ctx, number);
   const who = await requireMember(ctx, author);
   const text = body.trim();
   if (!text) throw new TicketError("bad_request", "comment body is empty");
@@ -337,11 +361,13 @@ export async function add_ticket_comment(ctx: TenantContext, id: number, body: s
  * there and the mirror would only re-create it on the next delivery or Sync.
  * Its assignees, links, comments and history go with it; its sub-tickets are
  * detached (top-level again, never deleted); an artifact linked to it keeps the
- * page and loses only the link. The number is never reissued (AUTOINCREMENT),
- * and `tickets_fts_ad` drops the search row.
+ * page and loses only the link. The number is never reissued (the org's counter
+ * only moves forward), and `tickets_fts_ad` drops the search row. The `id` it
+ * returns is the deleted ticket's NUMBER.
  */
-export async function delete_ticket(ctx: TenantContext, id: number): Promise<{ id: number; title: string; detached: number }> {
-  const t = await getTicketRow(ctx, id);
+export async function delete_ticket(ctx: TenantContext, number: number): Promise<{ id: number; title: string; detached: number }> {
+  const t = await getTicketRow(ctx, number);
+  const id = t.id;
   if (t.source === "github") {
     throw new TicketError("forbidden", "this ticket mirrors a GitHub issue — close the issue on GitHub instead");
   }
@@ -352,8 +378,8 @@ export async function delete_ticket(ctx: TenantContext, id: number): Promise<{ i
     stmt(ctx, `DELETE FROM ticket_links WHERE ticket_id = ? AND org_id = ?`, id, ctx.orgId),
     stmt(ctx, `DELETE FROM ticket_comments WHERE ticket_id = ? AND org_id = ?`, id, ctx.orgId),
     stmt(ctx, `DELETE FROM ticket_events WHERE ticket_id = ? AND org_id = ?`, id, ctx.orgId),
-    stmt(ctx, `DELETE FROM artifact_links WHERE target_type = 'ticket' AND target_ref = ? AND org_id = ?`, String(id), ctx.orgId),
+    stmt(ctx, `DELETE FROM artifact_links WHERE target_type = 'ticket' AND target_ref = ? AND org_id = ?`, String(number), ctx.orgId), // the ref is the NUMBER
     stmt(ctx, `DELETE FROM tickets WHERE id = ? AND org_id = ? AND source = 'canopy'`, id, ctx.orgId),
   ]);
-  return { id, title: t.title, detached: detached.meta.changes ?? 0 };
+  return { id: number, title: t.title, detached: detached.meta.changes ?? 0 };
 }

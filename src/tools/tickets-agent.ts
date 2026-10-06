@@ -95,7 +95,8 @@ export async function assertTicketWritable(
   handle: string,
   verb: AgentVerb,
 ): Promise<void> {
-  const exists = await first<{ id: number }>(ctx, `SELECT id FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId);
+  // `id` is the ticket's per-org NUMBER (src/tools/tickets.ts › a ticket's two ids); the assignee rows are keyed by its row id.
+  const exists = await first<{ id: number }>(ctx, `SELECT id FROM tickets WHERE number = ? AND org_id = ?`, id, ctx.orgId);
   if (!exists) throw new TicketError("not_found", `no such ticket: ${id}`);
 
   if (verb === "set_ticket_sprint" && isOrgAdmin(ctx, handle)) return;
@@ -103,7 +104,7 @@ export async function assertTicketWritable(
   const mine = await first<{ n: number }>(
     ctx,
     `SELECT COUNT(*) AS n FROM ticket_assignees WHERE ticket_id = ? AND org_id = ? AND login = ? COLLATE NOCASE`,
-    id,
+    exists.id,
     ctx.orgId,
     handle,
   );
@@ -125,7 +126,7 @@ export async function assertTicketAssignable(ctx: TenantContext, env: Env, id: n
     `SELECT requester = ? COLLATE NOCASE AS requester,
             EXISTS (SELECT 1 FROM ticket_assignees a
                      WHERE a.ticket_id = tickets.id AND a.org_id = ? AND a.login = ? COLLATE NOCASE) AS assignee
-       FROM tickets WHERE id = ? AND org_id = ?`,
+       FROM tickets WHERE number = ? AND org_id = ?`,
     handle,
     ctx.orgId,
     handle,
@@ -231,7 +232,9 @@ export async function agentAssignTicket(ctx: TenantContext, env: Env, id: number
   const handle = await requireMember(ctx, login);
   const has = await first<{ n: number }>(
     ctx,
-    `SELECT COUNT(*) AS n FROM ticket_assignees WHERE ticket_id = ? AND org_id = ? AND login = ? COLLATE NOCASE`,
+    `SELECT COUNT(*) AS n FROM ticket_assignees a JOIN tickets t ON t.id = a.ticket_id AND t.org_id = ?
+      WHERE t.number = ? AND a.org_id = ? AND a.login = ? COLLATE NOCASE`,
+    ctx.orgId,
     id,
     ctx.orgId,
     handle,

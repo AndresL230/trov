@@ -584,7 +584,8 @@ describe("prompts", () => {
 describe("handoffs", () => {
   const leave = (ctx: ReturnType<typeof systemCtx>, sender: string, body = "Pick up the narwhal migration") =>
     createHandoff(ctx, sender, { body }).then((r) => r.handoff);
-  const statusOf = async (id: number) => (await first<{ status: string }>(env.DB, `SELECT status FROM handoffs WHERE id = ?`, id))!.status;
+  // A handoff's wire `id` is its per-org NUMBER (src/tools/handoffs.ts): the raw reads below name the org too.
+  const statusOf = async (org: string, number: number) => (await first<{ status: string }>(env.DB, `SELECT status FROM handoffs WHERE org_id = ? AND number = ?`, org, number))!.status;
 
   it("a handoff of A is absent from B: get and every box, for any handle", async () => {
     const h = await leave(A(), ANN);
@@ -595,7 +596,7 @@ describe("handoffs", () => {
       expect(await listHandoffs(B(), BOB, box), box).toEqual([]);
     }
     expect((await listHandoffs(A(), BOB, "anyone")).map((x) => x.id)).toEqual([h.id]);
-    expect((await first<{ org_id: string }>(env.DB, `SELECT org_id FROM handoffs WHERE id = ?`, h.id))!.org_id).toBe(ORG_A);
+    expect(await all<{ org_id: string }>(env.DB, `SELECT org_id FROM handoffs`)).toEqual([{ org_id: ORG_A }]);
   });
 
   it("claim and expire from B are not_found — also for an `anyone` handoff and for its sender's handle", async () => {
@@ -603,7 +604,12 @@ describe("handoffs", () => {
     await handoffNotFound(claimHandoff(B(), h.id, BOB, "sess-b"));
     await handoffNotFound(claimHandoff(B(), h.id, ANN, "sess-b"));
     await handoffNotFound(expireHandoff(B(), h.id, ANN));
-    expect(await statusOf(h.id)).toBe("pending");
+    expect(await statusOf(ORG_A, h.id)).toBe("pending");
+    // The SAME number in B is B's own handoff: claiming it there never touches A's.
+    const mine = await leave(B(), BOB, "B's own");
+    expect(mine.id).toBe(h.id);
+    expect((await claimHandoff(B(), mine.id, BOB, "sess-b")).body).toBe("B's own");
+    expect([await statusOf(ORG_A, h.id), await statusOf(ORG_B, mine.id)]).toEqual(["pending", "claimed"]);
 
     expect((await claimHandoff(A(), h.id, "iso-carl", "sess-a")).claimed_by).toBe("iso-carl");
   });
@@ -631,23 +637,25 @@ describe("handoffs", () => {
     const b = await leave(B(), BOB);
     const p = platformCtx("system");
     expect(await expireDueHandoffs(p, Date.now())).toBe(0); // neither is due yet
-    expect([await statusOf(a.id), await statusOf(b.id)]).toEqual(["pending", "pending"]);
-    await run(env.DB, `UPDATE handoffs SET expires_at = '2020-01-01T00:00:00.000Z' WHERE id = ?`, b.id);
+    expect([await statusOf(ORG_A, a.id), await statusOf(ORG_B, b.id)]).toEqual(["pending", "pending"]);
+    await run(env.DB, `UPDATE handoffs SET expires_at = '2020-01-01T00:00:00.000Z' WHERE org_id = ? AND number = ?`, ORG_B, b.id);
     expect(await expireDueHandoffs(p, Date.now())).toBe(1); // B's is due, A's is not
-    expect([await statusOf(a.id), await statusOf(b.id)]).toEqual(["pending", "expired"]);
+    expect([await statusOf(ORG_A, a.id), await statusOf(ORG_B, b.id)]).toEqual(["pending", "expired"]);
     expect(await expireDueHandoffs(p, Date.now() + 30 * 24 * 60 * 60 * 1000)).toBe(1);
-    expect(await statusOf(a.id)).toBe("expired");
+    expect(await statusOf(ORG_A, a.id)).toBe("expired");
   });
 
-  it("numbers are per org: each org counts its own handoffs from where it left off", async () => {
-    const numberOf = async (id: number) => (await first<{ number: number }>(env.DB, `SELECT number FROM handoffs WHERE id = ?`, id))!.number;
+  it("numbers are per org — and they are the ids a handoff is known by: each org counts its own from where it left off", async () => {
     const a1 = await leave(A(), ANN);
-    const b1 = await leave(B(), BOB);
-    const b2 = await leave(B(), BOB);
+    const b1 = await leave(B(), BOB, "B one");
+    const b2 = await leave(B(), BOB, "B two");
     const a2 = await leave(A(), ANN);
-    expect([await numberOf(b1.id), await numberOf(b2.id)]).toEqual([1, 2]); // B starts at 1 whatever A's ids are
-    expect(await numberOf(a2.id)).toBe((await numberOf(a1.id)) + 1);       // A is not advanced by B's two
-    expect(new Set([a1.id, b1.id, b2.id, a2.id]).size).toBe(4);
+    expect([b1.id, b2.id]).toEqual([1, 2]); // B starts at 1 whatever A has
+    expect([a1.id, a2.id]).toEqual([1, 2]); // A is not advanced by B's two
+    expect((await all<{ id: number }>(env.DB, `SELECT id FROM handoffs`)).length).toBe(4); // four rows, four row ids — never handed out
+    expect((await getHandoff(B(), 2))!.body).toBe("B two");
+    expect((await getHandoff(A(), 2))!.sender).toBe(ANN);
+    expect(await getHandoff(B(), 3)).toBeNull();
     expect(await all(env.DB, `SELECT org_id, value FROM org_counters WHERE name = 'handoff' AND org_id = ?`, ORG_B)).toEqual([{ org_id: ORG_B, value: 2 }]);
   });
 
@@ -656,7 +664,8 @@ describe("handoffs", () => {
     const a = await createHandoff(A(), ANN, { body: "from A" }, ledger);
     const b = await createHandoff(B(), BOB, { body: "from B" }, ledger);
     expect(b.replayed).toBe(false);
-    expect(b.handoff.id).not.toBe(a.handoff.id);
+    expect([a.handoff.id, b.handoff.id]).toEqual([1, 1]); // each org's first — two rows
+    expect([a.handoff.body, b.handoff.body]).toEqual(["from A", "from B"]);
     const again = await createHandoff(B(), BOB, { body: "from B" }, ledger);
     expect(again).toEqual({ handoff: b.handoff, replayed: true });
     expect((await createHandoff(A(), ANN, { body: "from A" }, ledger)).handoff.id).toBe(a.handoff.id);
@@ -674,6 +683,6 @@ describe("handoffs", () => {
       expect(res.status, action).toBe(404);
     }
     expect(await (await wf(`/api/handoffs?box=anyone`, { headers: { cookie: bob } })).json()).toEqual({ handoffs: [] });
-    expect(await statusOf(h.id)).toBe("pending");
+    expect(await statusOf(ORG_A, h.id)).toBe("pending");
   });
 });

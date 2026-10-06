@@ -19,7 +19,7 @@ export interface HandoffContext {
 }
 export const EMPTY_CONTEXT: HandoffContext = { repo: "", branch: "", task: "", done: [], next: [], files: [] };
 
-/** The API shape of a handoff. `id` is a number (rendered `#12`). */
+/** The API shape of a handoff. `id` is its per-org NUMBER (rendered `#12`) — the row id never leaves the Worker (src/tools/handoffs.ts). */
 export interface HandoffView {
   id: number;
   sender: string;

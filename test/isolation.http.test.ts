@@ -99,7 +99,8 @@ async function seed(): Promise<Fx> {
   const subTicketId = await create_ticket(A(), TicketCreate.parse({ title: `${CANARY} sub-ticket` }), ALICE);
   await set_ticket_parent(A(), ticketId, subTicketId);
   await set_ticket_sprint(A(), ticketId, sprintId);
-  const linkId = (await first<{ id: number }>(env.DB, `SELECT id FROM ticket_links WHERE org_id = ? AND ticket_id = ?`, ORG_A, ticketId))!.id;
+  // `ticketId` / `subTicketId` / `handoffId` are per-org NUMBERS (what a route's `:id` is); the link row hangs off the ticket's row id.
+  const linkId = (await first<{ id: number }>(env.DB, `SELECT l.id FROM ticket_links l JOIN tickets t ON t.id = l.ticket_id WHERE t.org_id = ? AND t.number = ?`, ORG_A, ticketId))!.id;
 
   const handoffId = (await createHandoff(A(), ALICE, { body: `${CANARY} handoff body`, context: { task: `${CANARY} task` } })).handoff.id;
   await savePrompt(A(), ALICE, { slug: "iso-prompt", title: `${CANARY} prompt`, body: `${CANARY} prompt body`, tags: ["review"], status: "published" }, "human");
@@ -521,7 +522,7 @@ describe("cross-org edges are refused, and nothing is written in B either", () =
       await send("POST", `/api/o/acme/tickets`, fx.cookies.boss, { title: "in A's sprint", sprint_id: fx.sprintId }),
     ];
     for (const r of refused) { expect(r.status, r.text).toBeGreaterThanOrEqual(400); expect(r.status).toBeLessThan(500); expectClean("edge", r); }
-    expect(await first(env.DB, `SELECT sprint_id, parent_id FROM tickets WHERE id = ?`, fx.bTicketId)).toEqual({ sprint_id: null, parent_id: null });
+    expect(await first(env.DB, `SELECT sprint_id, parent_id FROM tickets WHERE org_id = ? AND number = ?`, ORG_B, fx.bTicketId)).toEqual({ sprint_id: null, parent_id: null });
     expect(await countB("ticket_assignees")).toBe(0);
     expect(await countB("tickets")).toBe(1);
     expect(await digestA()).toEqual(before);

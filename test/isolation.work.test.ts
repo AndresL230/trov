@@ -19,6 +19,7 @@ import {
   edit_ticket, set_ticket_sprint, set_ticket_parent, add_ticket_comment, delete_ticket,
 } from "../src/tools/tickets";
 import { assertTicketWritable, assertTicketAssignable, agentAssignTicket } from "../src/tools/tickets-agent";
+import { get_ticket } from "../src/tools/reads";
 import {
   SprintError, create_sprint, list_sprints, get_sprint, set_sprint_active, complete_sprint, delete_sprint,
   add_sprint_resource, ticketCountsBySprint,
@@ -42,7 +43,10 @@ const e = env as unknown as Env;
 
 const ticket = (o: Partial<TicketCreate> & { title: string }) => TicketCreate.parse(o);
 const sprint = (label: string) => SprintCreate.parse({ label });
-const numberOf = async (id: number) => (await first<{ number: number }>(env.DB, `SELECT number FROM tickets WHERE id = ?`, id))!.number;
+// A writer takes and returns a ticket's per-org NUMBER; the row id is what the child tables and
+// `parent_id` hold. `rowId` reads one from the other, for the raw assertions below.
+const rowId = async (org: string, number: number) => (await first<{ id: number }>(env.DB, `SELECT id FROM tickets WHERE org_id = ? AND number = ?`, org, number))!.id;
+const rowOf = <T>(org: string, number: number, cols = "*") => first<T>(env.DB, `SELECT ${cols} FROM tickets WHERE org_id = ? AND number = ?`, org, number);
 const orgOf = async (table: string, where: string, ...binds: unknown[]) =>
   (await all<{ org_id: string }>(env.DB, `SELECT org_id FROM ${table} WHERE ${where}`, ...binds)).map((r) => r.org_id);
 const count = async (table: string, org: string) =>
@@ -63,37 +67,53 @@ beforeEach(async () => {
 });
 
 describe("tickets", () => {
-  it("each org numbers its tickets from its own counter; the global id stays the key", async () => {
+  it("each org numbers its tickets from its own counter — and that number is what a writer returns; the row id stays the internal key", async () => {
     const a1 = await create_ticket(A, ticket({ title: "A one" }), "alice");
     const b1 = await create_ticket(B, ticket({ title: "B one" }), "bob");
     const a2 = await create_ticket(A, ticket({ title: "A two" }), "alice");
     const b2 = await create_ticket(B, ticket({ title: "B two" }), "bob");
-    expect(new Set([a1, b1, a2, b2]).size).toBe(4);
-    expect([await numberOf(a1), await numberOf(a2)]).toEqual([1, 2]);
-    expect([await numberOf(b1), await numberOf(b2)]).toEqual([1, 2]);
+    expect([a1, a2]).toEqual([1, 2]);
+    expect([b1, b2]).toEqual([1, 2]);
+    // Four rows, four row ids — never handed out.
+    expect(new Set([await rowId(ORG_A, 1), await rowId(ORG_B, 1), await rowId(ORG_A, 2), await rowId(ORG_B, 2)]).size).toBe(4);
+    expect(await rowId(ORG_B, 2)).not.toBe(2); // B's #2 is not row 2 (that is B's #1): number and row id really differ here
+    // The same number names a different ticket in each org.
+    expect((await get_ticket(A, 1))!.title).toBe("A one");
+    expect((await get_ticket(B, 1))!.title).toBe("B one");
+    expect((await get_ticket(B, 2))!.title).toBe("B two");
     // A deleted number is not reissued, in the org that lost it only.
-    await delete_ticket(B, b2);
-    expect(await numberOf(await create_ticket(B, ticket({ title: "B three" }), "bob"))).toBe(3);
-    expect(await numberOf(await create_ticket(A, ticket({ title: "A three" }), "alice"))).toBe(3);
+    expect((await delete_ticket(B, b2)).id).toBe(2);
+    expect(await create_ticket(B, ticket({ title: "B three" }), "bob")).toBe(3);
+    expect(await create_ticket(A, ticket({ title: "A three" }), "alice")).toBe(3);
+    expect(await get_ticket(B, 2)).toBeNull();
+    expect((await get_ticket(A, 2))!.title).toBe("A two"); // A's #2 was never B's to delete
   });
 
   it("a ticket and all its children are written under the writer's org", async () => {
+    await create_ticket(A, ticket({ title: "A filler" }), "alice"); // so B's number is not its row id
     const b = await create_ticket(B, ticket({ title: "B", assignees: ["bob"], link: "https://example.com/spec" }), "bob");
     await add_ticket_comment(B, b, "hello", "bob");
     await transition_ticket(B, b, "in_progress", "bob");
+    const row = await rowId(ORG_B, b);
+    expect(row).not.toBe(b);
     for (const table of ["ticket_assignees", "ticket_links", "ticket_comments", "ticket_events"]) {
-      const orgs = await orgOf(table, `ticket_id = ?`, b);
+      const orgs = await orgOf(table, `ticket_id = ?`, row);
       expect(orgs.length).toBeGreaterThan(0);
       expect(new Set(orgs)).toEqual(new Set([ORG_B]));
     }
-    expect(await orgOf("tickets", `id = ?`, b)).toEqual([ORG_B]);
+    // Nothing landed on A's #1 (the same NUMBER): it has its own opening row and nothing else.
+    const aRow = await rowId(ORG_A, 1);
+    for (const [table, n] of [["ticket_assignees", 0], ["ticket_links", 0], ["ticket_comments", 0], ["ticket_events", 1]] as const) {
+      expect((await orgOf(table, `ticket_id = ?`, aRow)).length, table).toBe(n);
+    }
+    expect(await orgOf("tickets", `id = ?`, row)).toEqual([ORG_B]);
   });
 
   it("no writer reaches another org's ticket, and the refusal writes nothing", async () => {
     const b = await create_ticket(B, ticket({ title: "B", assignees: ["bob"], link: "https://example.com/spec" }), "bob");
-    const link = (await first<{ id: number }>(env.DB, `SELECT id FROM ticket_links WHERE ticket_id = ?`, b))!.id;
+    const link = (await first<{ id: number }>(env.DB, `SELECT id FROM ticket_links WHERE org_id = ?`, ORG_B))!.id;
     const snapshot = async () => ({
-      row: await first(env.DB, `SELECT * FROM tickets WHERE id = ?`, b),
+      row: await rowOf(ORG_B, b),
       assignees: await count("ticket_assignees", ORG_B),
       links: await count("ticket_links", ORG_B),
       comments: await count("ticket_comments", ORG_B),
@@ -125,38 +145,51 @@ describe("tickets", () => {
   it("a link id from another org's ticket cannot be removed through one's own ticket", async () => {
     const a = await create_ticket(A, ticket({ title: "A" }), "alice");
     const b = await create_ticket(B, ticket({ title: "B", link: "https://example.com/spec" }), "bob");
-    const link = (await first<{ id: number }>(env.DB, `SELECT id FROM ticket_links WHERE ticket_id = ?`, b))!.id;
+    expect([a, b]).toEqual([1, 1]); // the same number in each org
+    const link = (await first<{ id: number }>(env.DB, `SELECT id FROM ticket_links WHERE org_id = ?`, ORG_B))!.id;
     await notFound(remove_ticket_link(A, a, link));
     expect(await count("ticket_links", ORG_B)).toBe(1);
   });
 
-  it("cross-org edges are refused: a parent or a sprint from the other org", async () => {
-    const a = await create_ticket(A, ticket({ title: "A parent" }), "alice");
-    const b = await create_ticket(B, ticket({ title: "B child" }), "bob");
+  it("there is no cross-org edge to ask for: a number names one's own ticket or nothing; another org's sprint is not found", async () => {
+    const a = await create_ticket(A, ticket({ title: "A parent" }), "alice");            // A #1
+    await create_ticket(B, ticket({ title: "B one" }), "bob");                           // B #1
+    const b = await create_ticket(B, ticket({ title: "B child" }), "bob");               // B #2 — no such number in A
     const aSprint = (await create_sprint(A, sprint("A sprint"), "alice")).id;
 
-    await notFound(set_ticket_parent(A, a, b));
-    await notFound(set_ticket_parent(B, a, b));
+    await notFound(set_ticket_parent(A, a, b));   // A has no #2: B's ticket cannot be adopted
+    await notFound(set_ticket_parent(A, b, a));
     await notFound(set_ticket_sprint(B, b, aSprint));
     await notFound(create_ticket(B, ticket({ title: "B in A's sprint", sprint_id: aSprint }), "bob"));
-
-    expect(await first(env.DB, `SELECT parent_id, sprint_id FROM tickets WHERE id = ?`, b)).toEqual({ parent_id: null, sprint_id: null });
-    expect(await count("tickets", ORG_B)).toBe(1);
+    // The same numbers inside B nest B's own tickets — and touch nothing of A's.
+    await set_ticket_parent(B, 1, b);
+    expect(await rowOf(ORG_B, b, "parent_id, sprint_id")).toEqual({ parent_id: await rowId(ORG_B, 1), sprint_id: null });
+    expect(await rowOf(ORG_A, a, "parent_id, sprint_id")).toEqual({ parent_id: null, sprint_id: null });
+    expect((await get_ticket(B, b))!.parent).toMatchObject({ id: 1, title: "B one" }); // the parent ref is B's NUMBER 1
+    expect((await get_ticket(B, b))!.parent_id).toBe(1);
+    expect(await count("tickets", ORG_B)).toBe(2);
   });
 
-  it("a board drop reorders one org's column only", async () => {
+  it("a board drop reorders one org's column only, and names the card it lands after by number", async () => {
     const a1 = await create_ticket(A, ticket({ title: "A1" }), "alice");
     const a2 = await create_ticket(A, ticket({ title: "A2" }), "alice");
     const b1 = await create_ticket(B, ticket({ title: "B1" }), "bob");
-    await run(env.DB, `UPDATE tickets SET board_rank = 1 WHERE id IN (?, ?)`, a2, b1);
+    const rank = async (org: string, n: number) => (await rowOf<{ board_rank: number | null }>(org, n, "board_rank"))!.board_rank;
+    await run(env.DB, `UPDATE tickets SET board_rank = 1 WHERE id IN (?, ?)`, await rowId(ORG_A, a2), await rowId(ORG_B, b1));
     // Dropping right after a2 collides with the next rank, so the column is renumbered — A's column.
-    await run(env.DB, `UPDATE tickets SET board_rank = 2 WHERE id = ?`, a1);
+    await run(env.DB, `UPDATE tickets SET board_rank = 2 WHERE id = ?`, await rowId(ORG_A, a1));
     const a3 = await create_ticket(A, ticket({ title: "A3" }), "alice");
     await move_ticket(A, a3, "submitted", a2, "alice");
-    await move_ticket(A, a3, "submitted", b1, "alice"); // another org's card is not in this column: lands on top
-    const rank = async (id: number) => (await first<{ board_rank: number | null }>(env.DB, `SELECT board_rank FROM tickets WHERE id = ?`, id))!.board_rank;
-    expect(await rank(b1)).toBe(1);
-    expect(await rank(a3)).toBeLessThan((await rank(a2))!);
+    expect(await rank(ORG_B, b1)).toBe(1);                       // B's column was never renumbered
+    expect(await rank(ORG_A, a3)).toBeGreaterThan((await rank(ORG_A, a2))!); // right after A2…
+    expect(await rank(ORG_A, a3)).toBeLessThan((await rank(ORG_A, a1))!);    // …and before A1
+    await move_ticket(A, a3, "submitted", 99, "alice"); // no such card in this column: lands on top
+    expect(await rank(ORG_A, a3)).toBeLessThan((await rank(ORG_A, a2))!);
+    expect(await rank(ORG_B, b1)).toBe(1);
+    // The same drop in B moves B's card, by B's numbers.
+    const b2 = await create_ticket(B, ticket({ title: "B2" }), "bob");
+    await move_ticket(B, b2, "submitted", b1, "bob");
+    expect(await rank(ORG_B, b2)).toBeGreaterThan((await rank(ORG_B, b1))!);
   });
 
   it("sub-tickets detach only inside the org when a parent is deleted", async () => {
@@ -166,9 +199,13 @@ describe("tickets", () => {
     const bParent = await create_ticket(B, ticket({ title: "B parent" }), "bob");
     const bChild = await create_ticket(B, ticket({ title: "B child" }), "bob");
     await set_ticket_parent(B, bParent, bChild);
+    expect([aParent, aChild, bParent, bChild]).toEqual([1, 2, 1, 2]);
 
     expect((await delete_ticket(A, aParent)).detached).toBe(1);
-    expect((await first<{ parent_id: number | null }>(env.DB, `SELECT parent_id FROM tickets WHERE id = ?`, bChild))!.parent_id).toBe(bParent);
+    expect((await rowOf<{ parent_id: number | null }>(ORG_A, aChild, "parent_id"))!.parent_id).toBeNull();
+    expect((await rowOf<{ parent_id: number | null }>(ORG_B, bChild, "parent_id"))!.parent_id).toBe(await rowId(ORG_B, bParent));
+    expect((await get_ticket(B, bChild))!.parent_id).toBe(1); // …which the wire shows as B's number
+    expect(await get_ticket(B, bParent)).not.toBeNull();
   });
 
   it("the GitHub mirror keys an issue per org", async () => {
@@ -349,8 +386,10 @@ describe("My Work", () => {
 
     const inA = await getMyWork(A, "carol");
     const inB = await getMyWork(B, "carol");
-    expect(inA.tickets.map((t) => [t.id, t.number, t.title])).toEqual([[a, 1, "Carol in A"]]);
-    expect(inB.tickets.map((t) => [t.id, t.number, t.title, t.sprint?.label])).toEqual([[b, 2, "Carol in B", "B sprint"]]);
+    // `create_ticket` returns — and My Work lists — the per-org NUMBER: A's first, B's second (never the row id).
+    expect([a, b]).toEqual([1, 2]);
+    expect(inA.tickets.map((t) => [t.id, t.title])).toEqual([[1, "Carol in A"]]);
+    expect(inB.tickets.map((t) => [t.id, t.title, t.sprint?.label])).toEqual([[2, "Carol in B", "B sprint"]]);
     expect([inA.ticketsTotal, inB.ticketsTotal]).toEqual([1, 1]);
     expect(await listAssignedTickets(A, "bob", { sources: "all" })).toEqual([]);
     expect(await countAssignedTickets(B, "carol", "all")).toBe(1);

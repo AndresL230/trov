@@ -224,8 +224,7 @@ export async function listAssignedTickets(ctx: TenantContext, handle: string, op
     ...assignedBinds(ctx, handle)
   );
   return rows.map((r) => ({
-    id: r.id,
-    number: r.number,
+    id: r.number, // the per-org number (src/tools/tickets.ts › a ticket's two ids)
     title: r.title,
     body: r.body,
     category: r.category,

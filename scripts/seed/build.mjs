@@ -20,6 +20,11 @@ export const targetsRemote = (argv) => argv.includes("--remote");
  * pr_summaries, sprints before sprint_progress / sprint_resources / tickets,
  * tickets before ticket_assignees / _links / _comments / _events.
  */
+/** Move the seed org's per-org counter (0038 `org_counters`) past every number just seeded. */
+const counterStmt = (name, table) =>
+  `INSERT INTO org_counters (org_id, name, value) VALUES ('org_saplinglearn', '${name}', (SELECT COALESCE(MAX(number), 0) FROM ${table} WHERE org_id = 'org_saplinglearn')) ` +
+  `ON CONFLICT(org_id, name) DO UPDATE SET value = MAX(org_counters.value, excluded.value)`;
+
 export function buildSeedStatements(fx) {
   const s = [...RESET_STATEMENTS];
 
@@ -110,10 +115,15 @@ export function buildSeedStatements(fx) {
   // parent_id is set in a SECOND pass: it references tickets(id), which D1
   // enforces, so a child listed before its parent would fail the INSERT. The
   // UPDATE makes the fixture's order irrelevant.
+  //
+  // `number` — the per-org number, which is what the app shows and addresses a ticket by
+  // (`#12`, `/tickets/12`; src/tools/tickets.ts) — is written EQUAL to the fixture's id, as 0038
+  // backfilled it for SaplingLearn, and the org's counter is moved past the highest one below
+  // (`counterStmt`), so the next ticket filed in the app continues the series.
   for (const t of fx.tickets?.tickets ?? []) {
     s.push(
-      `INSERT INTO tickets (id, title, body, category, priority, status, requester, parent_id, sprint_id, created_at, updated_at) VALUES (` +
-        `${num(t.id)}, ${q(t.title)}, ${q(t.body)}, ${q(t.category)}, ${q(t.priority)}, ${q(t.status)}, ${q(t.requester)}, NULL, ${num(t.sprint_id)}, ${q(t.created_at)}, ${q(t.updated_at)})`
+      `INSERT INTO tickets (id, number, title, body, category, priority, status, requester, parent_id, sprint_id, created_at, updated_at) VALUES (` +
+        `${num(t.id)}, ${num(t.id)}, ${q(t.title)}, ${q(t.body)}, ${q(t.category)}, ${q(t.priority)}, ${q(t.status)}, ${q(t.requester)}, NULL, ${num(t.sprint_id)}, ${q(t.created_at)}, ${q(t.updated_at)})`
     );
   }
   for (const t of fx.tickets?.tickets ?? []) {
@@ -184,11 +194,14 @@ export function buildSeedStatements(fx) {
     // A handoff expires 7 days after it was sent (src/tools/handoffs.ts HANDOFF_TTL_MS).
     const expires = new Date(Date.parse(created) + 7 * 24 * 60 * 60 * 1000).toISOString();
     s.push(
-      `INSERT INTO handoffs (id, sender, recipient, status, body, context, prompt_title, prompt_body, created_at, claimed_at, claimed_by, claimed_by_session, expires_at) VALUES (` +
-        `${num(h.id)}, ${q(h.sender)}, ${q(h.recipient)}, ${q(h.status)}, ${q(h.body)}, ${jsonLit(context)}, ${q(h.prompt?.title)}, ${q(h.prompt?.body)}, ` +
+      // `number` = the fixture's id, like the tickets above.
+      `INSERT INTO handoffs (id, number, sender, recipient, status, body, context, prompt_title, prompt_body, created_at, claimed_at, claimed_by, claimed_by_session, expires_at) VALUES (` +
+        `${num(h.id)}, ${num(h.id)}, ${q(h.sender)}, ${q(h.recipient)}, ${q(h.status)}, ${q(h.body)}, ${jsonLit(context)}, ${q(h.prompt?.title)}, ${q(h.prompt?.body)}, ` +
         `${q(created)}, ${q(agoIso(h.claimed_ago_min))}, ${q(h.claimed_by)}, ${q(h.claimed_by_session)}, ${q(expires)})`
     );
   }
+  if ((fx.tickets?.tickets ?? []).length) s.push(counterStmt("ticket", "tickets"));
+  if ((fx.handoffs?.handoffs ?? []).length) s.push(counterStmt("handoff", "handoffs"));
   for (const p of fx.prompts?.prompts ?? []) {
     const versions = p.versions ?? [];
     const latest = versions[versions.length - 1];

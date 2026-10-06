@@ -8,6 +8,7 @@ import { type TenantContext, first, all, ph, fanOut } from "../data/sql";
 // The sprint read model lives next to the sprint writers; `query()` borrows its
 // progress RULE so the assembled sprint body and the Roadmap can never disagree.
 import { sprintProgress, ticketCountsBySprint } from "./sprints";
+import type { TicketDbRow } from "./tickets";
 
 export async function get_doc(
   ctx: TenantContext,
@@ -243,13 +244,22 @@ export interface TicketListFilter {
   me?: string;
 }
 
+/** The parent's NUMBER beside a `tickets t` row (`parent_id` stores its row id). */
+const PARENT_NUMBER = `(SELECT p.number FROM tickets p WHERE p.id = t.parent_id AND p.org_id = ?) AS parent_number`;
+type TicketReadRow = TicketDbRow & { parent_number: number | null };
+/** A stored row as it goes out: `id` and `parent_id` are per-org NUMBERS (src/tools/tickets.ts › a
+ *  ticket's two ids); the row id and the helper columns stay behind. */
+function ticketOut({ number, parent_number, ...row }: TicketReadRow): TicketRow {
+  return { ...row, id: number, parent_id: parent_number };
+}
+
 export async function list_tickets(ctx: TenantContext, filter: TicketListFilter = {}): Promise<TicketListItem[]> {
   const seg = filter.seg ?? "open";
   const assignee = filter.assignee ?? "anyone";
   const statuses = SEG_STATUSES[seg];
 
   const clauses: string[] = [`t.status IN (${ph(statuses.length)})`];
-  const params: unknown[] = [ctx.orgId, ...statuses];
+  const params: unknown[] = [ctx.orgId, ctx.orgId, ...statuses];
   if (filter.category) {
     clauses.push(`t.category = ?`);
     params.push(filter.category);
@@ -265,15 +275,16 @@ export async function list_tickets(ctx: TenantContext, filter: TicketListFilter 
     params.push(ctx.orgId);
   }
 
-  const rows = await all<TicketRow>(
+  const rows = await all<TicketReadRow>(
     ctx,
-    `SELECT t.* FROM tickets t WHERE t.org_id = ? AND ${clauses.join(" AND ")} ORDER BY t.updated_at DESC, t.id DESC`,
+    `SELECT t.*, ${PARENT_NUMBER} FROM tickets t WHERE t.org_id = ? AND ${clauses.join(" AND ")} ORDER BY t.updated_at DESC, t.id DESC`,
     ...params
   );
   if (rows.length === 0) return [];
 
   // The queue is org-wide and unpaginated, so these id lists routinely outgrow
   // D1's 100-bound-parameter ceiling: every one goes through `fanOut` (src/db.ts).
+  // These are ROW ids — the joins' key; what goes out is each row's number (`ticketOut`).
   const ids = rows.map((r) => r.id);
 
   const assigneeRows = await fanOut<{ ticket_id: number; login: string }>(
@@ -314,7 +325,7 @@ export async function list_tickets(ctx: TenantContext, filter: TicketListFilter 
   const sprintLabels = new Map(sprintRows.map((r) => [r.id, r.title]));
 
   return rows.map((r) => ({
-    ...r,
+    ...ticketOut(r),
     assignees: byTicket.get(r.id) ?? [],
     link_count: links.get(r.id) ?? 0,
     sub_count: subs.get(r.id) ?? 0,
@@ -322,32 +333,36 @@ export async function list_tickets(ctx: TenantContext, filter: TicketListFilter 
   }));
 }
 
-/** One ticket, whole: assignees, links, comments, history, parent + children, sprint. */
-export async function get_ticket(ctx: TenantContext, id: number): Promise<TicketDetail | null> {
-  const t = await first<TicketRow>(ctx, `SELECT * FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId);
+/** One ticket BY NUMBER, whole: assignees, links, comments, history, parent + children, sprint.
+ *  Every ticket reference in it — its own `id`, `parent_id`, each sub-row's `ticket_id`, the parent
+ *  and child refs — is a per-org number. */
+export async function get_ticket(ctx: TenantContext, number: number): Promise<TicketDetail | null> {
+  const t = await first<TicketReadRow>(ctx, `SELECT t.*, ${PARENT_NUMBER} FROM tickets t WHERE t.number = ? AND t.org_id = ?`, ctx.orgId, number, ctx.orgId);
   if (!t) return null;
+  const id = t.id; // the row id, for the joins below
+  const mine = <R extends { ticket_id: number }>(rows: R[]): R[] => rows.map((r) => ({ ...r, ticket_id: number }));
 
   const assignees = (
     await all<{ login: string }>(ctx, `SELECT login FROM ticket_assignees WHERE org_id = ? AND ticket_id = ? ORDER BY login ASC`, ctx.orgId, id)
   ).map((a) => a.login);
-  const links = await all<TicketLinkRow>(ctx, `SELECT * FROM ticket_links WHERE org_id = ? AND ticket_id = ? ORDER BY created_at ASC, id ASC`, ctx.orgId, id);
-  const comments = await all<TicketCommentRow>(ctx, `SELECT * FROM ticket_comments WHERE org_id = ? AND ticket_id = ? ORDER BY created_at ASC, id ASC`, ctx.orgId, id);
-  const events = await all<TicketEventRow>(ctx, `SELECT * FROM ticket_events WHERE org_id = ? AND ticket_id = ? ORDER BY created_at ASC, id ASC`, ctx.orgId, id);
+  const links = mine(await all<TicketLinkRow>(ctx, `SELECT * FROM ticket_links WHERE org_id = ? AND ticket_id = ? ORDER BY created_at ASC, id ASC`, ctx.orgId, id));
+  const comments = mine(await all<TicketCommentRow>(ctx, `SELECT * FROM ticket_comments WHERE org_id = ? AND ticket_id = ? ORDER BY created_at ASC, id ASC`, ctx.orgId, id));
+  const events = mine(await all<TicketEventRow>(ctx, `SELECT * FROM ticket_events WHERE org_id = ? AND ticket_id = ? ORDER BY created_at ASC, id ASC`, ctx.orgId, id));
   const children = await all<TicketRef>(
     ctx,
-    `SELECT id, title, status FROM tickets WHERE org_id = ? AND parent_id = ? ORDER BY updated_at DESC, id DESC`,
+    `SELECT number AS id, title, status FROM tickets WHERE org_id = ? AND parent_id = ? ORDER BY updated_at DESC, id DESC`,
     ctx.orgId,
     id
   );
   const parent = t.parent_id !== null
-    ? await first<TicketRef>(ctx, `SELECT id, title, status FROM tickets WHERE id = ? AND org_id = ?`, t.parent_id, ctx.orgId)
+    ? await first<TicketRef>(ctx, `SELECT number AS id, title, status FROM tickets WHERE id = ? AND org_id = ?`, t.parent_id, ctx.orgId)
     : null;
   const sprintRow = t.sprint_id !== null
     ? await first<{ id: number; title: string }>(ctx, `SELECT id, title FROM sprints WHERE id = ? AND org_id = ?`, t.sprint_id, ctx.orgId)
     : null;
 
   return {
-    ...t,
+    ...ticketOut(t),
     assignees,
     links,
     comments,

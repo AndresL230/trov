@@ -227,8 +227,9 @@ const sameHandle = (a: string, b: string): boolean => a.toLowerCase() === b.toLo
 // ── links ────────────────────────────────────────────────────────────────────
 
 /**
- * Normalize a link ref. ticket / sprint → the integer id (a leading "#" allowed),
- * which must exist when `mustExist`; pr / issue → "owner/repo#n", from "#n" / "n"
+ * Normalize a link ref. ticket → its per-org NUMBER, sprint → its id (a leading "#" allowed),
+ * which must exist IN THIS ORG when `mustExist` — the stored `target_ref` is that same number,
+ * on a row that carries its own `org_id` (src/tools/tickets.ts › a ticket's two ids); pr / issue → "owner/repo#n", from "#n" / "n"
  * (resolved against the page's repo), "owner/repo#n", or a github.com URL.
  */
 export async function normalizeLinkRef(
@@ -241,8 +242,8 @@ export async function normalizeLinkRef(
     if (!m) throw bad(`${type} ref must be an id`);
     const id = Number(m[1]);
     if (mustExist) {
-      const table = type === "ticket" ? "tickets" : "sprints";
-      if (!(await first(ctx, `SELECT 1 AS x FROM ${table} WHERE id = ? AND org_id = ?`, id, ctx.orgId))) throw bad(`no such ${type}: ${id}`);
+      const target = type === "ticket" ? "tickets WHERE number" : "sprints WHERE id";
+      if (!(await first(ctx, `SELECT 1 AS x FROM ${target} = ? AND org_id = ?`, id, ctx.orgId))) throw bad(`no such ${type}: ${id}`);
     }
     return String(id);
   }
@@ -273,11 +274,11 @@ async function normalizeLinks(ctx: TenantContext, links: readonly ArtifactLinkIn
 }
 
 async function resolveLinks(ctx: TenantContext, rows: ArtifactLinkRow[]): Promise<ArtifactLinkDTO[]> {
-  const ticketIds = rows.filter((r) => r.target_type === "ticket").map((r) => Number(r.target_ref));
+  const ticketNumbers = rows.filter((r) => r.target_type === "ticket").map((r) => Number(r.target_ref));
   const sprintIds = rows.filter((r) => r.target_type === "sprint").map((r) => Number(r.target_ref));
   const tickets = new Map(
-    (await fanOut<{ id: number; title: string; status: string }>(ctx, ticketIds, (p) => `SELECT id, title, status FROM tickets WHERE org_id = ? AND id IN (${p})`, [ctx.orgId]))
-      .map((t) => [t.id, t])
+    (await fanOut<{ number: number; title: string; status: string }>(ctx, ticketNumbers, (p) => `SELECT number, title, status FROM tickets WHERE org_id = ? AND number IN (${p})`, [ctx.orgId]))
+      .map((t) => [t.number, t])
   );
   const sprints = new Map(
     (await fanOut<{ id: number; title: string; dates: string | null; status: string }>(ctx, sprintIds, (p) => `SELECT id, title, dates, status FROM sprints WHERE org_id = ? AND id IN (${p})`, [ctx.orgId]))
