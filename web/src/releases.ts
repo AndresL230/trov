@@ -146,6 +146,8 @@ export const RELEASES: Release[] = [
         "A doc image in Review's Rendered view was requested at `/img/<sha>`; it is the org's, at `/api/o/<slug>/img/<sha>`",
         "HTML, image and PDF artifact previews, thumbnails, Download and Open in new tab work for a person in several orgs (they load the org's raw route)",
         "A superadmin who belongs to no organization can reach Platform",
+        "Accepting an owner invitation lands on Org settings, where the setup checklist is; the checklist's \"Invite your team\" step is no longer ticked by the owner's own accepted invitation",
+        "Poll now on an organization with no repository connected shows its answer (every source not connected) above the empty state instead of nothing",
         "Settings › Account no longer truncates \"Signed in as …\" at narrow tile widths: the line wraps",
       ],
       removed: [

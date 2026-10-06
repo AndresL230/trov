@@ -16,7 +16,7 @@ vi.mock("../web/src/markdown", () => ({
 import css from "../web/src/trov.css?raw";
 import { orgSlugFromPath, orgBase, orgHref, resolveLanding, isOrgAdmin, findOrg } from "../web/src/org-context";
 import {
-  orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, createOrgErrors, createOrgServerError, orgCapSentence, inviteSentence,
+  orgSwitcherButton, orgMenu, orgPickerView, acceptLanding, createOrgModal, createOrgErrors, createOrgServerError, orgCapSentence, inviteSentence,
   lostOrgSentence, blankCreateOrg, initialOrgsUi, type OrgsUi,
 } from "../web/src/org-picker";
 import { render, initialState, viewerIsAdmin, viewerOrg, mcpAccessSection, grantListBody, tokenListBody, type AppState } from "../web/src/render";
@@ -206,6 +206,12 @@ describe("the org picker / first run", () => {
   const picker = (orgs: MyOrgsResponse | null, o: { mine?: MyOrg[]; ui?: Partial<OrgsUi>; hash?: string; status?: "ok" | "loading" | "error"; who?: Me } = {}) =>
     orgPickerView({ me: o.who ?? me(o.mine ?? orgs?.orgs ?? []), mine: o.mine ?? orgs?.orgs ?? [], orgs, status: o.status ?? (orgs ? "ok" : "loading"), ui: ui(o.ui), hash: o.hash ?? "" });
 
+  it("accepting lands a new owner on Org settings (the setup checklist) and anyone else on the org's My Work", () => {
+    const inv = (role: "owner" | "admin" | "member") => ({ org: { slug: "acme", name: "Acme" }, role });
+    expect(acceptLanding(inv("owner"))).toBe("/o/acme/#org");
+    expect(acceptLanding(inv("admin"))).toBe("/o/acme/");
+    expect(acceptLanding(inv("member"))).toBe("/o/acme/");
+  });
   it("a superadmin — with no organization at all — is offered the Platform area; nobody else is", () => {
     const none = mine({ orgs: [], invites: [], created: 0, superadmin: true });
     const html = orgPickerView({ me: me([]), mine: [], orgs: none, status: "ok", ui: ui(), hash: "", superadmin: true });

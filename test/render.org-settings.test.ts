@@ -215,6 +215,14 @@ describe("the setup checklist", () => {
     // A finished step keeps no button.
     expect(html).not.toContain('data-arg="repos"');
   });
+  it("'Invite your team' is done by a pending invite or a second member — never by the owner's own accepted invitation", () => {
+    const team = (ui: OrgUi) => setupSteps(ui)!.find((s) => s.key === "team")!.done;
+    // The superadmin's owner invite, accepted: the owner is in, and has invited nobody yet.
+    expect(team(emptyUi({ invites: ok([invite({ status: "accepted", role: "owner", github_login: null, email: "owner@acme.dev" })]) }))).toBe(false);
+    expect(team(emptyUi({ invites: ok([invite({ status: "revoked" })]) }))).toBe(false);
+    expect(team(emptyUi({ invites: ok([invite({ status: "pending" })]) }))).toBe(true);
+    expect(team(emptyUi({ members: ok([member("ines", "owner"), member("sam", "member")]) }))).toBe(true);
+  });
   it("counts the platform's legacy credential as a set GitHub token", () => {
     const ui = emptyUi({ integrations: ok({ integrations: [integ("github_token", { legacy_fallback: true })], secrets_available: true, key_version: null }) });
     expect(setupSteps(ui)!.find((s) => s.key === "token")!.done).toBe(true);

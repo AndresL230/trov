@@ -7,7 +7,7 @@
 
 import type { AppState } from "./render";
 import { ApiError, Unauthorized, createOrg, respondToInvite } from "./api";
-import { blankCreateOrg, createOrgErrors, createOrgServerError } from "./org-picker";
+import { acceptLanding, blankCreateOrg, createOrgErrors, createOrgServerError } from "./org-picker";
 import { slugFromName } from "./platform";
 import { orgHref } from "./org-context";
 import type { MyOrgsResponse } from "@shared/orgs";
@@ -86,8 +86,9 @@ export function createOrgsController(h: OrgsHost) {
     h.rerender();
     respondToInvite(id, accept)
       .then(() => {
-        // Accepted: straight into the org. Declined: the list again, without it.
-        if (accept) { h.go(orgHref(invite.org.slug)); return; }
+        // Accepted: straight into the org — its new OWNER (a superadmin's owner invite) onto Org settings,
+        // where the setup checklist is, exactly as creating an org does. Declined: the list again, without it.
+        if (accept) { h.go(acceptLanding(invite)); return; }
         return h.reloadOrgs().then(() => { ui().inviteBusy = null; h.flash(`Declined the invitation to ${invite.org.name}`); });
       })
       .catch((e) => {

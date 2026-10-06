@@ -170,7 +170,7 @@ export function setupSteps(ui: OrgUi): SetupStep[] | null {
     { key: "repo", title: "Connect a repository", why: "Trov reads its deployments, checks, pull requests and issues.", tab: "repos", go: "Open Repositories", done: ui.repos.data.length > 0 },
     { key: "env", title: "Add an environment", why: "The Repo dashboard reports on each one: staging, production.", tab: "environments", go: "Open Environments", done: ui.envs.data.length > 0 },
     { key: "token", title: "Set the GitHub token", why: "Without it Trov cannot read the repository.", tab: "integrations", go: "Open Integrations", done: !!token && (token.configured || token.legacy_fallback) },
-    { key: "team", title: "Invite your team", why: "By GitHub login or email; they join when they accept.", tab: "members", go: "Open Members", done: ui.members.data.length > 1 || ui.invites.data.some((i) => i.status === "pending" || i.status === "accepted") },
+    { key: "team", title: "Invite your team", why: "By GitHub login or email; they join when they accept.", tab: "members", go: "Open Members", done: ui.members.data.length > 1 || ui.invites.data.some((i) => i.status === "pending") },
   ];
 }
 

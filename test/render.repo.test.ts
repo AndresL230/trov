@@ -1315,6 +1315,19 @@ describe("Poll now — the Repo top bar, every tab", () => {
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;, &quot;&gt;&lt;img src=y&gt;");
   });
 
+  it("an org with nothing connected: Poll now's answer is shown above the empty state, every source 'Not connected' with the way to set it up", () => {
+    const html = view({ noRepo: true, poll: done(NOT) });
+    expect(html).toContain("data-repo-empty");
+    expect(html).toContain("No repository connected");
+    expect(html).toContain("repo-poll-strip");
+    const text = stripText(html);
+    for (const label of ["Health", "Cloudflare", "Railway", "App metrics", "GitHub"]) expect(text, label).toContain(`${label} — Not connected — set it up in Org settings › Integrations`);
+    expect(html).not.toMatch(/color:var\(--red\)/);
+    // Before a poll, and for a member, the empty state stands alone.
+    expect(view({ noRepo: true, poll: null })).not.toContain("repo-poll-strip");
+    expect(view({ noRepo: true, poll: done(NOT), admin: false })).not.toContain("repo-poll-strip");
+  });
+
   it("a malformed result (an older Worker's three-key body) renders without throwing", () => {
     const old = { cloudflare: "not_configured", railway: "not_configured", sapling: "not_configured" } as unknown as RepoRefreshResult;
     const text = stripText(view({ poll: done(old) }));

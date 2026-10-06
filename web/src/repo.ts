@@ -1065,7 +1065,10 @@ export function repoView(p: RepoProps): string {
     : "";
 
   if (p.noRepo && !p.sample) {
+    // Poll now is still in the header here: its answer — every source "Not connected" — is shown, not swallowed.
+    const polled = canPollRepo(p) && p.poll && p.poll.status !== "polling" ? `<div class="repo-panel ${SURFACE}" style="overflow:hidden;margin-top:8px">${pollStrip(p.poll)}</div>` : "";
     return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}" data-repo-empty>
+      ${polled}
       <div style="border:1px dashed var(--border-strong);border-radius:11px;padding:38px 24px;text-align:center;margin-top:8px">
         <div style="font-size:15px;font-weight:600">No repository connected</div>
         <div style="font-size:13px;line-height:1.6;color:var(--fg-55);margin:6px auto 0;max-width:520px">${p.admin ? "Connect the repository this organization ships from, and Trov starts reading its deployments, checks, pull requests and issues." : "This organization has no repository connected yet. An admin connects one in Org settings."}</div>
