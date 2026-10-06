@@ -305,7 +305,7 @@ async function progressSeam(ctx: TenantContext, payload: unknown): Promise<void>
 }
 
 /** Deliveries the My Work capture (`events`) reads. */
-const WORK_EVENT_NAMES = ["pull_request", "issues"];
+export const WORK_EVENT_NAMES: readonly string[] = ["pull_request", "issues"];
 /** Deliveries the repo dashboard capture (`repo_events`) reads. `status` (Task
  *  14) is a sibling arm: it feeds `repo_metrics`, not `repo_events` — see the
  *  branch below. The list is complete for the five-phase capture plan; GitHub
