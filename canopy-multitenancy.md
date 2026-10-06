@@ -1,7 +1,10 @@
 # Canopy multitenancy — Phase 1 spec
 
-Status: **DRAFT FOR APPROVAL. No implementation code is written until this is approved.**
-Inputs: the locked decisions (D1–D13, restated in §1) and the Phase 0 audit `canopy-multitenancy-audit.md`
+Status: **APPROVED 2026-10-06** (audit + spec, incl. C-1 `org_login_map` and C-6 per-repo webhook secrets). Owner answers to §12 are recorded there; Phase 2 is in progress.
+Revision 2 (2026-10-06): locked decisions D14–D19 added (integration secrets, envelope encryption,
+`org_environments`, Queues, the Integrations page, secret tests). They replace this draft's earlier
+`org_secrets` / `ORG_SECRETS_KEY` design; the owner then amended D17 (Q4: rotation now, Queues later).
+Inputs: the locked decisions (D1–D19, restated in §1) and the Phase 0 audit `canopy-multitenancy-audit.md`
 (cited as "audit §n" and conflicts as "C-n"). Baseline: `c836b8b`, 158 test files / 2,683 tests green.
 
 Decisions that need the owner before Phase 2 starts are collected in **§12** — everything else here is
@@ -29,6 +32,12 @@ visibility. SaplingLearn becomes org #1 with no loss of data, links, tokens or p
 | D11 | Cron + email iterate orgs; admin policy per org; user prefs win | §8.3, §8.4 |
 | D12 | Artifacts served from a separate origin in a sandboxed iframe | §8.6 |
 | D13 | Out of scope: billing, rename/domain, marketing site, GitHub App migration | — |
+| D14 | Per-org integration secrets in `org_secrets` (exact columns), envelope encryption: Worker secret `TROV_KEK` wraps a per-org data key in `org_keys`; AES-256-GCM via WebCrypto, AAD `${org_id}:${kind}:${scope}`; write-only, admin/owner session routes only, never MCP; audit row on set/rotate/delete; `getSecret(ctx, kind, scope)` is the only decrypt path and needs a `TenantContext` | §2.1, §8.7 |
+| D15 | Kinds: `cloudflare_analytics` (+ `account_id` in config), `railway` (scope = environment key), `metrics_endpoint` (scope = environment key; https only, no redirects), `github_token`, `github_webhook` (interim until the GitHub App) | §8.7.2 |
+| D16 | `REPO_ENVIRONMENTS` / `GITHUB_REPO` → `org_environments` / `org_repos` rows. Platform secrets stay Worker secrets: `COOKIE_SECRET`, GitHub/Google login OAuth, `RESEND_API_KEY`, `GEMINI_API_KEY` (+ `TROV_KEK`) | §2.1, §9 |
+| D17 *(amended by Q4)* | Polling is ONE job function per (org, environment), dispatched by rotation from the cron (Workers Paid). Queues later — the `CLAUDE.md` deferred-seam rule stands for now. A failure records `last_error` on that org's integration and never blocks another org | §8.3 |
+| D18 | Org settings › Integrations: set / rotate / delete and Test connection per integration | §8.7.4, §11 |
+| D19 | Tests: a ciphertext moved to another org's row fails to decrypt; no secret in any API response, log line or MCP tool output | §10.5 |
 
 Also out of scope (proposed): per-org controlled vocabularies (sections/tags/sprint `domain`/artifact `area`
 stay global — C-16), multi-repo dashboards (one primary repo per org — C-11), org deletion UI, SSO.
@@ -65,7 +74,7 @@ CREATE TABLE org_invites (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   org_id        TEXT NOT NULL REFERENCES orgs(id),
   github_login  TEXT COLLATE NOCASE,          -- D4
-  email         TEXT,                         -- only if Q1 keeps Google invites; else column omitted
+  email         TEXT COLLATE NOCASE,          -- Q1: an email invite (Google sign-in); matched against identities.verified_email
   role          TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin','member')),
   invited_by    TEXT NOT NULL,
   status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','declined','revoked')),
@@ -83,7 +92,6 @@ CREATE TABLE org_repos (
   org_id           TEXT NOT NULL REFERENCES orgs(id),
   repo_full_name   TEXT NOT NULL COLLATE NOCASE,    -- 'owner/repo'
   is_primary       INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0,1)),
-  environments     TEXT NOT NULL DEFAULT '[]',      -- the old REPO_ENVIRONMENTS JSON, per repo
   legacy_hook      INTEGER NOT NULL DEFAULT 0,      -- 1 = also reachable via the old /webhook/github + env secret (cut-over only)
   created_at       TEXT NOT NULL,
   created_by       TEXT NOT NULL,
@@ -91,17 +99,85 @@ CREATE TABLE org_repos (
 );
 CREATE UNIQUE INDEX idx_org_repos_primary ON org_repos(org_id) WHERE is_primary = 1;
 
-CREATE TABLE org_secrets (                          -- per-org credentials (C-5); AES-GCM under env ORG_SECRETS_KEY
-  org_id     TEXT NOT NULL REFERENCES orgs(id),
-  name       TEXT NOT NULL CHECK (name IN ('webhook_secret','github_service_token','cf_analytics_token',
-                                           'cf_analytics_account_id','railway_token','app_metrics_token')),
-  scope      TEXT NOT NULL DEFAULT '',              -- org_repos.id for webhook_secret; env key for railway_token; '' otherwise
-  ciphertext TEXT NOT NULL,                         -- base64(iv || ct || tag); never returned by any route
-  hint       TEXT NOT NULL,                         -- last 4 chars, for the settings UI
-  updated_at TEXT NOT NULL,
-  updated_by TEXT NOT NULL,
-  PRIMARY KEY (org_id, name, scope)
+-- D16: REPO_ENVIRONMENTS becomes rows. Same fields as RepoEnvConfig (src/repo/config.ts), so the capture,
+-- projection and poller code read the same shape (listEnvironments(ctx) replaces repoEnvironments(env)).
+CREATE TABLE org_environments (
+  org_id                 TEXT NOT NULL REFERENCES orgs(id),
+  key                    TEXT NOT NULL CHECK (length(key) BETWEEN 1 AND 32 AND key NOT GLOB '*[^a-z0-9_-]*'),
+  position               INTEGER NOT NULL,          -- ORDER MATTERS: [0] = drift head + canopy/* status branch; last = drift base
+  label                  TEXT NOT NULL,
+  note                   TEXT,
+  branch                 TEXT NOT NULL,
+  railway_env            TEXT NOT NULL DEFAULT '',  -- GitHub deployment `environment` name
+  worker                 TEXT NOT NULL DEFAULT '',  -- Cloudflare Worker script name
+  worker_check           TEXT NOT NULL DEFAULT '',  -- Workers Builds check-run name
+  frontend_url           TEXT NOT NULL DEFAULT '',  -- https only (checked on write, §8.7.5)
+  api_url                TEXT NOT NULL DEFAULT '',  -- https only; base of the health ping and of metrics_endpoint
+  health_path            TEXT NOT NULL DEFAULT '/',
+  railway_environment_id TEXT,
+  railway_service_id     TEXT,
+  created_at             TEXT NOT NULL,
+  updated_at             TEXT NOT NULL,
+  updated_by             TEXT NOT NULL,
+  PRIMARY KEY (org_id, key),
+  UNIQUE (org_id, position)
 );
+
+-- D14: one wrapped data-encryption key (DEK) per org and version. The DEK is a random AES-256-GCM key,
+-- wrapped (WebCrypto wrapKey, AES-GCM) under TROV_KEK with AAD `org_key:${org_id}:${key_version}`, so a
+-- wrapped key copied to another org's row will not unwrap.
+CREATE TABLE org_keys (
+  org_id          TEXT NOT NULL REFERENCES orgs(id),
+  key_version     INTEGER NOT NULL CHECK (key_version >= 1),
+  wrapped_key     TEXT NOT NULL,                    -- base64(AES-GCM(KEK, raw DEK) || tag)
+  wrap_iv         TEXT NOT NULL,                    -- base64, 12 random bytes
+  kek_fingerprint TEXT NOT NULL,                    -- first 16 hex of SHA-256(KEK): which KEK wrapped it (KEK rotation, §8.7.1)
+  created_at      TEXT NOT NULL,
+  retired_at      TEXT,                             -- set when a newer version re-encrypts every secret
+  PRIMARY KEY (org_id, key_version)
+);
+
+-- D14: exactly the decided columns. Never selected by any route except as metadata (§8.7.3).
+CREATE TABLE org_secrets (
+  org_id        TEXT NOT NULL REFERENCES orgs(id),
+  kind          TEXT NOT NULL CHECK (kind IN ('cloudflare_analytics','railway','metrics_endpoint','github_token','github_webhook')),
+  scope         TEXT NOT NULL DEFAULT '',            -- environment key (railway, metrics_endpoint), org_repos.id (github_webhook), '' otherwise
+  ciphertext    TEXT NOT NULL,                       -- base64(AES-256-GCM ciphertext || 16-byte tag)
+  iv            TEXT NOT NULL,                       -- base64, 12 random bytes, fresh on every write
+  key_version   INTEGER NOT NULL,                    -- the org_keys version that encrypted it
+  hint_last4    TEXT NOT NULL DEFAULT '',            -- last 4 characters; '' when the secret is shorter than 16
+  created_by    TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  rotated_at    TEXT,
+  last_used_at  TEXT,                                -- written at most once per 10 minutes per row
+  last_error    TEXT,                                -- scrubbed, ≤ 300 chars; NULL after a success (§8.7.5)
+  UNIQUE (org_id, kind, scope),
+  FOREIGN KEY (org_id, key_version) REFERENCES org_keys(org_id, key_version)
+);
+
+-- D15: non-secret integration config (today only cloudflare_analytics → {"account_id": "…"}; the Railway
+-- ids live on org_environments). Kept apart so org_secrets stays exactly D14's columns.
+CREATE TABLE org_integration_config (
+  org_id      TEXT NOT NULL REFERENCES orgs(id),
+  kind        TEXT NOT NULL,
+  scope       TEXT NOT NULL DEFAULT '',
+  config      TEXT NOT NULL DEFAULT '{}',
+  updated_at  TEXT NOT NULL,
+  updated_by  TEXT NOT NULL,
+  PRIMARY KEY (org_id, kind, scope)
+);
+
+-- D14: the audit trail, written in the SAME db.batch as the change it records. Never holds a value.
+CREATE TABLE org_audit (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  org_id  TEXT NOT NULL REFERENCES orgs(id),
+  actor   TEXT NOT NULL,                             -- a handle
+  action  TEXT NOT NULL CHECK (action IN ('secret.set','secret.rotate','secret.delete','integration.config','key.rotate')),
+  target  TEXT NOT NULL,                             -- `${kind}:${scope}`, or `org_keys` for key.rotate
+  detail  TEXT NOT NULL DEFAULT '{}',                -- JSON: { hint_last4?, key_version? } — never the secret
+  at      TEXT NOT NULL
+);
+CREATE INDEX idx_org_audit_org ON org_audit(org_id, at);
 
 CREATE TABLE org_login_map (                        -- per-org ATTRIBUTION (C-1), never used for sign-in
   org_id       TEXT NOT NULL REFERENCES orgs(id),
@@ -112,11 +188,27 @@ CREATE TABLE org_login_map (                        -- per-org ATTRIBUTION (C-1)
   PRIMARY KEY (org_id, github_login)
 );
 
-CREATE TABLE cron_cursor (                          -- round-robin over orgs for subrequest-bound jobs (C-7)
-  job        TEXT PRIMARY KEY,                      -- 'usage' | 'reconcile' | 'progress'
-  last_org   TEXT NOT NULL DEFAULT '',
+-- Q2: per-org display numbers. `tickets.number` / `handoffs.number` are allocated from here in the same
+-- db.batch as the insert, so a deleted ticket's number is never reissued (today's AUTOINCREMENT promise).
+CREATE TABLE org_counters (
+  org_id  TEXT NOT NULL REFERENCES orgs(id),
+  name    TEXT NOT NULL CHECK (name IN ('ticket','handoff')),
+  value   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (org_id, name)
+);
+
+-- D17 as amended: the rotation cursor for the per-(org, environment) poll jobs (§8.3).
+CREATE TABLE cron_cursor (
+  job        TEXT PRIMARY KEY,                       -- 'health' | 'usage' | 'reconcile' | 'progress'
+  last_key   TEXT NOT NULL DEFAULT '',               -- `${org_id}/${env_key}` (or `${org_id}` for org-level jobs) last served
   updated_at TEXT NOT NULL
 );
+
+-- Q6: org-creation cap (default 3; a platform admin can raise it per person).
+ALTER TABLE persons ADD COLUMN org_limit INTEGER CHECK (org_limit IS NULL OR org_limit >= 0);
+-- Q1: the verified email each sign-in provider vouched for, refreshed at every sign-in — what an EMAIL
+-- invite is matched against (persons.email is user-editable, so it cannot be).
+ALTER TABLE identities ADD COLUMN verified_email TEXT;
 ```
 
 `persons` loses nothing structurally; `role` / `responsibilities` are copied into `memberships.title /
@@ -142,14 +234,14 @@ keys** so the database itself refuses a cross-org edge (D1 enforces foreign keys
 
 Columns added beyond `org_id` (C-11): `repo TEXT NOT NULL` on `events`, `repo_events`, `pr_summaries`,
 `issue_summaries`, backfilled `'SaplingLearn/sapling'`; uniqueness becomes `(org_id, repo, …)`. Per-org
-display numbers (only if Q2 = yes): `tickets.number`, `handoffs.number` with `UNIQUE(org_id, number)`,
+display numbers (Q2): `tickets.number`, `handoffs.number` with `UNIQUE(org_id, number)`,
 backfilled `number = id` so SaplingLearn's `#12` stays `#12`.
 
 UO tables: `mcp_tokens.org_id`, `oauth_grants.org_id`, `oauth_codes.org_id`, `notification_prefs.org_id`,
 `notification_outbox.org_id` (+ key format `org:user:cadence:window`), `notification_outbox_bodies.org_id`.
 `oauth_tokens` resolves through `grant_id` (no column; the grant pins the org). Global tables unchanged:
 `persons`, `identities`, `sessions`, `oauth_clients`, `sections`, `tags`. `invites` is migrated into
-`org_invites` (email rows, if Q1 keeps them) and dropped in Phase 7.
+`org_invites` (email rows, Q1) and dropped in Phase 7.
 
 Singletons become per-org: `plan` PK `org_id` (drops `id`), `notification_settings` PK `org_id` (drops `id`;
 `from_address` becomes `from_name` — the sending address is platform-level env `EMAIL_FROM`, because a
@@ -169,7 +261,7 @@ slug and `roadmap_fts` `ref = 'plan'` would otherwise delete other orgs' rows). 
 
 | File | Content |
 |---|---|
-| `0037_orgs.sql` | §2.1 tables; `INSERT OR IGNORE` the SaplingLearn org (`org_saplinglearn`, slug `saplinglearn`); one `memberships` row per non-reserved person (role `member`, `title`/`responsibilities` copied), then `owner` for the handles in today's `ADMIN_LOGINS` (`andres`, `AndresL230` — a one-time data seed, commented as such); the SaplingLearn `org_repos` row (`SaplingLearn/sapling`, `is_primary = 1`, `legacy_hook = 1`, `environments` = today's `REPO_ENVIRONMENTS` value); `org_login_map` backfilled from every `identities` row with `provider = 'github'` (so existing attribution is unchanged); `cron_cursor` rows. |
+| `0037_orgs.sql` | §2.1 tables + `persons.org_limit` / `identities.verified_email`; `INSERT OR IGNORE` the SaplingLearn org (`org_saplinglearn`, slug `saplinglearn`); one `memberships` row per non-reserved person (role `member`, `title`/`responsibilities` copied from `persons.role/responsibilities`), then `owner` for `andres` (Q3 — a one-time data seed, commented as such); the SaplingLearn `org_repos` row (`SaplingLearn/sapling`, `is_primary = 1`, `legacy_hook = 1`) and its `org_environments` rows (today's `REPO_ENVIRONMENTS`, D16); `org_login_map` from every `identities` row with `provider = 'github'`; `org_invites` from live `invites` rows (email); `org_counters` from `sqlite_sequence` (tickets, handoffs). No secret is migrated in SQL — encryption needs `TROV_KEK` (§8.7.6). |
 | `0038_tenant_core.sql` | Rebuild (create `x_new` → copy with `org_id = 'org_saplinglearn'` → drop → rename, carrying `sqlite_sequence` like `0033:56`) of the knowledge/gate tables: `docs`, `doc_versions`, `feed`, `adrs`, `entry_tags`, `needs_triage`, `processed_items`, `identity_tasks`, `plan`, `plan_versions`, `sprints`, `sprint_progress`, `sprint_resources`, `tickets`, `ticket_*`, `handoffs`, `prompts`, `prompt_versions`. |
 | `0039_tenant_capture.sql` | Same for `events`, `pr_summaries`, `issue_summaries`, `repo_events`, `repo_snapshots`, `repo_metrics`, `artifact_*`, `doc_images`, `doc_image_upload_tokens`, notifications, and the UO auth tables (`mcp_tokens`, `oauth_grants`, `oauth_codes`). |
 | `0040_tenant_fts.sql` | Drop + re-create the seven FTS tables and 23 triggers; repopulate. |
@@ -275,10 +367,12 @@ writers (`mirrorIssue`, capture, pollers) assert `ctx.role === "system"`.
 ### 4.2 Platform modules (no TenantContext — C-13)
 
 `src/auth/persons.ts`, `identities`, `sessions.ts`, `tokens.ts` (lookup only), `oauth.ts`, new
-`src/orgs/*.ts` (orgs, memberships, invites, org_repos, org_secrets), `cron` org enumeration, `/u/`
+`src/orgs/*.ts` (orgs, memberships, invites, org_repos, org_environments metadata), `cron` org enumeration, `/u/`
 unsubscribe, `renamePerson` (it MUST span orgs — C-14; `HANDLE_COLUMNS` gains `memberships.user_id`,
 `memberships.created_by`, `org_invites.invited_by/responded_by`, `org_login_map.person/mapped_by`,
-`orgs.created_by`, `org_repos.created_by`, `org_secrets.updated_by`).
+`orgs.created_by`, `org_repos.created_by`, `org_environments.updated_by`, `org_secrets.created_by`,
+`org_integration_config.updated_by`, `org_audit.actor`). `org_secrets` and `org_keys` are TENANT tables: the only
+reader is `getSecret(ctx, …)` (§8.7).
 
 ### 4.3 Conventions that the tests rely on
 
@@ -311,7 +405,8 @@ Run over the source text with the same extractor the audit used (Appendix A meth
 - `/auth/callback` drops `isActiveOrgMember` (`src/auth/routes.ts:102`); `SAPLING_ORG` and
   `isActiveOrgMember` are deleted (`src/auth/github.ts:3,60-68`).
 - `completeSignIn` (`src/auth/onboard.ts:68`): known identity → session; verified-email match → link +
-  session (unchanged); otherwise a GitHub user always reaches onboarding (handle + color). Google: per Q1.
+  session (unchanged); otherwise a GitHub user always reaches onboarding (handle + color). Google (Q1): a Google user
+  reaches onboarding only with a pending EMAIL invite matching the verified `email` claim (today's rule, now per org).
 - After sign-in the SPA lands on `/` which redirects to the last-used org (`canopy_org` cookie, a plain
   slug, not a credential) if the person is still a member, else to the org picker (`/orgs`): their orgs,
   their pending invites, "Create an org".
@@ -330,15 +425,17 @@ m.user_id = ? COLLATE NOCASE`. No row (unknown slug OR not a member) → **404 `
 ### 5.3 Orgs, invites, members (D2, D4)
 
 - **Create**: `POST /api/orgs { slug, name }` — any signed-in person; creator becomes `owner`; seeds the
-  org's `notification_policy` / `notification_settings` / `plan` rows. Cap: 10 orgs created per person
-  (abuse bound; code constant).
-- **Invite**: `POST /api/o/:slug/invites { github_login, role }` (admin+). Validates the login shape
-  (`^[A-Za-z0-9-]{1,39}$`); does not call GitHub. No email is sent and no link carries a token.
-- **Accept**: on every `/auth/me`, the person's GitHub identity labels are matched (NOCASE) against
-  `org_invites.github_login WHERE status = 'pending'`; the org picker and a sidebar badge show them.
-  `POST /api/invites/:id/accept` / `…/decline` (session cookie, platform route): re-checks that one of the
-  caller's GitHub identities equals the invite's login, then inserts the membership and stamps the invite
-  in one batch. Known limit, documented: a GitHub login can be renamed and re-registered, so an invite binds
+  org's `notification_policy` / `notification_settings` / `plan` rows and `org_counters`. Cap (Q6): 3 orgs
+  created per person, `persons.org_limit` overrides it; a PLATFORM admin (env `PLATFORM_ADMINS`, handles —
+  no tenant route reads it) raises it with `PUT /api/platform/persons/:handle/org-limit`.
+- **Invite**: `POST /api/o/:slug/invites { github_login | email, role }` (admin+). Validates the login shape
+  (`^[A-Za-z0-9-]{1,39}$`) or the address; does not call GitHub. An email invite may send a notice linking the
+  site root — no link ever carries a token (D4).
+- **Accept** (Q1): an invite is the caller's when its `github_login` equals (NOCASE) one of the caller's GitHub
+  identity logins, OR its `email` equals (NOCASE) one of the caller's `identities.verified_email` values —
+  never `persons.email`, which the person can edit. `/auth/me` lists matching pending invites; the org picker
+  and a sidebar badge show them. `POST /api/invites/:id/accept` / `…/decline` (session cookie, platform route)
+  re-checks the match, then inserts the membership and stamps the invite in one batch. Known limit, documented: a GitHub login can be renamed and re-registered, so an invite binds
   to whoever holds that login when they accept (GitHub numeric ids would fix this; the `identities` table
   stores logins today, so this is pre-existing and listed as a follow-up).
 - **Members**: `GET /api/o/:slug/members` (any member: handle, name, avatar, role, title);
@@ -392,7 +489,7 @@ The path suffix is kept verbatim so the SPA change is one prefix in `web/src/api
 | `/raw/a/*` | removed from the app origin → artifact origin (§8.6) | H |
 | `POST /auth/mcp-token`, `GET /auth/mcp-tokens`, `POST …/:id/revoke` | `/api/o/:slug/mcp-tokens…` | T (own tokens, this org) |
 | `GET /auth/oauth-grants`, `POST …/:id/revoke` | stay at `/auth/…`, each row now shows its org | U |
-| — new — | `GET /api/o/:slug/me` (role, title), `GET/PUT /api/o/:slug/settings` (name), `GET/POST/DELETE /api/o/:slug/repos` (+ `environments`), `PUT/DELETE /api/o/:slug/secrets/:name[/:scope]` (write-only; GET returns names + hints) | T / TA / TO for secrets |
+| — new — | `GET /api/o/:slug/me` (role, title), `GET/PUT /api/o/:slug/settings` (name), `GET/POST/DELETE /api/o/:slug/repos`, `GET/PUT/DELETE /api/o/:slug/environments[/:key]`, and the Integrations API `/api/o/:slug/integrations…` (§8.7.3) | T / TA; integrations TA only, cookie only |
 
 **Compatibility during the cut-over (Phases 3–5):** each old path stays mounted as an alias that resolves
 the tenant as "the caller's only org" (`resolveTenant` with the person's single membership; a person with
@@ -438,20 +535,31 @@ The author rule is unchanged (author = `ctx.userId`). `artifact_links` in a batc
 Every MATCH statement gets `AND <fts>.org_id = ?` in the same `WHERE` that carries the `LIMIT` (audit F-2).
 The bm25 statistics side channel (F-3) is accepted and documented under D9.
 
-### 8.3 Cron (C-7)
+### 8.3 Cron and polling (C-7, D17 as amended by Q4)
 
-`handleRepoCron` keeps its tick schedule; per tick:
-- **D1-only jobs run for every org** in one invocation: `expireDueHandoffs` (already a single global
-  UPDATE — stays global, it is retention), `pruneRepoCapture`, `pruneOAuth` (global retention sweeps, on
-  the platform allowlist §4.4).
-- **Subrequest jobs take ONE org per invocation via `cron_cursor`**: health pings every tick for the next
-  org that has environments; `:00` usage polls; `:10` progress; `:20` reconcile. Each reads that org's
-  `org_repos` / `org_secrets` and runs exactly today's code path with `systemTenant(…, orgId, "system")`.
-  An org with nothing configured is skipped without spending a slot. With N configured orgs each org is
-  reached every N slots: hourly polls become every N hours, reconcile every 6N hours. The org's own
-  "Poll now" / Sync GitHub (TA routes) are unaffected.
-- This is correct but degrades past a handful of configured orgs — see Q4 (Workers Paid raises the
-  subrequest cap; Queues is a deferred seam per `CLAUDE.md`).
+Workers Paid lifts the per-invocation subrequest cap far above the free plan's 50; Queues stay deferred
+(`CLAUDE.md` rule unchanged). `handleRepoCron` keeps its tick schedule and becomes a **dispatcher over job
+functions**:
+
+- **One job function per (org, environment)** — `runEnvJob(ctx, env, job, now)` with `job` ∈ `health` (every
+  tick: the two pings), `usage` (`:00`: Cloudflare, Railway, metrics endpoint for that ONE environment). Org-level
+  job functions take `(ctx, now)`: `reconcile` (`:20` of every 6th hour, the org's primary repo), `progress`
+  (`:10` likewise). Each builds `systemTenant(…, org_id, "system")`, reads its secrets through `getSecret`, and
+  is shaped so Queues can later call it unchanged (one message = one call).
+- **Rotation**: the dispatcher lists the due jobs (`org_environments` × the tick's jobs; orgs with a primary
+  repo for org-level jobs) in a stable order, starts after `cron_cursor.last_key` for that job, and runs jobs
+  until a per-invocation subrequest budget (`CRON_SUBREQUEST_BUDGET`, a code constant sized to the plan's cap
+  minus headroom) would be exceeded, then stores the last key served. With today's numbers every job fits in
+  one tick; the cursor only matters once orgs × environments outgrow the budget, and then nothing starves.
+- **Isolation (D17)**: every job runs in its own `try`; a failure records `last_error` on THAT org's
+  integration row (`org_secrets` for the kind/scope that failed — the pollers already return a per-source
+  `PollOutcome`) and the loop moves on. A job never throws out of `scheduled()`.
+- **`cf_polled` becomes per environment**: the snapshot is keyed `(org_id, 'cf_polled:<env_key>')` instead of one
+  `{ [envKey]: interval }` row, so two environments' jobs (sequential today, concurrent under Queues later) can
+  never lose each other's read-modify-write.
+- **D1-only sweeps stay global**: `expireDueHandoffs`, `pruneRepoCapture`, `pruneOAuth` (platform allowlist §4.4).
+- **Poll now / Sync GitHub** (TA routes) call the same job functions for the caller's org, inline, under the
+  existing per-org `refresh_lock` (now keyed `(org_id, 'refresh_lock')`).
 
 ### 8.4 Email (D11)
 
@@ -468,8 +576,8 @@ The bm25 statistics side channel (F-3) is accepted and documented under D9.
 ### 8.5 Webhooks (D10, C-6)
 
 - New URL **`POST /webhook/github/:hook_id`** (`hook_id` = `org_repos.id`). Order: look up the row (unknown →
-  bare 401, same as a bad signature, so ids are not probeable), HMAC-verify the raw body with that row's
-  `webhook_secret` from `org_secrets`, then require `repository.full_name` (NOCASE) to equal the row's
+  bare 401, same as a bad signature, so ids are not probeable), HMAC-verify the raw body with
+  `getSecret(ctx, "github_webhook", hook_id)` (approved: kind `github_webhook`, scope = hook id), then require `repository.full_name` (NOCASE) to equal the row's
   `repo_full_name` (else 202 ignored). Only then build `systemTenant(…, row.org_id, "github-webhook")` and run
   today's handler unchanged in shape (`ingestEvent`, `progressSeam`, `mirrorIssue`, `ingestRepoEvent`,
   `metricsFromStatus`, `fillFailedJob`, `refreshDrift`).
@@ -478,14 +586,17 @@ The bm25 statistics side channel (F-3) is accepted and documented under D9.
 - **Legacy** `POST /webhook/github` (env `GITHUB_WEBHOOK_SECRET`) routes to the `org_repos` row with
   `legacy_hook = 1` until the owner re-points SaplingLearn's GitHub webhook at the new URL; Phase 7 deletes
   the route, the env secret and the flag.
-- The settings UI (Phase 6) shows each repo's webhook URL and lets an admin rotate its secret (shown ONCE
-  at creation/rotation, never again).
+- The Integrations page (Phase 6) shows each repo's webhook URL. The secret never comes back from the
+  server (D19): the admin generates it in the browser (`crypto.getRandomValues`, a Generate button), copies it
+  into GitHub and submits it to Canopy. A failed signature writes NOTHING to D1 (unauthenticated traffic must not
+  cause writes); a verified delivery bumps `last_used_at` (throttled).
 - Unmapped logins raise `identity_tasks` per org; `ticket-mirror` requester/assignees resolve through the
   per-org map.
 
 ### 8.6 Artifacts on a separate origin (D12, C-12)
 
-- New var `ARTIFACT_ORIGIN` (e.g. `https://canopyusercontent.com`, a second custom domain on the SAME
+- New var `ARTIFACT_ORIGIN` = `https://trovusercontent.com` (Q5: a separate REGISTRABLE domain, so it is
+  cross-site to the session cookie — not a subdomain of the app's domain), a second custom domain on the SAME
   Worker). `src/index.ts` routes by `Host`: on the artifact host ONLY `GET /r/:token` is served (everything
   else 404, no cookies read or set); on the app host `/raw/*` is removed.
 - The app's artifact detail DTO carries `raw_url = <ARTIFACT_ORIGIN>/r/<token>`, token = HMAC over
@@ -496,13 +607,98 @@ The bm25 statistics side channel (F-3) is accepted and documented under D9.
   origin. This is a short-lived read capability, not an action token in a link (D4's principle is about
   action links).
 - Owner prerequisite: provision the domain + route. Until it exists, the app keeps serving `/raw/a/*` from
-  its own origin behind `tenantGate` (today's opaque-origin sandbox) — Q5.
+  its own origin behind `tenantGate` (today's opaque-origin sandbox).
+
+### 8.7 Integrations and secrets (D14–D16, D18)
+
+#### 8.7.1 Envelope encryption
+
+- **KEK**: Worker secret `TROV_KEK` = 32 random bytes, base64 (`openssl rand -base64 32`). Imported once per
+  isolate as a non-extractable AES-GCM key with usages `wrapKey` / `unwrapKey` only. Its fingerprint (first 16
+  hex of SHA-256 of the raw bytes) is stored on every `org_keys` row it wraps.
+- **DEK**: per org, generated on the org's FIRST secret write (`crypto.subtle.generateKey`, AES-GCM 256),
+  wrapped with `wrapKey("raw", dek, kek, { name: "AES-GCM", iv, additionalData: "org_key:<org_id>:<version>" })`
+  and stored in `org_keys`. Unwrapped as NON-extractable, decrypt/encrypt only. No cross-request key cache.
+- **Secret**: `encrypt({ name: "AES-GCM", iv: 12 random bytes, additionalData: "<org_id>:<kind>:<scope>" })`
+  (D14's AAD, built from `ctx.orgId` and the requested kind/scope — never from the row), stored as base64
+  `ciphertext` + `iv` + `key_version`. A fresh IV on every write.
+- **Why a moved ciphertext fails (D19)**: decrypting org B's request uses B's DEK AND B's AAD; a row copied from
+  A fails on both. A row moved between kinds/scopes inside one org fails on the AAD.
+- **DEK rotation** (`POST /api/o/:slug/integrations/rotate-key`, owner): new version, every secret re-encrypted,
+  old version `retired_at`, one batch, audited `key.rotate`.
+- **KEK rotation** (platform runbook): set `TROV_KEK` to the new key and `TROV_KEK_PREVIOUS` to the old; unwrap
+  picks the key by fingerprint; `scripts/mt/rewrap-keks.mjs` (run through a platform-admin route) re-wraps every
+  `org_keys` row; then remove `TROV_KEK_PREVIOUS`. Losing `TROV_KEK` loses every org's credentials — they are
+  re-entered, nothing else is affected.
+
+#### 8.7.2 Kinds (D15)
+
+| kind | scope | used by | config / notes |
+|---|---|---|---|
+| `cloudflare_analytics` | `''` | `pollCloudflare` → `api.cloudflare.com` | `org_integration_config.config = { account_id }` (not secret) |
+| `railway` | environment key | `pollRailway` → `backboard.railway.com` as `Project-Access-Token` | ids on `org_environments` |
+| `metrics_endpoint` | environment key | `pollAppMetrics` (was `pollSaplingMetrics`) → `<api_url>/api/internal/metrics` | https only, `redirect: "manual"`, only a 200 counts; `api_url` validated on write by `checkFetchUrl` (`src/artifacts/fetch-url.ts`: https, no private/loopback/link-local literals) |
+| `github_token` | `''` | `reconcileRepo`, `runBackfill`, `fillFailedJob`, `refreshDrift`, progress | interim until the GitHub App (D13) |
+| `github_webhook` | `org_repos.id` | webhook HMAC (§8.5) | interim until the GitHub App |
+
+Every token goes to ONE fixed host (or the org's own validated `api_url` for `metrics_endpoint`).
+
+#### 8.7.3 The API — write-only, admin/owner, cookie only (D14)
+
+All under `/api/o/:slug/integrations`, behind `tenantGate` + `requireRole(ctx, "admin")`, refusing any request
+carrying an `Authorization` header (like ratify). No MCP tool, and the static test in §10.5 proves no MCP path
+can reach `getSecret`.
+
+| Route | Effect |
+|---|---|
+| `GET /` | metadata only: `{ kind, scope, configured, hint_last4, created_by, created_at, rotated_at, last_used_at, last_error, config }` per expected integration (derived from `org_environments` + `org_repos`) — never `ciphertext`, `iv`, `key_version` |
+| `PUT /:kind[/:scope] { secret, config? }` | set (409 if one exists); audit `secret.set` |
+| `POST /:kind[/:scope]/rotate { secret }` | replace (404 if none); `rotated_at`; audit `secret.rotate` |
+| `DELETE /:kind[/:scope]` | delete; audit `secret.delete` |
+| `PUT /:kind[/:scope]/config { config }` | non-secret config (Cloudflare `account_id`); audit `integration.config` |
+| `POST /:kind[/:scope]/test` | Test connection (§8.7.4) → `{ ok, detail }` (scrubbed) |
+| `POST /rotate-key` | DEK rotation (owner) |
+
+Every write response is the metadata row. The secret value is accepted, encrypted, and never returned,
+logged, put in an audit row, or echoed in a validation error (errors name the field, not its value).
+Deleting an environment deletes its `railway` / `metrics_endpoint` secrets in the same batch (audited).
+
+#### 8.7.4 Test connection (D18)
+
+One outbound request each, through the same code as the poller: Cloudflare — a one-hour
+`workersInvocationsAdaptive` query for the org's account; Railway — the poller's `metrics` query for the last
+hour; metrics endpoint — the poller's GET, body validated; GitHub token — `GET /repos/<primary repo>`; GitHub
+webhook — no outbound call: it reports the last verified delivery (`last_used_at`) and the URL to configure.
+A success clears `last_error`; a failure writes it.
+
+#### 8.7.5 `getSecret` — the only decrypt path
+
+`getSecret(ctx: TenantContext, kind, scope): Promise<Secret | null>` lives in `src/data/secrets.ts` (with the
+encrypt side). It refuses (throws) when `ctx.via === "bearer"` (an MCP context — D14) or `ctx.role === "member"`;
+it serves `system` contexts (cron jobs, webhook) and admin/owner session contexts (Test connection, Poll now,
+Sync GitHub). It returns a `Secret` object whose `toString()` / `toJSON()` / Node-inspect render `"[secret]"`; the
+plaintext is read only by `secret.reveal()` at the one line that builds the outbound header. Every message that
+may quote an upstream response is passed through `scrub(text, revealed)` BEFORE it is cut, logged or stored in
+`last_error` (the existing `scrubbedMessage` rule, `src/repo/github.ts`), and `last_error` is capped at 300
+characters after scrubbing. `last_used_at` is written at most once per 10 minutes per row.
+
+`TenantContext` therefore carries `via: "session" | "bearer" | "system"` beside `{ orgId, userId, role }`.
+
+#### 8.7.6 Moving SaplingLearn's current secrets
+
+SQL cannot encrypt, so no secret moves in a migration. Phase 5b ships the Integrations API with an
+`org_saplinglearn`-only env fallback (`GITHUB_SERVICE_TOKEN`, `CF_ANALYTICS_*`, `RAILWAY_TOKEN_*`,
+`SAPLING_METRICS_TOKEN`, `GITHUB_WEBHOOK_SECRET`) used only while that org has no row for the kind/scope. The
+owner enters each value through the API/page, Test connection passes, and Phase 7 deletes the fallback and
+those Worker secrets. After that the Worker's secrets are exactly D16's platform list plus `TROV_KEK`.
 
 ## 9. Hardcoded references (D10) — disposition
 
-Every item in audit §9 is resolved as: **org data** (`GITHUB_REPO`, `REPO_ENVIRONMENTS` → `org_repos`;
-`GITHUB_SERVICE_TOKEN`, `GITHUB_WEBHOOK_SECRET`, `CF_ANALYTICS_*`, `RAILWAY_TOKEN_*`,
-`SAPLING_METRICS_TOKEN` → `org_secrets`; `ADMIN_LOGINS` → `memberships.role`), **parameter** (
+Every item in audit §9 is resolved as: **org data** (`GITHUB_REPO` → `org_repos`, `REPO_ENVIRONMENTS` →
+`org_environments` (D16); `GITHUB_SERVICE_TOKEN` → `github_token`, `GITHUB_WEBHOOK_SECRET` → `github_webhook`,
+`CF_ANALYTICS_TOKEN` → `cloudflare_analytics` (+ `CF_ANALYTICS_ACCOUNT_ID` → its config), `RAILWAY_TOKEN_*` →
+`railway`, `SAPLING_METRICS_TOKEN` → `metrics_endpoint` — all `org_secrets` (D15); `ADMIN_LOGINS` →
+`memberships.role`), **parameter** (
 `parseTicketLink(raw, repo)` loses its default — callers pass the org's primary repo; `DEFAULT_TICKET_REPO`
 deleted; SPA `REPO_URL` / `ARTIFACT_REPOS` / handoff default repo come from `GET /api/o/:slug/me`'s
 `repos`), **deleted** (`SAPLING_ORG`, `isActiveOrgMember`, the env fallbacks after cut-over), or **copy**
@@ -562,6 +758,24 @@ On every push and PR: Node 22, `npm ci`, `npm run typecheck`, `npm test`, `npm r
 the mutation sample. No secrets needed (the suite is hermetic). Note: pushing a workflow file can require
 the `workflows` permission on the pushing token; if the push is refused, the owner adds the file.
 
+### 10.5 Secrets (D19) — `test/secrets.*.test.ts`
+
+- **Moved ciphertext**: set a secret in org A; copy its `ciphertext` / `iv` / `key_version` (and, separately, A's
+  `org_keys` row) into org B's row for the same kind/scope; `getSecret(ctxB, …)` must throw (GCM auth failure),
+  never return A's plaintext. Same for a row moved between kinds or scopes inside A, and for a tampered byte.
+- **Never in a response**: with a canary secret (a 64-character `LONG_TOKEN`, as the repo tests already use) set
+  for every kind and scope, call EVERY HTTP route (the §10.2 registry) as an owner and EVERY MCP tool as an admin
+  bearer; no response body or header contains the canary or any 8-character piece of it.
+- **Never in a log line**: `console.*` is spied for the whole file; drive set / rotate / delete / Test
+  connection / every poll job / the webhook with stubbed upstreams that ECHO the bearer and headers back in
+  their error bodies (the worst case); no captured argument — stringified, including `Secret` objects and
+  Errors — contains a canary piece. `last_error`, `org_audit.detail` and every other D1 column are dumped and
+  scanned the same way: the plaintext appears nowhere in D1.
+- **Never via MCP**: a static import-graph test — nothing reachable from `src/mcp.ts` imports
+  `src/data/secrets.ts` — plus a runtime test: a `via: "bearer"` ctx calling `getSecret` throws.
+- **Write-only API**: a member is 404/403 on every integrations route; an `Authorization` header is refused;
+  validation errors never echo the submitted value; audit rows exist for set / rotate / delete.
+
 ## 11. Phase plan
 
 Each phase is one PR to `main` (which deploys), must leave production working for SaplingLearn, and adds
@@ -573,35 +787,30 @@ its lines to `web/src/releases.ts` per `CLAUDE.md`.
 | **3 · TenantContext + data layer** | `src/data/*`; port every repository to `ctx`/`PlatformContext`; add `org_id` predicates; static enforcement tests (§4.4) | suite green; static tests green; zero `prepare` outside `src/data` | routes still pass a SaplingLearn ctx via the alias resolver |
 | **4 · HTTP routes + membership** | `tenantGate`, `/api/o/:slug/*`, org/member/invite routes, role gates replace `isAdmin`; compat aliases; sign-in gate removed | suite green; route-level isolation tests for HTTP | old SPA uses aliases; SaplingLearn members all have exactly one org |
 | **5a · MCP** | org-scoped tokens + OAuth org picker; server bound to ctx | MCP isolation tests | existing tokens backfilled to SaplingLearn |
-| **5b · Gate, FTS, cron, email, webhooks** | §8.1–8.5; `org_repos`/`org_secrets` + secret routes; legacy hook | remaining isolation rows; cron/email multi-org tests | owner seeds SaplingLearn secrets via the TA routes BEFORE the env fallback is removed (runbook) |
-| **6 · SPA** | `/o/:slug/` + hash routing (the Worker answers `GET /o/*` with `env.ASSETS.fetch("/index.html")` — no reliance on assets SPA-mode semantics); org switcher; create-org; invite + accept; members page with roles; org settings (repos, webhook URL, secrets); copy without "Sapling" | render tests; Playwright smoke | deploy flips the SPA to the new paths |
-| **7 · Isolation suite + CI + cleanup** | full matrix generated from registries; mutation job; CI workflow; `0041` drops defaults/legacy columns; delete aliases, legacy webhook, env fallbacks; artifact origin (if Q5 provisioned) | matrix covers 100% routes/tools; mutation sample all killed; `--all` run clean | — |
+| **5b · Gate, FTS, cron, email, webhooks, integrations** | §8.1–8.5, §8.7: per-(org, environment) job functions + rotation dispatcher; envelope encryption + Integrations API + Test connection; legacy hook | remaining isolation rows; cron/email multi-org tests; §10.5 secret tests | owner sets `TROV_KEK`, then enters SaplingLearn's secrets through the API BEFORE the env fallback is removed (§8.7.6) |
+| **6 · SPA** | `/o/:slug/` + hash routing (the Worker answers `GET /o/*` with `env.ASSETS.fetch("/index.html")` — no reliance on assets SPA-mode semantics); org switcher; create-org; invite + accept; members page with roles; org settings (repos, environments, webhook URL) and the **Integrations page** (D18: set / rotate / delete / Test connection per integration, browser-side secret generation for webhooks, last used / last error, audit history); copy without "Sapling" | render tests; Playwright smoke | deploy flips the SPA to the new paths |
+| **7 · Isolation suite + CI + cleanup** | full matrix generated from registries; mutation job; CI workflow; `0041` drops defaults/legacy columns; delete aliases, legacy webhook, env fallbacks; artifact origin on `trovusercontent.com` | matrix covers 100% routes/tools; mutation sample all killed; `--all` run clean | — |
 
 The isolation suite grows from Phase 4 onward (each phase adds its rows); Phase 7 makes it exhaustive and
 CI-enforced. The CI workflow itself can land in Phase 2 so every later phase runs under it — recommended.
 
-## 12. Decisions needed before Phase 2 (owner)
+## 12. Owner decisions (answered 2026-10-06)
 
-1. **Q1 — Google sign-in.** (a) *Recommended:* keep Google; `org_invites` accepts a GitHub login OR an email,
-   so non-engineers can still be invited; (b) literal D4: invites by GitHub login only, Google becomes
-   link-only for existing persons and new Google-only people cannot join.
-2. **Q2 — Per-org ticket/handoff numbers.** (a) *Recommended:* add `number` per org (SaplingLearn keeps its
-   numbers; new orgs start at #1; no cross-tenant volume leak); (b) keep global ids.
-3. **Q3 — SaplingLearn backfill.** Every existing non-reserved person becomes a member; `andres` (and
-   `AndresL230` if it still exists) owner; nobody else admin. Confirm, or list other admins.
-4. **Q4 — Cron scale.** (a) *Recommended for now:* round-robin cursor on the free plan (fine for a few
-   configured orgs); (b) move to Workers Paid and keep per-org cadence; (c) activate Queues (overrides the
-   `CLAUDE.md` deferred-seam rule).
-5. **Q5 — Artifact origin.** Provide a domain for `ARTIFACT_ORIGIN` (e.g. `canopyusercontent.com`). Until
-   then raw content stays on the app origin behind the existing opaque-origin sandbox.
-6. **Q6 — Who may create an org.** *Recommended:* any signed-in GitHub user, capped at 10 orgs per person.
-7. **Q7 — Shipping.** *Recommended:* phase-by-phase to `main` with compat aliases (above). Alternative: a
-   long-lived integration branch merged once (bigger single cut-over, no aliases).
-8. **Q8 — Email.** Global one-click unsubscribe (recommended) vs per-org; sending address platform-level
-   (`EMAIL_FROM`), orgs set only a display name.
-9. **Q9 — `title`/`responsibilities`** move from `persons` to `memberships` (C-8). Confirm.
-10. **Q10 — Repos.** Many `org_repos` per org for webhook capture, ONE primary repo drives the dashboard,
-    mirror and progress. Confirm.
+1. **Q1** — Keep Google sign-in. Invites by GitHub login OR email; accepting requires the signed-in user's
+   GitHub login or a provider-VERIFIED email (`identities.verified_email`) to match (§5.3).
+2. **Q2** — Per-org ticket and handoff numbers (`number`, `org_counters`); global ids stay internal.
+3. **Q3** — `andres` = owner; everyone else member. *Open: the answer left "[list any other admins]" blank — no
+   other admin is seeded until named.*
+4. **Q4** — Workers Paid. One job function per (org, environment), dispatched by rotation; Queues later; the
+   `CLAUDE.md` deferred-seam rule stands. Amends D17 (§8.3).
+5. **Q5** — `ARTIFACT_ORIGIN` = `https://trovusercontent.com`, a separate registrable domain (§8.6).
+6. **Q6** — Any signed-in user may create orgs, cap 3 per user; a platform admin can raise it (`persons.org_limit`).
+7. **Q7** — *Open: the answer offered both options ("move to AndresL230/trov, phase-by-phase to main with aliases"
+   OR "stay here, one long-lived branch, merge at the end").* Phase 2 is the same work either way; it is being
+   built on `claude/sharp-hawking-m0jgdp` and not merged until this is settled.
+8. **Q8** — One global unsubscribe for all mail, plus per-org digest settings.
+9. **Q9** — `role` / `responsibilities` move to per-org `memberships` (`title`, `responsibilities`).
+10. **Q10** — One primary repo per org (`is_primary`); the schema supports many.
 
 ## 13. Risks
 
@@ -611,7 +820,10 @@ CI-enforced. The CI workflow itself can land in Phase 2 so every later phase run
   mutation sampling.
 - **Login rename/reuse on GitHub** binds an invite to the current holder (pre-existing identity model;
   follow-up: store GitHub numeric ids).
-- **Cron fairness** past a few orgs (Q4).
-- **Secrets in D1** — encrypted under one Worker secret; rotation of `ORG_SECRETS_KEY` needs a re-encrypt
-  script (follow-up), and the key's loss loses every org's credentials (recoverable by re-entry).
+- **Cron fairness** — the rotation cursor guarantees no starvation; per-org cadence stretches only once
+  orgs × environments outgrow one invocation's budget (Queues are the planned remedy).
+- **Secrets in D1** — envelope-encrypted (§8.7.1); a database leak alone yields nothing without `TROV_KEK`.
+  Losing `TROV_KEK` loses every org's credentials (recoverable by re-entry, nothing else affected).
+- **Tenant-supplied URLs** (health pings, metrics endpoint) — https-only and literal private ranges refused on
+  write; a Worker cannot resolve DNS first, so DNS rebinding remains out of reach (as for artifact fetch).
 - **bm25 side channel** (audit F-3) — accepted.
