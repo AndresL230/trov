@@ -139,7 +139,7 @@ function detailProps(t: TicketDetail, o: Partial<TicketDetailProps> = {}): Ticke
 function appState(o: Partial<AppState> = {}): AppState {
   const s = initialState();
   s.view = "app";
-  s.me = { handle: "jose-a", name: "Jose Alvarez", avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false };
+  s.me = { handle: "jose-a", name: "Jose Alvarez", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 };
   s.persons = { status: "ok", data: PERSONS };
   return Object.assign(s, o);
 }

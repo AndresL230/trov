@@ -11,7 +11,8 @@
  * All tests are pure (no D1 / Miniflare bindings). They run in the same Vitest
  * pool-workers harness as the backend tests; nothing here touches the DOM.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { setApiOrg } from "../web/src/api";
 import { lineDiff, collapsedLineDiff } from "../web/src/diff";
 import { reviewView, reviewDetail, reviewCard, unifiedDiff, renderedPreview, splitDiffRows, type ReviewItem, type ReviewProps } from "../web/src/review";
 import { maintenanceView, assignPanel, personPicker, fileHint, type MaintenanceProps, type UnplacedItem, type IdentityGroup } from "../web/src/maintenance";
@@ -479,7 +480,7 @@ describe("maintenanceView — Identity tab", () => {
   it("the discard toast carries the Undo that restores the login", () => {
     const html = render({
       ...initialState(), view: "app",
-      me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+      me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
       toast: "Discarded @rando-1", toastAction: { label: "Undo", act: "identityRestore", arg: "rando-1" }, toastAt: Date.now(), toastMs: 8000,
     });
     expect(html).toContain("Discarded @rando-1");
@@ -498,8 +499,8 @@ describe("Maintenance — the tab bar heading the page (the sidebar has no sub-p
   const triage = (id: number) => ({ id, raw: "{}", reason: "low_confidence", source_author: null, resolved: 0, created_at: "2026-09-27T00:00:00Z", resolved_at: null, resolved_by: null, resolution: null, assigned_ref: null }) as never;
   const task = (login: string) => ({ login, first_seen: "2026-09-27T00:00:00Z", status: "pending", resolved_at: null, resolved_by: null, sample: [] }) as never;
   const app = (over: Partial<ReturnType<typeof initialState>> = {}) => render({
-    ...initialState(), view: "app", screen: "maintenance",
-    me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: true },
+    ...initialState(), view: "app", screen: "maintenance", orgSlug: "saplinglearn",
+    me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "admin" as const }], superadmin: false, pending_invites: 0 },
     needsTriage: { status: "ok", data: [triage(1), triage(2), triage(3)] },
     identityTasks: { status: "ok", data: [task("mk-dev2")] },
     ...over,
@@ -670,9 +671,13 @@ describe("personPicker — two-step confirm guard", () => {
 
 describe("Review › Rendered shows the proposed images", () => {
   const A = "f".repeat(64);
+  beforeAll(() => setApiOrg("acme"));
+  afterAll(() => setApiOrg(null));
   it("an added image line renders the picture (zoomable), outlined as added, with its alt as caption", () => {
     const html = renderedPreview([{ t: "add", s: `![The deploy flow](/img/${A})` }]);
-    expect(html).toContain(`<img src="/img/${A}" alt="The deploy flow"`);
+    // The image is the ORG's: its bytes are behind the org's membership gate, like every request.
+    expect(html).toContain(`<img src="/api/o/acme/img/${A}" alt="The deploy flow"`);
+    expect(html).not.toContain(`src="/img/`);
     expect(html).toContain(`data-act="docImgZoom" data-arg="${A}"`);
     expect(html).toContain("border-color:var(--green)");
     expect(html).toContain("<figcaption");

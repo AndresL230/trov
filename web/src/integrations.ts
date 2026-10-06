@@ -54,10 +54,10 @@ export const integrationKey = (i: { kind: string; scope: string }): string => `$
 
 /** The kinds whose value the admin makes up — the form offers Generate for them. */
 export const GENERATED_KINDS: readonly IntegrationKind[] = ["github_webhook", "metrics_endpoint"];
-/** The per-repository webhook handler is not live yet (the routes return its URL already):
- *  the URL is shown as "available soon", nothing tells the admin to change GitHub, and there
- *  is no delivery to test. Flip this when `/webhook/github/<id>` answers. */
-export const WEBHOOKS_LIVE = false;
+/** The per-repository webhook handler is live (`POST /webhook/github/<id>`, Phase 5b): the row
+ *  shows the URL to paste into GitHub and "Check deliveries" reports the last verified one.
+ *  `false` was the cut-over state — the URL shown as "available soon", with nothing to check. */
+export const WEBHOOKS_LIVE = true;
 
 /** Each kind's name when the list no longer carries it (the history of a deleted one) — the catalog's own labels. */
 const KIND_NAME: Record<IntegrationKind, string> = {
@@ -118,11 +118,17 @@ const OK_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" str
 const FAIL_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2.4" stroke-linecap="round" aria-hidden="true" style="flex:none;margin-top:2px"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
 const box = (tone: string) => `margin-top:10px;border:1px solid color-mix(in srgb,${tone} 40%,transparent);background:color-mix(in srgb,${tone} 7%,transparent);border-radius:8px;padding:9px 11px;display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.5;color:var(--fg-70)`;
 
-function testResult(t: TestState | undefined): string {
+const WAIT_ICON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;margin-top:2px"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>`;
+/** A test's answer. A webhook secret has nothing to call: its "test" reports the last delivery
+ *  GitHub signed with it, so "none yet" is something to wait for (amber), not a failure (red). */
+function testResult(t: TestState | undefined, kind: IntegrationKind): string {
   if (!t || t.status === "running") return "";
-  return `<div role="status" aria-live="polite" data-org-test="${t.ok ? "ok" : "failed"}" style="${box(t.ok ? "var(--green)" : "var(--red)")}">
-    ${t.ok ? OK_ICON : FAIL_ICON}
-    <div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">${t.ok ? "Connection works." : "Test failed."}</strong> ${esc(t.detail)}</div>
+  const hook = kind === "github_webhook";
+  const tone = t.ok ? "var(--green)" : hook ? "var(--amber)" : "var(--red)";
+  const title = hook ? (t.ok ? "Deliveries are arriving." : "Nothing has arrived yet.") : t.ok ? "Connection works." : "Test failed.";
+  return `<div role="status" aria-live="polite" data-org-test="${t.ok ? "ok" : hook ? "waiting" : "failed"}" style="${box(tone)}">
+    ${t.ok ? OK_ICON : hook ? WAIT_ICON : FAIL_ICON}
+    <div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">${title}</strong> ${esc(t.detail)}</div>
   </div>`;
 }
 
@@ -149,19 +155,27 @@ export function integrationRow(i: IntegrationDTO, o: RowOpts): string {
     ? `<div data-org-lasterror style="${box("var(--red)")}">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last error.</strong> ${esc(i.last_error)}</div></div>` : "";
   const orphan = st.state === "orphan"
     ? `<div style="font-size:12px;color:var(--fg-40);margin-top:6px">Its environment or repository no longer exists, so nothing reads it. Delete it.</div>` : "";
-  const hook = i.kind === "github_webhook" && i.webhook_url && !WEBHOOKS_LIVE
-    ? `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-55)">
+  const hook = i.kind !== "github_webhook" || !i.webhook_url ? ""
+    : WEBHOOKS_LIVE
+    ? `<div data-org-hookurl style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-55)">
+        <span style="${O_LABEL};font-size:10px">Webhook URL</span>
+        <code class="cnpy-org-code">${esc(i.webhook_url)}</code>
+        <span style="display:block;color:var(--fg-40)">${i.configured ? "The Payload URL of this repository's webhook on GitHub. Every delivery must be signed with this secret; anything else is rejected." : st.state === "legacy" ? "This repository's own Payload URL. Its current GitHub webhook keeps working with the platform's credential; to move it here, set a secret, then point the webhook at this URL with the same secret." : "Set the secret first, then add a webhook on GitHub with this Payload URL and the same secret. Until then deliveries to it are rejected."}</span>
+      </div>`
+    : `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-55)">
         <span style="${O_LABEL};font-size:10px">Webhook URL &middot; available soon</span>
         <code class="cnpy-org-code">${esc(i.webhook_url)}</code>
         <span style="display:block;color:var(--fg-40)">Per-repository webhooks are not live yet. You can save the secret now; leave your GitHub webhook as it is.</span>
-      </div>` : "";
+      </div>`;
 
   const off = !o.secretsAvailable;
   const why = off ? "Secrets can't be saved until the platform's encryption key is configured" : undefined;
   const testable = (i.configured || i.legacy_fallback) && i.expected && (i.kind !== "github_webhook" || WEBHOOKS_LIVE);
   const running = o.test?.status === "running";
   const actions: string[] = [];
-  if (testable) actions.push(quietBtn(running ? "Testing…" : "Test connection", "orgSecretTest", { arg: key, disabled: off || running, busy: running, label: `Test the ${full}`, field: `orgSecretTest:${key}`, title: why }));
+  // A webhook secret is checked by what GitHub has delivered, not by a call Trov makes.
+  const hookTest = i.kind === "github_webhook";
+  if (testable) actions.push(quietBtn(running ? (hookTest ? "Checking…" : "Testing…") : hookTest ? "Check deliveries" : "Test connection", "orgSecretTest", { arg: key, disabled: off || running, busy: running, label: hookTest ? `Check deliveries for the ${full}` : `Test the ${full}`, field: `orgSecretTest:${key}`, title: why }));
   if (i.configured && i.expected && i.config_fields.length) actions.push(quietBtn("Edit settings", "orgSecretOpen", { arg: `config:${key}`, label: `Edit the settings of the ${full}`, field: `orgSecretOpen:config:${key}` }));
   if (i.configured && i.expected) actions.push(quietBtn("Rotate", "orgSecretOpen", { arg: `rotate:${key}`, disabled: off, label: `Rotate the ${full}`, field: `orgSecretOpen:rotate:${key}`, title: why }));
   if (!i.configured) actions.push(accentBtn(st.state === "legacy" ? "Set your own" : "Set", "orgSecretOpen", { arg: `set:${key}`, disabled: off, label: `Set the ${full}`, field: `orgSecretOpen:set:${key}`, title: why }));
@@ -175,7 +189,7 @@ export function integrationRow(i: IntegrationDTO, o: RowOpts): string {
       </div>
       <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:4px;max-width:680px">${esc(i.description)}</div>
       ${meta.length ? `<div style="font-size:12px;color:var(--fg-40);margin-top:5px">${meta.join(" &middot; ")}</div>` : ""}
-      ${settings}${orphan}${hook}${legacy}${error}${testResult(o.test)}
+      ${settings}${orphan}${hook}${legacy}${error}${testResult(o.test, i.kind)}
     </div>
     <div class="cnpy-org-actions">${actions.join("")}</div>
   </li>`;

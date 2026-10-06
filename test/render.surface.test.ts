@@ -40,7 +40,7 @@ function signedIn(): ReturnType<typeof initialState> {
   return {
     ...initialState(),
     view: "app",
-    me: { handle: "alice", name: "Alice", avatar_url: null, color: "stone", identities: [{ provider: "github", label: "alice" }], org: "SaplingLearn", admin: false },
+    me: { handle: "alice", name: "Alice", avatar_url: null, color: "stone", identities: [{ provider: "github", label: "alice" }], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
   } as ReturnType<typeof initialState>;
 }
 

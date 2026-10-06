@@ -210,13 +210,16 @@ describe("prompt delete", () => {
   const detail: PromptDetail = { slug: "lint", title: "Lint", description: "", tags: [], author: "Darkest-Teddy", version: 2, status: "published", updated_at: "2026-09-23T10:00:00Z", body: "Lint.", use_count: 0, last_used_at: null };
   const versions: PromptVersion[] = [2, 1].map((n) => ({ version: n, status: "published" as const, author: "Darkest-Teddy", created_at: "2026-09-20T10:00:00Z", summary: "s", body: "b" }));
   const props = { status: "ok" as const, prompt: detail, versions, persons, knownTags: [], diffVersion: null, tagMenu: false, tagDraft: "", promptView: "raw" as const };
-  const me = (handle: string, admin: boolean) => ({ handle, name: null, avatar_url: null, color: "moss" as const, identities: [], org: "SaplingLearn", admin });
+  // Admin = admin or owner of the org on screen (`orgSlug`); there is no person-level admin.
+  const me = (handle: string, admin: boolean) => ({ handle, name: null, avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "acme", name: "Acme", role: admin ? "admin" as const : "member" as const }], superadmin: false, pending_invites: 0 });
 
   it("offers Delete prompt only to its author or an admin (canDeletePrompt, case-insensitive)", () => {
-    const state = (m: ReturnType<typeof me>) => ({ me: m, promptDetail: { status: "ok" as const, data: { prompt: detail, versions } } });
+    const state = (m: ReturnType<typeof me>, orgSlug = "acme") => ({ me: m, orgSlug, myOrgs: { status: "idle" as const, data: null }, promptDetail: { status: "ok" as const, data: { prompt: detail, versions } } });
     expect(canDeletePrompt(state(me("darkest-teddy", false)))).toBe(true);
     expect(canDeletePrompt(state(me("someone", true)))).toBe(true);
     expect(canDeletePrompt(state(me("someone", false)))).toBe(false);
+    // An admin of ANOTHER org is not an admin here.
+    expect(canDeletePrompt(state(me("someone", true), "other"))).toBe(false);
     expect(promptDetailView({ ...props, canDelete: false, deleteArm: false })).not.toContain("promptDeleteArm");
     const html = promptDetailView({ ...props, canDelete: true, deleteArm: false });
     expect(html).toContain('data-act="promptDeleteArm"');

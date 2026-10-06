@@ -6,7 +6,7 @@
 // the MCP bearer is for /mcp only and never appears here.
 import type {
   FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, EventRow,
-  PersonColor, InviteRow,
+  PersonColor,
 } from "@shared/rows";
 // Type-only (erased at build): the sprint DTOs the roadmap renders. Importing the
 // zod module for types costs the bundle nothing.
@@ -18,14 +18,14 @@ import type { DashboardData } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import type { RepoDashboard, RepoRefreshResult } from "@shared/repo";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
-import type { NotificationOutboxRow, NotificationSettingsRow, OAuthGrantSummary } from "@shared/rows";
+import type { NotificationOutboxRow, NotificationSettingsRow, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
 import type {
   ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactDiffDTO, ArtifactFetchDTO,
   ArtifactKind, ArtifactVisibility, ArtifactLinkType,
 } from "@shared/artifacts-core";
 import type { QuickSearchResult } from "@shared/quick-search";
 // Person profiles (0036): the DTOs and caps are one zod-free contract with the Worker.
-import type { PersonSummary, PersonProfile, PersonProfileWrite } from "@shared/people";
+import type { PersonSummary, PersonProfile } from "@shared/people";
 import type {
   HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody,
 } from "@shared/handoffs";
@@ -39,44 +39,81 @@ export class ApiError extends Error {
 }
 export class NotFound extends Error {}
 
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path, { credentials: "same-origin", headers: { accept: "application/json" } });
+// ── the current org: ONE prefix ──────────────────────────────────────────────
+// Every tenant route lives at `/api/o/<slug>/<suffix>` (canopy-multitenancy.md §6.3). The functions
+// below still name a route by its SUFFIX (`/feed`, `/api/handoffs`); `apiUrl` is the one place that
+// turns it into the current org's URL, and every request in the SPA is sent through `call`. main.ts
+// sets the slug once at boot from the page's path (`/o/<slug>/`); switching org is a page load.
+let apiOrg: string | null = null;
+export function setApiOrg(slug: string | null): void { apiOrg = slug; }
+export const apiOrgSlug = (): string | null => apiOrg;
+
+/** Person-level and platform routes: not an org's, so never prefixed (docs/architecture/data-layer.md › Routes and gates). */
+const GLOBAL_PATH = /^\/(?:auth|avatar)\/|^\/api\/(?:orgs|invites|platform|o)(?:[/?]|$)/;
+/** Routes with NO `/api/o/:slug` form yet: they answer only for a person in exactly one org
+ *  (409 `org_required` otherwise). The legacy invite mail, and the raw artifact frame. */
+export const ALIAS_ONLY_PATH = /^\/(?:invites|raw\/a)(?:[/?]|$)/;
+export const isGlobalPath = (path: string): boolean => GLOBAL_PATH.test(path);
+
+/** The URL a route is requested at: a tenant route under the current org, anything else as written.
+ *  The old `/api/` of handoffs / prompts / docs / people / artifacts / notifications is dropped. */
+export function apiUrl(path: string): string {
+  if (GLOBAL_PATH.test(path) || ALIAS_ONLY_PATH.test(path)) return path;
+  if (!apiOrg) throw new ApiError(409, "org_required");
+  return `/api/o/${encodeURIComponent(apiOrg)}${path.replace(/^\/api(?=\/)/, "")}`;
+}
+
+/** The same URL for markup (an `href`, an image `src`): never throws — with no org open (a
+ *  render before boot has one) it is an inert `#`, never the unprefixed alias. */
+export function tenantHref(path: string): string {
+  try { return apiUrl(path); } catch { return "#"; }
+}
+
+// A 404 from an org's route is either a missing thing or the membership gate (removed from the org,
+// org suspended, unknown slug) — the same answer by design. So a 404 there asks the gate directly,
+// once: `GET /api/o/<slug>/me` answers 404 only when the org is no longer the caller's.
+let onOrgLost: ((slug: string) => void) | null = null;
+/** main.ts: what to do when the current org turns out not to be the caller's (the org picker). */
+export function setOrgLostHandler(fn: ((slug: string) => void) | null): void { onOrgLost = fn; }
+let probing = false;
+function probeOrg(): void {
+  const slug = apiOrg;
+  if (!slug || probing || !onOrgLost) return;
+  probing = true;
+  fetch(`/api/o/${encodeURIComponent(slug)}/me`, { credentials: "same-origin", headers: { accept: "application/json" } })
+    .then((res) => { if (res.status === 404 && apiOrg === slug) onOrgLost?.(slug); })
+    .catch(() => undefined)
+    .finally(() => { probing = false; });
+}
+
+/** THE sender: prefixes the path, carries the session cookie, turns a 401 into `Unauthorized`. */
+async function call(path: string, init: RequestInit = {}): Promise<Response> {
+  const url = apiUrl(path);
+  const res = await fetch(url, { credentials: "same-origin", ...init, headers: { accept: "application/json", ...(init.headers as Record<string, string> | undefined) } });
   if (res.status === 401) throw new Unauthorized();
+  if (res.status === 404 && url.startsWith("/api/o/") && !url.endsWith("/me")) probeOrg();
+  return res;
+}
+/** A refused call's error code: the body's `error`, else the status. */
+async function refusal(res: Response): Promise<ApiError> {
+  let msg = String(res.status);
+  try { const j = (await res.json()) as { error?: string }; if (j.error) msg = j.error; } catch { /* non-JSON */ }
+  return new ApiError(res.status, msg);
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  const res = await call(path);
   if (!res.ok) throw new ApiError(res.status, `${path} -> ${res.status}`);
   return res.json() as Promise<T>;
 }
 
-async function postJson<T>(path: string, body: unknown = {}): Promise<T> {
-  const res = await fetch(path, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (res.status === 401) throw new Unauthorized();
-  if (!res.ok) {
-    let msg = String(res.status);
-    try { const j = (await res.json()) as { error?: string }; if (j.error) msg = j.error; } catch { /* non-JSON */ }
-    throw new ApiError(res.status, msg);
-  }
+async function writeJson<T>(method: "POST" | "PUT", path: string, body: unknown): Promise<T> {
+  const res = await call(path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) throw await refusal(res);
   return res.json() as Promise<T>;
 }
-
-async function putJson<T>(path: string, body: unknown = {}): Promise<T> {
-  const res = await fetch(path, {
-    method: "PUT",
-    credentials: "same-origin",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (res.status === 401) throw new Unauthorized();
-  if (!res.ok) {
-    let msg = String(res.status);
-    try { const j = (await res.json()) as { error?: string }; if (j.error) msg = j.error; } catch { /* non-JSON */ }
-    throw new ApiError(res.status, msg);
-  }
-  return res.json() as Promise<T>;
-}
+const postJson = <T>(path: string, body: unknown = {}): Promise<T> => writeJson<T>("POST", path, body);
+const putJson = <T>(path: string, body: unknown = {}): Promise<T> => writeJson<T>("PUT", path, body);
 
 // ── reads ────────────────────────────────────────────────────────────────────
 export interface FeedQuery { author?: string; tags?: string[]; limit?: number; }
@@ -135,8 +172,7 @@ export interface QueryResult {
 export async function quickSearch(q: string, signal?: AbortSignal, limit?: number): Promise<QuickSearchResult> {
   const p = new URLSearchParams({ q });
   if (limit) p.set("limit", String(limit));
-  const res = await fetch(`/search/quick?${p}`, { credentials: "same-origin", headers: { accept: "application/json" }, signal });
-  if (res.status === 401) throw new Unauthorized();
+  const res = await call(`/search/quick?${p}`, { signal });
   if (!res.ok) throw new ApiError(res.status, `/search/quick -> ${res.status}`);
   return ((await res.json()) as { result: QuickSearchResult }).result;
 }
@@ -176,7 +212,12 @@ export function listAdrs(status?: string): Promise<AdrRow[]> {
 export interface MeIdentity { provider: "github" | "google"; label: string; linked_at: string }
 /** `avatar_url` is already resolved (`avatarSrc`: an uploaded photo, else the provider's
  *  picture). `role` is optional so a Worker from before 0036 still reads. */
-export interface Me { handle: string; name: string | null; avatar_url: string | null; color: PersonColor; identities: MeIdentity[]; org: string; admin: boolean; role?: string | null }
+/** `orgs` is every org the person is in, each with THEIR role there — what the SPA routes and gates on
+ *  (there is no person-level `admin`: admin means admin or owner of the org on screen). */
+export interface Me {
+  handle: string; name: string | null; avatar_url: string | null; color: PersonColor; identities: MeIdentity[];
+  orgs: OrgT.MyOrg[]; superadmin: boolean; pending_invites: number;
+}
 export function getMe(): Promise<Me> {
   return getJson<Me>("/auth/me");
 }
@@ -204,23 +245,13 @@ export function getPersonProfile(handle: string): Promise<PersonProfile> {
     throw e;
   });
 }
-/** Role and/or responsibilities — the person themselves or an admin (403 otherwise, 400 over
- *  the caps). Answers with the fresh profile. */
-export function updatePersonProfile(handle: string, body: PersonProfileWrite): Promise<PersonProfile> {
-  return putJson<PersonProfile>(`/api/people/${encodeURIComponent(handle)}`, body);
-}
 /** Upload MY avatar (multipart `file`; the caller downsizes it first). 400 a type the Worker
  *  refuses, 413 over `AVATAR_MAX_BYTES`. Answers with the resolved `avatar_url`. */
 export async function uploadAvatar(file: Blob, filename = "avatar"): Promise<{ ok: true; avatar_url: string | null }> {
   const fd = new FormData();
   fd.set("file", file, filename);
-  const res = await fetch("/api/people/me/avatar", { method: "POST", credentials: "same-origin", headers: { accept: "application/json" }, body: fd });
-  if (res.status === 401) throw new Unauthorized();
-  if (!res.ok) {
-    let msg = String(res.status);
-    try { const j = (await res.json()) as { error?: string }; if (j.error) msg = j.error; } catch { /* non-JSON */ }
-    throw new ApiError(res.status, msg);
-  }
+  const res = await call("/api/people/me/avatar", { method: "POST", body: fd });
+  if (!res.ok) throw await refusal(res);
   return res.json() as Promise<{ ok: true; avatar_url: string | null }>;
 }
 /** Drop MY uploaded avatar: `avatar_url` falls back to the provider picture, or null (initials). */
@@ -228,11 +259,14 @@ export function removeAvatar(): Promise<{ ok: true; avatar_url: string | null }>
   return postJson("/api/people/me/avatar/remove");
 }
 
-// ── invites (admin) ───────────────────────────────────────────────────────────
-export function listInvites(): Promise<InviteRow[]> { return getJson<{ invites: InviteRow[] }>("/invites").then((r) => r.invites); }
-export function createInvite(email: string, name?: string): Promise<{ ok: true; invite: InviteRow; email: { status: "sent" | "failed"; error: string | null } }> { return postJson("/invites", { email, name }); }
-export function revokeInvite(email: string): Promise<{ ok: true }> { return postJson(`/invites/${encodeURIComponent(email)}/revoke`); }
-export function resendInvite(email: string): Promise<{ ok: true; email: { status: "sent" | "failed"; error: string | null } }> { return postJson(`/invites/${encodeURIComponent(email)}/resend`); }
+// ── the invitation e-mail (ALIAS ONLY) ───────────────────────────────────────
+// `POST /api/o/:slug/invites` records an invite and sends nothing; the mail is still sent by the
+// legacy route, which has no `/api/o/:slug` form and answers only for a person in exactly ONE org
+// (409 `org_required` otherwise). Org settings › Members offers it when `canMailInvites(me)`.
+export type InviteMail = { status: "sent" | "failed"; error: string | null };
+export function mailOrgInvite(email: string): Promise<InviteMail> {
+  return postJson<{ ok: true; email: InviteMail }>(`/invites/${encodeURIComponent(email)}/resend`).then((r) => r.email);
+}
 
 // ── Org settings (/api/orgs, /api/o/:slug/… — web/src/org-settings.ts, integrations.ts) ──
 // Self-contained: its own sender, so a refusal keeps the server's `message` and `field` (they
@@ -246,10 +280,9 @@ export class OrgApiError extends ApiError {
   constructor(status: number, code: string, readonly detail: string | null, readonly field: string | null) { super(status, code); }
 }
 async function orgSend<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
-  const init: RequestInit = { method, credentials: "same-origin", headers: { accept: "application/json" } };
-  if (body !== undefined) { init.body = JSON.stringify(body); init.headers = { accept: "application/json", "content-type": "application/json" }; }
-  const res = await fetch(path, init);
-  if (res.status === 401) throw new Unauthorized();
+  const init: RequestInit = { method };
+  if (body !== undefined) { init.body = JSON.stringify(body); init.headers = { "content-type": "application/json" }; }
+  const res = await call(path, init);
   if (!res.ok) {
     let j: { error?: unknown; message?: unknown; field?: unknown } = {};
     try { j = (await res.json()) as typeof j; } catch { /* non-JSON */ }
@@ -263,6 +296,17 @@ const integrationPath = (slug: string, kind: IntT.IntegrationKind, scope: string
 
 /** My orgs, my pending invites and the superadmin flag (`GET /api/orgs`). */
 export function getMyOrgs(): Promise<OrgT.MyOrgsResponse> { return orgSend("GET", "/api/orgs"); }
+/** Create an org; the caller becomes its owner. Refusals: `invalid_slug`, `reserved_slug`, `slug_taken`, `invalid_name`, `org_limit`. */
+export function createOrg(body: { slug: string; name: string }): Promise<OrgT.MyOrg> {
+  return orgSend<{ org: OrgT.MyOrg }>("POST", "/api/orgs", body).then((r) => r.org);
+}
+/** Answer one of MY pending invites (`GET /api/orgs`'s `invites`). */
+export function respondToInvite(id: number, accept: boolean): Promise<unknown> { return orgSend("POST", `/api/invites/${id}/${accept ? "accept" : "decline"}`); }
+/** My membership of one org, and its connected repositories. A 404 = not mine (or suspended, or unknown). */
+export function getOrgMe(slug: string): Promise<OrgT.OrgMeResponse> { return orgSend("GET", orgPath(slug, "/me")); }
+/** MY personal MCP tokens for the CURRENT org (never another org's, never anyone else's). */
+export function listMcpTokens(): Promise<McpTokenSummary[]> { return getJson<{ tokens: McpTokenSummary[] }>("/mcp-tokens").then((r) => r.tokens); }
+export function revokeMcpToken(id: number): Promise<{ ok: true }> { return postJson(`/mcp-tokens/${id}/revoke`); }
 export function getOrgSettings(slug: string): Promise<{ org: OrgT.OrgSettings; can_edit: boolean }> { return orgSend("GET", orgPath(slug, "/settings")); }
 export function putOrgSettings(slug: string, name: string): Promise<{ ok: true; org: OrgT.OrgSettings }> { return orgSend("PUT", orgPath(slug, "/settings"), { name }); }
 export function listOrgMembers(slug: string): Promise<OrgT.OrgMember[]> { return orgSend<{ members: OrgT.OrgMember[] }>("GET", orgPath(slug, "/members")).then((r) => r.members); }
@@ -577,14 +621,13 @@ export function deleteSprint(id: number): Promise<{ ok: true; id: number; label:
 // A 404 is NotFound — the API answers a missing slug and one private to someone
 // else identically, and the SPA shows both as the not-found page.
 async function sendJson<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const init: RequestInit = { method, credentials: "same-origin", headers: { accept: "application/json" } };
+  const init: RequestInit = { method };
   if (body instanceof FormData) init.body = body;
   else if (body !== undefined) {
     init.body = JSON.stringify(body);
-    init.headers = { accept: "application/json", "content-type": "application/json" };
+    init.headers = { "content-type": "application/json" };
   }
-  const res = await fetch(path, init);
-  if (res.status === 401) throw new Unauthorized();
+  const res = await call(path, init);
   if (res.status === 404) throw new NotFound(path);
   if (!res.ok) {
     let msg = String(res.status);
@@ -674,8 +717,8 @@ export type { SprintView, SprintDetail, SprintCreate };
 export type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory, TicketCreate };
 export type { DashboardData };
 export type { PrefsView, PolicyKindView, Cadence, NotificationOutboxRow, NotificationSettingsRow };
-export type { InviteRow, PersonColor };
-export type { PersonSummary, PersonProfile, PersonProfileWrite };
+export type { PersonColor };
+export type { PersonSummary, PersonProfile };
 
 // ── Handoffs + Prompt Library ────────────────────────────────────────────────
 export async function listHandoffs(box: HandoffBox = "mine"): Promise<HandoffView[]> {
@@ -774,13 +817,8 @@ export function grantPlatformAdmin(handle: string): Promise<PlatformAdmin[]> {
 }
 /** 409 `last_superadmin` when it would leave the platform with none. */
 export async function revokePlatformAdmin(handle: string): Promise<PlatformAdmin[]> {
-  const res = await fetch(`/api/platform/admins/${encodeURIComponent(handle)}`, { method: "DELETE", credentials: "same-origin", headers: { accept: "application/json" } });
-  if (res.status === 401) throw new Unauthorized();
-  if (!res.ok) {
-    let msg = String(res.status);
-    try { const j = (await res.json()) as { error?: string }; if (j.error) msg = j.error; } catch { /* non-JSON */ }
-    throw new ApiError(res.status, msg);
-  }
+  const res = await call(`/api/platform/admins/${encodeURIComponent(handle)}`, { method: "DELETE" });
+  if (!res.ok) throw await refusal(res);
   return ((await res.json()) as { admins: PlatformAdmin[] }).admins;
 }
 export function listPlatformAudit(org = "", limit = 100): Promise<PlatformAuditRow[]> {

@@ -13,8 +13,7 @@
 // styles over the trov.css tokens, `data-act` / `data-arg` dispatched in main.ts to
 // web/src/org-actions.ts). Every act here starts with `org`.
 //
-// "The current org" is ONE function, `currentOrg` — today a person has one org; an org
-// switcher only has to change what it returns.
+// "The current org" is ONE function, `currentOrg`: the org the page's path names.
 
 import { esc, attr, relTime, surface, statusBadge } from "./ui";
 import {
@@ -102,6 +101,8 @@ export interface OrgUi {
   inviteRole: "member" | "admin";
   inviteBusy: boolean;
   inviteError: string | null;
+  /** The pending invite whose e-mail is being sent again (its id). */
+  mailBusy: number | null;
   // Repositories
   repoDraft: string;
   repoBusy: boolean;
@@ -121,16 +122,19 @@ export function initialOrgUi(): OrgUi {
     tab: "integrations", slug: null,
     settings: idle(null), members: idle([]), invites: idle([]), repos: idle([]), envs: idle([]), integrations: idle(null), audit: idle([]),
     nameDraft: null, nameSaving: false, nameError: null,
-    memberEdit: null, inviteBy: "github", inviteDraft: "", inviteRole: "member", inviteBusy: false, inviteError: null,
+    memberEdit: null, inviteBy: "github", inviteDraft: "", inviteRole: "member", inviteBusy: false, inviteError: null, mailBusy: null,
     repoDraft: "", repoBusy: false, repoError: null,
     envEdit: null, envBusy: false,
     secretForm: null, tests: {}, auditOpen: false, confirm: null,
   };
 }
 
-/** THE current org: the first of mine (one org per person today). An org switcher changes this and nothing else. */
-export function currentOrg(myOrgs: MyOrgsResponse | null | undefined): MyOrg | null {
-  return myOrgs?.orgs[0] ?? null;
+/** THE current org: the one the page's path names (`state.orgSlug`, from `/o/<slug>/`), with MY role
+ *  in it. `GET /api/orgs` is the fresher source (a rename, a role change); `/auth/me`'s copy answers
+ *  until it lands, so nothing waits on a second request to know who is an admin. */
+export function currentOrg(s: { orgSlug: string | null; myOrgs: { data: MyOrgsResponse | null }; me: { orgs: readonly MyOrg[] } | null }): MyOrg | null {
+  if (!s.orgSlug) return null;
+  return s.myOrgs.data?.orgs.find((o) => o.slug === s.orgSlug) ?? s.me?.orgs.find((o) => o.slug === s.orgSlug) ?? null;
 }
 /** The tabs a role may open: Integrations is admin+ (its API is). */
 export const orgTabsFor = (role: OrgRole | null): OrgTab[] => ORG_TABS.filter((t) => t !== "integrations" || roleAtLeast(role, "admin"));
@@ -146,6 +150,8 @@ export interface OrgSettingsProps {
   orgsStatus: "idle" | "loading" | "ok" | "error";
   me: string;
   ui: OrgUi;
+  /** The invitation e-mail can be sent from here (api.ts `mailOrgInvite` — alias only: the viewer is in exactly one org). */
+  canMail?: boolean;
 }
 
 // ── setup checklist ──────────────────────────────────────────────────────────
@@ -247,9 +253,9 @@ export function reposTab(org: MyOrg, ui: OrgUi): string {
     // The primary can only be removed last (the API's `primary_repo`): say so instead of offering a button that fails.
     const locked = r.is_primary && repos.length > 1;
     const hook = admin && r.webhook_url ? `<div style="margin-top:8px;font-size:12px;line-height:1.5;color:var(--fg-55)">
-        <span style="${O_LABEL};font-size:10px">Webhook URL &middot; available soon</span>
+        <span style="${O_LABEL};font-size:10px">Webhook URL</span>
         <code class="cnpy-org-code">${esc(r.webhook_url)}</code>
-        <span style="display:block;color:var(--fg-40)">Per-repository webhooks are not live yet. Leave your GitHub webhook as it is for now.</span>
+        <span style="display:block;color:var(--fg-40)">${r.webhook_secret_configured ? "The payload URL of this repository's GitHub webhook. Deliveries are checked against the secret set in Integrations." : "Deliveries to this URL are rejected until its webhook secret is set in Integrations. Set the secret first, then add the webhook on GitHub."}</span>
       </div>` : "";
     const secret = admin ? `<span style="font-size:12px;color:var(--fg-55)">Webhook secret: ${r.webhook_secret_configured ? "set" : "not set"}</span>` : "";
     const actions = admin ? `<div class="cnpy-org-actions">
@@ -446,7 +452,7 @@ function memberEditor(m: OrgMember, d: MemberDraft, viewer: OrgRole, soleOwner: 
   </div>`;
 }
 
-export function membersTab(org: MyOrg, ui: OrgUi, me: string): string {
+export function membersTab(org: MyOrg, ui: OrgUi, me: string, canMail = false): string {
   const admin = roleAtLeast(org.role, "admin");
   const members = ui.members.data;
   const note = sliceNote(ui.members, "members", members.length > 0);
@@ -454,7 +460,9 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string): string {
   const owners = members.filter((m) => m.role === "owner").length;
   const canSend = inviteDraftOk(ui.inviteBy, ui.inviteDraft) && !ui.inviteBusy;
   const invite = admin ? `<section aria-labelledby="org-invite-t" style="margin-bottom:24px">
-      ${orgHead("Invite someone", "They see the invite the next time they sign in with that GitHub account or email, and join when they accept.")}
+      ${orgHead("Invite someone", ui.inviteBy === "email"
+        ? (canMail ? "Trov emails them the invitation. They join when they sign in with that address and accept. A Google account can only sign in once it is invited." : "They see the invitation when they sign in with that address, and join when they accept. Trov does not email it from here: tell them yourself.")
+        : "They see the invitation the next time they sign in with that GitHub account, and join when they accept. No email is sent: tell them it is waiting.")}
       <div class="cnpy-org-invite" style="margin-top:12px">
         ${segmented({ id: "org-invite-by", ariaLabel: "Invite by", act: "orgInviteBy", value: ui.inviteBy, size: "sm", inertOn: true, options: [{ value: "github", label: "GitHub login" }, { value: "email", label: "Email" }] })}
         <input id="org-invite" data-act="orgInviteDraft" data-field="orgInvite" data-enter="orgInviteSend" value="${attr(ui.inviteDraft)}" placeholder="${ui.inviteBy === "github" ? "octocat" : "name@example.com"}" aria-label="${ui.inviteBy === "github" ? "GitHub login to invite" : "Email address to invite"}"${ui.inviteBy === "email" ? ' type="email" inputmode="email"' : ""} autocomplete="off" autocapitalize="off" spellcheck="false"${ui.inviteError ? ' aria-invalid="true" aria-describedby="org-invite-e"' : ""} class="cnpy-input" style="${O_FIELD};flex:1 1 200px;width:auto;min-width:0;${ui.inviteError ? "border-color:var(--red);" : ""}" />
@@ -492,6 +500,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string): string {
       <div class="cnpy-org-actions" style="align-items:center">
         ${statusBadge("Pending", "var(--amber)", "font-size:10.5px;border-radius:5px;padding:2px 7px")}
         ${roleChip(i.role)}
+        ${i.email && canMail ? quietBtn(ui.mailBusy === i.id ? "Sending…" : "Resend email", "orgInviteMail", { arg: String(i.id), disabled: ui.mailBusy !== null, busy: ui.mailBusy === i.id, label: `Email the invitation to ${who} again` }) : ""}
         ${dangerBtn("Revoke", "orgInviteRevoke", { arg: String(i.id), label: `Revoke the invite for ${who}` })}
       </div>
     </li>`;
@@ -515,9 +524,10 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string): string {
     </div>`;
 }
 
-/** The line Maintenance › People carries: org roles and org invites are managed here. */
-export function orgPeopleLink(): string {
-  return `<div style="display:flex;align-items:baseline;gap:6px 10px;flex-wrap:wrap;margin:0 0 14px;font-size:12.5px;color:var(--fg-55)"><span>Org roles, removing a member and invites by GitHub login are in Org settings.</span>${goLink("Open Org settings › Members", "orgGo", "members")}</div>`;
+/** The line Maintenance › People carries where its invite box and "Edit role" used to be: members
+ *  are managed in ONE place now. */
+export function orgPeopleLink(admin = true): string {
+  return `<div data-people-pointer style="display:flex;align-items:baseline;gap:6px 10px;flex-wrap:wrap;margin:0 0 14px;font-size:12.5px;color:var(--fg-55)"><span>${admin ? "Inviting people, their roles and titles, and removing a member are in Org settings now." : "Roles, titles and invites are managed by this organization's admins in Org settings."}</span>${goLink("Open Org settings › Members", "orgGo", "members")}</div>`;
 }
 
 // ── confirmation modal ───────────────────────────────────────────────────────
@@ -611,14 +621,14 @@ export function orgSettingsView(p: OrgSettingsProps): string {
   const shell = (inner: string) => `<div data-screen-label="Org settings" class="cnpy-org" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">${inner}</div>`;
   if (!p.org) {
     if (p.orgsStatus === "error") return shell(failedNote("your orgs"));
-    if (p.orgsStatus === "ok") return shell(orgEmpty("You are not in an org yet", "Ask an org's admin to invite you. The invite appears the next time you sign in."));
+    if (p.orgsStatus === "ok") return shell(orgEmpty("This organization isn't open", "Pick an organization from the switcher at the top of the sidebar."));
     return shell(loadingNote("your org"));
   }
   const tab = effectiveOrgTab(p.ui.tab, p.org.role);
   const body = tab === "integrations" ? integrationsTab(p.org, p.ui)
     : tab === "repos" ? reposTab(p.org, p.ui)
     : tab === "environments" ? environmentsTab(p.org, p.ui)
-    : tab === "members" ? membersTab(p.org, p.ui, p.me)
+    : tab === "members" ? membersTab(p.org, p.ui, p.me, p.canMail === true)
     : generalTab(p.org, p.ui);
   return shell(`${setupChecklist(p.org, p.ui)}
     ${orgTabBar(tab, p.org.role, p.ui)}

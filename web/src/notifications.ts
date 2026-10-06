@@ -6,6 +6,7 @@ import { trovMark } from "@shared/mark";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 import { esc, attr, surface } from "./ui";
+import { tenantHref } from "./api";
 import { maintSectionHeader, maintEmpty } from "./maintenance";
 import { segmented } from "./segmented";
 
@@ -46,7 +47,7 @@ function emailRow(p: NotifSettingsProps, email: string | null): string {
       <div style="font-size:13.5px;font-weight:600">No email on file</div>
       <div style="font-size:12.5px;color:var(--fg-55);margin-top:4px;line-height:1.55">The digests below stay configured, but nothing sends until an address is on file.</div>
       <div style="display:flex;gap:10px;margin-top:14px">
-        <input data-act="setEmailDraft" data-field="emailDraft" value="${attr(p.emailDraft)}" placeholder="you@sapling.dev" class="cnpy-input" style="flex:1;min-width:0;${INPUT}" />
+        <input data-act="setEmailDraft" data-field="emailDraft" value="${attr(p.emailDraft)}" placeholder="you@example.com" class="cnpy-input" style="flex:1;min-width:0;${INPUT}" />
         <button data-act="emailSave" class="cnpy-accentbtn" style="${ACCENT_BTN}">Save address</button>
       </div>
     </div>`;
@@ -237,9 +238,9 @@ export function notificationsMaintenanceSections(p: NotifMaintenanceProps): stri
   <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">Digests assemble on the hour. A window with nothing to say is skipped, not sent empty. The from address saves when you leave the field.</div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px">
     <span style="${LABEL};font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">PREVIEW</span>
-    <a href="/api/notifications/preview?cadence=daily" target="_blank" rel="noopener" class="cnpy-ghostbtn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg);text-decoration:none">Daily</a>
-    <a href="/api/notifications/preview?cadence=weekly" target="_blank" rel="noopener" class="cnpy-ghostbtn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg);text-decoration:none">Weekly</a>
-    <a href="/api/notifications/preview?cadence=daily&amp;sample=1" target="_blank" rel="noopener" class="cnpy-ghostbtn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);font-size:12px;font-weight:500;color:var(--fg-55);text-decoration:none">Sample data</a>
+    <a href="${attr(tenantHref("/api/notifications/preview?cadence=daily"))}" target="_blank" rel="noopener" class="cnpy-ghostbtn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg);text-decoration:none">Daily</a>
+    <a href="${attr(tenantHref("/api/notifications/preview?cadence=weekly"))}" target="_blank" rel="noopener" class="cnpy-ghostbtn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg);text-decoration:none">Weekly</a>
+    <a href="${attr(tenantHref("/api/notifications/preview?cadence=daily&sample=1"))}" target="_blank" rel="noopener" class="cnpy-ghostbtn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);font-size:12px;font-weight:500;color:var(--fg-55);text-decoration:none">Sample data</a>
     <span style="width:1px;height:18px;background:var(--border)"></span>
     <span style="${LABEL};font-size:10.5px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">SEND TEST TO ME</span>
     <button data-act="testSend" data-arg="daily" class="cnpy-accentbtn" style="padding:6px 12px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12px;font-weight:600">Daily</button>

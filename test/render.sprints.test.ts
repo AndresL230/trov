@@ -109,7 +109,7 @@ function roadmapState(sprints: SprintView[], over: Partial<AppState> = {}): AppS
     view: "app",
     screen: "roadmap",
     roadmapTab: "narrative", // the sprint cards + New sprint live on the Narrative tab
-    me: { handle: "jose-a", name: "Jose", avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+    me: { handle: "jose-a", name: "Jose", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
     persons: { status: "ok", data: PERSONS },
     roadmap: { status: "ok", data: { narrative: "n", version: 1, updated_at: null, updated_by: null, sprints } },
     ...over,
@@ -123,7 +123,7 @@ function sprintScreenState(d: SprintDetail, over: Partial<AppState> = {}): AppSt
     view: "app",
     screen: "sprint",
     sprintId: d.id,
-    me: { handle: "jose-a", name: "Jose", avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+    me: { handle: "jose-a", name: "Jose", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
     persons: { status: "ok", data: PERSONS },
     sprintDetail: { status: "ok", data: d },
     ...over,

@@ -4,7 +4,7 @@
 // The views are platform.ts / platform-usage.ts (pure).
 
 import {
-  getMyOrgs, listPlatformOrgs, getPlatformOrg, createPlatformOrg, assignPlatformOrgAdmin, setPlatformOrgSuspended,
+  listPlatformOrgs, getPlatformOrg, createPlatformOrg, assignPlatformOrgAdmin, setPlatformOrgSuspended,
   setPersonOrgLimit, listPlatformAdmins, grantPlatformAdmin, revokePlatformAdmin, listPlatformAudit, getPlatformUsage,
   Unauthorized, ApiError,
 } from "./api";
@@ -28,6 +28,9 @@ export interface PlatformHost {
   confirmOut: (then: () => void) => void;
   /** Leave the area (not a superadmin after all). */
   leave: () => void;
+  /** Read `GET /api/orgs` again — the ONE loader (main.ts `loadMyOrgs`), which also sets
+   *  `plat.superadmin`. Resolves once it has (to null when the read failed). */
+  reloadOrgs: () => Promise<unknown>;
 }
 
 const code = (e: unknown): string => (e instanceof ApiError ? e.message : "");
@@ -98,15 +101,12 @@ export function createPlatform(h: PlatformHost) {
     h.rerender();
   }
 
-  /** Is this person a superadmin? The sidebar entry and the screens hang on the answer. */
+  /** Is this person (still) a superadmin? Asked again after one is removed — it may have been
+   *  themselves. The flag itself is set by main.ts's one `GET /api/orgs` loader. */
   function boot(): void {
-    getMyOrgs().then((r) => {
-      s().superadmin = r.superadmin === true;
-      if (on()) load(); else h.rerender();
-    }).catch((e) => {
-      if (e instanceof Unauthorized) return;
-      s().superadmin = false;
-      if (on()) h.leave(); else h.rerender();
+    void h.reloadOrgs().then(() => {
+      if (s().superadmin === null) s().superadmin = false;
+      if (on()) { if (s().superadmin) load(); else h.leave(); } else h.rerender();
     });
   }
 

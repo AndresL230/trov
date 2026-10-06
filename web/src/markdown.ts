@@ -1,6 +1,7 @@
 import { marked, type Tokens } from "marked";
 import DOMPurify from "dompurify";
-import { REPO_URL } from "./github";
+import { repoUrl } from "./github";
+import { tenantHref } from "./api";
 import { slugifyHeading } from "./outline";
 import { issueRefStart, matchIssueRef } from "./issue-ref";
 import { DOC_IMAGE_PATH_RE } from "@shared/doc-images";
@@ -19,7 +20,8 @@ marked.use({
         return issueRefStart(src);
       },
       tokenizer(src: string) {
-        const ref = matchIssueRef(src, REPO_URL);
+        // No repository connected: `owner/repo#12` still links (it names its repo); a bare `#12` stays text.
+        const ref = matchIssueRef(src, repoUrl());
         if (ref) return { type: "issueRef", raw: ref.raw, href: ref.href, text: ref.text } as Tokens.Generic;
         return undefined;
       },
@@ -110,6 +112,8 @@ function enhance(clean: string): string {
   tpl.content.querySelectorAll("img").forEach((img) => {
     const m = DOC_IMAGE_PATH_RE.exec(img.getAttribute("src") ?? "");
     if (!m) return;
+    // A doc names its image `/img/<sha>`; the bytes are the ORG's, behind its membership gate.
+    img.setAttribute("src", tenantHref(`/img/${m[1]}`));
     img.setAttribute("loading", "lazy");
     img.setAttribute("decoding", "async");
     const btn = document.createElement("button");

@@ -59,6 +59,11 @@ export interface SidebarProps {
   logo: string;
   /** The viewer is a platform superadmin: the Platform entry shows (it is always emitted, hidden otherwise). */
   superadmin?: boolean;
+  /** The org switcher's button (org-picker.ts `orgSwitcherButton`), under the logo. Its menu holds
+   *  Org settings, so the rail has no Organization section of its own. */
+  orgSwitcher?: string;
+  /** Org settings is the screen showing: the switcher reads as the current place. */
+  orgActive?: boolean;
 }
 
 const ICON = (paths: string): string =>
@@ -145,6 +150,7 @@ export function sidebarView(p: SidebarProps): string {
     <div class="cnpy-logo">
       <button data-act="goSite" aria-label="About Trov" data-tip="About Trov" class="cnpy-logo-b">${p.logo}<span class="cnpy-lbl cnpy-logo-t">Trov</span></button>
     </div>
+    <div class="cnpy-orgslot${p.orgActive ? " is-active" : ""}">${p.orgSwitcher ?? ""}</div>
     <nav class="cnpy-navlist" aria-label="Primary">
       <div class="cnpy-searchwrap" data-tip="Search">
         <div data-act="sideSearchFocus" class="cnpy-search${p.screen === "search" ? " is-active" : ""}">
@@ -168,8 +174,6 @@ export function sidebarView(p: SidebarProps): string {
       ${section("Triage")}
       ${item("review", "goReview", "Review", c.review)}
       ${item("maintenance", "goMaintenance", "Maintenance", c.maintenance)}
-      ${section("Organization")}
-      ${item("org", "orgGo", "Org settings")}
       ${section("Help")}
       ${item("guide", "goGuide", "Get Started")}
       ${item("releases", "goReleases", "What's new")}

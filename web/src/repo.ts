@@ -36,6 +36,9 @@ export interface RepoProps {
   sample: boolean;
   /** The viewer is an admin — the only one offered "Poll now" (the Repo top bar, every tab). */
   admin: boolean;
+  /** The org has NO repository connected (`GET /api/o/:slug/me` answered, `repos.primary` null):
+   *  the dashboard has nothing to read, and says where to connect one. */
+  noRepo?: boolean;
   /** The last on-demand poll. Session-only; null = none / dismissed. */
   poll: RepoPollState | null;
   /** The environment the Usage tab's Product section shows. Session-only; null = the default. */
@@ -136,7 +139,7 @@ const errorBlock = (): string =>
 
 /** The design's "Source not connected" block. No button: there is no connect flow
  *  to start. Every section HAS a capture path now, so the copy names what that
- *  path is still waiting on, in the owner's terms — a setting or secret by NAME
+ *  path is still waiting on, in the admin's terms — where in Org settings it is set
  *  (never a value), a webhook event, the repo's CI, or Sync GitHub. */
 const notConnected = (what: string): string =>
   `<div style="display:flex;align-items:center;justify-content:center;padding:14px 0;flex:1"><div style="border:1px dashed color-mix(in srgb,var(--accent) 45%,transparent);border-radius:11px;padding:18px 24px;text-align:center;width:100%;background:color-mix(in srgb,var(--accent) 4%,transparent)">
@@ -222,7 +225,7 @@ const kv = (k: string, v: string): string =>
 
 function overviewTab(p: RepoProps): string {
   const now = Date.now();
-  const envs = sec(p, (d) => d.environments, { nc: "Nothing captured for a configured environment yet. Cards appear once REPO_ENVIRONMENTS lists an environment and a health ping, a deploy or a head check lands for it — from the 10-minute cron, the GitHub webhook, or an admin's Sync GitHub.", empty: "No environments recorded." }, (rows) =>
+  const envs = sec(p, (d) => d.environments, { nc: "Nothing captured for a configured environment yet. Cards appear once Org settings › Environments lists an environment and a health ping, a deploy or a head check lands for it — from the 10-minute check, the GitHub webhook, or an admin's Sync GitHub.", empty: "No environments recorded." }, (rows) =>
     `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${rows.map((e, i) => {
       const c = TONE[e.tone];
       return `<div style="padding:20px 22px 10px;min-width:0;${i ? LEFT : ""}">
@@ -276,7 +279,7 @@ function overviewTab(p: RepoProps): string {
   // nothing has ever pinged these URLs; `empty` = the pings exist but every
   // reading has aged out (the 10-minute cron has stopped) — which must NOT read
   // as "never set up".
-  const health = sec(p, (d) => d.health, { nc: "No health ping has landed yet. The repo cron pings each environment in REPO_ENVIRONMENTS every 10 minutes, so this fills in after its first tick.", empty: "No fresh health reading — the last ping is over 30 minutes old.", lines: 2 }, (rows) =>
+  const health = sec(p, (d) => d.health, { nc: "No health ping has landed yet. Trov pings each environment in Org settings › Environments every 10 minutes, so this fills in after its first tick.", empty: "No fresh health reading — the last ping is over 30 minutes old.", lines: 2 }, (rows) =>
     rows.map((h) => {
       const c = h.up ? "var(--green)" : "var(--red)";
       return `<div class="repo-hrow" style="display:grid;grid-template-columns:84px minmax(0,1fr) 110px 90px;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)">
@@ -352,7 +355,7 @@ function codeTab(p: RepoProps): string {
     l.rows.length ? l.rows.map((r) => prRow(r, now, p.persons)).join("") : `<div style="padding:6px 20px">${emptyBlock("No pull requests updated in the last 90 days.")}</div>`);
 
   const br = okData(p, (d) => d.branches);
-  const branches = sec(p, (d) => d.branches, { nc: "No branch snapshot yet. One is taken when an admin runs Sync GitHub and by the 6-hourly GitHub reconcile — both need GITHUB_SERVICE_TOKEN.", empty: "No branches recorded." }, (b) =>
+  const branches = sec(p, (d) => d.branches, { nc: "No branch snapshot yet. One is taken when an admin runs Sync GitHub and by the 6-hourly GitHub reconcile — both need the GitHub token in Org settings › Integrations.", empty: "No branches recorded." }, (b) =>
     b.rows.map((r) => `<div class="repo-brow" style="display:grid;grid-template-columns:minmax(0,1.4fr) 90px 130px 54px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
       <span style="font-family:var(--label);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</span>
       <span style="font-size:11.5px;color:var(--fg-40);white-space:nowrap">${esc(ago(r.at, now))} ago</span>
@@ -414,7 +417,7 @@ const titled = (title: string, body: string): string => `<div style="${LABEL}">$
 function ciTab(p: RepoProps): string {
   const now = Date.now();
   const RESULT = { ok: ["var(--green)", "DEPLOYED"], fail: ["var(--red)", "FAILED"], cancel: ["var(--amber)", "CANCELLED"] } as const;
-  const deploys = sec(p, (d) => d.deploys, { nc: "No deploy captured for a configured environment yet. Deploys arrive when the GitHub webhook delivers deployment_status and check_run events, or when an admin runs Sync GitHub; environments come from REPO_ENVIRONMENTS.", empty: "No deploys recorded.", lines: 2 }, (rows) =>
+  const deploys = sec(p, (d) => d.deploys, { nc: "No deploy captured for a configured environment yet. Deploys arrive when the GitHub webhook delivers deployment_status and check_run events, or when an admin runs Sync GitHub; environments come from Org settings › Environments.", empty: "No deploys recorded.", lines: 2 }, (rows) =>
     rows.map((row) => {
       const okCount = row.deploys.filter((d) => d.result === "ok").length;
       const last = row.deploys[row.deploys.length - 1];
@@ -759,7 +762,7 @@ function productSection(p: RepoProps, i: number): string {
   // that carries none (the Worker never sends that; the fallback is total anyway,
   // and an `ok` with nothing in it reads as the section's empty state, never as nothing).
   if (!envs?.length) {
-    const copy = { nc: "No product metrics reported yet. They appear once the app's metrics endpoint serves `counts` / `totals` and `SAPLING_METRICS_TOKEN` is set.", empty: "No current product reading — the hourly poll of the app's metrics endpoint has gone quiet.", lines: 3 };
+    const copy = { nc: "No product metrics reported yet. They appear once the app's metrics endpoint serves `counts` / `totals` and the environment's app metrics token is set in Org settings › Integrations.", empty: "No current product reading — the hourly poll of the app's metrics endpoint has gone quiet.", lines: 3 };
     const state = sec(p, (d) => d.product ?? { status: "not_connected" }, copy, () => emptyBlock(copy.empty));
     return `<div ${rise(i, `${TOP}`)}>${head()}<div style="padding:0 20px 14px">${state}</div></div>`;
   }
@@ -874,7 +877,7 @@ function usageTab(p: RepoProps): string {
     options: REPO_RANGES.map((r) => ({ value: r, label: r })),
   });
 
-  const usage = sec(p, (d) => d.usage, { nc: "No usage captured yet. Requests and error rate come from the hourly Cloudflare analytics poll (CF_ANALYTICS_TOKEN and CF_ANALYTICS_ACCOUNT_ID); active users come from the app's own metrics endpoint (SAPLING_METRICS_TOKEN). Both need an environment in REPO_ENVIRONMENTS.", empty: "No current usage reading — the hourly polls have gone quiet.", lines: 4 }, (u) =>
+  const usage = sec(p, (d) => d.usage, { nc: "No usage captured yet. Requests and error rate come from the hourly Cloudflare analytics poll; active users come from the app's own metrics endpoint. Both need an environment in Org settings › Environments and their credential in Org settings › Integrations.", empty: "No current usage reading — the hourly polls have gone quiet.", lines: 4 }, (u) =>
     `<div class="repo-swap" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${u[p.range].map(usageEnv).join("")}</div>`);
   // Infrastructure — two blocks, a column per environment in each, in the same
   // stat shape as the Product blocks above (figure over label), not two tables.
@@ -892,7 +895,7 @@ function usageTab(p: RepoProps): string {
     return `<div style="min-width:0"><div style="${NUM};font-size:${size}px;letter-spacing:-0.02em;${value === "—" ? "color:var(--fg-40)" : ""}">${esc(fig ?? value)}${unit ? `<span style="font-size:11.5px;font-weight:500;letter-spacing:0;color:var(--fg-55);margin-left:5px">${esc(unit)}</span>` : ""}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px;overflow:hidden;text-overflow:ellipsis">${esc(label)}</div></div>`;
   };
   const usageNow = okData(p, (d) => d.usage)?.[p.range] ?? [];
-  const cf = sec(p, (d) => d.cloudflare, { nc: "No Cloudflare analytics captured yet. The hourly poll runs once the CF_ANALYTICS_TOKEN and CF_ANALYTICS_ACCOUNT_ID secrets are set and REPO_ENVIRONMENTS names each environment's Worker; it also feeds the requests and error rate above.", empty: "No Cloudflare metrics in the last 30 days." }, (c) => {
+  const cf = sec(p, (d) => d.cloudflare, { nc: "No Cloudflare analytics captured yet. The hourly poll runs once Cloudflare analytics is set in Org settings › Integrations and each environment names its Worker in Org settings › Environments; it also feeds the requests and error rate above.", empty: "No Cloudflare metrics in the last 30 days." }, (c) => {
     const rows = c[p.range];
     if (!rows.length) return `<div class="repo-swap" style="padding:6px 0;font-size:12.5px;color:var(--fg-40)">Nothing recorded in this range.</div>`;
     const names = [...new Set(rows.map((r) => r.env))];
@@ -911,7 +914,7 @@ function usageTab(p: RepoProps): string {
       </div>`;
     }))}</div>`;
   });
-  const hosting = sec(p, (d) => d.hosting, { nc: "No Railway reading captured yet. The hourly poll runs once an environment's RAILWAY_TOKEN_<ENVIRONMENT> secret is set and REPO_ENVIRONMENTS carries its railwayEnvironmentId and railwayServiceId.", empty: "No fresh hosting reading — the last Railway sample is over 3 hours old." }, (rows) =>
+  const hosting = sec(p, (d) => d.hosting, { nc: "No Railway reading captured yet. The hourly poll runs once an environment's Railway project token is set in Org settings › Integrations and the environment carries its Railway environment and service IDs.", empty: "No fresh hosting reading — the last Railway sample is over 3 hours old." }, (rows) =>
     envCols(rows.map((h) => `<div data-hostenv="${attr(h.env)}" style="min-width:0">${envName(h.env)}
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px">${stat(h.cpu, "CPU")}${stat(h.memory, "Memory")}</div>
     </div>`)));
@@ -1058,6 +1061,19 @@ export function repoView(p: RepoProps): string {
         <button data-act="repoSampleOn" class="repo-textbtn" style="font-size:12px;font-weight:500;color:var(--accent);padding:0;white-space:nowrap">Preview with sample data</button>
       </div>`
     : "";
+
+  if (p.noRepo && !p.sample) {
+    return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}" data-repo-empty>
+      <div style="border:1px dashed var(--border-strong);border-radius:11px;padding:38px 24px;text-align:center;margin-top:8px">
+        <div style="font-size:15px;font-weight:600">No repository connected</div>
+        <div style="font-size:13px;line-height:1.6;color:var(--fg-55);margin:6px auto 0;max-width:520px">${p.admin ? "Connect the repository this organization ships from, and Trov starts reading its deployments, checks, pull requests and issues." : "This organization has no repository connected yet. An admin connects one in Org settings."}</div>
+        <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:16px">
+          <button type="button" data-act="orgGo" data-arg="repos" class="cnpy-accentbtn" style="height:34px;padding:0 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);border:1px solid transparent;font-size:12.5px;font-weight:600;white-space:nowrap">Open Org settings &rsaquo; Repositories</button>
+          <button type="button" data-act="repoSampleOn" class="cnpy-outlinebtn" style="height:34px;padding:0 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">Preview with sample data</button>
+        </div>
+      </div>
+    </div>`;
+  }
 
   return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}">
     ${repoTabBar(p.tab)}

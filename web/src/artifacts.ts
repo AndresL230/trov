@@ -37,7 +37,27 @@ import {
 } from "@shared/artifacts-core";
 
 export { ARTIFACT_AREAS, ARTIFACT_KINDS };
-export const ARTIFACT_REPOS = ["AndresL230/trov", "SaplingLearn/sapling"] as const;
+/** The repositories a new artifact may be filed under: the ORG's connected ones (`GET /api/o/:slug/me`
+ *  `repos.all`, primary first) — plus the draft's own value when it is none of them. */
+export const artifactRepoOptions = (repos: readonly string[], current: string): string[] =>
+  current && !repos.includes(current) ? [...repos, current] : [...repos];
+
+// The raw route (`/raw/a/…`) has no `/api/o/:slug` form yet: it answers only for a person in exactly
+// ONE org (409 `org_required` otherwise). main.ts says which the viewer is; with several, every
+// place that would load a raw page (a preview frame, an image, a download) says so instead of
+// showing a broken frame.
+let rawAvailable = true;
+export function setRawAvailable(ok: boolean): void { rawAvailable = ok; }
+/** Why a raw page is not shown, as the block that takes its place. */
+export function rawUnavailable(compact = false): string {
+  if (compact) return `<div data-raw-off style="position:absolute;inset:0;display:grid;place-items:center;padding:12px;text-align:center;font-size:11.5px;line-height:1.5;color:var(--fg-40)">Preview unavailable</div>`;
+  return `<div data-raw-off role="status" style="display:grid;place-items:center;padding:44px 24px;background:var(--bg);text-align:center">
+    <div style="max-width:460px">
+      <div style="font-size:14px;font-weight:600">This preview can't open here yet</div>
+      <div style="font-size:12.5px;line-height:1.6;color:var(--fg-55);margin-top:6px">A raw artifact page is served outside an organization's address, so for now it opens only for people who belong to exactly one organization, and you belong to several. Its versions, links and source below still work.</div>
+    </div>
+  </div>`;
+}
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -119,9 +139,9 @@ export interface ArtUi {
   deleteBusy: boolean;
   c: ArtCreate;
 }
-export function initialArtCreate(): ArtCreate {
+export function initialArtCreate(repo = ""): ArtCreate {
   return {
-    title: "", kind: "html", area: "ui", repo: ARTIFACT_REPOS[0], vis: "org", links: [], linkDraft: "", linkErr: false,
+    title: "", kind: "html", area: "ui", repo, vis: "org", links: [], linkDraft: "", linkErr: false,
     tab: "paste", paste: "", file: null, url: "", urlFetched: null, fetching: false, urlErr: null, submitting: false,
   };
 }
@@ -149,8 +169,11 @@ export interface ArtProps {
   ui: ArtUi;
   /** The signed-in handle — the author check for private artifacts and the visibility toggle. */
   me: string;
-  /** The signed-in person is an admin — may delete any artifact they can see. */
+  /** The signed-in person is an admin or owner of this org — may delete any artifact they can see. */
   admin: boolean;
+  /** The org's name (the visibility help says who "everyone" is) and its connected repositories. */
+  orgName?: string;
+  repos?: readonly string[];
   persons: ArtPerson[];
   /** `location.host` in the browser; the address strips print it. */
   host: string;
@@ -419,6 +442,7 @@ export function libraryRows(p: ArtProps): ArtifactSummaryDTO[] {
 /** A card's 160px preview. Framed kinds load the raw route in a script-less sandbox. */
 function thumb(a: ArtifactSummaryDTO): string {
   const raw = rawUrl(a.slug, a.current_version);
+  if (!rawAvailable && (a.kind === "html" || a.kind === "svg" || a.kind === "image")) return rawUnavailable(true);
   if (a.kind === "html" || a.kind === "svg") {
     // Never same-origin. An html page may run its scripts — the same opaque-origin
     // `allow-scripts` sandbox the viewer uses, under the raw route's CSP (no network, no
@@ -604,6 +628,7 @@ function contentBlock(p: ArtProps, d: ArtifactDetailDTO): string {
   const ver = d.version;
   const raw = d.raw_url || rawUrl(d.slug, ver.version_no);
   const key = `${d.slug}@${ver.version_no}`;
+  if (!rawAvailable && (d.kind === "html" || d.kind === "image" || d.kind === "pdf")) return rawUnavailable();
   switch (d.kind) {
     case "html": {
       const h = frameHeights.get(key) ?? FRAME_DEFAULT;
@@ -856,7 +881,7 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
       }).join("")}</div>`;
   } else if (d.kind === "image") {
     const pane = (x: typeof dd.a, tag: string) => `<figure${surface("margin:0;overflow:hidden")}>
-      <div style="display:grid;place-items:center;padding:18px;min-height:220px"><img src="${attr(x.raw_url || rawUrl(d.slug, x.version_no))}" alt="${attr(`${d.title} v${x.version_no}`)}" style="display:block;max-width:100%;height:auto"></div>
+      <div style="position:relative;display:grid;place-items:center;padding:18px;min-height:220px">${rawAvailable ? `<img src="${attr(x.raw_url || rawUrl(d.slug, x.version_no))}" alt="${attr(`${d.title} v${x.version_no}`)}" style="display:block;max-width:100%;height:auto">` : rawUnavailable(true)}</div>
       <figcaption style="padding:8px 12px;border-top:1px solid var(--border);font-family:var(--label);font-size:11px;color:var(--fg-55)">${tag} · v${x.version_no} · ${esc(fmtKB(x.size_bytes))}</figcaption>
     </figure>`;
     body = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:10px;margin-top:18px">${pane(dd.a, "BASE")}${pane(dd.b, "COMPARED")}</div>`;
@@ -987,14 +1012,19 @@ function createView(p: ArtProps): string {
         <div>${label("Area")}<div style="display:flex;gap:6px;flex-wrap:wrap">${ARTIFACT_AREAS.map((k) => `<button data-act="artCArea" data-arg="${k}" class="cnpy-pickchip${c.area === k ? " is-on" : ""}" style="${chipSt(c.area === k)}">${k}</button>`).join("")}</div></div>
         <div>
           ${label("Repo")}
-          <select data-act="artCRepo" class="cnpy-select" style="width:100%;height:40px;font-size:13.5px;border-color:var(--border-strong);color:var(--fg)">${ARTIFACT_REPOS.map((r) => `<option value="${r}"${c.repo === r ? " selected" : ""}>${r}</option>`).join("")}</select>
+          ${(() => {
+            const options = artifactRepoOptions(p.repos ?? [], c.repo);
+            // No repository connected: the artifact is filed under none, and the field says where to connect one.
+            if (!options.length) return `<div data-art-norepo style="min-height:40px;box-sizing:border-box;border:1px dashed var(--border-strong);border-radius:8px;padding:9px 12px;font-size:12.5px;line-height:1.5;color:var(--fg-55)">No repository is connected to this organization. <button type="button" data-act="orgGo" data-arg="repos" class="cnpy-mutelink" style="padding:0;font-size:12.5px;font-weight:500;color:var(--fg-70);text-decoration:underline;text-underline-offset:2px">Org settings &rsaquo; Repositories</button></div>`;
+            return `<select data-act="artCRepo" aria-label="Repository" class="cnpy-select" style="width:100%;height:40px;font-size:13.5px;border-color:var(--border-strong);color:var(--fg)">${options.map((r) => `<option value="${attr(r)}"${c.repo === r ? " selected" : ""}>${esc(r)}</option>`).join("")}</select>`;
+          })()}
         </div>
         <div>
           ${label("Visibility")}${segmented({
             id: "art-create-vis", ariaLabel: "Visibility", act: "artCVis", value: c.vis, size: "sm",
             options: [{ value: "org", label: "Org" }, { value: "private", label: "Private" }],
           })}
-          <div style="font-size:12px;color:var(--fg-40);margin-top:7px;line-height:1.5">${c.vis === "org" ? "Everyone in SaplingLearn can open it once it's uploaded." : "Only you can open it. Teammates who follow the link see a not-found page until you publish."}</div>
+          <div style="font-size:12px;color:var(--fg-40);margin-top:7px;line-height:1.5">${c.vis === "org" ? `Everyone in ${esc(p.orgName || "this organization")} can open it once it's uploaded.` : "Only you can open it. Teammates who follow the link see a not-found page until you publish."}</div>
         </div>
         <div>
           ${label("Links")}
@@ -1229,6 +1259,7 @@ export type ArtEffect =
  * rerender (navigate, write, toast, download…). Mutates `ui` in place, like every
  * other dispatch case.
  */
+const RAW_OFF_FLASH = "Raw artifact pages only open for people in exactly one organization for now.";
 export function artifactsAct(
   ui: ArtUi,
   ctx: { screen: ArtScreen | null; route: ArtRoute; me: string; admin?: boolean; host: string; sprints?: ArtSprintRef[] },
@@ -1342,10 +1373,12 @@ export function artifactsAct(
     case "artDownload":
       if (!d) return null;
       closeMenus();
+      if (!rawAvailable) return { flash: RAW_OFF_FLASH };
       return { download: { url: withDownload(d.raw_url || rawUrl(d.slug, d.version.version_no)), name: artFileName(d.slug, d.kind, d.version) } };
     case "artOpenTab":
       if (!d) return null;
       closeMenus();
+      if (!rawAvailable) return { flash: RAW_OFF_FLASH };
       return { openUrl: d.raw_url || rawUrl(d.slug, d.version.version_no) };
 
     // new version (the viewer's dialog)

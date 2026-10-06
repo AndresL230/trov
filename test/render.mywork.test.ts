@@ -249,7 +249,8 @@ describe("render() — My Work screen", () => {
       ...s,
       view: "app",
       screen: "mywork",
-      me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin },
+      me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: admin ? "admin" : "member" }], superadmin: false, pending_invites: 0 },
+      orgSlug: "saplinglearn",
       persons: { status: "ok", data: PERSONS },
       mywork: { status: "ok", data },
     };
@@ -381,7 +382,7 @@ describe("render() — the Get Started guide", () => {
       ...s,
       view: "app" as const,
       screen: "guide" as const,
-      me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss" as const, identities: [], org: "SaplingLearn", admin: false },
+      me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
     };
   };
 
@@ -434,7 +435,7 @@ import type { HandoffView } from "@shared/handoffs";
 const mainSrc = Object.values(import.meta.glob("../web/src/main.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>)[0];
 
 describe("My Work — audit fixes", () => {
-  const ME = { handle: "alice", name: "Alice", avatar_url: null, color: "moss" as const, identities: [], org: "SaplingLearn", admin: false };
+  const ME = { handle: "alice", name: "Alice", avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 };
   const dash = (o: Partial<DashboardData> = {}): DashboardData =>
     ({ person: "alice", previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false, ...o });
   /** Every slice My Work reads, loaded ok and empty — override what a test is about. */

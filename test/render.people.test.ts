@@ -8,120 +8,50 @@ vi.mock("../web/src/markdown", () => ({
   sanitizeSvg: (s: string) => s,
 }));
 
-import { peopleSection, personRoleEditor, personEditChanged, type PersonEditView } from "../web/src/maintenance";
+import { peopleSection } from "../web/src/maintenance";
+import { orgPeopleLink } from "../web/src/org-settings";
 import { profileSection, accountSection, initialState, render, isUploadedAvatar } from "../web/src/render";
 import { peopleFromPersons } from "../web/src/triage-map";
 import { handleTag, personChip, markAvatarFailed, AVATAR_IMG_CLASS } from "../web/src/people";
 import { personCardModal, joinedLabel } from "../web/src/profile";
 import { avatarCrop, avatarTypeProblem, avatarSizeProblem } from "../web/src/avatar";
-import { ROLE_MAX, RESPONSIBILITIES_MAX, AVATAR_TYPES, AVATAR_MAX_BYTES, type PersonProfile } from "@shared/people";
+import { AVATAR_TYPES, AVATAR_MAX_BYTES, type PersonProfile } from "@shared/people";
 import type { Me } from "../web/src/api";
 
 const persons = [
   { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null, role: null },
   { handle: "priya", name: "Priya Natarajan", color: "plum" as const, avatar_url: "https://a/p.png", role: null },
 ];
-const invites = [
-  { email: "m.okafor@gmail.com", name: null, invited_by: "AndresL230", invited_at: "2026-09-12T10:00:00Z", accepted_by: null, revoked_at: null, email_sent_at: "2026-09-12T10:00:01Z", email_id: null, email_error: null },
-  { email: "done@x.io", name: "Done", invited_by: "AndresL230", invited_at: "2026-09-01T10:00:00Z", accepted_by: "done", revoked_at: null, email_sent_at: "t", email_id: null, email_error: null },
-  { email: "bad@x.io", name: null, invited_by: "AndresL230", invited_at: "2026-09-11T10:00:00Z", accepted_by: null, revoked_at: null, email_sent_at: "t", email_id: null, email_error: "resend 500" },
-];
-
-describe("peopleSection", () => {
-  it("lists persons with colored chips and pending invites with Resend/Revoke; accepted invites are not pending", () => {
-    const html = peopleSection({ persons, invites, inviteDraft: "", loading: false, error: null, me: "AndresL230" });
+describe("peopleSection — the directory", () => {
+  it("lists everyone in the org with colored chips; the viewer's row carries YOU", () => {
+    const html = peopleSection({ persons, loading: false, me: "AndresL230" });
     expect(html).toContain("YOU");
     expect(html).toContain("@AndresL230");
     expect(html).toContain("var(--p-plum)");
-    expect(html).toContain("m.okafor@gmail.com");
-    expect(html).toContain('data-act="inviteResend" data-arg="m.okafor@gmail.com"');
-    expect(html).toContain('data-act="inviteRevoke" data-arg="m.okafor@gmail.com"');
-    expect(html).not.toContain('data-arg="done@x.io"');
-    expect(html).toContain("resend 500");
-    expect(html).toContain('data-act="inviteDraft"');
-    expect(html).toContain('data-act="inviteSend"');
+    expect(html).toContain('data-act="openPerson" data-arg="priya"');
   });
-  it("without invite rights it is the directory alone", () => {
-    const html = peopleSection({ persons, invites, inviteDraft: "", loading: false, error: null, canInvite: false });
-    expect(html).toContain("@AndresL230");
-    expect(html).not.toContain('data-act="inviteSend"');
-    expect(html).not.toContain("m.okafor@gmail.com");
+  it("holds NO member management: no invite box, no Resend / Revoke, no Edit role — for anyone", () => {
+    const html = peopleSection({ persons, loading: false, me: "AndresL230" });
+    for (const gone of ["inviteSend", "inviteDraft", "inviteResend", "inviteRevoke", "personEditOpen", "Edit role", "Invite by"]) expect(html, gone).not.toContain(gone);
   });
-  it("disables Invite until the draft looks like an email", () => {
-    expect(peopleSection({ persons, invites: [], inviteDraft: "nope", loading: false, error: null })).toMatch(/data-act="inviteSend"[^>]*disabled/);
-    expect(peopleSection({ persons, invites: [], inviteDraft: "a@b.co", loading: false, error: null })).not.toMatch(/data-act="inviteSend"[^>]*disabled/);
+  it("the pointer where those controls were sends an admin, and a member, to Org settings › Members", () => {
+    for (const admin of [true, false]) {
+      const html = orgPeopleLink(admin);
+      expect(html).toContain('data-act="orgGo" data-arg="members"');
+      expect(html).toContain("Open Org settings › Members");
+    }
+    expect(orgPeopleLink(true)).toContain("Inviting people, their roles and titles, and removing a member are in Org settings now.");
+    expect(orgPeopleLink(false)).toContain("managed by this organization's admins");
   });
   it("the directory list is one surface card with hairline rows inside", () => {
-    const html = peopleSection({ persons, invites, inviteDraft: "", loading: false, error: null });
+    const html = peopleSection({ persons, loading: false });
     expect(html.match(/cnpy-surface/g)?.length).toBe(1);
     expect(html).toMatch(/class="cnpy-surface" style="overflow:hidden">/);
     expect(html).not.toContain("border-radius:12px");
     expect(html).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
   });
-});
-
-describe("profileSection", () => {
-  it("shows handle read-only and ten swatches with mine selected; sign-in methods live in Account, not here", () => {
-    const s = initialState();
-    s.me = { handle: "AndresL230", name: "Andres", avatar_url: null, color: "moss", identities: [{ provider: "github", label: "AndresL230", linked_at: "t" }], org: "SaplingLearn", admin: false };
-    s.displayName = "Andres";
-    const html = profileSection(s);
-    expect(html).toContain("@AndresL230");
-    expect(html).toContain('data-arg="moss" class="cnpy-sw is-on compact"');
-    expect(html).not.toContain("linkProvider");
-  });
-
-  it("handle editor: shows the draft input + warning with an enabled Save when available, disabled when taken", () => {
-    const s = initialState();
-    s.me = { handle: "AndresL230", name: "Andres", avatar_url: null, color: "moss", identities: [{ provider: "github", label: "AndresL230", linked_at: "t" }], org: "SaplingLearn", admin: false };
-    s.handleEdit = true;
-    s.handleDraft = "andres";
-    s.handleCheck = "available";
-    const available = profileSection(s);
-    expect(available).toContain('data-act="handleDraft"');
-    expect(available).toContain('value="andres"');
-    expect(available).toContain("Every entry you've written is re-attributed to the new handle. Links to the old one stop working.");
-    expect(available).not.toMatch(/data-act="handleSave"[^>]*disabled/);
-
-    s.handleCheck = "taken";
-    const taken = profileSection(s);
-    expect(taken).toMatch(/data-act="handleSave"[^>]*disabled/);
-  });
-});
-
-describe("accountSection", () => {
-  it("membership + Sign out, and link/unlink per provider with the last identity locked", () => {
-    const s = initialState();
-    s.me = { handle: "AndresL230", name: "Andres", avatar_url: null, color: "moss", identities: [{ provider: "github", label: "AndresL230", linked_at: "t" }], org: "SaplingLearn", admin: false };
-    const html = accountSection(s);
-    expect(html).toContain("Member of <b>SaplingLearn</b>");
-    expect(html).toContain('data-act="signOut"');
-    expect(html).toContain('data-act="linkProvider" data-arg="google"');
-    expect(html).toMatch(/data-act="unlinkProvider" data-arg="github"[^>]*disabled/); // last identity
-    s.me.identities.push({ provider: "google", label: "a@b.c", linked_at: "t" });
-    const both = accountSection(s);
-    expect(both).not.toMatch(/data-act="unlinkProvider" data-arg="github"[^>]*disabled/);
-    expect(both).toContain('data-act="unlinkProvider" data-arg="google"');
-  });
-
-  it("a Google-only person reads 'Signed in with Google'", () => {
-    const s = initialState();
-    s.me = { handle: "meilin", name: "Mei Lin", avatar_url: null, color: "plum", identities: [{ provider: "google", label: "m@x.io", linked_at: "t" }], org: "SaplingLearn", admin: false };
-    expect(accountSection(s)).toContain("Signed in with Google");
-  });
-});
-
-describe("handleTag", () => {
-  it("renders the handle in the person's color when mapped", () => {
-    const html = handleTag({ handle: "priya", color: "plum" }, "priya");
-    expect(html).toContain("var(--p-plum)");
-    expect(html).toContain("@priya");
-  });
-
-  it("falls back to a muted, uncolored tag when unmapped", () => {
-    const html = handleTag(null, "mystery-dev");
-    expect(html).toContain("@mystery-dev");
-    expect(html).not.toContain("var(--p-");
+  it("says so while the directory loads", () => {
+    expect(peopleSection({ persons: [], loading: true })).toContain("Loading people…");
   });
 });
 
@@ -133,7 +63,7 @@ describe("peopleFromPersons", () => {
 
 // ── person profiles (0036) ───────────────────────────────────────────────────
 
-const ME = (over: Partial<Me> = {}): Me => ({ handle: "AndresL230", name: "Andres", avatar_url: null, color: "moss", identities: [{ provider: "github", label: "AndresL230", linked_at: "t" }], org: "SaplingLearn", admin: false, role: null, ...over });
+const ME = (over: Partial<Me> = {}): Me => ({ handle: "AndresL230", name: "Andres", avatar_url: null, color: "moss", identities: [{ provider: "github", label: "AndresL230", linked_at: "t" }], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0, ...over });
 const SECRET = "Owns the ingest gate and every migration";
 const profile = (over: Partial<PersonProfile> = {}): PersonProfile => ({
   handle: "priya", name: "Priya Natarajan", color: "plum", avatar_url: "/avatar/abc", role: "Backend engineer",
@@ -227,7 +157,7 @@ describe("the person card (a click on a name — there is no People screen)", ()
 describe("Settings › Profile — the photo; no role or responsibilities", () => {
   const settings = (over: Partial<ReturnType<typeof initialState>> = {}) => {
     const s = initialState();
-    s.me = ME({ role: "Founder" });
+    s.me = ME();
     s.displayName = "Andres";
     Object.assign(s, over);
     return s;
@@ -315,98 +245,16 @@ describe("avatar prep (web/src/avatar.ts)", () => {
   });
 });
 
-describe("Maintenance › People — role and the admin's Edit role", () => {
+describe("Maintenance › People — the directory shows each person's title", () => {
   const dir = [
     { handle: "AndresL230", name: "Andres", color: "moss" as const, avatar_url: null, role: "Founder" },
     { handle: "priya", name: "Priya Natarajan", color: "plum" as const, avatar_url: null, role: null },
   ];
-  it("each row opens the person card and shows the role; only an admin gets Edit role", () => {
-    const admin = peopleSection({ persons: dir, invites: [], inviteDraft: "", loading: false, error: null, me: "AndresL230" });
-    expect(admin).toContain('data-act="openPerson" data-arg="priya"');
-    expect(admin).toContain("· Founder");
-    expect(admin).toContain('data-act="personEditOpen" data-arg="priya"');
-    const member = peopleSection({ persons: dir, invites: [], inviteDraft: "", loading: false, error: null, canInvite: false });
-    expect(member).toContain('data-act="openPerson" data-arg="priya"');
-    expect(member).not.toContain('data-act="personEditOpen"');
-  });
-
-  const loaded = { role: "Backend", responsibilities: SECRET };
-  const view = (over: Partial<PersonEditView> = {}): PersonEditView => ({ handle: "priya", draft: loaded, base: loaded, saving: false, ...over });
-  const section = { persons: dir, invites: [], inviteDraft: "", loading: false, error: null, me: "AndresL230" };
-
-  it("an admin's open editor sits under that row — the one place role and responsibilities are edited", () => {
-    const open = peopleSection({ ...section, edit: view({ handle: "PRIYA" }) });
-    expect(open).toContain(SECRET);
-    expect(open).toContain('data-act="personRoleDraft"');
-    expect(open).toContain(`maxlength="${ROLE_MAX}"`);
-    expect(open).toContain(`maxlength="${RESPONSIBILITIES_MAX}"`);
-    expect(open).toContain("Never shown in the app");
-    expect(open).toContain("agents read it when deciding whom to assign work");
-    expect(open).toContain('data-act="personEditCancel" data-arg="priya"');   // the row's button now closes it
-    expect(open).toContain('aria-expanded="true"');
-    expect(open.indexOf(SECRET)).toBeGreaterThan(open.indexOf('data-arg="priya"'));
-    // The row and its editor are one block: the row is marked, and the editor follows it.
-    expect(open).toMatch(/class="cnpy-prow" data-roleedit="in"[\s\S]*data-arg="priya"[\s\S]*class="cnpy-roleedit" data-roleedit="in"/);
-    // Only Priya's row is open; Andres's keeps a plain row and a closed button.
-    expect(open.match(/data-roleedit="in"/g)).toHaveLength(2);
-    expect(open).toContain('data-act="personEditOpen" data-arg="AndresL230"');
-    // Labelled fields, the helper tied to the textarea, and the counter.
-    expect(open).toContain('<label for="person-role"');
-    expect(open).toContain('<label for="person-resp"');
-    expect(open).toContain('aria-describedby="person-resp-help"');
-    expect(open).toContain(`${SECRET.length} / ${RESPONSIBILITIES_MAX}`);
-    // The Edit role button keeps focus across rerenders (data-field) — close returns focus to it.
-    expect(open).toContain('data-field="personEditBtn:priya"');
-    // A non-admin never sees it, whatever state says.
-    expect(peopleSection({ ...section, canInvite: false, edit: view() })).not.toContain(SECRET);
-    expect(peopleSection({ ...section, canInvite: false, editOut: view() })).not.toContain(SECRET);
-  });
-
-  it("Save waits for a change (compared trimmed) and reads Saving… while the write runs", () => {
-    const save = (html: string) => html.match(/<button data-act="personEditSave"[^>]*>[^<]*<\/button>/)?.[0] ?? "";
-    expect(personEditChanged(loaded, loaded)).toBe(false);
-    expect(personEditChanged({ ...loaded, role: "  Backend " }, loaded)).toBe(false);
-    expect(personEditChanged({ ...loaded, role: "Frontend" }, loaded)).toBe(true);
-    expect(personEditChanged(null, loaded)).toBe(false);
-    expect(save(personRoleEditor("Priya", view()))).toContain(" disabled");
-    const changed = save(personRoleEditor("Priya", view({ draft: { ...loaded, responsibilities: "Owns billing" } })));
-    expect(changed).not.toContain("disabled");
-    expect(changed).toContain("cnpy-accentbtn");
-    const saving = save(personRoleEditor("Priya", view({ draft: { ...loaded, role: "x" }, saving: true })));
-    expect(saving).toContain("disabled");
-    expect(saving).toContain("Saving…");
-  });
-
-  it("loading is the same form, disabled and shimmering — nothing moves when the draft lands", () => {
-    const loading = personRoleEditor("Priya", view({ draft: null, base: null }));
-    const ready = personRoleEditor("Priya", view());
-    expect(loading).toContain('aria-busy="true"');
-    expect(loading).toContain("Loading…");
-    expect(loading).toContain("cnpy-roleedit-skel");
-    expect(loading).not.toContain(SECRET);
-    expect(loading.match(/<input[^>]*disabled/)).not.toBeNull();
-    expect(loading.match(/<textarea[^>]*disabled/)).not.toBeNull();
-    // Same controls with the same fixed heights in both states.
-    const heights = (h: string) => Array.from(h.matchAll(/<(input|textarea)[^>]*height:(\d+)px/g)).map((m) => `${m[1]}:${m[2]}`);
-    expect(heights(loading)).toEqual(heights(ready));
-    expect(heights(ready)).toEqual(["input:36", "textarea:128"]);
-    expect(ready).not.toContain("cnpy-roleedit-skel");
-    expect(ready).not.toContain("aria-busy");
-  });
-
-  it("a closing editor is an inert picture under its row: no ids, acts or fields for the new one to collide with", () => {
-    const both = peopleSection({ ...section, edit: view({ handle: "AndresL230", draft: null, base: null }), editOut: view() });
-    const at = both.indexOf('class="cnpy-roleedit" data-roleedit="out" inert');
-    expect(at).toBeGreaterThan(-1);
-    const out = both.slice(at);
-    expect(both).toMatch(/class="cnpy-prow" data-roleedit="out"/);
-    // Exactly ONE live Role box, and it is the opening editor's.
-    expect(both.match(/data-field="personRole"/g)).toHaveLength(1);
-    expect(both.match(/id="person-role"/g)).toHaveLength(1);
-    const ghost = out.slice(0, out.indexOf("</textarea>"));
-    expect(ghost).not.toContain("data-field=");
-    expect(ghost).not.toContain("data-act=");
-    // Priya's row button is closed again while her editor collapses.
-    expect(both).toContain('data-act="personEditOpen" data-arg="priya"');
+  it("each row opens the person card and shows the title; titles are edited in Org settings › Members, never here", () => {
+    const html = peopleSection({ persons: dir, loading: false, me: "AndresL230" });
+    expect(html).toContain('data-act="openPerson" data-arg="priya"');
+    expect(html).toContain("· Founder");
+    expect(html).not.toContain("personEdit");
+    expect(html).not.toContain("cnpy-roleedit");
   });
 });

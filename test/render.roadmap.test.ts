@@ -17,7 +17,7 @@
  * ESCAPING mock: anything that appears inside the mock wrapper provably went through
  * the markdown fn (the XSS discipline under test), never raw interpolation.
  */
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Hoisted above the render.ts import — full render() trees use this mock in place of
 // the real marked+DOMPurify pipeline. It escapes its input so the "was the markdown fn
@@ -30,6 +30,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 
 import { planNarrativeBlock, render, initialState } from "../web/src/render";
+import { setPrimaryRepo } from "../web/src/github";
 import trovCss from "../web/src/trov.css?raw";
 import mainSrc from "../web/src/main.ts?raw";
 import type { PlanView, SprintView, FeedRow } from "../web/src/api";
@@ -87,7 +88,7 @@ function stateWithPlan(plan: PlanView, tab: "narrative" | "timeline"): ReturnTyp
     view: "app",
     screen: "roadmap",
     roadmapTab: tab,
-    me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+    me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
     roadmap: { status: "ok", data: plan },
   };
 }
@@ -454,6 +455,31 @@ function stateWithFeed(artifacts: string): ReturnType<typeof initialState> {
 }
 
 describe("render() — Recent happenings GitHub chips", () => {
+  // A bare number or sha belongs to the org's PRIMARY repository (github.ts, set from `GET /api/o/:slug/me`).
+  beforeEach(() => setPrimaryRepo("SaplingLearn/sapling"));
+  afterEach(() => setPrimaryRepo(null));
+
+  it("with NO repository connected a bare PR / issue / commit is a plain chip, never a link to someone else's repo", () => {
+    setPrimaryRepo(null);
+    const html = render(stateWithFeed(JSON.stringify({ prs: ["14"], commits: ["8ad9756a407f0b2a3092cbfbb93f1dbc197546c3"], issues: [292] })));
+    expect(html).toContain(">#14<");
+    expect(html).toContain(">8ad9756<");
+    expect(html).toContain(">#292<");
+    expect(html).toContain("No repository is connected to this organization");
+    expect(html).not.toContain("/pull/14");
+    expect(html).not.toContain("/issues/292");
+    expect(html).not.toContain("SaplingLearn");
+    // A full URL names its own repository, so it still links.
+    expect(render(stateWithFeed(JSON.stringify({ prs: ["https://github.com/acme/web/pull/9"], commits: [], issues: [] })))).toContain('href="https://github.com/acme/web/pull/9"');
+  });
+
+  it("links a bare reference to whatever the org's primary repository is", () => {
+    setPrimaryRepo("acme/web");
+    const html = render(stateWithFeed(JSON.stringify({ prs: ["14"], commits: [], issues: [292] })));
+    expect(html).toContain('href="https://github.com/acme/web/pull/14"');
+    expect(html).toContain('href="https://github.com/acme/web/issues/292"');
+  });
+
   it("renders a PR given as a full pull URL as #<number>, not the URL", () => {
     const html = render(stateWithFeed(
       JSON.stringify({ prs: ["https://github.com/SaplingLearn/Sapling/pull/321"], commits: [], issues: [] }),
@@ -500,7 +526,7 @@ describe("search results — sprint hits navigate via goRoadmap", () => {
       ...s,
       view: "app",
       screen: "search",
-      me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+      me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
       searchResults: {
         status: "ok",
         data: {
@@ -525,7 +551,7 @@ describe("search results — sprint hits navigate via goRoadmap", () => {
       ...s,
       view: "app",
       screen: "search",
-      me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+      me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
       searchResults: {
         status: "ok",
         data: {

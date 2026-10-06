@@ -12,7 +12,7 @@
 import type { AppState } from "./render";
 import {
   ApiError, OrgApiError, Unauthorized,
-  getMyOrgs, getOrgSettings, putOrgSettings, listOrgMembers, updateOrgMember, removeOrgMember, listOrgInvites, createOrgInvite, revokeOrgInvite,
+  mailOrgInvite, getOrgSettings, putOrgSettings, listOrgMembers, updateOrgMember, removeOrgMember, listOrgInvites, createOrgInvite, revokeOrgInvite,
   listOrgRepos, addOrgRepo, removeOrgRepo, listOrgEnvironments, putOrgEnvironment, reorderOrgEnvironments, deleteOrgEnvironment,
   listOrgIntegrations, setOrgIntegration, rotateOrgIntegration, deleteOrgIntegration, putOrgIntegrationConfig, testOrgIntegration, rotateOrgKey, listOrgAudit,
   type OrgEnvironmentWrite,
@@ -34,6 +34,10 @@ export interface OrgHost {
   unauth(e: unknown): void;
   /** Play the confirmation modal's exit, then run `then`. */
   confirmOut(then: () => void): void;
+  /** Read `GET /api/orgs` again — the ONE loader (main.ts `loadMyOrgs`); null when it failed. */
+  reloadOrgs(): Promise<unknown>;
+  /** The viewer is no longer in the org on screen (they left it): off to the picker. */
+  leaveOrg(): void;
 }
 
 export interface OrgController {
@@ -80,7 +84,7 @@ export function orgErrorText(e: unknown, fallback: string): string {
 export function createOrgController(host: OrgHost): OrgController {
   const { state, mount } = host;
   const ui = (): OrgUi => state.org;
-  const org = () => currentOrg(state.myOrgs.data);
+  const org = () => currentOrg(state);
   const rerender = () => host.rerender();
 
   // ── the secret draft (see the header) ──────────────────────────────────────
@@ -107,12 +111,12 @@ export function createOrgController(host: OrgHost): OrgController {
 
   // ── reads ──────────────────────────────────────────────────────────────────
   /** Run one read into its slice; a slice for an org that is no longer current is dropped. */
-  function read<T>(get: () => OrgSlice<T>, set: (v: OrgSlice<T>) => void, fetch: (slug: string) => Promise<T>): void {
+  function read<T>(get: () => OrgSlice<T>, set: (v: OrgSlice<T>) => void, ask: (slug: string) => Promise<T>): void {
     const slug = ui().slug;
     if (!slug) return;
     const held = get().data;
     set({ status: "loading", data: held });
-    fetch(slug)
+    ask(slug)
       .then((data) => { if (ui().slug !== slug) return; set({ status: "ok", data }); rerender(); })
       .catch((e) => { if (fail(e) || ui().slug !== slug) return; set({ status: "error", data: held, error: e instanceof Error ? e.message : String(e) }); rerender(); });
   }
@@ -136,17 +140,12 @@ export function createOrgController(host: OrgHost): OrgController {
     loadSettings(); loadMembers(); loadRepos(); loadEnvs(); loadAdmin();
   }
 
-  let orgsSeq = 0;
+  /** My orgs again (a role change, a rename), then this screen's reads. */
   function loadOrgs(then: () => void): void {
-    const seq = ++orgsSeq;
-    state.myOrgs = { status: "loading", data: state.myOrgs.data };
-    getMyOrgs()
-      .then((data) => { if (seq !== orgsSeq) return; state.myOrgs = { status: "ok", data }; then(); rerender(); })
-      .catch((e) => { if (fail(e) || seq !== orgsSeq) return; state.myOrgs = { status: "error", data: state.myOrgs.data, error: e instanceof Error ? e.message : String(e) }; rerender(); });
+    void host.reloadOrgs().then(() => { then(); rerender(); });
   }
   function load(): void {
-    if (state.myOrgs.status === "ok" && org()) loadSlices();
-    else if (state.myOrgs.status !== "loading") loadOrgs(loadSlices);
+    loadSlices();
     rerender();
   }
 
@@ -218,8 +217,8 @@ export function createOrgController(host: OrgHost): OrgController {
         .then((r) => {
           ui().memberEdit = null;
           done(r.left ? `You left ${o.name}` : `Removed ${name}`);
-          // Leaving changes which org is mine: read that again before anything else.
-          if (r.left) loadOrgs(loadSlices); else loadMembers();
+          // Leaving ends my access to this org: there is nothing of it left to show.
+          if (r.left) host.leaveOrg(); else loadMembers();
         })
         .catch((e) => failed(e, e instanceof ApiError && e.message === "last_owner" ? lastOwnerSentence(name) : `Couldn't remove ${name}.`));
     } else {
@@ -386,7 +385,11 @@ export function createOrgController(host: OrgHost): OrgController {
       .then((invite) => {
         u.inviteBusy = false; u.inviteDraft = "";
         u.invites = { status: "ok", data: [invite, ...u.invites.data] };
-        host.flash(`Invited ${invite.github_login ? `@${invite.github_login}` : invite.email ?? who} as ${invite.role}`);
+        const whom = invite.github_login ? `@${invite.github_login}` : invite.email ?? who;
+        // An e-mail invite is mailed where the mail route answers (the viewer's only org);
+        // a GitHub one is never mailed — Trov knows a login, not an address.
+        if (invite.email && canMail()) { mailInvite(invite.id, invite.email, `Invited ${whom} as ${invite.role}.`); return; }
+        host.flash(invite.email ? `Invited ${whom} as ${invite.role}. No email was sent: tell them to sign in with that address.` : `Invited ${whom} as ${invite.role}. They see it the next time they sign in.`, 5000);
       })
       .catch((e) => {
         u.inviteBusy = false;
@@ -395,6 +398,26 @@ export function createOrgController(host: OrgHost): OrgController {
           ? (u.inviteBy === "github" ? "That is not a GitHub login. Use the name after github.com/, without the @." : "That is not an email address.")
           : orgErrorText(e, "Couldn't send the invite.");
         rerender();
+      });
+  }
+
+  /** The legacy mail route answers only for a person in exactly one org (api.ts `mailOrgInvite`). */
+  const canMail = (): boolean => (state.me?.orgs.length ?? 0) === 1;
+  function mailInvite(id: number, email: string, lead = ""): void {
+    const u = ui();
+    if (u.mailBusy !== null) return;
+    u.mailBusy = id;
+    rerender();
+    const say = (m: string) => host.flash(lead ? `${lead} ${m}` : m, 5000);
+    mailOrgInvite(email)
+      .then((r) => { u.mailBusy = null; say(r.status === "sent" ? `Invitation emailed to ${email}.` : `The email to ${email} was not sent${r.error ? `: ${r.error}` : ""}. Use Resend email to try again.`); })
+      .catch((e) => {
+        u.mailBusy = null;
+        if (fail(e)) return;
+        say(e instanceof ApiError && e.message === "org_required" ? "No email was sent: Trov can only email invitations for people in a single organization for now. Tell them to sign in with that address."
+          : e instanceof ApiError && (e.message === "revoked" || e.message === "accepted" || e.status === 404) ? "That invitation is no longer pending, so no email was sent."
+          : `The email to ${email} was not sent. Use Resend email to try again.`);
+        if (e instanceof ApiError && (e.status === 404 || e.status === 409)) loadInvites();
       });
   }
 
@@ -558,6 +581,11 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgInviteDraft": u.inviteDraft = value ?? ""; u.inviteError = null; break;
       case "orgInviteRole": if (value === "member" || value === "admin") u.inviteRole = value; break;
       case "orgInviteSend": sendInvite(); return;
+      case "orgInviteMail": {
+        const inv = u.invites.data.find((i) => String(i.id) === arg && i.status === "pending");
+        if (admin && inv?.email && canMail()) mailInvite(inv.id, inv.email);
+        return;
+      }
       case "orgInviteRevoke": {
         const id = Number(arg);
         if (!o || !admin || !Number.isInteger(id)) return;

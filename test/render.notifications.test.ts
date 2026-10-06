@@ -4,7 +4,8 @@
  * schedule / outbox), and the unsubscribe confirmation view. Pure functions,
  * mock-fed props, HTML-string assertions (pattern: render.review.test.ts).
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
+import { setApiOrg } from "../web/src/api";
 import { emailNotificationsSection, notificationsMaintenanceSections, unsubscribeView } from "../web/src/notifications";
 import type { PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
@@ -174,11 +175,19 @@ describe("notificationsMaintenanceSections", () => {
 });
 
 describe("maintenance schedule — preview + test send controls", () => {
+  afterEach(() => setApiOrg(null));
   it("offers preview links for daily, weekly and sample, and test-send buttons for both cadences", () => {
-    const v = notificationsMaintenanceSections({ policy: [], settings: { org_id: "org_saplinglearn", send_hour: 8, timezone: "UTC", from_address: "a@b.co" }, outbox: [], outboxExpanded: null, fromDraft: null });
-    expect(v).toContain('href="/api/notifications/preview?cadence=daily"');
-    expect(v).toContain('href="/api/notifications/preview?cadence=weekly"');
-    expect(v).toContain('href="/api/notifications/preview?cadence=daily&amp;sample=1"');
+    const sections = () => notificationsMaintenanceSections({ policy: [], settings: { org_id: "org_saplinglearn", send_hour: 8, timezone: "UTC", from_address: "a@b.co" }, outbox: [], outboxExpanded: null, fromDraft: null });
+    // The preview is the ORG's digest: its links are under the org on screen, like every request.
+    setApiOrg("acme");
+    const v = sections();
+    expect(v).toContain('href="/api/o/acme/notifications/preview?cadence=daily"');
+    expect(v).toContain('href="/api/o/acme/notifications/preview?cadence=weekly"');
+    expect(v).toContain('href="/api/o/acme/notifications/preview?cadence=daily&amp;sample=1"');
+    expect(v).not.toContain('href="/api/notifications/');
+    // With no org open the links are inert, never the unprefixed alias.
+    setApiOrg(null);
+    expect(sections()).not.toContain("/notifications/preview");
     expect(v).toContain('data-act="testSend" data-arg="daily"');
     expect(v).toContain('data-act="testSend" data-arg="weekly"');
   });

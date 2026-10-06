@@ -399,7 +399,7 @@ describe("artifacts — delete", () => {
     const p = props("artifacts");
     expect(artifactsAct(p.ui, ctx(p), "artRestore", "a", null)).toEqual({ write: { op: "restore", slug: "a" } });
     const html = render({
-      ...initialState(), view: "app", me: { handle: "alice", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+      ...initialState(), view: "app", me: { handle: "alice", name: null, avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
       toast: "Deleted “Sign-in flow”", toastAction: { label: "Undo", act: "artRestore", arg: "sign-in-flow" }, toastAt: Date.now(), toastMs: 8000,
     });
     expect(html).toContain('data-act="artRestore" data-arg="sign-in-flow" class="cnpy-toast-act"');
@@ -579,7 +579,7 @@ describe("artifacts — new artifact", () => {
     expect(artifactsAct(p.ui, ctx(p), "artCSubmit", null, null)).toEqual({
       write: {
         op: "create",
-        fields: { title: "Retro board", kind: "markdown", area: "ui", repo: "AndresL230/trov", visibility: "org", summary: "Uploaded from Trov" },
+        fields: { title: "Retro board", kind: "markdown", area: "ui", repo: "", visibility: "org", summary: "Uploaded from Trov" },
         content: "# Retro", file: null, filename: null, links: [{ target_type: "ticket", target_ref: "10" }],
       },
     });

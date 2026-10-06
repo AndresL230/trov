@@ -505,6 +505,8 @@ export function platformDialogs(p: PlatState, screen: string): string {
       id: "plat-suspend-confirm", title: copy.title, body: copy.body,
       confirmLabel: suspend ? "Suspend" : "Unsuspend", busyLabel: suspend ? "Suspending…" : "Unsuspending…",
       confirmAct: "platSuspendGo", cancelAct: "platSuspendCancel", busy: p.suspendBusy,
+      // Suspending takes access away (red); unsuspending gives it back (the neutral confirm).
+      tone: suspend ? "danger" : "neutral",
     });
   }
   if (screen === "platform" && p.revokeArm) {

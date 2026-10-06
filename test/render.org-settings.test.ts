@@ -99,11 +99,18 @@ const form = (o: Partial<SecretFormState> = {}): SecretFormState => ({
 });
 
 describe("the current org — one place", () => {
-  it("is the first of mine, or null", () => {
+  it("is the org the page's path names (`orgSlug`), with my role there — never 'the first of mine'", () => {
     const mine: MyOrgsResponse = { orgs: [org("admin"), { slug: "other", name: "Other", role: "member" }], invites: [], superadmin: false, can_create: true, created: 1, limit: 3 };
-    expect(currentOrg(mine)?.slug).toBe("acme");
-    expect(currentOrg(null)).toBeNull();
-    expect(currentOrg({ ...mine, orgs: [] })).toBeNull();
+    const at = (orgSlug: string | null, data: MyOrgsResponse | null = mine, me: { orgs: MyOrgsResponse["orgs"] } | null = null) => currentOrg({ orgSlug, myOrgs: { data }, me });
+    expect(at("acme")?.role).toBe("admin");
+    expect(at("other")).toEqual({ slug: "other", name: "Other", role: "member" });
+    expect(at(null)).toBeNull();
+    expect(at("gone")).toBeNull();
+    expect(at("acme", { ...mine, orgs: [] })).toBeNull();
+    // Until `GET /api/orgs` lands, `/auth/me`'s copy answers — so the role is known on the first paint.
+    expect(at("other", null, { orgs: mine.orgs })?.role).toBe("member");
+    // …and once it has landed it wins (a role changed since sign-in).
+    expect(at("acme", mine, { orgs: [{ slug: "acme", name: "Acme", role: "member" }] })?.role).toBe("admin");
   });
   it("AppState carries it as `myOrgs`, and Org settings' own state as `org`", () => {
     const s = initialState();
@@ -123,15 +130,17 @@ describe("route, hash and sidebar", () => {
     for (const h of ["#org", "#org/repos", "#org/environments", "#org/members", "#org/general"]) expect(hashForRoute(parseHash(h))).toBe(h);
     expect(hashForRoute(parseHash("#org/integrations"))).toBe("#org");
   });
-  it("the rail has an Org settings row that lights on the screen", () => {
+  it("the rail has NO Org settings row: the org switcher in its header holds it, and reads as the current place there", () => {
     const base = { collapsed: false, navOpen: NAV_CLOSED, qView: "board" as const, roadmapTab: "narrative" as const, docSpace: "technical", docSpaces: [], counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
     expect(navKeyOf("org")).toBe("org");
-    const html = sidebarView({ ...base, screen: "org" });
-    expect(html).toContain('data-act="orgGo" class="cnpy-nav-i" aria-label="Org settings" aria-current="page"');
-    expect(sidebarView({ ...base, screen: "feed" })).toContain('data-act="orgGo" class="cnpy-nav-i" aria-label="Org settings">');
+    const html = sidebarView({ ...base, screen: "org", orgSwitcher: "<b>switcher</b>", orgActive: true });
+    expect(html).not.toContain('data-act="orgGo"');
+    expect(html).not.toContain(">Organization<");
+    expect(html).toContain('<div class="cnpy-orgslot is-active"><b>switcher</b></div>');
+    expect(sidebarView({ ...base, screen: "feed", orgSwitcher: "<b>switcher</b>" })).toContain('<div class="cnpy-orgslot"><b>switcher</b></div>');
   });
   it("the app renders the screen under its header title, and its hash never carries more than the tab", () => {
-    const s: AppState = { ...initialState(), view: "app", screen: "org", myOrgs: { status: "ok", data: { orgs: [org()], invites: [], superadmin: false, can_create: true, created: 1, limit: 3 } }, org: fullUi() };
+    const s: AppState = { ...initialState(), view: "app", screen: "org", orgSlug: "acme", myOrgs: { status: "ok", data: { orgs: [org()], invites: [], superadmin: false, can_create: true, created: 1, limit: 3 } }, org: fullUi() };
     const html = render(s);
     expect(html).toContain('data-screen-label="Org settings"');
     expect(html).toContain(">Org settings<");
@@ -322,15 +331,47 @@ describe("Integrations — the states of the page", () => {
     expect(running).toMatch(/data-field="orgSecretTest:github_token:" disabled aria-busy="true"/);
   });
 
-  it("the per-repo webhook URL is 'available soon' — nothing tells the admin to re-point GitHub, and there is no test", () => {
-    expect(WEBHOOKS_LIVE).toBe(false);
-    const row = integrationRow(set("github_webhook", "9f3a"), { secretsAvailable: true });
-    expect(row).toContain("Webhook URL &middot; available soon");
-    expect(row).toContain("leave your GitHub webhook as it is");
-    expect(row).not.toContain("Test connection");
-    const modal = secretFormModal(integ("github_webhook"), form({ kind: "github_webhook", scope: HOOK }));
-    expect(modal).toContain("The webhook URL is not live yet.");
-    expect(tabView(fullUi(), "repos")).toContain("Leave your GitHub webhook as it is for now.");
+  it("per-repo webhooks are live: the row shows the Payload URL and says what to do with it; nothing says 'soon'", () => {
+    expect(WEBHOOKS_LIVE).toBe(true);
+    const url = `https://trov.dev/webhook/github/${HOOK}`;
+    const stored = integrationRow(set("github_webhook", "9f3a"), { secretsAvailable: true });
+    expect(stored).toContain("data-org-hookurl");
+    expect(stored).toContain(url);
+    expect(stored).toContain("The Payload URL of this repository's webhook on GitHub.");
+    // Not set yet: the order to do it in, and what happens meanwhile.
+    const unset = integrationRow(integ("github_webhook"), { secretsAvailable: true });
+    expect(unset).toContain(url);
+    expect(unset).toContain("Set the secret first, then add a webhook on GitHub with this Payload URL and the same secret.");
+    // SaplingLearn's cut-over: the platform's credential still answers; moving is spelled out.
+    expect(integrationRow(integ("github_webhook", { legacy_fallback: true }), { secretsAvailable: true })).toContain("keeps working with the platform's credential");
+    for (const html of [stored, unset, secretFormModal(integ("github_webhook"), form({ kind: "github_webhook", scope: HOOK })), tabView(fullUi(), "repos"), tabView(emptyUi({ repos: ok([repo()]) }), "repos")]) {
+      expect(html).not.toContain("available soon");
+      expect(html).not.toContain("not live yet");
+    }
+    const repos = tabView(fullUi(), "repos");
+    expect(repos).toContain("Deliveries are checked against the secret set in Integrations.");
+    expect(tabView(emptyUi({ repos: ok([repo()]) }), "repos")).toContain("Deliveries to this URL are rejected until its webhook secret is set in Integrations.");
+  });
+
+  it("a webhook secret is checked by its deliveries, not by a call: 'Check deliveries', and no delivery yet is a wait, not a failure", () => {
+    const key = `github_webhook:${HOOK}`;
+    const row = (test?: { status: "done"; ok: boolean; detail: string }) => integrationRow(set("github_webhook", "9f3a"), { secretsAvailable: true, test });
+    expect(row()).toContain(`data-field="orgSecretTest:${key}"`);
+    expect(row()).toContain("Check deliveries");
+    expect(row()).not.toContain("Test connection");
+    const waiting = row({ status: "done", ok: false, detail: "No verified delivery yet." });
+    expect(waiting).toContain('data-org-test="waiting"');
+    expect(waiting).toContain("Nothing has arrived yet.");
+    expect(waiting).toContain("var(--amber)");
+    expect(waiting).not.toContain("Test failed.");
+    const arriving = row({ status: "done", ok: true, detail: "Last verified delivery at 2026-10-05T10:00:00.000Z." });
+    expect(arriving).toContain('data-org-test="ok"');
+    expect(arriving).toContain("Deliveries are arriving.");
+    // Every other kind keeps the plain verdict.
+    const token = integrationRow(set("github_token", "1a2b"), { secretsAvailable: true, test: { status: "done", ok: false, detail: "401" } });
+    expect(token).toContain("Test connection");
+    expect(token).toContain("Test failed.");
+    expect(token).toContain('data-org-test="failed"');
   });
 
   it("a stored secret nothing expects can only be deleted", () => {
@@ -447,7 +488,7 @@ describe("a secret's value is never in the markup", () => {
       audit: ok<OrgAuditDTO[]>([{ id: "s9", actor: "andres", action: "secret.set", target: "github_token:", detail: { hint_last4: SECRET.slice(-4), key_version: 2 }, at: "2026-10-06T10:00:00.000Z" }]),
     });
     const s: AppState = {
-      ...initialState(), view: "app", screen: "org", toast: "Saved the GitHub token", toastAt: Date.now(), toastMs: 2200,
+      ...initialState(), view: "app", screen: "org", orgSlug: "acme", toast: "Saved the GitHub token", toastAt: Date.now(), toastMs: 2200,
       myOrgs: { status: "ok", data: { orgs: [org()], invites: [], superadmin: false, can_create: true, created: 1, limit: 3 } }, org: saved,
     };
     const html = render(s);
@@ -624,7 +665,7 @@ describe("before the data lands", () => {
   it("says what it is waiting for, what failed, and when there is no org", () => {
     expect(orgSettingsView({ org: null, orgsStatus: "loading", me: "", ui: initialOrgUi() })).toContain("Loading your org");
     expect(orgSettingsView({ org: null, orgsStatus: "error", me: "", ui: initialOrgUi() })).toContain("Couldn't load your orgs.");
-    expect(orgSettingsView({ org: null, orgsStatus: "ok", me: "", ui: initialOrgUi() })).toContain("You are not in an org yet");
+    expect(orgSettingsView({ org: null, orgsStatus: "ok", me: "", ui: initialOrgUi() })).toContain("This organization isn&#39;t open");
     expect(view({ ...initialOrgUi(), slug: "acme" })).toContain("Loading integrations");
     const failed = view({ ...initialOrgUi(), slug: "acme", integrations: { status: "error", data: null, error: "503" } });
     expect(failed).toContain("Couldn't load integrations.");

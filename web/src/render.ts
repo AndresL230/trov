@@ -4,8 +4,8 @@
 // `data-act` / `data-arg` attributes dispatched in main.ts.
 
 import { trovMark } from "@shared/mark";
-import type { Me, StagedProposal, IdentityTask, DiscardedIdentity, PersonSummary, PersonProfile, InviteRow } from "./api";
-import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary } from "@shared/rows";
+import type { Me, StagedProposal, IdentityTask, DiscardedIdentity, PersonSummary, PersonProfile } from "./api";
+import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
 import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
@@ -30,11 +30,11 @@ import { tabBar, tabPanelAttrs } from "./tabs";
 import { releasesScreen, findRelease, type ReleasePage } from "./releases";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
-import { REPO_URL } from "./github";
+import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
-import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab, type PersonEditDraft } from "./maintenance";
+import { maintenanceView, peopleSection, type MaintenanceProps, type AssignKind, type MaintTab } from "./maintenance";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
@@ -54,7 +54,10 @@ import { platformView, platformOrgView, platformDialogs, platformHeaderControls,
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
 import { orgSettingsView, orgOverlays, orgPeopleLink, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
-import type { MyOrgsResponse } from "@shared/orgs";
+import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
+// Organizations as a person meets them (org-picker.ts): the switcher, the picker, the create dialog.
+import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsUi, type OrgsUi } from "./org-picker";
+import { isOrgAdmin } from "./org-context";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -93,7 +96,9 @@ export interface Loadable<T> {
 }
 
 export interface AppState {
-  view: "auth" | "app";
+  /** `orgs` = signed in, but no org is open: the org picker (`/`, with no org or several). */
+  view: "auth" | "app" | "orgs";
+  /** `nonmember` = a GitHub sign-in that was refused; `notinvited` = a Google account nobody invited. */
   authStep: "login" | "verifying" | "nonmember" | "notinvited" | "onboard";
   /** The landing page's sign-in dialog (authStep "login" only). */
   signInOpen: boolean;
@@ -104,9 +109,13 @@ export interface AppState {
   deniedEmail: string | null;
   onboard: OnboardState;
   persons: Loadable<PersonSummary[]>;
-  invites: Loadable<InviteRow[]>;
-  inviteDraft: string;
   me: Me | null;
+  /** The org on screen: the slug in the page's path (`/o/<slug>/`). null on the picker. */
+  orgSlug: string | null;
+  /** `GET /api/o/<slug>/me`: my role and title there, and the org's connected repositories. */
+  orgMe: Loadable<OrgMeResponse | null>;
+  /** The switcher's menu, the picker and the create-organization dialog (org-picker.ts). */
+  orgsUi: OrgsUi;
   mywork: Loadable<DashboardData | null>;
   /** My Work › Repo tile: which view is showing. Session-only. */
   mwRepoTab: MwRepoTab;
@@ -205,6 +214,9 @@ export interface AppState {
   grantRevokeArm: number | null;
   /** Connected apps opened past its first MCP_LIST_CAP rows by "Show all". */
   grantsAll: boolean;
+  /** Settings › MCP access: MY personal access tokens for the org on screen (older setups; revoke only). */
+  mcpTokens: Loadable<McpTokenSummary[]>;
+  tokenRevokeArm: number | null;
   /** Settings › MCP access's "Set it up without the plugin" modal is open (`mcpSetupModal`, at the app root). */
   mcpSetup: boolean;
   // Settings › Profile: the handle rename editor.
@@ -356,25 +368,19 @@ export interface AppState {
   /** ADMIN Sync GitHub progress — null when idle; present while a (possibly
    *  multi-batch) sync is running, tracking cumulative counts across batches. */
   backfillSync: BackfillSyncState | null;
-  // ── The person card (profile.ts), Maintenance › People's role editor, Settings › Profile's photo ──
+  // ── The person card (profile.ts), Settings › Profile's photo ──
   /** The person card open over the page (a click on a name); null = closed. */
   personCard: string | null;
   /** That person's `GET /api/people/:handle` (joined, GitHub, admin) — the card paints without it. */
   personDetail: Loadable<PersonProfile | null>;
-  /** Maintenance › People: the admin's open role + responsibilities editor (one person;
-   *  `draft` null while that person's profile read is in flight, `base` what it returned);
-   *  null = closed. */
-  personEdit: { handle: string; draft: PersonEditDraft | null; base: PersonEditDraft | null } | null;
-  /** The editor just closed (or replaced by another person's), rendered collapsing under its
-   *  row until its exit is over; always null under prefers-reduced-motion. */
-  personEditOut: { handle: string; draft: PersonEditDraft | null; base: PersonEditDraft | null } | null;
-  personSaving: boolean;
   /** A photo upload or removal in flight. */
   avatarBusy: "upload" | "remove" | null;
   /** Settings › Profile: the photo menu the avatar opens (upload / change / remove). */
   avatarMenu: boolean;
   // ── Org settings (web/src/org-settings.ts) ─────────────────────────────────
-  /** `GET /api/orgs`: my orgs (with my role in each), my invites, the superadmin flag. */
+  /** `GET /api/orgs`, loaded ONCE at boot (main.ts `loadMyOrgs`): my orgs (with my role in each), my
+   *  invitations, whether I may create one, the superadmin flag. Org settings, the switcher, the
+   *  picker and the Platform area all read this one slice. */
   myOrgs: Loadable<MyOrgsResponse | null>;
   /** Org settings' own state. It never holds a secret's value (org-actions.ts). */
   org: OrgUi;
@@ -394,9 +400,10 @@ export function initialState(): AppState {
     deniedEmail: null,
     onboard: initialOnboard(),
     persons: { status: "idle", data: [] },
-    invites: { status: "idle", data: [] },
-    inviteDraft: "",
     me: null,
+    orgSlug: null,
+    orgMe: { status: "idle", data: null },
+    orgsUi: initialOrgsUi(),
     screen: "mywork",
     theme: "light", systemDark: true,
     collapsed: false,
@@ -444,6 +451,8 @@ export function initialState(): AppState {
     grantRevokeArm: null,
     mcpSetup: false,
     grantsAll: false,
+    mcpTokens: { status: "idle", data: [] },
+    tokenRevokeArm: null,
     handleEdit: false,
     handleDraft: "",
     handleCheck: "idle",
@@ -498,9 +507,6 @@ export function initialState(): AppState {
     backfillSync: null,
     personCard: null,
     personDetail: { status: "idle", data: null },
-    personEdit: null,
-    personEditOut: null,
-    personSaving: false,
     avatarBusy: null,
     avatarMenu: false,
     myOrgs: { status: "idle", data: null },
@@ -555,6 +561,11 @@ export function handoffBadge(s: AppState): number {
   return handoffsForMe(s.handoffs.data, s.me?.handle ?? "").length;
 }
 
+/** The org on screen with MY role in it — `currentOrg` is the one place that picks it. */
+export const viewerOrg = (s: Pick<AppState, "orgSlug" | "myOrgs" | "me">): MyOrg | null => currentOrg(s);
+/** Admin means admin or owner of the org on screen. Every admin-only control reads this. */
+export const viewerIsAdmin = (s: Pick<AppState, "orgSlug" | "myOrgs" | "me">): boolean => isOrgAdmin(currentOrg(s));
+
 const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>`;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -595,20 +606,24 @@ function feedArtifacts(json: string | null): { kind: string; label: string; href
   let a: { prs?: string[]; commits?: string[]; issues?: number[] };
   try { a = JSON.parse(json); } catch { return []; }
   const isUrl = (v: string) => /^https?:\/\//i.test(v);
+  // A bare number or sha belongs to the org's primary repository; with none connected the chip
+  // still names it, as text (`href: ""`), rather than link to a repository that is not the org's.
+  const repo = repoUrl();
   const out: { kind: string; label: string; href: string }[] = [];
   for (const pr of a.prs ?? []) {
     const num = prNumber(pr);
-    out.push({ kind: "PR", label: `#${num}`, href: isUrl(String(pr)) ? String(pr) : `${REPO_URL}/pull/${num}` });
+    out.push({ kind: "PR", label: `#${num}`, href: isUrl(String(pr)) ? String(pr) : repo ? `${repo}/pull/${num}` : "" });
   }
   for (const c of a.commits ?? []) {
     const sha = commitSha(c);
-    out.push({ kind: "commit", label: sha.slice(0, 7), href: isUrl(String(c)) ? String(c) : `${REPO_URL}/commit/${sha}` });
+    out.push({ kind: "commit", label: sha.slice(0, 7), href: isUrl(String(c)) ? String(c) : repo ? `${repo}/commit/${sha}` : "" });
   }
-  for (const i of a.issues ?? []) out.push({ kind: "issue", label: `#${i}`, href: `${REPO_URL}/issues/${i}` });
+  for (const i of a.issues ?? []) out.push({ kind: "issue", label: `#${i}`, href: repo ? `${repo}/issues/${i}` : "" });
   return out;
 }
 /** A linked GitHub chip (issue / PR / commit / issue group). */
 function ghChip(c: { kind: string; label: string; href: string }): string {
+  if (!c.href) return `<span title="No repository is connected to this organization" style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;border:1px solid var(--border);border-radius:6px;padding:3px 8px;color:var(--fg-55)"><span style="color:var(--fg-40)">${esc(c.kind)}</span><span style="font-family:var(--label);font-weight:500">${esc(c.label)}</span></span>`;
   return `<a href="${c.href}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;font-size:11.5px;border:1px solid var(--border);border-radius:6px;padding:3px 8px;text-decoration:none;color:var(--fg-70)"><span style="color:var(--fg-40)">${esc(c.kind)}</span><span style="font-family:var(--label);font-weight:500">${esc(c.label)}</span></a>`;
 }
 /** GitHub links for a sprint's github_ref. The bare number IS the number of an
@@ -618,8 +633,9 @@ function sprintRefChips(github_ref: string | null): { kind: string; label: strin
   try {
     const p = JSON.parse(github_ref);
     // The path segment is GitHub's own — not Trov vocabulary.
-    if (typeof p === "number") return [{ kind: "group", label: `#${p}`, href: `${REPO_URL}/milestone/${p}` }];
-    if (Array.isArray(p)) return p.map((n) => ({ kind: "issue", label: `#${n}`, href: `${REPO_URL}/issues/${n}` }));
+    const repo = repoUrl();
+    if (typeof p === "number") return [{ kind: "group", label: `#${p}`, href: repo ? `${repo}/milestone/${p}` : "" }];
+    if (Array.isArray(p)) return p.map((n) => ({ kind: "issue", label: `#${n}`, href: repo ? `${repo}/issues/${n}` : "" }));
   } catch { /* malformed ref → no chips */ }
   return [];
 }
@@ -640,40 +656,43 @@ function authView(s: AppState): string {
   </div>`;
 }
 
+const DENIED_SEAL = `<div class="cnpy-seal" style="width:52px;height:52px;border-radius:50%;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55)">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+      </div>`;
+
+/** A GitHub sign-in that was refused. Any GitHub account can sign in, so this is the one case left:
+ *  the login belongs to a Trov account, but under a different GitHub account id (the login was
+ *  renamed or re-registered) — and Trov will not hand that account to whoever holds the name now. */
 function nonmemberCard(): string {
   return `<div style="width:400px;max-width:100%">
     <div${surface("padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center", { cls: "cnpy-authcard" })}>
-      <div class="cnpy-seal" style="width:52px;height:52px;border-radius:50%;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55)">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
-      </div>
+      ${DENIED_SEAL}
       <div>
-        <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">Trov is limited to the Sapling team.</div>
-        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Your GitHub account isn't a member of the <span style="font-family:var(--label);font-size:12.5px">SaplingLearn</span> organization, so there's nothing here for you yet.</div>
+        <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">That GitHub account couldn't sign in.</div>
+        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Its login already belongs to a Trov account that was created from a different GitHub account, so Trov won't open it for this one. If you renamed your GitHub account, sign in with the one you used before, or write to <a href="mailto:hello@trov.dev" style="color:var(--fg-70)">hello@trov.dev</a>.</div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;padding:9px 14px 9px 9px;border:1px solid var(--border);border-radius:999px">
-        <div class="cnpy-av cnpy-av-anon" style="width:26px;height:26px;border-radius:50%;${AVATAR};font-size:10px;font-weight:600;color:var(--fg-70)">OS</div>
-        <div style="text-align:left;line-height:1.25;white-space:nowrap"><div style="font-size:12.5px;font-weight:500">Signed in as</div><div style="font-size:11.5px;color:var(--fg-55);font-family:var(--label)">octo-stranger</div></div>
-      </div>
-      <button data-act="backToLogin" class="cnpy-outlinebtn" style="width:100%;padding:11px 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:13.5px;font-weight:500">Sign out &amp; switch account</button>
+      <button data-act="backToLogin" class="cnpy-outlinebtn" style="width:100%;padding:11px 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:13.5px;font-weight:500">Back to sign in</button>
     </div>
   </div>`;
 }
 
+/** A Google account nobody invited. Google needs an invitation; a GitHub account never does. */
 function notInvitedCard(email: string | null): string {
   return `<div style="width:400px;max-width:100%">
     <div${surface("padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center", { cls: "cnpy-authcard" })}>
-      <div class="cnpy-seal" style="width:52px;height:52px;border-radius:50%;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--fg-55)">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
-      </div>
+      ${DENIED_SEAL}
       <div>
         <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">This Google account hasn't been invited yet.</div>
-        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Trov is limited to the Sapling team. Ask an admin to invite <span style="font-family:var(--label);font-size:12.5px">${esc(email ?? "your address")}</span>, then sign in again.</div>
+        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Signing in with Google needs an invitation. Ask an admin of your organization to invite <span style="font-family:var(--label);font-size:12.5px;overflow-wrap:anywhere">${esc(email ?? "your address")}</span>, then sign in again. A GitHub account can always sign in, and can create an organization.</div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;padding:9px 14px 9px 9px;border:1px solid var(--border);border-radius:999px">
-        <div class="cnpy-av cnpy-av-anon" style="width:26px;height:26px;border-radius:50%;${AVATAR};font-size:10px;font-weight:600;color:var(--fg-70)">${esc(initialsOf(email ?? "?"))}</div>
-        <div style="text-align:left;line-height:1.25;white-space:nowrap"><div style="font-size:12.5px;font-weight:500">Signed in with Google as</div><div style="font-size:11.5px;color:var(--fg-55);font-family:var(--label)">${esc(email ?? "unknown")}</div></div>
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 14px 9px 9px;border:1px solid var(--border);border-radius:999px;max-width:100%">
+        <div class="cnpy-av cnpy-av-anon" style="width:26px;height:26px;flex:none;border-radius:50%;${AVATAR};font-size:10px;font-weight:600;color:var(--fg-70)">${esc(initialsOf(email ?? "?"))}</div>
+        <div style="text-align:left;line-height:1.25;min-width:0"><div style="font-size:12.5px;font-weight:500">Signed in with Google as</div><div style="font-size:11.5px;color:var(--fg-55);font-family:var(--label);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(email ?? "unknown")}</div></div>
       </div>
-      <button data-act="signInGoogleSwitch" class="cnpy-outlinebtn" style="width:100%;padding:11px 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:13.5px;font-weight:500">Try a different account</button>
+      <div style="display:flex;flex-direction:column;gap:8px;width:100%">
+        <button data-act="signIn" class="cnpy-accentbtn" style="width:100%;padding:11px 16px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600">Sign in with GitHub</button>
+        <button data-act="signInGoogleSwitch" class="cnpy-outlinebtn" style="width:100%;padding:11px 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:13.5px;font-weight:500">Try a different Google account</button>
+      </div>
     </div>
   </div>`;
 }
@@ -686,7 +705,7 @@ function verifyingCard(): string {
     </div>
     <div style="display:flex;align-items:center;gap:11px;color:var(--fg-55);font-size:13px">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="animation:cnpy-spin .8s linear infinite"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"></path></svg>
-      Verifying Sapling membership&hellip;
+      Signing you in&hellip;
     </div>
   </div>`;
 }
@@ -712,6 +731,8 @@ function sidebar(s: AppState): string {
     displayName: s.displayName,
     logo: logo(24),
     superadmin: s.plat.superadmin === true,
+    orgSwitcher: orgSwitcherButton({ org: viewerOrg(s), open: s.orgsUi.menu, invites: s.myOrgs.data?.invites.length ?? s.me?.pending_invites ?? 0, collapsed: railCollapsed(s) }),
+    orgActive: s.screen === "org",
   });
 }
 
@@ -784,13 +805,13 @@ function header(s: AppState): string {
   const roadmapControls = s.screen === "roadmap" ? accentNew("nsToggle", "New sprint") : "";
 
   // ADMIN-only, My Work screen: trigger the server-side GitHub backfill. Rendered
-  // only when /auth/me returned admin:true (outline button, promote-class action).
+  // only for an admin or owner of the org on screen (outline button, promote-class action).
   // While s.backfillSync is set, the button is disabled (progress itself shows
   // in the modal below — see backfillSyncModal) — a sync can span multiple
   // batched requests (src/tools/backfill.ts caps AI calls per invocation),
   // driven by main.ts.
   const syncing = s.backfillSync !== null;
-  const myworkControls = s.screen === "mywork" && s.me?.admin
+  const myworkControls = s.screen === "mywork" && viewerIsAdmin(s)
     ? `<button data-act="adminBackfill" title="${syncing ? "Sync in progress" : "Fetch all GitHub PRs + issues"}" class="cnpy-outlinebtn" ${syncing ? "disabled" : ""} style="display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);${syncing ? "opacity:.65;cursor:default" : ""}">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ${syncing ? 'style="animation:cnpy-spin .8s linear infinite"' : ""}><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>
       ${syncing ? "Syncing&hellip;" : "Sync GitHub"}
@@ -1616,8 +1637,9 @@ function guideView(s: AppState): string {
 
     ${sec("Step 1", "Sign in", "Sign in")}
     <ul style="${gList}">
-      <li>${gStrong("Engineers sign in with GitHub.")} You need to be an ${gStrong("active")} member of the ${gStrong("SaplingLearn")} GitHub org, so accept the org invite first. A pending invite is not enough.</li>
-      <li>${gStrong("Everyone else signs in with Google")}, once an admin has invited that exact address from ${gStrong("Maintenance › People")}.</li>
+      <li>${gStrong("Sign in with GitHub.")} Any GitHub account can. If you aren't in an organization yet, you land on a page that lists your invitations and lets you create one.</li>
+      <li>${gStrong("Or sign in with Google")}, once an admin of your organization has invited that exact address from ${gStrong("Org settings › Members")}.</li>
+      <li>${gStrong("In more than one organization?")} The switcher at the top of the sidebar shows the one you're in and takes you to the others. Each has its own docs, tickets, roadmap and feed.</li>
       <li>The first time, you pick a ${gStrong("handle")} and a ${gStrong("color")}. The handle starts as your GitHub login, and you can change it later in Settings.</li>
       <li>Want both? ${gStrong("Settings › Account")} links the second provider, and then either one signs you in.</li>
     </ul>
@@ -1671,7 +1693,7 @@ function guideView(s: AppState): string {
     ${sub("Review: promote, ratify, or reject")}
     <p style="${gP}">${gStrong("Triage › Review")} is one queue for everything awaiting a decision. A doc proposal shows as a diff against the live version (unified, side by side, or rendered). ${gStrong("Promote")} makes it live; ${gStrong("Reject")} sets it aside. A drafted decision shows the proposed record: ${gStrong("Ratify")} or ${gStrong("Reject")} it. Nothing is deleted either way, and the sidebar count shows what's waiting.</p>
     ${gFig("review", `${gEm("Review")}: the queue on the left and the selected proposal's diff on the right.`)}
-    <p style="${gP};margin-top:14px">${gStrong("Maintenance")} is occasional housekeeping, and empty is its normal state. ${gStrong("Unplaced")} holds anything an agent couldn't confidently place: route it where it belongs or ${gStrong("Discard")} it. ${gStrong("Identity")} matches unrecognized GitHub logins to people. Admins also see ${gStrong("People")}, for invites and email digest settings.</p>
+    <p style="${gP};margin-top:14px">${gStrong("Maintenance")} is occasional housekeeping, and empty is its normal state. ${gStrong("Unplaced")} holds anything an agent couldn't confidently place: route it where it belongs or ${gStrong("Discard")} it. ${gStrong("Identity")} matches unrecognized GitHub logins to people. ${gStrong("People")} is the directory; admins also set the email digest there. Roles, titles and invites are in ${gStrong("Org settings › Members")}, from the switcher at the top of the sidebar.</p>
     ${gFig("maintenance", `${gEm("Maintenance")}: the Unplaced queue, waiting to be routed or discarded.`)}
 
     ${sec("Tour", "Every screen, top to bottom", "Tour")}
@@ -1726,8 +1748,8 @@ function guideView(s: AppState): string {
 
     ${sec("Troubleshooting", "When something doesn't work", "Troubleshooting")}
     <ul style="${gList}">
-      <li>${gStrong("GitHub sign-in says you're not a member.")} Accept the SaplingLearn org invite on GitHub, then sign in again.</li>
-      <li>${gStrong("Google sign-in says you're not invited.")} Ask an admin to invite the exact address you signed in with.</li>
+      <li>${gStrong("You signed in and see no organization.")} Ask an admin of your team's organization to invite your GitHub login or email from ${gStrong("Org settings › Members")}; the invitation appears the next time you open Trov. Or create an organization yourself.</li>
+      <li>${gStrong("Google sign-in says you're not invited.")} Ask an admin of your organization to invite the exact address you signed in with, or sign in with GitHub.</li>
       <li>${gStrong("Trov shows as needing authentication in Claude Code.")} Run ${gCode("/mcp")}, pick ${gStrong("trov")} and choose ${gStrong("Authenticate")}. If the browser says Trov doesn't recognise the app, choose ${gStrong("Clear authentication")} first, then Authenticate again. A connection you revoked in Settings needs the same.</li>
       <li>${gStrong("An agent set up with an older access token (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $TROV_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. Settings no longer creates tokens, so if the agent can sign in through the browser, reconnect it that way instead.</li>
       <li>${gStrong("The Trov server doesn't appear in /mcp.")} Restart Claude Code after installing the plugin. Run ${gCode("/plugin")} to check that ${gCode("trov")} is installed and enabled.</li>
@@ -1772,7 +1794,7 @@ function handleStatusText(check: AppState["handleCheck"]): { text: string; color
 /** An uploaded photo (served by the Worker at `/avatar/<sha>`) — not the provider's picture. */
 export const isUploadedAvatar = (url: string | null | undefined): boolean => !!url && url.startsWith("/avatar/");
 
-/** Settings › Profile: photo, display name, handle and color (role is admin-set in Maintenance › People).
+/** Settings › Profile: photo, display name, handle and color (the title is set by an org admin in Org settings › Members).
  *  Pure over AppState — exported for the pure render test. */
 export function profileSection(s: AppState): string {
   const me = s.me;
@@ -1849,7 +1871,9 @@ export function profileSection(s: AppState): string {
 export function accountSection(s: AppState): string {
   const me = s.me;
   const last = (me?.identities.length ?? 0) <= 1;
-  const viaGithub = me?.identities.some((i) => i.provider === "github") ?? false;
+  const org = currentOrg(s);
+  const n = me?.orgs.length ?? 0;
+  const memberLine = org ? `${org.role === "member" ? "Member" : org.role === "owner" ? "Owner" : "Admin"} of ${org.name}${n > 1 ? ` · in ${n} organizations` : ""}` : "Signed in";
   const provRow = (p: "github" | "google", label: string) => {
     const id = me?.identities.find((i) => i.provider === p);
     const btn = id
@@ -1862,7 +1886,7 @@ export function accountSection(s: AppState): string {
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
       <div style="min-width:0">
         <div style="font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Signed in as ${me ? handleLink({ handle: me.handle, name: me.name, color: me.color }, me.handle, 13) : ""}</div>
-        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--green);margin-top:4px"><span style="flex:none;width:6px;height:6px;border-radius:50%;background:var(--green)"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${viaGithub ? `Member of <b>${esc(me?.org ?? "")}</b>` : "Signed in with Google"}</span></div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--green);margin-top:4px"><span style="flex:none;width:6px;height:6px;border-radius:50%;background:var(--green)"></span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(memberLine)}</span></div>
       </div>
       <button data-act="signOut" class="cnpy-signout" style="flex:none;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500">Sign out</button>
     </div>
@@ -1876,7 +1900,7 @@ export function accountSection(s: AppState): string {
 /** This Trov's own MCP endpoint — the origin the SPA is served from, so a local
  *  `wrangler dev` hands out a local URL and prod hands out prod's. */
 const mcpEndpoint = (): string =>
-  `${typeof location !== "undefined" && location.origin ? location.origin : "https://canopy.saplinglearn.com"}/mcp`;
+  `${typeof location !== "undefined" && location.origin ? location.origin : "https://trov.dev"}/mcp`;
 
 /** The two Claude Code commands that install the Trov plugin — Settings › MCP access
  *  and the Get Started guide both show exactly this. */
@@ -1891,7 +1915,7 @@ export const MCP_LIST_CAP = 3;
  *  used, and a two-click Revoke — the first MCP_LIST_CAP until "Show all"; or one quiet
  *  line while it loads, when it is empty and when the read failed. No fixed height and no
  *  inner scroller: the list is as tall as what it shows, and "Show all" is how it grows. */
-export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & Partial<Pick<AppState, "grantsAll">>): string {
+export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & Partial<Pick<AppState, "grantsAll" | "orgSlug">>): string {
   const g = s.grants;
   const n = g.status === "error" ? 0 : g.data.length;
   const count = n ? `<span style="flex:none;font-family:var(--label);font-size:11px;line-height:17px;color:var(--fg-55);background:var(--hover);border-radius:999px;padding:0 7px">${n}</span>` : "";
@@ -1900,7 +1924,7 @@ export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & P
   if (!n) {
     const note = g.status === "error" ? `Couldn't load connected apps${g.error ? ` &mdash; ${esc(g.error)}` : ""}.`
       : g.status !== "ok" ? "Loading connected apps&hellip;"
-      : "No apps connected yet. Once you approve Claude Code in the browser, it shows up here.";
+      : "No apps connected yet. Once you approve Claude Code in the browser, it shows up here with the organization it is connected to.";
     return wrap(`<div style="padding:10px 0;border-top:1px solid var(--border);font-size:12.5px;line-height:1.5;color:var(--fg-40)">${note}</div>`);
   }
   const btn = "flex:none;padding:4px 10px;border-radius:6px;font-size:12px";
@@ -1913,7 +1937,7 @@ export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & P
       : `<button data-act="revokeGrantArm" data-arg="${gr.id}" class="cnpy-revoke" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Revoke</button>`;
     return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
       <div style="flex:1;min-width:0;line-height:1.35">
-        <span style="display:block;font-size:13px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(gr.client_name)}</span>
+        <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-size:13px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(gr.client_name)}</span>${gr.org ? `<span data-grant-org="${attr(gr.org.slug)}" title="This connection reaches ${attr(gr.org.name)} only" style="flex:none;max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:500;line-height:17px;padding:0 7px;border-radius:5px;border:1px solid var(--border);color:${gr.org.slug === s.orgSlug ? "var(--fg-70)" : "var(--fg-55)"}">${esc(gr.org.name)}</span>` : ""}</span>
         <span style="display:block;font-size:11.5px;color:var(--fg-40)">${armed ? "The app is signed out the moment you disconnect it." : `Connected ${esc(relTime(gr.created_at))} &middot; ${gr.last_used_at ? `last used ${esc(relTime(gr.last_used_at))}` : "never used"}`}</span>
       </div>
       ${actions}
@@ -1923,6 +1947,34 @@ export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & P
     ? `<button data-act="mcpShowAll" aria-expanded="${all}" class="cnpy-mutelink" style="display:block;width:100%;text-align:left;padding:9px 0 1px;border-top:1px solid var(--border);font-size:12px;font-weight:500;color:var(--fg-55)">${all ? "Show fewer" : `Show all ${n}`}</button>`
     : "";
   return wrap(rows + more);
+}
+
+/** Settings › MCP access › Access tokens: MY personal tokens for the org on screen — the older,
+ *  pasted-token setups (Codex, CI). Trov no longer mints them here (sign in through the browser
+ *  instead), so the list only exists to see and revoke what is still out there: it renders nothing
+ *  when there are none. A token works in the ONE org it was made for, and the heading says which. */
+export function tokenListBody(s: Pick<AppState, "mcpTokens" | "tokenRevokeArm">, orgName: string): string {
+  const rows = s.mcpTokens.data;
+  if (!rows.length) return "";
+  const btn = "flex:none;padding:4px 10px;border-radius:6px;font-size:12px";
+  return `<div class="cnpy-mcp-list" data-list="tokens" style="margin-top:16px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:600;min-width:0;overflow-wrap:anywhere">Access tokens for ${esc(orgName || "this organization")}</span><span style="flex:none;font-family:var(--label);font-size:11px;line-height:17px;color:var(--fg-55);background:var(--hover);border-radius:999px;padding:0 7px">${rows.length}</span></div>
+    ${rows.map((t) => {
+      const armed = s.tokenRevokeArm === t.id;
+      const actions = armed
+        ? `<button data-act="revokeToken" data-arg="${t.id}" class="cnpy-revoke" style="${btn};font-weight:600;color:var(--red);border:1px solid var(--red)">Revoke</button>
+           <button data-act="revokeTokenCancel" class="cnpy-ghostbtn" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Keep</button>`
+        : `<button data-act="revokeTokenArm" data-arg="${t.id}" class="cnpy-revoke" aria-label="Revoke the token${t.hint ? ` starting ${attr(t.hint)}` : ""}" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Revoke</button>`;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
+        <div style="flex:1;min-width:0;line-height:1.35">
+          <span style="display:block;font-family:var(--code);font-size:12px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.hint ? `${esc(t.hint)}&hellip;` : "Access token"}</span>
+          <span style="display:block;font-size:11.5px;color:var(--fg-40)">${armed ? "Whatever uses this token stops working at once." : `Created ${esc(relTime(t.created_at))} &middot; ${t.last_used_at ? `last used ${esc(relTime(t.last_used_at))}` : "never used"}`}</span>
+        </div>
+        ${actions}
+      </div>`;
+    }).join("")}
+    <div style="padding-top:8px;border-top:1px solid var(--border);font-size:11.5px;line-height:1.5;color:var(--fg-40)">A token reaches this organization only. Trov no longer creates tokens here: connect through the browser instead.</div>
+  </div>`;
 }
 
 /** The by-hand setup: the server with no header — Claude Code then signs in through the
@@ -1951,7 +2003,7 @@ function copyBox(text: string, act: string, label: string): string {
  * `/mcp` → Authenticate, approve in the browser); Connected apps, where that sign-in lands.
  * Pure over AppState — exported for the pure render test.
  */
-export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll">): string {
+export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll"> & Partial<Pick<AppState, "mcpTokens" | "tokenRevokeArm" | "orgSlug">>, orgName = ""): string {
   // The steps read in order on their own — no number badges (the owner's call, 2026-09-27).
   const step = (body: string) => `<li style="min-width:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${body}</li>`;
   return `<section class="cnpy-tile cnpy-surface cnpy-set-mcp">
@@ -1959,14 +2011,20 @@ export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" |
       <div style="${SECTION_LABEL};margin-bottom:0">MCP access</div>
       <button data-act="mcpSetupOpen" data-mcp-setup-trigger aria-haspopup="dialog" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--fg-55)">Set it up without the plugin &rarr;</button>
     </div>
-    <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you.</div>
+    <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you, in one organization.</div>
     <div class="cnpy-mcp-body">
+      <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
       <ol aria-label="Connect Claude Code" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0">
         ${step(`Install the Trov plugin in Claude Code:${copyBox(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
         ${step(`Run ${mcpCode("/mcp")}, choose ${mcpStrong("trov")}, then ${mcpStrong("Authenticate")}.`)}
-        ${step(`Your browser opens Trov. Click ${mcpStrong("Allow")} and you're connected &mdash; it shows up under Connected apps.`)}
+        ${step(`Your browser opens Trov. ${orgName ? `Pick the organization to connect (you're in ${mcpStrong(esc(orgName))} now)` : "Pick the organization to connect"}, then click ${mcpStrong("Allow")} &mdash; it shows up under Connected apps.`)}
       </ol>
+      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">A connection reaches one organization: the one you pick when you allow it. To use Trov with another organization, connect again and pick that one.</div>
+      </div>
+      <div style="min-width:0">
       ${grantListBody(s)}
+      ${s.mcpTokens ? tokenListBody({ mcpTokens: s.mcpTokens, tokenRevokeArm: s.tokenRevokeArm ?? null }, orgName) : ""}
+      </div>
     </div>
   </section>`;
 }
@@ -1985,7 +2043,7 @@ export function mcpSetupModal(url: string = mcpEndpoint()): string {
         <div id="mcp-setup-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em">Set it up without the plugin</div>
         <p id="mcp-setup-d" style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">Add the Trov server to Claude Code by hand &mdash; skip this if you installed the plugin, or you'll have two Trov servers.</p>
         ${copyBox(browserConnectCommand(url), "copyBrowserConnect", "Copy the command")}
-        <p style="margin:12px 0 0;font-size:13px;line-height:1.55;color:var(--fg-70)">Then run ${mcpCode("/mcp")}, choose ${mcpStrong("trov")}, then ${mcpStrong("Authenticate")}, and click ${mcpStrong("Allow")} in the browser.</p>
+        <p style="margin:12px 0 0;font-size:13px;line-height:1.55;color:var(--fg-70)">Then run ${mcpCode("/mcp")}, choose ${mcpStrong("trov")}, then ${mcpStrong("Authenticate")}. In the browser, pick the organization to connect and click ${mcpStrong("Allow")}. A connection reaches that one organization.</p>
       </div>
     </div>
   </div>`;
@@ -2023,7 +2081,7 @@ function settingsView(s: AppState): string {
       <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">System follows your operating system's appearance.</div>
     </section>
 
-    ${mcpAccessSection(s)}
+    ${mcpAccessSection(s, viewerOrg(s)?.name ?? "")}
 
     ${emailNotificationsSection({
       prefs: s.notifPrefs.data,
@@ -2184,19 +2242,13 @@ function maintenanceScreen(s: AppState): string {
   const hint = s.maintTab === "unplaced" && s.needsTriage.status === "error" ? mwDegradedHint("Couldn't load the triage queue.")
     : s.maintTab === "identity" && s.identityTasks.status === "error" ? mwDegradedHint("Couldn't load identity tasks.")
     : "";
-  // People: the directory for everyone; invites (and the admin-only email
-  // notification sections that used to close the single column) for admins.
-  const admin = s.me?.admin === true;
-  const people = s.maintTab !== "people" ? "" : orgPeopleLink() + peopleSection({
+  // People: the directory for everyone, under a pointer to Org settings › Members (roles, titles,
+  // invites and removal all live there now); the email digest settings below it for admins.
+  const admin = viewerIsAdmin(s);
+  const people = s.maintTab !== "people" ? "" : orgPeopleLink(admin) + peopleSection({
     persons: s.persons.data,
-    invites: admin ? s.invites.data : [],
-    inviteDraft: s.inviteDraft,
-    loading: s.persons.status === "loading" || (admin && s.invites.status === "loading"),
-    error: admin ? (s.invites.error ?? null) : null,
+    loading: s.persons.status === "loading",
     me: s.me?.handle ?? null,
-    canInvite: admin,
-    edit: admin && s.personEdit ? { ...s.personEdit, saving: s.personSaving } : null,
-    editOut: admin && s.personEditOut ? { ...s.personEditOut, saving: false } : null,
   }) + (admin
     ? notificationsMaintenanceSections({
         policy: s.notifPolicy.data,
@@ -2320,7 +2372,7 @@ function screenBody(s: AppState): string {
     case "artifact": return artifactsView(artProps(s, s.screen));
     case "handoffs": return handoffsView({ status: s.handoffs.status, handoffs: s.handoffs.data, me: s.me?.handle ?? "", persons: s.persons.data });
     case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView });
-    case "newhandoff": return newHandoffView({ draft: s.nh, me: s.me?.handle ?? "", persons: s.persons.data });
+    case "newhandoff": return newHandoffView({ draft: s.nh, me: s.me?.handle ?? "", persons: s.persons.data, primaryRepo: s.orgMe.data?.repos.primary ?? null });
     case "prompts": return promptLibraryView({ status: s.promptList.status, prompts: s.promptList.data, q: s.promptQ, tag: s.promptTag, sort: s.promptSort, filterOpen: s.promptFilterOpen, filterCat: s.promptFilterCat, fmOpening: s.fmOpening, persons: s.persons.data });
     case "prompt": return promptDetailView({
       status: s.promptDetail.status, prompt: s.promptDetail.data?.prompt ?? null, versions: s.promptDetail.data?.versions ?? [],
@@ -2340,22 +2392,23 @@ function screenBody(s: AppState): string {
 /** Project the app state onto Org settings' props. The current org is `currentOrg` — one place. */
 function orgProps(s: AppState): OrgSettingsProps {
   const status = s.myOrgs.status === "unauth" ? "error" : s.myOrgs.status;
-  return { org: currentOrg(s.myOrgs.data), orgsStatus: status, me: s.me?.handle ?? "", ui: s.org };
+  return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org, canMail: (s.me?.orgs.length ?? 0) === 1 };
 }
 
 /** Project the app state onto the Repo dashboard's props (its components never see AppState). */
 function repoProps(s: AppState): RepoProps {
   return {
     tab: s.repoTab, range: s.repoRange, driftOpen: s.repoDriftOpen, repo: s.repo, fetchedAt: s.repoFetchedAt, sample: s.repoSample,
-    admin: s.me?.admin === true, poll: s.repoPoll, productEnv: s.repoProductEnv, persons: s.persons.data,
+    admin: viewerIsAdmin(s), noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, poll: s.repoPoll, productEnv: s.repoProductEnv, persons: s.persons.data,
   };
 }
 
 /** Project the app state onto the Artifacts screens' props. */
 function artProps(s: AppState, screen: ArtScreen): ArtProps {
   return {
-    screen, route: s.artRoute, ui: s.art, me: s.me?.handle ?? "", admin: s.me?.admin === true, fmOpening: s.fmOpening,
-    persons: s.persons.data, host: typeof location !== "undefined" ? location.host : "trov",
+    screen, route: s.artRoute, ui: s.art, me: s.me?.handle ?? "", admin: viewerIsAdmin(s), fmOpening: s.fmOpening,
+    orgName: viewerOrg(s)?.name ?? "", repos: s.orgMe.data?.repos.all ?? [],
+    persons: s.persons.data, host: `${typeof location !== "undefined" ? location.host : "trov"}${s.orgSlug ? `/o/${s.orgSlug}` : ""}`,
     theme: resolved(s),
     // Every ticket (the attach dialog's own read); the queue's filtered list until it lands.
     tickets: s.art.attachTickets.data ?? s.tickets.data.map((t) => ({ id: t.id, title: t.title, status: t.status })),
@@ -2387,10 +2440,10 @@ const TOAST_FADE_MS = 400;
 /** A toast's one button: `Undo` on a delete. Dispatched like any `data-act`. */
 export interface ToastAction { label: string; act: string; arg: string }
 /** Whether the signed-in person may delete the open prompt: its author, or an admin (the server re-checks). */
-export function canDeletePrompt(s: Pick<AppState, "me" | "promptDetail">): boolean {
+export function canDeletePrompt(s: Pick<AppState, "me" | "promptDetail" | "orgSlug" | "myOrgs">): boolean {
   const p = s.promptDetail.data?.prompt;
   if (!p || !s.me) return false;
-  return s.me.admin || s.me.handle.toLowerCase() === p.author.toLowerCase();
+  return viewerIsAdmin(s) || s.me.handle.toLowerCase() === p.author.toLowerCase();
 }
 function toastBlock(msg: string, elapsed: number, ms: number, action: ToastAction | null = null): string {
   return `<div class="cnpy-toast" role="status" aria-live="polite" style="position:fixed;bottom:22px;left:0;right:0;margin:0 auto;width:max-content;max-width:min(520px,calc(100vw - 32px));z-index:50;display:flex;align-items:flex-start;gap:9px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);box-shadow:0 8px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.45;animation-delay:${-elapsed}ms,${ms - TOAST_FADE_MS - elapsed}ms">
@@ -2428,13 +2481,15 @@ function backfillSyncModal(sync: BackfillSyncState): string {
 export function render(s: AppState): string {
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.view === "auth" ? authView(s) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+    ${s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "" }) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.backfillSync ? backfillSyncModal(s.backfillSync) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}
     ${s.view === "app" ? platformDialogs(s.plat, s.screen) : ""}
+    ${s.view === "app" ? orgMenu({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], current: s.orgSlug, status: s.myOrgs.status, ui: s.orgsUi }) : ""}
+    ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}

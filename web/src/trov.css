@@ -1531,6 +1531,70 @@ input, select { font-family: inherit; }
    a small card of labelled cells, so nothing scrolls sideways on a phone. */
 .cnpy-plat { flex:none; padding:6px 10px 4px; border-top:1px solid var(--border); }
 .cnpy-plat[hidden] { display:none; }
+
+/* ── organizations: the switcher, its menu, the picker (web/src/org-picker.ts) ──
+   THE SWITCHER sits under the logo: the current org's initial and name. Collapsed, the rail
+   keeps the tile alone, centred on the nav icons' axis. Its MENU is a root-level overlay
+   (never a child of the rail, which clips), anchored under the button — beside it when the
+   rail is collapsed — and above the phone drawer it was opened from. Radii are inline (the
+   corners layer keys them by value). */
+.cnpy-orgslot { flex:none; padding:0 10px 8px; transition:padding var(--side-t) var(--side-e); }
+.cnpy-orgsw-b { display:flex; align-items:center; gap:9px; width:100%; min-width:0; height:38px; box-sizing:border-box; padding:0 9px 0 6.5px; border:1px solid var(--border); background:var(--surface); color:var(--fg); text-align:left; overflow:hidden; transition:background .15s ease, border-color .15s ease, padding var(--side-t) var(--side-e); }
+.cnpy-orgsw-b:hover, .cnpy-orgsw-b.is-open, .cnpy-orgslot.is-active .cnpy-orgsw-b { border-color:var(--border-strong); }
+[data-cnpy-theme="dark"] .cnpy-orgsw-b:hover, [data-cnpy-theme="dark"] .cnpy-orgsw-b.is-open { background:var(--hover); }
+.cnpy-orgsw-n { flex:1; min-width:0; font-family:'Geist',system-ui,sans-serif; font-size:13px; font-weight:600; letter-spacing:-0.005em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-orgsw-b .cnpy-dot { display:none; }
+[data-collapsed="1"] .cnpy-orgsw-b { padding:0 0 0 9px; border-color:transparent; background:transparent; }
+[data-collapsed="1"] .cnpy-orgsw-b:hover, [data-collapsed="1"] .cnpy-orgsw-b.is-open { background:var(--hover); }
+.cnpy-orgtile { display:inline-grid; place-items:center; flex:none; box-sizing:border-box; background:var(--hover); border:1px solid var(--border-strong); color:var(--fg-70); font-family:'Geist',system-ui,sans-serif; font-weight:600; line-height:1; }
+.cnpy-orgmenu-layer { position:fixed; inset:0; z-index:95; }
+.cnpy-orgmenu-back { position:absolute; inset:0; }
+.cnpy-orgmenu { position:absolute; top:calc(100px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); width:316px; max-width:calc(100vw - 20px); max-height:calc(100dvh - 116px); overflow-y:auto; box-sizing:border-box; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
+[data-collapsed="1"] .cnpy-orgmenu { top:56px; left:70px; max-height:calc(100dvh - 72px); }
+.cnpy-orgmenu .cnpy-menurow:focus-visible, .cnpy-orgmenu button:focus-visible, .cnpy-orgs a:focus-visible, .cnpy-orgs button:focus-visible, [data-orgs-create] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+[data-orgs-create] .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
+.cnpy-orgs-inv { display:flex; align-items:center; gap:10px 12px; flex-wrap:wrap; }
+/* THE PICKER: one calm column, the app's surfaces. */
+.cnpy-orgs { min-height:100vh; box-sizing:border-box; display:flex; justify-content:center; padding:64px 24px 80px; }
+.cnpy-orgs-col { width:100%; max-width:620px; min-width:0; }
+.cnpy-orgs-row { display:flex; align-items:center; gap:12px; padding:13px 16px; transition:background .12s ease; }
+.cnpy-orgs-row:hover { background:var(--hover); }
+@media (max-width: 640px) {
+  .cnpy-orgs { padding:max(28px, env(safe-area-inset-top)) 16px max(40px, env(safe-area-inset-bottom)); }
+  .cnpy-orgs-inv > div:last-child { width:100%; }
+  .cnpy-orgs-inv > div:last-child > button { flex:1; min-height:38px; }
+  .cnpy-orgmenu { width:auto; right:10px; max-width:none; }
+}
+@media (prefers-reduced-motion: reduce) { .cnpy-orgmenu { animation:none; } }
+/* A short window: the rail tightens rather than scroll its last rows out of sight. At full size
+   a superadmin's rail (13 entries, Platform, Collapse) needs about 980px; so below that the
+   rows and section labels lose a few pixels each and the tagline steps aside, and below 850px
+   (a laptop at 800) they lose a few more — every entry stays on screen, none scrolls. Never on
+   a phone, whose drawer has its own (larger) touch rows. */
+@media (max-height: 990px) {
+  [data-phone="0"] .cnpy-nav-i { padding-top:6px; padding-bottom:6px; }
+  [data-phone="0"][data-collapsed="1"] .cnpy-nav-i { padding-top:7px; padding-bottom:7px; }
+  [data-phone="0"] .cnpy-navlist { gap:2px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec { height:25px; padding-top:6px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec.is-first { height:26px; padding-top:7px; }
+  [data-phone="0"] .cnpy-ghost { display:none; }
+  [data-phone="0"] .cnpy-plat { padding:4px 10px 2px; }
+  [data-phone="0"] .cnpy-collapse { padding-bottom:4px; }
+  [data-phone="0"] .cnpy-foot { padding:6px 10px; }
+}
+@media (max-height: 850px) {
+  [data-phone="0"] .cnpy-nav-i { padding-top:5px; padding-bottom:5px; }
+  [data-phone="0"][data-collapsed="1"] .cnpy-nav-i { padding-top:6px; padding-bottom:6px; }
+  [data-phone="0"] .cnpy-navlist { gap:1px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec { height:22px; padding-top:5px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec.is-first { height:23px; padding-top:6px; }
+  [data-phone="0"] .cnpy-logo { min-height:50px; padding-top:13px; padding-bottom:9px; }
+  [data-phone="0"] .cnpy-orgslot { padding-bottom:5px; }
+  [data-phone="0"] .cnpy-searchwrap { padding-top:3px; padding-bottom:2px; }
+}
+/* The confirmation modal's NEUTRAL confirm (confirm.ts `tone: "neutral"`): an action that undoes
+   or restores — Unsuspend — is the accent button, not the destructive red. */
+.cnpy-confirm-go--neutral:focus-visible { outline-color:color-mix(in srgb, var(--accent) 60%, transparent); }
 .plat button:focus-visible, .plat select:focus-visible, [data-plat-dialog] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
 .plat .plat-row:focus-visible { outline-offset:-2px; }
 .plat-table, .plat-cq { container-type:inline-size; }

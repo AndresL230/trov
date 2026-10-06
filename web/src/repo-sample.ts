@@ -21,7 +21,7 @@ const person = (login: string): RepoPerson => ({ login, handle: login, name: PEO
 
 export function repoSample(now: number = Date.now()): RepoDashboard {
   const at = (ms: number): string => new Date(now - ms).toISOString();
-  const GH = "https://github.com/SaplingLearn/sapling";
+  const GH = "https://github.com/acme/web";
 
   const prRows: [string, number, string, string, RepoPrState, "pass" | "fail" | "run", number][] = [
     ["Batch D1 reads in usage rollup", 482, "dev-raj", "feature/usage-rollup", "review", "pass", 24 * MIN],
@@ -94,16 +94,16 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
   });
   const usage: Record<RepoRange, RepoUsageEnv[]> = {
     "24h": [
-      env("staging", "staging.saplinglearn.com", { req: "12.4K", reqA: [8, 11, 9, 14, 12, 18, 22, 17, 13, 15, 19, 16], err: 2.41, errA: [0.4, 0.6, 0.5, 1.1, 2.8, 3.4, 2.9, 2.2, 2.6, 2.4, 2.5, 2.4], users: "6", usersA: [2, 3, 3, 4, 5, 6, 6, 5, 4, 5, 6, 6] }, true),
-      env("production", "saplinglearn.com", { req: "168K", reqA: [110, 125, 140, 160, 175, 190, 210, 195, 180, 170, 165, 172], err: 0.18, errA: [0.2, 0.15, 0.2, 0.18, 0.22, 0.16, 0.14, 0.19, 0.2, 0.17, 0.18, 0.18], users: "74", usersA: [40, 52, 61, 70, 78, 82, 85, 80, 76, 72, 70, 74] }, false),
+      env("staging", "staging.example.com", { req: "12.4K", reqA: [8, 11, 9, 14, 12, 18, 22, 17, 13, 15, 19, 16], err: 2.41, errA: [0.4, 0.6, 0.5, 1.1, 2.8, 3.4, 2.9, 2.2, 2.6, 2.4, 2.5, 2.4], users: "6", usersA: [2, 3, 3, 4, 5, 6, 6, 5, 4, 5, 6, 6] }, true),
+      env("production", "example.com", { req: "168K", reqA: [110, 125, 140, 160, 175, 190, 210, 195, 180, 170, 165, 172], err: 0.18, errA: [0.2, 0.15, 0.2, 0.18, 0.22, 0.16, 0.14, 0.19, 0.2, 0.17, 0.18, 0.18], users: "74", usersA: [40, 52, 61, 70, 78, 82, 85, 80, 76, 72, 70, 74] }, false),
     ],
     "7d": [
-      env("staging", "staging.saplinglearn.com", { req: "86.2K", reqA: [10, 12, 14, 11, 16, 13, 12], err: 2.41, errA: [0.5, 0.7, 0.6, 0.9, 1.8, 2.6, 2.4], users: "9", usersA: [5, 6, 7, 6, 8, 9, 9] }, true),
-      env("production", "saplinglearn.com", { req: "1.24M", reqA: [150, 165, 172, 180, 176, 190, 184], err: 0.21, errA: [0.24, 0.2, 0.19, 0.25, 0.22, 0.18, 0.21], users: "318", usersA: [265, 280, 296, 305, 312, 322, 318] }, false),
+      env("staging", "staging.example.com", { req: "86.2K", reqA: [10, 12, 14, 11, 16, 13, 12], err: 2.41, errA: [0.5, 0.7, 0.6, 0.9, 1.8, 2.6, 2.4], users: "9", usersA: [5, 6, 7, 6, 8, 9, 9] }, true),
+      env("production", "example.com", { req: "1.24M", reqA: [150, 165, 172, 180, 176, 190, 184], err: 0.21, errA: [0.24, 0.2, 0.19, 0.25, 0.22, 0.18, 0.21], users: "318", usersA: [265, 280, 296, 305, 312, 322, 318] }, false),
     ],
     "30d": [
-      env("staging", "staging.saplinglearn.com", { req: "402K", reqA: [9, 11, 12, 10, 13, 12, 14, 13, 15, 12, 14, 16, 13, 12], err: 1.12, errA: [0.6, 0.5, 0.8, 0.7, 0.6, 0.9, 0.8, 0.7, 1, 0.9, 1.4, 2, 2.6, 2.4], users: "9", usersA: [6, 6, 7, 7, 8, 7, 8, 8, 9, 8, 9, 9, 9, 9] }, true),
-      env("production", "saplinglearn.com", { req: "5.1M", reqA: [120, 132, 140, 150, 148, 158, 164, 170, 168, 176, 182, 188, 186, 184], err: 0.24, errA: [0.3, 0.28, 0.26, 0.3, 0.25, 0.22, 0.24, 0.26, 0.23, 0.2, 0.22, 0.21, 0.2, 0.21], users: "318", usersA: [210, 226, 240, 252, 260, 272, 280, 290, 296, 304, 310, 318, 315, 318] }, false),
+      env("staging", "staging.example.com", { req: "402K", reqA: [9, 11, 12, 10, 13, 12, 14, 13, 15, 12, 14, 16, 13, 12], err: 1.12, errA: [0.6, 0.5, 0.8, 0.7, 0.6, 0.9, 0.8, 0.7, 1, 0.9, 1.4, 2, 2.6, 2.4], users: "9", usersA: [6, 6, 7, 7, 8, 7, 8, 8, 9, 8, 9, 9, 9, 9] }, true),
+      env("production", "example.com", { req: "5.1M", reqA: [120, 132, 140, 150, 148, 158, 164, 170, 168, 176, 182, 188, 186, 184], err: 0.24, errA: [0.3, 0.28, 0.26, 0.3, 0.25, 0.22, 0.24, 0.26, 0.23, 0.2, 0.22, 0.21, 0.2, 0.21], users: "318", usersA: [210, 226, 240, 252, 260, 272, 280, 290, 296, 304, 310, 318, 315, 318] }, false),
     ],
   };
   // The Cloudflare panel's requests ARE the Requests metric's — the real
@@ -165,11 +165,11 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
   const commits = (rows: [string, string, number][]) => rows.map(([sha, msg, ms]) => ({ sha, msg, at: at(ms) }));
 
   return {
-    repo: "SaplingLearn/sapling", generatedAt: at(0), degraded: false, sample: true,
+    repo: "acme/web", generatedAt: at(0), degraded: false, sample: true,
 
     environments: { status: "ok", data: [
-      { key: "staging", name: "staging", note: "main", tone: "warn", pill: "DEGRADED", parts: envParts("staging"), ci: "1 of 6 checks failing — e2e-smoke", ciTone: "bad", url: "https://staging.saplinglearn.com" },
-      { key: "production", name: "production", note: "production", tone: "good", pill: "HEALTHY", parts: envParts("production"), ci: "All 6 checks passing", ciTone: "good", url: "https://saplinglearn.com" },
+      { key: "staging", name: "staging", note: "main", tone: "warn", pill: "DEGRADED", parts: envParts("staging"), ci: "1 of 6 checks failing — e2e-smoke", ciTone: "bad", url: "https://staging.example.com" },
+      { key: "production", name: "production", note: "production", tone: "good", pill: "HEALTHY", parts: envParts("production"), ci: "All 6 checks passing", ciTone: "good", url: "https://example.com" },
     ] },
     drift: { status: "ok", data: { head: "staging", base: "main", ahead: 12, behind: 1, groups: [
       { tag: "#482", kind: "pr", title: "Batch D1 reads in usage rollup", meta: "dev-raj · 3 commits", commits: commits([["c91d2ae", "rollup: batch D1 reads per window", 24 * MIN], ["b02f1cd", "fix window math off-by-one", HOUR], ["a3f82c1", "wire usage endpoint to rollup", 2 * HOUR]]) },
@@ -185,10 +185,10 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
       { label: "Open bugs", value: 6, delta: 1, tone: "warn" },
     ] },
     health: { status: "ok", data: [
-      { env: "staging · web", url: "https://staging.saplinglearn.com", up: true, ms: 148 },
-      { env: "staging · api", url: "https://api.staging.saplinglearn.com/api/health", up: true, ms: 212 },
-      { env: "production · web", url: "https://saplinglearn.com", up: true, ms: 121 },
-      { env: "production · api", url: "https://api.saplinglearn.com/api/health", up: true, ms: 168 },
+      { env: "staging · web", url: "https://staging.example.com", up: true, ms: 148 },
+      { env: "staging · api", url: "https://api.staging.example.com/api/health", up: true, ms: 212 },
+      { env: "production · web", url: "https://example.com", up: true, ms: 121 },
+      { env: "production · api", url: "https://api.example.com/api/health", up: true, ms: 168 },
     ] },
 
     codeStats: { status: "ok", data: [

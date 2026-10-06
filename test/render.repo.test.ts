@@ -73,20 +73,24 @@ describe("repoView — section states", () => {
   // Every section has a capture path now, so an unconnected one names what that
   // path is still WAITING on (a setting/secret by name, a webhook event, the
   // repo's CI, Sync GitHub) — never that no path exists, never a connect flow.
-  it("a not-connected section says what its capture is waiting on, in the owner's terms", () => {
+  it("a not-connected section says what its capture is waiting on, in the admin's terms: where in Org settings it is set", () => {
     const tab = (t: RepoProps["tab"]) => repoView(props({ tab: t }));
     const overview = tab("overview"), code = tab("code"), ci = tab("ci"), usage = tab("usage"), planning = tab("planning");
-    expect(overview).toContain("Cards appear once REPO_ENVIRONMENTS lists an environment");
-    expect(overview).toContain("The repo cron pings each environment in REPO_ENVIRONMENTS every 10 minutes");
-    expect(code).toContain("No branch snapshot yet. One is taken when an admin runs Sync GitHub and by the 6-hourly GitHub reconcile — both need GITHUB_SERVICE_TOKEN.");
+    expect(overview).toContain("Cards appear once Org settings › Environments lists an environment");
+    expect(overview).toContain("Trov pings each environment in Org settings › Environments every 10 minutes");
+    expect(code).toContain("No branch snapshot yet. One is taken when an admin runs Sync GitHub and by the 6-hourly GitHub reconcile — both need the GitHub token in Org settings › Integrations.");
     expect(ci).toContain("Deploys arrive when the GitHub webhook delivers deployment_status and check_run events, or when an admin runs Sync GitHub");
     expect(ci).toContain("Runs arrive when the GitHub webhook delivers workflow_run events, or when an admin runs Sync GitHub.");
     // P5-8: no branch NAME — the screen does not know which branch the first environment deploys from.
     expect(ci).toContain("posts a canopy/coverage commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.");
     expect(ci).toContain("posts a canopy/bundle-kb commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.");
-    expect(usage).toContain("hourly Cloudflare analytics poll (CF_ANALYTICS_TOKEN and CF_ANALYTICS_ACCOUNT_ID)");
-    expect(usage).toContain("metrics endpoint (SAPLING_METRICS_TOKEN)");
-    expect(usage).toContain("RAILWAY_TOKEN_&lt;ENVIRONMENT&gt; secret is set and REPO_ENVIRONMENTS carries its railwayEnvironmentId and railwayServiceId.");
+    expect(usage).toContain("Both need an environment in Org settings › Environments and their credential in Org settings › Integrations.");
+    expect(usage).toContain("once Cloudflare analytics is set in Org settings › Integrations");
+    expect(usage).toContain("once an environment's Railway project token is set in Org settings › Integrations".replace("'", "&#39;"));
+    // No Worker variable or secret is named any more: an org's admin cannot set one.
+    for (const html of [overview, code, ci, usage, planning]) {
+      for (const name of ["REPO_ENVIRONMENTS", "GITHUB_SERVICE_TOKEN", "CF_ANALYTICS", "RAILWAY_TOKEN", "SAPLING_METRICS_TOKEN", "GITHUB_REPO"]) expect(html, name).not.toContain(name);
+    }
     expect(planning).toContain("posts a canopy/todo commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.");
     expect([ci, planning].join("\n")).not.toContain("push to main");
 
@@ -514,8 +518,8 @@ describe("Repo — the tab bar heading the page (the sidebar has no sub-page lis
     return at < 0 ? "" : html.slice(at, html.indexOf("</div>", at));
   };
   const app = (over: Partial<ReturnType<typeof initialState>> = {}) => render({
-    ...initialState(), view: "app", screen: "repo", repo: { status: "ok", data: live() },
-    me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: true },
+    ...initialState(), view: "app", screen: "repo", repo: { status: "ok", data: live() }, orgSlug: "saplinglearn",
+    me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "admin" as const }], superadmin: false, pending_invites: 0 },
     ...over,
   });
   const header = (html: string) => html.slice(html.indexOf("<header"), html.indexOf("</header>"));
@@ -589,7 +593,7 @@ describe("Repo — the tab bar heading the page (the sidebar has no sub-page lis
   it("the top bar keeps every control: environments, updated, Poll now (admins), refresh", () => {
     const h = header(app({ repoTab: "usage", repo: { status: "ok", data: repoSample() } }));
     expect(h).toContain(">Repo</h1>");
-    expect(h).toContain("SaplingLearn/sapling");
+    expect(h).toContain("acme/web");   // the sample set names no real organization
     for (const needle of ["staging — degraded", "data-repo-updated", 'data-act="repoPollNow"', 'data-act="repoRefresh"']) expect(h, needle).toContain(needle);
     // The range picker stays on the Usage tab, under the line — not in the bar.
     const body = main(app({ repoTab: "usage" }));
@@ -1008,7 +1012,7 @@ describe("repoView — product metrics", () => {
 
   it("not_connected and empty each say what they are waiting on; loading and error have their forms", () => {
     const nc = repoView(props({ tab: "usage", repo: { status: "ok", data: live() } }));
-    expect(nc).toContain("No product metrics reported yet. They appear once the app&#39;s metrics endpoint serves `counts` / `totals` and `SAPLING_METRICS_TOKEN` is set.");
+    expect(nc).toContain("No product metrics reported yet. They appear once the app&#39;s metrics endpoint serves `counts` / `totals` and the environment&#39;s app metrics token is set in Org settings › Integrations.");
     const quiet = repoView(props({ tab: "usage", repo: { status: "ok", data: live({ product: EMPTY }) } }));
     expect(quiet).toContain("No current product reading — the hourly poll of the app&#39;s metrics endpoint has gone quiet.");
     expect(quiet).not.toContain("No product metrics reported yet");
@@ -1331,13 +1335,18 @@ describe("Poll now — the Repo top bar, every tab", () => {
   });
 
   it("render() hands the viewer's admin flag and the session-only poll state through — on any tab", () => {
-    const base = { ...initialState(), view: "app" as const, screen: "repo" as const, repoTab: "code" as const, repo: { status: "ok" as const, data: live() } };
-    const me = { handle: "andres", name: null, avatar_url: null, color: "green", identities: [], org: "SaplingLearn" };
-    expect(render({ ...base, me: { ...me, admin: true } as typeof base.me })).toContain('data-act="repoPollNow"');
-    expect(render({ ...base, me: { ...me, admin: false } as typeof base.me })).not.toContain("repoPollNow");
-    expect(render({ ...base, me: { ...me, admin: true } as typeof base.me, repoPoll: { status: "error" } })).toContain("Poll failed — try again.");
+    const base = { ...initialState(), view: "app" as const, screen: "repo" as const, repoTab: "code" as const, repo: { status: "ok" as const, data: live() }, orgSlug: "saplinglearn" };
+    // The flag is the viewer's role in the org ON SCREEN: admin or owner there.
+    const me = (role: "owner" | "admin" | "member", slug = "saplinglearn") => ({ handle: "andres", name: null, avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug, name: "SaplingLearn", role }], superadmin: false, pending_invites: 0 });
+    expect(render({ ...base, me: me("admin") })).toContain('data-act="repoPollNow"');
+    expect(render({ ...base, me: me("owner") })).toContain('data-act="repoPollNow"');
+    expect(render({ ...base, me: me("member") })).not.toContain("repoPollNow");
+    // An admin of another org, and a superadmin who is only a member here, are not admins here.
+    expect(render({ ...base, me: me("admin", "other") })).not.toContain("repoPollNow");
+    expect(render({ ...base, me: { ...me("member"), superadmin: true } })).not.toContain("repoPollNow");
+    expect(render({ ...base, me: me("admin"), repoPoll: { status: "error" } })).toContain("Poll failed — try again.");
     // A dashboard that failed its first load still offers the button.
-    expect(render({ ...base, repo: { status: "error" as const, data: null, error: "x" }, me: { ...me, admin: true } as typeof base.me })).toContain('data-act="repoPollNow"');
+    expect(render({ ...base, repo: { status: "error" as const, data: null, error: "x" }, me: me("admin") })).toContain('data-act="repoPollNow"');
   });
 });
 

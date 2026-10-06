@@ -38,7 +38,7 @@ function docsState(docs: DocRow[]): ReturnType<typeof initialState> {
     ...s,
     view: "app",
     screen: "docs",
-    me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+    me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
     docsList: { status: "ok", data: docs },
   };
 }
