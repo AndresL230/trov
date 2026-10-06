@@ -170,7 +170,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "get_roadmap",
     "Read the roadmap plan: admin narrative + sprints in target-date order with their progress — `progress` is the sprint's TICKETS (done + declined over total), `issues` the cached GitHub issue counts behind it (no live GitHub). Each sprint carries label, summary, phase, dates, due, status, active, urgency, lead and domain.",
     {},
-    async () => runTool(() => get_plan(legacyDb(ctx)))
+    async () => runTool(() => get_plan(ctx))
   );
 
   // ── Tickets + sprints: READS, for every principal ──────────────────────────
@@ -207,7 +207,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "list_sprints",
     "Read-only: every sprint in roadmap order. Sprints are the roadmap's containers — a sprint holds tickets, and its `progress` is its TICKETS only (closed/total/pct, where closed = done + declined). The GitHub issues behind a sprint are a separate `issues` field, the cached closed/total from its github_ref (null when it has no cache row); no live GitHub at read time. Each carries label, summary, phase, dates (a free-text label), start and due (YYYY-MM-DD or null), status/active, urgency, lead, domain and members (the handles assigned to its tickets). Sprint writes (create_sprint / set_sprint_active / complete_sprint / add_sprint_resource / delete_sprint) are open to every principal; only the bulk plan write update_plan is admin-only.",
     {},
-    async () => runTool(() => list_sprints(legacyDb(ctx))),
+    async () => runTool(() => list_sprints(ctx)),
   );
 
   server.tool(
@@ -216,7 +216,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     { id: z.number() },
     async ({ id }) =>
       runTool(async () => {
-        const sprint = await get_sprint(legacyDb(ctx), id);
+        const sprint = await get_sprint(ctx, id);
         if (!sprint) throw new Error(`no such sprint: ${id}`);
         return sprint;
       }),
@@ -252,7 +252,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "create_ticket",
     "File a ticket. THE ONE UNSCOPED WRITE — you may file freely; every other ticket write requires the ticket to be assigned to you already. The requester is YOU (the bearer principal); a client-supplied requester is ignored. `assignees` (person handles) — call `list_people` first and match the work to each person's role and responsibilities. After filing, assign_ticket adds or removes one assignee (as the ticket's requester you may, so you can route it later). Optional `link` takes a bare issue number ('#214'), a GitHub/Figma URL, or any URL. `sprint_id` omitted = the backlog. Returns the whole ticket. Confirm the exact fields with the person before calling — a ticket is org-visible the moment it exists.",
     TicketCreate.shape,
-    async (input) => runTool(async () => ticketDetail(await agentCreateTicket(legacyDb(ctx), TicketCreate.parse(input), principal.handle))),
+    async (input) => runTool(async () => ticketDetail(await agentCreateTicket(ctx, TicketCreate.parse(input), principal.handle))),
   );
 
   server.tool(
@@ -260,7 +260,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "Edit a ticket's title and/or body (markdown). SCOPED: only on a ticket already assigned to you, else `forbidden` and nothing is written. Pass at least one of `title` / `body`; the other is left as it is. A ticket mirrored from a GitHub issue is editable too — its title and body were copied from the issue when it was imported and are Trov's from then on (GitHub edits never overwrite them). Records no history row (history is status moves). Returns the whole ticket.",
     { id: z.number(), ...TicketEdit.shape },
     async ({ id, title, body }) => runTool(async () => {
-      await agentEditTicket(legacyDb(ctx), env, id, { title, body }, principal.handle);
+      await agentEditTicket(ctx, env, id, { title, body }, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -270,7 +270,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "Move a ticket's status. SCOPED: only on a ticket already assigned to you, else `forbidden` and nothing is written. Any status may move to any other — done and declined included, so a resolved ticket can be moved back (only a move to the status it already has is `conflict`, and writes nothing). `done`/`declined` resolve the ticket for the whole org, so confirm with the person first. Appends a ticket_events row attributed to you.",
     { id: z.number(), ...TicketTransition.shape },
     async ({ id, to }) => runTool(async () => {
-      await agentTransitionTicket(legacyDb(ctx), env, id, to, principal.handle);
+      await agentTransitionTicket(ctx, env, id, to, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -280,7 +280,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "Append a comment to a ticket. SCOPED: only on a ticket already assigned to you. Raw text — mentions are a rendering concern, not a write one. Bumps the ticket's updated_at (the queue's sort key), and is attributed to you with nothing marking it as agent-written, so say so in the text if the team wants that.",
     { id: z.number(), ...TicketCommentAdd.shape },
     async ({ id, body }) => runTool(async () => {
-      await agentAddTicketComment(legacyDb(ctx), env, id, body, principal.handle);
+      await agentAddTicketComment(ctx, env, id, body, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -290,7 +290,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "Attach linked work to a ticket (GitHub issue/PR, Figma file, or any URL). SCOPED: only on a ticket already assigned to you. `raw` is parsed by the same parser the web UI uses: a bare '#214' or '214' resolves against the default repo, github.com and figma.com URLs are labelled by kind, anything else is a plain link. An unusable input is `bad_request`.",
     { id: z.number(), ...TicketLinkAdd.shape },
     async ({ id, raw }) => runTool(async () => {
-      await agentAddTicketLink(legacyDb(ctx), env, id, raw, principal.handle);
+      await agentAddTicketLink(ctx, env, id, raw, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -300,7 +300,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "Move a ticket into a sprint, or back to the backlog with sprint_id null. SCOPED to a ticket assigned to you — with ONE exception: an ADMIN may re-home any ticket, because composing a sprint is sprint management. This is the only ticket verb an admin may use outside their own lane; it moves the ticket and nothing else. An unknown sprint is `not_found`, and nothing is written.",
     { id: z.number(), ...TicketSprintSet.shape },
     async ({ id, sprint_id }) => runTool(async () => {
-      await agentSetTicketSprint(legacyDb(ctx), env, id, sprint_id, principal.handle);
+      await agentSetTicketSprint(ctx, env, id, sprint_id, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -310,7 +310,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "Nest `child_id` under ticket `id`. SCOPED on BOTH tickets — the call re-homes the child and changes the parent's shape, so both must already be assigned to you. Tickets nest EXACTLY ONE level: it is a `conflict` (writing nothing) if the parent already has a parent, the child already has a parent, the child is done/declined, or the child has sub-tickets of its own.",
     { id: z.number(), ...TicketParentSet.shape },
     async ({ id, child_id }) => runTool(async () => {
-      await agentSetTicketParent(legacyDb(ctx), env, id, child_id, principal.handle);
+      await agentSetTicketParent(ctx, env, id, child_id, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -320,7 +320,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "Add (`on: true`) or remove (`on: false`) ONE assignee on an existing ticket. `login` is a person HANDLE — take it from `list_people`, matching the work to each person's role and responsibilities; an unknown handle is `bad_request`. SCOPED by its own rule, not the lane: only an ADMIN, the ticket's REQUESTER or one of its CURRENT assignees may (re)assign it, else `forbidden` and nothing is written. Idempotent: adding someone already assigned, or removing someone who isn't, succeeds and writes nothing. It never changes status (assigning a submitted ticket does not start it — use transition_ticket), and records no history row — history is status moves, so nothing records who (un)assigned, exactly as with the web UI's picker. Works on a ticket mirrored from a GitHub issue — its assignees are Trov's after import. Removing yourself takes the ticket out of your lane. Returns the whole ticket; read `assignees` back. Confirm who with the person before calling.",
     { id: z.number(), ...TicketAssigneeToggle.shape },
     async ({ id, login, on }) => runTool(async () => {
-      await agentAssignTicket(legacyDb(ctx), env, id, login, on, principal.handle);
+      await agentAssignTicket(ctx, env, id, login, on, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -329,7 +329,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "get_my_work",
     "Your personal My Work projection (D1 only, no live GitHub): previous-activity (your most recent summarized merged/closed PRs), to-do (your open assigned GitHub issues), and tickets (your open assigned tickets, native AND mirrored from GitHub issues — `source: \"github\"` marks a mirrored one, whose issue may also be in to-do; capped, with `ticketsTotal` the full count). Read-only.",
     {},
-    async () => runTool(() => getMyWork(legacyDb(ctx), principal.handle))
+    async () => runTool(() => getMyWork(ctx, principal.handle))
   );
 
   // ── People: ONE read, for every principal (0036) ─────────────────────────────
@@ -348,7 +348,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "get_events",
     "Recent captured GitHub events (raw log behind My Work and roadmap progress). Filter by type/subject. Read-only.",
     { type: z.enum(["pr_merged", "pr_closed", "issue"]).optional(), subject: z.string().optional(), limit: z.number().optional() },
-    async (args) => runTool(() => list_events(legacyDb(ctx), args))
+    async (args) => runTool(() => list_events(ctx, args))
   );
 
   // ── The Repo dashboard: a READ, for every principal ────────────────────────
@@ -486,35 +486,35 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
     "create_sprint",
     "Create a sprint. It lands INACTIVE and unscheduled — status 'upcoming', phase 'Unscheduled' unless you pass one, and no `due` stores an empty target date that reads back as due: null (those sort last on the Roadmap). `start` and `due` are real calendar days written YYYY-MM-DD, start on or before due — anything else (\"Oct 17\", 2026-02-30) is refused and nothing is written. `dates` is only an optional free-text display label. `label` is the sprint name; `lead` is a person handle. Which TICKETS are in the sprint is not set here — that is set_ticket_sprint. Direct promote-class write, not staged.",
     SprintCreate.shape,
-    async (input) => runTool(() => create_sprint(legacyDb(ctx), SprintCreate.parse(input), principal.handle)),
+    async (input) => runTool(() => create_sprint(ctx, SprintCreate.parse(input), principal.handle)),
   );
 
   server.tool(
     "set_sprint_active",
     "Move a sprint between the Roadmap's In Progress and Upcoming groups. `active` is DERIVED from status, never stored: true → 'in_progress' (from ANY status, including 'done' — that is re-opening a sprint that turned out not to be finished); false → 'upcoming', EXCEPT on a done sprint where it is a NO-OP, because clearing 'active' must never un-finish a sprint.",
     { id: z.number(), active: z.boolean() },
-    async ({ id, active }) => runTool(() => set_sprint_active(legacyDb(ctx), id, active)),
+    async ({ id, active }) => runTool(() => set_sprint_active(ctx, id, active)),
   );
 
   server.tool(
     "complete_sprint",
     "Flip a sprint to 'done'. A sprint is completed by a PERSON — 'done' is NEVER inferred from its tickets resolving or its GitHub issues closing, not by the cron, not by the webhook, not by this tool being available. Confirm with the person before calling: it is how the Roadmap reports the sprint finished. Already-done is an error, not a silent no-op.",
     { id: z.number() },
-    async ({ id }) => runTool(() => complete_sprint(legacyDb(ctx), id)),
+    async ({ id }) => runTool(() => complete_sprint(ctx, id)),
   );
 
   server.tool(
     "delete_sprint",
     "Delete a sprint for good (hard delete). Its tickets are NOT deleted — they move to the backlog (no sprint) and keep all their history; the sprint's own resources go with it. Answers with the label and how many tickets moved. Confirm with the person before calling: the Roadmap loses the sprint and it cannot be undone.",
     { id: z.number() },
-    async ({ id }) => runTool(() => delete_sprint(legacyDb(ctx), id)),
+    async ({ id }) => runTool(() => delete_sprint(ctx, id)),
   );
 
   server.tool(
     "add_sprint_resource",
     "Attach a resource link to the sprint itself (as opposed to one of its tickets). `raw` goes through the SAME parser as ticket links, so '#214' means the same thing wherever it is typed. Idempotent on url. The sprint's read model merges these with its tickets' links, deduped by url.",
     { id: z.number(), raw: z.string().min(1) },
-    async ({ id, raw }) => runTool(() => add_sprint_resource(legacyDb(ctx), id, raw)),
+    async ({ id, raw }) => runTool(() => add_sprint_resource(ctx, id, raw)),
   );
 
   // ADMIN-only: the plan write surface — non-admin principals don't even see the tool
@@ -654,7 +654,7 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
         // are real YYYY-MM-DD days (or "" / null), start <= due — the ONE sprint-date rule.
         sprints: z.array(PlanSprintEntry).default([]),
       },
-      async (input) => runTool(() => write_plan(legacyDb(ctx), input as PlanWrite, principal.handle))
+      async (input) => runTool(() => write_plan(ctx, input as PlanWrite, principal.handle))
     );
   }
 

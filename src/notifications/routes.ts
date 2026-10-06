@@ -7,16 +7,16 @@ import { Cadence, RunCadence, type PrefsKindView, type PrefsView, type PolicyKin
 import type { NotificationOutboxRow, NotificationPolicyRow, NotificationSettingsRow, PersonRow } from "@shared/rows";
 import { type AppEnv, isAdmin } from "../auth/principal";
 import { findPersonByEmail } from "../auth/persons";
-import { type DB, all, first, run, nowIso } from "../db";
+import { type TenantContext, all, first, run, nowIso } from "../data/sql";
+import { type PlatformContext, first as platformFirst, run as platformRun } from "../data/platform-sql";
 import { REGISTRY, getKind } from "./registry";
 import { loadPolicies, loadPrefs, resolveWith } from "./resolve";
 import { loadSettings } from "./cron";
 import { computeWindow } from "./window";
-import { renderSections, buildMessage, deliverRow } from "./run";
+import { renderSections, buildMessage, deliverRow, outboxKey } from "./run";
 import { deliveryFor } from "./resend";
 import { unsubscribeUrl } from "./unsubscribe";
 import { sampleSections } from "./sample";
-import { LEGACY_ORG_ID } from "../legacy-org";
 import { legacyDb } from "../data/legacy";
 
 export const notificationsApp = new Hono<AppEnv>();
@@ -24,10 +24,11 @@ export const notificationsApp = new Hono<AppEnv>();
 // ── per-user prefs ────────────────────────────────────────────────────────────
 
 
-export async function prefsView(db: DB, login: string): Promise<PrefsView> {
-  const person = await first<PersonRow>(db, `SELECT * FROM persons WHERE handle = ?`, login);
-  const policies = await loadPolicies(db);
-  const prefs = await loadPrefs(db, login);
+/** The person's address and (global) unsubscribe come from `p`; the kinds are resolved in `ctx`'s org. */
+export async function prefsView(ctx: TenantContext, p: PlatformContext, login: string): Promise<PrefsView> {
+  const person = await platformFirst<PersonRow>(p, `SELECT * FROM persons WHERE handle = ?`, login);
+  const policies = await loadPolicies(ctx);
+  const prefs = await loadPrefs(ctx, login);
   const kinds: PrefsKindView[] = [];
   for (const k of REGISTRY) {
     const policy = policies.get(k.id);
@@ -54,7 +55,7 @@ const PrefsWrite = z.object({
   prefs: z.record(z.string(), Cadence.nullable()).optional(), // null = reset (delete the row)
 });
 
-notificationsApp.get("/prefs", async (c) => c.json(await prefsView(legacyDb(c.var.ctx), c.get("principal").handle)));
+notificationsApp.get("/prefs", async (c) => c.json(await prefsView(c.var.ctx, c.var.p, c.get("principal").handle)));
 
 notificationsApp.put("/prefs", async (c) => {
   const login = c.get("principal").handle; // the ONLY row a user can touch
@@ -85,13 +86,14 @@ notificationsApp.put("/prefs", async (c) => {
   }
 
   const now = nowIso();
-  if (body.email !== undefined) await run(legacyDb(c.var.p), `UPDATE persons SET email = ? WHERE handle = ?`, body.email === "" ? null : body.email, login);
-  if (body.unsubscribed !== undefined) await run(legacyDb(c.var.p), `UPDATE persons SET email_unsubscribed = ? WHERE handle = ?`, body.unsubscribed ? 1 : 0, login);
+  const ctx = c.var.ctx;
+  if (body.email !== undefined) await platformRun(c.var.p, `UPDATE persons SET email = ? WHERE handle = ?`, body.email === "" ? null : body.email, login);
+  if (body.unsubscribed !== undefined) await platformRun(c.var.p, `UPDATE persons SET email_unsubscribed = ? WHERE handle = ?`, body.unsubscribed ? 1 : 0, login);
   for (const w of writes) {
-    if (w.cadence === null) await run(legacyDb(c.var.ctx), `DELETE FROM notification_prefs WHERE user_id = ? AND kind = ?`, login, w.kind);
-    else await run(legacyDb(c.var.ctx), `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(org_id, user_id, kind) DO UPDATE SET cadence = excluded.cadence, updated_at = excluded.updated_at`, login, w.kind, w.cadence, now);
+    if (w.cadence === null) await run(ctx, `DELETE FROM notification_prefs WHERE org_id = ? AND user_id = ? AND kind = ?`, ctx.orgId, login, w.kind);
+    else await run(ctx, `INSERT INTO notification_prefs (org_id, user_id, kind, cadence, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(org_id, user_id, kind) DO UPDATE SET cadence = excluded.cadence, updated_at = excluded.updated_at`, ctx.orgId, login, w.kind, w.cadence, now);
   }
-  return c.json(await prefsView(legacyDb(c.var.ctx), login));
+  return c.json(await prefsView(ctx, c.var.p, login));
 });
 
 // ── admin: policy / settings / outbox / teammate address ─────────────────────
@@ -104,8 +106,8 @@ adminOnly.use("/preview", async (c, next) => (isAdmin(c.env, c.get("principal").
 adminOnly.use("/test-send", async (c, next) => (isAdmin(c.env, c.get("principal").handle) ? next() : c.json({ error: "admin only" }, 403)));
 
 
-async function policyView(db: DB): Promise<{ kinds: PolicyKindView[] }> {
-  const policies = await loadPolicies(db);
+async function policyView(ctx: TenantContext): Promise<{ kinds: PolicyKindView[] }> {
+  const policies = await loadPolicies(ctx);
   return {
     kinds: REGISTRY.map((k) => {
       const p = policies.get(k.id);
@@ -122,7 +124,7 @@ async function policyView(db: DB): Promise<{ kinds: PolicyKindView[] }> {
 
 const PolicyWrite = z.object({ kind: z.string(), enabled: z.boolean().optional(), default_cadence: Cadence.optional() });
 
-notificationsApp.get("/policy", async (c) => c.json(await policyView(legacyDb(c.var.ctx))));
+notificationsApp.get("/policy", async (c) => c.json(await policyView(c.var.ctx)));
 
 notificationsApp.put("/policy", async (c) => {
   const parsed = PolicyWrite.safeParse(await c.req.json().catch(() => null));
@@ -133,18 +135,20 @@ notificationsApp.put("/policy", async (c) => {
   if (default_cadence !== undefined && !kind.allowedCadences.includes(default_cadence)) {
     return c.json({ error: `cadence ${default_cadence} not allowed for ${kindId}` }, 400);
   }
-  const existing = await first<NotificationPolicyRow>(legacyDb(c.var.ctx), `SELECT * FROM notification_policy WHERE kind = ?`, kindId);
+  const ctx = c.var.ctx;
+  const existing = await first<NotificationPolicyRow>(ctx, `SELECT * FROM notification_policy WHERE org_id = ? AND kind = ?`, ctx.orgId, kindId);
   await run(
-    legacyDb(c.var.ctx),
-    `INSERT INTO notification_policy (kind, default_cadence, enabled, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)
+    ctx,
+    `INSERT INTO notification_policy (org_id, kind, default_cadence, enabled, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(org_id, kind) DO UPDATE SET default_cadence = excluded.default_cadence, enabled = excluded.enabled, updated_at = excluded.updated_at, updated_by = excluded.updated_by`,
+    ctx.orgId,
     kindId,
     default_cadence ?? existing?.default_cadence ?? kind.defaultCadence,
     enabled === undefined ? (existing?.enabled ?? 1) : enabled ? 1 : 0,
     nowIso(),
     c.get("principal").handle
   );
-  return c.json(await policyView(legacyDb(c.var.ctx)));
+  return c.json(await policyView(ctx));
 });
 
 const validTimeZone = (tz: string): boolean => {
@@ -161,28 +165,29 @@ const SettingsWrite = z.object({
   from_address: z.string().trim().min(3).max(254).optional(),
 });
 
-notificationsApp.get("/settings", async (c) => c.json(await loadSettings(legacyDb(c.var.ctx))));
+notificationsApp.get("/settings", async (c) => c.json(await loadSettings(c.var.ctx)));
 
 notificationsApp.put("/settings", async (c) => {
   const parsed = SettingsWrite.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
-  const cur = await loadSettings(legacyDb(c.var.ctx));
-  const next: NotificationSettingsRow = { ...cur, ...parsed.data, org_id: LEGACY_ORG_ID };
+  const ctx = c.var.ctx;
+  const cur = await loadSettings(ctx);
+  const next: NotificationSettingsRow = { ...cur, ...parsed.data, org_id: ctx.orgId };
   await run(
-    legacyDb(c.var.ctx),
+    ctx,
     `INSERT INTO notification_settings (org_id, send_hour, timezone, from_address) VALUES (?, ?, ?, ?)
      ON CONFLICT(org_id) DO UPDATE SET send_hour = excluded.send_hour, timezone = excluded.timezone, from_address = excluded.from_address`,
-    LEGACY_ORG_ID,
+    ctx.orgId,
     next.send_hour,
     next.timezone,
     next.from_address
   );
-  return c.json(await loadSettings(legacyDb(c.var.ctx)));
+  return c.json(await loadSettings(ctx));
 });
 
 notificationsApp.get("/outbox", async (c) => {
   const limit = Math.trunc(Math.min(Math.max(Number(c.req.query("limit") ?? 50), 1), 200));
-  const rows = await all<NotificationOutboxRow>(legacyDb(c.var.ctx), `SELECT * FROM notification_outbox ORDER BY created_at DESC, idempotency_key DESC LIMIT ${limit}`);
+  const rows = await all<NotificationOutboxRow>(c.var.ctx, `SELECT * FROM notification_outbox WHERE org_id = ? ORDER BY created_at DESC, idempotency_key DESC LIMIT ${limit}`, c.var.ctx.orgId);
   return c.json({ rows });
 });
 
@@ -200,7 +205,7 @@ notificationsApp.put("/persons/:handle", async (c) => {
       return c.json({ error: "email_in_use" }, 409);
     }
   }
-  const res = await run(legacyDb(c.var.p), `UPDATE persons SET email = ? WHERE handle = ?`, parsed.data.email === "" ? null : parsed.data.email, handle);
+  const res = await platformRun(c.var.p, `UPDATE persons SET email = ? WHERE handle = ?`, parsed.data.email === "" ? null : parsed.data.email, handle);
   if ((res.meta.changes ?? 0) === 0) return c.json({ error: "no such person" }, 404);
   return c.json({ ok: true, handle, email: parsed.data.email || null });
 });
@@ -209,8 +214,8 @@ notificationsApp.put("/persons/:handle", async (c) => {
 // Both render for the CALLER over every policy-enabled kind (prefs ignored —
 // the admin wants to see everything), for the window a run at `now` would use.
 
-async function enabledKinds(db: DB) {
-  const policies = await loadPolicies(db);
+async function enabledKinds(ctx: TenantContext) {
+  const policies = await loadPolicies(ctx);
   return REGISTRY.filter((k) => (policies.get(k.id)?.enabled ?? 1) === 1);
 }
 
@@ -219,11 +224,11 @@ notificationsApp.get("/preview", async (c) => {
   const cadence = RunCadence.safeParse(c.req.query("cadence") ?? "daily");
   if (!cadence.success) return c.json({ error: "cadence must be daily or weekly" }, 400);
   const login = c.get("principal").handle;
-  const settings = await loadSettings(legacyDb(c.var.ctx));
+  const settings = await loadSettings(c.var.ctx);
   const window = computeWindow(cadence.data, new Date(), settings.timezone);
-  const kinds = await enabledKinds(legacyDb(c.var.ctx));
+  const kinds = await enabledKinds(c.var.ctx);
   const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-  const sections = c.req.query("sample") === "1" ? sampleSections() : (await renderSections(legacyDb(c.var.ctx), login, kinds, window)).sections;
+  const sections = c.req.query("sample") === "1" ? sampleSections() : (await renderSections(c.var.ctx, login, kinds, window)).sections;
   if (sections.length === 0) {
     return c.html(`<!DOCTYPE html><meta charset="utf-8"><body style="font-family:system-ui;padding:32px;color:#444"><h2>Nothing to render</h2><p>No section had anything to say for <b>${login}</b> in the ${cadence.data} window (${window.id}). A real run would mark this user <code>skipped</code>. Add <code>&amp;sample=1</code> to see the layout with sample data.</p></body>`);
   }
@@ -240,44 +245,45 @@ const TestSend = z.object({ cadence: RunCadence, sample: z.boolean().optional() 
 /**
  * POST /test-send {cadence, sample?} → sends the caller's digest to the caller's
  * address through the REAL delivery gate (local mode → bodies table; resend
- * mode → Resend). Logged as its own outbox row keyed `login:cadence:test-<ts>`
+ * mode → Resend). Logged as its own outbox row keyed `org:login:cadence:test-<ts>`
  * so it never claims (or is blocked by) the scheduled window.
  */
 notificationsApp.post("/test-send", async (c) => {
   const parsed = TestSend.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   const login = c.get("principal").handle;
-  const person = await first<PersonRow>(legacyDb(c.var.p), `SELECT * FROM persons WHERE handle = ?`, login);
+  const ctx = c.var.ctx;
+  const person = await platformFirst<PersonRow>(c.var.p, `SELECT * FROM persons WHERE handle = ?`, login);
   if (!person?.email) return c.json({ error: "no email on file for you — set one in Settings first" }, 400);
 
-  const settings = await loadSettings(legacyDb(c.var.ctx));
+  const settings = await loadSettings(ctx);
   const window = computeWindow(parsed.data.cadence, new Date(), settings.timezone);
-  const kinds = await enabledKinds(legacyDb(c.var.ctx));
+  const kinds = await enabledKinds(ctx);
   const preset = parsed.data.sample ? sampleSections() : undefined;
   if (!preset) {
-    const probe = await renderSections(legacyDb(c.var.ctx), login, kinds, window);
+    const probe = await renderSections(ctx, login, kinds, window);
     if (probe.sections.length === 0) return c.json({ error: `nothing to render for ${login} in the ${parsed.data.cadence} window (${window.id}); pass sample:true to send the sample digest` }, 400);
   }
 
   let delivery;
   try {
-    delivery = deliveryFor(c.env, { from: settings.from_address });
+    delivery = deliveryFor(ctx, c.env, { from: settings.from_address });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 503);
   }
   const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-  const key = `${login}:${parsed.data.cadence}:test-${nowIso().replace(/[:.]/g, "-")}`;
+  const key = outboxKey(ctx, login, parsed.data.cadence, `test-${nowIso().replace(/[:.]/g, "-")}`);
   await run(
-    legacyDb(c.var.ctx),
-    `INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
-    key, login, parsed.data.cadence, `${window.id} (test)`, JSON.stringify(kinds.map((k) => k.id)), nowIso()
+    ctx,
+    `INSERT INTO notification_outbox (org_id, idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+    ctx.orgId, key, login, parsed.data.cadence, `${window.id} (test)`, JSON.stringify(kinds.map((k) => k.id)), nowIso()
   );
   const status = await deliverRow(
-    legacyDb(c.var.ctx),
+    ctx,
     { key, login, email: person.email, kinds, window, timeZone: settings.timezone },
     { delivery, origin, unsubscribeUrl: (l) => unsubscribeUrl(origin, l, c.env.COOKIE_SECRET) },
     preset
   );
-  const row = await first<{ resend_id: string | null; error: string | null }>(legacyDb(c.var.ctx), `SELECT resend_id, error FROM notification_outbox WHERE idempotency_key = ?`, key);
+  const row = await first<{ resend_id: string | null; error: string | null }>(ctx, `SELECT resend_id, error FROM notification_outbox WHERE idempotency_key = ? AND org_id = ?`, key, ctx.orgId);
   return c.json({ ok: status === "sent", status, key, mode: delivery.mode, to: person.email, resend_id: row?.resend_id ?? null, error: row?.error ?? null });
 });

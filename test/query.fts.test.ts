@@ -144,7 +144,7 @@ describe("query() — FTS5 engine (triggers, ranking, bundle, authority, browse)
     // The same term in a ticket TITLE, a doc body and a feed body. The doc and the
     // feed entry come back; the ticket does NOT — tickets have their own surface.
     const id = await create_ticket(
-      env.DB,
+      systemCtx(),
       { title: "Gradebook tamarind export fails", body: "over 1,000 rows", category: "bug", priority: "high", assignees: [] },
       AUTHOR
     );

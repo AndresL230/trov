@@ -74,12 +74,12 @@ function issuePayload(number: number, state: "open" | "closed", action: string) 
 describe("upsertProgress + getProgress", () => {
   it("inserts then overwrites absolutely — the row reads the latest write, source included", async () => {
     const id = await seedSprint(null);
-    await upsertProgress(env.DB, id, 3, 10, "event");
-    let map = await getProgress(env.DB);
+    await upsertProgress(systemCtx(), id, 3, 10, "event");
+    let map = await getProgress(systemCtx());
     expect(map.get(id)).toMatchObject({ sprint_id: id, closed: 3, total: 10, source: "event" });
 
-    await upsertProgress(env.DB, id, 5, 10, "recompute");
-    map = await getProgress(env.DB);
+    await upsertProgress(systemCtx(), id, 5, 10, "recompute");
+    map = await getProgress(systemCtx());
     expect(map.get(id)).toMatchObject({ sprint_id: id, closed: 5, total: 10, source: "recompute" });
 
     const rows = await all<SprintProgressRow>(env.DB, `SELECT * FROM sprint_progress WHERE sprint_id = ?`, id);
@@ -92,14 +92,14 @@ describe("applyEventProgress — group-number ref", () => {
     // Verified fixture values (test/fixtures/gh-issue-closed.json): the group is
     // { number: 3, open_issues: 1, closed_issues: 5 } → closed:5, total:6.
     const id = await seedSprint("3");
-    await applyEventProgress(env.DB, issueClosed);
+    await applyEventProgress(systemCtx(), issueClosed);
     const row = await first<SprintProgressRow>(env.DB, `SELECT * FROM sprint_progress WHERE sprint_id = ?`, id);
     expect(row).toMatchObject({ closed: 5, total: 6, source: "event" });
   });
 
   it("no-ops when no sprint has a matching github_ref", async () => {
     await seedSprint("99");
-    await applyEventProgress(env.DB, issueClosed);
+    await applyEventProgress(systemCtx(), issueClosed);
     expect(await all(env.DB, `SELECT * FROM sprint_progress`)).toHaveLength(0);
   });
 });
@@ -113,7 +113,7 @@ describe("applyEventProgress — array ref", () => {
     await ingestEvent(systemCtx(), platformCtx(), event7, "github-webhook");
     await ingestEvent(systemCtx(), platformCtx(), event8, "github-webhook");
 
-    await applyEventProgress(env.DB, issuePayload(7, "closed", "closed"));
+    await applyEventProgress(systemCtx(), issuePayload(7, "closed", "closed"));
 
     const row = await first<SprintProgressRow>(env.DB, `SELECT * FROM sprint_progress WHERE sprint_id = ?`, id);
     expect(row).toMatchObject({ closed: 1, total: 2, source: "event" });
@@ -124,7 +124,7 @@ describe("recomputeAllProgress", () => {
   it("writes source:'recompute' for every sprint with a github_ref; a failing fetch leaves the prior row untouched", async () => {
     const idOk = await seedSprint("5", "OK");
     const idBad = await seedSprint("[1]", "Bad");
-    await upsertProgress(env.DB, idBad, 1, 4, "event"); // prior cache row that must survive a 401
+    await upsertProgress(systemCtx(), idBad, 1, 4, "event"); // prior cache row that must survive a 401
 
     const fetchImpl = ((url: string | URL | Request) => {
       const u = String(url);
@@ -136,7 +136,7 @@ describe("recomputeAllProgress", () => {
       return Promise.resolve(new Response("unauthorized", { status: 401 }));
     }) as unknown as typeof fetch;
 
-    const result = await recomputeAllProgress(env.DB, { token: "t", repo: "o/r", fetchImpl });
+    const result = await recomputeAllProgress(systemCtx(), { token: "t", repo: "o/r", fetchImpl });
     expect(result.updated).toBe(1);
 
     const rowOk = await first<SprintProgressRow>(env.DB, `SELECT * FROM sprint_progress WHERE sprint_id = ?`, idOk);
@@ -149,7 +149,7 @@ describe("recomputeAllProgress", () => {
 
   it("never writes for sprints with no github_ref", async () => {
     await seedSprint(null);
-    const result = await recomputeAllProgress(env.DB, { token: "t", repo: "o/r", fetchImpl: stubFetch({}) });
+    const result = await recomputeAllProgress(systemCtx(), { token: "t", repo: "o/r", fetchImpl: stubFetch({}) });
     expect(result.updated).toBe(0);
     expect(await all(env.DB, `SELECT * FROM sprint_progress`)).toHaveLength(0);
   });

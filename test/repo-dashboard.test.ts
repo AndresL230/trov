@@ -194,9 +194,9 @@ describe("getRepoDashboard — a D1-only projection", () => {
 
   it("the current sprint is the one a person marked active, with the Roadmap's ticket progress", async () => {
     await seedPerson("jose-a");
-    const sp = await create_sprint(env.DB, SprintCreate.parse({ label: "Notifications GA" }), "jose-a");
+    const sp = await create_sprint(systemCtx(), SprintCreate.parse({ label: "Notifications GA" }), "jose-a");
     expect((await getRepoDashboard(systemCtx(), "o/r", NOW)).sprint.status).toBe("empty");
-    await set_sprint_active(env.DB, sp.id, true);
+    await set_sprint_active(systemCtx(), sp.id, true);
     const sprint = data((await getRepoDashboard(systemCtx(), "o/r", NOW)).sprint);
     expect(sprint).toMatchObject({ id: sp.id, label: "Notifications GA", closed: 0, total: 0, pct: 0 });
   });

@@ -37,11 +37,11 @@ function issueDelivery(action: string, number: number, o: { assignees?: string[]
 /** What the webhook does for an issues delivery: capture the event, then mirror. */
 async function deliver(payload: ReturnType<typeof issueDelivery>): Promise<void> {
   for (const ev of eventsFromDelivery("issues", payload)) await ingestEvent(systemCtx(), platformCtx(), ev, "github-webhook");
-  await mirrorIssue(env.DB, REPO, payload);
+  await mirrorIssue(systemCtx(), platformCtx(), REPO, payload);
 }
 
 const native = (title: string, assignees: string[] = []) =>
-  create_ticket(env.DB, TicketCreate.parse({ title, assignees }), "meilin");
+  create_ticket(systemCtx(), TicketCreate.parse({ title, assignees }), "meilin");
 
 describe("My Work lists a mirrored ticket as a ticket", () => {
   it("the screen renders no issue list, so the mirrored ticket is in `tickets` (marked `source: github`) beside the native one", async () => {
@@ -50,7 +50,7 @@ describe("My Work lists a mirrored ticket as a ticket", () => {
     // The mirror did create an assigned, open ticket for the issue…
     expect(await first(env.DB, `SELECT status FROM tickets WHERE source = 'github'`)).toEqual({ status: "in_progress" });
 
-    const mw = await getMyWork(env.DB, "AndresL230");
+    const mw = await getMyWork(systemCtx(), "AndresL230");
     // `todo` stays in the DTO for MCP's get_my_work; the SCREEN reads `tickets`.
     expect(mw.todo.map((t) => t.number)).toEqual([214]);
     expect(mw.tickets.map((t) => [t.title, t.source]).sort()).toEqual([["Issue 214", "github"], ["Native one", "canopy"]]);
@@ -71,10 +71,10 @@ describe("the badge and the digest count native tickets only", () => {
     await deliver(issueDelivery("opened", 1));                                   // unassigned mirrored
     await deliver(issueDelivery("assigned", 2, { assignees: ["AndresL230"] })); // mirrored, on AndresL230's plate
     const render = getKind("ticketq")!.render;
-    expect(await render(env.DB, "AndresL230", WINDOW)).toBeNull();
+    expect(await render(systemCtx(), "AndresL230", WINDOW)).toBeNull();
 
     await native("Native unassigned");
-    const section = await render(env.DB, "AndresL230", WINDOW);
+    const section = await render(systemCtx(), "AndresL230", WINDOW);
     expect(section).not.toBeNull();
     expect(section!.text).toContain("Native unassigned");
     expect(section!.text).not.toContain("Issue 1");
@@ -84,18 +84,18 @@ describe("the badge and the digest count native tickets only", () => {
 
 describe("sprint progress counts mirrored tickets", () => {
   it("a mirrored ticket in a sprint is in its total, and closing the issue on GitHub closes it in the progress", async () => {
-    const sprintId = (await create_sprint(env.DB, SprintCreate.parse({ label: "Sprint A" }), "AndresL230")).id;
+    const sprintId = (await create_sprint(systemCtx(), SprintCreate.parse({ label: "Sprint A" }), "AndresL230")).id;
     await deliver(issueDelivery("opened", 7, { updated_at: "2026-09-20T10:00:00Z" }));
     const id = (await first<{ id: number }>(env.DB, `SELECT id FROM tickets WHERE source_ref = ?`, `${REPO}#7`))!.id;
-    await set_ticket_sprint(env.DB, id, sprintId);
-    await native("Native in sprint").then((nid) => set_ticket_sprint(env.DB, nid, sprintId));
+    await set_ticket_sprint(systemCtx(), id, sprintId);
+    await native("Native in sprint").then((nid) => set_ticket_sprint(systemCtx(), nid, sprintId));
 
-    const progress = async () => (await list_sprints(env.DB)).find((s) => s.id === sprintId)!.progress;
+    const progress = async () => (await list_sprints(systemCtx())).find((s) => s.id === sprintId)!.progress;
     expect(await progress()).toEqual({ closed: 0, total: 2, pct: 0 });
 
     await deliver(issueDelivery("closed", 7, { state: "closed", state_reason: "completed", updated_at: "2026-09-20T11:00:00Z" }));
     expect(await progress()).toEqual({ closed: 1, total: 2, pct: 50 });
     // …and the sprint itself is NOT completed by that — a person does that.
-    expect((await list_sprints(env.DB)).find((s) => s.id === sprintId)!.status).not.toBe("done");
+    expect((await list_sprints(systemCtx())).find((s) => s.id === sprintId)!.status).not.toBe("done");
   });
 });

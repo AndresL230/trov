@@ -92,7 +92,7 @@ describe("registered MCP query tool + live GET /search route", () => {
   it("tickets are not a query type: the MCP tool schema has no `ticket`, and /search never returns one", async () => {
     await seedPerson(AUTHOR);
     const id = await create_ticket(
-      env.DB,
+      systemCtx(),
       { title: "Kestrel import crashes", body: "kestrel payloads over 1MB", category: "bug", priority: "high", assignees: [] },
       AUTHOR
     );

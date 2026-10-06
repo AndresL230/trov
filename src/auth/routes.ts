@@ -19,7 +19,7 @@ import { takeOAuthPending } from "./oauth-routes";
 import { listGrants, revokeGrant } from "./oauth";
 import { platformContext } from "../data/gate";
 import { resolveSoleTenant } from "../data/context";
-import { legacyDb, joinLegacyOrg } from "../data/legacy";
+import { legacyDb, joinLegacyOrg, legacySystemTenant } from "../data/legacy";
 
 const OAUTH_TX_COOKIE = "oauth_tx";
 export interface AuthDeps { fetchImpl?: typeof fetch; now?: () => number }
@@ -197,7 +197,8 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     const email = p.email;
     if (email) {
       const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-      await sendWelcome(c.env, legacyDb(c.var.p), {
+      // MT: onboarding has no tenant yet — the welcome goes out under the legacy org's mail settings.
+      await sendWelcome(c.env, legacySystemTenant(c.env, "system"), {
         email, name: parsed.data.name ?? p.name, handle: parsed.data.handle, origin, fetchImpl: deps.fetchImpl,
       });
     }

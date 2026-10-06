@@ -14,12 +14,13 @@ import {
   put, seedPerson, sha256Hex, uniqueBytes, uploadUrl, wf,
 } from "./helpers/artifacts";
 
+import { systemCtx } from "./helpers/tenant";
 const OWNER = "acc-owner";
 const OTHER = "acc-other";
 
 async function seedTicket(): Promise<number> {
   await seedPerson(OWNER);
-  return create_ticket(env.DB, { title: "Parity ticket", body: "", category: "other", priority: "normal", assignees: [] }, OWNER);
+  return create_ticket(systemCtx(), { title: "Parity ticket", body: "", category: "other", priority: "normal", assignees: [] }, OWNER);
 }
 
 /**

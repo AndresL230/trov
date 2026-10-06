@@ -88,7 +88,7 @@ describe("POST /api/notifications/test-send", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; status: string; key: string; mode: string; to: string };
     expect(body).toMatchObject({ ok: true, status: "sent", mode: "local", to: "admin@example.com" });
-    expect(body.key.startsWith("admin-user:daily:test-")).toBe(true);
+    expect(body.key.startsWith("org_saplinglearn:admin-user:daily:test-")).toBe(true);
     const rows = await all<NotificationOutboxRow>(env.DB, `SELECT * FROM notification_outbox`);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ user_id: "admin-user", cadence: "daily", status: "sent" });
@@ -104,7 +104,7 @@ describe("POST /api/notifications/test-send", () => {
     await send(cookie, { cadence: "daily" });
     const { runDigest } = await import("../src/notifications/run");
     const { localDelivery } = await import("../src/notifications/delivery");
-    const r = await runDigest(env.DB, "daily", new Date(), { delivery: localDelivery(env.DB) });
+    const r = await runDigest(systemCtx(), platformCtx(), "daily", new Date(), { delivery: localDelivery(systemCtx()) });
     expect(r.sent).toBe(1);
     expect(r.alreadyRan).toBe(0);
   });

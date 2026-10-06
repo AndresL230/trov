@@ -310,7 +310,7 @@ export interface NotificationPrefRow {
 
 // One row per (user, cadence, window) — the run idempotency ledger.
 export interface NotificationOutboxRow {
-  idempotency_key: string;            // user:cadence:window_id
+  idempotency_key: string;            // org:user:cadence:window_id
   user_id: string;
   cadence: "daily" | "weekly";
   window_id: string;

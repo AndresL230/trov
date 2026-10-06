@@ -702,7 +702,7 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
   // The progress line is TICKETS ONLY, for the hydrated sprints only — one
   // grouped query, sharing `sprintProgress`'s definition of "closed". The
   // `sprint_progress` cache is deliberately NOT read here.
-  const sprintTicketCounts = await ticketCountsBySprint(legacyDb(ctx), sprintIds);
+  const sprintTicketCounts = await ticketCountsBySprint(ctx, sprintIds);
   const planRow = needPlan ? await first<PlanRow>(ctx, `SELECT * FROM plan WHERE org_id = ?`, ctx.orgId) : null;
 
   // Artifact hydration: each candidate page joined to its current version. The ids

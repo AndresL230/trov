@@ -908,7 +908,7 @@ export async function getRepoDashboard(
   };
 
   // The sprint a person marked active (roadmap order) — never inferred from dates.
-  const current = (await list_sprints(legacyDb(ctx))).find((sp) => sp.active) ?? null;
+  const current = (await list_sprints(ctx)).find((sp) => sp.active) ?? null;
   const sprint: RepoSprint | null = current
     ? { id: current.id, label: current.label, due: current.due, closed: current.progress.closed, total: current.progress.total, pct: current.progress.pct }
     : null;

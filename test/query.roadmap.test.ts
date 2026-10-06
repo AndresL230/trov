@@ -25,7 +25,7 @@ async function roadmapFtsCount(): Promise<number> {
 describe("query() learns the roadmap (plan + sprints via FTS)", () => {
   it("a sprint is a sprint-typed hit; the plan carries the narrative body", async () => {
     const { sprints } = await write_plan(
-      env.DB,
+      systemCtx(),
       {
         narrative: "The vector search rollout brings semantic retrieval online this quarter.",
         sprints: [
@@ -57,7 +57,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
 
   it("sprint participates in the DEFAULT types (no explicit types needed)", async () => {
     await write_plan(
-      env.DB,
+      systemCtx(),
       {
         narrative: "n",
         sprints: [{ label: "Quokka Launch", description: "the quokka sprint", due: "2026-09-01", status: "upcoming" }],
@@ -70,7 +70,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
 
   it("the cached GitHub counts are NOT in the body line — a cache-only sprint carries none", async () => {
     const { sprints } = await write_plan(
-      env.DB,
+      systemCtx(),
       {
         narrative: "n",
         sprints: [{ label: "Progress Sprint", description: "aardvark subsystem", due: "2026-10-01", status: "in_progress" }],
@@ -78,7 +78,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
       AUTHOR
     );
     const sid = sprints[0].id;
-    await upsertProgress(env.DB, sid, 2, 5, "recompute");
+    await upsertProgress(systemCtx(), sid, 2, 5, "recompute");
 
     const r = await query(systemCtx(), { q: "aardvark", types: ["sprint"], include_staged: true });
     const hit = r.primary.find((p) => p.id === `sprint:${sid}`)!;
@@ -93,14 +93,14 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
   it("the progress line is TICKETS ONLY: one done ticket and NO cache reads 1/1", async () => {
     await seedPerson("tester");
     const { sprints } = await write_plan(
-      env.DB,
+      systemCtx(),
       { narrative: "n", sprints: [{ label: "Wombat Sprint", description: "wombat subsystem", due: "2026-10-05", status: "in_progress" }] },
       AUTHOR
     );
     const sid = sprints[0].id;
-    const t = await create_ticket(env.DB, TicketCreate.parse({ title: "the wombat work", sprint_id: sid }), "tester");
-    await transition_ticket(env.DB, t, "in_progress", "tester");
-    await transition_ticket(env.DB, t, "done", "tester");
+    const t = await create_ticket(systemCtx(), TicketCreate.parse({ title: "the wombat work", sprint_id: sid }), "tester");
+    await transition_ticket(systemCtx(), t, "in_progress", "tester");
+    await transition_ticket(systemCtx(), t, "done", "tester");
 
     // No sprint_progress row exists for this sprint at all.
     expect(await all(env.DB, `SELECT * FROM sprint_progress WHERE sprint_id = ?`, sid)).toHaveLength(0);
@@ -113,7 +113,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
   it("the cache never adds to the body line, and a sprint with no tickets carries no progress line", async () => {
     await seedPerson("tester");
     const { sprints } = await write_plan(
-      env.DB,
+      systemCtx(),
       {
         narrative: "n",
         sprints: [
@@ -124,11 +124,11 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
       AUTHOR
     );
     const [numbat, bilby] = sprints;
-    await upsertProgress(env.DB, numbat.id, 1, 2, "event"); // the GitHub half
-    const done = await create_ticket(env.DB, TicketCreate.parse({ title: "numbat one", sprint_id: numbat.id }), "tester");
-    await create_ticket(env.DB, TicketCreate.parse({ title: "numbat two", sprint_id: numbat.id }), "tester");
-    await transition_ticket(env.DB, done, "in_progress", "tester");
-    await transition_ticket(env.DB, done, "done", "tester");
+    await upsertProgress(systemCtx(), numbat.id, 1, 2, "event"); // the GitHub half
+    const done = await create_ticket(systemCtx(), TicketCreate.parse({ title: "numbat one", sprint_id: numbat.id }), "tester");
+    await create_ticket(systemCtx(), TicketCreate.parse({ title: "numbat two", sprint_id: numbat.id }), "tester");
+    await transition_ticket(systemCtx(), done, "in_progress", "tester");
+    await transition_ticket(systemCtx(), done, "done", "tester");
 
     const r = await query(systemCtx(), { q: "numbat bilby", types: ["sprint"], include_staged: true });
     // 1 of 2 TICKETS done. The 1/2 issue cache is not added in (the old combined
@@ -142,7 +142,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
 
   it("section/space filter excludes sprint (docsOnly)", async () => {
     await write_plan(
-      env.DB,
+      systemCtx(),
       { narrative: "n", sprints: [{ label: "Mango Sprint", description: "mango note", due: "2026-11-01", status: "upcoming" }] },
       AUTHOR
     );
@@ -153,7 +153,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
 
   it("the harness truncation cascades into roadmap_fts (no leaked rows)", async () => {
     await write_plan(
-      env.DB,
+      systemCtx(),
       {
         narrative: "some narrative that indexes the plan row",
         sprints: [{ label: "Iso Sprint", description: "d", phase: "Now", due: "2026-12-01", status: "upcoming" }],

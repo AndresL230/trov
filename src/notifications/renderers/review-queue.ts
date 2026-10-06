@@ -1,5 +1,6 @@
 import type { NotificationKind, Section } from "@shared/notifications";
-import type { DB } from "../../db";
+import type { TenantContext } from "../../data/sql";
+import { legacyDb } from "../../data/legacy";
 import { list_proposals, list_adrs } from "../../tools/reads";
 import { legacyCtx } from "../../data/legacy-bridge";
 import { escapeHtml } from "../html";
@@ -16,9 +17,9 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  * versions newer than the live doc) and Decisions (draft ADRs). Org-wide, so
  * the userId is not consulted. Null when both queues are empty.
  */
-async function render(db: DB): Promise<Section | null> {
-  const proposals = await list_proposals(legacyCtx(db));
-  const decisions = await list_adrs(legacyCtx(db), "draft");
+async function render(ctx: TenantContext): Promise<Section | null> {
+  const proposals = await list_proposals(ctx);
+  const decisions = await list_adrs(ctx, "draft");
   if (proposals.length === 0 && decisions.length === 0) return null;
 
   const items = [
@@ -59,7 +60,7 @@ async function render(db: DB): Promise<Section | null> {
   return { heading: "Review queue", summary, html, text, deepLink: DEEP_LINK, linkLabel: "Review" };
 }
 
-export const reviewQueueKind: NotificationKind<DB> = {
+export const reviewQueueKind: NotificationKind<TenantContext> = {
   id: "review_queue",
   label: "Review queue",
   description: "What is waiting on your review in Triage.",

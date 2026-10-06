@@ -15,7 +15,7 @@ import { seedPerson } from "./helpers/persons";
 import type { NotificationPolicyRow, NotificationPrefRow, NotificationSettingsRow, PersonRow } from "@shared/rows";
 import type { Env } from "../src/env";
 
-import { platformCtx } from "./helpers/tenant";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 async function cookieFor(login: string, email: string | null = "me@example.com"): Promise<string> {
   await seedPerson(login, { email });
   const { id } = await createSession(platformCtx(), login);
@@ -36,7 +36,7 @@ describe("GET/PUT /api/notifications/prefs", () => {
   });
 
   it("GET returns the address, the flag, and one resolved row per ENABLED kind, hiding policy-disabled kinds", async () => {
-    await seedNotificationPolicy(env.DB);
+    await seedNotificationPolicy(systemCtx());
     await run(env.DB, `UPDATE notification_policy SET enabled = 0 WHERE kind = 'review_queue'`);
     await run(env.DB, `UPDATE notification_policy SET default_cadence = 'daily' WHERE kind = 'roadmap_plan'`);
     const cookie = await cookieFor("u1");

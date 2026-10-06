@@ -10,7 +10,7 @@ import { mirrorIssue } from "../src/tools/ticket-mirror";
 import { create_ticket } from "../src/tools/tickets";
 import type { TicketDetail } from "@shared/tickets";
 import { cookieFor } from "./helpers/persons";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx, platformCtx } from "./helpers/tenant";
 
 // Phase 3 (0032): the lock and what stays writable on a mirrored ticket. The
 // owner's ruling: ONLY the source link is locked. Title, body, status (under the
@@ -20,7 +20,7 @@ import { bearerCtx } from "./helpers/tenant";
 const REPO = "SaplingLearn/sapling";
 
 async function mirrored(number = 214, o: { assignees?: string[] } = {}): Promise<number> {
-  await mirrorIssue(env.DB, REPO, {
+  await mirrorIssue(systemCtx(), platformCtx(), REPO, {
     action: "opened",
     repository: { full_name: REPO },
     issue: {
@@ -81,7 +81,7 @@ describe("the lock — the source link can never be removed", () => {
 
   it("an unlocked link on a NATIVE ticket removes exactly as before", async () => {
     const cookie = await cookieFor("meilin", { github: false });
-    const id = await create_ticket(env.DB, { title: "native", body: "", category: "other", priority: "normal", assignees: [], link: "#12" }, "meilin");
+    const id = await create_ticket(systemCtx(), { title: "native", body: "", category: "other", priority: "normal", assignees: [], link: "#12" }, "meilin");
     const [l] = await linksOf(id);
     expect((await post(`/tickets/${id}/links/${l.id}/remove`, cookie)).status).toBe(200);
     expect(await linksOf(id)).toHaveLength(0);
@@ -125,7 +125,7 @@ describe("what stays writable on a mirrored ticket", () => {
 
   it("edit_ticket on a NATIVE ticket works too; an empty patch or a blank title is a 400 that writes nothing", async () => {
     const cookie = await cookieFor("meilin", { github: false });
-    const id = await create_ticket(env.DB, { title: "Native", body: "b", category: "other", priority: "normal", assignees: [] }, "meilin");
+    const id = await create_ticket(systemCtx(), { title: "Native", body: "b", category: "other", priority: "normal", assignees: [] }, "meilin");
     expect((await post(`/tickets/${id}/edit`, cookie, { title: "Renamed" })).status).toBe(200);
     expect((await post(`/tickets/${id}/edit`, cookie, {})).status).toBe(400);
     expect((await post(`/tickets/${id}/edit`, cookie, { title: "   " })).status).toBe(400);

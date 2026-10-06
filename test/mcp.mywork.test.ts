@@ -92,7 +92,7 @@ describe("registered MCP get_my_work tool", () => {
   it("carries the tickets list — the third My Work surface crosses the MCP seam too", async () => {
     await seedPerson("meilin", { name: "Meilin Zhao", github: false });
     await create_ticket(
-      env.DB,
+      systemCtx(),
       { title: "Laptop won't join the VPN", body: "", category: "access", priority: "normal", assignees: ["AndresL230"] },
       "meilin"
     );

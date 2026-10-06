@@ -16,7 +16,7 @@ import { AVATAR_MAX_BYTES, RESPONSIBILITIES_MAX, ROLE_MAX, type PersonProfile, t
 import type { PersonRow } from "@shared/rows";
 import { cookieFor, seedPerson } from "./helpers/persons";
 
-import { platformCtx, ORG_A } from "./helpers/tenant";
+import { platformCtx, ORG_A, systemCtx } from "./helpers/tenant";
 const PROVIDER = "https://avatars.githubusercontent.com/u/1?v=4";
 
 const get = async (path: string, cookie: string, e: unknown = env) => app.request(path, { headers: { cookie } }, e as Env);
@@ -45,7 +45,7 @@ async function upload(cookie: string, bytes: Uint8Array, type: string, headers: 
 }
 
 async function seedTicket(title: string, assignee: string, o: { status?: string; source?: "github"; updated_at?: string } = {}): Promise<number> {
-  const id = await create_ticket(env.DB, { title, body: "", category: "other", priority: "normal", assignees: [assignee] }, "meilin");
+  const id = await create_ticket(systemCtx(), { title, body: "", category: "other", priority: "normal", assignees: [assignee] }, "meilin");
   if (o.status) await run(env.DB, `UPDATE tickets SET status = ? WHERE id = ?`, o.status, id);
   if (o.source) await run(env.DB, `UPDATE tickets SET source = 'github', source_ref = ? WHERE id = ?`, `SaplingLearn/sapling#${id}`, id);
   if (o.updated_at) await run(env.DB, `UPDATE tickets SET updated_at = ? WHERE id = ?`, o.updated_at, id);

@@ -73,7 +73,7 @@ describe("my_work renderer", () => {
   it("returns null when the user has no merged PRs in the window and no open assigned issues", async () => {
     await ingestEvent(systemCtx(), platformCtx(), prEvent(1, LOGIN, BEFORE_WINDOW), "github-webhook");
     await ingestEvent(systemCtx(), platformCtx(), issueEvent(2, LOGIN, "closed", IN_WINDOW), "github-webhook");
-    expect(await kind().render(env.DB, LOGIN, WINDOW)).toBeNull();
+    expect(await kind().render(systemCtx(), LOGIN, WINDOW)).toBeNull();
   });
 
   it("includes a merged PR in the window with its stored structured summary, excluding PRs before the window", async () => {
@@ -82,7 +82,7 @@ describe("my_work renderer", () => {
     await ingestEvent(systemCtx(), platformCtx(), prEvent(11, LOGIN, BEFORE_WINDOW, "Old PR"), "github-webhook");
 
     const before = await tableCounts();
-    const s = await kind().render(env.DB, LOGIN, WINDOW);
+    const s = await kind().render(systemCtx(), LOGIN, WINDOW);
     expect(await tableCounts()).toEqual(before); // pure read
 
     expect(s).not.toBeNull();
@@ -98,7 +98,7 @@ describe("my_work renderer", () => {
   it("falls back to the raw PR title and a placeholder when the summary is an excerpt-fallback row", async () => {
     await ingestEvent(systemCtx(), platformCtx(), prEvent(12, LOGIN, IN_WINDOW, "Only raw"), "github-webhook");
     await storePrSummary(systemCtx(), null, { semantic_key: "gh:pr:12:merged", pr_number: 12, title: "Only raw", body: "b" });
-    const s = await kind().render(env.DB, LOGIN, WINDOW);
+    const s = await kind().render(systemCtx(), LOGIN, WINDOW);
     expect(s!.html).toContain("Only raw");
     expect(s!.html).toContain("No summary recorded");
   });
@@ -109,7 +109,7 @@ describe("my_work renderer", () => {
     await ingestEvent(systemCtx(), platformCtx(), issueEvent(21, LOGIN, "closed", IN_WINDOW, "Was open"), "github-webhook");
     await ingestEvent(systemCtx(), platformCtx(), issueEvent(22, "lpcooper-arch", "open", IN_WINDOW, "Lukes"), "github-webhook");
 
-    const s = await kind().render(env.DB, LOGIN, WINDOW);
+    const s = await kind().render(systemCtx(), LOGIN, WINDOW);
     expect(s).not.toBeNull();
     expect(s!.html).toContain("Mine open");
     expect(s!.html).not.toContain("Was open");
@@ -119,14 +119,14 @@ describe("my_work renderer", () => {
 
   it("escapes HTML in titles", async () => {
     await ingestEvent(systemCtx(), platformCtx(), issueEvent(30, LOGIN, "open", IN_WINDOW, "<script>alert(1)</script>"), "github-webhook");
-    const s = await kind().render(env.DB, LOGIN, WINDOW);
+    const s = await kind().render(systemCtx(), LOGIN, WINDOW);
     expect(s!.html).not.toContain("<script>");
     expect(s!.html).toContain("&lt;script&gt;");
   });
 
   it("returns null for a login not in the identity map, matching My Work", async () => {
     await ingestEvent(systemCtx(), platformCtx(), prEvent(40, "unmapped-login", IN_WINDOW), "github-webhook");
-    expect(await kind().render(env.DB, "unmapped-login", WINDOW)).toBeNull();
+    expect(await kind().render(systemCtx(), "unmapped-login", WINDOW)).toBeNull();
   });
 
   it("returns null for a person with no GitHub identity (Google-only), even though the window has other people's content", async () => {
@@ -136,7 +136,7 @@ describe("my_work renderer", () => {
     // priya, not merely that there happens to be nothing to show.
     await ingestEvent(systemCtx(), platformCtx(), prEvent(41, LOGIN, IN_WINDOW), "github-webhook");
     await ingestEvent(systemCtx(), platformCtx(), issueEvent(42, LOGIN, "open", IN_WINDOW), "github-webhook");
-    expect(await kind().render(env.DB, "priya", WINDOW)).toBeNull();
+    expect(await kind().render(systemCtx(), "priya", WINDOW)).toBeNull();
   });
 });
 
@@ -144,7 +144,7 @@ describe("review_queue renderer", () => {
   const kind = () => getKind("review_queue")!;
 
   it("returns null when there are no open proposals and no draft decisions", async () => {
-    expect(await kind().render(env.DB, LOGIN, WINDOW)).toBeNull();
+    expect(await kind().render(systemCtx(), LOGIN, WINDOW)).toBeNull();
   });
 
   it("reports counts and top items for staged doc versions and draft ADRs, excluding ratified/promoted", async () => {
@@ -160,7 +160,7 @@ describe("review_queue renderer", () => {
     await run(env.DB, `UPDATE adrs SET status = 'ratified' WHERE title = 'Already ratified'`);
 
     const before = await tableCounts();
-    const s = await kind().render(env.DB, LOGIN, WINDOW);
+    const s = await kind().render(systemCtx(), LOGIN, WINDOW);
     expect(await tableCounts()).toEqual(before);
 
     expect(s).not.toBeNull();
@@ -182,27 +182,27 @@ describe("roadmap_plan renderer", () => {
   }
 
   it("returns null when no plan version rows fall in the window", async () => {
-    await write_plan(env.DB, { narrative: "n", sprints: [{ label: "M1", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "M1", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
     await stampLatestVersion(BEFORE_WINDOW);
-    expect(await kind().render(env.DB, LOGIN, WINDOW)).toBeNull();
+    expect(await kind().render(systemCtx(), LOGIN, WINDOW)).toBeNull();
   });
 
   it("returns null when only progress rows changed in the window (progress layer excluded)", async () => {
-    const r = await write_plan(env.DB, { narrative: "n", sprints: [{ label: "M1", due: "2026-10-01", status: "upcoming", github_ref: 7 }] }, AUTHOR);
+    const r = await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "M1", due: "2026-10-01", status: "upcoming", github_ref: 7 }] }, AUTHOR);
     await stampLatestVersion(BEFORE_WINDOW);
-    await upsertProgress(env.DB, r.sprints[0].id, 3, 5, "event");
+    await upsertProgress(systemCtx(), r.sprints[0].id, 3, 5, "event");
     await run(env.DB, `UPDATE sprint_progress SET computed_at = ?`, IN_WINDOW);
-    expect(await kind().render(env.DB, LOGIN, WINDOW)).toBeNull();
+    expect(await kind().render(systemCtx(), LOGIN, WINDOW)).toBeNull();
   });
 
   it("reports a sprint added in the window", async () => {
-    await write_plan(env.DB, { narrative: "n", sprints: [{ label: "M1", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "M1", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
     await stampLatestVersion(BEFORE_WINDOW);
-    await write_plan(env.DB, { narrative: "n", sprints: [{ label: "M2 new", due: "2026-11-01", status: "upcoming" }] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "M2 new", due: "2026-11-01", status: "upcoming" }] }, AUTHOR);
     await stampLatestVersion(IN_WINDOW);
 
     const before = await tableCounts();
-    const s = await kind().render(env.DB, LOGIN, WINDOW);
+    const s = await kind().render(systemCtx(), LOGIN, WINDOW);
     expect(await tableCounts()).toEqual(before);
 
     expect(s).not.toBeNull();
@@ -213,68 +213,68 @@ describe("roadmap_plan renderer", () => {
   });
 
   it("reports title and description changes", async () => {
-    const r = await write_plan(env.DB, { narrative: "n", sprints: [{ label: "Old title", description: "old d", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
+    const r = await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "Old title", description: "old d", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
     await stampLatestVersion(BEFORE_WINDOW);
     const id = r.sprints[0].id;
-    await write_plan(env.DB, { narrative: "n", sprints: [{ id, label: "New title", description: "new d", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ id, label: "New title", description: "new d", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
     await stampLatestVersion(IN_WINDOW);
 
-    const s = await kind().render(env.DB, LOGIN, WINDOW);
+    const s = await kind().render(systemCtx(), LOGIN, WINDOW);
     expect(s!.text).toMatch(/changed\s+Old title → New title/);
     expect(s!.text).toMatch(/changed\s+New title — description updated/);
   });
 
   it("reports a reorder when target dates swap the sprint order", async () => {
-    const r = await write_plan(env.DB, { narrative: "n", sprints: [
+    const r = await write_plan(systemCtx(), { narrative: "n", sprints: [
       { label: "First", due: "2026-10-01", status: "upcoming" },
       { label: "Second", due: "2026-11-01", status: "upcoming" },
     ] }, AUTHOR);
     await stampLatestVersion(BEFORE_WINDOW);
     const first_ = r.sprints.find((m) => m.title === "First")!;
-    await write_plan(env.DB, { narrative: "n", sprints: [{ id: first_.id, label: "First", due: "2026-12-01", status: "upcoming" }] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ id: first_.id, label: "First", due: "2026-12-01", status: "upcoming" }] }, AUTHOR);
     await stampLatestVersion(IN_WINDOW);
 
-    const s = await kind().render(env.DB, LOGIN, WINDOW);
+    const s = await kind().render(systemCtx(), LOGIN, WINDOW);
     expect(s!.text).toMatch(/reordered\s+.*First/);
     expect(s!.text).toContain("First");
   });
 
   it("reports a sprint confirmed done", async () => {
-    const r = await write_plan(env.DB, { narrative: "n", sprints: [{ label: "Ship it", due: "2026-10-01", status: "in_progress" }] }, AUTHOR);
+    const r = await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "Ship it", due: "2026-10-01", status: "in_progress" }] }, AUTHOR);
     await stampLatestVersion(BEFORE_WINDOW);
-    await write_plan(env.DB, { narrative: "n", sprints: [{ id: r.sprints[0].id, label: "Ship it", due: "2026-10-01", status: "done" }] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ id: r.sprints[0].id, label: "Ship it", due: "2026-10-01", status: "done" }] }, AUTHOR);
     await stampLatestVersion(IN_WINDOW);
 
-    const s = await kind().render(env.DB, LOGIN, WINDOW);
+    const s = await kind().render(systemCtx(), LOGIN, WINDOW);
     expect(s!.text).toMatch(/done\s+Ship it — confirmed complete/);
   });
 
   it("diffs the latest in-window version against the last version BEFORE the window, not the previous version", async () => {
     // v1 before window: M1. v2 in window: +M2. v3 in window: +M3. Report both M2 and M3 as added.
-    await write_plan(env.DB, { narrative: "n", sprints: [{ label: "M1", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "M1", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
     await stampLatestVersion(BEFORE_WINDOW);
-    await write_plan(env.DB, { narrative: "n", sprints: [{ label: "M2", due: "2026-11-01", status: "upcoming" }] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "M2", due: "2026-11-01", status: "upcoming" }] }, AUTHOR);
     await stampLatestVersion("2026-09-10T20:00:00Z");
-    await write_plan(env.DB, { narrative: "n", sprints: [{ label: "M3", due: "2026-12-01", status: "upcoming" }] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "M3", due: "2026-12-01", status: "upcoming" }] }, AUTHOR);
     await stampLatestVersion(IN_WINDOW);
 
-    const s = await kind().render(env.DB, LOGIN, WINDOW);
+    const s = await kind().render(systemCtx(), LOGIN, WINDOW);
     expect(s!.text).toMatch(/added\s+M2/);
     expect(s!.text).toMatch(/added\s+M3/);
   });
 
   it("returns null when an in-window version changed nothing at the sprint level", async () => {
-    await write_plan(env.DB, { narrative: "n", sprints: [{ label: "M1", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "M1", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
     await stampLatestVersion(BEFORE_WINDOW);
-    await write_plan(env.DB, { narrative: "narrative only", sprints: [] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "narrative only", sprints: [] }, AUTHOR);
     await stampLatestVersion(IN_WINDOW);
-    expect(await kind().render(env.DB, LOGIN, WINDOW)).toBeNull();
+    expect(await kind().render(systemCtx(), LOGIN, WINDOW)).toBeNull();
   });
 
   it("treats every sprint as added when there is no version before the window", async () => {
-    await write_plan(env.DB, { narrative: "n", sprints: [{ label: "Genesis", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "Genesis", due: "2026-10-01", status: "upcoming" }] }, AUTHOR);
     await stampLatestVersion(IN_WINDOW);
-    const s = await kind().render(env.DB, LOGIN, WINDOW);
+    const s = await kind().render(systemCtx(), LOGIN, WINDOW);
     expect(s!.text).toMatch(/added\s+Genesis/);
   });
 });

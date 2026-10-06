@@ -14,7 +14,7 @@ import { create_ticket } from "../src/tools/tickets";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { app } from "../src/routes";
 import { ARTIFACT_INLINE_MAX } from "@shared/artifacts";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const ME = "arti-author";
 const YOU = "arti-teammate";
@@ -51,7 +51,7 @@ const textArgs = (o: Record<string, unknown> = {}) => ({
 
 async function seedTicket(title = "Fix login", requester = ME): Promise<number> {
   await seedPerson(requester);
-  return create_ticket(env.DB, { title, body: "", category: "other", priority: "normal", assignees: [] }, requester);
+  return create_ticket(systemCtx(), { title, body: "", category: "other", priority: "normal", assignees: [] }, requester);
 }
 
 // ── registration ─────────────────────────────────────────────────────────────

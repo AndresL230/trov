@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { systemCtx } from "./helpers/tenant";
+import { systemCtx, platformCtx } from "./helpers/tenant";
 import { all, run } from "../src/db";
 import { ingestAdrDraft } from "../src/consumer";
 import { resendDelivery, deliveryFor } from "../src/notifications/resend";
@@ -65,11 +65,11 @@ describe("resendDelivery", () => {
 describe("deliveryFor — env gate, default local", () => {
   const base = env as unknown as Env;
   it("defaults to local when NOTIFICATIONS_MODE is unset", () => {
-    expect(deliveryFor({ ...base, NOTIFICATIONS_MODE: undefined, RESEND_API_KEY: "re_x" }, { from: "a@b" }).mode).toBe("local");
-    expect(deliveryFor({ ...base, NOTIFICATIONS_MODE: "local", RESEND_API_KEY: "re_x" }, { from: "a@b" }).mode).toBe("local");
+    expect(deliveryFor(systemCtx(), { ...base, NOTIFICATIONS_MODE: undefined, RESEND_API_KEY: "re_x" }, { from: "a@b" }).mode).toBe("local");
+    expect(deliveryFor(systemCtx(), { ...base, NOTIFICATIONS_MODE: "local", RESEND_API_KEY: "re_x" }, { from: "a@b" }).mode).toBe("local");
   });
   it("resend mode without a key is a configuration error, never a silent fallback", () => {
-    expect(() => deliveryFor({ ...base, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: undefined }, { from: "a@b" })).toThrow(/RESEND_API_KEY/);
+    expect(() => deliveryFor(systemCtx(), { ...base, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: undefined }, { from: "a@b" })).toThrow(/RESEND_API_KEY/);
   });
   it("in resend mode a run stores the provider id and writes no local body", async () => {
     // AndresL230 is pre-seeded by the global reset (email NULL) — seedPerson is
@@ -78,9 +78,9 @@ describe("deliveryFor — env gate, default local", () => {
     await run(env.DB, `UPDATE persons SET email = 'andres@example.com' WHERE handle = 'AndresL230'`);
     await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     const { fetchImpl } = capture(200, { id: "em_run" });
-    const delivery = deliveryFor({ ...base, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "re_x" }, { from: "Trov <c@mail.example>", fetchImpl });
+    const delivery = deliveryFor(systemCtx(), { ...base, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "re_x" }, { from: "Trov <c@mail.example>", fetchImpl });
     expect(delivery.mode).toBe("resend");
-    await runDigest(env.DB, "daily", FRI, { delivery });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery });
     const [row] = await all<NotificationOutboxRow>(env.DB, `SELECT * FROM notification_outbox`);
     expect(row).toMatchObject({ status: "sent", resend_id: "em_run" });
     expect(await all(env.DB, `SELECT * FROM notification_outbox_bodies`)).toHaveLength(0);

@@ -2,7 +2,9 @@
 // through the same delivery gate as the digests. Not a NotificationKind — no
 // cadence, prefs, or window. The outcome lands on the invite row.
 import type { Env } from "../env";
-import { type DB, nowIso } from "../db";
+import { type TenantContext, nowIso } from "../data/sql";
+import type { PlatformContext } from "../data/platform-sql";
+import { legacyDb } from "../data/legacy";
 import { escapeHtml } from "./html";
 import { EMAIL_COLORS as C, EMAIL_FONT, FONTS_HREF, EMAIL_STYLE, EMAIL_WIDTH, EMAIL_SPACE as SP, emailBanner } from "./assemble";
 import { deliveryFor } from "./resend";
@@ -56,21 +58,22 @@ export function renderInviteEmail(o: { inviteeName: string | null; inviterName: 
   return { subject, html, text };
 }
 
-export async function sendInvite(env: Env, db: DB, o: { email: string; inviteeName: string | null; inviterHandle: string; origin: string; fetchImpl?: typeof fetch }): Promise<{ status: "sent" | "failed"; id: string | null; error: string | null }> {
-  const inviter = await getPerson(db, o.inviterHandle);
-  const settings = await loadSettings(db);
+/** `ctx` is the inviting org (its mail settings); `p` reads the inviter and records the outcome on the invite. */
+export async function sendInvite(env: Env, ctx: TenantContext, p: PlatformContext, o: { email: string; inviteeName: string | null; inviterHandle: string; origin: string; fetchImpl?: typeof fetch }): Promise<{ status: "sent" | "failed"; id: string | null; error: string | null }> {
+  const inviter = await getPerson(legacyDb(p), o.inviterHandle);
+  const settings = await loadSettings(ctx);
   const msg = renderInviteEmail({
     inviteeName: o.inviteeName, inviterName: inviter?.name ?? o.inviterHandle, email: o.email,
     signInUrl: inviteSignInUrl(o.origin), host: o.origin.replace(/^https?:\/\//, "") || "trov",
   });
   let result: { status: "sent" | "failed"; id: string | null; error: string | null };
   try {
-    const delivery = deliveryFor(env, { from: settings.from_address, fetchImpl: o.fetchImpl });
+    const delivery = deliveryFor(ctx, env, { from: settings.from_address, fetchImpl: o.fetchImpl });
     const r = await delivery.send({ idempotencyKey: `invite:${o.email}:${nowIso()}`, userId: o.email, to: o.email, subject: msg.subject, html: msg.html, text: msg.text });
     result = { status: "sent", id: r.id, error: null };
   } catch (e) {
     result = { status: "failed", id: null, error: e instanceof Error ? e.message : String(e) };
   }
-  await recordInviteEmail(db, o.email, { id: result.id, error: result.error });
+  await recordInviteEmail(legacyDb(p), o.email, { id: result.id, error: result.error });
   return result;
 }

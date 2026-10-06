@@ -38,7 +38,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // of both (0025 added `lead`; the proposal path that used to create these rows
   // is gone along with the whole proposal queue).
   await write_plan(
-    env.DB,
+    systemCtx(),
     { narrative: "n", sprints: [{ label: "Rename test sprint", due: "2026-01-01", status: "upcoming", lead: handle }] },
     handle
   );
@@ -60,21 +60,21 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     { semantic_key: "gh:pr:777:merged", event_type: "pr_merged", ref_number: 777, subject_login: "someone-else", raw: "{}", provenance: "backfill" },
     handle
   ); // events.recorded_by
-  await write_plan(env.DB, { narrative: "n", sprints: [] }, handle); // plan.updated_by + plan_versions.created_by
+  await write_plan(systemCtx(), { narrative: "n", sprints: [] }, handle); // plan.updated_by + plan_versions.created_by
   // Tickets (0024): tickets.requester + ticket_assignees.login + ticket_links.created_by
   // + ticket_comments.author + ticket_events.actor — all five through the REAL
   // writers (src/tools/tickets.ts, Phase 2). create_ticket alone covers requester,
   // the assignee, the link and the OPENING event row; the comment writer covers
   // ticket_comments.author.
   const ticketId = await create_ticket(
-    env.DB,
+    systemCtx(),
     {
       title: "Rename test ticket", body: "b", category: "other", priority: "normal",
       assignees: [handle], link: "#1",
     },
     handle
   );
-  await add_ticket_comment(env.DB, ticketId, "looking into it", handle);
+  await add_ticket_comment(systemCtx(), ticketId, "looking into it", handle);
   await run(env.DB, `INSERT INTO notification_policy (kind, default_cadence, enabled, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)`,
     "rename_test_kind", "off", 1, nowIso(), handle); // notification_policy.updated_by
   await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES (?, ?, ?, ?)`,

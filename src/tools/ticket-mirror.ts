@@ -29,7 +29,8 @@
 // nothing twice.
 
 import { parseTicketLink, type TicketCategory, type TicketPriority, type TicketStatus } from "@shared/tickets";
-import { type DB, first, run, nowIso } from "../db";
+import { type TenantContext, type Stmt, first, run, stmt, batch, nowIso } from "../data/sql";
+import type { PlatformContext } from "../data/platform-sql";
 import { priorityOf, resolvePersonForLogin, stripPriority } from "./mywork";
 import { isIssueGone } from "./issue-gone";
 
@@ -140,9 +141,11 @@ interface MirrorTicketRow {
  * Apply one `issues` delivery to its mirrored ticket. `repo` is env.GITHUB_REPO:
  * unset mirrors nothing, and only an issue whose repository.full_name equals it
  * (ignoring case) is mirrored. Throws only on a D1 failure — the webhook wraps it so the `events`
- * capture never pays for a mirror failure.
+ * capture never pays for a mirror failure. A SYSTEM write (§4.1): `ctx` is the org the delivery belongs
+ * to, never a member's; `p` reads the global login → person map.
  */
-export async function mirrorIssue(db: DB, repo: string | undefined, payload: unknown): Promise<MirrorOutcome> {
+export async function mirrorIssue(ctx: TenantContext, p: PlatformContext, repo: string | undefined, payload: unknown): Promise<MirrorOutcome> {
+  if (ctx.role !== "system") throw new Error("mirrorIssue is a system write");
   const parsed = ticketFromIssue(payload);
   // GitHub treats owner/repo names case-INsensitively, and its deliveries carry
   // the repo's canonical spelling ("SaplingLearn/Sapling") while GITHUB_REPO may
@@ -153,12 +156,12 @@ export async function mirrorIssue(db: DB, repo: string | undefined, payload: unk
   const m: IssueMirror = { ...parsed, repo, sourceRef: `${repo}#${parsed.number}` };
 
   const existing = await first<MirrorTicketRow>(
-    db, `SELECT id, status, source_updated_at FROM tickets WHERE source_ref = ?`, m.sourceRef);
+    ctx, `SELECT id, status, source_updated_at FROM tickets WHERE source_ref = ? AND org_id = ?`, m.sourceRef, ctx.orgId);
 
   if (!existing) {
     // An issue that left the repo before it was ever mirrored has nothing to decline.
     if (isIssueGone(m.action)) return "unchanged";
-    await createMirrored(db, m);
+    await createMirrored(ctx, p, m);
     return "created";
   }
 
@@ -167,7 +170,7 @@ export async function mirrorIssue(db: DB, repo: string | undefined, payload: unk
 
   // Heal a creation that half-landed in an earlier attempt (the batch below is a
   // transaction, so this is belt and braces): the locked link and the opening row.
-  let wrote = await healMirrored(db, existing.id, m, existing.status);
+  let wrote = await healMirrored(ctx, existing.id, m, existing.status);
 
   // A delivery ALREADY applied (same updated_at) forces nothing: a person may
   // have moved the status in Trov since, and a redelivery must not undo that.
@@ -176,10 +179,10 @@ export async function mirrorIssue(db: DB, repo: string | undefined, payload: unk
   const alreadyApplied = existing.source_updated_at === m.updatedAt;
   const forced = alreadyApplied ? null : forcedStatus(m, existing.status);
   if (forced) {
-    await forceStatus(db, existing.id, existing.status, forced, m.updatedAt);
+    await forceStatus(ctx, existing.id, existing.status, forced, m.updatedAt);
     wrote = true;
   } else if (!alreadyApplied) {
-    await run(db, `UPDATE tickets SET source_updated_at = ? WHERE id = ?`, m.updatedAt, existing.id);
+    await run(ctx, `UPDATE tickets SET source_updated_at = ? WHERE id = ? AND org_id = ?`, m.updatedAt, existing.id, ctx.orgId);
     wrote = true;
   }
   return wrote ? "updated" : "unchanged";
@@ -201,21 +204,22 @@ function forcedStatus(m: IssueMirror, current: TicketStatus): TicketStatus | nul
  * as `github-webhook` and stamping `source_updated_at`. Module-private on
  * purpose: routes and MCP reach status only through `transition_ticket`.
  */
-async function forceStatus(db: DB, id: number, from: TicketStatus, to: TicketStatus, sourceUpdatedAt: string): Promise<void> {
+async function forceStatus(ctx: TenantContext, id: number, from: TicketStatus, to: TicketStatus, sourceUpdatedAt: string): Promise<void> {
   const now = nowIso();
-  await db.batch([
-    db.prepare(`INSERT INTO ticket_events (ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?)`)
-      .bind(id, MIRROR_ACTOR, from, to, now),
-    db.prepare(`UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ?, source_updated_at = ? WHERE id = ?`).bind(to, now, sourceUpdatedAt, id),
+  await batch(ctx, [
+    stmt(ctx, `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      ctx.orgId, id, MIRROR_ACTOR, from, to, now),
+    stmt(ctx, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ?, source_updated_at = ? WHERE id = ? AND org_id = ?`,
+      to, now, sourceUpdatedAt, id, ctx.orgId),
   ]);
 }
 
 /** Resolve GitHub logins to person handles; an unmapped login is dropped. */
-async function handlesFor(db: DB, logins: string[]): Promise<string[]> {
+async function handlesFor(p: PlatformContext, logins: string[]): Promise<string[]> {
   const out: string[] = [];
   for (const login of logins) {
-    const p = await resolvePersonForLogin(db, login);
-    if (p && !out.includes(p.handle)) out.push(p.handle);
+    const person = await resolvePersonForLogin(p, login);
+    if (person && !out.includes(person.handle)) out.push(person.handle);
   }
   return out;
 }
@@ -225,61 +229,65 @@ const sourceLink = (m: IssueMirror) => parseTicketLink(m.htmlUrl);
 
 /**
  * Create the ticket, its assignees, its opening history row and its locked link
- * in ONE batch. Every child insert selects the ticket BY source_ref and is
+ * in ONE batch. Every child insert selects the ticket BY (org, source_ref) and is
  * guarded, so if a concurrent delivery created the ticket first (the parent
  * INSERT OR IGNOREs) nothing is duplicated. Assignees are part of the opening
  * unit — inserted only while the ticket has no history yet — so a replay can
  * never re-add someone a person has since unassigned in Trov.
  */
-async function createMirrored(db: DB, m: IssueMirror): Promise<void> {
-  const requester = (await resolvePersonForLogin(db, m.authorLogin))?.handle ?? MIRROR_ACTOR;
-  const assignees = await handlesFor(db, m.assigneeLogins);
+async function createMirrored(ctx: TenantContext, p: PlatformContext, m: IssueMirror): Promise<void> {
+  const requester = (await resolvePersonForLogin(p, m.authorLogin))?.handle ?? MIRROR_ACTOR;
+  const assignees = await handlesFor(p, m.assigneeLogins);
   const status: TicketStatus = m.final ?? (assignees.length > 0 ? "in_progress" : "submitted");
   const link = sourceLink(m);
   const now = nowIso();
-  const TID = `(SELECT id FROM tickets WHERE source_ref = ?)`;
+  const org = ctx.orgId;
+  // Binds (source_ref, org) at each use.
+  const TID = `(SELECT id FROM tickets WHERE source_ref = ? AND org_id = ?)`;
 
-  const stmts: D1PreparedStatement[] = [
-    db.prepare(
+  const stmts: Stmt[] = [
+    stmt(ctx,
       `INSERT OR IGNORE INTO tickets
-         (title, body, category, priority, status, requester, parent_id, sprint_id, created_at, updated_at,
+         (org_id, title, body, category, priority, status, requester, parent_id, sprint_id, created_at, updated_at,
           source, source_ref, source_author, source_updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, 'github', ?, ?, ?)`
-    ).bind(m.title, m.body, m.category, m.priority, status, requester, now, now, m.sourceRef, m.authorLogin, m.updatedAt),
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, 'github', ?, ?, ?)`,
+      org, m.title, m.body, m.category, m.priority, status, requester, now, now, m.sourceRef, m.authorLogin, m.updatedAt),
     ...assignees.map((h) =>
-      db.prepare(
-        `INSERT OR IGNORE INTO ticket_assignees (ticket_id, login)
-         SELECT ${TID}, ? WHERE NOT EXISTS (SELECT 1 FROM ticket_events WHERE ticket_id = ${TID})`
-      ).bind(m.sourceRef, h, m.sourceRef)),
-    db.prepare(
-      `INSERT INTO ticket_events (ticket_id, actor, from_status, to_status, created_at)
-       SELECT ${TID}, ?, NULL, ?, ? WHERE NOT EXISTS (SELECT 1 FROM ticket_events WHERE ticket_id = ${TID})`
-    ).bind(m.sourceRef, MIRROR_ACTOR, status, now, m.sourceRef),
+      stmt(ctx,
+        `INSERT OR IGNORE INTO ticket_assignees (org_id, ticket_id, login)
+         SELECT ?, ${TID}, ? WHERE NOT EXISTS (SELECT 1 FROM ticket_events WHERE org_id = ? AND ticket_id = ${TID})`,
+        org, m.sourceRef, org, h, org, m.sourceRef, org)),
+    stmt(ctx,
+      `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at)
+       SELECT ?, ${TID}, ?, NULL, ?, ? WHERE NOT EXISTS (SELECT 1 FROM ticket_events WHERE org_id = ? AND ticket_id = ${TID})`,
+      org, m.sourceRef, org, MIRROR_ACTOR, status, now, org, m.sourceRef, org),
   ];
   if (link) {
-    stmts.push(db.prepare(
-      `INSERT INTO ticket_links (ticket_id, url, kind, label, meta, created_by, created_at, locked)
-       SELECT ${TID}, ?, ?, ?, ?, ?, ?, 1 WHERE NOT EXISTS (SELECT 1 FROM ticket_links WHERE ticket_id = ${TID} AND locked = 1)`
-    ).bind(m.sourceRef, link.url, link.kind, link.label, link.meta, MIRROR_ACTOR, now, m.sourceRef));
+    stmts.push(stmt(ctx,
+      `INSERT INTO ticket_links (org_id, ticket_id, url, kind, label, meta, created_by, created_at, locked)
+       SELECT ?, ${TID}, ?, ?, ?, ?, ?, ?, 1
+        WHERE NOT EXISTS (SELECT 1 FROM ticket_links WHERE org_id = ? AND ticket_id = ${TID} AND locked = 1)`,
+      org, m.sourceRef, org, link.url, link.kind, link.label, link.meta, MIRROR_ACTOR, now, org, m.sourceRef, org));
   }
-  await db.batch(stmts);
+  await batch(ctx, stmts);
 }
 
 /** Re-add the locked link / opening row if either is missing. True when it wrote. */
-async function healMirrored(db: DB, id: number, m: IssueMirror, status: TicketStatus): Promise<boolean> {
+async function healMirrored(ctx: TenantContext, id: number, m: IssueMirror, status: TicketStatus): Promise<boolean> {
   let wrote = false;
   const link = sourceLink(m);
   if (link) {
-    const res = await run(db,
-      `INSERT INTO ticket_links (ticket_id, url, kind, label, meta, created_by, created_at, locked)
-       SELECT ?, ?, ?, ?, ?, ?, ?, 1 WHERE NOT EXISTS (SELECT 1 FROM ticket_links WHERE ticket_id = ? AND locked = 1)`,
-      id, link.url, link.kind, link.label, link.meta, MIRROR_ACTOR, nowIso(), id);
+    const res = await run(ctx,
+      `INSERT INTO ticket_links (org_id, ticket_id, url, kind, label, meta, created_by, created_at, locked)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, 1
+        WHERE NOT EXISTS (SELECT 1 FROM ticket_links WHERE ticket_id = ? AND org_id = ? AND locked = 1)`,
+      ctx.orgId, id, link.url, link.kind, link.label, link.meta, MIRROR_ACTOR, nowIso(), id, ctx.orgId);
     wrote ||= (res.meta.changes ?? 0) > 0;
   }
-  const res = await run(db,
-    `INSERT INTO ticket_events (ticket_id, actor, from_status, to_status, created_at)
-     SELECT ?, ?, NULL, ?, ? WHERE NOT EXISTS (SELECT 1 FROM ticket_events WHERE ticket_id = ?)`,
-    id, MIRROR_ACTOR, status, nowIso(), id);
+  const res = await run(ctx,
+    `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at)
+     SELECT ?, ?, ?, NULL, ?, ? WHERE NOT EXISTS (SELECT 1 FROM ticket_events WHERE ticket_id = ? AND org_id = ?)`,
+    ctx.orgId, id, MIRROR_ACTOR, status, nowIso(), id, ctx.orgId);
   wrote ||= (res.meta.changes ?? 0) > 0;
   return wrote;
 }

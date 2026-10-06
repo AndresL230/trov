@@ -9,7 +9,7 @@
 // It is also why there is no outcome column: a failure here is a missed courtesy,
 // not a broken invite, and onboarding must not care.
 import type { Env } from "../env";
-import { type DB, nowIso } from "../db";
+import { type TenantContext, nowIso } from "../data/sql";
 import { escapeHtml } from "./html";
 import { EMAIL_COLORS as C, EMAIL_FONT, FONTS_HREF, EMAIL_STYLE, EMAIL_WIDTH, EMAIL_SPACE as SP, emailBanner } from "./assemble";
 import { deliveryFor } from "./resend";
@@ -62,16 +62,17 @@ export function renderWelcomeEmail(o: { name: string | null; handle: string; ori
 /**
  * Send it. Never throws: a delivery failure (or a misconfigured mode) is caught
  * and returned, because the caller is the onboarding write and a new person must
- * get their session whatever the mailer does.
+ * get their session whatever the mailer does. `ctx` is the org whose mail settings
+ * (and, in local mode, bodies table) the message goes out under.
  */
-export async function sendWelcome(env: Env, db: DB, o: { email: string; name: string | null; handle: string; origin: string; fetchImpl?: typeof fetch }): Promise<{ status: "sent" | "failed"; id: string | null; error: string | null }> {
+export async function sendWelcome(env: Env, ctx: TenantContext, o: { email: string; name: string | null; handle: string; origin: string; fetchImpl?: typeof fetch }): Promise<{ status: "sent" | "failed"; id: string | null; error: string | null }> {
   try {
-    const settings = await loadSettings(db);
+    const settings = await loadSettings(ctx);
     const msg = renderWelcomeEmail({
       name: o.name, handle: o.handle, origin: o.origin,
       host: o.origin.replace(/^https?:\/\//, "") || "trov",
     });
-    const delivery = deliveryFor(env, { from: settings.from_address, fetchImpl: o.fetchImpl });
+    const delivery = deliveryFor(ctx, env, { from: settings.from_address, fetchImpl: o.fetchImpl });
     // Keyed on the handle: onboarding can only succeed once per identity, so this
     // is one message per person for good.
     const r = await delivery.send({ idempotencyKey: `welcome:${o.handle}:${nowIso()}`, userId: o.handle, to: o.email, subject: msg.subject, html: msg.html, text: msg.text });
