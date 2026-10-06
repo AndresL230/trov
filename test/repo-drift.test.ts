@@ -6,6 +6,7 @@ import { ingestRepoEvent } from "../src/consumer";
 import type { RepoDrift } from "@shared/repo";
 import { ENVS } from "./helpers/repo";
 
+import { systemCtx } from "./helpers/tenant";
 const c = (sha: string, message: string, date: string, login = "AndresL230") => ({ sha, commit: { message, committer: { date } }, author: { login } });
 
 describe("refreshDrift", () => {
@@ -22,8 +23,8 @@ describe("refreshDrift", () => {
       return new Response("{}", { status: 404 });
     }) as typeof fetch;
 
-    await refreshDrift(env.DB, { token: "t", repo: "o/r", fetchImpl }, ENVS);
-    const snap = await getSnapshot<RepoDrift>(env.DB, "drift");
+    await refreshDrift(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS);
+    const snap = await getSnapshot<RepoDrift>(systemCtx(), "drift");
     expect(snap?.data).toMatchObject({ head: "main", base: "production", ahead: 3, behind: 1 });
     expect(snap?.data.groups.map((g) => [g.tag, g.kind, g.title, g.commits.length])).toEqual([
       ["#482", "pr", "Batch D1 reads in usage rollup", 2],
@@ -47,8 +48,8 @@ describe("refreshDrift", () => {
       return new Response("{}", { status: 404 });
     }) as typeof fetch;
 
-    await refreshDrift(env.DB, { token: "t", repo: "o/r", fetchImpl }, ENVS);
-    const snap = await getSnapshot<RepoDrift>(env.DB, "drift");
+    await refreshDrift(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS);
+    const snap = await getSnapshot<RepoDrift>(systemCtx(), "drift");
     expect(snap?.data.groups).toHaveLength(120);
     // Groups are newest PR number first, and the one PR Trov knows about
     // carries its captured title/author — proof every chunk was queried.
@@ -58,8 +59,8 @@ describe("refreshDrift", () => {
 
   it("keeps the previous snapshot when GitHub fails", async () => {
     const fetchImpl = (async () => new Response("no", { status: 500 })) as typeof fetch;
-    await expect(refreshDrift(env.DB, { token: "t", repo: "o/r", fetchImpl }, ENVS)).resolves.toBeUndefined();
-    expect(await getSnapshot(env.DB, "drift")).toBeNull();
+    await expect(refreshDrift(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS)).resolves.toBeUndefined();
+    expect(await getSnapshot(systemCtx(), "drift")).toBeNull();
   });
 
   it("keeps a PREVIOUSLY-WRITTEN snapshot standing when a later refresh fails", async () => {
@@ -68,12 +69,12 @@ describe("refreshDrift", () => {
       if (url.endsWith("/compare/production...main")) return new Response(JSON.stringify({ ahead_by: 1, behind_by: 0, commits: [c("aaaa111", "direct push", "2026-09-20T09:00:00Z")] }), { status: 200 });
       return new Response("{}", { status: 404 });
     }) as typeof fetch;
-    await refreshDrift(env.DB, { token: "t", repo: "o/r", fetchImpl: ok }, ENVS);
-    const before = await getSnapshot<RepoDrift>(env.DB, "drift");
+    await refreshDrift(systemCtx(), { token: "t", repo: "o/r", fetchImpl: ok }, ENVS);
+    const before = await getSnapshot<RepoDrift>(systemCtx(), "drift");
     expect(before).not.toBeNull();
 
     const failing = (async () => new Response("no", { status: 500 })) as typeof fetch;
-    await expect(refreshDrift(env.DB, { token: "t", repo: "o/r", fetchImpl: failing }, ENVS)).resolves.toBeUndefined();
-    expect(await getSnapshot<RepoDrift>(env.DB, "drift")).toEqual(before);
+    await expect(refreshDrift(systemCtx(), { token: "t", repo: "o/r", fetchImpl: failing }, ENVS)).resolves.toBeUndefined();
+    expect(await getSnapshot<RepoDrift>(systemCtx(), "drift")).toEqual(before);
   });
 });

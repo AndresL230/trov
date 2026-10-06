@@ -6,6 +6,7 @@ import { sealOnboard, ONBOARD_COOKIE, type OnboardPayload } from "../src/auth/on
 import { createInvite } from "../src/auth/invites";
 import type { PersonRow, IdentityRow, InviteRow } from "@shared/rows";
 
+import { platformCtx } from "./helpers/tenant";
 const PAYLOAD: OnboardPayload = { provider: "google", subject: "g-123", label: "priya.n@gmail.com", email: "priya.n@gmail.com", name: "Priya Natarajan", avatar_url: null, suggested_handle: "priya-n", invite_email: "priya.n@gmail.com" };
 const cookie = async (p = PAYLOAD) => `${ONBOARD_COOKIE}=${await sealOnboard(p, "test-cookie-secret")}`;
 const post = (path: string, c: string, body: unknown) => app.request(path, { method: "POST", headers: { cookie: c, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
@@ -34,7 +35,7 @@ describe("GET /auth/handle-check", () => {
 
 describe("POST /auth/onboard", () => {
   it("creates person + identity, accepts the invite, sets a session, clears the cookie", async () => {
-    await createInvite(env.DB, { email: "priya.n@gmail.com", name: "Priya", invitedBy: "AndresL230" });
+    await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: "Priya", invitedBy: "AndresL230" });
     const res = await post("/auth/onboard", await cookie(), { handle: "priya", name: "Priya N", color: "plum" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, handle: "priya" });
@@ -60,7 +61,7 @@ describe("POST /auth/onboard", () => {
     expect(taken.headers.get("set-cookie") ?? "").not.toContain("onboard=;");
   });
   it("refuses when the invite was revoked after the cookie was issued", async () => {
-    await createInvite(env.DB, { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
+    await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
     await env.DB.prepare(`UPDATE invites SET revoked_at = 't' WHERE email = 'priya.n@gmail.com'`).run();
     const res = await post("/auth/onboard", await cookie(), { handle: "priya", name: "x", color: "plum" });
     expect(res.status).toBe(403);

@@ -13,9 +13,10 @@ import { feedStats, feedStatsWindow } from "../src/tools/feed-stats";
 import { seedPerson } from "./helpers/persons";
 import type { FeedStats } from "@shared/feed-stats";
 
+import { platformCtx } from "./helpers/tenant";
 async function cookieFor(login: string): Promise<string> {
   await seedPerson(login);
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 

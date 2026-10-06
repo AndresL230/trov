@@ -11,9 +11,10 @@ import type { IdentityTaskWithSample } from "../src/tools/reads";
 import type { IdentityTaskRow, IdentityRow } from "@shared/rows";
 import type { CapturedEvent } from "@shared/contract";
 
+import { platformCtx } from "./helpers/tenant";
 async function authedCookie(login: string): Promise<string> {
   await seedPerson(login);
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 

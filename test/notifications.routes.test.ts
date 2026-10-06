@@ -15,9 +15,10 @@ import { seedPerson } from "./helpers/persons";
 import type { NotificationPolicyRow, NotificationPrefRow, NotificationSettingsRow, PersonRow } from "@shared/rows";
 import type { Env } from "../src/env";
 
+import { platformCtx } from "./helpers/tenant";
 async function cookieFor(login: string, email: string | null = "me@example.com"): Promise<string> {
   await seedPerson(login, { email });
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 const json = (method: string, body: unknown, cookie: string): RequestInit => ({

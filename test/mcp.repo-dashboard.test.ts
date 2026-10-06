@@ -18,7 +18,7 @@ import { DRIFT_GROUP_LIMIT, shapeRepoDashboard, type RepoAgentView } from "../sr
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoDashboard, type RepoDrift, type RepoRange, type RepoUsageEnv } from "@shared/repo";
 import type { Env } from "../src/env";
 import { LONG_TOKEN, leakedFragments } from "./helpers/repo";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -109,7 +109,7 @@ async function seedDashboard(): Promise<void> {
     rows.push({ metric: "sap_t_users", env: "staging", part: "", value: 1204, at: iso(at) });
   }
   for (const d of [12, 8, 4, 0]) rows.push({ metric: "coverage", env: "", part: "", value: 70 + d / 4, at: iso(hourFloor - d * DAY) });
-  await putMetrics(env.DB, rows);
+  await putMetrics(systemCtx(), rows);
 
   const drift: RepoDrift = {
     head: "main", base: "production", ahead: 3, behind: 0,
@@ -118,7 +118,7 @@ async function seedDashboard(): Promise<void> {
       commits: [1, 2, 3].map((n) => ({ sha: `abc000${n}`, msg: `commit ${n}`, at: iso(hourFloor - n * HOUR) })),
     }],
   };
-  await putSnapshot(env.DB, "drift", drift);
+  await putSnapshot(systemCtx(), "drift", drift);
 }
 
 describe("MCP get_repo_dashboard — registration", () => {
@@ -196,7 +196,7 @@ describe("MCP get_repo_dashboard — the default call", () => {
         commits: [{ sha: `sha${g}`, msg: `Squash merge ${600 - g} (#${600 - g})`, at }],
       })),
     };
-    await putSnapshot(env.DB, "drift", big);
+    await putSnapshot(systemCtx(), "drift", big);
 
     type DriftView = { ahead: number; groupCount: number; groups: { tag: string; commitCount: number; commits?: unknown[] }[] };
     const cut = okData<DriftView>((await view({ tab: "overview" })).sections.drift);
@@ -226,7 +226,7 @@ describe("MCP get_repo_dashboard — the default call", () => {
     // Before the marker there is nothing to count off — the section is `empty`,
     // never an ok list claiming "0 open".
     expect((await view({ tab: "code" })).sections.prs).toEqual({ status: "empty" });
-    await putSnapshot(env.DB, "prs_reconciled", { at: new Date().toISOString() });
+    await putSnapshot(systemCtx(), "prs_reconciled", { at: new Date().toISOString() });
     expect(okData<{ openCount: number | null; rows: unknown[] }>((await view({ tab: "code" })).sections.prs)).toEqual({ rows: [], openCount: 0 });
   });
 

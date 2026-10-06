@@ -4,6 +4,7 @@ import { createSession } from "../../src/auth/session";
 import { hmacSeal } from "../../src/auth/crypto";
 import type { PersonColor } from "@shared/rows";
 
+import { platformCtx } from "./tenant";
 export interface SeedPersonOpts { name?: string | null; email?: string | null; unsubscribed?: 0 | 1; color?: PersonColor; avatar_url?: string | null; github?: boolean; member?: boolean }
 
 /** Insert if missing (INSERT OR IGNORE; pass explicit UPDATEs for pre-seeded handles) a person, and by default its github identity = handle
@@ -22,6 +23,6 @@ export async function seedPerson(handle: string, o: SeedPersonOpts = {}): Promis
 /** A signed session cookie for `handle`, seeding the person if needed. */
 export async function cookieFor(handle: string, o: SeedPersonOpts = {}): Promise<string> {
   await seedPerson(handle, o);
-  const { id } = await createSession(env.DB, handle);
+  const { id } = await createSession(platformCtx(), handle);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }

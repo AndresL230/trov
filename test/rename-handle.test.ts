@@ -17,6 +17,7 @@ import {
 } from "../src/tools/writes";
 import { create_ticket, add_ticket_comment } from "../src/tools/tickets";
 
+import { platformCtx, ORG_A } from "./helpers/tenant";
 const post = (path: string, c: string, body: unknown) =>
   app.request(path, { method: "POST", headers: { cookie: c, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
 
@@ -24,8 +25,8 @@ const post = (path: string, c: string, body: unknown) =>
  *  where one exists, minimal direct inserts otherwise. */
 async function seedEveryHandleColumn(handle: string): Promise<void> {
   await seedPerson(handle); // persons + identities.person (github identity)
-  await createSession(env.DB, handle); // sessions.person
-  await mintToken(env.DB, handle); // mcp_tokens.person
+  await createSession(platformCtx(), handle); // sessions.person
+  await mintToken(platformCtx(), handle, ORG_A); // mcp_tokens.person
   await append_feed(env.DB, { author: handle, summary: "did a thing" }); // feed.author
   await propose_doc_update(
     env.DB,
@@ -79,8 +80,8 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     handle, "rename_test_kind", "off", nowIso()); // notification_prefs.user_id
   await run(env.DB, `INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     `${handle}:daily:w1`, handle, "daily", "w1", "[]", "pending", nowIso()); // notification_outbox.user_id
-  await createInvite(env.DB, { email: "old-me-invite@test.io", name: null, invitedBy: handle }); // invites.invited_by
-  await acceptInvite(env.DB, "old-me-invite@test.io", handle); // invites.accepted_by
+  await createInvite(platformCtx(), { email: "old-me-invite@test.io", name: null, invitedBy: handle }); // invites.invited_by
+  await acceptInvite(platformCtx(), "old-me-invite@test.io", handle); // invites.accepted_by
   // Artifacts (0030), through the REAL writers (src/tools/artifacts.ts): the create
   // covers artifact_pages.author_id + artifact_versions.created_by + (with a link)
   // artifact_links.created_by; publish + ratify covers ratified_by; a minted upload
@@ -131,7 +132,7 @@ describe("renamePerson", () => {
   it("rewrites every HANDLE_COLUMNS entry atomically, and leaves referential integrity intact", async () => {
     await seedEveryHandleColumn("old-me");
 
-    const result = await renamePerson(env.DB, "old-me", "new-me");
+    const result = await renamePerson(platformCtx(), "old-me", "new-me");
     expect(result).toEqual({ ok: true });
 
     for (const [table, column] of HANDLE_COLUMNS) {
@@ -158,7 +159,7 @@ describe("renamePerson", () => {
       expect(HANDLE_COLUMNS.some(([t, c]) => t === "sprints" && c === column), `sprints.${column} missing from HANDLE_COLUMNS`).toBe(true);
     }
 
-    expect(await renamePerson(env.DB, "old-me", "new-me")).toEqual({ ok: true });
+    expect(await renamePerson(platformCtx(), "old-me", "new-me")).toEqual({ ok: true });
 
     for (const column of ["created_by", "lead"] as const) {
       const old = await all<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM sprints WHERE ${column} = ?`, "old-me");
@@ -188,7 +189,7 @@ describe("renamePerson", () => {
       expect(HANDLE_COLUMNS.some(([t, c]) => t === table && c === column), `${table}.${column} missing from HANDLE_COLUMNS`).toBe(true);
     }
 
-    expect(await renamePerson(env.DB, "old-me", "new-me")).toEqual({ ok: true });
+    expect(await renamePerson(platformCtx(), "old-me", "new-me")).toEqual({ ok: true });
 
     for (const [table, column] of TICKET_HANDLE_COLUMNS) {
       const old = await all<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`, "old-me");
@@ -201,9 +202,9 @@ describe("renamePerson", () => {
   it("is case-insensitive: a same-value-different-case target is rejected as 'same', a genuinely different value renames", async () => {
     // The default seeded person (test/helpers seed) is "AndresL230" — check the
     // case-insensitive "same" rejection against it before mutating it.
-    expect(await renamePerson(env.DB, "andresl230", "AndresL230")).toEqual({ ok: false, reason: "same" });
+    expect(await renamePerson(platformCtx(), "andresl230", "AndresL230")).toEqual({ ok: false, reason: "same" });
 
-    expect(await renamePerson(env.DB, "AndresL230", "andres")).toEqual({ ok: true });
+    expect(await renamePerson(platformCtx(), "AndresL230", "andres")).toEqual({ ok: true });
     expect(await getPerson(env.DB, "andres")).not.toBeNull();
     expect(await getPerson(env.DB, "AndresL230")).toBeNull();
   });
@@ -214,10 +215,10 @@ describe("renamePerson", () => {
 
     // "taken" is case-insensitive: a validly-formatted (lowercase) target still
     // collides with an existing person stored in a different case.
-    expect(await renamePerson(env.DB, "old-me", "taken-person")).toEqual({ ok: false, reason: "taken" });
-    expect(await renamePerson(env.DB, "old-me", "Admin")).toEqual({ ok: false, reason: "invalid" });
-    expect(await renamePerson(env.DB, "old-me", "admin")).toEqual({ ok: false, reason: "reserved" });
-    expect(await renamePerson(env.DB, "no-such-person", "some-new-handle")).toEqual({ ok: false, reason: "not_found" });
+    expect(await renamePerson(platformCtx(), "old-me", "taken-person")).toEqual({ ok: false, reason: "taken" });
+    expect(await renamePerson(platformCtx(), "old-me", "Admin")).toEqual({ ok: false, reason: "invalid" });
+    expect(await renamePerson(platformCtx(), "old-me", "admin")).toEqual({ ok: false, reason: "reserved" });
+    expect(await renamePerson(platformCtx(), "no-such-person", "some-new-handle")).toEqual({ ok: false, reason: "not_found" });
   });
 });
 

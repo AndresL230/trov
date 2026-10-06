@@ -23,7 +23,7 @@ import combined from "../migrations/0035_library_and_sprint_dates.sql?raw";
 const migration = combined.split("-- ═══ PART B")[0].split("-- ═══ PART C")[0];
 import type { DocRow } from "../shared/rows";
 import type { PromptDetail, PromptSummary } from "../shared/handoffs";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, platformCtx } from "./helpers/tenant";
 
 /** The migration's backfill UPDATE statements, re-run against the current rows. */
 async function runBackfill(): Promise<void> {
@@ -89,7 +89,7 @@ describe("docs.owner", () => {
   it("a handle rename rewrites it", async () => {
     await seedPerson("old-owner");
     await propose_doc_update(env.DB, docProposal("renamed-doc", "b"), "old-owner");
-    expect(await renamePerson(env.DB, "old-owner", "new-owner")).toEqual({ ok: true });
+    expect(await renamePerson(platformCtx(), "old-owner", "new-owner")).toEqual({ ok: true });
     expect((await first<{ owner: string }>(env.DB, `SELECT owner FROM docs WHERE slug = 'renamed-doc'`))?.owner).toBe("new-owner");
   });
 });

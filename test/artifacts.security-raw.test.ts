@@ -12,6 +12,7 @@ import { ARTIFACT_UPLOAD_TTL_MS } from "@shared/artifacts";
 import {
   NOT_FOUND, cookieFor, createBinary, createText, get, jsonInit, mcpCall, put, sha256Hex, uniqueBytes, uploadUrl, wf,
 } from "./helpers/artifacts";
+import { platformCtx, ORG_A } from "./helpers/tenant";
 
 const ME = "raw-author";
 const YOU = "raw-teammate";
@@ -105,7 +106,7 @@ describe("7 · raw route headers, per kind", () => {
   it("401 (no session, or a bearer) and 404 carry the passive lock-down too", async () => {
     const me = await cookieFor(ME);
     await createText(me, { title: "Hidden", visibility: "private" });
-    const { raw } = await mintToken(env.DB, ME);
+    const { raw } = await mintToken(platformCtx(), ME, ORG_A);
     for (const [label, init] of [["none", {}], ["bearer", { headers: { authorization: `Bearer ${raw}` } }]] as const) {
       const res = await wf("/raw/a/hidden", init);
       expect(res.status, label).toBe(401);
@@ -397,7 +398,7 @@ describe("10 · SSRF guard (POST /api/artifacts/fetch through the Worker, outbou
   it("the fetch route is session-only: a bearer alone is 401 and never fetches", async () => {
     await cookieFor(ME); // seeds the person the token belongs to
     const calls = stubFetch(doc);
-    const { raw } = await mintToken(env.DB, ME);
+    const { raw } = await mintToken(platformCtx(), ME, ORG_A);
     const res = await wf("/api/artifacts/fetch", jsonInit("POST", { url: "https://example.com/a.md" }, undefined, { authorization: `Bearer ${raw}` }));
     expect(res.status).toBe(401);
     expect(calls).toEqual([]);

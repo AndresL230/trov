@@ -18,6 +18,7 @@ import { putMetric } from "../src/repo/store";
 import { getRepoDashboard } from "../src/tools/repo";
 import { ENVS } from "./helpers/repo";
 
+import { systemCtx } from "./helpers/tenant";
 const NOW = Date.parse("2026-09-20T12:05:00Z");
 const HOUR = 3_600_000;
 const RW_URL = "https://backboard.railway.com/graphql/v2";
@@ -48,7 +49,7 @@ describe("pollRailway", () => {
         [{ ts: ts(1), value: 0.4 }, { ts: ts(0), value: 0.7 }],
       ));
     }) as typeof fetch;
-    await pollRailway(env.DB, TOKENS, WITH_IDS, NOW, fetchImpl);
+    await pollRailway(systemCtx(), TOKENS, WITH_IDS, NOW, fetchImpl);
     expect((await stored()).filter((r) => r.env === "staging")).toEqual([
       { metric: "rw_cpu", env: "staging", part: "backend", value: 0.12, at: "2026-09-20T11:00:00.000Z" },
       { metric: "rw_mem_mb", env: "staging", part: "backend", value: 409.6, at: "2026-09-20T11:00:00.000Z" },
@@ -63,13 +64,13 @@ describe("pollRailway", () => {
       seen[envOf(init)] = new Headers(init?.headers);
       return json(rwBody([], []));
     }) as typeof fetch;
-    await pollRailway(env.DB, TOKENS, WITH_IDS, NOW, fetchImpl);
+    await pollRailway(systemCtx(), TOKENS, WITH_IDS, NOW, fetchImpl);
     expect(seen["env-0"].get("project-access-token")).toBe("tok-staging");
     expect(seen["env-1"].get("project-access-token")).toBe("tok-production");
     for (const h of Object.values(seen)) expect(h.has("authorization")).toBe(false);
     // The header is spelled as Railway documents it.
     const raw: string[] = [];
-    await pollRailway(env.DB, TOKENS, [WITH_IDS[0]], NOW, (async (_u: RequestInfo | URL, init?: RequestInit) => {
+    await pollRailway(systemCtx(), TOKENS, [WITH_IDS[0]], NOW, (async (_u: RequestInfo | URL, init?: RequestInit) => {
       raw.push(...Object.keys(init?.headers as Record<string, string>));
       return json(rwBody([], []));
     }) as typeof fetch);
@@ -82,26 +83,26 @@ describe("pollRailway", () => {
       polled.push(envOf(init));
       return json(rwBody([{ ts: ts(1), value: 0.2 }], []));
     }) as typeof fetch;
-    await pollRailway(env.DB, { production: "tok-production" }, WITH_IDS, NOW, fetchImpl);
+    await pollRailway(systemCtx(), { production: "tok-production" }, WITH_IDS, NOW, fetchImpl);
     expect(polled).toEqual(["env-1"]);
-    await pollRailway(env.DB, { staging: "", production: undefined }, WITH_IDS, NOW, fetchImpl);
+    await pollRailway(systemCtx(), { staging: "", production: undefined }, WITH_IDS, NOW, fetchImpl);
     expect(polled).toEqual(["env-1"]);
     const partial = [{ ...WITH_IDS[0], railwayServiceId: undefined }, { ...WITH_IDS[1], railwayEnvironmentId: undefined }, { ...WITH_IDS[0], key: "third", railwayEnvironmentId: "env-2" }];
-    await pollRailway(env.DB, { ...TOKENS, third: "tok-third" }, partial, NOW, fetchImpl);
+    await pollRailway(systemCtx(), { ...TOKENS, third: "tok-third" }, partial, NOW, fetchImpl);
     expect(polled).toEqual(["env-1", "env-2"]);
     expect((await stored()).map((r) => r.env)).toEqual(["production", "third"]);
   });
 
   it("the overlap is a no-op: a second poll of the same hour writes nothing new, and the first value stands", async () => {
-    await pollRailway(env.DB, TOKENS, [WITH_IDS[0]], NOW, (async () => json(rwBody([{ ts: ts(1), value: 0.12 }], []))) as typeof fetch);
-    await pollRailway(env.DB, TOKENS, [WITH_IDS[0]], NOW, (async () => json(rwBody([{ ts: ts(1), value: 0.99 }], []))) as typeof fetch);
+    await pollRailway(systemCtx(), TOKENS, [WITH_IDS[0]], NOW, (async () => json(rwBody([{ ts: ts(1), value: 0.12 }], []))) as typeof fetch);
+    await pollRailway(systemCtx(), TOKENS, [WITH_IDS[0]], NOW, (async () => json(rwBody([{ ts: ts(1), value: 0.99 }], []))) as typeof fetch);
     expect((await stored()).map((r) => [r.metric, r.value])).toEqual([["rw_cpu", 0.12]]);
   });
 
   // One point per hour whatever second Railway stamps the sample with —
   // otherwise two polls of one hour could both land.
   it("buckets a sample to its hour", async () => {
-    await pollRailway(env.DB, TOKENS, [WITH_IDS[0]], NOW, (async () => json(rwBody([{ ts: ts(1) + 37, value: 0.12 }], []))) as typeof fetch);
+    await pollRailway(systemCtx(), TOKENS, [WITH_IDS[0]], NOW, (async () => json(rwBody([{ ts: ts(1) + 37, value: 0.12 }], []))) as typeof fetch);
     expect((await stored()).map((r) => r.at)).toEqual(["2026-09-20T11:00:00.000Z"]);
   });
 
@@ -111,7 +112,7 @@ describe("pollRailway", () => {
     ["ascending", [{ ts: ts(1), value: 0.1 }, { ts: ts(1) + 1800, value: 0.9 }]],
     ["descending", [{ ts: ts(1) + 1800, value: 0.9 }, { ts: ts(1), value: 0.1 }]],
   ])("several samples in one hour bucket (%s): the LATEST ts wins, whatever the array order", async (_name, cpu) => {
-    await pollRailway(env.DB, TOKENS, [WITH_IDS[0]], NOW, (async () => json(rwBody(cpu, []))) as typeof fetch);
+    await pollRailway(systemCtx(), TOKENS, [WITH_IDS[0]], NOW, (async () => json(rwBody(cpu, []))) as typeof fetch);
     expect((await stored()).map((r) => [r.metric, r.value, r.at])).toEqual([["rw_cpu", 0.9, "2026-09-20T11:00:00.000Z"]]);
   });
 
@@ -124,7 +125,7 @@ describe("pollRailway", () => {
       { measurement: "CPU_USAGE", values: [{ ts: ts(1) + 1800, value: 0.5 }, { ts: ts(1) + 3000, value: 5000 }, { ts: ts(1) + 3300, value: null }] },
       { measurement: "MEMORY_USAGE_GB", values: [{ ts: ts(1), value: 2 }, { ts: ts(1) + 1800, value: 1 }] },
     ] } })) as typeof fetch;
-    await pollRailway(env.DB, TOKENS, [WITH_IDS[0]], NOW, fetchImpl);
+    await pollRailway(systemCtx(), TOKENS, [WITH_IDS[0]], NOW, fetchImpl);
     expect((await stored()).map((r) => [r.metric, r.value, r.at])).toEqual([
       ["rw_cpu", 0.3, "2026-09-20T10:00:00.000Z"], ["rw_cpu", 0.5, "2026-09-20T11:00:00.000Z"],
       ["rw_mem_mb", 1024, "2026-09-20T11:00:00.000Z"],
@@ -140,13 +141,13 @@ describe("pollRailway", () => {
   ])("%s costs THAT environment only, and never throws", async (_name, failure) => {
     const fetchImpl = (async (_u: RequestInfo | URL, init?: RequestInit) =>
       envOf(init) === "env-0" ? failure() : json(rwBody([{ ts: ts(1), value: 0.12 }], [{ ts: ts(1), value: 0.4 }]))) as typeof fetch;
-    await expect(pollRailway(env.DB, TOKENS, WITH_IDS, NOW, fetchImpl)).resolves.toEqual(expect.any(Array));
+    await expect(pollRailway(systemCtx(), TOKENS, WITH_IDS, NOW, fetchImpl)).resolves.toEqual(expect.any(Array));
     expect((await stored()).map((r) => [r.env, r.metric])).toEqual([["production", "rw_cpu"], ["production", "rw_mem_mb"]]);
   });
 
   it("a thrown fetch writes nothing and does not throw", async () => {
     const fetchImpl = (async () => { throw new Error("connect timeout"); }) as typeof fetch;
-    await expect(pollRailway(env.DB, TOKENS, WITH_IDS, NOW, fetchImpl)).resolves.toEqual(expect.any(Array));
+    await expect(pollRailway(systemCtx(), TOKENS, WITH_IDS, NOW, fetchImpl)).resolves.toEqual(expect.any(Array));
     expect(await stored()).toEqual([]);
   });
 
@@ -157,11 +158,11 @@ describe("pollRailway", () => {
         // The worst case: the failure itself quotes the request back.
         throw new Error(`request failed: ${JSON.stringify(init?.headers)}`);
       }) as typeof fetch;
-      await pollRailway(env.DB, TOKENS, WITH_IDS, NOW, fetchImpl);
-      await pollRailway(env.DB, TOKENS, WITH_IDS, NOW, (async () => json({ errors: [{ message: "bad token tok-staging tok-production" }] })) as typeof fetch);
+      await pollRailway(systemCtx(), TOKENS, WITH_IDS, NOW, fetchImpl);
+      await pollRailway(systemCtx(), TOKENS, WITH_IDS, NOW, (async () => json({ errors: [{ message: "bad token tok-staging tok-production" }] })) as typeof fetch);
       // A token STRADDLING the 200-char cut of the 200-with-`errors` arm: cutting
       // before scrubbing would leave its first half in the log AND in the detail.
-      const straddle = await pollRailway(env.DB, TOKENS, WITH_IDS, NOW, (async () => json({ errors: [{ message: `${"p".repeat(192)}tok-staging tok-production` }] })) as typeof fetch);
+      const straddle = await pollRailway(systemCtx(), TOKENS, WITH_IDS, NOW, (async () => json({ errors: [{ message: `${"p".repeat(192)}tok-staging tok-production` }] })) as typeof fetch);
       expect(spy).toHaveBeenCalled();
       const logged = JSON.stringify(spy.mock.calls.map((c) => c.map((a) => (a instanceof Error ? `${a.message} ${a.stack}` : a))));
       expect(logged).not.toContain("tok-staging");
@@ -186,7 +187,7 @@ describe("pollRailway", () => {
       { measurement: "CPU_USAGE", values: "none" },
       null,
     ] } })) as typeof fetch;
-    await expect(pollRailway(env.DB, TOKENS, [WITH_IDS[0]], NOW, fetchImpl)).resolves.toEqual(expect.any(Array));
+    await expect(pollRailway(systemCtx(), TOKENS, [WITH_IDS[0]], NOW, fetchImpl)).resolves.toEqual(expect.any(Array));
     expect((await stored()).map((r) => [r.metric, r.value, r.at])).toEqual([
       ["rw_cpu", 0.25, "2026-09-20T10:00:00.000Z"], ["rw_mem_mb", 1536, "2026-09-20T11:00:00.000Z"],
     ]);
@@ -199,11 +200,11 @@ describe("pollRailway — outcomes", () => {
 
   it("ok with the NEW rows written, and ok with 0 on a repeat of the same hours", async () => {
     const fetchImpl = (async () => good()) as typeof fetch;
-    expect(await pollRailway(env.DB, TOKENS, WITH_IDS, NOW, fetchImpl)).toEqual([
+    expect(await pollRailway(systemCtx(), TOKENS, WITH_IDS, NOW, fetchImpl)).toEqual([
       { env: "staging", status: "ok", written: 2 },
       { env: "production", status: "ok", written: 2 },
     ]);
-    expect(await pollRailway(env.DB, TOKENS, WITH_IDS, NOW, fetchImpl)).toEqual([
+    expect(await pollRailway(systemCtx(), TOKENS, WITH_IDS, NOW, fetchImpl)).toEqual([
       { env: "staging", status: "ok", written: 0 },
       { env: "production", status: "ok", written: 0 },
     ]);
@@ -214,7 +215,7 @@ describe("pollRailway — outcomes", () => {
     try {
       const fetchImpl = (async (_u: RequestInfo | URL, init?: RequestInit) =>
         envOf(init) === "env-0" ? new Response("", { status: 401 }) : json({ errors: [{ message: "Not Authorized" }] })) as typeof fetch;
-      expect(await pollRailway(env.DB, TOKENS, WITH_IDS, NOW, fetchImpl)).toEqual([
+      expect(await pollRailway(systemCtx(), TOKENS, WITH_IDS, NOW, fetchImpl)).toEqual([
         { env: "staging", status: "failed", written: 0, detail: "railway metrics 401" },
         { env: "production", status: "failed", written: 0, detail: "railway metrics: Not Authorized" },
       ]);
@@ -230,7 +231,7 @@ describe("pollRailway — outcomes", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
       const details = async (status: number, body: string) => {
-        const out = await pollRailway(env.DB, TOKENS, [WITH_IDS[0]], NOW, (async () => new Response(body, { status })) as typeof fetch);
+        const out = await pollRailway(systemCtx(), TOKENS, [WITH_IDS[0]], NOW, (async () => new Response(body, { status })) as typeof fetch);
         expect(out).toHaveLength(1);
         expect(spy.mock.calls.at(-1)).toEqual(["pollRailway", "staging", out[0].detail]);
         return out[0].detail;
@@ -248,7 +249,7 @@ describe("pollRailway — outcomes", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
       const fetchImpl = (async () => { throw new Error(`echo tok-staging tok-production ${"x".repeat(400)}`); }) as typeof fetch;
-      const out = await pollRailway(env.DB, TOKENS, [WITH_IDS[0]], NOW, fetchImpl);
+      const out = await pollRailway(systemCtx(), TOKENS, [WITH_IDS[0]], NOW, fetchImpl);
       expect(out[0].status).toBe("failed");
       expect(out[0].detail).toMatch(/^echo \[redacted\] \[redacted\] x+$/);
       expect(out[0].detail!.length).toBeLessThanOrEqual(200);
@@ -259,7 +260,7 @@ describe("pollRailway — outcomes", () => {
     let calls = 0;
     const fetchImpl = (async () => { calls++; return good(); }) as typeof fetch;
     const envs = [WITH_IDS[0], { ...WITH_IDS[1], railwayServiceId: undefined }, { ...WITH_IDS[1], key: "third", railwayEnvironmentId: undefined }, { ...WITH_IDS[0], key: "fourth" }];
-    const out = await pollRailway(env.DB, { staging: undefined, production: "tok-production", third: "tok-third", fourth: "tok-fourth" }, envs, NOW, fetchImpl);
+    const out = await pollRailway(systemCtx(), { staging: undefined, production: "tok-production", third: "tok-third", fourth: "tok-fourth" }, envs, NOW, fetchImpl);
     expect(out).toEqual([
       { env: "staging", status: "skipped", written: 0, detail: "no project token" },
       { env: "production", status: "skipped", written: 0, detail: "no railwayServiceId" },
@@ -285,11 +286,11 @@ const ok = <T>(s: { status: string; data?: T }): T => { expect(s.status).toBe("o
 /** The start of the hour `h` complete hours before NOW's own (12:00): h=1 → 11:00. */
 const hoursBack = (h: number) => new Date(Date.parse("2026-09-20T12:00:00Z") - h * HOUR).toISOString();
 const rw = (metric: "rw_cpu" | "rw_mem_mb", envKey: string, at: string, value: number) =>
-  putMetric(env.DB, { metric, env: envKey, part: "backend", value, at });
+  putMetric(systemCtx(), { metric, env: envKey, part: "backend", value, at });
 
 describe("getRepoDashboard — hosting from rw_* metrics", () => {
   it("nothing captured → not_connected", async () => {
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).hosting.status).toBe("not_connected");
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting.status).toBe("not_connected");
   });
 
   it("shows each environment's LATEST cpu and memory", async () => {
@@ -298,7 +299,7 @@ describe("getRepoDashboard — hosting from rw_* metrics", () => {
     await rw("rw_mem_mb", "staging", hoursBack(1), 409.6);
     await rw("rw_cpu", "production", hoursBack(1), 1.5);
     await rw("rw_mem_mb", "production", hoursBack(1), 2048);
-    expect(ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).hosting)).toEqual([
+    expect(ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting)).toEqual([
       { env: "staging", cpu: "0.12 vCPU", memory: "410 MB" },
       { env: "production", cpu: "1.50 vCPU", memory: "2048 MB" },
     ]);
@@ -309,43 +310,43 @@ describe("getRepoDashboard — hosting from rw_* metrics", () => {
   it("a metric whose latest point is over 3 hours old reads — while a fresh one beside it still shows", async () => {
     await rw("rw_cpu", "staging", new Date(NOW - 3 * HOUR - 60_000).toISOString(), 0.5);
     await rw("rw_mem_mb", "staging", new Date(NOW - 3 * HOUR).toISOString(), 300); // exactly 3h: still current
-    expect(ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).hosting)).toEqual([{ env: "staging", cpu: "—", memory: "300 MB" }]);
+    expect(ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting)).toEqual([{ env: "staging", cpu: "—", memory: "300 MB" }]);
   });
 
   it("an environment with nothing fresh is left out while another still shows", async () => {
     await rw("rw_cpu", "staging", hoursBack(10), 0.5);
     await rw("rw_cpu", "production", hoursBack(1), 0.25);
-    expect(ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).hosting)).toEqual([{ env: "production", cpu: "0.25 vCPU", memory: "—" }]);
+    expect(ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting)).toEqual([{ env: "production", cpu: "0.25 vCPU", memory: "—" }]);
   });
 
   it("every reading stale → empty (the poll has stopped), not not_connected — even aged out of the 30-day read", async () => {
     await rw("rw_cpu", "staging", hoursBack(5), 0.5);
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).hosting.status).toBe("empty");
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting.status).toBe("empty");
     await env.DB.prepare(`DELETE FROM repo_metrics`).run();
     await rw("rw_mem_mb", "production", hoursBack(40 * 24), 512);
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).hosting.status).toBe("empty");
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting.status).toBe("empty");
   });
 
   it("only the backend series of a configured environment counts", async () => {
     await rw("rw_cpu", "preview", hoursBack(1), 0.5);
-    await putMetric(env.DB, { metric: "rw_cpu", env: "staging", part: "frontend", value: 0.5, at: hoursBack(1) });
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).hosting.status).toBe("empty");
+    await putMetric(systemCtx(), { metric: "rw_cpu", env: "staging", part: "frontend", value: 0.5, at: hoursBack(1) });
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).hosting.status).toBe("empty");
   });
 
   it("no environment configured → not_connected whatever is stored", async () => {
     await rw("rw_cpu", "staging", hoursBack(1), 0.5);
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, []).then((d) => d.hosting.status))).toBe("not_connected");
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, []).then((d) => d.hosting.status))).toBe("not_connected");
   });
 
   // The two sources share ONE read but not one state.
   it("Railway rows never connect usage or Cloudflare, and Cloudflare rows never connect hosting", async () => {
     await rw("rw_cpu", "staging", hoursBack(1), 0.5);
-    let d = await getRepoDashboard(env.DB, "o/r", NOW, ENVS);
+    let d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
     expect([d.hosting.status, d.usage.status, d.cloudflare.status]).toEqual(["ok", "not_connected", "not_connected"]);
     await env.DB.prepare(`DELETE FROM repo_metrics`).run();
-    await putMetric(env.DB, { metric: "cf_requests", env: "staging", part: "frontend", value: 10, at: hoursBack(1) });
-    await putMetric(env.DB, { metric: "cf_errors", env: "staging", part: "frontend", value: 0, at: hoursBack(1) });
-    d = await getRepoDashboard(env.DB, "o/r", NOW, ENVS);
+    await putMetric(systemCtx(), { metric: "cf_requests", env: "staging", part: "frontend", value: 10, at: hoursBack(1) });
+    await putMetric(systemCtx(), { metric: "cf_errors", env: "staging", part: "frontend", value: 0, at: hoursBack(1) });
+    d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
     expect([d.hosting.status, d.usage.status, d.cloudflare.status]).toEqual(["not_connected", "ok", "ok"]);
   });
 });

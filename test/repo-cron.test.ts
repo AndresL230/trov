@@ -21,6 +21,7 @@ import { ENVS, fakeGithub } from "./helpers/repo";
 import type { RepoEvent } from "../src/repo/types";
 import type { Env } from "../src/env";
 
+import { systemCtx } from "./helpers/tenant";
 const T = Date.parse("2026-09-20T12:07:31Z");
 /** The four ticks the dispatcher treats specially (F1). */
 const HOURLY = Date.parse("2026-09-20T12:00:00Z");        // health + the (empty) hourly-polls slot
@@ -56,8 +57,8 @@ describe("pingHealth", () => {
       if (String(u) === "https://api.saplinglearn.com/api/health") throw new Error("connect timeout");
       return new Response("ok", { status: String(u).includes("staging.sapling") ? 200 : 503 });
     }) as typeof fetch;
-    await pingHealth(env.DB, ENVS, T, fetchImpl);
-    await pingHealth(env.DB, ENVS, T + 60_000, fetchImpl); // same bucket → no second row
+    await pingHealth(systemCtx(), ENVS, T, fetchImpl);
+    await pingHealth(systemCtx(), ENVS, T + 60_000, fetchImpl); // same bucket → no second row
     const up = await all<{ env: string; part: string; value: number; at: string }>(env.DB, `SELECT env, part, value, at FROM repo_metrics WHERE metric = 'health_up' ORDER BY env, part`);
     expect(up).toEqual([
       { env: "production", part: "backend", value: 0, at: "2026-09-20T12:00:00.000Z" },
@@ -77,14 +78,14 @@ describe("pingHealth", () => {
       inFlight--;
       return new Response("ok", { status: 200 });
     }) as typeof fetch;
-    await pingHealth(env.DB, ENVS, T, fetchImpl);
+    await pingHealth(systemCtx(), ENVS, T, fetchImpl);
     expect(peak).toBe(4);
   });
 
   it("feeds the health block and drags the pill to DOWN when a target is unreachable", async () => {
     const fetchImpl = (async (u: RequestInfo | URL) => new Response("x", { status: String(u).includes("api.staging") ? 500 : 200 })) as typeof fetch;
-    await pingHealth(env.DB, ENVS, T, fetchImpl);
-    const d = await getRepoDashboard(env.DB, "o/r", T, ENVS);
+    await pingHealth(systemCtx(), ENVS, T, fetchImpl);
+    const d = await getRepoDashboard(systemCtx(), "o/r", T, ENVS);
     const rows = ok(d.health);
     expect(rows.map((r) => [r.env, r.up])).toEqual([["staging · web", true], ["staging · api", false], ["production · web", true], ["production · api", true]]);
     // F5: the code produces DOWN (tone `bad`), never DEGRADED, for an unreachable target.
@@ -100,22 +101,22 @@ describe("pingHealth", () => {
       { ...base, semantic_key: "gh:check:9:completed", kind: "check", number: 9, name: "e2e", state: "failure", sha: "abc", ref: "main", occurred_at: new Date(T - 20 * 60_000).toISOString() },
     ]);
     const fetchImpl = (async (u: RequestInfo | URL) => new Response("x", { status: String(u).includes("api.staging") ? 500 : 200 })) as typeof fetch;
-    await pingHealth(env.DB, ENVS, T, fetchImpl);
-    const [staging] = ok((await getRepoDashboard(env.DB, "o/r", T, ENVS)).environments);
+    await pingHealth(systemCtx(), ENVS, T, fetchImpl);
+    const [staging] = ok((await getRepoDashboard(systemCtx(), "o/r", T, ENVS)).environments);
     expect(staging).toMatchObject({ pill: "DOWN", tone: "bad" });
   });
 
   it("a fresh, up ping with nothing deployed or checked is UNKNOWN, never HEALTHY", async () => {
-    await pingHealth(env.DB, ENVS, T, okFetch);
-    const [staging] = ok((await getRepoDashboard(env.DB, "o/r", T, ENVS)).environments);
+    await pingHealth(systemCtx(), ENVS, T, okFetch);
+    const [staging] = ok((await getRepoDashboard(systemCtx(), "o/r", T, ENVS)).environments);
     expect(staging).toMatchObject({ pill: "UNKNOWN", tone: "neutral", ci: "No checks captured" });
   });
 
   // F4: connectivity for the ENVIRONMENT cards includes health; the DEPLOYS
   // fallback must not — one ping is not "no deploys recorded".
   it("a health ping alone connects the environment cards but leaves deploys not_connected", async () => {
-    await pingHealth(env.DB, ENVS, T, okFetch);
-    const d = await getRepoDashboard(env.DB, "o/r", T, ENVS);
+    await pingHealth(systemCtx(), ENVS, T, okFetch);
+    const d = await getRepoDashboard(systemCtx(), "o/r", T, ENVS);
     expect(d.environments.status).toBe("ok");
     expect(d.deploys.status).toBe("not_connected");
   });
@@ -124,13 +125,13 @@ describe("pingHealth", () => {
   // that they were never set up — `empty`, never `not_connected`.
   it("a health row older than 30 minutes is stale — the block is empty, not not_connected", async () => {
     const stale = T - 31 * 60_000;
-    await putMetric(env.DB, { metric: "health_up", env: "staging", part: "frontend", value: 1, at: new Date(stale).toISOString() });
-    await putMetric(env.DB, { metric: "health_ms", env: "staging", part: "frontend", value: 100, at: new Date(stale).toISOString() });
-    expect((await getRepoDashboard(env.DB, "o/r", T, ENVS)).health.status).toBe("empty");
+    await putMetric(systemCtx(), { metric: "health_up", env: "staging", part: "frontend", value: 1, at: new Date(stale).toISOString() });
+    await putMetric(systemCtx(), { metric: "health_ms", env: "staging", part: "frontend", value: 100, at: new Date(stale).toISOString() });
+    expect((await getRepoDashboard(systemCtx(), "o/r", T, ENVS)).health.status).toBe("empty");
   });
 
   it("is not_connected only when no reading has EVER landed", async () => {
-    expect((await getRepoDashboard(env.DB, "o/r", T, ENVS)).health.status).toBe("not_connected");
+    expect((await getRepoDashboard(systemCtx(), "o/r", T, ENVS)).health.status).toBe("not_connected");
   });
 
   // F5: a stale DOWN reading cannot drag the pill — the ping stopped, the site
@@ -138,8 +139,8 @@ describe("pingHealth", () => {
   it("a stale down reading does not produce DOWN", async () => {
     const stale = T - 31 * 60_000;
     await put([deploy(1, "success", 20)]);
-    await putMetric(env.DB, { metric: "health_up", env: "staging", part: "frontend", value: 0, at: new Date(stale).toISOString() });
-    const [staging] = ok((await getRepoDashboard(env.DB, "o/r", T, ENVS)).environments);
+    await putMetric(systemCtx(), { metric: "health_up", env: "staging", part: "frontend", value: 0, at: new Date(stale).toISOString() });
+    const [staging] = ok((await getRepoDashboard(systemCtx(), "o/r", T, ENVS)).environments);
     expect(staging).toMatchObject({ pill: "UNKNOWN", tone: "neutral" });
   });
 });
@@ -444,10 +445,10 @@ describe("handleRepoCron", () => {
     });
     await handleRepoCron(ghEnv(), RECONCILE_TICK, gh.fetchImpl);
     // The end-to-end cover the admin route can never have (it has no fetchImpl seam).
-    expect(await getSnapshot(env.DB, "prs_reconciled")).not.toBeNull();
-    expect(await getSnapshot(env.DB, "env_heads")).not.toBeNull();
-    expect(await getSnapshot(env.DB, "drift")).not.toBeNull();
-    expect(await getSnapshot(env.DB, "branches")).not.toBeNull();
+    expect(await getSnapshot(systemCtx(), "prs_reconciled")).not.toBeNull();
+    expect(await getSnapshot(systemCtx(), "env_heads")).not.toBeNull();
+    expect(await getSnapshot(systemCtx(), "drift")).not.toBeNull();
+    expect(await getSnapshot(systemCtx(), "branches")).not.toBeNull();
     // Health still pinged on the same tick.
     expect((await all(env.DB, `SELECT 1 FROM repo_metrics WHERE metric = 'health_up'`)).length).toBe(4);
     // The progress backstop is NOT stacked on this invocation (F1): it is
@@ -466,7 +467,7 @@ describe("handleRepoCron", () => {
 
   it("at :30 of a 6-hourly hour the prune runs, and the reconcile does not", async () => {
     const old = new Date(PRUNE_TICK - 100 * 24 * 60 * 60 * 1000).toISOString(); // past the 45-day retention
-    await putMetric(env.DB, { metric: "health_up", env: "staging", part: "frontend", value: 1, at: old });
+    await putMetric(systemCtx(), { metric: "health_up", env: "staging", part: "frontend", value: 1, at: old });
     await handleRepoCron(ghEnv(), PRUNE_TICK, okFetch);
     expect((await all(env.DB, `SELECT 1 FROM repo_metrics WHERE metric = 'health_up' AND at = ?`, old)).length).toBe(0);
     expect(await snapshots()).toHaveLength(0);
@@ -475,7 +476,7 @@ describe("handleRepoCron", () => {
   it("at the same minute of an hour that is not a 6-hourly one, none of the three jobs run", async () => {
     await seedSprint();
     const old = new Date(NOT_SIX - 100 * 24 * 60 * 60 * 1000).toISOString();
-    await putMetric(env.DB, { metric: "health_up", env: "staging", part: "frontend", value: 1, at: old });
+    await putMetric(systemCtx(), { metric: "health_up", env: "staging", part: "frontend", value: 1, at: old });
     await handleRepoCron(ghEnv(), NOT_SIX, okFetch);
     // Prune did not run — the old ping is still there.
     expect((await all(env.DB, `SELECT 1 FROM repo_metrics WHERE metric = 'health_up' AND at = ?`, old)).length).toBe(1);

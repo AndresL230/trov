@@ -16,7 +16,7 @@ import { renamePerson } from "../src/auth/persons";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import type { PromptDetail, PromptSummary } from "../shared/handoffs";
 import type { QuickSearchResult } from "@shared/quick-search";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, platformCtx } from "./helpers/tenant";
 
 const AUTHOR = "pauthor";
 const OTHER = "pother";
@@ -204,7 +204,7 @@ describe("a deleted prompt's slug stays reserved", () => {
 describe("a handle rename rewrites deleted_by", () => {
   it("deleted_by follows the person", async () => {
     await del(AUTHOR);
-    expect(await renamePerson(env.DB, AUTHOR, "pauthor-renamed")).toEqual({ ok: true });
+    expect(await renamePerson(platformCtx(), AUTHOR, "pauthor-renamed")).toEqual({ ok: true });
     expect(await first(env.DB, `SELECT author, deleted_by FROM prompts WHERE slug = ?`, SLUG)).toEqual({ author: "pauthor-renamed", deleted_by: "pauthor-renamed" });
     expect((await restore("pauthor-renamed")).status).toBe(200);
   });

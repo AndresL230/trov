@@ -10,14 +10,14 @@ import { all } from "../src/db";
 import type { FeedRow, DocVersionRow, AdrRow } from "@shared/rows";
 import type { IngestResult } from "../src/consumer";
 import { seedPerson } from "./helpers/persons";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, platformCtx, ORG_A } from "./helpers/tenant";
 
 type Env = import("../src/env").Env;
 
 // Seed a member and mint a REAL bearer token for them (hash stored, raw returned once).
 async function seedUserWithBearer(login: string): Promise<string> {
   await seedPerson(login);
-  const { raw } = await mintToken(env.DB, login);
+  const { raw } = await mintToken(platformCtx(), login, ORG_A);
   return raw;
 }
 

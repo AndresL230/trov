@@ -9,9 +9,10 @@ import { seedPerson } from "./helpers/persons";
 import type { CapturedEvent } from "@shared/contract";
 import type { DashboardData } from "@shared/dashboard";
 
+import { platformCtx } from "./helpers/tenant";
 async function cookieFor(login: string): Promise<string> {
   await seedPerson(login);
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 

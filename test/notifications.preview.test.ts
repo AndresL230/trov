@@ -13,9 +13,10 @@ import { ingestAdrDraft } from "../src/consumer";
 import { seedPerson } from "./helpers/persons";
 import type { NotificationOutboxRow } from "@shared/rows";
 
+import { platformCtx } from "./helpers/tenant";
 async function cookieFor(login: string, email: string | null = "me@example.com"): Promise<string> {
   await seedPerson(login, { email });
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 const pending = () => ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");

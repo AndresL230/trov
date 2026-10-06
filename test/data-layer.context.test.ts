@@ -42,10 +42,10 @@ describe("TenantContext constructors", () => {
     const req = (auth?: string) => new Request("https://trov.test/mcp", { headers: auth ? { authorization: auth } : {} });
     expect(await resolveBearerTenant(e, req())).toEqual({ ok: false, reason: "unauthorized" });
     expect(await resolveBearerTenant(e, req("Bearer trov_mcp_nope"))).toEqual({ ok: false, reason: "unauthorized" });
-    const { raw } = await mintToken(legacyDb(platformCtx()), "sanaok");
+    const { raw } = await mintToken(platformCtx(), "sanaok", ORG_A);
     expect(await resolveBearerTenant(e, req(`Bearer ${raw}`))).toMatchObject({ ok: true, ctx: { orgId: ORG_A, userId: "sanaok", via: "bearer" } });
     await seedPerson("drifter", { member: false });
-    const orphan = await mintToken(legacyDb(platformCtx()), "drifter");
+    const orphan = await mintToken(platformCtx(), "drifter", ORG_A);
     expect(await resolveBearerTenant(e, req(`Bearer ${orphan.raw}`))).toEqual({ ok: false, reason: "no_membership" });
   });
 
@@ -147,7 +147,7 @@ describe("the gates", () => {
   it("/mcp: a valid token for a person with no org is 409 org_required, not a 401", async () => {
     const { default: worker } = await import("../src/index");
     await seedPerson("drifter", { member: false });
-    const { raw } = await mintToken(legacyDb(platformCtx()), "drifter");
+    const { raw } = await mintToken(platformCtx(), "drifter", ORG_A);
     const exec = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
     const res = await worker.fetch(new Request("https://trov.test/mcp", { method: "POST", headers: { authorization: `Bearer ${raw}` } }), e, exec);
     expect([res.status, await res.json()]).toEqual([409, { error: "org_required" }]);
