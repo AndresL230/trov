@@ -1,6 +1,7 @@
 import { app } from "./routes";
 import { handleMcp } from "./mcp";
 import { handleGithubWebhook, webhookPath } from "./github-hook";
+import { githubAppWebhookPath, handleGithubAppWebhook } from "./github-app/webhook";
 import { resolveBearerTenant } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
 import { platform } from "./data/context";
@@ -49,6 +50,9 @@ export default {
     // for the one `legacy_hook` repo (src/github-hook.ts). Never touches sessionGate.
     const hook = request.method === "POST" ? webhookPath(url.pathname) : null;
     if (hook) return handleGithubWebhook(request, env, { hookId: hook.hookId, waitUntil: (p) => ctx.waitUntil(p) });
+    // …and the GitHub App's ONE webhook (issue #95), HMAC-verified against GITHUB_APP_WEBHOOK_SECRET; the
+    // delivery's installation names its org (src/github-app/webhook.ts). A non-POST falls through as above.
+    if (request.method === "POST" && githubAppWebhookPath(url.pathname)) return handleGithubAppWebhook(request, env, { waitUntil: (p) => ctx.waitUntil(p) });
     // Signed one-click unsubscribe (canopy-email.md §7): the single token
     // exception. POST (what List-Unsubscribe-Post mail clients send) verifies the
     // HMAC and can ONLY set email_unsubscribed = 1 for the login it names. A
