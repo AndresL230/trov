@@ -17,10 +17,8 @@
 //     and the CSS in canopy.css runs the choreography, each step timed by `--d`.
 
 import { esc } from "./ui";
+import { CANOPY_REPO, siteFooter, siteMark as mark } from "./site-chrome";
 
-/** The Canopy source repo (the site's "Read the code"). Not ./github's REPO_URL —
- *  that one is the product repo whose issues the app links to. */
-const CANOPY_REPO = "https://github.com/SaplingLearn/canopy";
 
 // Reveal keys already played, for THIS render (set by landingView). A played
 // element renders settled (`is-done`), so a rerender — the theme toggle, the
@@ -39,9 +37,6 @@ function typed(text: string, start: number, msPerChar = 30): [string, number] {
   return [`<span class="site-type" style="${at(start)}--n:${text.length};--t:${t}ms">${esc(text)}</span>`, start + t];
 }
 
-function mark(size: number): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" style="flex:none"><rect x="2" y="4.5" width="20" height="3.4" rx="1.7" fill="var(--accent)"></rect><rect x="5" y="10.3" width="14" height="3.4" rx="1.7" fill="currentColor"></rect><rect x="8" y="16.1" width="8" height="3.4" rx="1.7" fill="currentColor" opacity="0.5"></rect></svg>`;
-}
 
 const GH_MARK = (size: number) => `<svg width="${size}" height="${size}" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.19 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>`;
 
@@ -612,23 +607,6 @@ function security(): string {
   </section>`;
 }
 
-// ── 9 · footer ───────────────────────────────────────────────────────────────
-function footer(): string {
-  return `<footer style="margin-top:150px;border-top:1px solid var(--border)">
-    <div style="max-width:1120px;margin:0 auto;padding:44px 24px 56px;display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:9px">
-        ${mark(18)}
-        <span style="font-size:14.5px;font-weight:650">Canopy</span>
-      </div>
-      <div style="margin-left:auto;display:flex;flex-direction:column;gap:6px;text-align:right;font-size:13px;color:var(--fg-55)">
-        <span>Built for the Sapling team. Currently limited to SaplingLearn members.</span>
-        <span><a href="${CANOPY_REPO}" target="_blank" rel="noopener">GitHub</a> · Licensed under AGPL-3.0</span>
-        <span>© 2026 Andres Lopez</span>
-      </div>
-    </div>
-  </footer>`;
-}
-
 // ── sign-in dialog (the old login card, now opened from the landing) ────────
 function signInDialog(): string {
   return `<div data-act="closeSignIn" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);animation:cnpy-fade .14s ease"></div>
@@ -681,7 +659,7 @@ export function landingView(p: LandingProps): string {
     ${extras()}
     ${agents()}
     ${security()}
-    ${footer()}
+    ${siteFooter()}
   </div>
   ${p.signInOpen ? signInDialog() : ""}`;
 }
