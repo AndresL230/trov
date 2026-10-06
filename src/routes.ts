@@ -1104,8 +1104,12 @@ tenantRoot.post("/sprints/:id/complete", async (c) => {
 // repos, environments; cookie only, secrets write-only and admin+), then every tenant route above.
 app.route("/api/o/:slug", orgTenantApp);
 app.route("/api/o/:slug", orgSettingsApp);
-app.route("/api/o/:slug", tenantRoot);
-app.route("/api/o/:slug", tenantApi);
+// The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
+// their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name
+// twice. Nothing reads `:org` — `tenantGate` (mounted on `/api/o/:slug/*` above) resolved the org from
+// its own pattern, and a handler reads `c.var.ctx`.
+app.route("/api/o/:org", tenantRoot);
+app.route("/api/o/:org", tenantApi);
 // The cut-over aliases (§6.3): the same routes at their old paths, for the caller's only org.
 app.route("/", tenantRoot);
 app.route("/api", tenantApi);
