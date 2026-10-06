@@ -68,6 +68,7 @@ import {
 } from "./artifacts";
 import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
+import { createOrgController } from "./org-actions";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
@@ -83,6 +84,9 @@ const qs = createQuickSearch({
   theme: () => resolvedTheme(),
   railCollapsed: () => railCollapsed(state), // on a phone the drawer is the full, expanded rail
 });
+
+// Org settings (web/src/org-actions.ts): every `org…` act, its loads, and the secret form's draft.
+const orgCtl = createOrgController({ state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then) });
 
 // ── persisted client prefs (theme + sidebar only; not backend state) ─────────
 migrateBrowserStorage(); // canopy.* → trov.* (the rename) before the first read
@@ -289,6 +293,7 @@ function rerender(): void {
   restoreScroll(mount, scroll, state.screen);
   markEnter();
   syncRoleEdit();
+  orgCtl.afterPaint();
   if (pendingFlash) {
     for (const el of Array.from(mount.querySelectorAll(pendingFlash))) el.classList.add("cnpy-flash");
     pendingFlash = null;
@@ -442,6 +447,7 @@ function currentRoute(): Route {
   if (state.screen === "maintenance") r.maintTab = state.maintTab;
   if (state.screen === "platform") r.platTab = state.plat.tab;
   if (state.screen === "platformorg" && state.plat.orgSlug) r.platOrg = state.plat.orgSlug;
+  if (state.screen === "org") r.orgTab = state.org.tab;
   return r;
 }
 function applyRoute(r: Route): void {
@@ -468,6 +474,7 @@ function applyRoute(r: Route): void {
   if (r.maintTab) state.maintTab = r.maintTab;
   if (r.platTab) state.plat.tab = r.platTab;
   if (r.platOrg) state.plat.orgSlug = r.platOrg;
+  if (r.orgTab) state.org.tab = r.orgTab;
 }
 
 // Kick off the data load for a screen (mirrors the go* dispatch cases).
@@ -492,6 +499,7 @@ function loadForScreen(screen: Screen): void {
     case "settings": loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); break;
     case "unsubscribe": runUnsubscribe(); break;
     case "platform": case "platformorg": platform.load(); break;
+    case "org": orgCtl.load(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
     case "newticket": loadSprintsIfNeeded(); rerender(); break;
@@ -3464,6 +3472,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     default:
       // Every Platform (superadmin) act goes to its controller, platform-actions.ts.
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
+      // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
+      if (act.startsWith("org")) { orgCtl.act(act, arg, value); return; }
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;

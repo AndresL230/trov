@@ -234,6 +234,81 @@ export function createInvite(email: string, name?: string): Promise<{ ok: true; 
 export function revokeInvite(email: string): Promise<{ ok: true }> { return postJson(`/invites/${encodeURIComponent(email)}/revoke`); }
 export function resendInvite(email: string): Promise<{ ok: true; email: { status: "sent" | "failed"; error: string | null } }> { return postJson(`/invites/${encodeURIComponent(email)}/resend`); }
 
+// ── Org settings (/api/orgs, /api/o/:slug/… — web/src/org-settings.ts, integrations.ts) ──
+// Self-contained: its own sender, so a refusal keeps the server's `message` and `field` (they
+// never carry a submitted value). Nothing here ever RECEIVES a secret: the API is write-only.
+// Namespace imports under names of their own, so this block never collides with another import of the same types.
+import type * as OrgT from "@shared/orgs";
+import type * as IntT from "@shared/integrations";
+/** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
+ *  `detail` the server's sentence, `field` the input it is about. */
+export class OrgApiError extends ApiError {
+  constructor(status: number, code: string, readonly detail: string | null, readonly field: string | null) { super(status, code); }
+}
+async function orgSend<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+  const init: RequestInit = { method, credentials: "same-origin", headers: { accept: "application/json" } };
+  if (body !== undefined) { init.body = JSON.stringify(body); init.headers = { accept: "application/json", "content-type": "application/json" }; }
+  const res = await fetch(path, init);
+  if (res.status === 401) throw new Unauthorized();
+  if (!res.ok) {
+    let j: { error?: unknown; message?: unknown; field?: unknown } = {};
+    try { j = (await res.json()) as typeof j; } catch { /* non-JSON */ }
+    throw new OrgApiError(res.status, typeof j.error === "string" ? j.error : String(res.status), typeof j.message === "string" ? j.message : null, typeof j.field === "string" ? j.field : null);
+  }
+  return res.json() as Promise<T>;
+}
+const orgPath = (slug: string, rest: string): string => `/api/o/${encodeURIComponent(slug)}${rest}`;
+const integrationPath = (slug: string, kind: IntT.IntegrationKind, scope: string, action = ""): string =>
+  orgPath(slug, `/integrations/${kind}${scope ? `/${encodeURIComponent(scope)}` : ""}${action}`);
+
+/** My orgs, my pending invites and the superadmin flag (`GET /api/orgs`). */
+export function getMyOrgs(): Promise<OrgT.MyOrgsResponse> { return orgSend("GET", "/api/orgs"); }
+export function getOrgSettings(slug: string): Promise<{ org: OrgT.OrgSettings; can_edit: boolean }> { return orgSend("GET", orgPath(slug, "/settings")); }
+export function putOrgSettings(slug: string, name: string): Promise<{ ok: true; org: OrgT.OrgSettings }> { return orgSend("PUT", orgPath(slug, "/settings"), { name }); }
+export function listOrgMembers(slug: string): Promise<OrgT.OrgMember[]> { return orgSend<{ members: OrgT.OrgMember[] }>("GET", orgPath(slug, "/members")).then((r) => r.members); }
+export function updateOrgMember(slug: string, handle: string, patch: { role?: OrgT.OrgRole; title?: string | null; responsibilities?: string | null }): Promise<OrgT.OrgMember[]> {
+  return orgSend<{ members: OrgT.OrgMember[] }>("PUT", orgPath(slug, `/members/${encodeURIComponent(handle)}`), patch).then((r) => r.members);
+}
+export function removeOrgMember(slug: string, handle: string): Promise<{ ok: true; left: boolean }> { return orgSend("DELETE", orgPath(slug, `/members/${encodeURIComponent(handle)}`)); }
+export function listOrgInvites(slug: string): Promise<OrgT.OrgInvite[]> { return orgSend<{ invites: OrgT.OrgInvite[] }>("GET", orgPath(slug, "/invites")).then((r) => r.invites); }
+export function createOrgInvite(slug: string, body: ({ github_login: string } | { email: string }) & { role: "admin" | "member" }): Promise<OrgT.OrgInvite> {
+  return orgSend<{ invite: OrgT.OrgInvite }>("POST", orgPath(slug, "/invites"), body).then((r) => r.invite);
+}
+export function revokeOrgInvite(slug: string, id: number): Promise<{ ok: true }> { return orgSend("POST", orgPath(slug, `/invites/${id}/revoke`)); }
+export function listOrgRepos(slug: string): Promise<IntT.OrgRepoDTO[]> { return orgSend<{ repos: IntT.OrgRepoDTO[] }>("GET", orgPath(slug, "/repos")).then((r) => r.repos); }
+/** Add a repository, or — naming one the org already has with `is_primary: true` — make it the primary. */
+export function addOrgRepo(slug: string, repo_full_name: string, is_primary?: boolean): Promise<IntT.OrgRepoDTO[]> {
+  return orgSend<{ repos: IntT.OrgRepoDTO[] }>("POST", orgPath(slug, "/repos"), is_primary === undefined ? { repo_full_name } : { repo_full_name, is_primary }).then((r) => r.repos);
+}
+export function removeOrgRepo(slug: string, id: string): Promise<{ removed_secrets: string[]; repos: IntT.OrgRepoDTO[] }> { return orgSend("DELETE", orgPath(slug, `/repos/${encodeURIComponent(id)}`)); }
+export function listOrgEnvironments(slug: string): Promise<IntT.OrgEnvironmentDTO[]> { return orgSend<{ environments: IntT.OrgEnvironmentDTO[] }>("GET", orgPath(slug, "/environments")).then((r) => r.environments); }
+export type OrgEnvironmentWrite = Partial<Omit<IntT.OrgEnvironmentDTO, "key" | "position" | "created_at" | "updated_at" | "updated_by">>;
+export function putOrgEnvironment(slug: string, key: string, body: OrgEnvironmentWrite): Promise<{ environment: IntT.OrgEnvironmentDTO; created: boolean; removed_secrets: string[] }> {
+  return orgSend("PUT", orgPath(slug, `/environments/${encodeURIComponent(key)}`), body);
+}
+export function reorderOrgEnvironments(slug: string, order: string[]): Promise<IntT.OrgEnvironmentDTO[]> {
+  return orgSend<{ environments: IntT.OrgEnvironmentDTO[] }>("PUT", orgPath(slug, "/environments"), { order }).then((r) => r.environments);
+}
+export function deleteOrgEnvironment(slug: string, key: string): Promise<{ removed_secrets: string[]; environments: IntT.OrgEnvironmentDTO[] }> { return orgSend("DELETE", orgPath(slug, `/environments/${encodeURIComponent(key)}`)); }
+export function listOrgIntegrations(slug: string): Promise<IntT.IntegrationsListDTO> { return orgSend("GET", orgPath(slug, "/integrations")); }
+/** Store a credential (409 `already_configured` if one is set — rotate instead). The value goes out once and never comes back. */
+export function setOrgIntegration(slug: string, kind: IntT.IntegrationKind, scope: string, secret: string, config?: Record<string, string>): Promise<IntT.IntegrationDTO> {
+  return orgSend<{ integration: IntT.IntegrationDTO }>("PUT", integrationPath(slug, kind, scope), config ? { secret, config } : { secret }).then((r) => r.integration);
+}
+export function rotateOrgIntegration(slug: string, kind: IntT.IntegrationKind, scope: string, secret: string): Promise<IntT.IntegrationDTO> {
+  return orgSend<{ integration: IntT.IntegrationDTO }>("POST", integrationPath(slug, kind, scope, "/rotate"), { secret }).then((r) => r.integration);
+}
+export function deleteOrgIntegration(slug: string, kind: IntT.IntegrationKind, scope: string): Promise<IntT.IntegrationDTO> {
+  return orgSend<{ integration: IntT.IntegrationDTO }>("DELETE", integrationPath(slug, kind, scope)).then((r) => r.integration);
+}
+export function putOrgIntegrationConfig(slug: string, kind: IntT.IntegrationKind, scope: string, config: Record<string, string>): Promise<IntT.IntegrationDTO> {
+  return orgSend<{ integration: IntT.IntegrationDTO }>("PUT", integrationPath(slug, kind, scope, "/config"), { config }).then((r) => r.integration);
+}
+export function testOrgIntegration(slug: string, kind: IntT.IntegrationKind, scope: string): Promise<IntT.IntegrationTestDTO> { return orgSend("POST", integrationPath(slug, kind, scope, "/test")); }
+/** Owner only: a new data key, every stored secret re-encrypted under it. */
+export function rotateOrgKey(slug: string): Promise<{ rotated: boolean; key_version: number | null; secrets: number }> { return orgSend("POST", orgPath(slug, "/integrations/rotate-key")); }
+export function listOrgAudit(slug: string, limit = 50): Promise<IntT.OrgAuditDTO[]> { return orgSend<{ audit: IntT.OrgAuditDTO[] }>("GET", orgPath(slug, `/integrations/audit?limit=${limit}`)).then((r) => r.audit); }
+
 // ADMIN action: trigger the server-side GitHub backfill (admin-only route). The
 // worker holds the service token and fetches GitHub directly — no webhook secret.
 // `batch` (1-based) / `of` (the client's own cap) let the server run the
@@ -669,12 +744,9 @@ export type { HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetai
 // Every /api/platform route answers 404 to a non-superadmin. A failed write throws an
 // `ApiError` whose message is the server's error CODE (`slug_taken`, `last_superadmin`, …).
 import type {
-  MyOrgsResponse, PlatformOrgRow, PlatformOrgDetail, AdminTarget, AdminAssignment,
+  PlatformOrgRow, PlatformOrgDetail, AdminTarget, AdminAssignment,
   PlatformAdmin, PlatformAuditRow, PlatformUsageResponse,
 } from "@shared/orgs";
-export function getMyOrgs(): Promise<MyOrgsResponse> {
-  return getJson<MyOrgsResponse>("/api/orgs");
-}
 export function listPlatformOrgs(): Promise<PlatformOrgRow[]> {
   return getJson<{ orgs: PlatformOrgRow[] }>("/api/platform/orgs").then((r) => r.orgs);
 }

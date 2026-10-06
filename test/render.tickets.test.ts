@@ -214,7 +214,7 @@ describe("sidebar — the Tickets entry (design call #2)", () => {
     expect(html).toContain('data-collapsed="1"');
     expect(ticketsRow(html)).toContain('<span class="cnpy-dot" data-n="4"></span>');
     // review/maintenance counts are 0 here, so theirs stay hidden
-    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(13); // every other entry (the superadmin's Platform row is always emitted, hidden)
+    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(14); // every other entry (Org settings, and the superadmin's Platform row, always emitted and hidden)
   });
 
   it("lights Tickets on all three ticket screens", () => {

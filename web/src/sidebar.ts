@@ -26,7 +26,7 @@ export type NavOpen = Record<NavGroup, boolean>;
 export const NAV_CLOSED: NavOpen = { docs: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
-export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases" | "platform";
+export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases" | "platform" | "org";
 const NAV_OF: Record<string, NavKey> = {
   mywork: "mywork", feed: "feed", docs: "docs", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
   review: "review", maintenance: "maintenance", guide: "guide", releases: "releases",
@@ -36,6 +36,7 @@ const NAV_OF: Record<string, NavKey> = {
   prompts: "prompts", prompt: "prompts", promptedit: "prompts",
   newdoc: "docs",
   platform: "platform", platformorg: "platform",
+  org: "org",
 };
 export const navKeyOf = (screen: string): NavKey | null => NAV_OF[screen] ?? null;
 /** The group whose sub-pages a screen belongs to, or null. */
@@ -80,6 +81,8 @@ const ICONS: Record<NavKey | "search" | "collapse", string> = {
   releases: ICON(`<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path>`),
   // A globe: the whole platform, every organization.
   platform: ICON(`<circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"></path>`),
+  // A building: the org's own settings.
+  org: ICON(`<path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"></path><path d="M16 9h2a2 2 0 0 1 2 2v10"></path><path d="M2 21h20"></path><path d="M8 7h4M8 11h4M8 15h4"></path>`),
   search: `<svg class="cnpy-nav-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>`,
   // Drawn in its "expanded" pose; trov.css mirrors it (scaleX(-1)) when collapsed,
   // which is exactly the design's second icon — so the swap is a flip, not a cut.
@@ -165,6 +168,8 @@ export function sidebarView(p: SidebarProps): string {
       ${section("Triage")}
       ${item("review", "goReview", "Review", c.review)}
       ${item("maintenance", "goMaintenance", "Maintenance", c.maintenance)}
+      ${section("Organization")}
+      ${item("org", "orgGo", "Org settings")}
       ${section("Help")}
       ${item("guide", "goGuide", "Get Started")}
       ${item("releases", "goReleases", "What's new")}

@@ -24,6 +24,8 @@
 //                       its patch notes. The legacy #releases/patches opens the newest release's.
 //   #platform         → Platform (superadmin) › Organizations; #platform/usage, /admins, /audit
 //                       its other tabs; #platform/orgs/<slug> one organization
+//   #org              → Org settings › Integrations; #org/repos, #org/environments,
+//                       #org/members and #org/general its other tabs
 //   #<screen>         → every other screen, named exactly as the Screen union
 //                       (`#site` is the landing page, reopened from inside the app)
 // Anything unrecognised falls back to My Work — the same rule the app has always
@@ -37,6 +39,7 @@ import { MAINT_TABS, type MaintTab } from "./maintenance";
 import { RELEASES, releaseSlug, type ReleasePage } from "./releases";
 import { PLAT_TABS, type PlatTab } from "./platform";
 import { ORG_SLUG_RE } from "@shared/orgs";
+import { isOrgTab, type OrgTab } from "./org-settings";
 
 /** Every screen addressable by its bare name (`#feed`). The compound ticket /
  *  sprint routes are parsed separately below. */
@@ -73,6 +76,8 @@ export interface Route {
   platTab?: PlatTab;
   /** Set only on `platformorg` (one organization's slug). */
   platOrg?: string;
+  /** Set only on `org` (Org settings' tab). */
+  orgTab?: OrgTab;
 }
 
 /** Whether two routes name the same place (the hashchange no-op check). */
@@ -81,6 +86,7 @@ export function sameRoute(a: Route, b: Route): boolean {
     && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.maintTab === b.maintTab && a.roadmapTab === b.roadmapTab
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && a.platTab === b.platTab && a.platOrg === b.platOrg
+    && a.orgTab === b.orgTab
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null);
 }
 
@@ -192,6 +198,12 @@ export function parseHash(hash: string): Route {
     if (parts.length === 3 && parts[1] === "orgs" && ORG_SLUG_RE.test(parts[2])) return { screen: "platformorg", ...base, platOrg: parts[2] };
     return none;
   }
+  // Org settings: `#org` is Integrations (the canonical spelling); `#org/integrations` still resolves.
+  if (parts[0] === "org") {
+    if (parts.length === 1) return { screen: "org", ...base, orgTab: "integrations" };
+    if (parts.length === 2 && isOrgTab(parts[1])) return { screen: "org", ...base, orgTab: parts[1] };
+    return none;
+  }
   if (parts.length === 1 && (PLAIN_SCREENS as string[]).includes(parts[0])) {
     return { screen: parts[0] as Screen, ticketId: null, sprintId: null };
   }
@@ -228,5 +240,6 @@ export function hashForRoute(r: Route): string {
   if (r.screen === "maintenance") return !r.maintTab || r.maintTab === "unplaced" ? "#maintenance" : `#maintenance/${r.maintTab}`;
   if (r.screen === "platform") return !r.platTab || r.platTab === "orgs" ? "#platform" : `#platform/${r.platTab}`;
   if (r.screen === "platformorg") return r.platOrg ? `#platform/orgs/${r.platOrg}` : "#platform";
+  if (r.screen === "org") return !r.orgTab || r.orgTab === "integrations" ? "#org" : `#org/${r.orgTab}`;
   return `#${r.screen}`;
 }
