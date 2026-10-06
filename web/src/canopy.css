@@ -1261,6 +1261,20 @@ input, select { font-family: inherit; }
 .site-btn-outline { border:1px solid var(--border-strong); color:var(--fg); }
 .site-btn-outline:hover { background:var(--hover); color:var(--fg); }
 @media (max-width:900px) { .site-hide-sm { display:none !important; } }
+/* The legal pages (/terms, /privacy — web/src/legal.ts): a long single-column text, the
+   landing's type scale. Section anchors clear the 60px sticky nav. */
+.site-legal-lede { margin:28px 0 0; font-size:16.5px; line-height:1.65; color:var(--fg-70); text-wrap:pretty; }
+.site-legal-toc { margin:36px 0 0; padding:18px 22px; border:1px solid var(--border); background:var(--surface); }
+.site-legal-toc-h { font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--fg-40); }
+.site-legal-toc ol { list-style:none; margin:10px 0 0; padding:0; columns:2 220px; column-gap:28px; font-size:14px; line-height:1.9; }
+.site-legal-sec { scroll-margin-top:84px; margin-top:44px; }
+.site-legal-sec h2 { margin:0; font-size:20px; font-weight:650; letter-spacing:-0.015em; }
+.site-legal-sec p, .site-legal-sec li { font-size:15px; line-height:1.7; color:var(--fg-70); text-wrap:pretty; }
+.site-legal-sec p { margin:12px 0 0; }
+.site-legal-sec ul { margin:12px 0 0; padding-left:22px; }
+.site-legal-sec li + li { margin-top:6px; }
+.site-legal-sec b { color:var(--fg); font-weight:600; }
+.site-legal-sec code { font-family:var(--code); font-size:.86em; padding:1px 5px; background:var(--hover); }
 /* phone: the nav's logo, icons and Sign in / Back to the app fit a 360px screen. */
 @media (max-width:480px) { .site-navin { gap:12px !important; padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)) !important; } .site-navin > div:last-child { gap:8px !important; } }
 
