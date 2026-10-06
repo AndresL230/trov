@@ -25,7 +25,7 @@ export function siteFooter(): string {
       <div style="margin-left:auto;display:flex;flex-direction:column;gap:6px;text-align:right;font-size:13px;color:var(--fg-55)">
         <span>Built for the Sapling team. Currently limited to SaplingLearn members.</span>
         <span><a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="${TROV_REPO}" target="_blank" rel="noopener">GitHub</a> · Licensed under AGPL-3.0</span>
-        <span>© 2026 Andres Lopez</span>
+        <span>© 2026 TrovLabs, Inc.</span>
       </div>
     </div>
   </footer>`;
