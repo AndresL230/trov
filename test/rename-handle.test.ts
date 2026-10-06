@@ -137,7 +137,11 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `UPDATE orgs SET suspended_at = ?, suspended_by = ? WHERE id = 'org_b'`, nowIso(), handle);
   await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-01-01', 'api_read', ?, 1, ?)`, org, handle, nowIso());
   await run(env.DB, `INSERT INTO org_admin_audit (org_id, actor, action, target, at) VALUES (?, ?, 'org.update', 'settings', ?)`, org, handle, nowIso());
+  // 0048: github_installations.connected_by
+  await run(env.DB, `INSERT INTO github_installations (installation_id, org_id, account_login, account_id, account_type, repository_selection, connected_by, connected_at, updated_at) VALUES (?, ?, 'acme', 1, 'Organization', 'all', ?, ?, ?)`, ++installationSeq, org, handle, nowIso(), nowIso());
 }
+
+let installationSeq = 100; // a fresh GitHub installation id per seeded person (the column is a PRIMARY KEY)
 
 describe("renamePerson", () => {
   it("rewrites every HANDLE_COLUMNS entry atomically, and leaves referential integrity intact", async () => {

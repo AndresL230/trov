@@ -30,8 +30,8 @@ const auditStmt = (ctx: TenantContext, action: OrgSettingsAuditAction, target: s
 
 // ── repos ────────────────────────────────────────────────────────────────────
 
-export interface OrgRepoRow { id: string; repo_full_name: string; is_primary: number; legacy_hook: number; created_at: string; created_by: string }
-const REPO_COLS = `id, repo_full_name, is_primary, legacy_hook, created_at, created_by`;
+export interface OrgRepoRow { id: string; repo_full_name: string; is_primary: number; legacy_hook: number; installation_id: number | null; created_at: string; created_by: string }
+const REPO_COLS = `id, repo_full_name, is_primary, legacy_hook, installation_id, created_at, created_by`;
 export const MAX_ORG_REPOS = 10;
 // GitHub's own shape: an owner login (≤ 39, alphanumerics and inner hyphens) and a repository name.
 const REPO_FULL_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
@@ -59,6 +59,8 @@ export async function listRepos(ctx: TenantContext, origin: string, admin: boole
     legacy_hook: r.legacy_hook === 1,
     webhook_url: admin ? webhookUrl(origin, r.id) : null,
     webhook_secret_configured: hooked.has(r.id),
+    connection: r.installation_id === null ? "token" : "app",
+    installation_id: r.installation_id,
     created_at: r.created_at,
     created_by: r.created_by,
   }));

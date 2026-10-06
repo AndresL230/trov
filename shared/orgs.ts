@@ -38,6 +38,10 @@ export const ORG_AUDIT_ACTIONS = [
   "invite.create", "invite.revoke", "invite.accept", "invite.decline",
   // Org settings › Repositories / Environments (src/integrations/settings.ts).
   "repo.add", "repo.remove", "repo.primary", "environment.set", "environment.delete", "environment.reorder",
+  // The GitHub App (src/github-app/): an installation bound / unbound by an admin, removed / suspended on
+  // GitHub, its repository list changed; and a connected repo attached to / detached from an installation.
+  "github.connect", "github.disconnect", "github.uninstall", "github.suspend", "github.unsuspend", "github.repos",
+  "repo.attach", "repo.detach",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];

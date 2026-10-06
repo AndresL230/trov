@@ -16,6 +16,9 @@ export const RESET_STATEMENTS = [
   "DELETE FROM org_keys",
   "DELETE FROM org_integration_config",
   "DELETE FROM org_environments",
+  // The GitHub App (0048): the repo list references its installation, both reference orgs.
+  "DELETE FROM github_installation_repos",
+  "DELETE FROM github_installations",
   "DELETE FROM org_repos",
   "DELETE FROM org_login_map",
   "DELETE FROM org_invites",

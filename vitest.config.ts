@@ -59,6 +59,15 @@ export default defineConfig({
           // suite never depends on a developer's `.dev.vars`; TROV_KEK_PREVIOUS is blanked for the same reason.
           TROV_KEK: "dGVzdC1rZWstMDEyMzQ1Njc4OWFiY2RlZi10cm92ISE=",
           TROV_KEK_PREVIOUS: "",
+          // The GitHub App's platform secrets (src/github-app/config.ts): blanked, so the POOL default is "the App
+          // is not configured" and no test mints a real token. A test that exercises the App passes its own
+          // (generated) values through a per-test env object — test/helpers/github-app.ts.
+          GITHUB_APP_ID: "",
+          GITHUB_APP_SLUG: "",
+          GITHUB_APP_CLIENT_ID: "",
+          GITHUB_APP_CLIENT_SECRET: "",
+          GITHUB_APP_PRIVATE_KEY: "",
+          GITHUB_APP_WEBHOOK_SECRET: "",
         },
       },
     })),

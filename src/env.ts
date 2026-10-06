@@ -45,4 +45,14 @@ export interface Env {
   // stored credentials. TROV_KEK_PREVIOUS is set only during a KEK rotation: the old key, picked by fingerprint.
   TROV_KEK?: string;
   TROV_KEK_PREVIOUS?: string;
+  // The GitHub App (issue #95; docs/superpowers/specs/2026-10-06-github-app-design.md) — PLATFORM secrets, set with
+  // `wrangler secret put`, one App for every org. ALL SIX present = the App is configured (src/github-app/config.ts
+  // `githubAppConfig`); any one absent → it is not, the install button is hidden and every org stays on its pasted
+  // token + per-repo webhook. None of them is ever logged, returned or stored in D1.
+  GITHUB_APP_ID?: string;             // the App's numeric id — the App JWT's `iss`
+  GITHUB_APP_SLUG?: string;           // the App's URL name: https://github.com/apps/<slug>
+  GITHUB_APP_CLIENT_ID?: string;      // the App's OAuth client id (the install flow's account check)
+  GITHUB_APP_CLIENT_SECRET?: string;  // the App's OAuth client secret
+  GITHUB_APP_PRIVATE_KEY?: string;    // the App's private key, PEM (PKCS#1 as GitHub issues it, or PKCS#8); `\n` escapes are accepted
+  GITHUB_APP_WEBHOOK_SECRET?: string; // the App webhook's HMAC secret (`POST /webhook/github-app`)
 }
