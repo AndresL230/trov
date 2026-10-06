@@ -14,6 +14,15 @@ import { handleArtifactUpload, isUploadRequest } from "./artifacts/upload";
 import { handleArtifactDownload, isDownloadRequest } from "./artifacts/download";
 import type { Env } from "./env";
 
+/** `index.html` from the assets binding. Its html handling may answer `/index.html` with a redirect to
+ *  `/`; that one hop is followed here, so the browser's URL never changes. */
+async function spaShell(request: Request, env: Env, url: URL): Promise<Response> {
+  const ask = (path: string) => env.ASSETS.fetch(new Request(new URL(path, url), { method: request.method, headers: request.headers }));
+  const res = await ask("/index.html");
+  const next = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+  return next ? ask(new URL(next, url).pathname) : res;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // (notification_policy is seeded per org: by createOrg for a new org, and by the digest cron for
@@ -61,6 +70,10 @@ export default {
     // page is re-checked for the token's principal at download time
     // (src/artifacts/download.ts).
     if (isDownloadRequest(url.pathname)) return handleArtifactDownload(request, env);
+    // The SPA lives at `/o/<slug>/` (hash routing after it): any GET under `/o/` is the app shell, asked of
+    // the assets binding by name — no reliance on its SPA mode. The shell is public (it signs the visitor in);
+    // the org's data is behind `/api/o/:slug` and its membership gate.
+    if ((request.method === "GET" || request.method === "HEAD") && url.pathname.startsWith("/o/")) return spaShell(request, env, url);
     return app.fetch(request, env, ctx);
   },
 
