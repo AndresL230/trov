@@ -1,8 +1,10 @@
 import type { Env } from "../env";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import { first } from "../data/sql";
-import { platform } from "../data/context";
-import { legacySystemTenant } from "../data/legacy";
+import { platform, type TenantContext } from "../data/context";
+import { markSecretUsed, resolveCredential } from "../data/secrets";
+import { jobTenant } from "../platform/jobs";
+import { orgPrimaryRepo } from "../repo/config";
 import { ingestEvent } from "../consumer";
 import { mirrorIssue } from "./ticket-mirror";
 import { eventsFromDelivery } from "../webhook";
@@ -11,7 +13,7 @@ import { applyEventProgress } from "./progress";
 
 // Admin-triggered server-side GitHub backfill. Unlike scripts/backfill-events.mjs
 // (which signs synthetic webhook deliveries with the webhook secret), this runs
-// INSIDE the Worker with GITHUB_SERVICE_TOKEN — the same token the scheduled()
+// INSIDE the Worker with the org's `github_token` — the same credential the scheduled()
 // progress recompute uses — so it fetches GitHub REST directly, no webhook secret.
 //
 // It reconstructs the SAME deliveries the webhook would have received, reuses the
@@ -187,6 +189,7 @@ function issueDelivery(issue: GhIssueListItem, repo: string) {
 
 export async function runBackfill(
   env: Env,
+  caller: TenantContext,
   principalLogin: string,
   opts?: {
     fetchImpl?: typeof fetch;
@@ -196,8 +199,9 @@ export async function runBackfill(
     summaryCallDelayMs?: number;
   }
 ): Promise<BackfillResult> {
-  // MT: the backfill replays GitHub into the legacy org, as system — the webhook's own context.
-  const ctx = legacySystemTenant(env, "system");
+  // The backfill replays GitHub into the CALLER's org, as system — the webhook's own context
+  // (`jobTenant`; the route's gate decides who may ask, and a bearer context is refused).
+  const ctx = jobTenant(env, caller);
   // Nothing-ran failure envelope. The route turns this into a 503 whose error
   // reaches the admin's toast — a Sync that can't reach GitHub must say so, not
   // report zeros as if the repo were empty.
@@ -215,9 +219,13 @@ export async function runBackfill(
     issuesToSummarize: 0,
   });
 
-  const token = env.GITHUB_SERVICE_TOKEN;
-  const repo = env.GITHUB_REPO;
+  // The org's PRIMARY repo and its `github_token` (the org's stored secret; for SaplingLearn, until
+  // its admin enters one, the legacy GITHUB_SERVICE_TOKEN — src/data/secrets.ts). This module is not
+  // reachable from src/mcp.ts, so it may resolve one. A secret that cannot be read is "not configured".
+  const repo = (await orgPrimaryRepo(ctx))?.repo;
+  const token = repo ? (await resolveCredential(ctx, env, "github_token", "").catch(() => null))?.reveal() : undefined;
   if (!token || !repo) return failed("service token or repo not configured");
+  await markSecretUsed(ctx, "github_token", "").catch(() => undefined);
 
   const doFetch = opts?.fetchImpl ?? fetch;
   const summarizer = opts?.summarizer ?? (env.GEMINI_API_KEY ? geminiPrSummarizer(env.GEMINI_API_KEY) : null);

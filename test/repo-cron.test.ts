@@ -15,7 +15,8 @@ import wranglerToml from "../wrangler.toml?raw";
 import { all, run, nowIso } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { pingHealth } from "../src/repo/poll";
-import { handleRepoCron, railwayTokens, REPO_CRON } from "../src/repo/cron";
+import { REPO_CRON } from "../src/repo/cron";
+import { handleRepoCron } from "./helpers/org-config";
 import { getRepoDashboard } from "../src/tools/repo";
 import { getSnapshot, putMetric } from "../src/repo/store";
 import { ENVS, fakeGithub } from "./helpers/repo";
@@ -305,20 +306,9 @@ describe("handleRepoCron", () => {
       expect(await rwRows()).toEqual([]);
     });
 
-    // The secret's NAME is computed from the environment key: upper-cased, and
-    // anything outside A–Z/0–9 becomes `_` — `pre-prod` → RAILWAY_TOKEN_PRE_PROD.
-    it("railwayTokens maps an odd environment key to its secret name, and keeps only non-empty strings", () => {
-      const cfg = (key: string) => ({ ...ENVS[0], key });
-      const bag = {
-        RAILWAY_TOKEN_STAGING: "tok-staging", RAILWAY_TOKEN_PRE_PROD: "tok-pre-prod", RAILWAY_TOKEN_EU_WEST_2: "tok-eu",
-        RAILWAY_TOKEN_EMPTY: "", RAILWAY_TOKEN_NUMERIC: 42, "RAILWAY_TOKEN_pre-prod": "never read",
-      } as unknown as Env;
-      expect(railwayTokens(bag, ["staging", "pre-prod", "eu.west 2", "empty", "numeric", "absent"].map(cfg))).toEqual({
-        staging: "tok-staging", "pre-prod": "tok-pre-prod", "eu.west 2": "tok-eu",
-        empty: undefined, numeric: undefined, absent: undefined,
-      });
-    });
-
+    // The legacy secret's NAME is computed from the environment key: upper-cased, and anything
+    // outside A–Z/0–9 becomes `_` — `pre-prod` → RAILWAY_TOKEN_PRE_PROD (`resolveCredential`'s
+    // SaplingLearn-only fallback, src/data/secrets.ts; the rule itself is pinned in secrets.resolve.test.ts).
     it("through the cron: a hyphenated key polls with RAILWAY_TOKEN_PRE_PROD", async () => {
       const r = recorder();
       const odd = [{ ...RW_ENVS[0], key: "pre-prod" }];

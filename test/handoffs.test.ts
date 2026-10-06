@@ -7,7 +7,7 @@ import { app } from "../src/routes";
 import { cookieFor } from "./helpers/persons";
 import { buildSeedStatements } from "../scripts/seed/build.mjs";
 import { all, first, run } from "./helpers/db";
-import { handleRepoCron } from "../src/repo/cron";
+import { handleRepoCron } from "./helpers/org-config";
 import { expireDueHandoffs } from "../src/platform/sweeps";
 import type { Env } from "../src/env";
 import handoffs from "../fixtures/dev/handoffs.json";

@@ -8,8 +8,8 @@ import {
   verifyGithubSignature,
   eventsFromDelivery,
   progressFromIssueEvent,
-  handleGithubWebhook,
 } from "../src/webhook";
+import { handleGithubWebhook, syncOrgConfig } from "./helpers/org-config";
 import prMerged from "./fixtures/gh-pr-merged.json";
 import issueAssigned from "./fixtures/gh-issue-assigned.json";
 import issueClosed from "./fixtures/gh-issue-closed.json";
@@ -127,6 +127,7 @@ describe("handleGithubWebhook — the third auth class", () => {
     const body = JSON.stringify(prMerged);
     const sig = await sign(SECRET, body);
     const ctx = { waitUntil() {}, passThroughException() {} } as unknown as ExecutionContext;
+    await syncOrgConfig(); // SaplingLearn's repo row — the one the legacy URL delivers to
     const res = await worker.fetch(
       req(body, { "x-github-event": "pull_request", "x-hub-signature-256": sig }),
       env,

@@ -65,8 +65,12 @@ const PING_TIMEOUT_MS = 8_000;
 export const HEALTH_ON_DEMAND_BUCKET_MS = 1_000;
 export async function pingHealth(ctx: TenantContext, envs: RepoEnvConfig[], now: number, fetchImpl: typeof fetch = fetch, bucketMs: number = TEN_MIN): Promise<PollOutcome[]> {
   const at = new Date(Math.floor(now / bucketMs) * bucketMs).toISOString();
+  // A target with no URL configured (an org's environment may name only one of the two, or neither
+  // yet) is not pinged and writes no row: an unconfigured target is unknown, never "down".
   const targets = envs.flatMap((cfg) =>
-    ([["frontend", cfg.frontendUrl], ["backend", cfg.apiUrl + cfg.healthPath]] as const).map(([part, url]) => ({ env: cfg.key, part, url }))
+    ([["frontend", cfg.frontendUrl, cfg.frontendUrl], ["backend", cfg.apiUrl, cfg.apiUrl + cfg.healthPath]] as const)
+      .filter(([, base]) => base !== "")
+      .map(([part, , url]) => ({ env: cfg.key, part, url }))
   );
   const readings = await Promise.all(targets.map(async (t) => {
     const started = Date.now();

@@ -20,7 +20,7 @@ import { reconcileRepo } from "../src/repo/github";
 import { repoEventsFromDelivery } from "../src/repo/capture";
 import { hasCaptured } from "../src/repo/reads";
 import { getRepoDashboard } from "../src/tools/repo";
-import { handleGithubWebhook } from "../src/webhook";
+import { handleGithubWebhook } from "./helpers/org-config";
 import { ENVS, LONG_TOKEN, fakeGithub, leakedFragments } from "./helpers/repo";
 import statusFixture from "./fixtures/gh-status.json";
 import reviewFixture from "./fixtures/gh-pr-review.json";

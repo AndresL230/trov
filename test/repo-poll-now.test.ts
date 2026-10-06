@@ -13,7 +13,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
 import { all } from "./helpers/db";
 import { app } from "../src/routes";
-import { handleRepoCron, runUsagePolls } from "../src/repo/cron";
+import { handleRepoCron, runUsagePolls, syncOrgConfig } from "./helpers/org-config";
 import { cookieFor } from "./helpers/persons";
 import { ENVS } from "./helpers/repo";
 import type { Env } from "../src/env";
@@ -83,8 +83,8 @@ describe("runUsagePolls", () => {
       sapling: [{ env: "staging", status: "ok", written: 3 }, { env: "production", status: "ok", written: 3 }],
     });
     expect(r.calls).toEqual([
-      CF_URL, CF_URL, RW_URL, RW_URL,
-      "https://api.staging.saplinglearn.com/api/internal/metrics", "https://api.saplinglearn.com/api/internal/metrics",
+      CF_URL, RW_URL, "https://api.staging.saplinglearn.com/api/internal/metrics", // one environment at a time —
+      CF_URL, RW_URL, "https://api.saplinglearn.com/api/internal/metrics",         // each is its own (org, environment) job
     ]);
     expect(await metricCount()).toBe(14);
   });
@@ -163,7 +163,7 @@ describe("POST /admin/poll-usage (session- + admin-gated, never MCP)", () => {
   });
 
   it("for an admin with every secret unset (the pool default): 200, all three not_configured, no network", async () => {
-    const res = await app.request("/admin/poll-usage", { method: "POST", headers: { cookie: await cookieFor("admin-user") } }, pollEnv(NONE));
+    const res = await app.request("/admin/poll-usage", { method: "POST", headers: { cookie: await cookieFor("admin-user") } }, await syncOrgConfig(pollEnv(NONE)));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ cloudflare: "not_configured", railway: "not_configured", sapling: "not_configured" });
   });
@@ -182,7 +182,7 @@ describe("POST /admin/poll-usage (session- + admin-gated, never MCP)", () => {
     expect(seen).toEqual(["https://stub-check.invalid/"]);
 
     const res = await quietly(async () =>
-      app.request("/admin/poll-usage", { method: "POST", headers: { cookie: await cookieFor("admin-user") } }, pollEnv()));
+      app.request("/admin/poll-usage", { method: "POST", headers: { cookie: await cookieFor("admin-user") } }, await syncOrgConfig(pollEnv())));
     expect(res.status).toBe(200); // every source failed — the BODY says so
     const text = await res.text();
     const body = JSON.parse(text) as Record<string, { status: string }[]>;

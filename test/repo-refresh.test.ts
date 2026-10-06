@@ -14,8 +14,9 @@ import { all, first, run } from "./helpers/db";
 import { app } from "../src/routes";
 import {
   BUDGET_SKIP, REFRESH_LOCK, REFRESH_LOCK_MS, SUBREQUEST_CAP,
-  handleRepoCron, refreshSubrequests, runLockedRepoRefresh, runRepoRefresh,
+  refreshSubrequests,
 } from "../src/repo/cron";
+import { handleRepoCron, runLockedRepoRefresh, runRepoRefresh, syncOrgConfig } from "./helpers/org-config";
 import { latestHealth } from "../src/repo/store";
 import { getRepoDashboard } from "../src/tools/repo";
 import { cookieFor } from "./helpers/persons";
@@ -109,8 +110,8 @@ describe("runRepoRefresh", () => {
 
     expect(w.calls.slice(0, 4)).toEqual(HEALTH_URLS);
     expect(w.calls.slice(4, 10)).toEqual([
-      CF_URL, CF_URL, RW_URL, RW_URL,
-      "https://api.staging.saplinglearn.com/api/internal/metrics", "https://api.saplinglearn.com/api/internal/metrics",
+      CF_URL, RW_URL, "https://api.staging.saplinglearn.com/api/internal/metrics", // one environment at a time —
+      CF_URL, RW_URL, "https://api.saplinglearn.com/api/internal/metrics",         // each is its own (org, environment) job
     ]);
     const github = w.calls.slice(10);
     expect(github.length).toBeGreaterThan(0);
@@ -442,7 +443,7 @@ describe("POST /admin/poll (session- + admin-gated, never MCP)", () => {
     return seen;
   };
   const post = async (who: string | null, e: Env) =>
-    app.request("/admin/poll", { method: "POST", headers: who ? { cookie: await cookieFor(who) } : {} }, e);
+    app.request("/admin/poll", { method: "POST", headers: who ? { cookie: await cookieFor(who) } : {} }, await syncOrgConfig(e));
 
   it("401s without a session, and nothing runs", async () => {
     const seen = stubFetch(world().fetchImpl);
