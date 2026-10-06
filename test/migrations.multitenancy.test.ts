@@ -257,14 +257,32 @@ describe("the rollback (scripts/mt/rollback/0037-0040.down.sql)", () => {
     await applyD1Migrations(db(), upTo("0043"));
     await db().prepare(`INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-10-06', 'api_read', 'x', 1, 't')`).bind(LEGACY).run();
     await db().prepare(`INSERT INTO org_admin_audit (org_id, actor, action, target, at) VALUES (?, 'x', 'org.update', 'settings', 't')`).bind(LEGACY).run();
-    const inOrder = [...env.MT_ROLLBACK].sort((a, b) => b.name.localeCompare(a.name)); // 0043 first
-    expect(inOrder.map((m) => m.name)).toEqual(["0043.down.sql", "0037-0040.down.sql"]);
+    // 0046.down.sql (one free-standing table) is order-independent and a no-op here: `runDown` above runs it too.
+    expect(env.MT_ROLLBACK.map((m) => m.name).sort()).toEqual(["0037-0040.down.sql", "0043.down.sql", "0046.down.sql"]);
+    const inOrder = env.MT_ROLLBACK.filter((m) => m.name !== "0046.down.sql").sort((a, b) => b.name.localeCompare(a.name)); // 0043 first
     await db().batch(inOrder[0].queries.map((q) => db().prepare(q)));
     expect(await rows(`SELECT name FROM sqlite_master WHERE name LIKE 'org_usage_daily%' OR name LIKE '%org_admin_audit%'`)).toEqual([]);
     expect(await one(`SELECT name FROM sqlite_master WHERE name = 'orgs'`)).toEqual({ name: "orgs" }); // nothing else was touched
     await db().batch(inOrder[1].queries.map((q) => db().prepare(q)));
     expect((await schema()).filter((o) => !o.includes("platform_admins"))).toEqual(schema0);
     expect((await rows<{ name: string }>(`SELECT name FROM d1_migrations`)).map((r) => r.name.slice(0, 4)).filter((n) => n >= "0037").sort()).toEqual(["0041", "0042"]);
+  });
+
+  it("0046.down.sql drops the abuse counters and forgets the migration; running it twice, or before 0046, is a no-op", async () => {
+    await at0036WithData();
+    const down = env.MT_ROLLBACK.find((m) => m.name === "0046.down.sql")!;
+    const runIt = () => db().batch(down.queries.map((q) => db().prepare(q)));
+    await applyD1Migrations(db(), before0037());
+    await runIt(); // never applied: nothing to do
+    await applyD1Migrations(db(), upTo("0046"));
+    const before = (await schema()).filter((o) => !o.includes("abuse_counters"));
+    await db().prepare(`INSERT INTO abuse_counters (subject, action, bucket, count, last_at) VALUES ('x', 'invite', '2026-10-06', 1, 't')`).run();
+    await runIt();
+    await runIt();
+    expect(await schema()).toEqual(before);
+    expect((await rows<{ name: string }>(`SELECT name FROM d1_migrations`)).map((r) => r.name.slice(0, 4))).not.toContain("0046");
+    await applyD1Migrations(db(), upTo("0046")); // …and it applies again
+    expect(await one(`SELECT name FROM sqlite_master WHERE name = 'abuse_counters'`)).toEqual({ name: "abuse_counters" });
   });
 
   it("refuses to run once a second org exists (its rows would be lost)", async () => {

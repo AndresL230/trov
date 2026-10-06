@@ -56,6 +56,7 @@ import type { InviteRow } from "@shared/rows";
 import { readDocImage } from "./tools/doc-images";
 import { getPersonProfile, writePersonProfile, setAvatar, clearAvatar, readAvatar, PeopleError, PEOPLE_ERROR_STATUS } from "./tools/people";
 import { AVATAR_MAX_BYTES } from "@shared/people";
+import { rateLimited } from "./platform/limits";
 
 export const app = new Hono<AppEnv>();
 
@@ -592,6 +593,8 @@ legacyOnly.put("/api/people/:handle", async (c) => {
 tenantApi.post("/people/me/avatar", async (c) => {
   const len = Number(c.req.header("content-length"));
   if (Number.isFinite(len) && len > AVATAR_MAX_BYTES + 64 * 1024) return c.json({ error: `an avatar is at most ${AVATAR_MAX_BYTES} bytes` }, 413);
+  const refused = await rateLimited(c, "avatar_upload");
+  if (refused) return refused;
   let file: File | null = null;
   try {
     const form = await c.req.raw.formData();
@@ -620,6 +623,8 @@ legacyOnly.get("/invites", async (c) => c.json({ invites: await listLegacyInvite
 legacyOnly.post("/invites", async (c) => {
   const parsed = InviteWrite.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
+  const refused = await rateLimited(c, "invite");
+  if (refused) return refused;
   let invite: InviteRow;
   try {
     invite = await createLegacyInvite(c.var.p, c.var.ctx, { email: parsed.data.email, name: parsed.data.name ?? null });
@@ -639,6 +644,8 @@ legacyOnly.post("/invites/:email/resend", async (c) => {
   const row = await getLegacyInvite(c.var.p, c.var.ctx, decodeURIComponent(c.req.param("email")));
   if (!row) return c.json({ error: "no such invite" }, 404);
   if (row.revoked_at || row.accepted_by) return c.json({ error: row.revoked_at ? "revoked" : "accepted" }, 409);
+  const refused = await rateLimited(c, "invite");
+  if (refused) return refused;
   const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
   const result = await sendInvite(c.env, c.var.ctx, c.var.p, { email: row.email, inviteeName: row.name, inviterHandle: c.get("principal").handle, origin });
   return c.json({ ok: true, email: result });

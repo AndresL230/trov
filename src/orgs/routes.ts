@@ -12,6 +12,7 @@ import type { AppEnv } from "../auth/principal";
 import { RoleError, hasRole } from "../data/context";
 import { listRepoRows } from "../integrations/settings";
 import type { OrgMeResponse } from "@shared/orgs";
+import { rateLimited } from "../platform/limits";
 import {
   OrgError, ORG_ERROR_STATUS, myOrgs, listMyInvites, createOrgForSelf, respondToInvite,
   orgMe, getOrgSettings, updateOrgSettings, listMembers, updateMember, removeMember,
@@ -116,6 +117,9 @@ orgTenantApp.get("/invites", async (c) => {
 orgTenantApp.post("/invites", async (c) => {
   const b = await body(c);
   if (!b) return invalid(c);
+  if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "forbidden" }, 403);
+  const refused = await rateLimited(c, "invite");
+  if (refused) return refused;
   try {
     return c.json({ ok: true, invite: await createInvite(c.var.p, c.var.ctx, { github_login: b.github_login, email: b.email, role: b.role }) }, 201);
   } catch (e) { return orgFail(c, e); }

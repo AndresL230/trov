@@ -20,6 +20,7 @@ import { platformContext } from "../data/gate";
 import { hasRole, isSuperadmin, resolveSoleTenant } from "../data/context";
 import { consumeLegacyInvite } from "../data/legacy";
 import { listMyOrgs, listMyInvites } from "../orgs/repo";
+import { rateLimited } from "../platform/limits";
 
 const OAUTH_TX_COOKIE = "oauth_tx";
 export interface AuthDeps { fetchImpl?: typeof fetch; now?: () => number }
@@ -147,7 +148,14 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     // Onboarding (no session yet) OR a signed-in person checking a rename target — either
     // capability is enough. sessionGate lets this path through as public, so both branches
     // are checked here.
-    if (!(await onboardPayload(c)) && !(await resolveSessionPrincipal(c))) return c.json({ error: "unauthorized" }, 401);
+    const onboarding = await onboardPayload(c);
+    const me = onboarding ? null : await resolveSessionPrincipal(c);
+    if (!onboarding && !me) return c.json({ error: "unauthorized" }, 401);
+    // Persons are global, so this answers "is there a person called X" — capped per caller: the
+    // signed-in person, or the provider account an onboarding cookie was sealed for.
+    if (me) c.set("principal", me);
+    const refused = await rateLimited(c, "handle_check", onboarding ? `onboard:${onboarding.provider}:${onboarding.subject}` : undefined);
+    if (refused) return refused;
     return c.json(await handleAvailable(c.var.p, (c.req.query("handle") ?? "").trim()));
   });
   const OnboardWrite = z.object({ handle: z.string().trim(), name: z.string().trim().max(120).nullable().optional(), color: z.enum(PERSON_COLORS) });

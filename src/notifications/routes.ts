@@ -7,7 +7,7 @@ import { z } from "zod";
 import { Cadence, RunCadence, type PrefsKindView, type PrefsView, type PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationPolicyRow, NotificationSettingsRow, PersonRow } from "@shared/rows";
 import type { AppEnv } from "../auth/principal";
-import { findPersonByEmail, memberHandle } from "../auth/persons";
+import { memberHandle } from "../auth/persons";
 import { hasRole } from "../data/context";
 import { type TenantContext, all, first, run, nowIso } from "../data/sql";
 import { type PlatformContext, first as platformFirst, run as platformRun } from "../data/platform-sql";
@@ -16,7 +16,8 @@ import { loadPolicies, loadPrefs, resolveWith } from "./resolve";
 import { loadSettings } from "./cron";
 import { computeWindow } from "./window";
 import { renderSections, buildMessage, deliverRow, outboxKey } from "./run";
-import { deliveryFor } from "./resend";
+import { PLATFORM_FROM_ADDRESS, SENDER_NAME_MAX, bareAddress, deliveryFor, senderNamePart, senderNameProblem } from "./resend";
+import { rateLimited } from "../platform/limits";
 import { unsubscribeUrl } from "./unsubscribe";
 import { sampleSections } from "./sample";
 
@@ -50,6 +51,12 @@ export async function prefsView(ctx: TenantContext, p: PlatformContext, login: s
 
 const Email = z.string().trim().max(254).refine((s) => s === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s), "invalid email");
 
+/** Is `email` already `handle`'s address (case-insensitively)? A re-save is not a change. */
+async function sameEmail(p: PlatformContext, handle: string, email: string): Promise<boolean> {
+  const row = await platformFirst<{ email: string | null }>(p, `SELECT email FROM persons WHERE handle = ? COLLATE NOCASE`, handle);
+  return (row?.email ?? "").toLowerCase() === email.toLowerCase();
+}
+
 const PrefsWrite = z.object({
   email: Email.optional(),                                 // "" clears the address
   unsubscribed: z.boolean().optional(),
@@ -75,15 +82,13 @@ notificationsApp.put("/prefs", async (c) => {
     writes.push({ kind: kindId, cadence });
   }
 
-  // persons.email is an auth matcher (the sign-in fork's branch 2 links on it) but has
-  // no DB-level UNIQUE constraint — guard it here instead: a non-empty address already
-  // on someone ELSE's row is refused (409) before anything is written. Re-saving your
-  // own address is fine (case-insensitive compare against the caller's own handle).
-  if (body.email) {
-    const existing = await findPersonByEmail(c.var.p, body.email);
-    if (existing && existing.handle.toLowerCase() !== login.toLowerCase()) {
-      return c.json({ error: "email_in_use" }, 409);
-    }
+  // `persons.email` is a NOTIFICATION address, not an identity: sign-in and invites match on
+  // `identities.verified_email`, never on it. So it is not unique, and this route does not say whether
+  // an address is on someone else's row — the old 409 `email_in_use` told any signed-in stranger which
+  // addresses are on file. A CHANGE of address is rate-limited (the caller has not proven they own it).
+  if (body.email && !(await sameEmail(c.var.p, login, body.email))) {
+    const refused = await rateLimited(c, "email_change");
+    if (refused) return refused;
   }
 
   const now = nowIso();
@@ -156,10 +161,30 @@ const validTimeZone = (tz: string): boolean => {
     return false;
   }
 };
+const SENDER_NAME_ERRORS = {
+  empty: "a sender name is required",
+  too_long: `a sender name is at most ${SENDER_NAME_MAX} characters`,
+  characters: "a sender name may contain letters, digits, spaces and . & ' + _ - only",
+  reserved: "a sender name may not read as Trov's own",
+} as const;
+/**
+ * `from_address` is the org's SENDER NAME: `Name` or `Name <hello@trov.dev>` (the shape the stored value
+ * and the current SPA use). The address is the platform's and is not settable — any other address is a
+ * 400 — and the name is held to `senderNameProblem`. Stored normalised as `Name <platform address>`.
+ */
+const FromAddress = z.string().trim().max(254).transform((value, ctx) => {
+  const fail = (message: string) => { ctx.addIssue({ code: "custom", message }); return z.NEVER; };
+  if (/[<>@]/.test(value) && bareAddress(value).toLowerCase() !== PLATFORM_FROM_ADDRESS) {
+    return fail(`mail is sent from ${PLATFORM_FROM_ADDRESS}; only the sender name can be changed`);
+  }
+  const name = senderNamePart(value).replace(/\s+/g, " ");
+  const problem = senderNameProblem(name);
+  return problem ? fail(SENDER_NAME_ERRORS[problem]) : `${name} <${PLATFORM_FROM_ADDRESS}>`;
+});
 const SettingsWrite = z.object({
   send_hour: z.number().int().min(0).max(23).optional(),
   timezone: z.string().min(1).refine(validTimeZone, "unknown IANA timezone").optional(),
-  from_address: z.string().trim().min(3).max(254).optional(),
+  from_address: FromAddress.optional(),
 });
 
 notificationsApp.get("/settings", async (c) => c.json(await loadSettings(c.var.ctx)));
@@ -194,6 +219,7 @@ const PersonEmailWrite = z.object({ email: Email });
 // so an org admin may set it only for a MEMBER of this org (anyone else is the same 404 as an unknown
 // handle) who belongs to NO other org. Once a person is in two orgs the address is theirs alone to set
 // (`PUT /prefs`): otherwise one org's admin could redirect another org's mail. 409 `email_not_yours_to_set`.
+// Like `PUT /prefs`, it does not say whether the address is on someone else's row, and a change is rate-limited.
 notificationsApp.put("/persons/:handle", async (c) => {
   const parsed = PersonEmailWrite.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
@@ -201,13 +227,9 @@ notificationsApp.put("/persons/:handle", async (c) => {
   if (!handle) return c.json({ error: "no such person" }, 404);
   const elsewhere = await platformFirst<{ n: number }>(c.var.p, `SELECT COUNT(*) AS n FROM memberships WHERE user_id = ? COLLATE NOCASE AND org_id <> ?`, handle, c.var.ctx.orgId);
   if ((elsewhere?.n ?? 0) > 0) return c.json({ error: "email_not_yours_to_set" }, 409);
-  // Same email-matcher guard as self-service PUT /prefs: a different handle already
-  // holding this address is refused, never silently reassigned.
-  if (parsed.data.email) {
-    const existing = await findPersonByEmail(c.var.p, parsed.data.email);
-    if (existing && existing.handle.toLowerCase() !== handle.toLowerCase()) {
-      return c.json({ error: "email_in_use" }, 409);
-    }
+  if (parsed.data.email && !(await sameEmail(c.var.p, handle, parsed.data.email))) {
+    const refused = await rateLimited(c, "email_change");
+    if (refused) return refused;
   }
   const res = await platformRun(c.var.p, `UPDATE persons SET email = ? WHERE handle = ?`, parsed.data.email === "" ? null : parsed.data.email, handle);
   if ((res.meta.changes ?? 0) === 0) return c.json({ error: "no such person" }, 404);
@@ -259,6 +281,8 @@ notificationsApp.post("/test-send", async (c) => {
   const ctx = c.var.ctx;
   const person = await platformFirst<PersonRow>(c.var.p, `SELECT * FROM persons WHERE handle = ?`, login);
   if (!person?.email) return c.json({ error: "no email on file for you — set one in Settings first" }, 400);
+  const refused = await rateLimited(c, "test_send");
+  if (refused) return refused;
 
   const settings = await loadSettings(ctx);
   const window = computeWindow(parsed.data.cadence, new Date(), settings.timezone);

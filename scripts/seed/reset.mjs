@@ -7,6 +7,7 @@ export const RESET_STATEMENTS = [
   // attribution map reference persons, every org_* table references orgs. The two SEED orgs are kept
   // (every tenant table's transitional org_id DEFAULT points at org_saplinglearn); any org a test
   // created is removed once its rows are gone (the per-org singletons are trimmed further down).
+  "DELETE FROM abuse_counters",
   "DELETE FROM org_usage_daily",
   "DELETE FROM org_admin_audit",
   "UPDATE orgs SET suspended_at = NULL, suspended_by = NULL",

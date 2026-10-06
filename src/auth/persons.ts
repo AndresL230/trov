@@ -284,6 +284,11 @@ export async function renamePerson(p: PlatformContext, from: string, to: string)
     stmt(p, "PRAGMA defer_foreign_keys = true"),
     stmt(p, "UPDATE persons SET handle = ? WHERE handle = ? COLLATE NOCASE", to, from),
     ...HANDLE_COLUMNS.map(([t, c]) => stmt(p, `UPDATE ${t} SET ${c} = ? WHERE ${c} = ? COLLATE NOCASE`, to, from)),
+    // The abuse counters (0046) follow the person, so a rename does not hand out a fresh allowance. Not
+    // in HANDLE_COLUMNS: `subject` is a primary-key column, so a counter a previous holder of `to` left
+    // behind is cleared first.
+    stmt(p, `DELETE FROM abuse_counters WHERE subject = ? COLLATE NOCASE`, to),
+    stmt(p, `UPDATE abuse_counters SET subject = ? WHERE subject = ? COLLATE NOCASE`, to, from),
   ]);
   return { ok: true };
 }

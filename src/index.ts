@@ -4,6 +4,7 @@ import { handleGithubWebhook, webhookPath } from "./github-hook";
 import { resolveBearerTenant } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
 import { platform } from "./data/context";
+import { pruneLimits } from "./platform/limits";
 import { mcpUnauthorized, oauthOrigin } from "./auth/oauth";
 import { DAILY_CRON, WEEKLY_CRON, handleNotificationCron } from "./notifications/cron";
 import { REPO_CRON, handleRepoCron } from "./repo/cron";
@@ -77,6 +78,7 @@ export default {
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     if (controller.cron === DAILY_CRON || controller.cron === WEEKLY_CRON) {
       await pruneUsage(platform(env, "system")).catch(() => undefined); // org_usage_daily retention (400 days)
+      await pruneLimits(platform(env, "system")).catch(() => undefined); // abuse_counters of past windows
       await handleNotificationCron(env, controller.cron, new Date(controller.scheduledTime));
       return;
     }
