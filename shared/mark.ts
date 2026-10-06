@@ -7,8 +7,8 @@
 export const TROV_MARK_PATH =
   "M0 83.72H46.51V46.51H0ZM46.51 46.51H83.72V0H46.51ZM83.72 46.51V83.72H46.51V100H100V46.51Z";
 
-/** The brand purple: on a light ground, and lifted for a dark one. */
-export const TROV_MARK_COLORS = { light: "#616ACB", dark: "#8991D7" } as const;
+/** The mark's colour: the brand purple on a light ground, the dark theme's green accent on a dark one. */
+export const TROV_MARK_COLORS = { light: "#616ACB", dark: "#9aab65" } as const;
 
 /** The mark as inline SVG. `fill` defaults to the page's `--mark` token (falling back to the light purple). */
 export function trovMark(size: number, fill = `var(--mark,${TROV_MARK_COLORS.light})`): string {

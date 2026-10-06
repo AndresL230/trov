@@ -1,6 +1,6 @@
 /**
  * The tab icon follows the app's resolved theme (web/src/favicon.ts): the Trov mark,
- * brand purple in light and the lifted purple in dark, written to the SVG icon link
+ * brand purple in light and the dark theme's green in dark, written to the SVG icon link
  * as a data: URL, and only when the theme actually changes.
  */
 import { describe, it, expect } from "vitest";
@@ -36,8 +36,8 @@ describe("favicon — follows the app theme", () => {
     expect(decodeURIComponent(href.slice("data:image/svg+xml,".length))).toBe(svg);
   });
 
-  it("light is the brand purple; dark is the lifted purple", () => {
-    expect(FAVICON_COLORS).toEqual({ light: "#616ACB", dark: "#8991D7" });
+  it("light is the brand purple; dark is the dark theme's green", () => {
+    expect(FAVICON_COLORS).toEqual({ light: "#616ACB", dark: "#9aab65" });
   });
 
   it("writes the link once per theme change — rerenders on the same theme are no-ops", () => {

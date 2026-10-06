@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-4 -4 108 108">
-  <!-- The Trov mark (shared/mark.ts). Light: the brand purple; dark: the lifted purple.
+  <!-- The Trov mark (shared/mark.ts). Light: the brand purple; dark: the dark theme's green.
        The app re-points the icon at its own theme's colourway once it runs (web/src/favicon.ts). -->
-  <style>.m{fill:#616ACB}@media (prefers-color-scheme:dark){.m{fill:#8991D7}}</style>
+  <style>.m{fill:#616ACB}@media (prefers-color-scheme:dark){.m{fill:#9aab65}}</style>
   <path class="m" d="M0 83.72H46.51V46.51H0ZM46.51 46.51H83.72V0H46.51ZM83.72 46.51V83.72H46.51V100H100V46.51Z"/>
 </svg>
