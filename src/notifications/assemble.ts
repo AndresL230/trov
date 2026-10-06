@@ -237,13 +237,16 @@ export function assembleMessage(opts: {
   window: Window;
   timeZone: string;
   origin: string;
+  /** `<origin>/o/<slug>` of the digest's org (src/tools/org-links.ts) — what deep links hang off. Absent → the origin. */
+  appBase?: string;
   login: string;
   unsubscribeUrl: string;
 }): AssembledMessage {
   const { sections, window, timeZone, origin, login, unsubscribeUrl } = opts;
   const subject = subjectFor(window, timeZone);
   const range = dateRange(window, timeZone);
-  const link = (s: Section) => `${origin}${s.deepLink}`;
+  // A section's deep link opens the org the digest is ABOUT (`<origin>/o/<slug>/#tickets`), not whichever org the browser last had.
+  const link = (s: Section) => `${opts.appBase ?? origin}${s.deepLink}`;
   const label = (s: Section) => s.linkLabel ?? s.heading;
   const host = origin.replace(/^https?:\/\//, "") || "trov";
   const preheader = sections.map((s) => s.summary).filter(Boolean).join(", ");

@@ -2,6 +2,7 @@
 // `/api/o/:slug/notifications` and, as the cut-over alias, `/api/notifications` (src/routes.ts), so
 // every route here already passed sessionGate and a tenant gate; admin routes additionally
 // check the ORG role (admin or owner of `c.var.ctx`'s org — §5.2). NEVER MCP tools.
+import { orgAppBase } from "../tools/org-links";
 import { Hono, type MiddlewareHandler } from "hono";
 import { z } from "zod";
 import { Cadence, RunCadence, type PrefsKindView, type PrefsView, type PolicyKindView } from "@shared/notifications";
@@ -261,6 +262,7 @@ notificationsApp.get("/preview", async (c) => {
   const msg = await buildMessage(sections, { login, window, timeZone: settings.timezone }, {
     delivery: { send: async () => ({ id: null }) },
     origin,
+    appBase: await orgAppBase(c.var.ctx, origin),
     unsubscribeUrl: (l) => unsubscribeUrl(origin, l, c.env.COOKIE_SECRET),
   });
   return c.req.query("format") === "text" ? c.text(msg.text) : c.html(msg.html);
@@ -309,7 +311,7 @@ notificationsApp.post("/test-send", async (c) => {
   const status = await deliverRow(
     ctx,
     { key, login, email: person.email, kinds, window, timeZone: settings.timezone },
-    { delivery, origin, unsubscribeUrl: (l) => unsubscribeUrl(origin, l, c.env.COOKIE_SECRET) },
+    { delivery, origin, appBase: await orgAppBase(ctx, origin), unsubscribeUrl: (l) => unsubscribeUrl(origin, l, c.env.COOKIE_SECRET) },
     preset
   );
   const row = await first<{ resend_id: string | null; error: string | null }>(ctx, `SELECT resend_id, error FROM notification_outbox WHERE idempotency_key = ? AND org_id = ?`, key, ctx.orgId);

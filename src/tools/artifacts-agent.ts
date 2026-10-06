@@ -8,8 +8,9 @@
 // page are indistinguishable), caps, the sha no-op, the status machine. What this
 // module adds is only the agent's SHAPE of it:
 //
-//   • absolute links — `url` (the SPA page `<origin>/#artifacts/<slug>`), an absolute
-//     `upload_url` for the binary PUT, an absolute `raw_url`;
+//   • absolute links INTO THE TOKEN'S ORG — `url` (the SPA page `<origin>/o/<org>/#artifacts/<slug>`)
+//     and `raw_url` (`<origin>/api/o/<org>/raw/a/<slug>@v<n>`), built from the bearer's own org
+//     (./org-links.ts); an absolute `upload_url` / `download_url` (token paths: they name no org);
 //   • `warnings: string[]` on EVERY result — non-empty when text content calls into
 //     something only claude.ai provides (`CLAUDE_ONLY_MARKERS`) or is a bundled Claude
 //     Design export that must be flattened (`isBundledExport`). A warning, never a
@@ -28,6 +29,7 @@ import {
 } from "./artifacts";
 import { downloadFilename, mintDownloadToken } from "../artifacts/download";
 import { mintDocImageUpload } from "./doc-images";
+import { apiBase, appBase } from "./org-links";
 import {
   ARTIFACT_INLINE_MAX, claudeOnlyHits, isBinaryKind, isBundledExport, isTextKind, parseSlugVersion,
   type ArtifactArea, type ArtifactDetailDTO, type ArtifactKind, type ArtifactLinkInput, type ArtifactLinkType,
@@ -41,6 +43,9 @@ export interface ArtifactAgentCtx {
   handle: string;
   /** Absolute origin for links (`env.PUBLIC_ORIGIN`, else the request's), no trailing slash. "" → relative. */
   origin: string;
+  /** The tenant's org slug — every page / raw link is under it. Absent (a caller that did not look it
+   *  up) → the pre-org shape `<origin>/#…`, which only opens for a person in one org. */
+  orgSlug?: string | null;
   /** COOKIE_SECRET — the root the download-URL key is DERIVED from (src/artifacts/download.ts). Absent → no download_url. */
   downloadSecret?: string;
 }
@@ -50,8 +55,11 @@ export function artifactOrigin(publicOrigin: string | undefined, requestOrigin: 
   return (publicOrigin || requestOrigin || "").replace(/\/+$/, "");
 }
 
-const pageUrl = (ctx: ArtifactAgentCtx, slug: string): string => `${ctx.origin}/#artifacts/${slug}`;
+const pageUrl = (ctx: ArtifactAgentCtx, slug: string): string => `${appBase(ctx.origin, ctx.orgSlug)}/#artifacts/${slug}`;
+/** A token path (`/api/artifacts/upload/<token>`, `…/download/<token>`): it names no org. */
 const absolute = (ctx: ArtifactAgentCtx, path: string): string => `${ctx.origin}${path}`;
+/** The repository's `raw_url` is the raw route's SUFFIX (`/raw/a/<slug>@v<n>`): here it gets the org's API prefix. */
+const rawUrl = (ctx: ArtifactAgentCtx, suffix: string): string => `${apiBase(ctx.origin, ctx.orgSlug)}${suffix}`;
 const bad = (m: string): ArtifactError => new ArtifactError("bad_request", m);
 
 /** One warning per CLAUDE_ONLY_MARKERS hit in text content, plus one for a bundled Claude Design
@@ -253,7 +261,7 @@ export async function agentArtifactGet(
     content_omitted: omit,
     size_bytes: v.size_bytes,
     sha256: v.sha256,
-    raw_url: absolute(ctx, d.raw_url),
+    raw_url: rawUrl(ctx, d.raw_url),
     url: pageUrl(ctx, d.slug),
     download_url: dl ? absolute(ctx, `/api/artifacts/download/${dl.token}`) : null,
     download_expires_at: dl ? dl.expires_at : null,

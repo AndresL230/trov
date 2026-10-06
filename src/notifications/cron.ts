@@ -6,6 +6,7 @@
 // The cron runs for EVERY active org (canopy-multitenancy.md §8.4): each on its own
 // send_hour + timezone, with its own policy, members and content. A person in two
 // orgs gets one digest per org; the unsubscribe is global (one click stops all mail).
+import { orgAppBase } from "../tools/org-links";
 import type { RunCadence } from "@shared/notifications";
 import type { NotificationSettingsRow } from "@shared/rows";
 import { type TenantContext, first } from "../data/sql";
@@ -55,6 +56,7 @@ export async function runOrgNotifications(env: Env, ctx: TenantContext, p: Platf
   const opts = {
     delivery: deliveryFor(ctx, env, { from: settings.from_address }),
     origin,
+    appBase: origin ? await orgAppBase(ctx, origin) : undefined,
     unsubscribeUrl: (login: string) => unsubscribeUrl(origin, login, env.COOKIE_SECRET),
   };
   const run = cadence ? await runDigest(ctx, p, cadence, now, opts) : null;

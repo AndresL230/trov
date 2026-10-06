@@ -14,7 +14,8 @@ import { loadSettings } from "./cron";
 
 export interface DeliverOptions {
   delivery: Delivery;
-  origin?: string; // absolute prefix for deep links
+  origin?: string; // absolute origin (the footer's host; the links' base when `appBase` is absent)
+  appBase?: string; // `<origin>/o/<slug>` of the org the digest is about — what its deep links hang off
   /** The https one-click unsubscribe target for a login; defaults to the Settings deep link. */
   unsubscribeUrl?: (login: string) => Promise<string>;
 }
@@ -75,8 +76,8 @@ export async function renderSections(ctx: TenantContext, login: string, kinds: r
 /** Assemble the one message for a login from already-rendered sections. */
 export async function buildMessage(sections: Section[], row: Pick<ClaimedRow, "login" | "window" | "timeZone">, opts: DeliverOptions) {
   const origin = opts.origin ?? "";
-  const unsubscribeUrl = opts.unsubscribeUrl ? await opts.unsubscribeUrl(row.login) : `${origin}/#settings`;
-  return { unsubscribeUrl, ...assembleMessage({ sections, window: row.window, timeZone: row.timeZone, origin, login: row.login, unsubscribeUrl }) };
+  const unsubscribeUrl = opts.unsubscribeUrl ? await opts.unsubscribeUrl(row.login) : `${opts.appBase ?? origin}/#settings`;
+  return { unsubscribeUrl, ...assembleMessage({ sections, window: row.window, timeZone: row.timeZone, origin, appBase: opts.appBase, login: row.login, unsubscribeUrl }) };
 }
 
 /**

@@ -325,3 +325,38 @@ describe("over MCP — the token's org", () => {
     ]);
   });
 });
+
+// ── links in tool results name the token's org (src/tools/org-links.ts) ──────
+describe("MCP tool results link into the token's org: <origin>/o/<slug>/#…", () => {
+  const ORIGIN = "https://trov.test"; // vitest.config.ts PUBLIC_ORIGIN
+
+  it("a handoff's url is the org's app address with the handoff's number", async () => {
+    const a = (await mcp(ORG_A, "send_handoff", { body: "from A" })).body;
+    const b = (await mcp(ORG_B, "send_handoff", { body: "from B" })).body;
+    expect(a).toEqual({ id: 1, url: `${ORIGIN}/o/saplinglearn/#handoffs/1` });
+    expect(b).toEqual({ id: 1, url: `${ORIGIN}/o/acme/#handoffs/1` });
+  });
+
+  it("an artifact's page url and raw_url are under the org — and the raw_url really serves that org's bytes", async () => {
+    const up = async (org: Org, content: string) => (await mcp(org, "upload_asset", { title: "Linked page", kind: "html", area: "ui", repo: "", visibility: "org", content })).body;
+    const a = await up(ORG_A, "<p>bytes of A</p>");
+    const b = await up(ORG_B, "<p>bytes of B</p>");
+    expect([a.slug, b.slug]).toEqual(["linked-page", "linked-page"]); // the same slug in each org
+    expect(a.url).toBe(`${ORIGIN}/o/saplinglearn/#artifacts/linked-page`);
+    expect(b.url).toBe(`${ORIGIN}/o/acme/#artifacts/linked-page`);
+    const got = (await mcp(ORG_B, "artifact_get", { slug: "linked-page" })).body;
+    expect(got.url).toBe(`${ORIGIN}/o/acme/#artifacts/linked-page`);
+    expect(got.raw_url).toBe(`${ORIGIN}/api/o/acme/raw/a/linked-page@v1`);
+    expect((await mcp(ORG_B, "artifact_list", {})).body.artifacts.map((x: { url: string }) => x.url)).toEqual([`${ORIGIN}/o/acme/#artifacts/linked-page`]);
+    const revised = (await mcp(ORG_B, "artifact_update", { slug: "linked-page", summary: "v2", content: "<p>bytes of B, v2</p>" })).body;
+    expect(revised.url).toBe(`${ORIGIN}/o/acme/#artifacts/linked-page`);
+    // A person opens the link in a browser (session cookie): B's bytes, never A's.
+    const raw = await app.request(new URL(got.raw_url).pathname, { headers: { cookie } }, env);
+    expect(raw.status).toBe(200);
+    const text = await raw.text();
+    expect(text).toContain("bytes of B");
+    expect(text).not.toContain("bytes of A");
+    // No result of either org carries a bare `<origin>/#…` or `<origin>/raw/a/…` link any more.
+    for (const r of [a, b, got, revised]) expect(JSON.stringify(r)).not.toMatch(/trov\.test\/(#|raw\/a\/)/);
+  });
+});

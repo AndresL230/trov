@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Env } from "./env";
 import type { Principal } from "./auth/principal";
 import { hasRole, type TenantContext } from "./data/context";
+import { appBase, orgSlugOf } from "./tools/org-links";
 import { get_doc, list_docs, get_feed, query, list_tickets, get_ticket, list_sprints, get_sprint } from "./tools/reads";
 import {
   TicketSeg, TicketAssigneeFilter, TicketCategory,
@@ -80,13 +81,13 @@ async function runTool(fn: () => Promise<unknown>) {
  * A fresh McpServer per request is required (SDK 1.26+ guards against reuse), so
  * this must NOT be hoisted to global scope.
  */
-export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?: string } = {}): McpServer {
+export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?: string; orgSlug?: string | null } = {}): McpServer {
   const principal: Principal = { handle: ctx.userId };
   const server = new McpServer({ name: "trov", version: "1.0.0" });
   // Absolute links in artifact results: PUBLIC_ORIGIN, else the /mcp request's origin.
   // COOKIE_SECRET is only the ROOT of the download-URL key (derived with a purpose label).
   const artifactCtx = {
-    tenant: ctx, handle: principal.handle, origin: artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), downloadSecret: env.COOKIE_SECRET,
+    tenant: ctx, handle: principal.handle, origin: artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), orgSlug: opts.orgSlug, downloadSecret: env.COOKIE_SECRET,
   };
 
   server.tool(
@@ -523,7 +524,8 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
   // not knowledge. The bearer principal is the sender / claimer, never an input.
   // `session` on send_handoff is the replay key (processed_items, item index 0),
   // so a retried call returns the first call's handoff instead of a second row.
-  const handoffUrl = (id: number) => `${(env.PUBLIC_ORIGIN ?? "").replace(/\/+$/, "")}/#handoffs/${id}`;
+  // A link into the TOKEN'S org (src/tools/org-links.ts): `<origin>/o/<slug>/#handoffs/<number>`.
+  const handoffUrl = (id: number) => `${appBase(artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), opts.orgSlug)}/#handoffs/${id}`;
   const handoffLine = (h: HandoffView) => ({
     id: h.id, sender: h.sender, recipient: h.recipient, status: h.status, created_at: h.created_at,
     task: h.context.task, excerpt: firstLine(h.body),
@@ -662,8 +664,9 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
   return server;
 }
 
-export function handleMcp(request: Request, env: Env, exec: ExecutionContext, ctx: TenantContext): Promise<Response> {
-  const server = buildTrovMcpServer(env, ctx, { origin: new URL(request.url).origin });
+export async function handleMcp(request: Request, env: Env, exec: ExecutionContext, ctx: TenantContext): Promise<Response> {
+  // The org's slug, for the links tool results carry (`<origin>/o/<slug>/#…`): the org on the token's own row.
+  const server = buildTrovMcpServer(env, ctx, { origin: new URL(request.url).origin, orgSlug: await orgSlugOf(ctx) });
   // createMcpHandler wraps @modelcontextprotocol/sdk over Streamable HTTP, stateless (no McpAgent/DO).
   const handler = createMcpHandler(server, { route: "/mcp" });
   return handler(request, env, exec);
