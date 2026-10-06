@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { platformCtx, systemCtx } from "./helpers/tenant";
+import { ORG_B, ensureMember, platformCtx, systemCtx } from "./helpers/tenant";
 import { all, first, run } from "./helpers/db";
 import { ingestEvent, ingestAdrDraft } from "../src/consumer";
 import { seedNotificationPolicy } from "../src/notifications/policy";
@@ -112,6 +112,30 @@ describe("runDigest (local mode)", () => {
     expect(r1.sent).toBe(2);
     expect(r2.alreadyRan).toBe(2);
     expect(await bodies()).toHaveLength(2);
+  });
+
+  // The deploy that introduced the org-prefixed key (`org:user:cadence:window`) finds production rows
+  // written under the old `user:cadence:window` key. Such a row, in the SAME org, is the same send.
+  it("a window already sent under the pre-org key is not sent again — in that org only", async () => {
+    await user("AndresL230", "andres@example.com");
+    await user("lpcooper-arch", "luke@example.com");
+    await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await run(env.DB, `INSERT INTO notification_outbox (org_id, idempotency_key, user_id, cadence, window_id, kinds, status, created_at, sent_at)
+                       VALUES ('org_saplinglearn', 'AndresL230:daily:2026-09-11', 'AndresL230', 'daily', '2026-09-11', '["review_queue"]', 'sent', '2026-09-11T12:00:01Z', '2026-09-11T12:00:02Z')`);
+
+    const r = await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
+    expect(r).toMatchObject({ eligible: 2, alreadyRan: 1, sent: 1 });
+    expect((await outbox()).map((o) => o.idempotency_key).sort()).toEqual(["AndresL230:daily:2026-09-11", "org_saplinglearn:lpcooper-arch:daily:2026-09-11"]);
+    expect((await bodies()).map((b) => b.to_address)).toEqual(["luke@example.com"]);
+    // …and a re-run still sends nothing new.
+    expect(await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() })).toMatchObject({ alreadyRan: 2, sent: 0 });
+
+    // Another window is not the same send, and neither is another ORG's digest for the same person.
+    expect((await runDigest(systemCtx(), platformCtx(), "daily", MON, { delivery: delivery() })).alreadyRan).toBe(0);
+    await ensureMember("AndresL230", "member", ORG_B);
+    const b = await runDigest(systemCtx(ORG_B), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx(ORG_B)) });
+    expect(b).toMatchObject({ eligible: 1, alreadyRan: 0 });
+    expect((await outbox()).map((o) => o.idempotency_key)).toContain("org_b:AndresL230:daily:2026-09-11");
   });
 
   it("a user whose renderers all return null gets a skipped row and no body", async () => {
