@@ -1049,6 +1049,9 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* Every control here shows where the keyboard is. */
 .cnpy-org button:focus-visible, .cnpy-org select:focus-visible, .cnpy-org-secret button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
 .cnpy-org .cnpy-input:focus-visible, .cnpy-org-secret .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
+/* The GitHub App panel's links out (org-github.ts): Manage on GitHub, the App's page. */
+.cnpy-org a.cnpy-org-ghlink:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+@media (max-width:640px) { .cnpy-org-actions > a.cnpy-org-ghlink { min-height:36px; } }
 .cnpy-org-secret { width:min(820px, 100%); max-height:calc(100vh - 32px); overflow-y:auto; }
 .cnpy-org-secretgrid { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1fr); gap:24px; margin-top:18px; }
 .cnpy-org-how { min-width:0; padding-left:24px; border-left:1px solid var(--border); }

@@ -15,6 +15,7 @@ import {
   resendOrgInvite, getOrgSettings, putOrgSettings, listOrgMembers, updateOrgMember, removeOrgMember, listOrgInvites, createOrgInvite, revokeOrgInvite,
   listOrgRepos, addOrgRepo, removeOrgRepo, listOrgEnvironments, putOrgEnvironment, reorderOrgEnvironments, deleteOrgEnvironment,
   listOrgIntegrations, setOrgIntegration, rotateOrgIntegration, deleteOrgIntegration, putOrgIntegrationConfig, testOrgIntegration, rotateOrgKey, listOrgAudit,
+  getOrgGithub, startGithubInstall, refreshGithubInstallation, disconnectGithubInstallation,
   type OrgEnvironmentWrite,
 } from "./api";
 import {
@@ -38,6 +39,8 @@ export interface OrgHost {
   reloadOrgs(): Promise<unknown>;
   /** The viewer is no longer in the org on screen (they left it): off to the picker. */
   leaveOrg(): void;
+  /** Leave the app for another site (the GitHub App's install page). Default: `location.assign`. */
+  go?(url: string): void;
 }
 
 export interface OrgController {
@@ -76,6 +79,7 @@ export function orgErrorText(e: unknown, fallback: string): string {
     case "repo_exists": return "That repository is already connected.";
     case "primary_repo": return "Make another repository the primary first, then remove this one.";
     case "invite_exists": return "That person already has a pending invite.";
+    case "github_app_not_configured": return "The GitHub App is not set up on this Trov. Connect the repository with a GitHub token instead.";
     case "already_member": return "They are already a member of this org.";
     case "not_found": return "That no longer exists. Reload the page.";
     case "internal": return `${fallback} Something went wrong on the server. Try again in a minute.`;
@@ -132,8 +136,10 @@ export function createOrgController(host: OrgHost): OrgController {
   const loadEnvs = () => read(() => ui().envs, (v) => { ui().envs = v; }, listOrgEnvironments);
   const loadIntegrations = () => read(() => ui().integrations, (v) => { ui().integrations = v; }, listOrgIntegrations);
   const loadAudit = () => read(() => ui().audit, (v) => { ui().audit = v; }, (slug) => listOrgAudit(slug));
-  /** The admin-only reads (their routes answer 403 to a member, so a member never asks). */
-  const loadAdmin = () => { if (roleAtLeast(org()?.role, "admin")) { loadInvites(); loadIntegrations(); loadAudit(); } };
+  const loadGithub = () => read(() => ui().github, (v) => { ui().github = v; }, getOrgGithub);
+  /** The admin-only reads (their routes answer 403 to a member, so a member never asks). The GitHub
+   *  App's is one of them: a write that connects, moves or removes a repository reads it again. */
+  const loadAdmin = () => { if (roleAtLeast(org()?.role, "admin")) { loadInvites(); loadIntegrations(); loadAudit(); loadGithub(); } };
 
   function loadSlices(): void {
     const o = org();
@@ -216,6 +222,11 @@ export function createOrgController(host: OrgHost): OrgController {
       deleteOrgIntegration(o.slug, k.kind, k.scope)
         .then((row) => { replaceIntegration(row); delete ui().tests[arg]; done(`Deleted the ${label}`); loadAudit(); loadRepos(); })
         .catch((e) => failed(e, `Couldn't delete the ${label}.`));
+    } else if (what === "github") {
+      const login = ui().github.data?.installations.find((i) => String(i.installation_id) === arg)?.account_login ?? "the installation";
+      disconnectGithubInstallation(o.slug, Number(arg))
+        .then((g) => { ui().github = { status: "ok", data: g }; done(`Disconnected ${login}`); loadRepos(); loadIntegrations(); loadAudit(); })
+        .catch((e) => failed(e, `Couldn't disconnect ${login}.`));
     } else if (what === "member") {
       const m = ui().members.data.find((x) => x.handle.toLowerCase() === arg.toLowerCase());
       const name = m?.name ?? m?.handle ?? arg;
@@ -261,25 +272,69 @@ export function createOrgController(host: OrgHost): OrgController {
       });
   }
 
-  function addRepo(name: string, primary: boolean): void {
+  /** Connect a repository, or make one the primary. `fromBar`: the name came from the add field (its
+   *  draft clears, its refusal sits under it); otherwise a row's button (the GitHub App panel's
+   *  Connect, a Make primary) asked, and a refusal is a toast. */
+  function addRepo(name: string, primary: boolean, fromBar = !primary): void {
     const o = org();
     const u = ui();
     if (!o || u.repoBusy) return;
-    u.repoBusy = true; u.repoError = null;
+    u.repoBusy = true; u.repoError = null; u.repoPending = fromBar ? null : name;
     rerender();
     addOrgRepo(o.slug, name, primary ? true : undefined)
       .then((repos) => {
-        u.repoBusy = false;
+        u.repoBusy = false; u.repoPending = null;
         u.repos = { status: "ok", data: repos };
-        if (!primary) u.repoDraft = "";
+        if (fromBar) u.repoDraft = "";
         host.flash(primary ? `${name} is now the primary repository` : `Connected ${name}`);
-        loadAdmin(); // a new repository is a new webhook-secret slot
+        loadAdmin(); // a new repository is a new webhook-secret slot, and may attach to an installation
       })
       .catch((e) => {
-        u.repoBusy = false;
+        u.repoBusy = false; u.repoPending = null;
         if (fail(e)) return;
         const msg = e instanceof ApiError && e.message === "invalid" ? "Use the form owner/repo, exactly as it appears on GitHub." : orgErrorText(e, "Couldn't connect the repository.");
-        if (primary) host.flash(msg, 6000); else { u.repoError = msg; rerender(); }
+        if (fromBar) { u.repoError = msg; rerender(); } else host.flash(msg, 6000);
+      });
+  }
+
+  /** Off to GitHub's install page. The button stays "Opening GitHub…" while the page leaves. */
+  function installGithub(): void {
+    const o = org();
+    const u = ui();
+    if (!o || u.githubBusy !== null) return;
+    u.githubBusy = "install";
+    rerender();
+    startGithubInstall(o.slug)
+      .then((r) => {
+        if (!/^https:\/\/github\.com\//.test(r.url)) throw new Error("not a GitHub URL");
+        if (host.go) host.go(r.url); else window.location.assign(r.url);
+      })
+      .catch((e) => {
+        u.githubBusy = null;
+        if (fail(e)) return;
+        host.flash(orgErrorText(e, "Couldn't open GitHub."), 6000);
+      });
+  }
+
+  function refreshGithub(id: number): void {
+    const o = org();
+    const u = ui();
+    const login = u.github.data?.installations.find((i) => i.installation_id === id)?.account_login;
+    if (!o || !login || u.githubBusy !== null) return;
+    u.githubBusy = `refresh:${id}`;
+    rerender();
+    refreshGithubInstallation(o.slug, id)
+      .then((g) => {
+        u.githubBusy = null;
+        u.github = { status: "ok", data: g };
+        host.flash(`Refreshed the repositories of ${login}`);
+        loadRepos(); loadAudit(); // a repository that left the installation is no longer read through it
+      })
+      .catch((e) => {
+        u.githubBusy = null;
+        if (fail(e)) return;
+        host.flash(orgErrorText(e, `Couldn't refresh ${login}.`), 6000);
+        if (e instanceof ApiError && e.status === 404) loadGithub(); else rerender();
       });
   }
 
@@ -534,6 +589,12 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgRepoAdd": if (admin && repoDraftOk(u.repoDraft)) addRepo(u.repoDraft.trim(), false); return;
       case "orgRepoPrimary": if (admin && arg) addRepo(arg, true); return;
 
+      // The GitHub App (org-github.ts)
+      case "orgGithubLoad": if (admin) loadGithub(); break;
+      case "orgGithubInstall": if (admin) installGithub(); return;
+      case "orgGithubRefresh": if (admin && /^\d+$/.test(arg ?? "")) refreshGithub(Number(arg)); return;
+      case "orgGithubConnect": if (admin && arg && repoDraftOk(arg)) addRepo(arg, false, false); return;
+
       // Environments
       case "orgEnvNew":
         if (!admin) return;
@@ -668,7 +729,7 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgConfirm": {
         const at = (arg ?? "").indexOf(":");
         const what = (arg ?? "").slice(0, at);
-        if (!admin || at < 0 || !["repo", "env", "secret", "member", "key"].includes(what)) return;
+        if (!admin || at < 0 || !["repo", "env", "secret", "member", "key", "github"].includes(what)) return;
         if (what === "key" && o?.role !== "owner") return;
         u.confirm = { what: what as OrgConfirm["what"], arg: (arg ?? "").slice(at + 1), busy: false };
         rerender();

@@ -33,6 +33,11 @@
 //                       (`#site` is the landing page, reopened from inside the app)
 // Anything unrecognised falls back to My Work — the same rule the app has always
 // had for a junk hash.
+//
+// A `?query` after the route (`#org/repos?github=connected`) is NEVER part of the route:
+// parseHash ignores it and hashForRoute never writes one, so the first repaint drops it from
+// the address. It carries a one-time notice from a redirect back into the app (the GitHub App's
+// install callback, org-github.ts `githubInstallNotice`); `splitHashQuery` reads it.
 
 import type { Screen } from "./render";
 import { isRepoTab, type RepoTab } from "@shared/repo";
@@ -115,9 +120,16 @@ function intSeg(v: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-/** Parse a location hash (with or without the leading `#`) into a route. */
+/** A hash split at its first `?`: the route part (as given, `#` kept) and the query after it.
+ *  No route segment ever holds a raw `?` (hashForRoute encodes one), so the split is unambiguous. */
+export function splitHashQuery(hash: string): { path: string; query: URLSearchParams } {
+  const at = hash.indexOf("?");
+  return at < 0 ? { path: hash, query: new URLSearchParams() } : { path: hash.slice(0, at), query: new URLSearchParams(hash.slice(at + 1)) };
+}
+
+/** Parse a location hash (with or without the leading `#`) into a route. A `?query` is ignored. */
 export function parseHash(hash: string): Route {
-  const raw = hash.replace(/^#/, "");
+  const raw = splitHashQuery(hash).path.replace(/^#/, "");
   const none: Route = { screen: "mywork", ticketId: null, sprintId: null };
   if (!raw) return none;
 

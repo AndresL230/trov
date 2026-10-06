@@ -4,8 +4,10 @@
  * error, secrets unavailable), what a non-admin member sees, the secret form — and that no
  * render of it, before or after a save, carries a secret's value.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import css from "../web/src/trov.css?raw";
+import { createOrgController } from "../web/src/org-actions";
+import { setApiOrg } from "../web/src/api";
 import {
   orgSettingsView, orgOverlays, setupSteps, setupChecklist, initialOrgUi, currentOrg, orgTabsFor, effectiveOrgTab, orgConfirmCopy,
   apiUrlMoves, envForm, envFieldsOf, blankEnvFields, inviteDraftOk, repoDraftOk, lastOwnerSentence,
@@ -17,8 +19,11 @@ import {
 } from "../web/src/integrations";
 import { render, initialState, type AppState } from "../web/src/render";
 import { sidebarView, navKeyOf, NAV_CLOSED } from "../web/src/sidebar";
-import { parseHash, hashForRoute } from "../web/src/hash";
+import { parseHash, hashForRoute, splitHashQuery } from "../web/src/hash";
+import { githubPanel, githubInstallNotice, githubConfirmCopy, orderedRepos, selectionText, deliveryText, GH_REPO_SHORT, ghAllKey, GITHUB_NOTICE } from "../web/src/org-github";
+import mainSrc from "../web/src/main.ts?raw";
 import type { IntegrationDTO, IntegrationKind, OrgEnvironmentDTO, OrgRepoDTO, OrgAuditDTO } from "@shared/integrations";
+import { installationManageUrl, type GithubAppStateDTO, type GithubInstallationDTO, type GithubInstallationRepoDTO } from "@shared/github-app";
 import type { MyOrg, MyOrgsResponse, OrgInvite, OrgMember, OrgRole } from "@shared/orgs";
 
 const SECRET = "ghp_THIS_IS_THE_SECRET_VALUE_1a2b";
@@ -736,8 +741,8 @@ describe("phone width and accessibility hooks", () => {
     }
   });
   it("no raw colour: every colour in the three modules is a token", async () => {
-    const sources = import.meta.glob(["../web/src/org-settings.ts", "../web/src/org-ui.ts", "../web/src/integrations.ts", "../web/src/org-actions.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
-    expect(Object.keys(sources)).toHaveLength(4);
+    const sources = import.meta.glob(["../web/src/org-settings.ts", "../web/src/org-ui.ts", "../web/src/integrations.ts", "../web/src/org-actions.ts", "../web/src/org-github.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+    expect(Object.keys(sources)).toHaveLength(5);
     for (const [file, src] of Object.entries(sources)) {
       expect(src, file).not.toMatch(/#[0-9a-fA-F]{3,8}\b(?![^`]*&)/);
       expect(src, file).not.toMatch(/rgba?\(/);
@@ -820,5 +825,379 @@ describe("the hierarchy every tab keeps (org-ui.ts)", () => {
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ");
     for (const cls of [".cnpy-lead {", ".cnpy-lead-t {", ".cnpy-sechead {", ".cnpy-xrow {", ".cnpy-xrow-t {", ".cnpy-xrow-b[hidden] { display:none; }", ".cnpy-org-danger:hover, .cnpy-org-danger:focus-visible { color:var(--red) !important; }"]) expect(rules).toContain(cls);
     expect(rules).toMatch(/@media \(max-width:640px\) \{[^@]*\.cnpy-xrow-t \{ flex:1 1 100%; display:grid;/);
+  });
+});
+
+// ── the GitHub App (issue #95; web/src/org-github.ts) ────────────────────────
+const ghRepo = (full_name: string, o: Partial<GithubInstallationRepoDTO> = {}): GithubInstallationRepoDTO =>
+  ({ repo_id: full_name.length * 1000 + full_name.charCodeAt(full_name.length - 1), full_name, private: false, org_repo_id: null, is_primary: false, ...o });
+function install(o: Partial<GithubInstallationDTO> = {}): GithubInstallationDTO {
+  const base: GithubInstallationDTO = {
+    installation_id: 4242, account_login: "acme", account_type: "Organization", repository_selection: "selected", suspended_at: null,
+    connected_by: "andres", connected_at: "2026-10-05T10:00:00.000Z", last_delivery_at: null, repos_synced_at: "2026-10-05T10:00:00.000Z", manage_url: "",
+    repos: [ghRepo("acme/infra", { private: true }), ghRepo("acme/api", { org_repo_id: "hook_b" }), ghRepo("acme/web", { org_repo_id: HOOK, is_primary: true })],
+    ...o,
+  };
+  return { ...base, manage_url: o.manage_url ?? installationManageUrl(base) };
+}
+const ghState = (o: Partial<GithubAppStateDTO> = {}): GithubAppStateDTO => ({ configured: true, app_url: "https://github.com/apps/trov", installations: [], primary_on_app: false, ...o });
+const NOT_REGISTERED = ghState({ configured: false, app_url: null });
+/** The panel's markup in a whole tab: from its section to the "Connected" list after it. */
+function panelOf(html: string): string {
+  const at = html.indexOf("data-org-github=");
+  if (at < 0) return "";
+  const end = html.indexOf(">Connected<", at);
+  return html.slice(at, end < 0 ? undefined : end);
+}
+
+describe("the GitHub App — Repositories", () => {
+  it("not registered: the tab is exactly what it was, and a member never sees the panel", () => {
+    expect(tabView(fullUi({ github: ok(NOT_REGISTERED) }), "repos")).toBe(tabView(fullUi(), "repos"));
+    expect(tabView(emptyUi({ github: ok(NOT_REGISTERED) }), "repos")).toBe(tabView(emptyUi(), "repos"));
+    expect(tabView(fullUi({ github: ok(NOT_REGISTERED) }), "repos")).not.toContain("data-org-github");
+    // A member never reads it — and even if the state held one, nothing of it shows.
+    const member = fullUi({ repos: ok([repo({ id: null, webhook_url: null })]), github: ok(ghState({ installations: [install()] })) });
+    expect(tabView(member, "repos", "member")).not.toContain("data-org-github");
+    expect(githubPanel(org("member"), member)).toBe("");
+    // While it loads there is nothing to show; a failed read says so, with its own retry.
+    expect(githubPanel(org(), emptyUi({ github: { status: "loading", data: null } }))).toBe("");
+    const failed = githubPanel(org(), emptyUi({ github: { status: "error", data: null, error: "503" } }));
+    expect(failed).toContain("Couldn't load the GitHub App.");
+    expect(failed).toContain('data-act="orgGithubLoad"');
+  });
+
+  it("registered, nothing installed: ONE accent Install on GitHub, and adding by name goes quiet", () => {
+    const html = tabView(fullUi({ github: ok(ghState()) }), "repos");
+    const panel = panelOf(html);
+    expect(panel).toContain('data-org-github="none"');
+    expect(panel).toMatch(/<button[^>]*data-act="orgGithubInstall"[^>]*class="cnpy-accentbtn"[^>]*>Install on GitHub</);
+    expect(panel).toContain('href="https://github.com/apps/trov" target="_blank" rel="noopener noreferrer"');
+    // The tab's one accent is the panel's; the add bar keeps working, quietly.
+    expect((html.match(/class="cnpy-accentbtn"/g) ?? []).length).toBe(1);
+    expect(html).toMatch(/data-act="orgRepoAdd"[^>]*class="cnpy-org-off"/);
+    expect(tabView(fullUi({ github: ok(ghState()), repoDraft: "acme/new" }), "repos")).toMatch(/data-act="orgRepoAdd"[^>]*class="cnpy-ghostbtn"/);
+    // It sits above the list.
+    expect(html.indexOf("data-org-github")).toBeLessThan(html.indexOf(">Connected<"));
+    // In flight: the button says so and cannot be pressed twice.
+    const busy = panelOf(tabView(fullUi({ github: ok(ghState()), githubBusy: "install" }), "repos"));
+    expect(busy).toMatch(/data-act="orgGithubInstall"[^>]* disabled aria-busy="true"[^>]*>Opening GitHub…</);
+    // An org with no repository yet: the panel says what to do, the empty card does not repeat it.
+    const fresh = tabView(emptyUi({ github: ok(ghState()) }), "repos");
+    expect(fresh).toContain("No repository connected.");
+    expect(fresh).toContain(">Install on GitHub<");
+    expect(fresh).not.toContain("cnpy-org-empty");
+    expect((fresh.match(/class="cnpy-accentbtn"/g) ?? []).length).toBeLessThanOrEqual(1);
+  });
+
+  it("an installation: the account, what it covers, its deliveries, Refresh / Manage on GitHub / Disconnect", () => {
+    const html = tabView(fullUi({ github: ok(ghState({ installations: [install()] })) }), "repos");
+    const panel = panelOf(html);
+    expect(panel).toContain('data-org-github="installed"');
+    expect(panel).toContain('data-gh-installation="4242"');
+    expect(panel).toContain(">acme<");
+    expect(panel).toContain(">Organization<");
+    expect(panel).toContain("3 selected repositories");
+    expect(panel).toContain("No deliveries yet");
+    expect(panel).toContain("Connected by andres");
+    expect(panel).toMatch(/data-act="orgGithubRefresh" data-arg="4242"[^>]*>Refresh</);
+    expect(panel).toContain('href="https://github.com/organizations/acme/settings/installations/4242" target="_blank" rel="noopener noreferrer"');
+    expect(panel).toContain('aria-label="Manage acme&#39;s installation on GitHub (opens GitHub in a new tab)"');
+    expect(panel).toMatch(/data-act="orgConfirm" data-arg="github:4242"[^>]*aria-label="Disconnect acme"[^>]*class="cnpy-org-danger"/);
+    // Another account is the section head's quiet aside; no accent in the panel (the add bar keeps it).
+    expect(panel).toMatch(/class="cnpy-sechead-a"><button[^>]*data-act="orgGithubInstall"[^>]*>Install on another account</);
+    expect(panel).not.toContain("cnpy-accentbtn");
+    expect((html.match(/class="cnpy-accentbtn"/g) ?? []).length).toBeLessThanOrEqual(1);
+    // Deliveries, suspension, and a personal account with every repository.
+    const live = githubPanel(org(), fullUi({ github: ok(ghState({ installations: [install({ last_delivery_at: new Date(Date.now() - 5 * 60_000).toISOString() })] })) }));
+    expect(live).toContain("Last delivery 5m ago");
+    const susp = githubPanel(org(), fullUi({ github: ok(ghState({ installations: [install({ suspended_at: "2026-10-05T10:00:00.000Z" })] })) }));
+    expect(susp).toContain(">Suspended<");
+    expect(susp).toContain("data-gh-suspended");
+    expect(susp).toContain("with the GitHub token, if one is set");
+    const user = install({ account_type: "User", account_login: "octocat", repository_selection: "all" });
+    const mine = githubPanel(org(), fullUi({ github: ok(ghState({ installations: [user] })) }));
+    expect(mine).toContain(">Personal account<");
+    expect(mine).toContain("All repositories");
+    expect(mine).toContain('href="https://github.com/settings/installations/4242"');
+    // A manage URL that is not GitHub's is never linked.
+    expect(githubPanel(org(), fullUi({ github: ok(ghState({ installations: [install({ manage_url: "https://evil.example/x" })] })) }))).not.toContain("evil.example");
+    expect(selectionText({ repository_selection: "selected", repos: [ghRepo("a/b")] })).toBe("1 selected repository");
+    expect(deliveryText({ last_delivery_at: null })).toBe("No deliveries yet");
+  });
+
+  it("its repositories: Primary, Connected + Make primary, or Connect — a private one is tagged", () => {
+    const panel = githubPanel(org(), fullUi({ github: ok(ghState({ installations: [install()] })) }));
+    // The primary first, then the connected ones, then the rest.
+    expect(orderedRepos(install().repos).map((r) => r.full_name)).toEqual(["acme/web", "acme/api", "acme/infra"]);
+    expect(panel.indexOf('data-gh-repo="acme/web"')).toBeLessThan(panel.indexOf('data-gh-repo="acme/api"'));
+    expect(panel.indexOf('data-gh-repo="acme/api"')).toBeLessThan(panel.indexOf('data-gh-repo="acme/infra"'));
+    const row = (name: string) => { const at = panel.indexOf(`data-gh-repo="${name}"`); return panel.slice(at, panel.indexOf("</li>", at)); };
+    expect(row("acme/web")).toContain('data-state="primary"');
+    expect(row("acme/web")).toContain(">Primary<");
+    expect(row("acme/web")).not.toContain("<button");
+    expect(row("acme/api")).toContain(">Connected<");
+    expect(row("acme/api")).toMatch(/data-act="orgRepoPrimary" data-arg="acme\/api"[^>]*aria-label="Make acme\/api the primary repository"/);
+    expect(row("acme/infra")).toMatch(/data-act="orgGithubConnect" data-arg="acme\/infra"[^>]*aria-label="Connect acme\/infra"[^>]*>Connect</);
+    expect(row("acme/infra")).toContain(">private<");
+    expect(row("acme/api")).not.toContain(">private<");
+    // While one is being connected, it says so, and nothing else can be pressed.
+    const busy = githubPanel(org(), fullUi({ github: ok(ghState({ installations: [install()] })), repoBusy: true, repoPending: "acme/infra" }));
+    expect(busy).toMatch(/data-act="orgGithubConnect" data-arg="acme\/infra"[^>]* disabled aria-busy="true"[^>]*>Connecting…</);
+    expect(busy).toMatch(/data-act="orgRepoPrimary" data-arg="acme\/api"[^>]* disabled/);
+    const refreshing = githubPanel(org(), fullUi({ github: ok(ghState({ installations: [install()] })), githubBusy: "refresh:4242" }));
+    expect(refreshing).toMatch(/data-act="orgGithubRefresh"[^>]* disabled aria-busy="true"[^>]*>Refreshing…</);
+    // None selected on GitHub: say where to choose them.
+    expect(githubPanel(org(), fullUi({ github: ok(ghState({ installations: [install({ repos: [] })] })) }))).toContain("No repository is selected for Trov. Choose some on GitHub, then Refresh.");
+  });
+
+  it("a long list shows the first few until 'Show all'", () => {
+    const many = install({ repository_selection: "all", repos: Array.from({ length: GH_REPO_SHORT + 4 }, (_, n) => ghRepo(`acme/r${String(n).padStart(2, "0")}`)) });
+    const short = githubPanel(org(), fullUi({ github: ok(ghState({ installations: [many] })) }));
+    expect(short.match(/data-gh-repo=/g)?.length).toBe(GH_REPO_SHORT);
+    expect(short).toMatch(new RegExp(`data-act="orgRowToggle" data-arg="${ghAllKey(4242)}"[^>]*aria-expanded="false"[^>]*>Show all ${GH_REPO_SHORT + 4}<`));
+    const all = githubPanel(org(), fullUi({ github: ok(ghState({ installations: [many] })), openRows: [ghAllKey(4242)] }));
+    expect(all.match(/data-gh-repo=/g)?.length).toBe(GH_REPO_SHORT + 4);
+    expect(all).toContain(">Show fewer<");
+  });
+
+  it("a repository on the App reads 'via GitHub App', with no webhook secret to set and no Payload URL", () => {
+    const ui = fullUi({
+      repos: ok([repo({ connection: "app", installation_id: 4242, webhook_secret_configured: false }), repo({ id: "hook_b", repo_full_name: "acme/api", is_primary: false, webhook_url: "https://trov.dev/webhook/github/hook_b" })]),
+      github: ok(ghState({ installations: [install()], primary_on_app: true })),
+      openRows: ["repo:acme/web", "repo:acme/api"],
+    });
+    const html = tabView(ui, "repos");
+    const row = (name: string) => { const at = html.indexOf(`data-org-repo="${name}"`); return html.slice(at, html.indexOf("</li>", at)); };
+    expect(row("acme/web")).toContain('data-connection="app"');
+    expect(row("acme/web")).toContain(">via GitHub App<");
+    expect(row("acme/web")).toContain("Connected through the GitHub App on");
+    expect(row("acme/web")).not.toContain("Set its webhook secret");
+    expect(row("acme/web")).not.toContain("Webhook URL");
+    expect(row("acme/web")).not.toContain("Webhook secret");
+    // The token-connected one is as before.
+    expect(row("acme/api")).toContain('data-connection="token"');
+    expect(row("acme/api")).toContain("Set its webhook secret");
+    expect(row("acme/api")).toContain("Webhook URL");
+    // Only the token one counts as "without a webhook secret".
+    expect(html).toContain("1 without a webhook secret");
+    // A member sees how it is connected too (nothing that writes).
+    const member = tabView(fullUi({ repos: ok([repo({ id: null, webhook_url: null, connection: "app", installation_id: 4242 })]) }), "repos", "member");
+    expect(member).toContain(">via GitHub App<");
+    // Removing it says it can come back from the installation, and nothing about a webhook secret.
+    const c = orgConfirmCopy({ what: "repo", arg: HOOK, busy: false }, org(), ui)!;
+    expect(c.body).toContain("It stays in the GitHub App's installation");
+    expect(c.body).not.toContain("webhook secret");
+  });
+
+  it("Disconnect is the shared confirmation modal: Trov forgets it, its repos fall back to the token path, uninstall on GitHub too", () => {
+    const ui = fullUi({ github: ok(ghState({ installations: [install()] })) });
+    const c = orgConfirmCopy({ what: "github", arg: "4242", busy: false }, org(), ui)!;
+    expect(c.title).toBe("Disconnect acme?");
+    expect(c.body).toContain("Trov forgets this installation.");
+    expect(c.body).toContain("Its 2 connected repositories stay, read with a GitHub token and webhook secrets you set in Integrations.");
+    expect(c.body).toContain("uninstall it there too");
+    expect(c.confirmLabel).toBe("Disconnect");
+    expect(githubConfirmCopy("4242", fullUi({ github: ok(ghState({ installations: [install({ repos: [ghRepo("acme/x")] })] })) }))!.body).toContain("None of its repositories is connected.");
+    expect(orgConfirmCopy({ what: "github", arg: "999", busy: false }, org(), ui)).toBeNull();
+    const modal = orgOverlays(props({ ...ui, confirm: { what: "github", arg: "4242", busy: false } }));
+    expect(modal).toContain('role="alertdialog"');
+    expect(modal).toContain('data-confirm-act="orgConfirmGo" data-confirm-cancel="orgConfirmCancel"');
+    expect(modal).toContain(">Disconnect<");
+  });
+});
+
+describe("the GitHub App — setup checklist and Integrations", () => {
+  it("once registered, the GitHub step is installing the App, done when the primary repository is on it", () => {
+    const token = (ui: OrgUi) => setupSteps(ui)!.find((s) => s.key === "token")!;
+    expect(token(emptyUi())).toMatchObject({ title: "Set the GitHub token", tab: "integrations", done: false });
+    expect(token(emptyUi({ github: ok(NOT_REGISTERED) }))).toMatchObject({ title: "Set the GitHub token", tab: "integrations" });
+    expect(token(emptyUi({ github: ok(ghState()) }))).toMatchObject({ title: "Install the GitHub App", tab: "repos", go: "Open Repositories", done: false });
+    expect(token(emptyUi({ github: ok(ghState({ installations: [install()] })) })).done).toBe(false);
+    expect(token(emptyUi({ github: ok(ghState({ installations: [install()], primary_on_app: true })) })).done).toBe(true);
+    // A token set the old way does not count once the App is there: the step is installing it.
+    expect(token(emptyUi({ github: ok(ghState()), integrations: ok({ integrations: [set("github_token", "1a2b")], secrets_available: true, key_version: 1 }) })).done).toBe(false);
+    // Waits while the App's read is in flight (no flicker between the two titles); a failed read keeps the token step.
+    expect(setupSteps(emptyUi({ github: { status: "loading", data: null } }))).toBeNull();
+    expect(token(emptyUi({ github: { status: "error", data: null } })).title).toBe("Set the GitHub token");
+    const html = setupChecklist(org(), emptyUi({ github: ok(ghState()) }));
+    expect(html).toContain('aria-label="Install the GitHub App: to do. Open Repositories"');
+    expect(html).toMatch(/data-act="orgTab" data-arg="repos" data-field="orgStep:token"/);
+  });
+
+  it("Integrations: an org on the App keeps a GitHub group that says where its access comes from", () => {
+    const noGithubRows = ok({ integrations: [integ("cloudflare_analytics")], secrets_available: true, key_version: null });
+    // Not on the App: no GitHub rows means no GitHub group, as before.
+    expect(tabView(emptyUi({ integrations: noGithubRows }), "integrations")).not.toContain('data-org-group="github"');
+    const html = tabView(fullUi({ integrations: noGithubRows, github: ok(ghState({ installations: [install()], primary_on_app: true })) }), "integrations");
+    const at = html.indexOf('data-org-group="github"');
+    expect(at).toBeGreaterThan(-1);
+    const group = html.slice(at, html.indexOf("</section>", at));
+    expect(group).toContain("Connected through the GitHub App — no token to manage.");
+    expect(group).toContain(">through the GitHub App<");
+    expect(group).toContain('data-act="orgTab" data-arg="repos"');
+    expect(group).not.toContain("0 of 0 set");
+    // Still-expected rows (a token-connected second repository's secret) stay, under the same line.
+    const mixed = tabView(fullUi({ github: ok(ghState({ installations: [install()], primary_on_app: true })) }), "integrations");
+    expect(mixed).toContain("The primary repository is connected through the GitHub App: it needs no token here.");
+    expect(mixed).toContain('data-org-integration="github_webhook:');
+    // No lead button asks for a token nothing expects.
+    expect(html).not.toContain('data-field="orgLeadToken"');
+  });
+});
+
+describe("the GitHub App — the install landing", () => {
+  it("`#org/repos?github=…` opens Repositories; the query is never part of the route", () => {
+    expect(parseHash("#org/repos?github=connected")).toMatchObject({ screen: "org", orgTab: "repos" });
+    expect(parseHash("#org/repos?github=requested")).toMatchObject({ screen: "org", orgTab: "repos" });
+    expect(hashForRoute(parseHash("#org/repos?github=connected"))).toBe("#org/repos");
+    expect(parseHash("#feed?x=1")).toMatchObject({ screen: "feed" });
+    expect(splitHashQuery("#org/repos?github=connected").path).toBe("#org/repos");
+    expect(splitHashQuery("#org/repos?github=connected").query.get("github")).toBe("connected");
+    expect(splitHashQuery("#org/repos").path).toBe("#org/repos");
+    expect([...splitHashQuery("#org/repos").query.keys()]).toEqual([]);
+  });
+  it("names the outcome in a toast — only the two the callback sends", () => {
+    const notice = (h: string) => githubInstallNotice(splitHashQuery(h).query);
+    expect(notice("#org/repos?github=connected")).toMatchObject({ outcome: "connected", text: "GitHub App connected" });
+    expect(notice("#org/repos?github=requested")).toMatchObject({ outcome: "requested", text: "Install requested — an owner of the GitHub account must approve it" });
+    expect(GITHUB_NOTICE.requested.ms).toBeGreaterThan(GITHUB_NOTICE.connected.ms);
+    expect(notice("#org/repos?github=<script>")).toBeNull();
+    expect(notice("#org/repos?other=connected")).toBeNull();
+    expect(notice("#org/repos")).toBeNull();
+  });
+  it("main.ts flashes it once and drops the query from the address before anything paints it back", () => {
+    // Landing (a full page load): the query is cut BEFORE the hash reaches the address bar or the router.
+    expect(mainSrc).toMatch(/const notice = githubInstallNotice\(splitHashQuery\(hash\)\.query\);\s*hash = splitHashQuery\(hash\)\.path;/);
+    expect(mainSrc).toMatch(/if \(notice\) flash\(notice\.text, notice\.ms\);\s*\}/);
+    // An in-app hash change carrying one: replaced in history before the route is read, and the toast
+    // only once it is applied (a paint before that would write the OLD route's hash back).
+    expect(mainSrc).toMatch(/if \(notice\) history\.replaceState\(null, "", splitHashQuery\(location\.hash\)\.path \|\| "#"\);\s*followHash\(\);\s*if \(notice\) flash\(notice\.text, notice\.ms\);/);
+  });
+});
+
+/** The controller (org-actions.ts) against a recording fetch: what the SPA asks the Worker, exactly —
+ *  the paths, methods and bodies src/github-app/routes.ts answers. Every answer is the DTO itself. */
+describe("the GitHub App — what the controller asks", () => {
+  let asked: { method: string; url: string; body: unknown }[] = [];
+  const INSTALL_URL = "https://github.com/apps/trov/installations/new?state=n0nce";
+  let installUrl = INSTALL_URL;
+  const after = ghState({ installations: [install({ repos: [ghRepo("acme/web", { org_repo_id: HOOK, is_primary: true })] })], primary_on_app: true });
+  beforeEach(() => {
+    asked = []; installUrl = INSTALL_URL;
+    vi.stubGlobal("document", { addEventListener() { /* the controller's keyboard handler */ } });
+    vi.stubGlobal("fetch", async (input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      asked.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      const body = url.endsWith("/github") ? ghState({ installations: [install()] })
+        : url.endsWith("/github/install") ? { url: installUrl }
+        : /\/github\/installations\/\d+\/(refresh|disconnect)$/.test(url) ? after
+        : url.includes("/repos") ? { repos: [repo()] }
+        : {};
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    setApiOrg("acme");
+  });
+  afterEach(() => { vi.unstubAllGlobals(); setApiOrg(null); });
+
+  const mount = { querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement;
+  function harness(role: OrgRole = "owner") {
+    const state: AppState = initialState();
+    state.view = "app"; state.screen = "org"; state.orgSlug = "acme";
+    state.myOrgs = { status: "ok", data: { orgs: [{ slug: "acme", name: "Acme", role }], invites: [], can_create: true, superadmin: false, created: 1, limit: 3 } };
+    const went: string[] = [], flashes: string[] = [];
+    const ctl = createOrgController({
+      state, mount, rerender: () => {}, flash: (m) => { flashes.push(m); }, unauth: () => {}, confirmOut: (then) => then(),
+      reloadOrgs: () => Promise.resolve(null), leaveOrg: () => {}, go: (u) => { went.push(u); },
+    });
+    return { state, ctl, went, flashes };
+  }
+  const calls = (re: RegExp) => asked.filter((a) => re.test(`${a.method} ${a.url}`));
+
+  it("an admin's page reads GET /api/o/<slug>/github; a member's never does", async () => {
+    const h = harness();
+    h.ctl.load();
+    expect(calls(/^GET \/api\/o\/acme\/github$/)).toHaveLength(1);
+    await vi.waitFor(() => expect(h.state.org.github.status).toBe("ok"));
+    expect(h.state.org.github.data?.installations[0].installation_id).toBe(4242);
+    asked = [];
+    harness("member").ctl.load();
+    expect(asked.length).toBeGreaterThan(0);
+    expect(calls(/\/github/)).toEqual([]);
+  });
+
+  it("Install on GitHub: POST …/github/install, then the browser goes where it says — only ever to GitHub", async () => {
+    const h = harness();
+    h.ctl.act("orgGithubInstall", null, null);
+    expect(h.state.org.githubBusy).toBe("install");
+    h.ctl.act("orgGithubInstall", null, null);            // a second press while in flight asks nothing more
+    expect(calls(/^POST \/api\/o\/acme\/github\/install$/)).toHaveLength(1);
+    expect(calls(/^POST \/api\/o\/acme\/github\/install$/)[0].body).toBeUndefined();
+    await vi.waitFor(() => expect(h.went).toEqual([INSTALL_URL]));
+    expect(h.state.org.githubBusy).toBe("install");      // still "Opening GitHub…" while the page leaves
+    installUrl = "https://evil.example/install";
+    const bad = harness();
+    bad.ctl.act("orgGithubInstall", null, null);
+    await vi.waitFor(() => expect(bad.state.org.githubBusy).toBeNull());
+    expect(bad.went).toEqual([]);
+    expect(bad.flashes[0]).toContain("Couldn't open GitHub.");
+    // A member's press does nothing.
+    asked = [];
+    harness("member").ctl.act("orgGithubInstall", null, null);
+    expect(asked).toEqual([]);
+  });
+
+  it("Refresh: POST …/installations/<id>/refresh, the state comes back whole, the repositories are read again", async () => {
+    const h = harness();
+    h.state.org.slug = "acme";
+    h.state.org.github = ok(ghState({ installations: [install()] }));
+    h.ctl.act("orgGithubRefresh", "4242", null);
+    expect(h.state.org.githubBusy).toBe("refresh:4242");
+    expect(calls(/^POST \/api\/o\/acme\/github\/installations\/4242\/refresh$/)).toHaveLength(1);
+    await vi.waitFor(() => expect(h.state.org.githubBusy).toBeNull());
+    expect(h.state.org.github.data).toEqual(after);
+    expect(h.flashes).toContain("Refreshed the repositories of acme");
+    expect(calls(/^GET \/api\/o\/acme\/repos$/)).toHaveLength(1);
+    expect(calls(/^GET \/api\/o\/acme\/github$/)).toEqual([]);
+    h.ctl.act("orgGithubRefresh", "nope", null);         // not an id: nothing asked
+    expect(calls(/refresh/)).toHaveLength(1);
+  });
+
+  it("Disconnect: the confirmation, then POST …/installations/<id>/disconnect", async () => {
+    const h = harness();
+    h.state.org.slug = "acme";
+    h.state.org.github = ok(ghState({ installations: [install()] }));
+    h.ctl.act("orgConfirm", "github:4242", null);
+    expect(h.state.org.confirm).toEqual({ what: "github", arg: "4242", busy: false });
+    expect(asked).toEqual([]);                            // nothing until it is confirmed
+    h.ctl.act("orgConfirmGo", null, null);
+    expect(calls(/^POST \/api\/o\/acme\/github\/installations\/4242\/disconnect$/)).toHaveLength(1);
+    await vi.waitFor(() => expect(h.state.org.confirm).toBeNull());
+    expect(h.state.org.github.data).toEqual(after);
+    expect(h.flashes).toContain("Disconnected acme");
+    // The answer IS the new state: it is not read again. What the disconnect changed is.
+    expect(calls(/^GET \/api\/o\/acme\/github$/)).toEqual([]);
+    expect(calls(/^GET \/api\/o\/acme\/repos$/)).toHaveLength(1);
+    expect(calls(/^GET \/api\/o\/acme\/integrations$/)).toHaveLength(1);
+  });
+
+  it("Connect: POST …/repos with the name alone; Make primary with is_primary — then the App's state is read again", async () => {
+    const h = harness();
+    h.state.org.slug = "acme";
+    h.state.org.repoDraft = "acme/typed";
+    h.ctl.act("orgGithubConnect", "acme/infra", null);
+    expect(h.state.org.repoPending).toBe("acme/infra");
+    expect(calls(/^POST \/api\/o\/acme\/repos$/)[0].body).toEqual({ repo_full_name: "acme/infra" });
+    await vi.waitFor(() => expect(h.state.org.repoBusy).toBe(false));
+    expect(h.state.org.repoPending).toBeNull();
+    expect(h.state.org.repoDraft).toBe("acme/typed");    // the add field's draft is not the panel's
+    expect(h.flashes).toContain("Connected acme/infra");
+    expect(calls(/^GET \/api\/o\/acme\/github$/)).toHaveLength(1);
+    asked = [];
+    h.ctl.act("orgRepoPrimary", "acme/api", null);
+    expect(calls(/^POST \/api\/o\/acme\/repos$/)[0].body).toEqual({ repo_full_name: "acme/api", is_primary: true });
+    await vi.waitFor(() => expect(calls(/^GET \/api\/o\/acme\/github$/)).toHaveLength(1));
+    h.ctl.act("orgGithubConnect", "not a repo", null);     // only an owner/repo name is sent
+    expect(calls(/^POST \/api\/o\/acme\/repos$/)).toHaveLength(1);
   });
 });

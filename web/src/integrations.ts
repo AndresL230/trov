@@ -1,7 +1,8 @@
 // Org settings › Integrations — the org's credentials (canopy-multitenancy.md §8.7).
 //
 // Every integration the org is EXPECTED to have is listed, set or not, grouped: GitHub
-// (the token, one webhook secret per repository), Cloudflare, then one group per
+// (the token, one webhook secret per repository — or, once the primary repository is on the
+// GitHub App and the Worker stops expecting them, a line saying so), Cloudflare, then one group per
 // environment (Railway, app metrics). The tab reads top-down as a summary: a lead line
 // (how many are set, how many have an error), then per group a list of ROWS that each show
 // a name, its status in words and ONE action — Set while it has no value, Test once it
@@ -307,6 +308,10 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
     "This Trov's encryption key is not configured, so it cannot store or use a credential for any org. Ask whoever runs this Trov to set <code style=\"font-family:var(--code)\">TROV_KEK</code>, then reload this page. Nothing you set earlier is lost.",
   )}</div>`;
   const groups = groupIntegrations(d.integrations);
+  // An org whose primary repository is on the GitHub App has no GitHub token to keep here (the
+  // Worker stops expecting one): the GitHub group still says where its access comes from.
+  const onApp = ui.github.data?.primary_on_app === true;
+  if (onApp && !groups.some((g) => g.key === "github")) groups.unshift({ key: "github", title: "GitHub", hint: "", rows: [] });
   const n = integrationCounts(d.integrations);
   const noRepo = ui.repos.status === "ok" && ui.repos.data.length === 0;
   const noEnv = ui.envs.status === "ok" && ui.envs.data.length === 0;
@@ -322,9 +327,11 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
     const done = g.rows.filter((i) => i.configured || i.legacy_fallback).length;
     const extra = g.key === "github" && noRepo
       ? `<li class="cnpy-org-row" style="align-items:center"><div style="flex:1 1 260px;min-width:0;font-size:12.5px;color:var(--fg-55)">Each repository gets its own webhook secret. None is connected yet.</div><div class="cnpy-org-actions">${goLink("Connect a repository", "orgTab", "repos")}</div></li>` : "";
+    const app = g.key === "github" && onApp
+      ? `<li class="cnpy-org-row" data-org-github-app style="align-items:center"><div style="flex:1 1 260px;min-width:0;font-size:12.5px;color:var(--fg-55)">${g.rows.length ? "The primary repository is connected through the GitHub App: it needs no token here." : "Connected through the GitHub App — no token to manage."}</div><div class="cnpy-org-actions">${goLink("Open Repositories", "orgTab", "repos")}</div></li>` : "";
     return `<section aria-labelledby="org-int-${attr(g.key)}" data-org-group="${attr(g.key)}">
-      ${orgHead(g.title, g.key === "orphans" ? "can only be deleted" : `${done} of ${g.rows.length} set`, null, `org-int-${g.key}`)}
-      <ul${surface(LIST)}>${g.rows.map((i) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) })).join("")}${extra}</ul>
+      ${orgHead(g.title, g.key === "orphans" ? "can only be deleted" : g.rows.length === 0 ? "through the GitHub App" : `${done} of ${g.rows.length} set`, null, `org-int-${g.key}`)}
+      <ul${surface(LIST)}>${app}${g.rows.map((i) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) })).join("")}${extra}</ul>
     </section>`;
   }).join("");
   const envHint = noEnv ? `<div style="margin-top:30px">${orgEmpty("No environment tokens yet", "Each environment gets a Railway project token and an app metrics token. Add an environment first.", quietBtn("Open Environments", "orgTab", { arg: "environments" }))}</div>` : "";

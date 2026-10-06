@@ -376,6 +376,24 @@ export function testOrgIntegration(slug: string, kind: IntT.IntegrationKind, sco
 export function rotateOrgKey(slug: string): Promise<{ rotated: boolean; key_version: number | null; secrets: number }> { return orgSend("POST", orgPath(slug, "/integrations/rotate-key")); }
 export function listOrgAudit(slug: string, limit = 50): Promise<IntT.OrgAuditDTO[]> { return orgSend<{ audit: IntT.OrgAuditDTO[] }>("GET", orgPath(slug, `/integrations/audit?limit=${limit}`)).then((r) => r.audit); }
 
+// The GitHub App (Org settings › Repositories' panel, web/src/org-github.ts; src/github-app/routes.ts).
+// Admin, cookie only. Every answer is the DTO ITSELF — no `{ github: … }` wrapper — and none carries a
+// credential. The three POSTs send no body.
+import type * as GhT from "@shared/github-app";
+/** The App's state for this org: configured or not, its installations and their repositories (read from D1). */
+export function getOrgGithub(slug: string): Promise<GhT.GithubAppStateDTO> { return orgSend("GET", orgPath(slug, "/github")); }
+/** Start an install: the server sets its sealed cookie and answers where the browser goes next (GitHub).
+ *  503 `github_app_not_configured` when the platform has not registered the App. */
+export function startGithubInstall(slug: string): Promise<GhT.GithubInstallStartDTO> { return orgSend("POST", orgPath(slug, "/github/install")); }
+/** Re-list an installation's repositories from GitHub; the whole state comes back. */
+export function refreshGithubInstallation(slug: string, installationId: number): Promise<GhT.GithubAppStateDTO> {
+  return orgSend("POST", orgPath(slug, `/github/installations/${encodeURIComponent(String(installationId))}/refresh`));
+}
+/** Trov forgets an installation (it stays installed on GitHub); the whole state comes back. */
+export function disconnectGithubInstallation(slug: string, installationId: number): Promise<GhT.GithubAppStateDTO> {
+  return orgSend("POST", orgPath(slug, `/github/installations/${encodeURIComponent(String(installationId))}/disconnect`));
+}
+
 // ADMIN action: trigger the server-side GitHub backfill (admin-only route). The
 // worker holds the service token and fetches GitHub directly — no webhook secret.
 // `batch` (1-based) / `of` (the client's own cap) let the server run the
