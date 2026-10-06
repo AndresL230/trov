@@ -5,6 +5,7 @@ import { ftsBody, listPages, searchArtifacts } from "./artifacts";
 import type { TicketListItem, TicketDetail, TicketRef, TicketSeg, TicketAssigneeFilter, TicketCategory } from "@shared/tickets";
 import { OPEN_STATUSES, OPEN_STATUS_SQL, TICKET_STATUSES } from "@shared/tickets-core";
 import { type DB, first, all, ph, fanOut } from "../db";
+import { legacyTenant } from "../data/legacy";
 // The sprint read model lives next to the sprint writers; `query()` borrows its
 // progress RULE so the assembled sprint body and the Roadmap can never disagree.
 import { sprintProgress, ticketCountsBySprint } from "./sprints";
@@ -679,7 +680,7 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
   // The progress line is TICKETS ONLY, for the hydrated sprints only — one
   // grouped query, sharing `sprintProgress`'s definition of "closed". The
   // `sprint_progress` cache is deliberately NOT read here.
-  const sprintTicketCounts = await ticketCountsBySprint(db, sprintIds);
+  const sprintTicketCounts = await ticketCountsBySprint(legacyTenant(db), sprintIds);
   const planRow = needPlan ? await first<PlanRow>(db, `SELECT * FROM plan WHERE org_id = ?`, LEGACY_ORG_ID) : null;
 
   // Artifact hydration: each candidate page joined to its current version. The ids

@@ -11,7 +11,7 @@ import { TicketCreate } from "@shared/tickets";
 import { SprintCreate, type SprintDetail, type SprintView } from "@shared/sprints";
 import type { SprintRow } from "@shared/rows";
 import { seedPerson } from "./helpers/persons";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 // The FIVE sprint write tools, driven through the REAL registered closures.
 // They are open to EVERY principal, matching the web (every sprint route sits
@@ -57,7 +57,7 @@ function failed(r: { text: string; isError?: boolean }) {
 }
 
 const seedSprint = (label: string, due = "2026-09-01") =>
-  create_sprint(env.DB, SprintCreate.parse({ label, due }), ADMIN);
+  create_sprint(systemCtx(), SprintCreate.parse({ label, due }), ADMIN);
 
 describe("the sprint write surface is open to every member", () => {
   it("registers all five for an admin", async () => {
@@ -226,8 +226,8 @@ describe("delete_sprint", () => {
     const seeded = await seedSprint("Doomed");
     ok(await callTool("andres", "add_sprint_resource", { id: seeded.id, raw: "#214" }));
     await env.DB.prepare(`INSERT INTO sprint_progress (sprint_id, closed, total, source, computed_at) VALUES (?, 1, 2, 'event', '2026-09-01T00:00:00.000Z')`).bind(seeded.id).run();
-    const t1 = await create_ticket(env.DB, TicketCreate.parse({ title: "one", sprint_id: seeded.id }), "andres");
-    const t2 = await create_ticket(env.DB, TicketCreate.parse({ title: "two", sprint_id: seeded.id }), "andres");
+    const t1 = await create_ticket(systemCtx(), TicketCreate.parse({ title: "one", sprint_id: seeded.id }), "andres");
+    const t2 = await create_ticket(systemCtx(), TicketCreate.parse({ title: "two", sprint_id: seeded.id }), "andres");
 
     const res = ok<{ id: number; label: string; moved: number }>(await callTool("andres", "delete_sprint", { id: seeded.id }));
     expect(res).toEqual({ id: seeded.id, label: "Doomed", moved: 2 });
@@ -247,7 +247,7 @@ describe("delete_sprint", () => {
     await seedPerson("andres");
     const doomed = await seedSprint("Doomed");
     const kept = await seedSprint("Kept");
-    const t = await create_ticket(env.DB, TicketCreate.parse({ title: "stays", sprint_id: kept.id }), "andres");
+    const t = await create_ticket(systemCtx(), TicketCreate.parse({ title: "stays", sprint_id: kept.id }), "andres");
     ok(await callTool("andres", "delete_sprint", { id: doomed.id }));
     expect(await first(env.DB, `SELECT id FROM sprints WHERE id = ?`, kept.id)).not.toBeNull();
     const row = await first<{ sprint_id: number | null }>(env.DB, `SELECT sprint_id FROM tickets WHERE id = ?`, t);

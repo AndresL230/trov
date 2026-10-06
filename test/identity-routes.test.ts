@@ -11,6 +11,7 @@ import type { IdentityTaskWithSample } from "../src/tools/reads";
 import type { IdentityTaskRow, IdentityRow } from "@shared/rows";
 import type { CapturedEvent } from "@shared/contract";
 
+import { systemCtx } from "./helpers/tenant";
 async function authedCookie(login: string): Promise<string> {
   await seedPerson(login);
   const { id } = await createSession(env.DB, login);
@@ -133,13 +134,13 @@ describe("POST /identity-tasks/:login/map", () => {
 
     // Before mapping: captured but unsurfaced — "mystery-dev" is not (yet) any
     // person's handle or identity, so it resolves to nothing.
-    const before = await getMyWork(env.DB, "mystery-dev");
+    const before = await getMyWork(systemCtx(), "mystery-dev");
     expect(before).toEqual({ person: null, previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false });
 
     expect((await post("/identity-tasks/mystery-dev/map", cookie, { person: "casey" })).status).toBe(200);
 
     // After mapping: BOTH pre-existing events surface for the PERSON, purely at read time.
-    const after = await getMyWork(env.DB, "casey");
+    const after = await getMyWork(systemCtx(), "casey");
     expect(after.person).toBe("casey");
     expect(after.previousActivity.length).toBe(2);
     expect(after.previousActivity[0].title).toBe("Second PR"); // newest first

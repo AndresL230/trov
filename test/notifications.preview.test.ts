@@ -13,6 +13,7 @@ import { ingestAdrDraft } from "../src/consumer";
 import { seedPerson } from "./helpers/persons";
 import type { NotificationOutboxRow } from "@shared/rows";
 
+import { systemCtx, platformCtx } from "./helpers/tenant";
 async function cookieFor(login: string, email: string | null = "me@example.com"): Promise<string> {
   await seedPerson(login, { email });
   const { id } = await createSession(env.DB, login);
@@ -103,7 +104,7 @@ describe("POST /api/notifications/test-send", () => {
     await send(cookie, { cadence: "daily" });
     const { runDigest } = await import("../src/notifications/run");
     const { localDelivery } = await import("../src/notifications/delivery");
-    const r = await runDigest(env.DB, "daily", new Date(), { delivery: localDelivery(env.DB) });
+    const r = await runDigest(systemCtx(), platformCtx(), "daily", new Date(), { delivery: localDelivery(systemCtx()) });
     expect(r.sent).toBe(1);
     expect(r.alreadyRan).toBe(0);
   });

@@ -350,7 +350,7 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
     : null;
 
   // The progress backstop this trigger has always run — on its own invocation.
-  if (minute === 10 && gh) await safely("progress", () => recomputeAllProgress(legacyDb(ctx), gh));
+  if (minute === 10 && gh) await safely("progress", () => recomputeAllProgress(ctx, gh));
 
   // reconcileRepo already covers drift and branches as arms (and writes
   // env_heads) — calling refreshDrift/refreshBranches here too would double

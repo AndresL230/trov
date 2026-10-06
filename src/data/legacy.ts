@@ -13,6 +13,14 @@ import { nowIso } from "../db";
 export const legacyDb = (ctx: TenantContext | PlatformContext): D1Database => d1Of(ctx);
 
 /**
+ * DELETE WITH legacyDb. The same hatch the other way round: an UNPORTED module holds only a `db`, and
+ * the ported function it calls needs a context — the legacy org's, as system, which is the org every
+ * unported statement already lands in. Porting the caller turns `fn(legacyTenant(db), …)` into `fn(ctx, …)`.
+ */
+export const legacyTenant = (db: D1Database): TenantContext =>
+  systemTenant(platform({ DB: db } as Env, "system"), LEGACY_ORG_ID, "system");
+
+/**
  * The single org every org-less entry point acts on until it can name one: the GitHub webhook (Phase
  * 5b resolves the org from `org_repos`), the crons (5b enumerates `orgs` by rotation, §8.3), and the
  * token-authenticated artifact upload (the token row will carry its org). Each caller is marked `MT:`.

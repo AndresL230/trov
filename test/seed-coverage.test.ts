@@ -15,6 +15,7 @@ import events from "../fixtures/dev/events.json";
 import identity from "../fixtures/dev/identity.json";
 import tickets from "../fixtures/dev/tickets.json";
 
+import { systemCtx } from "./helpers/tenant";
 const fx = { docs, feed, adrs, triage, roadmap, events, identity, tickets };
 
 beforeEach(async () => {
@@ -25,7 +26,7 @@ beforeEach(async () => {
 
 describe("dev seed lights up every surface", () => {
   it("My Work: previous activity + to-dos for AndresL230", async () => {
-    const mw = await getMyWork(env.DB, "AndresL230");
+    const mw = await getMyWork(systemCtx(), "AndresL230");
     expect(mw.degraded).toBe(false);
     expect(mw.person).toBe("Andres");
     expect(mw.previousActivity.length).toBeGreaterThan(0);
@@ -43,7 +44,7 @@ describe("dev seed lights up every surface", () => {
   });
 
   it("Roadmap: narrative + sprints carrying progress, the 0025 fields, and resources", async () => {
-    const plan = await get_plan(env.DB);
+    const plan = await get_plan(systemCtx());
     expect(plan.narrative.length).toBeGreaterThan(0);
     expect(plan.sprints.length).toBe(7);
     expect(plan.sprints.some((sp) => sp.progress.total > 0)).toBe(true);
@@ -73,7 +74,7 @@ describe("dev seed lights up every surface", () => {
   });
 
   it("Roadmap: a sprint's resources merge its own links with its tickets', deduped by url", async () => {
-    const detail = (await get_sprint(env.DB, 3))!;
+    const detail = (await get_sprint(systemCtx(), 3))!;
     const urls = detail.resources.map((r) => r.url);
     const shared = "https://github.com/SaplingLearn/sapling/issues/214";
 

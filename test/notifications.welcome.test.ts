@@ -6,6 +6,7 @@ import { sealOnboard, ONBOARD_COOKIE, type OnboardPayload } from "../src/auth/on
 import { renderWelcomeEmail, welcomeUrl, sendWelcome } from "../src/notifications/welcome";
 import type { PersonRow } from "@shared/rows";
 
+import { systemCtx } from "./helpers/tenant";
 // The welcome email — the transactional message onboarding sends once the person
 // row exists. Asserted on the dev bodies table (NOTIFICATIONS_MODE unset = local),
 // never on a mock, exactly like the invite and digest tests.
@@ -53,7 +54,7 @@ describe("renderWelcomeEmail", () => {
 
 describe("sendWelcome", () => {
   it("writes the rendered body in local mode and reports sent", async () => {
-    const r = await sendWelcome(env, env.DB, { email: "p@x.io", name: "P", handle: "priya", origin: "https://trov.test" });
+    const r = await sendWelcome(env, systemCtx(), { email: "p@x.io", name: "P", handle: "priya", origin: "https://trov.test" });
     expect(r.status).toBe("sent");
     const rows = await bodies();
     expect(rows.length).toBe(1);
@@ -64,7 +65,7 @@ describe("sendWelcome", () => {
 
   it("never throws on a misconfigured mode — it reports failed", async () => {
     const r = await sendWelcome({ ...env, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: undefined } as unknown as typeof env,
-      env.DB, { email: "p@x.io", name: null, handle: "priya", origin: "https://trov.test" });
+      systemCtx(), { email: "p@x.io", name: null, handle: "priya", origin: "https://trov.test" });
     expect(r.status).toBe("failed");
     expect(r.error).toContain("RESEND_API_KEY");
     expect((await bodies()).length).toBe(0);

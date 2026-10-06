@@ -1,6 +1,8 @@
 import type { CapturedEvent } from "@shared/contract";
 import type { Env } from "./env";
 import { type DB } from "./db";
+import { platform } from "./data/context";
+import type { TenantContext } from "./data/sql";
 import { legacyDb, legacySystemTenant } from "./data/legacy";
 import { ingestEvent, ingestRepoEvent } from "./consumer";
 import { type Summarizer, type PrSummary, type IssueSummary, geminiPrSummarizer, geminiIssueSummarizer, storePrSummary, storeIssueSummary } from "./tools/summarize";
@@ -295,8 +297,8 @@ async function summarizeIssueSeam(db: DB, summarizer: Summarizer<IssueSummary> |
 
 // Task 5: apply this newly-captured issue event's implication(s) to the
 // sprint_progress cache (absolute overwrite — see applyEventProgress).
-async function progressSeam(db: DB, payload: unknown): Promise<void> {
-  await applyEventProgress(db, payload);
+async function progressSeam(ctx: TenantContext, payload: unknown): Promise<void> {
+  await applyEventProgress(ctx, payload);
 }
 
 /** Deliveries the My Work capture (`events`) reads. */
@@ -371,7 +373,7 @@ export async function handleGithubWebhook(
           : env.GEMINI_API_KEY ? geminiPrSummarizer(env.GEMINI_API_KEY) : null;
         await summarizePrSeam(legacyDb(ctx), summarizer, ev);
       } else if (ev.event_type === "issue") {
-        await progressSeam(legacyDb(ctx), payload);
+        await progressSeam(ctx, payload);
         const issueSummarizer = opts?.issueSummarizer !== undefined
           ? opts.issueSummarizer
           : env.GEMINI_API_KEY ? geminiIssueSummarizer(env.GEMINI_API_KEY) : null;
@@ -387,7 +389,7 @@ export async function handleGithubWebhook(
     // no consume(); and a failure here must never cost the events capture above.
     if (eventName === "issues") {
       try {
-        await (opts?.mirror ?? mirrorIssue)(legacyDb(ctx), env.GITHUB_REPO, payload);
+        await (opts?.mirror ?? mirrorIssue)(ctx, platform(env, "github-webhook"), env.GITHUB_REPO, payload);
       } catch (e) {
         console.error("ticket mirror failed", e instanceof Error ? e.message : String(e));
       }

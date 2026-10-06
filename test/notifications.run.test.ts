@@ -17,8 +17,9 @@ import { seedPerson } from "./helpers/persons";
 import type { NotificationKind } from "@shared/notifications";
 import type { NotificationOutboxRow } from "@shared/rows";
 import type { CapturedEvent } from "@shared/contract";
-import type { DB } from "../src/db";
+import type { TenantContext } from "../src/data/sql";
 
+import { systemCtx, platformCtx } from "./helpers/tenant";
 const TZ = "America/New_York";
 const FRI = new Date("2026-09-11T12:00:00.000Z"); // Friday 08:00 ET
 const MON = new Date("2026-09-14T12:00:00.000Z"); // Monday 08:00 ET
@@ -70,40 +71,40 @@ describe("computeWindow", () => {
 
 describe("resolveCadence — three layers, first match wins", () => {
   it("falls through to the registry default when neither pref nor policy row exists", async () => {
-    expect(await resolveCadence(env.DB, "u", "roadmap_plan")).toBe("weekly");
+    expect(await resolveCadence(systemCtx(), "u", "roadmap_plan")).toBe("weekly");
   });
   it("policy default_cadence beats the registry default", async () => {
-    await seedNotificationPolicy(env.DB);
+    await seedNotificationPolicy(systemCtx());
     await run(env.DB, `UPDATE notification_policy SET default_cadence = 'daily' WHERE kind = 'roadmap_plan'`);
-    expect(await resolveCadence(env.DB, "u", "roadmap_plan")).toBe("daily");
+    expect(await resolveCadence(systemCtx(), "u", "roadmap_plan")).toBe("daily");
   });
   it("a user pref beats the policy default", async () => {
-    await seedNotificationPolicy(env.DB);
+    await seedNotificationPolicy(systemCtx());
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('u', 'my_work', 'weekly', 'now')`);
-    expect(await resolveCadence(env.DB, "u", "my_work")).toBe("weekly");
-    expect(await resolveCadence(env.DB, "someone-else", "my_work")).toBe("daily");
+    expect(await resolveCadence(systemCtx(), "u", "my_work")).toBe("weekly");
+    expect(await resolveCadence(systemCtx(), "someone-else", "my_work")).toBe("daily");
   });
   it("policy enabled = 0 short-circuits to off before the user layer is consulted", async () => {
-    await seedNotificationPolicy(env.DB);
+    await seedNotificationPolicy(systemCtx());
     await run(env.DB, `UPDATE notification_policy SET enabled = 0 WHERE kind = 'my_work'`);
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('u', 'my_work', 'daily', 'now')`);
-    expect(await resolveCadence(env.DB, "u", "my_work")).toBe("off");
+    expect(await resolveCadence(systemCtx(), "u", "my_work")).toBe("off");
   });
   it("an unknown kind resolves to off", async () => {
-    expect(await resolveCadence(env.DB, "u", "nope")).toBe("off");
+    expect(await resolveCadence(systemCtx(), "u", "nope")).toBe("off");
   });
 });
 
 describe("runDigest (local mode)", () => {
-  const delivery = () => localDelivery(env.DB);
+  const delivery = () => localDelivery(systemCtx());
 
   it("running the same window twice yields exactly one outbox row per eligible user", async () => {
     await user("AndresL230", "andres@example.com");
     await user("lpcooper-arch", "luke@example.com");
     await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
 
-    const r1 = await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
-    const r2 = await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
+    const r1 = await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
+    const r2 = await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
     const rows = await outbox();
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.idempotency_key).sort()).toEqual(["AndresL230:daily:2026-09-11", "lpcooper-arch:daily:2026-09-11"]);
@@ -115,7 +116,7 @@ describe("runDigest (local mode)", () => {
 
   it("a user whose renderers all return null gets a skipped row and no body", async () => {
     await user("AndresL230", "andres@example.com");
-    await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
     const rows = await outbox();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ status: "skipped", kinds: "[]", resend_id: null, sent_at: null });
@@ -127,20 +128,20 @@ describe("runDigest (local mode)", () => {
     await user("lpcooper-arch", null);
     await user("Darkest-Teddy", "");
     await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
-    await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
     expect(await outbox()).toHaveLength(0);
     expect(await bodies()).toHaveLength(0);
   });
 
   it("a policy-disabled kind is never rendered regardless of the user's pref", async () => {
     await user("AndresL230", "andres@example.com");
-    await seedNotificationPolicy(env.DB);
+    await seedNotificationPolicy(systemCtx());
     await run(env.DB, `UPDATE notification_policy SET enabled = 0 WHERE kind = 'review_queue'`);
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('AndresL230', 'review_queue', 'daily', 'now')`);
     await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
 
-    await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
     const [row] = await outbox();
     expect(row.status).toBe("sent");
     expect(kindsOf(row)).toEqual(["my_work"]);
@@ -154,8 +155,8 @@ describe("runDigest (local mode)", () => {
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('AndresL230', 'my_work', 'weekly', 'now')`);
     await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
 
-    await runDigest(env.DB, "daily", MON, { delivery: delivery() });
-    await runDigest(env.DB, "weekly", MON, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "daily", MON, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "weekly", MON, { delivery: delivery() });
     const rows = await outbox();
     const daily = rows.find((r) => r.cadence === "daily")!;
     const weekly = rows.find((r) => r.cadence === "weekly")!;
@@ -172,7 +173,7 @@ describe("runDigest (local mode)", () => {
     await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
 
-    await runDigest(env.DB, "daily", FRI, { delivery: delivery(), origin: "https://trov.example" });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery(), origin: "https://trov.example" });
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "sent", user_id: "AndresL230", window_id: "2026-09-11" });
     expect(kindsOf(row)).toEqual(["my_work", "review_queue"]);
@@ -192,18 +193,18 @@ describe("runDigest (local mode)", () => {
     await user("AndresL230", "andres@example.com");
     await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('AndresL230', 'my_work', 'weekly', 'now')`);
-    await runDigest(env.DB, "weekly", MON, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "weekly", MON, { delivery: delivery() });
     const [body] = await bodies();
     expect(body.subject).toBe("Trov weekly, Sep 7 to 11");
   });
 
   it("a renderer that throws marks the row failed with the error and sends nothing", async () => {
     await user("AndresL230", "andres@example.com");
-    const boom: NotificationKind<DB> = {
+    const boom: NotificationKind<TenantContext> = {
       id: "boom", label: "Boom", description: "x", defaultCadence: "daily", allowedCadences: ["daily", "off"],
       render: async () => { throw new Error("renderer exploded"); },
     };
-    await runDigest(env.DB, "daily", FRI, { delivery: delivery(), registry: [...REGISTRY, boom] });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery(), registry: [...REGISTRY, boom] });
     const [row] = await outbox();
     expect(row.status).toBe("failed");
     expect(row.error).toContain("renderer exploded");
@@ -213,7 +214,7 @@ describe("runDigest (local mode)", () => {
   it("a delivery failure marks the row failed with the error", async () => {
     await user("AndresL230", "andres@example.com");
     await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
-    await runDigest(env.DB, "daily", FRI, { delivery: { send: async () => { throw new Error("smtp down"); } } });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: { send: async () => { throw new Error("smtp down"); } } });
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "failed", resend_id: null, sent_at: null });
     expect(row.error).toContain("smtp down");
@@ -222,8 +223,8 @@ describe("runDigest (local mode)", () => {
   it("never sends to the same user twice even if the first run failed (retry is a separate job)", async () => {
     await user("AndresL230", "andres@example.com");
     await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
-    await runDigest(env.DB, "daily", FRI, { delivery: { send: async () => { throw new Error("smtp down"); } } });
-    const r = await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: { send: async () => { throw new Error("smtp down"); } } });
+    const r = await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
     expect(r.alreadyRan).toBe(1);
     const [row] = await outbox();
     expect(row.status).toBe("failed");
@@ -236,8 +237,8 @@ describe("assembled message follows the designed template", () => {
     await user("AndresL230", "andres@example.com");
     await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     await ingestEvent(env.DB, openIssue(1, "AndresL230"), "github-webhook");
-    await runDigest(env.DB, "daily", FRI, {
-      delivery: localDelivery(env.DB), origin: "https://trov.example",
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, {
+      delivery: localDelivery(systemCtx()), origin: "https://trov.example",
       unsubscribeUrl: async (login) => `https://trov.example/u/${login}.sig`,
     });
     const [b] = await bodies();

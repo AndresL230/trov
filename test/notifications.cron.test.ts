@@ -18,6 +18,7 @@ import { seedPerson } from "./helpers/persons";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 import type { Env } from "../src/env";
 
+import { systemCtx, platformCtx } from "./helpers/tenant";
 const FRI_8_ET = new Date("2026-09-11T12:00:00.000Z");
 const MON_8_ET = new Date("2026-09-14T12:00:00.000Z");
 const SETTINGS: NotificationSettingsRow = { org_id: "org_saplinglearn", send_hour: 8, timezone: "America/New_York", from_address: "Trov <trov@mail.example>" };
@@ -124,7 +125,7 @@ describe("retryFailed — failed rows only", () => {
     await user("AndresL230", "andres@example.com");
     await pendingDecision();
     await failedRow();
-    const r = await retryFailed(env.DB, { delivery: localDelivery(env.DB), origin: "" });
+    const r = await retryFailed(systemCtx(), platformCtx(), { delivery: localDelivery(systemCtx()), origin: "" });
     expect(r.retried).toBe(1);
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "sent", error: null });
@@ -136,7 +137,7 @@ describe("retryFailed — failed rows only", () => {
     await user("AndresL230", "andres@example.com");
     await run(env.DB, `INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at, sent_at) VALUES ('AndresL230:daily:2026-09-10', 'AndresL230', 'daily', '2026-09-10', '["review_queue"]', 'sent', 'x', 'x')`);
     await run(env.DB, `INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES ('AndresL230:daily:2026-09-09', 'AndresL230', 'daily', '2026-09-09', '[]', 'skipped', 'x')`);
-    const r = await retryFailed(env.DB, { delivery: localDelivery(env.DB), origin: "" });
+    const r = await retryFailed(systemCtx(), platformCtx(), { delivery: localDelivery(systemCtx()), origin: "" });
     expect(r.retried).toBe(0);
     expect(await bodies()).toHaveLength(0);
   });
@@ -144,7 +145,7 @@ describe("retryFailed — failed rows only", () => {
   it("a failed row whose re-render now has nothing to say becomes skipped", async () => {
     await user("AndresL230", "andres@example.com");
     await failedRow();
-    await retryFailed(env.DB, { delivery: localDelivery(env.DB), origin: "" });
+    await retryFailed(systemCtx(), platformCtx(), { delivery: localDelivery(systemCtx()), origin: "" });
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "skipped", kinds: "[]" });
     expect(await bodies()).toHaveLength(0);
@@ -154,7 +155,7 @@ describe("retryFailed — failed rows only", () => {
     await user("AndresL230", "andres@example.com");
     await pendingDecision();
     await failedRow();
-    await retryFailed(env.DB, { delivery: { send: async () => { throw new Error("still down"); } }, origin: "" });
+    await retryFailed(systemCtx(), platformCtx(), { delivery: { send: async () => { throw new Error("still down"); } }, origin: "" });
     const [row] = await outbox();
     expect(row.status).toBe("failed");
     expect(row.error).toContain("still down");
@@ -164,7 +165,7 @@ describe("retryFailed — failed rows only", () => {
     await user("AndresL230", "a@example.com", 1);
     await pendingDecision();
     await failedRow();
-    const r = await retryFailed(env.DB, { delivery: localDelivery(env.DB), origin: "" });
+    const r = await retryFailed(systemCtx(), platformCtx(), { delivery: localDelivery(systemCtx()), origin: "" });
     expect(r.retried).toBe(0);
     expect((await outbox())[0].status).toBe("failed");
   });

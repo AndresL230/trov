@@ -8,6 +8,7 @@ import type { SprintDetail, SprintView } from "@shared/sprints";
 import type { TicketDetail } from "@shared/tickets";
 import { cookieFor, seedPerson } from "./helpers/persons";
 
+import { systemCtx } from "./helpers/tenant";
 // ── harness (the Phase 2 route-test idiom: real routes, real cookies, real D1) ─
 
 const post = (path: string, cookie: string, body?: unknown) =>
@@ -107,7 +108,7 @@ describe("GET /sprints — tickets-only progress, issues as their own field", ()
   it("issues only: the cache row NEVER enters the bar — progress 0/0, issues 2/3", async () => {
     const cookie = await cookieFor("andres");
     const sp = await createSprint(cookie, { label: "Token rotation" });
-    await upsertProgress(env.DB, sp.id, 2, 3, "event");
+    await upsertProgress(systemCtx(), sp.id, 2, 3, "event");
 
     const { sprints } = await json<{ sprints: SprintView[] }>(await get("/sprints", cookie));
     const v = sprints.find((s) => s.id === sp.id)!;
@@ -118,7 +119,7 @@ describe("GET /sprints — tickets-only progress, issues as their own field", ()
   it("both: the two halves stay SEPARATE — they never add", async () => {
     const cookie = await cookieFor("andres");
     const sp = await createSprint(cookie, { label: "Both" });
-    await upsertProgress(env.DB, sp.id, 2, 3, "event");
+    await upsertProgress(systemCtx(), sp.id, 2, 3, "event");
 
     const ids: number[] = [];
     for (let i = 0; i < 4; i++) ids.push((await createTicket(cookie, { title: `t${i}`, sprint_id: sp.id })).id);
@@ -145,7 +146,7 @@ describe("GET /sprints — tickets-only progress, issues as their own field", ()
   it("GET /sprints/:id carries the same split", async () => {
     const cookie = await cookieFor("andres");
     const sp = await createSprint(cookie, { label: "Detail split" });
-    await upsertProgress(env.DB, sp.id, 1, 5, "event");
+    await upsertProgress(systemCtx(), sp.id, 1, 5, "event");
     const t = await createTicket(cookie, { title: "one", sprint_id: sp.id });
     await moveTo(cookie, t.id, "in_progress");
     await moveTo(cookie, t.id, "done");
@@ -323,7 +324,7 @@ describe("GET /sprints/:id", () => {
     const cookie = await cookieFor("andres");
     await cookieFor("beatrix");
     const sp = await createSprint(cookie, { label: "Detail" });
-    await upsertProgress(env.DB, sp.id, 1, 2, "event");
+    await upsertProgress(systemCtx(), sp.id, 1, 2, "event");
     const t = await createTicket(cookie, { title: "one", sprint_id: sp.id, assignees: ["beatrix"] });
     await moveTo(cookie, t.id, "declined");
 

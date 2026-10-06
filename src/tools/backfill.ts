@@ -1,6 +1,7 @@
 import type { Env } from "../env";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import { first } from "../db";
+import { platform } from "../data/context";
 import { legacyDb, legacySystemTenant } from "../data/legacy";
 import { ingestEvent } from "../consumer";
 import { mirrorIssue } from "./ticket-mirror";
@@ -292,7 +293,7 @@ export async function runBackfill(
     // effort, like the webhook's: a mirror failure never costs the capture.
     if (issue.state === "open") {
       try {
-        await mirrorIssue(legacyDb(ctx), repo, payload);
+        await mirrorIssue(ctx, platform(env, "system"), repo, payload);
       } catch (e) {
         console.error("ticket mirror failed (backfill)", issue.number, e instanceof Error ? e.message : String(e));
       }
@@ -305,7 +306,7 @@ export async function runBackfill(
       if (res.outcome === "written") {
         captured++;
         // Mirror handleGithubWebhook's progress seam for newly-written issues.
-        await applyEventProgress(legacyDb(ctx), payload);
+        await applyEventProgress(ctx, payload);
       } else {
         unchanged++;
       }

@@ -19,6 +19,7 @@ import {
   sha256Hex, uploadUrl, wf,
 } from "./helpers/artifacts";
 
+import { systemCtx } from "./helpers/tenant";
 const AUTHOR = "adel-author";
 const OTHER = "adel-other";
 const ADMIN = "admin-user"; // ADMIN_LOGINS in vitest.config.ts
@@ -27,7 +28,7 @@ const SLUG = "zebra-page";
 let tid = 0;
 beforeEach(async () => {
   for (const h of [AUTHOR, OTHER, ADMIN]) await seedPerson(h);
-  tid = await create_ticket(env.DB, { title: "Zebra ticket", body: "", category: "other", priority: "normal", assignees: [] }, AUTHOR);
+  tid = await create_ticket(systemCtx(), { title: "Zebra ticket", body: "", category: "other", priority: "normal", assignees: [] }, AUTHOR);
   const c = await cookieFor(AUTHOR);
   await createText(c, { title: "Zebra page", content: "# Zebra\n\nstripes quagga", summary: "quagga", links: [{ target_type: "ticket", target_ref: String(tid) }] });
   await wf(`/api/artifacts/${SLUG}/versions`, jsonInit("POST", { content: "# Zebra\n\nstripes quagga v2", summary: "quagga two" }, c)); // v2 publishes it

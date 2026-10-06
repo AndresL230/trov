@@ -9,6 +9,7 @@ import {
 import type { PersonColor } from "@shared/rows";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
 import { type DB, all, first, nowIso, ph } from "../db";
+import { legacyTenant } from "../data/legacy";
 import { ISSUE_GONE_ACTIONS } from "./issue-gone";
 import { list_sprints } from "./sprints";
 import {
@@ -899,7 +900,7 @@ export async function getRepoDashboard(
   };
 
   // The sprint a person marked active (roadmap order) — never inferred from dates.
-  const current = (await list_sprints(db)).find((sp) => sp.active) ?? null;
+  const current = (await list_sprints(legacyTenant(db))).find((sp) => sp.active) ?? null;
   const sprint: RepoSprint | null = current
     ? { id: current.id, label: current.label, due: current.due, closed: current.progress.closed, total: current.progress.total, pct: current.progress.pct }
     : null;

@@ -9,6 +9,7 @@ import { REGISTRY } from "../src/notifications/registry";
 import { seedNotificationPolicy } from "../src/notifications/policy";
 import type { NotificationPolicyRow, NotificationSettingsRow, PersonRow } from "@shared/rows";
 
+import { systemCtx } from "./helpers/tenant";
 async function columns(table: string): Promise<string[]> {
   const rows = await all<{ name: string }>(env.DB, `PRAGMA table_info(${table})`);
   return rows.map((r) => r.name);
@@ -59,7 +60,7 @@ describe("migration 0021 — notification tables", () => {
 describe("policy seeding from the registry", () => {
   it("inserts one enabled policy row per registry kind carrying the registry default", async () => {
     await run(env.DB, `DELETE FROM notification_policy`);
-    const r = await seedNotificationPolicy(env.DB);
+    const r = await seedNotificationPolicy(systemCtx());
     const rows = await all<NotificationPolicyRow>(env.DB, `SELECT * FROM notification_policy ORDER BY kind`);
     expect(rows.map((p) => p.kind)).toEqual([...REGISTRY.map((k) => k.id)].sort());
     for (const k of REGISTRY) {
@@ -73,9 +74,9 @@ describe("policy seeding from the registry", () => {
 
   it("never overwrites an existing row: an admin change survives a re-seed", async () => {
     await run(env.DB, `DELETE FROM notification_policy`);
-    await seedNotificationPolicy(env.DB);
+    await seedNotificationPolicy(systemCtx());
     await run(env.DB, `UPDATE notification_policy SET default_cadence = 'off', enabled = 0, updated_by = 'admin' WHERE kind = 'my_work'`);
-    const r = await seedNotificationPolicy(env.DB);
+    const r = await seedNotificationPolicy(systemCtx());
     expect(r.inserted).toEqual([]);
     const row = await first<NotificationPolicyRow>(env.DB, `SELECT * FROM notification_policy WHERE kind = 'my_work'`);
     expect(row).toMatchObject({ default_cadence: "off", enabled: 0, updated_by: "admin" });
@@ -83,10 +84,10 @@ describe("policy seeding from the registry", () => {
 
   it("inserts only the kinds that are missing, leaving the others untouched", async () => {
     await run(env.DB, `DELETE FROM notification_policy`);
-    await seedNotificationPolicy(env.DB);
+    await seedNotificationPolicy(systemCtx());
     await run(env.DB, `UPDATE notification_policy SET enabled = 0 WHERE kind = 'review_queue'`);
     await run(env.DB, `DELETE FROM notification_policy WHERE kind = 'roadmap_plan'`);
-    const r = await seedNotificationPolicy(env.DB);
+    const r = await seedNotificationPolicy(systemCtx());
     expect(r.inserted).toEqual(["roadmap_plan"]);
     const rq = await first<NotificationPolicyRow>(env.DB, `SELECT * FROM notification_policy WHERE kind = 'review_queue'`);
     expect(rq!.enabled).toBe(0);

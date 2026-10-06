@@ -20,6 +20,7 @@ import { SprintCreate } from "@shared/sprints";
 import type { Window } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationPolicyRow } from "@shared/rows";
 
+import { systemCtx, platformCtx } from "./helpers/tenant";
 // The same window the other renderer tests use: the 24h ending 2026-09-11T12:00Z.
 const WINDOW: Window = {
   cadence: "daily",
@@ -44,7 +45,7 @@ async function file(
   await seedPerson(requester, { github: false });
   for (const a of o.assignees ?? []) await seedPerson(a);
   const id = await create_ticket(
-    env.DB,
+    systemCtx(),
     TicketCreate.parse({
       title,
       assignees: o.assignees ?? [],
@@ -90,7 +91,7 @@ describe("registry entry", () => {
 
   it("seeds a notification_policy row from the registry", async () => {
     await run(env.DB, `DELETE FROM notification_policy`);
-    const r = await seedNotificationPolicy(env.DB);
+    const r = await seedNotificationPolicy(systemCtx());
     expect(r.inserted).toContain("ticketq");
     expect(await first<NotificationPolicyRow>(env.DB, `SELECT * FROM notification_policy WHERE kind = 'ticketq'`)).toMatchObject({
       default_cadence: "daily",
@@ -106,22 +107,22 @@ describe("ticketq renderer", () => {
     // neither qualifies for either half, so the section is dropped entirely.
     await file("Assigned to Luke", { assignees: [OTHER] });
     const done = await file("Already finished", { assignees: [LOGIN] });
-    await transition_ticket(env.DB, done, "in_progress", LOGIN);
-    await transition_ticket(env.DB, done, "done", LOGIN);
+    await transition_ticket(systemCtx(), done, "in_progress", LOGIN);
+    await transition_ticket(systemCtx(), done, "done", LOGIN);
 
-    expect(await kind().render(env.DB, LOGIN, WINDOW)).toBeNull();
+    expect(await kind().render(systemCtx(), LOGIN, WINDOW)).toBeNull();
   });
 
   it("lists submitted tickets with no assignees, newest first — not an in_progress one, not an assigned one", async () => {
     const older = await file("Older unassigned ask", { at: "2026-09-08T12:00:00Z", category: "request", priority: "high" });
     const newest = await file("Newest unassigned ask", { at: "2026-09-10T12:00:00Z", category: "access" });
     const started = await file("Unassigned but started", { at: "2026-09-09T12:00:00Z" });
-    await transition_ticket(env.DB, started, "in_progress", LOGIN); // still nobody on it — only the status differs
+    await transition_ticket(systemCtx(), started, "in_progress", LOGIN); // still nobody on it — only the status differs
     await file("Submitted but assigned", { assignees: [OTHER], at: "2026-09-09T12:00:00Z" });
 
     const before = await tableCounts();
     // Rendered for a recipient with nothing assigned, so this half stands alone.
-    const s = (await kind().render(env.DB, LOGIN, WINDOW))!;
+    const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
     expect(await tableCounts()).toEqual(before); // pure read
 
     expect(s).not.toBeNull();
@@ -161,7 +162,7 @@ describe("ticketq renderer", () => {
     // are the contract — without the line the reader would think the org has 5.
     for (let i = 1; i <= 6; i++) await file(`Unassigned ${i}`, { at: `2026-09-0${i}T12:00:00Z` });
 
-    const s = (await kind().render(env.DB, LOGIN, WINDOW))!;
+    const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
     expect(s.summary).toBe("6 tickets unassigned");
     // newest first, so 6 … 2 are shown and the OLDEST (1) is the one that rolls up
     for (const i of [6, 5, 4, 3, 2]) expect(s.html).toContain(`Unassigned ${i}`);
@@ -172,19 +173,19 @@ describe("ticketq renderer", () => {
   });
 
   it("lists the recipient's open assigned tickets with status and sprint, omitting closed ones and other people's", async () => {
-    const sprint = (await create_sprint(env.DB, SprintCreate.parse({ label: "Queue hardening" }), LOGIN)).id;
+    const sprint = (await create_sprint(systemCtx(), SprintCreate.parse({ label: "Queue hardening" }), LOGIN)).id;
     await file("Mine, in progress", { assignees: [LOGIN], sprint_id: sprint, at: "2026-09-10T12:00:00Z" }).then((id) =>
-      transition_ticket(env.DB, id, "in_progress", LOGIN)
+      transition_ticket(systemCtx(), id, "in_progress", LOGIN)
     );
     await file("Mine, submitted", { assignees: [LOGIN], at: "2026-09-09T12:00:00Z" });
     const declined = await file("Mine, declined", { assignees: [LOGIN] });
-    await transition_ticket(env.DB, declined, "declined", LOGIN);
+    await transition_ticket(systemCtx(), declined, "declined", LOGIN);
     const finished = await file("Mine, done", { assignees: [LOGIN] });
-    await transition_ticket(env.DB, finished, "in_progress", LOGIN);
-    await transition_ticket(env.DB, finished, "done", LOGIN);
+    await transition_ticket(systemCtx(), finished, "in_progress", LOGIN);
+    await transition_ticket(systemCtx(), finished, "done", LOGIN);
     await file("Luke's ticket", { assignees: [OTHER] });
 
-    const s = (await kind().render(env.DB, LOGIN, WINDOW))!;
+    const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
     expect(s).not.toBeNull();
     expect(s.html).toContain("Mine, in progress");
     expect(s.html).toContain("Mine, submitted");
@@ -202,27 +203,27 @@ describe("ticketq renderer", () => {
   it("summarises both halves in one line, singular included", async () => {
     await file("Nobody has this", { at: "2026-09-10T12:00:00Z" });
     await file("I have this", { assignees: [LOGIN], at: "2026-09-10T12:00:00Z" });
-    const s = (await kind().render(env.DB, LOGIN, WINDOW))!;
+    const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
     expect(s.summary).toBe("1 ticket unassigned · 1 assigned to you");
   });
 
   it("escapes HTML in a ticket title", async () => {
     await file(`<img src=x onerror=alert(1)>`);
-    const s = (await kind().render(env.DB, LOGIN, WINDOW))!;
+    const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
     expect(s.html).not.toContain("<img src=x");
     expect(s.html).toContain("&lt;img src=x");
   });
 });
 
 describe("runDigest with ticketq", () => {
-  const delivery = () => localDelivery(env.DB);
+  const delivery = () => localDelivery(systemCtx());
 
   it("writes ONE outbox row carrying ticketq, keyed user:cadence:window_id, with the ticket in the body — a re-run adds nothing", async () => {
     await user(LOGIN, "andres@example.com");
     await file("Projector in room 3 is dead", { at: "2026-09-10T12:00:00Z" });
 
-    await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
-    await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
 
     const rows = await outbox();
     expect(rows).toHaveLength(1);
@@ -238,7 +239,7 @@ describe("runDigest with ticketq", () => {
 
   it("a run where every kind renders null writes a skipped row and no body", async () => {
     await user(LOGIN, "andres@example.com");
-    await runDigest(env.DB, "daily", FRI, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: delivery() });
     const rows = await outbox();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ status: "skipped", kinds: "[]", sent_at: null });
@@ -250,8 +251,8 @@ describe("runDigest with ticketq", () => {
     await file("Badge reader at the side door", { at: "2026-09-10T12:00:00Z" });
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES (?, 'ticketq', 'weekly', 'now')`, LOGIN);
 
-    await runDigest(env.DB, "daily", MON, { delivery: delivery() });
-    await runDigest(env.DB, "weekly", MON, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "daily", MON, { delivery: delivery() });
+    await runDigest(systemCtx(), platformCtx(), "weekly", MON, { delivery: delivery() });
 
     const rows = await outbox();
     const daily = rows.find((r) => r.cadence === "daily")!;
@@ -303,7 +304,7 @@ describe("policy + prefs surfaces", () => {
     prefs = (await (await app.request("/api/notifications/prefs", { headers: { cookie: mine } }, env)).json()) as { kinds: { id: string }[] };
     expect(prefs.kinds.map((k) => k.id)).not.toContain("ticketq");
 
-    await runDigest(env.DB, "daily", FRI, { delivery: localDelivery(env.DB) });
+    await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });
     const [row] = await outbox();
     expect(kindsOf(row)).not.toContain("ticketq");
     expect(row.status).toBe("skipped"); // ticketq was the only kind with anything to say

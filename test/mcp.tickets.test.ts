@@ -16,7 +16,7 @@ import {
 import { create_sprint, set_sprint_active, add_sprint_resource } from "../src/tools/sprints";
 import { upsertProgress } from "../src/tools/progress";
 import { seedPerson } from "./helpers/persons";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 // The ticket/sprint MCP READ surface. Every test here drives the REAL registered
 // closures over an in-memory transport (the same ones production builds per
@@ -113,56 +113,56 @@ interface Queue {
 async function seedQueue(): Promise<Queue> {
   for (const h of ["andres", "beatrix", "meilin"]) await seedPerson(h);
 
-  const a = await create_sprint(env.DB, SprintCreate.parse({ label: "Queue cleanup", due: "2026-08-01", phase: "Now" }), "andres");
-  const b = await create_sprint(env.DB, SprintCreate.parse({ label: "Search polish", due: "2026-09-01" }), "andres");
-  await set_sprint_active(env.DB, a.id, true);
+  const a = await create_sprint(systemCtx(), SprintCreate.parse({ label: "Queue cleanup", due: "2026-08-01", phase: "Now" }), "andres");
+  const b = await create_sprint(systemCtx(), SprintCreate.parse({ label: "Search polish", due: "2026-09-01" }), "andres");
+  await set_sprint_active(systemCtx(), a.id, true);
 
   const loginBug = await create_ticket(
-    env.DB,
+    systemCtx(),
     TicketCreate.parse({ title: "Login page throws on submit", body: "500 on the POST", category: "bug", assignees: ["andres"], sprint_id: a.id }),
     "meilin"
   );
   const loginChild = await create_ticket(
-    env.DB,
+    systemCtx(),
     TicketCreate.parse({ title: "Add a regression test", category: "other", sprint_id: a.id }),
     "meilin"
   );
   const csvDone = await create_ticket(
-    env.DB,
+    systemCtx(),
     TicketCreate.parse({ title: "Export the roster as CSV", category: "request", assignees: ["beatrix"], sprint_id: a.id }),
     "meilin"
   );
   const vpn = await create_ticket(
-    env.DB,
+    systemCtx(),
     TicketCreate.parse({ title: "VPN access for the new hire", category: "access" }),
     "meilin"
   );
   const declined = await create_ticket(
-    env.DB,
+    systemCtx(),
     TicketCreate.parse({ title: "Rewrite everything in Rust", category: "other", assignees: ["andres"] }),
     "meilin"
   );
   const question = await create_ticket(
-    env.DB,
+    systemCtx(),
     TicketCreate.parse({ title: "How do I rotate my MCP token", category: "question", assignees: ["beatrix"], sprint_id: b.id }),
     "meilin"
   );
 
-  await set_ticket_parent(env.DB, loginBug, loginChild);
-  await add_ticket_link(env.DB, loginBug, "#214", "andres");
-  await add_ticket_comment(env.DB, loginBug, "Reproduced on staging.", "andres");
+  await set_ticket_parent(systemCtx(), loginBug, loginChild);
+  await add_ticket_link(systemCtx(), loginBug, "#214", "andres");
+  await add_ticket_comment(systemCtx(), loginBug, "Reproduced on staging.", "andres");
 
-  await transition_ticket(env.DB, csvDone, "in_progress", "beatrix");
-  await transition_ticket(env.DB, csvDone, "done", "beatrix");
-  await transition_ticket(env.DB, declined, "declined", "andres");
+  await transition_ticket(systemCtx(), csvDone, "in_progress", "beatrix");
+  await transition_ticket(systemCtx(), csvDone, "done", "beatrix");
+  await transition_ticket(systemCtx(), declined, "declined", "andres");
 
   // Sprint A owns the same issue url its ticket links (first wins, one row out),
   // plus a design file of its own.
-  await add_sprint_resource(env.DB, a.id, "#214");
-  await add_sprint_resource(env.DB, a.id, FIGMA_URL);
+  await add_sprint_resource(systemCtx(), a.id, "#214");
+  await add_sprint_resource(systemCtx(), a.id, FIGMA_URL);
 
   // The GitHub half of sprint A's progress (event-derived cache): 1 of 2 issues.
-  await upsertProgress(env.DB, a.id, 1, 2, "event");
+  await upsertProgress(systemCtx(), a.id, 1, 2, "event");
 
   return { sprintA: a.id, sprintB: b.id, loginBug, loginChild, csvDone, vpn, declined, question };
 }

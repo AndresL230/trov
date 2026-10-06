@@ -3,13 +3,13 @@ import { handleMcp } from "./mcp";
 import { handleGithubWebhook } from "./webhook";
 import { resolveBearerTenant } from "./data/bearer";
 import { platform } from "./data/context";
-import { legacyDb, legacySystemTenant } from "./data/legacy";
+import { legacySystemTenant } from "./data/legacy";
 import { mcpUnauthorized, oauthOrigin } from "./auth/oauth";
 import { ensureNotificationPolicySeeded } from "./notifications/policy";
 import { DAILY_CRON, WEEKLY_CRON, handleNotificationCron } from "./notifications/cron";
 import { REPO_CRON, handleRepoCron } from "./repo/cron";
 import { verifyUnsubscribeToken } from "./notifications/unsubscribe";
-import { run } from "./db";
+import { run } from "./data/platform-sql";
 import { handleArtifactUpload, isUploadRequest } from "./artifacts/upload";
 import { handleArtifactDownload, isDownloadRequest } from "./artifacts/download";
 import type { Env } from "./env";
@@ -19,7 +19,7 @@ export default {
     // Startup seeding (once per isolate): notification_policy gets a row for
     // any registry kind missing one. Never overwrites; never fails a request.
     // MT: the policy rows are per org; the legacy org's are seeded until org creation seeds its own (§5.3).
-    await ensureNotificationPolicySeeded(legacyDb(legacySystemTenant(env, "system"))).catch(() => undefined);
+    await ensureNotificationPolicySeeded(legacySystemTenant(env, "system")).catch(() => undefined);
     const url = new URL(request.url);
     // Static assets are served by the assets binding before this handler runs.
     if (url.pathname === "/mcp") {
@@ -49,7 +49,7 @@ export default {
       if (request.method !== "POST") return Response.redirect(new URL("/#unsubscribe", url).toString(), 302);
       const login = await verifyUnsubscribeToken(url.pathname.slice(3), env.COOKIE_SECRET);
       if (!login) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401, headers: { "content-type": "application/json" } });
-      await run(legacyDb(platform(env, login)), `UPDATE persons SET email_unsubscribed = 1 WHERE handle = ?`, login);
+      await run(platform(env, login), `UPDATE persons SET email_unsubscribed = 1 WHERE handle = ?`, login);
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "content-type": "application/json" } });
     }
     // Artifact binary upload (issue #52): the single-use token minted by
@@ -74,7 +74,7 @@ export default {
   //    (deploys/checks/runs/branches/drift/open-PRs) at :20 and the capture
   //    prune at :30 — see the subrequest budget at that dispatcher.
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
-    await ensureNotificationPolicySeeded(legacyDb(legacySystemTenant(env, "system"))).catch(() => undefined);
+    await ensureNotificationPolicySeeded(legacySystemTenant(env, "system")).catch(() => undefined);
     if (controller.cron === DAILY_CRON || controller.cron === WEEKLY_CRON) {
       await handleNotificationCron(env, controller.cron, new Date(controller.scheduledTime));
       return;

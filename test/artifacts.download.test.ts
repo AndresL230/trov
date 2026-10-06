@@ -19,7 +19,7 @@ import {
 } from "../src/artifacts/download";
 import { ARTIFACT_DOWNLOAD_TTL_MS } from "@shared/artifacts";
 import { seedPerson } from "./helpers/persons";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const ME = "dl-author";
 const YOU = "dl-teammate";
@@ -283,7 +283,7 @@ describe("artifact_list", () => {
 
   it("filters: q, kind, status, author, ticket; limit truncates", async () => {
     await seedPerson(ME);
-    const ticket = await create_ticket(env.DB, { title: "T", body: "", category: "other", priority: "normal", assignees: [] }, ME);
+    const ticket = await create_ticket(systemCtx(), { title: "T", body: "", category: "other", priority: "normal", assignees: [] }, ME);
     await textPage(ME, { title: "Checkout flow", content: "<p>zebra</p>", links: [{ target_type: "ticket", target_ref: String(ticket) }] });
     await call(ME, "upload_asset", { title: "Notes", kind: "markdown", area: "api", repo: "", visibility: "org", content: "# notes" });
     await binaryPage(YOU, pngBytes("track-f-list"), { title: "Badge" });

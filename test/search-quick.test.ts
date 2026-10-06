@@ -15,6 +15,7 @@ import { quickSearch, buildPrefixMatch } from "../src/tools/quick-search";
 import { createText, wf, jsonInit } from "./helpers/artifacts";
 import type { QuickSearchResult, QuickType } from "@shared/quick-search";
 
+import { systemCtx } from "./helpers/tenant";
 const ME = "quickme";
 const OTHER = "quickother";
 
@@ -44,11 +45,11 @@ async function liveDoc(slug: string, title: string, body: string): Promise<void>
 describe("GET /search/quick — every type", () => {
   it("finds a ticket, doc, decision, sprint, artifact, prompt, handoff, person and feed entry by one word", async () => {
     await seedPerson("zebrafan", { name: "Zebra Person" });
-    const tid = await create_ticket(env.DB, { title: "Zebra crossing is broken", body: "", category: "bug", priority: "normal", assignees: [] }, ME);
+    const tid = await create_ticket(systemCtx(), { title: "Zebra crossing is broken", body: "", category: "bug", priority: "normal", assignees: [] }, ME);
     await liveDoc("zebra-doc", "Zebra runbook", "how the zebra pipeline deploys");
     const adr = await stage_adr(env.DB, { title: "Adopt zebra stripes", context: "c", decision: "use zebra", rationale: "r", confidence: "high" }, "agent");
     await ratify_adr(env.DB, adr);
-    const sp = await create_sprint(env.DB, { label: "Zebra sprint", urgency: "normal" }, ME);
+    const sp = await create_sprint(systemCtx(), { label: "Zebra sprint", urgency: "normal" }, ME);
     await publishedText(await cookieFor(ME), { title: "Zebra diagram", content: "# zebra" });
     await savePrompt(env.DB, ME, { slug: "zebra-review", title: "Zebra review", body: "Review the zebra", status: "published", description: "Checks stripes" }, "human");
     const { handoff } = await createHandoff(env.DB, OTHER, { recipient: ME, body: "Finish the zebra migration" });
@@ -84,7 +85,7 @@ describe("GET /search/quick — every type", () => {
 
   it("finds a ticket by its number, and a person by @handle or a word of their name", async () => {
     await seedPerson("qiulinzy", { name: "Qiu Linzy Chenq" });
-    const tid = await create_ticket(env.DB, { title: "Unrelated title", body: "", category: "other", priority: "normal", assignees: [] }, ME);
+    const tid = await create_ticket(systemCtx(), { title: "Unrelated title", body: "", category: "other", priority: "normal", assignees: [] }, ME);
     expect(ids(await quick(`#${tid}`), "ticket")[0]).toBe(String(tid));
     expect(ids(await quick("@qiulin"), "person")).toEqual(["qiulinzy"]);
     expect(ids(await quick("chenq"), "person")).toEqual(["qiulinzy"]);
@@ -152,7 +153,7 @@ describe("GET /search/quick — visibility", () => {
 
 describe("GET /search/quick — limits and short queries", () => {
   it("caps each group at `limit` (default 4, ceiling 8)", async () => {
-    for (let i = 0; i < 10; i++) await create_ticket(env.DB, { title: `Gecko ticket ${i}`, body: "", category: "other", priority: "normal", assignees: [] }, ME);
+    for (let i = 0; i < 10; i++) await create_ticket(systemCtx(), { title: `Gecko ticket ${i}`, body: "", category: "other", priority: "normal", assignees: [] }, ME);
     expect(ids(await quick("gecko"), "ticket").length).toBe(4);
     expect(ids(await quick("gecko", ME, "&limit=2"), "ticket").length).toBe(2);
     expect(ids(await quick("gecko", ME, "&limit=50"), "ticket").length).toBe(8);

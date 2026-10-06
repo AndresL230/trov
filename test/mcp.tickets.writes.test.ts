@@ -11,7 +11,7 @@ import { getMyWork } from "../src/tools/mywork";
 import type { TicketDetail } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
 import { seedPerson } from "./helpers/persons";
-import { bearerCtx } from "./helpers/tenant";
+import { bearerCtx, systemCtx, platformCtx } from "./helpers/tenant";
 
 // Phase 2: the ticket WRITE tools, driven through the REAL registered closures
 // over an in-memory transport — never the writers directly, so a missing or
@@ -75,7 +75,7 @@ async function seedSprint(title: string): Promise<number> {
 
 async function ticketFor(requester: string, assignees: string[], title = "a ticket"): Promise<number> {
   for (const h of [requester, ...assignees]) await seedPerson(h);
-  return create_ticket(env.DB, { title, body: "", category: "other", priority: "normal", assignees }, requester);
+  return create_ticket(systemCtx(), { title, body: "", category: "other", priority: "normal", assignees }, requester);
 }
 
 /** Everything a ticket write could touch — for the untouched-on-refusal assertions. */
@@ -393,7 +393,7 @@ describe("assign_ticket — issue #90: admin, requester or current assignee", ()
     await seedPerson("admin-user");
     await seedPerson("meilin", { github: false }); // a Google-only teammate GitHub cannot reach
     // An unmapped author files as the system person, with nobody on it.
-    expect(await mirrorIssue(env.DB, "SaplingLearn/sapling", {
+    expect(await mirrorIssue(systemCtx(), platformCtx(), "SaplingLearn/sapling", {
       action: "opened",
       repository: { full_name: "SaplingLearn/sapling" },
       issue: {
@@ -413,14 +413,14 @@ describe("assign_ticket — issue #90: admin, requester or current assignee", ()
     expect(t.assignees).toEqual(["meilin"]);
     expect(t.status).toBe("submitted");
 
-    const mw = await getMyWork(env.DB, "meilin");
+    const mw = await getMyWork(systemCtx(), "meilin");
     expect(mw.tickets.map((x) => x.id)).toContain(id);
     expect(mw.ticketsTotal).toBe(1);
   });
 
   it("leaves a resolved ticket resolved", async () => {
     const id = await ticketFor("andres", ["andres"]);
-    await transition_ticket(env.DB, id, "done", "andres");
+    await transition_ticket(systemCtx(), id, "done", "andres");
     await seedPerson("beatrix");
     expect(ok<TicketDetail>(await callTool("andres", "assign_ticket", { id, login: "beatrix", on: true })).status).toBe("done");
   });

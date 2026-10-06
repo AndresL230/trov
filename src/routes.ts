@@ -584,7 +584,7 @@ app.post("/invites", async (c) => {
     throw e;
   }
   const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-  const email = await sendInvite(c.env, legacyDb(c.var.p), { email: invite.email, inviteeName: invite.name, inviterHandle: c.get("principal").handle, origin });
+  const email = await sendInvite(c.env, c.var.ctx, c.var.p, { email: invite.email, inviteeName: invite.name, inviterHandle: c.get("principal").handle, origin });
   return c.json({ ok: true, invite: (await first<InviteRow>(legacyDb(c.var.p), `SELECT * FROM invites WHERE email = ?`, invite.email))!, email });
 });
 app.post("/invites/:email/revoke", async (c) => {
@@ -597,13 +597,13 @@ app.post("/invites/:email/resend", async (c) => {
   if (!row) return c.json({ error: "no such invite" }, 404);
   if (row.revoked_at || row.accepted_by) return c.json({ error: row.revoked_at ? "revoked" : "accepted" }, 409);
   const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-  const result = await sendInvite(c.env, legacyDb(c.var.p), { email: row.email, inviteeName: row.name, inviterHandle: c.get("principal").handle, origin });
+  const result = await sendInvite(c.env, c.var.ctx, c.var.p, { email: row.email, inviteeName: row.name, inviterHandle: c.get("principal").handle, origin });
   return c.json({ ok: true, email: result });
 });
 
 // Roadmap read (session-gated): admin narrative + sprints in target-date order,
 // merged with cached progress from the plan store. No live GitHub, no per-user token.
-app.get("/roadmap", async (c) => c.json(await get_plan(legacyDb(c.var.ctx))));
+app.get("/roadmap", async (c) => c.json(await get_plan(c.var.ctx)));
 
 // Personal dashboard (session-gated): the signed-in user's My Work projection —
 // previous activity (summarized merged/closed PRs), open assigned issues, and open
@@ -612,7 +612,7 @@ app.get("/roadmap", async (c) => c.json(await get_plan(legacyDb(c.var.ctx))));
 app.get("/me/dashboard", async (c) => {
   const login = c.get("principal").handle;
   try {
-    const data: DashboardData = await getMyWork(legacyDb(c.var.ctx), login);
+    const data: DashboardData = await getMyWork(c.var.ctx, login);
     return c.json(data);
   } catch {
     // Absolute backstop: never 500. Anything unexpected (D1) → empty degraded payload.
@@ -743,7 +743,7 @@ app.post("/tickets", async (c) => {
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
     // The principal is the requester, full stop — parsed.data has no requester field.
-    const id = await create_ticket(legacyDb(c.var.ctx), parsed.data, c.get("principal").handle);
+    const id = await create_ticket(c.var.ctx, parsed.data, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -798,7 +798,7 @@ app.post("/tickets/:id/edit", async (c) => {
   const parsed = TicketEdit.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await edit_ticket(legacyDb(c.var.ctx), id, parsed.data, c.get("principal").handle);
+    await edit_ticket(c.var.ctx, id, parsed.data, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -813,7 +813,7 @@ app.post("/tickets/:id/status", async (c) => {
   const parsed = TicketTransition.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await transition_ticket(legacyDb(c.var.ctx), id, parsed.data.to, c.get("principal").handle);
+    await transition_ticket(c.var.ctx, id, parsed.data.to, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -829,7 +829,7 @@ app.post("/tickets/:id/move", async (c) => {
   const parsed = TicketMove.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await move_ticket(legacyDb(c.var.ctx), id, parsed.data.to, parsed.data.after_id, c.get("principal").handle);
+    await move_ticket(c.var.ctx, id, parsed.data.to, parsed.data.after_id, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -843,7 +843,7 @@ app.post("/tickets/:id/assignees", async (c) => {
   const parsed = TicketAssigneeToggle.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await toggle_assignee(legacyDb(c.var.ctx), id, parsed.data.login, parsed.data.on);
+    await toggle_assignee(c.var.ctx, id, parsed.data.login, parsed.data.on);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -856,7 +856,7 @@ app.post("/tickets/:id/links", async (c) => {
   const parsed = TicketLinkAdd.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await add_ticket_link(legacyDb(c.var.ctx), id, parsed.data.raw, c.get("principal").handle);
+    await add_ticket_link(c.var.ctx, id, parsed.data.raw, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -870,7 +870,7 @@ app.post("/tickets/:id/links/:linkId/remove", async (c) => {
   const linkId = Number(c.req.param("linkId"));
   if (id === null || !Number.isInteger(linkId)) return c.json({ error: "invalid id" }, 400);
   try {
-    await remove_ticket_link(legacyDb(c.var.ctx), id, linkId);
+    await remove_ticket_link(c.var.ctx, id, linkId);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -883,7 +883,7 @@ app.post("/tickets/:id/delete", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   try {
-    return c.json({ ok: true, ...(await delete_ticket(legacyDb(c.var.ctx), id)) });
+    return c.json({ ok: true, ...(await delete_ticket(c.var.ctx, id)) });
   } catch (e) {
     return ticketFail(c, e);
   }
@@ -896,7 +896,7 @@ app.post("/tickets/:id/sprint", async (c) => {
   const parsed = TicketSprintSet.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await set_ticket_sprint(legacyDb(c.var.ctx), id, parsed.data.sprint_id);
+    await set_ticket_sprint(c.var.ctx, id, parsed.data.sprint_id);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -911,7 +911,7 @@ app.post("/tickets/:id/parent", async (c) => {
   const parsed = TicketParentSet.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await set_ticket_parent(legacyDb(c.var.ctx), id, parsed.data.child_id);
+    await set_ticket_parent(c.var.ctx, id, parsed.data.child_id);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -924,7 +924,7 @@ app.post("/tickets/:id/comment", async (c) => {
   const parsed = TicketCommentAdd.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await add_ticket_comment(legacyDb(c.var.ctx), id, parsed.data.body, c.get("principal").handle);
+    await add_ticket_comment(c.var.ctx, id, parsed.data.body, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -960,7 +960,7 @@ app.post("/sprints", async (c) => {
     return c.json({ error: custom ?? "invalid payload", issues: parsed.error.issues }, 400);
   }
   try {
-    const sprint = await create_sprint(legacyDb(c.var.ctx), parsed.data, c.get("principal").handle);
+    const sprint = await create_sprint(c.var.ctx, parsed.data, c.get("principal").handle);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return sprintFail(c, e);
@@ -970,12 +970,12 @@ app.post("/sprints", async (c) => {
 // The roadmap's sprint list: each with its tickets-only progress, the separate
 // cached GitHub issue counts, and members.
 // Registered before /sprints/:id (Hono matches in registration order).
-app.get("/sprints", async (c) => c.json({ sprints: await list_sprints(legacyDb(c.var.ctx)) }));
+app.get("/sprints", async (c) => c.json({ sprints: await list_sprints(c.var.ctx) }));
 
 app.get("/sprints/:id", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
-  const sprint = await get_sprint(legacyDb(c.var.ctx), id);
+  const sprint = await get_sprint(c.var.ctx, id);
   if (!sprint) return c.json({ error: "not found" }, 404);
   return c.json(sprint);
 });
@@ -988,7 +988,7 @@ app.post("/sprints/:id/active", async (c) => {
   const parsed = SprintActiveSet.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    const sprint = await set_sprint_active(legacyDb(c.var.ctx), id, parsed.data.active);
+    const sprint = await set_sprint_active(c.var.ctx, id, parsed.data.active);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return sprintFail(c, e);
@@ -1004,7 +1004,7 @@ app.post("/sprints/:id/resources", async (c) => {
   const parsed = SprintResourceAdd.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    const sprint = await add_sprint_resource(legacyDb(c.var.ctx), id, parsed.data.raw);
+    const sprint = await add_sprint_resource(c.var.ctx, id, parsed.data.raw);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return sprintFail(c, e);
@@ -1017,7 +1017,7 @@ app.post("/sprints/:id/delete", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   try {
-    return c.json({ ok: true, ...(await delete_sprint(legacyDb(c.var.ctx), id)) });
+    return c.json({ ok: true, ...(await delete_sprint(c.var.ctx, id)) });
   } catch (e) {
     return sprintFail(c, e);
   }
@@ -1029,7 +1029,7 @@ app.post("/sprints/:id/complete", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const sprint = await complete_sprint(legacyDb(c.var.ctx), id);
+    const sprint = await complete_sprint(c.var.ctx, id);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);

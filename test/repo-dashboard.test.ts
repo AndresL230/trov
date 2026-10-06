@@ -14,6 +14,7 @@ import type { RepoDashboard } from "@shared/repo";
 import type { RepoEvent } from "../src/repo/types";
 import { SprintCreate } from "@shared/sprints";
 
+import { systemCtx } from "./helpers/tenant";
 const NOW = Date.parse("2026-09-20T12:00:00Z");
 const ago = (days: number, hours = 0): string => new Date(NOW - days * 86_400_000 - hours * 3_600_000).toISOString();
 
@@ -193,9 +194,9 @@ describe("getRepoDashboard — a D1-only projection", () => {
 
   it("the current sprint is the one a person marked active, with the Roadmap's ticket progress", async () => {
     await seedPerson("jose-a");
-    const sp = await create_sprint(env.DB, SprintCreate.parse({ label: "Notifications GA" }), "jose-a");
+    const sp = await create_sprint(systemCtx(), SprintCreate.parse({ label: "Notifications GA" }), "jose-a");
     expect((await getRepoDashboard(env.DB, "o/r", NOW)).sprint.status).toBe("empty");
-    await set_sprint_active(env.DB, sp.id, true);
+    await set_sprint_active(systemCtx(), sp.id, true);
     const sprint = data((await getRepoDashboard(env.DB, "o/r", NOW)).sprint);
     expect(sprint).toMatchObject({ id: sp.id, label: "Notifications GA", closed: 0, total: 0, pct: 0 });
   });
