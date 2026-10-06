@@ -44,7 +44,9 @@ import { repoEnvironments } from "./repo/config";
 import { runLockedRepoRefresh, runUsagePolls } from "./repo/cron";
 import type { DashboardData } from "@shared/dashboard";
 import { first } from "./db";
-import { platformContext, soleTenantGate } from "./data/gate";
+import { platformContext, soleTenantGate, tenantGate } from "./data/gate";
+import { orgsApp, myInvitesApp, orgTenantApp } from "./orgs/routes";
+import { platformApp } from "./platform/routes";
 import { legacyDb } from "./data/legacy";
 import { createInvite, revokeInvite, listInvites } from "./auth/invites";
 import { listPersons } from "./auth/persons";
@@ -122,6 +124,14 @@ app.route("/", oauthApp);
 // re-check isAdmin inside). The signed one-click unsubscribe POST is NOT here —
 // it lives in src/index.ts, outside the gate, and can only turn email off.
 app.route("/api/notifications", notificationsApp);
+
+// Orgs (§5.3) and the superadmin surface (§5.4). `/api/o/:slug/*` names its org in the path: `tenantGate`
+// resolves the membership (404 for a non-member) for every sub-app mounted under it.
+app.use("/api/o/:slug/*", tenantGate);
+app.route("/api/orgs", orgsApp);
+app.route("/api/invites", myInvitesApp);
+app.route("/api/o/:slug", orgTenantApp);
+app.route("/api/platform", platformApp);
 
 app.post("/ingest", async (c) => {
   const json = await c.req.json().catch(() => null);
