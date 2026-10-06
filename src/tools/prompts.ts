@@ -54,10 +54,10 @@ interface PromptRow {
   current_version: number; updated_at: string; status: PromptStatus | null; body: string | null;
   use_count: number; last_used_at: string | null;
 }
-// Binds the org ONCE, first (the version JOIN); every use adds its own `p.org_id = ?`.
-const SELECT = `SELECT p.slug, p.title, p.description, p.tags, p.author, p.current_version, p.updated_at, v.status, v.body,
-    p.use_count, p.last_used_at
-  FROM prompts p LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version AND v.org_id = ?`;
+const COLS = `p.slug, p.title, p.description, p.tags, p.author, p.current_version, p.updated_at, v.status, v.body,
+    p.use_count, p.last_used_at`;
+// The current version's row. Binds the org FIRST; every read then adds its own `p.org_id = ?`.
+const VERSION = `LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version AND v.org_id = ?`;
 /** The live-prompt condition every read carries: a soft-deleted prompt is absent. */
 const LIVE = `p.deleted_at IS NULL`;
 
@@ -90,15 +90,15 @@ export async function listPrompts(ctx: TenantContext, opts: { q?: string; tags?:
   const match = buildMatch(opts.q ?? "");
   const order = ORDER[opts.sort ?? "updated_desc"] ?? ORDER.updated_desc;
   const rows = match
-    ? await all<PromptRow>(ctx, `${SELECT} JOIN prompts_fts f ON f.slug = p.slug WHERE prompts_fts MATCH ? AND f.org_id = ? AND p.org_id = ? AND ${LIVE} ORDER BY ${order}`,
+    ? await all<PromptRow>(ctx, `SELECT ${COLS} FROM prompts p ${VERSION} JOIN prompts_fts f ON f.slug = p.slug WHERE prompts_fts MATCH ? AND f.org_id = ? AND p.org_id = ? AND ${LIVE} ORDER BY ${order}`,
         ctx.orgId, match, ctx.orgId, ctx.orgId)
-    : await all<PromptRow>(ctx, `${SELECT} WHERE p.org_id = ? AND ${LIVE} ORDER BY ${order}`, ctx.orgId, ctx.orgId);
+    : await all<PromptRow>(ctx, `SELECT ${COLS} FROM prompts p ${VERSION} WHERE p.org_id = ? AND ${LIVE} ORDER BY ${order}`, ctx.orgId, ctx.orgId);
   const want = normalizeTags(opts.tags ?? []);
   return rows.map(toDetail).filter((p) => want.every((t) => p.tags.includes(t))).map(toSummary);
 }
 
 export async function getPrompt(ctx: TenantContext, slug: string): Promise<PromptDetail | null> {
-  const r = await first<PromptRow>(ctx, `${SELECT} WHERE p.slug = ? AND p.org_id = ? AND ${LIVE}`, ctx.orgId, slug, ctx.orgId);
+  const r = await first<PromptRow>(ctx, `SELECT ${COLS} FROM prompts p ${VERSION} WHERE p.slug = ? AND p.org_id = ? AND ${LIVE}`, ctx.orgId, slug, ctx.orgId);
   return r ? toDetail(r) : null;
 }
 

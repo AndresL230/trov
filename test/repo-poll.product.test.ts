@@ -14,10 +14,11 @@ import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
 import { all } from "./helpers/db";
 import { pollSaplingMetrics, saplingProductMetrics } from "../src/repo/poll";
-import { putMetrics, pruneRepoCapture, putMetric } from "../src/repo/store";
+import { putMetrics, putMetric } from "../src/repo/store";
 import { ENVS, LONG_TOKEN, leakedFragments } from "./helpers/repo";
 
 import { platformCtx, systemCtx } from "./helpers/tenant";
+import { pruneRepoCapture } from "../src/platform/sweeps";
 const NOW = Date.parse("2026-09-20T12:05:00Z");
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;

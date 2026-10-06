@@ -369,7 +369,7 @@ const isFilter = (v: string | undefined): v is string => typeof v === "string" &
  * the FTS index (title / description / body) or a title/slug substring.
  */
 export async function listPages(ctx: TenantContext, filters: ArtifactListFilters, viewer: string): Promise<ArtifactSummaryDTO[]> {
-  const where: string[] = [`p.org_id = ?`, `p.current_version > 0`, VISIBLE_SQL];
+  const where: string[] = [`p.current_version > 0`, VISIBLE_SQL];
   const params: unknown[] = [ctx.orgId, ctx.orgId, viewer]; // the JOIN's org, then the WHERE's
   if (isFilter(filters.area)) { where.push(`p.area = ?`); params.push(filters.area); }
   if (isFilter(filters.kind)) { where.push(`p.kind = ?`); params.push(filters.kind); }
@@ -402,7 +402,7 @@ export async function listPages(ctx: TenantContext, filters: ArtifactListFilters
             CASE WHEN p.kind IN ('markdown','mermaid') THEN substr(v.content, 1, 600) END AS v_excerpt
        FROM artifact_pages p
        JOIN artifact_versions v ON v.page_id = p.id AND v.version_no = p.current_version AND v.org_id = ?
-      WHERE ${where.join(" AND ")}
+      WHERE p.org_id = ? AND ${where.join(" AND ")}
       ORDER BY p.updated_at DESC, p.id DESC`,
     ...params
   );

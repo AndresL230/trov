@@ -16,7 +16,7 @@ import {
   BUDGET_SKIP, REFRESH_LOCK, REFRESH_LOCK_MS, SUBREQUEST_CAP,
   handleRepoCron, refreshSubrequests, runLockedRepoRefresh, runRepoRefresh,
 } from "../src/repo/cron";
-import { latestHealth, pruneRepoCapture } from "../src/repo/store";
+import { latestHealth } from "../src/repo/store";
 import { getRepoDashboard } from "../src/tools/repo";
 import { cookieFor } from "./helpers/persons";
 import { ENVS, LONG_TOKEN, fakeGithub, leakedFragments } from "./helpers/repo";
@@ -24,6 +24,7 @@ import type { Env } from "../src/env";
 import type { RepoRefreshResult } from "@shared/repo";
 
 import { platformCtx, systemCtx } from "./helpers/tenant";
+import { pruneRepoCapture } from "../src/platform/sweeps";
 const NOW = Date.parse("2026-09-20T12:37:12Z");
 const CF_URL = "https://api.cloudflare.com/client/v4/graphql";
 const RW_URL = "https://backboard.railway.com/graphql/v2";

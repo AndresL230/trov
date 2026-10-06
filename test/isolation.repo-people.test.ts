@@ -24,7 +24,7 @@ import {
   prStatesAsOf, pushRowsSince, recentPrRows, recordingSince, reviewRowsSince, untitledFailedRuns,
 } from "../src/repo/reads";
 import {
-  getSnapshot, latestHealth, latestMetric, metricSeries, metricsEver, metricsSince, productReadings, pruneRepoCapture,
+  getSnapshot, latestHealth, latestMetric, metricSeries, metricsEver, metricsSince, productReadings,
   putMetric, putMetrics, putSnapshot,
 } from "../src/repo/store";
 import type { RepoEvent } from "../src/repo/types";
@@ -34,6 +34,7 @@ import { getRepoDashboardForAgent, type RepoAgentView } from "../src/tools/repo-
 import { seedPerson } from "./helpers/persons";
 import { ENVS } from "./helpers/repo";
 import { ORG_A, ORG_B, ensureMember, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
+import { pruneRepoCapture } from "../src/platform/sweeps";
 
 const NOW = Date.parse("2026-09-20T12:00:00Z");
 const HOUR = 3_600_000;

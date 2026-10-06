@@ -4,10 +4,11 @@ import type { Env } from "../src/env";
 import { all } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { repoEnvironments } from "../src/repo/config";
-import { putSnapshot, getSnapshot, putMetric, putMetrics, metricSeries, metricsSince, metricsEver, productReadings, latestMetric, pruneRepoCapture } from "../src/repo/store";
+import { putSnapshot, getSnapshot, putMetric, putMetrics, metricSeries, metricsSince, metricsEver, productReadings, latestMetric } from "../src/repo/store";
 import type { RepoEvent, RepoEventRow } from "../src/repo/types";
 
 import { platformCtx, systemCtx, ORG_A } from "./helpers/tenant";
+import { pruneRepoCapture } from "../src/platform/sweeps";
 const push = (over: Partial<RepoEvent> = {}): RepoEvent => ({
   semantic_key: "gh:push:abc1234:main", kind: "push", ref: "main", sha: "abc1234", actor_login: "jose-a",
   count: 2, title: "fix: thing", raw: "{}", provenance: "webhook", occurred_at: "2026-09-20T10:00:00Z", ...over,

@@ -22,10 +22,11 @@ import {
   savePrompt, setPromptTags,
 } from "../src/tools/prompts";
 import {
-  HandoffError, claimHandoff, createHandoff, expireDueHandoffs, expireHandoff, getHandoff, listHandoffs,
+  HandoffError, claimHandoff, createHandoff, expireHandoff, getHandoff, listHandoffs,
 } from "../src/tools/handoffs";
 import { cookieFor } from "./helpers/persons";
-import { ensureMember, systemCtx, ORG_A, ORG_B } from "./helpers/tenant";
+import { ensureMember, platformCtx, systemCtx, ORG_A, ORG_B } from "./helpers/tenant";
+import { expireDueHandoffs } from "../src/platform/sweeps";
 
 const A = () => systemCtx(ORG_A);
 const B = () => systemCtx(ORG_B);
@@ -551,14 +552,18 @@ describe("handoffs", () => {
     expect((await claimHandoff(A(), h.id, "iso-carl", "sess-a")).claimed_by).toBe("iso-carl");
   });
 
-  it("the sweep expires the caller's org only", async () => {
+  // The ONE deliberately cross-org statement here (§4.4): the cron's expiry sweep is a platform-level,
+  // write-only retention sweep, so a single run covers every org — and only what is actually due.
+  it("the expiry sweep is cross-org by design: one run expires every org's due handoffs, and nothing else", async () => {
     const a = await leave(A(), ANN);
     const b = await leave(B(), BOB);
-    const later = Date.now() + 30 * 24 * 60 * 60 * 1000;
-    expect(await expireDueHandoffs(B(), later)).toBe(1);
-    expect(await statusOf(b.id)).toBe("expired");
-    expect(await statusOf(a.id)).toBe("pending");
-    expect(await expireDueHandoffs(A(), later)).toBe(1);
+    const p = platformCtx("system");
+    expect(await expireDueHandoffs(p, Date.now())).toBe(0); // neither is due yet
+    expect([await statusOf(a.id), await statusOf(b.id)]).toEqual(["pending", "pending"]);
+    await run(env.DB, `UPDATE handoffs SET expires_at = '2020-01-01T00:00:00.000Z' WHERE id = ?`, b.id);
+    expect(await expireDueHandoffs(p, Date.now())).toBe(1); // B's is due, A's is not
+    expect([await statusOf(a.id), await statusOf(b.id)]).toEqual(["pending", "expired"]);
+    expect(await expireDueHandoffs(p, Date.now() + 30 * 24 * 60 * 60 * 1000)).toBe(1);
     expect(await statusOf(a.id)).toBe("expired");
   });
 

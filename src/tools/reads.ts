@@ -47,7 +47,7 @@ export interface FeedFilter {
 }
 
 export async function get_feed(ctx: TenantContext, filter: FeedFilter = {}): Promise<FeedRow[]> {
-  const clauses: string[] = [`f.org_id = ?`];
+  const clauses: string[] = [];
   const params: unknown[] = [ctx.orgId];
   const joinParams: unknown[] = [];
   let join = "";
@@ -67,13 +67,13 @@ export async function get_feed(ctx: TenantContext, filter: FeedFilter = {}): Pro
     joinParams.push(ctx.orgId, ...filter.tags);
   }
 
-  const where = `WHERE ${clauses.join(" AND ")}`;
   // Clamp to a safe integer; interpolated (not bound) because SQLite rejects bound LIMIT in some drivers.
   const limit = Math.trunc(Math.min(Math.max(filter.limit ?? 50, 1), 500));
 
   return all<FeedRow>(
     ctx,
-    `SELECT DISTINCT f.* FROM feed f ${join} ${where} ORDER BY f.created_at DESC, f.id DESC LIMIT ${limit}`,
+    `SELECT DISTINCT f.* FROM feed f ${join} WHERE f.org_id = ?${clauses.map((c) => ` AND ${c}`).join("")}
+      ORDER BY f.created_at DESC, f.id DESC LIMIT ${limit}`,
     ...joinParams,
     ...params
   );
@@ -244,7 +244,7 @@ export async function list_tickets(ctx: TenantContext, filter: TicketListFilter 
   const assignee = filter.assignee ?? "anyone";
   const statuses = SEG_STATUSES[seg];
 
-  const clauses: string[] = [`t.org_id = ?`, `t.status IN (${ph(statuses.length)})`];
+  const clauses: string[] = [`t.status IN (${ph(statuses.length)})`];
   const params: unknown[] = [ctx.orgId, ...statuses];
   if (filter.category) {
     clauses.push(`t.category = ?`);
@@ -263,7 +263,7 @@ export async function list_tickets(ctx: TenantContext, filter: TicketListFilter 
 
   const rows = await all<TicketRow>(
     ctx,
-    `SELECT t.* FROM tickets t WHERE ${clauses.join(" AND ")} ORDER BY t.updated_at DESC, t.id DESC`,
+    `SELECT t.* FROM tickets t WHERE t.org_id = ? AND ${clauses.join(" AND ")} ORDER BY t.updated_at DESC, t.id DESC`,
     ...params
   );
   if (rows.length === 0) return [];
@@ -549,7 +549,7 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
 
   if (types.includes("doc")) {
     if (match) {
-      const clauses = ["docs_fts MATCH ?", "docs_fts.org_id = ?"];
+      const clauses: string[] = [];
       const params: unknown[] = [ctx.orgId, match, ctx.orgId];
       if (section !== undefined) { clauses.push("docs.section = ?"); params.push(section); }
       if (space !== undefined) { clauses.push("docs.space = ?"); params.push(space); }
@@ -558,18 +558,18 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
         `SELECT docs_fts.slug AS key, bm25(docs_fts, 1.0, 5.0, 1.0, 1.0) AS rank,
                 snippet(docs_fts, -1, ${SNIPPET}) AS snip
          FROM docs_fts JOIN docs ON docs.slug = docs_fts.slug AND docs.org_id = ?
-         WHERE ${clauses.join(" AND ")} ORDER BY rank LIMIT ${fetchCap}`,
+         WHERE docs_fts MATCH ? AND docs_fts.org_id = ?${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY rank LIMIT ${fetchCap}`,
         ...params
       );
       for (const r of rows) candidates.push({ type: "doc", key: String(r.key), score: -r.rank, snippet: r.snip });
     } else {
-      const clauses: string[] = ["org_id = ?"];
+      const clauses: string[] = [];
       const params: unknown[] = [ctx.orgId];
       if (section !== undefined) { clauses.push("section = ?"); params.push(section); }
       if (space !== undefined) { clauses.push("space = ?"); params.push(space); }
       const rows = await all<{ key: string; ts: string | null }>(
         ctx,
-        `SELECT slug AS key, updated_at AS ts FROM docs WHERE ${clauses.join(" AND ")}
+        `SELECT slug AS key, updated_at AS ts FROM docs WHERE org_id = ?${clauses.map((c) => ` AND ${c}`).join("")}
          ORDER BY (updated_at IS NULL), updated_at DESC, slug DESC LIMIT ${fetchCap}`,
         ...params
       );

@@ -31,7 +31,8 @@
 import { parseTicketLink, type TicketCategory, type TicketPriority, type TicketStatus } from "@shared/tickets";
 import { type TenantContext, type Stmt, first, run, stmt, batch, nowIso } from "../data/sql";
 import type { PlatformContext } from "../data/platform-sql";
-import { priorityOf, resolvePersonForLogin, stripPriority } from "./mywork";
+import { priorityOf, stripPriority } from "./mywork";
+import { resolvePersonForLogin } from "../auth/persons";
 import { isIssueGone } from "./issue-gone";
 
 /** The mirror's writer principal — a reserved handle with a persons row (0032). */

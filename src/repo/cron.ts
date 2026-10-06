@@ -2,7 +2,6 @@
 // fire time (cron expressions are static UTC — the cadence lives in code, not
 // in wrangler.toml). This replaced the old "0 */6 * * *" progress-only
 // trigger, so the trigger count stays at three (Cloudflare bills per Worker).
-import { expireDueHandoffs } from "../tools/handoffs";
 import type { PollOutcome, RepoRefreshResult, UsagePollResult, UsagePollSource } from "@shared/repo";
 import type { Env } from "../env";
 import { pruneOAuth } from "../auth/oauth";
@@ -13,7 +12,8 @@ import { platform } from "../data/context";
 import { legacySystemTenant } from "../data/legacy";
 import { reconcileRepo, scrubbedMessage } from "./github";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollCloudflare, pollRailway, pollSaplingMetrics } from "./poll";
-import { getSnapshot, pruneRepoCapture } from "./store";
+import { getSnapshot } from "./store";
+import { expireDueHandoffs, pruneRepoCapture } from "../platform/sweeps";
 
 export const REPO_CRON = "*/10 * * * *";
 
@@ -329,10 +329,11 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
   // Every tick: a dead target or a bad token costs one data point, never the
   // cron — pingHealth itself never throws.
   await safely("health", () => pingHealth(ctx, envs, scheduledTime, fetchImpl));
-  // Every tick: pending handoffs past their expires_at flip to expired. D1 only
-  // (no subrequest), so it adds nothing to any tick's budget, and it runs BEFORE
-  // the :00 early return so no hour is skipped.
-  await safely("handoff expiry", () => expireDueHandoffs(ctx, scheduledTime));
+  // Every tick: pending handoffs past their expires_at flip to expired — in EVERY org (a cross-org,
+  // write-only sweep on the platform context, §4.4). D1 only (no subrequest), so it adds nothing to
+  // any tick's budget, and it runs BEFORE the :00 early return so no hour is skipped.
+  const p = platform(env, "system");
+  await safely("handoff expiry", () => expireDueHandoffs(p, scheduledTime));
 
   if (minute === 0) {
     // The hourly polls — and NOTHING else may join this tick: the slot exists
@@ -363,9 +364,8 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
   }
 
   if (minute === 30) {
-    // The two retention sweeps (and the handoff expiry above) are deliberately CROSS-ORG and write-only
-    // (§4.4's allowlist): they take the platform context, not one org's.
-    const p = platform(env, "system");
+    // The two retention sweeps are, like the handoff expiry above, deliberately CROSS-ORG and
+    // write-only (§4.4's allowlist): they take the platform context, not one org's.
     await safely("prune", () => pruneRepoCapture(p, scheduledTime));
     // MCP OAuth housekeeping rides the same D1-only tick: spent codes, dead tokens,
     // never-used client registrations. Grants are never deleted.

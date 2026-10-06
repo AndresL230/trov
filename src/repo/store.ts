@@ -1,23 +1,22 @@
 import { type TenantContext, type Stmt, all, first, run, stmt, batch, nowIso, ph, chunked } from "../data/sql";
-import { type PlatformContext, run as runPlatform } from "../data/platform-sql";
 import { PRODUCT_PREFIX } from "./product";
 import type { RepoMetric } from "./types";
 
-const DAY = 86_400_000;
+export const DAY = 86_400_000;
 /** High-frequency series and rows that lose their value quickly. Deliberately
  *  does NOT cover `pr` / `push` — those stay forever (the dashboard's
- *  week-over-week deltas and 14-day bars read them). Called every 6-hourly
- *  tick of the repo cron (src/repo/cron.ts). */
-const FAST_METRICS = ["health_up", "health_ms"];
-const FAST_KINDS = ["check"];
-const FAST_RETENTION_DAYS = 45;
+ *  week-over-week deltas and 14-day bars read them). The sweep that applies these
+ *  bounds is `pruneRepoCapture` (src/platform/sweeps.ts) — cross-org, so not here. */
+export const FAST_METRICS = ["health_up", "health_ms"];
+export const FAST_KINDS = ["check"];
+export const FAST_RETENTION_DAYS = 45;
 /** Hourly usage series — Cloudflare analytics (`cf_*`), and the Railway
  *  (`rw_*`) and active-user (`active_users_*`) gauges later tasks add. The Usage
  *  tab reads 30 days at most, so 100 days is ample; unbounded, two environments
  *  add ~35,000 rows a year. GLOB, not LIKE: in LIKE `_` is itself a wildcard
  *  (`cf_%` would also match `cfx…`), and GLOB is case-sensitive like the names. */
 const USAGE_METRIC_GLOBS = ["cf_*", "rw_*", "active_users_*"];
-const USAGE_RETENTION_DAYS = 100;
+export const USAGE_RETENTION_DAYS = 100;
 /** Sapling's product metrics (`sap_c_*` / `sap_t_*`, src/repo/poll.ts) are the
  *  widest hourly series by far — up to 168 metrics per environment — and the
  *  projection reads them two ways only: the last 3 hours (the figure) and the
@@ -38,10 +37,10 @@ const globLiteral = (pattern: string): string => {
   if (!/^[a-z_]+\*$/.test(pattern)) throw new Error(`not a constant prefix glob: ${pattern}`);
   return `'${pattern}'`;
 };
-const USAGE_GLOB_SQL = USAGE_METRIC_GLOBS.map((g) => `metric GLOB ${globLiteral(g)}`).join(" OR ");
-const PRODUCT_GLOB_SQL = `metric GLOB ${globLiteral(PRODUCT_METRIC_GLOB)}`;
-const PRODUCT_HOURLY_RETENTION_DAYS = 7;
-const PRODUCT_DAILY_RETENTION_DAYS = 100;
+export const USAGE_GLOB_SQL = USAGE_METRIC_GLOBS.map((g) => `metric GLOB ${globLiteral(g)}`).join(" OR ");
+export const PRODUCT_GLOB_SQL = `metric GLOB ${globLiteral(PRODUCT_METRIC_GLOB)}`;
+export const PRODUCT_HOURLY_RETENTION_DAYS = 7;
+export const PRODUCT_DAILY_RETENTION_DAYS = 100;
 export const MIDNIGHT_TAIL = "T00:00:00.000Z";
 /** A bound on `productReadings`' midnight list — it is one bound parameter each. */
 const MAX_MIDNIGHTS = 62;
@@ -276,24 +275,4 @@ export async function latestHealth(ctx: TenantContext): Promise<Map<string, { at
          FROM repo_metrics WHERE org_id = ? AND metric IN ('health_up', 'health_ms')
      ) WHERE rn = 1`, ctx.orgId);
   return new Map(rows.map((r) => [`${r.metric}:${r.env}:${r.part}`, { at: r.at, value: r.value }]));
-}
-
-export async function pruneRepoCapture(p: PlatformContext, now: number): Promise<void> {
-  const cutoff = new Date(now - FAST_RETENTION_DAYS * DAY).toISOString();
-  await runPlatform(p, `DELETE FROM repo_metrics WHERE metric IN (${ph(FAST_METRICS.length)}) AND at < ?`, ...FAST_METRICS, cutoff);
-  // Hourly usage series get their own, longer bound. Every other metric
-  // (coverage, bundle_kb, todo_count) matches neither rule and is kept forever.
-  const usageCutoff = new Date(now - USAGE_RETENTION_DAYS * DAY).toISOString();
-  await runPlatform(p, `DELETE FROM repo_metrics WHERE (${USAGE_GLOB_SQL}) AND at < ?`, usageCutoff);
-  // Sapling's product metrics: hourly rows 7 days, the 00:00 UTC rows 100 days.
-  const productHourly = new Date(now - PRODUCT_HOURLY_RETENTION_DAYS * DAY).toISOString();
-  const productDaily = new Date(now - PRODUCT_DAILY_RETENTION_DAYS * DAY).toISOString();
-  await runPlatform(p,
-    `DELETE FROM repo_metrics WHERE ${PRODUCT_GLOB_SQL} AND (at < ? OR (at < ? AND substr(at, 11) != ?))`,
-    productDaily, productHourly, MIDNIGHT_TAIL);
-  // `part IS NULL` only: a `check` row carrying a `part` (a Workers Builds run
-  // tagged as a frontend deploy — see the migration's column notes) is a
-  // DEPLOY record and must be kept forever like `deploy` rows, or the
-  // frontend dot strip would age out asymmetrically from the backend's.
-  await runPlatform(p, `DELETE FROM repo_events WHERE kind IN (${ph(FAST_KINDS.length)}) AND part IS NULL AND occurred_at < ?`, ...FAST_KINDS, cutoff);
 }

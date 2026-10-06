@@ -1,5 +1,8 @@
+import type { Database } from "./data/context";
+
 export interface Env {
-  DB: D1Database;
+  DB: Database; // reached only through a context (src/data/) — test/data-layer.static.test.ts
+
   ASSETS: Fetcher;
   ARTIFACTS_BUCKET: R2Bucket; // binary artifact bytes at `artifacts/<sha256>` (src/tools/artifacts.ts)
   GITHUB_CLIENT_ID: string;

@@ -2,7 +2,6 @@ import type { DashboardData, MyWorkPr, MyWorkTodo, MyWorkTicket } from "@shared/
 import type { EventRow, PersonRow } from "@shared/rows";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
 import { type TenantContext, all, first } from "../data/sql";
-import { type PlatformContext, first as platformFirst } from "../data/platform-sql";
 import { memberPerson, memberGithubLogins } from "../auth/persons";
 import { isIssueGone } from "./issue-gone";
 
@@ -29,12 +28,6 @@ export function priorityOf(title: string): "P0" | "P1" | "P2" | "P3" | null {
 }
 export function stripPriority(title: string): string {
   return title.replace(/^\s*\[P[0-3]\]\s*/, "").trim();
-}
-
-/** The person a GitHub login belongs to, via the github identity row; null when unmapped. */
-export async function resolvePersonForLogin(p: PlatformContext, login: string): Promise<PersonRow | null> {
-  return platformFirst<PersonRow>(p,
-    `SELECT p.* FROM identities i JOIN persons p ON p.handle = i.person WHERE i.provider = 'github' AND i.subject = ?`, login);
 }
 
 export interface PrEventJoinRow extends EventRow {
@@ -308,7 +301,7 @@ export async function list_events(
   ctx: TenantContext,
   filter?: { type?: "pr_merged" | "pr_closed" | "issue"; subject?: string; limit?: number }
 ): Promise<EventRow[]> {
-  const clauses: string[] = [`org_id = ?`];
+  const clauses: string[] = [];
   const params: unknown[] = [ctx.orgId];
   if (filter?.type) {
     clauses.push(`event_type = ?`);
@@ -322,7 +315,7 @@ export async function list_events(
 
   return all<EventRow>(
     ctx,
-    `SELECT * FROM events WHERE ${clauses.join(" AND ")} ORDER BY occurred_at DESC, id DESC LIMIT ${limit}`,
+    `SELECT * FROM events WHERE org_id = ?${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY occurred_at DESC, id DESC LIMIT ${limit}`,
     ...params
   );
 }

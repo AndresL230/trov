@@ -3,6 +3,9 @@
 // the constructors below — a TenantContext needs a membership check or an explicit system scope.
 import type { Env } from "../env";
 
+/** The D1 binding's type, for `Env` — the one place outside this directory that has to name it. */
+export type Database = D1Database;
+
 const DB = Symbol("db"); // module-private: nothing outside this file can read a context's D1 handle…
 const ENV = Symbol("env");
 

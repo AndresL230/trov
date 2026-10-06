@@ -70,6 +70,12 @@ export function findIdentity(p: PlatformContext, provider: IdentityProvider, sub
   return first<IdentityRow>(p, `SELECT * FROM identities WHERE provider = ? AND subject = ?`, provider, subject);
 }
 
+/** The person a GitHub login belongs to, via the github identity row; null when unmapped. */
+export async function resolvePersonForLogin(p: PlatformContext, login: string): Promise<PersonRow | null> {
+  return first<PersonRow>(p,
+    `SELECT p.* FROM identities i JOIN persons p ON p.handle = i.person WHERE i.provider = 'github' AND i.subject = ?`, login);
+}
+
 /** Ambiguous (more than one person sharing the address, e.g. via the admin-edit path
  *  bypassing the self-service guard) returns null rather than guessing — every caller
  *  (the sign-in fork's branch 2, the email-guard checks) falls through to its next

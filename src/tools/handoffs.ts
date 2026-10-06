@@ -191,12 +191,6 @@ export async function expireHandoff(ctx: TenantContext, id: number, me: string):
   return (await getHandoff(ctx, id))!;
 }
 
-/** The cron sweep: every pending handoff of the org past its expires_at. Returns how many flipped. */
-export async function expireDueHandoffs(ctx: TenantContext, nowMs: number): Promise<number> {
-  const res = await run(ctx, `UPDATE handoffs SET status = 'expired' WHERE org_id = ? AND status = 'pending' AND expires_at < ?`, ctx.orgId, new Date(nowMs).toISOString());
-  return res.meta.changes ?? 0;
-}
-
 /**
  * The claim_handoff result: ONE markdown block an agent can act on — the prompt
  * first (the instructions), then the summary, then the context as lists.
