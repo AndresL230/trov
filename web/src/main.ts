@@ -60,6 +60,7 @@ import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { createPlatform } from "./platform-actions";
+import { PLATFORM_PATH, isPlatformPath } from "./platform";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
 import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo";
 import { isRepoTab, REPO_RANGES, type RepoRange } from "@shared/repo";
@@ -346,7 +347,7 @@ function rerender(): void {
   renderPendingMermaid(mount);
   // Reflect the current route in the URL hash so a reload restores it. The ticket
   // and sprint screens carry an id, so this is hashForRoute, not `#${screen}`.
-  if (state.view === "app") {
+  if (state.view === "app" || state.view === "platform") {
     const want = hashForRoute(currentRoute());
     if (location.hash !== want) history.replaceState(null, "", want);
   }
@@ -355,6 +356,7 @@ function rerender(): void {
 // Back/forward or a manually edited hash → switch screens.
 window.addEventListener("hashchange", () => {
   closeLightbox(); // Back/Forward under an open figure: it belongs to the old route
+  if (state.view === "platform") { enterPlatform(location.hash); return; }
   if (state.view !== "app") return;
   const r = parseHash(location.hash);
   const cur = currentRoute();
@@ -675,6 +677,23 @@ function showPicker(lost: string | null): void {
 }
 // A tenant request answered 404 and the membership gate confirmed it (api.ts): same place.
 setOrgLostHandler((slug) => { if (state.view === "app" && state.orgSlug === slug) showPicker(slug); });
+
+/**
+ * The Platform area at `/platform/` — outside any org, so a superadmin who belongs to none reaches it
+ * (platform.ts `platformPage`). No org is open: nothing here asks a tenant route. Any hash that is not
+ * one of Platform's own (`#platform`, `#platform/usage`, `#platform/orgs/<slug>`) is its first tab.
+ */
+function enterPlatform(hash: string): void {
+  setApiOrg(null);
+  setPrimaryRepo(null);
+  state.orgSlug = null;
+  state.drawer = false;
+  state.view = "platform";
+  const r = parseHash(hash);
+  applyRoute(r.screen === "platform" || r.screen === "platformorg" ? r : { ...r, screen: "platform", platTab: "orgs" });
+  if (!isPlatformPath(location.pathname)) history.replaceState(null, "", `${PLATFORM_PATH}${hashForRoute(currentRoute())}`);
+  platform.load();
+}
 
 /** Open an org: every request from here on is its (`/api/o/<slug>/…`), the address bar says
  *  `/o/<slug>/` with the hash route after it, and this browser remembers it as last used. */
@@ -1856,7 +1875,8 @@ function confirmOut(then: () => void): void {
 const platform = createPlatform({
   state, mount, rerender, flash, unauth, confirmOut, reloadOrgs: () => loadMyOrgs(),
   // Not a superadmin after all (a stale #platform link): My Work, as for any unknown hash.
-  leave: () => { state.screen = "mywork"; loadForScreen("mywork"); },
+  // On the standalone page there is no My Work to fall back to: the picker.
+  leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "mywork"; loadForScreen("mywork"); },
 });
 
 // Drives a (possibly multi-batch) Sync GitHub run: the backend caps AI calls
@@ -4150,7 +4170,7 @@ document.addEventListener("keydown", (e) => {
 // While the write runs (`data-busy`) every key is swallowed, so a held or repeated Enter
 // never deletes twice — the reducers' busy guards say the same.
 document.addEventListener("keydown", (e) => {
-  if (state.view !== "app") return;
+  if (state.view !== "app" && state.view !== "platform") return;
   const dlg = mount.querySelector<HTMLElement>("[data-confirm-dialog]");
   if (!dlg) return;
   const t = e.target instanceof HTMLButtonElement ? e.target : null;
@@ -4268,6 +4288,9 @@ if (params.get("denied") === "1") {
       // Where this load lands (org-context.ts): the org in the path; else, from `/` (an old
       // deep link, an e-mail link), the person's only org or the one last opened here; else
       // the picker — with the hash kept, so opening an org still lands on what the link was for.
+      // `/platform/`: the superadmin's area, whatever orgs they are in (or none). Anyone else falls through to the picker.
+      // So does a `#platform…` link opened at `/` by a superadmin with no org to open it in.
+      if (me.superadmin === true && (isPlatformPath(location.pathname) || (me.orgs.length === 0 && /^#platform(?:\/|$)/.test(hash)))) { void loadMyOrgs(); enterPlatform(hash); return; }
       const land = resolveLanding({ pathSlug: orgSlugFromPath(location.pathname), orgs: me.orgs, lastUsed: last, returnOrg: backOrg });
       if (land.kind === "org") { enterOrg(land.slug, hash); return; }
       if (back && back !== location.hash) history.replaceState(null, "", `${location.pathname}${back}`);

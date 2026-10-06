@@ -124,6 +124,7 @@ export function createPlatform(h: PlatformHost) {
     p.orgSlug = slug; p.suspendArm = null;
     load();
     h.mount.querySelector<HTMLElement>("#cnpy-main")?.scrollTo(0, 0);
+    if (h.state.view === "platform") window.scrollTo(0, 0); // the standalone page scrolls the window
   }
   function closeAdd(): void {
     const d = s().add;
@@ -347,7 +348,7 @@ export function createPlatform(h: PlatformHost) {
 
   // The add dialog's keyboard: Escape closes it, Tab stays inside it.
   document.addEventListener("keydown", (e) => {
-    if (h.state.view !== "app" || !s().add) return;
+    if ((h.state.view !== "app" && h.state.view !== "platform") || !s().add) return;
     const dlg = h.mount.querySelector<HTMLElement>("[data-plat-dialog]");
     if (!dlg) return;
     if (e.key === "Escape") { e.preventDefault(); closeAdd(); return; }

@@ -1558,6 +1558,20 @@ input, select { font-family: inherit; }
 .cnpy-orgs { min-height:100vh; box-sizing:border-box; display:flex; justify-content:center; padding:64px 24px 80px; }
 .cnpy-orgs-col { width:100%; max-width:620px; min-width:0; }
 .cnpy-orgs-row { display:flex; align-items:center; gap:12px; padding:13px 16px; transition:background .12s ease; }
+/* THE PLATFORM PAGE (`/platform/`, platform.ts `platformPage`): the superadmin's screens outside any
+   org — a header on the app header's line and the same frame under it; the window scrolls. */
+.cnpy-platpage { min-height:100vh; display:flex; flex-direction:column; }
+.cnpy-platpage-hdr { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; flex-wrap:wrap; min-height:57px; padding:8px clamp(20px,2.6vw,46px); border-bottom:1px solid var(--border); box-sizing:border-box; }
+.cnpy-platpage-l { display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto; }
+.cnpy-platpage-r { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.cnpy-platpage-home { display:inline-flex; align-items:center; gap:8px; flex:none; color:var(--fg); text-decoration:none; font-size:15px; font-weight:600; letter-spacing:-0.02em; border-radius:6px; }
+.cnpy-platpage-t { margin:0; font-size:15px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; flex:none; }
+.cnpy-platpage a:focus-visible, .cnpy-platpage-hdr button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+@media (max-width: 640px) {
+  .cnpy-platpage-hdr { padding:max(10px, env(safe-area-inset-top)) 16px 10px; }
+  .cnpy-platpage-r { width:100%; }
+  .cnpy-platpage-r > * { flex:1 1 auto; justify-content:center; min-height:38px; }
+}
 .cnpy-orgs-row:hover { background:var(--hover); }
 @media (max-width: 640px) {
   .cnpy-orgs { padding:max(28px, env(safe-area-inset-top)) 16px max(40px, env(safe-area-inset-bottom)); }

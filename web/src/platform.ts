@@ -18,6 +18,7 @@ import {
   type AdminAssignment, type AdminTarget, type OrgRole, type OrgInvite,
 } from "@shared/orgs";
 import { esc, attr, relTime, statusBadge, surface } from "./ui";
+import { trovMark } from "@shared/mark";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { segmented } from "./segmented";
 import { confirmModal } from "./confirm";
@@ -443,6 +444,37 @@ export function platformHeaderControls(p: Pick<PlatState, "superadmin" | "tab">,
 /** The detail page's "›" crumb. */
 export function platformCrumb(p: Pick<PlatState, "detail" | "orgSlug">): string {
   return p.detail.data && p.detail.data.org.slug === p.orgSlug ? p.detail.data.org.name : p.orgSlug ?? "";
+}
+
+/** The standalone page's address — outside `/o/<slug>/`, so it needs no membership. */
+export const PLATFORM_PATH = "/platform/";
+export const isPlatformPath = (pathname: string): boolean => pathname === "/platform" || pathname.startsWith("/platform/");
+
+/**
+ * The Platform area OUTSIDE any organization (`/platform/#platform…`): the same screens in a minimal
+ * shell — the mark, the title and crumb, the way back, sign out; no org navigation — so a superadmin
+ * who belongs to no organization still reaches them. Linked from the org picker and the switcher's menu.
+ */
+export function platformPage(p: PlatState, screen: string, me: string | null): string {
+  const child = screen === "platformorg";
+  const title = child
+    ? `<h1 class="cnpy-platpage-t"><button type="button" data-act="platGo" style="font:inherit;letter-spacing:inherit;padding:0;color:var(--fg-55);cursor:pointer">Platform</button></h1><span aria-hidden="true" style="color:var(--fg-40);font-size:13px">›</span><span style="font-size:13px;font-weight:500;color:var(--fg-70);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(platformCrumb(p))}</span>`
+    : `<h1 class="cnpy-platpage-t">Platform</h1>`;
+  return `<div class="cnpy-platpage plat" data-screen-label="Platform (outside an organization)">
+    <header class="cnpy-platpage-hdr">
+      <div class="cnpy-platpage-l">
+        <a href="/" aria-label="Trov: back to your organizations" class="cnpy-platpage-home">${trovMark(22)}<span>Trov</span></a>
+        <span aria-hidden="true" style="color:var(--border-strong)">/</span>
+        ${title}
+      </div>
+      <div class="cnpy-platpage-r">
+        ${platformHeaderControls(p, screen)}
+        <a href="/" class="cnpy-outlinebtn" style="${OUTLINE};height:34px;display:inline-flex;align-items:center;text-decoration:none;box-sizing:border-box">Your organizations</a>
+        <button type="button" data-act="signOut" class="cnpy-outlinebtn" style="${OUTLINE};height:34px">Sign out</button>
+      </div>
+    </header>
+    <main id="cnpy-main">${child ? platformOrgView(p) : platformView(p, me)}</main>
+  </div>`;
 }
 
 // ── dialogs (rendered at the app root) ───────────────────────────────────────

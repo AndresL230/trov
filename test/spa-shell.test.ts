@@ -23,6 +23,21 @@ describe("GET /o/* is the SPA shell", () => {
     }
   });
 
+  it("answers /platform (the superadmin's area, outside any org) with the same shell — and nothing that merely starts with it", async () => {
+    for (const path of ["/platform", "/platform/", "/platform/anything"]) {
+      const a = withAssets(shell);
+      const res = await get(path, a.env);
+      expect(res.status, path).toBe(200);
+      expect(await res.text()).toContain('id="app"');
+      expect(a.asked).toEqual(["/index.html"]);
+    }
+    const a = withAssets(shell);
+    expect((await get("/platformx", a.env)).status).toBe(401);      // not the shell: the session gate
+    expect((await get("/platform/", a.env, "POST")).status).toBe(401);
+    expect((await get("/api/platform/orgs", a.env)).status).toBe(401); // the data stays behind the session (and the superadmin check)
+    expect(a.asked).toEqual([]);
+  });
+
   it("follows the assets binding's own redirect of /index.html, so the URL in the browser stays", async () => {
     const a = withAssets((p) => (p === "/index.html" ? new Response(null, { status: 307, headers: { location: "/" } }) : shell()));
     const res = await get("/o/acme/", a.env);

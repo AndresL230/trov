@@ -50,7 +50,7 @@ import {
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
 } from "./artifacts";
 import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
-import { platformView, platformOrgView, platformDialogs, platformHeaderControls, platformCrumb, initialPlat, type PlatState } from "./platform";
+import { platformView, platformOrgView, platformDialogs, platformHeaderControls, platformCrumb, platformPage, initialPlat, type PlatState } from "./platform";
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
 import { orgSettingsView, orgOverlays, orgPeopleLink, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
@@ -97,7 +97,8 @@ export interface Loadable<T> {
 
 export interface AppState {
   /** `orgs` = signed in, but no org is open: the org picker (`/`, with no org or several). */
-  view: "auth" | "app" | "orgs";
+  /** `platform` = the superadmin's Platform area at `/platform/`, outside any org (platform.ts `platformPage`). */
+  view: "auth" | "app" | "orgs" | "platform";
   /** `nonmember` = a GitHub sign-in that was refused; `notinvited` = a Google account nobody invited. */
   authStep: "login" | "verifying" | "nonmember" | "notinvited" | "onboard";
   /** The landing page's sign-in dialog (authStep "login" only). */
@@ -2481,14 +2482,14 @@ function backfillSyncModal(sync: BackfillSyncState): string {
 export function render(s: AppState): string {
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "" }) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+    ${s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.backfillSync ? backfillSyncModal(s.backfillSync) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}
-    ${s.view === "app" ? platformDialogs(s.plat, s.screen) : ""}
-    ${s.view === "app" ? orgMenu({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], current: s.orgSlug, status: s.myOrgs.status, ui: s.orgsUi }) : ""}
+    ${s.view === "app" || s.view === "platform" ? platformDialogs(s.plat, s.screen) : ""}
+    ${s.view === "app" ? orgMenu({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], current: s.orgSlug, status: s.myOrgs.status, ui: s.orgsUi, superadmin: s.plat.superadmin === true }) : ""}
     ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}

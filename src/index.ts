@@ -73,7 +73,10 @@ export default {
     // The SPA lives at `/o/<slug>/` (hash routing after it): any GET under `/o/` is the app shell, asked of
     // the assets binding by name — no reliance on its SPA mode. The shell is public (it signs the visitor in);
     // the org's data is behind `/api/o/:slug` and its membership gate.
-    if ((request.method === "GET" || request.method === "HEAD") && url.pathname.startsWith("/o/")) return spaShell(request, env, url);
+    // `/platform` is the superadmin's area OUTSIDE any org (a superadmin may belong to none): the same
+    // shell; what it shows comes from `/api/platform/*`, which 404s everyone who is not a superadmin.
+    const isShellPath = url.pathname.startsWith("/o/") || url.pathname === "/platform" || url.pathname.startsWith("/platform/");
+    if ((request.method === "GET" || request.method === "HEAD") && isShellPath) return spaShell(request, env, url);
     return app.fetch(request, env, ctx);
   },
 

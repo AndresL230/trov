@@ -131,7 +131,12 @@ export interface OrgMenuProps {
   current: string | null;
   status: "idle" | "loading" | "ok" | "error" | "unauth";
   ui: OrgsUi;
+  /** The viewer is a platform superadmin: the menu ends with a link to the Platform area (`/platform/`). */
+  superadmin?: boolean;
 }
+/** The Platform area's own page, outside any org (platform.ts `PLATFORM_PATH`) — a plain link, a page load. */
+const PLATFORM_HREF = "/platform/";
+const SHIELD = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"></path></svg>`;
 const MENU_ROW = "display:flex;align-items:center;gap:10px;width:100%;min-height:38px;padding:6px 10px;border-radius:8px;text-align:left;font-size:13px;font-weight:500;color:var(--fg-70)";
 
 /** The switcher's menu, at the app root: my orgs with my role in each, invitations, Org settings,
@@ -168,7 +173,7 @@ export function orgMenu(p: OrgMenuProps): string {
         <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px">${rows}</ul>
       </div>
       ${inviteBlock}
-      <div style="border-top:1px solid var(--border);padding:6px;display:flex;flex-direction:column;gap:1px">${settings}${create}</div>
+      <div style="border-top:1px solid var(--border);padding:6px;display:flex;flex-direction:column;gap:1px">${settings}${create}${p.superadmin ? `<a href="${PLATFORM_HREF}" data-orgs-item data-orgs-platform class="cnpy-menurow" style="${MENU_ROW};text-decoration:none;box-sizing:border-box">${SHIELD}<span style="flex:1;min-width:0">Platform</span></a>` : ""}</div>
     </div>
   </div>`;
 }
@@ -222,6 +227,8 @@ export interface OrgPickerProps {
   ui: OrgsUi;
   /** The hash to keep when an org is opened (an old deep link, an e-mail link). */
   hash: string;
+  /** The viewer is a platform superadmin: the page links to the Platform area, which needs no membership. */
+  superadmin?: boolean;
 }
 
 /** Why the org in the URL did not open — one plain sentence; it may be any of three things, and
@@ -276,6 +283,15 @@ export function orgPickerView(p: OrgPickerProps): string {
         <div style="font-size:12.5px;line-height:1.55;color:var(--fg-55);margin-top:2px;overflow-wrap:anywhere">If your team already uses Trov, ask one of its admins to invite ${esc(askFor)}. The invitation appears on this page the next time you open it.</div>
       </div>` : ""}`;
 
+  const platformBlock = p.superadmin ? `${sectionHead("Platform", 0)}
+      <div${surface("padding:16px 18px;display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap")} data-orgs-platform>
+        <div style="flex:1 1 240px;min-width:0">
+          <div style="font-size:13.5px;font-weight:600">Run this Trov</div>
+          <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:2px">You are a superadmin. Add an organization and name its admin, suspend one, and see usage. You do not need to belong to an organization.</div>
+        </div>
+        <a href="${PLATFORM_HREF}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;height:36px;padding:0 14px;border:1px solid var(--border-strong);border-radius:8px;font-size:12.5px;font-weight:600;color:var(--fg-70);text-decoration:none;white-space:nowrap;box-sizing:border-box">Open Platform</a>
+      </div>` : "";
+
   const state = loading ? `<div style="font-size:12.5px;color:var(--fg-40);padding:22px 0 0">Loading your organizations&hellip;</div>`
     : p.status === "error" && !p.orgs ? `<div role="alert" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--fg-55);padding:22px 0 0">Couldn't load your invitations. Check your connection, then ${quietBtn("Try again", "orgsReload")}</div>` : "";
 
@@ -285,7 +301,7 @@ export function orgPickerView(p: OrgPickerProps): string {
       <h1 style="margin:34px 0 0;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.25;overflow-wrap:anywhere">${esc(title)}</h1>
       <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:var(--fg-55);max-width:560px">${esc(lead)}</p>
       ${p.ui.lost ? `<div style="margin-top:20px">${orgBanner("That organization didn't open", esc(lostOrgSentence(p.ui.lost)))}</div>` : ""}
-      ${orgsBlock}${invitesBlock}${state}${createBlock}
+      ${orgsBlock}${invitesBlock}${state}${createBlock}${platformBlock}
       <div style="margin-top:34px;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--fg-55)">
         <span style="min-width:0;overflow-wrap:anywhere">Signed in as <span style="font-weight:500;color:var(--fg-70)">@${esc(p.me?.handle ?? "")}</span></span>
         <span style="display:flex;gap:8px;flex:none">${quietBtn("Sign out", "signOut")}</span>

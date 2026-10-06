@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import css from "../web/src/trov.css?raw";
 import {
   initialPlat, blankAddOrg, platformView, platformOrgView, platformDialogs, platformHeaderControls, platformCrumb,
+  platformPage, isPlatformPath, PLATFORM_PATH,
   orgsTab, adminsTab, auditTab, addOrgModal, slugFromName, slugError, nameError, adminError, adminTarget, addOrgErrors,
   addOrgServerError, ownerServerError, assignmentSentence, suspendCopy, lastSuperadminSentence, NOT_A_MEMBER,
   type PlatState,
@@ -524,6 +525,62 @@ describe("routes", () => {
     for (const bad of ["#platform/nope", "#platform/orgs/Bad_Slug", "#platform/orgs/acme/extra", "#platform/orgs/-x"]) {
       expect(parseHash(bad), bad).toEqual({ screen: "mywork", ...base });
     }
+  });
+});
+
+// ── /platform/: the same screens outside any organization ────────────────────
+describe("the standalone Platform page (/platform/)", () => {
+  const plat = (over: Partial<PlatState> = {}): PlatState => ({ ...initialPlat(), superadmin: true, orgs: { status: "ok", data: [org()] }, ...over });
+  const page = (over: Partial<AppState> = {}): AppState => ({
+    ...initialState(), view: "platform", screen: "platform", orgSlug: null, plat: plat(),
+    me: { handle: "andres", name: "Andres", email: null, color: "moss", avatar_url: null, avatar_source: null, admin: false, identities: [], orgs: [], superadmin: true, pending_invites: 0 } as AppState["me"],
+    ...over,
+  });
+
+  it("recognises its own path and nothing else", () => {
+    expect(PLATFORM_PATH).toBe("/platform/");
+    for (const p of ["/platform", "/platform/", "/platform/x"]) expect(isPlatformPath(p), p).toBe(true);
+    for (const p of ["/", "/o/platform/", "/platformx", "/o/acme/"]) expect(isPlatformPath(p), p).toBe(false);
+  });
+
+  it("renders the Platform area for a superadmin with NO organization: tabs, the list, Add organization — and no org navigation", () => {
+    const html = render(page());
+    expect(html).toContain('data-screen-label="Platform (outside an organization)"');
+    expect(html).toContain("<h1 class=\"cnpy-platpage-t\">Platform</h1>");
+    expect(html).toContain('data-act="platTab"');            // the tab bar
+    expect(html).toContain('data-act="platAddOpen"');        // the primary action
+    expect(html).toContain("Acme");                          // the organizations list
+    expect(html).toContain('data-act="signOut"');
+    expect(html).toMatch(/<a href="\/"[^>]*>Your organizations<\/a>/);
+    // No app shell: no sidebar, no org switcher, no quick search, no org menu.
+    expect(html).not.toContain("cnpy-aside");
+    expect(html).not.toContain('data-act="orgsMenu"');
+    expect(html).not.toContain('data-act="goMyWork"');
+    expect(html).not.toContain("Choose an organization");
+  });
+
+  it("one organization: the title goes back to the list and a crumb names the org; its dialogs render at the root", () => {
+    const detail = { status: "ok" as const, data: { org: org(), members: [], invites: [], usage: usageOf() } };
+    const html = render(page({ screen: "platformorg", plat: plat({ orgSlug: "acme", detail }) }));
+    expect(html).toMatch(/<button type="button" data-act="platGo"[^>]*>Platform<\/button>/);
+    expect(html).toContain(NOT_A_MEMBER);
+    const armed = render(page({ screen: "platformorg", plat: plat({ orgSlug: "acme", detail, suspendArm: "suspend" }) }));
+    expect(armed).toContain("data-confirm-dialog");
+    const adding = render(page({ plat: plat({ add: blankAddOrg() }) }));
+    expect(adding).toContain("data-plat-dialog");
+  });
+
+  it("someone who is not a superadmin gets the gate's sentence, never the screens", () => {
+    const html = platformPage(plat({ superadmin: false }), "platform", "sam");
+    expect(html).toContain("This page isn't available to your account.");
+    expect(html).not.toContain('data-act="platTab"');
+    expect(html).not.toContain('data-act="platAddOpen"');
+  });
+
+  it("its controls are keyboard-reachable with a visible focus, and the header wraps at phone width", () => {
+    expect(css).toMatch(/\.cnpy-platpage a:focus-visible, \.cnpy-platpage-hdr button:focus-visible \{ outline:2px solid/);
+    expect(css).toMatch(/@media \(max-width: 640px\) \{\s*\.cnpy-platpage-hdr[^}]*\}\s*\.cnpy-platpage-r \{ width:100%; \}/);
+    expect(css).toMatch(/\.cnpy-platpage-hdr \{[^}]*flex-wrap:wrap/);
   });
 });
 

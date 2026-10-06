@@ -146,6 +146,10 @@ describe("the switcher's menu", () => {
 
   it("is not rendered until it is opened", () => {
     expect(orgMenu({ orgs: mine(), mine: [], current: "acme", status: "ok", ui: ui() })).toBe("");
+    // A superadmin's menu ends with a plain link to the Platform area's own page; nobody else's does.
+    const forSuper = orgMenu({ orgs: mine(), mine: [], current: "acme", status: "ok", ui: ui({ menu: true }), superadmin: true });
+    expect(forSuper).toMatch(/<a href="\/platform\/" data-orgs-item data-orgs-platform class="cnpy-menurow"[^>]*>[\s\S]*?Platform<\/span><\/a>/);
+    expect(orgMenu({ orgs: mine(), mine: [], current: "acme", status: "ok", ui: ui({ menu: true }) })).not.toContain("/platform/");
   });
   it("lists my orgs with MY role in each; each row is a real link to that org, the current one marked", () => {
     const html = menu(mine());
@@ -202,6 +206,14 @@ describe("the org picker / first run", () => {
   const picker = (orgs: MyOrgsResponse | null, o: { mine?: MyOrg[]; ui?: Partial<OrgsUi>; hash?: string; status?: "ok" | "loading" | "error"; who?: Me } = {}) =>
     orgPickerView({ me: o.who ?? me(o.mine ?? orgs?.orgs ?? []), mine: o.mine ?? orgs?.orgs ?? [], orgs, status: o.status ?? (orgs ? "ok" : "loading"), ui: ui(o.ui), hash: o.hash ?? "" });
 
+  it("a superadmin — with no organization at all — is offered the Platform area; nobody else is", () => {
+    const none = mine({ orgs: [], invites: [], created: 0, superadmin: true });
+    const html = orgPickerView({ me: me([]), mine: [], orgs: none, status: "ok", ui: ui(), hash: "", superadmin: true });
+    expect(html).toContain("data-orgs-platform");
+    expect(html).toMatch(/<a href="\/platform\/"[^>]*>Open Platform<\/a>/);
+    expect(html).toContain("You do not need to belong to an organization.");
+    expect(picker(mine({ orgs: [], invites: [], created: 0 }))).not.toContain("/platform/");
+  });
   it("NOTHING AT ALL: says what Trov is for, offers to create an org, and says how to get invited — by this person's own login", () => {
     const html = picker(mine({ orgs: [], invites: [], created: 0 }));
     expect(html).toContain("Welcome to Trov, Ines");
