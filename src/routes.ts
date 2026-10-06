@@ -50,8 +50,6 @@ import { orgsApp, myInvitesApp, orgTenantApp, cookieOnly } from "./orgs/routes";
 import { hasRole } from "./data/context";
 import { platformApp } from "./platform/routes";
 import { listLegacyInvites, getLegacyInvite, createLegacyInvite, revokeLegacyInvite, LegacyInviteError } from "./orgs/legacy-invites";
-import { isLegacyOrg } from "./data/legacy";
-import { primaryRepo } from "./integrations/settings";
 import { listPersons, PersonError } from "./auth/persons";
 import { sendInvite } from "./notifications/invite";
 import type { InviteRow } from "@shared/rows";

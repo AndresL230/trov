@@ -246,10 +246,10 @@ export async function runBackfill(
     let url: string | null = `https://api.github.com/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`;
     while (url) {
       const res: Response = await doFetch(url, { headers });
-      // Fail the whole run, loud: a 401/403/404 here (dead or under-scoped
-      // GITHUB_SERVICE_TOKEN) would otherwise read as "0 PRs" — fake success.
+      // Fail the whole run, loud: a 401/403/404 here (a dead or under-scoped
+      // token) would otherwise read as "0 PRs" — fake success.
       // Both lists are fetched before any ingestion, so nothing is half-written.
-      if (!res.ok) return failed(`GitHub ${res.status} listing closed PRs (check GITHUB_SERVICE_TOKEN)`);
+      if (!res.ok) return failed(`GitHub ${res.status} listing closed PRs (check the org's GitHub token)`);
       const page = (await res.json()) as GhPrListItem[];
       prList.push(...page);
       url = nextLink(res);
@@ -263,7 +263,7 @@ export async function runBackfill(
     let url: string | null = `https://api.github.com/repos/${repo}/issues?state=open&per_page=100`;
     while (url) {
       const res: Response = await doFetch(url, { headers });
-      if (!res.ok) return failed(`GitHub ${res.status} listing open issues (check GITHUB_SERVICE_TOKEN)`);
+      if (!res.ok) return failed(`GitHub ${res.status} listing open issues (check the org's GitHub token)`);
       const page = (await res.json()) as GhIssueListItem[];
       for (const issue of page) {
         if (issue.pull_request) continue;

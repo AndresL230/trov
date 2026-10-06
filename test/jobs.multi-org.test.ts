@@ -12,7 +12,9 @@ import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import { all, first, run, nowIso } from "./helpers/db";
-import { ORG_A, ORG_B, bearerCtx, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
+import { ORG_A, ORG_B, bearerCtx, ensureMember, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
+import { cookieFor } from "./helpers/persons";
+import { app } from "../src/routes";
 import { addOrgRepo, setOrgEnvironments } from "./helpers/org-config";
 import { ENVS, fakeGithub, leakedFragments } from "./helpers/repo";
 import { setIntegrationConfig, setSecret } from "../src/data/secrets";
@@ -439,5 +441,116 @@ describe("on demand, for the caller's org", () => {
     expect((await runLockedRepoRefresh(e, systemCtx(ORG_A), "andres", HOURLY + 1000, w.fetchImpl)).ok).toBe(false);
     expect((await captured(() => runLockedRepoRefresh(e, systemCtx(ORG_B), "bob", HOURLY + 1000, w.fetchImpl))).out.ok).toBe(true);
     expect(await first(env.DB, `SELECT 1 AS held FROM repo_snapshots WHERE org_id = ? AND kind = 'refresh_lock'`, ORG_A)).toEqual({ held: 1 });
+  });
+});
+
+// ── the admin routes: Sync GitHub / Poll now / Poll usage now ────────────────
+// The routes have no fetch seam (they call the real `fetch`), so these swap the GLOBAL one.
+
+describe("POST …/admin/{backfill,poll,poll-usage}: an admin acts on THEIR org only", () => {
+  const ROUTES = ["/admin/backfill", "/admin/poll", "/admin/poll-usage"] as const;
+  const NOT = "not_configured";
+  /** SaplingLearn's legacy Worker secrets, all set: what `resolveCredential` may fall back to for org #1 ALONE. */
+  const LEGACY = {
+    GITHUB_SERVICE_TOKEN: "legacy-github-token-000000", CF_ANALYTICS_TOKEN: "legacy-cf-token-0000000", CF_ANALYTICS_ACCOUNT_ID: "legacy-account-0000",
+    RAILWAY_TOKEN_LIVE: "legacy-railway-live-00000", SAPLING_METRICS_TOKEN: "legacy-metrics-token-000",
+  };
+  const legacyEnv = { ...e, ...LEGACY } as unknown as Env;
+
+  const post = async (path: string, cookie: string) => {
+    const res = await app.request(path, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: "{}" }, legacyEnv);
+    return { status: res.status, json: (await res.json()) as Record<string, unknown> };
+  };
+  /** Run `fn` with the global fetch replaced by a recording world; nothing may reach the network. */
+  async function stubbed<T>(fn: () => Promise<T>): Promise<{ out: T; seen: Seen[] }> {
+    const w = world();
+    vi.stubGlobal("fetch", w.fetchImpl);
+    try {
+      return { out: (await captured(fn)).out, seen: w.seen };
+    } finally { vi.unstubAllGlobals(); }
+  }
+  /** Every row `org` owns, per org-keyed table — the "nothing of theirs moved" check. */
+  async function rowsOf(org: string): Promise<Record<string, string>> {
+    const names = await all<{ name: string }>(env.DB,
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\' AND name NOT LIKE 'd1_%' ORDER BY name`);
+    const tables: { name: string }[] = [];
+    for (const t of names) if ((await all<{ name: string }>(env.DB, `SELECT name FROM pragma_table_info(?)`, t.name)).some((c) => c.name === "org_id")) tables.push(t);
+    const out: Record<string, string> = {};
+    for (const t of tables) out[t.name] = JSON.stringify((await all(env.DB, `SELECT * FROM "${t.name}" WHERE org_id = ?`, org)).map((r) => JSON.stringify(r)).sort());
+    return out;
+  }
+  const boss = async () => { await ensureMember("boss", "owner", ORG_B); return cookieFor("boss", { member: false }); };
+  const carries = (s: Seen, secrets: string[]) => secrets.filter((x) => JSON.stringify(s).includes(x));
+
+  it("an org with nothing configured: a clean not-configured answer and NO outbound request — whatever SaplingLearn and the Worker hold", async () => {
+    await configure(A);
+    const before = await rowsOf(ORG_A);
+    const cookie = await boss();
+    const { out, seen } = await stubbed(async () => {
+      const got: Record<string, unknown> = {};
+      for (const base of ["", "/api/o/acme"]) for (const r of ROUTES) got[base + r] = await post(base + r, cookie);
+      return got;
+    });
+    for (const base of ["", "/api/o/acme"]) {
+      expect(out[`${base}/admin/backfill`]).toEqual({ status: 503, json: { error: "service token or repo not configured" } });
+      expect(out[`${base}/admin/poll`]).toEqual({ status: 200, json: { health: NOT, cloudflare: NOT, railway: NOT, sapling: NOT, github: NOT } });
+      expect(out[`${base}/admin/poll-usage`]).toEqual({ status: 200, json: { cloudflare: NOT, railway: NOT, sapling: NOT } });
+    }
+    expect(seen).toEqual([]);
+    expect(await rowsOf(ORG_A)).toEqual(before);
+    expect(await all(env.DB, `SELECT 1 FROM repo_metrics WHERE org_id = ?`, ORG_B)).toEqual([]);
+    expect(await all(env.DB, `SELECT 1 FROM repo_snapshots WHERE org_id = ?`, ORG_B)).toEqual([]); // the refresh lock was released
+  });
+
+  it("a repo and an environment but no stored credential: only its own health pings go out — never a legacy Worker secret", async () => {
+    await configure(A);
+    await addOrgRepo(B.repo, ORG_B);
+    await setOrgEnvironments([B.cfg], ORG_B);
+    const before = await rowsOf(ORG_A);
+    const cookie = await boss();
+    const { out, seen } = await stubbed(async () => ({
+      sync: await post("/api/o/acme/admin/backfill", cookie), poll: await post("/api/o/acme/admin/poll", cookie), usage: await post("/api/o/acme/admin/poll-usage", cookie),
+    }));
+    expect(out.sync).toEqual({ status: 503, json: { error: "service token or repo not configured" } });
+    expect(out.poll).toMatchObject({ status: 200, json: { cloudflare: NOT, railway: NOT, sapling: NOT, github: NOT } });
+    expect(out.usage).toEqual({ status: 200, json: { cloudflare: NOT, railway: NOT, sapling: NOT } });
+    expect(seen.map((s) => s.url).sort()).toEqual([B.cfg.apiUrl + "/health", B.cfg.frontendUrl]);
+    for (const s of seen) {
+      expect([s.auth, s.rwToken]).toEqual([null, null]);
+      expect(carries(s, [...Object.values(LEGACY), ...everySecret(A)])).toEqual([]);
+    }
+    expect(await rowsOf(ORG_A)).toEqual(before);
+  });
+
+  it("both orgs configured: each admin's run carries ITS org's stored credentials to ITS repo and environments, and writes only ITS rows", async () => {
+    await configure(A);
+    await configure(B);
+    const admins: Record<string, string> = { [ORG_A]: await cookieFor("AndresL230"), [ORG_B]: await boss() };
+    for (const [f, other, slug] of [[B, A, "acme"], [A, B, "saplinglearn"]] as const) {
+      const before = await rowsOf(other.org);
+      const { out, seen } = await stubbed(async () => {
+        const got = [];
+        for (const r of ROUTES) got.push(await post(`/api/o/${slug}${r}`, admins[f.org]));
+        return got;
+      });
+      expect(out.map((r) => r.status), slug).toEqual([200, 200, 200]);
+      expect(out[1].json, slug).toMatchObject({ github: { failed: [] }, cloudflare: [{ env: "live", status: "ok" }], railway: [{ env: "live", status: "ok" }], sapling: [{ env: "live", status: "ok" }] });
+
+      // Every request is this org's: its repo, its hosts, its credentials — and no one else's, the Worker's included.
+      expect(seen.length, slug).toBeGreaterThan(20);
+      for (const s of seen) {
+        expect(carries(s, [...everySecret(other), ...Object.values(LEGACY)]), `${slug} ${s.url}`).toEqual([]);
+        expect(JSON.stringify(s).includes(other.tag), `${slug} ${s.url}`).toBe(false);
+        if (s.url.startsWith(GH)) expect(s.auth, s.url).toBe(`Bearer ${f.secrets.gh}`);
+        if (s.url.startsWith(GH) && !s.url.endsWith("/graphql")) expect(s.url.startsWith(`${GH}repos/${f.repo}`), s.url).toBe(true);
+        if (s.url === CF_URL) expect(s.auth).toBe(`Bearer ${f.secrets.cf}`);
+        if (s.url === RW_URL) expect(s.rwToken).toBe(f.secrets.rw);
+        if (s.url.endsWith("/api/internal/metrics")) expect(s.auth).toBe(`Bearer ${f.secrets.app}`);
+      }
+      expect(seen.filter((s) => s.url === CF_URL || s.url === RW_URL || s.url.endsWith("/api/internal/metrics")), slug).toHaveLength(6); // Poll now + Poll usage now
+      expect((await metricsOf(f.org)).length, slug).toBeGreaterThan(0);
+      expect((await all<{ kind: string }>(env.DB, `SELECT kind FROM repo_snapshots WHERE org_id = ?`, f.org)).map((r) => r.kind), slug).toContain("prs_reconciled");
+      expect(await rowsOf(other.org), `${slug} changed a row of ${other.org}`).toEqual(before);
+    }
   });
 });

@@ -50,7 +50,7 @@ interface Fx {
   alice: string; ownerA: string;
   docSlug: string; promptSlug: string; artifactSlug: string;
   adrId: number; triageId: number; ticketId: number; subTicketId: number; linkId: number; sprintId: number; handoffId: number;
-  inviteId: number; hookId: string; envKey: string; imgSha: string; login: string;
+  inviteId: number; hookId: string; envKey: string; imgSha: string; login: string; tokenId: number;
   bTicketId: number;
 }
 
@@ -119,6 +119,7 @@ async function seed(): Promise<Fx> {
   expect(invited.status).toBe(200);
   const inviteId = (await first<{ id: number }>(env.DB, `SELECT id FROM org_invites WHERE org_id = ? AND email = ?`, ORG_A, INVITED))!.id;
   await mintTokenFor(ALICE, ORG_A);
+  const tokenId = (await first<{ id: number }>(env.DB, `SELECT id FROM mcp_tokens WHERE org_id = ? AND person = ?`, ORG_A, ALICE))!.id;
   await run(env.DB, `INSERT INTO notification_prefs (org_id, user_id, kind, cadence, updated_at) VALUES (?, ?, 'my_work', 'daily', ?)`, ORG_A, ALICE, T);
 
   // ── org B: its own content under the SAME slugs, and a ticket for the cross-org edges ──
@@ -130,7 +131,7 @@ async function seed(): Promise<Fx> {
   return {
     cookies, alice: await cookieFor(ALICE), ownerA,
     docSlug: "iso-doc", promptSlug: "iso-prompt", artifactSlug, adrId, triageId, ticketId, subTicketId, linkId, sprintId, handoffId,
-    inviteId, hookId, envKey, imgSha, login, bTicketId,
+    inviteId, hookId, envKey, imgSha, login, tokenId, bTicketId,
   };
 }
 
@@ -191,7 +192,7 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "slug": return under("/doc") ? fx.docSlug : under("/prompts") ? fx.promptSlug : fx.artifactSlug;
     case "id": return String(
       under("/tickets") ? fx.ticketId : under("/sprints") ? fx.sprintId : under("/handoffs") ? fx.handoffId : under("/adr") ? fx.adrId
-        : under("/needs-triage") ? fx.triageId : under("/invites") ? fx.inviteId : fx.hookId);
+        : under("/needs-triage") ? fx.triageId : under("/invites") ? fx.inviteId : under("/mcp-tokens") ? fx.tokenId : fx.hookId);
     case "linkId": return String(fx.linkId);
     case "login": return fx.login;
     case "handle": return ALICE;
@@ -233,8 +234,8 @@ const TENANT: Record<string, Row> = {
   "GET /identity-tasks": {}, "POST /identity-tasks/:login/map": J({ person: ALICE }),
   "POST /identity-tasks/:login/discard": J({}), "POST /identity-tasks/:login/restore": J({}),
   "GET /persons": {}, "GET /roadmap": {}, "GET /me/dashboard": {}, "GET /repo/dashboard": {},
-  // 503: Sync / Poll run on the Worker's own configuration, which is org #1's — any other org's admin is refused (src/routes.ts).
-  "POST /admin/backfill": { body: {}, allow: [503] }, "POST /admin/poll": { body: {}, allow: [503] }, "POST /admin/poll-usage": { body: {}, allow: [503] },
+  // 503: Sync GitHub's "service token or repo not configured" — the caller's OWN org has none (test/jobs.multi-org.test.ts).
+  "POST /admin/backfill": { body: {}, allow: [503] }, "POST /admin/poll": J({}), "POST /admin/poll-usage": J({}),
   "POST /tickets": J({ title: "from the matrix" }), "GET /tickets": { query: "?seg=all" }, "GET /tickets/badge": {}, "GET /tickets/:id": {},
   "POST /tickets/:id/edit": J({ title: "hijacked" }), "POST /tickets/:id/status": J({ to: "in_progress" }),
   "POST /tickets/:id/move": J({ to: "in_progress", after_id: null }), "POST /tickets/:id/assignees": J({ login: "bob", on: true }),
@@ -276,11 +277,15 @@ const TENANT: Record<string, Row> = {
   "DELETE /integrations/:kind": {}, "DELETE /integrations/:kind/:a": {},
   "GET /repos": {}, "POST /repos": J({ repo_full_name: "acme/matrix" }), "DELETE /repos/:id": {},
   "GET /environments": {}, "PUT /environments": J({ order: [] }), "PUT /environments/:key": J({ label: "hijacked", branch: "main" }), "DELETE /environments/:key": {},
+  // src/auth/token-routes.ts — the caller's OWN tokens for the org in the path (`:id` is alice's token in A)
+  "GET /mcp-tokens": {}, "POST /mcp-tokens": J({}), "POST /mcp-tokens/:id/revoke": J({}),
 };
 
-/** The org surface (src/orgs, src/integrations) exists ONLY under `/api/o/:slug`; every other tenant route also has an alias. */
+/** The org surface (src/orgs, src/integrations) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
+ *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
+ *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
 const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/members", "/invites", "/integrations", "/repos", "/environments"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
+  suffix === "/me" || ["/settings", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
 
 /** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
 const LEGACY_ONLY: Record<string, Row> = {
@@ -304,9 +309,9 @@ const PLATFORM: Record<string, string> = {
   "POST /auth/me/handle": "the caller's own handle",
   "POST /auth/identities/:provider/unlink": "the caller's own identities",
   "POST /auth/logout": "the caller's own session",
-  "POST /auth/mcp-token": "resolves the caller's ONE org itself (409 org_required otherwise) — Phase 5a moves it under the slug",
-  "GET /auth/mcp-tokens": "the caller's own tokens",
-  "POST /auth/mcp-tokens/:id/revoke": "the caller's own tokens (someone else's id is 404)",
+  "POST /auth/mcp-token": "cut-over alias of POST /api/o/:slug/mcp-tokens: resolves the caller's ONE org itself (409 org_required with none or several, 404 suspended)",
+  "GET /auth/mcp-tokens": "cut-over alias: the caller's own tokens for their one org (same refusals)",
+  "POST /auth/mcp-tokens/:id/revoke": "cut-over alias: the caller's own token for their one org — someone else's id, or their own for another org, is 404",
   "GET /auth/oauth-grants": "the caller's own grants",
   "POST /auth/oauth-grants/:id/revoke": "the caller's own grants (someone else's id is 404)",
   "GET /.well-known/oauth-protected-resource": "public OAuth metadata",
@@ -365,7 +370,7 @@ describe("the route registry", () => {
     expect([...Object.keys(PLATFORM), ...Object.keys(LEGACY_ONLY)].filter((k) => !HAS.has(k))).toEqual([]);
   });
 
-  it("every tenant route outside the org surface is mounted twice: under the slug and at its old path", () => {
+  it("every tenant route outside the org surface and the MCP tokens is mounted twice: under the slug and at its old path", () => {
     const missing = TENANT_ROUTES.filter((k) => !NO_ALIAS(k.split(" ")[1])).filter((k) => !HAS.has(`${k.split(" ")[0]} ${aliasOf(k)}`));
     expect(missing).toEqual([]);
     // …and nothing that is not person-level sits outside both gates: an alias is a tenant route's, or a legacy one.
@@ -540,6 +545,54 @@ describe("cross-org edges are refused, and nothing is written in B either", () =
     expect(await countB("org_login_map")).toBe(0);
     expect(await first(env.DB, `SELECT status FROM identity_tasks WHERE org_id = ? AND login = 'b-stranger'`, ORG_B)).toEqual({ status: "pending" });
     expect(await digestA()).toEqual(before);
+  });
+});
+
+// ── MCP tokens: a member's own, for the org in the path ──────────────────────
+
+describe("/api/o/:slug/mcp-tokens are the caller's own tokens for that org", () => {
+  type Listed = { tokens: { id: number; hint: string | null }[] };
+  const list = async (slug: string, cookie: string) => (JSON.parse((await send("GET", `/api/o/${slug}/mcp-tokens`, cookie)).text) as Listed).tokens;
+  const live = async (id: number) => (await first<{ revoked: number }>(env.DB, `SELECT revoked FROM mcp_tokens WHERE id = ?`, id))!.revoked === 0;
+
+  it("bob cannot list or revoke alice's token — from outside A, from B, or as a fellow member of A", async () => {
+    const fx = await seed();
+    const before = await digestA();
+    // Outside A: the gate's 404. Under B and at the alias: his own (empty) list, and alice's id is not found.
+    expect(await send("GET", "/api/o/saplinglearn/mcp-tokens", fx.cookies.bob)).toMatchObject({ status: 404, text: NOT_FOUND });
+    expect(await send("POST", `/api/o/saplinglearn/mcp-tokens/${fx.tokenId}/revoke`, fx.cookies.bob, {})).toMatchObject({ status: 404, text: NOT_FOUND });
+    expect(await list("acme", fx.cookies.bob)).toEqual([]);
+    for (const path of [`/api/o/acme/mcp-tokens/${fx.tokenId}/revoke`, `/auth/mcp-tokens/${fx.tokenId}/revoke`]) {
+      expect(await send("POST", path, fx.cookies.bob, {}), path).toMatchObject({ status: 404, text: NOT_FOUND });
+    }
+    expect(JSON.parse((await send("GET", "/auth/mcp-tokens", fx.cookies.bob)).text)).toEqual({ tokens: [] });
+    expect(await digestA()).toEqual(before);
+
+    // Even as a member of A — an admin of it — another member's tokens are not his to see or revoke.
+    await ensureMember("bob", "admin", ORG_A);
+    expect(await list("saplinglearn", fx.cookies.bob)).toEqual([]);
+    expect((await send("POST", `/api/o/saplinglearn/mcp-tokens/${fx.tokenId}/revoke`, fx.cookies.bob, {})).status).toBe(404);
+    expect(await live(fx.tokenId)).toBe(true);
+    expect((await list("saplinglearn", fx.alice)).map((t) => t.id)).toEqual([fx.tokenId]);
+  });
+
+  it("a token id from org A is not found under org B, for its own holder", async () => {
+    const fx = await seed();
+    await ensureMember(ALICE, "member", ORG_B);
+    expect(await list("acme", fx.alice)).toEqual([]);
+    expect((await send("POST", `/api/o/acme/mcp-tokens/${fx.tokenId}/revoke`, fx.alice, {})).status).toBe(404);
+    expect(await live(fx.tokenId)).toBe(true);
+    // Two orgs now: the old paths cannot pick one, and revoke nothing.
+    expect(await send("POST", `/auth/mcp-tokens/${fx.tokenId}/revoke`, fx.alice, {})).toMatchObject({ status: 409, text: ORG_REQUIRED });
+    expect(await live(fx.tokenId)).toBe(true);
+    // A token minted under B is B's: listed there, absent from A, and revocable only through B's path.
+    const minted = await send("POST", "/api/o/acme/mcp-tokens", fx.alice, {});
+    expect(minted.status).toBe(200);
+    const [inB] = await list("acme", fx.alice);
+    expect((await list("saplinglearn", fx.alice)).map((t) => t.id)).toEqual([fx.tokenId]);
+    expect((await send("POST", `/api/o/saplinglearn/mcp-tokens/${inB.id}/revoke`, fx.alice, {})).status).toBe(404);
+    expect((await send("POST", `/api/o/acme/mcp-tokens/${inB.id}/revoke`, fx.alice, {})).status).toBe(200);
+    expect([await live(inB.id), await live(fx.tokenId)]).toEqual([false, true]);
   });
 });
 
