@@ -141,10 +141,10 @@ export function integrationRow(i: IntegrationDTO, o: RowOpts): string {
   }
   const settings = i.config_fields.map((f) => {
     const v = i.config[f.key];
-    return `<div style="font-size:12px;color:var(--fg-55);margin-top:4px">${esc(f.label)}: ${v ? `<code style="font-family:var(--code);color:var(--fg-70);overflow-wrap:anywhere">${esc(v)}</code>` : `<span style="color:var(--fg-40)">not set${f.required ? " (required)" : ""}</span>`}</div>`;
+    return `<div style="font-size:12px;color:var(--fg-55);margin-top:4px">${esc(f.label)}: ${v ? `<code style="font-family:var(--code);color:var(--fg-70);overflow-wrap:anywhere">${esc(v)}</code>` : `<span style="color:var(--fg-40)">${st.state === "legacy" ? "the platform's, until you set your own" : `not set${f.required ? " (required)" : ""}`}</span>`}</div>`;
   }).join("");
   const legacy = st.state === "legacy"
-    ? `<div style="${box("var(--amber)")}"><div style="min-width:0">Using the platform's legacy credential &mdash; set your own to replace it.</div></div>` : "";
+    ? `<div data-org-legacy style="font-size:12.5px;line-height:1.5;color:var(--fg-70);margin-top:6px">Using the platform's legacy credential &mdash; set your own to replace it.</div>` : "";
   const error = i.last_error
     ? `<div data-org-lasterror style="${box("var(--red)")}">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last error.</strong> ${esc(i.last_error)}</div></div>` : "";
   const orphan = st.state === "orphan"

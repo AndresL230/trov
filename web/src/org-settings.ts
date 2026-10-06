@@ -506,7 +506,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string): string {
       </section>`;
 
   return `${invite}
-    ${orgHead("Members", admin ? "Owners manage owners and the encryption key. Admins manage everything else on this page. Members read." : "Who is in this org, and their role.", members.length)}
+    ${orgHead("Members", admin ? "Owners manage owners and the encryption key. Admins manage everything else on this page. Members read." : "", members.length)}
     <ul${surface("overflow:hidden;list-style:none;margin:10px 0 0;padding:0")}>${rows}</ul>
     ${invitesBlock}
     <div style="margin-top:22px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;align-items:flex-start">
