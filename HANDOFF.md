@@ -12,7 +12,7 @@ the `TenantContext` data layer, porting every query (spec §4). Start by reading
 **The trap**: every tenant `org_id` has a transitional `DEFAULT 'org_saplinglearn'` (spec §3.2) and the
 singleton / upsert sites name the org through `src/legacy-org.ts` (`LEGACY_ORG_ID`). Phase 3 must port
 every statement to an explicit `org_id = ?` bound from the context — `grep -rn LEGACY_ORG_ID src` is the
-to-do list, and nothing may come to rely on the default (`0043`, Phase 7, removes it).
+to-do list, and nothing may come to rely on the default (the Phase 7 cleanup migration removes it — a number after `0043_platform_orgs.sql`).
 
 ## Context
 
