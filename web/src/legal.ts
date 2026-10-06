@@ -19,7 +19,7 @@ import { esc } from "./ui";
 import { siteFooter, siteMark } from "./site-chrome";
 
 /** Who runs the service (the landing footer's copyright line). */
-export const LEGAL_OPERATOR = "Andres Lopez";
+export const LEGAL_OPERATOR = "TrovLabs, Inc.";
 /** Where questions and privacy requests go — the same address Trov sends its mail from. */
 export const LEGAL_CONTACT = "hello@trov.dev";
 
@@ -154,7 +154,7 @@ export const PRIVACY: LegalDoc = {
   kind: "privacy",
   title: "Privacy Policy",
   updated: "2026-10-06",
-  lede: `This policy explains what Trov collects, why, who processes it, how long it is kept and what you can ask for. Trov is run by ${LEGAL_OPERATOR}, who is responsible for the personal data described here. We do not sell personal data, and Trov shows no ads and uses no tracking or analytics cookies.`,
+  lede: `This policy explains what Trov collects, why, who processes it, how long it is kept and what you can ask for. Trov is run by ${LEGAL_OPERATOR}, which is responsible for the personal data described here. We do not sell personal data, and Trov shows no ads and uses no tracking or analytics cookies.`,
   sections: [
     {
       id: "collect",
