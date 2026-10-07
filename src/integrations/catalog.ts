@@ -10,6 +10,8 @@ import {
 } from "../data/secrets";
 import type { TenantContext } from "../data/sql";
 import { listEnvironments, listRepoRows, webhookUrl } from "./settings";
+import { providerOfKind, type HostingProviderId } from "@shared/hosting";
+import { checkFields, providerOf } from "../hosting/registry";
 
 interface KindInfo {
   scope: IntegrationScopeType;
@@ -17,6 +19,20 @@ interface KindInfo {
   description: string;
   how_to: string;
   config_fields: IntegrationConfigField[];
+}
+
+/** A hosting provider's kind, described from the provider itself (src/hosting/providers/*): its best TOKEN
+ *  method's how-to (an install / OAuth connection is made from Org settings › Hosting, not pasted here). */
+function hostingKind(id: Exclude<HostingProviderId, "cloudflare" | "railway">): KindInfo {
+  const p = providerOf(id);
+  const token = p.connectionMethods.find((m) => m.method === "token") ?? p.connectionMethods[0];
+  return {
+    scope: p.credentialScope === "environment" ? "environment" : "org",
+    label: `${p.label} ${token?.method === "token" ? "token" : "connection"}`,
+    description: p.summary,
+    how_to: token?.howTo ?? "",
+    config_fields: p.orgConfigFields.map((f) => ({ key: f.key, label: f.label, description: f.description, required: f.required })),
+  };
 }
 
 export const INTEGRATION_CATALOG: Record<IntegrationKind, KindInfo> = {
@@ -57,10 +73,23 @@ export const INTEGRATION_CATALOG: Record<IntegrationKind, KindInfo> = {
     how_to: "Generate a long random value (`openssl rand -hex 32`), make your backend require it as `Authorization: Bearer <value>` on GET /api/internal/metrics, and save the same value here. The endpoint must answer 200 with JSON holding active_users: { \"24h\", \"7d\", \"30d\" } as whole numbers. The token is sent only to this environment's API URL, over https, and never across a redirect. Pointing the environment's API URL at another host removes this token.",
     config_fields: [],
   },
+  vercel: hostingKind("vercel"),
+  render: hostingKind("render"),
+  netlify: hostingKind("netlify"),
+  fly: hostingKind("fly"),
+  aws: hostingKind("aws"),
 };
 
 /** Why a submitted config is refused for `kind` (`{ field, message }` — the value is never quoted), or the cleaned config. */
 export function checkIntegrationConfig(kind: IntegrationKind, config: unknown): { config: IntegrationConfig } | { field: string; message: string } {
+  const provider = providerOfKind(kind);
+  if (provider && provider !== "cloudflare" && provider !== "railway") {
+    // A hosting provider's settings are its own fields, patterns included (src/hosting/registry.ts).
+    const fields = providerOf(provider).orgConfigFields;
+    if (fields.length === 0) return { field: "config", message: "this integration has no settings" };
+    const checked = checkFields(fields, config, "config");
+    return "field" in checked ? checked : { config: checked.values };
+  }
   const fields = INTEGRATION_CATALOG[kind].config_fields;
   if (fields.length === 0) return { field: "config", message: "this integration has no settings" };
   if (!config || typeof config !== "object" || Array.isArray(config)) return { field: "config", message: "config must be an object" };

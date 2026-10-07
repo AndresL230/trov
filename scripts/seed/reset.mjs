@@ -12,6 +12,11 @@ export const RESET_STATEMENTS = [
   "DELETE FROM org_admin_audit",
   "UPDATE orgs SET suspended_at = NULL, suspended_by = NULL, logo_sha = NULL, logo_source = NULL, logo_by = NULL, logo_from = NULL, logo_at = NULL",
   "DELETE FROM org_audit",
+  // Hosting (0043_hosting_providers): parts reference org_environments, so they go before it.
+  "DELETE FROM hosting_poll_state",
+  "DELETE FROM hosting_deploys",
+  "DELETE FROM org_hosting_connections",
+  "DELETE FROM org_environment_parts",
   "DELETE FROM org_secrets",
   "DELETE FROM org_keys",
   "DELETE FROM org_integration_config",

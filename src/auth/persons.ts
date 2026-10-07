@@ -267,6 +267,9 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["orgs", "suspended_by"], ["org_usage_daily", "actor"], ["org_admin_audit", "actor"],
   // The org's image (0042_organizations): who uploaded it.
   ["orgs", "logo_by"],
+  // Hosting (0043_hosting_providers). `revoked_by` may hold a provider id (removed on the provider's side);
+  // the rename's WHERE only ever matches a real handle.
+  ["org_environment_parts", "updated_by"], ["org_hosting_connections", "connected_by"], ["org_hosting_connections", "revoked_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

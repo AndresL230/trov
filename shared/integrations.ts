@@ -2,7 +2,12 @@
 // (canopy-multitenancy.md §8.7; the routes are src/integrations/routes.ts). Types and the
 // kind vocabulary only — nothing here ever carries a secret's value: the API is write-only.
 
-export const INTEGRATION_KINDS = ["cloudflare_analytics", "railway", "metrics_endpoint", "github_token", "github_webhook"] as const;
+export const INTEGRATION_KINDS = [
+  "cloudflare_analytics", "railway", "metrics_endpoint", "github_token", "github_webhook",
+  // The hosting providers (0043_hosting_providers, shared/hosting.ts): one org-wide credential each, expected
+  // only once a part of one of the org's environments uses that provider.
+  "vercel", "render", "netlify", "fly", "aws",
+] as const;
 export type IntegrationKind = (typeof INTEGRATION_KINDS)[number];
 export const isIntegrationKind = (v: unknown): v is IntegrationKind =>
   typeof v === "string" && (INTEGRATION_KINDS as readonly string[]).includes(v);
@@ -55,7 +60,10 @@ export type OrgAuditAction = "secret.set" | "secret.rotate" | "secret.delete" | 
 
 /** The repository / environment changes recorded beside the secret trail (`org_admin_audit`, shared/orgs.ts). */
 export type OrgSettingsAuditAction =
-  | "repo.add" | "repo.remove" | "repo.primary" | "environment.set" | "environment.delete" | "environment.reorder";
+  | "repo.add" | "repo.remove" | "repo.primary" | "environment.set" | "environment.delete" | "environment.reorder"
+  // Hosting (0043_hosting_providers): a part set / removed, an install or OAuth grant connected, disconnected
+  // from Trov, or revoked from the provider's side.
+  | "part.set" | "part.delete" | "hosting.connect" | "hosting.disconnect" | "hosting.revoked";
 
 /** One row of `GET /api/o/:slug/integrations/audit`: the secret trail and the repository / environment
  *  trail as ONE list, newest first. `id` is unique across both: `s<n>` (secrets) or `a<n>` (settings). */

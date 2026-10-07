@@ -41,6 +41,8 @@ export const ORG_AUDIT_ACTIONS = [
   "invite.create", "invite.revoke", "invite.accept", "invite.decline",
   // Org settings › Repositories / Environments (src/integrations/settings.ts).
   "repo.add", "repo.remove", "repo.primary", "environment.set", "environment.delete", "environment.reorder",
+  // Org settings › Hosting (0043_hosting_providers, src/hosting/).
+  "part.set", "part.delete", "hosting.connect", "hosting.disconnect", "hosting.revoked",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];

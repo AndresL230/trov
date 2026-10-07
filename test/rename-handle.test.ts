@@ -139,6 +139,11 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `UPDATE orgs SET logo_sha = ?, logo_source = 'upload', logo_by = ?, logo_at = ? WHERE id = 'org_b'`, "a".repeat(64), handle, nowIso());
   await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-01-01', 'api_read', ?, 1, ?)`, org, handle, nowIso());
   await run(env.DB, `INSERT INTO org_admin_audit (org_id, actor, action, target, at) VALUES (?, ?, 'org.update', 'settings', ?)`, org, handle, nowIso());
+  // 0043_hosting_providers: a stored part (on the staging environment above) and an installed connection.
+  await run(env.DB, `INSERT INTO org_environment_parts (org_id, env_key, part_key, position, label, role, provider, settings, created_at, updated_at, updated_by)
+    VALUES (?, 'staging', 'web', 0, 'Web', 'web', 'vercel', '{}', ?, ?, ?)`, org, nowIso(), nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, status, connected_by, connected_at, revoked_by)
+    VALUES (?, 'vercel', '', 'install', 'revoked', ?, ?, ?)`, org, handle, nowIso(), handle);
 }
 
 describe("renamePerson", () => {

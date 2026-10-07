@@ -68,10 +68,12 @@ export const WEBHOOKS_LIVE = true;
 const KIND_NAME: Record<IntegrationKind, string> = {
   github_token: "GitHub token", github_webhook: "GitHub webhook secret", cloudflare_analytics: "Cloudflare analytics",
   railway: "Railway project token", metrics_endpoint: "App metrics endpoint",
+  vercel: "Vercel connection", render: "Render API key", netlify: "Netlify connection", fly: "Fly.io token", aws: "AWS role",
 };
 /** What the field holds, in the form's own words. */
 const VALUE_WORD: Record<IntegrationKind, string> = {
   github_token: "Token", github_webhook: "Secret", cloudflare_analytics: "API token", railway: "Project token", metrics_endpoint: "Token",
+  vercel: "Access token", render: "API key", netlify: "Access token", fly: "Token", aws: "Role",
 };
 /** What stops working when the credential is deleted — the confirmation's first sentence. */
 export const SECRET_DELETE_EFFECT: Record<IntegrationKind, string> = {
@@ -80,6 +82,11 @@ export const SECRET_DELETE_EFFECT: Record<IntegrationKind, string> = {
   cloudflare_analytics: "Requests and error rate for every environment's frontend stop updating.",
   railway: "CPU and memory for this environment's backend stop updating.",
   metrics_endpoint: "Active users and product counters for this environment stop updating.",
+  vercel: "Deploys and usage of every part hosted on Vercel stop updating.",
+  render: "Deploys, CPU and memory of every part hosted on Render stop updating.",
+  netlify: "Deploys and analytics of every part hosted on Netlify stop updating.",
+  fly: "Releases, CPU, memory and traffic of every part hosted on Fly.io stop updating.",
+  aws: "CloudWatch metrics of every part hosted on AWS stop updating.",
 };
 
 /** An integration named in a sentence: "GitHub token", "Railway project token for Staging". */

@@ -522,6 +522,8 @@ async function legacyEnvValue(ctx: TenantContext, env: Env, kind: IntegrationKin
       const repo = await first<{ legacy_hook: number }>(ctx, `SELECT legacy_hook FROM org_repos WHERE org_id = ? AND id = ?`, ctx.orgId, scope);
       return repo?.legacy_hook === 1 ? pick(env.GITHUB_WEBHOOK_SECRET) : null;
     }
+    // The hosting providers (0043_hosting_providers) arrived with per-org secrets: no Worker secret ever answered for them.
+    case "vercel": case "render": case "netlify": case "fly": case "aws": return null;
   }
 }
 

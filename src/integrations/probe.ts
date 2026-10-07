@@ -17,6 +17,7 @@ import type { Env } from "../env";
 import { ghJson } from "../repo/github";
 import type { IntegrationKind } from "@shared/integrations";
 import { listEnvironments, primaryRepo, webhookUrl } from "./settings";
+import { probeHostingKind } from "../hosting/probe";
 
 export interface ProbeResult { ok: boolean; detail: string }
 
@@ -249,6 +250,10 @@ export async function testConnection(
     case "railway": result = await probeRailway(ctx, scope, secret, now, doFetch); break;
     case "metrics_endpoint": result = await probeMetricsEndpoint(ctx, scope, secret, doFetch); break;
     case "github_token": result = await probeGithub(ctx, secret, fetchImpl); break;
+    // The hosting providers' own probe (src/hosting/probe.ts): the provider's cheapest authenticated read,
+    // through its fixed-host fetch, against the first part that uses it (or the credential alone).
+    case "vercel": case "render": case "netlify": case "fly": case "aws":
+      result = await probeHostingKind(ctx, env, kind, secret, now, doFetch); break;
   }
   result = { ok: result.ok, detail: scrub(result.detail, revealed).replace(/\s+/g, " ").trim().slice(0, DETAIL_CHARS) };
   await recordSecretOutcome(ctx, kind, scope, result.ok ? { ok: true } : { ok: false, message: result.detail, revealed }, now);
