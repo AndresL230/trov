@@ -8,6 +8,7 @@
 // (./dispatch.ts). A unit reads its repo and environments from the org's rows (./config.ts) and its
 // credentials through `resolveCredential`; nothing here reads `GITHUB_REPO` / `REPO_ENVIRONMENTS`.
 import type { PollOutcome, RepoRefreshResult, UsagePollResult, UsagePollSource } from "@shared/repo";
+import type { HostingPollOutcome } from "@shared/hosting";
 import type { IntegrationKind } from "@shared/integrations";
 import type { Env } from "../env";
 import { pruneOAuth } from "../auth/oauth";
@@ -16,7 +17,7 @@ import { orgEnvironment, orgEnvironments, orgPrimaryRepo, type RepoEnvConfig } f
 import { run } from "../data/sql";
 import { platform, systemTenant, type TenantContext } from "../data/context";
 import { type Revealed, type Secret, markSecretUsed, recordSecretOutcome, resolveCloudflareAccountId, resolveCredential, scrub } from "../data/secrets";
-import { jobTenant, listEnvUnits, listRepoUnits } from "../platform/jobs";
+import { jobTenant, listEnvUnits, listPartUnits, listRepoUnits } from "../platform/jobs";
 import { importLogoForOrg } from "../integrations/logo";
 import { LOGO_IMPORT_COST } from "../orgs/logo";
 import { CRON_SUBREQUEST_BUDGET, newBudget, serveJob, type Unit } from "./dispatch";
@@ -24,6 +25,9 @@ import { reconcileRepo, type ReconcileResult } from "./github";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollCloudflare, pollRailway, pollSaplingMetrics } from "./poll";
 import { getSnapshot } from "./store";
 import { expireDueHandoffs, pruneRepoCapture } from "../platform/sweeps";
+import { listStoredParts } from "../hosting/parts";
+import { type ProviderMap, hostingPollCost, pollPart, pollParts, providerPollCost } from "../hosting/poll";
+import { PROVIDERS } from "../hosting/registry";
 
 export const REPO_CRON = "*/10 * * * *";
 
@@ -177,7 +181,8 @@ export const SUBREQUEST_CAP = 50;
 /** `runRepoRefresh`'s worst case for N environments: health 2N + usage 3N +
  *  reconcile (19 + 2N) = 19 + 7N. 33 for two; 47 at N = 4; 54 at N = 5. */
 export const refreshSubrequests = (n: number): number => 19 + 7 * n;
-/** The one fixed phrase `github.failed` carries when the arm was not run. */
+/** The one fixed phrase `github.failed` carries when the arm was not run — and every hosting part's
+ *  `detail` when the hosting arm was not. */
 export const BUDGET_SKIP = "skipped: would exceed the subrequest budget";
 
 export interface ReconcileJobOpts {
@@ -251,6 +256,27 @@ export async function runOrgJob(env: Env, orgId: string, job: OrgJob, now: numbe
   }
 }
 
+/**
+ * ONE (org, environment, STORED part) job — the `hosting` unit the cron dispatches at `:40`, and what a
+ * queue consumer would call unchanged. Re-reads the part as that org's system tenant (its settings and
+ * provider as they are NOW — a part re-pointed or removed since the dispatcher listed it is polled as it
+ * is, or not at all) and hands it to `pollPart` (src/hosting/poll.ts), which resolves the provider's
+ * credential, polls, validates, stores and records the outcome. TOTAL, like `runEnvJob`: `pollPart` never
+ * throws, and a failed read of the part is logged here, scrubbed, with the org id.
+ */
+export async function runPartJob(
+  env: Env, orgId: string, envKey: string, partKey: string, now: number, fetchImpl?: typeof fetch, providers: ProviderMap = PROVIDERS,
+): Promise<void> {
+  try {
+    const ctx = systemTenant(platform(env, "system"), orgId, "system");
+    const part = (await listStoredParts(ctx)).find((p) => p.env === envKey && p.key === partKey);
+    if (!part) return;
+    await pollPart(env, ctx, part, now, fetchImpl, providers);
+  } catch (e) {
+    console.error("repo cron", "hosting", scrubbedLog(e, env), `org=${orgId}`);
+  }
+}
+
 // ── on demand, for ONE org (the admin routes) ────────────────────────────────
 
 /** What an environment WITHOUT its own credential reads as once another environment of the org has
@@ -291,7 +317,7 @@ export async function runUsagePolls(env: Env, caller: TenantContext, now: number
 
 /**
  * What the Repo dashboard POLLS for, refreshed on demand for ONE org — the
- * function behind the admin's "Poll now" (`POST /admin/poll`). Three sources, in
+ * function behind the admin's "Poll now" (`POST /admin/poll`). Four sources, in
  * this order, each in its OWN guarded arm (a failure in one never skips another):
  *
  *   health   `pingHealth`, stamped to the SECOND (see `HEALTH_ON_DEMAND_BUCKET_MS`
@@ -299,6 +325,11 @@ export async function runUsagePolls(env: Env, caller: TenantContext, now: number
  *            first-write-wins reading is dropped). `"not_configured"` with no
  *            environment.
  *   usage    `runUsagePolls` — Cloudflare, Railway, the app's metrics.
+ *   hosting  the hosting providers (src/hosting/poll.ts `pollParts`): every
+ *            STORED part, one `HostingPollOutcome` each — the `:40` job's own
+ *            function. The key is in the result ONLY when the org has a stored
+ *            part, so an org on the legacy Cloudflare / Railway parts alone gets
+ *            exactly the result it always did. Budget below.
  *   github   `runReconcileJob`: deploys, checks, runs, branches, drift, open
  *            PRs, env heads, the `canopy/*` commit statuses and PR reviews.
  *            `"not_configured"` without a primary repo AND a `github_token`; an
@@ -312,6 +343,13 @@ export async function runUsagePolls(env: Env, caller: TenantContext, now: number
  * GITHUB arm is SKIPPED and says so (`BUDGET_SKIP`) rather than risk the whole
  * invocation dying half-way — health and usage (5N) still run. The formula is
  * the worst case on purpose: it does not discount an unconfigured poller.
+ * The HOSTING arm costs Σ `pollCost` over the org's stored parts (each
+ * provider's declared worst case; `DEFAULT_HOSTING_COST` = 5 when unusable),
+ * and runs only when the WHOLE refresh still fits: 19 + 7N + Σ pollCost ≤ 50.
+ * GitHub keeps its reservation — its own check above is unchanged, so a
+ * hosting part can never cost an org its reconcile — and otherwise EVERY part
+ * reads `skipped` with `BUDGET_SKIP` (nothing is fetched). For two environments
+ * that leaves 17 subrequests for hosting.
  *
  * Deliberately NOT here:
  *   `recomputeAllProgress`  UNBOUNDED — one request per issue number of every
@@ -332,7 +370,10 @@ export async function runUsagePolls(env: Env, caller: TenantContext, now: number
  * health details are fixed words, usage details are the pollers' scrubbed
  * messages, and `github.failed` is arm names or one of two fixed phrases.
  */
-export async function runRepoRefresh(env: Env, caller: TenantContext, now: number, fetchImpl?: typeof fetch, reconcile: typeof reconcileRepo = reconcileRepo): Promise<RepoRefreshResult> {
+export async function runRepoRefresh(
+  env: Env, caller: TenantContext, now: number, fetchImpl?: typeof fetch, reconcile: typeof reconcileRepo = reconcileRepo,
+  providers: ProviderMap = PROVIDERS,
+): Promise<RepoRefreshResult> {
   const ctx = jobTenant(env, caller);
   const envs = await orgEnvironments(ctx);
 
@@ -356,9 +397,23 @@ export async function runRepoRefresh(env: Env, caller: TenantContext, now: numbe
     usage = { cloudflare: unexpected("*"), railway: unexpected("*"), sapling: unexpected("*") };
   }
 
+  // Hosting: present only when the org HAS a stored part. `pollPart` never throws, so the one thing that
+  // can is the parts read itself — then there is no part to report on, and the key is left out (logged).
+  let hosting: HostingPollOutcome[] | undefined;
+  try {
+    const parts = await listStoredParts(ctx);
+    if (parts.length) {
+      hosting = refreshSubrequests(envs.length) + hostingPollCost(parts, providers) > SUBREQUEST_CAP
+        ? parts.map((p) => ({ env: p.env, part: p.key, provider: p.provider, status: "skipped" as const, written: 0, detail: BUDGET_SKIP }))
+        : await pollParts(env, ctx, parts, now, fetchImpl, providers);
+    }
+  } catch (e) {
+    console.error("repo refresh", "hosting", scrubbedLog(e, env), `org=${ctx.orgId}`);
+  }
+
   const github = (await runReconcileJob(env, ctx, now, { fetchImpl, reconcile, label: "repo refresh", budgetSkip: true })) ?? "not_configured";
 
-  return { health, ...usage, github };
+  return { health, ...usage, ...(hosting ? { hosting } : {}), github };
 }
 
 // ── the refresh lock ─────────────────────────────────────────────────────────
@@ -456,11 +511,24 @@ export const PROGRESS_COST_ESTIMATE = 40;
  *                branch pages + 2 drift compares + 2 per environment (head
  *                commit, head checks). With the tick's own pings: 19 + 4N.
  *   :30 (h%6)    `pruneRepoCapture` + `pruneOAuth` — D1 only, cross-org sweeps.
+ *   :40          `hosting` — one unit per (org, environment, STORED part)
+ *                (`listPartUnits`; key `<org>/<env>/<part>`), every hour: the
+ *                hosting providers (src/hosting/poll.ts `pollPart` via
+ *                `runPartJob`). A unit costs its provider's declared worst case,
+ *                `pollCost` (`DEFAULT_HOSTING_COST` = 5 when unusable) — and
+ *                nothing at all when the org has no credential for that provider
+ *                (`pollPart` skips before any fetch). The tick that only pinged
+ *                health before: the providers' own window settles 15 minutes
+ *                after the hour (`pollWindow`, src/hosting/http.ts), so :40 reads
+ *                hours that have closed, and it is the one hourly slot free of
+ *                every other job. The part list is read FIRST: with no stored part
+ *                anywhere there is no heavy job, and health keeps the whole tick.
  *
  * THE BUDGET. One invocation may spend `CRON_SUBREQUEST_BUDGET` outbound
  * requests (and `CRON_WALL_BUDGET_MS` of wall clock) — ./dispatch.ts. `health`
  * goes first and, on a tick that also has a heavy job, may use at most HALF, so
- * neither can starve the other; each job resumes after the unit its previous
+ * neither can starve the other (at :40 that half applies only when some org HAS
+ * a stored part to poll); each job resumes after the unit its previous
  * invocation stopped at (`cron_cursor`). With one org and two environments every
  * tick serves every unit and the cursor is never written.
  *
@@ -471,9 +539,12 @@ export const PROGRESS_COST_ESTIMATE = 40;
  * nothing. A suspended org is not listed. Nothing throws out of here.
  *
  * `limit` is the invocation's subrequest budget — a parameter only so a test can
- * make it small enough to watch the rotation.
+ * make it small enough to watch the rotation; `providers` likewise lets a test
+ * run the hosting job against a fake provider.
  */
-export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?: typeof fetch, limit: number = CRON_SUBREQUEST_BUDGET): Promise<void> {
+export async function handleRepoCron(
+  env: Env, scheduledTime: number, fetchImpl?: typeof fetch, limit: number = CRON_SUBREQUEST_BUDGET, providers: ProviderMap = PROVIDERS,
+): Promise<void> {
   const when = new Date(scheduledTime);
   const minute = when.getUTCMinutes();
   const hour = when.getUTCHours();
@@ -486,7 +557,19 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
       console.error("repo cron", label, scrubbedLog(e, env));
     }
   };
-  const heavy: "usage" | OrgJob | null = minute === 0 ? "usage"
+  // The :40 job's units are listed BEFORE health is served: whether the tick has a heavy job at all —
+  // and so whether health is held to half the budget — depends on there being a part to poll.
+  let partUnits: (Unit & { envKey: string; partKey: string })[] = [];
+  if (minute === 40) {
+    await safely("hosting units", async () => {
+      partUnits = (await listPartUnits(p)).map((u) => ({
+        key: `${u.org_id}/${u.env_key}/${u.part_key}`, orgId: u.org_id, envKey: u.env_key, partKey: u.part_key,
+        cost: providerPollCost(providers, u.provider),
+      }));
+    });
+  }
+  const heavy: "usage" | "hosting" | OrgJob | null = minute === 0 ? "usage"
+    : minute === 40 ? (partUnits.length ? "hosting" : null)
     : hour % 6 !== 0 ? null
     : minute === 10 ? "progress" : minute === 20 ? "reconcile" : null;
 
@@ -509,6 +592,14 @@ export async function handleRepoCron(env: Env, scheduledTime: number, fetchImpl?
     // nothing new.
     await safely("usage polls", () => serveJob(p, "usage", envUnits.map((u) => ({ ...u, cost: USAGE_COST })), budget, limit,
       (u) => runEnvJob(env, u.orgId, u.envKey, "usage", scheduledTime, budget.fetch)));
+    return;
+  }
+
+  if (heavy === "hosting") {
+    // The hosting providers, every hour at :40 — a unit per stored part, by rotation, after health's
+    // half. Each unit logs its own failures (`pollPart`); nothing else runs on this tick.
+    await safely("hosting polls", () => serveJob(p, "hosting", partUnits, budget, limit,
+      (u) => runPartJob(env, u.orgId, u.envKey, u.partKey, scheduledTime, budget.fetch, providers)));
     return;
   }
 

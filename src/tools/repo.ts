@@ -7,6 +7,11 @@ import {
   type RepoStat, type RepoTodos, type RepoTone, type RepoTrend, type RepoUsageEnv, type RepoUsageMetric,
 } from "@shared/repo";
 import type { PersonColor } from "@shared/rows";
+import {
+  HOSTING_INTEGRATION_KIND, LEGACY_PART_KEY, hostingMetricName, isDeployState, isHostingMetric, metricsForRole,
+  type DeployState, type HostingMetric, type HostingProviderId, type ProviderDeployDTO, type ProviderResources,
+  type ProviderTrafficRange, type RepoProviderPart, type RepoProvidersSection,
+} from "@shared/hosting";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
 import { type TenantContext, all, first, nowIso, ph } from "../data/sql";
 import { ISSUE_GONE_ACTIONS } from "./issue-gone";
@@ -18,9 +23,16 @@ import {
 import type { RepoEnvConfig } from "../repo/config";
 import { PRODUCT_GROUPS, PRODUCT_PREFIX, type ProductFormat, compareProductKeys, parseProductMetric, productKeyInfo } from "../repo/product";
 import {
-  MIDNIGHT_TAIL, type MetricGroup, getSnapshot, latestHealth, latestMetric, metricSeries, metricsEver, metricsSince, productReadings,
+  type HostingReads, MIDNIGHT_TAIL, type MetricGroup, getSnapshot, hostingReads, latestHealth, latestMetric, metricSeries, metricsEver,
+  metricsSince, productReadings,
 } from "../repo/store";
 import { CF_POLLED, cfCovered, type RepoEventRow, type RepoPrRow } from "../repo/types";
+// The hosting layer's READ side only: the parts list (tenant statements) and the provider registry (pure
+// metadata — labels, capabilities, console links). Never src/hosting/poll.ts, which resolves credentials:
+// this projection is reachable from src/mcp.ts (test/secrets.mcp.test.ts).
+import { listAllParts, type PartRow } from "../hosting/parts";
+import { PROVIDERS } from "../hosting/registry";
+import type { HostingProvider } from "../hosting/types";
 
 // The Repo dashboard: a D1-ONLY read projection, in the same class as My Work —
 // no live GitHub, no per-user token, nothing written. It reads what the webhook,
@@ -79,7 +91,7 @@ const NOT_CONNECTED = { status: "not_connected" } as const;
 export function emptyRepoDashboard(repo: string, degraded: boolean): RepoDashboard {
   return {
     repo, generatedAt: nowIso(), degraded,
-    usage: NOT_CONNECTED, cloudflare: NOT_CONNECTED, hosting: NOT_CONNECTED, product: NOT_CONNECTED,
+    usage: NOT_CONNECTED, cloudflare: NOT_CONNECTED, hosting: NOT_CONNECTED, providers: NOT_CONNECTED, product: NOT_CONNECTED,
     environments: NOT_CONNECTED, deploys: NOT_CONNECTED, ciFailures: NOT_CONNECTED, drift: NOT_CONNECTED,
     branches: NOT_CONNECTED, health: NOT_CONNECTED, coverage: NOT_CONNECTED, bundle: NOT_CONNECTED, todos: NOT_CONNECTED,
     stats: EMPTY, codeStats: EMPTY, bars: EMPTY, prs: EMPTY, activity: EMPTY,
@@ -257,10 +269,15 @@ function usageReadGroups(usageEnd: number, now: number): MetricGroup[] {
   const since = (ms: number) => new Date(ms).toISOString();
   const rangeStart = (range: RepoRange) => since(usageEnd - USAGE_RANGES[range].hours * HOUR);
   return [
-    { metrics: ["cf_requests", "cf_errors", "active_users_30d"], since: rangeStart("30d") },
+    // The providers' web series (`hx_requests` / `hx_errors` / `hx_bandwidth_bytes` / `hx_latency_p95_ms`)
+    // are sliced into the same three ranges as Cloudflare's counts, so they share its 30-day bound.
+    { metrics: ["cf_requests", "cf_errors", "active_users_30d", ...HX_WEB], since: rangeStart("30d") },
     { metrics: ["active_users_7d"], since: rangeStart("7d") },
     { metrics: ["active_users_24h"], since: rangeStart("24h") },
-    { metrics: HOSTING_METRICS, since: since(now - HOSTING_STALE_MS) },
+    // The hosting gauges — Railway's `rw_*` and the providers' `hx_cpu` / `hx_mem_mb` — over 24 hours: a
+    // figure is shown only while ≤ `HOSTING_STALE_MS` old, but the providers section draws each service
+    // part's last 24 hourly readings (`ProviderResources.trend`). 24 rows per series per part.
+    { metrics: [...HOSTING_METRICS, ...HX_SERVICE], since: since(now - DAY) },
   ];
 }
 
@@ -292,6 +309,73 @@ function thinGauge(pts: UsagePoint[], range: RepoRange, now: number): number[] {
   const last = new Map<number, number>();
   for (const p of pts) last.set(key(p.t), p.value);
   return [...last.values()];
+}
+
+/** Where a DENSE series of one range may be drawn — `[drawFrom, fillToExcl)`, both hour-aligned — or null
+ *  when nothing in the range is known. THE "never guess" rule for an hourly COUNT whose quiet hours have
+ *  no row (Cloudflare's analytics, the hosting providers' `hx_*` sums), stated once for both:
+ *   - The fill starts at the first captured point in the range, or at the range's start when capture
+ *     PREDATES it (a point before the range). Before capture began the value is unknown, not zero.
+ *   - …unless that would cross a HOLE: an hour between there and the covered interval's `from` that holds
+ *     no real point is one no poll ever looked at (an outage longer than the poll's window), so the series
+ *     starts at `from` instead — the contiguous covered stretch only.
+ *   - It ends at `max(covered to, the last real point + 1h)`, clamped to the last complete hour: "no row"
+ *     means zero only for an hour a poll looked at, and a real point is always drawn.
+ *  `coverageIsEvidence` (the hosting providers): the provider's contract says an hour INSIDE its covered
+ *  interval with no point is a true zero (src/hosting/types.ts), so coverage reaching into the range is
+ *  itself something known — a freshly connected, quiet part reads "0", not unknown. Cloudflare's own
+ *  marker is NOT evidence on its own (`false`): a Worker name Cloudflare does not know answers with no rows
+ *  too, so a poll that has never returned a single row proves nothing. `pts` is ascending, complete hours
+ *  only (`< endExcl`). PURE. */
+function knownStretch(
+  pts: UsagePoint[], range: RepoRange, endExcl: number, covered: { from: number; to: number } | null, coverageIsEvidence: boolean,
+): { drawFrom: number; fillToExcl: number } | null {
+  const start = endExcl - USAGE_RANGES[range].hours * HOUR;
+  // The covered interval, snapped INWARD to whole hours; its end is clamped to
+  // the last complete hour. −∞ / −∞ = no marker at all.
+  const coveredFrom = covered ? Math.ceil(covered.from / HOUR) * HOUR : -Infinity;
+  const polledExcl = covered ? Math.min(endExcl, Math.floor(covered.to / HOUR) * HOUR) : -Infinity;
+  const inRange = pts.filter((p) => p.t >= start);
+  const covStart = Math.max(start, coveredFrom);
+  const coverageInRange = coverageIsEvidence && polledExcl > covStart;
+  // `pts` is ascending: its first point predating the range means capture was
+  // already running when the range began.
+  const predates = (pts.length > 0 && pts[0].t < start) || (coverageInRange && coveredFrom < start);
+  const firstSeen = Math.min(inRange.length ? inRange[0].t : Infinity, coverageInRange ? covStart : Infinity);
+  const fillFrom = predates ? start : Number.isFinite(firstSeen) ? firstSeen : null;
+  const fillToExcl = Math.max(polledExcl, inRange.length ? inRange[inRange.length - 1].t + HOUR : -Infinity);
+  if (fillFrom === null || fillToExcl <= fillFrom) return null;
+  // A HOLE: an hour between where the fill would begin and where the
+  // covered interval begins that holds no real point — nothing ever looked
+  // at it, so it may not be drawn as 0, and a dense array cannot draw
+  // "unknown". The series then starts at the covered interval instead.
+  // (Real points running right up to `coveredFrom` are no hole: a stored
+  // point IS an hour a poll looked at.)
+  const seenHours = new Set(inRange.map((p) => Math.floor(p.t / HOUR) * HOUR));
+  let hole = false;
+  for (let h = fillFrom; h < Math.min(coveredFrom, fillToExcl) && !hole; h += HOUR) hole = !seenHours.has(h);
+  return { drawFrom: hole ? coveredFrom : fillFrom, fillToExcl };
+}
+
+/** `pts` (complete hours, inside the range) summed into the range's equal buckets, sliced to the stretch
+ *  `knownStretch` allowed. `firstIdx` is the first bucket's index from the range start — its instant is
+ *  `start + firstIdx × step`. PURE. */
+function denseBuckets(
+  pts: UsagePoint[], range: RepoRange, endExcl: number, stretch: { drawFrom: number; fillToExcl: number },
+): { firstIdx: number; values: number[] } {
+  const { hours, step } = USAGE_RANGES[range];
+  const start = endExcl - hours * HOUR;
+  const idx = (t: number) => Math.floor((t - start) / step);
+  // The first bucket drawn is the first WHOLE one: when capture (or the
+  // covered interval) begins mid-bucket, that bucket holds only part of its
+  // span and would read as a dip beside full ones. `ceil` is the mirror of
+  // the rule at the other end ("never a half-finished day drawn as a
+  // drop"); hourly buckets are always whole. Totals are untouched.
+  const firstIdx = Math.ceil((stretch.drawFrom - start) / step);
+  const out = new Array<number>((hours * HOUR) / step).fill(0);
+  for (const p of pts) if (p.t >= start && p.t < endExcl) out[idx(p.t)] += p.value;
+  // The last bucket drawn is the one holding the last KNOWN hour.
+  return { firstIdx, values: out.slice(firstIdx, idx(stretch.fillToExcl - HOUR) + 1) };
 }
 
 /**
@@ -372,14 +456,10 @@ function projectUsage(
       requests: reqEvery.length > 0,
       users: rows.some((r) => r.env === cfg.key && r.part === "" && r.metric.startsWith("active_users_")),
     };
-    // The covered interval, snapped INWARD to whole hours; its end is clamped to
-    // the last complete hour. −∞ / −∞ = no marker at all.
     const covered = cfCovered(polled[cfg.key]);
-    const coveredFrom = covered ? Math.ceil(covered.from / HOUR) * HOUR : -Infinity;
-    const polledExcl = covered ? Math.min(endExcl, Math.floor(covered.to / HOUR) * HOUR) : -Infinity;
 
     for (const range of REPO_RANGES) {
-      const { hours, step } = USAGE_RANGES[range];
+      const { hours } = USAGE_RANGES[range];
       const start = endExcl - hours * HOUR;
       const inRange = (pts: UsagePoint[]) => pts.filter((p) => p.t >= start);
       const req = inRange(reqAll);
@@ -388,40 +468,12 @@ function projectUsage(
       // newest reading is stamped with the CURRENT hour (`endExcl` itself).
       const usr = series(`active_users_${range}`, "").filter((p) => p.t <= now && p.t > now - hours * HOUR);
 
-      // `reqAll` is ascending: its first point predating the range means
-      // capture was already running when the range began.
-      const predates = reqAll.length > 0 && reqAll[0].t < start;
-      const fillFrom = predates ? start : req.length ? req[0].t : null;
-      const fillToExcl = Math.max(polledExcl, req.length ? req[req.length - 1].t + HOUR : -Infinity);
-
       let requests: RepoUsageMetric | null = null;
       let errorRate: RepoUsageMetric | null = null;
-      if (fillFrom !== null && fillToExcl > fillFrom) {
-        // A HOLE: an hour between where the fill would begin and where the
-        // covered interval begins that holds no real point — nothing ever looked
-        // at it, so it may not be drawn as 0, and a dense array cannot draw
-        // "unknown". The series then starts at the covered interval instead.
-        // (Real points running right up to `coveredFrom` are no hole: a stored
-        // point IS an hour a poll looked at.)
-        const seenHours = new Set(req.map((p) => Math.floor(p.t / HOUR) * HOUR));
-        let hole = false;
-        for (let h = fillFrom; h < Math.min(coveredFrom, fillToExcl) && !hole; h += HOUR) hole = !seenHours.has(h);
-        const drawFrom = hole ? coveredFrom : fillFrom;
-        const idx = (t: number) => Math.floor((t - start) / step);
-        // The first bucket drawn is the first WHOLE one: when capture (or the
-        // covered interval) begins mid-bucket, that bucket holds only part of its
-        // span and would read as a dip beside full ones. `ceil` is the mirror of
-        // the rule at the other end ("never a half-finished day drawn as a
-        // drop"); hourly buckets are always whole. Totals are untouched.
-        const firstIdx = Math.ceil((drawFrom - start) / step);
-        const bucket = (pts: UsagePoint[]): number[] => {
-          const out = new Array<number>((hours * HOUR) / step).fill(0);
-          for (const p of pts) out[idx(p.t)] += p.value;
-          // The last bucket drawn is the one holding the last KNOWN hour.
-          return out.slice(firstIdx, idx(fillToExcl - HOUR) + 1);
-        };
-        const reqBuckets = bucket(req);
-        const errBuckets = bucket(err);
+      const stretch = knownStretch(reqAll, range, endExcl, covered, false);
+      if (stretch) {
+        const reqBuckets = denseBuckets(req, range, endExcl, stretch).values;
+        const errBuckets = denseBuckets(err, range, endExcl, stretch).values;
         const total = req.reduce((n, p) => n + p.value, 0);
         const errors = err.reduce((n, p) => n + p.value, 0);
         requests = { value: compact(total), trend: reqBuckets, tone: "neutral" };
@@ -566,6 +618,284 @@ function projectProduct(
   return { product, anyProduct };
 }
 
+// ── hosting providers: the provider-neutral section (#97) ────────────────────
+/** The registry, or (tests) a map holding a fake. Spelled here rather than imported from
+ *  src/hosting/poll.ts — that module resolves credentials and must stay unreachable from src/mcp.ts. */
+type ProviderMap = Readonly<Partial<Record<HostingProviderId, HostingProvider>>>;
+type MetricRow = { metric: string; env: string; part: string; at: string; value: number };
+
+const hx = hostingMetricName;
+/** The providers' WEB series this section reads — over the 30-day Usage bound. (`latency_p50_ms` is stored
+ *  but no DTO field shows it yet, so it is not read.) */
+const HX_WEB = [hx("requests"), hx("errors"), hx("bandwidth_bytes"), hx("latency_p95_ms")];
+/** The providers' SERVICE gauges — over 24 hours (see `usageReadGroups`). */
+const HX_SERVICE = [hx("cpu"), hx("mem_mb")];
+/** Deploys: the newest `PROVIDER_DEPLOY_LIMIT` of each part, created in the last `PROVIDER_DEPLOY_DAYS`. */
+const PROVIDER_DEPLOY_DAYS = 90;
+const PROVIDER_DEPLOY_LIMIT = 10;
+/** A web part's 24-hour error rate at or above these tones it — the Usage tab's own 1% warn, and 5% bad. */
+const ERROR_RATE_WARN = 1;
+const ERROR_RATE_BAD = 5;
+/** A legacy deploy dot's result, in the provider vocabulary: `cancel` is abandoned, never a failure. */
+const LEGACY_DEPLOY_STATE: Record<RepoDeploy["result"], DeployState> = { ok: "ready", fail: "error", cancel: "canceled" };
+
+/** Two decimals — a percentage, a vCPU figure. */
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/**
+ * A WEB part's traffic, per range, from its hourly series (complete hours only, ascending). The three
+ * ranges are the Usage tab's (`USAGE_RANGES`: the last 24 / 168 / 720 complete hours, 1-hour / 1-day
+ * buckets ending at the last complete hour), and a missing hour is zero only where `knownStretch` says it
+ * may be — inside the covered interval, never across a hole:
+ *   requests        the sum of real points in the range, when the range holds anything KNOWN (a point, or
+ *                   — `coverageIsEvidence` — covered hours of a metric the provider reads); else null.
+ *   errors          the same sum over the error points, known exactly when requests are (and the provider
+ *                   reads errors) or when an error point exists; else null.
+ *   error_rate      errors ÷ requests × 100, two decimals — only with a REAL request point in the range
+ *                   (0 of 0 is not a rate) and known errors; else null.
+ *   latency_p95_ms  the LATEST point in the range — a gauge: the p95 of the newest complete hour is the
+ *                   current figure, where a max would pin the range to its worst hour. Never zero-filled.
+ *   bandwidth_bytes a sum, known like requests (its own points, or covered hours it is read for).
+ *   trend           dense `{ at, requests, errors }` buckets over `knownStretch`'s stretch, oldest first;
+ *                   `[]` when nothing is known or only one partial bucket is. Its `errors` mean something
+ *                   only when the range's `errors` is non-null.
+ * `reads(m)`: does the provider read metric `m` for this part (its capabilities, minus `unavailable`)? A
+ * metric it does not read is never zero-filled — it is unknown, whatever the coverage says.
+ */
+function trafficOf(
+  s: { req: UsagePoint[]; err: UsagePoint[]; bw: UsagePoint[]; lat: UsagePoint[] }, covered: { from: number; to: number } | null,
+  reads: (m: HostingMetric) => boolean, coverageIsEvidence: boolean, endExcl: number,
+): Record<RepoRange, ProviderTrafficRange> {
+  const out = {} as Record<RepoRange, ProviderTrafficRange>;
+  const coveredFrom = covered ? Math.ceil(covered.from / HOUR) * HOUR : -Infinity;
+  const polledExcl = covered ? Math.min(endExcl, Math.floor(covered.to / HOUR) * HOUR) : -Infinity;
+  for (const range of REPO_RANGES) {
+    const { hours, step } = USAGE_RANGES[range];
+    const start = endExcl - hours * HOUR;
+    const inRange = (pts: UsagePoint[]) => pts.filter((p) => p.t >= start && p.t < endExcl);
+    const sum = (pts: UsagePoint[]) => pts.reduce((n, p) => n + p.value, 0);
+    const req = inRange(s.req), err = inRange(s.err), bw = inRange(s.bw), lat = inRange(s.lat);
+    // Coverage of THIS range: some covered hour inside it.
+    const coveredHere = coverageIsEvidence && polledExcl > Math.max(start, coveredFrom);
+    const stretch = knownStretch(s.req, range, endExcl, covered, coverageIsEvidence && reads("requests"));
+    const requests = stretch ? sum(req) : null;
+    const errors = err.length || (requests !== null && reads("errors")) ? sum(err) : null;
+    const bandwidth = bw.length || (coveredHere && reads("bandwidth_bytes")) ? sum(bw) : null;
+    let trend: ProviderTrafficRange["trend"] = [];
+    if (stretch) {
+      const r = denseBuckets(req, range, endExcl, stretch);
+      const e = denseBuckets(err, range, endExcl, stretch);
+      trend = r.values.map((v, i) => ({ at: new Date(start + (r.firstIdx + i) * step).toISOString(), requests: v, errors: e.values[i] ?? 0 }));
+    }
+    out[range] = {
+      requests, errors,
+      error_rate: req.length && requests !== null && errors !== null ? round2(requests ? (errors / requests) * 100 : 0) : null,
+      latency_p95_ms: lat.length ? lat[lat.length - 1].value : null,
+      bandwidth_bytes: bandwidth,
+      trend,
+    };
+  }
+  return out;
+}
+
+/** A SERVICE part's resources from its hourly gauges: each figure the LATEST reading while it is at most
+ *  `HOSTING_STALE_MS` old (and not stamped ahead of the clock) — the one staleness rule of an hourly gauge
+ *  — else null; `at` the newer of the two shown; `trend` every hour of the last 24 with a reading, oldest
+ *  first, NEVER zero-filled (a missing hour is a poll that did not land). */
+function resourcesOf(cpu: UsagePoint[], mem: UsagePoint[], now: number): ProviderResources {
+  const current = (pts: UsagePoint[]): UsagePoint | null => {
+    const latest = pts.filter((p) => p.t <= now).at(-1) ?? null;
+    return latest && now - latest.t <= HOSTING_STALE_MS ? latest : null;
+  };
+  const c = current(cpu), m = current(mem);
+  const newest = Math.max(c?.t ?? -Infinity, m?.t ?? -Infinity);
+  const hours = new Map<number, { cpu: number | null; mem_mb: number | null }>();
+  const add = (pts: UsagePoint[], key: "cpu" | "mem_mb") => {
+    for (const p of pts) {
+      if (p.t > now || p.t <= now - DAY) continue;
+      const h = Math.floor(p.t / HOUR) * HOUR;
+      const row = hours.get(h) ?? { cpu: null, mem_mb: null };
+      row[key] = p.value; // ascending: the last reading of an hour wins
+      hours.set(h, row);
+    }
+  };
+  add(cpu, "cpu");
+  add(mem, "mem_mb");
+  return {
+    cpu: c ? round2(c.value) : null,
+    mem_mb: m ? Math.round(m.value * 10) / 10 : null,
+    at: Number.isFinite(newest) ? new Date(newest).toISOString() : null,
+    trend: [...hours.entries()].sort((a, b) => a[0] - b[0]).map(([t, v]) => ({ at: new Date(t).toISOString(), ...v })),
+  };
+}
+
+/** A legacy deploy dot (`deployHistories`, oldest first) as a provider deploy, newest first. What the
+ *  GitHub capture knows is filled — the short sha, who pushed it, when its LAST status landed (`at`; the
+ *  provider-side creation instant is not captured, so `ready_at` is that same instant for a deploy that
+ *  finished) — and everything else is null. The id is synthetic (`github:<sha>@<at>`), stable across renders.
+ *  A Cloudflare frontend deploy is a Workers Builds check on the environment's OWN branch
+ *  (`fromCheckRun`), so its branch is known; a Railway backend deploy is matched by environment name
+ *  alone, so its branch is not. */
+function legacyDeploys(strip: RepoDeploy[], part: PartRow): ProviderDeployDTO[] {
+  return [...strip].reverse().slice(0, PROVIDER_DEPLOY_LIMIT).map((d) => ({
+    id: `github:${d.sha || "unknown"}@${d.at}`, state: LEGACY_DEPLOY_STATE[d.result], target: null, sha: d.sha || null,
+    branch: part.provider === "cloudflare" ? part.branch || null : null, message: null, by: d.by && d.by !== "unknown" ? d.by : null,
+    at: d.at, ready_at: d.result === "cancel" ? null : d.at, url: null, inspect_url: null,
+  }));
+}
+
+const isHttps = (u: string | null): u is string => {
+  if (!u) return false;
+  try { return new URL(u).protocol === "https:"; } catch { return false; }
+};
+
+/**
+ * The `providers` section: EVERY part of every environment (`listAllParts` — the environment's own legacy
+ * Cloudflare frontend and Railway backend first, then the stored parts), each as one `RepoProviderPart`,
+ * derived IN MEMORY from reads the render already makes plus ONE of its own:
+ *   - metric points ride the Usage read (`metricsSince`): `hx_*` for stored parts; for the LEGACY parts
+ *     the series their own pollers already write — `cf_requests` / `cf_errors` (part `frontend`) with the
+ *     `cf_polled` interval, and `rw_cpu` / `rw_mem_mb` (part `backend`) — so an org on the legacy parts
+ *     alone (SaplingLearn) sees its Cloudflare frontend and Railway backend here with nothing re-captured;
+ *   - legacy deploys are the GitHub-derived dot strips `deployHistories` already built;
+ *   - stored deploys, every part's last poll and the org's provider settings are `hostingReads`.
+ *
+ * Per part:
+ *   traffic     role `web` only (`trafficOf`); legacy Cloudflare reads requests / errors only, and its
+ *               marker is not evidence on its own (see `knownStretch`). A stored part's coverage IS. A web
+ *               part whose provider reads no traffic metric at all (capabilities minus `unavailable`) and
+ *               never reported one is `traffic: null` — the same null a service part carries — with
+ *               `unavailable` naming why.
+ *   resources   role `service` only (`resourcesOf`).
+ *   deploys     newest first, ≤ 10, the last 90 days — a stored part's of ITS CURRENT provider only (a part
+ *               re-pointed to another host keeps the old host's rows until they age out; they are not this
+ *               host's history).
+ *   seen        whether each source reported at all inside its read: traffic in the 30-day read, resources
+ *               in the 24-hour one, deploys in the 90-day one.
+ *   last_poll / unavailable   a stored part's `hosting_poll_state` row — when it names the part's current
+ *               provider. A legacy part has none: its pollers report through Poll now's usage lines.
+ *   status      `ok` = a deploy, or any non-null figure (a known zero included); `empty` = the part was
+ *               polled (a stored part with a successful or FAILED poll on record — a poll `skipped` for
+ *               want of a credential never looked; a legacy Cloudflare part with a coverage marker) or
+ *               reported before, but nothing is current; `not_connected` = neither.
+ *   tone        `bad` when the newest deploy errored or the 24-hour error rate is ≥ 5%; else `warn` when
+ *               the last poll failed or that rate is ≥ 1%; else `good` when the newest deploy is ready;
+ *               else `neutral` (an in-flight or canceled newest deploy says nothing either way).
+ *   console_url the provider's own `consoleUrl(part settings, org settings)`, https only, or null — the org
+ *               settings come from `hostingReads` (scope ''), never through the secrets module. A legacy
+ *               part whose setting is still SaplingLearn's Worker variable (the Cloudflare account id
+ *               fallback) has none here: the projection has no `env` and reads no Worker variable.
+ * Section: `ok` when any part is ok; `empty` when parts exist but none is; `not_connected` with no part.
+ */
+function projectProviders(
+  parts: PartRow[], rows: MetricRow[], reads: HostingReads, polled: Record<string, unknown>, strips: Map<string, RepoDeploy[]>,
+  endExcl: number, now: number, providers: ProviderMap,
+): RepoProvidersSection {
+  if (!parts.length) return NOT_CONNECTED;
+  const series = (metric: string, envKey: string, part: string): UsagePoint[] =>
+    rows.filter((r) => r.metric === metric && r.env === envKey && r.part === part)
+      .map((r) => ({ t: Date.parse(r.at), value: r.value })).filter((p) => Number.isFinite(p.t));
+  const complete = (pts: UsagePoint[]) => pts.filter((p) => p.t < endExcl);
+
+  const out: RepoProviderPart[] = parts.map((part) => {
+    const provider = providers[part.provider];
+    const legacyKey = part.legacy && (part.provider === "cloudflare" || part.provider === "railway") ? LEGACY_PART_KEY[part.provider] : null;
+    const state = part.legacy ? undefined : reads.states.find((st) => st.env === part.env && st.part === part.key && st.provider === part.provider);
+    const unavailable = state ? parseUnavailable(state.unavailable) : [];
+    const capabilities = new Set(provider?.capabilities.metrics ?? []);
+    const reads_ = (m: HostingMetric) => capabilities.has(m) && !unavailable.some((u) => u.metric === m);
+
+    let traffic: RepoProviderPart["traffic"] = null;
+    let resources: RepoProviderPart["resources"] = null;
+    let seenTraffic = false, seenResources = false;
+    let coveredMarker = false;
+    if (part.role === "web") {
+      if (legacyKey) {
+        const covered = cfCovered(polled[part.env]);
+        coveredMarker = covered !== null;
+        const req = series("cf_requests", part.env, legacyKey);
+        seenTraffic = req.length > 0;
+        traffic = trafficOf({ req: complete(req), err: complete(series("cf_errors", part.env, legacyKey)), bw: [], lat: [] }, covered,
+          (m) => m === "requests" || m === "errors", false, endExcl);
+      } else {
+        const covered = state ? coveredOf(state.covered_from, state.covered_to) : null;
+        const s = { req: series(hx("requests"), part.env, part.key), err: series(hx("errors"), part.env, part.key),
+          bw: series(hx("bandwidth_bytes"), part.env, part.key), lat: series(hx("latency_p95_ms"), part.env, part.key) };
+        seenTraffic = s.req.length + s.err.length + s.bw.length + s.lat.length > 0;
+        // A provider that reads NO traffic metric for this part (Vercel and Netlify have no public usage API —
+        // their polls list every web metric in `unavailable`) has no traffic to show at all: `null`, with
+        // `unavailable` saying why — never a block of unknowns. Real points, should one ever land, win.
+        traffic = metricsForRole("web").some(reads_) || seenTraffic
+          ? trafficOf({ req: complete(s.req), err: complete(s.err), bw: complete(s.bw), lat: complete(s.lat) }, covered, reads_, true, endExcl)
+          : null;
+      }
+    } else {
+      const [cpuName, memName, partKey] = legacyKey ? ["rw_cpu", "rw_mem_mb", legacyKey] : [hx("cpu"), hx("mem_mb"), part.key];
+      const cpu = series(cpuName, part.env, partKey), mem = series(memName, part.env, partKey);
+      seenResources = cpu.length + mem.length > 0;
+      resources = resourcesOf(cpu, mem, now);
+    }
+
+    const deploys: ProviderDeployDTO[] = legacyKey
+      ? legacyDeploys(strips.get(`${part.env}:${legacyKey}`) ?? [], part)
+      : reads.deploys.filter((d) => d.env === part.env && d.part === part.key && d.provider === part.provider && isDeployState(d.state))
+          .slice(0, PROVIDER_DEPLOY_LIMIT)
+          .map((d) => ({
+            id: d.id, state: d.state as DeployState, target: d.target === "production" || d.target === "preview" ? d.target : null,
+            sha: d.sha, branch: d.branch, message: d.message, by: d.by, at: d.at, ready_at: d.ready_at, url: d.url, inspect_url: d.inspect_url,
+          }));
+
+    const anyFigure = (traffic !== null && REPO_RANGES.some((r) => {
+      const t = traffic![r];
+      return t.requests !== null || t.errors !== null || t.latency_p95_ms !== null || t.bandwidth_bytes !== null;
+    })) || (resources !== null && (resources.cpu !== null || resources.mem_mb !== null));
+    const polledOnce = coveredMarker || (state !== undefined && (state.last_ok_at !== null || state.status === "failed"));
+    const status: RepoProviderPart["status"] = deploys.length || anyFigure ? "ok"
+      : polledOnce || seenTraffic || seenResources ? "empty" : "not_connected";
+
+    const rate = traffic?.["24h"].error_rate ?? null;
+    const newest = deploys[0]?.state ?? null;
+    const tone: RepoProviderPart["tone"] = newest === "error" || (rate !== null && rate >= ERROR_RATE_BAD) ? "bad"
+      : state?.status === "failed" || (rate !== null && rate >= ERROR_RATE_WARN) ? "warn"
+      : newest === "ready" ? "good" : "neutral";
+
+    let consoleUrl: string | null = null;
+    try {
+      // Provider code, on the render path: a throw or a non-https answer is simply no link.
+      const u = provider?.consoleUrl({ settings: part.settings }, reads.config.get(HOSTING_INTEGRATION_KIND[part.provider]) ?? {}) ?? null;
+      consoleUrl = isHttps(u) ? u : null;
+    } catch { consoleUrl = null; }
+
+    return {
+      env: part.env, env_label: part.envLabel, part: part.key, label: part.label, role: part.role,
+      provider: part.provider, provider_label: provider?.label ?? part.provider, console_url: consoleUrl,
+      deploys, traffic, resources,
+      seen: { traffic: seenTraffic, resources: seenResources, deploys: deploys.length > 0 },
+      unavailable, status, tone,
+      last_poll: state ? { at: state.polled_at, status: state.status, detail: state.detail } : null,
+    };
+  });
+  return out.some((p) => p.status === "ok") ? ok(out) : EMPTY;
+}
+
+/** `hosting_poll_state.unavailable` (JSON), each entry checked — a malformed one is dropped, never shown. */
+function parseUnavailable(json: string): { metric: HostingMetric; reason: string }[] {
+  try {
+    const v = JSON.parse(json) as unknown;
+    if (!Array.isArray(v)) return [];
+    return v.flatMap((x): { metric: HostingMetric; reason: string }[] => {
+      const o = x as { metric?: unknown; reason?: unknown };
+      return x && typeof x === "object" && isHostingMetric(o.metric) && typeof o.reason === "string" ? [{ metric: o.metric, reason: o.reason }] : [];
+    });
+  } catch { return []; }
+}
+
+/** A stored covered interval as instants, or null when it is not one. */
+function coveredOf(from: string | null, to: string | null): { from: number; to: number } | null {
+  const f = from ? Date.parse(from) : NaN, t = to ? Date.parse(to) : NaN;
+  return Number.isFinite(f) && Number.isFinite(t) && f <= t ? { from: f, to: t } : null;
+}
+
 /** `YYYY-MM-DD` (UTC) for each of the last `n` days, oldest first. */
 function lastDays(now: number, n: number): string[] {
   return Array.from({ length: n }, (_, i) => new Date(now - (n - 1 - i) * DAY).toISOString().slice(0, 10));
@@ -591,7 +921,9 @@ export async function getRepoDashboard(
   now: number = Date.now(),
   /** The environments this deployment reports on (`REPO_ENVIRONMENTS`). None
    *  configured → the environment/deploy sections stay `not_connected`. */
-  envs: RepoEnvConfig[] = []
+  envs: RepoEnvConfig[] = [],
+  /** The hosting provider registry — a parameter only so a test can hand the `providers` section a fake. */
+  providers: ProviderMap = PROVIDERS,
 ): Promise<RepoDashboard> {
   const nowAt = new Date(now).toISOString();
   const weekAgo = new Date(now - 7 * DAY).toISOString();
@@ -1010,32 +1342,57 @@ export async function getRepoDashboard(
   // `metricsSince` group. Its states are its own (a `sap_*` row says nothing
   // about whether usage is connected), but its "has anything EVER landed?"
   // question rides the SAME `metricsEver` statement, as a prefix family.
-  const [usageRows, polledSnap, productRows] = envs.length
+  // The `providers` section (hosting providers, #97) adds, beside those: the org's parts (`listAllParts` —
+  // its environments and its stored parts, two statements; a part's settings and label are not in the
+  // environments this function is handed) and `hostingReads` — every part's last poll, the newest deploys
+  // and the org's provider settings in ONE statement. Its metric points are named groups of the SAME
+  // `metricsSince` read. So the section costs three statements, issued concurrently with the three above.
+  const envKeys = new Set(envs.map((e) => e.key));
+  // The hosting reads fail ALONE: a throw there (a database without 0043 yet, say) costs the providers
+  // section — `not_connected`, and the dashboard says it is `degraded` — never every other section with it.
+  let hostingFailed = false;
+  const hostingRead = async () => {
+    try {
+      return await Promise.all([listAllParts(ctx), hostingReads(ctx, new Date(now - PROVIDER_DEPLOY_DAYS * DAY).toISOString(), PROVIDER_DEPLOY_LIMIT)]);
+    } catch (e) {
+      hostingFailed = true;
+      console.error("repo dashboard", "providers", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
+      return [[] as PartRow[], null] as const;
+    }
+  };
+  const [usageRows, polledSnap, productRows, [allParts, hosted]] = envs.length
     ? await Promise.all([
         metricsSince(ctx, usageReadGroups(usageEnd, now)),
         getSnapshot<unknown>(ctx, CF_POLLED),
         // DISTINCT keys: the read joins against a `VALUES` list of them, so a key
         // listed twice in `REPO_ENVIRONMENTS` would return every row twice — and
         // every midnight would be pushed into its trend twice.
-        productReadings(ctx, [...new Set(envs.map((e) => e.key))], new Date(now - HOSTING_STALE_MS).toISOString(), new Date(now - PRODUCT_TREND_DAYS * DAY).toISOString()),
+        productReadings(ctx, [...envKeys], new Date(now - HOSTING_STALE_MS).toISOString(), new Date(now - PRODUCT_TREND_DAYS * DAY).toISOString()),
+        hostingRead(),
       ])
-    : [[], null, []];
+    : [[], null, [], [[] as PartRow[], null] as const];
   const polled = polledSnap?.data && typeof polledSnap.data === "object" ? (polledSnap.data as Record<string, unknown>) : {};
   const used = projectUsage(usageRows, envs, usageEnd, polled, now);
   // Gated on the WIDEST range; a narrower one may legitimately hold no rows.
   const anyCf = used.cloudflare["30d"].length > 0;
   const hosting = projectHosting(usageRows, envs, now);
   const produced = projectProduct(productRows, envs, now);
+  // Only the environments this projection reports on: the parts list reads the org's rows, the rest of the
+  // dashboard reads `envs` — in production they are the same rows (src/routes.ts, src/tools/repo-agent.ts).
+  const providerSection = hosted
+    ? projectProviders(allParts.filter((p) => envKeys.has(p.env)), usageRows, hosted, polled, strips, usageEnd, now, providers)
+    : NOT_CONNECTED;
   const ever = envs.length && (!used.anyUsage || !anyCf || !hosting.length || !produced.anyProduct)
     ? await metricsEver(ctx, [...USAGE_METRICS, ...HOSTING_METRICS], [PRODUCT_PREFIX])
     : new Set<string>();
   const everAny = (metrics: string[]) => metrics.some((m) => ever.has(m));
 
   return {
-    repo, generatedAt: nowAt, degraded: false,
+    repo, generatedAt: nowAt, degraded: hostingFailed,
     usage: used.anyUsage ? ok(used.usage) : everAny(USAGE_METRICS) ? EMPTY : NOT_CONNECTED,
     cloudflare: anyCf ? ok(used.cloudflare) : ever.has("cf_requests") ? EMPTY : NOT_CONNECTED,
     hosting: hosting.length ? ok(hosting) : everAny(HOSTING_METRICS) ? EMPTY : NOT_CONNECTED,
+    providers: providerSection,
     product: produced.anyProduct ? ok(produced.product) : ever.has(`${PRODUCT_PREFIX}*`) ? EMPTY : NOT_CONNECTED,
     coverage, bundle, todos,
     drift: driftSnap ? ok(driftSnap.data) : NOT_CONNECTED,

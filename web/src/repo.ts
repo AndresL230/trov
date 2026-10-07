@@ -18,8 +18,9 @@ import {
   REPO_RANGES, REPO_TABS, REPO_TAB_SECTIONS,
   type RepoActivity, type RepoActivityKind, type RepoDashboard, type RepoPerson, type RepoPr, type RepoPrState,
   type RepoProductEnv, type RepoRange, type RepoSection, type RepoTab, type RepoTone, type RepoTrend, type RepoUsageEnv, type RepoUsageMetric,
-  type PollOutcome, type RepoRefreshGithub, type RepoRefreshResult, type UsagePollSource,
+  type PollOutcome, type RepoRefreshGithub, type RepoRefreshResult, type RepoSectionName, type UsagePollSource,
 } from "@shared/repo";
+import type { HostingPollOutcome, HostingProviderId } from "@shared/hosting";
 import type { Loadable } from "./render";
 import { esc, attr, statusBadge, SURFACE } from "./ui";
 import { personChip, personLink, personNameLink } from "./people";
@@ -843,6 +844,29 @@ function pollGithub(g: RepoRefreshGithub | "not_configured" | undefined): string
   return `<span style="color:${TONE.bad}">${esc(`✗ failed: ${failed.join(", ")}`)}</span>${landed}`;
 }
 
+/** A provider's name in the strip. The registry's labels live on the Worker (src/hosting/registry.ts);
+ *  these are the short forms a one-line summary needs. */
+const PROVIDER_NAME: Record<HostingProviderId, string> = {
+  cloudflare: "Cloudflare", railway: "Railway", vercel: "Vercel", render: "Render", netlify: "Netlify", fly: "Fly.io", aws: "AWS",
+};
+/** The hosting providers: ONE line per provider, in the order its first part was polled — how many parts
+ *  polled cleanly, then each one that did not, by `<env> <part>`: `Vercel — 2 ok · staging web ✗ timeout`.
+ *  A budget skip says so once per part in the muted skip style, never as a failure. Present only when the
+ *  Worker sent `hosting` (the org has a stored part). */
+function pollHostingLines(h: HostingPollOutcome[], line: (label: string, body: string) => string): string {
+  const byProvider = new Map<string, HostingPollOutcome[]>();
+  for (const o of h) byProvider.set(o.provider, [...(byProvider.get(o.provider) ?? []), o]);
+  return [...byProvider.entries()].map(([provider, outs]) => {
+    const okCount = outs.filter((o) => o.status === "ok").length;
+    const rest = outs.filter((o) => o.status !== "ok").map((o) => {
+      const [color, text] = o.status === "failed" ? [TONE.bad, `✗ ${o.detail ?? "failed"}`] : [MUTED, `– skipped${o.detail ? `: ${o.detail}` : ""}`];
+      return `<span><span style="font-family:var(--label);font-weight:600;color:var(--fg-70)">${esc(`${o.env} ${o.part}`)}</span> <span style="color:${color}">${esc(text)}</span></span>`;
+    });
+    const parts = [...(okCount || !rest.length ? [`<span style="color:${TONE.good}">${okCount} ok</span>`] : []), ...rest];
+    return line(esc(PROVIDER_NAME[provider as HostingProviderId] ?? provider), parts.join(SEP));
+  }).join("");
+}
+
 /** The result strip at the top of whichever tab is open: one line per source, or the one-line refusal / failure. */
 function pollStrip(poll: RepoPollState | null): string {
   if (!poll || poll.status === "polling") return "";
@@ -852,6 +876,7 @@ function pollStrip(poll: RepoPollState | null): string {
     : poll.status === "busy" ? `<div style="color:var(--fg-70)">A refresh is already running — try again in a minute.</div>`
     : line("Health", pollHealth(poll.result.health))
       + POLL_SOURCES.map(([key, label]) => line(label, pollSource(poll.result[key]))).join("")
+      + (Array.isArray(poll.result.hosting) ? pollHostingLines(poll.result.hosting, line) : "")
       + line("GitHub", pollGithub(poll.result.github));
   return `<div class="repo-poll-strip" role="status" style="display:flex;align-items:flex-start;gap:12px;padding:10px 20px;border-bottom:1px solid var(--border);font-size:12px;line-height:1.7;color:var(--fg-55)">
       <div style="flex:1;min-width:0;overflow-wrap:anywhere">${lines}</div>
@@ -1022,13 +1047,22 @@ function planningTab(p: RepoProps): string {
 // ── the screen ───────────────────────────────────────────────────────────────
 const SCREEN_LABEL: Record<RepoTab, string> = { overview: "Overview", code: "Code", ci: "CI and Deploys", usage: "Usage", planning: "Planning" };
 
-/** Does the tab in view have a section nothing has been captured for yet? */
-function hasUncaptured(p: RepoProps): boolean {
+/** Sections the payload carries but no block on this screen draws YET — the hosting providers' section is
+ *  designed from its DTO separately. Nothing on the tab can say what such a section waits on, so its
+ *  not-connected line lives here and the footer says it. */
+const UNDRAWN_NC: Partial<Record<RepoSectionName, string>> = {
+  providers: "Hosting providers — connect one in Org settings › Hosting.",
+};
+
+/** The tab in view's sections nothing has been captured for yet: the ones a block on the tab draws (and
+ *  marks "not connected" itself), and the undrawn ones, by name. */
+function uncaptured(p: RepoProps): { drawn: boolean; undrawn: RepoSectionName[] } {
   const d = p.repo.data;
-  if (!d) return false;
+  if (!d) return { drawn: false, undrawn: [] };
   // The ONE section→tab mapping (shared with the MCP `get_repo_dashboard` tool).
   // `?? not_connected`: a payload from before a section existed lacks its key.
-  return REPO_TAB_SECTIONS[p.tab].some((k) => ((d[k] as RepoSection<unknown> | undefined)?.status ?? "not_connected") === "not_connected");
+  const nc = REPO_TAB_SECTIONS[p.tab].filter((k) => ((d[k] as RepoSection<unknown> | undefined)?.status ?? "not_connected") === "not_connected");
+  return { drawn: nc.some((k) => !UNDRAWN_NC[k]), undrawn: nc.filter((k) => UNDRAWN_NC[k]) };
 }
 
 /** The page's tab bar: every tab is in the one dashboard payload, so a switch
@@ -1057,9 +1091,13 @@ export function repoView(p: RepoProps): string {
     : p.repo.data?.degraded
       ? `<div class="cnpy-rise" style="display:flex;align-items:center;gap:9px;margin-bottom:16px;font-size:12.5px;color:var(--fg-55)">${info}Some reads failed, so this view may be incomplete.</div>`
       : "";
-  const footer = !p.sample && hasUncaptured(p)
+  const nc = uncaptured(p);
+  const footer = !p.sample && (nc.drawn || nc.undrawn.length)
     ? `<div class="cnpy-rise" style="--i:6;display:flex;align-items:center;gap:9px;margin-top:14px;font-size:12px;color:var(--fg-40)">${info}
-        <span>Sections marked <span style="color:var(--fg-55)">not connected</span> have had nothing captured yet — each says what it is waiting on.</span>
+        <span>${[
+          ...(nc.drawn ? [`Sections marked <span style="color:var(--fg-55)">not connected</span> have had nothing captured yet — each says what it is waiting on.`] : []),
+          ...nc.undrawn.map((k) => `<span data-nc-section="${attr(k)}">${esc(UNDRAWN_NC[k] ?? "")}</span>`),
+        ].join(" ")}</span>
         <button data-act="repoSampleOn" class="repo-textbtn" style="font-size:12px;font-weight:500;color:var(--accent);padding:0;white-space:nowrap">Preview with sample data</button>
       </div>`
     : "";

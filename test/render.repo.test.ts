@@ -23,7 +23,7 @@ function live(over: Partial<RepoDashboard> = {}): RepoDashboard {
   return {
     repo: "SaplingLearn/sapling", generatedAt: new Date().toISOString(), degraded: false,
     environments: NC, drift: NC, health: NC, branches: NC, deploys: NC, ciFailures: NC, coverage: NC, bundle: NC,
-    usage: NC, cloudflare: NC, hosting: NC, product: NC, todos: NC,
+    usage: NC, cloudflare: NC, hosting: NC, providers: NC, product: NC, todos: NC,
     stats: EMPTY, codeStats: EMPTY, bars: EMPTY, prs: EMPTY, activity: EMPTY, sprint: EMPTY, contributors: EMPTY, labels: EMPTY,
     ...over,
   };
@@ -1024,6 +1024,42 @@ describe("repoView — product metrics", () => {
     expect(repoView(props({ tab: "usage", repo: { status: "error", data: null } }))).toContain("Couldn't load this section");
   });
 
+  it("the providers section has no block yet, so the footer says what it waits on — and only on the Usage tab", () => {
+    const others = { ...repoSample(), sample: undefined } as RepoDashboard;
+    const html = repoView(props({ tab: "usage", repo: { status: "ok", data: { ...others, providers: NC } } }));
+    expect(html).toContain('data-nc-section="providers"');
+    expect(html).toContain("Hosting providers — connect one in Org settings › Hosting.");
+    // Nothing on the tab is MARKED not connected, so the footer does not claim one is.
+    expect(html).not.toContain("Sections marked");
+    expect(html).toContain("repoSampleOn");
+    const both = repoView(props({ tab: "usage", repo: { status: "ok", data: { ...others, providers: NC, hosting: NC } } }));
+    expect(both).toContain("Sections marked");
+    expect(both).toContain("Hosting providers — connect one in Org settings › Hosting.");
+    expect(repoView(props({ tab: "usage", repo: { status: "ok", data: others } }))).not.toContain("data-nc-section");
+    expect(repoView(props({ tab: "code", repo: { status: "ok", data: { ...others, providers: NC } } }))).not.toContain("data-nc-section");
+  });
+
+  it("the sample's providers stub carries every state a designer needs", () => {
+    const data = repoSample();
+    const providers = (data.providers as { data: import("@shared/hosting").RepoProviderPart[] }).data;
+    expect(new Set(providers.map((p) => p.provider))).toEqual(new Set(["cloudflare", "railway", "vercel", "render", "netlify", "fly"]));
+    expect(new Set(providers.map((p) => p.env))).toEqual(new Set(["staging", "production"]));
+    expect(providers.some((p) => p.last_poll?.status === "failed")).toBe(true);
+    expect(providers.some((p) => p.status === "empty")).toBe(true);
+    expect(providers.find((p) => p.provider === "vercel")).toMatchObject({ traffic: null, deploys: expect.arrayContaining([expect.objectContaining({ state: "building" }), expect.objectContaining({ state: "error" })]) });
+    expect(providers.filter((p) => p.provider === "fly" && p.role === "service").every((p) => p.deploys.every((d) => d.sha === null))).toBe(true);
+    for (const p of providers) {
+      if (!p.traffic) continue;
+      for (const r of ["24h", "7d", "30d"] as const) {
+        const t = p.traffic[r];
+        // Totals are the sum of their trend, and the error rate their ratio — the Worker's arithmetic.
+        expect(t.trend.reduce((n, b) => n + b.requests, 0), `${p.env}/${p.part} ${r}`).toBe(t.requests);
+        expect(t.trend.reduce((n, b) => n + b.errors, 0), `${p.env}/${p.part} ${r}`).toBe(t.errors);
+        expect(t.error_rate).toBe(Math.round((t.errors! / t.requests!) * 10_000) / 100);
+      }
+    }
+  });
+
   it("the not-connected footer counts the product section too", () => {
     const others = { ...repoSample(), sample: undefined } as RepoDashboard;
     expect(repoView(props({ tab: "usage", repo: { status: "ok", data: others } }))).not.toContain("repoSampleOn");
@@ -1194,6 +1230,21 @@ describe("Poll now — the Repo top bar, every tab", () => {
     expect(bar).toMatch(/data-act="repoRefresh" title="Reload from Trov's database"/);
     // Narrow widths hide the label by CLASS (trov.css) — the markup is the same at every width.
     expect(bar).toContain('class="cnpy-outlinebtn repo-pollbtn"');
+  });
+
+  it("hosting providers get a line each — only when the Worker sent `hosting`", () => {
+    expect(stripText(view({ poll: done(NOT) }))).not.toMatch(/Vercel|Render/);
+    const html = view({ poll: done({ ...NOT, hosting: [
+      { env: "staging", part: "web", provider: "vercel", status: "ok", written: 3 },
+      { env: "production", part: "web", provider: "vercel", status: "failed", written: 0, detail: "vercel deployments 401: the credential is not valid" },
+      { env: "staging", part: "api", provider: "render", status: "skipped", written: 0, detail: "not connected" },
+    ] }) });
+    const text = stripText(html);
+    expect(text).toContain("Vercel — 1 ok · production web ✗ vercel deployments 401: the credential is not valid");
+    expect(text).toContain("Render — staging api – skipped: not connected");
+    // After the usage sources, before GitHub.
+    expect(text.indexOf("App metrics")).toBeLessThan(text.indexOf("Vercel"));
+    expect(text.indexOf("Render")).toBeLessThan(text.indexOf("GitHub"));
   });
 
   it("while polling the button is disabled and says so; no strip yet", () => {

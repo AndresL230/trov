@@ -62,7 +62,7 @@ interface Allow { file: string; fn: string; tables?: string[]; why: string }
 const PLATFORM_ALLOW: Allow[] = [
   // The cross-org retention sweeps (§4.4): write-only, bounded by age, run by the cron for every org.
   { file: "src/auth/oauth.ts", fn: "pruneOAuth", tables: ["oauth_grants", "oauth_codes"], why: "retention sweep, cross-org and write-only" },
-  { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics"], why: "retention sweep, cross-org and write-only" },
+  { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics", "hosting_deploys"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "expireDueHandoffs", tables: ["handoffs"], why: "retention sweep, cross-org and write-only (§4.4)" },
   // Bearer credentials are looked up by HASH before any org is known: the row is what names the
   // (person, org), and src/data/bearer.ts then checks that membership live (§7.1). Each lookup is listed
@@ -90,6 +90,10 @@ const PLATFORM_ALLOW: Allow[] = [
   // and org-with-a-primary-repo — and a webhook delivery finds its org by hook id, BEFORE any org is
   // known. Ids, an environment key and a repo name only; everything after runs as that org's tenant.
   { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments"], why: "the cron's unit lists and the webhook's hook lookup — ids and a repo name, no content, no secret" },
+  // The `hosting` job's units (src/repo/cron.ts, :40): one per (org, environment, STORED part), with the
+  // part's provider id — what the unit's subrequest cost is looked up by. Keys and a provider id only;
+  // the part's settings are read again by the unit, as that org's system tenant.
+  { file: "src/platform/jobs.ts", fn: "listPartUnits", tables: ["org_environment_parts"], why: "the hosting job's unit list — env / part keys and a provider id, no settings, no secret" },
   // A hosting provider's VERIFIED "uninstalled" notice names only its installation id, so the org(s) holding
   // that installation are found across orgs BEFORE any org is known; the revocation then runs as each org's
   // system tenant (src/hosting/connections.ts `revokeFromProviderSide`). Org ids and a scope only.

@@ -59,7 +59,9 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `contract.ts` (Zod ingest contract), `vocabulary.ts` (controlled vocab), `rows.ts` (one type per D1 table),
   `dashboard.ts` (the My Work DTO shared by the Worker and web), `people.ts` (the person-profile contract —
   zod-free: the caps, `avatarSrc`, the profile / directory / agent DTOs), `repo.ts` (the Repo dashboard DTO — zod-free,
-  since the SPA imports `REPO_TABS` as a value), `notifications.ts` (the digest DTOs), and the
+  since the SPA imports `REPO_TABS` as a value), `hosting.ts` (the hosting-provider contract — zod-free: providers,
+  parts, roles, connection methods, the `hx_<metric>` vocabulary, deploy states, the setup and dashboard DTOs; see
+  "Hosting providers" below), `notifications.ts` (the digest DTOs), and the
   tickets pair-per-domain: `tickets.ts` / `sprints.ts` (zod rows, DTOs, payloads, `parseTicketLink`,
   `toSprintView`) over `tickets-core.ts` / `sprints-core.ts`. **The `*-core.ts` split is a rule**: anything
   the SPA imports as a VALUE (`canTransition` / `legalMoves` / `TICKET_STATUS_LABEL` / `isOpenStatus`,
@@ -170,6 +172,13 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   fixed mail sender and what is still open to abuse: `docs/architecture/abuse-limits.md`; the deploy runbook: `HANDOFF.md`.
   How an org is added, set up and run, role by role — and that a ticket's / handoff's `id` on every surface is its
   per-org NUMBER, never the row id: `docs/architecture/organizations.md`, `docs/architecture/data-layer.md`.
+  Then `0043_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
+  `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback
+  `scripts/hosting/0043_hosting_providers.down.sql`, run before 0042's] — see "Hosting providers" below.
+- `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
+  (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
+  `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,
+  `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`.
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
@@ -720,6 +729,7 @@ plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no secti
 | `cloudflare` | metrics `cf_*` + snapshot `cf_polled` | cron `:00` — `pollCloudflare` |
 | `hosting` | metrics `rw_cpu` / `rw_mem_mb` | cron `:00` — `pollRailway` |
 | `product` (Usage) | metrics `sap_c_<key>_<24h\|7d\|30d>` / `sap_t_<key>` — whatever keys the app reports | cron `:00` — `pollSaplingMetrics` (the same response as active users) |
+| `providers` (Usage) | every part of every environment, provider-neutral: stored parts' `hx_*` metrics, `hosting_deploys`, `hosting_poll_state`; legacy parts' `cf_*` (+ `cf_polled`) / `rw_*` and their GitHub deploy strips | cron `:40` — `pollPart` per stored part; the legacy parts' own captures |
 | `sprint`, `labels`, `contributors` (Planning) | live D1: the sprint a person marked `active` (the Roadmap's `sprintProgress`); open-issue snapshots; webhook pushes · merged PRs · `review` rows this week | none / webhook `issues` / `push`, `pull_request`, `pull_request_review`; reconcile `reviews` arm |
 
 "Reconcile" is `reconcileRepo` (`src/repo/github.ts`), run by an admin's Sync GitHub and by the cron's
@@ -777,7 +787,11 @@ fire time's UTC minute/hour, each job in its own `safely` arm:
   issue number of every array-ref sprint); `:20` `reconcileRepo` alone (19 + 2N worst case, below — **19 + 4N with the tick's own
   pings: 27 today, N ≤ 7 under the 50**; logs `failed` when non-empty); `:30` `pruneRepoCapture` (D1 only). `:10` and `:20` need `GITHUB_SERVICE_TOKEN`
   + `GITHUB_REPO`; `:30` and the pings run regardless.
-- `:40` / `:50`, and `:10`–`:30` of any other hour, ping health and nothing else.
+- **`:40`, every hour** — the `hosting` job (0043; "Hosting providers" below): one unit per (org, environment, STORED
+  part) from `listPartUnits`, each costing its provider's `pollCost` (≤ 6), served by rotation like the others; health
+  keeps half the budget on this tick only when some org has a stored part. Legacy Cloudflare / Railway parts stay on
+  the `:00` usage job.
+- `:50`, and `:10`–`:30` of any other hour, ping health and nothing else.
 `src/index.ts` dispatches by EXACT string equality on `controller.cron`, so `REPO_CRON` and the expression
 in `wrangler.toml` must stay identical (pinned by a test).
 
@@ -1268,6 +1282,88 @@ issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source 
   truncates persons): `listPersons` never lists a reserved handle and the ticket writers' `requirePerson`
   refuses one, so it can never be assigned, file, comment or link.
 
+## Hosting providers — one interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0043_hosting_providers`)
+
+The Repo dashboard was built around one stack (a Cloudflare Worker frontend, a Railway backend). It now reads any
+host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free — the SPA imports its vocabularies):
+
+- **Provider** — CODE: `src/hosting/providers/<id>.ts`, registered once in `src/hosting/registry.ts`. Today:
+  `cloudflare`, `railway` (the two LEGACY providers), `vercel` (#98), `render` (#99), `netlify` (#100), `fly` (#101),
+  and `aws` (#102) described with `status: "later"` — listed, never choosable, never polled. A provider declares its
+  roles, its exact `apiHosts`, its connection methods BEST FIRST, its org-wide config fields and per-part settings
+  (anchored patterns, checked by `checkFields`), the metrics it can really read, `pollCost` (worst-case fetches of one
+  poll), `consoleUrl`, `probe` and `poll`. **`src/hosting/types.ts` states THE RULES** and
+  `test/hosting.contract.test.ts` holds every registered provider to them; each provider's own behaviour is
+  `test/hosting.provider.<id>.test.ts` against recorded-shape fixtures in `fixtures/hosting/<id>/` (whose README lists
+  what is UNCONFIRMED). What each vendor offers, and what is still to verify against a live account:
+  `docs/superpowers/specs/2026-10-07-hosting-providers-research.md` (the vendor docs hosts were unreachable from the
+  build — facts come from the vendors' own SDK / OpenAPI / CLI source).
+- **Connection** — how an org is connected: `install` (Vercel's Integration: projects picked at install, uninstall
+  webhook), `oauth` (Netlify — no scopes on Netlify's side), `token` (every provider; the narrowest scope it has,
+  said plainly — Render keys have none, Fly's is a READ-ONLY org token, Vercel has no read-only token), `assume_role`
+  (AWS, later). The secret is an ordinary write-only `org_secrets` row (kinds `vercel` / `render` / `netlify` / `fly` /
+  `aws`; Cloudflare and Railway keep `cloudflare_analytics` / `railway` — `HOSTING_INTEGRATION_KIND`); an install / OAuth
+  grant also writes `org_hosting_connections` (method, provider-side installation id, account). An install / OAuth
+  method needs Trov-side Worker vars (its `requires`) — absent, it is listed `available: false` and the token method is
+  offered. Pasting a token over an install supersedes it (`supersedeConnection`).
+- **Part** — one deployable of one environment, with a ROLE: `web` (requests, 5xx errors, latency, bandwidth) or
+  `service` (CPU, memory). Stored parts are `org_environment_parts` rows; the LEGACY parts are the environment's own
+  columns — the Cloudflare frontend (`worker` / `worker_check`, key `frontend`) and the Railway backend (`railway_env` /
+  ids, key `backend`) — read by `legacyParts` and WRITTEN through `putEnvironment` (`src/hosting/part-writes.ts`), so the
+  webhook capture, the reconcile and the `:00` usage job read exactly what they read before. `src/hosting/parts.ts` is
+  the read side and is reachable from src/mcp.ts (the projection), so it — like `types.ts`, `http.ts`, `registry.ts`
+  and `providers/*` — must never import src/data/secrets.ts (`http.ts` carries this layer's own `scrub`).
+- **Reading** — normalised: hourly `hx_<metric>` points in `repo_metrics` (env = environment key, part = part key,
+  complete hours only, `pollWindow`: the last 3 hours closed ≥ 15 min — first write wins, so a running hour is never
+  stored), deploys upserted into `hosting_deploys` (state moves building → ready), the last poll in
+  `hosting_poll_state` (outcome, scrubbed detail, the metrics the provider could not read and why, and the contiguous
+  COVERED interval — merged like `cf_polled`: inside it, an hour with no point is a true zero).
+
+**Every provider fetch goes through `hostFetch`** (`src/hosting/http.ts`): https only, the hostname exactly one of the
+provider's `apiHosts` (refused BEFORE anything is sent), `redirect: "manual"` (a credential never crosses a redirect),
+a timeout. A provider throws only `HostingError`, scrubbed at construction; `refuse` / `failureReason` scrub an
+upstream body BEFORE cutting it. A metric a provider cannot read (Vercel and Netlify have no public usage API; Render's
+HTTP metrics are web-services only) is reported in `unavailable` with a reason — never as a zero.
+
+**Polling** (`src/hosting/poll.ts`): `pollPart` skips a legacy part, a `later` provider, a missing credential (no request
+— "an org without it costs no requests") and a missing required setting; otherwise it runs the provider and VALIDATES
+what came back before storing (role-matched metrics, complete past hours, finite non-negative values under a cap;
+deploys with an id, a known state, sane times, https URLs) — dropped items counted in `detail`. It records the
+credential outcome (`recordSecretOutcome`) and never throws. Runs at the cron's `:40` tick (above) and as Poll now's
+`hosting` arm (after usage, before GitHub; budgeted so GitHub keeps its reservation — `hosting` is in the result only
+when the org has stored parts). `hx_*` are pruned at 100 days, `hosting_deploys` at 180.
+
+**The dashboard's `providers` section** (Usage tab; `RepoProviderPart` per part — legacy and stored alike — so ONE
+panel can replace the Cloudflare / Railway blocks): deploys (stored: `hosting_deploys`; legacy: the GitHub deploy
+strips), `traffic` per range for a web part (the Usage tab's own fill rule; a stored part's covered interval is
+evidence for a zero, Cloudflare's `cf_polled` for the legacy frontend; `latency_p95_ms` is the latest point in range;
+`traffic: null` for a web part whose provider reads no usage at all), `resources` for a service part (latest ≤ 3 h old,
+24 h trend never zero-filled), `seen`, `unavailable`, `status`, `tone`, `last_poll`, `console_url` (org config read
+directly — the projection never touches the secrets module). Three extra statements; a failed read costs only this
+section (`not_connected`, `degraded: true`). MCP `get_repo_dashboard` collapses `traffic` to the range and, without
+`include_trends`, drops trends and keeps the newest 2 deploys per part (+ `deployCount`).
+
+**Setup API** (`src/hosting/routes.ts`, cookie only — an `Authorization` header is a 403; admin unless noted), under
+`/api/o/:slug` with NO old-path alias: `GET /hosting` (`HostingSetupDTO`: providers, environments with their parts,
+connections, a checklist generated from what the parts use), `GET /hosting/providers` (any member), `PUT|DELETE
+/environments/:key/parts/:part` (audited `part.set` / `part.delete` in `org_admin_audit`; deleting an environment
+deletes its stored parts, poll state and deploys in the same batch), `POST /hosting/:provider/connect` (→ `{ url }`,
+an HMAC-sealed state — key `hosting-connect:<COOKIE_SECRET>` — carrying org, provider, admin and a nonce also set as
+the `trov_hx` cookie), `POST /hosting/:provider/disconnect` (best-effort provider-side revoke; always succeeds
+locally), `POST /hosting/:provider/test` (the integrations `testConnection`, optionally against one part). At the ROOT:
+`GET /hosting/:provider/callback` (session; state + nonce + the SAME admin's live membership, then the code exchange
+through `hostFetch`; 302 to `/o/<slug>/#org/hosting?connected=<p>` or `?connect_error=<fixed code>` — never provider
+text in a URL; `/hosting/` is a platform path in `src/data/gate.ts`), and before the session app `POST
+/webhook/hosting/:provider` — the provider-side uninstall notice: verified with the integration's client secret (a
+bare 401 that writes nothing otherwise), then each org holding that installation id (`connectionsForExternalId`, a
+PLATFORM_ALLOW lookup) has its secret deleted (`systemRevocationDeleteStmts`) and its connection marked `revoked`.
+Org settings › Integrations lists a hosting kind only once a stored part uses it (the five original slots are unchanged).
+
+**There is no UI yet**: the screens are designed from `docs/design/hosting-providers-claude-design-prompt.md` against
+the data stubs `web/src/hosting-sample.ts` (every setup state; its provider catalogue is pinned to the registry by
+`test/hosting.sample.test.ts`) and the `providers` section of `web/src/repo-sample.ts`. The SPA's typed client calls
+are in `web/src/api.ts`.
+
 ## Handoffs & Prompt Library — direct writers, NOT the ingestion gate
 
 Ported from the Claude Design project `2c8cfa50`: **Handoffs** (Workspace; `#handoffs`, `#handoffs/new`,
@@ -1620,6 +1716,13 @@ is absent — its section then stays `not_connected` — and none of these value
   value on both sides; ONE token for every environment, so staging and production Sapling must accept the
   same one — a stated limitation of the contract doc). Absent or empty → `pollSaplingMetrics` is not called
   and the Usage tab's Active users stays "not connected". Never sent to a non-https URL or across a redirect.
+
+The hosting providers' install / OAuth methods (optional — absent, that method reads unavailable and the provider's
+token method is offered; never logged): `VERCEL_INTEGRATION_CLIENT_ID` + `VERCEL_INTEGRATION_CLIENT_SECRET` (secrets;
+the secret also verifies the uninstall webhook) + `VERCEL_INTEGRATION_SLUG` (the Integration's install URL is
+`vercel.com/integrations/<slug>/new`; its Redirect URL `<origin>/hosting/vercel/callback`, Webhook URL
+`<origin>/webhook/hosting/vercel`), and `NETLIFY_OAUTH_CLIENT_ID` + `NETLIFY_OAUTH_CLIENT_SECRET` (Redirect URI
+`<origin>/hosting/netlify/callback`). Every provider CREDENTIAL is per org (Org settings), never a Worker secret.
 
 Vars (`[vars]` in `wrangler.toml`): `PUBLIC_ORIGIN` (absolute origin for links inside email),
 `NOTIFICATIONS_MODE` (`local` default / `resend`), and two LEGACY ones nothing reads any more (`0042_organizations` copied them

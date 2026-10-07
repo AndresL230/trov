@@ -123,8 +123,10 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 
 | Where | Why |
 |---|---|
-| `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
+| `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture` (incl. `hosting_deploys`); `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
 | `src/platform/jobs.ts` (`org_repos`, `org_environments`) | the cron's unit lists and the webhook's hook lookup, before any org is known — ids, an environment key and a repo name |
+| `src/platform/jobs.ts` `listPartUnits` (`org_environment_parts`) | the `hosting` job's units (0043): env / part keys and a provider id — the part's settings are re-read by the unit as its org's tenant |
+| `src/hosting/webhook.ts` `connectionsForExternalId` (`org_hosting_connections`) | a VERIFIED provider-side "uninstalled" notice names only its installation id: the org(s) holding it are found first, and each revocation runs as that org's system tenant |
 | `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal` | credential lookup by HASH before any org is known (the row names the org), and the revoke of the one grant just found |
 | `src/auth/oauth.ts` `listGrants`, `revokeGrant` | Connected apps is user-level: a person's own grants across their orgs, keyed by person |
 | `src/artifacts/upload.ts` `uploadTokenOrg` | upload-token lookup by hash, returning only its `org_id` |
@@ -144,6 +146,9 @@ belongs to) through `src/platform/jobs.ts`, then does its work as that org's `sy
 | repo cron `handleRepoCron` (`src/repo/cron.ts`) | `listEnvUnits` / `listRepoUnits` — every non-suspended org | `systemTenant(p, org, "system")` per unit |
 | digest crons `handleNotificationCron` (`src/notifications/cron.ts`) | `listActiveOrgIds` | the same, per org |
 | `POST /webhook/github/:hookId`, legacy `/webhook/github` (`src/github-hook.ts`) | `hookRepo(p, id)` / `legacyHookRepo(p)` | `systemTenant(p, row.org_id, "github-webhook")` |
+| repo cron `hosting` job at `:40` (`src/repo/cron.ts`, `src/hosting/poll.ts`) | `listPartUnits` — one per (org, environment, stored part) | `systemTenant(p, org, "system")` per unit |
+| `POST /webhook/hosting/:provider` (`src/hosting/webhook.ts`) | `connectionsForExternalId(p, provider, id)` after the provider's signature is verified | `systemTenant(p, org, "system")` per org — `systemRevocationDeleteStmts` deletes the secret |
+| `GET /hosting/:provider/callback` (`src/hosting/connections.ts`) | the HMAC-sealed connect state, then a LIVE membership check of the signed-in admin (`resolveTenantById`) | that admin's own session tenant — `/hosting/` is a platform path in `src/data/gate.ts` |
 | Poll now / Poll usage / Sync GitHub (`runLockedRepoRefresh`, `runUsagePolls`, `runBackfill`, `runReconcileJob`) | the caller's `ctx` | `jobTenant(env, ctx)` — that org's system tenant; a bearer context is refused |
 
 **The rotation dispatcher** (`src/repo/dispatch.ts`). The repo trigger keeps its cadence — `health` every

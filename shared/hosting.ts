@@ -316,11 +316,13 @@ export interface RepoProviderPart {
   console_url: string | null;
   /** Newest first, ≤ 10, 90 days. */
   deploys: ProviderDeployDTO[];
-  /** role `web` only; null for a service part. */
+  /** role `web` only. null for a service part — AND for a web part whose provider reads no traffic metric at all
+   *  and never reported one (Vercel, Netlify): `unavailable` then says why. */
   traffic: Record<RepoRange, ProviderTrafficRange> | null;
   /** role `service` only; null for a web part. */
   resources: ProviderResources | null;
-  /** Whether each source has EVER reported for this part (inside the 30-day read / the 90-day deploy read). */
+  /** Whether each source has EVER reported for this part inside the render's own read: traffic over the 30-day
+   *  read, resources over the 24-hour read, deploys over the 90-day deploy read. */
   seen: { traffic: boolean; resources: boolean; deploys: boolean };
   unavailable: { metric: HostingMetric; reason: string }[];
   /** ok = something to show; empty = polled but nothing in range / stale; not_connected = never polled. */

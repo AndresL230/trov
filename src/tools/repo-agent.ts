@@ -6,10 +6,12 @@
 // file does is make it fit an agent's context:
 //   · `tab`   — only the sections that tab shows (`REPO_TAB_SECTIONS`, the ONE
 //               section→tab mapping, shared with web/src/repo.ts);
-//   · `range` — the usage / cloudflare / product sections carry three ranges
-//               for the screen's selector; an agent gets ONE;
-//   · trends  — sparkline arrays are stripped, and the drift breakdown is cut
-//               to a bounded list of group headers, unless asked for.
+//   · `range` — the usage / cloudflare / product sections, and each provider
+//               part's traffic, carry three ranges for the screen's
+//               selector; an agent gets ONE;
+//   · trends  — sparkline arrays are stripped, the drift breakdown is cut
+//               to a bounded list of group headers, and each provider part's
+//               deploy strip to its newest few, unless asked for.
 // A section's STATUS is never touched: `not_connected` and `empty` pass through
 // as they are — unknown is never coerced into a zero or an empty list.
 //
@@ -21,6 +23,7 @@ import {
   REPO_TAB_SECTIONS,
   type RepoDashboard, type RepoDrift, type RepoProduct, type RepoRange, type RepoSection, type RepoSectionName, type RepoTab,
 } from "@shared/repo";
+import type { RepoProviderPart } from "@shared/hosting";
 import { type TenantContext, all, first } from "../data/sql";
 import type { RepoEnvConfig } from "../repo/config";
 import { emptyRepoDashboard, getRepoDashboard } from "./repo";
@@ -62,6 +65,25 @@ function productForRange(product: RepoProduct, range: RepoRange): unknown {
   }));
 }
 
+/** Without `include_trends`, each provider part lists at most this many deploys (its newest). */
+export const PROVIDER_DEPLOY_VIEW_LIMIT = 2;
+
+/** A web part's traffic carries one block per range (a service part's is null); an agent gets the asked
+ *  one, as `traffic` itself — `{ requests, errors, error_rate, latency_p95_ms, bandwidth_bytes, trend }`. A
+ *  null figure inside it stays null (unknown, never zero), exactly as the screen receives it.
+ *  A part's deploys are its dot strip — a SERIES like a sparkline, up to ten rows of ~400 bytes each, and
+ *  an org may run a dozen parts — so without `include_trends` only the newest `PROVIDER_DEPLOY_VIEW_LIMIT`
+ *  travel, with `deployCount` the full number (the drift rule: the header stays truthful, a reader can see
+ *  the list was cut). With `include_trends`: every deploy the screen gets. */
+function providersForRange(parts: RepoProviderPart[], range: RepoRange, includeTrends: boolean): unknown {
+  return parts.map((p) => ({
+    ...p,
+    traffic: p.traffic ? p.traffic[range] : null,
+    deployCount: p.deploys.length,
+    deploys: includeTrends ? p.deploys : p.deploys.slice(0, PROVIDER_DEPLOY_VIEW_LIMIT),
+  }));
+}
+
 /** Without `include_trends`, a drift section lists at most this many groups. */
 export const DRIFT_GROUP_LIMIT = 20;
 
@@ -86,8 +108,9 @@ function driftView(drift: RepoDrift, includeTrends: boolean): unknown {
 
 /** A copy — fresh objects and arrays all the way down — without any key named
  *  `trend`: every sparkline series in the DTO is spelled that way (usage
- *  metrics, product counts/totals, CI failures, coverage, bundle, TODOs), so a
- *  new one is stripped without a change here. */
+ *  metrics, product counts/totals, CI failures, coverage, bundle, TODOs, a
+ *  provider part's traffic and resources), so a new one is stripped without a
+ *  change here. */
 function withoutTrends(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(withoutTrends);
   if (v && typeof v === "object") {
@@ -119,6 +142,7 @@ export function shapeRepoDashboard(dash: RepoDashboard, opts: RepoAgentOptions =
     let data: unknown = section.data;
     if (RANGED.has(name)) data = (data as Record<RepoRange, unknown>)[range];
     else if (name === "product") data = productForRange(data as RepoProduct, range);
+    else if (name === "providers") data = providersForRange(data as RepoProviderPart[], range, includeTrends);
     else if (name === "drift") data = driftView(data as RepoDrift, includeTrends);
     sections[name] = { status: "ok", data: includeTrends ? data : withoutTrends(data) };
   }
