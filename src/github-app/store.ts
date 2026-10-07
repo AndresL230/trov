@@ -82,20 +82,20 @@ export async function bindInstallation(ctx: TenantContext, info: InstallationInf
  * End the org's binding: `disconnected` (an admin, in Trov — the App stays installed on GitHub),
  * `uninstalled` (GitHub's `installation.deleted`) or `not_found` (GitHub no longer knows it). The
  * repositories stay connected and go back to `manual`: from here they are read with the org's token, if
- * it has one. Guarded on `removed_at IS NULL`, so a second caller changes nothing. Audited.
+ * it has one. Guarded on `removed_at IS NULL`, so a second caller changes nothing — no second audit
+ * row, no repository touched. Audited.
  */
 export async function endInstallation(ctx: TenantContext, row: InstallationRow, reason: GithubRemovedReason): Promise<boolean> {
   const at = nowIso();
+  // The two statements after the UPDATE act only when it TOOK: each reads SQLite's `changes()` — the rows
+  // the statement just before it wrote, on this one connection, inside this one batch. (Comparing
+  // `removed_at` to `at` instead would let a second call in the same millisecond write a second audit row.)
   const [ended] = await batch(ctx, [
     stmt(ctx, `UPDATE org_github_installations SET removed_at = ?, removed_reason = ? WHERE org_id = ? AND id = ? AND removed_at IS NULL`, at, reason, ctx.orgId, row.id),
-    // Only when the UPDATE above took: a binding ended twice leaves one audit row and touches no repo.
-    stmt(ctx, `UPDATE org_repos SET connection = 'manual', access_lost_at = NULL
-                WHERE org_id = ? AND connection = 'app' AND EXISTS (SELECT 1 FROM org_github_installations i WHERE i.org_id = ? AND i.id = ? AND i.removed_at = ?)`,
-      ctx.orgId, ctx.orgId, row.id, at),
-    stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at)
-               SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM org_github_installations i WHERE i.org_id = ? AND i.id = ? AND i.removed_at = ?)`,
+    stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) SELECT ?, ?, ?, ?, ?, ? WHERE changes() > 0`,
       ctx.orgId, ctx.userId, reason === "disconnected" ? "github.disconnect" : "github.uninstall", row.account_login,
-      JSON.stringify({ installation_id: row.installation_id, reason }), at, ctx.orgId, row.id, at),
+      JSON.stringify({ installation_id: row.installation_id, reason }), at),
+    stmt(ctx, `UPDATE org_repos SET connection = 'manual', access_lost_at = NULL WHERE org_id = ? AND connection = 'app' AND changes() > 0`, ctx.orgId),
   ]);
   return (ended?.meta.changes ?? 0) > 0;
 }
