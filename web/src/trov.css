@@ -1371,6 +1371,87 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* phone: the nav's logo, icons and Sign in / Back to the app fit a 360px screen. */
 @media (max-width:480px) { .site-navin { gap:12px !important; padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)) !important; } .site-navin > div:last-child { gap:8px !important; } }
 
+/* ── pricing (web/src/pricing.ts: the landing's last section, and /pricing) ───
+   Three plan cards, the limits side by side, what every plan has, and questions.
+   Radii are inline in the template, like the rest of the site (the corners layer
+   keys on them). The Monthly / Yearly switch is two native radios: `:has(:checked)`
+   shows one of each `.is-month` / `.is-year` pair, so it needs no script. */
+.site-vh { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+.site-pricing { max-width:1120px; margin:0 auto; padding:150px 24px 0; }
+.site-pricing.is-page { padding-top:72px; }
+.site-pricing a:focus-visible, .site-pricing button:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-price-top { display:flex; align-items:flex-end; flex-wrap:wrap; gap:24px 40px; }
+.site-price-intro { flex:1 1 420px; min-width:0; }
+.site-price-eyebrow { margin-bottom:12px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); }
+.site-price-title { margin:0; font-size:clamp(28px, 3.4vw, 38px); font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
+.site-price-title.is-page { font-size:clamp(32px, 4vw, 44px); line-height:1.1; }
+.site-price-lede { margin:14px 0 0; max-width:560px; font-size:15.5px; line-height:1.6; color:var(--fg-70); text-wrap:pretty; }
+.site-btn-accent { background:var(--accent); color:var(--accent-fg); }
+.site-btn-accent:hover { filter:brightness(1.06); color:var(--accent-fg); }
+.site-interval { display:inline-flex; flex:none; gap:2px; padding:3px; border:1px solid var(--border); }
+.site-interval label { position:relative; padding:6px 14px; font-size:13px; font-weight:500; color:var(--fg-55); cursor:pointer; transition:color .15s ease, background .15s ease; }
+.site-interval input { position:absolute; inset:0; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; }
+.site-interval label:hover { color:var(--fg); }
+.site-interval label:has(:checked) { color:var(--fg); background:var(--hover); box-shadow:inset 0 0 0 1px var(--border-strong); }
+.site-interval label:has(:focus-visible) { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-pricing:not(:has(input[name="site-interval"][value="year"]:checked)) .is-year { display:none; }
+.site-pricing:has(input[name="site-interval"][value="year"]:checked) .is-month { display:none; }
+.site-plans { margin-top:48px; display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:16px; }
+.site-plan { display:flex; flex-direction:column; min-width:0; border:1px solid var(--border); padding:26px 28px 28px; }
+.site-plan.is-accent { border-color:color-mix(in srgb, var(--accent) 55%, transparent); }
+.site-plan-head { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; min-height:24px; }
+.site-plan-name { margin:0; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); }
+.site-plan-badge { margin-left:auto; padding:2px 7px; border:1px solid var(--border); font-size:11px; font-weight:500; color:var(--fg-55); white-space:nowrap; }
+.site-plan-for { margin:12px 0 0; font-size:20px; line-height:1.3; font-weight:650; letter-spacing:-0.015em; text-wrap:balance; }
+.site-plan-pricebox { margin-top:22px; display:flex; align-items:flex-end; }
+.site-plan-price { margin:0; display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 8px; }
+.site-plan-amt { font-size:34px; line-height:1; font-weight:650; letter-spacing:-0.025em; font-variant-numeric:tabular-nums; }
+.site-plan-per { font-size:13.5px; color:var(--fg-55); }
+.site-plan-tba { font-size:14.5px; color:var(--fg-55); }
+.site-plan-ctabox { margin-top:18px; display:flex; }
+.site-plan-cta { flex:1; }
+.site-plan-limits { list-style:none; margin:24px 0 0; padding:20px 0 0; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:9px; font-size:13.5px; line-height:1.45; color:var(--fg-70); }
+.site-plan-limits b { color:var(--fg); font-weight:600; }
+@supports (grid-template-rows:subgrid) { @media (min-width:961px) {
+  /* one row track per card part, shared by the three cards: prices, buttons and lists line up */
+  .site-plan { display:grid; grid-template-rows:subgrid; grid-row:span 5; row-gap:0; }
+} }
+.site-price-note { margin-top:16px; display:flex; align-items:center; flex-wrap:wrap; gap:14px 28px; padding:18px 20px 18px 28px; border:1px solid var(--border); background:color-mix(in srgb, var(--accent) 5%, transparent); }
+.site-price-note p { flex:1 1 320px; margin:0; font-size:14.5px; line-height:1.55; color:var(--fg-70); text-wrap:pretty; }
+.site-price-note b { color:var(--fg); font-weight:600; }
+.site-price-block { margin-top:88px; }
+.site-price-h { margin:0; font-size:23px; font-weight:650; letter-spacing:-0.015em; }
+.site-cmp { width:100%; margin-top:20px; border-collapse:collapse; table-layout:fixed; font-size:14px; }
+.site-cmp th, .site-cmp td { padding:14px 16px 14px 0; text-align:left; vertical-align:top; border-bottom:1px solid var(--border); font-weight:400; }
+.site-cmp thead th { padding-bottom:10px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--fg-55); }
+.site-cmp thead th:first-child { width:46%; }
+.site-cmp-label { display:block; font-weight:600; color:var(--fg); }
+.site-cmp-counts { display:block; margin-top:3px; font-size:12.5px; line-height:1.5; color:var(--fg-55); }
+.site-cmp td { color:var(--fg); font-variant-numeric:tabular-nums; }
+.site-cmp-foot { margin:14px 0 0; font-size:12.5px; line-height:1.55; color:var(--fg-55); }
+.site-price-all { list-style:none; margin:14px 0 0; padding:0; max-width:900px; display:grid; grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap:0 40px; }
+.site-price-all li { display:flex; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); font-size:14.5px; line-height:1.55; color:var(--fg-70); }
+.site-faq { margin-top:20px; display:grid; grid-template-columns:repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap:0 56px; }
+.site-faq > div { padding:20px 0; border-top:1px solid var(--border); }
+.site-faq h3, .site-faq h4 { margin:0; font-size:14.5px; font-weight:600; }
+.site-faq p { margin:6px 0 0; max-width:60ch; font-size:13.5px; line-height:1.65; color:var(--fg-70); text-wrap:pretty; }
+@media (max-width:960px) { .site-plans { grid-template-columns:minmax(0, 1fr); } }
+/* tablet: one card per row, its limits beside its price instead of under it */
+@media (min-width:600px) and (max-width:960px) {
+  .site-plan { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); column-gap:40px; align-content:start; }
+  .site-plan > * { grid-column:1; }
+  .site-plan-limits { grid-column:2; grid-row:1 / span 4; align-self:stretch; justify-content:center; margin:0; padding:0 0 0 40px; border-top:0; border-left:1px solid var(--border); }
+}
+/* phone: four columns do not fit, so each limit is a block — its name, then the three plans' values */
+@media (max-width:720px) {
+  .site-cmp, .site-cmp tbody { display:block; }
+  .site-cmp thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  .site-cmp tbody tr { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; padding:16px 0; border-bottom:1px solid var(--border); }
+  .site-cmp tbody th, .site-cmp tbody td { display:block; padding:0; border:0; }
+  .site-cmp tbody th { grid-column:1 / -1; }
+  .site-cmp td::before { content:attr(data-plan); display:block; margin-bottom:2px; font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
+}
+
 /* ── landing motion ───────────────────────────────────────────────────────────
    The choreography for landing.ts. An element with `data-rv` renders hidden;
    landing-motion.ts adds `is-play` when it scrolls into view, and every step

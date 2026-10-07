@@ -16,12 +16,12 @@
 // Change the code, change this page — and bump `updated`.
 
 import { esc } from "./ui";
-import { siteFooter, siteMark } from "./site-chrome";
+import { SITE_CONTACT, siteFooter, siteMark } from "./site-chrome";
 
 /** Who runs the service (the landing footer's copyright line). */
 export const LEGAL_OPERATOR = "TrovLabs, Inc.";
 /** Where questions and privacy requests go — the same address Trov sends its mail from. */
-export const LEGAL_CONTACT = "hello@trov.dev";
+export const LEGAL_CONTACT = SITE_CONTACT;
 
 export type LegalKind = "terms" | "privacy";
 

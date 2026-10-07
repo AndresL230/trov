@@ -188,6 +188,8 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   reopens the same page as the `site` screen (`#site`): its nav swaps Sign in for "Back to the app", which
   returns to the route the logo was clicked from; `#site` is never stashed as a sign-in return-to. `web/src/landing-motion.ts`
   plays its scroll reveals; played keys live in `state.landingSeen` so a rerender never replays them.
+  Its last section is **Pricing** (`web/src/pricing.ts`, also the static `/pricing` page; prices in
+  `shared/pricing.ts`, `null` = not announced) — `docs/architecture/plans.md` › The pricing page.
   `web/src/releases.ts` is Help › **What's new**: `#releases` a grid of release cards; each release has TWO pages,
   `#releases/<v>` (release notes — for USERS: no PRs, no migrations) and `#releases/<v>/patches` (patch notes — for
   builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), flipped by a `segmented()` switch;
