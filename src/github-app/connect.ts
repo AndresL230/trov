@@ -16,12 +16,16 @@
 //   3. the code exchanges for a GitHub user token, and that GitHub account is this person's own linked
 //      GitHub identity (login, pinned numeric id) — the same match sign-in makes;
 //   4. GitHub itself lists the installation among those this user token can reach (`GET /user/installations`);
-//   5. that GitHub account can read EVERY repository the installation covers — so the org gains nothing
-//      through the installation that the person connecting it could not already read (a collaborator on
-//      one repository must not be able to attach an organization's whole installation);
+//   5. that GitHub account can read EVERY repository the installation covers — the installation's
+//      repository ids are a subset of the ids GitHub says this user can read in it — so the org gains
+//      nothing through the installation that the person connecting it could not already read (a
+//      collaborator on one repository must not be able to attach an organization's whole installation);
 //   6. no other Trov org holds the installation, and this org holds no other.
 // A failure at any step redirects to Org settings with a sentence and writes NOTHING. Every outcome is a
 // redirect — a human never gets JSON here.
+//
+// The GitHub user token exists only to answer 3–5. Once the decision is made — bound or refused — it is
+// revoked at GitHub (`dropUserToken`), after the redirect and whatever that revoke comes to.
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { GITHUB_LOGIN_RE } from "@shared/orgs";
@@ -36,8 +40,8 @@ import { importLogoForOrg } from "../integrations/logo";
 import { listMyOrgs } from "../orgs/repo";
 import { installationOrg } from "../platform/jobs";
 import {
-  appConfigured, appSlug, countInstallationRepos, countUserInstallationRepos, getInstallation, installUrl, installationToken, listUserInstallations,
-  type AppRefusal,
+  INSTALLATION_SCOPE, appConfigured, appSlug, getInstallation, installUrl, installationRepoIds, installationToken, listUserInstallations,
+  revokeUserToken, userInstallationRepoIds, type AppRefusal,
 } from "./api";
 import { visibleRepos } from "./repos";
 import { InstallationConflictError, bindInstallation, liveInstallation } from "./store";
@@ -151,7 +155,7 @@ type Pick = { installationId: number } | { account?: string };
 
 /**
  * Checks 2–6 of this file's header, then the binding. `userToken` is the GitHub user token the code was
- * exchanged for; it is used for three reads and dropped — never stored, never logged.
+ * exchanged for; it is used for these reads and revoked by the caller — never stored, never logged.
  */
 async function verifyAndBind(c: C, deps: ConnectDeps, intent: Intent, userToken: string, pick: Pick): Promise<Verdict> {
   const f = deps.fetchImpl;
@@ -209,17 +213,20 @@ async function verifyAndBind(c: C, deps: ConnectDeps, intent: Intent, userToken:
   }
   if (info.installation.suspended_at !== null) return no("suspended");
 
-  // 5 — no escalation: the connecting account reads every repository the installation covers. The
-  //     owner of a personal account's installation trivially does (the installation IS their account).
-  const own = info.installation.account_type === "User" && !!gh.id && info.installation.account_id === gh.id;
-  if (!own) {
-    const minted = await installationToken(c.env, installationId, f, nowOf(deps));
-    if (!minted.ok) return no(refusedAs(minted));
-    const all = await countInstallationRepos(minted.token, f);
-    const theirs = await countUserInstallationRepos(userToken, installationId, f);
-    if (all === null || theirs === null) return no("github_failed");
-    if (theirs < all) return no("partial_access");
-  }
+  // 5 — no escalation: every repository the installation covers is one this account can read. Compared
+  //     by repository ID, the whole of both lists — two counts can agree while the repositories differ.
+  //     The same for a personal account's installation: its owner reads all of it, and passes. An
+  //     installation too large to list in `REPO_ID_PAGES` pages is refused, never guessed at; so is a
+  //     list that did not arrive in full. The refusal carries a COUNT, never a repository's name.
+  const minted = await installationToken(c.env, installationId, INSTALLATION_SCOPE, f, nowOf(deps));
+  if (!minted.ok) return no(refusedAs(minted));
+  const covered = await installationRepoIds(minted.token, f);
+  if (!covered.ok) return no(covered.reason === "too_many" ? "too_many_repos" : "github_failed");
+  const readable = await userInstallationRepoIds(userToken, installationId, f);
+  if (!readable.ok) return no("github_failed");
+  let unreadable = 0;
+  for (const id of covered.ids) if (!readable.ids.has(id)) unreadable++;
+  if (unreadable > 0) return no("partial_access", `&missing=${unreadable}`);
 
   try {
     await bindInstallation(ctx, info.installation);
@@ -278,24 +285,42 @@ export async function installReturn(c: C, deps: ConnectDeps = {}): Promise<Respo
   const rawId = c.req.query("installation_id") ?? "";
   // Digits only: `Number()` would also read "1e3", " 12 " or "0x1f" as an id.
   if (!code || !/^[1-9][0-9]{0,15}$/.test(rawId)) return back(c, intent.slug, "github_failed");
-  return finish(c, intent, async () => {
+  return finish(c, deps, intent, { installationId: Number(rawId) }, () =>
     // GitHub began this authorization itself (the App asks for it during installation), so there is no
     // code_challenge of ours to answer and no redirect_uri of ours to repeat: neither is sent.
-    const userToken = await exchangeCode({ env: c.env, code, fetchImpl: deps.fetchImpl });
-    return userToken ? verifyAndBind(c, deps, intent, userToken, { installationId: Number(rawId) }) : no("github_failed");
-  });
+    exchangeCode({ env: c.env, code, fetchImpl: deps.fetchImpl }));
+}
+
+/**
+ * Revoke the GitHub user token: the decision it was needed for has been made. Best effort, and never in
+ * the person's way — it runs after the response (`waitUntil`); with no ExecutionContext (a test) it is
+ * awaited, and `revokeUserToken` neither throws nor outlives its own short timeout. A revoke GitHub did
+ * not confirm is one fixed line in the log — never the token, never GitHub's answer.
+ */
+async function dropUserToken(c: C, deps: ConnectDeps, userToken: string): Promise<void> {
+  const revoked = revokeUserToken(c.env, userToken, deps.fetchImpl)
+    .then((ok) => { if (!ok) console.error("github app connect: GitHub did not confirm revoking the user token"); })
+    .catch(() => undefined);
+  let ec: { waitUntil(promise: Promise<unknown>): void } | null = null;
+  try { ec = c.executionCtx; } catch { /* no ExecutionContext (a test) */ }
+  if (ec) ec.waitUntil(revoked); else await revoked;
 }
 
 /** Run the exchange and the checks; whatever happens, the person gets a redirect with a sentence. A
- *  thrown fetch (GitHub unreachable) is "GitHub did not answer" — logged by NAME, never the Error. */
-async function finish(c: C, intent: Intent, run: () => Promise<Verdict>): Promise<Response> {
+ *  thrown fetch (GitHub unreachable) is "GitHub did not answer" — logged by NAME, never the Error. Once
+ *  a user token exists it is revoked on EVERY way out: bound, refused, or thrown. */
+async function finish(c: C, deps: ConnectDeps, intent: Intent, pick: Pick, exchange: () => Promise<string | null>): Promise<Response> {
+  let userToken: string | null = null;
+  let verdict: Verdict;
   try {
-    const v = await run();
-    return back(c, intent.slug, v.outcome, v.extra);
+    userToken = await exchange();
+    verdict = userToken ? await verifyAndBind(c, deps, intent, userToken, pick) : no("github_failed");
   } catch (e) {
     console.error("github app connect failed", e instanceof Error ? e.name : "error", `org=${intent.org}`);
-    return back(c, intent.slug, "github_failed");
+    verdict = no("github_failed");
   }
+  if (userToken) await dropUserToken(c, deps, userToken);
+  return back(c, intent.slug, verdict.outcome, verdict.extra);
 }
 
 /**
@@ -311,8 +336,6 @@ export async function connectReturn(c: C, deps: ConnectDeps, code: string, verif
     return c.redirect(me ? await homeFor(c, me.handle, "expired") : "/", 302);
   }
   if (intent.exp <= nowOf(deps)) return back(c, intent.slug, "expired");
-  return finish(c, intent, async () => {
-    const userToken = await exchangeCode({ env: c.env, code, redirectUri: callbackUrl(c.req.url), verifier, fetchImpl: deps.fetchImpl });
-    return userToken ? verifyAndBind(c, deps, intent, userToken, { account: intent.account }) : no("github_failed");
-  });
+  return finish(c, deps, intent, { account: intent.account }, () =>
+    exchangeCode({ env: c.env, code, redirectUri: callbackUrl(c.req.url), verifier, fetchImpl: deps.fetchImpl }));
 }

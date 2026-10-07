@@ -14,7 +14,7 @@ import type { GithubAppStatusDTO, GithubConnectOutcome, GithubInstallationDTO, G
 import type { TestState } from "./integrations";
 
 /** What came back from GitHub (`?github=<outcome>` on the page the callback redirects to). */
-export interface GithubNotice { outcome: GithubConnectOutcome; accounts: string[] }
+export interface GithubNotice { outcome: GithubConnectOutcome; accounts: string[]; /** `partial_access`: how many repositories the account cannot read. */ missing?: number }
 
 const LIST = "overflow:hidden;list-style:none;margin:0;padding:0";
 const EXT = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M14 4h6v6"></path><path d="M20 4 10 14"></path><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"></path></svg>`;
@@ -50,7 +50,8 @@ export function connectNoticeCopy(n: GithubNotice, orgName: string): NoticeCopy 
     case "not_admin": return { tone: "red", title: "Nothing was connected.", body: `Only an admin or an owner of ${org} can connect GitHub.` };
     case "wrong_account": return { tone: "red", title: "Nothing was connected.", body: "The GitHub account that approved this is not the one linked to your Trov account. Sign in to GitHub as your own account, or link it in Settings, then try again." };
     case "not_yours": return { tone: "red", title: "Nothing was connected.", body: "GitHub does not list that installation among the ones your account can reach." };
-    case "partial_access": return { tone: "red", title: "Nothing was connected.", body: "Your GitHub account cannot read every repository that installation covers. Ask an owner of the GitHub account to connect it, or limit the App to repositories you can read." };
+    case "partial_access": return { tone: "red", title: "Nothing was connected.", body: `Your GitHub account cannot read ${n.missing ? `${n.missing} of the ${n.missing === 1 ? "repository" : "repositories"}` : "every repository"} that installation covers. Ask an owner of the GitHub account to connect it, or limit the App to repositories you can read.` };
+    case "too_many_repos": return { tone: "red", title: "Nothing was connected.", body: "That installation covers more than 1,000 repositories, which is more than Trov checks before connecting one. On GitHub, open the Trov App's settings for that account, choose Only select repositories, pick the ones Trov should read, then connect again." };
     case "taken": return { tone: "red", title: "Nothing was connected.", body: "That installation is already connected to another Trov organization. It can belong to one at a time: disconnect it there first." };
     case "already_connected": return { tone: "red", title: "Nothing was connected.", body: `${org} is already connected to another GitHub account. Disconnect that one first: an organization connects one account at a time.` };
     case "suspended": return { tone: "amber", title: "Nothing was connected.", body: "That installation is suspended on GitHub. Unsuspend it there, then connect again." };

@@ -67,7 +67,8 @@ export const GITHUB_CONNECT_OUTCOMES = [
   "not_admin",          // no longer an admin of the org
   "wrong_account",      // the GitHub account is not this person's linked GitHub identity
   "not_yours",          // the installation is not one this GitHub account can reach
-  "partial_access",     // this GitHub account cannot read every repository the installation covers
+  "partial_access",     // this GitHub account cannot read every repository the installation covers (`missing=` how many)
+  "too_many_repos",     // the installation covers more repositories than the check reads (1,000): select some on GitHub
   "taken",              // the installation is connected to another Trov organization
   "already_connected",  // this org already has a different live installation
   "suspended",          // the installation is suspended on GitHub; nothing connected

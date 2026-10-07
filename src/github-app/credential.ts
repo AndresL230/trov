@@ -2,7 +2,9 @@
 // an org's behalf — the reconcile, the progress backstop, Sync GitHub, the webhook's follow-up reads,
 // the org image's import — asks HERE, in this order:
 //
-//   1. the org's live GitHub App installation → an installation token (minted, or the isolate's cached one);
+//   1. the org's live GitHub App installation → an installation token (minted, or the isolate's cached
+//      one) for THAT repository alone, read-only (`repoScope`); with no repository named, a token for
+//      the installation itself, which carries Metadata only (`INSTALLATION_SCOPE`);
 //   2. the org's stored `github_token` (Org settings › Integrations);
 //   3. for SaplingLearn alone, the Worker's legacy GITHUB_SERVICE_TOKEN (`resolveCredential`'s fallback).
 //
@@ -17,7 +19,7 @@
 import type { Env } from "../env";
 import { Secret, SecretAccessError, markSecretUsed, recordSecretOutcome, resolveCredential, type Revealed } from "../data/secrets";
 import type { TenantContext } from "../data/sql";
-import { appCanSign, forgetInstallationToken, installationToken, type AppRefusal } from "./api";
+import { INSTALLATION_SCOPE, appCanSign, forgetInstallationToken, installationToken, repoScope, type AppRefusal, type TokenScope } from "./api";
 import { endInstallation, liveInstallation, markInstallationUsed, recordInstallationOutcome, setInstallationSuspended, type InstallationRow } from "./store";
 
 export type GithubCredentialSource = "app" | "token";
@@ -40,7 +42,9 @@ export interface GithubCredential {
 
 export interface ResolveOpts {
   /** The repository about to be read (`owner/repo`). An installation covers ONE account's repositories,
-   *  so it answers only for a repository that account owns; anything else is the stored token's. */
+   *  so it answers only for a repository that account owns; anything else is the stored token's. The
+   *  installation's token is minted for this repository ONLY. Absent = a call about the installation
+   *  itself (its repository list): a token that spans it and carries Metadata alone. */
   repo?: string | null;
   fetchImpl?: typeof fetch;
   now?: number;
@@ -52,24 +56,26 @@ const covers = (row: InstallationRow, repo: string | null | undefined): boolean 
   !repo || repo.split("/")[0]?.toLowerCase() === row.account_login.toLowerCase();
 
 /** What a refused mint means for the binding: GitHub no longer knows the installation → it is ended;
- *  suspended → marked so; anything else (the App's own credentials, an outage) → `last_error` only. */
+ *  suspended → marked so; anything else (the App's own credentials, an outage, a repository the
+ *  installation does not cover) → `last_error` only. The first two kill every token of the installation;
+ *  the rest say nothing about the tokens other repositories hold. */
 async function noteRefusal(ctx: TenantContext, env: Env, row: InstallationRow, refusal: AppRefusal, now: number): Promise<void> {
   try {
-    forgetInstallationToken(env, row.installation_id);
+    if (refusal.kind === "not_found" || refusal.kind === "suspended") forgetInstallationToken(env, row.installation_id);
     if (refusal.kind === "not_found") { await endInstallation(ctx, row, "not_found"); return; }
     if (refusal.kind === "suspended") await setInstallationSuspended(ctx, row, true);
     await recordInstallationOutcome(ctx, row, { ok: false, message: refusal.message, revealed: [] }, now);
   } catch { /* bookkeeping must not cost the job */ }
 }
 
-function appCredential(ctx: TenantContext, env: Env, row: InstallationRow, token: string): GithubCredential {
+function appCredential(ctx: TenantContext, env: Env, row: InstallationRow, scope: TokenScope, token: string): GithubCredential {
   return {
     token: new Secret(token), source: "app", installation: row,
     fetch: (fetchImpl) => {
       const inner: typeof fetch = fetchImpl ?? ((input, init) => fetch(input, init));
       return async (input, init) => {
         const res = await inner(input, init);
-        if (res.status === 401) forgetInstallationToken(env, row.installation_id);
+        if (res.status === 401) forgetInstallationToken(env, row.installation_id, scope); // this token, not its siblings
         return res;
       };
     },
@@ -97,8 +103,9 @@ export async function resolveGithubCredential(ctx: TenantContext, env: Env, opts
   const now = opts.now ?? Date.now();
   const row = appCanSign(env) ? await liveInstallation(ctx) : null;
   if (row && row.suspended_at === null && covers(row, opts.repo)) {
-    const minted = await installationToken(env, row.installation_id, opts.fetchImpl, now);
-    if (minted.ok) return appCredential(ctx, env, row, minted.token);
+    const scope = opts.repo ? repoScope(opts.repo) : INSTALLATION_SCOPE;
+    const minted = await installationToken(env, row.installation_id, scope, opts.fetchImpl, now);
+    if (minted.ok) return appCredential(ctx, env, row, scope, minted.token);
     await noteRefusal(ctx, env, row, minted, now);
   }
   if (opts.appOnly) return null;

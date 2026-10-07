@@ -1,6 +1,8 @@
 // Every request Trov makes to GitHub ABOUT the App (docs/architecture/github-app.md): as the App itself
 // (a JWT — read one installation, mint its token), as an installation (list its repositories), and as
-// the user who is connecting it (which installations can this account reach). Reads only.
+// the user who is connecting it (which installations can this account reach, and which of one's
+// repositories it can read). Reads only — and one DELETE: the connecting user's token, revoked when the
+// connect flow is done with it.
 //
 // No D1, no secrets module: this file knows GitHub, not orgs. Nothing here logs, and no result carries
 // upstream text — GitHub's answer is reduced to a status and a FIXED phrase, because an error body may
@@ -119,17 +121,59 @@ export async function getInstallation(env: AppEnv, installationId: number, fetch
 
 export type Minted = { ok: true; token: string; expiresAt: number } | AppRefusal;
 
-/** `POST /app/installations/:id/access_tokens` — a token for that installation, good for about an hour. */
-export async function mintInstallationToken(env: AppEnv, installationId: number, fetchImpl?: typeof fetch, now: number = Date.now()): Promise<Minted> {
+// ── what a token may do ──────────────────────────────────────────────────────
+
+/** The repository permissions the App is registered with — all of them read. A mint that names one the
+ *  App was not granted is refused by GitHub (422), so nothing outside this list is ever asked for. */
+export type TokenPermission = "metadata" | "contents" | "pull_requests" | "issues" | "actions" | "checks" | "deployments" | "statuses";
+export type TokenPermissions = Readonly<Partial<Record<TokenPermission, "read">>>;
+
+/**
+ * What ONE installation token is minted for. A token is never wider than the read it is for:
+ *   repository  the one repository it can touch (its NAME, without the owner — an installation is one
+ *               account's), or null for a call that is about the installation itself;
+ *   permissions the permissions it carries, each `read`.
+ */
+export interface TokenScope { repository: string | null; permissions: TokenPermissions }
+
+/** Everything the readers of a repository call (docs/architecture/github-app.md › Permissions ↔
+ *  endpoints): the reconcile, Sync GitHub, the progress backstop, the webhook's follow-up reads. */
+export const READ_PERMISSIONS: TokenPermissions = {
+  metadata: "read", contents: "read", pull_requests: "read", issues: "read",
+  actions: "read", checks: "read", deployments: "read", statuses: "read",
+};
+
+/** A token to READ `owner/repo`: that repository alone, with `READ_PERMISSIONS`. */
+export const repoScope = (fullName: string): TokenScope => ({ repository: fullName.slice(fullName.indexOf("/") + 1), permissions: READ_PERMISSIONS });
+
+/** A token for a call about the installation ITSELF — `GET /installation/repositories` (the picker, Test
+ *  connection, the connect flow's no-escalation check). It has to span the installation, or the list
+ *  would be cut to the repositories it names; so it carries Metadata alone and can read no code, no
+ *  pull request and no issue of any of them. */
+export const INSTALLATION_SCOPE: TokenScope = { repository: null, permissions: { metadata: "read" } };
+
+/**
+ * `POST /app/installations/:id/access_tokens` — a token for that installation, good for about an hour,
+ * narrowed to `scope`. A repository the installation does not cover, or a permission the App was not
+ * granted, is GitHub's 422: a refusal like any other (`failed`).
+ */
+export async function mintInstallationToken(env: AppEnv, installationId: number, scope: TokenScope, fetchImpl?: typeof fetch, now: number = Date.now()): Promise<Minted> {
   const what = "ask GitHub for a token";
   try {
     const jwt = await signAppJwt(env.GITHUB_APP_ID, env.GITHUB_APP_PRIVATE_KEY, now);
-    const res = await pick(fetchImpl)(`${API}/app/installations/${installationId}/access_tokens`, { method: "POST", headers: headers(jwt), signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const body = JSON.stringify({ ...(scope.repository ? { repositories: [scope.repository] } : {}), permissions: scope.permissions });
+    const res = await pick(fetchImpl)(`${API}/app/installations/${installationId}/access_tokens`, {
+      method: "POST", headers: { ...headers(jwt), "content-type": "application/json" }, body, signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (res.status === 422) {
+      await res.body?.cancel().catch(() => undefined);
+      return refusal("failed", 422, `${what}: GitHub would not issue one for ${scope.repository ? "that repository (the installation may not cover it)" : "the installation"}`);
+    }
     if (!res.ok) return refused(what, res);
-    const body = record(await res.json());
-    const expiresAt = typeof body.expires_at === "string" ? Date.parse(body.expires_at) : NaN;
-    if (typeof body.token !== "string" || !body.token || !Number.isFinite(expiresAt)) return refusal("failed", res.status, `${what}: GitHub's answer holds no token`);
-    return { ok: true, token: body.token, expiresAt };
+    const answer = record(await res.json());
+    const expiresAt = typeof answer.expires_at === "string" ? Date.parse(answer.expires_at) : NaN;
+    if (typeof answer.token !== "string" || !answer.token || !Number.isFinite(expiresAt)) return refusal("failed", res.status, `${what}: GitHub's answer holds no token`);
+    return { ok: true, token: answer.token, expiresAt };
   } catch (e) {
     return thrown(what, e);
   }
@@ -142,24 +186,29 @@ export async function mintInstallationToken(env: AppEnv, installationId: number,
 export const TOKEN_REFRESH_MARGIN_MS = 10 * 60_000;
 
 // Per isolate, in memory, and nowhere else: an installation token is never written to D1 and never
-// logged. Keyed by the App AND the installation, so a changed GITHUB_APP_ID cannot be answered from a
-// token the previous App minted. A mint in flight is shared by the callers that asked while it ran.
+// logged. Keyed by the App, the installation AND the scope the token was minted for — so a changed
+// GITHUB_APP_ID cannot be answered from a token the previous App minted, and a token for one repository
+// is never handed to a read of another. A mint in flight is shared by the callers that asked for the
+// same scope while it ran.
 const tokens = new Map<string, { token: string; expiresAt: number }>();
 const minting = new Map<string, Promise<Minted>>();
-const cacheKey = (env: AppEnv, installationId: number): string => `${appIdOf(env.GITHUB_APP_ID) ?? ""}:${installationId}`;
+const installationKey = (env: AppEnv, installationId: number): string => `${appIdOf(env.GITHUB_APP_ID) ?? ""}:${installationId}:`;
+/** A repository's name cannot hold `/` or a space, so `*` (the installation) never collides with one. */
+const cacheKey = (env: AppEnv, installationId: number, scope: TokenScope): string =>
+  `${installationKey(env, installationId)}${scope.repository?.toLowerCase() ?? "*"}:${Object.keys(scope.permissions).sort().join(",")}`;
 
 /**
- * The installation's token: the cached one while it has `TOKEN_REFRESH_MARGIN_MS` left, else a fresh
- * mint (one request). A refusal is NOT cached — the caller decides what it means for the binding.
+ * The installation's token for `scope`: the cached one while it has `TOKEN_REFRESH_MARGIN_MS` left, else
+ * a fresh mint (one request). A refusal is NOT cached — the caller decides what it means for the binding.
  */
-export async function installationToken(env: AppEnv, installationId: number, fetchImpl?: typeof fetch, now: number = Date.now()): Promise<Minted> {
-  const key = cacheKey(env, installationId);
+export async function installationToken(env: AppEnv, installationId: number, scope: TokenScope, fetchImpl?: typeof fetch, now: number = Date.now()): Promise<Minted> {
+  const key = cacheKey(env, installationId, scope);
   const held = tokens.get(key);
   if (held && held.expiresAt - now > TOKEN_REFRESH_MARGIN_MS) return { ok: true, token: held.token, expiresAt: held.expiresAt };
   tokens.delete(key);
   let pending = minting.get(key);
   if (!pending) {
-    pending = mintInstallationToken(env, installationId, fetchImpl, now).then((m) => {
+    pending = mintInstallationToken(env, installationId, scope, fetchImpl, now).then((m) => {
       if (m.ok) tokens.set(key, { token: m.token, expiresAt: m.expiresAt });
       return m;
     }).finally(() => minting.delete(key));
@@ -168,10 +217,16 @@ export async function installationToken(env: AppEnv, installationId: number, fet
   return pending;
 }
 
-/** Forget the installation's cached token: GitHub answered 401 to it (revoked — uninstalled, suspended),
- *  or the binding ended. The next use mints again and learns which. */
-export function forgetInstallationToken(env: AppEnv, installationId: number): void {
-  tokens.delete(cacheKey(env, installationId));
+/**
+ * Forget cached tokens of an installation. With a `scope`, the ONE token minted for it: GitHub answered
+ * 401 to that token, and the others are not known to be dead. Without, every token of the installation:
+ * the binding ended, it was suspended, or its permissions changed. The next use mints again and learns
+ * which.
+ */
+export function forgetInstallationToken(env: AppEnv, installationId: number, scope?: TokenScope): void {
+  if (scope) { tokens.delete(cacheKey(env, installationId, scope)); return; }
+  const prefix = installationKey(env, installationId);
+  for (const key of [...tokens.keys()]) if (key.startsWith(prefix)) tokens.delete(key);
 }
 
 /** Tests only: every isolate-held token and mint. */
@@ -242,10 +297,64 @@ export async function listUserInstallations(userToken: string, fetchImpl?: typeo
   return null; // more pages than this reads: unknown, so not a yes
 }
 
-/** GitHub's count of something listed with `total_count`, from ONE request of one row; null = no answer. */
-async function totalCount(url: string, auth: string, fetchImpl?: typeof fetch): Promise<number | null> {
+// ── the repositories of ONE installation, by id ──────────────────────────────
+
+/** How many pages of an installation's repositories the connect flow reads before it refuses: ten pages
+ *  of 100, so an installation of up to 1,000 repositories can be checked (and costs at most twenty
+ *  requests — the installation's list and the user's). */
+export const REPO_ID_PAGES = 10;
+
+/** Every repository id of a list, or why not: `too_many` = still more after `REPO_ID_PAGES`; `failed` =
+ *  GitHub did not answer in full. Neither is ever a yes. */
+export type RepoIds = { ok: true; ids: Set<number> } | { ok: false; reason: "too_many" | "failed" };
+
+/**
+ * Page a `{ total_count, repositories }` list to its END and return the repositories' numeric ids.
+ * Anything short of the whole list is a failure: a page that did not arrive, a body that is not a list,
+ * a row with no id, or a final count that is not the `total_count` GitHub gave. `missingIsEmpty`: a 404
+ * means "none" (the user's view of an installation they can no longer see).
+ */
+async function repoIds(url: string, auth: string, fetchImpl: typeof fetch | undefined, missingIsEmpty: boolean): Promise<RepoIds> {
+  const ids = new Set<number>();
   try {
-    const res = await pick(fetchImpl)(url, { headers: headers(auth), signal: AbortSignal.timeout(TIMEOUT_MS) });
+    for (let page = 1; page <= REPO_ID_PAGES; page++) {
+      const res = await pick(fetchImpl)(`${url}?per_page=${PER_PAGE}&page=${page}`, { headers: headers(auth), signal: AbortSignal.timeout(TIMEOUT_MS) });
+      if (!res.ok) {
+        await res.body?.cancel().catch(() => undefined);
+        return missingIsEmpty && res.status === 404 && page === 1 ? { ok: true, ids } : { ok: false, reason: "failed" };
+      }
+      const body = record(await res.json());
+      const total = body.total_count;
+      if (!Array.isArray(body.repositories) || typeof total !== "number" || !Number.isSafeInteger(total) || total < 0) return { ok: false, reason: "failed" };
+      if (total > REPO_ID_PAGES * PER_PAGE) return { ok: false, reason: "too_many" }; // known from the first page: no point reading on
+      for (const r of body.repositories) {
+        const id = record(r).id;
+        if (typeof id !== "number" || !Number.isSafeInteger(id)) return { ok: false, reason: "failed" };
+        ids.add(id);
+      }
+      if (ids.size >= total) return ids.size === total ? { ok: true, ids } : { ok: false, reason: "failed" };
+      if (body.repositories.length < PER_PAGE) return { ok: false, reason: "failed" }; // a short page that is not the last
+    }
+  } catch {
+    return { ok: false, reason: "failed" };
+  }
+  return { ok: false, reason: "too_many" };
+}
+
+/** The ids of EVERY repository the installation covers (`GET /installation/repositories`, an installation token). */
+export const installationRepoIds = (installationToken_: string, fetchImpl?: typeof fetch): Promise<RepoIds> =>
+  repoIds(`${API}/installation/repositories`, installationToken_, fetchImpl, false);
+
+/** The ids of the installation's repositories the USER can read (`GET /user/installations/:id/repositories`,
+ *  the user's token). GitHub answers 404 when that is none of them. */
+export const userInstallationRepoIds = (userToken: string, installationId: number, fetchImpl?: typeof fetch): Promise<RepoIds> =>
+  repoIds(`${API}/user/installations/${installationId}/repositories`, userToken, fetchImpl, true);
+
+/** How many repositories the INSTALLATION covers — GitHub's `total_count`, from one request of one row
+ *  (Test connection); null = no answer. */
+export async function countInstallationRepos(installationToken_: string, fetchImpl?: typeof fetch): Promise<number | null> {
+  try {
+    const res = await pick(fetchImpl)(`${API}/installation/repositories?per_page=1`, { headers: headers(installationToken_), signal: AbortSignal.timeout(TIMEOUT_MS) });
     if (!res.ok) { await res.body?.cancel().catch(() => undefined); return null; }
     const n = record(await res.json()).total_count;
     return typeof n === "number" && Number.isSafeInteger(n) && n >= 0 ? n : null;
@@ -254,10 +363,31 @@ async function totalCount(url: string, auth: string, fetchImpl?: typeof fetch): 
   }
 }
 
-/** How many of the installation's repositories the USER can reach (`GET /user/installations/:id/repositories`). */
-export const countUserInstallationRepos = (userToken: string, installationId: number, fetchImpl?: typeof fetch): Promise<number | null> =>
-  totalCount(`${API}/user/installations/${installationId}/repositories?per_page=1`, userToken, fetchImpl);
+// ── the connecting user's token, when the flow is done with it ───────────────
 
-/** How many repositories the INSTALLATION covers (`GET /installation/repositories`). */
-export const countInstallationRepos = (installationToken_: string, fetchImpl?: typeof fetch): Promise<number | null> =>
-  totalCount(`${API}/installation/repositories?per_page=1`, installationToken_, fetchImpl);
+const REVOKE_TIMEOUT_MS = 5_000;
+
+/**
+ * `DELETE /applications/{client_id}/token` — revoke ONE user access token (HTTP Basic: the App's client
+ * id and secret). The connect flow asks for a user token only to learn who is connecting and what they
+ * can read; once it has decided, the token has no further use. Best effort: true when GitHub said it is
+ * gone (204), false for anything else, never a throw — and nothing of the request is logged or returned.
+ */
+export async function revokeUserToken(env: Pick<Env, "GITHUB_CLIENT_ID" | "GITHUB_CLIENT_SECRET">, userToken: string, fetchImpl?: typeof fetch): Promise<boolean> {
+  try {
+    if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET || !userToken) return false;
+    const res = await pick(fetchImpl)(`${API}/applications/${encodeURIComponent(env.GITHUB_CLIENT_ID)}/token`, {
+      method: "DELETE",
+      headers: {
+        authorization: `Basic ${btoa(`${env.GITHUB_CLIENT_ID}:${env.GITHUB_CLIENT_SECRET}`)}`,
+        accept: "application/vnd.github+json", "content-type": "application/json", "user-agent": "trov-worker", "x-github-api-version": "2022-11-28",
+      },
+      body: JSON.stringify({ access_token: userToken }),
+      signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS),
+    });
+    await res.body?.cancel().catch(() => undefined);
+    return res.status === 204;
+  } catch {
+    return false;
+  }
+}

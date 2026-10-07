@@ -15,9 +15,9 @@ import { call } from "./helpers/integrations";
 import { ENVS, fakeGithub } from "./helpers/repo";
 import { fakeApp, seedInstallation, type FakeApp } from "./helpers/github-app";
 import { SecretAccessError, setSecret } from "../src/data/secrets";
-import { clearInstallationTokens } from "../src/github-app/api";
+import { READ_PERMISSIONS, clearInstallationTokens } from "../src/github-app/api";
 import { resolveGithubCredential } from "../src/github-app/credential";
-import { clearRepoLists } from "../src/github-app/repos";
+import { clearRepoLists, visibleRepos } from "../src/github-app/repos";
 import { testGithubApp } from "../src/github-app/routes";
 import { importLogoForOrg } from "../src/integrations/logo";
 import { runOrgJob, runReconcileJob } from "../src/repo/cron";
@@ -114,6 +114,11 @@ describe("every job carries only ITS org's installation token", () => {
       expect(gh.app.seen.map((s) => `${s.method} ${new URL(s.url).pathname}`), name).toEqual([
         `POST /app/installations/${INST_B}/access_tokens`, `POST /app/installations/${INST_A}/access_tokens`,
       ]);
+      // …and each was asked for the org's ONE repository, by name, with the read permissions and no more.
+      expect(gh.app.mints, name).toEqual([
+        { installation: INST_B, repositories: ["app"], permissions: READ_PERMISSIONS, token: tokenB },
+        { installation: INST_A, repositories: ["sapling"], permissions: READ_PERMISSIONS, token: tokenA },
+      ]);
       for (const r of [...a, ...b]) for (const other of ["ghp_alpha_stored_token", "ghp_beta_stored_token", LEGACY]) expect(r.auth ?? "", name).not.toContain(other);
     }
     // The use is recorded on each org's BINDING, not on its stored token.
@@ -122,6 +127,48 @@ describe("every job carries only ITS org's installation token", () => {
     expect(await all(env.DB, `SELECT last_used_at, last_error FROM org_secrets WHERE kind = 'github_token'`)).toEqual([
       { last_used_at: null, last_error: null }, { last_used_at: null, last_error: null },
     ]);
+  });
+});
+
+describe("a token is as narrow as the read it is for", () => {
+  it("one cron unit — the reconcile AND the image import that rides it — and the next jobs of the hour share ONE repository-scoped mint", async () => {
+    await twoOrgs();
+    const gh = github();
+    await quiet(() => runOrgJob(e, ORG_B, "reconcile", NOW, gh.fetchImpl));
+    await quiet(() => runOrgJob(e, ORG_B, "progress", NOW + 10 * 60_000, gh.fetchImpl));
+    await quiet(() => runBackfill(e, systemCtx(ORG_B), "bob", { fetchImpl: gh.fetchImpl, summarizer: null, issueSummarizer: null }));
+    expect(gh.app.mints).toEqual([{ installation: INST_B, repositories: ["app"], permissions: READ_PERMISSIONS, token: gh.app.minted[0] }]);
+    expect(auths(gh.reads)).toEqual([`Bearer ${gh.app.minted[0]}`]);
+    expect(gh.reads.some((r) => r.url.includes("/users/beta-co"))).toBe(true); // the image's lookup went with the job's token
+  });
+
+  it("the repository list and Test connection use a token for the installation itself — Metadata only, never the repository's read token", async () => {
+    await twoOrgs();
+    const ctx = await tenantCtx("bob", "admin", { orgId: ORG_B });
+    const gh = github();
+    const read = (await resolveGithubCredential(ctx, e, { repo: REPO_B, fetchImpl: gh.fetchImpl, now: NOW }))!.token.reveal();
+    expect(await visibleRepos(ctx, e, { fetchImpl: gh.fetchImpl, now: NOW })).toMatchObject({ ok: true, list: { total: 2 } }); // BOTH repositories: the token spans the installation
+    expect((await testGithubApp(ctx, e, NOW, gh.fetchImpl))!.detail).toBe("GitHub answered through the installation on beta-co: 2 repositories.");
+    expect(gh.app.mints.map((m) => [m.repositories, m.permissions])).toEqual([[["app"], READ_PERMISSIONS], [null, { metadata: "read" }]]);
+    const whole = gh.app.tokenFor(INST_B, null)!;
+    expect(whole).not.toBe(read);
+    expect([...new Set(gh.app.seen.filter((s) => s.url.includes("/installation/repositories")).map((s) => s.auth))]).toEqual([`Bearer ${whole}`]);
+  });
+
+  it("a repository the installation does not cover: GitHub refuses the mint, the stored token answers, and the binding only notes it", async () => {
+    await twoOrgs();
+    await addOrgRepo("beta-co/unselected", ORG_B, { primary: false });
+    await setSecret(await adminB(), "github_token", "", TOKEN_B);
+    const ctx = systemCtx(ORG_B);
+    const gh = github();
+    const held = (await resolveGithubCredential(ctx, e, { repo: REPO_B, fetchImpl: gh.fetchImpl, now: NOW }))!;
+    const other = (await resolveGithubCredential(ctx, e, { repo: "beta-co/unselected", fetchImpl: gh.fetchImpl, now: NOW }))!;
+    expect([other.source, other.token.reveal()]).toEqual(["token", TOKEN_B]);
+    expect(gh.app.mints[1]).toEqual({ installation: INST_B, repositories: ["unselected"], permissions: READ_PERMISSIONS, token: null });
+    expect(await binding(ORG_B)).toMatchObject({ removed_at: null, suspended_at: null, last_error: "ask GitHub for a token: GitHub would not issue one for that repository (the installation may not cover it)" });
+    // The token the covered repository holds was not thrown away with it.
+    expect((await resolveGithubCredential(ctx, e, { repo: REPO_B, fetchImpl: gh.fetchImpl, now: NOW }))!.token.reveal()).toBe(held.token.reveal());
+    expect(gh.app.minted).toHaveLength(1);
   });
 });
 

@@ -14,7 +14,7 @@ import { SAPLING_HOOK, addOrgRepo, setOrgEnvironments } from "./helpers/org-conf
 import { ENVS } from "./helpers/repo";
 import { APP_WEBHOOK_SECRET, fakeApp, seedInstallation, signAppWebhook } from "./helpers/github-app";
 import { setSecret } from "../src/data/secrets";
-import { clearInstallationTokens } from "../src/github-app/api";
+import { READ_PERMISSIONS, clearInstallationTokens } from "../src/github-app/api";
 import { clearRepoLists } from "../src/github-app/repos";
 import { handleGithubAppWebhook } from "../src/github-app/webhook";
 import prMerged from "./fixtures/gh-pr-merged.json";
@@ -266,6 +266,8 @@ describe("the follow-up reads", () => {
     expect(gh.seen.filter((s) => s.url.includes("/access_tokens")).map((s) => s.url)).toEqual([
       `https://api.github.com/app/installations/${INST_B}/access_tokens`, `https://api.github.com/app/installations/${INST_A}/access_tokens`,
     ]);
+    // Each for the delivery's own repository, read-only — the mint the reconcile of that repository shares.
+    expect(gh.mints.map((m) => [m.installation, m.repositories, m.permissions])).toEqual([[INST_B, ["app"], READ_PERMISSIONS], [INST_A, ["sapling"], READ_PERMISSIONS]]);
     // The token was minted once per installation and reused by the next delivery.
     expect((await send(REPO_B, INST_B, 3)).status).toBe(200);
     expect(gh.minted).toHaveLength(2);

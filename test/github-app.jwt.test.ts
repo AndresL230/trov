@@ -12,7 +12,7 @@ import { addOrgRepo } from "./helpers/org-config";
 import { APP_ID, fakeApp, seedInstallation, verifiedAppJwt } from "./helpers/github-app";
 import { APP_JWT_SKEW_S, APP_JWT_TTL_S, GithubAppKeyError, appIdOf, pemToPkcs8, pkcs1ToPkcs8, signAppJwt } from "../src/github-app/jwt";
 import {
-  TOKEN_REFRESH_MARGIN_MS, appConfigured, appSlug, clearInstallationTokens, forgetInstallationToken, installUrl, installationToken, manageUrl, mintInstallationToken,
+  INSTALLATION_SCOPE, READ_PERMISSIONS, TOKEN_REFRESH_MARGIN_MS, appConfigured, appSlug, clearInstallationTokens, forgetInstallationToken, installUrl, installationToken, manageUrl, mintInstallationToken, repoScope,
 } from "../src/github-app/api";
 import { resolveGithubCredential } from "../src/github-app/credential";
 import { clearRepoLists, visibleRepos } from "../src/github-app/repos";
@@ -92,39 +92,87 @@ describe("is the App configured on this deployment?", () => {
 });
 
 describe("installation tokens", () => {
-  const world = () => fakeApp({ now: () => NOW, installations: { 501: { account: { login: "acme", id: 77, type: "Organization" }, repos: [{ full_name: "acme/app" }] } } });
+  const world = () => fakeApp({ now: () => NOW, installations: { 501: { account: { login: "acme", id: 77, type: "Organization" }, repos: [{ full_name: "acme/app" }, { full_name: "acme/docs" }] } } });
+  const APP = repoScope("acme/app");
+  const DOCS = repoScope("acme/docs");
 
   it("mints with a JWT GitHub accepts, and returns the token with its expiry", async () => {
     const gh = world();
-    const minted = await mintInstallationToken(e, 501, gh.fetchImpl, NOW);
+    const minted = await mintInstallationToken(e, 501, APP, gh.fetchImpl, NOW);
     expect(minted).toEqual({ ok: true, token: gh.minted[0], expiresAt: NOW + 3_600_000 });
     expect(gh.seen).toHaveLength(1);
     expect(gh.seen[0].method).toBe("POST");
     expect(gh.seen[0].url).toBe("https://api.github.com/app/installations/501/access_tokens");
   });
 
-  it("ONE mint per installation until shortly before expiry; then a fresh one", async () => {
+  it("asks for the LEAST: one repository by name with the eight read permissions, or — for the installation itself — Metadata alone", async () => {
     const gh = world();
-    const first = await installationToken(e, 501, gh.fetchImpl, NOW);
+    await mintInstallationToken(e, 501, repoScope("acme/app"), gh.fetchImpl, NOW);
+    expect(JSON.parse(gh.seen[0].body)).toEqual({
+      repositories: ["app"], // the NAME: an installation is one account's
+      permissions: { metadata: "read", contents: "read", pull_requests: "read", issues: "read", actions: "read", checks: "read", deployments: "read", statuses: "read" },
+    });
+    expect(Object.values(READ_PERMISSIONS).every((v) => v === "read")).toBe(true); // nothing is ever asked to be written
+    await mintInstallationToken(e, 501, INSTALLATION_SCOPE, gh.fetchImpl, NOW);
+    expect(JSON.parse(gh.seen[1].body)).toEqual({ permissions: { metadata: "read" } }); // no `repositories`: it spans the installation, and reads no code
+    // A repository the installation does not cover is refused by GitHub — fixed words, no token.
+    const refused = await mintInstallationToken(e, 501, repoScope("acme/elsewhere"), gh.fetchImpl, NOW);
+    expect(refused).toEqual({ ok: false, kind: "failed", status: 422, message: "ask GitHub for a token: GitHub would not issue one for that repository (the installation may not cover it)" });
+    expect(gh.minted).toHaveLength(2);
+  });
+
+  it("ONE mint per (installation, repository) until shortly before expiry; then a fresh one", async () => {
+    const gh = world();
+    const first = await installationToken(e, 501, APP, gh.fetchImpl, NOW);
     for (const later of [1, 10 * 60_000, 3_600_000 - TOKEN_REFRESH_MARGIN_MS - 1]) {
-      expect(await installationToken(e, 501, gh.fetchImpl, NOW + later)).toEqual(first);
+      expect(await installationToken(e, 501, APP, gh.fetchImpl, NOW + later)).toEqual(first);
     }
     expect(gh.minted).toHaveLength(1);
     // Concurrent callers share one mint.
     clearInstallationTokens();
-    await Promise.all([installationToken(e, 501, gh.fetchImpl, NOW), installationToken(e, 501, gh.fetchImpl, NOW), installationToken(e, 501, gh.fetchImpl, NOW)]);
+    await Promise.all([installationToken(e, 501, APP, gh.fetchImpl, NOW), installationToken(e, 501, APP, gh.fetchImpl, NOW), installationToken(e, 501, APP, gh.fetchImpl, NOW)]);
     expect(gh.minted).toHaveLength(2);
     // Inside the margin the cached token is no longer handed out.
     gh.world.now = () => NOW + 3_600_000 - TOKEN_REFRESH_MARGIN_MS;
-    const renewed = await installationToken(e, 501, gh.fetchImpl, NOW + 3_600_000 - TOKEN_REFRESH_MARGIN_MS);
+    const renewed = await installationToken(e, 501, APP, gh.fetchImpl, NOW + 3_600_000 - TOKEN_REFRESH_MARGIN_MS);
     expect(gh.minted).toHaveLength(3);
     expect(renewed).toMatchObject({ ok: true, token: gh.minted[2] });
     // …and another installation never shares a token.
-    gh.world.installations[502] = { account: { login: "beta", id: 78, type: "Organization" }, repos: [] };
-    expect(await installationToken(e, 502, gh.fetchImpl, gh.world.now())).toMatchObject({ ok: true, token: gh.minted[3] });
+    gh.world.installations[502] = { account: { login: "beta", id: 78, type: "Organization" }, repos: [{ full_name: "beta/app" }] };
+    expect(await installationToken(e, 502, repoScope("beta/app"), gh.fetchImpl, gh.world.now())).toMatchObject({ ok: true, token: gh.minted[3] });
   });
 
-  it("a 401 on a read made with the token forgets it: the next use mints again", async () => {
+  it("the cache never crosses repositories: a token minted for one is not handed to a read of another, nor to the installation's own calls", async () => {
+    const gh = world();
+    const app = await installationToken(e, 501, APP, gh.fetchImpl, NOW);
+    const docs = await installationToken(e, 501, DOCS, gh.fetchImpl, NOW);
+    const whole = await installationToken(e, 501, INSTALLATION_SCOPE, gh.fetchImpl, NOW);
+    const held = [app, docs, whole].map((m) => (m.ok ? m.token : ""));
+    expect(new Set(held).size).toBe(3);
+    expect(gh.mints.map((m) => [m.repositories, Object.keys(m.permissions ?? {}).length])).toEqual([[["app"], 8], [["docs"], 8], [null, 1]]);
+    // Each is then served from the cache — its own entry, whatever the spelling of the name.
+    expect(await installationToken(e, 501, repoScope("acme/APP"), gh.fetchImpl, NOW + 1)).toEqual(app);
+    expect(await installationToken(e, 501, DOCS, gh.fetchImpl, NOW + 1)).toEqual(docs);
+    expect(await installationToken(e, 501, INSTALLATION_SCOPE, gh.fetchImpl, NOW + 1)).toEqual(whole);
+    expect(gh.minted).toHaveLength(3);
+    // Concurrent callers for DIFFERENT repositories do not share a mint.
+    clearInstallationTokens();
+    const [a, d] = await Promise.all([installationToken(e, 501, APP, gh.fetchImpl, NOW), installationToken(e, 501, DOCS, gh.fetchImpl, NOW)]);
+    expect(a.ok && d.ok && a.token !== d.token).toBe(true);
+    expect(gh.minted).toHaveLength(5);
+    // Forgetting ONE scope leaves the others; forgetting the installation drops them all.
+    forgetInstallationToken(e, 501, APP);
+    expect(await installationToken(e, 501, DOCS, gh.fetchImpl, NOW)).toEqual(d);
+    expect(gh.minted).toHaveLength(5);
+    await installationToken(e, 501, APP, gh.fetchImpl, NOW);
+    expect(gh.minted).toHaveLength(6);
+    forgetInstallationToken(e, 501);
+    await installationToken(e, 501, APP, gh.fetchImpl, NOW);
+    await installationToken(e, 501, DOCS, gh.fetchImpl, NOW);
+    expect(gh.minted).toHaveLength(8);
+  });
+
+  it("a 401 on a read made with the token forgets THAT token: the next use mints again, and another repository's token is untouched", async () => {
     await addOrgRepo("acme/app", ORG_B);
     await seedInstallation(ORG_B, 501, "acme");
     const gh = world();
@@ -132,42 +180,46 @@ describe("installation tokens", () => {
     const cred = (await resolveGithubCredential(ctx, e, { repo: "acme/app", fetchImpl: gh.fetchImpl, now: NOW }))!;
     expect(cred.source).toBe("app");
     expect(cred.token.reveal()).toBe(gh.minted[0]);
+    const other = (await resolveGithubCredential(ctx, e, { repo: "acme/docs", fetchImpl: gh.fetchImpl, now: NOW }))!;
+    expect(other.token.reveal()).toBe(gh.minted[1]);
     // The reader's fetch sees a 401 (the token was revoked on GitHub's side).
     const watched = cred.fetch((async () => new Response("{}", { status: 401 })) as typeof fetch)!;
     await watched("https://api.github.com/repos/acme/app", { headers: { authorization: `Bearer ${cred.token.reveal()}` } });
     const again = (await resolveGithubCredential(ctx, e, { repo: "acme/app", fetchImpl: gh.fetchImpl, now: NOW }))!;
-    expect(gh.minted).toHaveLength(2);
-    expect(again.token.reveal()).toBe(gh.minted[1]);
+    expect(gh.minted).toHaveLength(3);
+    expect(again.token.reveal()).toBe(gh.minted[2]);
+    expect((await resolveGithubCredential(ctx, e, { repo: "acme/docs", fetchImpl: gh.fetchImpl, now: NOW }))!.token.reveal()).toBe(gh.minted[1]); // still held
+    expect(gh.minted).toHaveLength(3);
     // An explicit forget does the same; a 200 does not.
     forgetInstallationToken(e, 501);
     await resolveGithubCredential(ctx, e, { repo: "acme/app", fetchImpl: gh.fetchImpl, now: NOW });
-    expect(gh.minted).toHaveLength(3);
+    expect(gh.minted).toHaveLength(4);
     const ok = (await resolveGithubCredential(ctx, e, { repo: "acme/app", fetchImpl: gh.fetchImpl, now: NOW }))!;
     await ok.fetch((async () => new Response("{}", { status: 200 })) as typeof fetch)!("https://api.github.com/x");
     await resolveGithubCredential(ctx, e, { repo: "acme/app", fetchImpl: gh.fetchImpl, now: NOW });
-    expect(gh.minted).toHaveLength(3);
+    expect(gh.minted).toHaveLength(4);
   });
 
   it("a refusal says WHY in fixed words — gone, suspended, the App's own credentials, an outage — and is never cached", async () => {
     const gh = world();
     gh.world.installations[501].gone = true;
-    expect(await installationToken(e, 501, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "not_found", status: 404 });
+    expect(await installationToken(e, 501, APP, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "not_found", status: 404 });
     gh.world.installations[501] = { ...gh.world.installations[501], gone: false, suspended: true };
-    expect(await installationToken(e, 501, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "suspended", status: 403 });
+    expect(await installationToken(e, 501, APP, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "suspended", status: 403 });
     gh.world.installations[501].suspended = false;
     gh.world.badAppCredentials = true;
-    expect(await installationToken(e, 501, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "credentials", status: 401 });
+    expect(await installationToken(e, 501, APP, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "credentials", status: 401 });
     gh.world.badAppCredentials = false;
     gh.world.intercept = () => new Response("upstream down", { status: 502 });
-    expect(await installationToken(e, 501, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "failed", status: 502 });
+    expect(await installationToken(e, 501, APP, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "failed", status: 502 });
     gh.world.intercept = () => { throw new Error("connect failed"); };
-    expect(await installationToken(e, 501, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "failed", status: 0 });
+    expect(await installationToken(e, 501, APP, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "failed", status: 0 });
     // A key that does not import is the App's problem too — and nothing was sent.
     const before = gh.seen.length;
-    expect(await installationToken({ ...e, GITHUB_APP_PRIVATE_KEY: "nope" }, 501, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "credentials" });
+    expect(await installationToken({ ...e, GITHUB_APP_PRIVATE_KEY: "nope" }, 501, APP, gh.fetchImpl, NOW)).toMatchObject({ ok: false, kind: "credentials" });
     expect(gh.seen).toHaveLength(before);
     gh.world.intercept = undefined;
-    expect(await installationToken(e, 501, gh.fetchImpl, NOW)).toMatchObject({ ok: true }); // none of the refusals stuck
+    expect(await installationToken(e, 501, APP, gh.fetchImpl, NOW)).toMatchObject({ ok: true }); // none of the refusals stuck
   });
 });
 

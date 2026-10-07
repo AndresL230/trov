@@ -305,6 +305,11 @@ describe("the sentence after a return from GitHub", () => {
     expect(connectNoticeCopy({ outcome: "connected", accounts: [] }, "Acme").tone).toBe("ok");
     expect(isGithubConnectOutcome("connected")).toBe(true);
     expect(isGithubConnectOutcome("<script>")).toBe(false);
+    // A partial reader is told HOW MANY repositories they cannot read (never which); too large an installation, what to do.
+    expect(connectNoticeCopy({ outcome: "partial_access", accounts: [], missing: 3 }, "Acme").body).toContain("cannot read 3 of the repositories that installation covers");
+    expect(connectNoticeCopy({ outcome: "partial_access", accounts: [], missing: 1 }, "Acme").body).toContain("cannot read 1 of the repository that installation covers");
+    expect(connectNoticeCopy({ outcome: "partial_access", accounts: [] }, "Acme").body).toContain("cannot read every repository that installation covers");
+    expect(connectNoticeCopy({ outcome: "too_many_repos", accounts: [] }, "Acme").body).toContain("Only select repositories");
     // An org's name is escaped inside a notice.
     expect(connectNoticeCopy({ outcome: "requested", accounts: [] }, "<b>x</b>").body).toContain("&lt;b&gt;x&lt;/b&gt;");
   });
