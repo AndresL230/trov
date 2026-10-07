@@ -257,17 +257,43 @@ slug and `roadmap_fts` `ref = 'plan'` would otherwise delete other orgs' rows). 
 
 ## 3. Migration plan
 
-### 3.1 Files
+> **Consolidated before release (2026-10-06).** The files this plan was built as were written and tested one
+> by one and then merged, statement for statement and in the same order, into ONE migration:
+> `migrations/0042_organizations.sql`. `0041_trov_name.sql` had already been applied to production, so it
+> stays its own file and runs first. Old → new:
+>
+> | Old file | Section of `0042_organizations.sql` |
+> |---|---|
+> | `0037_orgs.sql` | 1 · Orgs |
+> | `0038_tenant_columns.sql` | 2 · Tenant columns |
+> | `0039_tenant_rebuilds.sql` | 3 · Tenant rebuilds (ends in the foreign-key guard) |
+> | `0040_tenant_fts.sql` | 4 · Tenant FTS |
+> | `0041_trov_name.sql` | — unchanged: its own migration, applied BEFORE `0042_organizations` |
+> | `0042_platform_admins.sql` | 5 · Platform admins |
+> | `0043_platform_orgs.sql` | 6 · Platform orgs |
+> | `0045_identity_provider_uid.sql` | 7 · Identity uid |
+> | `0046_abuse_limits.sql` | 8 · Abuse limits |
+> | `0047_org_invite_mail.sql` | 9 · Org invite mail |
+> | `0048_org_logo.sql` | 10 · Org logo |
+>
+> What one file changes: a failure anywhere — the guard that closes section 3 above all — rolls back the
+> WHOLE migration, sections 1–2 included (§3.3); and the rollback is one file,
+> `scripts/mt/rollback/0042_organizations.down.sql`, which undoes all ten sections (§3.5). The two forms
+> were compared mechanically — same schema, rows and counters, on an empty database and on a production
+> export. The rest of §3 is as written, with the names updated.
 
-| File | Content |
+### 3.1 Sections (formerly files)
+
+| Section of `0042_organizations.sql` | Content |
 |---|---|
-| `0037_orgs.sql` | §2.1 tables + `persons.org_limit` / `identities.verified_email`; `INSERT OR IGNORE` the SaplingLearn org (`org_saplinglearn`, slug `saplinglearn`); one `memberships` row per non-reserved person (role `member`, `title`/`responsibilities` copied from `persons.role/responsibilities`), then `owner` for `andres` (Q3 — a one-time data seed, commented as such); the SaplingLearn `org_repos` row (`SaplingLearn/sapling`, `is_primary = 1`, `legacy_hook = 1`) and its `org_environments` rows (today's `REPO_ENVIRONMENTS`, D16); `org_login_map` from every `identities` row with `provider = 'github'`; `org_invites` from live `invites` rows (email); `org_counters` from `sqlite_sequence` (tickets, handoffs). No secret is migrated in SQL — encryption needs `TROV_KEK` (§8.7.6). |
-| `0038_tenant_columns.sql` *(as built)* | `ALTER TABLE … ADD COLUMN org_id TEXT NOT NULL DEFAULT 'org_saplinglearn'` on the 21 tenant tables whose keys do not change (ADD COLUMN cannot carry a REFERENCES clause with a non-NULL default, so their FK to `orgs` and the composite in-org FKs come with the Phase 7 cleanup migration); `tickets.number` / `handoffs.number` + the allocation triggers (Q2); `UNIQUE(org_id, id)` on sprints/tickets; `source_ref` unique per org. |
-| `0039_tenant_rebuilds.sql` *(as built)* | Rebuild (create `x_new` → copy with `org_id = 'org_saplinglearn'` → drop → rename, carrying `sqlite_sequence` like `0033:56`) of the 20 tables whose key must include `org_id`: `docs`, `doc_versions`, `entry_tags`, `processed_items`, `events`, `pr_summaries`, `issue_summaries`, `plan`, `plan_versions`, `identity_tasks`, `notification_policy` / `_settings` / `_prefs`, `repo_events` / `_snapshots` / `_metrics`, `prompts`, `prompt_versions`, `artifact_pages`, `doc_images`. Ends with a guard: `pragma_foreign_key_check` of every touched table into a `CHECK (violations = 0)` column, so a dangling reference fails the file (verified atomic on D1). |
-| `0040_tenant_fts.sql` | Drop + re-create the seven FTS tables (`org_id UNINDEXED` as the LAST column, so positional bm25 weights and snippet columns are unchanged) and their triggers; repopulate (artifacts_fts carried over verbatim). |
-| `0041_trov_name.sql`, `0042_platform_admins.sql` *(as built)* | the rename's sender (`Trov <hello@trov.dev>`), and the superadmin table seeded with andres (§5.4). |
-| `0043_platform_orgs.sql` *(as built)* | Additive: `orgs.suspended_at / suspended_by`, `org_invites.as_owner` (the superadmin's owner invite), `org_usage_daily` (metering), `org_admin_audit` (membership / invite / settings / platform audit). |
-| `00NN_drop_org_defaults.sql` (Phase 7 — the next free number; `0043` was taken by the row above) | Rebuild to remove the transitional `DEFAULT 'org_saplinglearn'` (§3.2), add the FK to `orgs` and the composite in-org FKs on the 0038 tables, and drop `persons.role/responsibilities`, `invites`. |
+| 1 · Orgs | §2.1 tables + `persons.org_limit` / `identities.verified_email`; `INSERT OR IGNORE` the SaplingLearn org (`org_saplinglearn`, slug `saplinglearn`); one `memberships` row per non-reserved person (role `member`, `title`/`responsibilities` copied from `persons.role/responsibilities`), then `owner` for `andres` (Q3 — a one-time data seed, commented as such); the SaplingLearn `org_repos` row (`SaplingLearn/sapling`, `is_primary = 1`, `legacy_hook = 1`) and its `org_environments` rows (today's `REPO_ENVIRONMENTS`, D16); `org_login_map` from every `identities` row with `provider = 'github'`; `org_invites` from live `invites` rows (email); `org_counters` from `sqlite_sequence` (tickets, handoffs). No secret is migrated in SQL — encryption needs `TROV_KEK` (§8.7.6). |
+| 2 · Tenant columns *(as built)* | `ALTER TABLE … ADD COLUMN org_id TEXT NOT NULL DEFAULT 'org_saplinglearn'` on the 21 tenant tables whose keys do not change (ADD COLUMN cannot carry a REFERENCES clause with a non-NULL default, so their FK to `orgs` and the composite in-org FKs come with the Phase 7 cleanup migration); `tickets.number` / `handoffs.number` + the allocation triggers (Q2); `UNIQUE(org_id, id)` on sprints/tickets; `source_ref` unique per org. |
+| 3 · Tenant rebuilds *(as built)* | Rebuild (create `x_new` → copy with `org_id = 'org_saplinglearn'` → drop → rename, carrying `sqlite_sequence` like `0033:56`) of the 20 tables whose key must include `org_id`: `docs`, `doc_versions`, `entry_tags`, `processed_items`, `events`, `pr_summaries`, `issue_summaries`, `plan`, `plan_versions`, `identity_tasks`, `notification_policy` / `_settings` / `_prefs`, `repo_events` / `_snapshots` / `_metrics`, `prompts`, `prompt_versions`, `artifact_pages`, `doc_images`. Ends with a guard: `pragma_foreign_key_check` of every touched table into a `CHECK (violations = 0)` column, so a dangling reference fails the whole migration (verified atomic on local D1 — `test/migrations.multitenancy.test.ts`). |
+| 4 · Tenant FTS | Drop + re-create the seven FTS tables (`org_id UNINDEXED` as the LAST column, so positional bm25 weights and snippet columns are unchanged) and their triggers; repopulate (artifacts_fts carried over verbatim). |
+| 5 · Platform admins *(as built)* | the superadmin table seeded with andres (§5.4). (The rename's sender, `Trov <hello@trov.dev>`, is `0041_trov_name.sql` — its own migration, applied first.) |
+| 6 · Platform orgs *(as built)* | Additive: `orgs.suspended_at / suspended_by`, `org_invites.as_owner` (the superadmin's owner invite), `org_usage_daily` (metering), `org_admin_audit` (membership / invite / settings / platform audit). |
+| 7–10 *(as built)* | Additive: `identities.provider_uid` (§5.1); `abuse_counters` (`docs/architecture/abuse-limits.md`); `org_invites.name / mail_status / mail_at / mail_error`; `orgs.logo_*` (`docs/architecture/organizations.md`). |
+| `00NN_drop_org_defaults.sql` (Phase 7 — the next free number after `0042_organizations`) | Rebuild to remove the transitional `DEFAULT 'org_saplinglearn'` (§3.2), add the FK to `orgs` and the composite in-org FKs on the 0038 tables, and drop `persons.role/responsibilities`, `invites`. |
 
 Every rebuild runs under `PRAGMA defer_foreign_keys = true` (the `0033` pattern) and ends with
 `PRAGMA foreign_key_check` asserted empty by the migration test.
@@ -283,14 +309,14 @@ dead; the Phase 7 cleanup migration removes it so a missed column fails loudly r
 ### 3.3 Idempotency
 
 1. **Ledger** — wrangler's `d1_migrations` table never re-applies a recorded file.
-2. **Atomic files** — each file is one D1 batch; a failure rolls the file back. *To verify in Phase 2*
-   against a local D1 with an injected failing statement at the end of each file (test asserts the
-   pre-migration schema dump is unchanged).
+2. **Atomic** — the migration is one D1 batch; a failure rolls ALL of it back. Verified against a local D1
+   two ways: a dangling row trips section 3's guard, and a failing statement injected at the very end (the
+   test asserts the pre-migration schema, rows and ledger are unchanged).
 3. **Re-runnable statements** — `CREATE … IF NOT EXISTS`, `DROP TABLE IF EXISTS x_new` at the top of every
    rebuild (clears a half-done local attempt), `INSERT OR IGNORE` for every seed, deterministic ids for
    the seeded rows (`org_saplinglearn`, hook id derived from the repo name).
 4. **Convergence test** — `test/migrations.multitenancy.test.ts` applies 0001–0036, loads the fixture
-   corpus (and, locally, the production export), applies 0037–0040, dumps every table ordered by PK; a second
+   corpus (and, locally, the production export), applies 0041 and `0042_organizations`, dumps every table ordered by PK; a second
    fresh run must produce byte-identical dumps.
 
 ### 3.4 Verification against a local copy of production
@@ -303,7 +329,7 @@ node scripts/mt/verify-migration.mjs .mt/prod.sql
 ```
 
 It loads the export into a local Miniflare D1, records per-table row counts and a content hash of every
-non-org column, applies 0037–0040, then asserts: identical row counts; identical content hashes; every row
+non-org column, applies `0042_organizations` (after 0041, production's order), then asserts: identical row counts; identical content hashes; every row
 has `org_id = 'org_saplinglearn'`; FTS row counts equal their base tables'; every pre-migration MATCH in a
 fixed query list returns the same ids; `PRAGMA integrity_check` = ok; `PRAGMA foreign_key_check` empty;
 `sqlite_sequence` per table ≥ its pre-migration value; every existing `mcp_tokens` / `oauth_grants` row
@@ -317,9 +343,11 @@ resolves to `(same handle, org_saplinglearn)`.
   Worker: `wrangler d1 time-travel restore canopy --bookmark=<pre-migration>` then `wrangler rollback` to the
   pre-migration Worker version. Writes made after the migration are lost; the runbook says to apply during a
   quiet window and announce it.
-- **Forward-fix fallback** (if Time Travel's window has passed): `migrations/rollback/0037-0040.down.sql`
-  (outside `migrations/` so wrangler never applies it) rebuilds each table without `org_id`, keeping only
-  `org_saplinglearn` rows; tested by the migration test (up → down → schema equals the 0036 dump).
+- **Forward-fix fallback** (if Time Travel's window has passed): `scripts/mt/rollback/0042_organizations.down.sql`
+  (outside `migrations/` so wrangler never applies it) undoes the whole migration — drops what sections 5–10
+  added, rebuilds each table without `org_id`, keeping only `org_saplinglearn` rows — and forgets it in
+  `d1_migrations`; `0041`'s sender rename is not undone. Tested by the migration test (up → down → schema and
+  rows equal the 0036 + 0041 dump, and the migration applies again).
 - Phases 3–6 are code-only and roll back with `wrangler rollback`.
 
 ## 4. Data layer
@@ -454,7 +482,7 @@ m.user_id = ? COLLATE NOCASE`. No row (unknown slug OR not a member) → **404 `
 ### 5.4 The superadmin (owner decision, 2026-10-06)
 
 One platform-wide role above every org: `platform_admins (person PK → persons(handle), granted_at, granted_by)`
-(`0042`), seeded with `andres` and nobody else. It is NOT an org role — `memberships.role` stays owner / admin /
+(`0042_organizations`, section 5), seeded with `andres` and nobody else. It is NOT an org role — `memberships.role` stays owner / admin /
 member per org — and it is NOT an env allowlist, so a handle rename carries it (`HANDLE_COLUMNS`).
 
 - **Powers** (screens later, under `/api/platform/*`, session cookie only, never MCP, `requireSuperadmin`): list
@@ -585,7 +613,7 @@ functions**:
   (`JOIN memberships`), resolves cadence with the existing order (user pref for `(org, user, kind)` →
   org policy → registry default), renders with `ctx`, and writes the outbox with key
   `org:user:cadence:window`. One digest per (person, org); subject `"<Org name> — Canopy digest"`.
-- `ensureNotificationPolicySeeded` becomes "seed on org creation" (and a one-off per existing org in 0037);
+- `ensureNotificationPolicySeeded` becomes "seed on org creation" (and a one-off per existing org in the migration);
   the per-isolate call in `src/index.ts:19,62` is removed.
 - Unsubscribe stays global (`persons.email_unsubscribed`, one click stops all Canopy mail) — Q8.
 - `from_address` → platform env `EMAIL_FROM`; per-org `from_name` only.
@@ -800,13 +828,13 @@ its lines to `web/src/releases.ts` per `CLAUDE.md`.
 
 | Phase | Scope | Exit criteria | Prod-safe because |
 |---|---|---|---|
-| **2 · Schema + migration** | 0037–0040; reset seed with two orgs; migration tests (§3.3, §3.4 script); rollback script + test | suite green; convergence test; up→down test; owner runs `verify-migration` on the prod export and it passes | transitional DEFAULT; queries unchanged still hit SaplingLearn |
+| **2 · Schema + migration** | `0042_organizations` sections 1–4 (as shipped: one file with the later phases' additions, sections 5–10); reset seed with two orgs; migration tests (§3.3, §3.4 script); rollback script + test | suite green; convergence test; up→down test; owner runs `verify-migration` on the prod export and it passes | transitional DEFAULT; queries unchanged still hit SaplingLearn |
 | **3 · TenantContext + data layer** | `src/data/*`; port every repository to `ctx`/`PlatformContext`; add `org_id` predicates; static enforcement tests (§4.4) | suite green; static tests green; zero `prepare` outside `src/data` | routes still pass a SaplingLearn ctx via the alias resolver |
 | **4 · HTTP routes + membership** | `tenantGate`, `/api/o/:slug/*`, org/member/invite routes, role gates replace `isAdmin`; compat aliases; sign-in gate removed | suite green; route-level isolation tests for HTTP | old SPA uses aliases; SaplingLearn members all have exactly one org |
 | **5a · MCP** | org-scoped tokens + OAuth org picker; server bound to ctx | MCP isolation tests | existing tokens backfilled to SaplingLearn |
 | **5b · Gate, FTS, cron, email, webhooks, integrations** | §8.1–8.5, §8.7: per-(org, environment) job functions + rotation dispatcher; envelope encryption + Integrations API + Test connection; legacy hook | remaining isolation rows; cron/email multi-org tests; §10.5 secret tests | owner sets `TROV_KEK`, then enters SaplingLearn's secrets through the API BEFORE the env fallback is removed (§8.7.6) |
 | **6 · SPA** | `/o/:slug/` + hash routing (the Worker answers `GET /o/*` with `env.ASSETS.fetch("/index.html")` — no reliance on assets SPA-mode semantics); org switcher; create-org; invite + accept; members page with roles; org settings (repos, environments, webhook URL) and the **Integrations page** (D18: set / rotate / delete / Test connection per integration, browser-side secret generation for webhooks, last used / last error, audit history); copy without "Sapling" | render tests; Playwright smoke | deploy flips the SPA to the new paths |
-| **7 · Isolation suite + CI + cleanup** | full matrix generated from registries; mutation job; CI workflow; the cleanup migration (next free number after `0043_platform_orgs`) drops defaults/legacy columns; delete aliases, legacy webhook, env fallbacks; artifact origin on `trovusercontent.com` | matrix covers 100% routes/tools; mutation sample all killed; `--all` run clean | — |
+| **7 · Isolation suite + CI + cleanup** | full matrix generated from registries; mutation job; CI workflow; the cleanup migration (next free number after `0042_organizations`) drops defaults/legacy columns; delete aliases, legacy webhook, env fallbacks; artifact origin on `trovusercontent.com` | matrix covers 100% routes/tools; mutation sample all killed; `--all` run clean | — |
 
 The isolation suite grows from Phase 4 onward (each phase adds its rows); Phase 7 makes it exhaustive and
 CI-enforced. The CI workflow itself can land in Phase 2 so every later phase runs under it — recommended.

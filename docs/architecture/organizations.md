@@ -8,7 +8,7 @@ each step is named in brackets; the rules those modules obey are in `data-layer.
 
 | | Scope | Becomes one by |
 |---|---|---|
-| **Superadmin** | the platform: the list of organizations, who owns each, suspension, usage, the audit trail | a row in `platform_admins` (0042 seeds andres); another superadmin adds more in Platform › Admins & limits |
+| **Superadmin** | the platform: the list of organizations, who owns each, suspension, usage, the audit trail | a row in `platform_admins` (0042_organizations seeds andres); another superadmin adds more in Platform › Admins & limits |
 | **Owner** | one organization, everything in it | creating the organization, accepting a superadmin's owner invitation, or being made one by another owner |
 | **Admin** | one organization, everything but owners and the encryption key | an invitation "as admin", or a role change by an admin or owner |
 | **Member** | one organization: reads and the everyday writes | an invitation "as member" |
@@ -135,7 +135,7 @@ rules.
 
 An organization shows one image beside its name — the sidebar switcher and its menu, the org picker, an
 invitation, Platform. Without one the SPA draws the first letter of the name [`web/src/org-logo.ts`
-`orgTile`]. Migration `0048_org_logo.sql`; code `src/orgs/logo.ts`; tests `test/org-logo.test.ts`.
+`orgTile`]. Migration `0042_organizations.sql` (section 10); code `src/orgs/logo.ts`; tests `test/org-logo.test.ts`.
 
 - **Who changes it**: an admin or an owner, in Org settings › General — the tile is the control, like the
   profile photo: Upload image / Change image, and Remove image over an uploaded one

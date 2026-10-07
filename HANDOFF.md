@@ -23,16 +23,18 @@ for a human operator: `docs/architecture/organizations.md`. Nothing is merged or
 ### Done (each checkable on the branch)
 
 - **Phases 0–2**: `canopy-multitenancy-audit.md`, `canopy-multitenancy.md` (rev 2, APPROVED); migrations
-  `0037_orgs`, `0038_tenant_columns`, `0039_tenant_rebuilds`, `0040_tenant_fts`, `0041_trov_name`,
-  `0042_platform_admins`; `test/migrations.multitenancy.test.ts`, `test/multitenancy.schema.test.ts`;
-  the generated rollback `scripts/mt/rollback/0037-0040.down.sql` (`scripts/mt/build-rollback.py`, CI fails if
-  stale); `scripts/mt/verify-migration.mjs`; Terms / Privacy; the Canopy → Trov rename (plugin `plugins/trov`).
+  `0041_trov_name` (already applied to production) and `0042_organizations` — ONE file holding the whole
+  schema change of every phase below, in ten titled sections (it was ten files, consolidated before release;
+  old → new map at the top of spec §3); `test/migrations.multitenancy.test.ts`,
+  `test/multitenancy.schema.test.ts`; the generated rollback `scripts/mt/rollback/0042_organizations.down.sql`
+  (`scripts/mt/build-rollback.py`, CI fails if stale); `scripts/mt/verify-migration.mjs`; Terms / Privacy; the
+  Canopy → Trov rename (plugin `plugins/trov`).
 - **Phase 3** (spec §4): `src/data/` — contexts, the two query surfaces, gates, bearer, metering, secrets;
   every repository ported; `test/data-layer.static.test.ts` + `test/isolation.*.test.ts`; orgs / members /
-  invites, the superadmin surface (`0043_platform_orgs`), per-org secrets and the Integrations API.
+  invites, the superadmin surface (section 6 of the migration), per-org secrets and the Integrations API.
 - **Phase 4** (spec §5, §6): every tenant route defined once, served at `/api/o/:slug/<suffix>` (`tenantGate`)
   and at its old path (`soleTenantGate`); org roles on every route; cookie-only confirm verbs; sign-in checks
-  no GitHub org; `/auth/me` carries `orgs`, `superadmin`, `pending_invites`; `0045_identity_provider_uid`.
+  no GitHub org; `/auth/me` carries `orgs`, `superadmin`, `pending_invites`; `identities.provider_uid` (section 7).
   Tests: `test/isolation.http.test.ts` (generated from the route registry), `test/role-gates.http.test.ts`,
   `test/signin.multitenant.test.ts`.
 - **Phase 5a** (spec §7): MCP tokens and OAuth grants carry their org; the consent page's org picker.
@@ -41,13 +43,13 @@ for a human operator: `docs/architecture/organizations.md`. Nothing is merged or
   /webhook/github/:hookId`, per-org digests. `test/jobs.multi-org.test.ts`, `test/webhook.multi-org.test.ts`,
   `test/notifications.multi-org.test.ts`.
 - **The seams and the hardening**: Sync / Poll act on the caller's org only; `isAdmin` / `ADMIN_LOGINS`
-  deleted; the bare 401 for an unknown hook; abuse limits (`0046_abuse_limits`, `src/platform/limits.ts`) and
+  deleted; the bare 401 for an unknown hook; abuse limits (section 8 of the migration, `src/platform/limits.ts`) and
   the fixed mail sender. `test/abuse-limits.test.ts`.
 - **Phase 6 — the SPA**: `/o/<slug>/` + hash routing, one API prefix (`web/src/api.ts` `apiUrl`,
   `test/api.prefix.test.ts`), the org switcher / picker / create dialog, Org settings (Integrations,
   Repositories, Environments, Members, General, the setup checklist), Platform, Settings › MCP access per org.
 - **The gaps to a first outside org** (this session):
-  1. **Invitations are mailed.** `0047_org_invite_mail` (four nullable columns on `org_invites`).
+  1. **Invitations are mailed.** Section 9 of the migration (four nullable columns on `org_invites`).
      `POST /api/o/:slug/invites` takes `name`, mails an e-mail invite and returns the outcome on the row;
      `POST …/invites/:id/resend`; the superadmin's owner invite mails "You have been made the owner of <org>
      on Trov". The mail names the org, the inviter and the role; its only link is the site root. The welcome
@@ -117,7 +119,14 @@ holds; the SPA now handles each.
 - Do not rename these — they are contracts, not branding: the `canopy/coverage|bundle-kb|todo` commit statuses
   and the `canopy-health` / `canopy-metrics` user-agents (Sapling's contracts), the stored
   `tickets.source = 'canopy'`, the HMAC purpose labels, the accepted `canopy_*` token prefixes.
-- Do not edit `0037`–`0040` without re-running `python3 scripts/mt/build-rollback.py`.
+- Do not edit `migrations/0042_organizations.sql` without re-running `python3 scripts/mt/build-rollback.py`,
+  and keep it ONE file under 100 KB (it reaches D1 as one request; `test/migrations.multitenancy.test.ts`
+  checks). Never touch `0041_trov_name.sql`: production has it recorded.
+- A LOCAL database that applied the ten files `0042_organizations` replaced (numbered 0037–0048)
+  has their names in `d1_migrations` and their tables in place, so the new file cannot apply on top (it
+  stops at its first `ADD COLUMN`: "duplicate column name", nothing changed). Reset the local database:
+  `rm -rf .wrangler/state/v3/d1 && npm run db:migrate:local && npm run seed`. Production never recorded the
+  old names (its ledger holds 0001–0036 and 0041), so nothing of the kind applies there.
 
 ### Decide before a production deploy (the owner's calls, not the code's)
 
@@ -143,28 +152,33 @@ holds; the SPA now handles each.
 ### OWNER STEPS — a production deploy, in order
 
 "The database" is the one `wrangler.toml` binds as `DB` (`trov`); `npm run db:migrate:*`, the verify script and
-the rollback headers now say `trov` too. Check `database_name` in `wrangler.toml` before running any of them.
+the rollback header now say `trov` too. Check `database_name` in `wrangler.toml` before running any of them.
 
 0. If the database is being filled from Canopy with `copy-data.sh`: do that FIRST, from a checkout whose
-   migrations stop at `0036` (main). The script applies every migration in the checkout BEFORE it imports, and
-   `0037` makes every person it finds a member of SaplingLearn (andres its owner) and pins every token and
+   migrations stop at `0041` (main). The script applies every migration in the checkout BEFORE it imports, and
+   `0042_organizations` makes every person it finds a member of SaplingLearn (andres its owner) and pins every token and
    grant to it — on an empty database it finds nobody, and the 0036-shaped import that follows would add
    people with no membership. (Read from the script and the migration, not run.)
 1. **Export and bookmark.** Export the data (the two commands in the header of
    `scripts/mt/verify-migration.mjs`, into `.mt/`) and note the Time Travel bookmark:
    `npx wrangler d1 time-travel info <db>`.
-2. **Verify on the export**: `node scripts/mt/verify-migration.mjs .mt/prod-data.sql` must end `OK`. It applies
-   every migration from `0037` up (so `0045`–`0048` too) and checks that every ticket's and handoff's per-org
-   number equals its id. (Not run here: no export exists in this checkout.)
+2. **Verify on the export**: `node scripts/mt/verify-migration.mjs .mt/prod-data.sql` must end `OK`. It builds
+   0001–0036 + `0041` (production's order), loads the export, applies `0042_organizations` as one
+   transaction and checks, among the rest, that every ticket's and handoff's per-org number equals its id.
+   (Run on 2026-10-06 against a fresh export, `.mt/trov-data.sql`: `OK`. Re-run it on the export you take
+   in step 1.)
 3. **Set the key**: `openssl rand -base64 32 | npx wrangler secret put TROV_KEK`. Keep a copy somewhere safe —
    losing it loses every org's stored credentials. (A secret change ships the latest uploaded build: do it
    when that build is the one you mean to run.)
-4. **Apply migrations `0037`–`0043`, `0045`, `0046`, `0047`, `0048`** in a quiet window: `npx wrangler d1 migrations
-   apply <db> --remote` (there is no `0044`). Then deploy the Worker (`npm run deploy`, or the push that
+4. **Apply the migration — `0042_organizations`, one file** — in a quiet window: `npx wrangler d1 migrations
+   apply <db> --remote`. It must list exactly that one file (`0041_trov_name` is already recorded); it is
+   all-or-nothing — if it fails (the foreign-key guard on a dangling row, most likely), nothing has changed
+   and it can be applied again after the data is repaired. Then deploy the Worker (`npm run deploy`, or the push that
    deploys main — the schema is not compatible with the old Worker, so the two go together). Rollback inside
    Time Travel's window: `wrangler d1 time-travel restore <db> --bookmark=<step 1>` + `wrangler rollback`.
-   Past it: `scripts/mt/rollback/0043.down.sql`, then `0037-0040.down.sql` (`0046.down.sql` at any point;
-   `0045`, `0047` and `0048` are nullable columns with no down file). `0048_org_logo` is the organization's
+   Past it: `scripts/mt/rollback/0042_organizations.down.sql` — one file, the whole migration, back to the
+   0036 + 0041 schema (it does NOT undo `0041`'s sender rename, refuses once a second org exists, and what is
+   lost with it is listed in its header). Section 10 of the migration is the organization's
    image (five nullable columns on `orgs`): no backfill, and each org with a repository and a GitHub token gets
    its repository owner's avatar at the next 6-hourly reconcile — or upload one in Org settings › General.
 5. **Confirm Workers Paid.** The repo cron budgets 900 subrequests per invocation
@@ -175,7 +189,7 @@ the rollback headers now say `trov` too. Check `database_name` in `wrangler.toml
 7. **Enter SaplingLearn's credentials** on Org settings › Integrations (GitHub token, webhook secret,
    Cloudflare token + account id, each environment's Railway and metrics tokens). Until each is stored, the
    Worker secret of the same purpose answers for SaplingLearn alone.
-8. **Promote any other SaplingLearn admins** on Org settings › Members. `0037` made andres the owner and
+8. **Promote any other SaplingLearn admins** on Org settings › Members. The migration made andres the owner and
    everyone else a member; the old allowlist is gone, so nobody else is an admin until you do.
 9. **Re-point nothing.** SaplingLearn's GitHub webhook keeps delivering to `/webhook/github` (the
    `legacy_hook` repo, on `GITHUB_WEBHOOK_SECRET`) until Phase 7; the per-repo URL

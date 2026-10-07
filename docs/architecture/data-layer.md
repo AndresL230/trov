@@ -33,7 +33,7 @@ Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`
   role in that org today. No header, query or body value can name another org; no tool takes an org argument.
 - Every miss is the same `unauthorized` (`/mcp` → 401 `invalid_token`): unknown / revoked / expired credential,
   the person no longer a member of the row's org, that org suspended or gone. There is no 409 on `/mcp` any more.
-- Rows from before org-scoping carry `org_saplinglearn` (0038's column default backfilled them), so they resolve
+- Rows from before org-scoping carry `org_saplinglearn` (the organizations migration's column default backfilled them), so they resolve
   as they always did. The Phase 7 cleanup drops the default; every writer already names the org.
 - Tokens: `mintToken(ctx)` / `listTokens(ctx)` / `revokeToken(ctx, id)` are TENANT statements (the caller's own
   tokens for `ctx.orgId`), served at `GET|POST /api/o/:slug/mcp-tokens`, `POST …/:id/revoke`
@@ -52,7 +52,7 @@ Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`
 
 ## A ticket's and a handoff's two ids (spec §12 Q2)
 
-`tickets.number` / `handoffs.number` (0038: allocated per org by an AFTER INSERT trigger from `org_counters`)
+`tickets.number` / `handoffs.number` (0042_organizations: allocated per org by an AFTER INSERT trigger from `org_counters`)
 is the id a person or an agent SEES and TYPES. **The wire's `id` IS that number** — every route param and
 body field (`/tickets/:id`, `child_id`, `after_id`, `/handoffs/:id`), every MCP argument and result, quick
 search (`#12`), My Work, a sprint's ticket list, `parent_id`, each sub-row's `ticket_id`, and an artifact's
@@ -62,7 +62,7 @@ and `handoffs.ts` take and return numbers, resolve the row once (`WHERE number =
 its `id` for joins and foreign keys (`parent_id`, `ticket_assignees.ticket_id`, `tickets_fts`). Sprints,
 comments, links and history rows have no per-org number: their ids are still global.
 
-SaplingLearn's numbers equal its ids (0038's backfill; `test/migrations.multitenancy.test.ts` asserts it and
+SaplingLearn's numbers equal its ids (the organizations migration's backfill; `test/migrations.multitenancy.test.ts` asserts it and
 `scripts/mt/verify-migration.mjs` checks it on a production export), so its existing links name the same
 rows. `test/numbers.per-org.test.ts` drives every route and tool with row ids that differ from numbers.
 
@@ -82,7 +82,7 @@ The lists are derived from the live schema — every table with an `org_id` colu
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
 - **Global tables** (no `org_id`): `persons`, `identities`, `sessions`, `invites`, `oauth_clients`,
-  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0046), `sections`, `tags`.
+  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags`.
 
 ## Writing a statement
 
@@ -237,12 +237,12 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
   whose provider-VERIFIED email is another identity's `verified_email` is linked to that person (never
   `persons.email`, which is an editable notification address); otherwise GitHub always reaches onboarding and
   Google only with a pending invite for its verified email. `identities.verified_email` is written at every
-  sign-in; `identities.provider_uid` (0045) pins a GitHub identity to the account's numeric id, and a sign-in
+  sign-in; `identities.provider_uid` (0042_organizations) pins a GitHub identity to the account's numeric id, and a sign-in
   with the same login but another id is refused.
 - **Onboarding creates a person, never a membership** — a new person accepts an invite (`/api/invites`) or creates
   an org (`/api/orgs`). The ONE exception: a live legacy invite for their verified email is consumed as a
   SaplingLearn membership (`consumeLegacyInvite`), and only then is the welcome mail sent.
-- **Invitation and welcome mail** (`src/orgs/mail.ts`, 0047). An e-mail invite created through
+- **Invitation and welcome mail** (`src/orgs/mail.ts`, 0042_organizations). An e-mail invite created through
   `POST /api/o/:slug/invites` — or by the superadmin naming an owner — is MAILED as the inviting org, and the
   outcome is on its row: `name`, `mail_status` (`sent` / `failed` / null = none), `mail_at`, `mail_error`.
   `POST …/invites/:id/resend` mails a pending one again (409 `no_address` for a GitHub-login invite, which is
@@ -251,7 +251,7 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
   the request that caused it.
 - **The legacy `/invites…` routes** (`src/orgs/legacy-invites.ts`) are a view of the caller's org's EMAIL
   `org_invites` rows in the old `InviteRow` shape, and send through the same code. The global `invites` table
-  is still read for org #1 only: a pre-0047 row's name and outcome, and the row a first sign-in consumes.
+  is still read for org #1 only: a pre-0042_organizations row's name and outcome, and the row a first sign-in consumes.
 - **Attribution** (C-1): Org settings › Members' login map (Unmatched logins) writes `org_login_map` (admin+), never `identities`.
   `resolvePersonForLogin(ctx, login)` / `memberGithubLogins` read the map first, then a MEMBER's own GitHub identity.
 - **`persons.email`**: the person sets their own (`PUT …/notifications/prefs`); an org admin may set it only for a
@@ -284,7 +284,7 @@ and `resolveSoleTenant` / `soleTenantGate` behind the old-path aliases.
 checked against the server's own registry, so a new tool needs an entry (what to call it with from the other org). `test/helpers/org-config.ts`: an org's repo / environment rows
 (`addOrgRepo`, `setOrgEnvironments`), and the one-org call shapes of the background entry points for the
 SaplingLearn-only suites (`syncOrgConfig` copies the Env's `GITHUB_REPO` / `REPO_ENVIRONMENTS` into its rows,
-as 0037 did). Fixture SQL may use `env.DB` directly; the raw `first` / `all` /
+as 0042_organizations did). Fixture SQL may use `env.DB` directly; the raw `first` / `all` /
 `run` helpers for it live in `test/helpers/db.ts` (production has none). Each module has an isolation
 assertion in `test/isolation.*.test.ts`: write through `systemCtx(ORG_B)`, read through `systemCtx()`, expect nothing.
 

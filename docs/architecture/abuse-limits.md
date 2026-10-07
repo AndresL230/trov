@@ -6,7 +6,7 @@ between that and Trov being used to send mail, fill storage or look people up. C
 
 ## Per-person rate limits
 
-Migration `0046_abuse_limits.sql` adds one GLOBAL table, `abuse_counters (subject, action, bucket, count,
+Migration `0042_organizations.sql` (section 8) adds one GLOBAL table, `abuse_counters (subject, action, bucket, count,
 last_at)`. One unit is taken by ONE statement — an upsert that only counts while the window has room — so two
 racing requests cannot both take the last unit. D1 only: no Durable Object, no Queue.
 
@@ -64,7 +64,7 @@ changes. The cost is that an address can be on two people's rows; nothing reads 
    (`identities.verified_email`) or to confirm a typed one by mail; it was not done here because existing
    SaplingLearn people have hand-set addresses and `verified_email` is only filled at each person's next
    sign-in.
-2. **GitHub identities are pinned on first use.** `identities.provider_uid` (0045) is NULL for every existing
+2. **GitHub identities are pinned on first use.** `identities.provider_uid` (0042_organizations) is NULL for every existing
    row and is bound at that identity's next GitHub sign-in — to whichever account presents the login. If a
    member's GitHub login was renamed away and re-registered before they next sign in, the new holder signs in
    as them. Check `SELECT subject, person FROM identities WHERE provider = 'github' AND provider_uid IS NULL`
@@ -82,7 +82,7 @@ changes. The cost is that an address can be on two people's rows; nothing reads 
    per person: the ORG's name (up to its cap, in the subject and the headline), the inviter's display name and
    the invitee's name as the inviter typed it (each up to 120 characters). All are HTML-escaped, the subject is
    one line, and the only link is the site root — but the words are theirs. Every org's e-mail invite is mailed
-   now (0047), not only SaplingLearn's, so this is live for any org anyone creates. The WELCOME goes only to a
+   now (0042_organizations), not only SaplingLearn's, so this is live for any org anyone creates. The WELCOME goes only to a
    provider-verified address of the person who just joined, so it cannot be aimed at a third party.
 6. **Shared platform resources.** Summaries for every org's Sync GitHub and webhook use the Worker's one
    `GEMINI_API_KEY`; the repo cron's 900-subrequest budget is shared by rotation, so many orgs with 10
