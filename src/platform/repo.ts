@@ -8,6 +8,7 @@ import {
   OrgError, auditStmt, createOrg, getOrgBySlug, inviteStmt, listOrgInvites, neverJoined, parseInviteAddress, personForAddress,
   type InviteAddress, type OrgRow,
 } from "../orgs/repo";
+import { orgLogoSrc } from "@shared/orgs";
 import type {
   AdminAssignment, PlatformAdmin, PlatformAuditRow, PlatformOrgMember, PlatformOrgOwner, PlatformOrgRow, OrgInvite,
 } from "@shared/orgs";
@@ -110,7 +111,7 @@ export async function assignOrgAdmin(p: PlatformContext, slug: string, target: u
 // ── the org list and one org ─────────────────────────────────────────────────
 
 const toRow = (o: OrgRow, x: { owners: PlatformOrgOwner[]; members: number; invites: number; last: string | null }): PlatformOrgRow => ({
-  slug: o.slug, name: o.name, status: o.suspended_at ? "suspended" : "active", created_at: o.created_at, created_by: o.created_by,
+  slug: o.slug, name: o.name, logo_url: orgLogoSrc(o), status: o.suspended_at ? "suspended" : "active", created_at: o.created_at, created_by: o.created_by,
   suspended_at: o.suspended_at, suspended_by: o.suspended_by,
   owners: x.owners, member_count: x.members, pending_invites: x.invites, last_activity_at: x.last,
 });
@@ -118,7 +119,7 @@ const toRow = (o: OrgRow, x: { owners: PlatformOrgOwner[]; members: number; invi
 /** Every org, suspended ones included, newest first. `slug` narrows to one. */
 export async function listPlatformOrgs(p: PlatformContext, slug?: string): Promise<(PlatformOrgRow & { id: string })[]> {
   const [orgs, owners, members, invites, last] = await Promise.all([
-    all<OrgRow>(p, `SELECT id, slug, name, created_at, created_by, suspended_at, suspended_by FROM orgs
+    all<OrgRow>(p, `SELECT id, slug, name, created_at, created_by, suspended_at, suspended_by, logo_sha FROM orgs
                      ${slug === undefined ? "" : "WHERE slug = ?"} ORDER BY created_at DESC, slug ASC`, ...(slug === undefined ? [] : [slug])),
     all<{ org_id: string; handle: string; name: string | null }>(p,
       `SELECT m.org_id, pe.handle, pe.name FROM memberships m JOIN persons pe ON pe.handle = m.user_id COLLATE NOCASE

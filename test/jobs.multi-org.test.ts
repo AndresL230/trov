@@ -74,6 +74,9 @@ function world(over: (s: Seen) => Response | undefined = () => undefined) {
     seen.push(s);
     const custom = over(s);
     if (custom) return custom;
+    // The org image's import rides the reconcile unit (src/orgs/logo.ts): the repo owner's profile, then its avatar.
+    if (s.url.startsWith(`${GH}users/`)) return Response.json({ login: s.url.slice(`${GH}users/`.length), avatar_url: "https://avatars.githubusercontent.com/u/1?v=4" });
+    if (s.url.startsWith("https://avatars.githubusercontent.com/")) return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]));
     if (s.url.startsWith(GH)) return gh.fetchImpl(u, init);
     if (s.url === CF_URL) return new Response(JSON.stringify({ data: { viewer: { accounts: [{ workersInvocationsAdaptive: [
       { dimensions: { datetimeHour: "2026-09-20T10:00:00Z" }, sum: { requests: 640, errors: 3 } },

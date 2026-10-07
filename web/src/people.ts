@@ -37,6 +37,8 @@ export function handleTag(p: { handle: string; color: PersonColor } | null, fall
  *  puts the broken image back. */
 const failedAvatars = new Set<string>();
 export function markAvatarFailed(url: string): void { failedAvatars.add(url); }
+/** Did this image fail to load this session? An org's tile asks too (org-logo.ts `orgTile`). */
+export const avatarFailed = (url: string): boolean => failedAvatars.has(url);
 /** The `<img>` class that listener watches. */
 export const AVATAR_IMG_CLASS = "cnpy-av-img";
 

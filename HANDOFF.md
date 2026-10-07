@@ -154,17 +154,19 @@ the rollback headers now say `trov` too. Check `database_name` in `wrangler.toml
    `scripts/mt/verify-migration.mjs`, into `.mt/`) and note the Time Travel bookmark:
    `npx wrangler d1 time-travel info <db>`.
 2. **Verify on the export**: `node scripts/mt/verify-migration.mjs .mt/prod-data.sql` must end `OK`. It applies
-   every migration from `0037` up (so `0045`–`0047` too) and checks that every ticket's and handoff's per-org
+   every migration from `0037` up (so `0045`–`0048` too) and checks that every ticket's and handoff's per-org
    number equals its id. (Not run here: no export exists in this checkout.)
 3. **Set the key**: `openssl rand -base64 32 | npx wrangler secret put TROV_KEK`. Keep a copy somewhere safe —
    losing it loses every org's stored credentials. (A secret change ships the latest uploaded build: do it
    when that build is the one you mean to run.)
-4. **Apply migrations `0037`–`0043`, `0045`, `0046`, `0047`** in a quiet window: `npx wrangler d1 migrations
+4. **Apply migrations `0037`–`0043`, `0045`, `0046`, `0047`, `0048`** in a quiet window: `npx wrangler d1 migrations
    apply <db> --remote` (there is no `0044`). Then deploy the Worker (`npm run deploy`, or the push that
    deploys main — the schema is not compatible with the old Worker, so the two go together). Rollback inside
    Time Travel's window: `wrangler d1 time-travel restore <db> --bookmark=<step 1>` + `wrangler rollback`.
    Past it: `scripts/mt/rollback/0043.down.sql`, then `0037-0040.down.sql` (`0046.down.sql` at any point;
-   `0045` and `0047` are nullable columns with no down file).
+   `0045`, `0047` and `0048` are nullable columns with no down file). `0048_org_logo` is the organization's
+   image (five nullable columns on `orgs`): no backfill, and each org with a repository and a GitHub token gets
+   its repository owner's avatar at the next 6-hourly reconcile — or upload one in Org settings › General.
 5. **Confirm Workers Paid.** The repo cron budgets 900 subrequests per invocation
    (`CRON_SUBREQUEST_BUDGET`, `src/repo/dispatch.ts`); the free plan's cap is 50.
 6. **Sign in, then have every existing member sign in once** — it binds their GitHub identity to their

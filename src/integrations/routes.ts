@@ -21,6 +21,7 @@ import {
   deleteSecret, listOrgAudit, rotateOrgKey, rotateSecret, secretValueProblem, setIntegrationConfig, setSecret,
 } from "../data/secrets";
 import { INTEGRATION_CATALOG, checkIntegrationConfig, integrationRow, listIntegrations, scopeExists } from "./catalog";
+import { importLogoLater } from "./logo";
 import { testConnection } from "./probe";
 import { SettingsError, addRepo, deleteEnvironment, listEnvironments, listRepos, putEnvironment, removeRepo, reorderEnvironments } from "./settings";
 
@@ -112,6 +113,7 @@ async function integrationWrite(c: C): Promise<Response> {
     if (!body) return badJson(c);
     if (t.verb === "rotate") {
       await rotateSecret(ctx, t.kind, t.scope, body.secret as string);
+      if (t.kind === "github_token") importLogoLater(c); // the org's image comes from GitHub (./logo.ts)
       return c.json(await row(c, t));
     }
     // set / config name a scope that must exist NOW: a secret is never stored for an environment or
@@ -130,6 +132,7 @@ async function integrationWrite(c: C): Promise<Response> {
     const problem = secretValueProblem(t.kind, body.secret);
     if (problem) return c.json({ error: "invalid_secret", field: "secret", message: problem }, 400);
     await setSecret(ctx, t.kind, t.scope, body.secret as string, config);
+    if (t.kind === "github_token") importLogoLater(c);
     return c.json(await row(c, t), 201);
   });
 }
@@ -174,6 +177,9 @@ function repoRoutes(r: Hono<AppEnv>): void {
     const body = await jsonObject(c);
     if (!body) return badJson(c);
     const { id, created } = await addRepo(c.var.ctx, { repo_full_name: body.repo_full_name, is_primary: body.is_primary });
+    // Connected, or made primary: the org's image follows its primary repository's owner — after the
+    // response, and never over an uploaded one (./logo.ts).
+    importLogoLater(c);
     const repos = await list(c);
     return c.json({ repo: repos.find((x) => x.id === id) ?? null, repos }, created ? 201 : 200);
   }));

@@ -69,7 +69,7 @@ export function setApiOrg(slug: string | null): void { apiOrg = slug; }
 export const apiOrgSlug = (): string | null => apiOrg;
 
 /** Person-level and platform routes: not an org's, so never prefixed (docs/architecture/data-layer.md › Routes and gates). */
-const GLOBAL_PATH = /^\/(?:auth|avatar)\/|^\/api\/(?:orgs|invites|platform|o)(?:[/?]|$)/;
+const GLOBAL_PATH = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|o)(?:[/?]|$)/;
 export const isGlobalPath = (path: string): boolean => GLOBAL_PATH.test(path);
 
 /** The URL a route is requested at: a tenant route under the current org, anything else as written.
@@ -295,17 +295,18 @@ import type * as IntT from "@shared/integrations";
 export class OrgApiError extends ApiError {
   constructor(status: number, code: string, readonly detail: string | null, readonly field: string | null) { super(status, code); }
 }
+async function orgRefusal(res: Response): Promise<OrgApiError> {
+  let j: { error?: unknown; message?: unknown; field?: unknown; retry_after?: unknown } = {};
+  try { j = (await res.json()) as typeof j; } catch { /* non-JSON */ }
+  const err = new OrgApiError(res.status, typeof j.error === "string" ? j.error : String(res.status), typeof j.message === "string" ? j.message : null, typeof j.field === "string" ? j.field : null);
+  err.retryAfter = retryAfterOf(j);
+  return err;
+}
 async function orgSend<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
   const init: RequestInit = { method };
   if (body !== undefined) { init.body = JSON.stringify(body); init.headers = { "content-type": "application/json" }; }
   const res = await call(path, init);
-  if (!res.ok) {
-    let j: { error?: unknown; message?: unknown; field?: unknown; retry_after?: unknown } = {};
-    try { j = (await res.json()) as typeof j; } catch { /* non-JSON */ }
-    const err = new OrgApiError(res.status, typeof j.error === "string" ? j.error : String(res.status), typeof j.message === "string" ? j.message : null, typeof j.field === "string" ? j.field : null);
-    err.retryAfter = retryAfterOf(j);
-    throw err;
-  }
+  if (!res.ok) throw await orgRefusal(res);
   return res.json() as Promise<T>;
 }
 const orgPath = (slug: string, rest: string): string => `/api/o/${encodeURIComponent(slug)}${rest}`;
@@ -327,6 +328,19 @@ export function listMcpTokens(): Promise<McpTokenSummary[]> { return getJson<{ t
 export function revokeMcpToken(id: number): Promise<{ ok: true }> { return postJson(`/mcp-tokens/${id}/revoke`); }
 export function getOrgSettings(slug: string): Promise<{ org: OrgT.OrgSettings; can_edit: boolean }> { return orgSend("GET", orgPath(slug, "/settings")); }
 export function putOrgSettings(slug: string, name: string): Promise<{ ok: true; org: OrgT.OrgSettings }> { return orgSend("PUT", orgPath(slug, "/settings"), { name }); }
+/** Upload the org's image (multipart `file`; the caller crops and downsizes it first — avatar.ts). Admin+.
+ *  Refusals: `invalid_image` (400), `too_large` (413), `rate_limited` (429). Answers with the image that shows now. */
+export async function uploadOrgLogo(slug: string, file: Blob, filename = "logo"): Promise<OrgT.OrgLogo> {
+  const fd = new FormData();
+  fd.set("file", file, filename);
+  const res = await call(orgPath(slug, "/logo"), { method: "POST", body: fd });
+  if (!res.ok) throw await orgRefusal(res);
+  return ((await res.json()) as OrgT.OrgLogoResponse).logo;
+}
+/** Remove the org's UPLOADED image. What shows now: GitHub's, when the org has a repository to import from, else none. */
+export function removeOrgLogo(slug: string): Promise<OrgT.OrgLogo> {
+  return orgSend<OrgT.OrgLogoResponse>("POST", orgPath(slug, "/logo/remove")).then((r) => r.logo);
+}
 export function listOrgMembers(slug: string): Promise<OrgT.OrgMember[]> { return orgSend<{ members: OrgT.OrgMember[] }>("GET", orgPath(slug, "/members")).then((r) => r.members); }
 export function updateOrgMember(slug: string, handle: string, patch: { role?: OrgT.OrgRole; title?: string | null; responsibilities?: string | null }): Promise<OrgT.OrgMember[]> {
   return orgSend<{ members: OrgT.OrgMember[] }>("PUT", orgPath(slug, `/members/${encodeURIComponent(handle)}`), patch).then((r) => r.members);

@@ -28,10 +28,10 @@ export const tenantGate: MiddlewareHandler<AppEnv> = async (c, next) => {
 };
 
 /** Session routes that are NOT the cut-over alias's: the person-level surface, reachable with no org at
- *  all (/auth, /avatar, the org picker and invites, the superadmin surface) and the routes that name
+ *  all (/auth, /avatar, /org-logo, the org picker and invites, the superadmin surface) and the routes that name
  *  their org in the path (`/api/o/:slug/*` — `tenantGate`'s). */
 const isPlatformPath = (path: string): boolean =>
-  path.startsWith("/auth/") || path.startsWith("/avatar/") ||
+  path.startsWith("/auth/") || path.startsWith("/avatar/") || path.startsWith("/org-logo/") ||
   path === "/api/orgs" || path.startsWith("/api/orgs/") || path === "/api/invites" || path.startsWith("/api/invites/") ||
   path.startsWith("/api/platform/") || path.startsWith("/api/o/");
 

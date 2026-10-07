@@ -135,6 +135,8 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `INSERT INTO platform_admins (person, granted_at, granted_by) VALUES (?, ?, ?)`, handle, nowIso(), handle); // 0042
   // 0043: orgs.suspended_by, org_usage_daily.actor, org_admin_audit.actor
   await run(env.DB, `UPDATE orgs SET suspended_at = ?, suspended_by = ? WHERE id = 'org_b'`, nowIso(), handle);
+  // 0048: orgs.logo_by — who uploaded the org's image
+  await run(env.DB, `UPDATE orgs SET logo_sha = ?, logo_source = 'upload', logo_by = ?, logo_at = ? WHERE id = 'org_b'`, "a".repeat(64), handle, nowIso());
   await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-01-01', 'api_read', ?, 1, ?)`, org, handle, nowIso());
   await run(env.DB, `INSERT INTO org_admin_audit (org_id, actor, action, target, at) VALUES (?, ?, 'org.update', 'settings', ?)`, org, handle, nowIso());
 }

@@ -11,7 +11,10 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../auth/principal";
 import { RoleError, hasRole } from "../data/context";
 import { listRepoRows } from "../integrations/settings";
-import type { OrgMeResponse } from "@shared/orgs";
+import { ORG_LOGO_MAX_BYTES, type OrgLogoResponse, type OrgMeResponse } from "@shared/orgs";
+import { importLogoForOrg } from "../integrations/logo";
+import { PeopleError } from "../tools/people";
+import { getOrgLogo, removeOrgLogo, setOrgLogo } from "./logo";
 import { rateLimited } from "../platform/limits";
 import {
   OrgError, ORG_ERROR_STATUS, myOrgs, listMyInvites, createOrgForSelf, respondToInvite,
@@ -57,7 +60,7 @@ orgsApp.post("/", async (c) => {
     const firstJoin = await neverJoined(c.var.p, me(c));
     const org = await createOrgForSelf(c.var.p, me(c), { slug: b.slug as string, name: b.name as string });
     await welcomeFirstJoin(c.env, c.var.p, org.id, me(c), firstJoin, mailOrigin(c.env, c.req.url));
-    return c.json({ ok: true, org: { slug: org.slug, name: org.name, role: "owner" as const } }, 201);
+    return c.json({ ok: true, org: { slug: org.slug, name: org.name, role: "owner" as const, logo_url: null } }, 201);
   } catch (e) { return orgFail(c, e); }
 });
 
@@ -82,7 +85,7 @@ myInvitesApp.post("/:id/decline", respond(false));
 // ── /api/o/:slug ─────────────────────────────────────────────────────────────
 // `tenantGate` (mounted on /api/o/:slug/* in src/routes.ts) has already resolved `c.var.ctx`.
 export const orgTenantApp = new Hono<AppEnv>();
-for (const path of ["/me", "/settings", "/members", "/members/*", "/invites", "/invites/*"]) orgTenantApp.use(path, cookieOnly);
+for (const path of ["/me", "/settings", "/logo", "/logo/*", "/members", "/members/*", "/invites", "/invites/*"]) orgTenantApp.use(path, cookieOnly);
 
 orgTenantApp.get("/me", async (c) => {
   const [row, repos] = await Promise.all([orgMe(c.var.p, c.var.ctx), listRepoRows(c.var.ctx)]);
@@ -97,6 +100,40 @@ orgTenantApp.put("/settings", async (c) => {
   if (!b) return invalid(c);
   try {
     return c.json({ ok: true, org: await updateOrgSettings(c.var.p, c.var.ctx, { name: b.name }) });
+  } catch (e) { return orgFail(c, e); }
+});
+
+// The org's image (0048, ./logo.ts) — admin+. Upload: multipart, field `file`, checked like a person's
+// photo; a declared length past the cap (plus multipart framing) is refused before the body is read, and
+// the uploader's daily allowance is taken after the role gate (a refused member spends nothing).
+orgTenantApp.post("/logo", async (c) => {
+  if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "forbidden" }, 403);
+  const tooLarge = `an org image is at most ${ORG_LOGO_MAX_BYTES} bytes`;
+  const len = Number(c.req.header("content-length"));
+  if (Number.isFinite(len) && len > ORG_LOGO_MAX_BYTES + 64 * 1024) return c.json({ error: "too_large", message: tooLarge }, 413);
+  const refused = await rateLimited(c, "org_logo_upload");
+  if (refused) return refused;
+  let file: File | null = null;
+  try {
+    const v = (await c.req.raw.formData()).get("file");
+    file = v && typeof v !== "string" ? (v as File) : null;
+  } catch {
+    return c.json({ error: "invalid_image", message: "the body must be multipart/form-data" }, 400);
+  }
+  try {
+    return c.json({ ok: true, logo: await setOrgLogo(c.var.p, c.var.ctx, c.env.ARTIFACTS_BUCKET, file) } satisfies OrgLogoResponse);
+  } catch (e) {
+    if (e instanceof PeopleError) return e.code === "too_large" ? c.json({ error: "too_large", message: e.message }, 413) : c.json({ error: "invalid_image", message: e.message }, 400);
+    return orgFail(c, e);
+  }
+});
+// Remove: an UPLOADED image only. The org then has none, so the GitHub import applies again and is
+// tried at once — the answer carries what shows now (the repository owner's avatar when there is a
+// repository and GitHub answered, else nothing: the initial tile). The import cannot fail the removal.
+orgTenantApp.post("/logo/remove", async (c) => {
+  try {
+    if (await removeOrgLogo(c.var.p, c.var.ctx)) await importLogoForOrg(c.env, c.var.p, c.var.ctx);
+    return c.json({ ok: true, logo: await getOrgLogo(c.var.p, c.var.ctx.orgId) } satisfies OrgLogoResponse);
   } catch (e) { return orgFail(c, e); }
 });
 

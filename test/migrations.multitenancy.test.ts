@@ -311,6 +311,27 @@ describe("the rollback (scripts/mt/rollback/0037-0040.down.sql)", () => {
     expect(env.MT_ROLLBACK.map((m) => m.name)).not.toContain("0047.down.sql");
   });
 
+  // 0048 is ADD COLUMN only: every org that exists keeps every value and reads "no image".
+  it("0048 adds the org's image as five nullable columns: existing orgs keep every value and read NULL in all five", async () => {
+    await at0036WithData();
+    await applyD1Migrations(db(), upTo("0047"));
+    const cols = async () => (await rows<{ name: string }>(`SELECT name FROM pragma_table_info('orgs') ORDER BY cid`)).map((c) => c.name);
+    const colsBefore = await cols();
+    const before = await rows(`SELECT * FROM orgs ORDER BY id`);
+    expect(before.length).toBeGreaterThan(0);
+    await applyD1Migrations(db(), upTo("0048"));
+    expect(await cols()).toEqual([...colsBefore, "logo_sha", "logo_source", "logo_by", "logo_from", "logo_at"]);
+    expect(await rows(`SELECT * FROM orgs ORDER BY id`)).toEqual(before.map((r) => ({ ...(r as object), logo_sha: null, logo_source: null, logo_by: null, logo_from: null, logo_at: null })));
+    // The CHECKs hold: a source is 'upload' or 'github', a hash is 64 characters.
+    await db().prepare(`UPDATE orgs SET logo_sha = ?, logo_source = 'github', logo_from = 'SaplingLearn', logo_at = 't'`).bind("a".repeat(64)).run();
+    await expect(db().prepare(`UPDATE orgs SET logo_source = 'gravatar'`).run()).rejects.toThrow(/CHECK/i);
+    await expect(db().prepare(`UPDATE orgs SET logo_sha = 'abc'`).run()).rejects.toThrow(/CHECK/i);
+    // No down file of its own: the generated rollback drops `orgs` whole, with these columns in it.
+    expect(env.MT_ROLLBACK.map((m) => m.name)).not.toContain("0048.down.sql");
+    await runDown();
+    expect(await rows(`SELECT name FROM sqlite_master WHERE name = 'orgs'`)).toEqual([]);
+  });
+
   it("refuses to run once a second org exists (its rows would be lost)", async () => {
     await at0036WithData();
     await applyD1Migrations(db(), upTo("0040"));

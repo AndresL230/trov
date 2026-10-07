@@ -147,7 +147,7 @@ describe("GET /api/platform/orgs[/:slug]", () => {
     const list = (await call<{ orgs: PlatformOrgRow[] }>("GET", "/api/platform/orgs", cookie)).json.orgs;
     expect(list.map((o) => o.slug).sort()).toEqual(["acme", "saplinglearn"]);
     expect(list.find((o) => o.slug === "acme")).toEqual({
-      slug: "acme", name: "Acme", status: "active", created_at: "2026-10-06T00:00:00.000Z", created_by: "migration",
+      slug: "acme", name: "Acme", logo_url: null, status: "active", created_at: "2026-10-06T00:00:00.000Z", created_by: "migration",
       suspended_at: null, suspended_by: null, owners: [{ handle: "olive", name: "olive" }], member_count: 2, pending_invites: 1,
       last_activity_at: "2026-10-01T09:30:00.000Z",
     });

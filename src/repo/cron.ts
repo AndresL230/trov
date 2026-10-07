@@ -17,6 +17,8 @@ import { run } from "../data/sql";
 import { platform, systemTenant, type TenantContext } from "../data/context";
 import { type Revealed, type Secret, markSecretUsed, recordSecretOutcome, resolveCloudflareAccountId, resolveCredential, scrub } from "../data/secrets";
 import { jobTenant, listEnvUnits, listRepoUnits } from "../platform/jobs";
+import { importLogoForOrg } from "../integrations/logo";
+import { LOGO_IMPORT_COST } from "../orgs/logo";
 import { CRON_SUBREQUEST_BUDGET, newBudget, serveJob, type Unit } from "./dispatch";
 import { reconcileRepo, type ReconcileResult } from "./github";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollCloudflare, pollRailway, pollSaplingMetrics } from "./poll";
@@ -230,6 +232,11 @@ export async function runOrgJob(env: Env, orgId: string, job: OrgJob, now: numbe
     // env_heads) — calling refreshDrift/refreshBranches here too would double
     // the requests, not add coverage.
     await runReconcileJob(env, ctx, now, { fetchImpl });
+    // The org's image follows its primary repository's owner (src/orgs/logo.ts): imported here so it
+    // arrives for an org connected before the image existed, and refreshes when the owner changes
+    // their avatar. Never over an uploaded one; TOTAL; at most `LOGO_IMPORT_COST` requests; and, like
+    // the reconcile itself, nothing is asked for an org that has no GitHub token.
+    await importLogoForOrg(env, platform(env, "system"), ctx, { fetchImpl, tokenOnly: true });
     return;
   }
   const revealed: Revealed[] = [];
@@ -412,7 +419,8 @@ export async function runLockedRepoRefresh(env: Env, caller: TenantContext, by: 
 /** Worst-case subrequests of one unit, per job — what the rotation budgets with (./dispatch.ts). */
 export const HEALTH_COST = 2;                                   // the two pings (a redirect costs one more: the budget's headroom)
 export const USAGE_COST = 3;                                    // Cloudflare + Railway + the app's metrics
-export const reconcileCost = (envs: number): number => 19 + 2 * envs;
+/** `reconcileRepo`'s 19 + 2N, plus the org image's import that rides the same unit (`runOrgJob`). */
+export const reconcileCost = (envs: number): number => 19 + 2 * envs + LOGO_IMPORT_COST;
 /** `recomputeAllProgress` is UNBOUNDED (one request per issue number of every array-ref sprint), so
  *  this is an ESTIMATE for deciding whether another org may start; what a unit really spent is
  *  counted (`Budget.spent`), so one large org shortens the slice instead of overrunning it. */

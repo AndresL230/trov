@@ -22,7 +22,7 @@ describe("GET /api/orgs — reachable with no org, and with several", () => {
     await ensureMember(SUPERADMIN, "admin", ORG_B);
     const { status, json } = await call<MyOrgsResponse>("GET", "/api/orgs", await cookieFor(SUPERADMIN));
     expect(status).toBe(200);
-    expect(json.orgs).toEqual([{ slug: "acme", name: "Acme", role: "admin" }, { slug: "saplinglearn", name: "SaplingLearn", role: "owner" }]);
+    expect(json.orgs).toEqual([{ slug: "acme", name: "Acme", role: "admin", logo_url: null }, { slug: "saplinglearn", name: "SaplingLearn", role: "owner", logo_url: null }]);
     expect(json).toMatchObject({ superadmin: true, can_create: false, limit: 0 }); // a superadmin adds orgs in Platform, not here
   });
 
@@ -47,7 +47,7 @@ describe("POST /api/orgs", () => {
     await exec(`UPDATE persons SET org_limit = 3 WHERE handle = 'founder'`);
     const { status, json } = await call("POST", "/api/orgs", cookie, { slug: "birch", name: "  Birch Labs " });
     expect(status).toBe(201);
-    expect(json).toEqual({ ok: true, org: { slug: "birch", name: "Birch Labs", role: "owner" } });
+    expect(json).toEqual({ ok: true, org: { slug: "birch", name: "Birch Labs", role: "owner", logo_url: null } });
 
     const id = await orgId("birch");
     expect(id).toMatch(/^org_[a-z2-7]{26}$/);
@@ -70,7 +70,7 @@ describe("POST /api/orgs", () => {
 
     // …and it is a working tenant: the creator reaches it, a stranger gets 404.
     const me = await call<OrgMeResponse>("GET", "/api/o/birch/me", cookie);
-    expect(me.json).toEqual({ org: { slug: "birch", name: "Birch Labs" }, role: "owner", title: null, responsibilities: null, repos: { primary: null, all: [] } });
+    expect(me.json).toEqual({ org: { slug: "birch", name: "Birch Labs", logo_url: null }, role: "owner", title: null, responsibilities: null, repos: { primary: null, all: [] } });
     expect((await call("GET", "/api/o/birch/me", await loner("stranger"))).status).toBe(404);
   });
 
@@ -122,7 +122,7 @@ describe("invites — who may accept", () => {
     const id = await invite({ github_login: "Octo-Cat", role: "admin" });
     const cookie = await loner("octo-cat"); // seedPerson gives the github identity `octo-cat`
     const mine = await call<MyOrgsResponse>("GET", "/api/orgs", cookie);
-    expect(mine.json.invites).toEqual([{ id, org: { slug: "acme", name: "Acme" }, role: "admin", invited_by: "AndresL230", created_at: "2026-10-06T00:00:00Z", github_login: "Octo-Cat", email: null }]);
+    expect(mine.json.invites).toEqual([{ id, org: { slug: "acme", name: "Acme", logo_url: null }, role: "admin", invited_by: "AndresL230", created_at: "2026-10-06T00:00:00Z", github_login: "Octo-Cat", email: null }]);
     expect((await call<{ invites: unknown[] }>("GET", "/api/invites", cookie)).json.invites).toHaveLength(1);
 
     const res = await call("POST", `/api/invites/${id}/accept`, cookie);
@@ -205,7 +205,7 @@ describe("/api/o/:slug — settings, members, invites", () => {
   it("/me returns the caller's role, title and responsibilities in THIS org", async () => {
     const { member } = await acme();
     await exec(`UPDATE memberships SET title = 'Designer', responsibilities = 'The UI' WHERE org_id = ? AND user_id = 'mia'`, ORG_B);
-    expect((await call("GET", "/api/o/acme/me", member)).json).toEqual({ org: { slug: "acme", name: "Acme" }, role: "member", title: "Designer", responsibilities: "The UI", repos: { primary: null, all: [] } });
+    expect((await call("GET", "/api/o/acme/me", member)).json).toEqual({ org: { slug: "acme", name: "Acme", logo_url: null }, role: "member", title: "Designer", responsibilities: "The UI", repos: { primary: null, all: [] } });
     // §9: the org's repositories — primary first — are what the SPA builds its GitHub URLs from.
     await exec(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_a1', ?, 'acme/site', 0, '2026-10-01T00:00:00Z', 'seed'), ('hook_a2', ?, 'acme/widgets', 1, '2026-10-02T00:00:00Z', 'seed')`, ORG_B, ORG_B);
     expect((await call<OrgMeResponse>("GET", "/api/o/acme/me", member)).json.repos).toEqual({ primary: "acme/widgets", all: ["acme/widgets", "acme/site"] });
@@ -214,7 +214,7 @@ describe("/api/o/:slug — settings, members, invites", () => {
   it("settings: any member reads; only admin+ renames; the change is audited", async () => {
     const { admin, member } = await acme();
     expect((await call("GET", "/api/o/acme/settings", member)).json).toEqual({
-      org: { slug: "acme", name: "Acme", created_at: "2026-10-06T00:00:00.000Z", created_by: "migration" }, can_edit: false,
+      org: { slug: "acme", name: "Acme", created_at: "2026-10-06T00:00:00.000Z", created_by: "migration", logo: { url: null, source: null, by: null, from: null, at: null } }, can_edit: false,
     });
     expect((await call("PUT", "/api/o/acme/settings", member, { name: "Mine" })).status).toBe(403);
     expect((await call("PUT", "/api/o/acme/settings", admin, { name: "" })).status).toBe(400);

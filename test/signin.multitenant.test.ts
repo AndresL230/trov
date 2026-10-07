@@ -84,7 +84,7 @@ describe("an existing SaplingLearn member", () => {
     await ensureMember("dual", "owner", ORG_B);
     const me = await json("GET", "/auth/me", await cookieFor("dual"));
     expect(me.json).toMatchObject({ org: "", admin: false, role: null });
-    expect(me.json.orgs).toEqual([{ slug: "acme", name: "Acme", role: "owner" }, { slug: "saplinglearn", name: "SaplingLearn", role: "member" }]);
+    expect(me.json.orgs).toEqual([{ slug: "acme", name: "Acme", role: "owner", logo_url: null }, { slug: "saplinglearn", name: "SaplingLearn", role: "member", logo_url: null }]);
   });
 });
 

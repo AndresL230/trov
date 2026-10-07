@@ -118,7 +118,7 @@ One place: **Org settings**, opened from the switcher at the top of the sidebar 
 | Environments | the environments the Repo dashboard reports on, in drift order | everyone (read), admin+ (write) |
 | Members | the people directory; for admins also invitations, roles and titles, removal, and **Unmatched logins** — GitHub logins in captured activity to map to a person or discard [`web/src/identity.ts`] | everyone (read), admin+ (write) |
 | Notifications | the e-mail digests: which exist and their default cadence, send hour, timezone and sender name, preview, test send, the outbox [`web/src/notifications.ts`] | admin, owner |
-| General | the name; the slug, read-only | everyone (read), admin+ (rename) |
+| General | the image; the name; the slug, read-only | everyone (read), admin+ (image, rename) |
 
 A person's own digest preferences stay in their Settings. The daily queue of things an agent could not
 place is not administration: it is **Triage › Unplaced** in the sidebar (`#unplaced`). Old links —
@@ -130,6 +130,38 @@ Every tab is laid out the same way [`web/src/org-ui.ts`]: one lead sentence sayi
 what needs attention, with the tab's one primary action beside it; sections under an uppercase eyebrow;
 rows that show a name, a status and one action, and open to the rest. Platform's tabs follow the same
 rules.
+
+### The organization's image
+
+An organization shows one image beside its name — the sidebar switcher and its menu, the org picker, an
+invitation, Platform. Without one the SPA draws the first letter of the name [`web/src/org-logo.ts`
+`orgTile`]. Migration `0048_org_logo.sql`; code `src/orgs/logo.ts`; tests `test/org-logo.test.ts`.
+
+- **Who changes it**: an admin or an owner, in Org settings › General — the tile is the control, like the
+  profile photo: Upload image / Change image, and Remove image over an uploaded one
+  [`POST /api/o/:slug/logo`, `…/logo/remove`; cookie only; audited as `org.logo.set` / `org.logo.remove`].
+  The image is checked exactly like a person's photo (PNG, JPEG, WebP or GIF — never SVG — confirmed by
+  its bytes, at most 2 MB; the browser crops it to a square first) and each person may upload 20 a day
+  [`abuse-limits.md`]. Everyone else sees the image and where it came from.
+- **Where it is stored and served**: R2, content-addressed at `org-logos/<sha256>`, served by
+  `GET /org-logo/<sha>` with the person photo's headers. It is person-level, not tenant-gated: an invitee
+  and the superadmin see an organization's name without being members, so they see its image too. The
+  browser never loads anything from GitHub.
+- **The import from GitHub**: the avatar of the OWNER of the organization's primary repository (the user or
+  organization in `owner/repo`), fetched by the Worker and stored like an upload. It runs when a repository
+  is connected or made primary and when the GitHub token is set or rotated (after the response), in the
+  6-hourly reconcile, and when an uploaded image is removed. It uses the organization's GitHub token when it
+  has one and asks unauthenticated otherwise — except in the reconcile, which asks nothing for an
+  organization with no token.
+- **The rule** [`importOrgLogo`]: **an uploaded image is never replaced by an import.** An import writes
+  only when the organization has no image or its image was itself imported (so it follows a changed avatar,
+  or a new primary repository's owner). Removing an upload re-enables the import, which is tried at once:
+  the organization gets GitHub's image back if it has a repository, else the initial. An imported image has
+  no Remove — upload one to replace it. Disconnecting the repository keeps the image already imported.
+- **What the import will fetch**: `api.github.com/users/<owner>`, then that profile's `avatar_url` only if
+  it is `https` on `avatars.githubusercontent.com`; no redirect is followed, each request times out after
+  5 seconds, the answer must be an image of at most 2 MB by its bytes. Any failure changes nothing and is
+  logged without the token. The token is never sent to the avatar host.
 
 ## 5. Suspension
 

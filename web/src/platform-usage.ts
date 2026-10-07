@@ -11,6 +11,7 @@ import type { OrgUsage, PlatformUsageResponse, UsageActivity, UsageCreated, Usag
 import { esc, attr, relTime, statusBadge, surface } from "./ui";
 import { segmented } from "./segmented";
 import { tabLead } from "./org-ui";
+import { orgTile } from "./org-logo";
 
 export const USAGE_WINDOWS = [7, 30, 90] as const;
 export type UsageWindow = (typeof USAGE_WINDOWS)[number];
@@ -157,7 +158,7 @@ function orgRow(u: OrgUsage, days: number, open: boolean): string {
   const id = `plat-usage-${u.slug}`;
   return `<div class="plat-urow" data-open="${open ? "1" : "0"}">
     <button type="button" data-act="platUsageToggle" data-arg="${attr(u.slug)}" data-field="platUsageRow:${attr(u.slug)}" aria-expanded="${open}" aria-controls="${attr(id)}" class="plat-row plat-usage-grid" style="width:100%;text-align:left;padding:12px 20px">
-      <div class="plat-c plat-c-name" style="min-width:0;display:flex;align-items:center;gap:9px">${CHEV(open)}<span style="min-width:0"><span style="display:flex;align-items:center;gap:8px;min-width:0"><span style="font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.name)}</span>${u.status === "suspended" ? statusBadge("SUSPENDED", "var(--red)") : ""}</span><span style="display:block;font-family:var(--code);font-size:11.5px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.slug)}</span></span></div>
+      <div class="plat-c plat-c-name" style="min-width:0;display:flex;align-items:center;gap:9px">${CHEV(open)}${orgTile(u.name, 24, u.logo_url)}<span style="min-width:0"><span style="display:flex;align-items:center;gap:8px;min-width:0"><span style="font-size:13.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.name)}</span>${u.status === "suspended" ? statusBadge("SUSPENDED", "var(--red)") : ""}</span><span style="display:block;font-family:var(--code);font-size:11.5px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(u.slug)}</span></span></div>
       ${cell("API requests", metric(a.api_requests, sparkline(requestsOf(u.series), REQ_COLOR, `${u.name}: API requests per day`)), "plat-c-wide")}
       ${cell("MCP calls", metric(a.mcp_tool_calls, sparkline(mcpOf(u.series), MCP_COLOR, `${u.name}: MCP tool calls per day`)), "plat-c-wide")}
       ${cell("Active", num(a.active_people))}
