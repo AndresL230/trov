@@ -254,9 +254,34 @@ export interface OrgUsage {
   sizes: UsageSizes;
   activity: UsageActivity;
   series: UsageDay[];
+  /** AI summaries in the window, and this calendar month against the plan's allowance. */
+  summaries: UsageSummaries & { month_used: number; cap: number | null };
+}
+
+/** AI summary calls in the window (`org_usage_daily`, src/data/meter.ts). Counts and sizes only. */
+export interface UsageSummaries {
+  /** Summarizer calls made. `succeeded = attempted - failed`. */
+  attempted: number;
+  succeeded: number;
+  /** Calls that produced no summary. */
+  failed: number;
+  /** Items given an excerpt because nothing could be attempted (the allowance, an ended plan). */
+  capped: number;
+  /** `failed + capped`: items that show an excerpt instead of a summary. */
+  fell_back: number;
+  /** Characters sent and received — what cost is estimated from (docs/architecture/plans.md). */
+  chars_in: number;
+  chars_out: number;
+  /** The provider's token counts, where its answers carried them; 0 = none recorded. */
+  tokens_in: number;
+  tokens_out: number;
 }
 
 export interface PlatformUsageResponse {
+  /** False when the deployment has no summaries key: nothing is attempted, counted or capped. */
+  summaries_enabled: boolean;
+  /** Every org's summaries in the window, summed. */
+  summaries: UsageSummaries;
   days: number;
   since: string;       // first day of the window, 'YYYY-MM-DD' (UTC)
   until: string;       // last day (today, UTC)

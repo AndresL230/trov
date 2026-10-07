@@ -23,7 +23,7 @@ import { adminField, adminError, adminTarget, type AdminKind } from "./platform"
 // ── state ────────────────────────────────────────────────────────────────────
 /** The five limits as the dialogs' text fields: "" = the plan's own value. */
 export type LimitDraft = Record<LimitKey, string>;
-export const blankLimits = (): LimitDraft => ({ seats: "", repositories: "", environments: "", artifact_bytes: "", agent_connections: "" });
+export const blankLimits = (): LimitDraft => ({ seats: "", repositories: "", environments: "", artifact_bytes: "", agent_connections: "", ai_summaries: "" });
 
 export type ExpiryChoice = "never" | `${(typeof GRANT_EXPIRY_DAYS)[number]}`;
 export interface GrantDraft {
@@ -127,7 +127,7 @@ function limitFields(o: { idPrefix: string; act: string; plan: PlanId; limits: L
   const base = PLANS[o.plan].entitlements;
   const fields = LIMIT_KEYS.map((k) => {
     const id = `${o.idPrefix}-${k}`;
-    const unit = LIMITS[k].unit === "bytes" ? " (GB)" : LIMITS[k].per === "person" ? " (per person)" : "";
+    const unit = LIMITS[k].unit === "bytes" ? " (GB)" : LIMITS[k].per === "person" ? " (per person)" : LIMITS[k].period === "month" ? " (per month)" : "";
     const own = base[k] === null ? "Unlimited" : LIMITS[k].unit === "bytes" ? String(+(base[k]! / GB).toFixed(2)) : String(base[k]);
     return `<div style="min-width:0">
       <label for="${attr(id)}" style="${FIELD_LABEL}">${esc(LIMITS[k].label)}${unit}</label>

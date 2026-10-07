@@ -45,10 +45,12 @@ function limitRow(v: OrgPlanView, key: LimitKey): string {
   const over = v.over.includes(key);
   // A count nobody can do anything with is noise: an unlimited limit shows what is used, and "Unlimited".
   const use = cap === null ? `${formatLimit(key, v.usage[key])} used &middot; ${formatLimit(key, null)}` : esc(formatUse(key, v.usage[key], cap));
+  // A monthly allowance that is used up (AI summaries) is not "over": the row says what happens instead.
+  const spent = d.period && d.atCap && cap !== null && v.usage[key] >= cap ? `<div data-limit-spent style="font-size:12px;line-height:1.45;color:var(--fg-70);margin-top:3px">${esc(d.atCap)}</div>` : "";
   return `<li class="cnpy-plan-row" data-limit="${key}"${over ? ' data-over="1"' : ""}>
     <div style="flex:1 1 200px;min-width:0">
       <div style="font-size:13px;font-weight:500;color:var(--fg)">${esc(d.label)}${d.per === "person" ? ` <span style="font-weight:400;color:var(--fg-40)">per person</span>` : ""}</div>
-      <div style="font-size:12px;line-height:1.45;color:var(--fg-40);margin-top:1px">${esc(d.counts)}</div>
+      <div style="font-size:12px;line-height:1.45;color:var(--fg-40);margin-top:1px">${esc(d.counts)}</div>${spent}
     </div>
     <div style="flex:none;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:var(--fg-70)">${use}${over ? `<div style="font-size:12px;font-weight:500;color:var(--amber);margin-top:1px">Over the limit</div>` : ""}</div>
   </li>`;

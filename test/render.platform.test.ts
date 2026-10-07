@@ -38,6 +38,9 @@ const activity = (over: Partial<UsageActivity> = {}): UsageActivity => ({
 });
 const days = (values: [number, number][]) => values.map(([requests, mcp_calls], i) => ({ day: `2026-10-0${i + 1}`, requests, mcp_calls }));
 const zeroSeries = days([[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]);
+const summariesOf = (over: Partial<OrgUsage["summaries"]> = {}): OrgUsage["summaries"] => ({
+  attempted: 0, succeeded: 0, failed: 0, capped: 0, fell_back: 0, chars_in: 0, chars_out: 0, tokens_in: 0, tokens_out: 0, month_used: 0, cap: 3000, ...over,
+});
 const usageOf = (over: Partial<OrgUsage> = {}): OrgUsage => ({
   slug: "acme", name: "Acme", status: "active", created_at: "2026-09-01T10:00:00.000Z", last_activity_at: "2026-10-05T10:00:00.000Z",
   sizes: sizes({ members: 4, docs: 12, tickets_open: 3, tickets_total: 9, artifacts: 2, artifact_bytes: 3 * 1024 * 1024 }),
@@ -47,12 +50,18 @@ const usageOf = (over: Partial<OrgUsage> = {}): OrgUsage => ({
     top_tools: [{ tool: "get_feed", count: 40 }, { tool: "query", count: 24 }],
   }),
   series: days([[10, 2], [80, 9], [40, 0], [120, 20], [60, 11], [70, 14], [40, 8]]),
+  summaries: summariesOf(),
   ...over,
 });
 const quiet = (slug: string, name: string, over: Partial<OrgUsage> = {}): OrgUsage =>
   usageOf({ slug, name, last_activity_at: null, sizes: sizes(), activity: activity(), series: zeroSeries, ...over });
 const report = (orgs: OrgUsage[], over: Partial<PlatformUsageResponse["totals"]> = {}): PlatformUsageResponse => ({
   days: 7, since: "2026-09-30", until: "2026-10-06", generated_at: "2026-10-06T12:00:00.000Z",
+  summaries_enabled: true,
+  summaries: orgs.reduce<PlatformUsageResponse["summaries"]>((t, o) => {
+    for (const k of Object.keys(t) as (keyof typeof t)[]) t[k] += o.summaries[k];
+    return t;
+  }, { attempted: 0, succeeded: 0, failed: 0, capped: 0, fell_back: 0, chars_in: 0, chars_out: 0, tokens_in: 0, tokens_out: 0 }),
   totals: {
     orgs: orgs.length, suspended_orgs: orgs.filter((o) => o.status === "suspended").length, persons: 9, last_activity_at: null,
     sizes: sizes({ artifacts: 2, artifact_bytes: 3 * 1024 * 1024 }),

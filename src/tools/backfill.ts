@@ -8,8 +8,10 @@ import { orgPrimaryRepo } from "../repo/config";
 import { ingestEvent } from "../consumer";
 import { mirrorIssue } from "./ticket-mirror";
 import { eventsFromDelivery } from "../webhook";
-import { type Summarizer, type PrSummary, type IssueSummary, geminiPrSummarizer, geminiIssueSummarizer, storePrSummary, storeIssueSummary } from "./summarize";
+import { type Summarizer, type PrSummary, type IssueSummary, storePrSummary, storeIssueSummary } from "./summarize";
 import { applyEventProgress } from "./progress";
+import { orgSummarizers, type OrgSummarizersOpts, type SummaryAllowance } from "../plans/summaries";
+import { SYNC_SUMMARIES_PER_BATCH, type SyncFailure, type SyncPhase } from "@shared/sync";
 
 // Admin-triggered server-side GitHub backfill. Unlike scripts/backfill-events.mjs
 // (which signs synthetic webhook deliveries with the webhook secret), this runs
@@ -39,8 +41,27 @@ const USER_AGENT = "trov";
 // up to MAX_BACKFILL_BATCHES (web/src/main.ts). Even in the pathological case
 // where every call times out (GEMINI_TIMEOUT_MS), a batch is bounded to
 // ~5 × timeout and still completes via the excerpt fallback.
-const SUMMARY_BATCH_LIMIT = 5;
+const SUMMARY_BATCH_LIMIT = SYNC_SUMMARIES_PER_BATCH; // 5 — shared with the Sync panel, which says how many a run attempts
 const SUMMARY_CALL_DELAY_MS = 500;
+
+/** Where a batch stands (shared/sync.ts `SyncPhase`): `total` is null while GitHub is still being
+ *  listed — the count is not known until the last page. Reporting only; it changes nothing. */
+export interface BackfillProgress { phase: Extract<SyncPhase, "reading_prs" | "reading_issues" | "saving_issues" | "saving_prs">; done: number | null; total: number | null }
+const PROGRESS_INTERVAL_MS = 1000;
+
+/** What one batch did beyond the counts above — the run report's raw material (src/sync/runs.ts). */
+export interface BackfillDetail {
+  capturedPrs: number;
+  capturedIssues: number;
+  ticketsCreated: number;
+  ticketsUpdated: number;
+  /** Summaries written / attempts that fell back to the excerpt / items given an excerpt because
+   *  nothing could be attempted (no key, the monthly allowance, an ended plan). */
+  summariesWritten: number;
+  summariesFailed: number;
+  summariesSkipped: number;
+}
+const NO_DETAIL: BackfillDetail = { capturedPrs: 0, capturedIssues: 0, ticketsCreated: 0, ticketsUpdated: 0, summariesWritten: 0, summariesFailed: 0, summariesSkipped: 0 };
 
 /** A Sync is (possibly) several batches (web/src/main.ts's `runAdminBackfillLoop`
  *  re-POSTs `/admin/backfill` up to MAX_BACKFILL_BATCHES times while the
@@ -63,9 +84,15 @@ export function isFinalBackfillBatch(
   return typeof batch === "number" && Number.isFinite(batch) && typeof of === "number" && Number.isFinite(of) && batch >= of;
 }
 
-export interface BackfillResult {
+export interface BackfillResult extends BackfillDetail {
   ok: boolean;
   error?: string;
+  /** Why nothing ran, as a code (never upstream text) — present exactly when `ok` is false. */
+  failure?: SyncFailure;
+  /** Items still without a real summary when the batch ended. */
+  summariesPending?: number;
+  /** The org's summaries allowance as this batch left it. */
+  allowance?: SummaryAllowance;
   captured: number;
   unchanged: number;
   summarized: number;
@@ -197,17 +224,31 @@ export async function runBackfill(
     issueSummarizer?: Summarizer<IssueSummary> | null;
     summaryBatchLimit?: number;
     summaryCallDelayMs?: number;
+    /** The org summarizer's Gemini call (its fetch, stubbed in tests) and the clock its month is read from. */
+    gemini?: OrgSummarizersOpts["gemini"];
+    now?: Date;
+    /** Told where the batch stands: at every phase change, and at most once a second inside one. */
+    onProgress?: (p: BackfillProgress) => void | Promise<void>;
   }
 ): Promise<BackfillResult> {
+  // Reporting only — a listener that throws never costs the sync.
+  let lastTick = 0;
+  const report = async (phase: BackfillProgress["phase"], done: number | null, total: number | null, force = true): Promise<void> => {
+    if (!opts?.onProgress || (!force && Date.now() - lastTick < PROGRESS_INTERVAL_MS)) return;
+    lastTick = Date.now();
+    try { await opts.onProgress({ phase, done, total }); } catch { /* reporting only */ }
+  };
   // The backfill replays GitHub into the CALLER's org, as system — the webhook's own context
   // (`jobTenant`; the route's gate decides who may ask, and a bearer context is refused).
   const ctx = jobTenant(env, caller);
   // Nothing-ran failure envelope. The route turns this into a 503 whose error
   // reaches the admin's toast — a Sync that can't reach GitHub must say so, not
   // report zeros as if the repo were empty.
-  const failed = (error: string): BackfillResult => ({
+  const failed = (error: string, failure: SyncFailure): BackfillResult => ({
     ok: false,
     error,
+    failure,
+    ...NO_DETAIL,
     captured: 0,
     unchanged: 0,
     summarized: 0,
@@ -224,12 +265,17 @@ export async function runBackfill(
   // reachable from src/mcp.ts, so it may resolve one. A secret that cannot be read is "not configured".
   const repo = (await orgPrimaryRepo(ctx))?.repo;
   const token = repo ? (await resolveCredential(ctx, env, "github_token", "").catch(() => null))?.reveal() : undefined;
-  if (!token || !repo) return failed("service token or repo not configured");
+  if (!token || !repo) return failed("service token or repo not configured", { code: "not_configured" });
   await markSecretUsed(ctx, "github_token", "").catch(() => undefined);
 
   const doFetch = opts?.fetchImpl ?? fetch;
-  const summarizer = opts?.summarizer ?? (env.GEMINI_API_KEY ? geminiPrSummarizer(env.GEMINI_API_KEY) : null);
-  const issueSummarizer = opts?.issueSummarizer ?? (env.GEMINI_API_KEY ? geminiIssueSummarizer(env.GEMINI_API_KEY) : null);
+  // THE summarizer choice for this org (src/plans/summaries.ts: the platform key, the plan's monthly
+  // allowance, every call counted against the admin who pressed Sync), read once for the batch and
+  // asked per item — it turns null the moment the allowance is spent. An explicit `opts` summarizer
+  // (null included) is a test's own and bypasses it.
+  const sums = await orgSummarizers(env, ctx, { actor: principalLogin, gemini: opts?.gemini, now: opts?.now });
+  const prSummarizer = (): Summarizer<PrSummary> | null => (opts?.summarizer !== undefined ? opts.summarizer : sums.pr());
+  const issueSummarizerNow = (): Summarizer<IssueSummary> | null => (opts?.issueSummarizer !== undefined ? opts.issueSummarizer : sums.issue());
   const summaryBatchLimit = opts?.summaryBatchLimit ?? SUMMARY_BATCH_LIMIT;
   const summaryCallDelayMs = opts?.summaryCallDelayMs ?? SUMMARY_CALL_DELAY_MS;
   const headers = {
@@ -242,6 +288,7 @@ export async function runBackfill(
   // (a) All closed PRs, fully paginated — full history, not just recent
   //     activity, so a Sync also surfaces PRs merged before this route existed.
   const prList: GhPrListItem[] = [];
+  await report("reading_prs", 0, null);
   {
     let url: string | null = `https://api.github.com/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`;
     while (url) {
@@ -249,27 +296,30 @@ export async function runBackfill(
       // Fail the whole run, loud: a 401/403/404 here (a dead or under-scoped
       // token) would otherwise read as "0 PRs" — fake success.
       // Both lists are fetched before any ingestion, so nothing is half-written.
-      if (!res.ok) return failed(`GitHub ${res.status} listing closed PRs (check the org's GitHub token)`);
+      if (!res.ok) return failed(`GitHub ${res.status} listing closed PRs (check the org's GitHub token)`, { code: "list_prs", status: res.status });
       const page = (await res.json()) as GhPrListItem[];
       prList.push(...page);
       url = nextLink(res);
+      await report("reading_prs", prList.length, null, false); // the total is not known until the last page
     }
   }
 
   // (b) All open issues, paginated. The issues endpoint also returns PRs — those
   //     carry a `pull_request` field and are not our surface, so skip them.
   const issueList: GhIssueListItem[] = [];
+  await report("reading_issues", 0, null);
   {
     let url: string | null = `https://api.github.com/repos/${repo}/issues?state=open&per_page=100`;
     while (url) {
       const res: Response = await doFetch(url, { headers });
-      if (!res.ok) return failed(`GitHub ${res.status} listing open issues (check the org's GitHub token)`);
+      if (!res.ok) return failed(`GitHub ${res.status} listing open issues (check the org's GitHub token)`, { code: "list_issues", status: res.status });
       const page = (await res.json()) as GhIssueListItem[];
       for (const issue of page) {
         if (issue.pull_request) continue;
         issueList.push(issue);
       }
       url = nextLink(res);
+      await report("reading_issues", issueList.length, null, false);
     }
   }
 
@@ -277,6 +327,12 @@ export async function runBackfill(
   let unchanged = 0;
   let summarized = 0;
   let summaryBudgetExhausted = false;
+  // What this batch did, for the run's report (shared/sync.ts `SyncCounts`).
+  const d = { ...NO_DETAIL };
+  const skip = async (kind: "pr" | "issue", explicit: boolean): Promise<void> => {
+    d.summariesSkipped++;
+    if (!explicit) await sums.skipped(kind);
+  };
   // Running counts of PRs / issues that end this call with a real (non-excerpt,
   // structured) summary — either already had one, or got one just now. Paired
   // with prList.length / issuesToSummarize, these are the "X of Y" progress the
@@ -291,7 +347,9 @@ export async function runBackfill(
   // issues are far fewer than PRs — it clears well before the sustained-load AI
   // rate-limit wall the long PR run can hit. PRs (Previous activity) take whatever
   // budget remains and finish across follow-up Sync batches (the frontend auto-loops).
-  for (const issue of issueList) {
+  await report("saving_issues", 0, issueList.length);
+  for (const [i, issue] of issueList.entries()) {
+    if (i) await report("saving_issues", i, issueList.length, false);
     const payload = issueDelivery(issue, repo);
     const isAssigned = payload.action === "assigned";
 
@@ -301,7 +359,9 @@ export async function runBackfill(
     // effort, like the webhook's: a mirror failure never costs the capture.
     if (issue.state === "open") {
       try {
-        await mirrorIssue(ctx, platform(env, "system"), repo, payload);
+        const mirrored = await mirrorIssue(ctx, platform(env, "system"), repo, payload);
+        if (mirrored === "created") d.ticketsCreated++;
+        else if (mirrored === "updated") d.ticketsUpdated++;
       } catch (e) {
         console.error("ticket mirror failed (backfill)", issue.number, e instanceof Error ? e.message : String(e));
       }
@@ -313,6 +373,7 @@ export async function runBackfill(
       const res = await ingestEvent(ctx, platform(env, principalLogin), ev, principalLogin);
       if (res.outcome === "written") {
         captured++;
+        d.capturedIssues++;
         // Mirror handleGithubWebhook's progress seam for newly-written issues.
         await applyEventProgress(ctx, payload);
       } else {
@@ -336,8 +397,12 @@ export async function runBackfill(
       // budget and nothing is paced — a Sync with no summarizer is ONE batch, not
       // ten that each rewrite five excerpt rows. An item with no row yet gets its
       // excerpt row once; one that already has it waits for a later Sync.
+      const issueSummarizer = issueSummarizerNow();
       if (!issueSummarizer) {
-        if (existing === null) await storeIssueSummary(ctx, null, { issue_number: issue.number, title: issue.title, body: issue.body ?? "" });
+        if (existing === null) {
+          await storeIssueSummary(ctx, null, { issue_number: issue.number, title: issue.title, body: issue.body ?? "" });
+          await skip("issue", opts?.issueSummarizer !== undefined);
+        }
         continue;
       }
 
@@ -356,7 +421,7 @@ export async function runBackfill(
       summarized++;
       // storeIssueSummary can still fall back to excerpt if the AI call failed —
       // only count it toward "done" if it actually got a real, structured summary.
-      if (stored.model !== "excerpt" && stored.title !== null) issueSummarizedCount++;
+      if (stored.model !== "excerpt" && stored.title !== null) { issueSummarizedCount++; d.summariesWritten++; } else d.summariesFailed++;
 
       if (summarized < summaryBatchLimit && summaryCallDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, summaryCallDelayMs));
@@ -364,13 +429,16 @@ export async function runBackfill(
     }
   }
 
-  for (const pr of prList) {
+  await report("saving_prs", 0, prList.length);
+  for (const [i, pr] of prList.entries()) {
+    if (i) await report("saving_prs", i, prList.length, false);
     const payload = prClosedDelivery(pr);
     for (const base of eventsFromDelivery("pull_request", payload)) {
       const ev = { ...base, provenance: "backfill" as const };
       const res = await ingestEvent(ctx, platform(env, principalLogin), ev, principalLogin);
       if (res.outcome === "written") {
         captured++;
+        d.capturedPrs++;
       } else {
         unchanged++;
       }
@@ -394,8 +462,12 @@ export async function runBackfill(
 
       const parsed = JSON.parse(ev.raw) as { pr: { number: number; title: string; body: string | null } };
       // No summarizer: the marker row once, outside the budget (see the issue loop).
+      const summarizer = prSummarizer();
       if (!summarizer) {
-        if (existing === null) await storePrSummary(ctx, null, { semantic_key: ev.semantic_key, pr_number: parsed.pr.number, title: parsed.pr.title, body: parsed.pr.body ?? "" });
+        if (existing === null) {
+          await storePrSummary(ctx, null, { semantic_key: ev.semantic_key, pr_number: parsed.pr.number, title: parsed.pr.title, body: parsed.pr.body ?? "" });
+          await skip("pr", opts?.summarizer !== undefined);
+        }
         continue;
       }
 
@@ -413,7 +485,7 @@ export async function runBackfill(
       summarized++;
       // storePrSummary can still fall back to excerpt if the AI call failed —
       // only count it toward "done" if it actually got a real, structured summary.
-      if (stored.model !== "excerpt" && stored.title !== null) prSummarizedCount++;
+      if (stored.model !== "excerpt" && stored.title !== null) { prSummarizedCount++; d.summariesWritten++; } else d.summariesFailed++;
 
       // Pace summarizer calls so one invocation doesn't burst past whatever
       // limit caused the wall above — skip the trailing delay once the batch
@@ -435,5 +507,8 @@ export async function runBackfill(
     prs: prList.length,
     issues: issueList.length,
     issuesToSummarize,
+    ...d,
+    summariesPending: prList.length - prSummarizedCount + (issuesToSummarize - issueSummarizedCount),
+    allowance: sums.allowance(),
   };
 }

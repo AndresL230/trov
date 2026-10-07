@@ -133,4 +133,4 @@ platformApp.get("/audit", async (c) => {
   } catch (e) { return fail(c, e); }
 });
 
-platformApp.get("/usage", async (c) => c.json(await platformUsage(c.var.p, usageDays(c.req.query("days")))));
+platformApp.get("/usage", async (c) => c.json(await platformUsage(c.var.p, usageDays(c.req.query("days")), new Date(), { summariesEnabled: !!c.env.GEMINI_API_KEY })));

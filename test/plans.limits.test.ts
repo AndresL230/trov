@@ -363,7 +363,7 @@ describe("GET /api/o/:slug/plan and PUT /api/platform/orgs/:slug/plan", () => {
     expect(view).toEqual({
       plan: "team", name: "Team", description: PLANS.team.description, status: "active", source: "granted", period_end: null,
       entitlements: PLANS.team.entitlements, overridden: [], seats: { members: 2, pending: 1 },
-      usage: { seats: 3, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0 }, over: [],
+      usage: { seats: 3, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0 }, over: [],
     });
     expect((await call("GET", "/api/o/planview/plan", await loner("outsider"))).status).toBe(404);
     expect((await call("PUT", "/api/o/planview/plan", cookie, { plan: "enterprise" })).status).toBe(404); // nobody changes it here
