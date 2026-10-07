@@ -131,6 +131,15 @@ export interface InstallSpec {
   /** The Worker var / secret names holding this integration's client id and secret. */
   clientIdVar: string;
   clientSecretVar: string;
+  /** The provider-side "uninstalled" notice (#97: "can be disconnected from either side"), delivered to
+   *  `POST /webhook/hosting/<provider>`. Absent: the provider sends none, and a revoked grant shows up as a
+   *  401 on the next poll instead. */
+  webhook?: {
+    /** Verify a delivery's signature over the RAW body with the integration's client secret. */
+    verify(args: { rawBody: string; headers: Headers; clientSecret: string }): Promise<boolean>;
+    /** The installation id a VERIFIED delivery says was removed, or null when it is about something else. */
+    removedExternalId(payload: unknown): string | null;
+  };
 }
 
 export interface HostingProvider {
