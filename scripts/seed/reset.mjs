@@ -21,6 +21,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM org_keys",
   "DELETE FROM org_integration_config",
   "DELETE FROM org_environments",
+  "DELETE FROM org_github_installations", // 0043_github_app: an org's GitHub App installation
   "DELETE FROM org_repos",
   "DELETE FROM org_login_map",
   "DELETE FROM org_invites",

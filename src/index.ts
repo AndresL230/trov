@@ -1,6 +1,7 @@
 import { app } from "./routes";
 import { handleMcp } from "./mcp";
 import { handleGithubWebhook, webhookPath } from "./github-hook";
+import { APP_WEBHOOK_PATH, handleGithubAppWebhook } from "./github-app/webhook";
 import { resolveBearerTenant } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
 import { platform } from "./data/context";
@@ -47,6 +48,9 @@ export default {
     // body against the `github_webhook` secret of the repo the URL names:
     // `/webhook/github/<org_repos.id>` per org, and the legacy `/webhook/github`
     // for the one `legacy_hook` repo (src/github-hook.ts). Never touches sessionGate.
+    // The GitHub App's own endpoint comes first: ONE URL for every installation, verified against the
+    // App's webhook secret, the org found from the delivery's installation id (src/github-app/webhook.ts).
+    if (request.method === "POST" && url.pathname === APP_WEBHOOK_PATH) return handleGithubAppWebhook(request, env, { waitUntil: (p) => ctx.waitUntil(p) });
     const hook = request.method === "POST" ? webhookPath(url.pathname) : null;
     if (hook) return handleGithubWebhook(request, env, { hookId: hook.hookId, waitUntil: (p) => ctx.waitUntil(p) });
     // Signed one-click unsubscribe (canopy-email.md §7): the single token

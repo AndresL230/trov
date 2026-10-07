@@ -5,7 +5,9 @@ import { PERSON_COLORS } from "@shared/rows";
 import { avatarSrc } from "@shared/people";
 import type { AppEnv } from "./principal";
 import { resolveSessionPrincipal } from "./principal";
-import { pkce, randomToken, hmacSeal, hmacUnseal } from "./crypto";
+import { hmacUnseal } from "./crypto";
+import { OAUTH_TX_COOKIE, beginTx, callbackUrl, type TxMode } from "./tx";
+import { connectReturn, installReturn, isInstallReturn } from "../github-app/connect";
 import { buildAuthorizeUrl, exchangeCode, getUser, getPrimaryEmail } from "./github";
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode, verifyGoogleIdToken } from "./google";
 import { createSession, setSessionCookie, readSessionCookie, deleteSession, clearSessionCookie } from "./session";
@@ -22,32 +24,8 @@ import { consumeLegacyInvite } from "../data/legacy";
 import { listMyOrgs, listMyInvites } from "../orgs/repo";
 import { rateLimited } from "../platform/limits";
 
-const OAUTH_TX_COOKIE = "oauth_tx";
 export interface AuthDeps { fetchImpl?: typeof fetch; now?: () => number }
-
-/**
- * The OAuth callback URL for this request. GitHub/Google require an https callback for
- * public hosts (http is only valid for localhost), so we force https for everything
- * except local dev. Without this, a request that reached the Worker over http (e.g.
- * before an edge http->https upgrade, or a bare-hostname browser navigation) would emit
- * an http redirect_uri that the provider rejects. The same value is used for the
- * authorize redirect and the token exchange, so they always match.
- */
-export function callbackUrl(reqUrl: string, provider: "github" | "google" = "github"): string {
-  const u = new URL(reqUrl);
-  const isLocal = u.hostname === "localhost" || u.hostname === "127.0.0.1";
-  const scheme = isLocal ? u.protocol.replace(/:$/, "") : "https";
-  return `${scheme}://${u.host}${provider === "google" ? "/auth/google/callback" : "/auth/callback"}`;
-}
-
-type TxMode = "signin" | "link";
-async function beginTx(c: Context<AppEnv>, mode: TxMode): Promise<{ state: string; challenge: string }> {
-  const state = randomToken(16);
-  const { verifier, challenge } = await pkce();
-  const sealed = await hmacSeal(`${state}.${verifier}.${mode}`, c.env.COOKIE_SECRET);
-  setCookie(c, OAUTH_TX_COOKIE, sealed, { httpOnly: true, secure: true, sameSite: "Lax", path: "/", maxAge: 600 });
-  return { state, challenge };
-}
+export { callbackUrl }; // the transaction's own helpers live in ./tx.ts
 
 export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
   const authApp = new Hono<AppEnv>();
@@ -90,7 +68,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     if (!tx) return { error: c.json({ error: "bad_state" }, 403) };
     const [txState, verifier, mode] = tx.split(".");
     if (txState !== state) return { error: c.json({ error: "state_mismatch" }, 403) };
-    return { code, verifier, mode: (mode === "link" ? "link" : "signin") as TxMode };
+    return { code, verifier, mode: (mode === "link" || mode === "connect" ? mode : "signin") as TxMode };
   }
 
   // ── GitHub ──
@@ -100,8 +78,19 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     return c.redirect(buildAuthorizeUrl({ clientId: c.env.GITHUB_CLIENT_ID, redirectUri: callbackUrl(c.req.url), state, challenge }), 302);
   });
   authApp.get("/callback", async (c) => {
+    // The GitHub App's INSTALL return (`installation_id` / `setup_action` — docs/architecture/github-app.md):
+    // GitHub sends the person here after they install the App, because the App asks for user
+    // authorization during installation. It is recognised by parameters a sign-in never carries and
+    // handled apart; null = "not ours, and there IS a sign-in transaction for this state" — only then
+    // does it continue as the sign-in below, which checks its own cookie, state and PKCE as ever.
+    if (isInstallReturn(c)) {
+      const answered = await installReturn(c, deps);
+      if (answered) return answered;
+    }
     const tx = await openTx(c);
     if ("error" in tx) return tx.error;
+    // An org admin linking an installation that already exists: the same authorization, for another purpose.
+    if (tx.mode === "connect") return connectReturn(c, deps, tx.code, tx.verifier);
     const token = await exchangeCode({ env: c.env, code: tx.code, redirectUri: callbackUrl(c.req.url), verifier: tx.verifier, fetchImpl: f });
     if (!token) return c.json({ error: "exchange_failed" }, 401);
     const gh = await getUser(token, f);

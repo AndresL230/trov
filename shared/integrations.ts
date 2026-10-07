@@ -2,6 +2,8 @@
 // (canopy-multitenancy.md §8.7; the routes are src/integrations/routes.ts). Types and the
 // kind vocabulary only — nothing here ever carries a secret's value: the API is write-only.
 
+import type { GithubAppStatusDTO } from "./github-app";
+
 export const INTEGRATION_KINDS = ["cloudflare_analytics", "railway", "metrics_endpoint", "github_token", "github_webhook"] as const;
 export type IntegrationKind = (typeof INTEGRATION_KINDS)[number];
 export const isIntegrationKind = (v: unknown): v is IntegrationKind =>
@@ -45,6 +47,10 @@ export interface IntegrationDTO {
 
 export interface IntegrationsListDTO {
   integrations: IntegrationDTO[];
+  /** The org's GitHub App connection (shared/github-app.ts). While an installation is live the page shows
+   *  it as the GitHub group's one row, and the token / webhook-secret rows fold away under it. Optional so
+   *  an answer cached from before it existed reads as "not configured". */
+  github_app?: GithubAppStatusDTO;
   /** false: the platform's key (`TROV_KEK`) is missing or malformed — every write answers 503 `secrets_unavailable`. */
   secrets_available: boolean;
   /** The org's current data-key version; null until its first secret is stored. */
@@ -55,7 +61,10 @@ export type OrgAuditAction = "secret.set" | "secret.rotate" | "secret.delete" | 
 
 /** The repository / environment changes recorded beside the secret trail (`org_admin_audit`, shared/orgs.ts). */
 export type OrgSettingsAuditAction =
-  | "repo.add" | "repo.remove" | "repo.primary" | "environment.set" | "environment.delete" | "environment.reorder";
+  | "repo.add" | "repo.remove" | "repo.primary" | "environment.set" | "environment.delete" | "environment.reorder"
+  // The GitHub App's installation (src/github-app/store.ts): connected / disconnected by an admin; the
+  // rest arrive from GitHub (its webhook, or its answer to a token request) and are written as `system`.
+  | "github.connect" | "github.disconnect" | "github.uninstall" | "github.suspend" | "github.unsuspend" | "github.repos" | "github.permissions";
 
 /** One row of `GET /api/o/:slug/integrations/audit`: the secret trail and the repository / environment
  *  trail as ONE list, newest first. `id` is unique across both: `s<n>` (secrets) or `a<n>` (settings). */
@@ -82,6 +91,11 @@ export interface OrgRepoDTO {
   legacy_hook: boolean;
   webhook_url: string | null;         // null for a non-admin viewer
   webhook_secret_configured: boolean;
+  /** `app`: the org's GitHub App installation can see it — it needs no token and no webhook of its own.
+   *  `manual`: typed as owner/repo; read with the org's token, delivered by its own webhook. */
+  connection: "manual" | "app";
+  /** An `app` repository the installation can no longer see (removed from its selection on GitHub). */
+  access_lost: boolean;
   created_at: string;
   created_by: string;
 }

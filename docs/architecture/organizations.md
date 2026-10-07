@@ -72,21 +72,37 @@ organization lands on the **org picker**, which lists their invitations; **Accep
 [`POST /api/invites/:id/accept`]. A new owner lands on **Org settings**, which opens with
 *Finish setting up <org>* [`web/src/org-settings.ts` `setupChecklist`]:
 
-1. **Connect a repository** — Org settings › Repositories: `owner/repo`. The first one is the primary; a bare
-   `#214` anywhere in the app resolves against it.
+1. **Connect a repository** — Org settings › Repositories › **Connect with GitHub** [`github-app.md`,
+   `GET /api/o/:slug/github/install`]. GitHub asks which account to install the Trov App on and which
+   repositories it may read, then returns to Repositories, which now lists them: **Track** the one the
+   team ships from. The first is the primary; a bare `#214` anywhere in the app resolves against it.
 2. **Add an environment** — Org settings › Environments: a key (`staging`, `production`), the branch it
    deploys from, its web and API URLs. The Repo dashboard reports on each.
-3. **Set the GitHub token** — Org settings › Integrations. Credentials are **write-only**: once saved only
-   the last four characters are ever shown, to anyone [`src/data/secrets.ts`, envelope-encrypted under the
-   deployment's `TROV_KEK`]. *Test connection* checks it. The other integrations are optional: Cloudflare
-   analytics, and per environment the Railway token and the app-metrics token.
+3. **Connect GitHub** — done by step 1: an installation needs no token and no webhook. Trov reads through
+   it with tokens GitHub issues for an hour at a time, and GitHub delivers events itself. Org settings ›
+   Integrations shows it as one row — the account, who connected it, *Test connection*, *Manage on GitHub*,
+   *Disconnect*. The other integrations are optional: Cloudflare analytics, and per environment the
+   Railway token and the app-metrics token; each is **write-only** — once saved only its last four
+   characters are ever shown, to anyone [`src/data/secrets.ts`, envelope-encrypted under the deployment's
+   `TROV_KEK`].
 4. **Invite your team** — next section.
 
-**The GitHub webhook.** Each repository row shows its own delivery URL, `/webhook/github/<id>`, and a
-webhook secret (Integrations › *Set* generates one). In the repository's GitHub settings add a webhook to
-that URL with that secret, content type JSON; pull requests, issues, pushes, reviews, deployments, checks,
-workflow runs and commit statuses are what Trov reads. *Check deliveries* reports the last one received. Until it is set up,
-Sync GitHub and the hourly reconcile still fill the dashboard from the token.
+**Who can connect it, and what can go wrong.** An admin or an owner, with the GitHub account linked to
+their Trov account, which must be able to read every repository the installation covers. If a GitHub
+organization's owner has to approve the App first, Repositories says the request is pending and nothing is
+connected until they do. An organization connects one GitHub account at a time; an installation belongs to
+one Trov organization. *Disconnect* ends it in Trov and leaves the App installed on GitHub. If the App is
+suspended or uninstalled on GitHub, or stops seeing a tracked repository, Org settings says so. Events are
+captured for the **primary** repository only.
+
+**By hand, instead** (a Trov with no App configured, or a repository the App cannot see) — Repositories ›
+*Add a repository by name*, then in Integrations › *Manual connection* a GitHub token (fine-grained,
+read-only: Metadata, Contents, Pull requests, Issues, Actions, Checks, Deployments, Commit statuses) and,
+per repository, a webhook: each repository row shows its own delivery URL, `/webhook/github/<id>`, and a
+webhook secret (*Set* generates one). In the repository's GitHub settings add a webhook to that URL with
+that secret, content type JSON; pull requests, issues, pushes, reviews, deployments, checks, workflow runs
+and commit statuses are what Trov reads. *Check deliveries* reports the last one received. Until it is set
+up, Sync GitHub and the hourly reconcile still fill the dashboard from the token.
 
 Until a source is set up the Repo dashboard and *Poll now* say **Not connected** and link back to
 Integrations; nothing is requested on the organization's behalf.
@@ -142,8 +158,8 @@ One place: **Org settings**, opened from the switcher at the top of the sidebar 
 
 | Tab | What it holds | Who sees it |
 |---|---|---|
-| Integrations | the organization's credentials; its encryption key and the history of changes | admin, owner |
-| Repositories | connected repositories, one primary; each one's webhook URL | everyone (read), admin+ (write) |
+| Integrations | the GitHub App's connection (or, by hand, the token and webhook secrets); the other credentials; the encryption key and the history of changes | admin, owner |
+| Repositories | Connect with GitHub; connected repositories, one primary; what the App can see to track; a by-hand repository's webhook URL | everyone (read), admin+ (write) |
 | Environments | the environments the Repo dashboard reports on, in drift order | everyone (read), admin+ (write) |
 | Members | the people directory; for admins also invitations, roles and titles, removal, and **Unmatched logins** — GitHub logins in captured activity to map to a person or discard [`web/src/identity.ts`] | everyone (read), admin+ (write) |
 | Notifications | the e-mail digests: which exist and their default cadence, send hour, timezone and sender name, preview, test send, the outbox [`web/src/notifications.ts`] | admin, owner |
@@ -178,10 +194,11 @@ invitation, Platform. Without one the SPA draws the first letter of the name [`w
   browser never loads anything from GitHub.
 - **The import from GitHub**: the avatar of the OWNER of the organization's primary repository (the user or
   organization in `owner/repo`), fetched by the Worker and stored like an upload. It runs when a repository
-  is connected or made primary and when the GitHub token is set or rotated (after the response), in the
-  6-hourly reconcile, and when an uploaded image is removed. It uses the organization's GitHub token when it
-  has one and asks unauthenticated otherwise — except in the reconcile, which asks nothing for an
-  organization with no token.
+  is connected or made primary, when the GitHub App is connected and when the GitHub token is set or
+  rotated (after the response), in the 6-hourly reconcile, and when an uploaded image is removed. It uses
+  the organization's GitHub credential when it has one (its App installation's token, else its GitHub
+  token) and asks unauthenticated otherwise — except in the reconcile, which asks nothing for an
+  organization with neither.
 - **The rule** [`importOrgLogo`]: **an uploaded image is never replaced by an import.** An import writes
   only when the organization has no image or its image was itself imported (so it follows a changed avatar,
   or a new primary repository's owner). Removing an upload re-enables the import, which is tried at once:
@@ -211,7 +228,8 @@ stored artifacts, agent connections per person — is its plan's (`plans.md`).
 
 ## 7. What the superadmin can and cannot see
 
-**Can:** every organization's name, slug, status, creation date and creator; its owners; its members'
+**Can:** every organization's name, slug, status, creation date and creator; the GitHub account its App
+installation is on, if any; its owners; its members'
 handles, names, roles and titles; its pending invitations (the address or login, and whether the e-mail
 went out); the usage **counts and sizes** above; and the audit trail — who created the organization, added
 or removed whom, changed a role, set or rotated which integration (never a value: at most a credential's
