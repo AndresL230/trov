@@ -22,12 +22,19 @@ export function buildAuthorizeUrl(opts: {
   return u.toString();
 }
 
-/** Exchange an authorization code (+ PKCE verifier) for an access token; null on failure. */
+/**
+ * Exchange an authorization code (+ PKCE verifier) for an access token; null on failure.
+ *
+ * `redirectUri` and `verifier` are absent ONLY for the GitHub App's installation-initiated
+ * authorization (src/github-app/connect.ts): GitHub starts that one itself, so there was no
+ * `code_challenge` to answer and no `redirect_uri` of ours to repeat — an absent field is left out of
+ * the body altogether (JSON.stringify drops `undefined`), never sent empty.
+ */
 export async function exchangeCode(opts: {
   env: Env;
   code: string;
-  redirectUri: string;
-  verifier: string;
+  redirectUri?: string;
+  verifier?: string;
   fetchImpl?: typeof fetch;
 }): Promise<string | null> {
   const f = opts.fetchImpl ?? fetch;
