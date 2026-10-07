@@ -212,7 +212,7 @@ describe("when GitHub will not give the installation a token", () => {
     const row = (await binding(ORG_B))!;
     expect(row.suspended_at).not.toBeNull();
     expect(row.removed_at).toBeNull();
-    expect(row.last_error).toBe("mint an installation token: the installation is suspended on GitHub");
+    expect(row.last_error).toBe("ask GitHub for a token: the installation is suspended on GitHub");
     const asked = gh.app.seen.length;
     await quiet(() => runReconcileJob(e, systemCtx(ORG_B), NOW, { fetchImpl: gh.fetchImpl }));
     expect(gh.app.seen).toHaveLength(asked);
@@ -225,10 +225,10 @@ describe("when GitHub will not give the installation a token", () => {
     const bad = github({ badAppCredentials: true });
     await quiet(() => runReconcileJob(e, systemCtx(ORG_B), NOW, { fetchImpl: bad.fetchImpl }));
     expect(auths(bad.reads)).toEqual([`Bearer ${TOKEN_B}`]);
-    expect(await binding(ORG_B)).toMatchObject({ removed_at: null, suspended_at: null, last_error: "mint an installation token: GitHub refused the App's credentials" });
+    expect(await binding(ORG_B)).toMatchObject({ removed_at: null, suspended_at: null, last_error: "ask GitHub for a token: GitHub refused the App's credentials" });
     const down = github({ intercept: (s) => (s.url.includes("/access_tokens") ? new Response("nope", { status: 503 }) : undefined) });
     await quiet(() => runReconcileJob(e, systemCtx(ORG_B), NOW, { fetchImpl: down.fetchImpl }));
-    expect(await binding(ORG_B)).toMatchObject({ removed_at: null, last_error: "mint an installation token: github 503" });
+    expect(await binding(ORG_B)).toMatchObject({ removed_at: null, last_error: "ask GitHub for a token: github 503" });
     // It works again the moment GitHub does — and the error clears.
     const ok = github();
     await quiet(() => runReconcileJob(e, systemCtx(ORG_B), NOW, { fetchImpl: ok.fetchImpl }));

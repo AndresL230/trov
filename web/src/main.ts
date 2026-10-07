@@ -77,7 +77,8 @@ import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { setPrimaryRepo } from "./github";
-import type { MyOrgsResponse } from "@shared/orgs";
+import { GITHUB_LOGIN_RE, type MyOrgsResponse } from "@shared/orgs";
+import { isGithubConnectOutcome } from "@shared/github-app";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
@@ -717,7 +718,14 @@ function enterPlatform(hash: string): void {
 /** Open an org: every request from here on is its (`/api/o/<slug>/…`), the address bar says
  *  `/o/<slug>/` with the hash route after it, and this browser remembers it as last used. */
 function enterOrg(slug: string, hash: string): void {
-  const link = new URLSearchParams(location.search).get("link");
+  const query = new URLSearchParams(location.search);
+  const link = query.get("link");
+  // The return from GitHub after connecting the App (src/github-app/connect.ts): `/o/<slug>/?github=<outcome>#org/repos`.
+  // Read once, here — the address bar is rewritten below, so a reload does not say it again.
+  const github = query.get("github");
+  if (isGithubConnectOutcome(github)) {
+    state.org.githubNotice = { outcome: github, accounts: (query.get("accounts") ?? "").split(",").filter((a) => GITHUB_LOGIN_RE.test(a)).slice(0, 10) };
+  }
   state.orgSlug = slug;
   setApiOrg(slug);
   try { localStorage.setItem(LAST_ORG_KEY, slug); } catch { /* ignore */ }

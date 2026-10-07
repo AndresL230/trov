@@ -92,7 +92,7 @@ export interface InstallationInfo {
 
 /** `GET /app/installations/:id` — which account the installation is on, and whether it is suspended. */
 export async function getInstallation(env: AppEnv, installationId: number, fetchImpl?: typeof fetch, now: number = Date.now()): Promise<{ ok: true; installation: InstallationInfo } | AppRefusal> {
-  const what = "read the installation";
+  const what = "ask GitHub about the installation";
   try {
     const jwt = await signAppJwt(env.GITHUB_APP_ID, env.GITHUB_APP_PRIVATE_KEY, now);
     const res = await pick(fetchImpl)(`${API}/app/installations/${installationId}`, { headers: headers(jwt), signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -121,7 +121,7 @@ export type Minted = { ok: true; token: string; expiresAt: number } | AppRefusal
 
 /** `POST /app/installations/:id/access_tokens` — a token for that installation, good for about an hour. */
 export async function mintInstallationToken(env: AppEnv, installationId: number, fetchImpl?: typeof fetch, now: number = Date.now()): Promise<Minted> {
-  const what = "mint an installation token";
+  const what = "ask GitHub for a token";
   try {
     const jwt = await signAppJwt(env.GITHUB_APP_ID, env.GITHUB_APP_PRIVATE_KEY, now);
     const res = await pick(fetchImpl)(`${API}/app/installations/${installationId}/access_tokens`, { method: "POST", headers: headers(jwt), signal: AbortSignal.timeout(TIMEOUT_MS) });
