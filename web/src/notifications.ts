@@ -10,6 +10,7 @@ import { esc, attr, surface } from "./ui";
 import { tenantHref } from "./api";
 import { O_LABEL, O_HELP, orgHead, orgEmpty, tabLead, quietBtn, chip } from "./org-ui";
 import { segmented } from "./segmented";
+import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { PLATFORM_FROM_ADDRESS, PLATFORM_SENDER_NAME, SENDER_NAME_MAX, senderNamePart } from "@shared/sender";
 
 const LABEL = "font-family:var(--label)";
@@ -21,9 +22,6 @@ const knobStyle = (on: boolean): string =>
 const switchBtn = (act: string, arg: string | null, on: boolean): string =>
   `<button data-act="${act}"${arg ? ` data-arg="${attr(arg)}"` : ""} role="switch" aria-checked="${on ? "true" : "false"}" style="${trackStyle(on)}"><span style="${knobStyle(on)}"></span></button>`;
 
-const CHEVRON_BG = `var(--surface) url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23888' stroke-width='2'><path d='M2 4l4 4 4-4'/></svg>\") no-repeat right 9px center`;
-const SELECT = `appearance:none;-webkit-appearance:none;padding:5px 28px 5px 11px;border-radius:7px;font-size:12.5px;font-weight:500;border:1px solid var(--border);color:var(--fg-70);background:${CHEVRON_BG};cursor:pointer`;
-const FORM_SELECT = `appearance:none;-webkit-appearance:none;width:100%;height:36px;padding:0 30px 0 12px;border-radius:8px;font-size:12.5px;font-weight:500;${LABEL};border:1px solid var(--border-strong);color:var(--fg);background:${CHEVRON_BG};cursor:pointer`;
 const INPUT = `height:40px;padding:0 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;${LABEL};outline:none`;
 const ACCENT_BTN = `padding:0 18px;height:40px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600`;
 const GHOST_BTN = `height:40px;border-radius:9px;border:1px solid var(--border-strong);font-size:13px;font-weight:500`;
@@ -169,20 +167,39 @@ export interface NotifAdminProps {
   fromDraft: string | null;
   /** Why the typed sender name was not saved (shared/sender.ts), under the field. */
   fromError?: string | null;
+  /** Which dropdown is open (dropdown.ts). Omitted = none. */
+  dd?: DropdownUi;
 }
 
 const TIMEZONES = ["America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York", "UTC", "Europe/London", "Europe/Berlin", "Asia/Tokyo"];
 
-function policyRow(k: PolicyKindView): string {
-  const nonOff = k.allowedCadences.filter((c) => c !== "off");
-  const opts = nonOff.map((c) => `<option value="${c}"${c === k.default_cadence ? " selected" : ""}>${cadCap(c)}</option>`).join("");
+/** A digest's default cadence: the cadences it allows, never "off" (its switch says that). */
+const cadenceDropdown = (k: PolicyKindView): DropdownProps => ({
+  id: `policy-cad-${k.id}`, act: "policyCadence", arg: k.id, value: k.default_cadence, ariaLabel: `${k.label}: default cadence`, size: "sm", disabled: !k.enabled,
+  options: k.allowedCadences.filter((c) => c !== "off").map((c) => ({ value: c, label: cadCap(c) })),
+});
+/** The schedule's two pickers: the hour digests go out at, and the timezone that hour is in. */
+function scheduleDropdowns(s: NotificationSettingsRow | null): { hour: DropdownProps; tz: DropdownProps } {
+  const tzList = s && !TIMEZONES.includes(s.timezone) ? [s.timezone, ...TIMEZONES] : TIMEZONES;
+  return {
+    hour: { id: "sched-hour", act: "schedHour", value: s ? String(s.send_hour) : "", labelledBy: "sched-hour-l", fill: true, disabled: !s, options: Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: `${String(h).padStart(2, "0")}:00` })) },
+    tz: { id: "sched-tz", act: "schedTz", value: s?.timezone ?? "", labelledBy: "sched-tz-l", fill: true, disabled: !s, options: tzList.map((tz) => ({ value: tz, label: tz })) },
+  };
+}
+/** Every dropdown the admin sections render (Org settings renders the open one's menu from these). */
+export function notifDropdowns(p: Pick<NotifAdminProps, "policy" | "settings">): DropdownProps[] {
+  const sched = scheduleDropdowns(p.settings);
+  return [...p.policy.map(cadenceDropdown), sched.hour, sched.tz];
+}
+
+function policyRow(k: PolicyKindView, dd: DropdownUi): string {
   return `<div class="cnpy-org-row" style="align-items:center;gap:10px 16px">
     ${switchBtn("policyToggle", k.id, k.enabled).replace("<button ", `<button aria-label="${attr(`${k.label}: send org-wide`)}" `)}
     <div style="flex:1 1 220px;min-width:0">
       <div style="font-size:13.5px;font-weight:600;color:${k.enabled ? "var(--fg)" : "var(--fg-55)"}">${esc(k.label)}</div>
       <div style="font-size:12px;color:var(--fg-40);margin-top:1px">${esc(k.description)}</div>
     </div>
-    <select data-act="policyCadence" data-arg="${attr(k.id)}" aria-label="${attr(`${k.label}: default cadence`)}"${k.enabled ? "" : " disabled"} style="${SELECT}${k.enabled ? "" : ";opacity:.4;pointer-events:none"}">${opts}</select>
+    ${dropdown(cadenceDropdown(k), dd)}
   </div>`;
 }
 
@@ -222,6 +239,7 @@ const linkBtn = (text: string, href: string): string =>
  *  send, what failed), then four sections in the page's one idiom — Digests, Schedule and
  *  sender, Preview and test, Outbox. */
 export function notificationsAdminSections(p: NotifAdminProps): string {
+  const dd = p.dd ?? initialDropdownUi();
   const enabled = p.policy.filter((k) => k.enabled).length;
   const s = p.settings;
   const failed = p.outbox.filter((o) => o.status === "failed").length;
@@ -229,21 +247,19 @@ export function notificationsAdminSections(p: NotifAdminProps): string {
   const lead = tabLead(`${p.policy.length ? `<strong>${enabled} of ${p.policy.length}</strong> digests on` : "Loading the digests…"}${s ? ` &middot; sent at <strong>${String(s.send_hour).padStart(2, "0")}:00</strong> ${esc(s.timezone)} as <strong>${esc(senderNamePart(s.from_address))}</strong>` : ""}${failed ? ` &middot; <span data-outbox-failed style="color:var(--red);font-weight:500">${failed} recent ${failed === 1 ? "send" : "sends"} failed</span>` : ""}. Each person picks their own cadence in Settings.`);
 
   const policy = p.policy.length
-    ? `<div${surface("overflow:hidden")}>${p.policy.map(policyRow).join("")}</div>`
+    ? `<div${surface("overflow:hidden")}>${p.policy.map((k) => policyRow(k, dd)).join("")}</div>`
     : `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0">Loading policy…</div>`;
 
-  const hours = Array.from({ length: 24 }, (_, h) => `<option value="${h}"${s && s.send_hour === h ? " selected" : ""}>${String(h).padStart(2, "0")}:00</option>`).join("");
-  const tzList = s && !TIMEZONES.includes(s.timezone) ? [s.timezone, ...TIMEZONES] : TIMEZONES;
-  const tzs = tzList.map((tz) => `<option value="${attr(tz)}"${s && s.timezone === tz ? " selected" : ""}>${esc(tz)}</option>`).join("");
+  const sched = scheduleDropdowns(s);
   const schedule = `<div${surface("padding:16px")}>
     <div class="cnpy-sched" style="display:grid;grid-template-columns:140px 230px minmax(0,1fr);gap:16px">
       <div>
-        <label for="sched-hour" style="${FIELD_LABEL}">Send hour</label>
-        <select id="sched-hour" data-act="schedHour" style="${FORM_SELECT}"${s ? "" : " disabled"}>${hours}</select>
+        <div id="sched-hour-l" style="${FIELD_LABEL}">Send hour</div>
+        ${dropdown(sched.hour, dd)}
       </div>
       <div>
-        <label for="sched-tz" style="${FIELD_LABEL}">Timezone</label>
-        <select id="sched-tz" data-act="schedTz" style="${FORM_SELECT}"${s ? "" : " disabled"}>${tzs}</select>
+        <div id="sched-tz-l" style="${FIELD_LABEL}">Timezone</div>
+        ${dropdown(sched.tz, dd)}
       </div>
       <div>
         <label for="sched-from" style="${FIELD_LABEL}">Sender name</label>

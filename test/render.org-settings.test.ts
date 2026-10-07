@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import css from "../web/src/trov.css?raw";
 import {
   orgSettingsView, orgOverlays, setupSteps, setupChecklist, initialOrgUi, currentOrg, orgTabsFor, effectiveOrgTab, orgConfirmCopy,
-  apiUrlMoves, envForm, envFieldsOf, blankEnvFields, inviteDraftOk, repoDraftOk, lastOwnerSentence,
+  apiUrlMoves, envForm, envFieldsOf, blankEnvFields, inviteDraftOk, repoDraftOk, lastOwnerSentence, memberRoleDropdown,
   type OrgUi, type OrgSettingsProps,
 } from "../web/src/org-settings";
 import {
@@ -191,7 +191,7 @@ describe("who sees what — admin vs member", () => {
     expect(html).not.toContain('data-arg="key:"');
     const ed = tabView(fullUi({ memberEdit: { handle: "andres", role: "owner", title: "", responsibilities: "", saving: false, error: null } }), "members", "admin");
     expect(ed).toContain("Only an owner can change an owner's role.");
-    expect(ed).toMatch(/<select id="org-member-role"[^>]* disabled/);
+    expect(ed).toMatch(/<button type="button" id="org-member-role"[^>]* disabled/);
   });
 });
 
@@ -639,7 +639,7 @@ describe("Members and invites", () => {
     for (const w of [">Owner<", ">Admin<", ">Member<", "YOU", "Platform engineer"]) expect(html).toContain(w);
     expect(html).toContain('data-seg="org-invite-by"');
     expect(html).toContain('aria-label="GitHub login to invite"');
-    expect(html).toContain('aria-label="Role the invite grants"');
+    expect(html).toContain('aria-label="Role the invite grants: As member"');
     expect(html).toContain("@octocat");
     expect(html).toContain("sam@acme.dev");
     expect(html).toContain('aria-label="Revoke the invite for sam@acme.dev"');
@@ -661,13 +661,14 @@ describe("Members and invites", () => {
   it("the editor changes role and title; only an owner may grant Owner", () => {
     const edit = { handle: "mira", role: "admin" as const, title: "Platform engineer", responsibilities: "Owns deploys.", saving: false, error: null };
     const asOwner = tabView(fullUi({ memberEdit: edit }), "members", "owner");
-    expect(asOwner).toContain('<option value="owner">Owner</option>');
-    expect(asOwner).toContain('<option value="admin" selected>Admin</option>');
+    // The role is the app's dropdown (dropdown.ts): the trigger says the role, its menu the choices.
+    expect(asOwner).toMatch(/id="org-member-role"[^>]*><span class="cnpy-dd-v">Admin<\/span>/);
+    expect(memberRoleDropdown({ role: "admin" }, edit, "owner").options.map((o) => o.value)).toEqual(["owner", "admin", "member"]);
     expect(asOwner).toContain('value="Platform engineer"');
     expect(asOwner).toContain("Owns deploys.");
     expect(asOwner).toContain('data-act="orgConfirm" data-arg="member:mira"');
     const asAdmin = tabView(fullUi({ memberEdit: edit }), "members", "admin");
-    expect(asAdmin).not.toContain('<option value="owner"');
+    expect(memberRoleDropdown({ role: "admin" }, edit, "admin").options.map((o) => o.value)).toEqual(["admin", "member"]);
   });
   it("surfaces the last-owner rule as a sentence, before and after the server says it", () => {
     const edit = { handle: "andres", role: "owner" as const, title: "", responsibilities: "", saving: false, error: null };

@@ -73,6 +73,7 @@ import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
+import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { setPrimaryRepo } from "./github";
@@ -104,6 +105,10 @@ const orgsCtl = createOrgsController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
   reloadOrgs: () => loadMyOrgs(), go: (url) => { window.location.assign(url); }, openSettings: () => dispatch("orgGo", null, null),
 });
+
+// The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
+// placing the open menu against its trigger. A pick is dispatched as the dropdown's own act.
+const dropdowns = createDropdowns({ state, mount, rerender: () => rerender(), dispatch: (act, arg, value) => dispatch(act, arg, value) });
 
 // ── persisted client prefs (theme + sidebar only; not backend state) ─────────
 migrateBrowserStorage(); // canopy.* → trov.* (the rename) before the first read
@@ -311,6 +316,7 @@ function rerender(): void {
   restoreScroll(mount, scroll, state.screen);
   markEnter();
   orgCtl.afterPaint();
+  dropdowns.afterPaint();
   if (pendingFlash) {
     for (const el of Array.from(mount.querySelectorAll(pendingFlash))) el.classList.add("cnpy-flash");
     pendingFlash = null;
@@ -2155,6 +2161,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     case "goArtifacts": goArt("artifacts"); return;
     case "fmToggle": case "fmClose": case "fmCat": filterMenuAct(act, arg); return;
+    case "ddToggle": case "ddPick": case "ddClose": dropdowns.act(act, arg); return;
 
     // ── Repo dashboard ───────────────────────────────────────────────────────
     // `arg` = the tab to land on (quick search's "Repo › …" entries); none = Overview.

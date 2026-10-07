@@ -7,7 +7,7 @@
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { describe, it, expect, afterEach } from "vitest";
 import { setApiOrg } from "../web/src/api";
-import { emailNotificationsSection, notificationsAdminSections, unsubscribeView } from "../web/src/notifications";
+import { emailNotificationsSection, notificationsAdminSections, notifDropdowns, unsubscribeView } from "../web/src/notifications";
 import type { PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 
@@ -138,30 +138,35 @@ describe("notificationsAdminSections", () => {
     { idempotency_key: "dev:daily:2026-09-11", user_id: "dev", cadence: "daily", window_id: "2026-09-11", kinds: '["my_work"]', status: "failed", resend_id: null, error: "send: resend 422: mailbox unavailable", created_at: "2026-09-11T12:00:00Z", sent_at: null },
   ];
 
-  it("policy rows carry a switch, a cadence select limited to allowed non-off cadences, disabled when off", () => {
+  it("policy rows carry a switch and a cadence dropdown limited to allowed non-off cadences, disabled when off", () => {
     const v = notificationsAdminSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: null });
     // The lead says the state in one sentence; the section is an eyebrow, like every other.
     expect(v).toContain("<strong>1 of 2</strong> digests on");
     expect(v).toMatch(/class="cnpy-sechead"><h2[^>]*>Digests<\/h2>/);
     expect(v).toContain('aria-label="My Work: send org-wide"');
-    expect(v).toContain('aria-label="My Work: default cadence"');
+    expect(v).toContain('aria-label="My Work: default cadence: Daily"');
     expect(v).toContain('data-act="policyToggle" data-arg="my_work"');
-    const selectOf = (id: string) => { const i = v.indexOf(`data-act="policyCadence" data-arg="${id}"`); return v.slice(i, v.indexOf("</select>", i)); };
-    const mw = selectOf("my_work");
-    expect(mw).toContain('value="weekly"');
-    const rq = selectOf("review_queue");
-    expect(rq).not.toContain('value="weekly"');
-    expect(rq).toContain("disabled");
+    expect(v).not.toContain("<select");
+    const dds = notifDropdowns({ policy, settings });
+    const mw = dds.find((d) => d.id === "policy-cad-my_work")!;
+    expect(mw).toMatchObject({ act: "policyCadence", arg: "my_work", disabled: false });
+    expect(mw.options.map((o) => o.value)).toContain("weekly");
+    const rq = dds.find((d) => d.id === "policy-cad-review_queue")!;
+    expect(rq.options.map((o) => o.value)).not.toContain("weekly");
+    expect(rq.disabled).toBe(true);
+    expect(v).toMatch(/id="policy-cad-review_queue"[^>]* disabled/);
   });
 
   it("schedule shows the current hour, timezone and from address as editable controls", () => {
     const v = notificationsAdminSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: null });
     expect(v).toMatch(/<h2[^>]*>Schedule and sender<\/h2>/);
     expect(v).toContain("sent at <strong>08:00</strong> America/New_York as <strong>Trov</strong>");
-    expect(v).toContain('<label for="sched-hour"');
-    expect(v).toContain('<label for="sched-tz"');
-    expect(v).toMatch(/<option value="8" selected>08:00<\/option>/);
-    expect(v).toMatch(/<option value="America\/New_York" selected>/);
+    expect(v).toMatch(/id="sched-hour"[^>]*aria-labelledby="sched-hour-l sched-hour"><span class="cnpy-dd-v">08:00<\/span>/);
+    expect(v).toMatch(/id="sched-tz"[^>]*aria-labelledby="sched-tz-l sched-tz"><span class="cnpy-dd-v">America\/New_York<\/span>/);
+    const dds = notifDropdowns({ policy, settings });
+    expect(dds.find((d) => d.id === "sched-hour")).toMatchObject({ act: "schedHour", value: "8" });
+    expect(dds.find((d) => d.id === "sched-hour")!.options).toHaveLength(24);
+    expect(dds.find((d) => d.id === "sched-tz")).toMatchObject({ act: "schedTz", value: "America/New_York" });
     // The sender field takes a NAME only — whatever address is stored, the one shown is the platform's.
     expect(v).toMatch(/<label for="sched-from"[^>]*>Sender name<\/label>/);
     expect(v).toMatch(/<input id="sched-from" data-act="schedFrom"[^>]*maxlength="64"[^>]*value="Trov"/);

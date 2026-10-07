@@ -137,6 +137,16 @@ export function sliceNote(s: OrgSlice<unknown>, what: string, has: boolean): str
 const ROLE_WORD: Record<OrgRole, string> = { owner: "Owner", admin: "Admin", member: "Member" };
 const ROLE_TONE: Record<OrgRole, string> = { owner: "var(--accent)", admin: "var(--blue)", member: "var(--fg-55)" };
 export const roleChip = (role: OrgRole): string => chip(ROLE_WORD[role], ROLE_TONE[role]);
+/** What a role can do, in one line each (docs/architecture/organizations.md §4) — said beside
+ *  the role wherever one is picked. Each builds on the one before it. */
+export const ROLE_HINT: Record<OrgRole, string> = {
+  member: "Reads everything; works tickets, docs and artifacts.",
+  admin: "Also people, repositories, environments, integrations, notifications.",
+  owner: "Also makes owners and rotates the encryption key.",
+};
+/** A role as a dropdown's option (dropdown.ts): its name, and what it can do under it. */
+export const roleOption = (role: OrgRole, shown?: string): { value: OrgRole; label: string; shown?: string; hint: string } =>
+  ({ value: role, label: ROLE_WORD[role], ...(shown ? { shown } : {}), hint: ROLE_HINT[role] });
 export const YOU = `<span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:2px 6px;flex:none">YOU</span>`;
 export const sameHandle = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 

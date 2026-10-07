@@ -390,9 +390,9 @@ describe("admin = admin or owner of the org on screen", () => {
     const adminMail = main(page("admin", "notifications")), memberMail = main(page("member", "notifications"));
     expect(adminMail).toContain('id="org-tab-notifications"');
     expect(adminMail).toContain('data-act="testSend"');
-    expect(adminMail).toContain('data-act="schedHour"');
+    expect(adminMail).toContain('data-dd="sched-hour"');
     expect(memberMail).not.toContain('id="org-tab-notifications"');
-    for (const gone of ["testSend", "schedHour", "policyToggle", "outboxToggle"]) expect(memberMail, gone).not.toContain(gone);
+    for (const gone of ["testSend", "sched-hour", "policyToggle", "outboxToggle"]) expect(memberMail, gone).not.toContain(gone);
     expect(memberMail).toMatch(/id="org-tab-repos" class="cnpy-tab is-on"/);
   });
   it("Settings › Account says the role held in the org on screen", () => {

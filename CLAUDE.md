@@ -1463,6 +1463,10 @@ and Repo's tabs head their page body), and a stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
+**A pick-one with no room for a switch is `dropdown()`** (`web/src/dropdown.ts`), never a native `<select>`:
+the trigger where the control sits, its menu a root-level overlay (`dropdownMenu`, the same props) that opens
+and closes with an animation — Org settings' role and Notifications pickers.
+
 **Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, the queue's
 Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, form segments. Never
 hand-roll a segment group. It picks a VALUE or a view; moving between a page's own SECTIONS is the **underline

@@ -977,6 +977,45 @@ input, select { font-family: inherit; }
 .cnpy-tabs.is-live > .cnpy-tabs-ind { opacity:1; }
 .cnpy-tabs-ind.is-sliding { transition:transform .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1); }
 @media (prefers-reduced-motion: reduce) { .cnpy-tabs-ind.is-sliding { transition:none; } .cnpy-tab { transition:none; } }
+/* ── the dropdown (web/src/dropdown.ts): a trigger at a field's height, and its menu ──
+   The trigger is the page's input (surface, strong hairline) with a caret; open, it wears the
+   focused input's accent ring. Its radius is inline (the corners layer keys on that). */
+.cnpy-dd { display:inline-flex; align-items:center; justify-content:space-between; gap:8px; flex:none; box-sizing:border-box; max-width:100%; height:36px; padding:0 10px 0 11px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-family:var(--sans); font-size:13px; font-weight:500; white-space:nowrap; text-align:left; cursor:pointer; transition:border-color .12s ease, box-shadow .12s ease; }
+.cnpy-dd.is-sm { height:30px; padding:0 8px 0 10px; font-size:12.5px; border-color:var(--border); color:var(--fg-70); }
+.cnpy-dd.is-fill { display:flex; width:100%; }
+.cnpy-dd-v { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-dd-caret { flex:none; color:var(--fg-40); transition:transform .14s ease; }
+.cnpy-dd:hover:not(:disabled) { border-color:var(--fg-40); }
+.cnpy-dd.is-open { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
+.cnpy-dd.is-open .cnpy-dd-caret { transform:rotate(180deg); }
+.cnpy-dd:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+.cnpy-dd:disabled { cursor:default; background:var(--hover); color:var(--fg-40); opacity:.7; }
+/* The menu: a root-level layer (a click on its backdrop closes), the popover fixed against the
+   trigger by dropdown.ts. The entrance is the link menu's pop, from the trigger's corner, on
+   the paint that opens it only; `data-closing` plays the exit before the menu leaves the DOM. */
+[data-cnpy-theme="light"] { --menu-shadow:0 14px 38px rgba(20,20,30,0.16); }
+[data-cnpy-theme="dark"] { --menu-shadow:0 14px 38px rgba(0,0,0,0.38); }
+.cnpy-dd-layer { position:fixed; inset:0; z-index:95; }
+.cnpy-dd-back { position:absolute; inset:0; }
+.cnpy-dd-pop { position:fixed; box-sizing:border-box; display:flex; flex-direction:column; gap:1px; width:max-content; max-width:min(440px, calc(100vw - 16px)); max-height:298px; padding:5px; overflow-y:auto; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--menu-shadow); transform-origin:top left; outline:none; }
+.cnpy-dd-pop[data-align="right"] { transform-origin:top right; }
+.cnpy-dd-pop[data-side="up"] { transform-origin:bottom left; }
+.cnpy-dd-pop[data-side="up"][data-align="right"] { transform-origin:bottom right; }
+.cnpy-dd-pop.is-opening { animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
+.cnpy-dd-layer[data-closing] { pointer-events:none; }
+.cnpy-dd-layer[data-closing] .cnpy-dd-pop { animation:cnpy-dd-out .12s cubic-bezier(.4,0,1,1) both; }
+@keyframes cnpy-dd-out { to { opacity:0; transform:scale(.94); } }
+.cnpy-dd-opt { display:flex; align-items:center; justify-content:space-between; gap:14px; flex:none; width:100%; box-sizing:border-box; padding:7px 10px; text-align:left; font-size:12.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-dd-opt.is-on { color:var(--fg); }
+/* The keyboard's row is painted like the hovered one (`.cnpy-menurow`). */
+.cnpy-dd-opt:focus-visible { outline:none; background:var(--hover); }
+.cnpy-dd-optt { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.cnpy-dd-optl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dd-opth { font-size:11.5px; font-weight:400; line-height:1.4; color:var(--fg-55); }
+.cnpy-dd-optt:has(.cnpy-dd-opth) .cnpy-dd-optl { font-size:13px; color:var(--fg); }
+.cnpy-dd-check { flex:none; color:var(--accent); visibility:hidden; }
+.cnpy-dd-opt.is-on .cnpy-dd-check { visibility:visible; }
+@media (prefers-reduced-motion: reduce) { .cnpy-dd, .cnpy-dd-caret { transition:none; } .cnpy-dd-pop.is-opening, .cnpy-dd-layer[data-closing] .cnpy-dd-pop { animation:none !important; } }
 /* ── Org settings (web/src/org-settings.ts, integrations.ts, org-ui.ts) ───────
    Layout only: colours are the tokens, set inline like everywhere else, and no rule here
    declares a radius (those are inline too, so the corners block scales them). A row is
@@ -1061,7 +1100,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
   .cnpy-org-actions > button, .cnpy-org-step > button { min-height:36px; }
   /* A checklist step's button drops under its text, in line with it. */
   .cnpy-org-step > button { flex:1 1 100%; margin-left:30px; }
-  .cnpy-org-addbar > button, .cnpy-org-invite > button, .cnpy-org-invite > .cnpy-seg, .cnpy-org-invite > select { flex:1 1 100%; }
+  .cnpy-org-addbar > button, .cnpy-org-invite > button, .cnpy-org-invite > .cnpy-seg, .cnpy-org-invite > .cnpy-dd { flex:1 1 100%; }
 }
 /* The queue group header's "Open sprint →". */
 .cnpy-grouplink { transition:color .12s ease, background .12s ease; border-radius:6px; }

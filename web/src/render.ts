@@ -54,6 +54,7 @@ import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
 import { platformView, platformOrgView, platformDialogs, platformHeaderControls, platformCrumb, platformPage, initialPlat, type PlatState } from "./platform";
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
+import { initialDropdownUi, type DropdownUi } from "./dropdown";
 import { orgSettingsView, orgOverlays, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
 import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 // Organizations as a person meets them (org-picker.ts): the switcher, the picker, the create dialog.
@@ -362,6 +363,8 @@ export interface AppState {
   plat: PlatState;
   /** The filter menu (web/src/filter-menu.ts) the NEXT paint opens — its entrance plays once, then main.ts clears this. */
   fmOpening: string | null;
+  /** The open dropdown (web/src/dropdown.ts) — one at a time, app-wide. */
+  dd: DropdownUi;
   toast: string | null;
   /** One button on the toast (a delete's "Undo") — dispatched like any `data-act`. */
   toastAction: ToastAction | null;
@@ -504,6 +507,7 @@ export function initialState(): AppState {
     maintDiscardArm: false,
     plat: initialPlat(),
     fmOpening: null,
+    dd: initialDropdownUi(),
     toast: null,
     toastAction: null,
     toastAt: 0,
@@ -2394,7 +2398,7 @@ function orgProps(s: AppState): OrgSettingsProps {
     policy: s.notifPolicy.data, settings: s.notifSettings.data, outbox: s.notifOutbox.data,
     outboxExpanded: s.outboxExpanded, fromDraft: s.fromDraft, fromError: s.fromError,
   } : null;
-  return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org, identity, notif };
+  return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org, identity, notif, dd: s.dd };
 }
 
 /** Project the app state onto the Repo dashboard's props (its components never see AppState). */

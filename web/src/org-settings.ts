@@ -23,12 +23,13 @@
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, YOU, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, loadingNote, failedNote,
-  sliceNote, roleChip, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, chip, type OrgSlice,
+  sliceNote, roleChip, roleOption, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, chip, type OrgSlice,
 } from "./org-ui";
 export { roleAtLeast };
 export type { OrgSlice };
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { segmented } from "./segmented";
+import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { personChip, handleTag } from "./people";
 import { confirmModal } from "./confirm";
 import { ROLE_MAX, RESPONSIBILITIES_MAX } from "@shared/people";
@@ -36,7 +37,7 @@ import { ORG_NAME_MAX, INVITE_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, type M
 import type { IntegrationDTO, IntegrationKind, IntegrationsListDTO, OrgAuditDTO, OrgEnvironmentDTO, OrgRepoDTO } from "@shared/integrations";
 import { integrationsTab, secretFormModal, integrationLabel, SECRET_DELETE_EFFECT, type SecretFormState, type TestState } from "./integrations";
 import { identitySection, type IdentityProps } from "./identity";
-import { notificationsAdminSections, type NotifAdminProps } from "./notifications";
+import { notificationsAdminSections, notifDropdowns, type NotifAdminProps } from "./notifications";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -168,6 +169,8 @@ export interface OrgSettingsProps {
   identity?: IdentityProps | null;
   /** The Notifications tab's reads (admins; null = not shown). */
   notif?: NotifAdminProps | null;
+  /** Which dropdown is open (dropdown.ts; `state.dd`). Omitted = none. */
+  dd?: DropdownUi;
 }
 
 // ── setup checklist ──────────────────────────────────────────────────────────
@@ -428,14 +431,24 @@ export function inviteDraftOk(by: "github" | "email", draft: string): boolean {
 export const lastOwnerSentence = (name: string): string =>
   `${name} is the only owner. Make someone else an owner first, then try again.`;
 
-const select = (id: string, act: string, value: string, options: [string, string][], o: { disabled?: boolean; label?: string } = {}): string =>
-  `<select id="${attr(id)}" data-act="${attr(act)}" data-field="${attr(id)}"${o.label ? ` aria-label="${attr(o.label)}"` : ""}${o.disabled ? " disabled" : ""} class="cnpy-select" style="height:36px;padding:0 30px 0 11px;border-radius:8px;font-size:13px;border-color:var(--border-strong);color:var(--fg);background-color:var(--surface)">${options.map(([v, l]) => `<option value="${attr(v)}"${v === value ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
-
-function memberEditor(m: OrgMember, d: MemberDraft, viewer: OrgRole, soleOwner: boolean): string {
+/** The role an invite grants: member or admin (an owner is made from a member, in the editor). */
+export const inviteRoleDropdown = (ui: Pick<OrgUi, "inviteRole">): DropdownProps => ({
+  id: "org-invite-role", act: "orgInviteRole", value: ui.inviteRole, ariaLabel: "Role the invite grants",
+  options: [roleOption("member", "As member"), roleOption("admin", "As admin")],
+});
+/** A member's org role, in their editor. Only an owner grants or revokes Owner; an admin editing
+ *  an owner cannot change the role at all (and nobody can mid-save) — then it is disabled. */
+export function memberRoleDropdown(m: Pick<OrgMember, "role">, d: Pick<MemberDraft, "role" | "saving">, viewer: OrgRole): DropdownProps {
   const owner = viewer === "owner";
-  // Only an owner grants or revokes Owner; an admin editing an owner cannot change the role at all.
-  const roleLocked = (m.role === "owner" && !owner) || d.saving;
-  const options: [string, string][] = owner || m.role === "owner" ? [["owner", "Owner"], ["admin", "Admin"], ["member", "Member"]] : [["admin", "Admin"], ["member", "Member"]];
+  const roles: OrgRole[] = owner || m.role === "owner" ? ["owner", "admin", "member"] : ["admin", "member"];
+  return {
+    id: "org-member-role", act: "orgMemberRole", value: d.role, labelledBy: "org-member-role-l",
+    options: roles.map((r) => roleOption(r)), disabled: (m.role === "owner" && !owner) || d.saving,
+  };
+}
+
+function memberEditor(m: OrgMember, d: MemberDraft, viewer: OrgRole, soleOwner: boolean, dd: DropdownUi): string {
+  const owner = viewer === "owner";
   const name = m.name ?? m.handle;
   const changed = d.role !== m.role || d.title.trim() !== (m.title ?? "") || d.responsibilities.trim() !== (m.responsibilities ?? "");
   const roleHelp = m.role === "owner" && !owner ? "Only an owner can change an owner's role."
@@ -445,8 +458,8 @@ function memberEditor(m: OrgMember, d: MemberDraft, viewer: OrgRole, soleOwner: 
   return `<div class="cnpy-org-editor" role="group" aria-label="Edit ${attr(name)}">
     <div class="cnpy-org-grid">
       <div class="cnpy-org-field">
-        <label for="org-member-role" style="${O_LABEL}">Org role</label>
-        <div style="margin-top:7px">${select("org-member-role", "orgMemberRole", d.role, options, { disabled: roleLocked })}</div>
+        <div id="org-member-role-l" style="${O_LABEL}">Org role</div>
+        <div style="margin-top:7px">${dropdown(memberRoleDropdown(m, d, viewer), dd)}</div>
         <div style="${O_HELP}">${roleHelp}</div>
       </div>
       ${textField({ id: "org-member-title", label: "Title", act: "orgMemberTitle", field: "orgMemberTitle", value: d.title, max: ROLE_MAX, placeholder: "e.g. Backend engineer", help: "Shown on their person card.", disabled: d.saving, enter: "orgMemberSave" })}
@@ -488,7 +501,7 @@ export function unmatchedLogins(admin: boolean, identity: IdentityProps | null |
     </section>`;
 }
 
-export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: IdentityProps | null = null): string {
+export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: IdentityProps | null = null, dd: DropdownUi = initialDropdownUi()): string {
   const admin = roleAtLeast(org.role, "admin");
   const members = ui.members.data;
   const note = sliceNote(ui.members, "members", members.length > 0);
@@ -504,7 +517,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
           ${segmented({ id: "org-invite-by", ariaLabel: "Invite by", act: "orgInviteBy", value: ui.inviteBy, size: "sm", inertOn: true, options: [{ value: "github", label: "GitHub login" }, { value: "email", label: "Email" }] })}
           <input id="org-invite" data-act="orgInviteDraft" data-field="orgInvite" data-enter="orgInviteSend" value="${attr(ui.inviteDraft)}" placeholder="${ui.inviteBy === "github" ? "octocat" : "name@example.com"}" aria-label="${ui.inviteBy === "github" ? "GitHub login to invite" : "Email address to invite"}"${ui.inviteBy === "email" ? ' type="email" inputmode="email"' : ""} autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="org-invite-h${ui.inviteError ? " org-invite-e" : ""}"${ui.inviteError ? ' aria-invalid="true"' : ""} class="cnpy-input" style="${O_FIELD};flex:1 1 200px;width:auto;min-width:0;${ui.inviteError ? "border-color:var(--red);" : ""}" />
           ${ui.inviteBy === "email" ? `<input id="org-invite-name" data-act="orgInviteName" data-field="orgInviteName" data-enter="orgInviteSend" value="${attr(ui.inviteName)}" maxlength="${INVITE_NAME_MAX}" placeholder="Their name (optional)" aria-label="Their name, for the email's greeting (optional)" autocomplete="off" class="cnpy-input" style="${O_FIELD};flex:1 1 160px;width:auto;min-width:0" />` : ""}
-          ${select("org-invite-role", "orgInviteRole", ui.inviteRole, [["member", "As member"], ["admin", "As admin"]], { label: "Role the invite grants" })}
+          ${dropdown(inviteRoleDropdown(ui), dd)}
           ${accentBtn(ui.inviteBusy ? "Inviting…" : "Invite", "orgInviteSend", { disabled: !canSend, busy: ui.inviteBusy, extra: "height:36px" })}
         </div>
         ${ui.inviteError ? `<div id="org-invite-e" role="alert" style="${O_ERR}">${esc(ui.inviteError)}</div>` : ""}
@@ -526,7 +539,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
           ${admin ? quietBtn(d ? "Close" : "Edit", d ? "orgMemberCancel" : "orgMemberEdit", { arg: m.handle, label: `${d ? "Close the editor for" : "Edit"} ${name}`, field: `orgMemberEdit:${m.handle}` }) : ""}
         </div>
       </div>
-      ${d ? memberEditor(m, d, org.role, m.role === "owner" && owners <= 1) : ""}
+      ${d ? memberEditor(m, d, org.role, m.role === "owner" && owners <= 1, dd) : ""}
     </li>`;
   }).join("");
 
@@ -566,9 +579,23 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
 
 // ── NOTIFICATIONS ────────────────────────────────────────────────────────────
 
-export function notificationsTab(org: MyOrg, notif: NotifAdminProps | null | undefined): string {
+export function notificationsTab(org: MyOrg, notif: NotifAdminProps | null | undefined, dd: DropdownUi = initialDropdownUi()): string {
   if (!roleAtLeast(org.role, "admin") || !notif) return orgEmpty("Admins only", "The org's e-mail digests are set by an admin or an owner. Your own preferences are in Settings.");
-  return notificationsAdminSections(notif);
+  return notificationsAdminSections({ ...notif, dd });
+}
+
+// ── dropdowns ────────────────────────────────────────────────────────────────
+
+/** Every dropdown on the tab that is showing, with the props its trigger was rendered from —
+ *  what `orgOverlays` renders the open one's menu from (dropdown.ts). */
+export function orgDropdowns(p: OrgSettingsProps): DropdownProps[] {
+  if (!p.org || !roleAtLeast(p.org.role, "admin")) return [];
+  const tab = effectiveOrgTab(p.ui.tab, p.org.role);
+  if (tab === "notifications") return p.notif ? notifDropdowns(p.notif) : [];
+  if (tab !== "members" || !p.ui.members.data.length) return [];
+  const d = p.ui.memberEdit;
+  const m = d ? p.ui.members.data.find((x) => sameHandle(x.handle, d.handle)) : undefined;
+  return [inviteRoleDropdown(p.ui), ...(d && m ? [memberRoleDropdown(m, d, p.org.role)] : [])];
 }
 
 // ── confirmation modal ───────────────────────────────────────────────────────
@@ -623,20 +650,22 @@ export function orgConfirmCopy(c: OrgConfirm, org: MyOrg, ui: OrgUi): { title: s
   };
 }
 
-/** The root-level overlays of Org settings: the confirmation modal, or the secret form. */
+/** The root-level overlays of Org settings: the confirmation modal, or the secret form — and
+ *  the open dropdown's menu, if one is open. */
 export function orgOverlays(p: OrgSettingsProps): string {
   if (!p.org) return "";
   const ui = p.ui;
+  const menu = p.dd?.open ? dropdownMenu(orgDropdowns(p), p.dd) : "";
   if (ui.confirm) {
     const copy = orgConfirmCopy(ui.confirm, p.org, ui);
-    if (copy) return confirmModal({ id: "org-confirm", ...copy, confirmAct: "orgConfirmGo", cancelAct: "orgConfirmCancel", busy: ui.confirm.busy });
+    if (copy) return menu + confirmModal({ id: "org-confirm", ...copy, confirmAct: "orgConfirmGo", cancelAct: "orgConfirmCancel", busy: ui.confirm.busy });
   }
   if (ui.secretForm && roleAtLeast(p.org.role, "admin")) {
     const f = ui.secretForm;
     const i = ui.integrations.data?.integrations.find((x) => x.kind === f.kind && x.scope === f.scope);
-    if (i) return secretFormModal(i, f);
+    if (i) return menu + secretFormModal(i, f);
   }
-  return "";
+  return menu;
 }
 
 // ── the screen ───────────────────────────────────────────────────────────────
@@ -668,8 +697,8 @@ export function orgSettingsView(p: OrgSettingsProps): string {
   const body = tab === "integrations" ? integrationsTab(p.org, p.ui)
     : tab === "repos" ? reposTab(p.org, p.ui)
     : tab === "environments" ? environmentsTab(p.org, p.ui)
-    : tab === "members" ? membersTab(p.org, p.ui, p.me, p.identity ?? null)
-    : tab === "notifications" ? notificationsTab(p.org, p.notif)
+    : tab === "members" ? membersTab(p.org, p.ui, p.me, p.identity ?? null, p.dd)
+    : tab === "notifications" ? notificationsTab(p.org, p.notif, p.dd)
     : generalTab(p.org, p.ui);
   const logins = roleAtLeast(p.org.role, "admin") ? p.identity?.groups.length ?? 0 : 0;
   // The checklist's slot is always there (empty once setup is done), so the tab bar under it is
