@@ -81,6 +81,22 @@ default.
 Another branch (`feat/github-app`) adds `0043_github_app.sql` and a release entry at the same spot in
 `web/src/releases.ts`: whichever merges second renumbers its release to 0.20.
 
+### Sync you can see, and AI summaries per org (branch `feat/sync-and-summaries`, on top of `feat/plans` — NOT merged)
+
+`docs/architecture/sync.md` (what Sync GitHub does, the run record, the routes) and `plans.md` › AI
+summaries are the whole of it. In short: a sync is a recorded RUN (`sync_runs`, `0046_sync_runs`, additive)
+that reports its phase and counts per batch, holds a per-org lock, and is readable by every member at
+`GET /api/o/:slug/sync`; the Sync panel (`web/src/sync.ts`) replaces the blocking modal. One platform
+`GEMINI_API_KEY` serves every org: each summarizer call is counted per org (`org_usage_daily`,
+`summary*` metrics) and the new monthly limit `ai_summaries` turns summaries off for an org that has used
+its allowance — the item shows its excerpt, and a later Sync fills it in.
+Owner's calls before it ships: the allowance numbers (300 / 3,000 / unlimited are placeholders), how long
+run records are kept (90 days), and setting the key (`wrangler secret put GEMINI_API_KEY`) — summaries are
+off until then. Merge notes: it adds release 0.20 at the top of `web/src/releases.ts` (renumber after
+whatever merges first), `src/sync/runs.ts` asks `resolveCredential(…, "github_token", "")` whether a GitHub
+credential EXISTS (`readiness`) — the GitHub App branch must make that ask its own credential source — and
+the limit shows in `web/src/org-plan.ts` through the existing limit list (one added line in `limitRow`).
+
 ### Changed for API clients since the pushed commit
 
 | Route / tool | Was | Is |
