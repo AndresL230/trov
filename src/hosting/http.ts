@@ -73,7 +73,8 @@ export function hostFetch(hosts: readonly string[], fetchImpl: typeof fetch = fe
     if (u.username || u.password) throw new HostRefusedError("the URL carries credentials");
     if (!allowed.has(u.hostname.toLowerCase())) throw new HostRefusedError(`${u.hostname} is not one of the provider's API hosts`);
     if (u.port && u.port !== "443") throw new HostRefusedError("not the default https port");
-    return fetchImpl(u.toString(), { ...init, redirect: "manual", signal: init.signal ?? AbortSignal.timeout(timeoutMs) });
+    // `await`, so a fetch that throws synchronously (a test stub) rejects THIS promise, never floats one.
+    return await fetchImpl(u.toString(), { ...init, redirect: "manual", signal: init.signal ?? AbortSignal.timeout(timeoutMs) });
   };
 }
 
