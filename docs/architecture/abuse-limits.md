@@ -16,6 +16,7 @@ racing requests cannot both take the last unit. D1 only: no Durable Object, no Q
 | `test_send` | 20 / person / UTC day | `POST …/notifications/test-send` |
 | `email_change` | 5 / person / UTC day | `PUT …/notifications/prefs` and `PUT …/notifications/persons/:handle`, only when the address CHANGES to a non-empty one (the admin route spends the admin's) |
 | `avatar_upload` | 20 / person / UTC day | `POST …/people/me/avatar`, before the body is read |
+| `org_logo_upload` | 20 / person / UTC day | `POST /api/o/:slug/logo` (admin+), before the body is read — across every org the person administers |
 | `handle_check` | 60 / caller / UTC hour | `GET /auth/handle-check` — the signed-in person, or `onboard:<provider>:<subject>` while onboarding (a fresh onboard cookie does not reset it) |
 
 - A refusal is **429** `{ "error": "rate_limited", "retry_after": <seconds> }` with a `Retry-After` header, and

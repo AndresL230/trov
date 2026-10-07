@@ -79,8 +79,9 @@ export function createOrgLogoActions(host: OrgLogoHost): { act(name: string): bo
       .catch((e) => refused(e, true));
   }
 
-  // The hidden input the menu's "Upload image" row clicks (a file has no string value to dispatch).
-  mount.addEventListener("change", (e) => {
+  // The hidden input the menu's "Upload image" row clicks (a file has no string value to dispatch). On the
+  // document, like this controller's other listener: `change` bubbles, and the attribute names the input.
+  document.addEventListener("change", (e) => {
     const el = e.target;
     if (!(el instanceof HTMLInputElement) || el.type !== "file" || !el.hasAttribute("data-orglogo-file")) return;
     upload(el.files?.[0]);
