@@ -1,0 +1,8 @@
+{
+  "id": "team_a1B2c3D4e5F6g7H8i9J0k1L2",
+  "slug": "acme",
+  "name": "Acme Learning",
+  "avatar": null,
+  "createdAt": 1735689600000,
+  "membership": { "role": "OWNER", "confirmed": true, "createdAt": 1735689600000 }
+}

@@ -1,0 +1,15 @@
+{
+  "id": "evt_Hk7mN2pQ4rS6tU8vW0xY",
+  "type": "integration-configuration.removed",
+  "createdAt": 1791376200000,
+  "region": "iad1",
+  "payload": {
+    "team": { "id": "team_a1B2c3D4e5F6g7H8i9J0k1L2" },
+    "user": { "id": "Xk2mP9qL4rT7vW1yZ3bN5cD8" },
+    "configuration": {
+      "id": "icfg_Rt5uV6wX7yZ8aB9cD0eF1gH2",
+      "projectSelection": "selected",
+      "projects": ["prj_Qm3xT8vLp2Rk7Yw4Nf6Hs9Bd1Cz5"]
+    }
+  }
+}

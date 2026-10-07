@@ -1,0 +1,6 @@
+Recorded-shape Vercel API responses (field names from `vercel/sdk` / `vercel/vercel` source, values invented, 2026-10) — used by `test/hosting.provider.vercel.test.ts` and kept as dev / design stubs.
+
+- `deployments.production.json` — `GET /v7/deployments?projectId=web&limit=20&target=production&teamId=…`: one row per mapped state (QUEUED, INITIALIZING, BUILDING, READY, ERROR, CANCELED, BLOCKED, DELETED) plus a CLI deploy with an empty `meta`. `deployments.preview.json` — the same call without `target`: previews (`target: null`) of `main` and a feature branch, a production row and a `staging` custom-environment row.
+- `project.json` — `GET /v9/projects/{idOrName}`; `user.json` — `GET /v2/user`; `team.json` — `GET /v2/teams/{teamId}`; `error.forbidden.json` — Vercel's `{ error: { code, message } }` envelope.
+- `oauth-access-token.{team,personal}.json` — `POST /v2/oauth/access_token` (the test swaps in its own token); `webhook.integration-configuration.removed.json` — the uninstall delivery.
+- UNCONFIRMED: the `meta` commit key names (`githubCommitSha` / `…Ref` / `…Message`), the uninstall payload's path to the configuration id (`payload.configuration.id`), and whether `target` can be absent on a list row.
