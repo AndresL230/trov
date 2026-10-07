@@ -12,6 +12,7 @@ import {
   type BillingInterval, type BillingPlanOffer, type PurchasablePlan,
 } from "@shared/billing";
 import type { PlanId } from "@shared/plans";
+import { isLiveStripeKey, loopbackOrigin } from "../platform/loopback";
 
 /** The one host the key is ever sent to. */
 export const STRIPE_API = "https://api.stripe.com";
@@ -28,30 +29,26 @@ export interface BillingConfig {
 
 const set = (v: string | undefined): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
 
-/** `STRIPE_TEST_API_BASE` when it is a loopback http origin, else null. */
-function loopbackBase(v: string | undefined): string | null {
-  const raw = set(v);
-  if (!raw) return null;
-  try {
-    const u = new URL(raw);
-    return u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost") ? u.origin : null;
-  } catch {
-    return null;
-  }
-}
+/** What `holdsLiveKey` reads. */
+export type LiveKeyEnv = Pick<Env, "STRIPE_SECRET_KEY">;
+/** The Worker holds a LIVE Stripe key — whether or not billing is otherwise configured. What every local
+ *  stand-in asks before it is honoured (here, and src/sync/local-upstream.ts): none is, beside a live key.
+ *  Answers a boolean; the key goes nowhere. */
+export const holdsLiveKey = (env: LiveKeyEnv): boolean => isLiveStripeKey(env.STRIPE_SECRET_KEY);
 
 /** The configuration, or null when billing is off (no key, or no webhook secret). */
 export function billingConfig(env: Env): BillingConfig | null {
   const secretKey = set(env.STRIPE_SECRET_KEY), webhookSecret = set(env.STRIPE_WEBHOOK_SECRET);
   if (!secretKey || !webhookSecret) return null;
-  const mode = /^(sk|rk)_live_/.test(secretKey) ? "live" : "test";
+  const mode = isLiveStripeKey(secretKey) ? "live" : "test";
   const price = (month: string | undefined, year: string | undefined): Partial<Record<BillingInterval, string>> => {
     const m = set(month), y = set(year);
     return { ...(m ? { month: m } : {}), ...(y ? { year: y } : {}) };
   };
   return {
     secretKey, webhookSecret, mode,
-    apiBase: (mode === "test" ? loopbackBase(env.STRIPE_TEST_API_BASE) : null) ?? STRIPE_API,
+    // The stand-in (`STRIPE_TEST_API_BASE`): a loopback http origin, and never with a live key (src/platform/loopback.ts).
+    apiBase: (mode === "test" ? loopbackOrigin(env.STRIPE_TEST_API_BASE) : null) ?? STRIPE_API,
     prices: {
       personal: price(env.STRIPE_PRICE_PERSONAL, env.STRIPE_PRICE_PERSONAL_YEARLY),
       team: price(env.STRIPE_PRICE_TEAM, env.STRIPE_PRICE_TEAM_YEARLY),

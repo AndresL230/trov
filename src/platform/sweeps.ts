@@ -10,10 +10,18 @@ import {
   DAY, FAST_KINDS, FAST_METRICS, FAST_RETENTION_DAYS, MIDNIGHT_TAIL, PRODUCT_DAILY_RETENTION_DAYS,
   PRODUCT_GLOB_SQL, PRODUCT_HOURLY_RETENTION_DAYS, USAGE_GLOB_SQL, USAGE_RETENTION_DAYS,
 } from "../repo/store";
+import { SYNC_RUN_RETENTION_DAYS } from "@shared/sync";
 
 /** Every pending handoff, in any org, past its `expires_at` flips to expired. Returns how many flipped. */
 export async function expireDueHandoffs(p: PlatformContext, nowMs: number): Promise<number> {
   const res = await run(p, `UPDATE handoffs SET status = 'expired' WHERE status = 'pending' AND expires_at < ?`, new Date(nowMs).toISOString());
+  return res.meta.changes ?? 0;
+}
+
+/** Sync GitHub run records (0046_sync_runs) older than `SYNC_RUN_RETENTION_DAYS`, in every org — the
+ *  daily cron. A run still in progress is far younger than the bound. Returns how many were deleted. */
+export async function pruneSyncRuns(p: PlatformContext, now: number): Promise<number> {
+  const res = await run(p, `DELETE FROM sync_runs WHERE started_at < ?`, new Date(now - SYNC_RUN_RETENTION_DAYS * DAY).toISOString());
   return res.meta.changes ?? 0;
 }
 

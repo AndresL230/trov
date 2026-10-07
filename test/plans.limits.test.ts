@@ -11,7 +11,7 @@ import { ensureMember, ORG_A, ORG_B, platformCtx, tenantCtx } from "./helpers/te
 import { call, one, rows, exec, SUPERADMIN } from "./helpers/orgs";
 import { app } from "../src/routes";
 import {
-  PLANS, PLAN_IDS, LIMIT_KEYS, resolveEntitlements, parseOverrides, storedOverrides, planRefusal, planRefusalSentence, formatLimit, formatUse, overLimits,
+  PLANS, PLAN_IDS, LIMIT_KEYS, resolveEntitlements, parseOverrides, storedOverrides, planRefusal, planRefusalSentence, formatLimit, formatUse, limitPhrase, overLimits,
   type OrgPlanView, type PlanRefusal,
 } from "@shared/plans";
 import type { PlatformOrgRow } from "@shared/orgs";
@@ -101,6 +101,19 @@ describe("entitlements — the plan's defaults with the org's overrides on top",
     expect(formatLimit("artifact_bytes", 5 * 1024 ** 3)).toBe("5 GB");
     expect(formatUse("seats", 7, 10)).toBe("7 of 10");
     expect(formatUse("seats", 7, null)).toBe("7");
+    // Counts carry thousands separators — in the ONE formatter, so the Plan block, Platform and the pricing page agree.
+    expect(formatLimit("ai_summaries", 3000)).toBe("3,000");
+    expect(formatLimit("ai_summaries", 300)).toBe("300");
+    expect(formatLimit("ai_summaries", null)).toBe("Unlimited");
+    expect(formatUse("ai_summaries", 1212, 3000)).toBe("1,212 of 3,000 this month");
+    expect(formatUse("ai_summaries", 12345, null)).toBe("12,345");
+    expect(limitPhrase("ai_summaries", 3000)).toEqual(["3,000", "AI summaries per month"]);
+    expect(limitPhrase("ai_summaries", null)).toEqual(["Unlimited", "AI summaries"]);
+    expect(limitPhrase("agent_connections", 5)).toEqual(["5", "agent connections per person"]);
+    expect(limitPhrase("seats", 1)).toEqual(["1", "seat"]);
+    expect(limitPhrase("artifact_bytes", 5 * 1024 ** 3)).toEqual(["5 GB", "artifact storage"]);
+    expect(planRefusal({ plan: "enterprise", overrides: { repositories: 1500 }, status: "active" }, "repositories", 1500)?.message)
+      .toBe("This organization has reached the 1,500 repositories its Enterprise plan includes.");
     expect(overLimits(PLANS.personal.entitlements, { seats: 4, repositories: 1, environments: 3 })).toEqual(["seats", "environments"]);
   });
 });
@@ -363,7 +376,7 @@ describe("GET /api/o/:slug/plan and PUT /api/platform/orgs/:slug/plan", () => {
     expect(view).toEqual({
       plan: "team", name: "Team", description: PLANS.team.description, status: "active", source: "granted", period_end: null,
       entitlements: PLANS.team.entitlements, overridden: [], seats: { members: 2, pending: 1 },
-      usage: { seats: 3, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0 }, over: [],
+      usage: { seats: 3, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0 }, over: [],
       billing: null, // a granted org: nothing about payment (0045_billing)
     });
     expect((await call("GET", "/api/o/planview/plan", await loner("outsider"))).status).toBe(404);

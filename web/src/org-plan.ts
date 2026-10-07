@@ -11,7 +11,7 @@
 // before a refusal, what the server would say.
 
 import {
-  LIMIT_KEYS, LIMITS, PLANS, formatLimit, formatUse, planRefusal, planRefusalSentence, resolveEntitlements,
+  LIMIT_KEYS, LIMITS, PLANS, formatLimit, formatUse, limitNoun, overLimits, planRefusal, planRefusalSentence, resolveEntitlements,
   type LimitKey, type OrgPlanView,
 } from "@shared/plans";
 import { billingDate, isPast, type PurchasablePlan } from "@shared/billing";
@@ -50,10 +50,12 @@ function limitRow(v: OrgPlanView, key: LimitKey): string {
   const over = v.over.includes(key);
   // A count nobody can do anything with is noise: an unlimited limit shows what is used, and "Unlimited".
   const use = cap === null ? `${formatLimit(key, v.usage[key])} used &middot; ${formatLimit(key, null)}` : esc(formatUse(key, v.usage[key], cap));
+  // A monthly allowance that is used up (AI summaries) is not "over": the row says what happens instead.
+  const spent = d.period && d.atCap && cap !== null && v.usage[key] >= cap ? `<div data-limit-spent style="font-size:12px;line-height:1.45;color:var(--fg-70);margin-top:3px">${esc(d.atCap)}</div>` : "";
   return `<li class="cnpy-plan-row" data-limit="${key}"${over ? ' data-over="1"' : ""}>
     <div style="flex:1 1 200px;min-width:0">
       <div style="font-size:13px;font-weight:500;color:var(--fg)">${esc(d.label)}${d.per === "person" ? ` <span style="font-weight:400;color:var(--fg-40)">per person</span>` : ""}</div>
-      <div style="font-size:12px;line-height:1.45;color:var(--fg-40);margin-top:1px">${esc(d.counts)}</div>
+      <div style="font-size:12px;line-height:1.45;color:var(--fg-40);margin-top:1px">${esc(d.counts)}</div>${spent}
     </div>
     <div style="flex:none;text-align:right;font-size:13px;font-variant-numeric:tabular-nums;color:var(--fg-70)">${use}${over ? `<div style="font-size:12px;font-weight:500;color:var(--amber);margin-top:1px">Over the limit</div>` : ""}</div>
   </li>`;
@@ -84,16 +86,20 @@ export function isSmallerPlan(v: OrgPlanView, to: PurchasablePlan): boolean {
  */
 export function planSwitchCopy(v: OrgPlanView, orgName: string, to: PurchasablePlan): { title: string; body: string; confirmLabel: string; busyLabel: string } {
   const next = resolveEntitlements(to);
-  const over = LIMIT_KEYS.filter((k) => LIMITS[k].per === "org" && next[k] !== null && v.usage[k] > (next[k] as number));
+  // `overLimits` is the one "over" test: a monthly allowance (AI summaries) is never over a limit and
+  // refuses no addition — what the smaller plan's allowance means is said in its own sentence.
+  const over = overLimits(next, v.usage).filter((k) => LIMITS[k].per === "org");
+  const spent = LIMIT_KEYS.filter((k) => LIMITS[k].period && LIMITS[k].atCap && next[k] !== null && v.usage[k] >= (next[k] as number))
+    .map((k) => ` ${LIMITS[k].label} this ${LIMITS[k].period} are already at ${PLANS[to].name}'s ${formatLimit(k, next[k])}. ${LIMITS[k].atCap}`).join("");
   const seats = next.seats !== null && v.usage.seats > next.seats
     ? `${PLANS[to].name} is for ${next.seats === 1 ? "one person" : `up to ${next.seats} people`}, and ${orgName} has ${v.usage.seats} (members and pending invitations). `
     : "";
   const effect = over.length
-    ? `${seats}Nobody is removed and nothing is deleted, but it will be over the plan's ${over.map((k) => LIMITS[k].label.toLowerCase()).join(" and ")}: no more can be added until it is back under.`
+    ? `${seats}Nobody is removed and nothing is deleted, but it will be over the plan's ${over.map(limitNoun).join(" and ")}: no more can be added until it is back under.`
     : `${orgName} fits within ${PLANS[to].name}, so nothing it has changes.`;
   return {
     title: `Switch ${orgName} to ${PLANS[to].name}?`,
-    body: `${effect} Stripe shows the new price and what is credited, and takes the confirmation.`,
+    body: `${effect}${spent} Stripe shows the new price and what is credited, and takes the confirmation.`,
     confirmLabel: "Continue to Stripe", busyLabel: "Opening Stripe…",
   };
 }
@@ -145,7 +151,7 @@ export function planBlock(s: OrgSlice<OrgPlanView | null>, role: OrgRole, b: Org
   const head = orgHead("Plan", "", null, "org-plan-t");
   if (!s.data) return `<section aria-labelledby="org-plan-t" style="margin-top:22px">${head}${sliceNote(s, "the plan", false)}</section>`;
   const v = s.data;
-  const overNames = v.over.map((k) => LIMITS[k].label.toLowerCase());
+  const overNames = v.over.map(limitNoun);
   const over = v.status === "canceled"
     ? `<div role="status" class="cnpy-plan-note" style="border-radius:9px">This plan has ended. Everything here stays as it is and keeps working, but nothing a limit covers can be added until the plan is renewed.</div>`
     : overNames.length

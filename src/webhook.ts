@@ -2,7 +2,8 @@ import type { CapturedEvent } from "@shared/contract";
 import type { Env } from "./env";
 import { platform, type TenantContext } from "./data/context";
 import { ingestEvent, ingestRepoEvent } from "./consumer";
-import { type Summarizer, type PrSummary, type IssueSummary, geminiPrSummarizer, geminiIssueSummarizer, storePrSummary, storeIssueSummary } from "./tools/summarize";
+import { type Summarizer, type PrSummary, type IssueSummary, storePrSummary, storeIssueSummary } from "./tools/summarize";
+import { orgSummarizers, type OrgSummarizers, type OrgSummarizersOpts } from "./plans/summaries";
 import { applyEventProgress } from "./tools/progress";
 import { repoEventsFromDelivery, metricsFromStatus } from "./repo/capture";
 import { orgEnvironments } from "./repo/config";
@@ -288,6 +289,7 @@ async function summarizePrSeam(ctx: TenantContext, summarizer: Summarizer<PrSumm
 // appear in anyone's to-do). Action isn't distinguishable from event_type
 // alone (every issue action is captured as event_type:"issue"), so it's read
 // back off the event's own raw JSON.
+const issueNeedsSummary = (event: CapturedEvent): boolean => (JSON.parse(event.raw) as { action?: string }).action === "assigned";
 async function summarizeIssueSeam(ctx: TenantContext, summarizer: Summarizer<IssueSummary> | null, event: CapturedEvent): Promise<void> {
   const parsed = JSON.parse(event.raw) as { action: string; issue: { number: number; title: string; body: string | null } };
   if (parsed.action !== "assigned") return;
@@ -341,6 +343,8 @@ export interface DeliveryOpts {
   waitUntil?: (p: Promise<unknown>) => void;
   /** The ticket mirror (injectable so a test can make it throw). */
   mirror?: typeof mirrorIssue;
+  /** The org summarizer's Gemini call (its fetch, stubbed in tests — never the network). */
+  gemini?: OrgSummarizersOpts["gemini"];
 }
 
 export async function captureDelivery(
@@ -365,6 +369,13 @@ export async function captureDelivery(
     payload = null; // both derivations treat a non-object payload as []
   }
 
+  // THE summarizer choice for this org (src/plans/summaries.ts: the platform key, the plan's monthly
+  // allowance, every call counted) — made at most once per delivery, and only by an event that needs
+  // a summary. Metering rides `waitUntil` when the delivery has one.
+  let chosen: Promise<OrgSummarizers> | null = null;
+  const summarizers = (): Promise<OrgSummarizers> =>
+    (chosen ??= orgSummarizers(env, ctx, { actor: "github-webhook", waitUntil: opts?.waitUntil, gemini: opts?.gemini }));
+
   let captured = 0;
   let unchanged = 0;
   if (forWork) {
@@ -374,17 +385,16 @@ export async function captureDelivery(
       captured++;
       if (ev.event_type === "pr_merged" || ev.event_type === "pr_closed") {
         // `!== undefined`, not `??`: an EXPLICIT `summarizer: null` means "no
-        // summarizer" — `??` skips null as well and fell through to the env one.
-        const summarizer = opts?.summarizer !== undefined
-          ? opts.summarizer
-          : env.GEMINI_API_KEY ? geminiPrSummarizer(env.GEMINI_API_KEY) : null;
+        // summarizer" — `??` skips null as well and fell through to the org's one.
+        const summarizer = opts?.summarizer !== undefined ? opts.summarizer : (await summarizers()).pr();
         await summarizePrSeam(ctx, summarizer, ev);
+        if (!summarizer && opts?.summarizer === undefined) await (await summarizers()).skipped("pr");
       } else if (ev.event_type === "issue") {
         await progressSeam(ctx, payload);
-        const issueSummarizer = opts?.issueSummarizer !== undefined
-          ? opts.issueSummarizer
-          : env.GEMINI_API_KEY ? geminiIssueSummarizer(env.GEMINI_API_KEY) : null;
+        if (!issueNeedsSummary(ev)) continue;
+        const issueSummarizer = opts?.issueSummarizer !== undefined ? opts.issueSummarizer : (await summarizers()).issue();
         await summarizeIssueSeam(ctx, issueSummarizer, ev);
+        if (!issueSummarizer && opts?.issueSummarizer === undefined) await (await summarizers()).skipped("issue");
       }
     }
 

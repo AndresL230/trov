@@ -17,7 +17,7 @@
 // Every sentence below describes what Trov does today (docs/architecture/plans.md,
 // organizations.md). No refunds, trials, discounts or compliance claims: none exist.
 
-import { LIMIT_KEYS, LIMITS, PLAN_IDS, PLANS, formatLimit, type LimitKey, type PlanDef, type PlanId } from "@shared/plans";
+import { LIMIT_KEYS, LIMITS, PLAN_IDS, PLANS, formatLimit, limitNoun, limitPhrase, type PlanDef, type PlanId } from "@shared/plans";
 import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, purchaseHref, type PlanPricing } from "@shared/pricing";
 import { esc, attr } from "./ui";
 import { SITE_CONTACT, TROV_REPO, siteFooter, siteMark } from "./site-chrome";
@@ -52,13 +52,6 @@ function accentPlan(pricing: Record<PlanId, PlanPricing>): PlanId | null {
   return buyable.find((id) => pricing[id].badge) ?? buyable[buyable.length - 1] ?? null;
 }
 
-/** A limit as a card line: the value, then what it counts ("10" + "seats", "5 GB" + "artifact storage"). */
-function limitLine(key: LimitKey, value: number | null): [string, string] {
-  const d = LIMITS[key];
-  const what = d.unit === "bytes" ? d.label.toLowerCase() : value === 1 ? d.one : d.many;
-  return [formatLimit(key, value), `${what}${d.per === "person" ? " per person" : ""}`];
-}
-
 const CHECK = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" aria-hidden="true" style="flex:none;margin-top:3px"><path d="M20 6 9 17l-5-5"></path></svg>`;
 
 // ── the cards ────────────────────────────────────────────────────────────────
@@ -87,7 +80,8 @@ function planCta(def: PlanDef, price: PlanPricing, accent: boolean, signedIn: bo
 
 function planCard(def: PlanDef, price: PlanPricing, i: number, accent: boolean, signedIn: boolean, h: number): string {
   const limits = LIMIT_KEYS.map((k) => {
-    const [value, what] = limitLine(k, def.entitlements[k]);
+    // The value, then what it counts: "10" + "seats", "5 GB" + "artifact storage", "3,000" + "AI summaries per month".
+    const [value, what] = limitPhrase(k, def.entitlements[k]);
     return `<li><b>${esc(value)}</b> ${esc(what)}</li>`;
   }).join("");
   return `<article class="site-st site-plan${accent ? " is-accent" : ""}" style="border-radius:12px;${at(i * 110)}" aria-labelledby="site-plan-${def.id}">
@@ -126,7 +120,7 @@ function comparison(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>, h: nu
   const rows = LIMIT_KEYS.map((k) => {
     const d = LIMITS[k];
     const cells = defs.map((def) => `<td role="cell" data-plan="${attr(def.name)}">${esc(formatLimit(k, def.entitlements[k]))}</td>`).join("");
-    return `<tr role="row"><th role="rowheader" scope="row"><span class="site-cmp-label">${esc(d.label)}${d.per === "person" ? ", per person" : ""}</span><span class="site-cmp-counts">${esc(d.counts)}</span></th>${cells}</tr>`;
+    return `<tr role="row"><th role="rowheader" scope="row"><span class="site-cmp-label">${esc(d.label)}${d.per === "person" ? ", per person" : ""}${d.period ? `, per ${d.period}` : ""}</span><span class="site-cmp-counts">${esc(d.counts)}</span></th>${cells}</tr>`;
   }).join("");
   const sized = defs.filter((def) => !pricing[def.id].selfServe).map((def) => def.name);
   return `<h${h} class="site-price-h">Limits, side by side</h${h}>
@@ -160,7 +154,7 @@ export interface PricingQuestion { q: string; /** Authored HTML (this file's own
 
 export function pricingQuestions(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>): PricingQuestion[] {
   const byTalk = defs.find((def) => !pricing[def.id].selfServe);
-  const limitNames = LIMIT_KEYS.map((k) => LIMITS[k].label.toLowerCase());
+  const limitNames = LIMIT_KEYS.map(limitNoun);
   const list = `${limitNames.slice(0, -1).join(", ")} and ${limitNames[limitNames.length - 1]}`;
   const qs: PricingQuestion[] = [
     { q: "What counts as a seat?", a: "A member of the organization, or an invitation that has not been answered yet. A pending invitation holds its seat, so an organization can never accept more people than it has seats." },

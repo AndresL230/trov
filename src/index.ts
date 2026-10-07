@@ -7,6 +7,7 @@ import { BILLING_DONE_PATH } from "@shared/billing";
 import { APP_WEBHOOK_PATH, handleGithubAppWebhook } from "./github-app/webhook";
 import { resolveBearerTenant } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
+import { pruneSyncRuns } from "./platform/sweeps";
 import { platform } from "./data/context";
 import { pruneLimits } from "./platform/limits";
 import { mcpUnauthorized, oauthOrigin } from "./auth/oauth";
@@ -108,6 +109,7 @@ export default {
       await pruneUsage(platform(env, "system")).catch(() => undefined); // org_usage_daily retention (400 days)
       await pruneLimits(platform(env, "system")).catch(() => undefined); // abuse_counters of past windows
       await pruneEvents(platform(env, "system")).catch(() => undefined); // billing_events past Stripe's retry horizon
+      await pruneSyncRuns(platform(env, "system"), controller.scheduledTime).catch(() => undefined); // sync_runs retention (90 days)
       await handleNotificationCron(env, controller.cron, new Date(controller.scheduledTime));
       return;
     }

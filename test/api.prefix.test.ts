@@ -207,6 +207,52 @@ describe("plans and grants (0044_plans)", () => {
   });
 });
 
+describe("Sync GitHub (0046_sync_runs)", () => {
+  const RUN = { id: 9, repo: "acme/widgets", by: "andres", status: "running", batch: 1, batches: 3 };
+  it("the status is read under the org; the first batch STARTS a run, a later one names it", async () => {
+    const sent: { method: string; url: string; body: string | null }[] = [];
+    vi.stubGlobal("fetch", async (input: unknown, init?: RequestInit) => {
+      sent.push({ method: init?.method ?? "GET", url: String(input), body: typeof init?.body === "string" ? init.body : null });
+      return respond(200, { ok: true, summaryBudgetExhausted: true, run: RUN, summaries: { status: "on" } });
+    });
+    await api.getSync();
+    const first = await api.adminBackfill({ batch: 1, of: 10, start: true });
+    const second = await api.adminBackfill({ batch: 2, of: 10, run: 9 });
+    expect(sent.map((a) => `${a.method} ${a.url}`)).toEqual(["GET /api/o/acme/sync", "POST /api/o/acme/admin/backfill", "POST /api/o/acme/admin/backfill"]);
+    expect(JSON.parse(sent[1].body ?? "null")).toEqual({ batch: 1, of: 10, start: true });
+    expect(JSON.parse(sent[2].body ?? "null")).toEqual({ batch: 2, of: 10, run: 9 });
+    expect(first).toMatchObject({ status: 200, body: { run: RUN, summaryBudgetExhausted: true } });
+    expect(second.status).toBe(200);
+  });
+
+  it("a refused batch is an ANSWER carrying the run to show — 409 in progress, 503 / 502 failed — never a throw", async () => {
+    answer = () => respond(409, { error: "sync_running", run: RUN });
+    expect(await api.adminBackfill({ batch: 1, of: 10, start: true })).toEqual({ status: 409, error: "sync_running", run: RUN });
+    answer = () => respond(503, { error: "github 403", run: { ...RUN, status: "failed" } });
+    expect(await api.adminBackfill({ batch: 1, of: 10, start: true })).toEqual({ status: 503, error: "github 403", run: { ...RUN, status: "failed" } });
+    answer = () => respond(503, { error: "service token or repo not configured" });
+    expect(await api.adminBackfill({ batch: 1, of: 10, start: true })).toEqual({ status: 503, error: "service token or repo not configured", run: null });
+    answer = () => respond(502, { error: "sync failed", run: { ...RUN, status: "failed" } });
+    expect((await api.adminBackfill({ batch: 2, of: 10, run: 9 })).status).toBe(502);
+    // Not JSON at all (a proxy's error page), and a 200 with no run: still an answer, with a status and no run.
+    answer = () => new Response("<html>bad gateway</html>", { status: 502 });
+    expect(await api.adminBackfill({ batch: 1, of: 10, start: true })).toEqual({ status: 502, error: "502", run: null });
+    answer = () => respond(200, {});
+    expect(await api.adminBackfill({ batch: 1, of: 10, start: true })).toMatchObject({ status: 502, run: null });
+  });
+
+  it("a 401 is still Unauthorized, and with no org open nothing is sent", async () => {
+    answer = () => respond(401, { error: "unauthorized" });
+    await expect(api.adminBackfill({ batch: 1, of: 10, start: true })).rejects.toBeInstanceOf(api.Unauthorized);
+    await expect(api.getSync()).rejects.toBeInstanceOf(api.Unauthorized);
+    api.setApiOrg(null);
+    asked = [];
+    await expect(api.getSync()).rejects.toMatchObject({ status: 409, message: "org_required" });
+    await expect(api.adminBackfill({ batch: 1, of: 10, start: true })).rejects.toMatchObject({ message: "org_required" });
+    expect(asked).toEqual([]);
+  });
+});
+
 describe("the SPA sends nothing around the prefix", () => {
   const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/([^:"'`])\/\/ .*$/gm, "$1");
   const files = Object.entries(sources).map(([path, src]) => ({ name: path.split("/").pop()!, src: code(src) }));

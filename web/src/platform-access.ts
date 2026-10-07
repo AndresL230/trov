@@ -11,7 +11,7 @@
 // it — nothing here touches a platform.ts value at module load.)
 
 import {
-  PLANS, PLAN_IDS, LIMIT_KEYS, LIMITS, GRANT_EXPIRY_DAYS, GRANT_NOTE_MAX, formatBytes, formatLimit, formatUse, resolveEntitlements, seatsPhrase,
+  PLANS, PLAN_IDS, LIMIT_KEYS, LIMITS, GRANT_EXPIRY_DAYS, GRANT_NOTE_MAX, formatBytes, formatLimit, formatUse, limitNoun, resolveEntitlements, seatsPhrase,
   type GrantTarget, type LimitKey, type PlanId, type PlanOverrides, type PlatformGrant, type PlatformOrgPlan,
 } from "@shared/plans";
 import { billingDate, isPast } from "@shared/billing";
@@ -24,7 +24,7 @@ import { adminField, adminError, adminTarget, type AdminKind } from "./platform"
 // ── state ────────────────────────────────────────────────────────────────────
 /** The five limits as the dialogs' text fields: "" = the plan's own value. */
 export type LimitDraft = Record<LimitKey, string>;
-export const blankLimits = (): LimitDraft => ({ seats: "", repositories: "", environments: "", artifact_bytes: "", agent_connections: "" });
+export const blankLimits = (): LimitDraft => ({ seats: "", repositories: "", environments: "", artifact_bytes: "", agent_connections: "", ai_summaries: "" });
 
 export type ExpiryChoice = "never" | `${(typeof GRANT_EXPIRY_DAYS)[number]}`;
 export interface GrantDraft {
@@ -128,7 +128,7 @@ function limitFields(o: { idPrefix: string; act: string; plan: PlanId; limits: L
   const base = PLANS[o.plan].entitlements;
   const fields = LIMIT_KEYS.map((k) => {
     const id = `${o.idPrefix}-${k}`;
-    const unit = LIMITS[k].unit === "bytes" ? " (GB)" : LIMITS[k].per === "person" ? " (per person)" : "";
+    const unit = LIMITS[k].unit === "bytes" ? " (GB)" : LIMITS[k].per === "person" ? " (per person)" : LIMITS[k].period === "month" ? " (per month)" : "";
     const own = base[k] === null ? "Unlimited" : LIMITS[k].unit === "bytes" ? String(+(base[k]! / GB).toFixed(2)) : String(base[k]);
     return `<div style="min-width:0">
       <label for="${attr(id)}" style="${FIELD_LABEL}">${esc(LIMITS[k].label)}${unit}</label>
@@ -155,7 +155,7 @@ const shortDate = (iso: string): string => new Date(iso).toLocaleDateString("en-
 function grantRow(g: PlatformGrant): string {
   const who = grantWho(g);
   const st = GRANT_STATUS[g.status];
-  const limits = LIMIT_KEYS.filter((k) => k in g.overrides).map((k) => `${LIMITS[k].label.toLowerCase()} ${formatLimit(k, g.overrides[k] ?? null).toLowerCase()}`);
+  const limits = LIMIT_KEYS.filter((k) => k in g.overrides).map((k) => `${limitNoun(k)} ${formatLimit(k, g.overrides[k] ?? null).toLowerCase()}`);
   const became = g.status === "used"
     ? (g.org ? `became <button type="button" data-act="platOpenOrg" data-arg="${attr(g.org.slug)}" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--fg-70);text-decoration:underline;text-underline-offset:2px">${esc(g.org.name)}</button>${g.used_by ? ` (@${esc(g.used_by)}, ${esc(relTime(g.used_at ?? g.created_at))})` : ""}` : "used")
     : g.status === "revoked" ? `revoked ${g.revoked_at ? esc(relTime(g.revoked_at)) : ""}${g.revoked_by ? ` by @${esc(g.revoked_by)}` : ""}`
@@ -298,7 +298,7 @@ export function orgPlanSection(o: { slug: string; name: string; plan?: PlatformO
     const cap = p.entitlements[k];
     const used = use[k];
     const over = cap !== null && used !== undefined && used > cap;
-    const value = used === undefined ? formatLimit(k, cap) : cap === null ? `${LIMITS[k].unit === "bytes" ? formatBytes(used) : used} used` : formatUse(k, used, cap);
+    const value = used === undefined ? formatLimit(k, cap) : cap === null ? `${formatLimit(k, used)} used` : formatUse(k, used, cap);
     return `<div data-limit="${k}" style="min-width:0">
       <div style="${FIELD_LABEL};margin-bottom:3px">${esc(LIMITS[k].label)}${k in p.overrides ? ` <span style="text-transform:none;letter-spacing:0;font-weight:500">&middot; set for this org</span>` : ""}</div>
       <div style="font-size:13.5px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--fg)">${esc(value)}${used === undefined || cap !== null ? "" : ` <span style="font-weight:400;color:var(--fg-40)">&middot; unlimited</span>`}${over ? ` <span style="font-size:12px;color:var(--amber)">over the limit</span>` : ""}</div>

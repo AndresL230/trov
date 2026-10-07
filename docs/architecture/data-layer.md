@@ -126,7 +126,7 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 
 | Where | Why |
 |---|---|
-| `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
+| `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture`, `pruneSyncRuns`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
 | `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`) | the cron's unit lists, the webhook's hook lookup and the GitHub App's installation → org lookup (`installationOrg`), before any org is known — ids, an environment key and a repo name |
 | `src/platform/repo.ts` `listPlatformOrgs` (`org_github_installations`) | the superadmin's org list: the GitHub account an org's installation is on — a name |
 | `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal` | credential lookup by HASH before any org is known (the row names the org), and the revoke of the one grant just found |

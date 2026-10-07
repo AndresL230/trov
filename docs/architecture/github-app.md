@@ -172,9 +172,11 @@ shows one sentence (`connectNoticeCopy`) and rewrites the address bar.
 - **The credential order** (`credential.ts` `resolveGithubCredential`): (a) the org's live, unsuspended
   installation — for a repository its account owns; (b) the org's stored `github_token`; (c) for
   SaplingLearn alone, the Worker's `GITHUB_SERVICE_TOKEN`. It throws for an MCP (bearer) context and for
-  a member, like `getSecret`. It is called only from modules `src/mcp.ts` cannot reach
-  (`src/repo/cron.ts`, `src/github-hook.ts`, `src/tools/backfill.ts`, `src/integrations/logo.ts`,
-  `src/github-app/*`) and the revealed token goes down as a parameter; `test/secrets.mcp.test.ts`
+  a member, like `getSecret`. `githubCredentialSource` answers WHERE that order would get it from
+  (`app` / `token` / null) without minting — what Sync GitHub's status asks (`sync.md` › The
+  credential). Both are called only from modules `src/mcp.ts` cannot reach
+  (`src/repo/cron.ts`, `src/github-hook.ts`, `src/tools/backfill.ts`, `src/sync/runs.ts`,
+  `src/integrations/logo.ts`, `src/github-app/*`) and the revealed token goes down as a parameter; `test/secrets.mcp.test.ts`
   forbids anything MCP-reachable from importing `src/github-app/` at all.
 - **When GitHub will not issue one.** 404 → the installation is gone: the binding is ended
   (`not_found`), audited as `system`. 403 naming a suspension → `suspended_at` is set. 401 (the App's own

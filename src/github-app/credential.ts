@@ -10,8 +10,9 @@
 //
 // This module resolves credentials, so NOTHING REACHABLE FROM src/mcp.ts MAY IMPORT IT
 // (test/secrets.mcp.test.ts): it is called from the modules that already resolved the token —
-// src/repo/cron.ts, src/github-hook.ts, src/tools/backfill.ts, src/integrations/logo.ts, and this
-// folder's routes and webhook — and the revealed value goes down to the readers as a parameter.
+// src/repo/cron.ts, src/github-hook.ts, src/tools/backfill.ts, src/sync/runs.ts (which only asks
+// WHERE it would come from — `githubCredentialSource`), src/integrations/logo.ts, and this folder's
+// routes and webhook — and the revealed value goes down to the readers as a parameter.
 //
 // An installation that cannot give a token does not cost the org its reads: the failure is recorded on
 // the binding (and ends or suspends it when GitHub says that is what happened), and the stored token
@@ -93,6 +94,28 @@ function tokenCredential(ctx: TenantContext, token: Secret): GithubCredential {
   };
 }
 
+/** Step 1 of the order, before any token is asked for: the org's live, unsuspended installation, when
+ *  the App can sign and the installation's account owns `repo`. */
+async function answeringInstallation(ctx: TenantContext, env: Env, repo: string | null | undefined): Promise<InstallationRow | null> {
+  const row = appCanSign(env) ? await liveInstallation(ctx) : null;
+  return row && row.suspended_at === null && covers(row, repo) ? row : null;
+}
+
+/**
+ * WHERE `resolveGithubCredential` would get the org's credential from, asked WITHOUT minting or
+ * revealing anything — `app`, `token`, or null when the org has none. The same order and the same
+ * access rule (it throws for a bearer context and for a member). It is what a status read asks
+ * (`GET /sync`, polled by every member's page): a read must not cost GitHub a token request.
+ *
+ * `app` is a statement about the binding, not a promise that GitHub will issue the token: a mint
+ * GitHub refuses is found by the run that needs it, which then falls back to the stored token.
+ */
+export async function githubCredentialSource(ctx: TenantContext, env: Env, opts: Pick<ResolveOpts, "repo"> = {}): Promise<GithubCredentialSource | null> {
+  if (ctx.via === "bearer" || ctx.role === "member") throw new SecretAccessError();
+  if (await answeringInstallation(ctx, env, opts.repo)) return "app";
+  return (await resolveCredential(ctx, env, "github_token", "")) ? "token" : null;
+}
+
 /**
  * The credential to read GitHub with for `ctx`'s org, or null when it has none. Same access rule as
  * `getSecret`: it THROWS for an MCP (bearer) context and for a plain member, before anything is looked
@@ -101,8 +124,8 @@ function tokenCredential(ctx: TenantContext, token: Secret): GithubCredential {
 export async function resolveGithubCredential(ctx: TenantContext, env: Env, opts: ResolveOpts = {}): Promise<GithubCredential | null> {
   if (ctx.via === "bearer" || ctx.role === "member") throw new SecretAccessError();
   const now = opts.now ?? Date.now();
-  const row = appCanSign(env) ? await liveInstallation(ctx) : null;
-  if (row && row.suspended_at === null && covers(row, opts.repo)) {
+  const row = await answeringInstallation(ctx, env, opts.repo);
+  if (row) {
     const scope = opts.repo ? repoScope(opts.repo) : INSTALLATION_SCOPE;
     const minted = await installationToken(env, row.installation_id, scope, opts.fetchImpl, now);
     if (minted.ok) return appCredential(ctx, env, row, scope, minted.token);

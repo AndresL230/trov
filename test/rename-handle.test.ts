@@ -149,6 +149,8 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // 0045_billing: a checkout the person started and the subscription it bought.
   await run(env.DB, `INSERT INTO billing_checkouts (ref, person, plan, session_id, created_at) VALUES ('rename-ref', ?, 'team', 'cs_rename', ?)`, handle, nowIso());
   await run(env.DB, `INSERT INTO billing_subscriptions (subscription_id, customer_id, person, plan, stripe_status, created_at, updated_at) VALUES ('sub_rename', 'cus_rename', ?, 'team', 'active', ?, ?)`, handle, nowIso(), nowIso());
+  // 0046_sync_runs: a Sync GitHub run the person started.
+  await run(env.DB, `INSERT INTO sync_runs (org_id, repo, started_by, started_at, updated_at, ended_at, status) VALUES (?, 'o/r', ?, ?, ?, ?, 'ok')`, org, handle, nowIso(), nowIso(), nowIso());
 }
 
 describe("renamePerson", () => {

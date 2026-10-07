@@ -153,7 +153,7 @@ describe("GET /api/platform/orgs[/:slug]", () => {
       // 0044_plans: an org from before plans is Enterprise — unlimited seats — and uses members + pending invites.
       plan: {
         plan: "enterprise", overrides: {}, status: "active", source: "granted", seats_used: 3,
-        entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null },
+        entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null },
       },
     });
     expect(list.find((o) => o.slug === "saplinglearn")).toMatchObject({ owners: [{ handle: SUPERADMIN, name: "Andres" }], member_count: 6 });

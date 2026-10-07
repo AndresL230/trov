@@ -122,6 +122,26 @@ its link is `billingStartHref` (one source) and it does NOT ask `GET /api/billin
 only after billing is on. Terms / Privacy need the paid-plan wording before live keys go in (not edited
 here: `web/src/legal.ts`).
 
+### Sync you can see, and AI summaries per org (branch `feat/sync-and-summaries`, merged with `main` at 0.21 — release 0.22)
+
+`docs/architecture/sync.md` (what Sync GitHub does, the credential it reads with, the run record, the
+routes) and `plans.md` › AI summaries are the whole of it. In short: a sync is a recorded RUN (`sync_runs`,
+`0046_sync_runs`, additive) that reports its phase and counts per batch, holds a per-org lock, and is
+readable by every member at `GET /api/o/:slug/sync`; the Sync panel (`web/src/sync.ts`) replaces the
+blocking modal. One platform `GEMINI_API_KEY` serves every org: each summarizer call is counted per org
+(`org_usage_daily`, `summary*` metrics) and the monthly limit `ai_summaries` turns summaries off for an org
+that has used its allowance — the item shows its excerpt, and a later Sync fills it in.
+Owner's calls before it ships: the allowance numbers (300 / 3,000 / unlimited are placeholders), how long
+run records are kept (90 days), and setting the key (`wrangler secret put GEMINI_API_KEY`) — summaries are
+off until then.
+What the merge with the GitHub App, plans, the pricing page and billing settled: the panel's "can a sync
+start", the batch route and the run all ask ONE credential source (`src/github-app/credential.ts` —
+`githubCredentialSource` for the ask, `resolveGithubCredential` for the read), and with none the panel
+sends an admin to Repositories where the App is configured and to Integrations where it is not; a plan
+that is past due still summarizes and a canceled one does not (`test/summaries.billing.test.ts`); the
+allowance shows on the pricing page and in the Plan block through `shared/plans.ts`'s one formatter.
+Not verified against the real services: a sync through a real installation token, and a real Gemini call.
+
 ### Changed for API clients since the pushed commit
 
 | Route / tool | Was | Is |

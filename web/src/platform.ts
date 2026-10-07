@@ -372,7 +372,7 @@ export function platformOrgView(p: PlatState): string {
   return wrap(`${head}
     ${o.plan ? `${sectionHead("Plan")}${orgPlanSection(o, d.usage?.sizes.artifact_bytes ?? null)}` : ""}
     ${sectionHead("People", ownerToggle, false, d.members.length + pending.length)}${ownerForm}${people}
-    ${sectionHead("Usage", "last 30 days")}${orgUsageBlock(d.usage, 30)}
+    ${sectionHead("Usage", "last 30 days")}${orgUsageBlock(d.usage, 30, d.summaries_enabled)}
     ${sectionHead("Recent audit entries")}${audit}`);
 }
 

@@ -17,6 +17,7 @@ import type {
 import type { DashboardData } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import type { RepoDashboard, RepoRefreshResult } from "@shared/repo";
+import type { SyncRunView, SyncStatusView, SyncSummariesView } from "@shared/sync";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
 import type {
@@ -449,23 +450,33 @@ export function listOrgAudit(slug: string, limit = 50): Promise<IntT.OrgAuditDTO
 // repo-capture reconcile on whichever batch ends the loop — including one that
 // hits the cap while the summary budget is still exhausted, which the server
 // otherwise has no way to see (src/tools/backfill.ts's isFinalBackfillBatch).
-export function adminBackfill(batch: number, of: number): Promise<{
+// A sync is a RUN of batches (docs/architecture/sync.md): the first batch sends `start: true`, each
+// later one the `run` id the first answered with. A refusal is an ANSWER here, not a throw — the
+// 409 (a run is already in progress) and the 503 / 502 of a failed batch carry the run to show.
+export interface SyncBatchBody { batch: number; of: number; start?: true; run?: number }
+export interface SyncBatchOk {
   ok: boolean;
   captured: number;
   unchanged: number;
   summarized: number;
   summaryBudgetExhausted: boolean;
-  prSummarizedCount: number;
-  issueSummarizedCount: number;
-  prs: number;
-  issues: number;
-  issuesToSummarize: number;
-  /** Present only on the batch that ends a Sync — the repo-capture reconcile
-   *  (src/repo/github.ts's reconcileRepo) rides that batch only. `failed` names
-   *  each arm of it that threw ("deployments", "runs", …); empty on a clean run. */
+  /** Present only on the batch that ends a Sync — the closing refresh rides that batch only. */
   repo?: { written: number; unchanged: number; failed: string[] };
-}> {
-  return postJson("/admin/backfill", { batch, of });
+  run: SyncRunView;
+  summaries: SyncSummariesView;
+}
+export type SyncBatchAnswer =
+  | { status: 200; body: SyncBatchOk }
+  | { status: number; error: string; run: SyncRunView | null };
+export async function adminBackfill(body: SyncBatchBody): Promise<SyncBatchAnswer> {
+  const res = await call("/admin/backfill", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const j = (await res.json().catch(() => null)) as (SyncBatchOk & { error?: unknown }) | null;
+  if (res.ok && j && j.run) return { status: 200, body: j };
+  return { status: res.ok ? 502 : res.status, error: typeof j?.error === "string" ? j.error : String(res.status), run: j?.run ?? null };
+}
+/** `GET /sync` — any member: the run in progress, the last one, and what a new one would do. */
+export function getSync(): Promise<SyncStatusView> {
+  return getJson<SyncStatusView>("/sync");
 }
 
 // ADMIN action: "Poll now" — refresh what the Repo dashboard polls for

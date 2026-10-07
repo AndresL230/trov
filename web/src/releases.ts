@@ -70,6 +70,66 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Sync GitHub as a recorded run, and AI summaries counted per organization (#109).
+  {
+    version: "0.22",
+    date: "2026-10-07",
+    title: "Sync you can see",
+    headline: "Sync GitHub now says what it will do, shows its progress as it runs, and leaves a result everyone in the organization can read.",
+    highlights: [
+      "Sync GitHub opens a small panel before anything runs. It names the repository, says what a sync reads and updates, shows when the last one ran and who started it, and has one button: Sync now.",
+      "While a sync runs you see what it is doing: reading pull requests, reading issues, saving them, then checking deployments and CI, with how many are done and what has changed so far. You can close the panel or go to another screen; the button keeps showing the progress.",
+      "When it finishes, the result stays until you dismiss it: what changed, how long it took, and anything that could not be read, with what to do about it. If nothing changed it says so.",
+      "Everyone in the organization can see when the last sync ran and who started it, on My Work and on the Repo screen. Only admins can start one, and only one runs at a time.",
+      "AI summaries of pull requests and issues now have a monthly allowance that comes with your plan. Org settings › General shows how many you have used this month, the panel shows how many a sync will write, and the pricing page lists each plan's allowance.",
+    ],
+    headsUp: [
+      "When an organization has used its AI summaries for the month, new pull requests and issues show a short excerpt instead. Nothing fails, and a sync in the next month fills them in.",
+      "A sync writes at most 50 summaries each time you run it. A larger backlog takes more than one sync.",
+      "Closing or reloading the tab that started a sync stops it after the step it is on. Nothing is lost: the panel says it did not finish, and the next sync picks up where it left off.",
+      "If GitHub is not connected, the panel says so and takes an admin to the place to connect it: Org settings › Repositories where the Trov App is offered, or Integrations for a token.",
+      "A payment that is past due does not stop AI summaries. When a plan ends they stop, and new items show an excerpt until the plan is renewed.",
+    ],
+    ops: [
+      "Apply migration `0046_sync_runs` (additive: the table `sync_runs` and one index). It is safe on live data and with the previous Worker running. To roll back, deploy the previous Worker and `DROP TABLE sync_runs`.",
+      "AI summaries stay OFF until the platform key is set: `wrangler secret put GEMINI_API_KEY`. One key serves every organization. From then on each summarizer call is counted per organization in `org_usage_daily` and each plan's monthly allowance applies (`ai_summaries` in `shared/plans.ts`: 300 Personal, 3,000 Team, unlimited Enterprise — placeholders; an override per org works like every other limit). `docs/architecture/plans.md` › AI summaries has what counts, the reset, and how to estimate cost.",
+      "No cron trigger change: run records older than 90 days are deleted by the existing daily cron. No plugin change.",
+      "`LOCAL_UPSTREAM` is a local-development value only (a loopback stand-in for GitHub and Gemini during a Sync). Do not set it as a secret; a value that is not `http://127.0.0.1` or `http://localhost` is ignored, and so is any value while a live Stripe key is set. It and `STRIPE_TEST_API_BASE` are described together in `.dev.vars.example`.",
+    ],
+    patches: {
+      added: [
+        "`shared/sync.ts`: the run and status shapes, the batch and summary bounds, and every sentence the panel shows (built from counts and failure codes, never upstream text)",
+        "Migration `0046_sync_runs` and `src/sync/runs.ts`: each Sync GitHub run is a row (who, when, batch, phase, running counts, failure codes, how it ended); the row is the org's lock",
+        "`GET /api/o/:slug/sync` (any member; alias `/api/sync`): the run in progress, the last one, why a sync cannot start, the summaries allowance, when deployments and CI were last refreshed",
+        "`POST /admin/backfill` takes `start` / `run` and answers with `run` and `summaries` beside its existing fields; 409 `sync_running` with the run in progress",
+        "`src/plans/summaries.ts` `orgSummarizers`: the one place a summarizer is chosen for an org, for the webhook and for Sync; `summaryAllowance`",
+        "The limit `ai_summaries` (per calendar month, UTC) in `shared/plans.ts`, shown in the Plan block and editable in Platform's limit fields",
+        "Summary metering in `org_usage_daily`: `summary:pr|issue` (attempts), `summary_failed:*`, `summary_capped:*`, `summary_chars_in|out`, `summary_tokens_in|out`",
+        "Platform › Usage: AI summaries per org and in total (attempted, succeeded, fell back, the month against the cap)",
+        "`web/src/sync.ts`: the Sync panel and the header control's states; `docs/architecture/sync.md`",
+        "`pruneSyncRuns` on the daily cron; `sync_runs.started_by` in `HANDLE_COLUMNS`",
+        "`githubCredentialSource` (`src/github-app/credential.ts`): where an org's GitHub credential would come from, in the order every read resolves it (the App's installation, the stored token, SaplingLearn's legacy secret), asked without minting a token. `GET /sync` answers `via` and `connect` from it (#109)",
+        "The pricing page and its comparison table list AI summaries per month for each plan",
+        "`src/platform/loopback.ts` and `holdsLiveKey` (`src/billing/config.ts`): the one test both local stand-ins (`LOCAL_UPSTREAM`, `STRIPE_TEST_API_BASE`) pass — a loopback http origin, and no live Stripe key",
+      ],
+      changed: [
+        "Sync GitHub's blocking modal and its closing toast are gone: progress and the result are in the panel",
+        "A batch reports its phase and items done as it goes (`runBackfill` `onProgress`), and its result carries what it captured, mirrored and summarized",
+        "A batch that throws answers 502 `{ error: \"sync failed\", run }` instead of a bare 500, and its run is closed as failed",
+        "Platform › Usage's active people and last activity leave out the summary counters (they are the platform's calls, not a person's requests)",
+        "`formatUse` says \"this month\" for a monthly allowance; `overLimits` never lists one",
+        "`formatLimit` and `formatUse` write counts with thousands separators (3,000), in the Plan block, Platform and the pricing page alike",
+        "A sync's failure names the credential it read with (`via`), so its fix points at Repositories for the App and at Integrations for a token",
+        "Platform's organization page shows AI summaries as off when the deployment has no `GEMINI_API_KEY`, as Platform › Usage does",
+      ],
+      fixed: [
+        "A sync with no summarizer no longer loops ten batches rewriting the same excerpt rows: nothing is spent from the batch budget when nothing can be attempted, so it is one batch",
+        "An explicit `summarizer: null` passed to `runBackfill` means no summarizer (it fell through to the environment's)",
+      ],
+      removed: [],
+    },
+    prs: [109],
+  },
   // Billing (#106), with the pricing page (#105), which merged without a release line of its own.
   {
     version: "0.21",

@@ -46,6 +46,8 @@ export interface RepoProps {
   /** The persons directory — each mapped person's avatar (a RepoPerson carries none), and whose
    *  card a contributor's or an activity line's name opens. */
   persons?: PersonSummary[];
+  /** Sync GitHub's line beside "updated …" (sync.ts `syncRepoLabel`: "synced 12m ago by @andres"); "" / absent = none. */
+  synced?: string;
 }
 
 /** "Poll now" (POST /admin/poll): in flight, its per-source outcomes, a 409 (another refresh holds the lock), or a failed request. */
@@ -213,7 +215,7 @@ export function repoControls(p: RepoProps): string {
     </button>`
     : "";
   return `${pills}${pills ? `<div style="width:1px;height:20px;background:var(--border);margin:0 2px"></div>` : ""}
-    <span data-repo-updated style="font-size:11.5px;color:var(--fg-40);white-space:nowrap">${esc(repoUpdatedLabel(p))}</span>${pollBtn}
+    ${p.synced ? `<span data-sync-slot="repo" class="sync-repo-l">${esc(p.synced)} ·</span>` : ""}<span data-repo-updated style="font-size:11.5px;color:var(--fg-40);white-space:nowrap">${esc(repoUpdatedLabel(p))}</span>${pollBtn}
     <button data-act="repoRefresh" title="${canPoll ? REFRESH_TITLE : "Refresh"}" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"${busy ? ' style="animation:cnpy-spin .8s linear infinite"' : ""}><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>
     </button>`;

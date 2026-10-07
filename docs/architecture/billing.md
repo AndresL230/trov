@@ -23,7 +23,7 @@ stores ids and a status.
 | `STRIPE_WEBHOOK_SECRET` | secret | billing is OFF (a key alone could take a payment nobody hears about) |
 | `STRIPE_PRICE_PERSONAL`, `STRIPE_PRICE_TEAM` | var (`wrangler.toml`), monthly Price ids | that plan cannot be bought monthly |
 | `STRIPE_PRICE_PERSONAL_YEARLY`, `STRIPE_PRICE_TEAM_YEARLY` | var, optional | that plan is not offered yearly |
-| `STRIPE_TEST_API_BASE` | local / test only | — honoured only for a loopback `http://` origin and never with a live key |
+| `STRIPE_TEST_API_BASE` | local / test only | — honoured only for a loopback `http://` origin and never with a live key (`src/platform/loopback.ts` — the rule Sync's `LOCAL_UPSTREAM` follows too; both are described in `.dev.vars.example`) |
 
 **The pricing page** (`plans.md`, `web/src/pricing.ts`) is static and asks no server: it offers a purchase
 link — `purchaseHref`, which is `billingStartHref` — only for a plan with a price in `shared/pricing.ts`.

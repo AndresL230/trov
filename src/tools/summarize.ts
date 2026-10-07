@@ -127,6 +127,24 @@ export interface GeminiOpts {
   model?: string;
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  /** Told the SIZE of every call once it has ended, whatever its outcome — what the per-org metering
+   *  records (src/plans/summaries.ts). Sizes only: it is never handed the text. */
+  onCall?: (size: SummaryCallSize) => void;
+}
+
+/** One summarizer call's size. Characters are always known; the token counts are Gemini's own
+ *  (`usageMetadata`), present only when its answer carried them. */
+export interface SummaryCallSize {
+  inputChars: number;
+  outputChars: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+function geminiTokens(data: unknown): { inputTokens: number | null; outputTokens: number | null } {
+  const u = (data as { usageMetadata?: { promptTokenCount?: unknown; candidatesTokenCount?: unknown } } | null)?.usageMetadata;
+  const n = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+  return { inputTokens: n(u?.promptTokenCount), outputTokens: n(u?.candidatesTokenCount) };
 }
 
 /** Shared Gemini call machinery for both summarizers — only the prompt and
@@ -153,6 +171,8 @@ function makeGeminiSummarizer<T>(
     async summarize({ title, body }) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const userText = `Title: ${title}\n\nBody: ${body}`;
+      const size: SummaryCallSize = { inputChars: systemPrompt.length + userText.length, outputChars: 0, inputTokens: null, outputTokens: null };
       try {
         const res = await doFetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -161,15 +181,18 @@ function makeGeminiSummarizer<T>(
             headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
             body: JSON.stringify({
               system_instruction: { parts: [{ text: systemPrompt }] },
-              contents: [{ role: "user", parts: [{ text: `Title: ${title}\n\nBody: ${body}` }] }],
+              contents: [{ role: "user", parts: [{ text: userText }] }],
               generationConfig: { response_mime_type: "application/json", temperature: 0 },
             }),
             signal: controller.signal,
           }
         );
         if (!res.ok) return null;
-        const text = extractGeminiText(await res.json());
+        const data: unknown = await res.json();
+        Object.assign(size, geminiTokens(data));
+        const text = extractGeminiText(data);
         if (text === null) return null;
+        size.outputChars = text.length;
         const obj = parseStructuredJson(text);
         return obj === null ? null : validate(obj);
       } catch (err) {
@@ -181,6 +204,7 @@ function makeGeminiSummarizer<T>(
         return null;
       } finally {
         clearTimeout(timer);
+        try { opts?.onCall?.(size); } catch { /* a listener never fails a summary */ }
       }
     },
   };

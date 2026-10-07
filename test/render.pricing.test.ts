@@ -102,6 +102,21 @@ describe("pricing — the three plans come from shared/plans.ts", () => {
     expect(card(html, "team")).toContain("agent connections per person</li>");
   });
 
+  it("the monthly AI-summaries allowance reads as one: thousands separated, per month — and no period on an unlimited one", () => {
+    expect(card(html, "personal")).toContain("<li><b>300</b> AI summaries per month</li>");
+    expect(card(html, "team")).toContain("<li><b>3,000</b> AI summaries per month</li>");
+    expect(card(html, "enterprise")).toContain("<li><b>Unlimited</b> AI summaries</li>");
+    expect(html).not.toContain("3000");
+    // The comparison row names the period once, in its header; its cells are the same formatter's values.
+    const row = html.slice(html.indexOf('<span class="site-cmp-label">AI summaries'));
+    expect(row).toContain('<span class="site-cmp-label">AI summaries, per month</span>');
+    expect(row.slice(0, row.indexOf("</tr>"))).toContain('<td role="cell" data-plan="Personal">300</td><td role="cell" data-plan="Team">3,000</td><td role="cell" data-plan="Enterprise">Unlimited</td>');
+    // A changed allowance follows, like every other number.
+    const out = pricingSection({ plans: { ...PLANS, personal: { ...PLANS.personal, entitlements: { ...PLANS.personal.entitlements, ai_summaries: 1 } }, team: { ...PLANS.team, entitlements: { ...PLANS.team.entitlements, ai_summaries: 1250000 } } } });
+    expect(card(out, "personal")).toContain("<li><b>1</b> AI summary per month</li>");
+    expect(card(out, "team")).toContain("<li><b>1,250,000</b> AI summaries per month</li>");
+  });
+
   it("follows a changed number, name or description — nothing is typed twice", () => {
     const plans: Record<PlanId, PlanDef> = {
       ...PLANS,
@@ -127,7 +142,12 @@ describe("pricing — no price announced (what ships)", () => {
   it("shows no amount and no currency anywhere", () => {
     expect(html).not.toMatch(/[$€£¥]/);
     expect(html).not.toContain("site-plan-amt");
-    expect(text(html)).not.toMatch(/\bper (month|year)\b/);
+    // No price interval anywhere. The one "per month" on the page is a LIMIT's period (the AI-summaries
+    // allowance), never a price: with those phrases set aside, nothing else says "per month" or "per year".
+    expect(html).not.toContain('class="site-plan-per"');
+    const allowance = /AI summar(?:y|ies),? per month/g;
+    expect(text(html).match(allowance)).toHaveLength(3); // the Personal and Team cards, and the comparison row's header
+    expect(text(html).replace(allowance, "")).not.toMatch(/\bper (month|year)\b/);
     expect(card(html, "personal")).toContain("Pricing to be announced");
     expect(card(html, "team")).toContain("Pricing to be announced");
   });

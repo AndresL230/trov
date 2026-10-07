@@ -14,7 +14,7 @@ export type PlanId = (typeof PLAN_IDS)[number];
 export const isPlanId = (v: unknown): v is PlanId => typeof v === "string" && (PLAN_IDS as readonly string[]).includes(v);
 
 /** Every limit a plan sets. `null` as a value means UNLIMITED. */
-export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections"] as const;
+export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries"] as const;
 export type LimitKey = (typeof LIMIT_KEYS)[number];
 export type Entitlements = Record<LimitKey, number | null>;
 /** Per-org exceptions: a key that is present replaces the plan's value (null = unlimited); absent = the plan's. */
@@ -33,6 +33,10 @@ export interface LimitDef {
   unit: "count" | "bytes";
   /** The smallest value an override may set (a seat cap of 0 would lock the owner out). */
   min: number;
+  /** An ALLOWANCE that resets each calendar month (UTC), not a size: use is "N of M this month", and
+   *  reaching it is never "over the limit" — `atCap` says what happens instead. */
+  period?: "month";
+  atCap?: string;
 }
 
 export const LIMITS: Record<LimitKey, LimitDef> = {
@@ -41,6 +45,12 @@ export const LIMITS: Record<LimitKey, LimitDef> = {
   environments: { label: "Environments", one: "environment", many: "environments", counts: "Environments the Repo dashboard reports on.", per: "org", unit: "count", min: 0 },
   artifact_bytes: { label: "Artifact storage", one: "byte", many: "bytes", counts: "Every stored version of every artifact.", per: "org", unit: "bytes", min: 0 },
   agent_connections: { label: "Agent connections", one: "agent connection", many: "agent connections", counts: "Your own MCP tokens and connected apps for this organization.", per: "person", unit: "count", min: 0 },
+  // The one MONTHLY allowance (docs/architecture/plans.md › AI summaries). It refuses nothing with a 402:
+  // past it a new pull request or issue is stored with its excerpt, and a later Sync fills it in.
+  ai_summaries: {
+    label: "AI summaries", one: "AI summary", many: "AI summaries", counts: "Summaries of pull requests and issues attempted this calendar month (UTC).",
+    per: "org", unit: "count", min: 0, period: "month", atCap: "New pull requests and issues show an excerpt until next month.",
+  },
 };
 
 /** A plan's price, when one is written in code. Unused: prices are deployment config (`STRIPE_PRICE_*`),
@@ -66,20 +76,22 @@ const GB = 1024 * MB;
 // PLACEHOLDER NUMBERS — the owner decides. `seats` are the owner's own (1 / 10 / set per org); the rest
 // are first guesses. Enterprise's repositories and environments are the platform's caps from before
 // plans (10 each: the repo cron's budget is shared), so an existing org sees no change.
+// `ai_summaries` (per calendar month) is a PLACEHOLDER too: 300 / 3,000 / unlimited — sized so that one
+// org cannot run up the platform's one Gemini bill, not from measured use (plans.md › AI summaries).
 export const PLANS: Record<PlanId, PlanDef> = {
   personal: {
     id: "personal", name: "Personal", description: "One person's own organization.",
-    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5 },
+    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300 },
     billing: null,
   },
   team: {
     id: "team", name: "Team", description: "A team of up to 10 people.",
-    entitlements: { seats: 10, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10 },
+    entitlements: { seats: 10, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000 },
     billing: null,
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", description: "Limits set for the organization by Trov.",
-    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null },
+    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null },
     billing: null,
   },
 };
@@ -165,10 +177,24 @@ export function formatBytes(n: number): string {
   if (n >= 1024) return `${+(n / 1024).toFixed(1)} KB`;
   return `${n} B`;
 }
-/** A limit's value as text: "10", "5 GB", "Unlimited". */
+/** A count as text, with thousands separators: "10", "3,000". The ONE place a limit's number is written. */
+export const formatCount = (n: number): string => n.toLocaleString("en-US");
+/** A limit's value as text: "10", "3,000", "5 GB", "Unlimited" — THE formatter the Plan block, Platform
+ *  and the pricing page all show a limit (and a use of one) through. */
 export function formatLimit(key: LimitKey, value: number | null): string {
   if (value === null) return "Unlimited";
-  return LIMITS[key].unit === "bytes" ? formatBytes(value) : String(value);
+  return LIMITS[key].unit === "bytes" ? formatBytes(value) : formatCount(value);
+}
+/** A limit's name inside a sentence: "seats", "artifact storage", "AI summaries" — never a lower-cased
+ *  label (which would write "ai summaries"). */
+export const limitNoun = (key: LimitKey): string => (LIMITS[key].unit === "bytes" ? LIMITS[key].label.toLowerCase() : LIMITS[key].many);
+/** A plan's limit as a phrase: ["3,000", "AI summaries per month"], ["10", "seats"], ["5 GB", "artifact
+ *  storage"], ["5", "agent connections per person"], ["Unlimited", "AI summaries"]. An unlimited
+ *  allowance has no period to name. */
+export function limitPhrase(key: LimitKey, value: number | null): [value: string, what: string] {
+  const d = LIMITS[key];
+  const what = value === 1 && d.unit !== "bytes" ? d.one : limitNoun(key);
+  return [formatLimit(key, value), `${what}${d.per === "person" ? " per person" : ""}${d.period && value !== null ? ` per ${d.period}` : ""}`];
 }
 /** A plan's seats in words: "for one person", "up to 10 people", "any number of people". */
 export function seatsPhrase(seats: number | null, sentence = false): string {
@@ -176,10 +202,10 @@ export function seatsPhrase(seats: number | null, sentence = false): string {
   if (!sentence) return s;
   return seats === 1 ? "For one person: you" : seats === null ? "For any number of people" : `For up to ${seats} people`;
 }
-/** "7 of 10", "1.2 GB of 5 GB", "7" (unlimited). */
+/** "7 of 10", "1.2 GB of 5 GB", "7" (unlimited); a monthly allowance says so: "1,212 of 3,000 this month". */
 export function formatUse(key: LimitKey, used: number, cap: number | null): string {
-  const u = LIMITS[key].unit === "bytes" ? formatBytes(used) : String(used);
-  return cap === null ? u : `${u} of ${formatLimit(key, cap)}`;
+  const u = formatLimit(key, used);
+  return cap === null ? u : `${u} of ${formatLimit(key, cap)}${LIMITS[key].period === "month" ? " this month" : ""}`;
 }
 
 function refusalMessage(state: OrgPlanState, limit: LimitKey, cap: number): string {
@@ -187,8 +213,8 @@ function refusalMessage(state: OrgPlanState, limit: LimitKey, cap: number): stri
   if (state.status === "canceled") return `This organization's ${name} plan has ended, so nothing can be added until it is renewed.`;
   const d = LIMITS[limit];
   if (limit === "seats" && cap <= 1) return `The ${name} plan is for one person. Invitations start with the ${firstTeamPlan().name} plan.`;
-  if (d.unit === "bytes") return `This organization has reached the ${formatBytes(cap)} of ${d.label.toLowerCase()} its ${name} plan includes.`;
-  const what = `${cap} ${cap === 1 ? d.one : d.many}`;
+  if (d.unit === "bytes") return `This organization has reached the ${formatBytes(cap)} of ${limitNoun(limit)} its ${name} plan includes.`;
+  const what = `${formatCount(cap)} ${cap === 1 ? d.one : d.many}`;
   return d.per === "person"
     ? `You have reached the ${what} per person this organization's ${name} plan includes.`
     : `This organization has reached the ${what} its ${name} plan includes.`;
@@ -254,10 +280,15 @@ export interface OrgPlanView {
   over: LimitKey[];
 }
 
-/** The limits an org is over — use above the cap in force. */
+/** The limits an org is over — use above the cap in force. A monthly allowance is never "over": using
+ *  it up refuses nothing, and it resets by itself (`LimitDef.atCap`). */
 export function overLimits(entitlements: Entitlements, usage: Partial<Record<LimitKey, number>>): LimitKey[] {
-  return LIMIT_KEYS.filter((k) => entitlements[k] !== null && (usage[k] ?? 0) > (entitlements[k] as number));
+  return LIMIT_KEYS.filter((k) => !LIMITS[k].period && entitlements[k] !== null && (usage[k] ?? 0) > (entitlements[k] as number));
 }
+
+/** The first instant's DAY of the calendar month `now` falls in, UTC: 'YYYY-MM-01' — where a monthly
+ *  allowance starts counting. */
+export const monthStartDay = (now: Date = new Date()): string => `${now.toISOString().slice(0, 7)}-01`;
 
 // ── wire: grants ─────────────────────────────────────────────────────────────
 

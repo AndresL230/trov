@@ -249,7 +249,10 @@ describe("GET /api/platform/usage", () => {
     expect(json.totals.series).toHaveLength(7);
     expect(json.orgs.map((o) => [o.slug, o.status])).toEqual([["acme", "suspended"], ["saplinglearn", "active"]]);
     const acme = json.orgs[0] satisfies OrgUsage;
-    expect(Object.keys(acme).sort()).toEqual(["activity", "created_at", "last_activity_at", "logo_url", "name", "series", "sizes", "slug", "status"]);
+    expect(Object.keys(acme).sort()).toEqual(["activity", "created_at", "last_activity_at", "logo_url", "name", "series", "sizes", "slug", "status", "summaries"]);
+    // The pool blanks GEMINI_API_KEY: summaries are off on this deployment, and every count is a true zero.
+    expect(json.summaries_enabled).toBe(false);
+    expect(acme.summaries).toEqual({ attempted: 0, succeeded: 0, failed: 0, capped: 0, fell_back: 0, chars_in: 0, chars_out: 0, tokens_in: 0, tokens_out: 0, month_used: 0, cap: null });
     expect(Object.keys(acme.activity).sort()).toEqual(["active_people", "api_reads", "api_requests", "api_writes", "created", "emails_sent", "mcp_requests", "mcp_tool_calls", "top_tools"]);
     expect(acme.sizes.feed_entries).toBe(1);
     expect(acme.series).toHaveLength(7);

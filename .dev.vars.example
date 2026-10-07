@@ -14,3 +14,23 @@ COOKIE_SECRET=a-long-random-string
 # Key-encryption key for per-org integration secrets (Org settings › Integrations): 32 random bytes, base64.
 # Generate with: openssl rand -base64 32   — unset, the Integrations API answers 503 secrets_unavailable.
 TROV_KEK=replace-with-openssl-rand-base64-32
+
+# ── Local stand-ins for the services Trov calls ──────────────────────────────────────────────────────
+# Two values, one rule (src/platform/loopback.ts): each is honoured ONLY when it is plain http on
+# 127.0.0.1 or localhost — https, any other host and anything unparseable are ignored — and NEVER while
+# STRIPE_SECRET_KEY is a live key (sk_live_… / rk_live_…). Never set either as a deployed secret: a
+# deployed Worker ignores them (and could not reach loopback if it did not).
+#
+# LOCAL_UPSTREAM — GitHub and Gemini, during a Sync GitHub and its closing refresh
+# (src/sync/local-upstream.ts, docs/architecture/sync.md › Trying it locally). Requests to
+# api.github.com go to <base>/github/… and to generativelanguage.googleapis.com to <base>/gemini/….
+# The webhook, the cron and sign-in are not rerouted.
+# LOCAL_UPSTREAM=http://127.0.0.1:8862
+#
+# STRIPE_TEST_API_BASE — Stripe's API, for every billing call (src/billing/config.ts,
+# docs/architecture/billing.md › Configuration). Needs the two Stripe secrets set to TEST values.
+# STRIPE_TEST_API_BASE=http://127.0.0.1:8842
+#
+# Summaries are off without a key (docs/architecture/plans.md › AI summaries). With LOCAL_UPSTREAM set,
+# any non-empty value turns them on against the stand-in.
+# GEMINI_API_KEY=your-gemini-key

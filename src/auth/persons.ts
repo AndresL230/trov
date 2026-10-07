@@ -275,6 +275,8 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["billing_checkouts", "person"], ["billing_subscriptions", "person"],
   // The GitHub App (0043_github_app): who connected the org's installation.
   ["org_github_installations", "connected_by"],
+  // Sync GitHub runs (0046_sync_runs): who started one.
+  ["sync_runs", "started_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

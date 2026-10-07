@@ -172,6 +172,10 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   per-org NUMBER, never the row id: `docs/architecture/organizations.md`, `docs/architecture/data-layer.md`.
   Plans, per-org limits (402 `plan_limit`), grants and the billing seam (`shared/plans.ts`, `src/plans/`,
   `0044_plans`): `docs/architecture/plans.md` — a new limit goes in `PLANS` and is enforced with `requirePlan`.
+  Sync GitHub as a recorded run (`0046_sync_runs`, `src/sync/runs.ts`, `GET /sync`, the panel's every sentence in
+  `shared/sync.ts`): `docs/architecture/sync.md` — whether a sync can start is asked of the ONE GitHub credential
+  source (`githubCredentialSource`, `src/github-app/credential.ts`), never of the token alone. The summarizer for an org is chosen ONLY by `orgSummarizers`
+  (`src/plans/summaries.ts` — one platform key, each call metered per org, the monthly `ai_summaries` allowance).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;

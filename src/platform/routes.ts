@@ -88,7 +88,7 @@ async function detail(c: Context<AppEnv>, slug: string): Promise<PlatformOrgDeta
   const [org] = await listPlatformOrgs(c.var.p, slug);
   if (!org) return null;
   const [people, usage] = await Promise.all([platformOrgPeople(c.var.p, org.id), platformUsage(c.var.p, USAGE_DEFAULT_DAYS)]);
-  return { org: (await platformRows(c.var.p, org.slug))[0], ...people, usage: usage.orgs.find((o) => o.slug === org.slug)! };
+  return { org: (await platformRows(c.var.p, org.slug))[0], ...people, usage: usage.orgs.find((o) => o.slug === org.slug)!, summaries_enabled: !!c.env.GEMINI_API_KEY };
 }
 
 platformApp.get("/orgs/:slug", async (c) => {
@@ -143,4 +143,4 @@ platformApp.get("/audit", async (c) => {
   } catch (e) { return fail(c, e); }
 });
 
-platformApp.get("/usage", async (c) => c.json(await platformUsage(c.var.p, usageDays(c.req.query("days")))));
+platformApp.get("/usage", async (c) => c.json(await platformUsage(c.var.p, usageDays(c.req.query("days")), new Date(), { summariesEnabled: !!c.env.GEMINI_API_KEY })));

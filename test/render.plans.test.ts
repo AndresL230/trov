@@ -14,7 +14,7 @@ import {
 } from "../web/src/platform-access";
 import { platformView, platformDialogs, addOrgModal, blankAddOrg, initialPlat, orgsTab, PLAT_TABS, type PlatState } from "../web/src/platform";
 import { initialDropdownUi } from "../web/src/dropdown";
-import { PLANS, resolveEntitlements, type MyGrant, type OrgPlanView, type PlatformGrant, type PlatformOrgPlan, type PlanId } from "@shared/plans";
+import { LIMIT_KEYS, PLANS, resolveEntitlements, type MyGrant, type OrgPlanView, type PlatformGrant, type PlatformOrgPlan, type PlanId } from "@shared/plans";
 import type { MyOrg, MyOrgsResponse, OrgMember, PlatformOrgRow } from "@shared/orgs";
 
 const sources = import.meta.glob(["../web/src/org-plan.ts", "../web/src/platform-access.ts", "../web/src/platform-access-actions.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
@@ -27,7 +27,7 @@ const picker = (orgs: MyOrgsResponse) => orgPickerView({ me, mine: orgs.orgs, or
 const view = (plan: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView => ({
   plan, name: PLANS[plan].name, description: PLANS[plan].description, status: "active", source: "granted", period_end: null,
   entitlements: PLANS[plan].entitlements, overridden: [], seats: { members: 5, pending: 2 },
-  usage: { seats: 7, repositories: 1, environments: 2, artifact_bytes: 1024 ** 3, agent_connections: 1 }, over: [], ...o,
+  usage: { seats: 7, repositories: 1, environments: 2, artifact_bytes: 1024 ** 3, agent_connections: 1, ai_summaries: 0 }, over: [], ...o,
 });
 const org = (role: MyOrg["role"] = "owner"): MyOrg => ({ slug: "acme", name: "Acme", role });
 const member = (handle: string, role: OrgMember["role"] = "member"): OrgMember => ({ handle, name: handle, color: "sky", avatar_url: null, role, title: null, joined_at: "2026-10-01T00:00:00.000Z" });
@@ -82,7 +82,8 @@ describe("Org settings › General — the Plan block", () => {
     expect(html).toContain('data-org-plan="team"');
     expect(html).toContain(">Team</span>");
     expect(html).toContain("A team of up to 10 people.");
-    for (const label of ["Seats", "Repositories", "Environments", "Artifact storage", "Agent connections"]) expect(html).toContain(label);
+    for (const label of ["Seats", "Repositories", "Environments", "Artifact storage", "Agent connections", "AI summaries"]) expect(html).toContain(label);
+    expect(html.match(/data-limit="/g)).toHaveLength(LIMIT_KEYS.length);
     expect(html).toMatch(/data-limit="seats">[\s\S]*?7 of 10/);
     expect(html).toContain("Members plus pending invitations.");
     expect(html).toMatch(/data-limit="artifact_bytes">[\s\S]*?1 GB of 5 GB/);
@@ -91,6 +92,18 @@ describe("Org settings › General — the Plan block", () => {
     expect(planBlock({ status: "ok", data: view() }, "member")).toContain("An owner of this organization can ask Trov to change the plan.");
     // Nobody edits it here.
     expect(html).not.toMatch(/<input|data-act=/);
+  });
+  it("AI summaries: the month's use of the allowance, with thousands separators; used up says what happens and is never 'over'", () => {
+    const row = (html: string): string => html.slice(html.indexOf('data-limit="ai_summaries"')).split("</li>")[0];
+    const some = row(planBlock({ status: "ok", data: view("team", { usage: { ...view().usage, ai_summaries: 1212 } }) }, "owner"));
+    expect(some).toContain("1,212 of 3,000 this month");
+    expect(some).not.toContain("3000");
+    expect(some).not.toContain("data-limit-spent");
+    const spent = row(planBlock({ status: "ok", data: view("team", { usage: { ...view().usage, ai_summaries: 3000 } }) }, "owner"));
+    expect(spent).toContain("3,000 of 3,000 this month");
+    expect(spent).toContain("New pull requests and issues show an excerpt until next month.");
+    expect(spent).not.toContain("Over the limit");
+    expect(row(planBlock({ status: "ok", data: view("enterprise", { usage: { ...view().usage, ai_summaries: 12345 } }) }, "owner"))).toContain("12,345 used &middot; Unlimited");
   });
   it("an unlimited limit shows the use and says Unlimited", () => {
     const html = planBlock({ status: "ok", data: view("enterprise") }, "owner");
