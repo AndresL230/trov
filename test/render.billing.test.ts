@@ -281,7 +281,7 @@ describe("the waiting room — /billing/done", () => {
     expect(done).toContain("<strong style=\"color:var(--fg);font-weight:600\">Maya &amp; Co</strong> is on its plan.");
     const unpaid = text(billingDonePage(room({ phase: "unpaid" })));
     expect(unpaid).toContain("This checkout was not completed Stripe did not take a payment for it, so nothing was charged.");
-    expect(billingDonePage(room({ phase: "unpaid" }))).toMatch(/<a href="\/#pricing"[^>]*>See the plans<\/a>/);
+    expect(billingDonePage(room({ phase: "unpaid" }))).toMatch(/<a href="\/pricing"[^>]*>See the plans<\/a>/);
     expect(text(billingDonePage(room({ phase: "ended" })))).toContain("This subscription was cancelled It was cancelled before an organization was set up on it");
     expect(text(billingDonePage(initialBillingDone(null)))).toContain("Nothing to confirm here");
     expect(text(billingDonePage(room({ phase: "signedout" })))).toContain("Sign in to finish Your payment is safe.");
@@ -297,7 +297,7 @@ describe("the waiting room — /billing/done", () => {
 
   it("holds no colour of its own and no price: tokens and Geist only", () => {
     for (const [file, src] of Object.entries(sources)) {
-      expect(src.replace(/#pricing/g, ""), file).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+      expect(src, file).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
       expect(src, file).not.toMatch(/rgba?\(/);
       expect(src, file).not.toMatch(/font-family:(?!var\()/);
       expect(src, file).not.toMatch(/[$€£]\s?\d/);

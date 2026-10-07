@@ -58,7 +58,7 @@ describe("GET /billing/start — a signed-in person starts a checkout", () => {
     expect(Object.fromEntries(c.params)).toEqual({
       mode: "subscription", "line_items[0][price]": PRICES.team, "line_items[0][quantity]": "1",
       client_reference_id: "maya", customer_email: "maya@example.com",
-      success_url: "http://localhost/billing/done?session_id={CHECKOUT_SESSION_ID}", cancel_url: "http://localhost/#pricing",
+      success_url: "http://localhost/billing/done?session_id={CHECKOUT_SESSION_ID}", cancel_url: "http://localhost/pricing",
       "metadata[trov_ref]": row.ref, "metadata[trov_plan]": "team", "metadata[trov_person]": "maya",
       "subscription_data[metadata][trov_ref]": row.ref, "subscription_data[metadata][trov_plan]": "team", "subscription_data[metadata][trov_person]": "maya",
     });
@@ -90,7 +90,7 @@ describe("GET /billing/start — a signed-in person starts a checkout", () => {
     expect(ent.headers.get("content-security-policy")).toContain("default-src 'none'");
     for (const q of ["?plan=gold", "", "?plan="]) {
       const r = await bcall("GET", `/billing/start${q}`, await buyer("maya"));
-      expect([r.status, r.headers.get("location")], q).toEqual([302, "/#pricing"]);
+      expect([r.status, r.headers.get("location")], q).toEqual([302, "/pricing"]);
     }
     expect(stripe.calls).toEqual([]);
     expect(await count(`SELECT COUNT(*) AS n FROM billing_checkouts`)).toBe(0);

@@ -42,7 +42,7 @@ set (`sk_test_…` / `sk_live_…`); an event from the other mode is acknowledge
    random `ref` to **the person signed in**, then `POST /v1/checkout/sessions` (mode `subscription`, the
    plan's price × 1, `client_reference_id` = the handle, `customer_email` = the person's provider-VERIFIED
    address when there is one, `metadata.trov_ref`, success → `/billing/done?session_id={CHECKOUT_SESSION_ID}`,
-   cancel → `/#pricing`, `Idempotency-Key: trov-checkout-<ref>`) and a 303 to Stripe.
+   cancel → `/pricing`, `Idempotency-Key: trov-checkout-<ref>`) and a 303 to Stripe.
    `plan=enterprise` → a page pointing at Trov; a superadmin → a page pointing at Platform.
 2. **Pay** — on Stripe's page. Trov is not involved.
 3. **Fulfil — the webhook** (`POST /webhook/stripe`, below). `checkout.session.completed` →
@@ -145,7 +145,7 @@ there is one clock and it is the one the customer's e-mails from Stripe talk abo
 
 | Route | Gate | Answers |
 |---|---|---|
-| `GET /billing/start?plan=&interval=` | public (reads the session itself) | 303 → Stripe; 200 a sign-in / Enterprise page; 302 `/#pricing` (unknown plan); 403 page (superadmin); 429 page; 502 page; 503 |
+| `GET /billing/start?plan=&interval=` | public (reads the session itself) | 303 → Stripe; 200 a sign-in / Enterprise page; 302 `/pricing` (unknown plan); 403 page (superadmin); 429 page; 502 page; 503 |
 | `GET /api/billing/config` | public | `BillingConfigResponse`: `available`, `mode`, `plans[id] = { purchasable, intervals, href }`, `contact`, `signed_in`, `manage[]` (the caller's own paid orgs) |
 | `GET /api/billing/status?session_id=` | session; the caller's own checkout (else 404) | `{ state: "pending", paid }` \| `{ state: "ready", plan, grant }` \| `{ state: "done", org }` \| `{ state: "unpaid" }` \| `{ state: "ended" }` |
 | `POST /api/o/:slug/billing/portal` | owner, cookie only | `{ url }`; 403 `forbidden`; 409 `not_billed`; 502 `billing_failed` |

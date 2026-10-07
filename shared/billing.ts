@@ -22,7 +22,7 @@ export const billingStartHref = (plan: PurchasablePlan, interval: BillingInterva
 /** Where Stripe sends the buyer back: the waiting room (`?session_id=…`). */
 export const BILLING_DONE_PATH = "/billing/done";
 /** Where a person who backs out of checkout lands, and where "see the plans" points. */
-export const PRICING_PATH = "/#pricing";
+export const PRICING_PATH = "/pricing";
 /** An organization's Plan block (Org settings › General) — where its owner manages billing. */
 export const orgBillingHref = (slug: string): string => `/o/${encodeURIComponent(slug)}/#org/general`;
 /** Enterprise, and anything billing cannot do: write to Trov. */
