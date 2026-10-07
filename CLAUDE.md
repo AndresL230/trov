@@ -524,6 +524,15 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
   nothing — and an unknown or suspended hook id is that SAME bare `401` (hook ids cannot be probed). The
   writer principal is the fixed string `"github-webhook"`; the delivery's own `subject_login` is trusted
   only post-verify. This branch never touches `sessionGate`.
+- **The GitHub App** (`src/github-app/`, `0043_github_app`; the whole of it — the connect flow and why a
+  forged `installation_id` cannot bind, tokens, the webhook, permissions, the owner checklist — is
+  `docs/architecture/github-app.md`; keep the detail THERE). An org connects GitHub by installing the App:
+  `GET /api/o/:slug/github/install` → GitHub → `/auth/callback` (the install return, recognised by
+  `installation_id` / `setup_action`). Every GitHub read resolves its credential with
+  `resolveGithubCredential` — the org's installation token, then its stored `github_token`, then
+  SaplingLearn's legacy secret — never with a bare `resolveCredential(…, "github_token", …)`. The App's ONE
+  webhook is `POST /webhook/github/app` (`GITHUB_APP_WEBHOOK_SECRET`; the same bare 401). Nothing reachable
+  from `src/mcp.ts` may import `src/github-app/` (`test/secrets.mcp.test.ts`).
 
 ## Identity — persons, not logins
 
@@ -1602,7 +1611,10 @@ secrets.** App-level token for the sprint-progress backstop, for `reconcileRepo`
 the cron's 6-hourly `:10` and `:20` ticks and those follow-ups are skipped, while the `:30` prune and the
 health pings run regardless), `GEMINI_API_KEY`
 (Google Gemini key for capture-time PR/issue summaries — absent → the excerpt fallback), `RESEND_API_KEY`
-(email delivery; needed only when `NOTIFICATIONS_MODE = "resend"`).
+(email delivery; needed only when `NOTIFICATIONS_MODE = "resend"`), and the GitHub App's three:
+`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (the whole `.pem`), `GITHUB_APP_WEBHOOK_SECRET` — with the var
+`GITHUB_APP_SLUG`; missing any of slug / id / key → only the token path is offered, nothing 500s
+(`docs/architecture/github-app.md`).
 
 The repo cron's three hourly pollers each have their own secret(s). Each poller is skipped when its secret
 is absent — its section then stays `not_connected` — and none of these values may ever be logged:
@@ -1624,7 +1636,8 @@ is absent — its section then stays `not_connected` — and none of these value
   and the Usage tab's Active users stays "not connected". Never sent to a non-https URL or across a redirect.
 
 Vars (`[vars]` in `wrangler.toml`): `PUBLIC_ORIGIN` (absolute origin for links inside email),
-`NOTIFICATIONS_MODE` (`local` default / `resend`), and two LEGACY ones nothing reads any more (`0042_organizations` copied them
+`NOTIFICATIONS_MODE` (`local` default / `resend`), `GITHUB_APP_SLUG` (the App's URL name; empty = not
+configured), and two LEGACY ones nothing reads any more (`0042_organizations` copied them
 into SaplingLearn's `org_repos` / `org_environments` rows; Phase 7 deletes them): `GITHUB_REPO` and
 `REPO_ENVIRONMENTS` — a JSON list in the shape `repoEnvironments()` (`src/repo/config.ts`) parses: per environment
 `key`, `label`, `note`, `branch`, `railwayEnv` (the GitHub deployment environment name), `worker` +

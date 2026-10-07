@@ -283,6 +283,11 @@ const TENANT: Record<string, Row> = {
   "POST /integrations/:kind/:a": J({ secret: "x" }), "POST /integrations/:kind/:a/:b": J({ secret: "x" }),
   "DELETE /integrations/:kind": {}, "DELETE /integrations/:kind/:a": {},
   "GET /repos": {}, "POST /repos": J({ repo_full_name: "acme/matrix" }), "DELETE /repos/:id": {},
+  // src/github-app/routes.ts — the GitHub App's connection. `GET /github/install` only ever redirects (to GitHub for an
+  // admin of the org in the path, back to its own Repositories tab otherwise); B has no installation, so the rest answer
+  // B's own "not connected" and never reach for the network.
+  "GET /github": {}, "GET /github/install": {}, "GET /github/repositories": {}, "POST /github/repositories": J({ repo_full_name: "SaplingLearn/sapling" }),
+  "POST /github/test": J({}), "POST /github/disconnect": J({}),
   "GET /environments": {}, "PUT /environments": J({ order: [] }), "PUT /environments/:key": J({ label: "hijacked", branch: "main" }), "DELETE /environments/:key": {},
   // src/auth/token-routes.ts — the caller's OWN tokens for the org in the path (`:id` is alice's token in A)
   "GET /mcp-tokens": {}, "POST /mcp-tokens": J({}), "POST /mcp-tokens/:id/revoke": J({}),
@@ -292,7 +297,7 @@ const TENANT: Record<string, Row> = {
  *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
  *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
 const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
+  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens", "/github"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
 
 /** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
 const LEGACY_ONLY: Record<string, Row> = {
@@ -304,7 +309,7 @@ const LEGACY_ONLY: Record<string, Row> = {
 /** Session routes that are neither `tenantGate`'s nor `soleTenantGate`'s — and why each is safe with no membership. */
 const PLATFORM: Record<string, string> = {
   "GET /auth/login": "public: starts the GitHub OAuth redirect",
-  "GET /auth/callback": "public: the OAuth callback — state + PKCE bound to a sealed cookie",
+  "GET /auth/callback": "public: the OAuth callback — state + PKCE bound to a sealed cookie. Also the GitHub App's install return (`installation_id`): binds an installation only for the org and person a second sealed cookie names, after GitHub confirms the account can reach it (test/github-app.connect.test.ts)",
   "GET /auth/google/login": "public: starts the Google OAuth redirect",
   "GET /auth/google/callback": "public: the OAuth callback",
   "GET /auth/onboard": "the sealed onboard cookie: echoes the provider profile it carries",

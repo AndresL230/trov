@@ -77,7 +77,8 @@ The lists are derived from the live schema — every table with an `org_id` colu
 - **Tenant tables**: every org-keyed table except the five below. That includes all content tables and their
   FTS tables, the per-user-per-org tables (`mcp_tokens`, `oauth_grants`, `oauth_codes`, `notification_*`), and an
   org's own configuration: `org_repos`, `org_environments`, `org_integration_config`, `org_login_map`,
-  `org_secrets`, `org_keys`, `org_audit` (read through a tenant ctx by `src/integrations/*`, `src/data/secrets.ts`).
+  `org_secrets`, `org_keys`, `org_audit` (read through a tenant ctx by `src/integrations/*`, `src/data/secrets.ts`)
+  and `org_github_installations` (0043_github_app — the org's GitHub App installation, `src/github-app/store.ts`).
 - **Platform-owned org-keyed tables**: `memberships`, `org_invites`, `org_counters`, `org_usage_daily`,
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
@@ -126,7 +127,8 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 | Where | Why |
 |---|---|
 | `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
-| `src/platform/jobs.ts` (`org_repos`, `org_environments`) | the cron's unit lists and the webhook's hook lookup, before any org is known — ids, an environment key and a repo name |
+| `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`) | the cron's unit lists, the webhook's hook lookup and the GitHub App's installation → org lookup (`installationOrg`), before any org is known — ids, an environment key and a repo name |
+| `src/platform/repo.ts` `listPlatformOrgs` (`org_github_installations`) | the superadmin's org list: the GitHub account an org's installation is on — a name |
 | `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal` | credential lookup by HASH before any org is known (the row names the org), and the revoke of the one grant just found |
 | `src/auth/oauth.ts` `listGrants`, `revokeGrant` | Connected apps is user-level: a person's own grants across their orgs, keyed by person |
 | `src/artifacts/upload.ts` `uploadTokenOrg` | upload-token lookup by hash, returning only its `org_id` |
@@ -146,6 +148,7 @@ belongs to) through `src/platform/jobs.ts`, then does its work as that org's `sy
 | repo cron `handleRepoCron` (`src/repo/cron.ts`) | `listEnvUnits` / `listRepoUnits` — every non-suspended org | `systemTenant(p, org, "system")` per unit |
 | digest crons `handleNotificationCron` (`src/notifications/cron.ts`) | `listActiveOrgIds` | the same, per org |
 | `POST /webhook/github/:hookId`, legacy `/webhook/github` (`src/github-hook.ts`) | `hookRepo(p, id)` / `legacyHookRepo(p)` | `systemTenant(p, row.org_id, "github-webhook")` |
+| `POST /webhook/github/app` — the GitHub App's one endpoint (`src/github-app/webhook.ts`, `github-app.md`) | `installationOrg(p, <the delivery's installation id>)` | the same |
 | Poll now / Poll usage / Sync GitHub (`runLockedRepoRefresh`, `runUsagePolls`, `runBackfill`, `runReconcileJob`) | the caller's `ctx` | `jobTenant(env, ctx)` — that org's system tenant; a bearer context is refused |
 
 **The rotation dispatcher** (`src/repo/dispatch.ts`). The repo trigger keeps its cadence — `health` every
@@ -167,11 +170,14 @@ suspended org is absent from every list, and its hook reads as unknown.
 
 **Configuration and credentials.** The repo is the org's primary `org_repos` row (`orgPrimaryRepo`), the
 environments are `org_environments` in `position` order (`orgEnvironments`) — `GITHUB_REPO` and
-`REPO_ENVIRONMENTS` are read by NOTHING any more (the dashboard reads use the same rows). Every credential comes from
-`resolveCredential(ctx, env, kind, scope)`: `github_token` (`""`), `github_webhook` (the hook id),
+`REPO_ENVIRONMENTS` are read by NOTHING any more (the dashboard reads use the same rows). The GitHub
+credential comes from `resolveGithubCredential(ctx, env, { repo })` (`src/github-app/credential.ts`,
+`github-app.md`): the org's live App installation → an installation token, else its stored `github_token`,
+else SaplingLearn's legacy secret. Every other credential comes from
+`resolveCredential(ctx, env, kind, scope)`: `github_webhook` (the hook id),
 `cloudflare_analytics` (`""`, + `resolveCloudflareAccountId`), `railway` and `metrics_endpoint` (the
-environment key). It is resolved ONLY in modules that `src/mcp.ts` cannot reach — `src/repo/cron.ts`,
-`src/github-hook.ts`, `src/tools/backfill.ts` — and the revealed value is passed down as a parameter
+environment key). Both are resolved ONLY in modules that `src/mcp.ts` cannot reach — `src/repo/cron.ts`,
+`src/github-hook.ts`, `src/tools/backfill.ts`, `src/integrations/*`, `src/github-app/*` — and the revealed value is passed down as a parameter
 (`src/webhook.ts` and `src/repo/github.ts` ARE reachable from MCP; `test/secrets.mcp.test.ts`). Every log
 line and stored `last_error` is scrubbed of every credential the unit revealed.
 
@@ -203,7 +209,7 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
 | Path | Gate | Tenant |
 |---|---|---|
 | `/api/o/:slug/*` — the tenant routes, the org surface (`src/orgs`, `src/integrations`) and a member's own MCP tokens (`src/auth/token-routes.ts`) | `tenantGate` | the org the path names, if the caller is a member — else 404 `{ error: "not_found" }` (unknown slug, non-member, suspended: all alike) |
-| `/auth/*`, `/avatar/*`, `/org-logo/*`, `/api/orgs`, `/api/invites`, `/api/platform/*` | none (person-level) | none: these read and write the caller's own person, or are `requireSuperadmin` |
+| `/auth/*`, `/avatar/*`, `/org-logo/*`, `/api/orgs`, `/api/invites`, `/api/platform/*` | none (person-level) | none: these read and write the caller's own person, or are `requireSuperadmin`. `/auth/callback` is also where GitHub returns after the App is installed: it binds an installation only for the org and person a sealed cookie names (`github-app.md`) |
 | every OTHER path | `soleTenantGate` (the cut-over alias) | the caller's ONE org — 409 `{ error: "org_required" }` with none or several, 404 if it is suspended |
 
 `soleTenantGate` is the DEFAULT, so a route added without thought is tenant-gated, never open.

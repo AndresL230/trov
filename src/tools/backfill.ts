@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import { first } from "../data/sql";
 import { platform, type TenantContext } from "../data/context";
-import { markSecretUsed, resolveCredential } from "../data/secrets";
+import { resolveGithubCredential } from "../github-app/credential";
 import { jobTenant } from "../platform/jobs";
 import { orgPrimaryRepo } from "../repo/config";
 import { ingestEvent } from "../consumer";
@@ -219,15 +219,17 @@ export async function runBackfill(
     issuesToSummarize: 0,
   });
 
-  // The org's PRIMARY repo and its `github_token` (the org's stored secret; for SaplingLearn, until
-  // its admin enters one, the legacy GITHUB_SERVICE_TOKEN — src/data/secrets.ts). This module is not
+  // The org's PRIMARY repo and its GitHub credential (src/github-app/credential.ts: its App
+  // installation's token, else its stored `github_token`; for SaplingLearn, until its admin connects
+  // either, the legacy GITHUB_SERVICE_TOKEN — src/data/secrets.ts). This module is not
   // reachable from src/mcp.ts, so it may resolve one. A secret that cannot be read is "not configured".
   const repo = (await orgPrimaryRepo(ctx))?.repo;
-  const token = repo ? (await resolveCredential(ctx, env, "github_token", "").catch(() => null))?.reveal() : undefined;
-  if (!token || !repo) return failed("service token or repo not configured");
-  await markSecretUsed(ctx, "github_token", "").catch(() => undefined);
+  const gh = repo ? await resolveGithubCredential(ctx, env, { repo, fetchImpl: opts?.fetchImpl }).catch(() => null) : null;
+  const token = gh?.token.reveal();
+  if (!gh || !token || !repo) return failed("service token or repo not configured");
+  await gh.markUsed();
 
-  const doFetch = opts?.fetchImpl ?? fetch;
+  const doFetch = gh.fetch(opts?.fetchImpl) ?? fetch;
   const summarizer = opts?.summarizer ?? (env.GEMINI_API_KEY ? geminiPrSummarizer(env.GEMINI_API_KEY) : null);
   const issueSummarizer = opts?.issueSummarizer ?? (env.GEMINI_API_KEY ? geminiIssueSummarizer(env.GEMINI_API_KEY) : null);
   const summaryBatchLimit = opts?.summaryBatchLimit ?? SUMMARY_BATCH_LIMIT;
