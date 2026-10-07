@@ -68,6 +68,17 @@ done) — Hosting has its **own** checklist inside the tab (below).
 The tab loads ONE payload, `GET /api/o/:slug/hosting` → `HostingSetupDTO`:
 `{ providers, environments, connections, checklist, secrets_available }`.
 
+**Build it the way Org settings is already built — and the way "Connect with GitHub" already works.** Org settings
+has ONE hierarchy (`web/src/org-ui.ts`, its header comment): the page title; the tab bar; a tab's **lead** — one 13px
+sentence saying what is here and what needs attention, with the tab's ONE accent action at its right (`tabLead`);
+**sections** with an uppercase eyebrow, a count and a quiet aside (`orgHead`) — the only heading level in a tab;
+**rows inside one surface per section**: name 13.5px / 600 and a status chip first, quiet 12px metadata after, ONE
+quiet action, and everything else (what it is, how to get it, less-used and destructive actions) BEHIND the row
+(`openRow`) or in its dialog. Destructive actions are text (`dangerLink`), last in their cluster, never beside the
+primary. The GitHub App (Org settings › Repositories and Integrations, `web/src/github-app.ts`) is the precedent for
+everything in 1c — a provider connection must look and behave like it: the same return notice, the same connection
+row, the same "Manual connection" fold, the same lost banner. Study it before designing these.
+
 ### 1a. The layout
 
 Design a page with three regions (desktop ≥ 1000px; on a phone everything stacks in this order):
@@ -100,14 +111,33 @@ Design a page with three regions (desktop ≥ 1000px; on a phone everything stac
    Repo dashboard does) or a row per environment with parts as cards. It must work for 1–10 environments and
    0–6 parts each.
 
-3. **Connections** — one card per `connections[]` entry (`HostingConnectionDTO`): the provider, `status`
-   (connected / not connected / error / revoked), **how** (`method`: "Installed", "Connected with OAuth", "Token
-   ending ••••a1b2" from `hint_last4`), the provider-side `account.label` ("team Acme"), `connected_by` +
-   `connected_at`, `last_used_at` ("Last used 8 min ago"), `last_error` (scrubbed text — show it, in full, in a
-   quiet error box), `revoked_reason` ("Removed on Vercel"), `used_by` ("Used by Staging › Web, Production › Web"),
-   `scope_label` for Railway's per-environment tokens ("Railway — Staging"), and `legacy_fallback` ("Using the
-   platform's old secret — save your own to take over"). Actions: **Connect / Reconnect**, **Test connection**,
-   **Rotate** (tokens), **Disconnect**.
+3. **Connections** — a section ("Connections", with a count) holding ONE ROW per `connections[]` entry
+   (`HostingConnectionDTO`), modelled on the GitHub App's row (`githubAppRow`, `web/src/github-app.ts`):
+   - **head**: "<Provider> · <account.label>" (e.g. "Vercel · Acme"; Railway's per-environment tokens read
+     "Railway · Staging" from `scope_label`) and a status chip — Connected (green) / Error (red, when `last_error`)
+     / Not connected (grey) / Removed (amber, `revoked`);
+   - **meta** (quiet, 12px): how it is connected — "Installed", "Connected with OAuth", or "Token ••••a1b2" from
+     `hint_last4` — · "used by N parts" (`used_by`) · "connected by @handle";
+   - **its one always-visible action**: a quiet **Test connection** button; the result appears INLINE under the row
+     as a green "Connection works. <detail>" or red "Test failed. <detail>" box (`role="status"`), and a stored
+     `last_error` shows as a red "Last error. <text>" box — both always visible, not behind the row;
+   - **behind the row** (it opens): one paragraph of what the connection is and what Trov reads with it, "Connected
+     by X <relative> · last used <relative>" (`connected_at`, `last_used_at`), the parts that use it, and the
+     actions: **Manage on <Provider>** (a ghost external link, new tab, from `manage_url` — the provider's own page
+     for the installation / grant / token), **Rotate** (tokens only), and **Disconnect** as quiet red text that
+     opens the shared confirmation modal;
+   - `legacy_fallback`: a quiet line "Using the platform's old secret — save your own to take over".
+   - **Not connected yet**: the row offers the provider's best available method as its action (an accent
+     "Connect with Vercel" only when it is the tab's one primary action, else quiet), with the head chip "Not
+     connected" and the meta "Recommended: no token to paste" for install / OAuth methods.
+   - **Manual connection**: once a provider is connected by install / OAuth, its paste-a-token form is NOT offered
+     beside it; it folds into a quiet "Manual connection" row under it ("Not needed while Vercel is connected"),
+     exactly like GitHub's token and webhook rows fold under the App (`web/src/integrations.ts`, `githubGroup`).
+   - **Lost banner**: when a connection was removed on the PROVIDER's side (`status: "revoked"` with a
+     provider-side reason — uninstalled, or the provider refused the grant) and nothing replaced it, an amber banner
+     at the top of the tab says so and what still works ("The Vercel integration was removed on Vercel 2 h ago.
+     Deploys for Staging › Web app stop updating. Connect again to resume.") — modelled on `lostBanner`. Never after
+     a Disconnect the admin asked for.
 
 ### 1b. Add / edit a part (the part editor)
 
@@ -147,15 +177,23 @@ back.
   confirmation — what the provider's screen will ask (`grants[]`, e.g. "Projects: read, Deployments: read on the
   projects you pick"), and `how_to` (e.g. Netlify: "Netlify OAuth has no scopes: approve with an account that
   belongs only to the team you want Trov to see"). Then `POST /api/o/:slug/hosting/:provider/connect` →
-  `{ url, method, expires_at }` and the browser goes to `url`. The provider sends the admin back to
-  `/o/<org-slug>/#org/hosting?connected=<provider>` → a success toast ("Connected to Vercel — team Acme") and the
-  connection card flips to *connected*; or to `…#org/hosting?connect_error=<code>` → an error banner with copy per
-  code: `expired` ("The connect link expired — start again"), `mismatch` ("This connection was started in another
-  browser or by another person"), `forbidden` ("Only an admin of this organization can connect it"), `denied`
-  ("You cancelled on Vercel — nothing was connected"), `not_configured` ("This Trov deployment can't connect
-  Vercel yet — paste a token instead"), `exchange_failed` ("Vercel refused the connection — try again, or paste a
-  token instead"), `secrets_unavailable` ("Credentials can't be saved right now"), `unknown_provider` / `failed`
-  ("Something went wrong — try again"). Remove the query from the URL once the message is shown.
+  `{ url, method, expires_at }` and the browser navigates to `url` (a full navigation — it leaves Trov). A 409
+  `already_connected` means the org already has one: say "Disconnect it first" instead of navigating.
+  **The return** mirrors GitHub's exactly (`connectNotice` / `connectNoticeCopy` in `web/src/github-app.ts`): the
+  provider sends the admin back to `/o/<org-slug>/?hosting=<outcome>&provider=<id>#org…`; the SPA reads
+  `?hosting=` ONCE on entering the org, shows a dismissible NOTICE at the top of the Hosting tab (tone ok / amber /
+  red with its icon, `role="alert"` for red and `"status"` otherwise, a Dismiss ×), then strips the query from the
+  address bar. One title + one body per outcome (the vocabulary is `HOSTING_CONNECT_OUTCOMES` in
+  `shared/hosting.ts`): `connected` (ok — "Vercel is connected." + what Trov now reads), `expired` (amber — "That
+  took too long, or was not started here." start again), `wrong_person` (red — the person signed in when the
+  provider returned is not the one who started), `not_admin` (red — only an admin or owner can connect a host),
+  `denied` (amber — "You cancelled on Vercel — nothing was connected"), `taken` (red — that installation is
+  already connected to another Trov organization; disconnect it there first), `already_connected` (red — this
+  organization is already connected to Vercel; disconnect it first), `not_configured` (amber — this Trov can't
+  connect Vercel yet; paste a token instead), `exchange_failed` (red — Vercel refused the connection; try again or
+  paste a token), `secrets_unavailable` (red — credentials can't be saved right now), `unknown_provider` /
+  `failed` (red — something went wrong; try again). Nothing about the provider's own error text ever reaches the
+  URL or the notice.
 - **Paste a token** (every provider has one except AWS): a modal form — the provider's `how_to` (where to create
   the token and the **narrowest permission** that works, stated plainly, e.g. "Render API keys have no scopes…"),
   the secret field (masked, paste-friendly, never shown again — "Trov never shows it again; to change it, rotate
@@ -169,8 +207,8 @@ back.
 connection }`: inline result under the card — a green "✓ Vercel answered for project web (team Acme)." or the red
 `detail` — it is already safe to show (credentials are scrubbed server-side).
 
-**Disconnect** → confirmation modal naming what stops ("Deploys and usage of Staging › Web and Production › Web
-stop updating"), then `POST …/hosting/:provider/disconnect` → `{ connection, upstream }`: the card shows *not
+**Disconnect** → the shared confirmation modal (as GitHub's Disconnect uses), naming what stops ("Deploys and
+usage of Staging › Web and Production › Web stop updating") and what happens upstream, then `POST …/hosting/:provider/disconnect` → `{ connection, upstream }`: the card shows *not
 connected*. `upstream` says whether the provider-side installation was removed too: `revoked` (say nothing extra),
 `failed` ("Trov forgot the credential, but Vercel did not confirm removing the integration — remove it under
 Vercel › Integrations"), `none` (a pasted token: "Also delete the token on Netlify if you no longer need it").
@@ -180,8 +218,9 @@ A connection the provider removed from ITS side arrives as *revoked* with `revok
 Fresh org (no environments) · environments but no parts · parts on unconnected providers · everything connected and
 polling · a connection in **error** (401 last_error) · a **revoked** install · a part whose last poll failed · a
 part with metrics unavailable (Vercel, Netlify) · secrets unavailable (`secrets_available: false`: every save is
-disabled with "Credentials can't be saved right now — the platform key is missing") · loading (skeleton) · load
-failed (retry) · phone width · dark and light.
+disabled with "Credentials can't be saved right now — the platform key is missing") · the return notice for every
+outcome (ok / amber / red) · the lost banner · a connected install with its "Manual connection" fold · loading
+(skeleton) · load failed (retry) · phone width · dark and light.
 
 ---
 
@@ -241,8 +280,9 @@ sample-data mode (the dashboard's "Preview with sample data" toggle uses `web/sr
 ## Smaller touches
 
 - **Org settings › Integrations**: hosting providers now appear there too (kinds `vercel`, `render`, `netlify`,
-  `fly`, `aws`) but only once a part uses them. A provider connected by install/OAuth should read "Connected with
-  Vercel — manage in Hosting" instead of offering a paste form. Keep the two tabs consistent.
+  `fly`, `aws`) but only once a part uses them — grouped like the GitHub group there (`githubGroup`): a provider
+  connected by install / OAuth is ONE row ("Connected with Vercel — manage in Hosting") with its token row folded
+  under "Manual connection", never a second paste form beside it. Keep the two tabs consistent.
 - **Org settings › Environments**: the existing advanced fields "Cloudflare Worker / Workers Builds check /
   Railway environment ID…" stay (legacy parts), with a pointer "Parts on other hosts: Hosting tab".
 - **Overview environment cards** (stretch, optional): today each card shows two halves "Backend · Railway" and
@@ -351,7 +391,7 @@ Connect `not_available` / `not_installable` / `not_configured` (409). A 403 mean
 | Credentials can't be saved (platform key missing) | `HOSTING_SAMPLE_SECRETS_LOCKED` |
 | The provider catalogue (the picker) — the real one | `HOSTING_SAMPLE_PROVIDERS` |
 | Connect start / test passed / test failed / Poll-now lines | `HOSTING_SAMPLE_CONNECT_START`, `HOSTING_SAMPLE_TEST_OK`, `HOSTING_SAMPLE_TEST_FAILED`, `HOSTING_SAMPLE_POLL` |
-| Callback error codes | `HOSTING_CONNECT_ERROR_CODES` |
+| Return outcomes (`?hosting=`) | `HOSTING_CONNECT_OUTCOMES` (`shared/hosting.ts`; re-exported by the sample as `HOSTING_CONNECT_ERROR_CODES`) |
 | Repo dashboard › Usage › Hosting — two environments, every provider: legacy Cloudflare (traffic) + Railway (resources), Vercel (a deploy building, one failed; usage unavailable), Netlify, Render web (all three ranges) + service, Fly.io web + service (releases without commits), one failed last poll, one `empty` part | `repoSample().providers` in `web/src/repo-sample.ts` (the dashboard's existing "Preview with sample data" toggle loads it) |
 
 Recorded-shape API responses for each provider (what the backend parses, useful for realistic copy and ids) are in
