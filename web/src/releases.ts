@@ -70,7 +70,7 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Sync GitHub as a recorded run, and AI summaries counted per organization (#107).
+  // Sync GitHub as a recorded run, and AI summaries counted per organization (#109).
   {
     version: "0.22",
     date: "2026-10-07",
@@ -108,7 +108,7 @@ export const RELEASES: Release[] = [
         "Platform › Usage: AI summaries per org and in total (attempted, succeeded, fell back, the month against the cap)",
         "`web/src/sync.ts`: the Sync panel and the header control's states; `docs/architecture/sync.md`",
         "`pruneSyncRuns` on the daily cron; `sync_runs.started_by` in `HANDLE_COLUMNS`",
-        "`githubCredentialSource` (`src/github-app/credential.ts`): where an org's GitHub credential would come from, in the order every read resolves it (the App's installation, the stored token, SaplingLearn's legacy secret), asked without minting a token. `GET /sync` answers `via` and `connect` from it (#107)",
+        "`githubCredentialSource` (`src/github-app/credential.ts`): where an org's GitHub credential would come from, in the order every read resolves it (the App's installation, the stored token, SaplingLearn's legacy secret), asked without minting a token. `GET /sync` answers `via` and `connect` from it (#109)",
         "The pricing page and its comparison table list AI summaries per month for each plan",
         "`src/platform/loopback.ts` and `holdsLiveKey` (`src/billing/config.ts`): the one test both local stand-ins (`LOCAL_UPSTREAM`, `STRIPE_TEST_API_BASE`) pass — a loopback http origin, and no live Stripe key",
       ],
@@ -128,7 +128,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [107],
+    prs: [109],
   },
   // Billing (#106), with the pricing page (#105), which merged without a release line of its own.
   {
