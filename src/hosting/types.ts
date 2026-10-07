@@ -120,8 +120,9 @@ export interface InstallGrant {
 }
 
 export interface InstallSpec {
-  /** The URL the admin's browser is sent to. `redirectUri` is Trov's callback; `state` is opaque. */
-  authorizeUrl(args: { clientId: string; redirectUri: string; state: string }): string;
+  /** The URL the admin's browser is sent to. `redirectUri` is Trov's callback; `state` is opaque. `vars` holds
+   *  the values of the method's `requires` Worker vars (e.g. an integration's slug) — never a secret's. */
+  authorizeUrl(args: { clientId: string; redirectUri: string; state: string; vars: Readonly<Record<string, string>> }): string;
   /** Exchange the callback's `code` (+ any extra query params the provider sends) for a grant. */
   exchange(args: {
     fetch: HostFetch; code: string; clientId: string; clientSecret: string; redirectUri: string; query: Readonly<Record<string, string>>;

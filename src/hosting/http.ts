@@ -177,6 +177,21 @@ export const HOUR = 3_600_000;
 export const hourFloor = (ms: number): number => Math.floor(ms / HOUR) * HOUR;
 export const iso = (ms: number): string => new Date(ms).toISOString();
 
+/** How long an hour must have been CLOSED before it is read: a provider's figures for the hour that just
+ *  ended may still be filling in, and a stored point is permanent (first write wins). */
+export const SETTLE_MS = 15 * 60_000;
+/** Hours one poll reads, so a missed tick (or two) heals on the next one. */
+export const POLL_HOURS = 3;
+/**
+ * THE metric window every provider reads: the last `POLL_HOURS` COMPLETE hours that have been closed for
+ * at least `SETTLE_MS`, `[from, to)`, both hour-aligned. A re-poll at any minute of the same hour asks for
+ * the same hours, so an on-demand poll and the cron write the same rows.
+ */
+export function pollWindow(now: number): { from: number; to: number } {
+  const to = hourFloor(now - SETTLE_MS);
+  return { from: to - POLL_HOURS * HOUR, to };
+}
+
 export { record };
 export const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
 export const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
