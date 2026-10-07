@@ -237,6 +237,8 @@ const TENANT: Record<string, Row> = {
   "GET /persons": {}, "GET /roadmap": {}, "GET /me/dashboard": {}, "GET /repo/dashboard": {},
   // 503: Sync GitHub's "service token or repo not configured" — the caller's OWN org has none (test/jobs.multi-org.test.ts).
   "POST /admin/backfill": { body: {}, allow: [503] }, "POST /admin/poll": J({}), "POST /admin/poll-usage": J({}),
+  // Sync GitHub's status (0046_sync_runs, src/sync/runs.ts): the PATH's org's runs, repository and summaries allowance only.
+  "GET /sync": {},
   "POST /tickets": J({ title: "from the matrix" }), "GET /tickets": { query: "?seg=all" }, "GET /tickets/badge": {}, "GET /tickets/:id": {},
   "POST /tickets/:id/edit": J({ title: "hijacked" }), "POST /tickets/:id/status": J({ to: "in_progress" }),
   "POST /tickets/:id/move": J({ to: "in_progress", after_id: null }), "POST /tickets/:id/assignees": J({ login: "bob", on: true }),

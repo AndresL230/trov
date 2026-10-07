@@ -3,6 +3,7 @@ import { handleMcp } from "./mcp";
 import { handleGithubWebhook, webhookPath } from "./github-hook";
 import { resolveBearerTenant } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
+import { pruneSyncRuns } from "./platform/sweeps";
 import { platform } from "./data/context";
 import { pruneLimits } from "./platform/limits";
 import { mcpUnauthorized, oauthOrigin } from "./auth/oauth";
@@ -95,6 +96,7 @@ export default {
     if (controller.cron === DAILY_CRON || controller.cron === WEEKLY_CRON) {
       await pruneUsage(platform(env, "system")).catch(() => undefined); // org_usage_daily retention (400 days)
       await pruneLimits(platform(env, "system")).catch(() => undefined); // abuse_counters of past windows
+      await pruneSyncRuns(platform(env, "system"), controller.scheduledTime).catch(() => undefined); // sync_runs retention (90 days)
       await handleNotificationCron(env, controller.cron, new Date(controller.scheduledTime));
       return;
     }

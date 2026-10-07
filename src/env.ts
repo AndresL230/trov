@@ -14,6 +14,7 @@ export interface Env {
   GITHUB_REPO?: string;   // LEGACY: read by nothing — an org's repo is its `org_repos` row (0042_organizations copied this one); Phase 7 deletes it
   DEV_LOGIN?: string;     // LOCAL DEV ONLY (set in .dev.vars): bypass OAuth, act as this seeded user. Never set in prod.
   GEMINI_API_KEY?: string; // Google Gemini key for capture-time PR/issue summaries (REST generateContent); absent → excerpt fallback.
+  LOCAL_UPSTREAM?: string; // LOCAL DEV ONLY (.dev.vars): a loopback http stand-in for GitHub + Gemini during a Sync (src/sync/local-upstream.ts). Ignored unless http://127.0.0.1 or http://localhost.
   GITHUB_SERVICE_TOKEN?: string; // LEGACY: SaplingLearn's `github_token` fallback until its admin stores one (`resolveCredential`); no other org ever reads it
   PUBLIC_ORIGIN?: string; // absolute origin for links in email (deep links, unsubscribe); absent → relative links
   NOTIFICATIONS_MODE?: "local" | "resend"; // delivery gate; absent → local (bodies to the dev table, Resend never called)

@@ -144,6 +144,8 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `UPDATE orgs SET plan_changed_at = ?, plan_changed_by = ? WHERE id = 'org_b'`, nowIso(), handle);
   await run(env.DB, `INSERT INTO org_grants (person, plan, granted_by, created_at, status, used_at, used_by, used_org) VALUES (?, 'team', ?, ?, 'used', ?, ?, ?)`, handle, handle, nowIso(), nowIso(), handle, org);
   await run(env.DB, `INSERT INTO org_grants (github_login, plan, granted_by, created_at, status, revoked_at, revoked_by) VALUES ('rename-gh', 'team', ?, ?, 'revoked', ?, ?)`, handle, nowIso(), nowIso(), handle);
+  // 0046_sync_runs: a Sync GitHub run the person started.
+  await run(env.DB, `INSERT INTO sync_runs (org_id, repo, started_by, started_at, updated_at, ended_at, status) VALUES (?, 'o/r', ?, ?, ?, ?, 'ok')`, org, handle, nowIso(), nowIso(), nowIso());
 }
 
 describe("renamePerson", () => {

@@ -270,6 +270,8 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   // Plans and grants (0044_plans): who changed an org's plan; a grant's person, granter, user and revoker.
   ["orgs", "plan_changed_by"],
   ["org_grants", "person"], ["org_grants", "granted_by"], ["org_grants", "used_by"], ["org_grants", "revoked_by"],
+  // Sync GitHub runs (0046_sync_runs): who started one.
+  ["sync_runs", "started_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };
