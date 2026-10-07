@@ -19,17 +19,20 @@
 import type { Env } from "./env";
 import { platform, systemTenant } from "./data/context";
 import { markSecretUsed, resolveCredential } from "./data/secrets";
+import { resolveGithubCredential } from "./github-app/credential";
 import { hookRepo, legacyHookRepo } from "./platform/jobs";
 import { captureDelivery, verifyGithubSignature, type DeliveryOpts } from "./webhook";
 
-const json = (body: unknown, status = 200): Response =>
+export const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 /** The one refusal: an unknown hook id, a suspended org's, a repo with no (readable) secret and a bad
  *  signature all answer this — same status, body and headers, no WWW-Authenticate. */
-const unauthorized = (): Response => json({ error: "unauthorized" }, 401);
+export const unauthorized = (): Response => json({ error: "unauthorized" }, 401);
 
 /** `/webhook/github` → `{ hookId: null }` (the legacy hook); `/webhook/github/<id>` → that hook;
- *  anything else → null (not a webhook path). */
+ *  anything else → null (not a webhook path). `/webhook/github/app` is the GitHub App's own endpoint
+ *  (src/github-app/webhook.ts), matched by src/index.ts BEFORE this — no repo's id is ever `app`
+ *  (they are `hook_` + random). */
 export function webhookPath(pathname: string): { hookId: string | null } | null {
   if (pathname === "/webhook/github") return { hookId: null };
   const m = /^\/webhook\/github\/([A-Za-z0-9_-]{1,64})$/.exec(pathname);
@@ -84,10 +87,12 @@ export async function handleGithubWebhook(request: Request, env: Env, opts?: Del
 
   return captureDelivery(ctx, env, {
     repo: row.repo_full_name,
+    // The org's GitHub credential (./github-app/credential.ts): its App installation's token, else its
+    // stored token, else — SaplingLearn only — the Worker's. Resolved only when a follow-up read needs it.
     githubToken: async () => {
-      const token = await resolveCredential(ctx, env, "github_token", "").catch(() => null);
-      if (token) await markSecretUsed(ctx, "github_token", "").catch(() => undefined);
-      return token?.reveal() ?? null;
+      const gh = await resolveGithubCredential(ctx, env, { repo: row.repo_full_name, fetchImpl: opts?.fetchImpl }).catch(() => null);
+      if (gh) await gh.markUsed();
+      return gh?.token.reveal() ?? null;
     },
   }, request.headers.get("x-github-event") ?? "", rawBody, opts);
 }

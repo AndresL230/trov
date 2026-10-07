@@ -5,12 +5,15 @@
 // which landing.ts reads so a rerender renders it settled instead of replaying.
 // Reduced motion: everything settles immediately, nothing is observed.
 
+import { mountPricing } from "./pricing-dom";
+
 let observer: IntersectionObserver | null = null;
 
 /** Run after every landing render (the innerHTML swap made fresh elements). */
 export function mountLandingMotion(root: ParentNode, seen: Set<string>): void {
   unmountLandingMotion();
   syncNav(true);
+  mountPricing(root); // the pricing section's Monthly / Yearly choice survives the rerender
   const pending = [...root.querySelectorAll<HTMLElement>("[data-rv]:not(.is-done)")];
   if (!pending.length) return;
   if (matchMedia("(prefers-reduced-motion: reduce)").matches || typeof IntersectionObserver === "undefined") {

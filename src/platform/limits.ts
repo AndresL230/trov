@@ -24,6 +24,8 @@ export const LIMITS = {
   avatar_upload: { max: 20, window: "day" },
   /** `POST /api/o/:slug/logo`: an org's image stored in R2 — the uploader's allowance, across their orgs. */
   org_logo_upload: { max: 20, window: "day" },
+  /** A Stripe Checkout Session started (`GET /billing/start`, an org's renewal): a Stripe object and a row each. */
+  checkout: { max: 10, window: "day" },
   /** `GET /auth/handle-check`: is a handle taken. */
   handle_check: { max: 60, window: "hour" },
 } as const satisfies Record<string, Limit>;

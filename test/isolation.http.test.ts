@@ -285,16 +285,26 @@ const TENANT: Record<string, Row> = {
   "POST /integrations/:kind/:a": J({ secret: "x" }), "POST /integrations/:kind/:a/:b": J({ secret: "x" }),
   "DELETE /integrations/:kind": {}, "DELETE /integrations/:kind/:a": {},
   "GET /repos": {}, "POST /repos": J({ repo_full_name: "acme/matrix" }), "DELETE /repos/:id": {},
+  // src/github-app/routes.ts — the GitHub App's connection. `GET /github/install` only ever redirects (to GitHub for an
+  // admin of the org in the path, back to its own Repositories tab otherwise); B has no installation, so the rest answer
+  // B's own "not connected" and never reach for the network.
+  "GET /github": {}, "GET /github/install": {}, "GET /github/repositories": {}, "POST /github/repositories": J({ repo_full_name: "SaplingLearn/sapling" }),
+  "POST /github/test": J({}), "POST /github/disconnect": J({}),
   "GET /environments": {}, "PUT /environments": J({ order: [] }), "PUT /environments/:key": J({ label: "hijacked", branch: "main" }), "DELETE /environments/:key": {},
   // src/auth/token-routes.ts — the caller's OWN tokens for the org in the path (`:id` is alice's token in A)
   "GET /mcp-tokens": {}, "POST /mcp-tokens": J({}), "POST /mcp-tokens/:id/revoke": J({}),
+  // src/billing/routes.ts — an OWNER's billing for the org in the path (0045_billing). Billing is off in the pool,
+  // so B's own owner gets the documented 503 `billing_unavailable` (and B's member the 403): no Stripe call is
+  // ever made here, and the customer a session would be for is read from the PATH's org row, never from a body.
+  "POST /billing/portal": { body: {}, allow: [503] }, "POST /billing/change": { body: { plan: "team" }, allow: [503] },
+  "POST /billing/renew": { body: { plan: "team" }, allow: [503] },
 };
 
 /** The org surface (src/orgs, src/integrations) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
  *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
  *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
 const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
+  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens", "/billing", "/github"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
 
 /** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
 const LEGACY_ONLY: Record<string, Row> = {
@@ -306,7 +316,7 @@ const LEGACY_ONLY: Record<string, Row> = {
 /** Session routes that are neither `tenantGate`'s nor `soleTenantGate`'s — and why each is safe with no membership. */
 const PLATFORM: Record<string, string> = {
   "GET /auth/login": "public: starts the GitHub OAuth redirect",
-  "GET /auth/callback": "public: the OAuth callback — state + PKCE bound to a sealed cookie",
+  "GET /auth/callback": "public: the OAuth callback — state + PKCE bound to a sealed cookie. Also the GitHub App's install return (`installation_id`): binds an installation only for the org and person a second sealed cookie names, after GitHub confirms the account can reach it (test/github-app.connect.test.ts)",
   "GET /auth/google/login": "public: starts the Google OAuth redirect",
   "GET /auth/google/callback": "public: the OAuth callback",
   "GET /auth/onboard": "the sealed onboard cookie: echoes the provider profile it carries",
@@ -347,6 +357,10 @@ const PLATFORM: Record<string, string> = {
   "POST /api/platform/grants": "requireSuperadmin", "POST /api/platform/grants/:id/revoke": "requireSuperadmin",
   "GET /api/platform/admins": "requireSuperadmin", "POST /api/platform/admins": "requireSuperadmin", "DELETE /api/platform/admins/:handle": "requireSuperadmin",
   "GET /api/platform/audit": "requireSuperadmin", "GET /api/platform/usage": "requireSuperadmin",
+  // Billing (0045_billing, src/billing/routes.ts) — person-level: a purchase is made before the buyer has any org.
+  "GET /billing/start": "public: reads the session itself — signed out, a sign-in page; signed in, a Stripe Checkout Session bound to the CALLER (their handle on the row, their own verified e-mail), rate-limited per person; touches no org",
+  "GET /api/billing/config": "public: which plans can be bought (config only) and, signed in, the caller's OWN paid orgs (owner memberships)",
+  "GET /api/billing/status": "session: a checkout the CALLER started — anyone else's session id is the same 404 as an unknown one (test/billing.flow.test.ts)",
 };
 
 // ── the registry ─────────────────────────────────────────────────────────────
@@ -645,3 +659,69 @@ describe("the person-level routes show a stranger nothing of org A", () => {
     }
   });
 });
+
+// ── billing: the routes that belong to no org, and the one that is no session route at all ──
+// (0045_billing, docs/architecture/billing.md.) `POST /webhook/stripe` is dispatched in src/index.ts before
+// the app, so it is not in the registry above. Its classification: SIGNATURE-GATED — the `Stripe-Signature`
+// over the raw body is the only auth; a session cookie is neither needed nor of any use to it.
+describe("billing is nobody's way into an org (0045_billing)", () => {
+  it("POST /webhook/stripe: a member's cookie, a superadmin's, or none — the same bare 401 without Stripe's signature, and no row of A changes", async () => {
+    const fx = await seed();
+    const before = await digestA();
+    const { billingEnv, postWebhook, signature, event } = await import("./helpers/billing");
+    // An event that names A's org id, A's owner and a made-up subscription — forged, so unsigned or wrongly signed.
+    const forged = JSON.stringify(event("checkout.session.completed", { id: "cs_forged", status: "complete", payment_status: "paid", mode: "subscription", subscription: "sub_forged", client_reference_id: OWNER_A, metadata: { trov_ref: "x", trov_org: "saplinglearn" } }));
+    const answers = new Set<string>();
+    const attempts: Record<string, string>[] = [{}, { cookie: fx.alice }, { cookie: fx.ownerA }, { cookie: fx.cookies.root }, { cookie: fx.alice, "stripe-signature": await signature(forged, "whsec_not_the_secret") }];
+    for (const headers of attempts) {
+      for (const e of [billingEnv(), env as never]) { // billing on, and off (the pool default)
+        const r = await postWebhook(forged, headers, e);
+        answers.add(`${r.status} ${r.text}`);
+        expect(r.text.includes(CANARY)).toBe(false);
+      }
+    }
+    expect([...answers]).toEqual([`401 ${JSON.stringify({ error: "unauthorized" })}`]);
+    expect(await first<{ n: number }>(env.DB, `SELECT (SELECT COUNT(*) FROM billing_events) + (SELECT COUNT(*) FROM org_grants) + (SELECT COUNT(*) FROM billing_subscriptions) AS n`)).toEqual({ n: 0 });
+    expect(await digestA()).toEqual(before);
+  });
+
+  it("a correctly SIGNED event still cannot name its way into A: fulfilment starts from Trov's own checkout row, never from the payload", async () => {
+    await seed();
+    const before = await digestA();
+    const { deliver, event } = await import("./helpers/billing");
+    for (const object of [
+      { id: "cs_unknown", status: "complete", payment_status: "paid", mode: "subscription", subscription: "sub_x", client_reference_id: OWNER_A, metadata: { trov_ref: "x", trov_org: "saplinglearn", trov_person: OWNER_A } },
+    ]) expect((await deliver(event("checkout.session.completed", object))).json).toEqual({ ok: true, outcome: "unknown_checkout" });
+    expect((await deliver(event("customer.subscription.deleted", { id: "sub_x", customer: "cus_x", status: "canceled", metadata: { trov_org: "saplinglearn" } }))).json).toEqual({ ok: true, outcome: "unknown_subscription" });
+    expect(await digestA()).toEqual(before);
+  });
+
+  it("the person-level billing routes say nothing of an org the caller does not own, and a checkout of A's member is not B's to read", async () => {
+    const fx = await seed();
+    const { billingEnv } = await import("./helpers/billing");
+    const on = billingEnv();
+    const T = "2026-10-01T00:00:00.000Z";
+    // A pays through Stripe; alice (a member, not the owner) started a checkout of her own.
+    await run(env.DB, `UPDATE orgs SET plan_source = 'billing', billing_customer_id = 'cus_CANARY_A', billing_subscription_id = 'sub_CANARY_A' WHERE id = ?`, ORG_A);
+    await run(env.DB, `INSERT INTO billing_subscriptions (subscription_id, customer_id, person, plan, stripe_status, created_at, updated_at) VALUES ('sub_CANARY_A', 'cus_CANARY_A', ?, 'team', 'active', ?, ?)`, OWNER_A, T, T);
+    await run(env.DB, `INSERT INTO billing_checkouts (ref, person, plan, session_id, subscription_id, created_at) VALUES ('ref_CANARY_A', ?, 'team', 'cs_test_alice', 'sub_CANARY_A', ?)`, ALICE, T);
+    const ask = async (path: string, cookie: string) => {
+      const res = await app.request(path, { headers: cookie ? { cookie } : {} }, on);
+      const text = await res.text();
+      return { status: res.status, text, raw: `${text}\n${JSON.stringify([...res.headers])}` };
+    };
+    for (const who of ["bob", "boss", "root", "gone", "nobody", "sue"] as const) {
+      const cfg = await ask("/api/billing/config", fx.cookies[who]);
+      expect(cfg.status).toBe(200);
+      expect((JSON.parse(cfg.text) as { manage: unknown[] }).manage, who).toEqual([]);
+      expectClean(`${who} GET /api/billing/config`, cfg);
+      const st = await ask("/api/billing/status?session_id=cs_test_alice", fx.cookies[who]);
+      expect([st.status, st.text], who).toEqual([404, NOT_FOUND]);
+    }
+    // A's owner is the one person it is offered to; signed out, nobody's orgs are listed.
+    expect((JSON.parse((await ask("/api/billing/config", fx.ownerA)).text) as { manage: { slug: string }[] }).manage.map((m) => m.slug)).toEqual(["saplinglearn"]);
+    expect((JSON.parse((await ask("/api/billing/config", "")).text) as { manage: unknown[]; signed_in: boolean })).toMatchObject({ manage: [], signed_in: false });
+    expect((await ask("/api/billing/status?session_id=cs_test_alice", "")).status).toBe(401);
+  });
+});
+

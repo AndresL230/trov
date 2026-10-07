@@ -70,6 +70,7 @@ const report = (orgs: OrgUsage[], over: Partial<PlatformUsageResponse["totals"]>
   orgs,
 });
 const detailOf = (over: Partial<PlatformOrgDetail> = {}): PlatformOrgDetail => ({
+  summaries_enabled: true,
   org: org(),
   members: [
     { handle: "maya", name: "Maya Ortiz", role: "owner", title: "Founder", joined_at: "2026-09-01T10:00:00.000Z" },
@@ -279,6 +280,11 @@ describe("one organization", () => {
     expect(NOT_A_MEMBER).toContain("not a member");
     expect(NOT_A_MEMBER).toContain("cannot open or read its content");
     expect(platformOrgView(open())).toContain(NOT_A_MEMBER);
+    // 0043_github_app: whether the org is connected through the GitHub App, and on which account — read-only.
+    const plain = (h: string) => h.replace(/<[^>]+>/g, "");
+    expect(plain(platformOrgView(open()))).toContain("GitHub not connected through the App");
+    const viaApp = plain(platformOrgView({ ...open(), detail: { status: "ok", data: detailOf({ org: org({ github_account: "acme-gh" }) }) } }));
+    expect(viaApp).toContain("GitHub through the App on acme-gh");
   });
   it("an active org offers Suspend; a suspended one says so and offers Unsuspend", () => {
     const active = platformOrgView(open());
@@ -454,6 +460,20 @@ describe("Usage", () => {
     expect(html).not.toContain('role="alert"');
     expect(html).not.toMatch(/#[0-9a-fA-F]{3,6}\b/);
   });
+  it("an organization's own page says the same when the deployment has no key: one sentence, no figures", () => {
+    const off = orgUsageBlock(busy, 30, false);
+    expect(off.match(/AI summaries are off on this deployment \(no GEMINI_API_KEY\)\./g)).toHaveLength(1);
+    expect(off.match(/data-usage-summaries/g)).toHaveLength(1);
+    expect(words(off)).not.toContain("Attempted");
+    expect(words(off)).not.toContain("This month");
+    expect(off).not.toContain('role="alert"');
+    // Through the page: `PlatformOrgDetail.summaries_enabled` decides it.
+    const open = (on: boolean) => platformOrgView(plat({ orgSlug: "acme", detail: { status: "ok", data: detailOf({ usage: busy, summaries_enabled: on }) }, orgAudit: { status: "ok", data: [] } }));
+    expect(open(false)).toContain("AI summaries are off on this deployment (no GEMINI_API_KEY).");
+    expect(words(open(false))).not.toContain("Attempted 40");
+    expect(words(open(true))).toContain("AI summaries Attempted 40 Succeeded 34 Fell back to an excerpt 9 This month 38 of 100");
+    expect(open(true)).not.toContain("AI summaries are off");
+  });
 });
 
 describe("Admins & limits", () => {
@@ -586,7 +606,7 @@ describe("the standalone Platform page (/platform/)", () => {
   });
 
   it("one organization: the title goes back to the list and a crumb names the org; its dialogs render at the root", () => {
-    const detail = { status: "ok" as const, data: { org: org(), members: [], invites: [], usage: usageOf() } };
+    const detail = { status: "ok" as const, data: { org: org(), members: [], invites: [], usage: usageOf(), summaries_enabled: true } };
     const html = render(page({ screen: "platformorg", plat: plat({ orgSlug: "acme", detail }) }));
     expect(html).toMatch(/<button type="button" data-act="platGo"[^>]*>Platform<\/button>/);
     expect(html).toContain(NOT_A_MEMBER);

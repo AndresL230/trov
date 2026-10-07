@@ -1,8 +1,8 @@
 # Plans, limits and grants
 
 Every organization is on a **plan**; a plan is a name over a table of **limits**. A person who is not a
-superadmin comes to create an organization only by using a **grant**. No prices and no payment code exist
-yet: the last section is the seam billing will use.
+superadmin comes to create an organization only by using a **grant** — one a superadmin gave, or one a
+payment made (`billing.md`). No prices live in Trov: the last section is the seam billing uses.
 
 Code: `shared/plans.ts` (the plans, the limits, the one refusal — shared by the Worker, the SPA and the
 landing page), `src/plans/` (`state.ts`, `gate.ts`, `grants.ts`, `billing.ts`, `routes.ts`). Migration:
@@ -50,8 +50,10 @@ OAuth consent page map it themselves because they do not answer JSON through the
 402 rather than 403: a 403 here means "your role may not" and an owner can fix that; no role in the org can
 fix this one, and nothing else in the app answers 402, so a client branches on the status alone. Over MCP it
 is a tool error with `code: "plan_limit"`. The SPA shows `message` plus who can change the plan
-(`planRefusalSentence`: an owner reads "Ask Trov to change your plan.", everyone else "Ask one of this
-organization's owners.") — `PLAN_CHANGE_POINTER` is the one place billing replaces.
+(`planRefusalSentence` over `PLAN_CHANGE_POINTER`: an owner of a GRANTED org reads "Ask Trov to change your
+plan."; an owner of an org that PAYS — the refusal carries `paid: true` — reads "You can upgrade or manage
+billing in Org settings." (ended: "You can renew it in Org settings."); everyone else "Ask one of this
+organization's owners.").
 
 ## Seats
 
@@ -123,13 +125,29 @@ than were left. Requests that read at the same moment can each spend what they s
 bounded by them: **one call per webhook delivery in flight, plus up to 5 for a Sync batch** reading at
 that instant. The next reader sees their attempts and stops — there is no runaway.
 
-**Where it shows.** Org settings › General › Plan lists it like any limit ("AI summaries — 212 of 300
+**Where it shows.** Org settings › General › Plan lists it like any limit ("AI summaries — 1,212 of 3,000
 this month") with, at the cap, "New pull requests and issues show an excerpt until next month." It is
-never "over the limit" (`overLimits` skips a monthly allowance). Platform › Usage shows, per org and in
-total, attempted / succeeded / fell back for the window and the month's use against the cap. The Sync
-panel shows what a run will attempt and what is left. With **no key at all** nothing is counted or capped,
-and only the Sync panel and Platform › Usage say that summaries are off on this deployment — as a fact,
-not an error.
+never "over the limit" (`overLimits` skips a monthly allowance) — so billing's "switch to a smaller plan"
+confirmation never counts it among what the org would be over; when the month's use is already at the
+smaller plan's allowance it says that, in the allowance's own sentence. The pricing page lists it on each
+card ("3,000 AI summaries per month"; an unlimited one names no period) and in the comparison table.
+Platform › Usage shows, per org and in total, attempted / succeeded / fell back for the window and the
+month's use against the cap; an organization's own Platform page has the same line. The Sync panel shows
+what a run will attempt and what is left. With **no key at all** nothing is counted or capped, and the
+Sync panel, Platform › Usage and an organization's Platform page each say that summaries are off on this
+deployment — as a fact, not an error.
+
+**One formatter.** A limit's number is written by `formatLimit` / `formatUse` (`shared/plans.ts`), with
+thousands separators (`formatCount`); `limitPhrase` adds what it counts ("AI summaries per month", "agent
+connections per person") and `limitNoun` names a limit inside a sentence. The Plan block, Platform and
+the pricing page all go through them — none formats a count itself.
+
+**With billing's plan states** (`billing.md` › What each state does). The summarizer choice reads the
+columns billing writes (`orgs.plan`, `plan_overrides`, `plan_status`, through `planOf` — what `orgPlan`
+returns): `active` and **`past_due` summarize** (past due limits nothing), **`canceled` does not** (new
+items show an excerpt; nothing errors), a renewal turns it back on, a plan switch moves the allowance in
+place, and a superadmin's pinned plan is the one whose allowance applies.
+`test/summaries.billing.test.ts` drives each transition with Stripe's own events.
 
 **The numbers are placeholders** for the owner: 300 (Personal), 3,000 (Team), unlimited (Enterprise, sized
 per org with an override like every limit; `0` turns summaries off for an org). They are sized against the
@@ -155,15 +173,16 @@ Sync GitHub. Removing the secret turns it all off again; nothing else changes.
 
 ## Plan status
 
-`orgs.plan_status`: `active`; `past_due` (changes nothing — a grace period is billing's to run); `canceled`
+`orgs.plan_status`: `active`; `past_due` (changes nothing — the grace period is Stripe's retry schedule, `billing.md`); `canceled`
 — the org stays readable and working, and every addition a limit governs is refused until `setOrgPlan` puts
 it on a plan again (AI summaries stop too: new items show an excerpt). Nothing sets a status but billing's functions below.
 
 ## Grants: an organization of one's own
 
-An organization comes to exist in two ways: a superadmin creates it and names its admin (Platform ›
-Organizations — `organizations.md` §1), or a superadmin **grants** a person the right to create one
-themselves (Platform › Access). `persons.org_limit`, the per-person allowance from before, is read by
+An organization comes to exist in three ways: a superadmin creates it and names its admin (Platform ›
+Organizations — `organizations.md` §1), a superadmin **grants** a person the right to create one
+themselves (Platform › Access), or a person **buys a plan** and is given that same grant by billing
+(`billing.md`). `persons.org_limit`, the per-person allowance from before, is read by
 nothing; its Platform control and route are gone, and the column is dropped by the cleanup migration.
 
 1. **Granted** — `POST /api/platform/grants { to, plan, overrides?, note?, expires_in_days? }`. `to` is
@@ -204,6 +223,30 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 | `PUT /api/platform/orgs/:slug/plan` | superadmin | `{ ok, org }` (the Platform row, with `plan`); 400 `invalid_plan` / `invalid_overrides` |
 | `POST /api/platform/orgs` | superadmin | also takes `plan` (default `team`) and `overrides` |
 
+## The pricing page
+
+The public face of the plans is ONE pure render, `pricingSection` (`web/src/pricing.ts`), shown twice: as the
+landing page's last section (nav link "Pricing") and as the static page `/pricing` (`web/pricing.html`, booted
+by `web/src/pricing-page.ts`; an extra Vite input served by the assets binding like `/terms`, linked from the
+footer). It restates nothing: names, descriptions and limits come from `PLANS`, prices from `PRICING` in
+`shared/pricing.ts`. Tests: `test/render.pricing.test.ts`.
+
+- **A price is `null` until the owner announces it.** The card then reads "Pricing to be announced" and its
+  button is a waitlist e-mail; no number and no purchase link is ever shown for it. To announce one, set
+  `price` (and `yearly`, to offer yearly billing) in `PRICING` — the card shows the amount, its button becomes
+  the purchase link, and the Monthly / Yearly switch appears once any plan has both.
+- **A purchase is a plain link**, `purchaseHref(plan, interval)` → `/billing/start?plan=…` (`&interval=year`
+  only for yearly). It IS billing's `billingStartHref` (`shared/billing.ts`) — one source for the path the
+  billing route seals and returns to. Whether to offer it is decided by `PRICING` alone (`canPurchasePlan`:
+  `selfServe`, a price, and a plan billing sells); the page calls no API. A plan with `selfServe: false`
+  (Enterprise) is always "Talk to us". So the page does not know whether Stripe is set up (`billing.md`):
+  announce a price only once billing is on, or its link answers "Paid plans are not available yet". Every
+  price is `null` today, so the public page has no way into billing — `test/render.pricing.test.ts` holds that.
+- The switch is two native radios and CSS (`:has(:checked)`); `web/src/pricing-dom.ts` only keeps the choice
+  across a rerender. `/pricing` cannot know a session, so it is always the signed-out page.
+- Its sentences (what every plan includes, the questions) describe what the product does today. A change to
+  seats, limits or how a plan is changed is a change to that copy.
+
 ## The billing seam
 
 `src/plans/billing.ts` is everything a payment integration calls — no superadmin, no session. Its webhook
@@ -217,7 +260,12 @@ handler builds `platform(env, BILLING_ACTOR)` and calls only these:
 | the subscription ended | `cancelOrgPlan(p, slug)` — readable, working, no additions. (To shrink instead: `setOrgPlan(p, slug, { plan: "personal" })`.) |
 | read | `orgPlan(p, orgId)`, `getGrant(p, id)` |
 
-Reserved for it and written by nothing yet: `orgs.plan_period_end`, `orgs.billing_customer_id`,
-`orgs.billing_subscription_id`, `org_grants.external_ref` (unique: one grant per payment), and
-`PlanDef.billing` (`{ price_id }`) in `shared/plans.ts` for a plan's price. `orgs.plan_source` /
-`org_grants.source` already distinguish `granted` from `billing`.
+| the buyer switched plan before using the grant | `setPaidGrantPlan(p, external_ref, plan)` |
+| the subscription ended before the grant was used | `revokeGrant(p, id)` |
+
+**The seam is in use** (`billing.md`): Stripe's webhook (`src/billing/`) calls exactly these. A paid
+grant's `external_ref` is its Stripe subscription id; `createOrgFromGrant` links the org it becomes to the
+customer and subscription in the creating batch (`linkPaidOrgStmt`), from `billing_subscriptions`
+(0045_billing). `orgs.plan_period_end`, `billing_customer_id` and `billing_subscription_id` are written
+only that way and by `setOrgPlan` / `setOrgPlanStatus`. A plan's price is NOT in `PlanDef.billing` (left
+null): it is a Stripe Price id in `wrangler.toml`, so the owner changes one without a release.

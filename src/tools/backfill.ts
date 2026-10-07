@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import { first } from "../data/sql";
 import { platform, type TenantContext } from "../data/context";
-import { markSecretUsed, resolveCredential } from "../data/secrets";
+import { resolveGithubCredential } from "../github-app/credential";
 import { jobTenant } from "../platform/jobs";
 import { orgPrimaryRepo } from "../repo/config";
 import { ingestEvent } from "../consumer";
@@ -260,15 +260,17 @@ export async function runBackfill(
     issuesToSummarize: 0,
   });
 
-  // The org's PRIMARY repo and its `github_token` (the org's stored secret; for SaplingLearn, until
-  // its admin enters one, the legacy GITHUB_SERVICE_TOKEN — src/data/secrets.ts). This module is not
+  // The org's PRIMARY repo and its GitHub credential (src/github-app/credential.ts: its App
+  // installation's token, else its stored `github_token`; for SaplingLearn, until its admin connects
+  // either, the legacy GITHUB_SERVICE_TOKEN — src/data/secrets.ts). This module is not
   // reachable from src/mcp.ts, so it may resolve one. A secret that cannot be read is "not configured".
   const repo = (await orgPrimaryRepo(ctx))?.repo;
-  const token = repo ? (await resolveCredential(ctx, env, "github_token", "").catch(() => null))?.reveal() : undefined;
-  if (!token || !repo) return failed("service token or repo not configured", { code: "not_configured" });
-  await markSecretUsed(ctx, "github_token", "").catch(() => undefined);
+  const gh = repo ? await resolveGithubCredential(ctx, env, { repo, fetchImpl: opts?.fetchImpl }).catch(() => null) : null;
+  const token = gh?.token.reveal();
+  if (!gh || !token || !repo) return failed("service token or repo not configured", { code: "not_configured" });
+  await gh.markUsed();
 
-  const doFetch = opts?.fetchImpl ?? fetch;
+  const doFetch = gh.fetch(opts?.fetchImpl) ?? fetch;
   // THE summarizer choice for this org (src/plans/summaries.ts: the platform key, the plan's monthly
   // allowance, every call counted against the admin who pressed Sync), read once for the batch and
   // asked per item — it turns null the moment the allowance is spent. An explicit `opts` summarizer
@@ -296,7 +298,7 @@ export async function runBackfill(
       // Fail the whole run, loud: a 401/403/404 here (a dead or under-scoped
       // token) would otherwise read as "0 PRs" — fake success.
       // Both lists are fetched before any ingestion, so nothing is half-written.
-      if (!res.ok) return failed(`GitHub ${res.status} listing closed PRs (check the org's GitHub token)`, { code: "list_prs", status: res.status });
+      if (!res.ok) return failed(`GitHub ${res.status} listing closed PRs (check the org's GitHub connection)`, { code: "list_prs", status: res.status, via: gh.source });
       const page = (await res.json()) as GhPrListItem[];
       prList.push(...page);
       url = nextLink(res);
@@ -312,7 +314,7 @@ export async function runBackfill(
     let url: string | null = `https://api.github.com/repos/${repo}/issues?state=open&per_page=100`;
     while (url) {
       const res: Response = await doFetch(url, { headers });
-      if (!res.ok) return failed(`GitHub ${res.status} listing open issues (check the org's GitHub token)`, { code: "list_issues", status: res.status });
+      if (!res.ok) return failed(`GitHub ${res.status} listing open issues (check the org's GitHub connection)`, { code: "list_issues", status: res.status, via: gh.source });
       const page = (await res.json()) as GhIssueListItem[];
       for (const issue of page) {
         if (issue.pull_request) continue;

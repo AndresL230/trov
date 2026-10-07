@@ -59,6 +59,7 @@ import { orgSettingsView, orgOverlays, initialOrgUi, currentOrg, type OrgUi, typ
 import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 // Organizations as a person meets them (org-picker.ts): the switcher, the picker, the create dialog.
 import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsUi, type OrgsUi } from "./org-picker";
+import { billingDonePage, type BillingDoneUi } from "./billing";
 import { isOrgAdmin } from "./org-context";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 
@@ -120,6 +121,8 @@ export interface AppState {
   orgMe: Loadable<OrgMeResponse | null>;
   /** The switcher's menu, the picker and the create-organization dialog (org-picker.ts). */
   orgsUi: OrgsUi;
+  /** `/billing/done`: the waiting room a buyer lands in after Stripe Checkout (billing.ts). null everywhere else. */
+  billingDone: BillingDoneUi | null;
   mywork: Loadable<DashboardData | null>;
   /** My Work › Repo tile: which view is showing. Session-only. */
   mwRepoTab: MwRepoTab;
@@ -407,6 +410,7 @@ export function initialState(): AppState {
     orgSlug: null,
     orgMe: { status: "idle", data: null },
     orgsUi: initialOrgsUi(),
+    billingDone: null,
     screen: "mywork",
     theme: "light", systemDark: true,
     collapsed: false,
@@ -2453,7 +2457,7 @@ function toastBlock(msg: string, elapsed: number, ms: number, action: ToastActio
 export function render(s: AppState): string {
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+    ${s.billingDone ? billingDonePage(s.billingDone) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}

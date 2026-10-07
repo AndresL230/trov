@@ -65,7 +65,13 @@ export interface SyncFailure {
   /** `not_configured` · `list_prs` · `list_issues` · `unexpected` · `reconcile:<arm>` · `reconcile:unexpected`. */
   code: string;
   status?: number;
+  /** Which credential the read was made with, where one was — so the fix points at the right place. */
+  via?: SyncCredential;
 }
+
+/** How an org's GitHub is read (src/github-app/credential.ts): its GitHub App installation, or a stored
+ *  token (for SaplingLearn, until it connects either, the deployment's legacy one). */
+export type SyncCredential = "app" | "token";
 
 export interface SyncRunView {
   id: number;
@@ -94,7 +100,8 @@ export interface SyncRunView {
 
 // ── the status every member reads (GET /sync) ────────────────────────────────
 
-/** Why nobody can start a sync right now; null = one can be started (by an admin). */
+/** Why nobody can start a sync right now; null = one can be started (by an admin). `no_token` = the org
+ *  has NO GitHub credential for its repository — neither an App installation that covers it nor a token. */
 export type SyncBlock = "no_repo" | "no_token" | "running";
 
 /** `off` — this deployment has no summaries key. `ended` — the org's plan has ended. */
@@ -120,6 +127,12 @@ export interface SyncStatusView {
   /** The caller may start a sync (an admin or owner) — whether or not one can start right now. */
   admin: boolean;
   blocked: SyncBlock | null;
+  /** How this deployment offers to connect GitHub: `app` when the GitHub App is configured on it
+   *  (Org settings › Repositories › Connect with GitHub), else `token` (Org settings › Integrations) —
+   *  the same test Org settings' setup checklist makes. */
+  connect: SyncCredential;
+  /** The credential a sync would read the repository with now; null = none (`blocked: "no_token"`). */
+  via: SyncCredential | null;
   /** The run in progress, or null. */
   running: SyncRunView | null;
   /** The latest run that is no longer running, or null. */
@@ -191,34 +204,47 @@ const ARM_NAME: Record<string, string> = {
   checks: "check runs", statuses: "commit statuses", reviews: "pull request reviews", branches: "branches", drift: "branch drift",
 };
 const TOKEN_FIX = "Check that the GitHub token in Org settings › Integrations can read this repository, then sync again.";
+const APP_FIX = "Check in Org settings › Repositories that the Trov App on GitHub still has access to this repository, then sync again.";
+const fixFor = (f: SyncFailure): string => (f.via === "app" ? APP_FIX : TOKEN_FIX);
 
 /** One failure as two plain sentences: what did not happen, and what to do about it. Built from the
  *  code alone — nothing an upstream wrote can reach the screen. */
 export function syncFailureText(f: SyncFailure, repo: string): { what: string; fix: string } {
   if (f.code === "list_prs" || f.code === "list_issues") {
     const thing = f.code === "list_prs" ? "pull requests" : "issues";
-    const what = f.status === 401 || f.status === 403 ? `Could not read ${thing}: GitHub refused the token (${f.status}).`
-      : f.status === 404 ? `Could not read ${thing}: GitHub found no ${repo} this token can see (404).`
+    const app = f.via === "app";
+    const what = f.status === 401 || f.status === 403 ? `Could not read ${thing}: GitHub refused ${app ? "the Trov App's access" : "the token"} (${f.status}).`
+      : f.status === 404 ? `Could not read ${thing}: GitHub found no ${repo} ${app ? "the Trov App" : "this token"} can see (404).`
       : `Could not read ${thing}: GitHub answered ${f.status ?? "with an error"}.`;
-    return { what: `${what} Nothing was written.`, fix: f.status === 401 || f.status === 403 || f.status === 404 ? TOKEN_FIX : "Try again in a few minutes." };
+    return { what: `${what} Nothing was written.`, fix: f.status === 401 || f.status === 403 || f.status === 404 ? fixFor(f) : "Try again in a few minutes." };
   }
-  if (f.code === "not_configured") return { what: "This organization has no repository or GitHub token to sync with.", fix: "Connect one in Org settings › Repositories and Integrations." };
+  if (f.code === "not_configured") return { what: "This organization has no repository, or no GitHub connection to read it with.", fix: "Connect GitHub in Org settings › Repositories, or set a GitHub token in Integrations." };
   if (f.code.startsWith("reconcile:")) {
     const arm = f.code.slice("reconcile:".length);
     if (arm === "unexpected") return { what: "Could not refresh deployments and CI.", fix: "Pull requests and issues were synced. Try again in a few minutes." };
-    return { what: `Could not read ${ARM_NAME[arm] ?? "part of the repository"} from GitHub.`, fix: `Everything else finished. ${TOKEN_FIX}` };
+    return { what: `Could not read ${ARM_NAME[arm] ?? "part of the repository"} from GitHub.`, fix: `Everything else finished. ${fixFor(f)}` };
   }
   return { what: "The sync stopped before it finished.", fix: "Whatever it had saved is kept. Try again in a few minutes." };
 }
 
-/** Why nothing can run, and where to fix it (`tab` is an Org settings tab). */
-export function syncBlockText(block: SyncBlock, running: SyncRunView | null): { what: string; tab: "repos" | "integrations" | null; link: string | null } {
+/** Why nothing can run, and where to fix it (`tab` is an Org settings tab). With no credential the
+ *  fix is where THIS deployment connects GitHub (`connect`): Repositories' "Connect with GitHub" where
+ *  the App is configured, the token in Integrations where it is not. */
+export function syncBlockText(block: SyncBlock, running: SyncRunView | null, connect: SyncCredential = "token"): { what: string; tab: "repos" | "integrations" | null; link: string | null } {
   if (block === "no_repo") return { what: "No repository is connected to this organization yet.", tab: "repos", link: "Connect one in Org settings › Repositories" };
-  if (block === "no_token") return { what: "There is no GitHub token to read the repository with.", tab: "integrations", link: "Add one in Org settings › Integrations" };
+  if (block === "no_token") {
+    return connect === "app"
+      ? { what: "GitHub is not connected, so the repository cannot be read.", tab: "repos", link: "Connect with GitHub in Org settings › Repositories" }
+      : { what: "There is no GitHub token to read the repository with.", tab: "integrations", link: "Add one in Org settings › Integrations" };
+  }
   return { what: running ? `@${running.by} started a sync that is still running.` : "A sync is already running.", tab: null, link: null };
 }
 
 // ── the panel's standing sentences (docs/architecture/sync.md, said to the person about to press it) ──
+
+/** What a sync cannot start without, under the block's own sentence. */
+export const syncNeedsText = (connect: SyncCredential): string =>
+  connect === "app" ? "A sync needs a repository and a GitHub connection to read it with." : "A sync needs both a repository and a GitHub token.";
 
 /** What a sync reads and writes for `repo`, in the order it does it. */
 export const syncWhatItDoes = (repo: string): string[] => [
@@ -289,9 +315,11 @@ export function syncSeenText(c: Pick<SyncCounts, "prs_seen" | "issues_seen">): s
   return c.prs_seen || c.issues_seen ? `GitHub listed ${plural(c.prs_seen, "closed pull request", "closed pull requests")} and ${plural(c.issues_seen, "open issue", "open issues")}.` : "";
 }
 
-/** The Org settings tab that fixes a failure, when its fix is the GitHub token; null otherwise. */
-export function syncFailureTab(f: SyncFailure): "integrations" | null {
-  if ((f.code === "list_prs" || f.code === "list_issues") && (f.status === 401 || f.status === 403 || f.status === 404)) return "integrations";
-  if (f.code.startsWith("reconcile:") && f.code !== "reconcile:unexpected") return "integrations";
+/** The Org settings tab that fixes a failure, when its fix is the GitHub credential — Repositories for
+ *  the App's installation, Integrations for the token; null otherwise. */
+export function syncFailureTab(f: SyncFailure): "repos" | "integrations" | null {
+  const tab = f.via === "app" ? "repos" : "integrations";
+  if ((f.code === "list_prs" || f.code === "list_issues") && (f.status === 401 || f.status === 403 || f.status === 404)) return tab;
+  if (f.code.startsWith("reconcile:") && f.code !== "reconcile:unexpected") return tab;
   return null;
 }

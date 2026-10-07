@@ -30,7 +30,7 @@ import { tabLead, leadFlag, dangerLink } from "./org-ui";
 // Plans and grants (shared/plans.ts): the Access tab, an org's Plan section, their dialogs.
 import { PLANS, type PlanId } from "@shared/plans";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
-import { accessTab, accessDialogs, initialAccess, orgPlanSection, planDropdown, seatsCell, type AccessState } from "./platform-access";
+import { accessTab, accessDialogs, initialAccess, orgPlanSection, planDropdown, planSourceWord, seatsCell, type AccessState } from "./platform-access";
 
 // ── state ────────────────────────────────────────────────────────────────────
 export type PlatTab = "orgs" | "access" | "usage" | "admins" | "audit";
@@ -260,9 +260,9 @@ function orgRow(o: PlatformOrgRow): string {
   const n = (v: number) => `<span style="font-variant-numeric:tabular-nums;font-size:12.5px;font-weight:500;color:${v ? "var(--fg-70)" : "var(--fg-40)"}">${v}</span>`;
   const sus = o.status === "suspended";
   return `<button type="button" data-act="platOpenOrg" data-arg="${attr(o.slug)}" class="plat-row plat-orgs-grid${sus ? " is-suspended" : ""}" aria-label="${attr(`${o.name}${sus ? ", suspended" : ""} — open`)}" style="width:100%;text-align:left;padding:12px 20px;border-bottom:1px solid var(--border);margin-bottom:-1px">
-    <div class="plat-c plat-c-name" style="min-width:0;display:flex;align-items:center;gap:10px">${orgTile(o.name, 28, o.logo_url)}<span style="min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:${sus ? "var(--fg-55)" : "var(--fg)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.name)}</span><span style="display:block;font-family:var(--code);font-size:11.5px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.slug)}</span></span></div>
+    <div class="plat-c plat-c-name" style="min-width:0;display:flex;align-items:center;gap:10px">${orgTile(o.name, 28, o.logo_url)}<span style="min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:${sus ? "var(--fg-55)" : "var(--fg)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.name)}</span><span style="display:block;font-size:11.5px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-family:var(--code)">${esc(o.slug)}</span>${o.github_account ? ` &middot; <span data-plat-github title="Connected to GitHub through the Trov App on ${attr(o.github_account)}">GitHub App on ${esc(o.github_account)}</span>` : ""}</span></span></div>
     ${cell("Status", orgStatus(o))}
-    ${cell("Plan", o.plan ? `<span style="display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${esc(PLANS[o.plan.plan].name)}</span><span title="Members and pending invitations, of the plan's seats" style="display:block;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--fg-40);white-space:nowrap">${esc(seatsCell(o.plan))} ${o.plan.entitlements.seats === 1 || (o.plan.entitlements.seats === null && o.plan.seats_used === 1) ? "seat" : "seats"}</span>` : `<span style="font-size:12.5px;color:var(--fg-40)">&mdash;</span>`)}
+    ${cell("Plan", o.plan ? `<span style="display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${esc(PLANS[o.plan.plan].name)}</span><span title="Members and pending invitations, of the plan's seats; and whether the plan is paid for through Stripe or granted by Trov" style="display:block;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--fg-40);white-space:nowrap">${esc(seatsCell(o.plan))} ${o.plan.entitlements.seats === 1 || (o.plan.entitlements.seats === null && o.plan.seats_used === 1) ? "seat" : "seats"} &middot; ${esc(planSourceWord(o.plan))}</span>` : `<span style="font-size:12.5px;color:var(--fg-40)">&mdash;</span>`)}
     ${cell("Owners", `<span style="display:block;font-size:12.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${owners}</span>`, "plat-c-wide")}
     ${cell("Members", n(o.member_count))}
     ${cell("Invites", n(o.pending_invites))}
@@ -332,7 +332,7 @@ export function platformOrgView(p: PlatState): string {
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">
       <div style="min-width:0">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">${orgTile(o.name, 32, o.logo_url, 8)}<h2 style="margin:0;font-size:19px;font-weight:600;letter-spacing:-0.01em;overflow-wrap:anywhere">${esc(o.name)}</h2>${orgStatus(o)}</div>
-        <div style="margin-top:4px;font-size:12.5px;color:var(--fg-55);line-height:1.5"><span style="font-family:var(--code);font-size:12px">${esc(o.slug)}</span> · <strong style="font-weight:600;color:var(--fg-70)">${d.members.length}</strong> ${d.members.length === 1 ? "member" : "members"}${owners === 0 ? ` · <span style="color:var(--amber);font-weight:500">no owner yet</span>` : ""}${pending.length ? ` · ${pending.length} pending ${pending.length === 1 ? "invite" : "invites"}` : ""} · created ${esc(shortDate(o.created_at))} by @${esc(o.created_by)}${o.last_activity_at ? ` · last activity ${esc(relTime(o.last_activity_at))}` : " · no activity yet"}</div>
+        <div style="margin-top:4px;font-size:12.5px;color:var(--fg-55);line-height:1.5"><span style="font-family:var(--code);font-size:12px">${esc(o.slug)}</span> · <strong style="font-weight:600;color:var(--fg-70)">${d.members.length}</strong> ${d.members.length === 1 ? "member" : "members"}${owners === 0 ? ` · <span style="color:var(--amber);font-weight:500">no owner yet</span>` : ""}${pending.length ? ` · ${pending.length} pending ${pending.length === 1 ? "invite" : "invites"}` : ""} · created ${esc(shortDate(o.created_at))} by @${esc(o.created_by)}${o.last_activity_at ? ` · last activity ${esc(relTime(o.last_activity_at))}` : " · no activity yet"} · <span data-plat-github>${o.github_account ? `GitHub through the App on <strong style="font-weight:600;color:var(--fg-70)">${esc(o.github_account)}</strong>` : "GitHub not connected through the App"}</span></div>
       </div>
       ${action}
     </div>
@@ -372,7 +372,7 @@ export function platformOrgView(p: PlatState): string {
   return wrap(`${head}
     ${o.plan ? `${sectionHead("Plan")}${orgPlanSection(o, d.usage?.sizes.artifact_bytes ?? null)}` : ""}
     ${sectionHead("People", ownerToggle, false, d.members.length + pending.length)}${ownerForm}${people}
-    ${sectionHead("Usage", "last 30 days")}${orgUsageBlock(d.usage, 30)}
+    ${sectionHead("Usage", "last 30 days")}${orgUsageBlock(d.usage, 30, d.summaries_enabled)}
     ${sectionHead("Recent audit entries")}${audit}`);
 }
 

@@ -1,6 +1,11 @@
 import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-workers";
 import { defineConfig } from "vitest/config";
 import path from "node:path";
+import { generateKeyPairSync } from "node:crypto";
+
+// A THROWAWAY RSA key for the GitHub App tests, made fresh on every run and never written anywhere: the
+// private half as GitHub issues it (PKCS#1 PEM) and as PKCS#8, the public half as a JWK to verify with.
+const testAppKey = generateKeyPairSync("rsa", { modulusLength: 2048 });
 
 export default defineConfig({
   resolve: {
@@ -38,6 +43,14 @@ export default defineConfig({
           GOOGLE_CLIENT_ID: "test-google-client-id",
           GOOGLE_CLIENT_SECRET: "test-google-secret",
           GITHUB_WEBHOOK_SECRET: "test-webhook-secret",
+          // The GitHub App (src/github-app/): configured in the pool, with the throwaway key above. No org has
+          // an installation unless a test binds one, so nothing reads GitHub through it by default.
+          GITHUB_APP_ID: "424242",
+          GITHUB_APP_SLUG: "trov-test",
+          GITHUB_APP_WEBHOOK_SECRET: "test-app-webhook-secret",
+          GITHUB_APP_PRIVATE_KEY: testAppKey.privateKey.export({ type: "pkcs1", format: "pem" }) as string,
+          TEST_GITHUB_APP_PKCS8: testAppKey.privateKey.export({ type: "pkcs8", format: "pem" }) as string,
+          TEST_GITHUB_APP_PUBLIC_JWK: JSON.stringify(testAppKey.publicKey.export({ format: "jwk" })),
           // SaplingLearn's repository and environments as they were when they lived in wrangler.toml [vars].
           // The Worker reads neither any more (`org_repos` / `org_environments`); the one-org suites copy
           // them into its rows (test/helpers/org-config.ts `syncOrgConfig`).
@@ -65,6 +78,16 @@ export default defineConfig({
           // suite never depends on a developer's `.dev.vars`; TROV_KEK_PREVIOUS is blanked for the same reason.
           TROV_KEK: "dGVzdC1rZWstMDEyMzQ1Njc4OWFiY2RlZi10cm92ISE=",
           TROV_KEK_PREVIOUS: "",
+          // Billing (src/billing/): OFF in the pool — blanked like the keys above, so a developer's
+          // `.dev.vars` never reaches Stripe from a test. A billing test passes its own env object, with a
+          // fake key and a stubbed `fetch`.
+          STRIPE_SECRET_KEY: "",
+          STRIPE_WEBHOOK_SECRET: "",
+          STRIPE_PRICE_PERSONAL: "",
+          STRIPE_PRICE_TEAM: "",
+          STRIPE_PRICE_PERSONAL_YEARLY: "",
+          STRIPE_PRICE_TEAM_YEARLY: "",
+          STRIPE_TEST_API_BASE: "",
         },
       },
     })),

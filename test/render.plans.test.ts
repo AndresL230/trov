@@ -14,7 +14,7 @@ import {
 } from "../web/src/platform-access";
 import { platformView, platformDialogs, addOrgModal, blankAddOrg, initialPlat, orgsTab, PLAT_TABS, type PlatState } from "../web/src/platform";
 import { initialDropdownUi } from "../web/src/dropdown";
-import { PLANS, resolveEntitlements, type MyGrant, type OrgPlanView, type PlatformGrant, type PlatformOrgPlan, type PlanId } from "@shared/plans";
+import { LIMIT_KEYS, PLANS, resolveEntitlements, type MyGrant, type OrgPlanView, type PlatformGrant, type PlatformOrgPlan, type PlanId } from "@shared/plans";
 import type { MyOrg, MyOrgsResponse, OrgMember, PlatformOrgRow } from "@shared/orgs";
 
 const sources = import.meta.glob(["../web/src/org-plan.ts", "../web/src/platform-access.ts", "../web/src/platform-access-actions.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
@@ -82,7 +82,8 @@ describe("Org settings › General — the Plan block", () => {
     expect(html).toContain('data-org-plan="team"');
     expect(html).toContain(">Team</span>");
     expect(html).toContain("A team of up to 10 people.");
-    for (const label of ["Seats", "Repositories", "Environments", "Artifact storage", "Agent connections"]) expect(html).toContain(label);
+    for (const label of ["Seats", "Repositories", "Environments", "Artifact storage", "Agent connections", "AI summaries"]) expect(html).toContain(label);
+    expect(html.match(/data-limit="/g)).toHaveLength(LIMIT_KEYS.length);
     expect(html).toMatch(/data-limit="seats">[\s\S]*?7 of 10/);
     expect(html).toContain("Members plus pending invitations.");
     expect(html).toMatch(/data-limit="artifact_bytes">[\s\S]*?1 GB of 5 GB/);
@@ -91,6 +92,18 @@ describe("Org settings › General — the Plan block", () => {
     expect(planBlock({ status: "ok", data: view() }, "member")).toContain("An owner of this organization can ask Trov to change the plan.");
     // Nobody edits it here.
     expect(html).not.toMatch(/<input|data-act=/);
+  });
+  it("AI summaries: the month's use of the allowance, with thousands separators; used up says what happens and is never 'over'", () => {
+    const row = (html: string): string => html.slice(html.indexOf('data-limit="ai_summaries"')).split("</li>")[0];
+    const some = row(planBlock({ status: "ok", data: view("team", { usage: { ...view().usage, ai_summaries: 1212 } }) }, "owner"));
+    expect(some).toContain("1,212 of 3,000 this month");
+    expect(some).not.toContain("3000");
+    expect(some).not.toContain("data-limit-spent");
+    const spent = row(planBlock({ status: "ok", data: view("team", { usage: { ...view().usage, ai_summaries: 3000 } }) }, "owner"));
+    expect(spent).toContain("3,000 of 3,000 this month");
+    expect(spent).toContain("New pull requests and issues show an excerpt until next month.");
+    expect(spent).not.toContain("Over the limit");
+    expect(row(planBlock({ status: "ok", data: view("enterprise", { usage: { ...view().usage, ai_summaries: 12345 } }) }, "owner"))).toContain("12,345 used &middot; Unlimited");
   });
   it("an unlimited limit shows the use and says Unlimited", () => {
     const html = planBlock({ status: "ok", data: view("enterprise") }, "owner");
@@ -260,11 +273,11 @@ describe("Platform › Access — the grants", () => {
 });
 
 describe("Platform — an organization's plan", () => {
-  it("the list shows each org's plan and its seats used of the cap", () => {
+  it("the list shows each org's plan, its seats used of the cap, and whether it is granted or paid for", () => {
     const html = orgsTab({ orgs: { status: "ok", data: [row(), row({ slug: "big", name: "Big", plan: orgPlan("enterprise", { seats_used: 31 }) })] } });
     expect(html).toContain("<span>Plan</span>");
-    expect(html).toMatch(/>Team<\/span>[\s\S]*?>7 of 10 seats<\/span>/);
-    expect(html).toMatch(/>Enterprise<\/span>[\s\S]*?>31 seats<\/span>/);
+    expect(html).toMatch(/>Team<\/span>[\s\S]*?>7 of 10 seats &middot; granted<\/span>/);
+    expect(html).toMatch(/>Enterprise<\/span>[\s\S]*?>31 seats &middot; granted<\/span>/);
     expect(seatsCell(orgPlan())).toBe("7 of 10");
     // A row cached from before plans reads as unknown, not as a plan.
     expect(orgsTab({ orgs: { status: "ok", data: [row({ plan: undefined })] } })).toContain("&mdash;");

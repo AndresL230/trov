@@ -6,8 +6,9 @@ Sync panel shows is derived from this page (`shared/sync.ts` builds them).
 Code: `src/tools/backfill.ts` (`runBackfill` — one batch), `src/repo/cron.ts` (`runReconcileJob` — the closing
 refresh), `src/sync/runs.ts` (the run record, the lock, the two routes' answers), `src/plans/summaries.ts`
 (which summarizer, and its metering), `shared/sync.ts` (the wire shapes and the words), `web/src/sync.ts`
-(the panel and the header control) and `web/src/sync-actions.ts` (the batch loop and the polling). Migration: `0046_sync_runs.sql`. Tests: `test/sync.runs.test.ts`, `test/summaries.cap.test.ts`,
-`test/render.sync.test.ts`.
+(the panel and the header control) and `web/src/sync-actions.ts` (the batch loop and the polling). Migration:
+`0046_sync_runs.sql`. Tests: `test/sync.runs.test.ts`, `test/sync.credential.test.ts`,
+`test/summaries.cap.test.ts`, `test/summaries.billing.test.ts`, `test/render.sync.test.ts`.
 
 ## What a sync does
 
@@ -39,11 +40,30 @@ recent commits, deployments, workflow runs and failed job names, each environmen
 check runs, commit statuses, reviews, branches and branch drift (19 + 2N GitHub requests for N
 environments). Each part is independent: one that fails is named, and the others still land.
 
+### The credential
+
+A sync reads GitHub with **the org's GitHub credential**, resolved where every other GitHub read resolves
+it — `src/github-app/credential.ts` (`github-app.md` › Tokens): the org's live App installation (a token
+minted for the primary repository alone), else its stored `github_token`, else — SaplingLearn only — the
+Worker's legacy secret. `runBackfill` and the closing refresh call `resolveGithubCredential`; the two
+places that only ask *whether* a sync could run (`GET /sync`, and the batch route before it records a
+run) call `githubCredentialSource`, which walks the same order **without minting**: the status is read
+by every member's page, every few seconds during a run, and must not cost GitHub a token request.
+
+So the panel, the route and the run agree on what "no GitHub credential" means. The one case they can
+differ: an installation that is live and covers the repository's account, but whose token GitHub then
+refuses to issue (the App's key, an outage, a repository the installation was not given). The status
+says `via: "app"`; the run falls back to the stored token, and with none it is recorded as `failed`
+with `not_configured` — the binding's `last_error` (Org settings › Integrations) says why.
+
+A failure of a read carries how it was read (`SyncFailure.via`), so its fix points at Repositories for
+the App ("check that the Trov App still has access") and at Integrations for a token.
+
 What a sync does **not** do: it never closes or resolves anything, never deletes, and does not poll usage,
 hosting or health (that is **Poll now**, on the Repo screen).
 
-When no summary can be attempted — the deployment has no `GEMINI_API_KEY`, the org's plan has ended, or
-its month's allowance is used up (`plans.md` › AI summaries) — an item with no summary gets its **excerpt**
+When no summary can be attempted — the deployment has no `GEMINI_API_KEY`, the org's plan has ended (`canceled` —
+a plan that is only **past due** still summarizes: `billing.md`), or its month's allowance is used up (`plans.md` › AI summaries) — an item with no summary gets its **excerpt**
 once and the run is a single batch. A later sync fills the excerpts in once summaries are allowed again.
 
 How long it takes: a batch is two or more GitHub list requests plus up to 5 summary calls — a few seconds
@@ -91,8 +111,17 @@ its last report — as "did not finish", with Sync now available again. It does 
 
 | Route | Gate | Answers |
 |---|---|---|
-| `POST /api/o/:slug/admin/backfill` (alias `/admin/backfill`) | admin or owner | One batch. Body `{ batch, of, start?, run? }`: `start: true` begins a new run (409 `{ error: "sync_running", run }` if one is live); `run: <id>` continues it (it must be live and the caller's). A body with neither continues the caller's own live run or starts one. 200: the batch's counts as before (`captured`, `unchanged`, `summarized`, `summaryBudgetExhausted`, …, and `repo` on the batch that reconciled) plus `run: SyncRunView` and `summaries: SyncSummariesView`. 503 `{ error }` when there is no repository or credential (no run is recorded) or GitHub refused a list (`run` is the failed run). 502 if the batch threw. 403 for a member. |
-| `GET /api/o/:slug/sync` (alias `/api/sync`) | any member | `SyncStatusView`: `repo`, `admin`, `blocked` (`no_repo` / `no_token` / `running` / null), `running`, `last`, `summaries` (status, used, cap, remaining, pending, per_run), `refreshed_at`. A non-member gets the tenant 404. |
+| `POST /api/o/:slug/admin/backfill` (alias `/admin/backfill`) | admin or owner | One batch. Body `{ batch, of, start?, run? }`: `start: true` begins a new run (409 `{ error: "sync_running", run }` if one is live); `run: <id>` continues it (it must be live and the caller's). A body with neither continues the caller's own live run or starts one. 200: the batch's counts as before (`captured`, `unchanged`, `summarized`, `summaryBudgetExhausted`, …, and `repo` on the batch that reconciled) plus `run: SyncRunView` and `summaries: SyncSummariesView`. 503 `{ error }` when there is no repository or no credential (`githubCredentialSource` — no run is recorded) or GitHub refused a list (`run` is the failed run). 502 if the batch threw. 403 for a member. |
+| `GET /api/o/:slug/sync` (alias `/api/sync`) | any member | `SyncStatusView`: `repo`, `admin`, `blocked` (`no_repo` / `no_token` = no credential of either kind / `running` / null), `via` (`app` / `token` / null — what a sync would read with), `connect` (`app` when the GitHub App is configured on this deployment, else `token`), `running`, `last`, `summaries` (status, used, cap, remaining, pending, per_run), `refreshed_at`. A non-member gets the tenant 404. |
+
+With no credential the panel sends an admin where **this deployment** connects GitHub — the same test
+Org settings' setup checklist makes (`GithubAppStatusDTO.configured`, `appConfigured(env)`): `connect:
+"app"` → Org settings › Repositories ("Connect with GitHub"); `connect: "token"` → Org settings ›
+Integrations (the token). A stored token keeps working on a deployment that offers the App.
+
+Both mounts run the same handler: `/api/o/:slug/admin/backfill` and the old path `/admin/backfill` (a
+person with one org). A plan refusal anywhere under it would be the app's one 402 (`plans.md`); nothing
+a sync writes is governed by a limit — the AI-summaries allowance refuses nothing.
 
 While its own batch request is in flight, the panel polls `GET /sync` (every 1.5 s) to show the phase and
 the items done; the same read is what anyone else in the org sees.
@@ -114,5 +143,9 @@ and CI last refreshed …" in the panel. It does not say which of the three it w
 
 `LOCAL_UPSTREAM` (a `.dev.vars` value) points a local Worker's Sync at a stand-in for GitHub and Gemini on
 the same machine (`src/sync/local-upstream.ts`): requests to `api.github.com` go to `<base>/github/…` and
-to `generativelanguage.googleapis.com` to `<base>/gemini/…`. It is honoured only for `http://127.0.0.1` or
-`http://localhost`, so a deployed Worker ignores it.
+to `generativelanguage.googleapis.com` to `<base>/gemini/…` — the App's token requests included, when the
+App is configured locally. It is honoured only for `http://127.0.0.1` or `http://localhost`, and never
+while the Worker holds a live Stripe key, so a deployed Worker ignores it. That is the same test billing's
+`STRIPE_TEST_API_BASE` passes (`src/platform/loopback.ts`, and `holdsLiveKey` in `src/billing/config.ts` —
+the one module that reads the Stripe key); both are listed, with what each replaces, in
+`.dev.vars.example`.

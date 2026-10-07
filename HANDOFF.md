@@ -11,6 +11,34 @@ invite the team (by mail), connect a repository, set keys — with nothing cross
 for a human operator: `docs/architecture/organizations.md`. Nothing is merged or deployed. `npm test`,
 `npm run typecheck` and `npm run build:web` are green.
 
+## The GitHub App (branch `feat/github-app`, issue #95) — built, NOT pushed, NOT deployed
+
+An org now connects its repositories by installing Trov's GitHub App; the pasted token and the per-repo
+webhook stay as the fallback. Everything about it — the flow, the security argument, tokens, the webhook,
+permissions, and the OWNER CHECKLIST — is `docs/architecture/github-app.md`. `npm run typecheck`,
+`npm test` and the web build are green; GitHub was stubbed in every test and in the browser check, so the
+real round trip is unverified until the owner runs it (that doc › "Verify after deploy").
+
+- **Schema**: `0043_github_app` — additive (`org_github_installations`; `org_repos.connection`,
+  `access_lost_at`). A merge to `main` applies it. Its rollback is by hand (the statements are in its
+  header) and must run BEFORE `scripts/mt/rollback/0042_organizations.down.sql` if that is ever used.
+- **New routes**: `GET /api/o/:slug/github` (member), `GET …/github/install`, `GET|POST
+  …/github/repositories`, `POST …/github/test`, `POST …/github/disconnect` (admin+, cookie only);
+  `POST /webhook/github/app`; `/auth/callback` also answers the App's install return.
+- **Credential order** for every GitHub read: installation token → stored `github_token` → SaplingLearn's
+  legacy secret (`resolveGithubCredential`, `src/github-app/credential.ts`).
+- **Changed shapes**: `OrgRepoDTO` gains `connection`, `access_lost`; `IntegrationsListDTO` gains
+  `github_app`; `PlatformOrgRow` gains `github_account`; `org_admin_audit` gains the `github.*` actions.
+- **Owner, to make it work in production** (in order; detail in the doc): `wrangler secret put
+  GITHUB_APP_ID`; `wrangler secret put GITHUB_APP_PRIVATE_KEY < file.pem`; `GITHUB_APP_SLUG` in
+  `wrangler.toml`; deploy; on GitHub make the App's webhook Active (`https://trov.dev/webhook/github/app`
+  + the eight events); then Org settings › Repositories › Connect with GitHub; then retire SaplingLearn's
+  old webhook and the two legacy Worker secrets.
+- **Not done here**: capture for non-primary repositories (the capture's keys carry no repository — still
+  the first "smaller follow-up" below); several installations per org; Phase 7's removal of the legacy
+  hook and the env-secret fallback, which this makes possible once SaplingLearn is on the App.
+- Merged as #103; its release entry is `0.19` in `web/src/releases.ts`.
+
 ## Context
 
 | Field | Value |
@@ -68,7 +96,7 @@ for a human operator: `docs/architecture/organizations.md`. Nothing is merged or
      dead CSS removed; Settings › Account wraps; a sprint's `lead` must be a member.
   8. Docs: this file, `docs/architecture/data-layer.md`, `docs/architecture/organizations.md`.
 
-### Plans and grants (branch `feat/plans`, on top of main — NOT merged)
+### Plans and grants (merged, #104 — release 0.20)
 
 `docs/architecture/plans.md` is the whole of it. In short: every org is on a plan (`shared/plans.ts`:
 Personal 1 seat, Team 10, Enterprise set per org — every number a placeholder for the owner), enforced at
@@ -78,24 +106,41 @@ migration, `0044_plans` (existing orgs → Enterprise, unlimited seats). No pric
 `src/plans/billing.ts` is the seam the billing work builds on. Owner's calls before it ships: the default
 numbers, whether a pending invitation counts as a seat, the over-limit rule, whether grants should expire by
 default.
-Another branch (`feat/github-app`) adds `0043_github_app.sql` and a release entry at the same spot in
-`web/src/releases.ts`: whichever merges second renumbers its release to 0.20.
+The pricing page (#105, `shared/pricing.ts`, `/pricing`) merged after it with every price `null`.
 
-### Sync you can see, and AI summaries per org (branch `feat/sync-and-summaries`, on top of `feat/plans` — NOT merged)
+### Billing (branch `feat/billing`, PR #106, up to date with main — NOT merged)
 
-`docs/architecture/sync.md` (what Sync GitHub does, the run record, the routes) and `plans.md` › AI
-summaries are the whole of it. In short: a sync is a recorded RUN (`sync_runs`, `0046_sync_runs`, additive)
-that reports its phase and counts per batch, holds a per-org lock, and is readable by every member at
-`GET /api/o/:slug/sync`; the Sync panel (`web/src/sync.ts`) replaces the blocking modal. One platform
-`GEMINI_API_KEY` serves every org: each summarizer call is counted per org (`org_usage_daily`,
-`summary*` metrics) and the new monthly limit `ai_summaries` turns summaries off for an org that has used
-its allowance — the item shows its excerpt, and a later Sync fills it in.
+Paying for Personal or Team through Stripe, and setting the organization up with nobody at Trov involved:
+`docs/architecture/billing.md` (the flow, the event table, what each state does, the OWNER CHECKLIST).
+Migration `0045_billing` (three additive global tables). Nothing is live until the owner sets
+`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and the price ids in `wrangler.toml`: until then every billing
+route answers 503 `billing_unavailable` and the app is unchanged. Never exercised against real Stripe —
+the first test-mode purchase (checklist step 8) is the verification. Release entry `0.21` (it also carries
+the pricing page's line, #105). The pricing page (`/pricing`, on main) links to `GET /billing/start?plan=…`
+only for a plan with a price in `shared/pricing.ts` — all `null` today, so nothing public reaches billing;
+its link is `billingStartHref` (one source) and it does NOT ask `GET /api/billing/config`. Set a price there
+only after billing is on. Terms / Privacy need the paid-plan wording before live keys go in (not edited
+here: `web/src/legal.ts`).
+
+### Sync you can see, and AI summaries per org (branch `feat/sync-and-summaries`, merged with `main` at 0.21 — release 0.22)
+
+`docs/architecture/sync.md` (what Sync GitHub does, the credential it reads with, the run record, the
+routes) and `plans.md` › AI summaries are the whole of it. In short: a sync is a recorded RUN (`sync_runs`,
+`0046_sync_runs`, additive) that reports its phase and counts per batch, holds a per-org lock, and is
+readable by every member at `GET /api/o/:slug/sync`; the Sync panel (`web/src/sync.ts`) replaces the
+blocking modal. One platform `GEMINI_API_KEY` serves every org: each summarizer call is counted per org
+(`org_usage_daily`, `summary*` metrics) and the monthly limit `ai_summaries` turns summaries off for an org
+that has used its allowance — the item shows its excerpt, and a later Sync fills it in.
 Owner's calls before it ships: the allowance numbers (300 / 3,000 / unlimited are placeholders), how long
 run records are kept (90 days), and setting the key (`wrangler secret put GEMINI_API_KEY`) — summaries are
-off until then. Merge notes: it adds release 0.20 at the top of `web/src/releases.ts` (renumber after
-whatever merges first), `src/sync/runs.ts` asks `resolveCredential(…, "github_token", "")` whether a GitHub
-credential EXISTS (`readiness`) — the GitHub App branch must make that ask its own credential source — and
-the limit shows in `web/src/org-plan.ts` through the existing limit list (one added line in `limitRow`).
+off until then.
+What the merge with the GitHub App, plans, the pricing page and billing settled: the panel's "can a sync
+start", the batch route and the run all ask ONE credential source (`src/github-app/credential.ts` —
+`githubCredentialSource` for the ask, `resolveGithubCredential` for the read), and with none the panel
+sends an admin to Repositories where the App is configured and to Integrations where it is not; a plan
+that is past due still summarizes and a canceled one does not (`test/summaries.billing.test.ts`); the
+allowance shows on the pricing page and in the Plan block through `shared/plans.ts`'s one formatter.
+Not verified against the real services: a sync through a real installation token, and a real Gemini call.
 
 ### Changed for API clients since the pushed commit
 

@@ -8,17 +8,19 @@
 //   • `syncStatus`    — `GET /sync`: the run in progress, the last one, and what a new one would do.
 // The run row is also the LOCK: one run per org at a time (`startRun` is a single guarded INSERT).
 //
-// Not reachable from src/mcp.ts (it resolves the org's GitHub credential — never revealed here, only
-// asked whether it exists).
+// Not reachable from src/mcp.ts (it asks where the org's GitHub credential would come from —
+// src/github-app/credential.ts `githubCredentialSource`, the SAME order `runBackfill` and the reconcile
+// resolve it in; nothing is minted or revealed here).
 import type { Env } from "../env";
 import {
   SYNC_MAX_BATCHES, SYNC_PHASES, SYNC_STALE_MS, SYNC_SUMMARIES_PER_BATCH, SYNC_SUMMARIES_PER_RUN, zeroSyncCounts,
-  type SyncBlock, type SyncBusy, type SyncCounts, type SyncFailure, type SyncPhase, type SyncRunStatus, type SyncRunView, type SyncStatusView,
+  type SyncBlock, type SyncBusy, type SyncCounts, type SyncCredential, type SyncFailure, type SyncPhase, type SyncRunStatus, type SyncRunView, type SyncStatusView,
   type SyncSummariesView,
 } from "@shared/sync";
 import { type TenantContext, all, first, run } from "../data/sql";
 import { hasRole } from "../data/context";
-import { resolveCredential } from "../data/secrets";
+import { appConfigured } from "../github-app/api";
+import { githubCredentialSource } from "../github-app/credential";
 import { jobTenant } from "../platform/jobs";
 import { orgPrimaryRepo } from "../repo/config";
 import { runReconcileJob } from "../repo/cron";
@@ -93,13 +95,14 @@ async function report(ctx: TenantContext, id: number, set: Partial<Pick<RunRow, 
 
 // ── what a new run would do (GET /sync) ──────────────────────────────────────
 
-/** The org's primary repository, and whether a GitHub credential exists to read it with. The
- *  credential is looked up as the org's system tenant and NEVER revealed. */
-async function readiness(env: Env, ctx: TenantContext): Promise<{ repo: string | null; token: boolean }> {
+/** The org's primary repository, and where the credential to read it with would come from — the org's
+ *  GitHub App installation, its stored token (SaplingLearn's legacy one), or nowhere. Asked as the
+ *  org's system tenant, of the ONE source every GitHub read resolves from; nothing is minted or revealed. */
+async function readiness(env: Env, ctx: TenantContext): Promise<{ repo: string | null; via: SyncCredential | null }> {
   const job = jobTenant(env, ctx);
   const repo = (await orgPrimaryRepo(job))?.repo ?? null;
-  const token = repo ? (await resolveCredential(job, env, "github_token", "").catch(() => null)) !== null : false;
-  return { repo, token };
+  const via = repo ? await githubCredentialSource(job, env, { repo }).catch(() => null) : null;
+  return { repo, via };
 }
 
 /** Items stored with an excerpt, which a sync would try to summarize: every pull request marker row,
@@ -130,9 +133,9 @@ export async function syncStatus(env: Env, ctx: TenantContext, now: number = Dat
   const views = rows.map((r) => runView(r, now));
   const running = views[0]?.status === "running" ? views[0] : null;
   const last = views.find((v) => v.status !== "running") ?? null;
-  const blocked: SyncBlock | null = !ready.repo ? "no_repo" : !ready.token ? "no_token" : running ? "running" : null;
+  const blocked: SyncBlock | null = !ready.repo ? "no_repo" : !ready.via ? "no_token" : running ? "running" : null;
   return {
-    repo: ready.repo, admin: hasRole(ctx, "admin"), blocked, running, last,
+    repo: ready.repo, admin: hasRole(ctx, "admin"), blocked, connect: appConfigured(env) ? "app" : "token", via: ready.via, running, last,
     summaries: summariesView(allowance, pending), refreshed_at: reconciled?.computedAt ?? null,
   };
 }
@@ -195,7 +198,7 @@ export async function runSyncBatch(env: Env, ctx: TenantContext, by: string, bod
 
   // Nothing to sync with: the same 503 body as ever, and no run is recorded for a click that could not start.
   const ready = await readiness(env, ctx);
-  if (!ready.repo || !ready.token) return { status: 503, body: { error: "service token or repo not configured" } };
+  if (!ready.repo || !ready.via) return { status: 503, body: { error: "service token or repo not configured" } };
 
   const live = await liveRun(ctx, clock());
   const mine = live && live.started_by.toLowerCase() === by.toLowerCase();
@@ -249,7 +252,8 @@ export async function runSyncBatch(env: Env, ctx: TenantContext, by: string, bod
     await report(ctx, id, { phase: "reconcile", done: null, total: null, counts: JSON.stringify(counts) }, clock());
     repo = (await (opts.reconcile ?? runReconcileJob)(env, ctx, clock(), { fetchImpl: local }).catch(() => null)) ?? undefined;
     // `failed` is the reconcile's ARM NAMES (or "unexpected error") — never upstream text.
-    const failures: SyncFailure[] = (repo?.failed ?? []).map((arm) => ({ code: arm === "unexpected error" ? "reconcile:unexpected" : `reconcile:${arm}` }));
+    // `via` is where the credential stood when the batch began: it points the fix at the right tab.
+    const failures: SyncFailure[] = (repo?.failed ?? []).map((arm) => (arm === "unexpected error" ? { code: "reconcile:unexpected" } : { code: `reconcile:${arm}`, via: ready.via ?? undefined }));
     counts = { ...counts, repo_written: repo ? repo.written : null };
     await report(ctx, id, {
       status: failures.length ? "partial" : "ok", ended_at: new Date(clock()).toISOString(), phase: "done", done: null, total: null,

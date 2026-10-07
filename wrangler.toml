@@ -30,9 +30,26 @@ bucket_name = "trov-artifacts"
 # `wrangler secret put GOOGLE_CLIENT_ID` / `wrangler secret put GOOGLE_CLIENT_SECRET`.
 # Absolute origin used for links inside email, artifact results and webhook URLs.
 PUBLIC_ORIGIN = "https://trov.dev"
+# The GitHub App's URL name — the last part of https://github.com/apps/<slug> — for the "Connect with
+# GitHub" link (https://github.com/apps/<slug>/installations/new). Not a secret. EMPTY until the owner
+# fills it in: while it is, Org settings offers only the pasted-token path and says the App is not
+# configured on this deployment. GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY and GITHUB_APP_WEBHOOK_SECRET are
+# secrets (`wrangler secret put …`) — see docs/architecture/github-app.md › Owner checklist.
+GITHUB_APP_SLUG = ""
 # Email delivery gate. "local" while this copy runs alongside Canopy, so the team
 # never gets duplicate digests. Flip to "resend" at cutover (needs RESEND_API_KEY).
 NOTIFICATIONS_MODE = "local"
+
+# Billing — Stripe (docs/architecture/billing.md › Owner checklist). The ids of the recurring PRICES the
+# owner created in the Stripe dashboard (`price_…`), not amounts: Trov never holds a price, and the amount
+# a buyer sees is Stripe's. EMPTY until the owner decides prices — while a plan's id is empty that plan
+# cannot be bought, and while STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET (secrets: `wrangler secret put …`)
+# are unset every billing route answers 503 `billing_unavailable` and the app is otherwise unchanged.
+# The yearly ids are optional: a plan is offered on the intervals it has a price for.
+STRIPE_PRICE_PERSONAL = ""
+STRIPE_PRICE_TEAM = ""
+STRIPE_PRICE_PERSONAL_YEARLY = ""
+STRIPE_PRICE_TEAM_YEARLY = ""
 
 [observability]
 enabled = true

@@ -83,7 +83,7 @@ export function setApiOrg(slug: string | null): void { apiOrg = slug; }
 export const apiOrgSlug = (): string | null => apiOrg;
 
 /** Person-level and platform routes: not an org's, so never prefixed (docs/architecture/data-layer.md › Routes and gates). */
-const GLOBAL_PATH = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|o)(?:[/?]|$)/;
+const GLOBAL_PATH = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|billing|o)(?:[/?]|$)/;
 export const isGlobalPath = (path: string): boolean => GLOBAL_PATH.test(path);
 
 /** The URL a route is requested at: a tenant route under the current org, anything else as written.
@@ -307,6 +307,8 @@ export function removeAvatar(): Promise<{ ok: true; avatar_url: string | null }>
 import type * as OrgT from "@shared/orgs";
 import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView, type PlatformGrant, type GrantTarget, type PlanId, type PlanOverrides } from "@shared/plans";
 import type * as IntT from "@shared/integrations";
+import type { BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
+import type * as GhT from "@shared/github-app";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
  *  `detail` the server's sentence, `field` the input it is about. */
 export class OrgApiError extends ApiError {
@@ -347,6 +349,18 @@ export function listMcpTokens(): Promise<McpTokenSummary[]> { return getJson<{ t
 export function revokeMcpToken(id: number): Promise<{ ok: true }> { return postJson(`/mcp-tokens/${id}/revoke`); }
 /** The org's plan, its limits and its use of each (any member). */
 export function getOrgPlan(slug: string): Promise<OrgPlanView> { return orgSend("GET", orgPath(slug, "/plan")); }
+// Billing (shared/billing.ts; src/billing/routes.ts). Each of the three owner calls answers a URL on Stripe's
+// own pages — the SPA only ever navigates to it. A refusal keeps the server's sentence (`OrgApiError.detail`).
+/** "Manage billing": the Stripe Customer Portal for this org's customer (owner only). */
+export function openBillingPortal(slug: string): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/portal"), {}); }
+/** Move THIS org's subscription to another plan: Stripe's confirm screen (owner only). */
+export function changeBillingPlan(slug: string, plan: PurchasablePlan): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/change"), { plan }); }
+/** A canceled org pays again: a Stripe Checkout for the SAME org (owner only). */
+export function renewBilling(slug: string, plan: PurchasablePlan): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/renew"), { plan }); }
+/** The waiting room's poll: a checkout THIS person started (a 404 for anyone else's). */
+export function getBillingStatus(sessionId: string): Promise<BillingStatusResponse> { return orgSend("GET", `/api/billing/status?session_id=${encodeURIComponent(sessionId)}`); }
+/** What can be bought, and the caller's own paid organizations (public: the pricing page asks it signed out too). */
+export function getBillingConfig(): Promise<BillingConfigResponse> { return orgSend("GET", "/api/billing/config"); }
 export function getOrgSettings(slug: string): Promise<{ org: OrgT.OrgSettings; can_edit: boolean }> { return orgSend("GET", orgPath(slug, "/settings")); }
 export function putOrgSettings(slug: string, name: string): Promise<{ ok: true; org: OrgT.OrgSettings }> { return orgSend("PUT", orgPath(slug, "/settings"), { name }); }
 /** Upload the org's image (multipart `file`; the caller crops and downsizes it first — avatar.ts). Admin+.
@@ -383,6 +397,25 @@ export function addOrgRepo(slug: string, repo_full_name: string, is_primary?: bo
   return orgSend<{ repos: IntT.OrgRepoDTO[] }>("POST", orgPath(slug, "/repos"), is_primary === undefined ? { repo_full_name } : { repo_full_name, is_primary }).then((r) => r.repos);
 }
 export function removeOrgRepo(slug: string, id: string): Promise<{ removed_secrets: string[]; repos: IntT.OrgRepoDTO[] }> { return orgSend("DELETE", orgPath(slug, `/repos/${encodeURIComponent(id)}`)); }
+// ── the GitHub App (docs/architecture/github-app.md) ──
+/** Where "Connect with GitHub" goes: the org's start route, which redirects to GitHub. A LINK's href —
+ *  a navigation, never a fetch. `existing` links an installation that is already there. */
+export function githubInstallHref(slug: string, o: { existing?: boolean; account?: string } = {}): string {
+  const q = o.existing ? `?existing=1${o.account ? `&account=${encodeURIComponent(o.account)}` : ""}` : "";
+  return orgPath(slug, `/github/install${q}`);
+}
+/** The org's GitHub App connection — any member (an admin gets the id, the last error and the manage link). */
+export function getOrgGithub(slug: string): Promise<GhT.GithubAppStatusDTO> { return orgSend("GET", orgPath(slug, "/github")); }
+/** The repositories the org's installation can see. Admin+. 404 `not_connected`, 502 `github_failed`. */
+export function listOrgGithubRepos(slug: string, refresh = false): Promise<GhT.GithubReposDTO> { return orgSend("GET", orgPath(slug, `/github/repositories${refresh ? "?refresh=1" : ""}`)); }
+/** Track one of them (or make it the primary). 404 `not_visible` when the installation cannot see it. */
+export function trackOrgGithubRepo(slug: string, repo_full_name: string, is_primary?: boolean): Promise<IntT.OrgRepoDTO[]> {
+  return orgSend<{ repos: IntT.OrgRepoDTO[] }>("POST", orgPath(slug, "/github/repositories"), is_primary === undefined ? { repo_full_name } : { repo_full_name, is_primary }).then((r) => r.repos);
+}
+/** Test connection for the App: a real read through an installation token. */
+export function testOrgGithub(slug: string): Promise<{ ok: boolean; detail: string; github_app: GhT.GithubAppStatusDTO }> { return orgSend("POST", orgPath(slug, "/github/test")); }
+/** End the binding in Trov. The App stays installed on GitHub; the repositories stay connected. */
+export function disconnectOrgGithub(slug: string): Promise<{ ok: true; github_app: GhT.GithubAppStatusDTO; repos: IntT.OrgRepoDTO[] }> { return orgSend("POST", orgPath(slug, "/github/disconnect")); }
 export function listOrgEnvironments(slug: string): Promise<IntT.OrgEnvironmentDTO[]> { return orgSend<{ environments: IntT.OrgEnvironmentDTO[] }>("GET", orgPath(slug, "/environments")).then((r) => r.environments); }
 export type OrgEnvironmentWrite = Partial<Omit<IntT.OrgEnvironmentDTO, "key" | "position" | "created_at" | "updated_at" | "updated_by">>;
 export function putOrgEnvironment(slug: string, key: string, body: OrgEnvironmentWrite): Promise<{ environment: IntT.OrgEnvironmentDTO; created: boolean; removed_secrets: string[] }> {
@@ -880,6 +913,10 @@ export function setPlatformOrgSuspended(slug: string, suspended: boolean): Promi
 /** Change an org's plan and its limit overrides. Nothing in the org is removed by it. */
 export function setPlatformOrgPlan(slug: string, body: { plan: PlanId; overrides: PlanOverrides }): Promise<PlatformOrgRow> {
   return putJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/plan`, body).then((r) => r.org);
+}
+/** A paid org whose plan was set by hand goes back to the plan its subscription pays for. 409 `not_billed` for a granted org. */
+export function followPlatformOrgSubscription(slug: string): Promise<PlatformOrgRow> {
+  return putJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/plan`, { follow_subscription: true }).then((r) => r.org);
 }
 export function listPlatformGrants(): Promise<PlatformGrant[]> {
   return getJson<{ grants: PlatformGrant[] }>("/api/platform/grants").then((r) => r.grants);

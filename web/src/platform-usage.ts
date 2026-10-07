@@ -96,8 +96,9 @@ export function summariesFigures(s: UsageSummaries, month?: { month_used: number
 /** Said ONCE on the page when the deployment has no summaries key, instead of rows of zeros. */
 export const SUMMARIES_OFF = "AI summaries are off on this deployment (no GEMINI_API_KEY).";
 
-/** `summaries` (one organization's) adds its AI summaries line; null / absent leaves it out. */
-export function usageBreakdown(a: UsageActivity, days: number, summaries?: OrgUsage["summaries"] | null): string {
+/** `summaries` (one organization's) adds its AI summaries line; `"off"` says the deployment has no
+ *  summaries key, in Platform › Usage's own sentence; null / absent leaves the line out. */
+export function usageBreakdown(a: UsageActivity, days: number, summaries?: OrgUsage["summaries"] | "off" | null): string {
   const created = CREATED_LABELS.map(([k, label]) =>
     `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:5px 0;border-top:1px solid var(--border)"><span style="font-size:12.5px;color:var(--fg-70)">${label}</span><span style="${NUM};font-size:12.5px;color:${a.created[k] ? "var(--fg)" : "var(--fg-40)"}">${formatNumber(a.created[k])}</span></div>`).join("");
   const peak = Math.max(1, ...a.top_tools.map((t) => t.count));
@@ -115,7 +116,7 @@ export function usageBreakdown(a: UsageActivity, days: number, summaries?: OrgUs
       ${line("API reads", formatNumber(a.api_reads))}${line("API writes", formatNumber(a.api_writes))}${line("MCP requests", formatNumber(a.mcp_requests))}${line("Emails sent", formatNumber(a.emails_sent))}
     </div>${summaries ? `
     <div class="plat-breakdown-foot" data-usage-summaries style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding-top:10px;border-top:1px solid var(--border);${QUIET}">
-      <span style="${LABEL}">AI summaries</span>${summariesFigures(summaries, summaries)}
+      <span style="${LABEL}">AI summaries</span>${summaries === "off" ? `<span>${esc(SUMMARIES_OFF)}</span>` : summariesFigures(summaries, summaries)}
     </div>` : ""}
   </div>`;
 }
@@ -130,8 +131,9 @@ function tiles(items: Tile[]): string {
 }
 
 /** One organization's usage, on its detail page: four tiles (two with their sparkline),
- *  its sizes, and the breakdown. */
-export function orgUsageBlock(u: OrgUsage, days: number): string {
+ *  its sizes, and the breakdown. `summariesOn: false` = the deployment has no summaries key: the
+ *  AI summaries line says so, as Platform › Usage does, instead of showing figures. */
+export function orgUsageBlock(u: OrgUsage, days: number, summariesOn = true): string {
   const a = u.activity, z = u.sizes;
   const size = (label: string, value: string) => `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:6px 0;border-top:1px solid var(--border)"><span style="font-size:12.5px;color:var(--fg-70)">${label}</span><span style="${NUM};font-size:12.5px">${value}</span></div>`;
   return `<div${surface("overflow:hidden", { cls: "plat-cq" })}>
@@ -143,7 +145,7 @@ export function orgUsageBlock(u: OrgUsage, days: number): string {
     ])}
     <div style="padding:16px 20px;border-top:1px solid var(--border)">
       ${noActivity(a) ? `<div style="${QUIET};margin-bottom:14px">No activity in the last ${days} days.</div>` : ""}
-      ${usageBreakdown(a, days, u.summaries)}
+      ${usageBreakdown(a, days, summariesOn ? u.summaries : "off")}
       <div style="${LABEL};margin:18px 0 8px">Size now</div>
       <div class="plat-sizes">
         ${size("Docs", formatNumber(z.docs))}${size("Feed entries", formatNumber(z.feed_entries))}${size("Tickets", `${formatNumber(z.tickets_open)} open of ${formatNumber(z.tickets_total)}`)}

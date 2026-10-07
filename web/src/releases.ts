@@ -70,12 +70,9 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Sync GitHub you can see, and AI summaries counted per organization. Built on the plans branch, so it
-  // is numbered one above that entry. Other open branches (the GitHub App, billing) add a release at this
-  // same spot: whichever merges later takes the next free number and sets `date` to its merge day — this
-  // entry's number is its place in THIS branch, not a promise.
+  // Sync GitHub as a recorded run, and AI summaries counted per organization (#107).
   {
-    version: "0.20",
+    version: "0.22",
     date: "2026-10-07",
     title: "Sync you can see",
     headline: "Sync GitHub now says what it will do, shows its progress as it runs, and leaves a result everyone in the organization can read.",
@@ -84,18 +81,20 @@ export const RELEASES: Release[] = [
       "While a sync runs you see what it is doing: reading pull requests, reading issues, saving them, then checking deployments and CI, with how many are done and what has changed so far. You can close the panel or go to another screen; the button keeps showing the progress.",
       "When it finishes, the result stays until you dismiss it: what changed, how long it took, and anything that could not be read, with what to do about it. If nothing changed it says so.",
       "Everyone in the organization can see when the last sync ran and who started it, on My Work and on the Repo screen. Only admins can start one, and only one runs at a time.",
-      "AI summaries of pull requests and issues now have a monthly allowance that comes with your plan. Org settings › General shows how many you have used this month, and the panel shows how many a sync will write.",
+      "AI summaries of pull requests and issues now have a monthly allowance that comes with your plan. Org settings › General shows how many you have used this month, the panel shows how many a sync will write, and the pricing page lists each plan's allowance.",
     ],
     headsUp: [
       "When an organization has used its AI summaries for the month, new pull requests and issues show a short excerpt instead. Nothing fails, and a sync in the next month fills them in.",
       "A sync writes at most 50 summaries each time you run it. A larger backlog takes more than one sync.",
       "Closing or reloading the tab that started a sync stops it after the step it is on. Nothing is lost: the panel says it did not finish, and the next sync picks up where it left off.",
+      "If GitHub is not connected, the panel says so and takes an admin to the place to connect it: Org settings › Repositories where the Trov App is offered, or Integrations for a token.",
+      "A payment that is past due does not stop AI summaries. When a plan ends they stop, and new items show an excerpt until the plan is renewed.",
     ],
     ops: [
       "Apply migration `0046_sync_runs` (additive: the table `sync_runs` and one index). It is safe on live data and with the previous Worker running. To roll back, deploy the previous Worker and `DROP TABLE sync_runs`.",
       "AI summaries stay OFF until the platform key is set: `wrangler secret put GEMINI_API_KEY`. One key serves every organization. From then on each summarizer call is counted per organization in `org_usage_daily` and each plan's monthly allowance applies (`ai_summaries` in `shared/plans.ts`: 300 Personal, 3,000 Team, unlimited Enterprise — placeholders; an override per org works like every other limit). `docs/architecture/plans.md` › AI summaries has what counts, the reset, and how to estimate cost.",
       "No cron trigger change: run records older than 90 days are deleted by the existing daily cron. No plugin change.",
-      "`LOCAL_UPSTREAM` is a local-development value only (a loopback stand-in for GitHub and Gemini during a Sync). Do not set it as a secret; a value that is not `http://127.0.0.1` or `http://localhost` is ignored.",
+      "`LOCAL_UPSTREAM` is a local-development value only (a loopback stand-in for GitHub and Gemini during a Sync). Do not set it as a secret; a value that is not `http://127.0.0.1` or `http://localhost` is ignored, and so is any value while a live Stripe key is set. It and `STRIPE_TEST_API_BASE` are described together in `.dev.vars.example`.",
     ],
     patches: {
       added: [
@@ -109,6 +108,9 @@ export const RELEASES: Release[] = [
         "Platform › Usage: AI summaries per org and in total (attempted, succeeded, fell back, the month against the cap)",
         "`web/src/sync.ts`: the Sync panel and the header control's states; `docs/architecture/sync.md`",
         "`pruneSyncRuns` on the daily cron; `sync_runs.started_by` in `HANDLE_COLUMNS`",
+        "`githubCredentialSource` (`src/github-app/credential.ts`): where an org's GitHub credential would come from, in the order every read resolves it (the App's installation, the stored token, SaplingLearn's legacy secret), asked without minting a token. `GET /sync` answers `via` and `connect` from it (#107)",
+        "The pricing page and its comparison table list AI summaries per month for each plan",
+        "`src/platform/loopback.ts` and `holdsLiveKey` (`src/billing/config.ts`): the one test both local stand-ins (`LOCAL_UPSTREAM`, `STRIPE_TEST_API_BASE`) pass — a loopback http origin, and no live Stripe key",
       ],
       changed: [
         "Sync GitHub's blocking modal and its closing toast are gone: progress and the result are in the panel",
@@ -116,6 +118,9 @@ export const RELEASES: Release[] = [
         "A batch that throws answers 502 `{ error: \"sync failed\", run }` instead of a bare 500, and its run is closed as failed",
         "Platform › Usage's active people and last activity leave out the summary counters (they are the platform's calls, not a person's requests)",
         "`formatUse` says \"this month\" for a monthly allowance; `overLimits` never lists one",
+        "`formatLimit` and `formatUse` write counts with thousands separators (3,000), in the Plan block, Platform and the pricing page alike",
+        "A sync's failure names the credential it read with (`via`), so its fix points at Repositories for the App and at Integrations for a token",
+        "Platform's organization page shows AI summaries as off when the deployment has no `GEMINI_API_KEY`, as Platform › Usage does",
       ],
       fixed: [
         "A sync with no summarizer no longer loops ten batches rewriting the same excerpt rows: nothing is spent from the batch budget when nothing can be attempted, so it is one batch",
@@ -123,14 +128,71 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [],
+    prs: [107],
   },
-  // Plans and grants. Another branch (the GitHub App) is also adding the release after 0.18: whichever
-  // merges SECOND renumbers its entry to 0.20 and sets `date` to its merge day. This one is meant to be
-  // 0.20; it reads 0.19 here only because shipped versions must count down without a gap and main
-  // carries no Unreleased entry (test/releases.test.ts).
+  // Billing (#106), with the pricing page (#105), which merged without a release line of its own.
   {
-    version: "0.19",
+    version: "0.21",
+    date: "2026-10-07",
+    title: "Paid plans",
+    headline: "You can buy the Personal or Team plan and set your organization up yourself, and its owner manages billing in Org settings.",
+    highlights: [
+      "You can buy a plan. Choose Personal or Team, sign in, and pay on Stripe's page. When the payment is confirmed you name your organization and you are its owner. Enterprise is still arranged with Trov.",
+      "After paying you land on a page that waits for the payment to be confirmed, then takes you to set up your organization. If confirmation is slow it says your payment was received and that your organization will be on your organizations page shortly.",
+      "Org settings › General shows how a paid organization pays: when it renews, a payment that is past due, or a cancelled plan and the day it ends.",
+      "An owner can open Manage billing to change the card, see invoices or cancel, can move the organization between Personal and Team, and can renew a plan that has ended. Each of these opens Stripe's own pages.",
+      "When a plan's limit stops something in an organization that pays, its owner is pointed at Org settings to upgrade, manage billing or renew.",
+    ],
+    headsUp: [
+      "Paid plans are switched on by Trov. Until they are, buying a plan says it is not available yet and nothing else changes.",
+      "Organizations that Trov set up or granted are not billed, and their Plan section shows nothing about payment.",
+      "A payment that is past due changes nothing while Stripe retries the card. If the retries run out, the plan ends.",
+      "When a plan ends, everything in the organization stays and keeps working, and nobody loses access. You can't add people, repositories, environments, artifacts or agent connections until an owner renews it.",
+      "Moving from Team to Personal with more than one person removes nobody and deletes nothing, but no one can be invited until the organization is back to one seat. Trov says so before you confirm.",
+      "Signing in with Google does not create an account. To buy a plan as someone new, sign in with GitHub.",
+    ],
+    ops: [
+      "Apply migration `0045_billing` (additive: the tables `billing_events`, `billing_checkouts`, `billing_subscriptions`; no column added to an existing table). Safe on live data and with the previous Worker running. Rollback steps are in the file's header.",
+      "Billing is OFF until both secrets are set: `wrangler secret put STRIPE_SECRET_KEY` and `wrangler secret put STRIPE_WEBHOOK_SECRET`. While off, every billing route answers 503 `billing_unavailable` and `POST /webhook/stripe` answers a bare 401.",
+      "Prices are not in Trov. Create the Products and recurring Prices in Stripe and paste the Price ids into `wrangler.toml` `[vars]`: `STRIPE_PRICE_PERSONAL`, `STRIPE_PRICE_TEAM`, and optionally `STRIPE_PRICE_PERSONAL_YEARLY`, `STRIPE_PRICE_TEAM_YEARLY`. A plan with no id cannot be bought.",
+      "Add the webhook endpoint `https://trov.dev/webhook/stripe` in Stripe with `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`.",
+      "Configure the Stripe Customer Portal (payment methods, invoices, cancel; plan switching with both products) or Upgrade and Switch answer that the plan change could not be opened. Do one purchase in test mode with card 4242 4242 4242 4242 before live keys. The full checklist is in `docs/architecture/billing.md`.",
+      "No cron trigger and no plugin change. The daily cron also prunes handled `billing_events` older than 90 days.",
+      "Update the Terms and Privacy text for paid plans and Stripe as a processor before taking live payments.",
+    ],
+    patches: {
+      added: [
+        "Migration `0045_billing`: `billing_events` (each Stripe event id once), `billing_checkouts` (a Checkout Session bound to the person who started it), `billing_subscriptions` (Stripe's current state of each subscription, and the superadmin's pin)",
+        "`src/billing/`: `stripe.ts` (the one fetch client: fixed host, no redirects, timeout, pinned `Stripe-Version`, an `Idempotency-Key` on every POST, every error scrubbed of the key), `config.ts`, `signature.ts`, `store.ts`, `sync.ts`, `webhook.ts`, `routes.ts`, `view.ts`, `pages.ts`; `shared/billing.ts` (the wire)",
+        "`GET /billing/start?plan=personal|team[&interval=month|year]` (public: sign in and come back, or a Stripe Checkout Session), `GET /api/billing/config` (public), `GET /api/billing/status?session_id=` (the caller's own checkout)",
+        "`POST /webhook/stripe`: `Stripe-Signature` verified over the raw body (several `v1`, a 5-minute tolerance), one bare 401 for every refusal, each event id handled once, every handler re-reads the subscription and converges",
+        "Fulfilment calls `grantOrganization` with the subscription id as `external_ref`, so a replayed event and the waiting room's own look at Stripe make one grant; `createOrgFromGrant` links the org to the customer and subscription in the creating batch (`linkPaidOrgStmt`)",
+        "`POST /api/o/:slug/billing/portal`, `/billing/change`, `/billing/renew` (owner, cookie only): each answers a URL on Stripe's pages",
+        "`src/auth/return-to.ts`: a sealed, allowlisted return path taken by the sign-in tail after `oauth_pending`",
+        "SPA: `web/src/billing.ts` (the waiting room at `/billing/done`, then `/?setup=<grant>` opens the picker on that organization's form), `web/src/org-billing-actions.ts`, the Plan block's billing states in `web/src/org-plan.ts`",
+        "Platform: an org's row and page say granted or paid, Stripe's status and the period, with a link to the customer in the Stripe dashboard (test or live); Follow subscription",
+        "The `checkout` limit: 10 Checkout Sessions per person per day (`src/platform/limits.ts`)",
+        "A public pricing page at `/pricing` and a pricing section on the landing page: the three plans and what each includes, from `shared/pricing.ts`. Prices are not announced yet, so every plan reads Pricing to be announced and no plan links to checkout (#105)",
+        "`test/billing.signature.test.ts`, `billing.flow.test.ts`, `billing.lifecycle.test.ts`, `billing.leak.test.ts` (canary key against a Stripe that echoes it), `render.billing.test.ts`; the isolation matrix, the MCP import rule and the API prefix test cover the new routes",
+      ],
+      changed: [
+        "`GET /api/o/:slug/plan` carries `billing` (`OrgBillingView`, null for a granted org) and `period_end` is now written",
+        "A plan refusal (402 `plan_limit`) carries `paid: true` for an org that pays; `planRefusalSentence` points its owner at Org settings",
+        "`PUT /api/platform/orgs/:slug/plan` on an org with a live subscription keeps it a billing org and pins a plan that differs from the paid one; `{ follow_subscription: true }` lifts the pin. On an ended subscription it takes the org back as granted",
+        "`PlatformOrgPlan` carries `billing` for a paid org",
+        "The grant notice e-mail has a paid wording, sent to the buyer's provider-verified address",
+        "The picker says Paid for, not Granted by, on a grant a payment made",
+        "`PlanDef.billing` stays null: a plan's price is deployment config",
+      ],
+      fixed: [
+        "Tracking a repository from the GitHub App's list when the plan's repositories are all used answered 500 `internal`. It is the 402 `plan_limit` every other route gives, and Org settings shows the plan's sentence",
+      ],
+      removed: [],
+    },
+    prs: [105, 106],
+  },
+  {
+    version: "0.20",
     date: "2026-10-07",
     title: "Plans",
     headline: "An organization is now on a plan (Personal, Team or Enterprise), and Trov can hand someone an organization to set up themselves.",
@@ -180,7 +242,56 @@ export const RELEASES: Release[] = [
         "`PUT /api/platform/persons/:handle/org-limit`, `setOrgLimit`, `orgAllowance`, the error code `org_limit` and Platform's Organization limit form. `persons.org_limit` stays as a dead column until the cleanup migration",
       ],
     },
-    prs: [],
+    prs: [104],
+  },
+  {
+    version: "0.19",
+    date: "2026-10-07",
+    title: "Connect with GitHub",
+    headline: "An organization now connects its repositories by installing the Trov App on GitHub: no token to paste, no webhook to set up.",
+    highlights: [
+      "Org settings › Repositories has Connect with GitHub. It takes you to GitHub to install the Trov App on your account or organization and choose which repositories it may read, then brings you back connected.",
+      "Once connected, Repositories lists the repositories the App can see. Track one with a click instead of typing its name; the first you track becomes the primary.",
+      "Trov reads through the App and GitHub sends it events directly, so an organization on the App needs no GitHub token and no webhook of its own. Sync GitHub, the Repo dashboard and the organization's image all use it.",
+      "Org settings › Integrations shows the connection as one row: the GitHub account it is on, who connected it, Test connection, Manage on GitHub and Disconnect. The token and webhook rows move under Manual connection, where they stay for anyone who prefers them.",
+      "If the App is suspended or uninstalled on GitHub, or stops seeing a repository you track, Org settings says so and what to do about it.",
+    ],
+    headsUp: [
+      "Only an admin or an owner can connect GitHub, and the GitHub account you approve it with has to be the one linked to your Trov account and able to read every repository the App covers.",
+      "An organization connects one GitHub account at a time. Disconnecting leaves the Trov App installed on GitHub until you uninstall it there, and leaves your repositories connected.",
+      "Events are still captured for the primary repository only. Other tracked repositories are listed and resolve links.",
+      "Connecting by hand still works exactly as before: a GitHub token, and a webhook for each repository.",
+      "The setup checklist's GitHub step now reads Connect GitHub, and is done by the App or by a token.",
+    ],
+    ops: [
+      "Migration `0043_github_app` (additive: the table `org_github_installations`, and `connection` / `access_lost_at` on `org_repos`) is applied by the deploy. Rollback is by hand: the statements are in the migration's header, and must run BEFORE `scripts/mt/rollback/0042_organizations.down.sql` if that is ever used.",
+      "Set two Worker secrets — `wrangler secret put GITHUB_APP_ID` (the App's numeric id) and `wrangler secret put GITHUB_APP_PRIVATE_KEY < the-app.private-key.pem` (the whole file GitHub generated) — and put the App's URL name in `wrangler.toml` as `GITHUB_APP_SLUG`. `GITHUB_APP_WEBHOOK_SECRET` is already set. Until all of slug, id and key are present, Org settings offers only the token path and says the App is not configured; nothing fails.",
+      "On GitHub, in the App's settings: make the webhook Active with the URL `https://trov.dev/webhook/github/app` and subscribe to Pull request, Pull request review, Issues, Push, Deployment status, Check run, Workflow run and Status. The first Callback URL must stay `https://trov.dev/auth/callback`: GitHub returns there after an install.",
+      "Then connect SaplingLearn: Org settings › Repositories › Connect with GitHub. Its old webhook and the Worker's `GITHUB_SERVICE_TOKEN` / `GITHUB_WEBHOOK_SECRET` keep working beside the App (one event through both is captured once) and can be removed once the App's row shows deliveries and a passing Test connection. The full checklist: `docs/architecture/github-app.md`.",
+    ],
+    patches: {
+      added: [
+        "The GitHub App as an org's GitHub connection (`src/github-app/`, `shared/github-app.ts`, `docs/architecture/github-app.md`): an RS256 App JWT signed with WebCrypto (GitHub's PKCS#1 PEM is wrapped as PKCS#8; a PKCS#8 PEM works too), installation tokens minted on demand — for the ONE repository being read, with the App's eight read permissions; for the installation's own repository list, Metadata only — and cached per isolate, per installation and repository, until ten minutes before expiry; never stored, never logged",
+        "`resolveGithubCredential` (`src/github-app/credential.ts`): the org's live installation, then its stored `github_token`, then SaplingLearn's legacy Worker secret. The reconcile, the progress backstop, Sync GitHub, the webhook's follow-up reads and the org image's import resolve through it; a refused mint ends (404) or suspends (403) the binding and falls back to the stored token",
+        "The connect flow: `GET /api/o/:slug/github/install` (admin+, cookie only) seals `{ org, person, state, expiry }` in an HttpOnly cookie and redirects to GitHub; `GET /auth/callback` recognises the install return (`installation_id` / `setup_action`) and binds only after the cookie, the state, the signed-in person, their admin role, their linked GitHub identity, `GET /user/installations` and the no-escalation check (every repository id of the installation is one that account can read; at most 1,000 are checked) all hold, and revokes the GitHub user token once it has decided; `?existing=1` links an installation that already exists through an ordinary authorization with PKCE (`src/github-app/connect.ts`, `src/auth/tx.ts`)",
+        "`GET /api/o/:slug/github` (the connection, any member), `GET|POST …/github/repositories` (what the installation can see; track one), `POST …/github/test`, `POST …/github/disconnect` (admin+, cookie only, audited as `github.*` in `org_admin_audit`)",
+        "`POST /webhook/github/app`: one endpoint for every installation, verified against `GITHUB_APP_WEBHOOK_SECRET` (the per-repo hook's bare 401 otherwise), the org resolved from the delivery's installation id, capture for that org's primary repository; `installation` (`deleted`, `suspend`, `unsuspend`, `new_permissions_accepted`) and `installation_repositories` events update the binding and the repositories' marks (`src/github-app/webhook.ts`)",
+        "Migration `0043_github_app`: `org_github_installations` (one live installation per org, one org per installation) and `org_repos.connection` / `access_lost_at`",
+        "Org settings (`web/src/github-app.ts`): Connect with GitHub, the installation's repositories to track, the App's row (Test connection, Manage on GitHub, Disconnect), Manual connection, the sentence after a return from GitHub; Platform's org list and org page name the GitHub account",
+        "Tests: `test/github-app.jwt.test.ts`, `github-app.connect.test.ts`, `github-app.webhook.test.ts`, `github-app.jobs.test.ts`, `render.github-app.test.ts`; the App's routes in `test/isolation.http.test.ts`; `test/secrets.mcp.test.ts` forbids anything reachable from MCP from importing `src/github-app/`",
+      ],
+      changed: [
+        "Org settings › Repositories: where the App is configured its one accent action is Connect with GitHub and adding by name is behind a disclosure; where it is not, the tab is as before and says why. A repository reached through the App shows no webhook URL",
+        "Org settings › Integrations: the GitHub group leads with the App's row; with an installation the token and webhook-secret rows fold under Manual connection and no longer count as owed or as errors",
+        "The setup checklist's third step is Connect GitHub where the App is offered, and is satisfied by an installation, a stored token or the legacy credential (`setupSteps`)",
+        "`exchangeCode` (`src/auth/github.ts`) sends `redirect_uri` and `code_verifier` only when it has them: the installation-initiated authorization has neither. Sign-in is unchanged",
+        "`reconcileCost` budgets one more subrequest per unit for a token mint (`GITHUB_MINT_COST`)",
+        "The GitHub token's how-to names the Checks permission and points to the App first",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [103],
   },
   {
     version: "0.18",

@@ -42,6 +42,8 @@ export const ORG_AUDIT_ACTIONS = [
   "invite.create", "invite.revoke", "invite.accept", "invite.decline",
   // Org settings › Repositories / Environments (src/integrations/settings.ts).
   "repo.add", "repo.remove", "repo.primary", "environment.set", "environment.delete", "environment.reorder",
+  // The GitHub App's installation (0043_github_app, src/github-app/store.ts).
+  "github.connect", "github.disconnect", "github.uninstall", "github.suspend", "github.unsuspend", "github.repos", "github.permissions",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
   // Plans and grants (0044_plans, src/plans): an org's plan / limits / status changed; a grant made, revoked, used.
   "plan.change", "plan.overrides", "plan.status", "grant.create", "grant.revoke", "grant.use",
@@ -187,6 +189,9 @@ export interface PlatformOrgRow {
   last_activity_at: string | null;
   /** The org's plan and seat use (0044_plans). Optional: an answer cached from before it reads as "unknown". */
   plan?: PlatformOrgPlan;
+  /** The GitHub account the org's App installation is on (0043_github_app), or null: connected by a
+   *  pasted token, or not at all. Read-only here. */
+  github_account?: string | null;
 }
 
 /** Who a superadmin names as an org's admin: exactly one key. */
@@ -303,6 +308,9 @@ export interface PlatformOrgDetail {
   members: PlatformOrgMember[];
   invites: OrgInvite[];
   usage: OrgUsage;
+  /** False when the deployment has no summaries key (`PlatformUsageResponse.summaries_enabled`): the
+   *  page says AI summaries are off instead of a line of zeros. */
+  summaries_enabled: boolean;
 }
 
 export interface PlatformAdmin { handle: string; name: string | null; granted_at: string; granted_by: string }

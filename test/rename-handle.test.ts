@@ -135,6 +135,8 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `INSERT INTO platform_admins (person, granted_at, granted_by) VALUES (?, ?, ?)`, handle, nowIso(), handle); // 0042_organizations
   // 0042_organizations: orgs.suspended_by, org_usage_daily.actor, org_admin_audit.actor
   await run(env.DB, `UPDATE orgs SET suspended_at = ?, suspended_by = ? WHERE id = 'org_b'`, nowIso(), handle);
+  // 0043_github_app: who connected the org's GitHub App installation
+  await run(env.DB, `INSERT INTO org_github_installations (org_id, installation_id, account_login, account_id, account_type, repository_selection, connected_by, connected_at) VALUES (?, 7001, 'o', '1', 'Organization', 'all', ?, ?)`, org, handle, nowIso());
   // 0042_organizations: orgs.logo_by — who uploaded the org's image
   await run(env.DB, `UPDATE orgs SET logo_sha = ?, logo_source = 'upload', logo_by = ?, logo_at = ? WHERE id = 'org_b'`, "a".repeat(64), handle, nowIso());
   await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-01-01', 'api_read', ?, 1, ?)`, org, handle, nowIso());
@@ -144,6 +146,9 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `UPDATE orgs SET plan_changed_at = ?, plan_changed_by = ? WHERE id = 'org_b'`, nowIso(), handle);
   await run(env.DB, `INSERT INTO org_grants (person, plan, granted_by, created_at, status, used_at, used_by, used_org) VALUES (?, 'team', ?, ?, 'used', ?, ?, ?)`, handle, handle, nowIso(), nowIso(), handle, org);
   await run(env.DB, `INSERT INTO org_grants (github_login, plan, granted_by, created_at, status, revoked_at, revoked_by) VALUES ('rename-gh', 'team', ?, ?, 'revoked', ?, ?)`, handle, nowIso(), nowIso(), handle);
+  // 0045_billing: a checkout the person started and the subscription it bought.
+  await run(env.DB, `INSERT INTO billing_checkouts (ref, person, plan, session_id, created_at) VALUES ('rename-ref', ?, 'team', 'cs_rename', ?)`, handle, nowIso());
+  await run(env.DB, `INSERT INTO billing_subscriptions (subscription_id, customer_id, person, plan, stripe_status, created_at, updated_at) VALUES ('sub_rename', 'cus_rename', ?, 'team', 'active', ?, ?)`, handle, nowIso(), nowIso());
   // 0046_sync_runs: a Sync GitHub run the person started.
   await run(env.DB, `INSERT INTO sync_runs (org_id, repo, started_by, started_at, updated_at, ended_at, status) VALUES (?, 'o/r', ?, ?, ?, ?, 'ok')`, org, handle, nowIso(), nowIso(), nowIso());
 }

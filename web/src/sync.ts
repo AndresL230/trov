@@ -15,7 +15,7 @@
 import {
   SYNC_ADMINS_ONLY, SYNC_DID_NOT_FINISH, SYNC_KEEPS_RUNNING, SYNC_PASS_NOTE, SYNC_PHASE_LABEL, SYNC_SCHEDULED,
   syncBlockText, syncChanges, syncCompactLabel, syncDuration, syncFailureTab, syncFailureText, syncLeftoverText, syncNothingNew,
-  syncPassLabel, syncResultTitle, syncSeenText, syncSummariesText, syncWatchText, syncWhatItDoes,
+  syncNeedsText, syncPassLabel, syncResultTitle, syncSeenText, syncSummariesText, syncWatchText, syncWhatItDoes,
   type SyncRunView, type SyncStatusView, type SyncSummariesView,
 } from "@shared/sync";
 import { esc, attr } from "./ui";
@@ -198,7 +198,11 @@ function failureList(run: SyncRunView): string {
     if (tab) tabs.add(tab);
     return `<li style="${T};margin:0"><span style="color:var(--fg)">${esc(t.what)}</span> <span style="color:var(--fg-70)">${esc(t.fix)}</span></li>`;
   }).join("");
-  return `<ul class="sync-fails">${rows}</ul>${tabs.has("integrations") ? `<div style="margin-top:8px">${goLink("Open Org settings › Integrations", "orgGo", "integrations")}</div>` : ""}`;
+  const links = [
+    tabs.has("repos") ? goLink("Open Org settings › Repositories", "orgGo", "repos") : "",
+    tabs.has("integrations") ? goLink("Open Org settings › Integrations", "orgGo", "integrations") : "",
+  ].filter(Boolean).join("");
+  return `<ul class="sync-fails">${rows}</ul>${links ? `<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px 14px">${links}</div>` : ""}`;
 }
 
 /** "Last sync" in the panel at rest: when, by whom, how it ended — and what failed, if anything did. */
@@ -319,9 +323,9 @@ function panelParts(p: SyncProps): { body: string; foot: string } {
     };
   }
   if (mode === "blocked") {
-    const b = syncBlockText(st!.blocked!, null);
+    const b = syncBlockText(st!.blocked!, null, st!.connect);
     return {
-      body: `${problem}${note(I_WARN(15), `<div style="${P_MAIN};font-weight:500">${esc(b.what)}</div><div style="${P_QUIET};margin-top:2px">A sync needs both a repository and a GitHub token.</div>${b.link && b.tab ? `<div style="margin-top:8px">${goLink(b.link, "orgGo", b.tab)}</div>` : ""}`)}
+      body: `${problem}${note(I_WARN(15), `<div style="${P_MAIN};font-weight:500">${esc(b.what)}</div><div style="${P_QUIET};margin-top:2px">${esc(syncNeedsText(st!.connect))}</div>${b.link && b.tab ? `<div style="margin-top:8px">${goLink(b.link, "orgGo", b.tab)}</div>` : ""}`)}
         ${st!.last ? facts() : ""}`,
       foot: "",
     };

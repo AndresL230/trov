@@ -77,8 +77,12 @@ import { createSyncController } from "./sync-actions";
 import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
+import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
+import { BILLING_DONE_PATH } from "@shared/billing";
+import { getBillingStatus } from "./api";
 import { setPrimaryRepo } from "./github";
-import type { MyOrgsResponse } from "@shared/orgs";
+import { GITHUB_LOGIN_RE, type MyOrgsResponse } from "@shared/orgs";
+import { isGithubConnectOutcome } from "@shared/github-app";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
@@ -727,7 +731,15 @@ function enterPlatform(hash: string): void {
 /** Open an org: every request from here on is its (`/api/o/<slug>/…`), the address bar says
  *  `/o/<slug>/` with the hash route after it, and this browser remembers it as last used. */
 function enterOrg(slug: string, hash: string): void {
-  const link = new URLSearchParams(location.search).get("link");
+  const query = new URLSearchParams(location.search);
+  const link = query.get("link");
+  // The return from GitHub after connecting the App (src/github-app/connect.ts): `/o/<slug>/?github=<outcome>#org/repos`.
+  // Read once, here — the address bar is rewritten below, so a reload does not say it again.
+  const github = query.get("github");
+  if (isGithubConnectOutcome(github)) {
+    const missing = /^[1-9][0-9]{0,5}$/.test(query.get("missing") ?? "") ? Number(query.get("missing")) : undefined;
+    state.org.githubNotice = { outcome: github, accounts: (query.get("accounts") ?? "").split(",").filter((a) => GITHUB_LOGIN_RE.test(a)).slice(0, 10), ...(missing ? { missing } : {}) };
+  }
   state.orgSlug = slug;
   setApiOrg(slug);
   try { localStorage.setItem(LAST_ORG_KEY, slug); } catch { /* ignore */ }
@@ -4231,6 +4243,12 @@ if (params.get("denied") === "1") {
   state.authStep = "notinvited";
   state.deniedEmail = params.get("email");
   rerender();
+} else if (location.pathname === BILLING_DONE_PATH) {
+  // Back from Stripe Checkout (billing.ts): the waiting room polls until the webhook has made the
+  // buyer's grant, then sends them on to `/?setup=<grant>` — the picker, with that organization's form open.
+  state.billingDone = initialBillingDone(params.get("session_id"));
+  rerender();
+  void startBillingDone({ get: () => state.billingDone, rerender, ask: getBillingStatus, go: (href) => { location.assign(href); } });
 } else if (location.hash === "#onboard") {
   // Fresh Google/GitHub sign-in with no existing person: the sealed `onboard`
   // cookie is set, and /auth/onboard reads it. A signed-in reload on #onboard
@@ -4278,6 +4296,15 @@ if (params.get("denied") === "1") {
       // `/platform/`: the superadmin's area, whatever orgs they are in (or none). Anyone else falls through to the picker.
       // So does a `#platform…` link opened at `/` by a superadmin with no org to open it in.
       if (me.superadmin === true && (isPlatformPath(location.pathname) || (me.orgs.length === 0 && /^#platform(?:\/|$)/.test(hash)))) { void loadMyOrgs(); enterPlatform(hash); return; }
+      // Sent on from the waiting room (billing.ts `setupHref`): the picker — whatever orgs they are already in —
+      // with the form for the organization they just paid for open. A stale or foreign id opens their oldest grant, or nothing.
+      const setup = params.get(SETUP_PARAM);
+      if (setup !== null && location.pathname === "/") {
+        history.replaceState(null, "", "/");
+        showPicker(null);
+        void loadMyOrgs().then((mine) => { if (mine?.can_create) orgsCtl.act("orgsCreateOpen", setup, null); });
+        return;
+      }
       const land = resolveLanding({ pathSlug: orgSlugFromPath(location.pathname), orgs: me.orgs, lastUsed: last, returnOrg: backOrg });
       if (land.kind === "org") { enterOrg(land.slug, hash); return; }
       if (back && back !== location.hash) history.replaceState(null, "", `${location.pathname}${back}`);

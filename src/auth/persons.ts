@@ -270,6 +270,11 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   // Plans and grants (0044_plans): who changed an org's plan; a grant's person, granter, user and revoker.
   ["orgs", "plan_changed_by"],
   ["org_grants", "person"], ["org_grants", "granted_by"], ["org_grants", "used_by"], ["org_grants", "revoked_by"],
+  // Billing (0045_billing): who started a checkout, and who a subscription was bought by — a payment
+  // made under the old handle still grants the renamed person.
+  ["billing_checkouts", "person"], ["billing_subscriptions", "person"],
+  // The GitHub App (0043_github_app): who connected the org's installation.
+  ["org_github_installations", "connected_by"],
   // Sync GitHub runs (0046_sync_runs): who started one.
   ["sync_runs", "started_by"],
 ];

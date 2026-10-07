@@ -27,6 +27,8 @@ import {
 import type { MyOrg } from "@shared/orgs";
 import type { IntegrationDTO, IntegrationKind, OrgAuditDTO } from "@shared/integrations";
 import type { OrgUi } from "./org-settings";
+import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, existingLink, githubAppRow } from "./github-app";
+import type { GithubAppStatusDTO } from "@shared/github-app";
 
 // ── state shapes ─────────────────────────────────────────────────────────────
 
@@ -258,6 +260,17 @@ export function auditSentence(a: OrgAuditDTO, list: IntegrationDTO[]): string {
   if (a.action === "environment.set") return `${d.created === true ? "added" : "changed"} the ${a.target} environment`;
   if (a.action === "environment.delete") return `deleted the ${a.target} environment`;
   if (a.action === "environment.reorder") return "reordered the environments";
+  // The GitHub App's installation: the target is the GitHub account it is installed on.
+  if (a.action === "github.connect") return `connected GitHub through the App on ${a.target}`;
+  if (a.action === "github.disconnect") return `disconnected the GitHub App on ${a.target}`;
+  if (a.action === "github.uninstall") return d.reason === "not_found" ? `found the GitHub App no longer installed on ${a.target}` : `saw the GitHub App uninstalled from ${a.target}`;
+  if (a.action === "github.suspend") return `saw the GitHub App on ${a.target} suspended`;
+  if (a.action === "github.unsuspend") return `saw the GitHub App on ${a.target} unsuspended`;
+  if (a.action === "github.permissions") return `saw new permissions accepted for the GitHub App on ${a.target}`;
+  if (a.action === "github.repos") {
+    const n = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
+    return `saw the GitHub App's repositories on ${a.target} change (${n(d.added)} added, ${n(d.removed)} removed)`;
+  }
   const at = a.target.indexOf(":");
   const kind = at < 0 ? a.target : a.target.slice(0, at);
   const scope = at < 0 ? "" : a.target.slice(at + 1);
@@ -298,6 +311,49 @@ function auditRow(ui: OrgUi): string {
 
 const LIST = "overflow:hidden;list-style:none;margin:0;padding:0";
 
+const isGithubManual = (i: IntegrationDTO): boolean => i.kind === "github_token" || i.kind === "github_webhook";
+
+/** The GitHub group. Connected through the App: ONE row for it, and the token / webhook-secret rows
+ *  fold into a quiet "Manual connection" row under it. Otherwise the manual rows, led by where the
+ *  App stands: not connected (it is the lead's action), or not set up on this Trov at all. */
+function githubGroup(org: MyOrg, ui: OrgUi, rows: IntegrationDTO[], app: GithubAppStatusDTO | null, extra: string): string {
+  const d = ui.integrations.data!;
+  const row = (i: IntegrationDTO) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) });
+  const inst = app?.installation ?? null;
+  const done = rows.filter((i) => i.configured || i.legacy_fallback).length;
+  if (inst) {
+    const tracked = ui.repos.data.filter((r) => r.connection === "app").length;
+    const stored = rows.filter((i) => i.configured).length;
+    const manual = rows.length ? openRow({
+      key: "github-manual", open: ui.openRows.includes("github-manual"), act: "orgRowToggle", label: "Manual connection, not needed while the App is connected",
+      head: `<span>Manual connection</span>`, meta: `Not needed while the App is connected${stored ? ` &middot; ${stored} stored` : ""}`,
+      body: `<div style="max-width:680px;margin-bottom:10px">A GitHub token and one webhook secret per repository: how GitHub is connected without the App. While the App is connected Trov reads and receives events through it, and uses these only for a repository outside the account the App is installed on.${stored ? " What is stored here can be deleted." : ""}</div>
+        <ul${surface(LIST)}>${rows.map(row).join("")}</ul>`,
+      attrs: " data-org-github-manual",
+    }) : "";
+    return `<section aria-labelledby="org-int-github" data-org-group="github" data-github="app">
+      ${orgHead("GitHub", "connected through the App", null, "org-int-github")}
+      <ul${surface(LIST)}>${githubAppRow(inst, { open: ui.openRows.includes("github-app"), admin: true, tracked, test: ui.tests.github_app, busy: ui.confirm?.what === "github" })}${manual}</ul>
+    </section>`;
+  }
+  const offered = app?.configured === true;
+  const appRow = openRow({
+    key: "github-app", open: ui.openRows.includes("github-app"), act: "orgRowToggle", label: `GitHub App, ${offered ? "not connected" : "not available"}`,
+    head: `<span>GitHub App</span>${chip(offered ? "Not connected" : "Not available", "var(--fg-55)")}`,
+    meta: offered ? "Recommended: no token to paste, no webhook to add" : "Not configured on this Trov",
+    action: offered ? goLink("Connect in Repositories", "orgTab", "repos") : "",
+    body: offered
+      ? `<div style="max-width:680px">Install the Trov App on the GitHub account that owns your repositories and pick which ones Trov may read. GitHub then issues Trov short-lived tokens and delivers events itself, so the token and the webhook secrets below are not needed.</div>
+         <div style="margin-top:8px;font-size:12.5px;color:var(--fg-55)">Already installed it on GitHub? ${existingLink(org.slug, "Link the existing installation")}</div>`
+      : `<div style="max-width:680px">${esc(NOT_CONFIGURED_LINE)} Whoever runs this Trov can set it up; nothing here needs to change when they do.</div>`,
+    attrs: ` data-org-github-app="${offered ? "none" : "off"}"`,
+  });
+  return `<section aria-labelledby="org-int-github" data-org-group="github" data-github="${offered ? "manual" : "off"}">
+      ${orgHead("GitHub", offered ? `or by hand: ${done} of ${rows.length} set` : `${done} of ${rows.length} set`, null, "org-int-github")}
+      <ul${surface(LIST)}>${appRow}${rows.map(row).join("")}${extra}</ul>
+    </section>`;
+}
+
 export function integrationsTab(org: MyOrg, ui: OrgUi): string {
   if (!roleAtLeast(org.role, "admin")) return orgEmpty("Admins only", "Integrations hold the org's credentials, so only an admin or an owner can open them.");
   const d = ui.integrations.data;
@@ -306,25 +362,33 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
     "Secrets can't be saved yet",
     "This Trov's encryption key is not configured, so it cannot store or use a credential for any org. Ask whoever runs this Trov to set <code style=\"font-family:var(--code)\">TROV_KEK</code>, then reload this page. Nothing you set earlier is lost.",
   )}</div>`;
+  // The org's GitHub App connection: its own read (every member's), else the list's copy.
+  const app = ui.github.data ?? d.github_app ?? null;
+  const inst = app?.installation ?? null;
+  const offered = app?.configured === true;
   const groups = groupIntegrations(d.integrations);
-  const n = integrationCounts(d.integrations);
+  // An org on the App does not need its GitHub token or webhook secrets: they are not counted as owed.
+  const n = integrationCounts(inst ? d.integrations.filter((i) => !(i.expected && isGithubManual(i))) : d.integrations);
   const noRepo = ui.repos.status === "ok" && ui.repos.data.length === 0;
   const noEnv = ui.envs.status === "ok" && ui.envs.data.length === 0;
-  // The lead: the state of the whole tab in one sentence. Its action is the one credential
-  // nothing works without — the GitHub token — while that has no value.
+  // The lead: the state of the whole tab in one sentence. Its action is the one thing nothing works
+  // without — GitHub — while it is not connected: through the App where this Trov offers it, else the token.
   const token = d.integrations.find((i) => i.kind === "github_token" && i.expected);
-  const needToken = !!token && !token.configured && !token.legacy_fallback;
+  const needToken = !inst && !!token && !token.configured && !token.legacy_fallback;
   const lead = tabLead(
-    `<strong>${n.set} of ${n.expected}</strong> ${n.expected === 1 ? "credential" : "credentials"} set${n.errors ? ` &middot; ${leadFlag(`${n.errors} with an error`)}` : ""}${n.orphans ? ` &middot; ${n.orphans} no longer used` : ""}. A saved value is never shown again, only its last four characters.`,
-    needToken && token ? accentBtn("Set the GitHub token", "orgSecretOpen", { arg: `set:${integrationKey(token)}`, disabled: !d.secrets_available, field: "orgLeadToken", label: "Set the GitHub token" }) : "",
+    `${inst ? `${inst.suspended_at ? appLeadPhrase(inst) : `GitHub is connected ${appLeadPhrase(inst)}`} &middot; ` : ""}<strong>${n.set} of ${n.expected}</strong> ${inst ? "other " : ""}${n.expected === 1 ? "credential" : "credentials"} set${n.errors ? ` &middot; ${leadFlag(`${n.errors} with an error`)}` : ""}${n.orphans ? ` &middot; ${n.orphans} no longer used` : ""}. A saved value is never shown again, only its last four characters.`,
+    !needToken || !token ? ""
+      : offered ? connectLink(org.slug, "Connect with GitHub", "orgLeadGithub")
+      : accentBtn("Set the GitHub token", "orgSecretOpen", { arg: `set:${integrationKey(token)}`, disabled: !d.secrets_available, field: "orgLeadToken", label: "Set the GitHub token" }),
   );
   const sections = groups.map((g) => {
     const done = g.rows.filter((i) => i.configured || i.legacy_fallback).length;
     const extra = g.key === "github" && noRepo
       ? `<li class="cnpy-org-row" style="align-items:center"><div style="flex:1 1 260px;min-width:0;font-size:12.5px;color:var(--fg-55)">Each repository gets its own webhook secret. None is connected yet.</div><div class="cnpy-org-actions">${goLink("Connect a repository", "orgTab", "repos")}</div></li>` : "";
+    if (g.key === "github") return githubGroup(org, ui, g.rows, app, extra);
     return `<section aria-labelledby="org-int-${attr(g.key)}" data-org-group="${attr(g.key)}">
       ${orgHead(g.title, g.key === "orphans" ? "can only be deleted" : `${done} of ${g.rows.length} set`, null, `org-int-${g.key}`)}
-      <ul${surface(LIST)}>${g.rows.map((i) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) })).join("")}${extra}</ul>
+      <ul${surface(LIST)}>${g.rows.map((i) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) })).join("")}</ul>
     </section>`;
   }).join("");
   const envHint = noEnv ? `<div style="margin-top:30px">${orgEmpty("No environment tokens yet", "Each environment gets a Railway project token and an app metrics token. Add an environment first.", quietBtn("Open Environments", "orgTab", { arg: "environments" }))}</div>` : "";

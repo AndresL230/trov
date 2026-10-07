@@ -26,7 +26,7 @@ const live = (over: Partial<SyncRunView> = {}): SyncRunView =>
 const summaries = (over: Partial<SyncSummariesView> = {}): SyncSummariesView =>
   ({ status: "on", used: 62, cap: 100, remaining: 38, pending: 12, per_run: SYNC_SUMMARIES_PER_RUN, ...over });
 const status = (over: Partial<SyncStatusView> = {}): SyncStatusView => ({
-  repo: "acme/widgets", admin: true, blocked: null, running: null, last: run(), summaries: summaries(), refreshed_at: at(125), ...over,
+  repo: "acme/widgets", admin: true, blocked: null, connect: "token", via: "token", running: null, last: run(), summaries: summaries(), refreshed_at: at(125), ...over,
 });
 const ui = (over: Partial<SyncUi> = {}): SyncUi => ({ ...initialSyncUi(), load: "ok", status: status(), ...over });
 const props = (u: Partial<SyncUi> = {}, over: Partial<SyncProps> = {}): SyncProps => ({ ui: ui(u), admin: true, me: "andres", home: true, now: NOW, ...over });
@@ -219,13 +219,32 @@ describe("cannot run", () => {
     expect(html).not.toContain("syncStart");
     expect(syncBlockText("no_repo", null).tab).toBe("repos"); // an Org settings tab id (web/src/org-settings.ts ORG_TABS)
   });
-  it("no GitHub token: says so, links to Org settings › Integrations, offers no Sync — and still says when it last ran", () => {
-    const html = panel({ status: status({ blocked: "no_token" }) });
+  it("no GitHub token, on a Trov without the GitHub App: says so, links to Org settings › Integrations, offers no Sync — and still says when it last ran", () => {
+    const html = panel({ status: status({ blocked: "no_token", connect: "token", via: null }) });
     expect(text(html)).toContain("There is no GitHub token to read the repository with.");
+    expect(text(html)).toContain("A sync needs both a repository and a GitHub token.");
     expect(html).toContain('data-act="orgGo" data-arg="integrations"');
+    expect(html).not.toContain('data-arg="repos"');
     expect(text(html)).toContain("Add one in Org settings › Integrations →");
     expect(text(html)).toContain("Last synced 12 minutes ago by @andres.");
     expect(html).not.toContain("syncStart");
+  });
+  it("no GitHub credential, where the GitHub App is configured: sends the admin to Repositories to Connect with GitHub — the setup checklist's own choice", () => {
+    const p = props({ open: true, status: status({ blocked: "no_token", connect: "app", via: null }) });
+    const html = syncOverlay(p);
+    expect(syncMode(p)).toBe("blocked");
+    expect(text(html)).toContain("GitHub is not connected, so the repository cannot be read.");
+    expect(text(html)).toContain("A sync needs a repository and a GitHub connection to read it with.");
+    expect(html).toContain('data-act="orgGo" data-arg="repos"');
+    expect(html).not.toContain('data-arg="integrations"');
+    expect(text(html)).toContain("Connect with GitHub in Org settings › Repositories →");
+    expect(text(html)).not.toContain("GitHub token");
+    expect(html).not.toContain("syncStart");
+    expect(syncBlockText("no_token", null, "app")).toMatchObject({ tab: "repos" });
+    expect(syncBlockText("no_token", null, "token")).toMatchObject({ tab: "integrations" });
+    expect(syncBlockText("no_token", null)).toMatchObject({ tab: "integrations" }); // an older answer with no `connect`
+    // A member is never offered either link.
+    expect(syncOverlay(member({ blocked: "no_token", connect: "app", via: null }, { open: true }))).not.toContain("orgGo");
   });
   it("another sync in progress: that run's progress and who started it — no second start", () => {
     const p = props({ open: true, status: status({ blocked: "running", running: live({ by: "maya" }) }) });
@@ -380,6 +399,24 @@ describe("finished — a result that stays until dismissed", () => {
     const upstream = text(panel({ result: run({ status: "failed", failures: [{ code: "list_issues", status: 502 }] }) }));
     expect(upstream).toContain("Could not read issues: GitHub answered 502. Nothing was written. Try again in a few minutes.");
     expect(syncFailureTab({ code: "list_issues", status: 502 })).toBeNull();
+  });
+  it("a failure of a read made through the GitHub App points at Repositories and never mentions a token", () => {
+    const html = panel({ result: run({ status: "failed", batch: 1, batches: null, failures: [{ code: "list_prs", status: 404, via: "app" }] }) });
+    const t = text(html);
+    expect(t).toContain("Could not read pull requests: GitHub found no acme/widgets the Trov App can see (404). Nothing was written. Check in Org settings › Repositories that the Trov App on GitHub still has access to this repository, then sync again.");
+    expect(t).not.toContain("token");
+    expect(html).toContain('data-act="orgGo" data-arg="repos"');
+    expect(html).not.toContain('data-arg="integrations"');
+    expect(text(panel({ result: run({ status: "failed", failures: [{ code: "list_issues", status: 403, via: "app" }] }) }))).toContain("GitHub refused the Trov App's access (403).");
+    const partial = panel({ result: run({ status: "partial", failures: [{ code: "reconcile:runs", via: "app" }, { code: "reconcile:unexpected" }] }) });
+    expect(text(partial)).toContain("Could not read workflow runs from GitHub. Everything else finished. Check in Org settings › Repositories that the Trov App on GitHub still has access to this repository, then sync again.");
+    expect(partial).toContain('data-act="orgGo" data-arg="repos"');
+    expect(syncFailureTab({ code: "reconcile:runs", via: "app" })).toBe("repos");
+    expect(syncFailureTab({ code: "reconcile:runs", via: "token" })).toBe("integrations");
+    expect(syncFailureTab({ code: "reconcile:runs" })).toBe("integrations");
+    expect(syncFailureTab({ code: "reconcile:unexpected", via: "app" })).toBeNull();
+    expect(text(panel({ result: run({ status: "failed", failures: [{ code: "not_configured" }] }) })))
+      .toContain("This organization has no repository, or no GitHub connection to read it with. Connect GitHub in Org settings › Repositories, or set a GitHub token in Integrations.");
   });
   it("a result someone else's run left for a member: readable, dismissable, never restartable", () => {
     const p = member({}, { open: true, result: run({ status: "failed", by: "maya", failures: [{ code: "unexpected" }] }) });

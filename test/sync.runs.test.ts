@@ -137,8 +137,8 @@ describe("how a run ends", () => {
     const out = await runSyncBatch(e(), await admin(), "admin-user", { start: true }, { backfillOpts: { fetchImpl: refuse }, reconcile: reconciled() });
     expect(out.status).toBe(503);
     const body = out.body as { error: string; run: SyncRunView };
-    expect(body.error).toBe("GitHub 403 listing closed PRs (check the org's GitHub token)");
-    expect(body.run).toMatchObject({ status: "failed", failures: [{ code: "list_prs", status: 403 }], phase: "done" });
+    expect(body.error).toBe("GitHub 403 listing closed PRs (check the org's GitHub connection)");
+    expect(body.run).toMatchObject({ status: "failed", failures: [{ code: "list_prs", status: 403, via: "token" }], phase: "done" });
     expect(body.run.ended_at).not.toBeNull();
     expect(syncFailureText(body.run.failures[0], "o/r")).toEqual({
       what: "Could not read pull requests: GitHub refused the token (403). Nothing was written.",

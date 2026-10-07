@@ -10,11 +10,19 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;     // Google OAuth client (second session-class provider); absent → /auth/google/login 503s
   GOOGLE_CLIENT_SECRET?: string; // Google OAuth client secret
   COOKIE_SECRET: string;
+  // The GitHub App (docs/architecture/github-app.md). GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET above are the SAME
+  // App's — it signs people in as well. The three secrets and the one var below are what let an org connect its
+  // repositories by installing it. Missing any of slug / id / key → Org settings offers only the pasted-token
+  // path and says the App is not configured on this deployment; nothing 500s.
+  GITHUB_APP_ID?: string;             // SECRET — the App's numeric id (the JWT's `iss`)
+  GITHUB_APP_PRIVATE_KEY?: string;    // SECRET — the whole .pem GitHub generated (PKCS#1; a PKCS#8 PEM works too). Signs the App JWT; never logged
+  GITHUB_APP_WEBHOOK_SECRET?: string; // SECRET — verifies deliveries to POST /webhook/github/app. Absent → every delivery there is the bare 401
+  GITHUB_APP_SLUG?: string;           // VAR (wrangler.toml) — the App's URL name: https://github.com/apps/<slug>/installations/new
   GITHUB_WEBHOOK_SECRET?: string; // LEGACY: SaplingLearn's fallback for the old /webhook/github hook (src/data/secrets.ts `resolveCredential`); Phase 7 deletes it
   GITHUB_REPO?: string;   // LEGACY: read by nothing — an org's repo is its `org_repos` row (0042_organizations copied this one); Phase 7 deletes it
   DEV_LOGIN?: string;     // LOCAL DEV ONLY (set in .dev.vars): bypass OAuth, act as this seeded user. Never set in prod.
   GEMINI_API_KEY?: string; // Google Gemini key for capture-time PR/issue summaries (REST generateContent); absent → excerpt fallback.
-  LOCAL_UPSTREAM?: string; // LOCAL DEV ONLY (.dev.vars): a loopback http stand-in for GitHub + Gemini during a Sync (src/sync/local-upstream.ts). Ignored unless http://127.0.0.1 or http://localhost.
+  LOCAL_UPSTREAM?: string; // LOCAL DEV ONLY (.dev.vars): a loopback http stand-in for GitHub + Gemini during a Sync (src/sync/local-upstream.ts). Ignored unless http://127.0.0.1 or http://localhost, and always beside a live Stripe key (src/platform/loopback.ts).
   GITHUB_SERVICE_TOKEN?: string; // LEGACY: SaplingLearn's `github_token` fallback until its admin stores one (`resolveCredential`); no other org ever reads it
   PUBLIC_ORIGIN?: string; // absolute origin for links in email (deep links, unsubscribe); absent → relative links
   NOTIFICATIONS_MODE?: "local" | "resend"; // delivery gate; absent → local (bodies to the dev table, Resend never called)
@@ -46,4 +54,18 @@ export interface Env {
   // stored credentials. TROV_KEK_PREVIOUS is set only during a KEK rotation: the old key, picked by fingerprint.
   TROV_KEK?: string;
   TROV_KEK_PREVIOUS?: string;
+  // BILLING — Stripe (docs/architecture/billing.md; src/billing/config.ts is the only reader). Two SECRETS and the
+  // price ids as VARS (wrangler.toml). Absent the key or the webhook secret → billing is off: every billing route
+  // answers 503 `billing_unavailable`, the purchase buttons say so, and nothing else in the app changes. A plan
+  // with no price id is not purchasable. Test mode or live mode is whichever key is set (`sk_test_…` / `sk_live_…`).
+  STRIPE_SECRET_KEY?: string;     // SECRET — sent only as the bearer of a request to api.stripe.com (src/billing/stripe.ts); never logged
+  STRIPE_WEBHOOK_SECRET?: string; // SECRET — the `whsec_…` of the endpoint POST /webhook/stripe; absent → every delivery there is the bare 401
+  STRIPE_PRICE_PERSONAL?: string;        // VAR — the Stripe Price id (`price_…`) of Trov Personal, monthly
+  STRIPE_PRICE_TEAM?: string;            // VAR — Trov Team, monthly
+  STRIPE_PRICE_PERSONAL_YEARLY?: string; // VAR — optional yearly prices; a plan is offered on the intervals it has a price for
+  STRIPE_PRICE_TEAM_YEARLY?: string;
+  // LOCAL / TEST ONLY: a stand-in for api.stripe.com. Honoured ONLY for a loopback http origin (127.0.0.1 /
+  // localhost) and ONLY with a key that is not a live one, so production — where it is unset, and where a
+  // Worker cannot reach loopback anyway — always talks to api.stripe.com.
+  STRIPE_TEST_API_BASE?: string;
 }
