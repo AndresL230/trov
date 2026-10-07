@@ -170,6 +170,8 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   fixed mail sender and what is still open to abuse: `docs/architecture/abuse-limits.md`; the deploy runbook: `HANDOFF.md`.
   How an org is added, set up and run, role by role — and that a ticket's / handoff's `id` on every surface is its
   per-org NUMBER, never the row id: `docs/architecture/organizations.md`, `docs/architecture/data-layer.md`.
+  Plans, per-org limits (402 `plan_limit`), grants and the billing seam (`shared/plans.ts`, `src/plans/`,
+  `0044_plans`): `docs/architecture/plans.md` — a new limit goes in `PLANS` and is enforced with `requirePlan`.
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;

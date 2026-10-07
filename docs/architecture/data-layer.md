@@ -82,7 +82,9 @@ The lists are derived from the live schema — every table with an `org_id` colu
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
 - **Global tables** (no `org_id`): `persons`, `identities`, `sessions`, `invites`, `oauth_clients`,
-  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags`.
+  `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags`,
+  and `org_grants`, `platform_outbox_bodies` (0044_plans — a grant is about a person before any org exists;
+  its `used_org` is deliberately not named `org_id`). An org's plan is columns on `orgs` (`plans.md`).
 
 ## Writing a statement
 
@@ -228,6 +230,10 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
   functions as the cron for `c.var.ctx`'s org — its repo, environments and stored credentials. An org with
   nothing configured gets "not configured" (503 from Sync GitHub, `"not_configured"` per source from the two
   polls) and no outbound request (`test/jobs.multi-org.test.ts`).
+- **Plan limits** (`plans.md`): a write a plan limits calls `requirePlan(ctx, limit)` / `seatGate(p, orgId, …)`
+  in its REPOSITORY and lets the `PlanLimitError` go — `app.onError` (`src/routes.ts`) answers 402
+  `{ error: "plan_limit", limit, used, cap, plan, status, message }` for every route. A route that catches
+  every error itself (`src/integrations/routes.ts` `guard`) rethrows it.
 - **Rate limits** (`abuse-limits.md`): a route that sends mail, stores bytes or answers a lookup takes one unit
   with `rateLimited(c, "<key>")` after its validation and role gate — 429 `{ error: "rate_limited", retry_after }`.
 

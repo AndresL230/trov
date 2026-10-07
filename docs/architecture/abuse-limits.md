@@ -1,6 +1,6 @@
 # Abuse limits — what a stranger with a GitHub account cannot do
 
-Since Phase 4 anyone with a GitHub account can sign in. Creating an org is the superadmin's alone (`DEFAULT_ORG_LIMIT = 0`) until self-serve creation is opened (issue tracked on GitHub). This is everything that stands
+Since Phase 4 anyone with a GitHub account can sign in. Creating an org takes a superadmin, or a grant from one (`plans.md` › Grants; `DEFAULT_ORG_LIMIT = 0`) until self-serve creation is opened (issue tracked on GitHub). This is everything that stands
 between that and Trov being used to send mail, fill storage or look people up. Code: `src/platform/limits.ts`
 (every number), `src/notifications/resend.ts` (the From header). Tests: `test/abuse-limits.test.ts`.
 
@@ -26,7 +26,9 @@ racing requests cannot both take the last unit. D1 only: no Durable Object, no Q
 - A superadmin (`platform_admins`) is exempt and not counted.
 - The role gate runs first: a refused non-admin spends nothing.
 - The daily cron deletes counters older than `LIMIT_RETENTION_DAYS` (2).
-- Also capped, elsewhere: 10 repos and 10 environments per org (`src/integrations/settings.ts`).
+- Also capped, elsewhere, PER ORG by its plan (`plans.md`): people, repositories, environments, stored
+  artifact bytes, and each person's agent connections. The grant notice e-mail spends the granter's `invite`
+  allowance.
 
 To add a limit: a key in `LIMITS`, `const refused = await rateLimited(c, "<key>"); if (refused) return refused;`
 in the route after its validation and role gate, a row in this table.
