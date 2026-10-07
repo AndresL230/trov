@@ -19,7 +19,7 @@ import { create_ticket, add_ticket_comment } from "../src/tools/tickets";
 import { addOrgRepo } from "./helpers/org-config";
 
 // A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
-// so the suite's org has SaplingLearn's connected, as 0037 seeds it in production.
+// so the suite's org has SaplingLearn's connected, as 0042_organizations seeds it in production.
 beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 
 const post = (path: string, c: string, body: unknown) =>
@@ -118,7 +118,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   const grant = await run(env.DB, `INSERT INTO oauth_grants (person, client_id, client_name, created_at) VALUES (?, 'rename-client', 'C', ?)`, handle, nowIso());
   await run(env.DB, `INSERT INTO oauth_codes (code_hash, client_id, person, grant_id, redirect_uri, code_challenge, created_at, expires_at) VALUES (?, 'rename-client', ?, ?, 'http://localhost/cb', 'x', ?, ?)`,
     `rename-code-${handle}`, handle, grant.meta.last_row_id, nowIso(), nowIso());
-  // Multitenancy (0037): every org table that stores a handle — direct inserts; their writers land in
+  // Multitenancy (0042_organizations): every org table that stores a handle — direct inserts; their writers land in
   // later phases. One org the person created, their membership, an invite they sent and answered, an
   // attribution they made, and the integration rows they last touched.
   const org = `org_rename_${handle.replace(/[^a-z0-9]/g, "")}`;
@@ -132,10 +132,10 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `INSERT INTO org_secrets (org_id, kind, scope, ciphertext, iv, key_version, created_by, created_at) VALUES (?, 'github_token', '', 'c', 'iv', 1, ?, ?)`, org, handle, nowIso());
   await run(env.DB, `INSERT INTO org_integration_config (org_id, kind, scope, config, updated_at, updated_by) VALUES (?, 'cloudflare_analytics', '', '{}', ?, ?)`, org, nowIso(), handle);
   await run(env.DB, `INSERT INTO org_audit (org_id, actor, action, target, at) VALUES (?, ?, 'secret.set', 'github_token:', ?)`, org, handle, nowIso());
-  await run(env.DB, `INSERT INTO platform_admins (person, granted_at, granted_by) VALUES (?, ?, ?)`, handle, nowIso(), handle); // 0042
-  // 0043: orgs.suspended_by, org_usage_daily.actor, org_admin_audit.actor
+  await run(env.DB, `INSERT INTO platform_admins (person, granted_at, granted_by) VALUES (?, ?, ?)`, handle, nowIso(), handle); // 0042_organizations
+  // 0042_organizations: orgs.suspended_by, org_usage_daily.actor, org_admin_audit.actor
   await run(env.DB, `UPDATE orgs SET suspended_at = ?, suspended_by = ? WHERE id = 'org_b'`, nowIso(), handle);
-  // 0048: orgs.logo_by — who uploaded the org's image
+  // 0042_organizations: orgs.logo_by — who uploaded the org's image
   await run(env.DB, `UPDATE orgs SET logo_sha = ?, logo_source = 'upload', logo_by = ?, logo_at = ? WHERE id = 'org_b'`, "a".repeat(64), handle, nowIso());
   await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-01-01', 'api_read', ?, 1, ?)`, org, handle, nowIso());
   await run(env.DB, `INSERT INTO org_admin_audit (org_id, actor, action, target, at) VALUES (?, ?, 'org.update', 'settings', ?)`, org, handle, nowIso());

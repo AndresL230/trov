@@ -271,7 +271,7 @@ const TENANT: Record<string, Row> = {
   "GET /raw/a/:ref": {}, "GET /raw/a/:slug/:ver": {},
   // src/orgs/routes.ts
   "GET /me": {}, "GET /settings": {}, "PUT /settings": J({ name: "Acme (renamed)" }),
-  // The org's image (0048): the upload is multipart, so this JSON body is A's own 400; the removal is a no-op 200 for A.
+  // The org's image (0042_organizations): the upload is multipart, so this JSON body is A's own 400; the removal is a no-op 200 for A.
   "POST /logo": J({}), "POST /logo/remove": J({}),
   "GET /members": {}, "PUT /members/:handle": J({ title: "hijacked", role: "admin" }), "DELETE /members/:handle": {},
   "GET /invites": {}, "POST /invites": J({ email: INVITED }), "POST /invites/:id/revoke": J({}), "POST /invites/:id/resend": J({}),
@@ -460,7 +460,7 @@ describe("the legacy alias-only routes are org-scoped", () => {
     expectClean("POST /invites", created);
     const listed = await send("GET", "/invites", fx.cookies.boss);
     expectClean("GET /invites", listed);
-    // One row, B's own, with the name B gave and B's own mail outcome (columns of its `org_invites` row, 0047) —
+    // One row, B's own, with the name B gave and B's own mail outcome (columns of its `org_invites` row, 0042_organizations) —
     // never the name A's admin typed for the same address, which lives on A's row and A's sidecar.
     expect((JSON.parse(listed.text) as { invites: unknown[] }).invites).toEqual([
       expect.objectContaining({ email: INVITED, name: "B's name for them", invited_by: "boss", accepted_by: null, revoked_at: null, email_sent_at: expect.any(String), email_error: null }),

@@ -175,13 +175,13 @@ export async function createPerson(p: PlatformContext, n: { handle: string; name
 }
 
 /** `verifiedEmail` is the address the provider asserted as verified at this sign-in, or absent / null;
- *  `providerUid` the account's immutable id where the subject is not one (GitHub — 0045). */
+ *  `providerUid` the account's immutable id where the subject is not one (GitHub — 0042_organizations). */
 export async function linkIdentity(p: PlatformContext, i: { provider: IdentityProvider; subject: string; label: string; person: string; linkedBy: string; verifiedEmail?: string | null; providerUid?: string | null }): Promise<void> {
   await run(p, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by, verified_email, provider_uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     i.provider, i.subject, i.label, i.person, nowIso(), i.linkedBy, i.verifiedEmail ? i.verifiedEmail.trim().toLowerCase() : null, i.providerUid ?? null);
 }
 
-/** Pin an identity to the provider account that just signed in with it (0045) — once: a row that already
+/** Pin an identity to the provider account that just signed in with it (0042_organizations) — once: a row that already
  *  names an account keeps it, so a later holder of the same login can never re-bind it. */
 export async function bindProviderUid(p: PlatformContext, provider: IdentityProvider, subject: string, uid: string | null | undefined): Promise<void> {
   if (!uid) return;
@@ -256,16 +256,16 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["prompts", "author"], ["prompts", "deleted_by"], ["prompt_versions", "author"],
   // MCP OAuth (0029): a rename carries a person's connections and in-flight codes.
   ["oauth_grants", "person"], ["oauth_codes", "person"],
-  // Multitenancy (0037): a handle is ONE person across every org, so a rename spans them all.
+  // Multitenancy (0042_organizations): a handle is ONE person across every org, so a rename spans them all.
   ["memberships", "user_id"], ["memberships", "created_by"], ["orgs", "created_by"],
   ["org_invites", "invited_by"], ["org_invites", "responded_by"],
   ["org_login_map", "person"], ["org_login_map", "mapped_by"],
   ["org_repos", "created_by"], ["org_environments", "updated_by"],
   ["org_secrets", "created_by"], ["org_integration_config", "updated_by"], ["org_audit", "actor"],
   ["platform_admins", "person"], ["platform_admins", "granted_by"],
-  // The org + platform backend (0043).
+  // The org + platform backend (0042_organizations).
   ["orgs", "suspended_by"], ["org_usage_daily", "actor"], ["org_admin_audit", "actor"],
-  // The org's image (0048): who uploaded it.
+  // The org's image (0042_organizations): who uploaded it.
   ["orgs", "logo_by"],
 ];
 
@@ -286,7 +286,7 @@ export async function renamePerson(p: PlatformContext, from: string, to: string)
     stmt(p, "PRAGMA defer_foreign_keys = true"),
     stmt(p, "UPDATE persons SET handle = ? WHERE handle = ? COLLATE NOCASE", to, from),
     ...HANDLE_COLUMNS.map(([t, c]) => stmt(p, `UPDATE ${t} SET ${c} = ? WHERE ${c} = ? COLLATE NOCASE`, to, from)),
-    // The abuse counters (0046) follow the person, so a rename does not hand out a fresh allowance. Not
+    // The abuse counters (0042_organizations) follow the person, so a rename does not hand out a fresh allowance. Not
     // in HANDLE_COLUMNS: `subject` is a primary-key column, so a counter a previous holder of `to` left
     // behind is cleared first.
     stmt(p, `DELETE FROM abuse_counters WHERE subject = ? COLLATE NOCASE`, to),

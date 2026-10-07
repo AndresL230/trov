@@ -1,4 +1,4 @@
-/** `id` is GitHub's immutable numeric account id (0045); omitted = the API returns none, as before. */
+/** `id` is GitHub's immutable numeric account id (0042_organizations); omitted = the API returns none, as before. */
 export interface FakeGithubUser { login: string; name?: string | null; avatar_url?: string | null; id?: number }
 
 /**

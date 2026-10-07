@@ -5,7 +5,7 @@ import { liveLegacyInvite } from "../data/legacy";
 import { findIdentity, findPersonByVerifiedEmail, linkIdentity, listIdentities, recordSignIn, recordVerifiedEmail, bindProviderUid, isValidHandle } from "./persons";
 
 // `uid` is the provider's IMMUTABLE account id where `subject` is not one already: GitHub's numeric id
-// (its `subject` is the login, which can be renamed away and re-registered — 0045). Absent for Google.
+// (its `subject` is the login, which can be renamed away and re-registered — 0042_organizations). Absent for Google.
 export interface ProviderProfile { provider: IdentityProvider; subject: string; label: string; email: string | null; name: string | null; avatar_url: string | null; uid?: string | null }
 // `exp` is added internally by sealOnboard (not supplied by callers building a payload
 // to hand to it) and is present once a sealed cookie has been opened by openOnboard.
@@ -55,8 +55,8 @@ export async function openOnboard(sealed: string, secret: string, now: () => num
   return o as unknown as OnboardPayload;
 }
 
-/** The identity row was bound to one provider account (0045) and this sign-in comes from ANOTHER with the
- *  same login. Unbound rows (never signed in since 0045) and providers with no `uid` never mismatch. */
+/** The identity row was bound to one provider account (0042_organizations) and this sign-in comes from ANOTHER with the
+ *  same login. Unbound rows (never signed in since 0042_organizations) and providers with no `uid` never mismatch. */
 const uidMismatch = (known: IdentityRow, profile: ProviderProfile): boolean =>
   !!known.provider_uid && !!profile.uid && known.provider_uid !== profile.uid;
 
@@ -96,7 +96,7 @@ export async function completeSignIn(p: PlatformContext, profile: ProviderProfil
   const known = await findIdentity(p, profile.provider, profile.subject);
   if (known) {
     // The login is on file — but is it the same ACCOUNT? A GitHub login that was renamed away and
-    // re-registered by someone else must not sign in as the person the row names (0045).
+    // re-registered by someone else must not sign in as the person the row names (0042_organizations).
     if (uidMismatch(known, profile)) return { kind: "denied" };
     await bindProviderUid(p, profile.provider, profile.subject, profile.uid);
     await recordSignIn(p, known.person, { provider: profile.provider, avatar_url: profile.avatar_url, email: profile.email });

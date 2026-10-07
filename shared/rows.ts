@@ -137,9 +137,9 @@ export interface IdentityRow {
   person: string;
   linked_at: string;
   linked_by: string;
-  /** The email the provider VERIFIED at this identity's last sign-in (0037) — what invites and the sign-in link match. */
+  /** The email the provider VERIFIED at this identity's last sign-in (0042_organizations) — what invites and the sign-in link match. */
   verified_email?: string | null;
-  /** The provider account's immutable id where `subject` is not one — GitHub's numeric id (0045); NULL until its next sign-in. */
+  /** The provider account's immutable id where `subject` is not one — GitHub's numeric id (0042_organizations); NULL until its next sign-in. */
   provider_uid?: string | null;
 }
 

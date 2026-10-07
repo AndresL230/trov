@@ -6,10 +6,10 @@
 // (`InviteRow`, addressed by email instead of id), so the list an org sees here is exactly its own, and
 // the same invite shows on, and can be revoked from, either route.
 //
-// The invitee's NAME and the invite email's delivery outcome are columns of `org_invites` since 0047
+// The invitee's NAME and the invite email's delivery outcome are columns of `org_invites` since 0042_organizations
 // (`name`, `mail_status` / `mail_at` / `mail_error`), written for every org by the same code as the org
 // routes (src/orgs/mail.ts). The legacy `invites` table — GLOBAL, keyed by email — is still a sidecar
-// for org #1 ONLY (`isLegacyOrg`, src/data/legacy.ts): a row from before 0047 shows its name and outcome
+// for org #1 ONLY (`isLegacyOrg`, src/data/legacy.ts): a row from before 0042_organizations shows its name and outcome
 // from there, and an invite made HERE for org #1 still writes it, because a new person's first sign-in
 // consumes it (`consumeLegacyInvite`). Nothing an org does can touch or reveal another org's row.
 // Phase 7 drops the table.

@@ -3,7 +3,7 @@ import { app } from "../../src/routes";
 import { cookieFor } from "./persons";
 import { ensureMember, ORG_A } from "./tenant";
 
-/** The repo + two environments 0037 gives SaplingLearn (the per-test reset clears them). */
+/** The repo + two environments 0042_organizations gives SaplingLearn (the per-test reset clears them). */
 export const HOOK_A = "hook_saplinglearn_sapling";
 export async function seedOrgSettings(orgId: string = ORG_A, hookId: string = HOOK_A): Promise<void> {
   const at = "2026-10-06T00:00:00.000Z";

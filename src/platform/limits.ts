@@ -1,4 +1,4 @@
-// Abuse limits (docs/architecture/abuse-limits.md; 0046 `abuse_counters`). Anyone with a GitHub account
+// Abuse limits (docs/architecture/abuse-limits.md; 0042_organizations `abuse_counters`). Anyone with a GitHub account
 // can sign in, so each action that sends mail, stores bytes or answers a lookup is capped PER PERSON —
 // across every org they are in or create. Every number is in `LIMITS`; nothing else in src/ holds one.
 //

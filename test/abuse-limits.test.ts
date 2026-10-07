@@ -1,7 +1,7 @@
 /**
  * Abuse limits (docs/architecture/abuse-limits.md) — what keeps a stranger with a GitHub account from
  * using Trov to send mail, fill storage or look people up:
- *   • the per-person counters (0046 `abuse_counters`, src/platform/limits.ts) and the 429 each route answers;
+ *   • the per-person counters (0042_organizations `abuse_counters`, src/platform/limits.ts) and the 429 each route answers;
  *   • the From header: an org contributes a display NAME, never an address, on every mail path;
  *   • the notification address is not an oracle for "is this address on file".
  * Real D1; mail is inspected at the Request level (resend mode with the global fetch swapped).
@@ -106,7 +106,7 @@ describe("invites: 50 per person per day, across every org and both routes", () 
     await expectLimited(await app.request("/api/o/saplinglearn/invites", json("POST", { email: "four@x.io" }, admin), env));
     await expectLimited(await app.request("/api/o/acme/invites", json("POST", { github_login: "octo-five" }, admin), env));
     expect(await all(env.DB, `SELECT id FROM org_invites`)).toEqual(before);
-    // The two e-mail invites above were mailed (the org route sends since 0047); the refused ones sent nothing.
+    // The two e-mail invites above were mailed (the org route sends since 0042_organizations); the refused ones sent nothing.
     expect(await all(env.DB, `SELECT to_address FROM notification_outbox_bodies ORDER BY to_address`)).toEqual([{ to_address: "one@x.io" }, { to_address: "three@x.io" }]);
     expect(await countOf(FIXTURE_ADMIN, "invite")).toBe(LIMITS.invite.max);
   });
@@ -127,7 +127,7 @@ describe("invites: 50 per person per day, across every org and both routes", () 
   });
 
   it("a superadmin is exempt, and is not counted; the exemption goes with the grant", async () => {
-    const owner = await cookieFor("AndresL230"); // the seeded superadmin (0042)
+    const owner = await cookieFor("AndresL230"); // the seeded superadmin (0042_organizations)
     expect(await first(env.DB, `SELECT 1 AS x FROM platform_admins WHERE person = 'AndresL230'`)).toEqual({ x: 1 });
     await fill("AndresL230", "invite");
     expect((await app.request("/api/o/saplinglearn/invites", json("POST", { email: "one@x.io" }, owner), env)).status).toBe(201);

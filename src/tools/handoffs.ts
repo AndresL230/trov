@@ -10,7 +10,7 @@
 //     keyed exactly like /ingest and record_session (session id + item index).
 //
 // A handoff's two ids (canopy-multitenancy.md §12 Q2), as for a ticket (./tickets.ts): `number` is
-// the per-org number (0038 — allocated by the insert trigger) and it is what every function here
+// the per-org number (0042_organizations — allocated by the insert trigger) and it is what every function here
 // takes and returns: the wire's `id`, `#12`, a link, the feed line. The row `id` is internal and
 // never leaves this file. Another org's number is simply not there.
 

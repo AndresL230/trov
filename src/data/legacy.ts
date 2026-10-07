@@ -7,7 +7,7 @@ import type { InviteRow } from "@shared/rows";
 import { systemTenant, type PlatformContext, type TenantContext } from "./context";
 import { first, stmt, batch, nowIso } from "./platform-sql";
 
-/** Org #1 (0037): every pre-multitenancy row belongs to it. */
+/** Org #1 (0042_organizations): every pre-multitenancy row belongs to it. */
 export const SAPLINGLEARN_ORG_ID = "org_saplinglearn";
 
 /** Is `ctx` org #1? Asked only for the legacy `invites` sidecar (below), each use marked `MT:` at the caller. */
@@ -17,14 +17,14 @@ export function isLegacyOrg(ctx: TenantContext): boolean {
 
 // ── the legacy email-invite table ────────────────────────────────────────────
 // `invites` (0023) is GLOBAL and keyed by email: before multitenancy it was org #1's invite list, and
-// 0037 copied every row into `org_invites` for org #1. An invite is now an `org_invites` row
+// 0042_organizations copied every row into `org_invites` for org #1. An invite is now an `org_invites` row
 // (src/orgs/legacy-invites.ts); what survives of `invites` is (a) org #1's SIDECAR — the invitee's name
 // and the email-delivery outcome, which `org_invites` has no columns for — and (b) the rule below.
 
 /**
  * A live legacy invite for `email`, IF org #1 still stands behind it: the `invites` row is neither
  * accepted nor revoked, and org #1 either has a PENDING `org_invites` row for the address or has none at
- * all (a row written before 0037's copy). An invite revoked or declined through the org routes is dead
+ * all (a row written before the organizations migration's copy). An invite revoked or declined through the org routes is dead
  * here too, whatever the old row says.
  */
 export function liveLegacyInvite(p: PlatformContext, email: string): Promise<InviteRow | null> {

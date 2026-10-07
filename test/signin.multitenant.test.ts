@@ -264,13 +264,13 @@ describe("an editable address is never a way into someone else's account", () =>
   });
 });
 
-// 0045: a GitHub identity is the LOGIN, and a login can be renamed away and re-registered. With sign-in
+// 0042_organizations: a GitHub identity is the LOGIN, and a login can be renamed away and re-registered. With sign-in
 // open to every GitHub account, the row is pinned to the account's immutable numeric id at its next sign-in.
 describe("a GitHub login that changed hands", () => {
   const uidOf = (login: string) => first<{ provider_uid: string | null }>(env.DB, `SELECT provider_uid FROM identities WHERE provider = 'github' AND subject = ?`, login);
 
   it("an existing identity is bound to its account at the next sign-in; another account with the same login is refused", async () => {
-    expect(await uidOf("AndresL230")).toEqual({ provider_uid: null }); // pre-0045 row
+    expect(await uidOf("AndresL230")).toEqual({ provider_uid: null }); // pre-0042_organizations row
     expect((await github("AndresL230", [], 1001)).headers.get("location")).toBe("/");
     expect(await uidOf("AndresL230")).toEqual({ provider_uid: "1001" });
 

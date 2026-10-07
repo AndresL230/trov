@@ -144,7 +144,7 @@ const storedImage = (c: Context<AppEnv>, img: Awaited<ReturnType<typeof readAvat
 };
 app.get("/avatar/:sha", async (c) => storedImage(c, await readAvatar(c.env.ARTIFACTS_BUCKET, c.req.param("sha"))));
 
-// Org images (0048): the bytes behind `/org-logo/<sha256>`, served exactly like a person's photo — the
+// Org images (0042_organizations): the bytes behind `/org-logo/<sha256>`, served exactly like a person's photo — the
 // same headers, the type from the stored object and never from the request, and never a redirect: an
 // imported GitHub avatar is served from HERE, so no browser hot-links GitHub. Person-level, like
 // `/avatar`: an org's image shows wherever its name does, and its name reaches people who are not (yet)

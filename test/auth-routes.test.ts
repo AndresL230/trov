@@ -52,7 +52,7 @@ describe("GET /auth/callback", () => {
   });
 
   // What the callback does once the state checks out — sign-in, onboarding, and the one GitHub refusal
-  // left (`/?denied=1`: a known login presented by a different account, 0045) — is driven through
+  // left (`/?denied=1`: a known login presented by a different account, 0042_organizations) — is driven through
   // `buildAuthApp({ fetchImpl })` in test/signin.multitenant.test.ts. No GitHub org is checked any more.
 });
 

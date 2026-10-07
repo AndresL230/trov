@@ -107,7 +107,7 @@ const INTERPOLATED_ALLOW: (Allow & { surface: Surface })[] = [
 
 /** Rule 2 — upsert targets that cannot name the org. */
 const UPSERT_ALLOW: Allow[] = [
-  // `sprint_progress`'s primary key is `sprint_id` ALONE (0038 added org_id as a column; the key is
+  // `sprint_progress`'s primary key is `sprint_id` ALONE (0042_organizations added org_id as a column; the key is
   // rebuilt in the Phase 7 cleanup), so `ON CONFLICT(sprint_id)` is the only target SQLite accepts. The
   // statement is still org-safe: its DO UPDATE carries `WHERE sprint_progress.org_id = excluded.org_id`,
   // so a sprint id from another org updates nothing. The check below asserts that guard is present.
@@ -282,7 +282,7 @@ describe("data layer — static enforcement (§4.4)", () => {
     const ENTRY_POINTS: Record<string, string> = {
       "src/auth/onboard.ts": "liveLegacyInvite — a legacy invite lets a Google account reach onboarding and seeds the invitee's name",
       "src/auth/routes.ts": "consumeLegacyInvite — a new person with a live legacy invite joins org #1 at onboarding (and gets its welcome mail)",
-      "src/orgs/legacy-invites.ts": "isLegacyOrg — the legacy `invites` sidecar (a pre-0047 row's invitee name and mail outcome; the row a first sign-in consumes) is read and written for org #1 only",
+      "src/orgs/legacy-invites.ts": "isLegacyOrg — the legacy `invites` sidecar (a pre-0042_organizations row's invitee name and mail outcome; the row a first sign-in consumes) is read and written for org #1 only",
     };
     // …and the ONE importer of the org's id: the env-secret fallback (`resolveCredential`, §8.7.6).
     const ID_IMPORTERS = ["src/data/secrets.ts"];

@@ -238,7 +238,7 @@ async function mintPair(p: PlatformContext, grantId: number, nowMs: number): Pro
 }
 
 // A grant's standing, read in the statement that finds it: is its person STILL a member of the
-// grant's org (`member`), and is that org suspended (0043)? Both are live facts, not the grant's own.
+// grant's org (`member`), and is that org suspended (0042_organizations)? Both are live facts, not the grant's own.
 const GRANT_STANDING = `g.org_id, g.revoked_at,
   EXISTS (SELECT 1 FROM memberships m WHERE m.org_id = g.org_id AND m.user_id = g.person COLLATE NOCASE) AS member,
   (SELECT o.suspended_at FROM orgs o WHERE o.id = g.org_id) AS suspended_at`;

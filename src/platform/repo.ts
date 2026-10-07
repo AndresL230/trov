@@ -54,7 +54,7 @@ async function resolveAdmin(p: PlatformContext, target: unknown): Promise<Resolv
 
 /**
  * "Take on a new org and assign its admin." An existing person becomes the OWNER in the creating batch.
- * Anyone else gets a pending `as_owner` invite (0043): when they sign in and accept, they are the owner.
+ * Anyone else gets a pending `as_owner` invite (0042_organizations): when they sign in and accept, they are the owner.
  * The superadmin (`p.actor`, recorded as `created_by`) is never made a member.
  */
 export async function createOrgWithAdmin(p: PlatformContext, input: { slug: string; name: string; admin: unknown }): Promise<{ org: OrgRow; admin: AdminAssignment; first_join: boolean }> {
@@ -226,8 +226,8 @@ const parseDetail = (s: string): Record<string, unknown> => {
 };
 
 /**
- * Recent audit rows across orgs, newest first: the org-administration trail (`org_admin_audit`, 0043)
- * and the integration-secrets trail (`org_audit`, 0037) as one list. Neither ever holds a secret value
+ * Recent audit rows across orgs, newest first: the org-administration trail (`org_admin_audit`, 0042_organizations)
+ * and the integration-secrets trail (`org_audit`, 0042_organizations) as one list. Neither ever holds a secret value
  * (`org_audit.detail` carries a last-4 hint and a key version at most). `orgSlug` narrows to one org.
  */
 export async function listAudit(p: PlatformContext, opts: { orgSlug?: string; limit?: number } = {}): Promise<PlatformAuditRow[]> {

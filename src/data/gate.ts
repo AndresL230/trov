@@ -14,7 +14,7 @@ export const platformContext: MiddlewareHandler<AppEnv> = async (c, next) => {
 /**
  * `/api/o/:slug/*` (§5.2): session principal → membership of the org the path names → `c.var.ctx`.
  * No row — an unknown slug OR not a member — is 404 `{ error: "not_found" }`, never 403: an org's
- * existence is not disclosed — and a SUSPENDED org (0043) answers the same 404, from the same one
+ * existence is not disclosed — and a SUSPENDED org (0042_organizations) answers the same 404, from the same one
  * statement (`resolveTenant`). Runs after sessionGate.
  * Meters the request (src/data/meter.ts) once the tenant is known.
  */

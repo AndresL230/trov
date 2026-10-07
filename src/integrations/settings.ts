@@ -3,9 +3,9 @@
 // webhook path id and its `github_webhook` scope; an environment's key is the `railway` /
 // `metrics_endpoint` scope — so removing one removes its secrets in the SAME batch, audited.
 //
-// Every change here writes an audit row in the SAME batch. `org_audit.action` (0037) has a CHECK that
+// Every change here writes an audit row in the SAME batch. `org_audit.action` (0042_organizations) has a CHECK that
 // admits only the five secret / key actions, so a repo or environment change goes to `org_admin_audit`
-// (0043; actions in shared/orgs.ts) and the secret deletions it causes stay in `org_audit`; the page's
+// (0042_organizations; actions in shared/orgs.ts) and the secret deletions it causes stay in `org_audit`; the page's
 // history (`listOrgAudit`, src/data/secrets.ts) reads both as one list. A row names WHAT changed — a
 // repo, an environment key, the fields touched — never a field's value.
 import type { IntegrationKind, OrgEnvironmentDTO, OrgRepoDTO, OrgSettingsAuditAction } from "@shared/integrations";
@@ -128,7 +128,7 @@ export async function removeRepo(ctx: TenantContext, id: string): Promise<string
 const ENV_COLS = `key, position, label, note, branch, railway_env, worker, worker_check, frontend_url, api_url, health_path,
   railway_environment_id, railway_service_id, created_at, updated_at, updated_by`;
 export const MAX_ORG_ENVIRONMENTS = 10;
-const ENV_KEY = /^[a-z0-9_-]{1,32}$/; // 0037's CHECK
+const ENV_KEY = /^[a-z0-9_-]{1,32}$/; // the organizations migration's CHECK
 /** The integrations whose scope is an environment key. */
 const ENV_SECRET_KINDS: readonly IntegrationKind[] = ["railway", "metrics_endpoint"];
 

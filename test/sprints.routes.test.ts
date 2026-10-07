@@ -12,7 +12,7 @@ import { systemCtx } from "./helpers/tenant";
 import { addOrgRepo } from "./helpers/org-config";
 
 // A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
-// so the suite's org has SaplingLearn's connected, as 0037 seeds it in production.
+// so the suite's org has SaplingLearn's connected, as 0042_organizations seeds it in production.
 beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 // ── harness (the Phase 2 route-test idiom: real routes, real cookies, real D1) ─
 
@@ -295,7 +295,7 @@ describe("GET /sprints/:id", () => {
     const triggers = await all<{ name: string; sql: string }>(
       env.DB, `SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'tickets'`
     );
-    // tickets_number_ai (0038) allocates the per-org display number — it touches no sprint either.
+    // tickets_number_ai (0042_organizations) allocates the per-org display number — it touches no sprint either.
     expect(triggers.map((t) => t.name).sort()).toEqual(["tickets_fts_ad", "tickets_fts_ai", "tickets_fts_au", "tickets_number_ai"]);
     expect(triggers.every((t) => !/sprint_id/i.test(t.sql))).toBe(true);
   });

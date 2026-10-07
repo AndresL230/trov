@@ -579,7 +579,7 @@ export interface ArtifactVersionResult {
   page: ArtifactDetailDTO;
 }
 
-// The search row carries its page's org (0040, D9). `pageIdSql` is `?` or `PAGE_ID_SQL`, with its params.
+// The search row carries its page's org (0042_organizations, D9). `pageIdSql` is `?` or `PAGE_ID_SQL`, with its params.
 const ftsInsert = (ctx: TenantContext, pageIdSql: string, pageIdParams: unknown[], title: string, description: string, body: string): Stmt =>
   stmt(ctx, `INSERT INTO artifacts_fts (page_id, title, description, body, org_id) VALUES (CAST((${pageIdSql}) AS TEXT), ?, ?, ?, ?)`,
     ...pageIdParams, title, description, body, ctx.orgId);

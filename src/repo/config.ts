@@ -20,7 +20,7 @@ export interface RepoEnvConfig {
 const REQUIRED = ["key", "label", "branch", "railwayEnv", "worker", "workerCheck", "frontendUrl", "apiUrl", "healthPath"] as const;
 
 /** Parse `REPO_ENVIRONMENTS`. Absent or malformed → [].
- *  LEGACY: the var is what 0037 copied into `org_environments`. Nothing in src/ calls this any more —
+ *  LEGACY: the var is what 0042_organizations copied into `org_environments`. Nothing in src/ calls this any more —
  *  every reader uses `orgEnvironments` — only the SaplingLearn-era suites do, to seed those rows
  *  (test/helpers/org-config.ts). Phase 7 deletes it with the var. */
 export function repoEnvironments(env: { REPO_ENVIRONMENTS?: string }): RepoEnvConfig[] {
@@ -35,7 +35,7 @@ export function repoEnvironments(env: { REPO_ENVIRONMENTS?: string }): RepoEnvCo
 }
 
 // ── the org's own configuration (canopy-multitenancy.md §9, D16) ─────────────
-// What `GITHUB_REPO` and `REPO_ENVIRONMENTS` were, read from the org's rows (0037 seeded SaplingLearn's
+// What `GITHUB_REPO` and `REPO_ENVIRONMENTS` were, read from the org's rows (0042_organizations seeded SaplingLearn's
 // from those two vars). Every background job reads its repo and environments through these; nothing in
 // the cron, the webhook or the backfill reads the vars any more.
 

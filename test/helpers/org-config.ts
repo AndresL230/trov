@@ -3,7 +3,7 @@
 // Those entry points read their configuration from `org_repos` / `org_environments` (multitenancy
 // Phase 5b), and the per-test reset empties both tables. The suites written when the app was ONE org
 // describe their setup the way production did then — `GITHUB_REPO` and `REPO_ENVIRONMENTS` on the Env
-// — so the wrappers at the bottom do for a test what migration 0037 did for production: copy those two
+// — so the wrappers at the bottom do for a test what migration 0042_organizations did for production: copy those two
 // vars into SaplingLearn's rows, then call the real entry point for that org. A suite keeps its call
 // sites and only changes where it imports the function from; that those suites still pass unchanged is
 // the proof that SaplingLearn's behaviour did not move.
@@ -41,11 +41,11 @@ export async function addOrgRepo(repo: string, orgId: string = ORG_A, o: RepoRow
   return id;
 }
 
-/** SaplingLearn's hook id, as 0037 seeds it. */
+/** SaplingLearn's hook id, as 0042_organizations seeds it. */
 export const SAPLING_HOOK = "hook_saplinglearn_sapling";
 
 /**
- * What 0037 did for SaplingLearn, from `e`: `GITHUB_REPO` → its primary repo row (flagged
+ * What 0042_organizations did for SaplingLearn, from `e`: `GITHUB_REPO` → its primary repo row (flagged
  * `legacy_hook`, like production's), `REPO_ENVIRONMENTS` → its environments. Always through the pool's
  * own D1 — `e` may carry a broken one on purpose. Returns `e`.
  */

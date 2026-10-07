@@ -53,7 +53,7 @@ describe("POST /api/orgs", () => {
     expect(id).toMatch(/^org_[a-z2-7]{26}$/);
     expect(await one(`SELECT created_by FROM orgs WHERE id = ?`, id)).toEqual({ created_by: "founder" });
     expect(await roleOf(id, "founder")).toBe("owner");
-    // The singletons 0037–0039 seeded for SaplingLearn: plan, notification settings + policy, both counters.
+    // The singletons 0042_organizations seeded for SaplingLearn: plan, notification settings + policy, both counters.
     expect(await one(`SELECT narrative, current_version FROM plan WHERE org_id = ?`, id)).toEqual({ narrative: "", current_version: 0 });
     expect(await one(`SELECT send_hour, timezone, from_address FROM notification_settings WHERE org_id = ?`, id))
       .toEqual({ send_hour: 8, timezone: "America/New_York", from_address: "Trov <hello@trov.dev>" });

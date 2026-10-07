@@ -46,7 +46,7 @@ describe("migration 0021 — notification tables", () => {
     await expect(run(env.DB, ins)).rejects.toThrow();
   });
 
-  // 0039 (multitenancy): the singleton is per ORG — one row per org, keyed by org_id.
+  // 0042_organizations (multitenancy): the singleton is per ORG — one row per org, keyed by org_id.
   it("seeds the org-level settings singleton and refuses a second row for the same org", async () => {
     const s = await first<NotificationSettingsRow>(env.DB, `SELECT * FROM notification_settings WHERE org_id = 'org_saplinglearn'`);
     expect(s).toMatchObject({ org_id: "org_saplinglearn", send_hour: 8, timezone: "America/New_York" });

@@ -1,5 +1,5 @@
 /**
- * The invitation and welcome mails of the org surface (0047, src/orgs/mail.ts):
+ * The invitation and welcome mails of the org surface (0042_organizations, src/orgs/mail.ts):
  *   • `POST /api/o/:slug/invites` mails an e-mail invite, takes a `name`, and reports the outcome on the row;
  *   • `POST /api/o/:slug/invites/:id/resend`;
  *   • the superadmin's owner invite (`POST /api/platform/orgs`, `…/admin`) sends the "made the owner" wording;

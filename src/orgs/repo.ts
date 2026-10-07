@@ -33,7 +33,7 @@ export class OrgError extends Error {
 export interface OrgRow {
   id: string; slug: string; name: string; created_at: string; created_by: string;
   suspended_at: string | null; suspended_by: string | null;
-  /** The image the org shows (0048) — on the wire it is `logo_url` (`orgLogoSrc`). */
+  /** The image the org shows (0042_organizations) — on the wire it is `logo_url` (`orgLogoSrc`). */
   logo_sha: string | null;
 }
 
@@ -90,7 +90,7 @@ export interface CreateOrgInput {
 
 /**
  * THE way an org comes to exist: the `orgs` row, its owner's membership, and every per-org singleton a
- * working org reads — what 0037–0039 seeded for SaplingLearn: the `plan` row, `notification_settings`,
+ * working org reads — what 0042_organizations seeded for SaplingLearn: the `plan` row, `notification_settings`,
  * one `notification_policy` row per registry kind, and both `org_counters` — in ONE batch. `p.actor`
  * is recorded as `created_by` (what the creation cap counts). The cap itself is the caller's to
  * enforce (`orgAllowance`): a superadmin taking on an org is not subject to it.
@@ -184,7 +184,7 @@ export async function myOrgs(p: PlatformContext, handle: string): Promise<MyOrgs
  * Accept or decline one of the caller's pending invites. The match is re-checked in the statement that
  * reads the invite, so an id that is not theirs — someone else's, answered, revoked, unknown — is
  * `not_found` for all alike. Accepting inserts the membership and stamps the invite in one batch; an
- * `as_owner` invite (0043, a superadmin's) grants OWNER, and lifts an existing member to owner.
+ * `as_owner` invite (0042_organizations, a superadmin's) grants OWNER, and lifts an existing member to owner.
  */
 export async function respondToInvite(p: PlatformContext, handle: string, id: number, accept: boolean): Promise<{ org: { slug: string; name: string }; role: OrgRole | null; org_id: string; first_join: boolean }> {
   const inv = await first<InviteJoinRow>(p, `${INVITE_JOIN} AND i.id = ?2`, handle, id);
@@ -450,7 +450,7 @@ export async function resendableInvite(p: PlatformContext, ctx: TenantContext, i
 /**
  * Has `handle` never been a member of ANY org? Asked BEFORE a join is written: no membership today and
  * no `member.add` in the audit trail (so leaving every org and joining another is not a second "first").
- * People from before orgs have a membership (0037), so they never read as new.
+ * People from before orgs have a membership (0042_organizations), so they never read as new.
  */
 export async function neverJoined(p: PlatformContext, handle: string): Promise<boolean> {
   const row = await first<{ n: number }>(p,

@@ -1,4 +1,4 @@
-// The organization's image (0048) — the repository behind `POST /api/o/:slug/logo[/remove]`,
+// The organization's image (0042_organizations) — the repository behind `POST /api/o/:slug/logo[/remove]`,
 // `GET /org-logo/<sha>` and the GitHub import. The contract is `shared/orgs.ts`. A PLATFORM module:
 // `orgs` is a global table; a function that acts inside one org also takes the caller's TenantContext.
 //

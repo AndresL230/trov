@@ -116,7 +116,7 @@ async function requireParsedLink(ctx: TenantContext, raw: string) {
  * Writes, in one logical unit: the ticket row (status 'submitted'), its
  * assignees, the OPENING `ticket_events` row (from_status NULL → 'submitted',
  * which the detail screen renders as "opened this ticket"), and the parsed link
- * when one was given. Returns the new ticket's per-org NUMBER (allocated by 0038's trigger in the
+ * when one was given. Returns the new ticket's per-org NUMBER (allocated by the organizations migration's trigger in the
  * same statement as the insert).
  */
 export async function create_ticket(ctx: TenantContext, input: TicketCreate, requester: string): Promise<number> {

@@ -186,7 +186,7 @@ describe("General › where the image came from", () => {
     const t = text(section(NONE, true));
     expect(t).toContain("No image yet. The first letter of the name stands in for it. Upload one, or connect a repository and Trov imports its owner's GitHub avatar.");
     expect(t).toContain(ORG_LOGO_RULE);
-    expect(text(section(undefined, true))).toContain("No image yet."); // a settings answer from before 0048
+    expect(text(section(undefined, true))).toContain("No image yet."); // a settings answer from before 0042_organizations
   });
 
   it("escapes a handle and a login", () => {

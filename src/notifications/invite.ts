@@ -1,6 +1,6 @@
 // The invite email: one transactional message per invite (create or resend),
 // through the same delivery gate as the digests. Not a NotificationKind — no
-// cadence, prefs, or window. The outcome lands on the `org_invites` row (0047).
+// cadence, prefs, or window. The outcome lands on the `org_invites` row (0042_organizations).
 //
 // It names the inviting ORG and the inviter, says what role accepting grants, and links to the site
 // root — never a token, never an invite id: the invitation is matched to the person's provider-verified

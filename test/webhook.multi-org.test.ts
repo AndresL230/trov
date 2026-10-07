@@ -62,7 +62,7 @@ const eventOrgs = async () => (await all<{ org_id: string }>(env.DB, `SELECT org
 const lastUsed = async (org: string, scope: string) =>
   (await first<{ last_used_at: string | null }>(env.DB, `SELECT last_used_at FROM org_secrets WHERE org_id = ? AND kind = 'github_webhook' AND scope = ?`, org, scope))?.last_used_at ?? null;
 
-/** SaplingLearn as 0037 leaves it (its repo flagged `legacy_hook`, no stored secret) and Acme with a stored one. */
+/** SaplingLearn as 0042_organizations leaves it (its repo flagged `legacy_hook`, no stored secret) and Acme with a stored one. */
 async function twoOrgs(): Promise<void> {
   await addOrgRepo(REPO_A, ORG_A, { id: SAPLING_HOOK, legacyHook: true });
   await addOrgRepo(REPO_B, ORG_B, { id: HOOK_B });

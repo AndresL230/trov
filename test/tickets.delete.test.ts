@@ -7,7 +7,7 @@ import { cookieFor } from "./helpers/persons";
 import { addOrgRepo } from "./helpers/org-config";
 
 // A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
-// so the suite's org has SaplingLearn's connected, as 0037 seeds it in production.
+// so the suite's org has SaplingLearn's connected, as 0042_organizations seeds it in production.
 beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 
 // POST /tickets/:id/delete — a HARD delete of a NATIVE ticket, any signed-in member.

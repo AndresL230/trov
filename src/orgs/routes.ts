@@ -103,7 +103,7 @@ orgTenantApp.put("/settings", async (c) => {
   } catch (e) { return orgFail(c, e); }
 });
 
-// The org's image (0048, ./logo.ts) — admin+. Upload: multipart, field `file`, checked like a person's
+// The org's image (0042_organizations, ./logo.ts) — admin+. Upload: multipart, field `file`, checked like a person's
 // photo; a declared length past the cap (plus multipart framing) is refused before the body is read, and
 // the uploader's daily allowance is taken after the role gate (a refused member spends nothing).
 orgTenantApp.post("/logo", async (c) => {

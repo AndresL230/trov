@@ -86,7 +86,7 @@ describe("/invites (admin, session-cookie)", () => {
     expect(rows[0].to_address).toBe("priya.n@gmail.com");
     expect(rows[0].subject).toBe("Admin invited you to SaplingLearn on Trov");
     expect(rows[0].idempotency_key).toMatch(/^invite:\d+:/);
-    // The outcome is on the `org_invites` row (0047) — the alias reports it in the old shape.
+    // The outcome is on the `org_invites` row (0042_organizations) — the alias reports it in the old shape.
     expect(await first(env.DB, `SELECT name, mail_status, mail_error FROM org_invites WHERE email = 'priya.n@gmail.com'`)).toEqual({ name: "Priya", mail_status: "sent", mail_error: null });
     const list = await (await app.request("/invites", { headers: { cookie: admin } }, env)).json() as { invites: InviteRow[] };
     expect(list.invites.map((i) => i.email)).toEqual(["priya.n@gmail.com"]);

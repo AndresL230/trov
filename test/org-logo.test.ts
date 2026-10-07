@@ -1,4 +1,4 @@
-// The organization's image (0048; the contract is shared/orgs.ts, the code src/orgs/logo.ts):
+// The organization's image (0042_organizations; the contract is shared/orgs.ts, the code src/orgs/logo.ts):
 //   • POST /api/o/:slug/logo[/remove] — who may, what is refused, what is audited, the daily limit;
 //   • GET /org-logo/<sha> — the headers, and who can load it (a non-member invitee, the superadmin);
 //   • `logo_url` on every answer that carries an org;

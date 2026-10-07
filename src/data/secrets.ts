@@ -93,7 +93,7 @@ export const LAST_ERROR_CHARS = 300;
 export const lastErrorText = (message: string, revealed: Revealed): string =>
   scrub(message, revealed).replace(/\s+/g, " ").trim().slice(0, LAST_ERROR_CHARS);
 
-/** `hint_last4`: the last 4 characters, only for a secret of 16+ characters (0037's rule) — on a shorter
+/** `hint_last4`: the last 4 characters, only for a secret of 16+ characters (the organizations migration's rule) — on a shorter
  *  one, 4 characters are too large a share of the value to show. */
 export const HINT_MIN_CHARS = 16;
 const hintOf = (value: string): string => (value.length >= HINT_MIN_CHARS ? value.slice(-4) : "");
@@ -276,7 +276,7 @@ const parseObject = (json: string): Record<string, unknown> => {
 
 /**
  * The org's recent audit rows, newest first: this module's secret trail (`org_audit`) merged with the
- * repository / environment changes src/integrations/settings.ts records in `org_admin_audit` (0043 —
+ * repository / environment changes src/integrations/settings.ts records in `org_admin_audit` (0042_organizations —
  * `org_audit.action` has a CHECK that admits only the five secret actions). One list, the way
  * `GET /api/platform/audit` merges the same two tables; ids are `s<n>` / `a<n>`. Rows of one batch share
  * their `at`: there the secret rows come first (a removed environment's secret deletions, then the

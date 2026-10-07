@@ -24,8 +24,8 @@ export async function resolveBearerCredential(env: Env, request: Request, nowMs:
  * only through a LIVE membership check of that org (`resolveTenantById`), so the role is the person's
  * role there today. Every way of not having that is the same "unauthorized" (a 401 at /mcp): an unknown,
  * revoked or expired credential, a person who has since left or been removed from the org, an org that
- * is SUSPENDED (0043) or gone. A row minted before tokens were org-scoped carries `org_saplinglearn`
- * (0038's column default backfilled every existing row), so it resolves exactly as it always did.
+ * is SUSPENDED (0042_organizations) or gone. A row minted before tokens were org-scoped carries `org_saplinglearn`
+ * (the organizations migration's column default backfilled every existing row), so it resolves exactly as it always did.
  */
 export async function resolveBearerTenant(env: Env, request: Request, nowMs: number = Date.now()): Promise<BearerTenant> {
   const cred = await resolveBearerCredential(env, request, nowMs);

@@ -3,7 +3,7 @@
 // re-seeds the people identity map. When a migration adds a data table, add
 // its DELETE here.
 export const RESET_STATEMENTS = [
-  // Multitenancy (0037–0040): the org platform tables clear FIRST — memberships, invites and the
+  // Multitenancy (0042_organizations): the org platform tables clear FIRST — memberships, invites and the
   // attribution map reference persons, every org_* table references orgs. The two SEED orgs are kept
   // (every tenant table's transitional org_id DEFAULT points at org_saplinglearn); any org a test
   // created is removed once its rows are gone (the per-org singletons are trimmed further down).
@@ -23,7 +23,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM org_counters",
   // …and with the per-org counters (ticket / handoff NUMBERS restart at 1), the two tables' own row-id
   // counters restart too — so in the seed org a fresh ticket's number equals its row id, exactly as it
-  // does for SaplingLearn in production (0038 backfilled number = id). The wire only ever carries the
+  // does for SaplingLearn in production (0042_organizations backfilled number = id). The wire only ever carries the
   // NUMBER (src/tools/tickets.ts); a suite that must tell the two apart offsets the ids itself
   // (test/numbers.per-org.test.ts) or files into the second org.
   "DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'handoffs')",
@@ -112,12 +112,12 @@ export const RESET_STATEMENTS = [
   // …and the system person 0032 seeds: the GitHub mirror's fallback requester.
   // The DELETE FROM persons above wipes the migration's row, so it is re-seeded here.
   "INSERT INTO persons (handle, name, color, created_at, onboarded_at) VALUES ('github-webhook', 'GitHub', 'stone', '2026-09-24T00:00:00Z', '2026-09-24T00:00:00Z')",
-  // The two seed orgs (multitenancy): SaplingLearn holds the six persons above — what 0037 produces from
+  // The two seed orgs (multitenancy): SaplingLearn holds the six persons above — what 0042_organizations produces from
   // them, AndresL230 its owner — and `org_b` (Acme) is the empty neighbour the isolation suite fills.
   "INSERT OR IGNORE INTO orgs (id, slug, name, created_at, created_by) VALUES ('org_saplinglearn', 'saplinglearn', 'SaplingLearn', '2026-10-06T00:00:00.000Z', 'migration'), ('org_b', 'acme', 'Acme', '2026-10-06T00:00:00.000Z', 'migration')",
   "INSERT INTO memberships (org_id, user_id, role, title, responsibilities, created_at, created_by) SELECT 'org_saplinglearn', handle, CASE WHEN handle = 'AndresL230' THEN 'owner' ELSE 'member' END, role, responsibilities, created_at, 'seed' FROM persons WHERE handle <> 'github-webhook'",
   "INSERT INTO org_login_map (org_id, github_login, person, mapped_at, mapped_by) SELECT 'org_saplinglearn', subject, person, linked_at, 'seed' FROM identities WHERE provider = 'github'",
   "UPDATE identities SET verified_email = lower(label) WHERE provider = 'google'",
-  // …and the one superadmin (0042), as production has it: the SaplingLearn owner.
+  // …and the one superadmin (0042_organizations), as production has it: the SaplingLearn owner.
   "INSERT INTO platform_admins (person, granted_at, granted_by) VALUES ('AndresL230', '2026-10-06T00:00:00.000Z', 'seed')",
 ];

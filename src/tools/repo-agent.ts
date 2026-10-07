@@ -129,7 +129,7 @@ export function shapeRepoDashboard(dash: RepoDashboard, opts: RepoAgentOptions =
 /**
  * The dashboard configuration of the context's OWN org (§7.2, D16): its primary repository and its
  * environments, read from `org_repos` / `org_environments` — the rows `GITHUB_REPO` and
- * `REPO_ENVIRONMENTS` became (0037 copied org #1's, value for value). An org that has configured
+ * `REPO_ENVIRONMENTS` became (0042_organizations copied org #1's, value for value). An org that has configured
  * neither gets `""` and `[]`, and every section reads `not_connected`: a bearer never sees another
  * org's repository name or environment list. A failed read is the same empty configuration — the
  * projection below then reports `degraded`, as it does for any other database failure.

@@ -12,7 +12,7 @@ export type OrgStatus = "active" | "suspended";
 export const DEFAULT_ORG_LIMIT = 0;
 export const ORG_NAME_MAX = 80;
 
-/** The `orgs.slug` CHECK (0037): 2–39 of [a-z0-9-], starting with a letter or digit. */
+/** The `orgs.slug` CHECK (0042_organizations): 2–39 of [a-z0-9-], starting with a letter or digit. */
 export const ORG_SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}$/;
 /** Refused in code, not by CHECK, so the list can grow: every first path segment the app or its
  *  hosts answer on, plus the product's own names. */
@@ -32,10 +32,10 @@ export function orgSlugProblem(slug: string): OrgSlugProblem | null {
 export const GITHUB_LOGIN_RE = /^[A-Za-z0-9-]{1,39}$/;
 export const INVITE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Every `org_admin_audit.action` (0043). Kept here, not in a CHECK, so it can grow. */
+/** Every `org_admin_audit.action` (0042_organizations). Kept here, not in a CHECK, so it can grow. */
 export const ORG_AUDIT_ACTIONS = [
   "org.create", "org.update", "org.suspend", "org.unsuspend",
-  // The org's image (0048, src/orgs/logo.ts): an admin's upload / removal, and a GitHub import that changed it.
+  // The org's image (0042_organizations, src/orgs/logo.ts): an admin's upload / removal, and a GitHub import that changed it.
   "org.logo.set", "org.logo.remove", "org.logo.import",
   "member.add", "member.update", "member.remove", "member.leave",
   "invite.create", "invite.revoke", "invite.accept", "invite.decline",
@@ -45,7 +45,7 @@ export const ORG_AUDIT_ACTIONS = [
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 
-// ── the org's image (0048) ───────────────────────────────────────────────────
+// ── the org's image (0042_organizations) ─────────────────────────────────────
 // An org shows ONE image wherever its name is (the initial tile without one): an admin's UPLOAD, or the
 // avatar of its primary repository's owner IMPORTED from GitHub — bytes in R2 at `org-logos/<sha>`,
 // served by the session-gated `GET /org-logo/<sha>`. An upload is never replaced by an import
@@ -70,7 +70,7 @@ export interface OrgLogo {
   at: string | null;
 }
 
-/** `orgs`' five image columns (0048) as the wire's `OrgLogo`: they travel together — no image, no provenance. */
+/** `orgs`' five image columns (0042_organizations) as the wire's `OrgLogo`: they travel together — no image, no provenance. */
 export function orgLogoOf(r: { logo_sha: string | null; logo_source: OrgLogoSource | null; logo_by: string | null; logo_from: string | null; logo_at: string | null } | null): OrgLogo {
   return r?.logo_sha
     ? { url: orgLogoSrc(r), source: r.logo_source, by: r.logo_by, from: r.logo_from, at: r.logo_at }
@@ -79,7 +79,7 @@ export function orgLogoOf(r: { logo_sha: string | null; logo_source: OrgLogoSour
 
 // ── user-level: GET /api/orgs ────────────────────────────────────────────────
 
-/** `logo_url` (0048) is on every org the Worker sends — here, an invitation's `org`, `OrgSummary`, the
+/** `logo_url` (0042_organizations) is on every org the Worker sends — here, an invitation's `org`, `OrgSummary`, the
  *  Platform rows. It is typed optional so that an answer cached from before it existed reads as "no image". */
 export interface MyOrg { slug: string; name: string; role: OrgRole; logo_url?: string | null }
 
@@ -155,7 +155,7 @@ export interface OrgInvite {
   /** The invitee's name as the inviter typed it (the mail's greeting). */
   name: string | null;
   /** The invitation e-mail's LAST attempt. `null` = none was sent: a GitHub-login invite has no address
-   *  (the person sees it when they sign in), and a row from before 0047 was never mailed from here. */
+   *  (the person sees it when they sign in), and a row from before 0042_organizations was never mailed from here. */
   mail_status: InviteMailStatus | null;
   mail_at: string | null;
   /** The provider's refusal when `mail_status` is `failed`. */

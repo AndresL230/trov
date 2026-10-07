@@ -4,7 +4,7 @@
 // content and never a secret — and everything after them runs as ONE org's system tenant. The reads of
 // `org_repos` / `org_environments` are declared in test/data-layer.static.test.ts (PLATFORM_ALLOW).
 //
-// A SUSPENDED org (0043) is absent from every list here: its crons do not run and its hooks read as
+// A SUSPENDED org (0042_organizations) is absent from every list here: its crons do not run and its hooks read as
 // unknown, exactly as it resolves for no member (src/data/context.ts).
 import type { Env } from "../env";
 import { platform, systemTenant, type PlatformContext, type TenantContext } from "../data/context";
@@ -46,7 +46,7 @@ export function hookRepo(p: PlatformContext, hookId: string): Promise<HookRepo |
     `SELECT ${HOOK_COLS} FROM org_repos r JOIN orgs o ON o.id = r.org_id WHERE r.id = ? AND o.suspended_at IS NULL`, hookId);
 }
 
-/** The ONE repo the old `/webhook/github` still delivers to (`legacy_hook = 1` — SaplingLearn's, 0037),
+/** The ONE repo the old `/webhook/github` still delivers to (`legacy_hook = 1` — SaplingLearn's, 0042_organizations),
  *  or null. The cleanup phase deletes the route, the flag and this. */
 export function legacyHookRepo(p: PlatformContext): Promise<HookRepo | null> {
   return first<HookRepo>(p,
@@ -54,7 +54,7 @@ export function legacyHookRepo(p: PlatformContext): Promise<HookRepo | null> {
       WHERE r.legacy_hook = 1 AND o.suspended_at IS NULL ORDER BY r.created_at, r.id LIMIT 1`);
 }
 
-// ── the rotation cursor (`cron_cursor`, 0037) ────────────────────────────────
+// ── the rotation cursor (`cron_cursor`, 0042_organizations) ──────────────────
 
 /** The key of the last unit `job` served before it ran out of budget; `''` = it served them all. */
 export async function readCursor(p: PlatformContext, job: string): Promise<string> {

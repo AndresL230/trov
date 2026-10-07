@@ -121,7 +121,7 @@ export const outboxKey = (ctx: TenantContext, login: string, cadence: string, wi
   `${ctx.orgId}:${login}:${cadence}:${windowId}`;
 
 /**
- * The key format BEFORE the org prefix (0038 gave every existing row its org, not a new key). A digest
+ * The key format BEFORE the org prefix (0042_organizations gave every existing row its org, not a new key). A digest
  * sent just before the multitenancy deploy sits in the outbox under this key, in the one org that
  * existed then; the claim below treats such a row IN THE SAME ORG as the same send, so the deploy cannot
  * mail a window twice. Dead once the longest window (a week) has passed since that deploy — Phase 7

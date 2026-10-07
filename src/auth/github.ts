@@ -48,7 +48,7 @@ export async function exchangeCode(opts: {
 }
 
 /** The authenticated user's login + name + avatar_url, and `id` — the account's immutable numeric id (as a
- *  string), which outlives a rename of the login (0045); null on failure. */
+ *  string), which outlives a rename of the login (0042_organizations); null on failure. */
 export async function getUser(token: string, fetchImpl: typeof fetch = fetch): Promise<{ id: string | null; login: string; name: string | null; avatar_url: string | null } | null> {
   const res = await fetchImpl("https://api.github.com/user", {
     headers: { authorization: `Bearer ${token}`, accept: GH_API, "user-agent": USER_AGENT },

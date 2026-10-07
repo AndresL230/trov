@@ -52,7 +52,7 @@ export function platform(env: Env, actor: string): PlatformContext {
 }
 
 /** HTTP (§5.2): the org named by `slug`, IF `userId` is a member of it and the org is not SUSPENDED
- *  (0043). One statement; null for an unknown slug, a non-member and a suspended org alike, so an
+ *  (0042_organizations). One statement; null for an unknown slug, a non-member and a suspended org alike, so an
  *  org's existence — and its suspension — is never disclosed. */
 export async function resolveTenant(env: Env, userId: string, slug: string): Promise<TenantContext | null> {
   const row = await env.DB.prepare(
@@ -80,7 +80,7 @@ export type SoleTenant =
  * CUT-OVER ALIAS (§6.3, Phases 3–5): the tenant is "the caller's only org". Every pre-multitenancy
  * path resolves through this until the `/api/o/:slug` routes replace it; Phase 7 deletes it. A person
  * with no membership and a person with more than one are told apart, so a caller can answer each —
- * and so is a person whose one org is SUSPENDED (0043): the same statement reads `suspended_at`, and
+ * and so is a person whose one org is SUSPENDED (0042_organizations): the same statement reads `suspended_at`, and
  * no context is built for it (each caller answers it as it answers an org that is not there).
  */
 export async function resolveSoleTenant(env: Env, userId: string, via: "session" | "bearer"): Promise<SoleTenant> {

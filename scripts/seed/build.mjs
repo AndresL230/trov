@@ -20,7 +20,7 @@ export const targetsRemote = (argv) => argv.includes("--remote");
  * pr_summaries, sprints before sprint_progress / sprint_resources / tickets,
  * tickets before ticket_assignees / _links / _comments / _events.
  */
-/** Move the seed org's per-org counter (0038 `org_counters`) past every number just seeded. */
+/** Move the seed org's per-org counter (0042_organizations `org_counters`) past every number just seeded. */
 const counterStmt = (name, table) =>
   `INSERT INTO org_counters (org_id, name, value) VALUES ('org_saplinglearn', '${name}', (SELECT COALESCE(MAX(number), 0) FROM ${table} WHERE org_id = 'org_saplinglearn')) ` +
   `ON CONFLICT(org_id, name) DO UPDATE SET value = MAX(org_counters.value, excluded.value)`;
@@ -117,7 +117,7 @@ export function buildSeedStatements(fx) {
   // UPDATE makes the fixture's order irrelevant.
   //
   // `number` — the per-org number, which is what the app shows and addresses a ticket by
-  // (`#12`, `/tickets/12`; src/tools/tickets.ts) — is written EQUAL to the fixture's id, as 0038
+  // (`#12`, `/tickets/12`; src/tools/tickets.ts) — is written EQUAL to the fixture's id, as 0042_organizations
   // backfilled it for SaplingLearn, and the org's counter is moved past the highest one below
   // (`counterStmt`), so the next ticket filed in the app continues the series.
   for (const t of fx.tickets?.tickets ?? []) {

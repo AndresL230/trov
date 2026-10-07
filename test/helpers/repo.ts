@@ -66,7 +66,7 @@ export function fakeGithub(routes: Record<string, unknown>): { fetchImpl: typeof
 }
 
 /** Give `orgId` a primary repository and `envs` as its environments — the `org_repos` / `org_environments`
- *  rows an org's dashboard is configured by (what 0037 wrote for SaplingLearn; the per-test reset clears them). */
+ *  rows an org's dashboard is configured by (what 0042_organizations wrote for SaplingLearn; the per-test reset clears them). */
 export async function seedOrgRepoConfig(db: D1Database, orgId: string, repo: string, envs: RepoEnvConfig[] = ENVS): Promise<void> {
   const at = "2026-10-06T00:00:00.000Z";
   await db.batch([

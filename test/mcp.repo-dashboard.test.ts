@@ -91,7 +91,7 @@ function trendPaths(v: unknown, path = "$", out: string[] = []): string[] {
  *  snapshot — relative to the real clock, because the tool reads `Date.now()`.
  *  Hosting, branches, health, environments… are deliberately left uncaptured. */
 async function seedDashboard(): Promise<void> {
-  // The dashboard reads the ORG's configuration (org_repos / org_environments), as 0037 seeded it from these vars.
+  // The dashboard reads the ORG's configuration (org_repos / org_environments), as 0042_organizations seeded it from these vars.
   await seedOrgRepoConfig(env.DB, ORG_A, "SaplingLearn/sapling", JSON.parse((env as unknown as Env).REPO_ENVIRONMENTS ?? "[]") as RepoEnvConfig[]);
   const hourFloor = Math.floor(Date.now() / HOUR) * HOUR;
   const midnight = Math.floor(Date.now() / DAY) * DAY;

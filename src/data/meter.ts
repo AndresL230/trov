@@ -1,4 +1,4 @@
-// Usage metering (0043 `org_usage_daily`): one counter per (org, UTC day, metric, person). Every call
+// Usage metering (0042_organizations `org_usage_daily`): one counter per (org, UTC day, metric, person). Every call
 // site hands the returned promise to `waitUntil`, and a failed bump is swallowed here — metering never
 // slows or fails the request it counts. Read back by src/platform/usage.ts.
 import type { Context } from "hono";
