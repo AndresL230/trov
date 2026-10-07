@@ -267,11 +267,19 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["orgs", "suspended_by"], ["org_usage_daily", "actor"], ["org_admin_audit", "actor"],
   // The org's image (0042_organizations): who uploaded it.
   ["orgs", "logo_by"],
+  // Plans and grants (0044_plans): who changed an org's plan; a grant's person, granter, user and revoker.
+  ["orgs", "plan_changed_by"],
+  ["org_grants", "person"], ["org_grants", "granted_by"], ["org_grants", "used_by"], ["org_grants", "revoked_by"],
+  // Billing (0045_billing): who started a checkout, and who a subscription was bought by — a payment
+  // made under the old handle still grants the renamed person.
+  ["billing_checkouts", "person"], ["billing_subscriptions", "person"],
   // The GitHub App (0043_github_app): who connected the org's installation.
   ["org_github_installations", "connected_by"],
-  // Hosting (0044_hosting_providers). `revoked_by` is a handle, or the reserved `system` when the provider's side
+  // Hosting (0047_hosting_providers). `revoked_by` is a handle, or the reserved `system` when the provider's side
   // ended the connection (an uninstall notice, a 401 at Test connection) — never a provider id.
   ["org_environment_parts", "updated_by"], ["org_hosting_connections", "connected_by"], ["org_hosting_connections", "revoked_by"],
+  // Sync GitHub runs (0046_sync_runs): who started one.
+  ["sync_runs", "started_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

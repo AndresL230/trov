@@ -1,5 +1,5 @@
 // THE provider registry (#97): every hosting provider Trov knows, by id. Adding a provider = one file in
-// ./providers/ + one line here (+ its kind in shared/integrations.ts and 0044's org_secrets CHECK). Pure
+// ./providers/ + one line here (+ its kind in shared/integrations.ts and 0047's org_secrets CHECK). Pure
 // metadata and pure checks — this module reads no D1 and no secret, so the Repo dashboard projection (which
 // is reachable from src/mcp.ts) may import it. See ./http.ts for why that matters.
 import {

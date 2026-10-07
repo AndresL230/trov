@@ -85,6 +85,24 @@ describe("the import graph", () => {
   });
 });
 
+describe("billing is not an agent's", () => {
+  it("nothing reachable from src/mcp.ts imports the Stripe client, or anything else of src/billing/", () => {
+    const fromMcp = reachable("src/mcp.ts");
+    expect(SOURCES.has("src/billing/stripe.ts")).toBe(true);
+    // The walker finds it from where it IS used: the HTTP app and the Worker's entry point (the webhook).
+    expect(reachable("src/routes.ts").has("src/billing/stripe.ts")).toBe(true);
+    expect(reachable("src/index.ts").has("src/billing/webhook.ts")).toBe(true);
+    expect([...fromMcp].filter((f) => f.startsWith("src/billing/"))).toEqual([]);
+    // …and no MCP-reachable file names the client's call or reads either Stripe secret.
+    for (const file of fromMcp) expect(SOURCES.get(file), file).not.toMatch(/\bstripeCall\s*\(|\.STRIPE_SECRET_KEY\b|\.STRIPE_WEBHOOK_SECRET\b/);
+    // The key is read in ONE module (the config) and sent by ONE (the client).
+    const readers = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && f !== "src/env.ts" && /\bSTRIPE_SECRET_KEY\b/.test(text)).map(([f]) => f);
+    expect(readers).toEqual(["src/billing/config.ts"]);
+    const senders = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\bsecretKey\b/.test(text)).map(([f]) => f).sort();
+    expect(senders).toEqual(["src/billing/config.ts", "src/billing/stripe.ts"]);
+  });
+});
+
 describe("a bearer context", () => {
   it("cannot read a secret, whatever its role — neither the stored one nor the legacy fallback", async () => {
     await setSecret(await tenantCtx("AndresL230"), "github_token", "", "tok_0123456789abcdef0123456789abcdef");

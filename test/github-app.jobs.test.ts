@@ -24,6 +24,8 @@ import { runOrgJob, runReconcileJob } from "../src/repo/cron";
 import { runBackfill } from "../src/tools/backfill";
 import type { GithubAppStatusDTO, GithubReposDTO } from "@shared/github-app";
 import type { IntegrationsListDTO, OrgRepoDTO } from "@shared/integrations";
+import type { PlanRefusal } from "@shared/plans";
+import { setOrgPlan } from "../src/plans/state";
 
 const e = env as unknown as Env;
 const NOW = Date.now();
@@ -320,6 +322,25 @@ describe("Org settings › the App's routes", () => {
     expect((await call(member, "/github/repositories", { slug: "acme" })).status).toBe(403);
     expect((await call(await cookieFor("AndresL230"), "/github/repositories")).status).toBe(404);
     expect(await J(await call(await cookieFor("AndresL230"), "/github/repositories"))).toMatchObject({ error: "not_connected" });
+  });
+
+  it("tracking an App repository at the plan's repository cap is refused with 402 plan_limit, and nothing is written", async () => {
+    const { admin } = await acme();
+    await seedInstallation(ORG_B, INST_B, "beta-co", { by: "olive" });
+    await setOrgPlan(platformCtx("AndresL230"), "acme", { plan: "personal" }); // one repository
+    vi.stubGlobal("fetch", github().fetchImpl);
+    expect((await call(admin, "/github/repositories", { slug: "acme", method: "POST", body: { repo_full_name: REPO_B } })).status).toBe(201);
+    const res = await call(admin, "/github/repositories", { slug: "acme", method: "POST", body: { repo_full_name: "beta-co/docs" } });
+    expect(res.status).toBe(402);
+    expect(await J<PlanRefusal>(res)).toMatchObject({
+      error: "plan_limit", limit: "repositories", used: 1, cap: 1, plan: "personal", status: "active",
+      message: "This organization has reached the 1 repository its Personal plan includes.",
+    });
+    // The one it has can still be made primary (not an addition), and the picker still lists both.
+    expect((await call(admin, "/github/repositories", { slug: "acme", method: "POST", body: { repo_full_name: REPO_B, is_primary: true } })).status).toBe(200);
+    expect((await J<GithubReposDTO>(await call(admin, "/github/repositories", { slug: "acme" }))).repositories.map((x) => [x.full_name, x.tracked])).toEqual([[REPO_B, true], ["beta-co/docs", false]]);
+    expect(await all(env.DB, `SELECT repo_full_name FROM org_repos WHERE org_id = ?`, ORG_B)).toEqual([{ repo_full_name: REPO_B }]);
+    expect(await all(env.DB, `SELECT target FROM org_admin_audit WHERE org_id = ? AND action = 'repo.add'`, ORG_B)).toEqual([{ target: REPO_B }]);
   });
 
   it("POST /github/repositories tracks a repository the installation can see — and refuses one it cannot", async () => {

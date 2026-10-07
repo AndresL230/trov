@@ -11,7 +11,7 @@
 
 import type { AppState } from "./render";
 import {
-  ApiError, OrgApiError, Unauthorized, rateLimitText,
+  ApiError, OrgApiError, Unauthorized, rateLimitText, planLimitText, getOrgPlan,
   resendOrgInvite, getOrgSettings, putOrgSettings, listOrgMembers, updateOrgMember, removeOrgMember, listOrgInvites, createOrgInvite, revokeOrgInvite,
   listOrgRepos, addOrgRepo, removeOrgRepo, listOrgEnvironments, putOrgEnvironment, reorderOrgEnvironments, deleteOrgEnvironment,
   listOrgIntegrations, setOrgIntegration, rotateOrgIntegration, deleteOrgIntegration, putOrgIntegrationConfig, testOrgIntegration, rotateOrgKey, listOrgAudit,
@@ -27,6 +27,7 @@ import { isIntegrationKind, type IntegrationDTO, type IntegrationKind } from "@s
 import type { OrgInvite, OrgRole } from "@shared/orgs";
 import type { GithubAppStatusDTO } from "@shared/github-app";
 import { createOrgLogoActions } from "./org-logo-actions";
+import { createOrgBillingActions } from "./org-billing-actions";
 
 export interface OrgHost {
   state: AppState;
@@ -97,6 +98,8 @@ export function createOrgController(host: OrgHost): OrgController {
   const rerender = () => host.rerender();
   /** General's image control: its own acts, file input and Escape (org-logo-actions.ts). */
   const logo = createOrgLogoActions(host);
+  /** General's Plan block: the owner's billing actions, each of which leaves for Stripe (org-billing-actions.ts). */
+  const billing = createOrgBillingActions(host);
 
   // ── the secret draft (see the header) ──────────────────────────────────────
   let secretDraft = "";
@@ -141,6 +144,14 @@ export function createOrgController(host: OrgHost): OrgController {
   const loadEnvs = () => read(() => ui().envs, (v) => { ui().envs = v; }, listOrgEnvironments);
   const loadIntegrations = () => read(() => ui().integrations, (v) => { ui().integrations = v; }, listOrgIntegrations);
   const loadAudit = () => read(() => ui().audit, (v) => { ui().audit = v; }, (slug) => listOrgAudit(slug));
+  /** The org's plan and its use of each limit — read again after any write a limit counts. */
+  const loadPlan = () => read(() => ui().plan, (v) => { ui().plan = v; }, getOrgPlan);
+  /** A refusal as words: the plan's one sentence when the plan refused (a 402), else `orgErrorText`. */
+  const errorText = (e: unknown, fallback: string): string => {
+    const plan = planLimitText(e, org()?.role ?? null);
+    if (plan) { loadPlan(); loadMembers(); loadAdmin(); } // what the page shows about the plan, and what it counts, was stale
+    return plan ?? orgErrorText(e, fallback);
+  };
   /** The admin-only reads (their routes answer 403 to a member, so a member never asks). */
   const loadAdmin = () => { if (roleAtLeast(org()?.role, "admin")) { loadInvites(); loadIntegrations(); loadAudit(); } };
 
@@ -187,11 +198,12 @@ export function createOrgController(host: OrgHost): OrgController {
         if (list) for (const r of list.repositories) if (r.full_name === name) r.tracked = true;
         host.flash(repos.find((r) => r.repo_full_name === name)?.is_primary ? `Tracking ${name} as the primary repository` : `Tracking ${name}`);
         loadAdmin();
+        loadPlan(); // a tracked repository counts against the plan, like a typed one
       })
       .catch((e) => {
         u.githubBusy = null;
         if (fail(e)) return;
-        host.flash(orgErrorText(e, `Couldn't track ${name}.`), 6000);
+        host.flash(errorText(e, `Couldn't track ${name}.`), 6000); // at the plan's repository cap: the plan's own sentence (402)
         if (e instanceof ApiError && (e.message === "not_connected" || e.message === "not_visible")) loadGithub();
         rerender();
       });
@@ -220,7 +232,7 @@ export function createOrgController(host: OrgHost): OrgController {
       // (What the return from GitHub said arrives before the first load: it is kept.)
       state.org = { ...initialOrgUi(), tab: ui().tab, slug: o.slug, githubNotice: ui().githubNotice };
     }
-    loadSettings(); loadMembers(); loadRepos(); loadEnvs(); loadGithub(); loadAdmin();
+    loadSettings(); loadMembers(); loadRepos(); loadEnvs(); loadPlan(); loadGithub(); loadAdmin();
   }
 
   /** My orgs again (a role change, a rename), then this screen's reads. */
@@ -313,7 +325,7 @@ export function createOrgController(host: OrgHost): OrgController {
           ui().memberEdit = null;
           done(r.left ? `You left ${o.name}` : `Removed ${name}`);
           // Leaving ends my access to this org: there is nothing of it left to show.
-          if (r.left) host.leaveOrg(); else loadMembers();
+          if (r.left) host.leaveOrg(); else { loadMembers(); loadPlan(); }
         })
         .catch((e) => failed(e, e instanceof ApiError && e.message === "last_owner" ? lastOwnerSentence(name) : `Couldn't remove ${name}.`));
     } else {
@@ -363,11 +375,12 @@ export function createOrgController(host: OrgHost): OrgController {
         if (!primary) u.repoDraft = "";
         host.flash(primary ? `${name} is now the primary repository` : `Connected ${name}`);
         loadAdmin(); // a new repository is a new webhook-secret slot
+        loadPlan();
       })
       .catch((e) => {
         u.repoBusy = false;
         if (fail(e)) return;
-        const msg = e instanceof ApiError && e.message === "invalid" ? "Use the form owner/repo, exactly as it appears on GitHub." : orgErrorText(e, "Couldn't connect the repository.");
+        const msg = e instanceof ApiError && e.message === "invalid" ? "Use the form owner/repo, exactly as it appears on GitHub." : errorText(e, "Couldn't connect the repository.");
         if (primary) host.flash(msg, 6000); else { u.repoError = msg; rerender(); }
       });
   }
@@ -395,7 +408,7 @@ export function createOrgController(host: OrgHost): OrgController {
         u.envEdit = null;
         const label = r.environment.label;
         host.flash(r.created ? `Added ${label}` : r.removed_secrets.length ? `Saved ${label}. Its app metrics token was deleted: set a new one in Integrations.` : `Saved ${label}`, r.removed_secrets.length ? 7000 : 2200);
-        loadEnvs(); loadAdmin();
+        loadEnvs(); loadAdmin(); loadPlan();
       })
       .catch((e) => {
         d.saving = false;
@@ -405,7 +418,7 @@ export function createOrgController(host: OrgHost): OrgController {
         const label = d.errorField ? envFieldLabel(d.errorField) : null;
         d.error = e instanceof OrgApiError && e.message === "invalid" && e.detail && d.errorField && label
           ? sentence(e.detail.replace(new RegExp(`^${d.errorField}:\\s*`), "").replace(new RegExp(`^${d.errorField}\\b`), label))
-          : orgErrorText(e, "Couldn't save the environment.");
+          : errorText(e, "Couldn't save the environment.");
         if (d.errorField && !["key", "label", "note", "branch", "frontend_url", "api_url", "health_path"].includes(d.errorField)) d.advanced = true;
         rerender();
       });
@@ -484,13 +497,14 @@ export function createOrgController(host: OrgHost): OrgController {
         const whom = invite.github_login ? `@${invite.github_login}` : invite.email ?? who;
         // An e-mail invite is mailed by the same request; a GitHub one never is — Trov knows a login, not an address.
         host.flash(`Invited ${whom} as ${invite.role}. ${mailSentence(invite)}`, 6000);
+        loadPlan(); // the invitation took a seat
       })
       .catch((e) => {
         u.inviteBusy = false;
         if (fail(e)) return;
         u.inviteError = e instanceof ApiError && e.message === "invalid_invite"
           ? (u.inviteBy === "github" ? "That is not a GitHub login. Use the name after github.com/, without the @." : e instanceof OrgApiError && e.detail && /name/.test(e.detail) ? sentence(e.detail) : "That is not an email address.")
-          : orgErrorText(e, "Couldn't send the invite.");
+          : errorText(e, "Couldn't send the invite.");
         rerender();
       });
   }
@@ -598,6 +612,7 @@ export function createOrgController(host: OrgHost): OrgController {
   // ── acts ───────────────────────────────────────────────────────────────────
   function act(name: string, arg: string | null, value: string | null): void {
     if (logo.act(name)) return;
+    if (billing.act(name, arg)) return;
     const u = ui();
     const o = org();
     const admin = roleAtLeast(o?.role, "admin");
@@ -701,7 +716,7 @@ export function createOrgController(host: OrgHost): OrgController {
         const id = Number(arg);
         if (!o || !admin || !Number.isInteger(id)) return;
         revokeOrgInvite(o.slug, id)
-          .then(() => { host.flash("Invite revoked"); loadInvites(); })
+          .then(() => { host.flash("Invite revoked"); loadInvites(); loadPlan(); })
           .catch((e) => { if (fail(e)) return; host.flash(orgErrorText(e, "Couldn't revoke the invite."), 6000); loadInvites(); });
         return;
       }

@@ -8,7 +8,7 @@
 //      No secret configured, a signature that does not verify, a verifier that throws → the SAME bare 401
 //      `{ "error": "unauthorized" }`, and NOTHING is written — unauthenticated traffic causes no write;
 //   4. a verified body that names a removed installation (`removedExternalId`) ends the connection of the org
-//      whose ACTIVE connection for that provider carries that installation id (0044's unique index: at most
+//      whose ACTIVE connection for that provider carries that installation id (0047's unique index: at most
 //      one) — found by a cross-org read (src/platform/jobs.ts `connectionsForExternalId`: the notice names only
 //      the installation), and ended as that org's SYSTEM tenant (`endConnectionAsSystem`, ./connections.ts):
 //      its secret deleted, its connection marked revoked by `system` (`uninstalled`), audited. A suspended org

@@ -278,7 +278,7 @@ const parseObject = (json: string): Record<string, unknown> => {
  * The org's recent audit rows, newest first: this module's secret trail (`org_audit`) merged with the
  * repository / environment changes src/integrations/settings.ts records in `org_admin_audit` — and the
  * GitHub App's (`github.*`, src/github-app/store.ts) and the hosting changes src/hosting/ records there
- * (`part.*`, `hosting.*` — 0044_hosting_providers) — (0042_organizations — `org_audit.action` has a CHECK
+ * (`part.*`, `hosting.*` — 0047_hosting_providers) — (0042_organizations — `org_audit.action` has a CHECK
  * that admits only the five secret actions). One list, the way
  * `GET /api/platform/audit` merges the same two tables; ids are `s<n>` / `a<n>`. Rows of one batch share
  * their `at`: there the secret rows come first (a removed environment's secret deletions, then the
@@ -572,7 +572,7 @@ async function legacyEnvValue(ctx: TenantContext, env: Env, kind: IntegrationKin
       const repo = await first<{ legacy_hook: number }>(ctx, `SELECT legacy_hook FROM org_repos WHERE org_id = ? AND id = ?`, ctx.orgId, scope);
       return repo?.legacy_hook === 1 ? pick(env.GITHUB_WEBHOOK_SECRET) : null;
     }
-    // The hosting providers (0044_hosting_providers) arrived with per-org secrets: no Worker secret ever answered for them.
+    // The hosting providers (0047_hosting_providers) arrived with per-org secrets: no Worker secret ever answered for them.
     case "vercel": case "render": case "netlify": case "fly": case "aws": return null;
   }
 }

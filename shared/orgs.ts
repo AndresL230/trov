@@ -2,13 +2,14 @@
 // contract the Worker and the SPA share. Zod-free: the SPA imports the slug rule and these types as-is.
 import type { PersonColor } from "./rows";
 import { AVATAR_MAX_BYTES, AVATAR_TYPES } from "./people";
+import type { MyGrant, PlatformOrgPlan } from "./plans";
 
 export type OrgRole = "owner" | "admin" | "member";
 export type OrgStatus = "active" | "suspended";
 
-/** How many orgs a person may CREATE when `persons.org_limit` is NULL. Zero: only a superadmin adds an
- *  organization, and does it in Platform (Add organization), until self-serve creation is opened;
- *  `persons.org_limit` (Platform › Admins & limits) lets one named person create some. */
+/** How many orgs a person may create with NO grant. Zero: an organization comes to exist because a
+ *  superadmin adds it in Platform, or because a person USES A GRANT (0044_plans, shared/plans.ts) — never
+ *  freely. `persons.org_limit`, the per-person allowance from before grants, is read by nothing. */
 export const DEFAULT_ORG_LIMIT = 0;
 export const ORG_NAME_MAX = 80;
 
@@ -43,9 +44,11 @@ export const ORG_AUDIT_ACTIONS = [
   "repo.add", "repo.remove", "repo.primary", "environment.set", "environment.delete", "environment.reorder",
   // The GitHub App's installation (0043_github_app, src/github-app/store.ts).
   "github.connect", "github.disconnect", "github.uninstall", "github.suspend", "github.unsuspend", "github.repos", "github.permissions",
-  // Org settings › Hosting (0044_hosting_providers, src/hosting/).
+  // Org settings › Hosting (0047_hosting_providers, src/hosting/).
   "part.set", "part.delete", "hosting.connect", "hosting.disconnect", "hosting.revoked",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
+  // Plans and grants (0044_plans, src/plans): an org's plan / limits / status changed; a grant made, revoked, used.
+  "plan.change", "plan.overrides", "plan.status", "grant.create", "grant.revoke", "grant.use",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 
@@ -103,10 +106,11 @@ export interface MyOrgsResponse {
   orgs: MyOrg[];
   invites: MyInvite[];
   superadmin: boolean;
+  /** The person holds a usable grant (0044_plans) — the only way to create an org here. Never true for a
+   *  superadmin: Platform is where they add one. */
   can_create: boolean;
-  /** Orgs this person has created / may create (a superadmin has no exemption: Platform is where they add one). */
-  created: number;
-  limit: number | null;
+  /** The grants this person can use, oldest first: each makes ONE organization on its plan. */
+  grants: MyGrant[];
 }
 
 // ── tenant: /api/o/:slug/… ───────────────────────────────────────────────────
@@ -185,6 +189,8 @@ export interface PlatformOrgRow {
   member_count: number;
   pending_invites: number;
   last_activity_at: string | null;
+  /** The org's plan and seat use (0044_plans). Optional: an answer cached from before it reads as "unknown". */
+  plan?: PlatformOrgPlan;
   /** The GitHub account the org's App installation is on (0043_github_app), or null: connected by a
    *  pasted token, or not at all. Read-only here. */
   github_account?: string | null;
@@ -255,9 +261,34 @@ export interface OrgUsage {
   sizes: UsageSizes;
   activity: UsageActivity;
   series: UsageDay[];
+  /** AI summaries in the window, and this calendar month against the plan's allowance. */
+  summaries: UsageSummaries & { month_used: number; cap: number | null };
+}
+
+/** AI summary calls in the window (`org_usage_daily`, src/data/meter.ts). Counts and sizes only. */
+export interface UsageSummaries {
+  /** Summarizer calls made. `succeeded = attempted - failed`. */
+  attempted: number;
+  succeeded: number;
+  /** Calls that produced no summary. */
+  failed: number;
+  /** Items given an excerpt because nothing could be attempted (the allowance, an ended plan). */
+  capped: number;
+  /** `failed + capped`: items that show an excerpt instead of a summary. */
+  fell_back: number;
+  /** Characters sent and received — what cost is estimated from (docs/architecture/plans.md). */
+  chars_in: number;
+  chars_out: number;
+  /** The provider's token counts, where its answers carried them; 0 = none recorded. */
+  tokens_in: number;
+  tokens_out: number;
 }
 
 export interface PlatformUsageResponse {
+  /** False when the deployment has no summaries key: nothing is attempted, counted or capped. */
+  summaries_enabled: boolean;
+  /** Every org's summaries in the window, summed. */
+  summaries: UsageSummaries;
   days: number;
   since: string;       // first day of the window, 'YYYY-MM-DD' (UTC)
   until: string;       // last day (today, UTC)
@@ -279,6 +310,9 @@ export interface PlatformOrgDetail {
   members: PlatformOrgMember[];
   invites: OrgInvite[];
   usage: OrgUsage;
+  /** False when the deployment has no summaries key (`PlatformUsageResponse.summaries_enabled`): the
+   *  page says AI summaries are off instead of a line of zeros. */
+  summaries_enabled: boolean;
 }
 
 export interface PlatformAdmin { handle: string; name: string | null; granted_at: string; granted_by: string }

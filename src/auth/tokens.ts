@@ -5,6 +5,7 @@ import { type TenantContext, all, run, nowIso } from "../data/sql";
 import { type PlatformContext, first as platformFirst, run as platformRun } from "../data/platform-sql";
 import type { McpTokenSummary } from "@shared/rows";
 import { randomToken, sha256Hex } from "./crypto";
+import { requirePlan } from "../plans/gate";
 
 // Tokens minted since the rename to Trov carry `trov_mcp_`. A token is looked up by the hash of the WHOLE
 // string, so every `canopy_mcp_` token already pasted into an agent's config keeps working unchanged.
@@ -14,8 +15,10 @@ const TOKEN_PREFIX = "trov_mcp_";
 const HINT_LENGTH = 4;
 
 /** Mint a token for `ctx.userId` in `ctx.orgId`: returns the raw token ONCE; stores only its SHA-256
- *  hash and the hint. The org is the context's — the membership the gate just checked — never an input. */
+ *  hash and the hint. The org is the context's — the membership the gate just checked — never an input.
+ *  A token is one of the person's AGENT CONNECTIONS into the org (0044_plans; 402 `plan_limit` at the cap). */
 export async function mintToken(ctx: TenantContext): Promise<{ raw: string }> {
+  await requirePlan(ctx, "agent_connections");
   const raw = TOKEN_PREFIX + randomToken(32);
   const token_hash = await sha256Hex(raw);
   const hint = raw.slice(TOKEN_PREFIX.length, TOKEN_PREFIX.length + HINT_LENGTH);

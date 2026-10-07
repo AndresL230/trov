@@ -73,7 +73,7 @@ export default defineConfig({
           RAILWAY_TOKEN_STAGING: "",
           RAILWAY_TOKEN_PRODUCTION: "",
           SAPLING_METRICS_TOKEN: "",
-          // The hosting integrations' client credentials (0044_hosting_providers): blank, so a local .dev.vars
+          // The hosting integrations' client credentials (0047_hosting_providers): blank, so a local .dev.vars
           // never makes "Connect with Vercel / Netlify" available in a test that did not ask for it.
           VERCEL_INTEGRATION_CLIENT_ID: "",
           VERCEL_INTEGRATION_CLIENT_SECRET: "",
@@ -85,6 +85,16 @@ export default defineConfig({
           // suite never depends on a developer's `.dev.vars`; TROV_KEK_PREVIOUS is blanked for the same reason.
           TROV_KEK: "dGVzdC1rZWstMDEyMzQ1Njc4OWFiY2RlZi10cm92ISE=",
           TROV_KEK_PREVIOUS: "",
+          // Billing (src/billing/): OFF in the pool — blanked like the keys above, so a developer's
+          // `.dev.vars` never reaches Stripe from a test. A billing test passes its own env object, with a
+          // fake key and a stubbed `fetch`.
+          STRIPE_SECRET_KEY: "",
+          STRIPE_WEBHOOK_SECRET: "",
+          STRIPE_PRICE_PERSONAL: "",
+          STRIPE_PRICE_TEAM: "",
+          STRIPE_PRICE_PERSONAL_YEARLY: "",
+          STRIPE_PRICE_TEAM_YEARLY: "",
+          STRIPE_TEST_API_BASE: "",
         },
       },
     })),

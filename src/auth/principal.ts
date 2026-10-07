@@ -15,6 +15,9 @@ const PUBLIC_PATHS = new Set([
   "/auth/login", "/auth/callback",
   "/auth/google/login", "/auth/google/callback",
   "/auth/onboard", "/auth/handle-check", // gate themselves on the onboard cookie
+  // Billing (src/billing/routes.ts): the pricing page's link — it reads the session itself, to show a
+  // sign-in page instead of a bare 401 — and what that page asks before it draws its buttons.
+  "/billing/start", "/api/billing/config",
 ]);
 
 /** A hosting provider's install / OAuth return (src/hosting/routes.ts). A person's browser comes back here from

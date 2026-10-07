@@ -37,8 +37,7 @@ real round trip is unverified until the owner runs it (that doc › "Verify afte
 - **Not done here**: capture for non-primary repositories (the capture's keys carry no repository — still
   the first "smaller follow-up" below); several installations per org; Phase 7's removal of the legacy
   hook and the env-secret fallback, which this makes possible once SaplingLearn is on the App.
-- The release entry is `0.19` in `web/src/releases.ts`, dated 2026-10-07 with no PR number: set its `date`
-  to the merge day and add `prs: [<n>]` (and `(#n)` on its patch lines) in the PR that merges it.
+- Merged as #103; its release entry is `0.19` in `web/src/releases.ts`.
 
 ## Context
 
@@ -96,6 +95,52 @@ real round trip is unverified until the owner runs it (that doc › "Verify afte
   7. Release notes (0.18) corrected; the D1 name is `trov` in every script; `DEFAULT_TICKET_REPO` deleted;
      dead CSS removed; Settings › Account wraps; a sprint's `lead` must be a member.
   8. Docs: this file, `docs/architecture/data-layer.md`, `docs/architecture/organizations.md`.
+
+### Plans and grants (merged, #104 — release 0.20)
+
+`docs/architecture/plans.md` is the whole of it. In short: every org is on a plan (`shared/plans.ts`:
+Personal 1 seat, Team 10, Enterprise set per org — every number a placeholder for the owner), enforced at
+the server with one refusal (402 `plan_limit`); a person who is not a superadmin creates an org only by
+using a GRANT (Platform › Access); `persons.org_limit` and its Platform control are gone. One additive
+migration, `0044_plans` (existing orgs → Enterprise, unlimited seats). No prices, no payment code:
+`src/plans/billing.ts` is the seam the billing work builds on. Owner's calls before it ships: the default
+numbers, whether a pending invitation counts as a seat, the over-limit rule, whether grants should expire by
+default.
+The pricing page (#105, `shared/pricing.ts`, `/pricing`) merged after it with every price `null`.
+
+### Billing (branch `feat/billing`, PR #106, up to date with main — NOT merged)
+
+Paying for Personal or Team through Stripe, and setting the organization up with nobody at Trov involved:
+`docs/architecture/billing.md` (the flow, the event table, what each state does, the OWNER CHECKLIST).
+Migration `0045_billing` (three additive global tables). Nothing is live until the owner sets
+`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and the price ids in `wrangler.toml`: until then every billing
+route answers 503 `billing_unavailable` and the app is unchanged. Never exercised against real Stripe —
+the first test-mode purchase (checklist step 8) is the verification. Release entry `0.21` (it also carries
+the pricing page's line, #105). The pricing page (`/pricing`, on main) links to `GET /billing/start?plan=…`
+only for a plan with a price in `shared/pricing.ts` — all `null` today, so nothing public reaches billing;
+its link is `billingStartHref` (one source) and it does NOT ask `GET /api/billing/config`. Set a price there
+only after billing is on. Terms / Privacy need the paid-plan wording before live keys go in (not edited
+here: `web/src/legal.ts`).
+
+### Sync you can see, and AI summaries per org (branch `feat/sync-and-summaries`, merged with `main` at 0.21 — release 0.22)
+
+`docs/architecture/sync.md` (what Sync GitHub does, the credential it reads with, the run record, the
+routes) and `plans.md` › AI summaries are the whole of it. In short: a sync is a recorded RUN (`sync_runs`,
+`0046_sync_runs`, additive) that reports its phase and counts per batch, holds a per-org lock, and is
+readable by every member at `GET /api/o/:slug/sync`; the Sync panel (`web/src/sync.ts`) replaces the
+blocking modal. One platform `GEMINI_API_KEY` serves every org: each summarizer call is counted per org
+(`org_usage_daily`, `summary*` metrics) and the monthly limit `ai_summaries` turns summaries off for an org
+that has used its allowance — the item shows its excerpt, and a later Sync fills it in.
+Owner's calls before it ships: the allowance numbers (300 / 3,000 / unlimited are placeholders), how long
+run records are kept (90 days), and setting the key (`wrangler secret put GEMINI_API_KEY`) — summaries are
+off until then.
+What the merge with the GitHub App, plans, the pricing page and billing settled: the panel's "can a sync
+start", the batch route and the run all ask ONE credential source (`src/github-app/credential.ts` —
+`githubCredentialSource` for the ask, `resolveGithubCredential` for the read), and with none the panel
+sends an admin to Repositories where the App is configured and to Integrations where it is not; a plan
+that is past due still summarizes and a canceled one does not (`test/summaries.billing.test.ts`); the
+allowance shows on the pricing page and in the Plan block through `shared/plans.ts`'s one formatter.
+Not verified against the real services: a sync through a real installation token, and a real Gemini call.
 
 ### Changed for API clients since the pushed commit
 

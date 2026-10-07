@@ -38,6 +38,9 @@ const activity = (over: Partial<UsageActivity> = {}): UsageActivity => ({
 });
 const days = (values: [number, number][]) => values.map(([requests, mcp_calls], i) => ({ day: `2026-10-0${i + 1}`, requests, mcp_calls }));
 const zeroSeries = days([[0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]]);
+const summariesOf = (over: Partial<OrgUsage["summaries"]> = {}): OrgUsage["summaries"] => ({
+  attempted: 0, succeeded: 0, failed: 0, capped: 0, fell_back: 0, chars_in: 0, chars_out: 0, tokens_in: 0, tokens_out: 0, month_used: 0, cap: 3000, ...over,
+});
 const usageOf = (over: Partial<OrgUsage> = {}): OrgUsage => ({
   slug: "acme", name: "Acme", status: "active", created_at: "2026-09-01T10:00:00.000Z", last_activity_at: "2026-10-05T10:00:00.000Z",
   sizes: sizes({ members: 4, docs: 12, tickets_open: 3, tickets_total: 9, artifacts: 2, artifact_bytes: 3 * 1024 * 1024 }),
@@ -47,12 +50,18 @@ const usageOf = (over: Partial<OrgUsage> = {}): OrgUsage => ({
     top_tools: [{ tool: "get_feed", count: 40 }, { tool: "query", count: 24 }],
   }),
   series: days([[10, 2], [80, 9], [40, 0], [120, 20], [60, 11], [70, 14], [40, 8]]),
+  summaries: summariesOf(),
   ...over,
 });
 const quiet = (slug: string, name: string, over: Partial<OrgUsage> = {}): OrgUsage =>
   usageOf({ slug, name, last_activity_at: null, sizes: sizes(), activity: activity(), series: zeroSeries, ...over });
 const report = (orgs: OrgUsage[], over: Partial<PlatformUsageResponse["totals"]> = {}): PlatformUsageResponse => ({
   days: 7, since: "2026-09-30", until: "2026-10-06", generated_at: "2026-10-06T12:00:00.000Z",
+  summaries_enabled: true,
+  summaries: orgs.reduce<PlatformUsageResponse["summaries"]>((t, o) => {
+    for (const k of Object.keys(t) as (keyof typeof t)[]) t[k] += o.summaries[k];
+    return t;
+  }, { attempted: 0, succeeded: 0, failed: 0, capped: 0, fell_back: 0, chars_in: 0, chars_out: 0, tokens_in: 0, tokens_out: 0 }),
   totals: {
     orgs: orgs.length, suspended_orgs: orgs.filter((o) => o.status === "suspended").length, persons: 9, last_activity_at: null,
     sizes: sizes({ artifacts: 2, artifact_bytes: 3 * 1024 * 1024 }),
@@ -61,6 +70,7 @@ const report = (orgs: OrgUsage[], over: Partial<PlatformUsageResponse["totals"]>
   orgs,
 });
 const detailOf = (over: Partial<PlatformOrgDetail> = {}): PlatformOrgDetail => ({
+  summaries_enabled: true,
   org: org(),
   members: [
     { handle: "maya", name: "Maya Ortiz", role: "owner", title: "Founder", joined_at: "2026-09-01T10:00:00.000Z" },
@@ -415,6 +425,55 @@ describe("Usage", () => {
     expect(html).toContain("3 open of 9");
     expect(orgUsageBlock(quiet("acme", "Acme"), 30)).toContain("No activity in the last 30 days.");
   });
+
+  // ── AI summaries (0045: `org_usage_daily`'s summary counters, shared/plans.ts `ai_summaries`) ──
+  const words = (html: string): string => html.replace(/<title>[^<]*<\/title>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const busy = usageOf({ summaries: summariesOf({ attempted: 40, succeeded: 34, failed: 6, capped: 3, fell_back: 9, month_used: 38, cap: 100 }) });
+  const free = quiet("beta", "Beta", { summaries: summariesOf({ attempted: 12, succeeded: 12, month_used: 12, cap: null }) });
+  it("AI summaries: the platform totals for the window sit in one strip under the tiles", () => {
+    const html = usageView({ status: "ok", usage: report([busy, free]), days: 7, open: null });
+    const strip = html.slice(html.indexOf('data-usage-summaries="totals"'));
+    const t = words(`<div ${strip.slice(0, strip.indexOf("</div>"))}`);
+    expect(t).toContain("AI summaries Attempted 52 Succeeded 46 Fell back to an excerpt 9 last 7 days, all organizations");
+    // The six tiles are untouched: the strip is not a seventh.
+    expect(html.match(/class="plat-tile-n"/g)).toHaveLength(6);
+    expect(html).not.toContain("GEMINI_API_KEY");
+  });
+  it("AI summaries per org: attempted, succeeded, fell back and this month against the plan — in the opened row, 'unlimited' for no cap", () => {
+    const open = (slug: string) => words(usageView({ status: "ok", usage: report([busy, free]), days: 7, open: slug }));
+    expect(open("acme")).toContain("AI summaries Attempted 40 Succeeded 34 Fell back to an excerpt 9 This month 38 of 100");
+    expect(open("beta")).toContain("AI summaries Attempted 12 Succeeded 12 Fell back to an excerpt 0 This month 12 (unlimited)");
+    // A closed row carries no summaries line; the totals strip is the only one on the page.
+    expect(usageView({ status: "ok", usage: report([busy, free]), days: 7, open: null }).match(/data-usage-summaries/g)).toHaveLength(1);
+    expect(words(usageView({ status: "ok", usage: report([busy]), days: 7, open: null }))).toContain("Open a row for what was created, its AI summaries and its most used MCP tools.");
+    // The org's own page has the same line.
+    expect(words(orgUsageBlock(busy, 30))).toContain("AI summaries Attempted 40 Succeeded 34 Fell back to an excerpt 9 This month 38 of 100");
+    expect(words(usageBreakdown(activity(), 30))).not.toContain("AI summaries");
+  });
+  it("with no summaries key the page says so ONCE, quietly — no rows of zeros, in the totals or in any org's row", () => {
+    const html = usageView({ status: "ok", usage: { ...report([usageOf(), free]), summaries_enabled: false }, days: 7, open: "acme" });
+    expect(html.match(/AI summaries are off on this deployment \(no GEMINI_API_KEY\)\./g)).toHaveLength(1);
+    expect(html.match(/data-usage-summaries/g)).toHaveLength(1);
+    expect(words(html)).not.toContain("Attempted");
+    expect(words(html)).not.toContain("Fell back");
+    expect(words(html)).toContain("Open a row for what was created and its most used MCP tools.");
+    expect(html).not.toContain('role="alert"');
+    expect(html).not.toMatch(/#[0-9a-fA-F]{3,6}\b/);
+  });
+  it("an organization's own page says the same when the deployment has no key: one sentence, no figures", () => {
+    const off = orgUsageBlock(busy, 30, false);
+    expect(off.match(/AI summaries are off on this deployment \(no GEMINI_API_KEY\)\./g)).toHaveLength(1);
+    expect(off.match(/data-usage-summaries/g)).toHaveLength(1);
+    expect(words(off)).not.toContain("Attempted");
+    expect(words(off)).not.toContain("This month");
+    expect(off).not.toContain('role="alert"');
+    // Through the page: `PlatformOrgDetail.summaries_enabled` decides it.
+    const open = (on: boolean) => platformOrgView(plat({ orgSlug: "acme", detail: { status: "ok", data: detailOf({ usage: busy, summaries_enabled: on }) }, orgAudit: { status: "ok", data: [] } }));
+    expect(open(false)).toContain("AI summaries are off on this deployment (no GEMINI_API_KEY).");
+    expect(words(open(false))).not.toContain("Attempted 40");
+    expect(words(open(true))).toContain("AI summaries Attempted 40 Succeeded 34 Fell back to an excerpt 9 This month 38 of 100");
+    expect(open(true)).not.toContain("AI summaries are off");
+  });
 });
 
 describe("Admins & limits", () => {
@@ -448,19 +507,10 @@ describe("Admins & limits", () => {
     expect(html).toContain('role="alert"');
     expect(html).toContain("is the only superadmin");
   });
-  it("the org-creation limit: person + number, the default, and what happened", () => {
-    const blank = adminsTab(admins(), null);
-    expect(blank).toContain('<label for="plat-limit-handle"');
-    expect(blank).toContain('<label for="plat-limit-value"');
-    expect(blank).toContain("default 0");
-    expect(blank).toMatch(/data-act="platLimitSubmit" disabled/);
-    expect(blank).toMatch(/data-act="platLimitDefault" disabled/);
-    const ready = adminsTab(admins({ limitHandle: "maya", limitValue: "5" }), null);
-    expect(ready).toContain('data-act="platLimitSubmit" class="cnpy-accentbtn"');
-    expect(ready).toContain('data-act="platLimitDefault" class="cnpy-outlinebtn"');
-    expect(adminsTab(admins({ limitHandle: "maya", limitValue: "5000" }), null)).toMatch(/data-act="platLimitSubmit" disabled/);
-    expect(adminsTab(admins({ limitDone: "@maya can now create up to 5 organizations." }), null)).toContain("@maya can now create up to 5 organizations.");
-    expect(adminsTab(admins({ limitError: "No one has the handle @ghost. Check the spelling." }), null)).toContain("Check the spelling.");
+  it("has no org-creation limit control any more: a grant (the Access tab) is how a person gets to create one", () => {
+    const html = adminsTab(admins(), null);
+    expect(html).not.toMatch(/plat-limit|platLimit|Organization limit/);
+    expect(html).toContain("grant them");
   });
   it("loading and failed states", () => {
     expect(adminsTab(plat({ admins: { status: "loading", data: [] } }), null)).toContain("Loading superadmins…");
@@ -556,7 +606,7 @@ describe("the standalone Platform page (/platform/)", () => {
   });
 
   it("one organization: the title goes back to the list and a crumb names the org; its dialogs render at the root", () => {
-    const detail = { status: "ok" as const, data: { org: org(), members: [], invites: [], usage: usageOf() } };
+    const detail = { status: "ok" as const, data: { org: org(), members: [], invites: [], usage: usageOf(), summaries_enabled: true } };
     const html = render(page({ screen: "platformorg", plat: plat({ orgSlug: "acme", detail }) }));
     expect(html).toMatch(/<button type="button" data-act="platGo"[^>]*>Platform<\/button>/);
     expect(html).toContain(NOT_A_MEMBER);

@@ -13,6 +13,7 @@ import { checkFetchUrl, FetchUrlError } from "../artifacts/fetch-url";
 import { requireRole } from "../data/context";
 import { listSecretMeta, secretDeleteStmts } from "../data/secrets";
 import { all, batch, first, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
+import { requirePlan } from "../plans/gate";
 
 /** A refused settings write. `message` is fixed text — it names the field, never the submitted value. */
 export class SettingsError extends Error {
@@ -36,7 +37,6 @@ export interface OrgRepoRow {
   connection: "manual" | "app"; access_lost_at: string | null;
 }
 const REPO_COLS = `id, repo_full_name, is_primary, legacy_hook, created_at, created_by, connection, access_lost_at`;
-export const MAX_ORG_REPOS = 10;
 // GitHub's own shape: an owner login (≤ 39, alphanumerics and inner hyphens) and a repository name.
 const REPO_FULL_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
 
@@ -76,8 +76,10 @@ const newHookId = (): string =>
 /**
  * Add a repository (admin+). The org's FIRST repo is its primary; `is_primary: true` on a later one
  * moves the primary to it — and naming a repo the org already has, with `is_primary: true`, promotes
- * that one. Returns the row's id. `connection: "app"` is passed ONLY by the installation's picker
- * (src/github-app/routes.ts), after it has checked that the installation can see the repository.
+ * that one. Returns the row's id. A NEW repository counts against the plan's `repositories`
+ * (0044_plans; 402 `plan_limit`) — promoting one the org already has does not.
+ * `connection: "app"` is passed ONLY by the installation's picker (src/github-app/routes.ts), after it
+ * has checked that the installation can see the repository.
  */
 export async function addRepo(
   ctx: TenantContext, input: { repo_full_name: unknown; is_primary?: unknown }, opts: { connection?: "app" } = {}
@@ -100,7 +102,7 @@ export async function addRepo(
     }
     return { id: held.id, created: false };
   }
-  if (rows.length >= MAX_ORG_REPOS) throw new SettingsError("too_many_repos", 409, `an org can connect at most ${MAX_ORG_REPOS} repositories`);
+  await requirePlan(ctx, "repositories");
   const primary = rows.length === 0 || input.is_primary === true;
   const id = newHookId();
   const at = nowIso();
@@ -136,7 +138,6 @@ export async function removeRepo(ctx: TenantContext, id: string): Promise<string
 
 const ENV_COLS = `key, position, label, note, branch, railway_env, worker, worker_check, frontend_url, api_url, health_path,
   railway_environment_id, railway_service_id, created_at, updated_at, updated_by`;
-export const MAX_ORG_ENVIRONMENTS = 10;
 const ENV_KEY = /^[a-z0-9_-]{1,32}$/; // the organizations migration's CHECK
 /** The integrations whose scope is an environment key. */
 const ENV_SECRET_KINDS: readonly IntegrationKind[] = ["railway", "metrics_endpoint"];
@@ -213,7 +214,7 @@ export async function putEnvironment(ctx: TenantContext, key: string, body: Reco
   if (!ENV_KEY.test(key)) throw invalid("key", "key must be 1–32 characters: a–z, 0–9, _ or -");
   const envs = await listEnvironments(ctx);
   const current = envs.find((e) => e.key === key) ?? null;
-  if (!current && envs.length >= MAX_ORG_ENVIRONMENTS) throw new SettingsError("too_many_environments", 409, `an org can have at most ${MAX_ORG_ENVIRONMENTS} environments`);
+  if (!current) await requirePlan(ctx, "environments"); // a NEW environment counts against the plan (0044_plans); an edit does not
   const next = mergeEnvironment(current, key, body);
   const at = nowIso();
   const values = [next.label, next.note, next.branch, next.railway_env, next.worker, next.worker_check, next.frontend_url, next.api_url,
@@ -263,7 +264,7 @@ export async function reorderEnvironments(ctx: TenantContext, order: unknown): P
 }
 
 /** Delete an environment, its `railway` / `metrics_endpoint` secrets and close the gap in the order —
- *  one batch (admin+, §8.7.3). Its STORED hosting parts (0044_hosting_providers) go in the same batch, with
+ *  one batch (admin+, §8.7.3). Its STORED hosting parts (0047_hosting_providers) go in the same batch, with
  *  each one's last-poll row and deploy history: they describe a deployable of an environment that no longer
  *  exists (its legacy parts are its own columns, so they go with the row). Returns the audit targets of the
  *  secrets removed with it. */

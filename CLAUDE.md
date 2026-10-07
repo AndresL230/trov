@@ -172,9 +172,15 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   fixed mail sender and what is still open to abuse: `docs/architecture/abuse-limits.md`; the deploy runbook: `HANDOFF.md`.
   How an org is added, set up and run, role by role — and that a ticket's / handoff's `id` on every surface is its
   per-org NUMBER, never the row id: `docs/architecture/organizations.md`, `docs/architecture/data-layer.md`.
-  Then `0044_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
+  Plans, per-org limits (402 `plan_limit`), grants and the billing seam (`shared/plans.ts`, `src/plans/`,
+  `0044_plans`): `docs/architecture/plans.md` — a new limit goes in `PLANS` and is enforced with `requirePlan`.
+  Sync GitHub as a recorded run (`0046_sync_runs`, `src/sync/runs.ts`, `GET /sync`, the panel's every sentence in
+  `shared/sync.ts`): `docs/architecture/sync.md` — whether a sync can start is asked of the ONE GitHub credential
+  source (`githubCredentialSource`, `src/github-app/credential.ts`), never of the token alone. The summarizer for an org is chosen ONLY by `orgSummarizers`
+  (`src/plans/summaries.ts` — one platform key, each call metered per org, the monthly `ai_summaries` allowance).
+  Then `0047_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
   `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback
-  `scripts/hosting/0044_hosting_providers.down.sql`, run before 0042's] — see "Hosting providers" below.
+  `scripts/hosting/0047_hosting_providers.down.sql`, run before 0042's] — see "Hosting providers" below.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,
@@ -195,6 +201,8 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   reopens the same page as the `site` screen (`#site`): its nav swaps Sign in for "Back to the app", which
   returns to the route the logo was clicked from; `#site` is never stashed as a sign-in return-to. `web/src/landing-motion.ts`
   plays its scroll reveals; played keys live in `state.landingSeen` so a rerender never replays them.
+  Its last section is **Pricing** (`web/src/pricing.ts`, also the static `/pricing` page; prices in
+  `shared/pricing.ts`, `null` = not announced) — `docs/architecture/plans.md` › The pricing page.
   `web/src/releases.ts` is Help › **What's new**: `#releases` a grid of release cards; each release has TWO pages,
   `#releases/<v>` (release notes — for USERS: no PRs, no migrations) and `#releases/<v>/patches` (patch notes — for
   builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), flipped by a `segmented()` switch;
@@ -796,7 +804,7 @@ fire time's UTC minute/hour, each job in its own `safely` arm:
   issue number of every array-ref sprint); `:20` `reconcileRepo` alone (19 + 2N worst case, below — **19 + 4N with the tick's own
   pings: 27 today, N ≤ 7 under the 50**; logs `failed` when non-empty); `:30` `pruneRepoCapture` (D1 only). `:10` and `:20` need `GITHUB_SERVICE_TOKEN`
   + `GITHUB_REPO`; `:30` and the pings run regardless.
-- **`:40`, every hour** — the `hosting` job (0044; "Hosting providers" below): one unit per (org, environment, STORED
+- **`:40`, every hour** — the `hosting` job (0047; "Hosting providers" below): one unit per (org, environment, STORED
   part) from `listPartUnits`, each costing its provider's `pollCost` (≤ 6), served by rotation like the others; health
   keeps half the budget on this tick only when some org has a stored part. Legacy Cloudflare / Railway parts stay on
   the `:00` usage job.
@@ -1291,7 +1299,7 @@ issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source 
   truncates persons): `listPersons` never lists a reserved handle and the ticket writers' `requirePerson`
   refuses one, so it can never be assigned, file, comment or link.
 
-## Hosting providers — one interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0044_hosting_providers`)
+## Hosting providers — one interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0047_hosting_providers`)
 
 The Repo dashboard was built around one stack (a Cloudflare Worker frontend, a Railway backend). It now reads any
 host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free — the SPA imports its vocabularies):
@@ -1371,7 +1379,7 @@ cookie itself and ALWAYS redirects — never JSON, never a 500: nobody signed in
 the UI adds a Hosting tab), the outcome one of `HOSTING_CONNECT_OUTCOMES` (`shared/hosting.ts`) — never provider text.
 It binds only for that browser's intent, that provider, the same person, still an admin (re-checked live), after the
 code exchange through `hostFetch`; an installation ANOTHER org holds is `taken` (a platform read,
-`connectionsForExternalId` in `src/platform/jobs.ts`, and 0044's partial unique index on the active
+`connectionsForExternalId` in `src/platform/jobs.ts`, and 0047's partial unique index on the active
 `(provider, external_id)` at the write — the row, the credential and the config are ONE batch, so a lost race stores
 nothing), and a different install that appeared meanwhile is `already_connected`; a refused grant is handed back to
 the provider (`install.revoke`, best effort — with `externalId: null` for `taken`, so another org's installation is

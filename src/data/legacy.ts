@@ -6,6 +6,7 @@
 import type { InviteRow } from "@shared/rows";
 import { systemTenant, type PlatformContext, type TenantContext } from "./context";
 import { first, stmt, batch, nowIso } from "./platform-sql";
+import { seatGate, PlanLimitError, MEMBER_SEAT_FREE } from "../plans/state";
 
 /** Org #1 (0042_organizations): every pre-multitenancy row belongs to it. */
 export const SAPLINGLEARN_ORG_ID = "org_saplinglearn";
@@ -47,10 +48,19 @@ export function liveLegacyInvite(p: PlatformContext, email: string): Promise<Inv
 export async function consumeLegacyInvite(p: PlatformContext, handle: string, verifiedEmail: string | null): Promise<TenantContext | null> {
   const invite = verifiedEmail ? await liveLegacyInvite(p, verifiedEmail) : null;
   if (!invite) return null;
+  // The seat gate every join passes (0044_plans): this is an invitation being accepted. A refusal here
+  // (the org is full of members) leaves the person signed up with no membership and the invite pending.
+  let gate: Awaited<ReturnType<typeof seatGate>>;
+  try {
+    gate = await seatGate(p, SAPLINGLEARN_ORG_ID, "accept");
+  } catch (e) {
+    if (e instanceof PlanLimitError) return null;
+    throw e;
+  }
   const at = nowIso();
   await batch(p, [
-    stmt(p, `INSERT OR IGNORE INTO memberships (org_id, user_id, role, created_at, created_by) VALUES (?, ?, 'member', ?, ?)`,
-      SAPLINGLEARN_ORG_ID, handle, at, invite.invited_by),
+    stmt(p, `INSERT OR IGNORE INTO memberships (org_id, user_id, role, created_at, created_by) SELECT ?, ?, 'member', ?, ? WHERE ${MEMBER_SEAT_FREE}`,
+      SAPLINGLEARN_ORG_ID, handle, at, invite.invited_by, gate.cap, SAPLINGLEARN_ORG_ID, gate.cap),
     stmt(p, `UPDATE invites SET accepted_by = ? WHERE email = ? AND accepted_by IS NULL`, handle, invite.email),
     stmt(p, `UPDATE org_invites SET status = 'accepted', responded_at = ?, responded_by = ? WHERE org_id = ? AND email = ? AND status = 'pending'`,
       at, handle, SAPLINGLEARN_ORG_ID, invite.email),

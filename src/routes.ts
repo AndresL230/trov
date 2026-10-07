@@ -14,7 +14,7 @@ import { githubAppRoutes } from "./github-app/routes";
 import { hostingApp, hostingCallbackApp } from "./hosting/routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
-import { runBackfill, isFinalBackfillBatch } from "./tools/backfill";
+import { runSyncBatch, syncStatus } from "./sync/runs";
 import { get_doc, list_docs, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
 import {
   create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link, delete_ticket,
@@ -43,14 +43,15 @@ import { quickSearch } from "./tools/quick-search";
 import { QUICK_TYPES, type QuickType } from "@shared/quick-search";
 import { feedStats, isFeedStatsDays, isFeedStatsTz } from "./tools/feed-stats";
 import { getRepoDashboard, emptyRepoDashboard } from "./tools/repo";
-import type { ReconcileResult } from "./repo/github";
 import { orgEnvironments, orgPrimaryRepo } from "./repo/config";
-import { runLockedRepoRefresh, runReconcileJob, runUsagePolls } from "./repo/cron";
+import { runLockedRepoRefresh, runUsagePolls } from "./repo/cron";
 import type { DashboardData } from "@shared/dashboard";
 import { platformContext, soleTenantGate, tenantGate } from "./data/gate";
 import { orgsApp, myInvitesApp, orgTenantApp, cookieOnly } from "./orgs/routes";
 import { hasRole } from "./data/context";
 import { platformApp } from "./platform/routes";
+import { billingApp, orgBillingApp } from "./billing/routes";
+import { PlanLimitError, PLAN_LIMIT_STATUS } from "./plans/state";
 import { listLegacyInvites, getLegacyInvite, createLegacyInvite, revokeLegacyInvite, pendingInviteId, LegacyInviteError } from "./orgs/legacy-invites";
 import { mailInvite, mailOrigin } from "./orgs/mail";
 import { listPersons, PersonError } from "./auth/persons";
@@ -62,6 +63,14 @@ import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 
 export const app = new Hono<AppEnv>();
+
+// A plan refused an addition (0044_plans, docs/architecture/plans.md): ONE status and ONE body for every
+// route — 402 `{ error: "plan_limit", limit, used, cap, plan, status, message }`. A repository throws
+// `PlanLimitError`; no route maps it itself. Anything else is rethrown (Hono's 500).
+app.onError((err, c) => {
+  if (err instanceof PlanLimitError) return c.json(err.refusal, PLAN_LIMIT_STATUS);
+  throw err;
+});
 
 // ── The tenant routes (canopy-multitenancy.md §6.3) ──────────────────────────
 // Every route that reads or writes an org's data is defined ONCE, on one of these two sub-apps, and
@@ -169,6 +178,8 @@ app.route("/api/platform", platformApp);
 // redirect URI is fixed — the org rides in the sealed `state`, and the callback checks the person's admin
 // membership of it itself (src/data/gate.ts lets `/hosting/*` past the one-org alias).
 app.route("/hosting", hostingCallbackApp);
+// Billing (docs/architecture/billing.md): the purchase link, what the pricing page asks, the waiting room's poll.
+app.route("/", billingApp);
 
 // Artifacts (issue #52) and the email notification prefs / policy / settings / outbox: tenant sub-apps,
 // `/api/o/:slug/artifacts…` ↔ `/api/artifacts…`, `/api/o/:slug/notifications…` ↔ `/api/notifications…`.
@@ -717,9 +728,10 @@ tenantRoot.get("/repo/dashboard", async (c) => {
 tenantRoot.post("/admin/backfill", async (c) => {
   const login = c.get("principal").handle;
   if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "admin only" }, 403);
-  const res = await runBackfill(c.env, c.var.ctx, login);
-  if (!res.ok) return c.json({ error: res.error }, 503);
-  // Best-effort, and only on the batch that ENDS a Sync (web/src/main.ts
+  // Each batch belongs to a RUN (src/sync/runs.ts, docs/architecture/sync.md): the record of who
+  // started it, where it stands and how it ended — and the org's lock, so a second start is a 409
+  // `sync_running`. The batch's own answer is unchanged; `run` and `summaries` are added to it.
+  // The closing reconcile is best-effort, and only on the batch that ENDS a Sync (web/src/main.ts
   // re-POSTs this route up to 10 times while the summary budget stays
   // exhausted): reconcileRepo redoes ~250 no-op statements on an
   // already-reconciled repo, so running it on every intermediate batch would
@@ -729,15 +741,26 @@ tenantRoot.post("/admin/backfill", async (c) => {
   // to see the client's loop counter, and without it a Sync that hits the cap
   // while still exhausted would never reconcile. Read defensively: an absent
   // or malformed body behaves exactly as before (gates on the budget alone).
-  const body = (await c.req.json().catch(() => null)) as { batch?: unknown; of?: unknown } | null;
+  const body = (await c.req.json().catch(() => null)) as { batch?: unknown; of?: unknown; start?: unknown; run?: unknown } | null;
   const batch = typeof body?.batch === "number" ? body.batch : undefined;
   const of = typeof body?.of === "number" ? body.of : undefined;
   // `repo.failed` names each reconcile arm that threw (deployments / runs / …),
   // so a Sync that silently lost one is distinguishable from one that had
   // nothing to do.
-  let repo: ReconcileResult | undefined;
-  if (isFinalBackfillBatch(res, batch, of)) repo = (await runReconcileJob(c.env, c.var.ctx).catch(() => null)) ?? undefined;
-  return c.json(repo ? { ...res, repo } : res);
+  const out = await runSyncBatch(c.env, c.var.ctx, login, { batch, of, start: body?.start === true, run: typeof body?.run === "number" ? body.run : undefined });
+  return c.json(out.body, out.status);
+});
+
+// Sync GitHub, as every MEMBER reads it (src/sync/runs.ts): the run in progress, the last one — who,
+// when, how it ended, what it changed — why a sync cannot start, the org's AI-summaries allowance, and
+// when deployments and CI were last refreshed. Counts and failure codes only; never a 500.
+tenantApi.get("/sync", async (c) => {
+  try {
+    return c.json(await syncStatus(c.env, c.var.ctx));
+  } catch (e) {
+    console.error("sync status", e instanceof Error ? e.name : "error");
+    return c.json({ error: "sync status unavailable" }, 503);
+  }
 });
 
 // ADMIN action (session-gated + admin-gated, NEVER an MCP tool): "Poll now" —
@@ -1120,6 +1143,7 @@ app.route("/api/o/:slug", orgSettingsApp);
 app.route("/api/o/:slug", githubAppRoutes); // the GitHub App's connection (src/github-app/routes.ts)
 app.route("/api/o/:slug", hostingApp); // Org settings › Hosting: parts, connections, the setup read (src/hosting/routes.ts)
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
+app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
 // their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name
 // twice. Nothing reads `:org` — `tenantGate` (mounted on `/api/o/:slug/*` above) resolved the org from

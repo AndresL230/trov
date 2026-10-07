@@ -6,7 +6,7 @@ import type { GithubAppStatusDTO } from "./github-app";
 
 export const INTEGRATION_KINDS = [
   "cloudflare_analytics", "railway", "metrics_endpoint", "github_token", "github_webhook",
-  // The hosting providers (0044_hosting_providers, shared/hosting.ts): one org-wide credential each, expected
+  // The hosting providers (0047_hosting_providers, shared/hosting.ts): one org-wide credential each, expected
   // only once a part of one of the org's environments uses that provider.
   "vercel", "render", "netlify", "fly", "aws",
 ] as const;
@@ -70,7 +70,7 @@ export type OrgSettingsAuditAction =
   // The GitHub App's installation (src/github-app/store.ts): connected / disconnected by an admin; the
   // rest arrive from GitHub (its webhook, or its answer to a token request) and are written as `system`.
   | "github.connect" | "github.disconnect" | "github.uninstall" | "github.suspend" | "github.unsuspend" | "github.repos" | "github.permissions"
-  // Hosting (0044_hosting_providers): a part set / removed, an install or OAuth grant connected, disconnected
+  // Hosting (0047_hosting_providers): a part set / removed, an install or OAuth grant connected, disconnected
   // from Trov, or revoked from the provider's side.
   | "part.set" | "part.delete" | "hosting.connect" | "hosting.disconnect" | "hosting.revoked";
 

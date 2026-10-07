@@ -44,6 +44,7 @@ import {
   type ArtifactTextKind, type ArtifactUploadTicketDTO, type ArtifactVersionDTO, type ArtifactVisibility,
   type CreateTextArtifactInput, type PatchArtifactInput, type UploadTicketInput,
 } from "@shared/artifacts";
+import { requirePlan } from "../plans/gate";
 import type { ArtifactLinkRow, ArtifactPageRow, ArtifactUploadTokenRow, ArtifactVersionRow } from "@shared/rows";
 
 // ── errors ───────────────────────────────────────────────────────────────────
@@ -608,6 +609,7 @@ async function writeVersion(ctx: TenantContext, p: ArtifactPageRow, v: VersionPa
   if ((await currentSha(ctx, p)) === v.sha256) {
     return { unchanged: true, version_no: p.current_version, page: await detailOf(ctx, p, null) };
   }
+  await requirePlan(ctx, "artifact_bytes", v.size_bytes); // every stored version counts (0044_plans)
   const next = p.current_version + 1;
   const now = nowIso();
   const status: ArtifactStatus = next === 1 ? p.status : "published";
@@ -653,6 +655,7 @@ async function insertPage(
   extra: Stmt[] = [],
   slugOverride?: string
 ): Promise<string> {
+  if (version) await requirePlan(ctx, "artifact_bytes", version.size_bytes);
   const slug = slugOverride ?? (await uniqueSlug(ctx, f.title));
   const now = nowIso();
   const stmts: Stmt[] = [
@@ -939,6 +942,8 @@ export async function mintUploadToken(ctx: TenantContext, input: UploadTicketInp
   const filename = cleanFilename(input.filename);
   const content_type = binaryContentType(kind, input.content_type, filename);
   const summary = checkSummary(input.summary);
+  // Refused here, before a link is handed out and any byte is sent (the PUT checks again).
+  await requirePlan(ctx, "artifact_bytes", input.size_bytes);
   const token = randomToken();
   const tokenHash = await sha256Hex(token);
   const now = Date.now();
@@ -992,6 +997,13 @@ export async function consumeUploadToken(
   if (!body) {
     await release();
     throw bad("the upload body is empty");
+  }
+  // The plan may have filled since the link was minted: refuse before the bytes go to R2.
+  try {
+    await requirePlan(ctx, "artifact_bytes", t.size_bytes);
+  } catch (e) {
+    await release();
+    throw e;
   }
   const key = r2KeyFor(t.sha256);
   try {

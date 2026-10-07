@@ -11,19 +11,21 @@ import { REGISTRY } from "../notifications/registry";
 import { DEFAULT_SETTINGS } from "../notifications/cron";
 import { avatarSrc, ROLE_MAX, RESPONSIBILITIES_MAX } from "@shared/people";
 import type { PersonColor } from "@shared/rows";
+import { seatGate, SEAT_FREE, MEMBER_SEAT_FREE } from "../plans/state";
+import type { PlanId, PlanOverrides, PlanSource } from "@shared/plans";
 import {
-  DEFAULT_ORG_LIMIT, ORG_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, orgSlugProblem,
+  ORG_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, orgSlugProblem,
   type OrgRole, type OrgAuditAction, type MyOrg, type MyInvite, type MyOrgsResponse, type OrgSettings,
   type OrgMember, type OrgInvite, type OrgMeResponse, type OrgLogoSource, type InviteMailStatus, INVITE_NAME_MAX, orgLogoSrc, orgLogoOf,
 } from "@shared/orgs";
 
 export type OrgErrorCode =
   | "invalid_slug" | "reserved_slug" | "invalid_name" | "invalid_invite" | "invalid_member"
-  | "slug_taken" | "org_limit" | "not_found" | "last_owner" | "invite_exists" | "already_member" | "no_address";
+  | "slug_taken" | "no_grant" | "not_found" | "last_owner" | "invite_exists" | "already_member" | "no_address";
 
 export const ORG_ERROR_STATUS: Record<OrgErrorCode, 400 | 403 | 404 | 409> = {
   invalid_slug: 400, reserved_slug: 400, invalid_name: 400, invalid_invite: 400, invalid_member: 400,
-  slug_taken: 409, org_limit: 403, not_found: 404, last_owner: 409, invite_exists: 409, already_member: 409, no_address: 409,
+  slug_taken: 409, no_grant: 403, not_found: 404, last_owner: 409, invite_exists: 409, already_member: 409, no_address: 409,
 };
 
 export class OrgError extends Error {
@@ -64,19 +66,8 @@ export function cleanOrgName(name: unknown): string {
   return n;
 }
 
-/** How many orgs `handle` has created, and how many they may. A superadmin gets no exemption here: they
- *  add organizations in Platform (`createOrgWithAdmin`), which this allowance does not gate. */
-export async function orgAllowance(p: PlatformContext, handle: string): Promise<{ created: number; limit: number; can_create: boolean; superadmin: boolean }> {
-  const [superadmin, row] = await Promise.all([
-    isSuperadmin(p, handle),
-    first<{ created: number; org_limit: number | null }>(p,
-      `SELECT (SELECT COUNT(*) FROM orgs WHERE created_by = ?1 COLLATE NOCASE) AS created,
-              (SELECT org_limit FROM persons WHERE handle = ?1 COLLATE NOCASE) AS org_limit`, handle),
-  ]);
-  const created = row?.created ?? 0;
-  const limit = row?.org_limit ?? DEFAULT_ORG_LIMIT;
-  return { created, limit, can_create: created < limit, superadmin };
-}
+/** The plan a new org starts on (0044_plans) — REQUIRED, so no path creates an org without choosing one. */
+export interface OrgPlanSeed { id: PlanId; overrides: PlanOverrides; source: PlanSource }
 
 export interface CreateOrgInput {
   slug: string;
@@ -84,6 +75,7 @@ export interface CreateOrgInput {
   /** The person who becomes the org's first OWNER; null when a superadmin creates it for someone who
    *  is invited instead (they are NOT made a member — §5.4). */
   owner: string | null;
+  plan: OrgPlanSeed;
   /** Statements to run in the same batch, given the new org's id (the superadmin's owner invite). */
   extra?: (orgId: string, at: string) => Stmt[];
 }
@@ -91,9 +83,10 @@ export interface CreateOrgInput {
 /**
  * THE way an org comes to exist: the `orgs` row, its owner's membership, and every per-org singleton a
  * working org reads — what 0042_organizations seeded for SaplingLearn: the `plan` row, `notification_settings`,
- * one `notification_policy` row per registry kind, and both `org_counters` — in ONE batch. `p.actor`
- * is recorded as `created_by` (what the creation cap counts). The cap itself is the caller's to
- * enforce (`orgAllowance`): a superadmin taking on an org is not subject to it.
+ * one `notification_policy` row per registry kind, and both `org_counters` — in ONE batch, on the plan
+ * `input.plan` names. `p.actor` is recorded as `created_by`. WHO may create one is the caller's to
+ * enforce: a superadmin (src/platform `createOrgWithAdmin`), or a person using a grant
+ * (src/plans/grants.ts `createOrgFromGrant`, whose consuming statement rides in `extra`).
  */
 export async function createOrg(p: PlatformContext, input: CreateOrgInput): Promise<OrgRow> {
   const slug = typeof input.slug === "string" ? input.slug.trim() : "";
@@ -107,7 +100,9 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
   const at = nowIso();
   const sys = systemTenant(p, id, "system"); // the tenant rows below are written AS the new org
   const stmts: Stmt[] = [
-    stmt(p, `INSERT INTO orgs (id, slug, name, created_at, created_by) VALUES (?, ?, ?, ?, ?)`, id, slug, name, at, p.actor),
+    stmt(p, `INSERT INTO orgs (id, slug, name, created_at, created_by, plan, plan_overrides, plan_source, plan_status, plan_changed_at, plan_changed_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+      id, slug, name, at, p.actor, input.plan.id, JSON.stringify(input.plan.overrides), input.plan.source, at, p.actor),
     stmt(p, `INSERT INTO org_counters (org_id, name, value) VALUES (?, 'ticket', 0), (?, 'handoff', 0)`, id, id),
     tenantStmt(sys, `INSERT INTO plan (org_id, narrative, current_version) VALUES (?, '', 0)`, sys.orgId),
     tenantStmt(sys, `INSERT INTO notification_settings (org_id, send_hour, timezone, from_address) VALUES (?, ?, ?, ?)`,
@@ -115,7 +110,7 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
     ...REGISTRY.map((k) => tenantStmt(sys,
       `INSERT INTO notification_policy (org_id, kind, default_cadence, enabled, updated_at, updated_by) VALUES (?, ?, ?, 1, ?, 'registry')`,
       sys.orgId, k.id, k.defaultCadence, at)),
-    auditStmt(p, id, "org.create", slug, { name, owner: input.owner }, at),
+    auditStmt(p, id, "org.create", slug, { name, owner: input.owner, plan: input.plan.id }, at),
   ];
   if (input.owner) {
     stmts.push(
@@ -131,14 +126,6 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
     throw e;
   }
   return { id, slug, name, created_at: at, created_by: p.actor, suspended_at: null, suspended_by: null, logo_sha: null };
-}
-
-/** `POST /api/orgs`: a person with an allowance (`persons.org_limit`), under it; they become the owner. */
-export async function createOrgForSelf(p: PlatformContext, handle: string, input: { slug: string; name: string }): Promise<OrgRow> {
-  const allowance = await orgAllowance(p, handle);
-  if (!allowance.can_create) throw new OrgError("org_limit", `you can create at most ${allowance.limit} orgs`);
-  // Awaited, not returned: workerd reports a refusal thrown before the caller's handler attaches as unhandled.
-  return await createOrg(p, { slug: input.slug, name: input.name, owner: handle });
 }
 
 // ── the caller's orgs and invites ────────────────────────────────────────────
@@ -175,9 +162,11 @@ export async function listMyInvites(p: PlatformContext, handle: string): Promise
   }));
 }
 
-export async function myOrgs(p: PlatformContext, handle: string): Promise<MyOrgsResponse> {
-  const [orgs, invites, allowance] = await Promise.all([listMyOrgs(p, handle), listMyInvites(p, handle), orgAllowance(p, handle)]);
-  return { orgs, invites, superadmin: allowance.superadmin, can_create: allowance.can_create, created: allowance.created, limit: allowance.limit };
+/** The caller's orgs and invitations. `grants` / `can_create` are the route's to add (src/plans/grants.ts
+ *  `usableGrants`): a grant is what lets a person create an org. */
+export async function myOrgs(p: PlatformContext, handle: string): Promise<Omit<MyOrgsResponse, "grants" | "can_create">> {
+  const [orgs, invites, superadmin] = await Promise.all([listMyOrgs(p, handle), listMyInvites(p, handle), isSuperadmin(p, handle)]);
+  return { orgs, invites, superadmin };
 }
 
 /**
@@ -185,6 +174,11 @@ export async function myOrgs(p: PlatformContext, handle: string): Promise<MyOrgs
  * reads the invite, so an id that is not theirs — someone else's, answered, revoked, unknown — is
  * `not_found` for all alike. Accepting inserts the membership and stamps the invite in one batch; an
  * `as_owner` invite (0042_organizations, a superadmin's) grants OWNER, and lifts an existing member to owner.
+ *
+ * SEATS (0044_plans): the invitation reserved its seat when it was made, so accepting is refused only when
+ * the org is already FULL OF MEMBERS (its plan shrank since) — 402 `plan_limit`, the invitation left
+ * pending. The condition is in the membership INSERT itself, and the stamp and the audit rows follow
+ * only if it wrote: of two people accepting into the last seat, exactly one joins.
  */
 export async function respondToInvite(p: PlatformContext, handle: string, id: number, accept: boolean): Promise<{ org: { slug: string; name: string }; role: OrgRole | null; org_id: string; first_join: boolean }> {
   const inv = await first<InviteJoinRow>(p, `${INVITE_JOIN} AND i.id = ?2`, handle, id);
@@ -192,21 +186,30 @@ export async function respondToInvite(p: PlatformContext, handle: string, id: nu
   const firstJoin = accept && (await neverJoined(p, handle));
   const at = nowIso();
   const role = grantedRole(inv);
-  const stamp = stmt(p, `UPDATE org_invites SET status = ?, responded_at = ?, responded_by = ? WHERE id = ? AND status = 'pending'`,
-    accept ? "accepted" : "declined", at, handle, id);
   if (!accept) {
-    await batch(p, [stamp, auditStmt(p, inv.org_id, "invite.decline", `invite:${id}`, {}, at)]);
+    await batch(p, [
+      stmt(p, `UPDATE org_invites SET status = 'declined', responded_at = ?, responded_by = ? WHERE id = ? AND status = 'pending'`, at, handle, id),
+      auditStmt(p, inv.org_id, "invite.decline", `invite:${id}`, {}, at),
+    ]);
     return { org: { slug: inv.slug, name: inv.name }, role: null, org_id: inv.org_id, first_join: false };
   }
-  await batch(p, [
-    stamp,
-    // Already a member (invited twice, or an owner invite for a current member): never a demotion.
-    stmt(p, `INSERT INTO memberships (org_id, user_id, role, created_at, created_by) VALUES (?, ?, ?, ?, ?)
+  const gate = await seatGate(p, inv.org_id, "accept", !!(await memberOf(p, inv.org_id, handle)));
+  const joined = `EXISTS (SELECT 1 FROM memberships WHERE org_id = ? AND user_id = ? COLLATE NOCASE)`;
+  const audit = (action: OrgAuditAction, target: string, detail: Record<string, unknown>): Stmt =>
+    stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) SELECT ?, ?, ?, ?, ?, ? WHERE ${joined}`,
+      inv.org_id, p.actor, action, target, JSON.stringify(detail), at, inv.org_id, handle);
+  const [res] = await batch(p, [
+    // Already a member (invited twice, or an owner invite for a current member): never a demotion, and no new seat.
+    stmt(p, `INSERT INTO memberships (org_id, user_id, role, created_at, created_by)
+             SELECT ?, ?, ?, ?, ? WHERE ${MEMBER_SEAT_FREE} OR ${joined}
              ON CONFLICT(org_id, user_id) DO UPDATE SET role = CASE WHEN excluded.role = 'owner' THEN 'owner' ELSE memberships.role END`,
-      inv.org_id, handle, role, at, inv.invited_by),
-    auditStmt(p, inv.org_id, "invite.accept", `invite:${id}`, { role }, at),
-    auditStmt(p, inv.org_id, "member.add", handle, { role, invite: id }, at),
+      inv.org_id, handle, role, at, inv.invited_by, gate.cap, inv.org_id, gate.cap, inv.org_id, handle),
+    stmt(p, `UPDATE org_invites SET status = 'accepted', responded_at = ?, responded_by = ? WHERE id = ? AND status = 'pending' AND ${joined}`,
+      at, handle, id, inv.org_id, handle),
+    audit("invite.accept", `invite:${id}`, { role }),
+    audit("member.add", handle, { role, invite: id }),
   ]);
+  if ((res.meta.changes ?? 0) === 0) throw gate.refuse(); // lost the race for the last seat
   return { org: { slug: inv.slug, name: inv.name }, role, org_id: inv.org_id, first_join: firstJoin };
 }
 
@@ -401,13 +404,21 @@ export async function personForAddress(p: PlatformContext, a: InviteAddress): Pr
   return rows.length === 1 ? rows[0].person : null;
 }
 
-/** The pending-invite INSERT; `asOwner` is the superadmin's flag (src/platform) and nobody else's. */
-export function inviteStmt(p: PlatformContext, orgId: string, a: InviteAddress, role: "admin" | "member", asOwner: boolean, at: string, name: string | null = null): Stmt {
-  return stmt(p, `INSERT INTO org_invites (org_id, github_login, email, role, as_owner, invited_by, status, created_at, name) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
-    orgId, a.github_login ?? null, a.email ?? null, role, asOwner ? 1 : 0, p.actor, at, name);
+/**
+ * The pending-invite INSERT; `asOwner` is the superadmin's flag (src/platform) and nobody else's.
+ * `seatCap` is REQUIRED (0044_plans): the org's seat cap from `seatGate(p, orgId, "reserve")` — the row is
+ * written only while members + pending invitations are under it, so a caller checks `meta.changes` and
+ * throws the gate's refusal on 0. `null` = no cap (an unlimited plan, or a brand-new org's first seat).
+ */
+export function inviteStmt(p: PlatformContext, orgId: string, a: InviteAddress, role: "admin" | "member", asOwner: boolean, at: string, name: string | null, seatCap: number | null): Stmt {
+  return stmt(p, `INSERT INTO org_invites (org_id, github_login, email, role, as_owner, invited_by, status, created_at, name)
+                  SELECT ?, ?, ?, ?, ?, ?, 'pending', ?, ? WHERE ${SEAT_FREE}`,
+    orgId, a.github_login ?? null, a.email ?? null, role, asOwner ? 1 : 0, p.actor, at, name, seatCap, orgId, orgId, seatCap);
 }
 
-/** Admin+ invites by GitHub login or email, as admin or member. Never an owner: that is the superadmin's. */
+/** Admin+ invites by GitHub login or email, as admin or member. Never an owner: that is the superadmin's.
+ *  An invitation RESERVES A SEAT (0044_plans): refused with 402 `plan_limit` once members + pending
+ *  invitations reach the plan's seats — and outright on a one-person plan. */
 export async function createInvite(p: PlatformContext, ctx: TenantContext, input: { github_login?: unknown; email?: unknown; role?: unknown; name?: unknown }): Promise<OrgInvite> {
   requireRole(ctx, "admin");
   const address = parseInviteAddress(input);
@@ -416,14 +427,16 @@ export async function createInvite(p: PlatformContext, ctx: TenantContext, input
   if (role !== "admin" && role !== "member") throw new OrgError("invalid_invite", "role must be admin or member");
   const person = await personForAddress(p, address);
   if (person && (await memberOf(p, ctx.orgId, person))) throw new OrgError("already_member");
+  const gate = await seatGate(p, ctx.orgId, "reserve");
   const at = nowIso();
   let id: number;
   try {
     const [res] = await batch(p, [
-      inviteStmt(p, ctx.orgId, address, role, false, at, name),
+      inviteStmt(p, ctx.orgId, address, role, false, at, name, gate.cap),
       stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at)
-               VALUES (?, ?, 'invite.create', 'invite:' || last_insert_rowid(), ?, ?)`, ctx.orgId, p.actor, JSON.stringify({ ...address, role }), at),
+               SELECT ?, ?, 'invite.create', 'invite:' || last_insert_rowid(), ?, ? WHERE changes() > 0`, ctx.orgId, p.actor, JSON.stringify({ ...address, role }), at),
     ]);
+    if ((res.meta.changes ?? 0) === 0) throw gate.refuse(); // another invitation took the last seat
     id = res.meta.last_row_id;
   } catch (e) {
     if (isUniqueViolation(e)) throw new OrgError("invite_exists");

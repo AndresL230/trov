@@ -6,8 +6,13 @@
 // content — and nothing outside `requireSuperadmin` may call it. The data-layer static test (§4.4)
 // allowlists exactly this file; do not write a cross-org tenant read anywhere else.
 import { type PlatformContext, type Stmt, stmt, batch } from "../data/platform-sql";
-import { METRIC_API_READ, METRIC_API_WRITE, METRIC_MCP_REQUEST, METRIC_MCP_TOOL_PREFIX, USAGE_RETENTION_DAYS } from "../data/meter";
-import { orgLogoSrc, type OrgUsage, type PlatformUsageResponse, type UsageActivity, type UsageCreated, type UsageDay, type UsageSizes } from "@shared/orgs";
+import {
+  METRIC_API_READ, METRIC_API_WRITE, METRIC_MCP_REQUEST, METRIC_MCP_TOOL_PREFIX, USAGE_RETENTION_DAYS,
+  METRIC_SUMMARY, METRIC_SUMMARY_CAPPED, METRIC_SUMMARY_CHARS_IN, METRIC_SUMMARY_CHARS_OUT, METRIC_SUMMARY_FAILED,
+  METRIC_SUMMARY_TOKENS_IN, METRIC_SUMMARY_TOKENS_OUT, SUMMARY_METRIC_GLOB,
+} from "../data/meter";
+import { orgLogoSrc, type OrgUsage, type PlatformUsageResponse, type UsageActivity, type UsageCreated, type UsageDay, type UsageSizes, type UsageSummaries } from "@shared/orgs";
+import { monthStartDay, resolveEntitlements, storedOverrides } from "@shared/plans";
 
 export const USAGE_DEFAULT_DAYS = 30;
 export const USAGE_MAX_DAYS = USAGE_RETENTION_DAYS;
@@ -61,6 +66,16 @@ const zeroActivity = (): UsageActivity => ({
   api_requests: 0, api_reads: 0, api_writes: 0, mcp_requests: 0, mcp_tool_calls: 0, active_people: 0,
   created: zeroCreated(), emails_sent: 0, top_tools: [],
 });
+// AI summaries: which counter each metric feeds (src/data/meter.ts). `succeeded` / `fell_back` are derived.
+const zeroSummaries = (): UsageSummaries => ({ attempted: 0, succeeded: 0, failed: 0, capped: 0, fell_back: 0, chars_in: 0, chars_out: 0, tokens_in: 0, tokens_out: 0 });
+const SUMMARY_FIELD: Record<string, "attempted" | "failed" | "capped" | "chars_in" | "chars_out" | "tokens_in" | "tokens_out"> = {
+  [METRIC_SUMMARY.pr]: "attempted", [METRIC_SUMMARY.issue]: "attempted",
+  [METRIC_SUMMARY_FAILED.pr]: "failed", [METRIC_SUMMARY_FAILED.issue]: "failed",
+  [METRIC_SUMMARY_CAPPED.pr]: "capped", [METRIC_SUMMARY_CAPPED.issue]: "capped",
+  [METRIC_SUMMARY_CHARS_IN]: "chars_in", [METRIC_SUMMARY_CHARS_OUT]: "chars_out",
+  [METRIC_SUMMARY_TOKENS_IN]: "tokens_in", [METRIC_SUMMARY_TOKENS_OUT]: "tokens_out",
+};
+const derived = (s: UsageSummaries): UsageSummaries => ({ ...s, succeeded: Math.max(0, s.attempted - s.failed), fell_back: s.failed + s.capped });
 const topTools = (m: Map<string, number>) =>
   [...m].map(([tool, count]) => ({ tool, count })).sort((a, b) => b.count - a.count || a.tool.localeCompare(b.tool)).slice(0, 10);
 
@@ -69,7 +84,7 @@ const topTools = (m: Map<string, number>) =>
  * today. One D1 batch. `series` is zero-filled, oldest first, exactly `days` long — in every org row and
  * in the totals.
  */
-export async function platformUsage(p: PlatformContext, days: number = USAGE_DEFAULT_DAYS, now: Date = new Date()): Promise<PlatformUsageResponse> {
+export async function platformUsage(p: PlatformContext, days: number = USAGE_DEFAULT_DAYS, now: Date = new Date(), opts: { summariesEnabled?: boolean } = {}): Promise<PlatformUsageResponse> {
   const until = dayOf(now.getTime());
   const since = dayOf(now.getTime() - (days - 1) * DAY_MS);
   const sinceIso = `${since}T00:00:00.000Z`;
@@ -83,11 +98,16 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
     stmt(p, TICKETS_SQL),
     stmt(p, EMAILS_SQL, sinceIso),
     stmt(p, `SELECT org_id, day, metric, SUM(count) AS n FROM org_usage_daily WHERE day >= ? GROUP BY org_id, day, metric`, since),
-    stmt(p, `SELECT org_id, COUNT(DISTINCT lower(actor)) AS n FROM org_usage_daily WHERE day >= ? GROUP BY org_id`, since),
-    stmt(p, `SELECT COUNT(DISTINCT lower(actor)) AS n FROM org_usage_daily WHERE day >= ?`, since),
-    stmt(p, `SELECT org_id, MAX(last_at) AS at FROM org_usage_daily GROUP BY org_id`),
+    // The summary counters are the platform's own calls, not a person's requests: they are neither
+    // "active people" nor an org's "last activity".
+    stmt(p, `SELECT org_id, COUNT(DISTINCT lower(actor)) AS n FROM org_usage_daily WHERE day >= ? AND metric NOT GLOB '${SUMMARY_METRIC_GLOB}' GROUP BY org_id`, since),
+    stmt(p, `SELECT COUNT(DISTINCT lower(actor)) AS n FROM org_usage_daily WHERE day >= ? AND metric NOT GLOB '${SUMMARY_METRIC_GLOB}'`, since),
+    stmt(p, `SELECT org_id, MAX(last_at) AS at FROM org_usage_daily WHERE metric NOT GLOB '${SUMMARY_METRIC_GLOB}' GROUP BY org_id`),
     ...sizeKeys.map((k) => stmt(p, SIZE_SQL[k])),
     ...createdKeys.map((k) => stmt(p, CREATED_SQL[k], sinceIso)),
+    // AI summaries: each org's attempts this CALENDAR MONTH (what its allowance counts), and its plan.
+    stmt(p, `SELECT org_id, SUM(count) AS n FROM org_usage_daily WHERE day >= ? AND metric IN ('${METRIC_SUMMARY.pr}', '${METRIC_SUMMARY.issue}') GROUP BY org_id`, monthStartDay(now)),
+    stmt(p, `SELECT id AS org_id, plan, plan_overrides FROM orgs`),
   ];
   const res = await batch<Record<string, unknown>>(p, stmts);
   const rows = <T>(i: number): T[] => (res[i].results ?? []) as T[];
@@ -102,6 +122,10 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
   const lastAt = new Map(rows<{ org_id: string; at: string | null }>(7).map((r) => [r.org_id, r.at]));
   const sizes = new Map(sizeKeys.map((k, i) => [k, byOrg(rows<N>(8 + i))]));
   const created = new Map(createdKeys.map((k, i) => [k, byOrg(rows<N>(8 + sizeKeys.length + i))]));
+  const tail = 8 + sizeKeys.length + createdKeys.length;
+  const monthUsed = byOrg(rows<N>(tail));
+  const caps = new Map(rows<{ org_id: string; plan: string; plan_overrides: string }>(tail + 1)
+    .map((r) => [r.org_id, resolveEntitlements(r.plan, storedOverrides(r.plan_overrides)).ai_summaries]));
 
   const out: OrgUsage[] = orgs.map((o) => {
     const s = zeroSizes();
@@ -114,10 +138,13 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
     a.active_people = actors.get(o.id) ?? 0;
     const series = new Map<string, UsageDay>(dayList.map((day) => [day, { day, requests: 0, mcp_calls: 0 }]));
     const tools = new Map<string, number>();
+    const sm = zeroSummaries();
     for (const u of usage) {
       if (u.org_id !== o.id) continue;
       const n = Number(u.n) || 0;
       const point = series.get(u.day);
+      const field = SUMMARY_FIELD[u.metric];
+      if (field) { sm[field] += n; continue; }
       if (u.metric === METRIC_API_READ) a.api_reads += n;
       else if (u.metric === METRIC_API_WRITE) a.api_writes += n;
       else if (u.metric === METRIC_MCP_REQUEST) a.mcp_requests += n;
@@ -134,8 +161,11 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
     return {
       slug: o.slug, name: o.name, logo_url: orgLogoSrc(o), status: o.suspended_at ? "suspended" : "active", created_at: o.created_at,
       last_activity_at: lastAt.get(o.id) ?? null, sizes: s, activity: a, series: [...series.values()],
+      summaries: { ...derived(sm), month_used: monthUsed.get(o.id) ?? 0, cap: caps.get(o.id) ?? null },
     };
   });
+  const tSummaries = zeroSummaries();
+  for (const o of out) for (const k of Object.keys(tSummaries) as (keyof UsageSummaries)[]) tSummaries[k] += o.summaries[k];
 
   // Totals: every number is the sum of the org rows, except the two that are not additive.
   const tSizes = zeroSizes();
@@ -164,6 +194,7 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
   tAct.top_tools = topTools(tTools);
 
   return {
+    summaries_enabled: opts.summariesEnabled === true, summaries: tSummaries,
     days, since, until, generated_at: now.toISOString(),
     totals: {
       orgs: out.length, suspended_orgs: out.filter((o) => o.status === "suspended").length, persons,

@@ -150,6 +150,11 @@ describe("GET /api/platform/orgs[/:slug]", () => {
       slug: "acme", name: "Acme", logo_url: null, status: "active", created_at: "2026-10-06T00:00:00.000Z", created_by: "migration",
       suspended_at: null, suspended_by: null, owners: [{ handle: "olive", name: "olive" }], member_count: 2, pending_invites: 1,
       last_activity_at: "2026-10-01T09:30:00.000Z", github_account: null, // 0043_github_app: no App installation
+      // 0044_plans: an org from before plans is Enterprise — unlimited seats — and uses members + pending invites.
+      plan: {
+        plan: "enterprise", overrides: {}, status: "active", source: "granted", seats_used: 3,
+        entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null },
+      },
     });
     expect(list.find((o) => o.slug === "saplinglearn")).toMatchObject({ owners: [{ handle: SUPERADMIN, name: "Andres" }], member_count: 6 });
     expect(list[0]).not.toHaveProperty("id");
@@ -243,17 +248,11 @@ describe("suspend / unsuspend", () => {
   });
 });
 
-describe("org limit, superadmins, audit", () => {
-  it("PUT /persons/:handle/org-limit sets and clears the cap", async () => {
+describe("superadmins, audit", () => {
+  it("the per-person org limit is gone: its route no longer exists, and a grant is what opens creation (test/plans.grants.test.ts)", async () => {
     const cookie = await boss();
-    expect((await call("PUT", "/api/platform/persons/MEILIN/org-limit", cookie, { limit: 10 })).json).toEqual({ ok: true, person: { handle: "meilin", org_limit: 10 } });
-    expect((await call<MyOrgsResponse>("GET", "/api/orgs", await cookieFor("meilin"))).json).toMatchObject({ limit: 10, can_create: true });
-    expect((await call("PUT", "/api/platform/persons/meilin/org-limit", cookie, { limit: 0 })).status).toBe(200);
-    expect((await call<MyOrgsResponse>("GET", "/api/orgs", await cookieFor("meilin"))).json).toMatchObject({ limit: 0, can_create: false });
-    expect((await call("PUT", "/api/platform/persons/meilin/org-limit", cookie, { limit: null })).json).toMatchObject({ person: { org_limit: null } });
-    for (const limit of [-1, 1.5, "3", 1001]) expect((await call("PUT", "/api/platform/persons/meilin/org-limit", cookie, { limit })).json.error).toBe("invalid_limit");
-    expect((await call("PUT", "/api/platform/persons/meilin/org-limit", cookie, {})).status).toBe(400);
-    expect((await call("PUT", "/api/platform/persons/ghost/org-limit", cookie, { limit: 5 })).status).toBe(404);
+    expect((await call("PUT", "/api/platform/persons/meilin/org-limit", cookie, { limit: 10 })).status).toBe(404);
+    expect((await call<MyOrgsResponse>("GET", "/api/orgs", await cookieFor("meilin"))).json).toMatchObject({ can_create: false, grants: [] });
   });
 
   it("grants and revokes superadmin; the last one cannot be removed", async () => {
@@ -279,17 +278,17 @@ describe("org limit, superadmins, audit", () => {
   it("GET /audit merges the org-administration and secrets trails, newest first, filterable by org", async () => {
     const cookie = await boss();
     await call("POST", "/api/platform/orgs", cookie, { slug: "birch", name: "Birch", admin: { handle: "meilin" } });
-    await call("PUT", "/api/platform/persons/meilin/org-limit", cookie, { limit: 5 });
+    await call("POST", "/api/platform/grants", cookie, { to: { handle: "meilin" }, plan: "team" });
     await exec(`INSERT INTO org_audit (org_id, actor, action, target, detail, at) VALUES (?, 'olive', 'secret.set', 'github_token:', '{"hint_last4":"wxyz","key_version":1}', '2020-01-01T00:00:00.000Z')`, ORG_B);
 
     const all = (await call<{ audit: PlatformAuditRow[] }>("GET", "/api/platform/audit", cookie)).json.audit;
     expect(all.map((a) => [a.org, a.action, a.target])).toEqual([
-      [null, "platform.org_limit", "meilin"],
+      [null, "grant.create", expect.stringMatching(/^grant:\d+$/)],
       ["birch", "member.add", "meilin"],
       ["birch", "org.create", "birch"],
       ["acme", "secret.set", "github_token:"],
     ]);
-    expect(all[0]).toMatchObject({ id: expect.stringMatching(/^a\d+$/), actor: SUPERADMIN, detail: { limit: 5 } });
+    expect(all[0]).toMatchObject({ id: expect.stringMatching(/^a\d+$/), actor: SUPERADMIN, detail: { to: "@meilin", plan: "team" } });
     expect(all[3]).toMatchObject({ id: expect.stringMatching(/^s\d+$/), actor: "olive", detail: { hint_last4: "wxyz", key_version: 1 } });
     expect([...all].sort((a, b) => b.at.localeCompare(a.at)).map((a) => a.at)).toEqual(all.map((a) => a.at));
 

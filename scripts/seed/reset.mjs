@@ -7,12 +7,23 @@ export const RESET_STATEMENTS = [
   // attribution map reference persons, every org_* table references orgs. The two SEED orgs are kept
   // (every tenant table's transitional org_id DEFAULT points at org_saplinglearn); any org a test
   // created is removed once its rows are gone (the per-org singletons are trimmed further down).
+  // Plans and grants (0044_plans): grants reference orgs (`used_org`), so they clear before any org goes;
+  // the two seed orgs go back to what the migration made of every existing org — Enterprise, granted.
+  "DELETE FROM org_grants",
+  // Billing (0045_billing): a checkout may name the org it renews (`for_org`), so these clear before any org goes.
+  "DELETE FROM billing_checkouts",
+  "DELETE FROM billing_subscriptions",
+  "DELETE FROM billing_events",
+  "DELETE FROM platform_outbox_bodies",
+  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL",
   "DELETE FROM abuse_counters",
+  // Sync GitHub runs (0046_sync_runs) reference orgs.
+  "DELETE FROM sync_runs",
   "DELETE FROM org_usage_daily",
   "DELETE FROM org_admin_audit",
   "UPDATE orgs SET suspended_at = NULL, suspended_by = NULL, logo_sha = NULL, logo_source = NULL, logo_by = NULL, logo_from = NULL, logo_at = NULL",
   "DELETE FROM org_audit",
-  // Hosting (0044_hosting_providers): parts reference org_environments, so they go before it.
+  // Hosting (0047_hosting_providers): parts reference org_environments, so they go before it.
   "DELETE FROM hosting_poll_state",
   "DELETE FROM hosting_deploys",
   "DELETE FROM org_hosting_connections",
@@ -120,7 +131,7 @@ export const RESET_STATEMENTS = [
   "INSERT INTO persons (handle, name, color, created_at, onboarded_at) VALUES ('github-webhook', 'GitHub', 'stone', '2026-09-24T00:00:00Z', '2026-09-24T00:00:00Z')",
   // The two seed orgs (multitenancy): SaplingLearn holds the six persons above — what 0042_organizations produces from
   // them, AndresL230 its owner — and `org_b` (Acme) is the empty neighbour the isolation suite fills.
-  "INSERT OR IGNORE INTO orgs (id, slug, name, created_at, created_by) VALUES ('org_saplinglearn', 'saplinglearn', 'SaplingLearn', '2026-10-06T00:00:00.000Z', 'migration'), ('org_b', 'acme', 'Acme', '2026-10-06T00:00:00.000Z', 'migration')",
+  "INSERT OR IGNORE INTO orgs (id, slug, name, created_at, created_by, plan, plan_source) VALUES ('org_saplinglearn', 'saplinglearn', 'SaplingLearn', '2026-10-06T00:00:00.000Z', 'migration', 'enterprise', 'granted'), ('org_b', 'acme', 'Acme', '2026-10-06T00:00:00.000Z', 'migration', 'enterprise', 'granted')",
   "INSERT INTO memberships (org_id, user_id, role, title, responsibilities, created_at, created_by) SELECT 'org_saplinglearn', handle, CASE WHEN handle = 'AndresL230' THEN 'owner' ELSE 'member' END, role, responsibilities, created_at, 'seed' FROM persons WHERE handle <> 'github-webhook'",
   "INSERT INTO org_login_map (org_id, github_login, person, mapped_at, mapped_by) SELECT 'org_saplinglearn', subject, person, linked_at, 'seed' FROM identities WHERE provider = 'github'",
   "UPDATE identities SET verified_email = lower(label) WHERE provider = 'google'",

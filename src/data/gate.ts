@@ -36,7 +36,8 @@ export const tenantGate: MiddlewareHandler<AppEnv> = async (c, next) => {
 const isPlatformPath = (path: string): boolean =>
   path.startsWith("/auth/") || path.startsWith("/avatar/") || path.startsWith("/org-logo/") ||
   path === "/api/orgs" || path.startsWith("/api/orgs/") || path === "/api/invites" || path.startsWith("/api/invites/") ||
-  path.startsWith("/api/platform/") || path.startsWith("/api/o/") || HOSTING_CALLBACK_PATH.test(path);
+  path.startsWith("/api/platform/") || path.startsWith("/api/o/") || HOSTING_CALLBACK_PATH.test(path) ||
+  path.startsWith("/billing/") || path.startsWith("/api/billing/"); // a purchase is a person's, before any org (src/billing/routes.ts)
 
 /**
  * CUT-OVER ALIAS (§6.3, Phases 3–5): every pre-multitenancy session route resolves its tenant as "the

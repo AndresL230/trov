@@ -24,6 +24,7 @@ import { INTEGRATION_CATALOG, checkIntegrationConfig, integrationRow, listIntegr
 import { importLogoLater } from "./logo";
 import { testConnection } from "./probe";
 import { supersedeConnection } from "../hosting/connections";
+import { PlanLimitError } from "../plans/state";
 import { SettingsError, addRepo, deleteEnvironment, listEnvironments, listRepos, putEnvironment, removeRepo, reorderEnvironments } from "./settings";
 
 type C = Context<AppEnv>;
@@ -41,6 +42,7 @@ async function guard(c: C, fn: () => Promise<Response>): Promise<Response> {
   try {
     return await fn();
   } catch (e) {
+    if (e instanceof PlanLimitError) throw e; // the org's plan refused an addition (0044_plans): the app's one handler answers 402
     if (e instanceof RoleError || e instanceof SecretAccessError) return c.json({ error: "forbidden" }, 403);
     if (e instanceof SecretsUnavailableError) return c.json({ error: "secrets_unavailable" }, 503);
     if (e instanceof SecretValueError) return c.json({ error: e.code, field: "secret", message: e.message }, 400);

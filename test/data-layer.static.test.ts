@@ -64,6 +64,7 @@ const PLATFORM_ALLOW: Allow[] = [
   { file: "src/auth/oauth.ts", fn: "pruneOAuth", tables: ["oauth_grants", "oauth_codes"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics", "hosting_deploys"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "expireDueHandoffs", tables: ["handoffs"], why: "retention sweep, cross-org and write-only (§4.4)" },
+  { file: "src/platform/sweeps.ts", fn: "pruneSyncRuns", tables: ["sync_runs"], why: "retention sweep, cross-org and write-only: Sync GitHub run records past 90 days" },
   // Bearer credentials are looked up by HASH before any org is known: the row is what names the
   // (person, org), and src/data/bearer.ts then checks that membership live (§7.1). Each lookup is listed
   // by function. Minting / listing / revoking a personal token and writing a grant with its code run on

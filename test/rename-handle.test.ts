@@ -141,11 +141,21 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `UPDATE orgs SET logo_sha = ?, logo_source = 'upload', logo_by = ?, logo_at = ? WHERE id = 'org_b'`, "a".repeat(64), handle, nowIso());
   await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-01-01', 'api_read', ?, 1, ?)`, org, handle, nowIso());
   await run(env.DB, `INSERT INTO org_admin_audit (org_id, actor, action, target, at) VALUES (?, ?, 'org.update', 'settings', ?)`, org, handle, nowIso());
-  // 0044_hosting_providers: a stored part (on the staging environment above) and an installed connection.
+  // 0047_hosting_providers: a stored part (on the staging environment above) and an installed connection.
   await run(env.DB, `INSERT INTO org_environment_parts (org_id, env_key, part_key, position, label, role, provider, settings, created_at, updated_at, updated_by)
     VALUES (?, 'staging', 'web', 0, 'Web', 'web', 'vercel', '{}', ?, ?, ?)`, org, nowIso(), nowIso(), handle);
   await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, status, connected_by, connected_at, revoked_by)
     VALUES (?, 'vercel', '', 'install', 'revoked', ?, ?, ?)`, org, handle, nowIso(), handle);
+  // 0044_plans: orgs.plan_changed_by, and a grant the person holds, made, used and revoked (two rows: a
+  // grant is used OR revoked, never both).
+  await run(env.DB, `UPDATE orgs SET plan_changed_at = ?, plan_changed_by = ? WHERE id = 'org_b'`, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_grants (person, plan, granted_by, created_at, status, used_at, used_by, used_org) VALUES (?, 'team', ?, ?, 'used', ?, ?, ?)`, handle, handle, nowIso(), nowIso(), handle, org);
+  await run(env.DB, `INSERT INTO org_grants (github_login, plan, granted_by, created_at, status, revoked_at, revoked_by) VALUES ('rename-gh', 'team', ?, ?, 'revoked', ?, ?)`, handle, nowIso(), nowIso(), handle);
+  // 0045_billing: a checkout the person started and the subscription it bought.
+  await run(env.DB, `INSERT INTO billing_checkouts (ref, person, plan, session_id, created_at) VALUES ('rename-ref', ?, 'team', 'cs_rename', ?)`, handle, nowIso());
+  await run(env.DB, `INSERT INTO billing_subscriptions (subscription_id, customer_id, person, plan, stripe_status, created_at, updated_at) VALUES ('sub_rename', 'cus_rename', ?, 'team', 'active', ?, ?)`, handle, nowIso(), nowIso());
+  // 0046_sync_runs: a Sync GitHub run the person started.
+  await run(env.DB, `INSERT INTO sync_runs (org_id, repo, started_by, started_at, updated_at, ended_at, status) VALUES (?, 'o/r', ?, ?, ?, ?, 'ok')`, org, handle, nowIso(), nowIso(), nowIso());
 }
 
 describe("renamePerson", () => {

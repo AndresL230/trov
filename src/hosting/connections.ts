@@ -15,7 +15,7 @@
 //     is HMAC-sealed (key `hosting-connect:<COOKIE_SECRET>`) in the HttpOnly `trov_hx` cookie, Path `/hosting/`,
 //     10 minutes, spent by the first callback;
 //   - `completeConnect` binds only for that browser, that provider, that person — still an admin of that org,
-//     re-checked live — and only an installation no OTHER org holds (`taken`; 0044's partial unique index
+//     re-checked live — and only an installation no OTHER org holds (`taken`; 0047's partial unique index
 //     enforces it at the write, which is ONE batch with the credential) into an org not already connected by
 //     another install / OAuth grant (`already_connected` — Disconnect first; a pasted token is superseded);
 //   - the installation id comes from the provider's own answer, never from the callback URL (./providers/*);
@@ -361,7 +361,7 @@ export function connectReturnUrl(slug: string | null, outcome: HostingConnectOut
  *   1. our sealed intent is in this browser, for this provider, unexpired, and the provider handed back ITS state;
  *   2. the person signed in now is the person who started, and is still an admin of that org;
  *   3. the provider exchanges the code for a usable credential;
- *   4. the installation is no OTHER org's (`taken` — 0044's unique index says so again at the write), and this
+ *   4. the installation is no OTHER org's (`taken` — 0047's unique index says so again at the write), and this
  *      org has not been connected by ANOTHER install / OAuth grant meanwhile (`already_connected`).
  * A grant refused at 4 (or lost to an error after the exchange) is handed back to the provider, best effort
  * (`dropGrant`) — but an installation another org holds is never removed: only the new credential is.
@@ -477,7 +477,7 @@ async function dropGrant(p: HostingProvider, hf: HostFetch, grant: InstallGrant,
 }
 
 /** The binding lost a race: the installation went to another org between the callback's check and its write
- *  (0044's unique index on the active installation ids). */
+ *  (0047's unique index on the active installation ids). */
 export class ConnectionConflictError extends Error {
   constructor() { super("the installation is already connected to another org"); this.name = "ConnectionConflictError"; }
 }
@@ -485,7 +485,7 @@ const isInstallationConflict = (e: unknown): boolean =>
   e instanceof Error && /UNIQUE constraint failed:\s*org_hosting_connections\b/i.test(e.message);
 
 /**
- * Bind a grant to `ctx`'s org: the connection row (which CLAIMS the installation — 0044's partial unique index),
+ * Bind a grant to `ctx`'s org: the connection row (which CLAIMS the installation — 0047's partial unique index),
  * the credential (stored, or replacing a pasted token or an earlier grant) and the grant's config, audited —
  * ONE batch, so a lost race for the installation stores nothing at all (`ConnectionConflictError`).
  */

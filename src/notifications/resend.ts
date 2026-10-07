@@ -4,6 +4,7 @@
 // silent fallback in production.
 import type { Env } from "../env";
 import type { TenantContext } from "../data/sql";
+import { type PlatformContext, run as platformRun, nowIso } from "../data/platform-sql";
 import { type Delivery, localDelivery } from "./delivery";
 
 const RESEND_URL = "https://api.resend.com/emails";
@@ -19,7 +20,7 @@ export function bareAddress(from: string): string {
 // can edit `notification_settings.from_address` — so an org contributes a display NAME and nothing else.
 // `deliveryFor` applies this to EVERY message (digest, test send, invite, welcome): no caller can pass
 // an address of its own. The name's rule is ONE definition, shared with the SPA: shared/sender.ts.
-import { PLATFORM_SENDER_NAME, PLATFORM_FROM_ADDRESS, senderNamePart, senderNameProblem } from "@shared/sender";
+import { PLATFORM_SENDER_NAME, PLATFORM_FROM_ADDRESS, PLATFORM_FROM, senderNamePart, senderNameProblem } from "@shared/sender";
 export {
   PLATFORM_SENDER_NAME, PLATFORM_FROM_ADDRESS, PLATFORM_FROM, SENDER_NAME_MAX, senderNamePart, senderNameProblem, type SenderNameProblem,
 } from "@shared/sender";
@@ -86,4 +87,26 @@ export function deliveryFor(ctx: TenantContext, env: Env, opts: { from: string; 
   if (mode !== "resend") return { ...safe(localDelivery(ctx)), mode: "local" };
   if (!env.RESEND_API_KEY) throw new Error("NOTIFICATIONS_MODE=resend requires the RESEND_API_KEY secret");
   return { ...safe(resendDelivery({ apiKey: env.RESEND_API_KEY, from: platformFrom(opts.from), fetchImpl: opts.fetchImpl })), mode: "resend" };
+}
+
+/**
+ * The same gate for mail that belongs to NO org — the platform's own (0044_plans: the notice that a
+ * person was granted an organization, sent before any org exists). The From header is the platform's,
+ * whole; local mode writes the body to the global `platform_outbox_bodies`, and never touches Resend.
+ */
+export function platformDeliveryFor(p: PlatformContext, env: Env, opts: { fetchImpl?: typeof fetch } = {}): Delivery & { mode: "local" | "resend" } {
+  const mode = env.NOTIFICATIONS_MODE ?? "local";
+  if (mode !== "resend") {
+    return {
+      mode: "local",
+      async send(msg) {
+        await platformRun(p, `INSERT INTO platform_outbox_bodies (idempotency_key, to_address, subject, html, text, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+          msg.idempotencyKey, msg.to, oneLine(msg.subject), msg.html, msg.text, nowIso());
+        return { id: null };
+      },
+    };
+  }
+  if (!env.RESEND_API_KEY) throw new Error("NOTIFICATIONS_MODE=resend requires the RESEND_API_KEY secret");
+  const inner = resendDelivery({ apiKey: env.RESEND_API_KEY, from: PLATFORM_FROM, fetchImpl: opts.fetchImpl });
+  return { ...inner, send: (msg) => inner.send({ ...msg, subject: oneLine(msg.subject) }), mode: "resend" };
 }

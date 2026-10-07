@@ -11,7 +11,7 @@ import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
 import {
-  render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin,
+  render, initialState, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf,
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
 } from "./render";
 import {
@@ -19,7 +19,7 @@ import {
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
   listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, discardIdentity, restoreIdentity, type AssignTarget,
-  getMe, logout, adminBackfill, adminPoll, isRateLimited, rateLimitText,
+  getMe, logout, adminPoll, isRateLimited, rateLimitText,
   getOnboardPrefill, checkHandle, submitOnboard,
   getNotificationPrefs, putNotificationPrefs, getNotificationPolicy, putNotificationPolicy,
   getNotificationSettings, putNotificationSettings, listNotificationOutbox, testSendNotification, type PrefsWrite,
@@ -73,9 +73,13 @@ import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
+import { createSyncController } from "./sync-actions";
 import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
+import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
+import { BILLING_DONE_PATH } from "@shared/billing";
+import { getBillingStatus } from "./api";
 import { setPrimaryRepo } from "./github";
 import { GITHUB_LOGIN_RE, type MyOrgsResponse } from "@shared/orgs";
 import { isGithubConnectOutcome } from "@shared/github-app";
@@ -93,6 +97,13 @@ const qs = createQuickSearch({
   pick: quickPick,
   theme: () => resolvedTheme(),
   railCollapsed: () => railCollapsed(state), // on a phone the drawer is the full, expanded rail
+});
+
+// Sync GitHub (web/src/sync-actions.ts): the panel, the batch loop and its polling — in module
+// scope, so a run survives closing the panel and moving between screens.
+const syncCtl = createSyncController({
+  mount, ui: () => state.sync, props: () => syncPropsOf(state), inApp: () => state.view === "app",
+  rerender: () => rerender(), unauth: (e) => unauth(e), reloadMyWork: () => loadMyWork(),
 });
 
 // Org settings (web/src/org-actions.ts): every `org…` act, its loads, and the secret form's draft.
@@ -279,6 +290,7 @@ function rerender(): void {
   if (state.screen !== "tickets") state.qFilterOpen = false;
   if (state.screen !== "feed") state.feedFilterOpen = false;
   if (state.screen !== "settings") state.avatarMenu = false;
+  syncCtl.beforePaint(); // the Sync panel closes with the control it hangs from
   // Entering a group's pages opens its sub-page list, and leaving folds it again —
   // unless the person opened or closed it by hand, which sticks (and is what persists).
   const group = state.view === "app" ? navGroupOf(state.screen) : null;
@@ -318,6 +330,7 @@ function rerender(): void {
   markEnter();
   orgCtl.afterPaint();
   dropdowns.afterPaint();
+  syncCtl.afterPaint();
   if (pendingFlash) {
     for (const el of Array.from(mount.querySelectorAll(pendingFlash))) el.classList.add("cnpy-flash");
     pendingFlash = null;
@@ -738,6 +751,7 @@ function enterOrg(slug: string, hash: string): void {
   applyRoute(parseHash(hash));
   loadOrgMe();
   void loadMyOrgs();
+  syncCtl.load(); // a sync in progress shows in the header on every screen, also after a reload
   loadForScreen(state.screen);
   // A conflicting Link redirect lands here directly (full page load to
   // /?link=conflict#settings), not through the goSettings dispatch case.
@@ -883,6 +897,7 @@ function loadMwDocs(): void {
 /** My Work reads its own DTO plus the slices its tiles and rail are built on —
  *  each loaded only when idle, so a screen already visited costs nothing. */
 function loadMyWorkIfNeeded(): void {
+  syncCtl.load(); // "Last synced …", and a sync in progress
   if (state.mywork.status === "idle") loadMyWork();
   loadProposalsIfNeeded(); loadDraftAdrsIfNeeded();
   loadSprintsIfNeeded(); // a ticket's due date is its sprint's
@@ -945,6 +960,7 @@ async function runRepoPoll(): Promise<void> {
   }
 }
 function loadRepoIfNeeded(): void {
+  syncCtl.load(); // the header's "synced 12m ago by @…"
   if (state.repo.status === "idle") loadRepo();
   else rerender();
 }
@@ -1912,53 +1928,6 @@ const platform = createPlatform({
   leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "mywork"; loadForScreen("mywork"); },
 });
 
-// Drives a (possibly multi-batch) Sync GitHub run: the backend caps AI calls
-// per invocation (src/tools/backfill.ts's summaryBudgetExhausted), so this
-// keeps calling adminBackfill(batch, of) while a budget was exhausted, updating
-// state.backfillSync after every batch — both PR and issue counts are
-// absolute snapshots from the response, not accumulated here, so the modal's
-// progress bars always reflect real server-side state. MAX_BACKFILL_BATCHES
-// is a client-side backstop against spinning forever if summaries never
-// converge (e.g. every AI call keeps falling back to excerpt) — the batch/of
-// pair we send lets the server reconcile on the batch that hits this cap too.
-const MAX_BACKFILL_BATCHES = 10;
-
-async function runAdminBackfillLoop(): Promise<void> {
-  let summarizedSoFar = 0;
-  let batchesSoFar = 0;
-  let last: Awaited<ReturnType<typeof adminBackfill>> | null = null;
-  try {
-    do {
-      batchesSoFar++;
-      // 1-based batch number + the cap, so the server can reconcile on the
-      // batch that hits MAX_BACKFILL_BATCHES even while still exhausted (it
-      // has no other way to see this client-side loop counter).
-      last = await adminBackfill(batchesSoFar, MAX_BACKFILL_BATCHES);
-      summarizedSoFar += last.summarized;
-      state.backfillSync = {
-        phase: "progress",
-        prSummarizedCount: last.prSummarizedCount,
-        prsTotal: last.prs,
-        issueSummarizedCount: last.issueSummarizedCount,
-        issuesTotal: last.issuesToSummarize,
-      };
-      rerender();
-    } while (last.summaryBudgetExhausted && batchesSoFar < MAX_BACKFILL_BATCHES);
-
-    state.backfillSync = null;
-    const more = last.summaryBudgetExhausted ? " — more remain, click Sync again" : "";
-    flash(`Synced: ${last.captured} captured, ${last.unchanged} unchanged, ${summarizedSoFar} summaries updated${more}`);
-    loadMyWork();
-  } catch (e) {
-    state.backfillSync = null;
-    if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-    // 503 `service token or repo not configured`: THIS org has no repository or no GitHub token yet — a setup step, not a failure.
-    if (e instanceof ApiError && e.status === 503 && /not configured/i.test(e.message)) {
-      flash("This organization has no repository or GitHub token yet, so there is nothing to sync.", 9000, { label: "Open Org settings", act: "orgGo", arg: "integrations" });
-    } else flash(e instanceof ApiError ? e.message : "Sync failed");
-    rerender();
-  }
-}
 
 // Copy text to the clipboard. Prefers the async Clipboard API (available on
 // localhost + https); falls back to a hidden-textarea execCommand for older or
@@ -2969,15 +2938,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         });
       return;
     }
-    // ADMIN action (My Work): trigger the server-side GitHub backfill, then
-    // refresh My Work so newly-captured PRs/issues surface in the two lists.
-    case "adminBackfill": {
-      if (state.backfillSync) return; // already syncing — button is disabled, but guard duplicate dispatch too
-      state.backfillSync = { phase: "starting" }; // no real counts until the first batch resolves — the modal shows an inventory-taking line, never "0 of 0"
-      rerender();
-      runAdminBackfillLoop();
-      return;
-    }
+    // Sync GitHub (the header button, its panel, Sync now, Dismiss): sync-actions.ts.
+    case "syncToggle": case "syncClose": case "syncReload": case "syncStart": case "syncDismiss": syncCtl.act(act); return;
     // ── Handoffs ─────────────────────────────────────────────────────────────
     case "goHandoffs": state.screen = "handoffs"; state.handoffId = null; loadHandoffs(); return;
     case "newHandoff": state.screen = "newhandoff"; state.nh = blankHandoff(primaryRepoName()); rerender(); return;
@@ -4281,6 +4243,12 @@ if (params.get("denied") === "1") {
   state.authStep = "notinvited";
   state.deniedEmail = params.get("email");
   rerender();
+} else if (location.pathname === BILLING_DONE_PATH) {
+  // Back from Stripe Checkout (billing.ts): the waiting room polls until the webhook has made the
+  // buyer's grant, then sends them on to `/?setup=<grant>` — the picker, with that organization's form open.
+  state.billingDone = initialBillingDone(params.get("session_id"));
+  rerender();
+  void startBillingDone({ get: () => state.billingDone, rerender, ask: getBillingStatus, go: (href) => { location.assign(href); } });
 } else if (location.hash === "#onboard") {
   // Fresh Google/GitHub sign-in with no existing person: the sealed `onboard`
   // cookie is set, and /auth/onboard reads it. A signed-in reload on #onboard
@@ -4328,6 +4296,15 @@ if (params.get("denied") === "1") {
       // `/platform/`: the superadmin's area, whatever orgs they are in (or none). Anyone else falls through to the picker.
       // So does a `#platform…` link opened at `/` by a superadmin with no org to open it in.
       if (me.superadmin === true && (isPlatformPath(location.pathname) || (me.orgs.length === 0 && /^#platform(?:\/|$)/.test(hash)))) { void loadMyOrgs(); enterPlatform(hash); return; }
+      // Sent on from the waiting room (billing.ts `setupHref`): the picker — whatever orgs they are already in —
+      // with the form for the organization they just paid for open. A stale or foreign id opens their oldest grant, or nothing.
+      const setup = params.get(SETUP_PARAM);
+      if (setup !== null && location.pathname === "/") {
+        history.replaceState(null, "", "/");
+        showPicker(null);
+        void loadMyOrgs().then((mine) => { if (mine?.can_create) orgsCtl.act("orgsCreateOpen", setup, null); });
+        return;
+      }
       const land = resolveLanding({ pathSlug: orgSlugFromPath(location.pathname), orgs: me.orgs, lastUsed: last, returnOrg: backOrg });
       if (land.kind === "org") { enterOrg(land.slug, hash); return; }
       if (back && back !== location.hash) history.replaceState(null, "", `${location.pathname}${back}`);

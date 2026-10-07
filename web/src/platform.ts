@@ -3,8 +3,10 @@
 //   ORGANIZATIONS — every org with its status, owners, members, invites; "Add organization"
 //                   (a modal: name, slug, the org admin) and, behind a row, the org's DETAIL
 //                   (suspend / unsuspend, members, invites, add another owner, usage, audit).
+//   ACCESS        — platform-access.ts: who has been GRANTED an organization of their own (the
+//                   one way anyone but a superadmin creates one), and an org's plan.
 //   USAGE         — platform-usage.ts.
-//   ADMINS & LIMITS — the superadmins (grant / remove) and a person's org-creation limit.
+//   ADMINS        — the superadmins (grant / remove).
 //   AUDIT         — recent administration entries, filterable by org.
 // The area exists only for a superadmin (`PlatState.superadmin`, read from GET /api/orgs);
 // a superadmin is NOT a member of the orgs listed and sees sizes and counts, never content.
@@ -13,7 +15,7 @@
 // main.ts hands to platform-actions.ts.
 
 import {
-  orgSlugProblem, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, ORG_NAME_MAX, DEFAULT_ORG_LIMIT,
+  orgSlugProblem, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, ORG_NAME_MAX,
   type PlatformOrgRow, type PlatformOrgDetail, type PlatformAdmin, type PlatformAuditRow, type PlatformUsageResponse,
   type AdminAssignment, type AdminTarget, type OrgRole, type OrgInvite,
 } from "@shared/orgs";
@@ -25,11 +27,15 @@ import { segmented } from "./segmented";
 import { confirmModal } from "./confirm";
 import { usageView, orgUsageBlock, type UsageWindow } from "./platform-usage";
 import { tabLead, leadFlag, dangerLink } from "./org-ui";
+// Plans and grants (shared/plans.ts): the Access tab, an org's Plan section, their dialogs.
+import { PLANS, type PlanId } from "@shared/plans";
+import { dropdown, dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
+import { accessTab, accessDialogs, initialAccess, orgPlanSection, planDropdown, planSourceWord, seatsCell, type AccessState } from "./platform-access";
 
 // ── state ────────────────────────────────────────────────────────────────────
-export type PlatTab = "orgs" | "usage" | "admins" | "audit";
-export const PLAT_TABS: readonly PlatTab[] = ["orgs", "usage", "admins", "audit"];
-const TAB_LABEL: Record<PlatTab, string> = { orgs: "Organizations", usage: "Usage", admins: "Admins & limits", audit: "Audit" };
+export type PlatTab = "orgs" | "access" | "usage" | "admins" | "audit";
+export const PLAT_TABS: readonly PlatTab[] = ["orgs", "access", "usage", "admins", "audit"];
+const TAB_LABEL: Record<PlatTab, string> = { orgs: "Organizations", access: "Access", usage: "Usage", admins: "Admins", audit: "Audit" };
 
 export interface PlatSlice<T> { status: "idle" | "loading" | "ok" | "error"; data: T }
 
@@ -45,12 +51,14 @@ export interface AddOrgDraft {
   slugTouched: boolean;
   adminKind: AdminKind;
   adminValue: string;
+  /** The plan the org starts on (its limits can be set after, with Change plan). */
+  plan: PlanId;
   busy: boolean;
   errors: AddOrgErrors;
   /** Set once the org exists: the modal says what happened. */
   done: { name: string; slug: string; admin: AdminAssignment } | null;
 }
-export const blankAddOrg = (): AddOrgDraft => ({ name: "", slug: "", slugTouched: false, adminKind: "handle", adminValue: "", busy: false, errors: {}, done: null });
+export const blankAddOrg = (): AddOrgDraft => ({ name: "", slug: "", slugTouched: false, adminKind: "handle", adminValue: "", plan: "team", busy: false, errors: {}, done: null });
 
 export interface OwnerDraft { kind: AdminKind; value: string; busy: boolean; error: string | null; done: AdminAssignment | null }
 export const blankOwner = (): OwnerDraft => ({ kind: "handle", value: "", busy: false, error: null, done: null });
@@ -84,11 +92,8 @@ export interface PlatState {
   revokeBusy: boolean;
   /** Why the last removal was refused (the 409, as a sentence). */
   revokeError: string | null;
-  limitHandle: string;
-  limitValue: string;
-  limitBusy: boolean;
-  limitError: string | null;
-  limitDone: string | null;
+  /** Platform › Access and "Change plan" (platform-access.ts). */
+  access: AccessState;
 }
 
 export function initialPlat(): PlatState {
@@ -104,7 +109,7 @@ export function initialPlat(): PlatState {
     suspendArm: null, suspendBusy: false,
     grantDraft: "", grantBusy: false, grantError: null,
     revokeArm: null, revokeBusy: false, revokeError: null,
-    limitHandle: "", limitValue: "", limitBusy: false, limitError: null, limitDone: null,
+    access: initialAccess(),
   };
 }
 
@@ -227,17 +232,18 @@ export const NOT_A_MEMBER = "You are not a member of this organization. As super
 const infoNote = (text: string): string =>
   `<div role="note" style="display:flex;align-items:flex-start;gap:9px;padding:11px 14px;border:1px solid var(--border);border-radius:9px;font-size:12.5px;line-height:1.5;color:var(--fg-55)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="1.8" aria-hidden="true" style="flex:none;margin-top:2px"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg><span>${esc(text)}</span></div>`;
 
-/** The admin-kind switch + its one field, shared by the modal and "Add another owner". */
-function adminField(o: { segId: string; kindAct: string; valueAct: string; field: string; enter: string; kind: AdminKind; value: string; error: string | null | undefined; disabled: boolean; inputId: string }): string {
+/** The admin-kind switch + its one field, shared by the modal, "Add another owner" and "Grant an
+ *  organization" (platform-access.ts — which passes its own `help`: a grantee is not made an owner). */
+export function adminField(o: { segId: string; kindAct: string; valueAct: string; field: string; enter: string; kind: AdminKind; value: string; error: string | null | undefined; disabled: boolean; inputId: string; help?: Record<AdminKind, string>; ariaLabel?: string }): string {
   const meta: Record<AdminKind, { label: string; placeholder: string; help: string; type: string }> = {
     handle: { label: "Trov handle", placeholder: "maya", help: "Someone who already has a Trov account. They become an owner at once.", type: "text" },
     github: { label: "GitHub login", placeholder: "octocat", help: "They see the invite when they sign in with this GitHub account, and become an owner when they accept. No email is sent: tell them it is waiting.", type: "text" },
     email: { label: "Email address", placeholder: "name@example.com", help: "Trov emails them the invite. They become an owner when they sign in with this address and accept.", type: "email" },
   };
-  const m = meta[o.kind];
+  const m = { ...meta[o.kind], ...(o.help ? { help: o.help[o.kind] } : {}) };
   const errId = `${o.inputId}-err`;
   return `${segmented({
-      id: o.segId, ariaLabel: "How to name the org admin", act: o.kindAct, value: o.kind, size: "sm", fill: true, inertOn: true,
+      id: o.segId, ariaLabel: o.ariaLabel ?? "How to name the org admin", act: o.kindAct, value: o.kind, size: "sm", fill: true, inertOn: true,
       options: [{ value: "handle", label: "Existing person" }, { value: "github", label: "GitHub login" }, { value: "email", label: "Email" }],
     })}
     <label for="${attr(o.inputId)}" style="${FIELD_LABEL};margin-top:12px">${m.label}</label>
@@ -256,6 +262,7 @@ function orgRow(o: PlatformOrgRow): string {
   return `<button type="button" data-act="platOpenOrg" data-arg="${attr(o.slug)}" class="plat-row plat-orgs-grid${sus ? " is-suspended" : ""}" aria-label="${attr(`${o.name}${sus ? ", suspended" : ""} — open`)}" style="width:100%;text-align:left;padding:12px 20px;border-bottom:1px solid var(--border);margin-bottom:-1px">
     <div class="plat-c plat-c-name" style="min-width:0;display:flex;align-items:center;gap:10px">${orgTile(o.name, 28, o.logo_url)}<span style="min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:${sus ? "var(--fg-55)" : "var(--fg)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.name)}</span><span style="display:block;font-size:11.5px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-family:var(--code)">${esc(o.slug)}</span>${o.github_account ? ` &middot; <span data-plat-github title="Connected to GitHub through the Trov App on ${attr(o.github_account)}">GitHub App on ${esc(o.github_account)}</span>` : ""}</span></span></div>
     ${cell("Status", orgStatus(o))}
+    ${cell("Plan", o.plan ? `<span style="display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${esc(PLANS[o.plan.plan].name)}</span><span title="Members and pending invitations, of the plan's seats; and whether the plan is paid for through Stripe or granted by Trov" style="display:block;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--fg-40);white-space:nowrap">${esc(seatsCell(o.plan))} ${o.plan.entitlements.seats === 1 || (o.plan.entitlements.seats === null && o.plan.seats_used === 1) ? "seat" : "seats"} &middot; ${esc(planSourceWord(o.plan))}</span>` : `<span style="font-size:12.5px;color:var(--fg-40)">&mdash;</span>`)}
     ${cell("Owners", `<span style="display:block;font-size:12.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${owners}</span>`, "plat-c-wide")}
     ${cell("Members", n(o.member_count))}
     ${cell("Invites", n(o.pending_invites))}
@@ -277,7 +284,7 @@ export function orgsTab(p: Pick<PlatState, "orgs">): string {
   const n = p.orgs.data.length;
   return `${tabLead(`<strong>${n}</strong> ${n === 1 ? "organization" : "organizations"}${suspended ? ` &middot; ${leadFlag(`${suspended} suspended`)}` : ""}${ownerless ? ` &middot; ${leadFlag(`${ownerless} with no owner yet`, "amber")}` : ""}. Select one to manage it.`, ADD_ORG)}
     <div${surface("overflow:hidden", { cls: "plat-table" })}>
-      <div class="plat-thead plat-orgs-grid" aria-hidden="true" style="padding:12px 20px 9px;border-bottom:1px solid var(--border)"><span>Organization</span><span>Status</span><span>Owners</span><span>Members</span><span>Invites</span><span>Created</span><span>Last activity</span></div>
+      <div class="plat-thead plat-orgs-grid" aria-hidden="true" style="padding:12px 20px 9px;border-bottom:1px solid var(--border)"><span>Organization</span><span>Status</span><span>Plan</span><span>Owners</span><span>Members</span><span>Invites</span><span>Created</span><span>Last activity</span></div>
       ${p.orgs.data.map(orgRow).join("")}
     </div>`;
 }
@@ -363,15 +370,16 @@ export function platformOrgView(p: PlatState): string {
     : `<div style="${QUIET};padding:2px 0">No audit entries for this organization.</div>`;
 
   return wrap(`${head}
+    ${o.plan ? `${sectionHead("Plan")}${orgPlanSection(o, d.usage?.sizes.artifact_bytes ?? null)}` : ""}
     ${sectionHead("People", ownerToggle, false, d.members.length + pending.length)}${ownerForm}${people}
-    ${sectionHead("Usage", "last 30 days")}${orgUsageBlock(d.usage, 30)}
+    ${sectionHead("Usage", "last 30 days")}${orgUsageBlock(d.usage, 30, d.summaries_enabled)}
     ${sectionHead("Recent audit entries")}${audit}`);
 }
 
-// ── ADMINS & LIMITS ──────────────────────────────────────────────────────────
+// ── ADMINS ───────────────────────────────────────────────────────────────────
 export function adminsTab(p: PlatState, me: string | null): string {
   const n = p.admins.data.length;
-  const intro = tabLead(`${n ? `<strong>${n}</strong> ${n === 1 ? "superadmin" : "superadmins"}. ` : ""}They add and suspend organizations and see usage; it is not a membership of any organization.`);
+  const intro = tabLead(`${n ? `<strong>${n}</strong> ${n === 1 ? "superadmin" : "superadmins"}. ` : ""}They add and suspend organizations, grant them, and see usage; it is not a membership of any organization.`);
   const list = p.admins.status === "error" && !p.admins.data.length ? errorLine("the superadmins")
     : p.admins.status !== "ok" && !p.admins.data.length ? loadingLine("superadmins")
     : `<div${surface("overflow:hidden")}>${p.admins.data.map((a) => `<div style="${ROW}">
@@ -380,8 +388,6 @@ export function adminsTab(p: PlatState, me: string | null): string {
         ${dangerLink("Remove", "platRevokeArm", { arg: a.handle, field: `platRevoke:${a.handle}`, label: `Remove @${a.handle} as superadmin` }).replace("<button ", `<button${p.revokeArm === a.handle ? " data-confirm-trigger" : ""} `)}
       </div>`).join("")}</div>`;
   const canGrant = !p.grantBusy && cleanHandle(p.grantDraft) !== "";
-  const limitHandleOk = cleanHandle(p.limitHandle) !== "";
-  const limitOk = /^\d{1,4}$/.test(p.limitValue.trim()) && Number(p.limitValue.trim()) <= 1000;
   return `${intro}
     ${sectionHead("Superadmins", "", true, p.admins.data.length)}
     ${list}
@@ -394,18 +400,6 @@ export function adminsTab(p: PlatState, me: string | null): string {
       </div>
       ${fieldError("plat-grant-err", p.grantError)}
       <div style="${QUIET};margin-top:8px;line-height:1.45">They can then do everything on this page, including removing other superadmins.</div>
-    </div>
-    ${sectionHead("Organization limit", `How many a person may create themselves · default ${DEFAULT_ORG_LIMIT}`)}
-    <div${surface("padding:16px 20px")}>
-      <div class="plat-inline" style="align-items:flex-end">
-        <div style="flex:2;min-width:0"><label for="plat-limit-handle" style="${FIELD_LABEL}">Person</label><input id="plat-limit-handle" data-act="platLimitHandle" data-field="platLimitHandle" value="${attr(p.limitHandle)}" placeholder="Their Trov handle" autocomplete="off" autocapitalize="off" spellcheck="false" class="cnpy-input" style="${FIELD}" /></div>
-        <div style="flex:1;min-width:0"><label for="plat-limit-value" style="${FIELD_LABEL}">Limit</label><input id="plat-limit-value" type="number" inputmode="numeric" min="0" max="1000" step="1" data-act="platLimitValue" data-field="platLimitValue" data-enter="platLimitSubmit" value="${attr(p.limitValue)}" placeholder="0 to 1000" class="cnpy-input" style="${FIELD}" /></div>
-        ${goBtn(p.limitBusy ? "Saving…" : "Set limit", !p.limitBusy && limitHandleOk && limitOk, "platLimitSubmit")}
-        <button type="button" data-act="platLimitDefault"${!p.limitBusy && limitHandleOk ? ` class="cnpy-outlinebtn"` : " disabled"} style="${OUTLINE}${!p.limitBusy && limitHandleOk ? "" : ";color:var(--fg-40);border-color:var(--border);cursor:default"}">Use default</button>
-      </div>
-      ${p.limitError ? `<div role="alert" style="font-size:12px;line-height:1.45;color:var(--red);margin-top:8px">${esc(p.limitError)}</div>` : ""}
-      ${p.limitDone ? `<div role="status" style="font-size:12.5px;color:var(--fg-70);margin-top:8px">${esc(p.limitDone)}</div>` : ""}
-      <div style="${QUIET};margin-top:10px;line-height:1.45">Superadmins have no limit, and organizations you add here don't count against anyone.</div>
     </div>`;
 }
 
@@ -439,6 +433,7 @@ export function platformView(p: PlatState, me: string | null = null): string {
   if (gate) return gate;
   const body = p.tab === "usage" ? usageView({ status: p.usage.status, usage: p.usage.data, days: p.usageDays, open: p.usageOpen })
     : p.tab === "admins" ? adminsTab(p, me)
+    : p.tab === "access" ? accessTab(p.access)
     : p.tab === "audit" ? auditTab(p)
     : orgsTab(p);
   return `<div class="plat" data-screen-label="Platform" style="${FRAME}">
@@ -494,7 +489,7 @@ const CLOSE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" strok
 
 /** "Add organization": name, slug (derived from the name until it is edited), the org admin.
  *  Each field's error sits under it; once created the same dialog says what happened. */
-export function addOrgModal(d: AddOrgDraft): string {
+export function addOrgModal(d: AddOrgDraft, dd: DropdownUi = initialDropdownUi()): string {
   const shell = (inner: string, describedBy = "") => `<div data-overlay="plat-add" class="cnpy-cmodal">
     <div data-act="platAddClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
     <div class="cnpy-cmodal-wrap">
@@ -528,6 +523,11 @@ export function addOrgModal(d: AddOrgDraft): string {
       ${input("plat-add-slug", "platAddSlug", d.slug, e.slug, `maxlength="39" autocapitalize="off" placeholder="acme-robotics"`).replace(`style="${FIELD}`, `style="${FIELD};font-family:var(--code);font-size:13px`)}
       ${e.slug ? "" : `<div style="${QUIET};margin-top:6px;line-height:1.45">The organization's address. Lowercase letters, digits and hyphens.</div>`}
     </div>
+    <div style="margin-top:14px">
+      <div id="plat-add-plan-l" style="${FIELD_LABEL}">Plan</div>
+      ${dropdown(planDropdown("plat-add-plan", "platAddPlan", d.plan, d.busy), dd)}
+      <div style="${QUIET};margin-top:6px;line-height:1.45">${esc(PLANS[d.plan].description)} Its limits can be set on its page afterwards.</div>
+    </div>
     <fieldset style="margin:18px 0 0;padding:0;border:none;min-width:0">
       <legend style="${FIELD_LABEL};padding:0;margin-bottom:8px">Org admin</legend>
       ${adminField({ segId: "plat-add-kind", kindAct: "platAddKind", valueAct: "platAddAdmin", field: "platAddAdmin", enter: "platAddSubmit", kind: d.adminKind, value: d.adminValue, error: e.admin, disabled: d.busy, inputId: "plat-add-admin" })}
@@ -539,9 +539,12 @@ export function addOrgModal(d: AddOrgDraft): string {
     </div>`);
 }
 
-/** Every Platform dialog: the add form, and the confirmations (suspend / unsuspend, remove a superadmin). */
-export function platformDialogs(p: PlatState, screen: string): string {
+/** Every Platform dialog: the add form, the confirmations (suspend / unsuspend, remove a superadmin),
+ *  and platform-access.ts's (grant, revoke a grant, change plan). `dd` = the open dropdown (`state.dd`). */
+export function platformDialogs(p: PlatState, screen: string, dd: DropdownUi = initialDropdownUi()): string {
   if (p.superadmin !== true || (screen !== "platform" && screen !== "platformorg")) return "";
+  const access = accessDialogs(p.access, screen, dd);
+  if (access) return access;
   if (screen === "platformorg" && p.suspendArm && p.detail.data) {
     const suspend = p.suspendArm === "suspend";
     const copy = suspendCopy(p.detail.data.org, suspend);
@@ -561,6 +564,6 @@ export function platformDialogs(p: PlatState, screen: string): string {
       confirmAct: "platRevokeGo", cancelAct: "platRevokeCancel", arg: p.revokeArm, busy: p.revokeBusy,
     });
   }
-  if (screen === "platform" && p.add) return addOrgModal(p.add);
+  if (screen === "platform" && p.add) return addOrgModal(p.add, dd) + (p.add.done ? "" : dropdownMenu([planDropdown("plat-add-plan", "platAddPlan", p.add.plan, p.add.busy)], dd));
   return "";
 }

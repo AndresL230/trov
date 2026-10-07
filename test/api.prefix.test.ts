@@ -12,7 +12,7 @@ import * as api from "../web/src/api";
 const sources = import.meta.glob("../web/src/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /** Person-level and platform routes: the only paths that may go out without the org prefix. */
-const GLOBAL = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform)(?:[/?]|$)/;
+const GLOBAL = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|billing)(?:[/?]|$)/;
 const TENANT = /^\/api\/o\/acme\//;
 /** Org settings' functions take the slug as an argument (`any` → "x"): still under an org's prefix. */
 const ANY_ORG = /^\/api\/o\/[^/]+\//;
@@ -42,7 +42,7 @@ const any: unknown = new Proxy(function () { /* callable */ }, {
   ownKeys: () => [],
 });
 /** Not request functions: the prefix's own controls, and the error classes. */
-const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "githubInstallHref"]);
+const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "planLimitText", "githubInstallHref"]);
 /** Functions whose arguments must be real values (a Blob for a multipart body). */
 const SPECIAL: Record<string, unknown[]> = {
   uploadAvatar: [new Blob(["x"]), "a.png"],
@@ -79,6 +79,23 @@ describe("apiUrl — the one prefix", () => {
     }
     // Look-alikes are tenant routes: `/api/orgsx`, `/authx`.
     expect(api.apiUrl("/api/orgsx")).toBe("/api/o/acme/orgsx");
+  });
+  it("billing: the waiting room's poll and the pricing page's question are person-level; an org's billing is that org's", async () => {
+    for (const p of ["/api/billing/status?session_id=cs_test_1", "/api/billing/config"]) {
+      expect(api.isGlobalPath(p), p).toBe(true);
+      expect(api.apiUrl(p), p).toBe(p);
+    }
+    expect(api.apiUrl("/api/billingx")).toBe("/api/o/acme/billingx");
+    api.setApiOrg(null); // the buyer has no org yet: both still go out
+    await api.getBillingStatus("cs test/1");
+    await api.getBillingConfig();
+    await api.openBillingPortal("big co");
+    await api.changeBillingPlan("acme", "team");
+    await api.renewBilling("acme", "personal");
+    expect(asked).toEqual([
+      { method: "GET", url: "/api/billing/status?session_id=cs%20test%2F1" }, { method: "GET", url: "/api/billing/config" },
+      { method: "POST", url: "/api/o/big%20co/billing/portal" }, { method: "POST", url: "/api/o/acme/billing/change" }, { method: "POST", url: "/api/o/acme/billing/renew" },
+    ]);
   });
   it("the GitHub App: Connect is a link to the org's own start route — a tenant route — and the callback GitHub returns to is not", () => {
     expect(api.githubInstallHref("acme")).toBe("/api/o/acme/github/install");
@@ -149,6 +166,90 @@ describe("every request function of api.ts", () => {
       expect((init.headers as Record<string, string>).accept).toBe("application/json");
     }
     expect((seen[1].headers as Record<string, string>)["content-type"]).toBe("application/json");
+  });
+});
+
+describe("plans and grants (0044_plans)", () => {
+  it("an org's plan is read under that org; grants and plan changes are platform routes, as written; creating an org names its grant", async () => {
+    const sent: { method: string; url: string; body: string | null }[] = [];
+    vi.stubGlobal("fetch", async (input: unknown, init?: RequestInit) => { sent.push({ method: init?.method ?? "GET", url: String(input), body: typeof init?.body === "string" ? init.body : null }); return respond(); });
+    await api.getOrgPlan("acme").catch(() => undefined);
+    await api.listPlatformGrants().catch(() => undefined);
+    await api.createPlatformGrant({ to: { email: "a@b.io" }, plan: "team" }).catch(() => undefined);
+    await api.revokePlatformGrant(7).catch(() => undefined);
+    await api.setPlatformOrgPlan("big co", { plan: "enterprise", overrides: { seats: 40 } }).catch(() => undefined);
+    await api.createOrg({ slug: "new-co", name: "New Co", grant: 4 }).catch(() => undefined);
+    expect(sent.map((a) => `${a.method} ${a.url}`)).toEqual([
+      "GET /api/o/acme/plan", "GET /api/platform/grants", "POST /api/platform/grants", "POST /api/platform/grants/7/revoke",
+      "PUT /api/platform/orgs/big%20co/plan", "POST /api/orgs",
+    ]);
+    expect(JSON.parse(sent[5].body ?? "null")).toEqual({ slug: "new-co", name: "New Co", grant: 4 });
+    expect(JSON.parse(sent[4].body ?? "null")).toEqual({ plan: "enterprise", overrides: { seats: 40 } });
+  });
+
+  it("a 402 plan_limit keeps the server's refusal on the error, from every sender; planLimitText is its one sentence", async () => {
+    const refusal = { error: "plan_limit", limit: "seats", used: 10, cap: 10, plan: "team", status: "active", message: "This organization has reached the 10 seats its Team plan includes." };
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify(refusal), { status: 402, headers: { "content-type": "application/json" } }));
+    const errors = await Promise.all([
+      api.createOrgInvite("acme", { github_login: "x", role: "member" }).catch((e: unknown) => e),                       // the org sender
+      api.createArtifact({ title: "t", kind: "markdown", area: "ui", repo: "", visibility: "org", summary: "s" } as never, { content: "c" }).catch((e: unknown) => e), // the artifact sender
+      api.createTicket({ title: "t" } as never).catch((e: unknown) => e),                                                 // the plain sender
+    ]);
+    for (const e of errors) {
+      expect(e).toBeInstanceOf(api.ApiError);
+      expect((e as InstanceType<typeof api.ApiError>).status).toBe(402);
+      expect((e as InstanceType<typeof api.ApiError>).plan).toEqual(refusal);
+    }
+    expect(api.planLimitText(errors[0], "owner")).toBe("This organization has reached the 10 seats its Team plan includes. Ask Trov to change your plan.");
+    expect(api.planLimitText(errors[0], "admin")).toBe("This organization has reached the 10 seats its Team plan includes. Ask one of this organization's owners.");
+    expect(api.planLimitText(new api.ApiError(403, "forbidden"), "owner")).toBeNull();
+    expect(api.planLimitText(new Error("offline"), "owner")).toBeNull();
+  });
+});
+
+describe("Sync GitHub (0046_sync_runs)", () => {
+  const RUN = { id: 9, repo: "acme/widgets", by: "andres", status: "running", batch: 1, batches: 3 };
+  it("the status is read under the org; the first batch STARTS a run, a later one names it", async () => {
+    const sent: { method: string; url: string; body: string | null }[] = [];
+    vi.stubGlobal("fetch", async (input: unknown, init?: RequestInit) => {
+      sent.push({ method: init?.method ?? "GET", url: String(input), body: typeof init?.body === "string" ? init.body : null });
+      return respond(200, { ok: true, summaryBudgetExhausted: true, run: RUN, summaries: { status: "on" } });
+    });
+    await api.getSync();
+    const first = await api.adminBackfill({ batch: 1, of: 10, start: true });
+    const second = await api.adminBackfill({ batch: 2, of: 10, run: 9 });
+    expect(sent.map((a) => `${a.method} ${a.url}`)).toEqual(["GET /api/o/acme/sync", "POST /api/o/acme/admin/backfill", "POST /api/o/acme/admin/backfill"]);
+    expect(JSON.parse(sent[1].body ?? "null")).toEqual({ batch: 1, of: 10, start: true });
+    expect(JSON.parse(sent[2].body ?? "null")).toEqual({ batch: 2, of: 10, run: 9 });
+    expect(first).toMatchObject({ status: 200, body: { run: RUN, summaryBudgetExhausted: true } });
+    expect(second.status).toBe(200);
+  });
+
+  it("a refused batch is an ANSWER carrying the run to show — 409 in progress, 503 / 502 failed — never a throw", async () => {
+    answer = () => respond(409, { error: "sync_running", run: RUN });
+    expect(await api.adminBackfill({ batch: 1, of: 10, start: true })).toEqual({ status: 409, error: "sync_running", run: RUN });
+    answer = () => respond(503, { error: "github 403", run: { ...RUN, status: "failed" } });
+    expect(await api.adminBackfill({ batch: 1, of: 10, start: true })).toEqual({ status: 503, error: "github 403", run: { ...RUN, status: "failed" } });
+    answer = () => respond(503, { error: "service token or repo not configured" });
+    expect(await api.adminBackfill({ batch: 1, of: 10, start: true })).toEqual({ status: 503, error: "service token or repo not configured", run: null });
+    answer = () => respond(502, { error: "sync failed", run: { ...RUN, status: "failed" } });
+    expect((await api.adminBackfill({ batch: 2, of: 10, run: 9 })).status).toBe(502);
+    // Not JSON at all (a proxy's error page), and a 200 with no run: still an answer, with a status and no run.
+    answer = () => new Response("<html>bad gateway</html>", { status: 502 });
+    expect(await api.adminBackfill({ batch: 1, of: 10, start: true })).toEqual({ status: 502, error: "502", run: null });
+    answer = () => respond(200, {});
+    expect(await api.adminBackfill({ batch: 1, of: 10, start: true })).toMatchObject({ status: 502, run: null });
+  });
+
+  it("a 401 is still Unauthorized, and with no org open nothing is sent", async () => {
+    answer = () => respond(401, { error: "unauthorized" });
+    await expect(api.adminBackfill({ batch: 1, of: 10, start: true })).rejects.toBeInstanceOf(api.Unauthorized);
+    await expect(api.getSync()).rejects.toBeInstanceOf(api.Unauthorized);
+    api.setApiOrg(null);
+    asked = [];
+    await expect(api.getSync()).rejects.toMatchObject({ status: 409, message: "org_required" });
+    await expect(api.adminBackfill({ batch: 1, of: 10, start: true })).rejects.toMatchObject({ message: "org_required" });
+    expect(asked).toEqual([]);
   });
 });
 

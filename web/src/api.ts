@@ -17,6 +17,7 @@ import type {
 import type { DashboardData } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import type { RepoDashboard, RepoRefreshResult } from "@shared/repo";
+import type { SyncRunView, SyncStatusView, SyncSummariesView } from "@shared/sync";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
 import type {
@@ -37,8 +38,21 @@ export class ApiError extends Error {
   status: number;
   /** A 429 `rate_limited`'s `retry_after`: whole seconds until the caller's limit turns over. */
   retryAfter: number | null = null;
+  /** A 402 `plan_limit`'s body (shared/plans.ts): which limit of the org's plan refused, and its sentence. */
+  plan: PlanRefusal | null = null;
   constructor(status: number, message: string) { super(message); this.status = status; }
 }
+/** The plan refusal in a refused call's JSON body, if that is what it is. */
+const planOf = (j: unknown): PlanRefusal | null => (isPlanRefusal(j) ? j : null);
+/**
+ * The ONE sentence a plan refusal is shown as, wherever it happens (an invitation, a repository, an
+ * environment, an artifact, an agent token); null for any other error. It ends with who can change the
+ * plan — said to an owner differently than to everyone else (shared/plans.ts `planRefusalSentence`).
+ */
+export function planLimitText(e: unknown, role: OrgRoleName | null): string | null {
+  return e instanceof ApiError && e.plan ? planRefusalSentence(e.plan, role) : null;
+}
+type OrgRoleName = "owner" | "admin" | "member";
 const retryAfterOf = (j: { retry_after?: unknown }): number | null =>
   typeof j.retry_after === "number" && Number.isFinite(j.retry_after) && j.retry_after > 0 ? j.retry_after : null;
 
@@ -69,7 +83,7 @@ export function setApiOrg(slug: string | null): void { apiOrg = slug; }
 export const apiOrgSlug = (): string | null => apiOrg;
 
 /** Person-level and platform routes: not an org's, so never prefixed (docs/architecture/data-layer.md › Routes and gates). */
-const GLOBAL_PATH = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|o)(?:[/?]|$)/;
+const GLOBAL_PATH = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|billing|o)(?:[/?]|$)/;
 export const isGlobalPath = (path: string): boolean => GLOBAL_PATH.test(path);
 
 /** The URL a route is requested at: a tenant route under the current org, anything else as written.
@@ -115,9 +129,11 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
 async function refusal(res: Response): Promise<ApiError> {
   let msg = String(res.status);
   let retryAfter: number | null = null;
-  try { const j = (await res.json()) as { error?: string; retry_after?: unknown }; if (j.error) msg = j.error; retryAfter = retryAfterOf(j); } catch { /* non-JSON */ }
+  let plan: PlanRefusal | null = null;
+  try { const j = (await res.json()) as { error?: string; retry_after?: unknown }; if (j.error) msg = j.error; retryAfter = retryAfterOf(j); plan = planOf(j); } catch { /* non-JSON */ }
   const err = new ApiError(res.status, msg);
   err.retryAfter = retryAfter;
+  err.plan = plan;
   return err;
 }
 
@@ -289,7 +305,9 @@ export function removeAvatar(): Promise<{ ok: true; avatar_url: string | null }>
 // never carry a submitted value). Nothing here ever RECEIVES a secret: the API is write-only.
 // Namespace imports under names of their own, so this block never collides with another import of the same types.
 import type * as OrgT from "@shared/orgs";
+import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView, type PlatformGrant, type GrantTarget, type PlanId, type PlanOverrides } from "@shared/plans";
 import type * as IntT from "@shared/integrations";
+import type { BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
 import type * as GhT from "@shared/github-app";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
  *  `detail` the server's sentence, `field` the input it is about. */
@@ -301,6 +319,7 @@ async function orgRefusal(res: Response): Promise<OrgApiError> {
   try { j = (await res.json()) as typeof j; } catch { /* non-JSON */ }
   const err = new OrgApiError(res.status, typeof j.error === "string" ? j.error : String(res.status), typeof j.message === "string" ? j.message : null, typeof j.field === "string" ? j.field : null);
   err.retryAfter = retryAfterOf(j);
+  err.plan = planOf(j);
   return err;
 }
 async function orgSend<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
@@ -316,8 +335,9 @@ const integrationPath = (slug: string, kind: IntT.IntegrationKind, scope: string
 
 /** My orgs, my pending invites and the superadmin flag (`GET /api/orgs`). */
 export function getMyOrgs(): Promise<OrgT.MyOrgsResponse> { return orgSend("GET", "/api/orgs"); }
-/** Create an org; the caller becomes its owner. Refusals: `invalid_slug`, `reserved_slug`, `slug_taken`, `invalid_name`, `org_limit`. */
-export function createOrg(body: { slug: string; name: string }): Promise<OrgT.MyOrg> {
+/** Create an org by USING a grant (`GET /api/orgs`'s `grants`; `grant` = its id, else the oldest): the
+ *  caller becomes its owner. Refusals: `invalid_slug`, `reserved_slug`, `slug_taken`, `invalid_name`, `no_grant`. */
+export function createOrg(body: { slug: string; name: string; grant?: number }): Promise<OrgT.MyOrg> {
   return orgSend<{ org: OrgT.MyOrg }>("POST", "/api/orgs", body).then((r) => r.org);
 }
 /** Answer one of MY pending invites (`GET /api/orgs`'s `invites`). */
@@ -327,6 +347,20 @@ export function getOrgMe(slug: string): Promise<OrgT.OrgMeResponse> { return org
 /** MY personal MCP tokens for the CURRENT org (never another org's, never anyone else's). */
 export function listMcpTokens(): Promise<McpTokenSummary[]> { return getJson<{ tokens: McpTokenSummary[] }>("/mcp-tokens").then((r) => r.tokens); }
 export function revokeMcpToken(id: number): Promise<{ ok: true }> { return postJson(`/mcp-tokens/${id}/revoke`); }
+/** The org's plan, its limits and its use of each (any member). */
+export function getOrgPlan(slug: string): Promise<OrgPlanView> { return orgSend("GET", orgPath(slug, "/plan")); }
+// Billing (shared/billing.ts; src/billing/routes.ts). Each of the three owner calls answers a URL on Stripe's
+// own pages — the SPA only ever navigates to it. A refusal keeps the server's sentence (`OrgApiError.detail`).
+/** "Manage billing": the Stripe Customer Portal for this org's customer (owner only). */
+export function openBillingPortal(slug: string): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/portal"), {}); }
+/** Move THIS org's subscription to another plan: Stripe's confirm screen (owner only). */
+export function changeBillingPlan(slug: string, plan: PurchasablePlan): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/change"), { plan }); }
+/** A canceled org pays again: a Stripe Checkout for the SAME org (owner only). */
+export function renewBilling(slug: string, plan: PurchasablePlan): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/renew"), { plan }); }
+/** The waiting room's poll: a checkout THIS person started (a 404 for anyone else's). */
+export function getBillingStatus(sessionId: string): Promise<BillingStatusResponse> { return orgSend("GET", `/api/billing/status?session_id=${encodeURIComponent(sessionId)}`); }
+/** What can be bought, and the caller's own paid organizations (public: the pricing page asks it signed out too). */
+export function getBillingConfig(): Promise<BillingConfigResponse> { return orgSend("GET", "/api/billing/config"); }
 export function getOrgSettings(slug: string): Promise<{ org: OrgT.OrgSettings; can_edit: boolean }> { return orgSend("GET", orgPath(slug, "/settings")); }
 export function putOrgSettings(slug: string, name: string): Promise<{ ok: true; org: OrgT.OrgSettings }> { return orgSend("PUT", orgPath(slug, "/settings"), { name }); }
 /** Upload the org's image (multipart `file`; the caller crops and downsizes it first — avatar.ts). Admin+.
@@ -454,23 +488,33 @@ export function testHosting(slug: string, provider: HostT.HostingProviderId, tar
 // repo-capture reconcile on whichever batch ends the loop — including one that
 // hits the cap while the summary budget is still exhausted, which the server
 // otherwise has no way to see (src/tools/backfill.ts's isFinalBackfillBatch).
-export function adminBackfill(batch: number, of: number): Promise<{
+// A sync is a RUN of batches (docs/architecture/sync.md): the first batch sends `start: true`, each
+// later one the `run` id the first answered with. A refusal is an ANSWER here, not a throw — the
+// 409 (a run is already in progress) and the 503 / 502 of a failed batch carry the run to show.
+export interface SyncBatchBody { batch: number; of: number; start?: true; run?: number }
+export interface SyncBatchOk {
   ok: boolean;
   captured: number;
   unchanged: number;
   summarized: number;
   summaryBudgetExhausted: boolean;
-  prSummarizedCount: number;
-  issueSummarizedCount: number;
-  prs: number;
-  issues: number;
-  issuesToSummarize: number;
-  /** Present only on the batch that ends a Sync — the repo-capture reconcile
-   *  (src/repo/github.ts's reconcileRepo) rides that batch only. `failed` names
-   *  each arm of it that threw ("deployments", "runs", …); empty on a clean run. */
+  /** Present only on the batch that ends a Sync — the closing refresh rides that batch only. */
   repo?: { written: number; unchanged: number; failed: string[] };
-}> {
-  return postJson("/admin/backfill", { batch, of });
+  run: SyncRunView;
+  summaries: SyncSummariesView;
+}
+export type SyncBatchAnswer =
+  | { status: 200; body: SyncBatchOk }
+  | { status: number; error: string; run: SyncRunView | null };
+export async function adminBackfill(body: SyncBatchBody): Promise<SyncBatchAnswer> {
+  const res = await call("/admin/backfill", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const j = (await res.json().catch(() => null)) as (SyncBatchOk & { error?: unknown }) | null;
+  if (res.ok && j && j.run) return { status: 200, body: j };
+  return { status: res.ok ? 502 : res.status, error: typeof j?.error === "string" ? j.error : String(res.status), run: j?.run ?? null };
+}
+/** `GET /sync` — any member: the run in progress, the last one, and what a new one would do. */
+export function getSync(): Promise<SyncStatusView> {
+  return getJson<SyncStatusView>("/sync");
 }
 
 // ADMIN action: "Poll now" — refresh what the Repo dashboard polls for
@@ -726,8 +770,11 @@ async function sendJson<T>(method: string, path: string, body?: unknown): Promis
   if (res.status === 404) throw new NotFound(path);
   if (!res.ok) {
     let msg = String(res.status);
-    try { const j = (await res.json()) as { error?: string; message?: string }; msg = j.message || j.error || msg; } catch { /* non-JSON */ }
-    throw new ApiError(res.status, msg);
+    let plan: PlanRefusal | null = null;
+    try { const j = (await res.json()) as { error?: string; message?: string }; msg = j.message || j.error || msg; plan = planOf(j); } catch { /* non-JSON */ }
+    const err = new ApiError(res.status, msg);
+    err.plan = plan; // the org's artifact storage is full: `msg` is already the plan's sentence
+    throw err;
   }
   return res.json() as Promise<T>;
 }
@@ -891,7 +938,7 @@ export function listPlatformOrgs(): Promise<PlatformOrgRow[]> {
 export function getPlatformOrg(slug: string): Promise<PlatformOrgDetail> {
   return getJson<PlatformOrgDetail>(`/api/platform/orgs/${encodeURIComponent(slug)}`);
 }
-export function createPlatformOrg(body: { slug: string; name: string; admin: AdminTarget }): Promise<{ org: PlatformOrgRow; admin: AdminAssignment }> {
+export function createPlatformOrg(body: { slug: string; name: string; admin: AdminTarget; plan?: PlanId; overrides?: PlanOverrides }): Promise<{ org: PlatformOrgRow; admin: AdminAssignment }> {
   return postJson<{ ok: true; org: PlatformOrgRow; admin: AdminAssignment }>("/api/platform/orgs", body);
 }
 export function assignPlatformOrgAdmin(slug: string, target: AdminTarget): Promise<AdminAssignment> {
@@ -900,9 +947,25 @@ export function assignPlatformOrgAdmin(slug: string, target: AdminTarget): Promi
 export function setPlatformOrgSuspended(slug: string, suspended: boolean): Promise<PlatformOrgRow> {
   return postJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/${suspended ? "suspend" : "unsuspend"}`).then((r) => r.org);
 }
-/** `limit` null = back to the default. */
-export function setPersonOrgLimit(handle: string, limit: number | null): Promise<{ handle: string; org_limit: number | null }> {
-  return putJson<{ ok: true; person: { handle: string; org_limit: number | null } }>(`/api/platform/persons/${encodeURIComponent(handle)}/org-limit`, { limit }).then((r) => r.person);
+// Plans and grants (shared/plans.ts; src/plans/routes.ts).
+/** Change an org's plan and its limit overrides. Nothing in the org is removed by it. */
+export function setPlatformOrgPlan(slug: string, body: { plan: PlanId; overrides: PlanOverrides }): Promise<PlatformOrgRow> {
+  return putJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/plan`, body).then((r) => r.org);
+}
+/** A paid org whose plan was set by hand goes back to the plan its subscription pays for. 409 `not_billed` for a granted org. */
+export function followPlatformOrgSubscription(slug: string): Promise<PlatformOrgRow> {
+  return putJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/plan`, { follow_subscription: true }).then((r) => r.org);
+}
+export function listPlatformGrants(): Promise<PlatformGrant[]> {
+  return getJson<{ grants: PlatformGrant[] }>("/api/platform/grants").then((r) => r.grants);
+}
+/** Grant a person an organization of their own. Refusals: `invalid_grant`, `no_such_person`. */
+export function createPlatformGrant(body: { to: GrantTarget; plan: PlanId; overrides?: PlanOverrides; note?: string; expires_in_days?: number | null }): Promise<PlatformGrant> {
+  return postJson<{ ok: true; grant: PlatformGrant }>("/api/platform/grants", body).then((r) => r.grant);
+}
+/** Revoke an UNUSED grant. 409 `grant_used` once it has become an org; 404 otherwise. */
+export function revokePlatformGrant(id: number): Promise<PlatformGrant> {
+  return postJson<{ ok: true; grant: PlatformGrant }>(`/api/platform/grants/${id}/revoke`).then((r) => r.grant);
 }
 export function listPlatformAdmins(): Promise<PlatformAdmin[]> {
   return getJson<{ admins: PlatformAdmin[] }>("/api/platform/admins").then((r) => r.admins);

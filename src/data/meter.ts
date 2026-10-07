@@ -61,6 +61,40 @@ export async function meterMcp(env: Env, ctx: TenantContext, request: Request): 
   }
 }
 
+// ── AI summaries (docs/architecture/plans.md › AI summaries) ─────────────────
+// One platform key pays for every org's summaries, so each ATTEMPTED call is counted here, per org —
+// from the webhook (actor `github-webhook`) and from Sync GitHub (actor = the admin). Counts and sizes
+// only: no title, no body, no summary text ever reaches this table.
+export type SummaryKind = "pr" | "issue";
+/** An attempted summarizer call — what the monthly allowance (`ai_summaries`) counts. */
+export const METRIC_SUMMARY: Record<SummaryKind, string> = { pr: "summary:pr", issue: "summary:issue" };
+/** An attempt that produced no summary (the item fell back to its excerpt). */
+export const METRIC_SUMMARY_FAILED: Record<SummaryKind, string> = { pr: "summary_failed:pr", issue: "summary_failed:issue" };
+/** An item stored with its excerpt because nothing could be attempted: the allowance was used up, or
+ *  the plan had ended. Counted once, when the excerpt row is first written. */
+export const METRIC_SUMMARY_CAPPED: Record<SummaryKind, string> = { pr: "summary_capped:pr", issue: "summary_capped:issue" };
+/** Characters sent (prompt + title + body) and received, summed per day — for estimating cost. */
+export const METRIC_SUMMARY_CHARS_IN = "summary_chars_in";
+export const METRIC_SUMMARY_CHARS_OUT = "summary_chars_out";
+/** The provider's own token counts, when its answer carried them (Gemini's `usageMetadata`). */
+export const METRIC_SUMMARY_TOKENS_IN = "summary_tokens_in";
+export const METRIC_SUMMARY_TOKENS_OUT = "summary_tokens_out";
+/** Every metric above starts with this: none of them is a PERSON's request (src/platform/usage.ts). */
+export const SUMMARY_METRIC_GLOB = "summary*";
+
+const UPSERT_BY = `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, ?, ?, ?, ?, ?)
+  ON CONFLICT(org_id, day, metric, actor) DO UPDATE SET count = count + excluded.count, last_at = excluded.last_at`;
+
+/** Add `n` to each named counter, in one batch. Entries with `n <= 0` are dropped. Never rejects. */
+export async function meterBy(p: PlatformContext, orgId: string, actor: string, entries: [metric: string, n: number][], at: string = nowIso()): Promise<void> {
+  try {
+    const rows = entries.filter(([, n]) => Number.isFinite(n) && n > 0);
+    if (rows.length) await batch(p, rows.map(([metric, n]) => stmt(p, UPSERT_BY, orgId, at.slice(0, 10), metric, actor, Math.round(n), at)));
+  } catch {
+    // metering is never the caller's problem
+  }
+}
+
 /** The daily cron: drop counters past the retention window. */
 export async function pruneUsage(p: PlatformContext, now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - USAGE_RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);
