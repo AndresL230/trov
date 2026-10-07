@@ -1,8 +1,8 @@
 # Plans, limits and grants
 
 Every organization is on a **plan**; a plan is a name over a table of **limits**. A person who is not a
-superadmin comes to create an organization only by using a **grant**. No prices and no payment code exist
-yet: the last section is the seam billing will use.
+superadmin comes to create an organization only by using a **grant** — one a superadmin gave, or one a
+payment made (`billing.md`). No prices live in Trov: the last section is the seam billing uses.
 
 Code: `shared/plans.ts` (the plans, the limits, the one refusal — shared by the Worker, the SPA and the
 landing page), `src/plans/` (`state.ts`, `gate.ts`, `grants.ts`, `billing.ts`, `routes.ts`). Migration:
@@ -49,8 +49,10 @@ OAuth consent page map it themselves because they do not answer JSON through the
 402 rather than 403: a 403 here means "your role may not" and an owner can fix that; no role in the org can
 fix this one, and nothing else in the app answers 402, so a client branches on the status alone. Over MCP it
 is a tool error with `code: "plan_limit"`. The SPA shows `message` plus who can change the plan
-(`planRefusalSentence`: an owner reads "Ask Trov to change your plan.", everyone else "Ask one of this
-organization's owners.") — `PLAN_CHANGE_POINTER` is the one place billing replaces.
+(`planRefusalSentence` over `PLAN_CHANGE_POINTER`: an owner of a GRANTED org reads "Ask Trov to change your
+plan."; an owner of an org that PAYS — the refusal carries `paid: true` — reads "You can upgrade or manage
+billing in Org settings." (ended: "You can renew it in Org settings."); everyone else "Ask one of this
+organization's owners.").
 
 ## Seats
 
@@ -79,15 +81,16 @@ An org can end up over a limit — its plan was changed, or an override lowered.
 
 ## Plan status
 
-`orgs.plan_status`: `active`; `past_due` (changes nothing — a grace period is billing's to run); `canceled`
+`orgs.plan_status`: `active`; `past_due` (changes nothing — the grace period is Stripe's retry schedule, `billing.md`); `canceled`
 — the org stays readable and working, and every addition a limit governs is refused until `setOrgPlan` puts
 it on a plan again. Nothing sets a status but billing's functions below.
 
 ## Grants: an organization of one's own
 
-An organization comes to exist in two ways: a superadmin creates it and names its admin (Platform ›
-Organizations — `organizations.md` §1), or a superadmin **grants** a person the right to create one
-themselves (Platform › Access). `persons.org_limit`, the per-person allowance from before, is read by
+An organization comes to exist in three ways: a superadmin creates it and names its admin (Platform ›
+Organizations — `organizations.md` §1), a superadmin **grants** a person the right to create one
+themselves (Platform › Access), or a person **buys a plan** and is given that same grant by billing
+(`billing.md`). `persons.org_limit`, the per-person allowance from before, is read by
 nothing; its Platform control and route are gone, and the column is dropped by the cleanup migration.
 
 1. **Granted** — `POST /api/platform/grants { to, plan, overrides?, note?, expires_in_days? }`. `to` is
@@ -140,7 +143,12 @@ handler builds `platform(env, BILLING_ACTOR)` and calls only these:
 | the subscription ended | `cancelOrgPlan(p, slug)` — readable, working, no additions. (To shrink instead: `setOrgPlan(p, slug, { plan: "personal" })`.) |
 | read | `orgPlan(p, orgId)`, `getGrant(p, id)` |
 
-Reserved for it and written by nothing yet: `orgs.plan_period_end`, `orgs.billing_customer_id`,
-`orgs.billing_subscription_id`, `org_grants.external_ref` (unique: one grant per payment), and
-`PlanDef.billing` (`{ price_id }`) in `shared/plans.ts` for a plan's price. `orgs.plan_source` /
-`org_grants.source` already distinguish `granted` from `billing`.
+| the buyer switched plan before using the grant | `setPaidGrantPlan(p, external_ref, plan)` |
+| the subscription ended before the grant was used | `revokeGrant(p, id)` |
+
+**The seam is in use** (`billing.md`): Stripe's webhook (`src/billing/`) calls exactly these. A paid
+grant's `external_ref` is its Stripe subscription id; `createOrgFromGrant` links the org it becomes to the
+customer and subscription in the creating batch (`linkPaidOrgStmt`), from `billing_subscriptions`
+(0045_billing). `orgs.plan_period_end`, `billing_customer_id` and `billing_subscription_id` are written
+only that way and by `setOrgPlan` / `setOrgPlanStatus`. A plan's price is NOT in `PlanDef.billing` (left
+null): it is a Stripe Price id in `wrangler.toml`, so the owner changes one without a release.

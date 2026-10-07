@@ -81,6 +81,17 @@ default.
 Another branch (`feat/github-app`) adds `0043_github_app.sql` and a release entry at the same spot in
 `web/src/releases.ts`: whichever merges second renumbers its release to 0.20.
 
+### Billing (branch `feat/billing`, on top of `feat/plans` — NOT merged)
+
+Paying for Personal or Team through Stripe, and setting the organization up with nobody at Trov involved:
+`docs/architecture/billing.md` (the flow, the event table, what each state does, the OWNER CHECKLIST).
+Migration `0045_billing` (three additive global tables). Nothing is live until the owner sets
+`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and the price ids in `wrangler.toml`: until then every billing
+route answers 503 `billing_unavailable` and the app is unchanged. Never exercised against real Stripe —
+the first test-mode purchase (checklist step 8) is the verification. The pricing page (another branch)
+links to `GET /billing/start?plan=…` and asks `GET /api/billing/config`. Terms / Privacy need the paid-plan
+wording before live keys go in (not edited here: `web/src/legal.ts`).
+
 ### Changed for API clients since the pushed commit
 
 | Route / tool | Was | Is |

@@ -23,8 +23,9 @@ Platform › Organizations › **Add organization** [`web/src/platform.ts`, `POS
 organization — so a superadmin who belongs to none still reaches it; the org switcher's menu and the org
 picker link to it.
 
-An organization comes to exist in one of two ways: the superadmin creates it for someone (this section), or
-grants someone the right to create their own (§1b). Nobody else can create one.
+An organization comes to exist in one of three ways: the superadmin creates it for someone (this section),
+grants someone the right to create their own (§1b), or someone buys a plan and sets theirs up with nobody
+at Trov involved (§1c). Nobody else can create one.
 
 Give the organization a name, a slug (its address: `/o/<slug>/`, not editable later), the **plan** it starts
 on (Personal, Team or Enterprise — `plans.md`; Team unless you pick another) and its first owner:
@@ -63,6 +64,16 @@ The confirmation says what happens if the organization is over the new limits: n
 loses access; it cannot add more of that kind until it is back under. Everyone in the organization reads its
 plan in Org settings › General; only you change it. The limits, what counts toward each and the seam for
 billing: `plans.md`.
+
+### 1c. …or someone buys a plan
+
+A person presses a plan on the pricing page [`GET /billing/start`, `src/billing/routes.ts`], signs in if
+they have not, pays on Stripe's page, and comes back to a waiting room. Stripe's webhook gives them the
+same grant as §1b, made by `billing` instead of a superadmin; they name the organization and own it. It
+appears in Platform › Organizations as **paid**, with Stripe's status and a link to the customer in the
+Stripe dashboard, and its owner manages payment in Org settings › General (Manage billing, a plan switch,
+a renewal). You can still change its plan by hand — what that does is in `billing.md` › Decisions. The whole
+flow, the events and the owner checklist: `billing.md`. Enterprise is never bought: it is §1 or §1b.
 
 ## 2. The owner signs in, accepts, and lands on the setup checklist
 

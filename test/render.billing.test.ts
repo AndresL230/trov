@@ -68,10 +68,14 @@ describe("Org settings › General — the Plan block of an org that pays", () =
   });
 
   it("ended: what still works, and Renew for the same organization — the plan it was on first", () => {
-    const html = block(view("team", { status: "canceled", billing: bill({ switch_to: [], renew_on: ["personal", "team"] }) }));
+    const html = block(view("team", { status: "canceled", period_end: "2026-03-02T00:00:00.000Z", billing: bill({ switch_to: [], renew_on: ["personal", "team"] }) }));
     expect(html).toContain('data-org-billing="ended"');
     expect(html).toContain(">Ended<");
-    expect(html).toContain("The subscription ended on 15 January 2027.");
+    expect(html).toContain("The subscription ended on 2 March 2026.");
+    // Cancelled at once, before the paid period was up: that date is not when it ended, so none is given.
+    const early = block(view("team", { status: "canceled", period_end: "2999-01-01T00:00:00.000Z", billing: bill({ switch_to: [], renew_on: ["team"] }) }));
+    expect(early).toContain("The subscription has ended.");
+    expect(early).not.toContain("2999");
     expect(html).toContain("This plan has ended. Everything here stays as it is and keeps working, but nothing a limit covers can be added until the plan is renewed.");
     expect(buttons(html)).toEqual(["Renew Team|orgBillingRenew:team", "Renew on Personal|orgBillingRenew:personal", "Manage billing|orgBillingPortal"]);
   });

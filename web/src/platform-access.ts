@@ -14,7 +14,7 @@ import {
   PLANS, PLAN_IDS, LIMIT_KEYS, LIMITS, GRANT_EXPIRY_DAYS, GRANT_NOTE_MAX, formatBytes, formatLimit, formatUse, resolveEntitlements, seatsPhrase,
   type GrantTarget, type LimitKey, type PlanId, type PlanOverrides, type PlatformGrant, type PlatformOrgPlan,
 } from "@shared/plans";
-import { billingDate } from "@shared/billing";
+import { billingDate, isPast } from "@shared/billing";
 import { esc, attr, relTime, statusBadge, surface } from "./ui";
 import { confirmModal } from "./confirm";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
@@ -276,7 +276,7 @@ function billingLine(p: PlatformOrgPlan): string {
   const b = p.billing;
   if (!b) return `<div data-plat-billing="granted" style="font-size:12.5px;color:var(--fg-55);margin-top:8px;line-height:1.5">Granted by Trov: nobody pays for this plan through Stripe.</div>`;
   const date = billingDate(b.period_end);
-  const when = !date ? "" : p.status === "canceled" ? ` &middot; ended ${esc(date)}` : b.cancel_at_period_end ? ` &middot; ends ${esc(date)}` : ` &middot; renews ${esc(date)}`;
+  const when = !date ? "" : p.status === "canceled" ? (isPast(b.period_end) ? ` &middot; ended ${esc(date)}` : "") : b.cancel_at_period_end ? ` &middot; ends ${esc(date)}` : ` &middot; renews ${esc(date)}`;
   const every = b.interval === "year" ? "yearly" : b.interval === "month" ? "monthly" : "";
   const pinned = b.pinned
     ? `<div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:12.5px;line-height:1.5;color:var(--fg-70)">You set this plan by hand. The subscription pays for ${esc(PLANS[b.plan].name)}, and its events do not change the plan while it is pinned.</span><button type="button" data-act="platPlanFollow" data-field="platPlanFollow" class="cnpy-outlinebtn" style="${OUTLINE};height:30px">Follow subscription</button></div>`

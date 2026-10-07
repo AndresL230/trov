@@ -14,7 +14,7 @@ import {
   LIMIT_KEYS, LIMITS, PLANS, formatLimit, formatUse, planRefusal, planRefusalSentence, resolveEntitlements,
   type LimitKey, type OrgPlanView,
 } from "@shared/plans";
-import { billingDate, type PurchasablePlan } from "@shared/billing";
+import { billingDate, isPast, type PurchasablePlan } from "@shared/billing";
 import type { OrgRole } from "@shared/orgs";
 import { esc, surface } from "./ui";
 import { O_ERR, O_HELP, chip, orgHead, quietBtn, sliceNote, type OrgSlice } from "./org-ui";
@@ -109,7 +109,7 @@ function billingPart(v: OrgPlanView, role: OrgRole, b: OrgBillingUi): BillingPar
   const every = bill.interval === "year" ? "yearly " : bill.interval === "month" ? "monthly " : "";
   const cancelling = v.status !== "canceled" && bill.cancel_at_period_end;
   let line: string;
-  if (v.status === "canceled") line = date ? `The subscription ended on ${date}.` : "The subscription has ended.";
+  if (v.status === "canceled") line = date && isPast(v.period_end) ? `The subscription ended on ${date}.` : "The subscription has ended.";
   else if (cancelling) line = `Cancelled: the plan ends${date ? ` on ${date}` : " at the end of the paid period"}. Until then everything works as before.${owner ? " To keep it, resume the subscription in Manage billing." : ""}`;
   else if (v.status === "past_due") line = `The last payment did not go through. Stripe is trying the card again, and nothing changes while it does; if it keeps failing, the plan ends.${date ? ` The current period runs to ${date}.` : ""}${owner ? " Update the card in Manage billing." : ""}`;
   else line = `${date ? `Renews on ${date}. ` : ""}Billed ${every}through Stripe.`;

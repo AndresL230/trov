@@ -120,6 +120,13 @@ export function stripeCustomerUrl(customerId: string, livemode: boolean): string
   return `https://dashboard.stripe.com/${livemode ? "" : "test/"}customers/${encodeURIComponent(customerId)}`;
 }
 
+/** Has this instant passed? A subscription cancelled at once ends BEFORE its paid period's end, so an
+ *  ended plan may only be given that date when it really is behind us. */
+export const isPast = (iso: string | null | undefined, now: number = Date.now()): boolean => {
+  const t = iso ? Date.parse(iso) : NaN;
+  return Number.isFinite(t) && t <= now;
+};
+
 /** "12 March 2027" from an ISO instant (UTC), or "" for none — one format for every billing date. */
 export function billingDate(iso: string | null | undefined): string {
   const t = iso ? Date.parse(iso) : NaN;
