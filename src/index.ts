@@ -1,6 +1,9 @@
 import { app } from "./routes";
 import { handleMcp } from "./mcp";
 import { handleGithubWebhook, webhookPath } from "./github-hook";
+import { STRIPE_WEBHOOK_PATH, handleStripeWebhook } from "./billing/webhook";
+import { pruneEvents } from "./billing/store";
+import { BILLING_DONE_PATH } from "@shared/billing";
 import { resolveBearerTenant } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
 import { platform } from "./data/context";
@@ -47,6 +50,9 @@ export default {
     // body against the `github_webhook` secret of the repo the URL names:
     // `/webhook/github/<org_repos.id>` per org, and the legacy `/webhook/github`
     // for the one `legacy_hook` repo (src/github-hook.ts). Never touches sessionGate.
+    // Stripe's deliveries (docs/architecture/billing.md): the `Stripe-Signature` over the raw body is the
+    // auth, against STRIPE_WEBHOOK_SECRET; a bad one is a bare 401 and writes nothing (src/billing/webhook.ts).
+    if (request.method === "POST" && url.pathname === STRIPE_WEBHOOK_PATH) return handleStripeWebhook(request, env);
     const hook = request.method === "POST" ? webhookPath(url.pathname) : null;
     if (hook) return handleGithubWebhook(request, env, { hookId: hook.hookId, waitUntil: (p) => ctx.waitUntil(p) });
     // Signed one-click unsubscribe (canopy-email.md §7): the single token
@@ -75,7 +81,9 @@ export default {
     // the org's data is behind `/api/o/:slug` and its membership gate.
     // `/platform` is the superadmin's area OUTSIDE any org (a superadmin may belong to none): the same
     // shell; what it shows comes from `/api/platform/*`, which 404s everyone who is not a superadmin.
-    const isShellPath = url.pathname.startsWith("/o/") || url.pathname === "/platform" || url.pathname.startsWith("/platform/");
+    // `/billing/done` is the waiting room Stripe sends a buyer back to (web/src/billing.ts): the same shell,
+    // outside any org — the buyer has none yet. What it shows comes from `/api/billing/status`.
+    const isShellPath = url.pathname.startsWith("/o/") || url.pathname === "/platform" || url.pathname.startsWith("/platform/") || url.pathname === BILLING_DONE_PATH;
     if ((request.method === "GET" || request.method === "HEAD") && isShellPath) return spaShell(request, env, url);
     return app.fetch(request, env, ctx);
   },
@@ -95,6 +103,7 @@ export default {
     if (controller.cron === DAILY_CRON || controller.cron === WEEKLY_CRON) {
       await pruneUsage(platform(env, "system")).catch(() => undefined); // org_usage_daily retention (400 days)
       await pruneLimits(platform(env, "system")).catch(() => undefined); // abuse_counters of past windows
+      await pruneEvents(platform(env, "system")).catch(() => undefined); // billing_events past Stripe's retry horizon
       await handleNotificationCron(env, controller.cron, new Date(controller.scheduledTime));
       return;
     }

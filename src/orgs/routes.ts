@@ -18,6 +18,7 @@ import { getOrgLogo, removeOrgLogo, setOrgLogo } from "./logo";
 import { rateLimited } from "../platform/limits";
 import { usableGrants, createOrgFromGrant } from "../plans/grants";
 import { orgPlanView } from "../plans/gate";
+import { orgBillingView } from "../billing/view";
 import type { MyOrgsResponse } from "@shared/orgs";
 import {
   OrgError, ORG_ERROR_STATUS, myOrgs, listMyInvites, respondToInvite,
@@ -112,9 +113,13 @@ orgTenantApp.put("/settings", async (c) => {
   } catch (e) { return orgFail(c, e); }
 });
 
-// The org's plan (0044_plans): what it is on, its limits and its use of each — any member reads it;
-// nobody changes it here (the superadmin does, in Platform).
-orgTenantApp.get("/plan", async (c) => c.json(await orgPlanView(c.var.ctx)));
+// The org's plan (0044_plans): what it is on, its limits and its use of each — any member reads it.
+// `billing` says how a PAID org pays (0045_billing); its owner changes that through /billing/* (src/billing/routes.ts),
+// a granted org's plan is changed by the superadmin, in Platform.
+orgTenantApp.get("/plan", async (c) => {
+  const [view, billing] = await Promise.all([orgPlanView(c.var.ctx), orgBillingView(c.var.p, c.env, c.var.ctx.orgId)]);
+  return c.json({ ...view, billing });
+});
 
 // The org's image (0042_organizations, ./logo.ts) — admin+. Upload: multipart, field `file`, checked like a person's
 // photo; a declared length past the cap (plus multipart framing) is refused before the body is read, and

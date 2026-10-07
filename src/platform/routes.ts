@@ -20,6 +20,8 @@ import { platformUsage, usageDays, USAGE_DEFAULT_DAYS } from "./usage";
 import { mailInvite, mailOrigin, welcomeFirstJoin } from "../orgs/mail";
 import { rateLimited } from "./limits";
 import type { AdminAssignment, PlatformOrgDetail, PlatformOrgRow } from "@shared/orgs";
+import type { PlatformContext } from "../data/platform-sql";
+import { platformBillingBySlug } from "../billing/store";
 
 export const platformApp = new Hono<AppEnv>();
 
@@ -62,7 +64,14 @@ async function notifyAdmin(c: Context<AppEnv>, orgId: string, admin: AdminAssign
 }
 
 // ── orgs ─────────────────────────────────────────────────────────────────────
-platformApp.get("/orgs", async (c) => c.json({ orgs: (await listPlatformOrgs(c.var.p)).map(publicRow) }));
+/** The rows as Platform shows them: without the internal id, and with the Stripe subscription of each
+ *  org that pays (0045_billing) beside its plan — ids, Stripe's status and the dashboard link; no amounts. */
+async function platformRows(p: PlatformContext, slug?: string): Promise<PlatformOrgRow[]> {
+  const [orgs, billing] = await Promise.all([listPlatformOrgs(p, slug), platformBillingBySlug(p, slug)]);
+  return orgs.map(publicRow).map((o) => (o.plan ? { ...o, plan: { ...o.plan, billing: billing.get(o.slug) ?? null } } : o));
+}
+
+platformApp.get("/orgs", async (c) => c.json({ orgs: await platformRows(c.var.p) }));
 
 platformApp.post("/orgs", async (c) => {
   const b = await body(c);
@@ -70,7 +79,7 @@ platformApp.post("/orgs", async (c) => {
   try {
     const { org, admin, first_join } = await createOrgWithAdmin(c.var.p, { slug: b.slug as string, name: b.name as string, admin: b.admin, plan: b.plan, overrides: b.overrides });
     await notifyAdmin(c, org.id, admin, first_join);
-    return c.json({ ok: true, org: publicRow((await listPlatformOrgs(c.var.p, org.slug))[0]), admin }, 201);
+    return c.json({ ok: true, org: (await platformRows(c.var.p, org.slug))[0], admin }, 201);
   } catch (e) { return fail(c, e); }
 });
 
@@ -78,7 +87,7 @@ async function detail(c: Context<AppEnv>, slug: string): Promise<PlatformOrgDeta
   const [org] = await listPlatformOrgs(c.var.p, slug);
   if (!org) return null;
   const [people, usage] = await Promise.all([platformOrgPeople(c.var.p, org.id), platformUsage(c.var.p, USAGE_DEFAULT_DAYS)]);
-  return { org: publicRow(org), ...people, usage: usage.orgs.find((o) => o.slug === org.slug)! };
+  return { org: (await platformRows(c.var.p, org.slug))[0], ...people, usage: usage.orgs.find((o) => o.slug === org.slug)! };
 }
 
 platformApp.get("/orgs/:slug", async (c) => {
@@ -99,14 +108,14 @@ platformApp.post("/orgs/:slug/admin", async (c) => {
 const suspend = (suspended: boolean) => async (c: Context<AppEnv>) => {
   try {
     await setSuspended(c.var.p, c.req.param("slug") ?? "", suspended);
-    return c.json({ ok: true, org: publicRow((await listPlatformOrgs(c.var.p, c.req.param("slug")))[0]) });
+    return c.json({ ok: true, org: (await platformRows(c.var.p, c.req.param("slug")))[0] });
   } catch (e) { return fail(c, e); }
 };
 platformApp.post("/orgs/:slug/suspend", suspend(true));
 platformApp.post("/orgs/:slug/unsuspend", suspend(false));
 
 // ── plans and grants (0044_plans): /orgs/:slug/plan, /grants… — src/plans/routes.ts ──
-registerPlanRoutes(platformApp, (slug, p) => listPlatformOrgs(p, slug).then((rows) => (rows[0] ? publicRow(rows[0]) : null)));
+registerPlanRoutes(platformApp, (slug, p) => platformRows(p, slug).then((rows) => rows[0] ?? null));
 
 // ── superadmins ──────────────────────────────────────────────────────────────
 platformApp.get("/admins", async (c) => c.json({ admins: await listAdmins(c.var.p) }));
