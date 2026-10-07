@@ -332,6 +332,15 @@ export async function runBackfill(
         continue;
       }
 
+      // No summarizer: nothing can be attempted, so nothing is spent from the batch
+      // budget and nothing is paced — a Sync with no summarizer is ONE batch, not
+      // ten that each rewrite five excerpt rows. An item with no row yet gets its
+      // excerpt row once; one that already has it waits for a later Sync.
+      if (!issueSummarizer) {
+        if (existing === null) await storeIssueSummary(ctx, null, { issue_number: issue.number, title: issue.title, body: issue.body ?? "" });
+        continue;
+      }
+
       // Shares the SAME summarized/summaryBatchLimit budget as the PR loop
       // below — not a separate allowance. See Global Constraints.
       if (summarized >= summaryBatchLimit) {
@@ -383,12 +392,18 @@ export async function runBackfill(
         continue;
       }
 
+      const parsed = JSON.parse(ev.raw) as { pr: { number: number; title: string; body: string | null } };
+      // No summarizer: the marker row once, outside the budget (see the issue loop).
+      if (!summarizer) {
+        if (existing === null) await storePrSummary(ctx, null, { semantic_key: ev.semantic_key, pr_number: parsed.pr.number, title: parsed.pr.title, body: parsed.pr.body ?? "" });
+        continue;
+      }
+
       if (summarized >= summaryBatchLimit) {
         summaryBudgetExhausted = true;
         continue;
       }
 
-      const parsed = JSON.parse(ev.raw) as { pr: { number: number; title: string; body: string | null } };
       const stored = await storePrSummary(ctx, summarizer, {
         semantic_key: ev.semantic_key,
         pr_number: parsed.pr.number,

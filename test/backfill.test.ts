@@ -307,6 +307,26 @@ describe("runBackfill", () => {
     expect(rows.map((r) => r.pr_number)).toEqual([100, 101, 102]);
   });
 
+  it("with NO summarizer a run is one batch: every item gets its excerpt row once, outside the budget, and a second run rewrites none", async () => {
+    const prs = Array.from({ length: 7 }, (_, i) => makePr(200 + i));
+    const fetchImpl = stubFetch(prs, [openIssue]);
+    const read = async () => ({
+      prs: await all<PrSummaryRow>(env.DB, `SELECT pr_number, model, created_at FROM pr_summaries ORDER BY pr_number`),
+      issue: await first<IssueSummaryRow>(env.DB, `SELECT model, created_at FROM issue_summaries WHERE issue_number = 20`),
+    });
+    const one = await runBackfill(envWith(), "admin-user", { fetchImpl, summaryBatchLimit: 2, summaryCallDelayMs: 0 });
+    // Nothing was attempted, so nothing was spent: the client's loop (`summaryBudgetExhausted`) ends here.
+    expect(one).toMatchObject({ ok: true, summarized: 0, summaryBudgetExhausted: false, prSummarizedCount: 0, issueSummarizedCount: 0 });
+    const before = await read();
+    expect(before.prs.map((r) => r.model)).toEqual(Array(7).fill("excerpt"));
+    expect(before.issue?.model).toBe("excerpt");
+
+    await new Promise((r) => setTimeout(r, 5));
+    const two = await runBackfill(envWith(), "admin-user", { fetchImpl, summaryBatchLimit: 2, summaryCallDelayMs: 0 });
+    expect(two).toMatchObject({ ok: true, summarized: 0, summaryBudgetExhausted: false });
+    expect(await read()).toEqual(before);
+  });
+
   it("waits summaryCallDelayMs between summarizer calls", async () => {
     const summarizer = countingSummarizer({ ...PR_STUB, what: "**What changed:** Summary." });
     const start = Date.now();
