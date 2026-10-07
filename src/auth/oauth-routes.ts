@@ -5,6 +5,7 @@ import { PlanLimitError, PLAN_LIMIT_STATUS } from "../plans/state";
 import { Hono, type Context } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import type { AppEnv } from "./principal";
+import { takeReturnTo } from "./return-to";
 import {
   OAuthError, oauthOrigin, protectedResourceMetadata, authorizationServerMetadata,
   validateRegistration, registerClient, exchangeAuthorizationCode, refreshAccessToken, revokeOAuthToken,
@@ -40,7 +41,8 @@ export async function setOAuthPending(c: Context<AppEnv>, q: URLSearchParams, no
  *  or malformed cookie is null, so the person just lands in the app. */
 export async function takeOAuthPending(c: Context<AppEnv>, nowMs: number = Date.now()): Promise<string | null> {
   const sealed = getCookie(c, OAUTH_PENDING_COOKIE);
-  if (!sealed) return null;
+  // No connection waiting: the other thing a sign-in can have been started for is a purchase (./return-to.ts).
+  if (!sealed) return takeReturnTo(c, nowMs);
   deleteCookie(c, OAUTH_PENDING_COOKIE, { path: "/" });
   const v = await hmacUnseal(sealed, `oauth-pending:${c.env.COOKIE_SECRET}`);
   if (!v) return null;
@@ -76,7 +78,7 @@ async function consentSession(c: Context<AppEnv>): Promise<{ id: string; handle:
 
 // Geist comes from Google Fonts, like the SPA's index.html; nothing else loads.
 // form-action stays LAST: the consent page appends the app's redirect origin to it.
-const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'; form-action 'self'";
+export const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'; form-action 'self'";
 
 export interface OAuthDeps { now?: () => number }
 

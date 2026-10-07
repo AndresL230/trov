@@ -37,8 +37,7 @@ real round trip is unverified until the owner runs it (that doc › "Verify afte
 - **Not done here**: capture for non-primary repositories (the capture's keys carry no repository — still
   the first "smaller follow-up" below); several installations per org; Phase 7's removal of the legacy
   hook and the env-secret fallback, which this makes possible once SaplingLearn is on the App.
-- The release entry is `0.19` in `web/src/releases.ts`, dated 2026-10-07 with no PR number: set its `date`
-  to the merge day and add `prs: [<n>]` (and `(#n)` on its patch lines) in the PR that merges it.
+- Merged as #103; its release entry is `0.19` in `web/src/releases.ts`.
 
 ## Context
 
@@ -97,7 +96,7 @@ real round trip is unverified until the owner runs it (that doc › "Verify afte
      dead CSS removed; Settings › Account wraps; a sprint's `lead` must be a member.
   8. Docs: this file, `docs/architecture/data-layer.md`, `docs/architecture/organizations.md`.
 
-### Plans and grants (branch `feat/plans`, on top of main — NOT merged)
+### Plans and grants (merged, #104 — release 0.20)
 
 `docs/architecture/plans.md` is the whole of it. In short: every org is on a plan (`shared/plans.ts`:
 Personal 1 seat, Team 10, Enterprise set per org — every number a placeholder for the owner), enforced at
@@ -107,8 +106,21 @@ migration, `0044_plans` (existing orgs → Enterprise, unlimited seats). No pric
 `src/plans/billing.ts` is the seam the billing work builds on. Owner's calls before it ships: the default
 numbers, whether a pending invitation counts as a seat, the over-limit rule, whether grants should expire by
 default.
-Another branch (`feat/github-app`) adds `0043_github_app.sql` and a release entry at the same spot in
-`web/src/releases.ts`: whichever merges second renumbers its release to 0.20.
+The pricing page (#105, `shared/pricing.ts`, `/pricing`) merged after it with every price `null`.
+
+### Billing (branch `feat/billing`, PR #106, up to date with main — NOT merged)
+
+Paying for Personal or Team through Stripe, and setting the organization up with nobody at Trov involved:
+`docs/architecture/billing.md` (the flow, the event table, what each state does, the OWNER CHECKLIST).
+Migration `0045_billing` (three additive global tables). Nothing is live until the owner sets
+`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` and the price ids in `wrangler.toml`: until then every billing
+route answers 503 `billing_unavailable` and the app is unchanged. Never exercised against real Stripe —
+the first test-mode purchase (checklist step 8) is the verification. Release entry `0.21` (it also carries
+the pricing page's line, #105). The pricing page (`/pricing`, on main) links to `GET /billing/start?plan=…`
+only for a plan with a price in `shared/pricing.ts` — all `null` today, so nothing public reaches billing;
+its link is `billingStartHref` (one source) and it does NOT ask `GET /api/billing/config`. Set a price there
+only after billing is on. Terms / Privacy need the paid-plan wording before live keys go in (not edited
+here: `web/src/legal.ts`).
 
 ### Changed for API clients since the pushed commit
 

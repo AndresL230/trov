@@ -12,7 +12,8 @@ import type { PlatformContext } from "../data/platform-sql";
 import type { PlatformOrgRow } from "@shared/orgs";
 import { mailOrigin } from "../orgs/mail";
 import { GrantError, GRANT_ERROR_STATUS, createGrant, getGrant, listGrants, mailGrant, revokeGrant } from "./grants";
-import { PlanError, PLAN_ERROR_STATUS, setOrgPlan } from "./state";
+import { PlanError, PLAN_ERROR_STATUS, cleanPlan, setOrgPlan } from "./state";
+import { platformBillingBySlug, setPlanPinned } from "../billing/store";
 
 function fail(c: Context<AppEnv>, e: unknown): Response {
   if (e instanceof GrantError) return c.json({ error: e.code, message: e.message }, GRANT_ERROR_STATUS[e.code]);
@@ -48,12 +49,31 @@ export function registerPlanRoutes(app: Hono<AppEnv>, orgRow: (slug: string, p: 
     } catch (e) { return fail(c, e); }
   });
 
+  // An org that PAYS through Stripe (0045_billing, docs/architecture/billing.md › The superadmin and a paid org):
+  // the superadmin may still set its plan. While its subscription is live the org STAYS a billing org — its
+  // owner keeps Manage billing, its status and period keep following Stripe — and a plan that differs from
+  // the one the subscription pays for is PINNED: no later subscription event moves it back. `follow_subscription`
+  // lifts the pin and puts the org on the subscription's own plan again. Once the subscription has ENDED,
+  // Change plan takes the org back as a granted one (active), as for any other org.
   app.put("/orgs/:slug/plan", async (c) => {
     const b = await body(c);
     if (!b) return c.json({ error: "invalid payload" }, 400);
+    const slug = c.req.param("slug");
     try {
-      await setOrgPlan(c.var.p, c.req.param("slug"), { plan: b.plan, overrides: b.overrides });
-      return c.json({ ok: true, org: (await orgRow(c.req.param("slug"), c.var.p))! });
+      const paid = (await platformBillingBySlug(c.var.p, slug)).get(slug) ?? null;
+      const now = paid ? (await orgRow(slug, c.var.p))?.plan ?? null : null;
+      if (b.follow_subscription === true) {
+        if (!paid || !now) return c.json({ error: "not_billed", message: "this organization has no subscription to follow" }, 409);
+        await setOrgPlan(c.var.p, slug, { plan: paid.plan, source: "billing", status: now.status });
+        await setPlanPinned(c.var.p, paid.subscription_id, false);
+      } else if (paid && now && now.status !== "canceled") {
+        const plan = cleanPlan(b.plan);
+        await setOrgPlan(c.var.p, slug, { plan, overrides: b.overrides, source: "billing", status: now.status });
+        await setPlanPinned(c.var.p, paid.subscription_id, plan !== paid.plan);
+      } else {
+        await setOrgPlan(c.var.p, slug, { plan: b.plan, overrides: b.overrides });
+      }
+      return c.json({ ok: true, org: (await orgRow(slug, c.var.p))! });
     } catch (e) { return fail(c, e); }
   });
 }

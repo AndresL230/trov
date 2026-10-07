@@ -70,6 +70,67 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Billing (#106), with the pricing page (#105), which merged without a release line of its own.
+  {
+    version: "0.21",
+    date: "2026-10-07",
+    title: "Paid plans",
+    headline: "You can buy the Personal or Team plan and set your organization up yourself, and its owner manages billing in Org settings.",
+    highlights: [
+      "You can buy a plan. Choose Personal or Team, sign in, and pay on Stripe's page. When the payment is confirmed you name your organization and you are its owner. Enterprise is still arranged with Trov.",
+      "After paying you land on a page that waits for the payment to be confirmed, then takes you to set up your organization. If confirmation is slow it says your payment was received and that your organization will be on your organizations page shortly.",
+      "Org settings › General shows how a paid organization pays: when it renews, a payment that is past due, or a cancelled plan and the day it ends.",
+      "An owner can open Manage billing to change the card, see invoices or cancel, can move the organization between Personal and Team, and can renew a plan that has ended. Each of these opens Stripe's own pages.",
+      "When a plan's limit stops something in an organization that pays, its owner is pointed at Org settings to upgrade, manage billing or renew.",
+    ],
+    headsUp: [
+      "Paid plans are switched on by Trov. Until they are, buying a plan says it is not available yet and nothing else changes.",
+      "Organizations that Trov set up or granted are not billed, and their Plan section shows nothing about payment.",
+      "A payment that is past due changes nothing while Stripe retries the card. If the retries run out, the plan ends.",
+      "When a plan ends, everything in the organization stays and keeps working, and nobody loses access. You can't add people, repositories, environments, artifacts or agent connections until an owner renews it.",
+      "Moving from Team to Personal with more than one person removes nobody and deletes nothing, but no one can be invited until the organization is back to one seat. Trov says so before you confirm.",
+      "Signing in with Google does not create an account. To buy a plan as someone new, sign in with GitHub.",
+    ],
+    ops: [
+      "Apply migration `0045_billing` (additive: the tables `billing_events`, `billing_checkouts`, `billing_subscriptions`; no column added to an existing table). Safe on live data and with the previous Worker running. Rollback steps are in the file's header.",
+      "Billing is OFF until both secrets are set: `wrangler secret put STRIPE_SECRET_KEY` and `wrangler secret put STRIPE_WEBHOOK_SECRET`. While off, every billing route answers 503 `billing_unavailable` and `POST /webhook/stripe` answers a bare 401.",
+      "Prices are not in Trov. Create the Products and recurring Prices in Stripe and paste the Price ids into `wrangler.toml` `[vars]`: `STRIPE_PRICE_PERSONAL`, `STRIPE_PRICE_TEAM`, and optionally `STRIPE_PRICE_PERSONAL_YEARLY`, `STRIPE_PRICE_TEAM_YEARLY`. A plan with no id cannot be bought.",
+      "Add the webhook endpoint `https://trov.dev/webhook/stripe` in Stripe with `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`.",
+      "Configure the Stripe Customer Portal (payment methods, invoices, cancel; plan switching with both products) or Upgrade and Switch answer that the plan change could not be opened. Do one purchase in test mode with card 4242 4242 4242 4242 before live keys. The full checklist is in `docs/architecture/billing.md`.",
+      "No cron trigger and no plugin change. The daily cron also prunes handled `billing_events` older than 90 days.",
+      "Update the Terms and Privacy text for paid plans and Stripe as a processor before taking live payments.",
+    ],
+    patches: {
+      added: [
+        "Migration `0045_billing`: `billing_events` (each Stripe event id once), `billing_checkouts` (a Checkout Session bound to the person who started it), `billing_subscriptions` (Stripe's current state of each subscription, and the superadmin's pin)",
+        "`src/billing/`: `stripe.ts` (the one fetch client: fixed host, no redirects, timeout, pinned `Stripe-Version`, an `Idempotency-Key` on every POST, every error scrubbed of the key), `config.ts`, `signature.ts`, `store.ts`, `sync.ts`, `webhook.ts`, `routes.ts`, `view.ts`, `pages.ts`; `shared/billing.ts` (the wire)",
+        "`GET /billing/start?plan=personal|team[&interval=month|year]` (public: sign in and come back, or a Stripe Checkout Session), `GET /api/billing/config` (public), `GET /api/billing/status?session_id=` (the caller's own checkout)",
+        "`POST /webhook/stripe`: `Stripe-Signature` verified over the raw body (several `v1`, a 5-minute tolerance), one bare 401 for every refusal, each event id handled once, every handler re-reads the subscription and converges",
+        "Fulfilment calls `grantOrganization` with the subscription id as `external_ref`, so a replayed event and the waiting room's own look at Stripe make one grant; `createOrgFromGrant` links the org to the customer and subscription in the creating batch (`linkPaidOrgStmt`)",
+        "`POST /api/o/:slug/billing/portal`, `/billing/change`, `/billing/renew` (owner, cookie only): each answers a URL on Stripe's pages",
+        "`src/auth/return-to.ts`: a sealed, allowlisted return path taken by the sign-in tail after `oauth_pending`",
+        "SPA: `web/src/billing.ts` (the waiting room at `/billing/done`, then `/?setup=<grant>` opens the picker on that organization's form), `web/src/org-billing-actions.ts`, the Plan block's billing states in `web/src/org-plan.ts`",
+        "Platform: an org's row and page say granted or paid, Stripe's status and the period, with a link to the customer in the Stripe dashboard (test or live); Follow subscription",
+        "The `checkout` limit: 10 Checkout Sessions per person per day (`src/platform/limits.ts`)",
+        "A public pricing page at `/pricing` and a pricing section on the landing page: the three plans and what each includes, from `shared/pricing.ts`. Prices are not announced yet, so every plan reads Pricing to be announced and no plan links to checkout (#105)",
+        "`test/billing.signature.test.ts`, `billing.flow.test.ts`, `billing.lifecycle.test.ts`, `billing.leak.test.ts` (canary key against a Stripe that echoes it), `render.billing.test.ts`; the isolation matrix, the MCP import rule and the API prefix test cover the new routes",
+      ],
+      changed: [
+        "`GET /api/o/:slug/plan` carries `billing` (`OrgBillingView`, null for a granted org) and `period_end` is now written",
+        "A plan refusal (402 `plan_limit`) carries `paid: true` for an org that pays; `planRefusalSentence` points its owner at Org settings",
+        "`PUT /api/platform/orgs/:slug/plan` on an org with a live subscription keeps it a billing org and pins a plan that differs from the paid one; `{ follow_subscription: true }` lifts the pin. On an ended subscription it takes the org back as granted",
+        "`PlatformOrgPlan` carries `billing` for a paid org",
+        "The grant notice e-mail has a paid wording, sent to the buyer's provider-verified address",
+        "The picker says Paid for, not Granted by, on a grant a payment made",
+        "`PlanDef.billing` stays null: a plan's price is deployment config",
+      ],
+      fixed: [
+        "Tracking a repository from the GitHub App's list when the plan's repositories are all used answered 500 `internal`. It is the 402 `plan_limit` every other route gives, and Org settings shows the plan's sentence",
+      ],
+      removed: [],
+    },
+    prs: [105, 106],
+  },
   {
     version: "0.20",
     date: "2026-10-07",

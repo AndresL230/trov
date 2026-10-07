@@ -27,6 +27,7 @@ import { isIntegrationKind, type IntegrationDTO, type IntegrationKind } from "@s
 import type { OrgInvite, OrgRole } from "@shared/orgs";
 import type { GithubAppStatusDTO } from "@shared/github-app";
 import { createOrgLogoActions } from "./org-logo-actions";
+import { createOrgBillingActions } from "./org-billing-actions";
 
 export interface OrgHost {
   state: AppState;
@@ -97,6 +98,8 @@ export function createOrgController(host: OrgHost): OrgController {
   const rerender = () => host.rerender();
   /** General's image control: its own acts, file input and Escape (org-logo-actions.ts). */
   const logo = createOrgLogoActions(host);
+  /** General's Plan block: the owner's billing actions, each of which leaves for Stripe (org-billing-actions.ts). */
+  const billing = createOrgBillingActions(host);
 
   // ── the secret draft (see the header) ──────────────────────────────────────
   let secretDraft = "";
@@ -195,11 +198,12 @@ export function createOrgController(host: OrgHost): OrgController {
         if (list) for (const r of list.repositories) if (r.full_name === name) r.tracked = true;
         host.flash(repos.find((r) => r.repo_full_name === name)?.is_primary ? `Tracking ${name} as the primary repository` : `Tracking ${name}`);
         loadAdmin();
+        loadPlan(); // a tracked repository counts against the plan, like a typed one
       })
       .catch((e) => {
         u.githubBusy = null;
         if (fail(e)) return;
-        host.flash(orgErrorText(e, `Couldn't track ${name}.`), 6000);
+        host.flash(errorText(e, `Couldn't track ${name}.`), 6000); // at the plan's repository cap: the plan's own sentence (402)
         if (e instanceof ApiError && (e.message === "not_connected" || e.message === "not_visible")) loadGithub();
         rerender();
       });
@@ -608,6 +612,7 @@ export function createOrgController(host: OrgHost): OrgController {
   // ── acts ───────────────────────────────────────────────────────────────────
   function act(name: string, arg: string | null, value: string | null): void {
     if (logo.act(name)) return;
+    if (billing.act(name, arg)) return;
     const u = ui();
     const o = org();
     const admin = roleAtLeast(o?.role, "admin");

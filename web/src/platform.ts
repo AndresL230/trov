@@ -30,7 +30,7 @@ import { tabLead, leadFlag, dangerLink } from "./org-ui";
 // Plans and grants (shared/plans.ts): the Access tab, an org's Plan section, their dialogs.
 import { PLANS, type PlanId } from "@shared/plans";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
-import { accessTab, accessDialogs, initialAccess, orgPlanSection, planDropdown, seatsCell, type AccessState } from "./platform-access";
+import { accessTab, accessDialogs, initialAccess, orgPlanSection, planDropdown, planSourceWord, seatsCell, type AccessState } from "./platform-access";
 
 // ── state ────────────────────────────────────────────────────────────────────
 export type PlatTab = "orgs" | "access" | "usage" | "admins" | "audit";
@@ -262,7 +262,7 @@ function orgRow(o: PlatformOrgRow): string {
   return `<button type="button" data-act="platOpenOrg" data-arg="${attr(o.slug)}" class="plat-row plat-orgs-grid${sus ? " is-suspended" : ""}" aria-label="${attr(`${o.name}${sus ? ", suspended" : ""} — open`)}" style="width:100%;text-align:left;padding:12px 20px;border-bottom:1px solid var(--border);margin-bottom:-1px">
     <div class="plat-c plat-c-name" style="min-width:0;display:flex;align-items:center;gap:10px">${orgTile(o.name, 28, o.logo_url)}<span style="min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:${sus ? "var(--fg-55)" : "var(--fg)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.name)}</span><span style="display:block;font-size:11.5px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="font-family:var(--code)">${esc(o.slug)}</span>${o.github_account ? ` &middot; <span data-plat-github title="Connected to GitHub through the Trov App on ${attr(o.github_account)}">GitHub App on ${esc(o.github_account)}</span>` : ""}</span></span></div>
     ${cell("Status", orgStatus(o))}
-    ${cell("Plan", o.plan ? `<span style="display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${esc(PLANS[o.plan.plan].name)}</span><span title="Members and pending invitations, of the plan's seats" style="display:block;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--fg-40);white-space:nowrap">${esc(seatsCell(o.plan))} ${o.plan.entitlements.seats === 1 || (o.plan.entitlements.seats === null && o.plan.seats_used === 1) ? "seat" : "seats"}</span>` : `<span style="font-size:12.5px;color:var(--fg-40)">&mdash;</span>`)}
+    ${cell("Plan", o.plan ? `<span style="display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${esc(PLANS[o.plan.plan].name)}</span><span title="Members and pending invitations, of the plan's seats; and whether the plan is paid for through Stripe or granted by Trov" style="display:block;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--fg-40);white-space:nowrap">${esc(seatsCell(o.plan))} ${o.plan.entitlements.seats === 1 || (o.plan.entitlements.seats === null && o.plan.seats_used === 1) ? "seat" : "seats"} &middot; ${esc(planSourceWord(o.plan))}</span>` : `<span style="font-size:12.5px;color:var(--fg-40)">&mdash;</span>`)}
     ${cell("Owners", `<span style="display:block;font-size:12.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${owners}</span>`, "plat-c-wide")}
     ${cell("Members", n(o.member_count))}
     ${cell("Invites", n(o.pending_invites))}

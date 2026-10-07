@@ -364,6 +364,7 @@ describe("GET /api/o/:slug/plan and PUT /api/platform/orgs/:slug/plan", () => {
       plan: "team", name: "Team", description: PLANS.team.description, status: "active", source: "granted", period_end: null,
       entitlements: PLANS.team.entitlements, overridden: [], seats: { members: 2, pending: 1 },
       usage: { seats: 3, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0 }, over: [],
+      billing: null, // a granted org: nothing about payment (0045_billing)
     });
     expect((await call("GET", "/api/o/planview/plan", await loner("outsider"))).status).toBe(404);
     expect((await call("PUT", "/api/o/planview/plan", cookie, { plan: "enterprise" })).status).toBe(404); // nobody changes it here

@@ -1,28 +1,26 @@
-// THE SEAM FOR BILLING (docs/architecture/plans.md › The billing seam). Nothing in this branch takes a
-// payment; this file is everything a payment integration needs to call, with no superadmin in the loop
-// and no change to the plan, grant or enforcement code. Build the provider's webhook handler elsewhere
-// (it has no session: make its context with `platform(env, BILLING_ACTOR)`), and call only these.
+// THE SEAM FOR BILLING (docs/architecture/plans.md › The billing seam). Everything a payment integration
+// calls to change who may create an org and what plan an org is on — with no superadmin in the loop and
+// no change to the plan, grant or enforcement code. Stripe's is src/billing/ (docs/architecture/billing.md):
+// its webhook has no session, makes its context with `platform(env, BILLING_ACTOR)`, and calls only these.
 //
-//   A payment succeeded for plan X by person / e-mail Y, who has NO org yet
-//       → `grantOrganization(env, p, { to, plan, external_ref })`. Y signs in, sees "You can set up an
-//         organization — <Plan>", names it, and owns it. Idempotent on `external_ref`.
-//   …and once that org exists (the grant's `org`), or for an org that already existed
-//       → `setOrgPlan(p, slug, { plan, source: "billing", period_end, customer_id, subscription_id })`.
+//   A payment succeeded for plan X by person Y, who has NO org yet
+//       → `grantOrganization(env, p, { to, plan, external_ref })`. Y sees "You can set up an organization
+//         — <Plan>", names it, and owns it. Idempotent on `external_ref` (the Stripe subscription id).
+//   …when Y uses it, `createOrgFromGrant` links the org to the subscription in the creating batch
+//     (./grants.ts `linkPaidOrgStmt`); from then on, and for a renewal of an org that already exists
+//       → `setOrgPlan(p, slug, { plan, source: "billing", status, period_end, customer_id, subscription_id })`.
 //   A renewal failed            → `markOrgPastDue(p, slug)`     (nothing is enforced differently)
 //   The subscription ended      → `cancelOrgPlan(p, slug)`      (readable and working; no additions)
-//   It was paid again           → `setOrgPlan(…)` (status returns to `active`)
-//
-// What is stored for billing and written by nothing yet (0044_plans): `orgs.plan_period_end`,
-// `orgs.billing_customer_id`, `orgs.billing_subscription_id`, `org_grants.external_ref`; and
-// `shared/plans.ts` `PlanDef.billing` is where a plan's price id goes. The pointer the SPA shows a
-// person who hits a limit ("Ask Trov to change your plan") is `PLAN_CHANGE_POINTER` there.
+//   It was paid again           → `setOrgPlanStatus(p, slug, "active", { period_end })`
+//   Y switched plan before use  → `setPaidGrantPlan(p, external_ref, plan)`
+//   It ended before Y used it   → `revokeGrant(p, id)`
 import type { Env } from "../env";
 import type { PlatformContext } from "../data/platform-sql";
 import type { GrantTarget, PlanId, PlanOverrides, PlatformGrant } from "@shared/plans";
 import { createGrant, getGrant, mailGrant } from "./grants";
 
 export { setOrgPlan, setOrgPlanStatus, markOrgPastDue, cancelOrgPlan, orgPlan, type SetOrgPlanInput, type OrgPlan } from "./state";
-export { getGrant } from "./grants";
+export { getGrant, revokeGrant, setPaidGrantPlan, GrantError } from "./grants";
 
 /** The `p.actor` a billing integration acts as — what `granted_by`, `plan_changed_by` and the audit trail record. */
 export const BILLING_ACTOR = "billing";

@@ -50,6 +50,7 @@ import { platformContext, soleTenantGate, tenantGate } from "./data/gate";
 import { orgsApp, myInvitesApp, orgTenantApp, cookieOnly } from "./orgs/routes";
 import { hasRole } from "./data/context";
 import { platformApp } from "./platform/routes";
+import { billingApp, orgBillingApp } from "./billing/routes";
 import { PlanLimitError, PLAN_LIMIT_STATUS } from "./plans/state";
 import { listLegacyInvites, getLegacyInvite, createLegacyInvite, revokeLegacyInvite, pendingInviteId, LegacyInviteError } from "./orgs/legacy-invites";
 import { mailInvite, mailOrigin } from "./orgs/mail";
@@ -173,6 +174,8 @@ app.route("/", oauthApp);
 app.route("/api/orgs", orgsApp);
 app.route("/api/invites", myInvitesApp);
 app.route("/api/platform", platformApp);
+// Billing (docs/architecture/billing.md): the purchase link, what the pricing page asks, the waiting room's poll.
+app.route("/", billingApp);
 
 // Artifacts (issue #52) and the email notification prefs / policy / settings / outbox: tenant sub-apps,
 // `/api/o/:slug/artifacts…` ↔ `/api/artifacts…`, `/api/o/:slug/notifications…` ↔ `/api/notifications…`.
@@ -1123,6 +1126,7 @@ app.route("/api/o/:slug", orgTenantApp);
 app.route("/api/o/:slug", orgSettingsApp);
 app.route("/api/o/:slug", githubAppRoutes); // the GitHub App's connection (src/github-app/routes.ts)
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
+app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
 // their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name
 // twice. Nothing reads `:org` — `tenantGate` (mounted on `/api/o/:slug/*` above) resolved the org from

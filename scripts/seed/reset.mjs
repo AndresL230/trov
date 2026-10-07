@@ -10,6 +10,10 @@ export const RESET_STATEMENTS = [
   // Plans and grants (0044_plans): grants reference orgs (`used_org`), so they clear before any org goes;
   // the two seed orgs go back to what the migration made of every existing org — Enterprise, granted.
   "DELETE FROM org_grants",
+  // Billing (0045_billing): a checkout may name the org it renews (`for_org`), so these clear before any org goes.
+  "DELETE FROM billing_checkouts",
+  "DELETE FROM billing_subscriptions",
+  "DELETE FROM billing_events",
   "DELETE FROM platform_outbox_bodies",
   "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL",
   "DELETE FROM abuse_counters",

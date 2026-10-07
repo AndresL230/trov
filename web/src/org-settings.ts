@@ -20,7 +20,7 @@
 //
 // "The current org" is ONE function, `currentOrg`: the org the page's path names.
 
-import { planBlock, inviteGate, seatsLead } from "./org-plan";
+import { planBlock, planSwitchCopy, inviteGate, seatsLead, initialOrgBillingUi, type OrgBillingUi } from "./org-plan";
 import type { OrgPlanView } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
 import {
@@ -148,6 +148,8 @@ export interface OrgUi {
    *  `<kind>:<scope>`, `key`, `history`, `repo:<id>`. */
   openRows: string[];
   confirm: OrgConfirm | null;
+  /** General › Plan's billing actions (org-plan.ts, org-billing-actions.ts). */
+  billing: OrgBillingUi;
 }
 
 export function initialOrgUi(): OrgUi {
@@ -159,7 +161,7 @@ export function initialOrgUi(): OrgUi {
     repoDraft: "", repoBusy: false, repoError: null,
     github: idle(null), githubRepos: idle(null), githubNotice: null, githubFilter: "", githubBusy: null,
     envEdit: null, envBusy: false,
-    secretForm: null, tests: {}, auditOpen: false, openRows: [], confirm: null,
+    secretForm: null, tests: {}, auditOpen: false, openRows: [], confirm: null, billing: initialOrgBillingUi(),
   };
 }
 
@@ -274,7 +276,7 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
         <div style="${O_HELP}">The org's permanent address in links and in the API. It cannot be changed.</div>
       </div>
     </section>
-    ${planBlock(ui.plan, org.role)}
+    ${planBlock(ui.plan, org.role, ui.billing)}
   </div>`;
 }
 
@@ -771,6 +773,11 @@ export function orgOverlays(p: OrgSettingsProps): string {
   if (!p.org) return "";
   const ui = p.ui;
   const menu = p.dd?.open ? dropdownMenu(orgDropdowns(p), p.dd) : "";
+  // A switch to a smaller plan, said before the owner leaves for Stripe (org-plan.ts `planSwitchCopy`).
+  if (ui.billing.confirm && ui.plan.data && p.org.role === "owner") {
+    return menu + confirmModal({ id: "org-billing-confirm", ...planSwitchCopy(ui.plan.data, p.org.name, ui.billing.confirm), tone: "neutral",
+      confirmAct: "orgBillingConfirmGo", cancelAct: "orgBillingConfirmCancel", busy: ui.billing.busy !== null });
+  }
   if (ui.confirm) {
     const copy = orgConfirmCopy(ui.confirm, p.org, ui);
     if (copy) return menu + confirmModal({ id: "org-confirm", ...copy, confirmAct: "orgConfirmGo", cancelAct: "orgConfirmCancel", busy: ui.confirm.busy });

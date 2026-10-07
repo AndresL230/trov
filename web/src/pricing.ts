@@ -18,7 +18,7 @@
 // organizations.md). No refunds, trials, discounts or compliance claims: none exist.
 
 import { LIMIT_KEYS, LIMITS, PLAN_IDS, PLANS, formatLimit, type LimitKey, type PlanDef, type PlanId } from "@shared/plans";
-import { PRICING, canPurchase, formatPrice, hasYearly, purchaseHref, type PlanPricing } from "@shared/pricing";
+import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, purchaseHref, type PlanPricing } from "@shared/pricing";
 import { esc, attr } from "./ui";
 import { SITE_CONTACT, TROV_REPO, siteFooter, siteMark } from "./site-chrome";
 
@@ -74,13 +74,14 @@ function planCta(def: PlanDef, price: PlanPricing, accent: boolean, signedIn: bo
   const BTN = "border-radius:9px;justify-content:center";
   const outline = `class="site-btn site-btn-outline site-plan-cta" style="${BTN}"`;
   if (!price.selfServe) return `<a href="${attr(talkHref(def))}" ${outline}>Talk to us<span class="site-vh"> about the ${esc(def.name)} plan</span></a>`;
-  if (!canPurchase(price)) {
+  const id = def.id;
+  if (!canPurchasePlan(id, price)) {
     return signedIn
       ? `<button type="button" data-act="siteBack" ${outline}>Open Trov</button>`
       : `<a href="${attr(waitlistHref(def))}" ${outline}>Join the waitlist<span class="site-vh"> for the ${esc(def.name)} plan</span></a>`;
   }
   const link = (interval: "month" | "year", cls = "") =>
-    `<a href="${attr(purchaseHref(def.id, interval))}" class="site-btn ${accent ? "site-btn-accent" : "site-btn-outline"} site-plan-cta${cls}" style="${BTN}">Choose ${esc(def.name)}${cls ? `<span class="site-vh">, billed ${interval === "year" ? "yearly" : "monthly"}</span>` : ""}</a>`;
+    `<a href="${attr(purchaseHref(id, interval))}" class="site-btn ${accent ? "site-btn-accent" : "site-btn-outline"} site-plan-cta${cls}" style="${BTN}">Choose ${esc(def.name)}${cls ? `<span class="site-vh">, billed ${interval === "year" ? "yearly" : "monthly"}</span>` : ""}</a>`;
   return hasYearly(price) ? link("month", " is-month") + link("year", " is-year") : link("month");
 }
 
@@ -164,7 +165,7 @@ export function pricingQuestions(defs: PlanDef[], pricing: Record<PlanId, PlanPr
   const qs: PricingQuestion[] = [
     { q: "What counts as a seat?", a: "A member of the organization, or an invitation that has not been answered yet. A pending invitation holds its seat, so an organization can never accept more people than it has seats." },
     { q: "What happens if we go over a limit?", a: "Nothing is deleted and nobody is removed. Everyone can still read everything. Adding more of that one thing is refused until the organization is back under the limit, and the rest of Trov carries on." },
-    { q: "Can we change plans?", a: `Yes. For now a plan is changed by us: write to <a href="${attr(mailHref("Changing our Trov plan"))}">${SITE_CONTACT}</a>. If the new plan is smaller than what the organization uses, the answer above applies.` },
+    { q: "Can we change plans?", a: `Yes. An owner manages a paid plan from Org settings › General in Trov. Until paid plans are available, a plan is changed by us: write to <a href="${attr(mailHref("Changing our Trov plan"))}">${SITE_CONTACT}</a>. If the new plan is smaller than what the organization uses, the answer above applies.` },
     { q: "Is our data separate from other organizations?", a: "Yes. Everything in Trov belongs to one organization, and only its members and the agents they connect can read it." },
     { q: "Can we read the source?", a: `Yes. Trov's source is <a href="${TROV_REPO}" target="_blank" rel="noopener">published on GitHub</a> under AGPL-3.0. The plans on this page are for the hosted service.` },
   ];

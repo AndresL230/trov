@@ -16,6 +16,7 @@
 import { trovMark } from "@shared/mark";
 import { ORG_NAME_MAX, type MyInvite, type MyOrg, type MyOrgsResponse, type OrgRole } from "@shared/orgs";
 import { seatsPhrase, type MyGrant } from "@shared/plans";
+import { BILLING_GRANTER } from "@shared/billing";
 import { esc, attr, relTime, surface } from "./ui";
 import { accentBtn, quietBtn, orgBanner, roleChip } from "./org-ui";
 import { nameError, slugError, addOrgServerError } from "./platform";
@@ -260,7 +261,9 @@ export function orgPickerView(p: OrgPickerProps): string {
   const title = orgs.length === 0 ? `Welcome to Trov${first ? `, ${first}` : ""}` : "Choose an organization";
   const lead = orgs.length > 0 ? "Everything in Trov belongs to an organization. Pick the one you want to work in; you can switch at any time from the sidebar."
     : invites.length > 0 ? (p.orgs?.can_create ? "You've been invited. Accept an invitation to join that team's Trov, or set up an organization of your own." : "You've been invited. Accept an invitation to join that team's Trov.")
-    : p.orgs?.can_create ? "You've been given an organization of your own. Name it, and you are its owner."
+    : p.orgs?.can_create ? ((p.orgs.grants ?? []).length > 0 && p.orgs.grants.every((g) => g.granted_by === BILLING_GRANTER)
+      ? "Your payment went through. Name your organization, and you are its owner."
+      : "You've been given an organization of your own. Name it, and you are its owner.")
     : "Trov is a team's working memory: what its coding agents did, the docs and decisions that came out of it, and the tickets and roadmap that say what's next. Everything in it belongs to an organization.";
   const sectionHead = (text: string, n: number) => `<h2 style="${LABEL};margin:26px 0 8px;display:flex;align-items:center;gap:8px">${esc(text)}<span class="cnpy-badge" data-n="${n}">${n}</span></h2>`;
 
@@ -301,7 +304,7 @@ export function orgPickerView(p: OrgPickerProps): string {
     const o = { arg: String(g.id), field: `orgsCreateOpen:${g.id}`, label, extra: "height:36px" };
     const expires = g.expires_at ? ` &middot; use it by ${esc(new Date(g.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }))}` : "";
     return optRow(`You can set up an organization &mdash; ${esc(g.plan_name)}`,
-      `${esc(seatsPhrase(g.entitlements.seats, true))}. You choose its name and become its owner. Granted by @${esc(g.granted_by)} ${esc(relTime(g.created_at))}${expires}.`,
+      `${esc(seatsPhrase(g.entitlements.seats, true))}. You choose its name and become its owner. ${g.granted_by === BILLING_GRANTER ? "Paid for" : `Granted by @${esc(g.granted_by)}`} ${esc(relTime(g.created_at))}${expires}.`,
       orgs.length === 0 && i === 0 ? accentBtn("Set up organization", "orgsCreateOpen", o) : quietBtn("Set up organization", "orgsCreateOpen", { ...o, extra: "height:36px;color:var(--fg)" }),
       ` data-orgs-grant="${g.id}"`);
   };

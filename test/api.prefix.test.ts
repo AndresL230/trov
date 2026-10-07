@@ -12,7 +12,7 @@ import * as api from "../web/src/api";
 const sources = import.meta.glob("../web/src/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /** Person-level and platform routes: the only paths that may go out without the org prefix. */
-const GLOBAL = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform)(?:[/?]|$)/;
+const GLOBAL = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|billing)(?:[/?]|$)/;
 const TENANT = /^\/api\/o\/acme\//;
 /** Org settings' functions take the slug as an argument (`any` → "x"): still under an org's prefix. */
 const ANY_ORG = /^\/api\/o\/[^/]+\//;
@@ -79,6 +79,23 @@ describe("apiUrl — the one prefix", () => {
     }
     // Look-alikes are tenant routes: `/api/orgsx`, `/authx`.
     expect(api.apiUrl("/api/orgsx")).toBe("/api/o/acme/orgsx");
+  });
+  it("billing: the waiting room's poll and the pricing page's question are person-level; an org's billing is that org's", async () => {
+    for (const p of ["/api/billing/status?session_id=cs_test_1", "/api/billing/config"]) {
+      expect(api.isGlobalPath(p), p).toBe(true);
+      expect(api.apiUrl(p), p).toBe(p);
+    }
+    expect(api.apiUrl("/api/billingx")).toBe("/api/o/acme/billingx");
+    api.setApiOrg(null); // the buyer has no org yet: both still go out
+    await api.getBillingStatus("cs test/1");
+    await api.getBillingConfig();
+    await api.openBillingPortal("big co");
+    await api.changeBillingPlan("acme", "team");
+    await api.renewBilling("acme", "personal");
+    expect(asked).toEqual([
+      { method: "GET", url: "/api/billing/status?session_id=cs%20test%2F1" }, { method: "GET", url: "/api/billing/config" },
+      { method: "POST", url: "/api/o/big%20co/billing/portal" }, { method: "POST", url: "/api/o/acme/billing/change" }, { method: "POST", url: "/api/o/acme/billing/renew" },
+    ]);
   });
   it("the GitHub App: Connect is a link to the org's own start route — a tenant route — and the callback GitHub returns to is not", () => {
     expect(api.githubInstallHref("acme")).toBe("/api/o/acme/github/install");

@@ -40,6 +40,17 @@ GITHUB_APP_SLUG = ""
 # never gets duplicate digests. Flip to "resend" at cutover (needs RESEND_API_KEY).
 NOTIFICATIONS_MODE = "local"
 
+# Billing — Stripe (docs/architecture/billing.md › Owner checklist). The ids of the recurring PRICES the
+# owner created in the Stripe dashboard (`price_…`), not amounts: Trov never holds a price, and the amount
+# a buyer sees is Stripe's. EMPTY until the owner decides prices — while a plan's id is empty that plan
+# cannot be bought, and while STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET (secrets: `wrangler secret put …`)
+# are unset every billing route answers 503 `billing_unavailable` and the app is otherwise unchanged.
+# The yearly ids are optional: a plan is offered on the intervals it has a price for.
+STRIPE_PRICE_PERSONAL = ""
+STRIPE_PRICE_TEAM = ""
+STRIPE_PRICE_PERSONAL_YEARLY = ""
+STRIPE_PRICE_TEAM_YEARLY = ""
+
 [observability]
 enabled = true
 

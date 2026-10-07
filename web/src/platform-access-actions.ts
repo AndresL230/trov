@@ -2,7 +2,7 @@
 // created by platform-actions.ts with the same host, and takes every `platGrant…` / `platPlan…` act;
 // `act` answers whether the act was one of its own.
 
-import { ApiError, Unauthorized, listPlatformGrants, createPlatformGrant, revokePlatformGrant, setPlatformOrgPlan } from "./api";
+import { ApiError, Unauthorized, listPlatformGrants, createPlatformGrant, revokePlatformGrant, setPlatformOrgPlan, followPlatformOrgSubscription } from "./api";
 import { ADMIN_KINDS, adminError, type AdminKind, type PlatState } from "./platform";
 import {
   blankGrant, blankLimits, grantServerError, grantTarget, grantWho, limitDraftOf, parseLimitDraft,
@@ -142,6 +142,22 @@ export function createAccess(h: AccessHost) {
     });
   }
 
+  /** A paid org whose plan was set by hand: back to the plan its subscription pays for. */
+  let following = false;
+  function followSubscription(): void {
+    const d = h.state.plat.detail.data;
+    if (!d?.org.plan?.billing?.pinned || following) return;
+    following = true;
+    followPlatformOrgSubscription(d.org.slug).then((org) => {
+      h.orgChanged(org);
+      h.flash(`${org.name} follows its subscription again: ${PLANS[org.plan?.plan ?? "personal"].name}. Nothing was removed.`, 4000);
+      focus("[data-plat-plan-trigger]");
+    }).catch((e) => {
+      if (gone(e)) return;
+      h.flash("The plan wasn't changed. Check your connection and try again.", 6000);
+    }).finally(() => { following = false; });
+  }
+
   /** True when `name` was one of this controller's acts. */
   function act(name: string, arg: string | null, value: string | null): boolean {
     const s = a();
@@ -181,6 +197,7 @@ export function createAccess(h: AccessHost) {
         h.confirmOut(() => { const d = a().plan; if (d) d.confirm = false; h.rerender(); focus("#plat-plan-pick"); });
         return true;
       case "platPlanGo": planGo(); return true;
+      case "platPlanFollow": followSubscription(); return true;
       default: return false;
     }
     h.rerender();

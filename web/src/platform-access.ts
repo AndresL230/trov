@@ -14,6 +14,7 @@ import {
   PLANS, PLAN_IDS, LIMIT_KEYS, LIMITS, GRANT_EXPIRY_DAYS, GRANT_NOTE_MAX, formatBytes, formatLimit, formatUse, resolveEntitlements, seatsPhrase,
   type GrantTarget, type LimitKey, type PlanId, type PlanOverrides, type PlatformGrant, type PlatformOrgPlan,
 } from "@shared/plans";
+import { billingDate, isPast } from "@shared/billing";
 import { esc, attr, relTime, statusBadge, surface } from "./ui";
 import { confirmModal } from "./confirm";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
@@ -263,6 +264,29 @@ export function grantModal(d: GrantDraft, dd: DropdownUi = initialDropdownUi()):
 /** "7 of 10" / "7" — the Organizations list's Seats cell. */
 export const seatsCell = (p: PlatformOrgPlan): string => formatUse("seats", p.seats_used, p.entitlements.seats);
 
+/** "paid" / "granted" (and what Stripe says of a paid one) — the list's word beside the seats. */
+export function planSourceWord(p: PlatformOrgPlan): string {
+  if (!p.billing) return p.source === "billing" ? "paid" : "granted";
+  return p.status === "canceled" ? "paid, ended" : p.status === "past_due" ? "paid, past due" : p.billing.cancel_at_period_end ? "paid, cancelling" : "paid";
+}
+
+/** A paid org's subscription, on its page: Stripe's status, the period, the customer in the Stripe dashboard —
+ *  and, when the superadmin set a plan the subscription does not pay for, that it is pinned and how to undo it. */
+function billingLine(p: PlatformOrgPlan): string {
+  const b = p.billing;
+  if (!b) return `<div data-plat-billing="granted" style="font-size:12.5px;color:var(--fg-55);margin-top:8px;line-height:1.5">Granted by Trov: nobody pays for this plan through Stripe.</div>`;
+  const date = billingDate(b.period_end);
+  const when = !date ? "" : p.status === "canceled" ? (isPast(b.period_end) ? ` &middot; ended ${esc(date)}` : "") : b.cancel_at_period_end ? ` &middot; ends ${esc(date)}` : ` &middot; renews ${esc(date)}`;
+  const every = b.interval === "year" ? "yearly" : b.interval === "month" ? "monthly" : "";
+  const pinned = b.pinned
+    ? `<div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:12.5px;line-height:1.5;color:var(--fg-70)">You set this plan by hand. The subscription pays for ${esc(PLANS[b.plan].name)}, and its events do not change the plan while it is pinned.</span><button type="button" data-act="platPlanFollow" data-field="platPlanFollow" class="cnpy-outlinebtn" style="${OUTLINE};height:30px">Follow subscription</button></div>`
+    : "";
+  return `<div data-plat-billing="${b.pinned ? "pinned" : "paid"}" style="margin-top:8px">
+    <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55)">Paid through Stripe${every ? `, ${every}` : ""} &middot; Stripe says <strong style="font-weight:500;color:var(--fg-70)">${esc(b.stripe_status.replace(/_/g, " "))}</strong>${when}${b.livemode ? "" : " &middot; test mode"} &middot; <a href="${attr(b.dashboard_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--fg-70)">Open the customer in Stripe</a></div>
+    ${pinned}
+  </div>`;
+}
+
 /** The org page's Plan section: what it is on, its limits, and the way to change them. */
 export function orgPlanSection(o: { slug: string; name: string; plan?: PlatformOrgPlan }, artifactBytes: number | null): string {
   const p = o.plan;
@@ -284,7 +308,8 @@ export function orgPlanSection(o: { slug: string; name: string; plan?: PlatformO
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
       <div style="min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:15px;font-weight:600">${esc(def.name)}</span>${status}</div>
-        <div style="font-size:12.5px;color:var(--fg-55);margin-top:2px;line-height:1.5">${esc(def.description)}${p.source === "billing" ? " Set by billing." : ""}</div>
+        <div style="font-size:12.5px;color:var(--fg-55);margin-top:2px;line-height:1.5">${esc(def.description)}</div>
+        ${billingLine(p)}
       </div>
       <button type="button" data-act="platPlanOpen" data-plat-plan-trigger class="cnpy-outlinebtn" aria-haspopup="dialog" style="${OUTLINE};height:32px">Change plan</button>
     </div>
@@ -306,6 +331,15 @@ export function planChangeCopy(d: Pick<PlanDraft, "name" | "current" | "plan" | 
   return { title, body: over.length ? `${d.name} will be over the new limits: it has ${over.join(", and ")}. ${rest}` : `${seats} ${rest}` };
 }
 
+/** What Change plan does to an org that PAYS (docs/architecture/billing.md › The superadmin and a paid org). */
+export function planModalBillingNote(p: PlatformOrgPlan): string {
+  if (!p.billing) return "";
+  const text = p.status === "canceled"
+    ? "Its subscription has ended. A plan you set here takes the organization back as a granted one: active, and no longer tied to Stripe."
+    : `It pays for ${PLANS[p.billing.plan].name} through Stripe. A different plan set here is pinned: the subscription keeps charging what it charges, its status and renewals still apply, and its events stop changing the plan until you choose Follow subscription.`;
+  return `<p data-plat-plan-billing role="note" class="cnpy-plan-note" style="border-radius:9px;margin:10px 0 0">${esc(text)}</p>`;
+}
+
 /** "Change plan": the plan and the five limits; then the confirmation (`confirm`). */
 export function planModal(d: PlanDraft, dd: DropdownUi = initialDropdownUi()): string {
   if (d.confirm) {
@@ -315,6 +349,7 @@ export function planModal(d: PlanDraft, dd: DropdownUi = initialDropdownUi()): s
   }
   return shell("plat-plan", "platPlanClose", "plat-plan-t", `<div id="plat-plan-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em;overflow-wrap:anywhere">Change ${esc(d.name)}'s plan</div>
     <p style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">It is on ${esc(PLANS[d.current.plan].name)} and uses ${esc(formatUse("seats", d.current.seats_used, d.current.entitlements.seats))} seats. Changing a plan never removes anything from the organization.</p>
+    ${planModalBillingNote(d.current)}
     <div style="margin-top:16px">
       <div id="plat-plan-pick-l" style="${FIELD_LABEL}">Plan</div>
       ${dropdown(planDropdown("plat-plan-pick", "platPlanPick", d.plan), dd)}

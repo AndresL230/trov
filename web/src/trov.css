@@ -1027,6 +1027,9 @@ input, select { font-family: inherit; }
 /* Org settings › General › Plan (org-plan.ts): one row per limit — what it is, and the org's use of it. */
 .cnpy-plan-rows { list-style:none; margin:14px 0 0; padding:0; border-top:1px solid var(--border); }
 .cnpy-plan-row { display:flex; align-items:flex-start; justify-content:space-between; gap:4px 16px; flex-wrap:wrap; padding:11px 0; border-bottom:1px solid var(--border); }
+/* A paid org's billing actions (org-plan.ts `billingPart`): quiet buttons that wrap, full-width on a phone. */
+.cnpy-plan-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+[data-phone="1"] .cnpy-plan-actions > button { flex:1 1 100%; }
 .cnpy-plan-note { margin-top:12px; padding:10px 12px; border:1px solid color-mix(in srgb,var(--amber) 45%,transparent); background:color-mix(in srgb,var(--amber) 9%,transparent); font-size:12.5px; line-height:1.55; color:var(--fg-70); }
 .cnpy-org-head { min-width:0; }
 /* The organization pages' hierarchy (org-ui.ts): a tab's lead line, the section eyebrow, a
