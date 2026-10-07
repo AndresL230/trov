@@ -27,7 +27,7 @@ jobs:
         run: npm test
       - name: Web build
         run: npm run build:web
-      - name: Rollback script is up to date with 0037–0040
+      - name: Rollback script is up to date with 0042_organizations
         run: |
           python3 scripts/mt/build-rollback.py
           git diff --exit-code -- scripts/mt/rollback/

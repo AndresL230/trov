@@ -22,14 +22,15 @@ export default defineConfig({
       miniflare: {
         // exposed to tests as env.TEST_MIGRATIONS; applied in the setup file
         // A second, EMPTY database for the multitenancy migration tests (test/migrations.multitenancy.test.ts):
-        // they build a 0036-era database with data, apply 0037–0040 and the rollback, and compare — never
-        // touching DB, which the setup file has already migrated. DB is restated so this list cannot drop it.
+        // they build a 0036 + 0041 database with data, apply the organizations migration and its rollback, and
+        // compare — never touching DB, which the setup file has already migrated. DB is restated so this list
+        // cannot drop it.
         d1Databases: { DB: "80386dc4-deef-461d-932a-0670d22ddf83", MT_DB: "multitenancy-migration-test" },
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations(
             path.join(import.meta.dirname, "migrations")
           ),
-          // The generated rollback (scripts/mt/build-rollback.py), split into statements the same way.
+          // The generated rollback (scripts/mt/build-rollback.py — one file), split into statements the same way.
           MT_ROLLBACK: await readD1Migrations(path.join(import.meta.dirname, "scripts", "mt", "rollback")),
           COOKIE_SECRET: "test-cookie-secret",
           GITHUB_CLIENT_ID: "test-client-id",
