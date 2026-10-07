@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Verify the multitenancy migrations (0037–0040) against a LOCAL COPY of production data
+// Verify the organizations migration (migrations/0042_organizations.sql) against a LOCAL COPY of production data
 // (canopy-multitenancy.md §3.4). Production data never leaves your machine and never enters git
 // (`.mt/` is gitignored).
 //
@@ -16,21 +16,22 @@
 //
 // 2. Run:  node scripts/mt/verify-migration.mjs .mt/prod-data.sql
 //
-// It builds a 0036 database from THIS repo's migrations (Node's built-in SQLite, FTS5 included), loads the
-// data (the FTS triggers re-index it as it lands; artifacts_fts is rebuilt the way 0030 did), snapshots
-// every table, applies 0037–0040 each as ONE transaction (as D1 does), and checks: identical row counts;
-// identical values in every pre-existing column; every tenant row in org_saplinglearn; FTS row counts
-// equal to their base tables; a sample of MATCH queries returning the same ids; integrity_check ok;
-// foreign_key_check empty; no AUTOINCREMENT counter moved backwards; every MCP token and OAuth grant
-// pinned to org_saplinglearn; memberships for every non-reserved person. Exit code 1 on any failure.
+// It builds the database production has today from THIS repo's migrations (Node's built-in SQLite, FTS5
+// included): 0001–0036, then 0041_trov_name — production's real order, the sender rename shipped first.
+// It loads the data (the FTS triggers re-index it as it lands; artifacts_fts is rebuilt the way 0030 did),
+// snapshots every table, applies 0042_organizations as ONE transaction (as D1 does), and checks: identical
+// row counts; identical values in every pre-existing column; every tenant row in org_saplinglearn; FTS row
+// counts equal to their base tables; a sample of MATCH queries returning the same ids; integrity_check ok;
+// foreign_key_check empty; no AUTOINCREMENT counter moved backwards; every ticket and handoff numbered
+// with its id; every MCP token and OAuth grant pinned to org_saplinglearn; memberships for every
+// non-reserved person. Exit code 1 on any failure.
 //
 // Known limits: the data export carries no sqlite_sequence, so counters are compared with MAX(id) as
-// imported, not with production's (which may be higher after deletes — the migrations carry whatever is
-// there). This is a check of the MIGRATIONS on real data; the deploy itself still goes through
+// imported, not with production's (which may be higher after deletes — the migration carries whatever is
+// there). This is a check of the MIGRATION on real data; the deploy itself still goes through
 // `npm run db:migrate:remote` after the export + Time Travel bookmark in the runbook (§3.5).
-// Rolling back by hand (past Time Travel's window): scripts/mt/rollback/0043.down.sql FIRST, then
-// scripts/mt/rollback/0037-0040.down.sql — the order, and what neither undoes, is in 0043.down.sql's header.
-// scripts/mt/rollback/0046.down.sql (the abuse counters) is free-standing: run it at any point, or not at all.
+// Rolling back by hand (past Time Travel's window): scripts/mt/rollback/0042_organizations.down.sql — one
+// file; what it undoes, what it does not (0041) and what is lost with it are in its header.
 
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, readdirSync } from "node:fs";
@@ -45,9 +46,11 @@ if (!dataFile) {
   process.exit(2);
 }
 
+const MIGRATION = "0042_organizations.sql";
 const migrations = readdirSync(path.join(ROOT, "migrations")).filter((f) => f.endsWith(".sql")).sort();
-const pre = migrations.filter((f) => f < "0037");
-const post = migrations.filter((f) => f >= "0037");
+const pre = migrations.filter((f) => f < MIGRATION); // 0001–0036 and 0041: what production has recorded
+const post = migrations.filter((f) => f >= MIGRATION); // the migration (and anything added after it)
+if (post[0] !== MIGRATION) { console.error(`migrations/${MIGRATION} is missing`); process.exit(2); }
 
 const db = new DatabaseSync(":memory:");
 db.exec("PRAGMA foreign_keys = ON");
@@ -62,7 +65,7 @@ const get = (sql, ...p) => db.prepare(sql).get(...p);
 const failures = [];
 const check = (ok, msg) => { if (!ok) failures.push(msg); };
 
-// ── 1. a 0036 database holding production's data ──
+// ── 1. a 0036 + 0041 database holding production's data ──
 for (const f of pre) apply(f);
 // The migrations seed a few rows production also has (vocabulary, the plan / settings singletons, the
 // github-webhook person): the export's rows replace them.
@@ -71,7 +74,7 @@ db.exec("BEGIN"); db.exec("PRAGMA defer_foreign_keys = true");
 try { db.exec(data); db.exec("COMMIT"); } catch (e) { db.exec("ROLLBACK"); console.error(`loading ${dataFile}: ${e.message}`); process.exit(1); }
 // Rebuild every search index from its base table exactly as the creating migrations did (the import's
 // INSERT OR REPLACE does not fire the UPDATE-only plan trigger, and artifacts_fts is repository-written),
-// so "before" is the consistent 0036 state production's indexes should already be in.
+// so "before" is the consistent pre-migration state production's indexes should already be in.
 db.exec(`DELETE FROM docs_fts; INSERT INTO docs_fts (slug, title, section, body) SELECT slug, title, section, body FROM docs;
   DELETE FROM feed_fts; INSERT INTO feed_fts (feed_id, summary, body) SELECT CAST(id AS TEXT), summary, body FROM feed;
   DELETE FROM adrs_fts; INSERT INTO adrs_fts (adr_id, title, context, decision, rationale) SELECT CAST(id AS TEXT), title, context, decision, rationale FROM adrs;
@@ -109,11 +112,11 @@ const matchBefore = new Map();
 for (const [fts, key] of SAMPLE_MATCH) for (const term of sampleTerms) matchBefore.set(`${fts}:${term}`, all(`SELECT ${key} AS k FROM ${fts} WHERE ${fts} MATCH ? ORDER BY 1`, term).map((r) => r.k));
 const persons = all(`SELECT handle FROM persons WHERE lower(handle) NOT IN ('github-webhook','system','admin','canopy','me')`).map((r) => r.handle);
 
-// ── 2. migrate (a file that fails — e.g. 0039's foreign-key guard — is the report, not a crash) ──
+// ── 2. migrate (a failure — e.g. the foreign-key guard that closes the rebuilds — is the report, not a crash) ──
 try {
   for (const f of post) apply(f);
 } catch (e) {
-  console.error(`\nFAILED: the migrations did not apply — ${e.message}`);
+  console.error(`\nFAILED: the migration did not apply, and changed nothing — ${e.message}`);
   const fk = all(`SELECT "table", parent, COUNT(*) AS n FROM pragma_foreign_key_check GROUP BY 1, 2`);
   if (fk.length) console.error(`dangling references (table → parent: rows): ${fk.map((r) => `${r.table} → ${r.parent}: ${r.n}`).join(", ")}`);
   process.exit(1);
@@ -166,4 +169,4 @@ if (failures.length) {
   console.error(`\nFAILED (${failures.length}):\n- ${failures.join("\n- ")}`);
   process.exit(1);
 }
-console.log("\nOK — 0037–0040 keep every row and value, pin everything to org_saplinglearn, and leave the indexes consistent.");
+console.log(`\nOK — ${post.map((f) => f.replace(/\.sql$/, "")).join(", ")} (after 0041) keeps every row and value, pins everything to org_saplinglearn, and leaves the indexes consistent.`);
