@@ -15,13 +15,15 @@ export const isBillingInterval = (v: unknown): v is BillingInterval => typeof v 
 
 // ── the human-facing paths ───────────────────────────────────────────────────
 
-/** Where a "Get <plan>" button points: a plain link, signed in or not (GET, top-level navigation). */
+/** Where a "Choose <plan>" button points: a plain link, signed in or not (GET, top-level navigation).
+ *  THE one builder of that link — the pricing page's `purchaseHref` (shared/pricing.ts) calls it. */
 export const BILLING_START_PATH = "/billing/start";
 export const billingStartHref = (plan: PurchasablePlan, interval: BillingInterval = "month"): string =>
   `${BILLING_START_PATH}?plan=${plan}${interval === "month" ? "" : `&interval=${interval}`}`;
 /** Where Stripe sends the buyer back: the waiting room (`?session_id=…`). */
 export const BILLING_DONE_PATH = "/billing/done";
-/** Where a person who backs out of checkout lands, and where "see the plans" points. */
+/** Where a person who backs out of checkout lands, and where "see the plans" points: the public pricing
+ *  page (web/pricing.html, a Vite input; test/render.pricing.test.ts holds the two together). */
 export const PRICING_PATH = "/pricing";
 /** An organization's Plan block (Org settings › General) — where its owner manages billing. */
 export const orgBillingHref = (slug: string): string => `/o/${encodeURIComponent(slug)}/#org/general`;

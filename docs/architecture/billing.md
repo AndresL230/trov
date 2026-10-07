@@ -25,6 +25,11 @@ stores ids and a status.
 | `STRIPE_PRICE_PERSONAL_YEARLY`, `STRIPE_PRICE_TEAM_YEARLY` | var, optional | that plan is not offered yearly |
 | `STRIPE_TEST_API_BASE` | local / test only | — honoured only for a loopback `http://` origin and never with a live key |
 
+**The pricing page** (`plans.md`, `web/src/pricing.ts`) is static and asks no server: it offers a purchase
+link — `purchaseHref`, which is `billingStartHref` — only for a plan with a price in `shared/pricing.ts`.
+Every price there is `null` today, so nothing public links to `/billing/start`. `PRICING_PATH` is that page.
+Set a price there only after billing is on. (`GET /api/billing/config` is not read by that page.)
+
 **OFF** means: every billing route answers **503** `{ "error": "billing_unavailable", "message": "Paid plans
 are not available yet." }` (`GET /billing/start` a page saying so when the browser asks for HTML), the
 webhook answers its bare 401, `GET /api/billing/config` says `available: false`, the Plan block's buttons

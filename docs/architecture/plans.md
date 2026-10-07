@@ -143,8 +143,12 @@ footer). It restates nothing: names, descriptions and limits come from `PLANS`, 
   `price` (and `yearly`, to offer yearly billing) in `PRICING` — the card shows the amount, its button becomes
   the purchase link, and the Monthly / Yearly switch appears once any plan has both.
 - **A purchase is a plain link**, `purchaseHref(plan, interval)` → `/billing/start?plan=…` (`&interval=year`
-  only for yearly). Whether to offer it is decided by `PRICING` alone (`canPurchase`: `selfServe` and a
-  price); the page calls no API. A plan with `selfServe: false` (Enterprise) is always "Talk to us".
+  only for yearly). It IS billing's `billingStartHref` (`shared/billing.ts`) — one source for the path the
+  billing route seals and returns to. Whether to offer it is decided by `PRICING` alone (`canPurchasePlan`:
+  `selfServe`, a price, and a plan billing sells); the page calls no API. A plan with `selfServe: false`
+  (Enterprise) is always "Talk to us". So the page does not know whether Stripe is set up (`billing.md`):
+  announce a price only once billing is on, or its link answers "Paid plans are not available yet". Every
+  price is `null` today, so the public page has no way into billing — `test/render.pricing.test.ts` holds that.
 - The switch is two native radios and CSS (`:has(:checked)`); `web/src/pricing-dom.ts` only keeps the choice
   across a rerender. `/pricing` cannot know a session, so it is always the signed-out page.
 - Its sentences (what every plan includes, the questions) describe what the product does today. A change to

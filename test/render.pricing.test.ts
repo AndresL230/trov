@@ -6,7 +6,10 @@
  */
 import { describe, it, expect } from "vitest";
 import { PLANS, PLAN_IDS, LIMIT_KEYS, LIMITS, formatLimit, type PlanDef, type PlanId } from "../shared/plans";
-import { PRICING, canPurchase, formatPrice, hasYearly, purchaseHref, type PlanPricing } from "../shared/pricing";
+import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, purchaseHref, type PlanPricing } from "../shared/pricing";
+import { BILLING_INTERVALS, BILLING_START_PATH, PRICING_PATH, PURCHASABLE_PLANS, billingStartHref, isPurchasablePlan } from "../shared/billing";
+import pricingHtml from "../web/pricing.html?raw";
+import viteConfig from "../web/vite.config.ts?raw";
 import { EVERY_PLAN, PRICING_TITLE, earlyAccessHref, pricingQuestions, pricingSection, pricingView, talkHref, waitlistHref } from "../web/src/pricing";
 import { landingView } from "../web/src/landing";
 import { siteFooter, SITE_CONTACT } from "../web/src/site-chrome";
@@ -38,6 +41,38 @@ describe("shared/pricing.ts", () => {
     expect(purchaseHref("personal")).toBe("/billing/start?plan=personal");
     expect(purchaseHref("team", "month")).toBe("/billing/start?plan=team");
     expect(purchaseHref("team", "year")).toBe("/billing/start?plan=team&interval=year");
+  });
+
+  it("the purchase link IS billing's start link, and billing's way back to the plans is this page", () => {
+    for (const plan of PURCHASABLE_PLANS) for (const interval of BILLING_INTERVALS) {
+      expect(purchaseHref(plan, interval)).toBe(billingStartHref(plan, interval));
+      expect(purchaseHref(plan, interval).startsWith(`${BILLING_START_PATH}?plan=${plan}`)).toBe(true);
+    }
+    expect(PRICING_PATH).toBe("/pricing");
+    expect(siteFooter()).toContain(`<a href="${PRICING_PATH}">Pricing</a>`);
+    // the page PRICING_PATH names is a real build input (web/vite.config.ts → dist/pricing.html)
+    expect(viteConfig).toMatch(/pricing: path\.join\(__dirname, "pricing\.html"\)/);
+    expect(pricingHtml).toContain("/src/pricing-page.ts");
+    // the plans the page may sell are exactly the ones billing sells
+    for (const id of PLAN_IDS) {
+      expect(PRICING[id].selfServe, id).toBe(isPurchasablePlan(id));
+      expect(canPurchasePlan(id, { ...PRICING[id], price: 9 }), id).toBe(isPurchasablePlan(id));
+      expect(canPurchasePlan(id, { ...PRICING[id], selfServe: true, price: 9 }), id).toBe(isPurchasablePlan(id));
+    }
+  });
+
+  it("with the prices that ship, nothing public links to billing: not the landing, not /pricing, signed in or out", () => {
+    for (const html of [
+      pricingSection(), pricingSection({ signedIn: true }), pricingView(false), pricingView(true),
+      landingView({ dark: false, signInOpen: false, seen: new Set() }),
+      landingView({ dark: false, signInOpen: false, signedIn: true, seen: new Set() }),
+      landingView({ dark: true, signInOpen: true, seen: new Set() }),
+    ]) {
+      expect(html).not.toContain(BILLING_START_PATH);
+      expect(html).not.toContain("/billing");
+      expect(html).not.toMatch(/>Choose (Personal|Team|Enterprise)/);
+    }
+    expect(text(pricingView(false)).match(/Pricing to be announced/g)).toHaveLength(2);
   });
 
   it("a plan is purchasable only when it is self-serve AND has a price", () => {
@@ -230,6 +265,11 @@ describe("pricing — questions say only what is true today", () => {
     ]);
     expect(qs[0].a).toContain("an invitation that has not been answered yet");
     expect(qs[1].a).toContain("Nothing is deleted and nobody is removed");
+    // Changing plans: true whether or not paid plans are switched on — where an owner manages a paid plan,
+    // and writing to Trov until there is one. No promise of a self-serve change.
+    expect(qs[2].a).toContain("An owner manages a paid plan from Org settings › General");
+    expect(qs[2].a).toContain("Until paid plans are available, a plan is changed by us: write to <a href=\"mailto:");
+    expect(qs[2].a).not.toMatch(/upgrade|downgrade|any ?time|instantly|yourself/i);
     expect(qs[4].a).toContain("AGPL-3.0");
     expect(qs[5].a).toContain(talkHref(PLANS.enterprise));
   });

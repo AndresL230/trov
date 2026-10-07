@@ -3,7 +3,7 @@
 //   `billingApp` — person-level, at `/`:
 //     GET  /billing/start?plan=personal|team[&interval=month|year]   PUBLIC, a link: signed out → sign in and
 //                                                                    come back; signed in → Stripe Checkout
-//     GET  /api/billing/config                                       PUBLIC: what can be bought, for the pricing page
+//     GET  /api/billing/config                                       PUBLIC: what can be bought on this deployment
 //     GET  /api/billing/status?session_id=…                          session: the waiting room's poll
 //   `orgBillingApp` — an org's, at `/api/o/:slug` (behind `tenantGate`), cookie only, OWNER only:
 //     POST /billing/portal     the Stripe Customer Portal for this org's customer      → { url }
@@ -133,7 +133,8 @@ billingApp.get("/billing/start", async (c) => {
   }
 });
 
-// What the pricing page asks before it draws its buttons. Public; the signed-in part is the caller's own.
+// What can be bought on this deployment. Public; the signed-in part is the caller's own. (The static pricing
+// page does not ask it — shared/pricing.ts decides its buttons.)
 billingApp.get("/api/billing/config", async (c) => {
   const cfg = billingConfig(c.env);
   const me = await caller(c);

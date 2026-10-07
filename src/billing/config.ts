@@ -69,7 +69,8 @@ export function planOfPrice(cfg: BillingConfig, priceId: string | null | undefin
   return null;
 }
 
-/** What each plan offers right now — the pricing page's and the Plan block's one source. */
+/** What each plan offers right now, from this deployment's Stripe config (`GET /api/billing/config`). The public
+ *  pricing page does not ask: it offers a link only for a plan priced in shared/pricing.ts. */
 export function billingOffers(cfg: BillingConfig | null): Record<PlanId, BillingPlanOffer> {
   const out = { ...NO_BILLING_OFFERS };
   if (!cfg) return out;
