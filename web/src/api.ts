@@ -307,6 +307,7 @@ import type * as OrgT from "@shared/orgs";
 import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView, type PlatformGrant, type GrantTarget, type PlanId, type PlanOverrides } from "@shared/plans";
 import type * as IntT from "@shared/integrations";
 import type { BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
+import type * as GhT from "@shared/github-app";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
  *  `detail` the server's sentence, `field` the input it is about. */
 export class OrgApiError extends ApiError {
@@ -395,6 +396,25 @@ export function addOrgRepo(slug: string, repo_full_name: string, is_primary?: bo
   return orgSend<{ repos: IntT.OrgRepoDTO[] }>("POST", orgPath(slug, "/repos"), is_primary === undefined ? { repo_full_name } : { repo_full_name, is_primary }).then((r) => r.repos);
 }
 export function removeOrgRepo(slug: string, id: string): Promise<{ removed_secrets: string[]; repos: IntT.OrgRepoDTO[] }> { return orgSend("DELETE", orgPath(slug, `/repos/${encodeURIComponent(id)}`)); }
+// ── the GitHub App (docs/architecture/github-app.md) ──
+/** Where "Connect with GitHub" goes: the org's start route, which redirects to GitHub. A LINK's href —
+ *  a navigation, never a fetch. `existing` links an installation that is already there. */
+export function githubInstallHref(slug: string, o: { existing?: boolean; account?: string } = {}): string {
+  const q = o.existing ? `?existing=1${o.account ? `&account=${encodeURIComponent(o.account)}` : ""}` : "";
+  return orgPath(slug, `/github/install${q}`);
+}
+/** The org's GitHub App connection — any member (an admin gets the id, the last error and the manage link). */
+export function getOrgGithub(slug: string): Promise<GhT.GithubAppStatusDTO> { return orgSend("GET", orgPath(slug, "/github")); }
+/** The repositories the org's installation can see. Admin+. 404 `not_connected`, 502 `github_failed`. */
+export function listOrgGithubRepos(slug: string, refresh = false): Promise<GhT.GithubReposDTO> { return orgSend("GET", orgPath(slug, `/github/repositories${refresh ? "?refresh=1" : ""}`)); }
+/** Track one of them (or make it the primary). 404 `not_visible` when the installation cannot see it. */
+export function trackOrgGithubRepo(slug: string, repo_full_name: string, is_primary?: boolean): Promise<IntT.OrgRepoDTO[]> {
+  return orgSend<{ repos: IntT.OrgRepoDTO[] }>("POST", orgPath(slug, "/github/repositories"), is_primary === undefined ? { repo_full_name } : { repo_full_name, is_primary }).then((r) => r.repos);
+}
+/** Test connection for the App: a real read through an installation token. */
+export function testOrgGithub(slug: string): Promise<{ ok: boolean; detail: string; github_app: GhT.GithubAppStatusDTO }> { return orgSend("POST", orgPath(slug, "/github/test")); }
+/** End the binding in Trov. The App stays installed on GitHub; the repositories stay connected. */
+export function disconnectOrgGithub(slug: string): Promise<{ ok: true; github_app: GhT.GithubAppStatusDTO; repos: IntT.OrgRepoDTO[] }> { return orgSend("POST", orgPath(slug, "/github/disconnect")); }
 export function listOrgEnvironments(slug: string): Promise<IntT.OrgEnvironmentDTO[]> { return orgSend<{ environments: IntT.OrgEnvironmentDTO[] }>("GET", orgPath(slug, "/environments")).then((r) => r.environments); }
 export type OrgEnvironmentWrite = Partial<Omit<IntT.OrgEnvironmentDTO, "key" | "position" | "created_at" | "updated_at" | "updated_by">>;
 export function putOrgEnvironment(slug: string, key: string, body: OrgEnvironmentWrite): Promise<{ environment: IntT.OrgEnvironmentDTO; created: boolean; removed_secrets: string[] }> {

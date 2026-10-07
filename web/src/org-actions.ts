@@ -15,6 +15,7 @@ import {
   resendOrgInvite, getOrgSettings, putOrgSettings, listOrgMembers, updateOrgMember, removeOrgMember, listOrgInvites, createOrgInvite, revokeOrgInvite,
   listOrgRepos, addOrgRepo, removeOrgRepo, listOrgEnvironments, putOrgEnvironment, reorderOrgEnvironments, deleteOrgEnvironment,
   listOrgIntegrations, setOrgIntegration, rotateOrgIntegration, deleteOrgIntegration, putOrgIntegrationConfig, testOrgIntegration, rotateOrgKey, listOrgAudit,
+  getOrgGithub, listOrgGithubRepos, trackOrgGithubRepo, testOrgGithub, disconnectOrgGithub,
   type OrgEnvironmentWrite,
 } from "./api";
 import {
@@ -24,6 +25,7 @@ import {
 import { GENERATED_KINDS, integrationKey, integrationLabel } from "./integrations";
 import { isIntegrationKind, type IntegrationDTO, type IntegrationKind } from "@shared/integrations";
 import type { OrgInvite, OrgRole } from "@shared/orgs";
+import type { GithubAppStatusDTO } from "@shared/github-app";
 import { createOrgLogoActions } from "./org-logo-actions";
 import { createOrgBillingActions } from "./org-billing-actions";
 
@@ -77,6 +79,10 @@ export function orgErrorText(e: unknown, fallback: string): string {
     case "undecryptable_secret": return "A stored secret could not be decrypted. Delete it and set it again.";
     case "repo_exists": return "That repository is already connected.";
     case "primary_repo": return "Make another repository the primary first, then remove this one.";
+    case "not_connected": return "GitHub is no longer connected here. Reload the page.";
+    case "not_visible": return "The GitHub App cannot see that repository any more. Give it access on GitHub, then refresh the list.";
+    case "github_failed": return "GitHub did not answer. Try again in a minute.";
+    case "too_many_repos": return detail ? sentence(detail) : "This organization has reached its limit of connected repositories.";
     case "invite_exists": return "That person already has a pending invite.";
     case "already_member": return "They are already a member of this org.";
     case "not_found": return "That no longer exists. Reload the page.";
@@ -149,14 +155,83 @@ export function createOrgController(host: OrgHost): OrgController {
   /** The admin-only reads (their routes answer 403 to a member, so a member never asks). */
   const loadAdmin = () => { if (roleAtLeast(org()?.role, "admin")) { loadInvites(); loadIntegrations(); loadAudit(); } };
 
+  // ── the GitHub App (github-app.ts) ─────────────────────────────────────────
+  /** The connection as the server just reported it — into its own slice and the Integrations list's copy. */
+  const setGithub = (status: GithubAppStatusDTO): void => {
+    ui().github = { status: "ok", data: status };
+    const d = ui().integrations.data;
+    if (d) d.github_app = status;
+    if (!status.installation) ui().githubRepos = { status: "idle", data: null };
+  };
+  /** What the installation can see — an admin's read, and only while one is live. */
+  function loadGithubRepos(refresh = false): void {
+    const slug = ui().slug;
+    const inst = ui().github.data?.installation;
+    if (!slug || !inst || inst.suspended_at || !roleAtLeast(org()?.role, "admin")) return;
+    const held = ui().githubRepos.data;
+    if (ui().githubRepos.status !== "ok" || refresh) ui().githubRepos = { status: "loading", data: held };
+    listOrgGithubRepos(slug, refresh)
+      .then((data) => { if (ui().slug !== slug) return; ui().githubRepos = { status: "ok", data }; rerender(); })
+      .catch((e) => { if (fail(e) || ui().slug !== slug) return; ui().githubRepos = { status: "error", data: held, error: e instanceof Error ? e.message : String(e) }; rerender(); });
+  }
+  /** The org's connection — every member reads it (Repositories says how the org is connected). */
+  function loadGithub(): void {
+    const slug = ui().slug;
+    if (!slug) return;
+    const held = ui().github.data;
+    if (ui().github.status !== "ok") ui().github = { status: "loading", data: held };
+    getOrgGithub(slug)
+      .then((status) => { if (ui().slug !== slug) return; setGithub(status); rerender(); loadGithubRepos(); })
+      .catch((e) => { if (fail(e) || ui().slug !== slug) return; ui().github = { status: "error", data: held, error: e instanceof Error ? e.message : String(e) }; rerender(); });
+  }
+  function trackRepo(name: string): void {
+    const o = org();
+    const u = ui();
+    if (!o || u.githubBusy) return;
+    u.githubBusy = name;
+    rerender();
+    trackOrgGithubRepo(o.slug, name)
+      .then((repos) => {
+        u.githubBusy = null;
+        u.repos = { status: "ok", data: repos };
+        const list = u.githubRepos.data;
+        if (list) for (const r of list.repositories) if (r.full_name === name) r.tracked = true;
+        host.flash(repos.find((r) => r.repo_full_name === name)?.is_primary ? `Tracking ${name} as the primary repository` : `Tracking ${name}`);
+        loadAdmin();
+      })
+      .catch((e) => {
+        u.githubBusy = null;
+        if (fail(e)) return;
+        host.flash(orgErrorText(e, `Couldn't track ${name}.`), 6000);
+        if (e instanceof ApiError && (e.message === "not_connected" || e.message === "not_visible")) loadGithub();
+        rerender();
+      });
+  }
+  function testGithub(): void {
+    const o = org();
+    const u = ui();
+    if (!o || u.tests.github_app?.status === "running") return;
+    u.tests.github_app = { status: "running" };
+    rerender();
+    testOrgGithub(o.slug)
+      .then((r) => { u.tests.github_app = { status: "done", ok: r.ok, detail: r.detail }; setGithub(r.github_app); rerender(); if (r.ok) loadGithubRepos(); else loadRepos(); })
+      .catch((e) => {
+        if (fail(e)) { delete u.tests.github_app; return; }
+        u.tests.github_app = { status: "done", ok: false, detail: orgErrorText(e, "The test could not run.") };
+        if (e instanceof ApiError && e.message === "not_connected") loadGithub();
+        rerender();
+      });
+  }
+
   function loadSlices(): void {
     const o = org();
     if (!o) return;
     if (ui().slug !== o.slug) {
       dropSecret();
-      state.org = { ...initialOrgUi(), tab: ui().tab, slug: o.slug };
+      // (What the return from GitHub said arrives before the first load: it is kept.)
+      state.org = { ...initialOrgUi(), tab: ui().tab, slug: o.slug, githubNotice: ui().githubNotice };
     }
-    loadSettings(); loadMembers(); loadRepos(); loadEnvs(); loadPlan(); loadAdmin();
+    loadSettings(); loadMembers(); loadRepos(); loadEnvs(); loadPlan(); loadGithub(); loadAdmin();
   }
 
   /** My orgs again (a role change, a rename), then this screen's reads. */
@@ -211,6 +286,17 @@ export function createOrgController(host: OrgHost): OrgController {
       removeOrgRepo(o.slug, arg)
         .then((r) => { ui().repos = { status: "ok", data: r.repos }; done(r.removed_secrets.length ? `Removed ${name} and its webhook secret` : `Removed ${name}`); loadAdmin(); })
         .catch((e) => failed(e, `Couldn't remove ${name}.`));
+    } else if (what === "github") {
+      const account = ui().github.data?.installation?.account_login ?? "GitHub";
+      disconnectOrgGithub(o.slug)
+        .then((r) => {
+          setGithub(r.github_app);
+          ui().repos = { status: "ok", data: r.repos };
+          delete ui().tests.github_app;
+          done(`Disconnected from ${account}. The Trov App stays installed on GitHub until you uninstall it there.`);
+          loadAdmin();
+        })
+        .catch((e) => { failed(e, "Couldn't disconnect GitHub."); loadGithub(); });
     } else if (what === "env") {
       const label = ui().envs.data.find((x) => x.key === arg)?.label ?? arg;
       deleteOrgEnvironment(o.slug, arg)
@@ -552,6 +638,13 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgRepoAdd": if (admin && repoDraftOk(u.repoDraft)) addRepo(u.repoDraft.trim(), false); return;
       case "orgRepoPrimary": if (admin && arg) addRepo(arg, true); return;
 
+      // The GitHub App
+      case "orgGithubNoticeClose": u.githubNotice = null; break;
+      case "orgGithubFilter": u.githubFilter = value ?? ""; break;
+      case "orgGithubReposReload": if (admin) loadGithubRepos(true); break;
+      case "orgGithubTrack": if (admin && arg) trackRepo(arg); return;
+      case "orgGithubTest": if (admin) testGithub(); return;
+
       // Environments
       case "orgEnvNew":
         if (!admin) return;
@@ -686,7 +779,7 @@ export function createOrgController(host: OrgHost): OrgController {
       case "orgConfirm": {
         const at = (arg ?? "").indexOf(":");
         const what = (arg ?? "").slice(0, at);
-        if (!admin || at < 0 || !["repo", "env", "secret", "member", "key"].includes(what)) return;
+        if (!admin || at < 0 || !["repo", "env", "secret", "member", "key", "github"].includes(what)) return;
         if (what === "key" && o?.role !== "owner") return;
         u.confirm = { what: what as OrgConfirm["what"], arg: (arg ?? "").slice(at + 1), busy: false };
         rerender();

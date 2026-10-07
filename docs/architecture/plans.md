@@ -130,6 +130,26 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 | `PUT /api/platform/orgs/:slug/plan` | superadmin | `{ ok, org }` (the Platform row, with `plan`); 400 `invalid_plan` / `invalid_overrides` |
 | `POST /api/platform/orgs` | superadmin | also takes `plan` (default `team`) and `overrides` |
 
+## The pricing page
+
+The public face of the plans is ONE pure render, `pricingSection` (`web/src/pricing.ts`), shown twice: as the
+landing page's last section (nav link "Pricing") and as the static page `/pricing` (`web/pricing.html`, booted
+by `web/src/pricing-page.ts`; an extra Vite input served by the assets binding like `/terms`, linked from the
+footer). It restates nothing: names, descriptions and limits come from `PLANS`, prices from `PRICING` in
+`shared/pricing.ts`. Tests: `test/render.pricing.test.ts`.
+
+- **A price is `null` until the owner announces it.** The card then reads "Pricing to be announced" and its
+  button is a waitlist e-mail; no number and no purchase link is ever shown for it. To announce one, set
+  `price` (and `yearly`, to offer yearly billing) in `PRICING` — the card shows the amount, its button becomes
+  the purchase link, and the Monthly / Yearly switch appears once any plan has both.
+- **A purchase is a plain link**, `purchaseHref(plan, interval)` → `/billing/start?plan=…` (`&interval=year`
+  only for yearly). Whether to offer it is decided by `PRICING` alone (`canPurchase`: `selfServe` and a
+  price); the page calls no API. A plan with `selfServe: false` (Enterprise) is always "Talk to us".
+- The switch is two native radios and CSS (`:has(:checked)`); `web/src/pricing-dom.ts` only keeps the choice
+  across a rerender. `/pricing` cannot know a session, so it is always the signed-out page.
+- Its sentences (what every plan includes, the questions) describe what the product does today. A change to
+  seats, limits or how a plan is changed is a change to that copy.
+
 ## The billing seam
 
 `src/plans/billing.ts` is everything a payment integration calls — no superadmin, no session. Its webhook

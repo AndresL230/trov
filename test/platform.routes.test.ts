@@ -149,7 +149,7 @@ describe("GET /api/platform/orgs[/:slug]", () => {
     expect(list.find((o) => o.slug === "acme")).toEqual({
       slug: "acme", name: "Acme", logo_url: null, status: "active", created_at: "2026-10-06T00:00:00.000Z", created_by: "migration",
       suspended_at: null, suspended_by: null, owners: [{ handle: "olive", name: "olive" }], member_count: 2, pending_invites: 1,
-      last_activity_at: "2026-10-01T09:30:00.000Z",
+      last_activity_at: "2026-10-01T09:30:00.000Z", github_account: null, // 0043_github_app: no App installation
       // 0044_plans: an org from before plans is Enterprise — unlimited seats — and uses members + pending invites.
       plan: {
         plan: "enterprise", overrides: {}, status: "active", source: "granted", seats_used: 3,

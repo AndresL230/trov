@@ -70,11 +70,9 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Billing. Built on top of Plans (0.19 below) while the GitHub App branch is also adding a release after
-  // 0.18: three entries are in flight, so whichever merges later renumbers — versions must count down
-  // without a gap (test/releases.test.ts) — and sets `date` to its merge day.
+  // Billing (#106), with the pricing page (#105), which merged without a release line of its own.
   {
-    version: "0.20",
+    version: "0.21",
     date: "2026-10-07",
     title: "Paid plans",
     headline: "You can buy the Personal or Team plan and set your organization up yourself, and its owner manages billing in Org settings.",
@@ -114,6 +112,7 @@ export const RELEASES: Release[] = [
         "SPA: `web/src/billing.ts` (the waiting room at `/billing/done`, then `/?setup=<grant>` opens the picker on that organization's form), `web/src/org-billing-actions.ts`, the Plan block's billing states in `web/src/org-plan.ts`",
         "Platform: an org's row and page say granted or paid, Stripe's status and the period, with a link to the customer in the Stripe dashboard (test or live); Follow subscription",
         "The `checkout` limit: 10 Checkout Sessions per person per day (`src/platform/limits.ts`)",
+        "A public pricing page at `/pricing` and a pricing section on the landing page: the three plans and what each includes, from `shared/pricing.ts`. Prices are not announced yet, so every plan reads Pricing to be announced and no plan links to checkout (#105)",
         "`test/billing.signature.test.ts`, `billing.flow.test.ts`, `billing.lifecycle.test.ts`, `billing.leak.test.ts` (canary key against a Stripe that echoes it), `render.billing.test.ts`; the isolation matrix, the MCP import rule and the API prefix test cover the new routes",
       ],
       changed: [
@@ -128,14 +127,10 @@ export const RELEASES: Release[] = [
       fixed: [],
       removed: [],
     },
-    prs: [],
+    prs: [105, 106],
   },
-  // Plans and grants. Another branch (the GitHub App) is also adding the release after 0.18: whichever
-  // merges SECOND renumbers its entry to 0.20 and sets `date` to its merge day. This one is meant to be
-  // 0.20; it reads 0.19 here only because shipped versions must count down without a gap and main
-  // carries no Unreleased entry (test/releases.test.ts).
   {
-    version: "0.19",
+    version: "0.20",
     date: "2026-10-07",
     title: "Plans",
     headline: "An organization is now on a plan (Personal, Team or Enterprise), and Trov can hand someone an organization to set up themselves.",
@@ -185,7 +180,56 @@ export const RELEASES: Release[] = [
         "`PUT /api/platform/persons/:handle/org-limit`, `setOrgLimit`, `orgAllowance`, the error code `org_limit` and Platform's Organization limit form. `persons.org_limit` stays as a dead column until the cleanup migration",
       ],
     },
-    prs: [],
+    prs: [104],
+  },
+  {
+    version: "0.19",
+    date: "2026-10-07",
+    title: "Connect with GitHub",
+    headline: "An organization now connects its repositories by installing the Trov App on GitHub: no token to paste, no webhook to set up.",
+    highlights: [
+      "Org settings › Repositories has Connect with GitHub. It takes you to GitHub to install the Trov App on your account or organization and choose which repositories it may read, then brings you back connected.",
+      "Once connected, Repositories lists the repositories the App can see. Track one with a click instead of typing its name; the first you track becomes the primary.",
+      "Trov reads through the App and GitHub sends it events directly, so an organization on the App needs no GitHub token and no webhook of its own. Sync GitHub, the Repo dashboard and the organization's image all use it.",
+      "Org settings › Integrations shows the connection as one row: the GitHub account it is on, who connected it, Test connection, Manage on GitHub and Disconnect. The token and webhook rows move under Manual connection, where they stay for anyone who prefers them.",
+      "If the App is suspended or uninstalled on GitHub, or stops seeing a repository you track, Org settings says so and what to do about it.",
+    ],
+    headsUp: [
+      "Only an admin or an owner can connect GitHub, and the GitHub account you approve it with has to be the one linked to your Trov account and able to read every repository the App covers.",
+      "An organization connects one GitHub account at a time. Disconnecting leaves the Trov App installed on GitHub until you uninstall it there, and leaves your repositories connected.",
+      "Events are still captured for the primary repository only. Other tracked repositories are listed and resolve links.",
+      "Connecting by hand still works exactly as before: a GitHub token, and a webhook for each repository.",
+      "The setup checklist's GitHub step now reads Connect GitHub, and is done by the App or by a token.",
+    ],
+    ops: [
+      "Migration `0043_github_app` (additive: the table `org_github_installations`, and `connection` / `access_lost_at` on `org_repos`) is applied by the deploy. Rollback is by hand: the statements are in the migration's header, and must run BEFORE `scripts/mt/rollback/0042_organizations.down.sql` if that is ever used.",
+      "Set two Worker secrets — `wrangler secret put GITHUB_APP_ID` (the App's numeric id) and `wrangler secret put GITHUB_APP_PRIVATE_KEY < the-app.private-key.pem` (the whole file GitHub generated) — and put the App's URL name in `wrangler.toml` as `GITHUB_APP_SLUG`. `GITHUB_APP_WEBHOOK_SECRET` is already set. Until all of slug, id and key are present, Org settings offers only the token path and says the App is not configured; nothing fails.",
+      "On GitHub, in the App's settings: make the webhook Active with the URL `https://trov.dev/webhook/github/app` and subscribe to Pull request, Pull request review, Issues, Push, Deployment status, Check run, Workflow run and Status. The first Callback URL must stay `https://trov.dev/auth/callback`: GitHub returns there after an install.",
+      "Then connect SaplingLearn: Org settings › Repositories › Connect with GitHub. Its old webhook and the Worker's `GITHUB_SERVICE_TOKEN` / `GITHUB_WEBHOOK_SECRET` keep working beside the App (one event through both is captured once) and can be removed once the App's row shows deliveries and a passing Test connection. The full checklist: `docs/architecture/github-app.md`.",
+    ],
+    patches: {
+      added: [
+        "The GitHub App as an org's GitHub connection (`src/github-app/`, `shared/github-app.ts`, `docs/architecture/github-app.md`): an RS256 App JWT signed with WebCrypto (GitHub's PKCS#1 PEM is wrapped as PKCS#8; a PKCS#8 PEM works too), installation tokens minted on demand — for the ONE repository being read, with the App's eight read permissions; for the installation's own repository list, Metadata only — and cached per isolate, per installation and repository, until ten minutes before expiry; never stored, never logged",
+        "`resolveGithubCredential` (`src/github-app/credential.ts`): the org's live installation, then its stored `github_token`, then SaplingLearn's legacy Worker secret. The reconcile, the progress backstop, Sync GitHub, the webhook's follow-up reads and the org image's import resolve through it; a refused mint ends (404) or suspends (403) the binding and falls back to the stored token",
+        "The connect flow: `GET /api/o/:slug/github/install` (admin+, cookie only) seals `{ org, person, state, expiry }` in an HttpOnly cookie and redirects to GitHub; `GET /auth/callback` recognises the install return (`installation_id` / `setup_action`) and binds only after the cookie, the state, the signed-in person, their admin role, their linked GitHub identity, `GET /user/installations` and the no-escalation check (every repository id of the installation is one that account can read; at most 1,000 are checked) all hold, and revokes the GitHub user token once it has decided; `?existing=1` links an installation that already exists through an ordinary authorization with PKCE (`src/github-app/connect.ts`, `src/auth/tx.ts`)",
+        "`GET /api/o/:slug/github` (the connection, any member), `GET|POST …/github/repositories` (what the installation can see; track one), `POST …/github/test`, `POST …/github/disconnect` (admin+, cookie only, audited as `github.*` in `org_admin_audit`)",
+        "`POST /webhook/github/app`: one endpoint for every installation, verified against `GITHUB_APP_WEBHOOK_SECRET` (the per-repo hook's bare 401 otherwise), the org resolved from the delivery's installation id, capture for that org's primary repository; `installation` (`deleted`, `suspend`, `unsuspend`, `new_permissions_accepted`) and `installation_repositories` events update the binding and the repositories' marks (`src/github-app/webhook.ts`)",
+        "Migration `0043_github_app`: `org_github_installations` (one live installation per org, one org per installation) and `org_repos.connection` / `access_lost_at`",
+        "Org settings (`web/src/github-app.ts`): Connect with GitHub, the installation's repositories to track, the App's row (Test connection, Manage on GitHub, Disconnect), Manual connection, the sentence after a return from GitHub; Platform's org list and org page name the GitHub account",
+        "Tests: `test/github-app.jwt.test.ts`, `github-app.connect.test.ts`, `github-app.webhook.test.ts`, `github-app.jobs.test.ts`, `render.github-app.test.ts`; the App's routes in `test/isolation.http.test.ts`; `test/secrets.mcp.test.ts` forbids anything reachable from MCP from importing `src/github-app/`",
+      ],
+      changed: [
+        "Org settings › Repositories: where the App is configured its one accent action is Connect with GitHub and adding by name is behind a disclosure; where it is not, the tab is as before and says why. A repository reached through the App shows no webhook URL",
+        "Org settings › Integrations: the GitHub group leads with the App's row; with an installation the token and webhook-secret rows fold under Manual connection and no longer count as owed or as errors",
+        "The setup checklist's third step is Connect GitHub where the App is offered, and is satisfied by an installation, a stored token or the legacy credential (`setupSteps`)",
+        "`exchangeCode` (`src/auth/github.ts`) sends `redirect_uri` and `code_verifier` only when it has them: the installation-initiated authorization has neither. Sign-in is unchanged",
+        "`reconcileCost` budgets one more subrequest per unit for a token mint (`GITHUB_MINT_COST`)",
+        "The GitHub token's how-to names the Checks permission and points to the App first",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [103],
   },
   {
     version: "0.18",

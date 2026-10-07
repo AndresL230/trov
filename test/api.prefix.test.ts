@@ -42,7 +42,7 @@ const any: unknown = new Proxy(function () { /* callable */ }, {
   ownKeys: () => [],
 });
 /** Not request functions: the prefix's own controls, and the error classes. */
-const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "planLimitText"]);
+const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "planLimitText", "githubInstallHref"]);
 /** Functions whose arguments must be real values (a Blob for a multipart body). */
 const SPECIAL: Record<string, unknown[]> = {
   uploadAvatar: [new Blob(["x"]), "a.png"],
@@ -96,6 +96,14 @@ describe("apiUrl — the one prefix", () => {
       { method: "GET", url: "/api/billing/status?session_id=cs%20test%2F1" }, { method: "GET", url: "/api/billing/config" },
       { method: "POST", url: "/api/o/big%20co/billing/portal" }, { method: "POST", url: "/api/o/acme/billing/change" }, { method: "POST", url: "/api/o/acme/billing/renew" },
     ]);
+  });
+  it("the GitHub App: Connect is a link to the org's own start route — a tenant route — and the callback GitHub returns to is not", () => {
+    expect(api.githubInstallHref("acme")).toBe("/api/o/acme/github/install");
+    expect(api.githubInstallHref("acme", { existing: true, account: "acme-gh" })).toBe("/api/o/acme/github/install?existing=1&account=acme-gh");
+    expect(api.isGlobalPath(api.githubInstallHref("acme"))).toBe(true); // already under an org's prefix: never prefixed twice
+    expect(api.apiUrl("/github/repositories")).toBe("/api/o/acme/github/repositories");
+    expect(api.isGlobalPath("/auth/callback")).toBe(true);
+    expect(api.apiUrl("/auth/callback?code=x&installation_id=1")).toBe("/auth/callback?code=x&installation_id=1");
   });
   it("follows the org it is given, encoded", () => {
     api.setApiOrg("big-co");

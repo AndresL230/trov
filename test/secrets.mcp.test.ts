@@ -63,7 +63,11 @@ describe("the import graph", () => {
     expect(fromMcp.has("src/data/secrets.ts")).toBe(false);
     expect([...fromMcp].filter((f) => f.startsWith("src/integrations/"))).toEqual([]);
     // …and no MCP-reachable file so much as names the decrypt path.
-    for (const file of fromMcp) expect(SOURCES.get(file), file).not.toMatch(/\b(getSecret|resolveCredential)\s*\(/);
+    for (const file of fromMcp) expect(SOURCES.get(file), file).not.toMatch(/\b(getSecret|resolveCredential|resolveGithubCredential)\s*\(/);
+    // …nor the GitHub App (0043_github_app): its installation tokens are credentials too, and its key signs as the App.
+    expect(SOURCES.has("src/github-app/credential.ts")).toBe(true);
+    expect([...fromMcp].filter((f) => f.startsWith("src/github-app/"))).toEqual([]);
+    for (const file of fromMcp) expect(SOURCES.get(file), file).not.toMatch(/\b(installationToken|mintInstallationToken|signAppJwt)\s*\(|\.GITHUB_APP_PRIVATE_KEY\b/);
   });
 });
 

@@ -141,16 +141,16 @@ const planOfRow = (o: ListedOrg, members: number, invites: number): PlatformOrgP
   return { plan, overrides, status: oneOf(PLAN_STATUSES, o.plan_status) ?? "active", source: oneOf(PLAN_SOURCES, o.plan_source), entitlements: resolveEntitlements(plan, overrides), seats_used: members + invites };
 };
 
-const toRow = (o: ListedOrg, x: { owners: PlatformOrgOwner[]; members: number; invites: number; last: string | null }): PlatformOrgRow => ({
+const toRow = (o: ListedOrg, x: { owners: PlatformOrgOwner[]; members: number; invites: number; last: string | null; github: string | null }): PlatformOrgRow => ({
   slug: o.slug, name: o.name, logo_url: orgLogoSrc(o), status: o.suspended_at ? "suspended" : "active", created_at: o.created_at, created_by: o.created_by,
   suspended_at: o.suspended_at, suspended_by: o.suspended_by,
-  owners: x.owners, member_count: x.members, pending_invites: x.invites, last_activity_at: x.last,
+  owners: x.owners, member_count: x.members, pending_invites: x.invites, last_activity_at: x.last, github_account: x.github,
   plan: planOfRow(o, x.members, x.invites),
 });
 
 /** Every org, suspended ones included, newest first. `slug` narrows to one. */
 export async function listPlatformOrgs(p: PlatformContext, slug?: string): Promise<(PlatformOrgRow & { id: string })[]> {
-  const [orgs, owners, members, invites, last] = await Promise.all([
+  const [orgs, owners, members, invites, last, github] = await Promise.all([
     all<ListedOrg>(p, `SELECT id, slug, name, created_at, created_by, suspended_at, suspended_by, logo_sha, plan, plan_overrides, plan_source, plan_status FROM orgs
                      ${slug === undefined ? "" : "WHERE slug = ?"} ORDER BY created_at DESC, slug ASC`, ...(slug === undefined ? [] : [slug])),
     all<{ org_id: string; handle: string; name: string | null }>(p,
@@ -159,6 +159,8 @@ export async function listPlatformOrgs(p: PlatformContext, slug?: string): Promi
     all<{ org_id: string; n: number }>(p, `SELECT org_id, COUNT(*) AS n FROM memberships GROUP BY org_id`),
     all<{ org_id: string; n: number }>(p, `SELECT org_id, COUNT(*) AS n FROM org_invites WHERE status = 'pending' GROUP BY org_id`),
     all<{ org_id: string; at: string | null }>(p, `SELECT org_id, MAX(last_at) AS at FROM org_usage_daily GROUP BY org_id`),
+    // Which GitHub account each org's App installation is on (0043_github_app) — a name, read-only here.
+    all<{ org_id: string; account_login: string }>(p, `SELECT org_id, account_login FROM org_github_installations WHERE removed_at IS NULL`),
   ]);
   const count = (rows: { org_id: string; n: number }[], id: string) => rows.find((r) => r.org_id === id)?.n ?? 0;
   return orgs.map((o) => ({
@@ -166,6 +168,7 @@ export async function listPlatformOrgs(p: PlatformContext, slug?: string): Promi
     ...toRow(o, {
       owners: owners.filter((r) => r.org_id === o.id).map(({ handle, name }) => ({ handle, name })),
       members: count(members, o.id), invites: count(invites, o.id), last: last.find((r) => r.org_id === o.id)?.at ?? null,
+      github: github.find((r) => r.org_id === o.id)?.account_login ?? null,
     }),
   }));
 }

@@ -4,6 +4,7 @@ import { handleGithubWebhook, webhookPath } from "./github-hook";
 import { STRIPE_WEBHOOK_PATH, handleStripeWebhook } from "./billing/webhook";
 import { pruneEvents } from "./billing/store";
 import { BILLING_DONE_PATH } from "@shared/billing";
+import { APP_WEBHOOK_PATH, handleGithubAppWebhook } from "./github-app/webhook";
 import { resolveBearerTenant } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
 import { platform } from "./data/context";
@@ -46,13 +47,16 @@ export default {
       ctx.waitUntil(meterMcp(env, bearer.ctx, request)); // usage: one `mcp_request` + one `mcp_tool:<name>` per tool call
       return handleMcp(request, env, ctx, bearer.ctx);
     }
+    // Stripe's deliveries (docs/architecture/billing.md): the `Stripe-Signature` over the raw body is the
+    // auth, against STRIPE_WEBHOOK_SECRET; a bad one is a bare 401 and writes nothing (src/billing/webhook.ts).
+    if (request.method === "POST" && url.pathname === STRIPE_WEBHOOK_PATH) return handleStripeWebhook(request, env);
     // Third auth class: GitHub webhook deliveries, HMAC-verified over the raw
     // body against the `github_webhook` secret of the repo the URL names:
     // `/webhook/github/<org_repos.id>` per org, and the legacy `/webhook/github`
     // for the one `legacy_hook` repo (src/github-hook.ts). Never touches sessionGate.
-    // Stripe's deliveries (docs/architecture/billing.md): the `Stripe-Signature` over the raw body is the
-    // auth, against STRIPE_WEBHOOK_SECRET; a bad one is a bare 401 and writes nothing (src/billing/webhook.ts).
-    if (request.method === "POST" && url.pathname === STRIPE_WEBHOOK_PATH) return handleStripeWebhook(request, env);
+    // The GitHub App's own endpoint comes first: ONE URL for every installation, verified against the
+    // App's webhook secret, the org found from the delivery's installation id (src/github-app/webhook.ts).
+    if (request.method === "POST" && url.pathname === APP_WEBHOOK_PATH) return handleGithubAppWebhook(request, env, { waitUntil: (p) => ctx.waitUntil(p) });
     const hook = request.method === "POST" ? webhookPath(url.pathname) : null;
     if (hook) return handleGithubWebhook(request, env, { hookId: hook.hookId, waitUntil: (p) => ctx.waitUntil(p) });
     // Signed one-click unsubscribe (canopy-email.md §7): the single token

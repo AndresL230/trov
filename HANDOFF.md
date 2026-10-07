@@ -11,6 +11,35 @@ invite the team (by mail), connect a repository, set keys — with nothing cross
 for a human operator: `docs/architecture/organizations.md`. Nothing is merged or deployed. `npm test`,
 `npm run typecheck` and `npm run build:web` are green.
 
+## The GitHub App (branch `feat/github-app`, issue #95) — built, NOT pushed, NOT deployed
+
+An org now connects its repositories by installing Trov's GitHub App; the pasted token and the per-repo
+webhook stay as the fallback. Everything about it — the flow, the security argument, tokens, the webhook,
+permissions, and the OWNER CHECKLIST — is `docs/architecture/github-app.md`. `npm run typecheck`,
+`npm test` and the web build are green; GitHub was stubbed in every test and in the browser check, so the
+real round trip is unverified until the owner runs it (that doc › "Verify after deploy").
+
+- **Schema**: `0043_github_app` — additive (`org_github_installations`; `org_repos.connection`,
+  `access_lost_at`). A merge to `main` applies it. Its rollback is by hand (the statements are in its
+  header) and must run BEFORE `scripts/mt/rollback/0042_organizations.down.sql` if that is ever used.
+- **New routes**: `GET /api/o/:slug/github` (member), `GET …/github/install`, `GET|POST
+  …/github/repositories`, `POST …/github/test`, `POST …/github/disconnect` (admin+, cookie only);
+  `POST /webhook/github/app`; `/auth/callback` also answers the App's install return.
+- **Credential order** for every GitHub read: installation token → stored `github_token` → SaplingLearn's
+  legacy secret (`resolveGithubCredential`, `src/github-app/credential.ts`).
+- **Changed shapes**: `OrgRepoDTO` gains `connection`, `access_lost`; `IntegrationsListDTO` gains
+  `github_app`; `PlatformOrgRow` gains `github_account`; `org_admin_audit` gains the `github.*` actions.
+- **Owner, to make it work in production** (in order; detail in the doc): `wrangler secret put
+  GITHUB_APP_ID`; `wrangler secret put GITHUB_APP_PRIVATE_KEY < file.pem`; `GITHUB_APP_SLUG` in
+  `wrangler.toml`; deploy; on GitHub make the App's webhook Active (`https://trov.dev/webhook/github/app`
+  + the eight events); then Org settings › Repositories › Connect with GitHub; then retire SaplingLearn's
+  old webhook and the two legacy Worker secrets.
+- **Not done here**: capture for non-primary repositories (the capture's keys carry no repository — still
+  the first "smaller follow-up" below); several installations per org; Phase 7's removal of the legacy
+  hook and the env-secret fallback, which this makes possible once SaplingLearn is on the App.
+- The release entry is `0.19` in `web/src/releases.ts`, dated 2026-10-07 with no PR number: set its `date`
+  to the merge day and add `prs: [<n>]` (and `(#n)` on its patch lines) in the PR that merges it.
+
 ## Context
 
 | Field | Value |
