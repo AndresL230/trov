@@ -72,18 +72,60 @@ ALL of these hold; a failure at any step writes nothing:
 5. **No escalation.** `GET /user/installations` lists an installation for anyone with access to at least
    one of its repositories, so step 4 alone would let a collaborator on one repository attach an
    organization's whole installation. The account must be able to read EVERY repository the installation
-   covers: `total_count` of `GET /user/installations/:id/repositories` (user token) must equal that of
-   `GET /installation/repositories` (installation token). The owner of a personal account's installation
-   skips the count (the installation IS their account).
+   covers — see "The no-escalation check" below.
 6. **One org, one installation.** No other org holds it (`installationOrg`, a platform read — it sees a
    suspended org's binding too) and this org holds no other; the unique indexes say so again at the write.
 
 The installation's account comes from GitHub **as the App** (`GET /app/installations/:id`), never from
-the URL or the user's list. The user token is used for those reads and dropped.
+the URL or the user's list. The user token is used for those reads and then revoked (below).
 
 A replayed callback URL has no cookie (it was spent) → nothing. A return opened in another person's
 browser fails 1 or 2. A code for another GitHub account fails 3. An attacker's own valid flow with a
 victim's `installation_id` fails 4.
+
+### The no-escalation check (`installationRepoIds`, `userInstallationRepoIds`)
+
+Two lists of repository **ids**, each read to its end, 100 a page:
+
+- what the installation covers — `GET /installation/repositories`, with an installation token that spans
+  the installation and carries Metadata only;
+- what the connecting account can read of it — `GET /user/installations/:id/repositories`, with the
+  user token. GitHub's 404 on the first page means "none".
+
+The installation is bound only when **every id of the first list is in the second**. Ids, not counts: two
+counts can agree while the repositories differ (the account reads two repositories, the installation
+covers two, and only one is the same), and a count taken from one page says nothing of the others.
+
+- A refusal says HOW MANY repositories the account cannot read (`?github=partial_access&missing=<n>`),
+  never which — their names are exactly what the person may not be allowed to see.
+- **It fails closed.** A page that is not a 200, a thrown fetch, a body with no `total_count` or no list,
+  a row with no numeric id, a short page that is not the last, more rows than the count, a 404 anywhere
+  but the user's first page → `github_failed`, nothing bound.
+- **The cap: `REPO_ID_PAGES` = 10 pages, 1,000 repositories.** An installation that covers more is not
+  checked at all (GitHub's own `total_count` says so on the first page, so it costs one request):
+  `too_many_repos`, and the sentence tells the admin to choose **Only select repositories** for the Trov
+  App on GitHub and connect again. The cap bounds the check at 20 requests — a Worker invocation's
+  subrequests are limited, and the rest of the flow spends about a dozen. Raising it is a constant.
+- **No exemption for a personal account.** Its owner can read every repository of their own account, so
+  they pass the same check as anyone; the earlier special case (skip the check when the installation's
+  account IS the connecting account) saved two requests and was one more branch to get wrong.
+
+### The user token is revoked (`dropUserToken`)
+
+The code is exchanged for a GitHub user token only to answer checks 3–5. Once the decision is made —
+bound, refused, or an error after the exchange — Trov revokes it:
+`DELETE /applications/{client_id}/token`, HTTP Basic `client_id:client_secret`, body
+`{ "access_token": … }`. Best effort: it runs after the response (`waitUntil`), has a five-second
+timeout, never changes the redirect, and is not retried. A revoke GitHub did not confirm (anything but
+204) is one fixed log line; the token is in no log line, no response and no row. The token was never
+stored, so a failed revoke leaves it to expire on GitHub's side (eight hours, with "Expire user
+authorization tokens" on).
+
+**Sign-in does not revoke.** Its token is used for `GET /user` and `GET /user/emails` and dropped, in
+the same request. Revoking there would add a request to every sign-in for a call that has not been run
+against real GitHub yet, in a path that is otherwise untouched by this feature (`src/auth/github.ts`'s
+surface is pinned by `test/auth-github.test.ts`). Once the revoke is seen working on a connect, sign-in
+can call the same `revokeUserToken`.
 
 ### PKCE and `state` on GitHub's side
 
@@ -121,9 +163,12 @@ shows one sentence (`connectNoticeCopy`) and rewrites the address bar.
   accepted as is, and a key pasted on one line with `\n` is read. Every failure is a fixed-text
   `GithubAppKeyError` — never the PEM, never the underlying exception.
 - **Installation token** (`api.ts`): `POST /app/installations/:id/access_tokens` → good for about an
-  hour. Cached **per isolate, in memory**, keyed by App id + installation id, handed out until ten minutes
-  before expiry; concurrent callers share one mint. Never in D1, never logged. A 401 on a read made with
-  it forgets it; the next use mints again.
+  hour, and **never wider than the read it is for** — the mint's body names the one repository and the
+  permissions (the table below). Cached **per isolate, in memory**, keyed by App id + installation id +
+  repository + permissions, handed out until ten minutes before expiry; concurrent callers for the same
+  scope share one mint, and a token minted for one repository is never handed to a read of another.
+  Never in D1, never logged. A 401 on a read made with it forgets THAT token; the next use mints again.
+  The binding ending, a suspension or `new_permissions_accepted` forgets every token of the installation.
 - **The credential order** (`credential.ts` `resolveGithubCredential`): (a) the org's live, unsuspended
   installation — for a repository its account owns; (b) the org's stored `github_token`; (c) for
   SaplingLearn alone, the Worker's `GITHUB_SERVICE_TOKEN`. It throws for an MCP (bearer) context and for
@@ -133,8 +178,24 @@ shows one sentence (`connectNoticeCopy`) and rewrites the address bar.
   forbids anything MCP-reachable from importing `src/github-app/` at all.
 - **When GitHub will not issue one.** 404 → the installation is gone: the binding is ended
   (`not_found`), audited as `system`. 403 naming a suspension → `suspended_at` is set. 401 (the App's own
-  id / key) or an outage → `last_error` only; the binding stays. In every case the stored token answers
-  in the same run, and an ended or suspended binding is not asked again — no loop.
+  id / key), an outage, or 422 (the repository is not one the installation covers, or a permission the
+  App was not granted) → `last_error` only; the binding stays. In every case the stored token answers
+  in the same run, and an ended or suspended binding is not asked again — no loop. A 422 IS asked again
+  by the next job for that repository (one request): a repository under the installation's account that
+  the installation does not cover is read with the stored token, as a repository of any other account is.
+
+### What each token is minted for
+
+| Caller | `repositories` | `permissions` | Cached |
+|---|---|---|---|
+| The reconcile, Sync GitHub (backfill), the progress backstop — `resolveGithubCredential({ repo })` | the org's primary repository, by name | Metadata, Contents, Pull requests, Issues, Actions, Checks, Deployments, Commit statuses — all `read` (`READ_PERMISSIONS`) | yes, per (installation, repository) — these callers share one token |
+| The follow-up reads of a webhook delivery (the App's webhook and the per-repository hook), resolved lazily | the delivery's repository | the same | the same entry |
+| The org image's import (`GET /users/{owner}`) | the primary repository | the same — it rides the reconcile's unit and uses that unit's token. The lookup needs no permission; a second, Metadata-only token would add a mint an hour and take nothing away from what the isolate already holds | the same entry |
+| The repository picker and its re-marking (`visibleRepos`), Test connection, the connect flow's no-escalation check — `GET /installation/repositories` | none: the list has to span the installation (a token narrowed to repositories lists only those) | Metadata only (`INSTALLATION_SCOPE`) — it can read no code, pull request or issue | yes, per installation |
+
+GitHub refuses a mint that asks for a permission the App was not granted, so `READ_PERMISSIONS` is
+exactly the App's registered repository permissions. Adding a reader that needs another means adding it
+to the App on GitHub first (existing installations must accept it), then here.
 
 Every log line and every stored `last_error` is fixed text or goes through `scrub`
 (`test/github-app.jwt.test.ts` drives upstreams that echo the Authorization header back).
@@ -192,15 +253,18 @@ Actions, Checks, Deployments, Commit statuses (repository); Email addresses (acc
 | `GET /repos/{r}/commits/{ref}/check-runs` | reconcile (environment head checks) | Checks |
 | `GET /repos/{r}/commits/{ref}/statuses` | reconcile (`canopy/*` statuses) | Commit statuses |
 | `GET /users/{owner}`, then `avatars.githubusercontent.com` | the org image's import | none (public; the avatar is fetched with no token) |
-| `GET /installation/repositories` | the repository picker, Test connection, the no-escalation count | any installation token |
+| `GET /installation/repositories` | the repository picker, Test connection, the no-escalation check | any installation token (Trov's carries Metadata only) |
 | `GET /app/installations/{id}`, `POST …/access_tokens` | binding, minting, Test connection | the App JWT |
 | `GET /user`, `/user/emails` | sign-in, connect | Email addresses (for `/user/emails`) |
 | `GET /user/installations`, `/user/installations/{id}/repositories` | connect | a user token of this App |
+| `DELETE /applications/{client_id}/token` | connect, when it is done with the user token | the App's client id and secret (HTTP Basic) |
 
 Webhook events and the permission each requires: Pull request, Pull request review → Pull requests;
 Issues → Issues; Push → Contents; Deployment status → Deployments; Check run → Checks; Workflow run →
-Actions; Status → Commit statuses. **Nothing the code calls is outside the registered set.** GraphQL is
-served to installation tokens; the three queries above read only what those permissions cover.
+Actions; Status → Commit statuses. **Nothing the code calls is outside the registered set**, and every
+repository read above is made with a token minted for that repository with exactly these eight ("What
+each token is minted for"). GraphQL is served to installation tokens; the three queries above read only
+what those permissions cover.
 
 ## When the App is not configured
 
@@ -247,9 +311,22 @@ were not exercised for real:
   the fallback is **Link the existing installation**, which does not depend on it;
 - that the token exchange for an installation-initiated authorization succeeds with no `code_verifier`
   and no `redirect_uri` (step 4 of the checklist proves it);
-- that `GET /user/installations/:id/repositories` reports the same `total_count` as
-  `GET /installation/repositories` for an owner of the account. If GitHub counts them differently for a
-  legitimate owner, connecting is refused with "cannot read every repository" — it fails closed;
+- that `GET /user/installations/:id/repositories` lists, for an owner of the account (an organization's
+  owner AND the owner of a personal account, which no longer skips the check), every repository
+  `GET /installation/repositories` lists, with the same ids. If GitHub leaves one out for a legitimate
+  owner, connecting is refused with "cannot read N of the repositories" — it fails closed;
+- that GitHub accepts the scoped mint body exactly as sent — `{ "repositories": ["<name>"], "permissions":
+  { "metadata": "read", "contents": "read", "pull_requests": "read", "issues": "read", "actions": "read",
+  "checks": "read", "deployments": "read", "statuses": "read" } }`, and `{ "permissions": { "metadata":
+  "read" } }` for the installation-wide token — and that a refusal is the 422 the code expects. If it
+  refuses, the binding's `last_error` says so and the stored token (if any) answers; an org with no
+  stored token reads nothing until it is fixed. **Run Test connection and one Sync GitHub right after
+  connecting**: the first proves the Metadata-only mint, the second the repository-scoped one;
+- that a repository's name is matched without regard to case in `repositories` (Trov sends the name as
+  the org tracks it, which for an App-connected repository is GitHub's own spelling);
+- the revoke: `DELETE /applications/{client_id}/token` with Basic auth and `{ "access_token" }` answering
+  204 for a user token of a GitHub App. If it does not, the log shows "GitHub did not confirm revoking
+  the user token" on every connect and nothing else changes;
 - that `iss` as a number is accepted for this App (it is the form GitHub has always documented);
 - the exact 403 body of a suspended installation's token request (matched on the word "suspended");
 - the three GraphQL queries under an installation token with the permissions above.
