@@ -10,6 +10,7 @@ import { mcpTokensApp } from "./auth/token-routes";
 import { notificationsApp } from "./notifications/routes";
 import { artifactsApp } from "./artifacts/routes";
 import { orgSettingsApp } from "./integrations/routes";
+import { hostingApp, hostingCallbackApp } from "./hosting/routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runBackfill, isFinalBackfillBatch } from "./tools/backfill";
@@ -163,6 +164,10 @@ app.route("/", oauthApp);
 app.route("/api/orgs", orgsApp);
 app.route("/api/invites", myInvitesApp);
 app.route("/api/platform", platformApp);
+// A hosting provider's install / OAuth callback (src/hosting/routes.ts): at the ROOT, because a provider's
+// redirect URI is fixed — the org rides in the sealed `state`, and the callback checks the person's admin
+// membership of it itself (src/data/gate.ts lets `/hosting/*` past the one-org alias).
+app.route("/hosting", hostingCallbackApp);
 
 // Artifacts (issue #52) and the email notification prefs / policy / settings / outbox: tenant sub-apps,
 // `/api/o/:slug/artifacts…` ↔ `/api/artifacts…`, `/api/o/:slug/notifications…` ↔ `/api/notifications…`.
@@ -1111,6 +1116,7 @@ tenantRoot.post("/sprints/:id/complete", async (c) => {
 // repos, environments; cookie only, secrets write-only and admin+), then every tenant route above.
 app.route("/api/o/:slug", orgTenantApp);
 app.route("/api/o/:slug", orgSettingsApp);
+app.route("/api/o/:slug", hostingApp); // Org settings › Hosting: parts, connections, the setup read (src/hosting/routes.ts)
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
 // their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name

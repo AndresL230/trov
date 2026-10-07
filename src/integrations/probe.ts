@@ -226,10 +226,13 @@ async function probeGithub(ctx: TenantContext, secret: Secret, fetchImpl: typeof
 /**
  * Run Test connection for one integration. `SecretNotFoundError` when there is no credential to test.
  * A webhook secret has nothing to call: it reports the last VERIFIED delivery and the URL to configure,
- * and leaves `last_error` alone. Every other kind records its outcome on the org's row.
+ * and leaves `last_error` alone. Every other kind records its outcome on the org's row. `partKey` (a hosting
+ * provider's kind only — Org settings › Hosting's per-part Test) probes against THAT part's settings instead
+ * of the first part that uses the provider.
  */
 export async function testConnection(
-  ctx: TenantContext, env: Env, kind: IntegrationKind, scope: string, origin: string, now: number = Date.now(), fetchImpl?: typeof fetch
+  ctx: TenantContext, env: Env, kind: IntegrationKind, scope: string, origin: string, now: number = Date.now(), fetchImpl?: typeof fetch,
+  partKey?: { env: string; part: string },
 ): Promise<ProbeResult> {
   if (kind === "github_webhook") {
     // Access is checked exactly as for a decrypt, though nothing is sent anywhere.
@@ -253,7 +256,7 @@ export async function testConnection(
     // The hosting providers' own probe (src/hosting/probe.ts): the provider's cheapest authenticated read,
     // through its fixed-host fetch, against the first part that uses it (or the credential alone).
     case "vercel": case "render": case "netlify": case "fly": case "aws":
-      result = await probeHostingKind(ctx, env, kind, secret, now, doFetch); break;
+      result = await probeHostingKind(ctx, env, kind, secret, now, doFetch, partKey); break;
   }
   result = { ok: result.ok, detail: scrub(result.detail, revealed).replace(/\s+/g, " ").trim().slice(0, DETAIL_CHARS) };
   await recordSecretOutcome(ctx, kind, scope, result.ok ? { ok: true } : { ok: false, message: result.detail, revealed }, now);

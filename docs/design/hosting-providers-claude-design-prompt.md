@@ -148,11 +148,14 @@ back.
   projects you pick"), and `how_to` (e.g. Netlify: "Netlify OAuth has no scopes: approve with an account that
   belongs only to the team you want Trov to see"). Then `POST /api/o/:slug/hosting/:provider/connect` →
   `{ url, method, expires_at }` and the browser goes to `url`. The provider sends the admin back to
-  `#org/hosting?connected=<provider>` → a success toast ("Connected to Vercel — team Acme") and the connection
-  card flips to *connected*; or to `#org/hosting?connect_error=<code>` → an error banner with copy per code:
-  `expired` ("The connect link expired — start again"), `mismatch` ("This connection was started in another
-  browser or by another person"), `forbidden` ("Only an admin of this organization can connect it"),
-  `exchange_failed` ("Vercel refused the connection — try again, or paste a token instead").
+  `/o/<org-slug>/#org/hosting?connected=<provider>` → a success toast ("Connected to Vercel — team Acme") and the
+  connection card flips to *connected*; or to `…#org/hosting?connect_error=<code>` → an error banner with copy per
+  code: `expired` ("The connect link expired — start again"), `mismatch` ("This connection was started in another
+  browser or by another person"), `forbidden` ("Only an admin of this organization can connect it"), `denied`
+  ("You cancelled on Vercel — nothing was connected"), `not_configured` ("This Trov deployment can't connect
+  Vercel yet — paste a token instead"), `exchange_failed` ("Vercel refused the connection — try again, or paste a
+  token instead"), `secrets_unavailable` ("Credentials can't be saved right now"), `unknown_provider` / `failed`
+  ("Something went wrong — try again"). Remove the query from the URL once the message is shown.
 - **Paste a token** (every provider has one except AWS): a modal form — the provider's `how_to` (where to create
   the token and the **narrowest permission** that works, stated plainly, e.g. "Render API keys have no scopes…"),
   the secret field (masked, paste-friendly, never shown again — "Trov never shows it again; to change it, rotate
@@ -167,8 +170,11 @@ connection }`: inline result under the card — a green "✓ Vercel answered for
 `detail` — it is already safe to show (credentials are scrubbed server-side).
 
 **Disconnect** → confirmation modal naming what stops ("Deploys and usage of Staging › Web and Production › Web
-stop updating"), then `POST …/hosting/:provider/disconnect` → the card shows *not connected* (or *revoked* with
-`revoked_reason` when the provider removed it from its side — e.g. someone uninstalled the Vercel integration).
+stop updating"), then `POST …/hosting/:provider/disconnect` → `{ connection, upstream }`: the card shows *not
+connected*. `upstream` says whether the provider-side installation was removed too: `revoked` (say nothing extra),
+`failed` ("Trov forgot the credential, but Vercel did not confirm removing the integration — remove it under
+Vercel › Integrations"), `none` (a pasted token: "Also delete the token on Netlify if you no longer need it").
+A connection the provider removed from ITS side arrives as *revoked* with `revoked_reason` ("removed on Vercel").
 
 ### 1d. States to draw for Org settings › Hosting
 Fresh org (no environments) · environments but no parts · parts on unconnected providers · everything connected and
@@ -313,18 +319,22 @@ interface HostingPollOutcome { env; part; provider: HostingProviderId; status: "
 | `GET /api/o/:slug/hosting` | → `HostingSetupDTO` |
 | `GET /api/o/:slug/hosting/providers` (any member) | → `{ providers: HostingProviderDTO[] }` |
 | `PUT /api/o/:slug/environments/:env/parts/:part` | `{ provider, role?, label?, settings }` → `{ part, created }` (201 new) |
-| `DELETE /api/o/:slug/environments/:env/parts/:part` | → `{ ok }` |
+| `DELETE /api/o/:slug/environments/:env/parts/:part` | → `{ ok, removed: { env, part, provider, legacy } }` |
 | `POST /api/o/:slug/hosting/:provider/connect` | → `{ url, method, expires_at }` — then navigate to `url` |
-| `GET /hosting/:provider/callback` (the provider redirects here) | → 302 to `#org/hosting?connected=…` / `?connect_error=…` |
+| `GET /hosting/:provider/callback` (the provider redirects here) | → 302 to `/o/<slug>/#org/hosting?connected=…` / `?connect_error=…` |
 | `POST /api/o/:slug/hosting/:provider/test` | `{ scope?, env?, part? }` → `{ ok, detail, connection }` |
-| `POST /api/o/:slug/hosting/:provider/disconnect` | `{ scope? }` → `{ connection }` |
+| `POST /api/o/:slug/hosting/:provider/disconnect` | `{ scope? }` → `{ connection, upstream: "revoked" \| "failed" \| "none" }` |
 | `PUT /api/o/:slug/integrations/:kind[/:scope]` | `{ secret, config? }` — paste a token (existing API) |
 | `POST /api/o/:slug/integrations/:kind[/:scope]/rotate` | `{ secret }` — rotate (existing API) |
 | `GET /repo/dashboard` (any member) | → `RepoDashboard` incl. `providers` |
 | `POST /admin/poll` | → `RepoRefreshResult` incl. optional `hosting` |
 
-Errors are `{ error, field?, message? }`; `message` is safe to show. A 403 means "admins only"; a 503
-`secrets_unavailable` means credentials can't be saved right now.
+Errors are `{ error, field?, message? }`; `message` is safe to show, `field` names the input it is about
+(`provider`, `key`, `label`, `settings.<key>`). Codes: `invalid` (400), `not_found` (404), `too_many_parts` and
+`part_conflict` (409 — e.g. a part keyed `frontend` while the environment has a Cloudflare frontend), and for
+Connect `not_available` / `not_installable` / `not_configured` (409). A 403 means "admins only"; a 503
+`secrets_unavailable` means credentials can't be saved right now. Legacy parts keep their fixed labels
+("Frontend", "Backend").
 
 ---
 

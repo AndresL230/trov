@@ -71,6 +71,45 @@ export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
   {
+    version: "Unreleased",
+    date: "2099-01-01",
+    unreleased: true,
+    title: "Hosting providers",
+    headline: "The Repo dashboard is no longer tied to Cloudflare and Railway: Trov can now read Vercel, Render, Netlify and Fly.io too — the screens to set them up come next.",
+    highlights: [
+      "Trov can now read four more hosts besides Cloudflare and Railway: Vercel, Render, Netlify and Fly.io. AWS is listed as coming later.",
+      "An environment can now have several parts — a web app, an API, a worker — each on its own host. Cloudflare frontends and Railway backends you already set up count as parts too, unchanged.",
+      "Where a host offers it, you connect with one click instead of pasting a key: Connect with Vercel installs Trov's integration on the projects you pick, and Connect with Netlify signs in with Netlify. Fly.io takes a read-only token, Render an API key.",
+      "Every hour Trov reads each part's deploys (state, commit, branch, link) and what the host reports about it: requests, server errors, latency and bandwidth for a web part, CPU and memory for a service. Where a host has no usage API (Vercel, Netlify), the dashboard will say so instead of showing zeros.",
+      "Behind the scenes only for now: the Org settings › Hosting tab and the dashboard's Hosting panel are being designed next.",
+    ],
+    ops: [
+      "Apply `migrations/0043_hosting_providers.sql` (merging to main applies it). It adds the hosting tables and REBUILDS `org_secrets` only to widen its kind CHECK; rollback: `scripts/hosting/0043_hosting_providers.down.sql`, run before 0042's.",
+      "No trigger change: the hosting job rides the existing `*/10` repo trigger at `:40`, so no `wrangler triggers deploy` is needed.",
+      "Optional, for Connect with Vercel: create a Vercel Integration (Projects: Read, Deployments: Read; Redirect URL `<origin>/hosting/vercel/callback`; Webhook URL `<origin>/webhook/hosting/vercel`) and set `VERCEL_INTEGRATION_CLIENT_ID`, `VERCEL_INTEGRATION_CLIENT_SECRET` (secrets) and `VERCEL_INTEGRATION_SLUG`. Without them, Vercel falls back to a pasted token.",
+      "Optional, for Connect with Netlify: register a Netlify OAuth application (Redirect URI `<origin>/hosting/netlify/callback`) and set `NETLIFY_OAUTH_CLIENT_ID` / `NETLIFY_OAUTH_CLIENT_SECRET`. Without them, Netlify falls back to a personal access token.",
+      "Before relying on a provider, check its UNCONFIRMED points against a live account — listed per provider in `docs/superpowers/specs/2026-10-07-hosting-providers-research.md` and each `fixtures/hosting/<provider>/README.md`.",
+    ],
+    patches: {
+      added: [
+        "Hosting providers behind one interface, issue #97: `shared/hosting.ts` (the contract — providers, parts, roles, connection methods, the `hx_<metric>` vocabulary, deploy states, setup and dashboard DTOs) and `src/hosting/` (`types.ts`, `http.ts` — the fixed-host fetch with scrubbed errors and the shared poll window —, `registry.ts`, `parts.ts`, `part-writes.ts`, `connections.ts`, `setup.ts`, `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`).",
+        "Providers (issues #98–#102): Vercel — install or token —, Render — API key —, Netlify — OAuth or token —, Fly.io — a read-only token; AWS described as `later`; Cloudflare and Railway as the first two, LEGACY parts read from the environment's own columns.",
+        "`0043_hosting_providers`: `org_environment_parts`, `org_hosting_connections`, `hosting_deploys`, `hosting_poll_state`; `org_secrets.kind` admits `vercel` / `render` / `netlify` / `fly` / `aws`.",
+        "Routes under `/api/o/:slug`: `GET /hosting`, `GET /hosting/providers`, `PUT|DELETE /environments/:key/parts/:part`, `POST /hosting/:provider/connect|disconnect|test`; the root `GET /hosting/:provider/callback` and the provider-side uninstall notice `POST /webhook/hosting/:provider`.",
+        "The `hosting` job on the repo cron's `:40` tick (one unit per stored part, budgeted by the provider's `pollCost`), a `hosting` arm in Poll now, and the Repo dashboard's provider-neutral `providers` section (also in MCP `get_repo_dashboard`).",
+        "Data stubs for the UI: `web/src/hosting-sample.ts` (every Hosting setup state), the `providers` section of `web/src/repo-sample.ts`, recorded-shape API fixtures under `fixtures/hosting/<provider>/`; the design brief `docs/design/hosting-providers-claude-design-prompt.md`.",
+        "Tests: `test/hosting.contract.test.ts` (every provider), `test/hosting.provider.<id>.test.ts`, `test/hosting.setup.*.test.ts`, `test/hosting.poll.test.ts`, `test/hosting.cron.test.ts`, `test/hosting.dashboard.test.ts`, `test/hosting.sample.test.ts`.",
+      ],
+      changed: [
+        "`hx_*` metrics are pruned with the hourly usage metrics (100 days); `hosting_deploys` after 180 days.",
+        "Deleting an environment also deletes its stored parts, their poll state and deploy history, in the same batch.",
+        "Org settings › Integrations lists a hosting provider's credential once a part uses it; pasting a token over an installed connection supersedes the install.",
+      ],
+      fixed: [],
+      removed: [],
+    },
+  },
+  {
     version: "0.18",
     date: "2026-10-06",
     title: "Organizations",

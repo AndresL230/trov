@@ -10,7 +10,8 @@ import {
 } from "../data/secrets";
 import type { TenantContext } from "../data/sql";
 import { listEnvironments, listRepoRows, webhookUrl } from "./settings";
-import { providerOfKind, type HostingProviderId } from "@shared/hosting";
+import { HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, isLegacyProvider, providerOfKind, type HostingProviderId } from "@shared/hosting";
+import { listStoredParts } from "../hosting/parts";
 import { checkFields, providerOf } from "../hosting/registry";
 
 interface KindInfo {
@@ -114,13 +115,18 @@ export function checkIntegrationConfig(kind: IntegrationKind, config: unknown): 
 
 interface Slot { kind: IntegrationKind; scope: string; scope_label: string | null; webhook_url: string | null; expected: boolean }
 
-/** The org's expected (kind, scope) slots, in page order, then any stored secret none of them claims. */
+/** The org's expected (kind, scope) slots, in page order, then any stored secret none of them claims. A hosting
+ *  provider's org-wide credential is expected once a STORED part (src/hosting/parts.ts) uses that provider —
+ *  never for an org that does not (Cloudflare and Railway keep their own slots, as before). */
 async function slots(ctx: TenantContext, origin: string, secrets: SecretMeta[]): Promise<Slot[]> {
-  const [repos, envs] = [await listRepoRows(ctx), await listEnvironments(ctx)];
+  const [repos, envs, stored] = [await listRepoRows(ctx), await listEnvironments(ctx), await listStoredParts(ctx)];
+  const used = new Set(stored.map((p) => p.provider));
+  const hosting = HOSTING_PROVIDERS.filter((id) => used.has(id) && !isLegacyProvider(id) && providerOf(id).credentialScope === "org");
   const out: Slot[] = [
     { kind: "github_token", scope: "", scope_label: null, webhook_url: null, expected: true },
     ...repos.map((r): Slot => ({ kind: "github_webhook", scope: r.id, scope_label: r.repo_full_name, webhook_url: webhookUrl(origin, r.id), expected: true })),
     { kind: "cloudflare_analytics", scope: "", scope_label: null, webhook_url: null, expected: true },
+    ...hosting.map((id): Slot => ({ kind: HOSTING_INTEGRATION_KIND[id], scope: "", scope_label: null, webhook_url: null, expected: true })),
     ...envs.flatMap((e): Slot[] => [
       { kind: "railway", scope: e.key, scope_label: e.label, webhook_url: null, expected: true },
       { kind: "metrics_endpoint", scope: e.key, scope_label: e.label, webhook_url: null, expected: true },

@@ -33,6 +33,11 @@ declare global {
       SAPLING_METRICS_TOKEN?: string;
       TROV_KEK?: string;
       TROV_KEK_PREVIOUS?: string;
+      VERCEL_INTEGRATION_CLIENT_ID?: string;
+      VERCEL_INTEGRATION_CLIENT_SECRET?: string;
+      VERCEL_INTEGRATION_SLUG?: string;
+      NETLIFY_OAUTH_CLIENT_ID?: string;
+      NETLIFY_OAUTH_CLIENT_SECRET?: string;
     }
   }
 }

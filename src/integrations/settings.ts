@@ -254,23 +254,32 @@ export async function reorderEnvironments(ctx: TenantContext, order: unknown): P
 }
 
 /** Delete an environment, its `railway` / `metrics_endpoint` secrets and close the gap in the order —
- *  one batch (admin+, §8.7.3). Returns the audit targets of the secrets removed with it. */
+ *  one batch (admin+, §8.7.3). Its STORED hosting parts (0043_hosting_providers) go in the same batch, with
+ *  each one's last-poll row and deploy history: they describe a deployable of an environment that no longer
+ *  exists (its legacy parts are its own columns, so they go with the row). Returns the audit targets of the
+ *  secrets removed with it. */
 export async function deleteEnvironment(ctx: TenantContext, key: string): Promise<string[]> {
   requireRole(ctx, "admin");
   const row = await first<{ position: number }>(ctx, `SELECT position FROM org_environments WHERE org_id = ? AND key = ?`, ctx.orgId, key);
   if (!row) throw new SettingsError("not_found", 404, "no such environment");
   const targets = ENV_SECRET_KINDS.map((kind) => ({ kind, scope: key }));
   const held = new Set((await listSecretMeta(ctx)).map((s) => `${s.kind}:${s.scope}`));
+  const parts = (await all<{ part_key: string }>(ctx,
+    `SELECT part_key FROM org_environment_parts WHERE org_id = ? AND env_key = ? ORDER BY position, part_key`, ctx.orgId, key)).map((p) => p.part_key);
   const at = nowIso();
   const secrets = await secretDeleteStmts(ctx, targets, "environment_deleted", at);
   const removed = targets.map((t) => `${t.kind}:${t.scope}`).filter((t) => held.has(t));
   await batch(ctx, [
     ...secrets,
     stmt(ctx, `DELETE FROM org_integration_config WHERE org_id = ? AND scope = ? AND kind IN ('railway', 'metrics_endpoint')`, ctx.orgId, key),
+    stmt(ctx, `DELETE FROM hosting_poll_state WHERE org_id = ? AND env = ?`, ctx.orgId, key),
+    stmt(ctx, `DELETE FROM hosting_deploys WHERE org_id = ? AND env = ?`, ctx.orgId, key),
+    stmt(ctx, `DELETE FROM org_environment_parts WHERE org_id = ? AND env_key = ?`, ctx.orgId, key),
     stmt(ctx, `DELETE FROM org_environments WHERE org_id = ? AND key = ?`, ctx.orgId, key),
     stmt(ctx, `UPDATE org_environments SET position = -position WHERE org_id = ? AND position > ?`, ctx.orgId, row.position),
     unparkStmt(ctx),
-    auditStmt(ctx, "environment.delete", key, { removed_secrets: removed }, at),
+    // `removed_parts` (the stored parts' KEYS) only when there were any, so an environment with none is audited as before.
+    auditStmt(ctx, "environment.delete", key, { removed_secrets: removed, ...(parts.length ? { removed_parts: parts } : {}) }, at),
   ]);
   return removed;
 }

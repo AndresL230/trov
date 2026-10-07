@@ -277,7 +277,8 @@ const parseObject = (json: string): Record<string, unknown> => {
 /**
  * The org's recent audit rows, newest first: this module's secret trail (`org_audit`) merged with the
  * repository / environment changes src/integrations/settings.ts records in `org_admin_audit` (0042_organizations —
- * `org_audit.action` has a CHECK that admits only the five secret actions). One list, the way
+ * `org_audit.action` has a CHECK that admits only the five secret actions), and the hosting changes
+ * src/hosting/ records there (`part.*`, `hosting.*` — 0043_hosting_providers). One list, the way
  * `GET /api/platform/audit` merges the same two tables; ids are `s<n>` / `a<n>`. Rows of one batch share
  * their `at`: there the secret rows come first (a removed environment's secret deletions, then the
  * removal), each trail in its own id order.
@@ -288,7 +289,7 @@ export async function listOrgAudit(ctx: TenantContext, limit = 50): Promise<OrgA
        SELECT 's' || s.id AS id, s.actor, s.action, s.target, s.detail, s.at, s.id AS n, 1 AS secret FROM org_audit s WHERE s.org_id = ?
        UNION ALL
        SELECT 'a' || a.id AS id, a.actor, a.action, a.target, a.detail, a.at, a.id AS n, 0 AS secret FROM org_admin_audit a
-        WHERE a.org_id = ? AND (a.action LIKE 'repo.%' OR a.action LIKE 'environment.%')
+        WHERE a.org_id = ? AND (a.action LIKE 'repo.%' OR a.action LIKE 'environment.%' OR a.action LIKE 'part.%' OR a.action LIKE 'hosting.%')
      ) ORDER BY at DESC, secret DESC, n DESC LIMIT ?`, ctx.orgId, ctx.orgId, limit);
   return rows.map(({ n: _n, secret: _secret, ...r }) => ({ ...r, detail: parseObject(r.detail) }));
 }
@@ -395,6 +396,26 @@ export async function secretDeleteStmts(
     );
   }
   return out;
+}
+
+/**
+ * `secretDeleteStmts` for ONE target, for the provider-side revocation path ONLY (src/hosting/webhook.ts):
+ * a hosting provider's VERIFIED "uninstalled" notice deletes the credential that installation granted, as the
+ * org's SYSTEM tenant — there is no person behind it, so the admin gate above cannot pass, and it is not
+ * weakened for this. This function asserts the opposite instead: a system context and nothing else (a
+ * person's session — whatever its role — and a bearer are refused). Same statements, same `secret.delete`
+ * audit shape (`actor` = the system tenant's actor). Empty when nothing is stored.
+ */
+export async function systemRevocationDeleteStmts(
+  ctx: TenantContext, kind: IntegrationKind, scope: string, reason: string, at: string = nowIso()
+): Promise<Stmt[]> {
+  if (ctx.role !== "system" || ctx.via !== "system") throw new SecretAccessError();
+  const meta = await getSecretMeta(ctx, kind, scope);
+  if (!meta) return [];
+  return [
+    stmt(ctx, `DELETE FROM org_secrets WHERE org_id = ? AND kind = ? AND scope = ?`, ctx.orgId, kind, scope),
+    auditStmt(ctx, "secret.delete", targetOf(kind, scope), { hint_last4: meta.hint_last4, reason }, at),
+  ];
 }
 
 /** Delete a secret (admin+). None stored → `SecretNotFoundError`. */

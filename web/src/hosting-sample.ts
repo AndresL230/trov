@@ -112,7 +112,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "key": "railway_env",
         "label": "GitHub deployment environment",
-        "description": "The environment name Railway's GitHub deployments carry, e.g. \"Sapling / staging\" — how a deployment_status delivery is matched to this environment.",
+        "description": "The environment name Railway's GitHub deployments carry, e.g. \"my-app / staging\" — how a deployment_status delivery is matched to this environment.",
         "required": true,
         "placeholder": "my-app / staging",
         "pattern": null

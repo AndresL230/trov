@@ -27,7 +27,7 @@ export const railway: HostingProvider = {
   ],
   orgConfigFields: [],
   partSettings: [
-    { key: "railway_env", label: "GitHub deployment environment", description: "The environment name Railway's GitHub deployments carry, e.g. \"Sapling / staging\" — how a deployment_status delivery is matched to this environment.", required: true, placeholder: "my-app / staging" },
+    { key: "railway_env", label: "GitHub deployment environment", description: "The environment name Railway's GitHub deployments carry, e.g. \"my-app / staging\" — how a deployment_status delivery is matched to this environment.", required: true, placeholder: "my-app / staging" },
     { key: "railway_environment_id", label: "Railway environment ID", description: "Project › Settings › Environments, the environment's id. Needed for CPU and memory.", required: false, pattern: RAILWAY_ID },
     { key: "railway_service_id", label: "Railway service ID", description: "The service's id (its Settings tab). The same in every environment.", required: false, pattern: RAILWAY_ID },
   ],

@@ -90,6 +90,10 @@ const PLATFORM_ALLOW: Allow[] = [
   // and org-with-a-primary-repo — and a webhook delivery finds its org by hook id, BEFORE any org is
   // known. Ids, an environment key and a repo name only; everything after runs as that org's tenant.
   { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments"], why: "the cron's unit lists and the webhook's hook lookup — ids and a repo name, no content, no secret" },
+  // A hosting provider's VERIFIED "uninstalled" notice names only its installation id, so the org(s) holding
+  // that installation are found across orgs BEFORE any org is known; the revocation then runs as each org's
+  // system tenant (src/hosting/connections.ts `revokeFromProviderSide`). Org ids and a scope only.
+  { file: "src/hosting/webhook.ts", fn: "connectionsForExternalId", tables: ["org_hosting_connections"], why: "the uninstall notice's org lookup by installation id — org ids and a scope, no secret" },
   // Removing a member revokes that person's tokens for the org in the same batch as the membership row.
   { file: "src/orgs/repo.ts", fn: "removeMember", tables: ["mcp_tokens", "oauth_grants"], why: "member removal revokes the person's credentials for that org, atomically" },
 ];

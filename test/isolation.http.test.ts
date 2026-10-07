@@ -204,6 +204,8 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "a": case "b": return "nope"; // never `test`: Test connection would reach for the network
     case "email": return encodeURIComponent(INVITED);
     case "ref": return fx.artifactSlug;
+    case "part": return "web";
+    case "provider": return "vercel"; // never `test` against a configured credential: B has none, and A's is never B's
     default: throw new Error(`no fixture value for :${name} in ${suffix}`);
   }
 }
@@ -282,15 +284,19 @@ const TENANT: Record<string, Row> = {
   "DELETE /integrations/:kind": {}, "DELETE /integrations/:kind/:a": {},
   "GET /repos": {}, "POST /repos": J({ repo_full_name: "acme/matrix" }), "DELETE /repos/:id": {},
   "GET /environments": {}, "PUT /environments": J({ order: [] }), "PUT /environments/:key": J({ label: "hijacked", branch: "main" }), "DELETE /environments/:key": {},
+  // src/hosting/routes.ts — Org settings › Hosting (A's environment key in the path; B has no such environment)
+  "GET /hosting": {}, "GET /hosting/providers": {},
+  "PUT /environments/:key/parts/:part": J({ provider: "cloudflare", settings: { worker: "hijacked" } }), "DELETE /environments/:key/parts/:part": {},
+  "POST /hosting/:provider/connect": J({}), "POST /hosting/:provider/disconnect": J({}), "POST /hosting/:provider/test": J({ env: "canary-env", part: "web" }),
   // src/auth/token-routes.ts — the caller's OWN tokens for the org in the path (`:id` is alice's token in A)
   "GET /mcp-tokens": {}, "POST /mcp-tokens": J({}), "POST /mcp-tokens/:id/revoke": J({}),
 };
 
-/** The org surface (src/orgs, src/integrations) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
+/** The org surface (src/orgs, src/integrations, src/hosting) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
  *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
  *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
 const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
+  suffix === "/me" || ["/settings", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/hosting", "/mcp-tokens"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
 
 /** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
 const LEGACY_ONLY: Record<string, Row> = {
@@ -333,6 +339,7 @@ const PLATFORM: Record<string, string> = {
   "GET /api/invites": "the caller's own pending invites (matched on their GitHub login / provider-verified email)",
   "POST /api/invites/:id/accept": "an invite that is the caller's — anyone else's id is 404",
   "POST /api/invites/:id/decline": "an invite that is the caller's",
+  "GET /hosting/:provider/callback": "a hosting provider's install / OAuth callback (src/hosting/connections.ts `completeConnect`): the org rides in the HMAC-sealed state, bound to the browser's nonce cookie and to the signed-in person, and the person's ADMIN membership of that org is re-checked live — every refusal is a redirect with a fixed code that writes nothing",
   "GET /avatar/:sha": "content-addressed person avatar (64 hex): a person's own picture, the same in every org",
   "GET /org-logo/:sha": "content-addressed org image (64 hex of its own bytes): shown wherever the org's NAME is, and the name reaches non-members (an invitee's picker, Platform) — bytes only, no org named, and nothing but an `org-logos/` object is served",
   "GET /api/platform/orgs": "requireSuperadmin", "POST /api/platform/orgs": "requireSuperadmin", "GET /api/platform/orgs/:slug": "requireSuperadmin",

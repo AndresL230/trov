@@ -9,7 +9,9 @@
 //   stored   `org_environment_parts` (0043_hosting_providers) — every other provider.
 //
 // This module reads D1 through the tenant surface only and imports nothing from src/data/secrets.ts: the
-// Repo dashboard projection (reachable from src/mcp.ts) lists parts through it.
+// Repo dashboard projection (reachable from src/mcp.ts) lists parts through it. The WRITE side (`putPart` /
+// `deletePart`) is ./part-writes.ts — kept apart because a legacy part is written through src/integrations/,
+// which nothing reachable from src/mcp.ts may import.
 import {
   LEGACY_PART_KEY, isHostingProvider, isPartRole, type HostingProviderId, type PartRole,
 } from "@shared/hosting";
