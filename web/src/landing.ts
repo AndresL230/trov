@@ -12,12 +12,15 @@
 //   • The theme toggle is the app's `cycleTheme` (Light ⇄ Dark) and
 //     reads the app's theme, instead of the canvas's own light/dark store.
 //   • Sign in lives ONLY in the nav (top right); the hero keeps the canvas's CTAs.
+//   • Pricing (not in the canvas): the last section is web/src/pricing.ts, the same
+//     render the standalone /pricing page uses.
 //   • Motion (not in the canvas): the mockups act out the product. Elements carry
 //     `data-rv` and render hidden; landing-motion.ts plays them as they scroll in
 //     and the CSS in trov.css runs the choreography, each step timed by `--d`.
 
 import { esc } from "./ui";
 import { TROV_REPO, siteFooter, siteMark as mark } from "./site-chrome";
+import { pricingSection } from "./pricing";
 
 
 // Reveal keys already played, for THIS render (set by landingView). A played
@@ -93,7 +96,7 @@ function nav(dark: boolean, signedIn: boolean): string {
         <span style="font-size:16.5px;font-weight:650;letter-spacing:-0.01em">Trov</span>
       </button>
       <div class="site-hide-sm" style="display:flex;gap:4px;margin-left:8px">
-        ${link("how", "How it works")}${link("tour", "Tour")}${link("agents", "For agents")}${link("security", "Security")}
+        ${link("how", "How it works")}${link("tour", "Tour")}${link("agents", "For agents")}${link("security", "Security")}${link("pricing", "Pricing")}
       </div>
       <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
         <a href="${TROV_REPO}" target="_blank" rel="noopener" title="GitHub" class="site-iconbtn">${GH_MARK(17)}</a>
@@ -658,6 +661,7 @@ export function landingView(p: LandingProps): string {
     ${extras()}
     ${agents()}
     ${security()}
+    ${pricingSection({ signedIn: p.signedIn ?? false, rv })}
     ${siteFooter()}
   </div>
   ${p.signInOpen ? signInDialog() : ""}`;
