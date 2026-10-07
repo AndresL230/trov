@@ -83,7 +83,7 @@ Design a page with three regions (desktop ≥ 1000px; on a phone everything stac
    `parts[]` (`EnvironmentPartDTO`), each showing:
    - the part's **label** and **key** (`Web` · `web`), its **role** (web / service — a small quiet badge),
    - the **provider** (name + a simple monochrome glyph; no brand colors), and the part's identifying setting
-     (the project / service / site / app — the first `settings` value is the identifying one),
+     (the project / service / site / app — the value of the provider's FIRST `part_settings` field),
    - **connection status** for that provider (`connection`: connected / not_connected / error / revoked — a dot +
      word, color meaning only: green / grey / red / amber),
    - **last poll** (`last_poll`: "Polled 12 min ago", or "✗ Last poll failed 2 h ago — <detail>", or nothing yet),
@@ -122,7 +122,7 @@ place. Steps, all on one surface:
 2. **Role** — a two-option segmented switch *Web / Service* shown only when the provider supports both
    (`roles.length === 2`); otherwise implied and stated.
 3. **Key and label** — key: 1–32 of `a–z 0–9 _ -` (validated live with `PART_KEY_RE`), label free text ≤ 60.
-   Legacy providers: key fixed (`legacy_part_key`), shown read-only.
+   Legacy providers: key and label fixed (`legacy_part_key`; "Frontend" / "Backend"), shown read-only.
 4. **Provider settings** — a form generated from `part_settings[]` (`HostingFieldDTO`: `label`, `description`,
    `required`, `placeholder`, `pattern` — a regex source, validate on blur and before submit). Examples: Vercel
    *Project* (id or name), *Deploys to show* (production / preview), *Branch*; Render *Service ID*
@@ -207,7 +207,9 @@ Each part card (`RepoProviderPart`):
   `by`, relative time (`at`; "ready in 1m 42s" from `ready_at − at`), links to the deploy (`url`) and its log
   (`inspect_url`). Then a strip of the last ≤10 deploys as dots (newest right), each with a tooltip — the same
   dot language as *CI & Deploys* (ok green, fail red, canceled hollow/grey, in-flight pulsing).
-- **Traffic** (role `web`, `traffic[range]` — `ProviderTrafficRange`): Requests (compact: 12.4K), Error rate
+- **Traffic** (role `web`, `traffic[range]` — `ProviderTrafficRange`; `traffic` is `null` for a web part whose
+  provider reads no usage at all — Vercel, Netlify — and `unavailable[]` then carries the reason, so the card shows
+  deploys plus one calm "Usage isn't available from Vercel — <reason>" line instead of an empty grid): Requests (compact: 12.4K), Error rate
   (`error_rate` %, two decimals; amber ≥ 1 %, red ≥ 5 %), p95 latency (ms), Bandwidth (bytes → KB/MB/GB), and a
   sparkline from `trend[]` (requests, with errors as a second, red series or as red ticks). **`null` is never 0**:
   a null figure renders "—" with a hint — use `seen.traffic` to choose the words: seen → "no recent reading";
@@ -297,7 +299,7 @@ interface HostingChecklistItem { id; title; detail: string | null; done: boolean
 interface RepoProviderPart {
   env; env_label; part; label; role: PartRole; provider: HostingProviderId; provider_label; console_url: string | null;
   deploys: ProviderDeployDTO[];                                  // newest first, ≤ 10
-  traffic: Record<"24h" | "7d" | "30d", ProviderTrafficRange> | null;   // web parts
+  traffic: Record<"24h" | "7d" | "30d", ProviderTrafficRange> | null;   // web parts; null when the provider reads no usage
   resources: ProviderResources | null;                          // service parts
   seen: { traffic: boolean; resources: boolean; deploys: boolean };
   unavailable: { metric: HostingMetric; reason: string }[];
@@ -337,6 +339,23 @@ Connect `not_available` / `not_installable` / `not_configured` (409). A 403 mean
 ("Frontend", "Backend").
 
 ---
+
+## Where each state's data is (the stubs)
+
+| State | Stub |
+| --- | --- |
+| Org settings › Hosting — a mixed org mid-setup (legacy Cloudflare + Railway on Staging; Vercel installed; Render token refused with a 401; Fly.io connected; Netlify not connected; a 7-item checklist) | `HOSTING_SAMPLE_MIXED` in `web/src/hosting-sample.ts` |
+| A new org with no environment | `HOSTING_SAMPLE_FRESH` |
+| Environments but no parts | `HOSTING_SAMPLE_NO_PARTS` |
+| A Vercel install removed on Vercel's side | `HOSTING_SAMPLE_REVOKED` |
+| Credentials can't be saved (platform key missing) | `HOSTING_SAMPLE_SECRETS_LOCKED` |
+| The provider catalogue (the picker) — the real one | `HOSTING_SAMPLE_PROVIDERS` |
+| Connect start / test passed / test failed / Poll-now lines | `HOSTING_SAMPLE_CONNECT_START`, `HOSTING_SAMPLE_TEST_OK`, `HOSTING_SAMPLE_TEST_FAILED`, `HOSTING_SAMPLE_POLL` |
+| Callback error codes | `HOSTING_CONNECT_ERROR_CODES` |
+| Repo dashboard › Usage › Hosting — two environments, every provider: legacy Cloudflare (traffic) + Railway (resources), Vercel (a deploy building, one failed; usage unavailable), Netlify, Render web (all three ranges) + service, Fly.io web + service (releases without commits), one failed last poll, one `empty` part | `repoSample().providers` in `web/src/repo-sample.ts` (the dashboard's existing "Preview with sample data" toggle loads it) |
+
+Recorded-shape API responses for each provider (what the backend parses, useful for realistic copy and ids) are in
+`fixtures/hosting/<provider>/`.
 
 ## House rules (non-negotiable — match the existing app)
 
