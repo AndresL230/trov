@@ -62,8 +62,9 @@ export function cleanOrgName(name: unknown): string {
   return n;
 }
 
-/** How many orgs `handle` has created, and how many they may (null = no cap: a superadmin). */
-export async function orgAllowance(p: PlatformContext, handle: string): Promise<{ created: number; limit: number | null; can_create: boolean; superadmin: boolean }> {
+/** How many orgs `handle` has created, and how many they may. A superadmin gets no exemption here: they
+ *  add organizations in Platform (`createOrgWithAdmin`), which this allowance does not gate. */
+export async function orgAllowance(p: PlatformContext, handle: string): Promise<{ created: number; limit: number; can_create: boolean; superadmin: boolean }> {
   const [superadmin, row] = await Promise.all([
     isSuperadmin(p, handle),
     first<{ created: number; org_limit: number | null }>(p,
@@ -71,8 +72,8 @@ export async function orgAllowance(p: PlatformContext, handle: string): Promise<
               (SELECT org_limit FROM persons WHERE handle = ?1 COLLATE NOCASE) AS org_limit`, handle),
   ]);
   const created = row?.created ?? 0;
-  const limit = superadmin ? null : row?.org_limit ?? DEFAULT_ORG_LIMIT;
-  return { created, limit, can_create: limit === null || created < limit, superadmin };
+  const limit = row?.org_limit ?? DEFAULT_ORG_LIMIT;
+  return { created, limit, can_create: created < limit, superadmin };
 }
 
 export interface CreateOrgInput {
@@ -130,7 +131,7 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
   return { id, slug, name, created_at: at, created_by: p.actor, suspended_at: null, suspended_by: null };
 }
 
-/** `POST /api/orgs`: any signed-in person, under their cap; they become the owner. */
+/** `POST /api/orgs`: a person with an allowance (`persons.org_limit`), under it; they become the owner. */
 export async function createOrgForSelf(p: PlatformContext, handle: string, input: { slug: string; name: string }): Promise<OrgRow> {
   const allowance = await orgAllowance(p, handle);
   if (!allowance.can_create) throw new OrgError("org_limit", `you can create at most ${allowance.limit} orgs`);

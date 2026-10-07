@@ -6,8 +6,8 @@ export type OrgRole = "owner" | "admin" | "member";
 export type OrgStatus = "active" | "suspended";
 
 /** How many orgs a person may CREATE when `persons.org_limit` is NULL. Zero: only a superadmin adds an
- *  organization (Platform › Add organization) until self-serve creation is opened; a superadmin is exempt,
- *  and `persons.org_limit` (Platform › Admins & limits) lets one named person create some. */
+ *  organization, and does it in Platform (Add organization), until self-serve creation is opened;
+ *  `persons.org_limit` (Platform › Admins & limits) lets one named person create some. */
 export const DEFAULT_ORG_LIMIT = 0;
 export const ORG_NAME_MAX = 80;
 
@@ -63,7 +63,7 @@ export interface MyOrgsResponse {
   invites: MyInvite[];
   superadmin: boolean;
   can_create: boolean;
-  /** Orgs this person has created / may create; `limit` is null for a superadmin (no cap). */
+  /** Orgs this person has created / may create (a superadmin has no exemption: Platform is where they add one). */
   created: number;
   limit: number | null;
 }

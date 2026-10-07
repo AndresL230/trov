@@ -23,7 +23,7 @@ describe("GET /api/orgs — reachable with no org, and with several", () => {
     const { status, json } = await call<MyOrgsResponse>("GET", "/api/orgs", await cookieFor(SUPERADMIN));
     expect(status).toBe(200);
     expect(json.orgs).toEqual([{ slug: "acme", name: "Acme", role: "admin" }, { slug: "saplinglearn", name: "SaplingLearn", role: "owner" }]);
-    expect(json).toMatchObject({ superadmin: true, can_create: true, limit: null });
+    expect(json).toMatchObject({ superadmin: true, can_create: false, limit: 0 }); // a superadmin adds orgs in Platform, not here
   });
 
   it("refuses a request carrying an Authorization header", async () => {
@@ -93,7 +93,7 @@ describe("POST /api/orgs", () => {
     expect(await one(`SELECT COUNT(*) AS n FROM orgs`)).toEqual({ n: 2 });
   });
 
-  it("caps a person at their allowance; persons.org_limit sets it; a superadmin is exempt", async () => {
+  it("caps a person at their allowance; persons.org_limit sets it; a superadmin has no exemption", async () => {
     const cookie = await loner("founder");
     await exec(`UPDATE persons SET org_limit = 3 WHERE handle = 'founder'`);
     for (const slug of ["one-co", "two-co", "three-co"]) expect((await call("POST", "/api/orgs", cookie, { slug, name: slug })).status).toBe(201);
@@ -105,9 +105,11 @@ describe("POST /api/orgs", () => {
     expect((await call("POST", "/api/orgs", cookie, { slug: "four-co", name: "Four" })).status).toBe(201);
     expect((await call("POST", "/api/orgs", cookie, { slug: "five-co", name: "Five" })).status).toBe(403);
 
-    await exec(`UPDATE persons SET org_limit = 0 WHERE handle = 'AndresL230'`);
+    // A superadmin creates organizations in Platform (which names the admin), not through this route.
     const boss = await cookieFor(SUPERADMIN);
-    for (const slug of ["s1", "s2", "s3", "s4"].map((s) => `super-${s}`)) expect((await call("POST", "/api/orgs", boss, { slug, name: slug })).status).toBe(201);
+    const self = await call("POST", "/api/orgs", boss, { slug: "super-own", name: "Super Own" });
+    expect([self.status, self.json.error]).toEqual([403, "org_limit"]);
+    expect((await call("POST", "/api/platform/orgs", boss, { slug: "super-made", name: "Super Made", admin: { handle: "founder" } })).status).toBe(201);
   });
 });
 
