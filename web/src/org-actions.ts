@@ -25,6 +25,7 @@ import { GENERATED_KINDS, integrationKey, integrationLabel } from "./integration
 import { isIntegrationKind, type IntegrationDTO, type IntegrationKind } from "@shared/integrations";
 import type { OrgInvite, OrgRole } from "@shared/orgs";
 import { createOrgLogoActions } from "./org-logo-actions";
+import { createOrgBillingActions } from "./org-billing-actions";
 
 export interface OrgHost {
   state: AppState;
@@ -91,6 +92,8 @@ export function createOrgController(host: OrgHost): OrgController {
   const rerender = () => host.rerender();
   /** General's image control: its own acts, file input and Escape (org-logo-actions.ts). */
   const logo = createOrgLogoActions(host);
+  /** General's Plan block: the owner's billing actions, each of which leaves for Stripe (org-billing-actions.ts). */
+  const billing = createOrgBillingActions(host);
 
   // ── the secret draft (see the header) ──────────────────────────────────────
   let secretDraft = "";
@@ -522,6 +525,7 @@ export function createOrgController(host: OrgHost): OrgController {
   // ── acts ───────────────────────────────────────────────────────────────────
   function act(name: string, arg: string | null, value: string | null): void {
     if (logo.act(name)) return;
+    if (billing.act(name, arg)) return;
     const u = ui();
     const o = org();
     const admin = roleAtLeast(o?.role, "admin");

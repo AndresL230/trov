@@ -28,6 +28,9 @@ export const orgBillingHref = (slug: string): string => `/o/${encodeURIComponent
 /** Enterprise, and anything billing cannot do: write to Trov. */
 export const BILLING_CONTACT = `mailto:${PLATFORM_FROM_ADDRESS}`;
 
+/** `granted_by` of a grant a PAYMENT made (src/plans/billing.ts `BILLING_ACTOR`): not a person's handle. */
+export const BILLING_GRANTER = "billing";
+
 /** The one refusal of every billing route while Stripe is not set up (HTTP 503). */
 export const BILLING_UNAVAILABLE = "billing_unavailable";
 export const BILLING_UNAVAILABLE_MESSAGE = "Paid plans are not available yet.";
@@ -73,7 +76,9 @@ export type BillingStatusResponse =
   /** Nothing left to do here: the grant was used (`org` = the organization it became), or the payment was a renewal of `org`. */
   | { state: "done"; org: { slug: string; name: string } }
   /** The checkout was abandoned or expired unpaid. Never said about a payment Stripe took. */
-  | { state: "unpaid" };
+  | { state: "unpaid" }
+  /** The subscription was cancelled before an organization was set up on it: there is nothing to set up. */
+  | { state: "ended" };
 
 // ── an org's billing, as its members read it (on OrgPlanView) ────────────────
 

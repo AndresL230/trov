@@ -260,11 +260,11 @@ describe("Platform › Access — the grants", () => {
 });
 
 describe("Platform — an organization's plan", () => {
-  it("the list shows each org's plan and its seats used of the cap", () => {
+  it("the list shows each org's plan, its seats used of the cap, and whether it is granted or paid for", () => {
     const html = orgsTab({ orgs: { status: "ok", data: [row(), row({ slug: "big", name: "Big", plan: orgPlan("enterprise", { seats_used: 31 }) })] } });
     expect(html).toContain("<span>Plan</span>");
-    expect(html).toMatch(/>Team<\/span>[\s\S]*?>7 of 10 seats<\/span>/);
-    expect(html).toMatch(/>Enterprise<\/span>[\s\S]*?>31 seats<\/span>/);
+    expect(html).toMatch(/>Team<\/span>[\s\S]*?>7 of 10 seats &middot; granted<\/span>/);
+    expect(html).toMatch(/>Enterprise<\/span>[\s\S]*?>31 seats &middot; granted<\/span>/);
     expect(seatsCell(orgPlan())).toBe("7 of 10");
     // A row cached from before plans reads as unknown, not as a plan.
     expect(orgsTab({ orgs: { status: "ok", data: [row({ plan: undefined })] } })).toContain("&mdash;");

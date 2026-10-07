@@ -65,10 +65,11 @@ async function notifyAdmin(c: Context<AppEnv>, orgId: string, admin: AdminAssign
 
 // ── orgs ─────────────────────────────────────────────────────────────────────
 /** The rows as Platform shows them: without the internal id, and with the Stripe subscription of each
- *  org that pays (0045_billing) beside its plan — ids, Stripe's status and the dashboard link; no amounts. */
+ *  org that pays (0045_billing) beside its plan — ids, Stripe's status and the dashboard link; no amounts.
+ *  A granted org's row carries no `billing` at all. */
 async function platformRows(p: PlatformContext, slug?: string): Promise<PlatformOrgRow[]> {
   const [orgs, billing] = await Promise.all([listPlatformOrgs(p, slug), platformBillingBySlug(p, slug)]);
-  return orgs.map(publicRow).map((o) => (o.plan ? { ...o, plan: { ...o.plan, billing: billing.get(o.slug) ?? null } } : o));
+  return orgs.map(publicRow).map((o) => { const paid = billing.get(o.slug); return o.plan && paid ? { ...o, plan: { ...o.plan, billing: paid } } : o; });
 }
 
 platformApp.get("/orgs", async (c) => c.json({ orgs: await platformRows(c.var.p) }));

@@ -154,7 +154,7 @@ async function checkoutState(p: PlatformContext, row: CheckoutRow): Promise<Bill
   if (!grant) return { state: "pending", paid: true };
   if (grant.status === "used" && grant.org_slug) return { state: "done", org: { slug: grant.org_slug, name: grant.org_name ?? grant.org_slug } };
   if (grant.status === "unused") return { state: "ready", plan: grant.plan as PlanId, grant: grant.id };
-  return { state: "unpaid" }; // revoked: the subscription ended before it was used
+  return { state: "ended" }; // revoked: the subscription was cancelled before it was used
 }
 
 // The waiting room (`/billing/done?session_id=…`) polls this. The session must be one THIS person

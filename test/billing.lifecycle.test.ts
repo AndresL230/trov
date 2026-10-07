@@ -128,7 +128,7 @@ describe("cancelling", () => {
     expect(await one(`SELECT status, revoked_by FROM org_grants`)).toEqual({ status: "revoked", revoked_by: "billing" });
     expect((await call<MyOrgsResponse>("GET", "/api/orgs", cookie)).json.can_create).toBe(false);
     expect((await call("POST", "/api/orgs", cookie, { slug: "too-late", name: "Too late" })).status).toBe(403);
-    expect((await bcall("GET", `/api/billing/status?session_id=${session.id}`, cookie)).json).toEqual({ state: "unpaid" });
+    expect((await bcall("GET", `/api/billing/status?session_id=${session.id}`, cookie)).json).toEqual({ state: "ended" });
     // Delivered again: still revoked, nothing thrown.
     expect((await deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub)))).json).toEqual({ ok: true, outcome: "grant_revoked" });
   });
@@ -301,7 +301,8 @@ describe("the superadmin and a paid org", () => {
     const { sub } = await paidOrg("maya", "team", "maya-co");
     const list = (await call<{ orgs: PlatformOrgRow[] }>("GET", "/api/platform/orgs", await boss())).json.orgs;
     const paid = list.find((o) => o.slug === "maya-co")!, granted = list.find((o) => o.slug === "saplinglearn")!;
-    expect(granted.plan).toMatchObject({ source: "granted", billing: null });
+    expect(granted.plan).toMatchObject({ source: "granted" });
+    expect(granted.plan!.billing).toBeUndefined();
     expect(paid.plan).toMatchObject({ plan: "team", source: "billing", status: "active" });
     expect(paid.plan!.billing).toEqual({
       customer_id: sub.customer, subscription_id: sub.id, stripe_status: "active", plan: "team", interval: "month", period_end: iso(PERIOD_1),
@@ -361,7 +362,8 @@ describe("the superadmin and a paid org", () => {
     sub.status = "canceled";
     await updated();
     const put = await call<{ org: PlatformOrgRow }>("PUT", "/api/platform/orgs/maya-co/plan", await boss(), { plan: "enterprise", overrides: {} });
-    expect(put.json.org.plan).toMatchObject({ plan: "enterprise", source: "granted", status: "active", billing: null });
+    expect(put.json.org.plan).toMatchObject({ plan: "enterprise", source: "granted", status: "active" });
+    expect(put.json.org.plan!.billing).toBeUndefined();
     expect((await deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub)))).json).toEqual({ ok: true, outcome: "org_not_billing" });
     expect(await orgRow("maya-co")).toMatchObject({ plan: "enterprise", plan_source: "granted", plan_status: "active" });
     // Nothing about payment is shown or offered any more.
