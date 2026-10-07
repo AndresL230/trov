@@ -103,6 +103,21 @@ describe("GET /api/o/:slug/github/install — the start", () => {
     expect(bearer.status).toBe(403);
   });
 
+  it("a start that comes from ANOTHER site is refused: no cookie, no trip to GitHub — only Trov's own page (or the address bar) starts one", async () => {
+    const cookie = await olive();
+    for (const query of ["", "?existing=1", "?existing=1&account=acme-gh"]) {
+      for (const site of ["cross-site", "same-site"]) {
+        const res = await app.request(`/api/o/acme/github/install${query}`, { headers: { cookie, "sec-fetch-site": site } }, e);
+        expect(landed(res), `${site} ${query}`).toBe(repos("expired"));
+        expect(setCookies(res)).toEqual([]);
+      }
+      for (const site of ["same-origin", "none"]) {
+        const res = await app.request(`/api/o/acme/github/install${query}`, { headers: { cookie, "sec-fetch-site": site } }, e);
+        expect(new URL(landed(res)).host, `${site} ${query}`).toBe("github.com");
+      }
+    }
+  });
+
   it("when the App is not configured on this deployment it says so and never leaves for GitHub", async () => {
     const cookie = await olive();
     for (const over of [{ GITHUB_APP_SLUG: "" }, { GITHUB_APP_ID: "" }, { GITHUB_APP_PRIVATE_KEY: "" }]) {

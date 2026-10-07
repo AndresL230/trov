@@ -44,6 +44,11 @@ Org settings › Repositories › Connect with GitHub          (an <a>, not a fe
   → 302 /o/<slug>/?github=<outcome>#org/repos               always a redirect, never JSON
 ```
 
+The start route is a GET, so it refuses a navigation that did not come from Trov's own page
+(`Sec-Fetch-Site` other than `same-origin` / `none`): a link on another site must not be able to begin a
+connection — or, with `?existing=1` and GitHub's instant re-authorization, finish one — in an admin's
+browser.
+
 `/auth/callback` recognises the install return by `installation_id` / `setup_action` — parameters a
 sign-in never carries — and handles it apart (`installReturn`). A callback without them runs the sign-in
 exactly as before.

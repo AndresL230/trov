@@ -111,6 +111,12 @@ async function homeFor(c: C, handle: string, outcome: GithubConnectOutcome): Pro
 export async function startInstall(c: C, deps: ConnectDeps = {}): Promise<Response> {
   const ctx = c.var.ctx;
   const slug = c.req.param("slug") ?? "";
+  // A GET that starts something must be started from Trov's own page: a link on another site (which
+  // the session cookie, SameSite=Lax, would follow) could otherwise begin — and, for `existing`, with
+  // GitHub's instant re-authorization, FINISH — a connection the admin never asked for. Browsers say
+  // where a navigation came from; one typed or bookmarked (`none`) is the person's own.
+  const from = c.req.header("sec-fetch-site");
+  if (from && from !== "same-origin" && from !== "none") return back(c, slug, "expired");
   if (!hasRole(ctx, "admin")) return back(c, slug, "not_admin");
   const app = appConfigured(c.env) ? appSlug(c.env) : null;
   if (!app) return back(c, slug, "not_configured");
