@@ -212,8 +212,86 @@ export function syncFailureText(f: SyncFailure, repo: string): { what: string; f
 }
 
 /** Why nothing can run, and where to fix it (`tab` is an Org settings tab). */
-export function syncBlockText(block: SyncBlock, running: SyncRunView | null): { what: string; tab: "repositories" | "integrations" | null; link: string | null } {
-  if (block === "no_repo") return { what: "No repository is connected to this organization yet.", tab: "repositories", link: "Connect one in Org settings › Repositories" };
+export function syncBlockText(block: SyncBlock, running: SyncRunView | null): { what: string; tab: "repos" | "integrations" | null; link: string | null } {
+  if (block === "no_repo") return { what: "No repository is connected to this organization yet.", tab: "repos", link: "Connect one in Org settings › Repositories" };
   if (block === "no_token") return { what: "There is no GitHub token to read the repository with.", tab: "integrations", link: "Add one in Org settings › Integrations" };
   return { what: running ? `@${running.by} started a sync that is still running.` : "A sync is already running.", tab: null, link: null };
+}
+
+// ── the panel's standing sentences (docs/architecture/sync.md, said to the person about to press it) ──
+
+/** What a sync reads and writes for `repo`, in the order it does it. */
+export const syncWhatItDoes = (repo: string): string[] => [
+  `Reads every closed pull request and every open issue in ${repo} from GitHub.`,
+  "Updates My Work, the tickets mirrored from issues, and AI summaries.",
+  "Then refreshes deployments, CI, branches and drift. It never closes or deletes anything.",
+];
+/** The scheduled refresh (the repo cron), so nobody takes the button for the only way data moves. */
+export const SYNC_SCHEDULED = "Trov also refreshes deployments and CI on its own every 6 hours.";
+/** An `abandoned` run. */
+export const SYNC_DID_NOT_FINISH = "The last sync did not finish. Whatever it had saved is kept.";
+export const SYNC_ADMINS_ONLY = "Only an admin or owner can start a sync.";
+/** Said to the person whose tab is driving the run. */
+export const SYNC_KEEPS_RUNNING = "You can close this panel. The sync keeps running while this tab stays open.";
+/** Why a run has passes at all (a batch, as a person would call it). */
+export const SYNC_PASS_NOTE = `Each pass writes up to ${SYNC_SUMMARIES_PER_BATCH} AI summaries.`;
+
+/** A run this page shows but is not driving: someone else's, or the viewer's own from another tab
+ *  (or from before a reload — which ends it after the batch in flight). */
+export function syncWatchText(run: Pick<SyncRunView, "by">, own: boolean): string {
+  return own
+    ? "You started this sync from another tab, or before this page was reloaded. If that tab is closed, it stops after its current pass; whatever it has saved is kept."
+    : `@${run.by} started this sync. It runs from their browser; this page shows its progress.`;
+}
+
+/** "Pass 3 of about 8" — `batches` is an estimate until the run ends; null = not counted yet. */
+export function syncPassLabel(run: Pick<SyncRunView, "batch" | "batches">): string {
+  const n = Math.max(1, run.batch);
+  if (!run.batches) return `Pass ${n}`;
+  return n >= run.batches ? `Pass ${n} of ${n}` : `Pass ${n} of about ${run.batches}`;
+}
+
+/** How a finished run ended, in words (the icon and the colour repeat it). */
+export function syncResultTitle(run: Pick<SyncRunView, "status" | "failures">): string {
+  if (run.status === "failed") return "Sync stopped";
+  if (run.status === "abandoned") return "Sync did not finish";
+  if (run.status === "partial") return `Sync finished with ${plural(Math.max(1, run.failures.length), "problem", "problems")}`;
+  return "Sync finished";
+}
+
+/** What a sync started now would do about AI summaries — or why it will write none (not an error). */
+export function syncSummariesText(s: SyncSummariesView): string {
+  const n0 = (n: number): string => n.toLocaleString("en-US");
+  if (s.status === "off") return "AI summaries are off on this deployment, so new items show an excerpt.";
+  if (s.status === "ended") return "This organization's plan has ended, so new items show an excerpt.";
+  if (s.status === "capped") return `This month's ${n0(s.cap ?? s.used)} AI summaries are used up, so new items show an excerpt until next month.`;
+  // `pending` counts only items ALREADY stored with an excerpt: what GitHub has that Trov has not
+  // seen yet is not known until the sync reads it. So every line says new items are summarized too.
+  const n = summariesExpected(s);
+  const left = s.remaining === null || s.cap === null ? "" : ` ${n0(s.remaining)} of ${n0(s.cap)} left this month.`;
+  const waiting = `About ${plural(s.pending, "item is", "items are")} waiting for an AI summary`;
+  if (n === 0) return `New pull requests and assigned issues get an AI summary, at most ${n0(s.per_run)} a sync.${left}`;
+  if (n < s.pending && n === s.per_run) return `${waiting}. A sync tries at most ${n0(s.per_run)}; later syncs do the rest.${left}`;
+  if (n < s.pending) return `${waiting}, but only ${n0(n)} of this month's ${n0(s.cap ?? n)} ${n === 1 ? "is" : "are"} left.`;
+  return `${waiting}. This sync tries ${n === 1 ? "it" : "them"}, and anything new.${left}`;
+}
+
+/** Items a finished run left without a summary, and why: it reached its bound (a later sync goes on),
+ *  or — given the allowance as the run left it — summaries cannot be written at all. "" when none. */
+export function syncLeftoverText(c: Pick<SyncCounts, "summaries_pending">, s?: SyncSummariesView | null): string {
+  if (c.summaries_pending <= 0) return "";
+  const head = `${plural(c.summaries_pending, "item is", "items are")} still waiting for an AI summary.`;
+  return s && s.status !== "on" ? `${head} ${syncSummariesText(s)}` : `${head} A later sync continues with them.`;
+}
+
+/** What GitHub listed, once a batch has read it; "" before. */
+export function syncSeenText(c: Pick<SyncCounts, "prs_seen" | "issues_seen">): string {
+  return c.prs_seen || c.issues_seen ? `GitHub listed ${plural(c.prs_seen, "closed pull request", "closed pull requests")} and ${plural(c.issues_seen, "open issue", "open issues")}.` : "";
+}
+
+/** The Org settings tab that fixes a failure, when its fix is the GitHub token; null otherwise. */
+export function syncFailureTab(f: SyncFailure): "integrations" | null {
+  if ((f.code === "list_prs" || f.code === "list_issues") && (f.status === 401 || f.status === 403 || f.status === 404)) return "integrations";
+  if (f.code.startsWith("reconcile:") && f.code !== "reconcile:unexpected") return "integrations";
+  return null;
 }

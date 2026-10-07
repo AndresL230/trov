@@ -366,9 +366,9 @@ describe("admin = admin or owner of the org on screen", () => {
 
   const two = (role: OrgRole, over: Partial<AppState> = {}) => app({ me: me([{ ...acme(role) }, sapling("owner")]), ...over });
   it("My Work's Sync GitHub is an admin's", () => {
-    expect(render(two("admin", { screen: "mywork" }))).toContain('data-act="adminBackfill"');
-    expect(render(two("owner", { screen: "mywork" }))).toContain('data-act="adminBackfill"');
-    expect(render(two("member", { screen: "mywork" }))).not.toContain("adminBackfill");   // an OWNER of the other org
+    expect(render(two("admin", { screen: "mywork" }))).toContain('data-act="syncToggle"');
+    expect(render(two("owner", { screen: "mywork" }))).toContain('data-act="syncToggle"');
+    expect(render(two("member", { screen: "mywork" }))).not.toContain("syncToggle");   // an OWNER of the other org
   });
   it("Org settings: the member directory for everyone; the email digests, the logins to match and member management for an admin only", () => {
     const task = { login: "octo-drifter", first_seen: "2026-09-27T00:00:00Z", status: "pending", resolved_at: null, resolved_by: null, sample: [] } as never;

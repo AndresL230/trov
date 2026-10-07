@@ -60,6 +60,7 @@ import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 // Organizations as a person meets them (org-picker.ts): the switcher, the picker, the create dialog.
 import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsUi, type OrgsUi } from "./org-picker";
 import { isOrgAdmin } from "./org-context";
+import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -371,9 +372,8 @@ export interface AppState {
   /** When the toast went up and how long it stays (ms) — a rerender joins its fade where it left off. */
   toastAt: number;
   toastMs: number;
-  /** ADMIN Sync GitHub progress — null when idle; present while a (possibly
-   *  multi-batch) sync is running, tracking cumulative counts across batches. */
-  backfillSync: BackfillSyncState | null;
+  /** Sync GitHub (web/src/sync.ts): the panel, `GET /sync`'s answer, the run this tab drives, its result. */
+  sync: SyncUi;
   // ── The person card (profile.ts), Settings › Profile's photo ──
   /** The person card open over the page (a click on a name); null = closed. */
   personCard: string | null;
@@ -392,13 +392,10 @@ export interface AppState {
   org: OrgUi;
 }
 
-/** Sync GitHub modal state: "starting" from the click until the first batch
- *  resolves (the server is paginating GitHub + ingesting — there are no real
- *  counts yet, and rendering "0 of 0" reads as a broken sync), then "progress"
- *  with absolute counts snapshotted from the most recent batch response. */
-export type BackfillSyncState =
-  | { phase: "starting" }
-  | { phase: "progress"; prSummarizedCount: number; prsTotal: number; issueSummarizedCount: number; issuesTotal: number };
+/** Project the app state onto the Sync GitHub control and panel (sync.ts never sees AppState). */
+export function syncPropsOf(s: AppState, now: number = Date.now()): SyncProps {
+  return { ui: s.sync, admin: viewerIsAdmin(s), me: s.me?.handle ?? null, home: s.screen === "mywork", now };
+}
 
 export function initialState(): AppState {
   return {
@@ -512,7 +509,7 @@ export function initialState(): AppState {
     toastAction: null,
     toastAt: 0,
     toastMs: 0,
-    backfillSync: null,
+    sync: initialSyncUi(),
     personCard: null,
     personDetail: { status: "idle", data: null },
     avatarBusy: null,
@@ -812,18 +809,10 @@ function header(s: AppState): string {
   // showing). Narrative / Timeline are the tab bar heading the page body (`roadmapTabBar`).
   const roadmapControls = s.screen === "roadmap" ? accentNew("nsToggle", "New sprint") : "";
 
-  // ADMIN-only, My Work screen: trigger the server-side GitHub backfill. Rendered
-  // only for an admin or owner of the org on screen (outline button, promote-class action).
-  // While s.backfillSync is set, the button is disabled (progress itself shows
-  // in the modal below — see backfillSyncModal) — a sync can span multiple
-  // batched requests (src/tools/backfill.ts caps AI calls per invocation),
-  // driven by main.ts.
-  const syncing = s.backfillSync !== null;
-  const myworkControls = s.screen === "mywork" && viewerIsAdmin(s)
-    ? `<button data-act="adminBackfill" title="${syncing ? "Sync in progress" : "Fetch all GitHub PRs + issues"}" class="cnpy-outlinebtn" ${syncing ? "disabled" : ""} style="display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);${syncing ? "opacity:.65;cursor:default" : ""}">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ${syncing ? 'style="animation:cnpy-spin .8s linear infinite"' : ""}><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>
-      ${syncing ? "Syncing&hellip;" : "Sync GitHub"}
-    </button>` : "";
+  // Sync GitHub (web/src/sync.ts): the button that opens the Sync panel. On My Work for an admin
+  // (and, once a sync has run, a quiet "Synced 12m ago" for everyone else); on EVERY screen while
+  // a run is in progress or its result has not been dismissed. The slot is always emitted.
+  const myworkControls = syncSlot(syncPropsOf(s));
 
   // Queue chrome (the `tickets` screen only): the Table / Board toggle in the
   // Roadmap tab idiom, plus the header's submit button.
@@ -1709,7 +1698,7 @@ function guideView(s: AppState): string {
     <p style="${gP}">The sidebar groups screens into ${gStrong("Workspace")}, ${gStrong("Monitor")}, ${gStrong("Knowledge")}, ${gStrong("Triage")}, and ${gStrong("Help")} (this guide and What's new). A chevron opens a screen's sub-pages, ${gStrong("Collapse")} folds the rail to icons, and every screen has its own address (${gCode("#tickets/7")}, ${gCode("#artifacts")}) you can send to a teammate. On a phone the sidebar opens as a drawer.</p>
 
     ${sub("My Work")}
-    <p style="${gP}">Trov opens here. ${gStrong("Tickets for you")}: your open tickets, with their sprint and when it is due. ${gStrong("Needs your review")}: what agents staged, with Promote, Ratify and Reject right there. ${gStrong("Your sessions")}: what you recorded lately and the handoffs waiting for you. ${gStrong("Repo")}: pull requests, CI and deploys at a glance. Under them, the docs you own, artifacts published this week, and handoffs queued for you, each with ${gStrong("Copy")} to paste it into a fresh session as a prompt. It reads only what Trov has already captured, so it loads instantly.</p>
+    <p style="${gP}">Trov opens here. ${gStrong("Tickets for you")}: your open tickets, with their sprint and when it is due. ${gStrong("Needs your review")}: what agents staged, with Promote, Ratify and Reject right there. ${gStrong("Your sessions")}: what you recorded lately and the handoffs waiting for you. ${gStrong("Repo")}: pull requests, CI and deploys at a glance. Under them, the docs you own, artifacts published this week, and handoffs queued for you, each with ${gStrong("Copy")} to paste it into a fresh session as a prompt. It reads only what Trov has already captured, so it loads instantly. Admins also get ${gStrong("Sync GitHub")} in the header: it opens a panel that says what a sync reads and writes, shows its progress pass by pass, and keeps the result until you dismiss it.</p>
     ${gFig("mywork", `${gEm("My Work")}: your tickets, the review queue, your sessions, and the repo at a glance.`)}
 
     ${sub("Tickets")}
@@ -2406,6 +2395,7 @@ function repoProps(s: AppState): RepoProps {
   return {
     tab: s.repoTab, range: s.repoRange, driftOpen: s.repoDriftOpen, repo: s.repo, fetchedAt: s.repoFetchedAt, sample: s.repoSample,
     admin: viewerIsAdmin(s), noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, poll: s.repoPoll, productEnv: s.repoProductEnv, persons: s.persons.data,
+    synced: syncRepoLabel(s.sync, Date.now()),
   };
 }
 
@@ -2460,39 +2450,12 @@ function toastBlock(msg: string, elapsed: number, ms: number, action: ToastActio
   </div>`;
 }
 
-// Centered modal shown for the duration of an admin Sync GitHub run (possibly
-// several batched requests — src/tools/backfill.ts caps AI calls per
-// invocation, shared across PRs and issues). Both counts are absolute
-// snapshots from the most recent batch, not accumulated client-side, so the
-// bars always reflect real server-side state.
-function backfillSyncModal(sync: BackfillSyncState): string {
-  const bar = (label: string, count: number, total: number) => {
-    const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-    return `
-      <div style="font-size:12.5px;color:var(--fg-55);margin:0 0 6px">${count} of ${total} ${label}</div>
-      <div style="height:8px;border-radius:999px;background:var(--hover);overflow:hidden;margin-bottom:14px">
-        <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:999px;transition:width .3s ease"></div>
-      </div>`;
-  };
-  const body = sync.phase === "starting"
-    ? `<div style="font-size:12.5px;color:var(--fg-55);line-height:1.6">Contacting GitHub — taking inventory of PRs and issues&hellip;</div>`
-    : `${bar("PRs summarized", sync.prSummarizedCount, sync.prsTotal)}
-      ${bar("issues summarized", sync.issueSummarizedCount, sync.issuesTotal)}`;
-  return `<div style="position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)">
-    <div${surface("width:360px;max-width:calc(100vw - 32px);border-color:var(--border-strong);padding:28px 30px;box-shadow:0 20px 60px rgba(0,0,0,.45);text-align:center")}>
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" style="animation:cnpy-spin .8s linear infinite;margin-bottom:14px"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg>
-      <div style="font-size:15px;font-weight:600;margin-bottom:14px">Syncing GitHub</div>
-      ${body}
-    </div>
-  </div>`;
-}
-
 export function render(s: AppState): string {
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
     ${s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
-    ${s.backfillSync ? backfillSyncModal(s.backfillSync) : ""}
+    ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}

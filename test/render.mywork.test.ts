@@ -20,6 +20,7 @@ import { mwTicketRow, reviewTile, repoTile, ticketsTile, mwSpans, libraryStrip }
 import type { MyWorkPr, MyWorkTodo, MyWorkTicket, DashboardData } from "@shared/dashboard";
 import type { PersonSummary } from "../web/src/api";
 import type { ReviewItem } from "../web/src/review";
+import { zeroSyncCounts, type SyncRunView } from "@shared/sync";
 
 function makePr(overrides: Partial<MyWorkPr> = {}): MyWorkPr {
   return {
@@ -297,46 +298,49 @@ describe("render() — My Work screen", () => {
     expect(html).toContain("1 ticket open");
   });
 
-  // ── admin-only Sync GitHub button (server-side backfill trigger) ────────────
-  it("renders the Sync GitHub backfill button for an admin me", () => {
-    const data: DashboardData = { person: "alice", previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false };
-    const html = render(stateWithDashboard(data, true));
-    expect(html).toContain('data-act="adminBackfill"');
-    expect(html).toContain("Sync GitHub");
+  // ── Sync GitHub: the header control and its panel (web/src/sync.ts; every state in render.sync.test.ts) ──
+  const liveRun = (over: Partial<SyncRunView> = {}): SyncRunView => ({
+    id: 3, repo: "acme/widgets", by: "alice", started_at: new Date().toISOString(), updated_at: new Date().toISOString(), ended_at: null, status: "running",
+    batch: 2, batches: 5, phase: "saving_prs", done: 66, total: 146, counts: zeroSyncCounts(), failures: [], previous_at: null, ...over,
   });
 
-  it("does NOT render the Sync GitHub button for a non-admin me", () => {
-    const data: DashboardData = { person: "alice", previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false };
-    const html = render(stateWithDashboard(data, false));
-    expect(html).not.toContain('data-act="adminBackfill"');
+  it("an admin's My Work header has Sync GitHub — a button that opens the panel, not one that starts a sync", () => {
+    const html = render(stateWithDashboard(dash(), true));
+    expect(html).toContain('data-act="syncToggle"');
+    expect(html).toContain('aria-haspopup="dialog" aria-expanded="false" aria-controls="sync-panel"');
+    expect(html).toContain("<span>Sync GitHub</span>");
+    expect(html).not.toContain("syncStart");
+    expect(html).not.toContain('data-overlay="sync"');
   });
 
-  it("shows a disabled Sync button while backfillSync is set", () => {
-    const data: DashboardData = { person: "alice", previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false };
-    const s = { ...stateWithDashboard(data, true), backfillSync: { phase: "progress", prSummarizedCount: 66, prsTotal: 146, issueSummarizedCount: 3, issuesTotal: 10 } as const };
-    const html = render(s);
-    expect(html).toContain("disabled");
-    expect(html).toContain("Syncing");
-    expect(html).not.toContain("Sync GitHub");
+  it("a member has no Sync control until a sync has run; the empty slot stays in the header", () => {
+    const html = render(stateWithDashboard(dash(), false));
+    expect(html).not.toContain("syncToggle");
+    expect(html).toContain('<div data-sync-slot="ctl" class="sync-slot"></div>');
   });
 
-  it("renders two progress bars — PRs and issues — while backfillSync is in progress", () => {
-    const data: DashboardData = { person: "alice", previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false };
-    const s = { ...stateWithDashboard(data, true), backfillSync: { phase: "progress", prSummarizedCount: 66, prsTotal: 146, issueSummarizedCount: 3, issuesTotal: 10 } as const };
-    const html = render(s);
-    expect(html).toContain("66 of 146 PRs summarized");
-    expect(html).toContain("width:45%"); // Math.round(66/146*100)
-    expect(html).toContain("3 of 10 issues summarized");
-    expect(html).toContain("width:30%"); // Math.round(3/10*100)
+  it("while a run is in progress the button says where it stands, and is still a way into the panel — on every screen", () => {
+    const s = stateWithDashboard(dash(), true);
+    const html = render({ ...s, sync: { ...s.sync, mine: liveRun() } });
+    expect(html).toContain("<span>Syncing 2 of 5</span>");
+    expect(html).not.toContain("<span>Sync GitHub</span>");
+    expect(html).toMatch(/data-act="syncToggle"[^>]*aria-busy="true"/);
+    for (const screen of ["feed", "tickets", "docs", "repo", "settings"] as const) {
+      expect(render({ ...s, screen, sync: { ...s.sync, mine: liveRun() } }), screen).toContain("<span>Syncing 2 of 5</span>");
+      expect(render({ ...s, screen }), screen).not.toContain("syncToggle");
+    }
   });
 
-  it("renders an inventory-taking line — never '0 of 0' bars — while the first batch is in flight", () => {
-    const data: DashboardData = { person: "alice", previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false };
-    const s = { ...stateWithDashboard(data, true), backfillSync: { phase: "starting" } as const };
-    const html = render(s);
-    expect(html).toContain("Syncing GitHub");
-    expect(html).toContain("Contacting GitHub");
+  it("the open panel is a root-level dialog with real progress — and no page-blocking modal", () => {
+    const s = stateWithDashboard(dash(), true);
+    const html = render({ ...s, sync: { ...s.sync, open: true, mine: liveRun() } });
+    expect(html).toContain('data-overlay="sync"');
+    expect(html).toContain('role="dialog"');
+    expect(html).toContain('<progress class="sync-prog" max="146" value="66"');
+    expect(html).toContain("66 of 146");
     expect(html).not.toContain("0 of 0");
+    // The panel is the app's, never the sign-in page's or the org picker's.
+    expect(render({ ...s, view: "orgs", sync: { ...s.sync, open: true, mine: liveRun() } })).not.toContain('data-overlay="sync"');
   });
 
   // A ticket's due date is its sprint's, read through the ONE due-date rule
@@ -361,12 +365,6 @@ describe("render() — My Work screen", () => {
     const far = withDue(iso(8));
     expect(far).toMatch(/color:var\(--fg-40\)">due /);
     expect(far).not.toContain("due this week");
-  });
-
-  it("renders no progress modal when backfillSync is null", () => {
-    const data: DashboardData = { person: "alice", previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false };
-    const html = render(stateWithDashboard(data, true));
-    expect(html).not.toContain("Syncing GitHub");
   });
 
 });

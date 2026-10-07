@@ -419,6 +419,41 @@ describe("Usage", () => {
     expect(html).toContain("3 open of 9");
     expect(orgUsageBlock(quiet("acme", "Acme"), 30)).toContain("No activity in the last 30 days.");
   });
+
+  // ── AI summaries (0045: `org_usage_daily`'s summary counters, shared/plans.ts `ai_summaries`) ──
+  const words = (html: string): string => html.replace(/<title>[^<]*<\/title>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const busy = usageOf({ summaries: summariesOf({ attempted: 40, succeeded: 34, failed: 6, capped: 3, fell_back: 9, month_used: 38, cap: 100 }) });
+  const free = quiet("beta", "Beta", { summaries: summariesOf({ attempted: 12, succeeded: 12, month_used: 12, cap: null }) });
+  it("AI summaries: the platform totals for the window sit in one strip under the tiles", () => {
+    const html = usageView({ status: "ok", usage: report([busy, free]), days: 7, open: null });
+    const strip = html.slice(html.indexOf('data-usage-summaries="totals"'));
+    const t = words(`<div ${strip.slice(0, strip.indexOf("</div>"))}`);
+    expect(t).toContain("AI summaries Attempted 52 Succeeded 46 Fell back to an excerpt 9 last 7 days, all organizations");
+    // The six tiles are untouched: the strip is not a seventh.
+    expect(html.match(/class="plat-tile-n"/g)).toHaveLength(6);
+    expect(html).not.toContain("GEMINI_API_KEY");
+  });
+  it("AI summaries per org: attempted, succeeded, fell back and this month against the plan — in the opened row, 'unlimited' for no cap", () => {
+    const open = (slug: string) => words(usageView({ status: "ok", usage: report([busy, free]), days: 7, open: slug }));
+    expect(open("acme")).toContain("AI summaries Attempted 40 Succeeded 34 Fell back to an excerpt 9 This month 38 of 100");
+    expect(open("beta")).toContain("AI summaries Attempted 12 Succeeded 12 Fell back to an excerpt 0 This month 12 (unlimited)");
+    // A closed row carries no summaries line; the totals strip is the only one on the page.
+    expect(usageView({ status: "ok", usage: report([busy, free]), days: 7, open: null }).match(/data-usage-summaries/g)).toHaveLength(1);
+    expect(words(usageView({ status: "ok", usage: report([busy]), days: 7, open: null }))).toContain("Open a row for what was created, its AI summaries and its most used MCP tools.");
+    // The org's own page has the same line.
+    expect(words(orgUsageBlock(busy, 30))).toContain("AI summaries Attempted 40 Succeeded 34 Fell back to an excerpt 9 This month 38 of 100");
+    expect(words(usageBreakdown(activity(), 30))).not.toContain("AI summaries");
+  });
+  it("with no summaries key the page says so ONCE, quietly — no rows of zeros, in the totals or in any org's row", () => {
+    const html = usageView({ status: "ok", usage: { ...report([usageOf(), free]), summaries_enabled: false }, days: 7, open: "acme" });
+    expect(html.match(/AI summaries are off on this deployment \(no GEMINI_API_KEY\)\./g)).toHaveLength(1);
+    expect(html.match(/data-usage-summaries/g)).toHaveLength(1);
+    expect(words(html)).not.toContain("Attempted");
+    expect(words(html)).not.toContain("Fell back");
+    expect(words(html)).toContain("Open a row for what was created and its most used MCP tools.");
+    expect(html).not.toContain('role="alert"');
+    expect(html).not.toMatch(/#[0-9a-fA-F]{3,6}\b/);
+  });
 });
 
 describe("Admins & limits", () => {

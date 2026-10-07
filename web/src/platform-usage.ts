@@ -7,7 +7,7 @@
 //
 // Purely presentational: props in, markup out; interactions dispatch `plat…` acts.
 
-import type { OrgUsage, PlatformUsageResponse, UsageActivity, UsageCreated, UsageDay } from "@shared/orgs";
+import type { OrgUsage, PlatformUsageResponse, UsageActivity, UsageCreated, UsageDay, UsageSummaries } from "@shared/orgs";
 import { esc, attr, relTime, statusBadge, surface } from "./ui";
 import { segmented } from "./segmented";
 import { tabLead } from "./org-ui";
@@ -85,7 +85,19 @@ const CREATED_LABELS: [keyof UsageCreated, string][] = [
 
 /** What was created in the window, by kind, and the most used MCP tools — the opened row's
  *  (and the org detail's) breakdown. */
-export function usageBreakdown(a: UsageActivity, days: number): string {
+const FIGURE = (label: string, value: string): string => `<span style="white-space:nowrap">${label} <span style="${NUM};color:var(--fg-70)">${value}</span></span>`;
+/** AI summaries in the window — calls made, how many produced a summary, how many items show an
+ *  excerpt instead — and, for one organization (`month`), this calendar month against its plan's
+ *  allowance ("unlimited" when the plan has none). Counts only. */
+export function summariesFigures(s: UsageSummaries, month?: { month_used: number; cap: number | null }): string {
+  return `${FIGURE("Attempted", formatNumber(s.attempted))}${FIGURE("Succeeded", formatNumber(s.succeeded))}${FIGURE("Fell back to an excerpt", formatNumber(s.fell_back))}${
+    month ? FIGURE("This month", month.cap === null ? `${formatNumber(month.month_used)} (unlimited)` : `${formatNumber(month.month_used)} of ${formatNumber(month.cap)}`) : ""}`;
+}
+/** Said ONCE on the page when the deployment has no summaries key, instead of rows of zeros. */
+export const SUMMARIES_OFF = "AI summaries are off on this deployment (no GEMINI_API_KEY).";
+
+/** `summaries` (one organization's) adds its AI summaries line; null / absent leaves it out. */
+export function usageBreakdown(a: UsageActivity, days: number, summaries?: OrgUsage["summaries"] | null): string {
   const created = CREATED_LABELS.map(([k, label]) =>
     `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:5px 0;border-top:1px solid var(--border)"><span style="font-size:12.5px;color:var(--fg-70)">${label}</span><span style="${NUM};font-size:12.5px;color:${a.created[k] ? "var(--fg)" : "var(--fg-40)"}">${formatNumber(a.created[k])}</span></div>`).join("");
   const peak = Math.max(1, ...a.top_tools.map((t) => t.count));
@@ -101,7 +113,10 @@ export function usageBreakdown(a: UsageActivity, days: number): string {
     <div style="min-width:0"><div style="${LABEL};margin-bottom:8px">Top MCP tools</div>${tools}</div>
     <div class="plat-breakdown-foot" style="display:flex;flex-wrap:wrap;gap:6px 18px;${QUIET}">
       ${line("API reads", formatNumber(a.api_reads))}${line("API writes", formatNumber(a.api_writes))}${line("MCP requests", formatNumber(a.mcp_requests))}${line("Emails sent", formatNumber(a.emails_sent))}
-    </div>
+    </div>${summaries ? `
+    <div class="plat-breakdown-foot" data-usage-summaries style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding-top:10px;border-top:1px solid var(--border);${QUIET}">
+      <span style="${LABEL}">AI summaries</span>${summariesFigures(summaries, summaries)}
+    </div>` : ""}
   </div>`;
 }
 
@@ -128,7 +143,7 @@ export function orgUsageBlock(u: OrgUsage, days: number): string {
     ])}
     <div style="padding:16px 20px;border-top:1px solid var(--border)">
       ${noActivity(a) ? `<div style="${QUIET};margin-bottom:14px">No activity in the last ${days} days.</div>` : ""}
-      ${usageBreakdown(a, days)}
+      ${usageBreakdown(a, days, u.summaries)}
       <div style="${LABEL};margin:18px 0 8px">Size now</div>
       <div class="plat-sizes">
         ${size("Docs", formatNumber(z.docs))}${size("Feed entries", formatNumber(z.feed_entries))}${size("Tickets", `${formatNumber(z.tickets_open)} open of ${formatNumber(z.tickets_total)}`)}
@@ -149,7 +164,7 @@ export interface UsageProps {
 
 const CHEV = (open: boolean): string => `<svg class="plat-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="flex:none;transform:rotate(${open ? 90 : 0}deg)"><path d="M9 6l6 6-6 6"></path></svg>`;
 
-function orgRow(u: OrgUsage, days: number, open: boolean): string {
+function orgRow(u: OrgUsage, days: number, open: boolean, summariesOn: boolean): string {
   const a = u.activity, z = u.sizes;
   const cell = (label: string, inner: string, cls = "") => `<div class="plat-c${cls ? ` ${cls}` : ""}" style="min-width:0"><span class="plat-cl">${label}</span>${inner}</div>`;
   const metric = (n: number, spark: string) => `<div style="display:flex;align-items:center;gap:10px;min-width:0"><span style="${NUM};font-size:14px;color:${n ? "var(--fg)" : "var(--fg-40)"};min-width:46px"${exact(n)}>${formatNumber(n)}</span><span style="flex:1;min-width:40px;max-width:120px">${spark}</span></div>`;
@@ -168,7 +183,7 @@ function orgRow(u: OrgUsage, days: number, open: boolean): string {
       ${cell("Artifacts", `<span style="white-space:nowrap">${num(z.artifacts)} <span style="${QUIET}">· ${formatBytes(z.artifact_bytes)}</span></span>`)}
       ${cell("Last activity", `<span style="font-size:12px;color:var(--fg-40);white-space:nowrap">${u.last_activity_at ? esc(relTime(u.last_activity_at)) : "Never"}</span>`)}
     </button>
-    ${open ? `<div id="${attr(id)}" style="padding:16px 20px 18px 41px;border-top:1px solid var(--border);background:var(--bg)" class="plat-urow-body">${usageBreakdown(a, days)}
+    ${open ? `<div id="${attr(id)}" style="padding:16px 20px 18px 41px;border-top:1px solid var(--border);background:var(--bg)" class="plat-urow-body">${usageBreakdown(a, days, summariesOn ? u.summaries : null)}
       <button type="button" data-act="platOpenOrg" data-arg="${attr(u.slug)}" class="cnpy-mutelink" style="margin-top:12px;padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">Open ${esc(u.name)}</button></div>` : ""}
   </div>`;
 }
@@ -212,8 +227,12 @@ export function usageView(p: UsageProps): string {
       <div class="plat-thead plat-usage-grid" aria-hidden="true" style="padding:12px 20px 9px;border-bottom:1px solid var(--border)">
         <span style="padding-left:21px">Organization</span><span>API requests</span><span>MCP calls</span><span>Active</span><span>Members</span><span>Docs</span><span>Tickets</span><span>Artifacts</span><span>Last activity</span>
       </div>
-      ${rows.map((o) => orgRow(o, u.days, p.open === o.slug)).join("")}
+      ${rows.map((o) => orgRow(o, u.days, p.open === o.slug, u.summaries_enabled)).join("")}
     </div>
-    <div style="${QUIET};margin-top:10px">${esc(u.since)} to ${esc(u.until)} (UTC), most active first. Open a row for what was created and its most used MCP tools.</div>` : "";
-  return `${head}<div${surface("overflow:hidden", { cls: `plat-cq${p.status === "loading" ? " plat-busy" : ""}` })}>${top}</div>${empty}${table}`;
+    <div style="${QUIET};margin-top:10px">${esc(u.since)} to ${esc(u.until)} (UTC), most active first. Open a row for what was created${u.summaries_enabled ? ", its AI summaries" : ""} and its most used MCP tools.</div>` : "";
+  // AI summaries, all organizations: one strip under the tiles — or, with no summaries key, one quiet sentence.
+  const summaries = `<div data-usage-summaries="totals" style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding:12px 20px;border-top:1px solid var(--border);${QUIET}">
+      <span style="${LABEL}">AI summaries</span>${u.summaries_enabled ? `${summariesFigures(u.summaries)}<span>last ${u.days} days, all organizations</span>` : `<span>${esc(SUMMARIES_OFF)}</span>`}
+    </div>`;
+  return `${head}<div${surface("overflow:hidden", { cls: `plat-cq${p.status === "loading" ? " plat-busy" : ""}` })}>${top}${summaries}</div>${empty}${table}`;
 }
