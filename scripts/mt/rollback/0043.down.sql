@@ -14,7 +14,10 @@
 --   • 0045 (`identities.provider_uid`, one nullable column, unread by an older Worker) — no down file;
 --   • 0046 (`abuse_counters`) — its own free-standing file, 0046.down.sql, in any order;
 --   • 0047 (`org_invites.name` / `mail_status` / `mail_at` / `mail_error`, four nullable columns on a table
---     0037-0040.down.sql drops whole, unread by an older Worker) — no down file.
+--     0037-0040.down.sql drops whole, unread by an older Worker) — no down file;
+--   • 0048 (`orgs.logo_sha` / `logo_source` / `logo_by` / `logo_from` / `logo_at`, five nullable columns on a
+--     table 0037-0040.down.sql drops whole, unread by an older Worker — which draws every org's initial
+--     tile again; the image bytes stay in R2 under `org-logos/`) — no down file.
 
 DROP INDEX IF EXISTS idx_org_usage_daily_day;
 DROP TABLE IF EXISTS org_usage_daily;

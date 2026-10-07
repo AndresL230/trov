@@ -22,6 +22,8 @@ export const LIMITS = {
   email_change: { max: 5, window: "day" },
   /** `POST …/people/me/avatar`: an image stored in R2. */
   avatar_upload: { max: 20, window: "day" },
+  /** `POST /api/o/:slug/logo`: an org's image stored in R2 — the uploader's allowance, across their orgs. */
+  org_logo_upload: { max: 20, window: "day" },
   /** `GET /auth/handle-check`: is a handle taken. */
   handle_check: { max: 60, window: "hour" },
 } as const satisfies Record<string, Limit>;

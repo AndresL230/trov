@@ -56,6 +56,7 @@ import type { InviteRow } from "@shared/rows";
 import { readDocImage } from "./tools/doc-images";
 import { getPersonProfile, writePersonProfile, setAvatar, clearAvatar, readAvatar, PeopleError, PEOPLE_ERROR_STATUS } from "./tools/people";
 import { AVATAR_MAX_BYTES } from "@shared/people";
+import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 
 export const app = new Hono<AppEnv>();
@@ -92,7 +93,7 @@ app.use("*", sessionGate);
 // The data-layer contexts (src/data/gate.ts): `c.var.p` for the global tables on every request, and
 // `c.var.ctx` on every tenant route — from `tenantGate` under `/api/o/:slug/*`, and from `soleTenantGate`
 // (the caller's ONE org, the cut-over alias) on EVERY other session path that is not person-level
-// (/auth/*, /avatar/*, /api/orgs, /api/invites, /api/platform). So a route added without thought is
+// (/auth/*, /avatar/*, /org-logo/*, /api/orgs, /api/invites, /api/platform). So a route added without thought is
 // tenant-gated: a signed-in person with no single org gets 409 `org_required` there.
 app.use("*", platformContext);
 app.use("*", soleTenantGate);
@@ -129,9 +130,8 @@ tenantRoot.get("/img/:sha", async (c) => {
 // Person avatars (0036): the bytes behind an uploaded `/avatar/<sha256>`, served exactly
 // like a doc image — session-gated, content-addressed and immutable, `default-src 'none'`
 // + nosniff. The type is the one SNIFFED at upload (the R2 object's own metadata).
-app.get("/avatar/:sha", async (c) => {
+const storedImage = (c: Context<AppEnv>, img: Awaited<ReturnType<typeof readAvatar>>): Response => {
   const lockdown = { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" };
-  const img = await readAvatar(c.env.ARTIFACTS_BUCKET, c.req.param("sha"));
   if (!img) return c.json({ error: "not_found" }, 404, lockdown);
   return new Response(img.body, {
     headers: {
@@ -141,7 +141,16 @@ app.get("/avatar/:sha", async (c) => {
       "cache-control": "private, max-age=31536000, immutable",
     },
   });
-});
+};
+app.get("/avatar/:sha", async (c) => storedImage(c, await readAvatar(c.env.ARTIFACTS_BUCKET, c.req.param("sha"))));
+
+// Org images (0048): the bytes behind `/org-logo/<sha256>`, served exactly like a person's photo — the
+// same headers, the type from the stored object and never from the request, and never a redirect: an
+// imported GitHub avatar is served from HERE, so no browser hot-links GitHub. Person-level, like
+// `/avatar`: an org's image shows wherever its name does, and its name reaches people who are not (yet)
+// members — an invitee on the org picker, the superadmin in Platform. The address is the image's own
+// 256-bit hash, so it can only be asked for by someone who was already shown it.
+app.get("/org-logo/:sha", async (c) => storedImage(c, await readOrgLogo(c.env.ARTIFACTS_BUCKET, c.req.param("sha"))));
 
 // Auth endpoints (login/callback public via the gate's allowlist; logout/mcp-token gated).
 app.route("/auth", authApp);

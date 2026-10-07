@@ -271,6 +271,8 @@ const TENANT: Record<string, Row> = {
   "GET /raw/a/:ref": {}, "GET /raw/a/:slug/:ver": {},
   // src/orgs/routes.ts
   "GET /me": {}, "GET /settings": {}, "PUT /settings": J({ name: "Acme (renamed)" }),
+  // The org's image (0048): the upload is multipart, so this JSON body is A's own 400; the removal is a no-op 200 for A.
+  "POST /logo": J({}), "POST /logo/remove": J({}),
   "GET /members": {}, "PUT /members/:handle": J({ title: "hijacked", role: "admin" }), "DELETE /members/:handle": {},
   "GET /invites": {}, "POST /invites": J({ email: INVITED }), "POST /invites/:id/revoke": J({}), "POST /invites/:id/resend": J({}),
   // src/integrations/routes.ts
@@ -288,7 +290,7 @@ const TENANT: Record<string, Row> = {
  *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
  *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
 const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
+  suffix === "/me" || ["/settings", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
 
 /** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
 const LEGACY_ONLY: Record<string, Row> = {
@@ -332,6 +334,7 @@ const PLATFORM: Record<string, string> = {
   "POST /api/invites/:id/accept": "an invite that is the caller's — anyone else's id is 404",
   "POST /api/invites/:id/decline": "an invite that is the caller's",
   "GET /avatar/:sha": "content-addressed person avatar (64 hex): a person's own picture, the same in every org",
+  "GET /org-logo/:sha": "content-addressed org image (64 hex of its own bytes): shown wherever the org's NAME is, and the name reaches non-members (an invitee's picker, Platform) — bytes only, no org named, and nothing but an `org-logos/` object is served",
   "GET /api/platform/orgs": "requireSuperadmin", "POST /api/platform/orgs": "requireSuperadmin", "GET /api/platform/orgs/:slug": "requireSuperadmin",
   "POST /api/platform/orgs/:slug/admin": "requireSuperadmin", "POST /api/platform/orgs/:slug/suspend": "requireSuperadmin",
   "POST /api/platform/orgs/:slug/unsuspend": "requireSuperadmin", "PUT /api/platform/persons/:handle/org-limit": "requireSuperadmin",
@@ -605,7 +608,7 @@ describe("the person-level routes show a stranger nothing of org A", () => {
   it("bob and a person in no org read their own person-level data only", async () => {
     const fx = await seed();
     for (const who of ["bob", "nobody"] as const) {
-      for (const path of ["/auth/me", "/api/orgs", "/api/invites", "/auth/mcp-tokens", "/auth/oauth-grants", `/avatar/${fx.imgSha}`]) {
+      for (const path of ["/auth/me", "/api/orgs", "/api/invites", "/auth/mcp-tokens", "/auth/oauth-grants", `/avatar/${fx.imgSha}`, `/org-logo/${fx.imgSha}`]) {
         const r = await send("GET", path, fx.cookies[who]);
         expectClean(`${who} GET ${path}`, r);
         expect(r.status, `${who} GET ${path}`).toBeLessThan(500);
@@ -621,6 +624,7 @@ describe("the person-level routes show a stranger nothing of org A", () => {
     }
     // …and a doc image of A's is not an avatar: the bytes are not reachable through the person-level image route.
     expect((await send("GET", `/avatar/${fx.imgSha}`, fx.cookies.bob)).status).toBe(404);
+    expect((await send("GET", `/org-logo/${fx.imgSha}`, fx.cookies.bob)).status).toBe(404);
   });
 
   it("a superadmin with no membership reads counts, never content (§5.4)", async () => {

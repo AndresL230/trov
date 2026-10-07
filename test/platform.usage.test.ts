@@ -249,7 +249,7 @@ describe("GET /api/platform/usage", () => {
     expect(json.totals.series).toHaveLength(7);
     expect(json.orgs.map((o) => [o.slug, o.status])).toEqual([["acme", "suspended"], ["saplinglearn", "active"]]);
     const acme = json.orgs[0] satisfies OrgUsage;
-    expect(Object.keys(acme).sort()).toEqual(["activity", "created_at", "last_activity_at", "name", "series", "sizes", "slug", "status"]);
+    expect(Object.keys(acme).sort()).toEqual(["activity", "created_at", "last_activity_at", "logo_url", "name", "series", "sizes", "slug", "status"]);
     expect(Object.keys(acme.activity).sort()).toEqual(["active_people", "api_reads", "api_requests", "api_writes", "created", "emails_sent", "mcp_requests", "mcp_tool_calls", "top_tools"]);
     expect(acme.sizes.feed_entries).toBe(1);
     expect(acme.series).toHaveLength(7);

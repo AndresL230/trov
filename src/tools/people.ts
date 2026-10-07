@@ -140,32 +140,59 @@ export function sniffAvatarType(b: Uint8Array): AvatarType | null {
   return null;
 }
 
+/** An uploaded image, checked: its bytes, the type they ARE, and their SHA-256. */
+export interface CheckedImage { bytes: Uint8Array; type: AvatarType; sha: string }
+export type UploadedFile = { type: string; size: number; arrayBuffer(): Promise<ArrayBuffer> };
+
+/**
+ * THE upload check, for a person's photo and an org's image alike (`what` names it in the
+ * refusal): a file is there, its type is declared in `AVATAR_TYPES` AND confirmed by the magic
+ * bytes, and it is ≤ `AVATAR_MAX_BYTES`. Throws a `PeopleError` (`bad_request` / `too_large`).
+ */
+export async function checkedImage(file: UploadedFile | null, what = "an avatar"): Promise<CheckedImage> {
+  if (!file) throw new PeopleError("bad_request", "a `file` part is required");
+  if (file.size > AVATAR_MAX_BYTES) throw new PeopleError("too_large", `${what} is at most ${AVATAR_MAX_BYTES} bytes`);
+  if (file.size === 0) throw new PeopleError("bad_request", "the file is empty");
+  const declared = file.type.trim().toLowerCase();
+  if (!(AVATAR_TYPES as readonly string[]).includes(declared)) {
+    throw new PeopleError("bad_request", `${what} must be one of ${AVATAR_TYPES.join(", ")}`);
+  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes.byteLength > AVATAR_MAX_BYTES) throw new PeopleError("too_large", `${what} is at most ${AVATAR_MAX_BYTES} bytes`);
+  const sniffed = sniffAvatarType(bytes);
+  if (sniffed !== declared) throw new PeopleError("bad_request", `the file is not a valid ${declared}`);
+  return { bytes, type: sniffed, sha: await sha256Hex(bytes) };
+}
+
+/** Store a checked image at `key` (`<prefix>/<sha256>`) with R2's own sha256 check — skipped
+ *  when that object already exists (the same bytes are the same image). */
+export async function storeImage(bucket: R2Bucket, key: string, img: CheckedImage): Promise<void> {
+  if (await bucket.head(key)) return;
+  await bucket.put(key, img.bytes, { sha256: img.sha, httpMetadata: { contentType: img.type } });
+}
+
+/** Bytes + type of a stored image, or null (no object, or not one of `AVATAR_TYPES`). */
+export async function readImage(bucket: R2Bucket, key: string): Promise<{ body: ReadableStream; content_type: string; size_bytes: number } | null> {
+  const obj = await bucket.get(key);
+  if (!obj) return null;
+  const ct = obj.httpMetadata?.contentType ?? "";
+  if (!(AVATAR_TYPES as readonly string[]).includes(ct)) return null;
+  return { body: obj.body, content_type: ct, size_bytes: obj.size };
+}
+
 /**
  * The viewer's OWN avatar (there is no upload for someone else): type declared in
- * `AVATAR_TYPES` AND confirmed by the magic bytes, ≤ `AVATAR_MAX_BYTES`, stored at
+ * `AVATAR_TYPES` AND confirmed by the magic bytes, ≤ `AVATAR_MAX_BYTES` (`checkedImage`), stored at
  * `avatars/<sha256>` with R2's own sha256 check — skipped when that object already
  * exists (the same bytes are the same image) — then `persons.avatar_sha` points at it.
  */
 export async function setAvatar(
-  p: PlatformContext, bucket: R2Bucket, viewer: string, file: { type: string; size: number; arrayBuffer(): Promise<ArrayBuffer> } | null,
+  p: PlatformContext, bucket: R2Bucket, viewer: string, file: UploadedFile | null,
 ): Promise<{ avatar_url: string }> {
-  if (!file) throw new PeopleError("bad_request", "a `file` part is required");
-  if (file.size > AVATAR_MAX_BYTES) throw new PeopleError("too_large", `an avatar is at most ${AVATAR_MAX_BYTES} bytes`);
-  if (file.size === 0) throw new PeopleError("bad_request", "the file is empty");
-  const declared = file.type.trim().toLowerCase();
-  if (!(AVATAR_TYPES as readonly string[]).includes(declared)) {
-    throw new PeopleError("bad_request", `an avatar must be one of ${AVATAR_TYPES.join(", ")}`);
-  }
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  if (bytes.byteLength > AVATAR_MAX_BYTES) throw new PeopleError("too_large", `an avatar is at most ${AVATAR_MAX_BYTES} bytes`);
-  const sniffed = sniffAvatarType(bytes);
-  if (sniffed !== declared) throw new PeopleError("bad_request", `the file is not a valid ${declared}`);
-  const sha = await sha256Hex(bytes);
-  if (!(await bucket.head(avatarKey(sha)))) {
-    await bucket.put(avatarKey(sha), bytes, { sha256: sha, httpMetadata: { contentType: sniffed } });
-  }
-  await platformRun(p, `UPDATE persons SET avatar_sha = ? WHERE handle = ? COLLATE NOCASE`, sha, viewer);
-  return { avatar_url: avatarSrc({ avatar_sha: sha }) as string };
+  const img = await checkedImage(file);
+  await storeImage(bucket, avatarKey(img.sha), img);
+  await platformRun(p, `UPDATE persons SET avatar_sha = ? WHERE handle = ? COLLATE NOCASE`, img.sha, viewer);
+  return { avatar_url: avatarSrc({ avatar_sha: img.sha }) as string };
 }
 
 /** Clear the viewer's uploaded avatar (the R2 bytes stay); returns the picture that now shows. */
@@ -177,12 +204,7 @@ export async function clearAvatar(p: PlatformContext, viewer: string): Promise<{
 
 /** Bytes + type for GET /avatar/<sha>, or null (malformed sha, no object, or not an avatar type). */
 export async function readAvatar(bucket: R2Bucket, sha: string): Promise<{ body: ReadableStream; content_type: string; size_bytes: number } | null> {
-  if (!SHA_RE.test(sha)) return null;
-  const obj = await bucket.get(avatarKey(sha));
-  if (!obj) return null;
-  const ct = obj.httpMetadata?.contentType ?? "";
-  if (!(AVATAR_TYPES as readonly string[]).includes(ct)) return null;
-  return { body: obj.body, content_type: ct, size_bytes: obj.size };
+  return SHA_RE.test(sha) ? readImage(bucket, avatarKey(sha)) : null;
 }
 
 /** MCP `list_people`: every non-reserved MEMBER's handle, name, role and responsibilities — nothing else. */

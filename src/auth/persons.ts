@@ -265,6 +265,8 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["platform_admins", "person"], ["platform_admins", "granted_by"],
   // The org + platform backend (0043).
   ["orgs", "suspended_by"], ["org_usage_daily", "actor"], ["org_admin_audit", "actor"],
+  // The org's image (0048): who uploaded it.
+  ["orgs", "logo_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

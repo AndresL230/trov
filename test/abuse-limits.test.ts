@@ -46,7 +46,7 @@ describe("the numbers", () => {
   it("are the documented ones", () => {
     expect(LIMITS).toEqual({
       invite: { max: 50, window: "day" }, test_send: { max: 20, window: "day" }, email_change: { max: 5, window: "day" },
-      avatar_upload: { max: 20, window: "day" }, handle_check: { max: 60, window: "hour" },
+      avatar_upload: { max: 20, window: "day" }, org_logo_upload: { max: 20, window: "day" }, handle_check: { max: 60, window: "hour" },
     });
   });
 });

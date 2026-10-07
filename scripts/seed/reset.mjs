@@ -10,7 +10,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM abuse_counters",
   "DELETE FROM org_usage_daily",
   "DELETE FROM org_admin_audit",
-  "UPDATE orgs SET suspended_at = NULL, suspended_by = NULL",
+  "UPDATE orgs SET suspended_at = NULL, suspended_by = NULL, logo_sha = NULL, logo_source = NULL, logo_by = NULL, logo_from = NULL, logo_at = NULL",
   "DELETE FROM org_audit",
   "DELETE FROM org_secrets",
   "DELETE FROM org_keys",

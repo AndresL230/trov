@@ -14,7 +14,7 @@ import type { PersonColor } from "@shared/rows";
 import {
   DEFAULT_ORG_LIMIT, ORG_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, orgSlugProblem,
   type OrgRole, type OrgAuditAction, type MyOrg, type MyInvite, type MyOrgsResponse, type OrgSettings,
-  type OrgMember, type OrgInvite, type OrgMeResponse, type InviteMailStatus, INVITE_NAME_MAX,
+  type OrgMember, type OrgInvite, type OrgMeResponse, type OrgLogoSource, type InviteMailStatus, INVITE_NAME_MAX, orgLogoSrc, orgLogoOf,
 } from "@shared/orgs";
 
 export type OrgErrorCode =
@@ -33,6 +33,8 @@ export class OrgError extends Error {
 export interface OrgRow {
   id: string; slug: string; name: string; created_at: string; created_by: string;
   suspended_at: string | null; suspended_by: string | null;
+  /** The image the org shows (0048) — on the wire it is `logo_url` (`orgLogoSrc`). */
+  logo_sha: string | null;
 }
 
 const isUniqueViolation = (e: unknown): boolean => /UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e));
@@ -44,7 +46,7 @@ export function auditStmt(p: PlatformContext, orgId: string | null, action: OrgA
 }
 
 export function getOrgBySlug(p: PlatformContext, slug: string): Promise<OrgRow | null> {
-  return first<OrgRow>(p, `SELECT id, slug, name, created_at, created_by, suspended_at, suspended_by FROM orgs WHERE slug = ?`, slug);
+  return first<OrgRow>(p, `SELECT id, slug, name, created_at, created_by, suspended_at, suspended_by, logo_sha FROM orgs WHERE slug = ?`, slug);
 }
 
 // ── create ───────────────────────────────────────────────────────────────────
@@ -128,7 +130,7 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
     if (isUniqueViolation(e)) throw new OrgError("slug_taken"); // lost a race for the slug
     throw e;
   }
-  return { id, slug, name, created_at: at, created_by: p.actor, suspended_at: null, suspended_by: null };
+  return { id, slug, name, created_at: at, created_by: p.actor, suspended_at: null, suspended_by: null, logo_sha: null };
 }
 
 /** `POST /api/orgs`: a person with an allowance (`persons.org_limit`), under it; they become the owner. */
@@ -141,14 +143,15 @@ export async function createOrgForSelf(p: PlatformContext, handle: string, input
 
 // ── the caller's orgs and invites ────────────────────────────────────────────
 
-export function listMyOrgs(p: PlatformContext, handle: string): Promise<MyOrg[]> {
-  return all<MyOrg>(p,
-    `SELECT o.slug, o.name, m.role FROM memberships m JOIN orgs o ON o.id = m.org_id
+export async function listMyOrgs(p: PlatformContext, handle: string): Promise<MyOrg[]> {
+  const rows = await all<{ slug: string; name: string; role: OrgRole; logo_sha: string | null }>(p,
+    `SELECT o.slug, o.name, m.role, o.logo_sha FROM memberships m JOIN orgs o ON o.id = m.org_id
       WHERE m.user_id = ? COLLATE NOCASE AND o.suspended_at IS NULL ORDER BY o.name COLLATE NOCASE ASC`, handle);
+  return rows.map((r) => ({ slug: r.slug, name: r.name, role: r.role, logo_url: orgLogoSrc(r) }));
 }
 
 interface InviteJoinRow {
-  id: number; org_id: string; slug: string; name: string; role: "admin" | "member"; as_owner: number;
+  id: number; org_id: string; slug: string; name: string; logo_sha: string | null; role: "admin" | "member"; as_owner: number;
   invited_by: string; created_at: string; github_login: string | null; email: string | null;
 }
 
@@ -158,7 +161,7 @@ interface InviteJoinRow {
 const MINE = `(
   i.github_login IN (SELECT subject FROM identities WHERE person = ?1 COLLATE NOCASE AND provider = 'github')
   OR i.email IN (SELECT verified_email FROM identities WHERE person = ?1 COLLATE NOCASE AND verified_email IS NOT NULL))`;
-const INVITE_JOIN = `SELECT i.id, i.org_id, o.slug, o.name, i.role, i.as_owner, i.invited_by, i.created_at, i.github_login, i.email
+const INVITE_JOIN = `SELECT i.id, i.org_id, o.slug, o.name, o.logo_sha, i.role, i.as_owner, i.invited_by, i.created_at, i.github_login, i.email
   FROM org_invites i JOIN orgs o ON o.id = i.org_id
  WHERE i.status = 'pending' AND o.suspended_at IS NULL AND ${MINE}`;
 
@@ -167,7 +170,7 @@ const grantedRole = (r: { role: "admin" | "member"; as_owner: number }): OrgRole
 export async function listMyInvites(p: PlatformContext, handle: string): Promise<MyInvite[]> {
   const rows = await all<InviteJoinRow>(p, `${INVITE_JOIN} ORDER BY i.created_at DESC, i.id DESC`, handle);
   return rows.map((r) => ({
-    id: r.id, org: { slug: r.slug, name: r.name }, role: grantedRole(r), invited_by: r.invited_by,
+    id: r.id, org: { slug: r.slug, name: r.name, logo_url: orgLogoSrc(r) }, role: grantedRole(r), invited_by: r.invited_by,
     created_at: r.created_at, github_login: r.github_login, email: r.email,
   }));
 }
@@ -210,14 +213,21 @@ export async function respondToInvite(p: PlatformContext, handle: string, id: nu
 // ── inside one org: me, settings ─────────────────────────────────────────────
 
 export async function orgMe(p: PlatformContext, ctx: TenantContext): Promise<Omit<OrgMeResponse, "repos"> | null> {
-  const row = await first<{ slug: string; name: string; role: OrgRole; title: string | null; responsibilities: string | null }>(p,
-    `SELECT o.slug, o.name, m.role, m.title, m.responsibilities FROM orgs o JOIN memberships m ON m.org_id = o.id
+  const row = await first<{ slug: string; name: string; logo_sha: string | null; role: OrgRole; title: string | null; responsibilities: string | null }>(p,
+    `SELECT o.slug, o.name, o.logo_sha, m.role, m.title, m.responsibilities FROM orgs o JOIN memberships m ON m.org_id = o.id
       WHERE o.id = ? AND m.user_id = ? COLLATE NOCASE`, ctx.orgId, ctx.userId);
-  return row ? { org: { slug: row.slug, name: row.name }, role: row.role, title: row.title, responsibilities: row.responsibilities } : null;
+  return row ? { org: { slug: row.slug, name: row.name, logo_url: orgLogoSrc(row) }, role: row.role, title: row.title, responsibilities: row.responsibilities } : null;
 }
 
+interface SettingsRow {
+  slug: string; name: string; created_at: string; created_by: string;
+  logo_sha: string | null; logo_source: OrgLogoSource | null; logo_by: string | null; logo_from: string | null; logo_at: string | null;
+}
+
+/** Any member: the name, the slug, and the org's image with where it came from (src/orgs/logo.ts writes it). */
 export async function getOrgSettings(p: PlatformContext, ctx: TenantContext): Promise<OrgSettings | null> {
-  return first<OrgSettings>(p, `SELECT slug, name, created_at, created_by FROM orgs WHERE id = ?`, ctx.orgId);
+  const r = await first<SettingsRow>(p, `SELECT slug, name, created_at, created_by, logo_sha, logo_source, logo_by, logo_from, logo_at FROM orgs WHERE id = ?`, ctx.orgId);
+  return r ? { slug: r.slug, name: r.name, created_at: r.created_at, created_by: r.created_by, logo: orgLogoOf(r) } : null;
 }
 
 /** Admin+. The slug is not editable: it is every member's URL. */

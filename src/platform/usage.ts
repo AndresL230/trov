@@ -7,7 +7,7 @@
 // allowlists exactly this file; do not write a cross-org tenant read anywhere else.
 import { type PlatformContext, type Stmt, stmt, batch } from "../data/platform-sql";
 import { METRIC_API_READ, METRIC_API_WRITE, METRIC_MCP_REQUEST, METRIC_MCP_TOOL_PREFIX, USAGE_RETENTION_DAYS } from "../data/meter";
-import type { OrgUsage, PlatformUsageResponse, UsageActivity, UsageCreated, UsageDay, UsageSizes } from "@shared/orgs";
+import { orgLogoSrc, type OrgUsage, type PlatformUsageResponse, type UsageActivity, type UsageCreated, type UsageDay, type UsageSizes } from "@shared/orgs";
 
 export const USAGE_DEFAULT_DAYS = 30;
 export const USAGE_MAX_DAYS = USAGE_RETENTION_DAYS;
@@ -78,7 +78,7 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
   const sizeKeys = Object.keys(SIZE_SQL) as (keyof typeof SIZE_SQL)[];
   const createdKeys = Object.keys(CREATED_SQL) as (keyof UsageCreated)[];
   const stmts: Stmt[] = [
-    stmt(p, `SELECT id, slug, name, created_at, suspended_at FROM orgs ORDER BY name COLLATE NOCASE ASC`),
+    stmt(p, `SELECT id, slug, name, created_at, suspended_at, logo_sha FROM orgs ORDER BY name COLLATE NOCASE ASC`),
     stmt(p, `SELECT COUNT(*) AS n FROM persons WHERE handle <> 'github-webhook'`),
     stmt(p, TICKETS_SQL),
     stmt(p, EMAILS_SQL, sinceIso),
@@ -92,7 +92,7 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
   const res = await batch<Record<string, unknown>>(p, stmts);
   const rows = <T>(i: number): T[] => (res[i].results ?? []) as T[];
 
-  const orgs = rows<{ id: string; slug: string; name: string; created_at: string; suspended_at: string | null }>(0);
+  const orgs = rows<{ id: string; slug: string; name: string; created_at: string; suspended_at: string | null; logo_sha: string | null }>(0);
   const persons = Number(rows<{ n: number }>(1)[0]?.n ?? 0);
   const tickets = new Map(rows<{ org_id: string; n: number; open: number }>(2).map((r) => [r.org_id, r]));
   const emails = byOrg(rows<N>(3));
@@ -132,7 +132,7 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
     a.api_requests = a.api_reads + a.api_writes;
     a.top_tools = topTools(tools);
     return {
-      slug: o.slug, name: o.name, status: o.suspended_at ? "suspended" : "active", created_at: o.created_at,
+      slug: o.slug, name: o.name, logo_url: orgLogoSrc(o), status: o.suspended_at ? "suspended" : "active", created_at: o.created_at,
       last_activity_at: lastAt.get(o.id) ?? null, sizes: s, activity: a, series: [...series.values()],
     };
   });

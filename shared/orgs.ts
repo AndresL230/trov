@@ -1,6 +1,7 @@
 // Orgs, memberships, invites and the superadmin surface (canopy-multitenancy.md §5.3, §5.4) — the ONE
 // contract the Worker and the SPA share. Zod-free: the SPA imports the slug rule and these types as-is.
 import type { PersonColor } from "./rows";
+import { AVATAR_MAX_BYTES, AVATAR_TYPES } from "./people";
 
 export type OrgRole = "owner" | "admin" | "member";
 export type OrgStatus = "active" | "suspended";
@@ -34,6 +35,8 @@ export const INVITE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 /** Every `org_admin_audit.action` (0043). Kept here, not in a CHECK, so it can grow. */
 export const ORG_AUDIT_ACTIONS = [
   "org.create", "org.update", "org.suspend", "org.unsuspend",
+  // The org's image (0048, src/orgs/logo.ts): an admin's upload / removal, and a GitHub import that changed it.
+  "org.logo.set", "org.logo.remove", "org.logo.import",
   "member.add", "member.update", "member.remove", "member.leave",
   "invite.create", "invite.revoke", "invite.accept", "invite.decline",
   // Org settings › Repositories / Environments (src/integrations/settings.ts).
@@ -42,15 +45,49 @@ export const ORG_AUDIT_ACTIONS = [
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 
+// ── the org's image (0048) ───────────────────────────────────────────────────
+// An org shows ONE image wherever its name is (the initial tile without one): an admin's UPLOAD, or the
+// avatar of its primary repository's owner IMPORTED from GitHub — bytes in R2 at `org-logos/<sha>`,
+// served by the session-gated `GET /org-logo/<sha>`. An upload is never replaced by an import
+// (src/orgs/logo.ts holds the rule). The checks are the person photo's (shared/people.ts).
+
+export const ORG_LOGO_MAX_BYTES = AVATAR_MAX_BYTES;
+export const ORG_LOGO_TYPES = AVATAR_TYPES;
+export type OrgLogoSource = "upload" | "github";
+
+/** THE image rule: every DTO's `logo_url` is this — the app's own route, never a third party's URL. */
+export function orgLogoSrc(o: { logo_sha?: string | null }): string | null {
+  return o.logo_sha ? `/org-logo/${o.logo_sha}` : null;
+}
+
+/** The image and where it came from (Org settings › General). `by` is the uploader's handle (an upload),
+ *  `from` the GitHub login it was imported from (an import); all null when there is no image. */
+export interface OrgLogo {
+  url: string | null;
+  source: OrgLogoSource | null;
+  by: string | null;
+  from: string | null;
+  at: string | null;
+}
+
+/** `orgs`' five image columns (0048) as the wire's `OrgLogo`: they travel together — no image, no provenance. */
+export function orgLogoOf(r: { logo_sha: string | null; logo_source: OrgLogoSource | null; logo_by: string | null; logo_from: string | null; logo_at: string | null } | null): OrgLogo {
+  return r?.logo_sha
+    ? { url: orgLogoSrc(r), source: r.logo_source, by: r.logo_by, from: r.logo_from, at: r.logo_at }
+    : { url: null, source: null, by: null, from: null, at: null };
+}
+
 // ── user-level: GET /api/orgs ────────────────────────────────────────────────
 
-export interface MyOrg { slug: string; name: string; role: OrgRole }
+/** `logo_url` (0048) is on every org the Worker sends — here, an invitation's `org`, `OrgSummary`, the
+ *  Platform rows. It is typed optional so that an answer cached from before it existed reads as "no image". */
+export interface MyOrg { slug: string; name: string; role: OrgRole; logo_url?: string | null }
 
 /** A pending invite that is the caller's (§5.3). `role` is what accepting grants — `owner` for a
  *  superadmin's owner invite. Exactly one of `github_login` / `email` is set: what it matched on. */
 export interface MyInvite {
   id: number;
-  org: { slug: string; name: string };
+  org: { slug: string; name: string; logo_url?: string | null };
   role: OrgRole;
   invited_by: string;
   created_at: string;
@@ -70,7 +107,7 @@ export interface MyOrgsResponse {
 
 // ── tenant: /api/o/:slug/… ───────────────────────────────────────────────────
 
-export interface OrgSummary { slug: string; name: string }
+export interface OrgSummary { slug: string; name: string; logo_url?: string | null }
 
 /** The org's connected repositories as `owner/repo` (§9): `primary` is what an issue `#214`, the Repo
  *  dashboard and a handoff's default repo resolve against — null until one is connected; `all` lists
@@ -85,7 +122,11 @@ export interface OrgMeResponse {
   repos: OrgRepos;
 }
 
-export interface OrgSettings { slug: string; name: string; created_at: string; created_by: string }
+export interface OrgSettings { slug: string; name: string; created_at: string; created_by: string; logo?: OrgLogo }
+
+/** `POST /api/o/:slug/logo` and `…/logo/remove`: the image that shows now. After a removal that is the
+ *  GitHub image when the org has a repository to import from (tried at once), else none. */
+export interface OrgLogoResponse { ok: true; logo: OrgLogo }
 
 /** `responsibilities` is present only for an admin+ caller (shared/people.ts: never rendered to members). */
 export interface OrgMember {
@@ -130,6 +171,7 @@ export interface PlatformOrgOwner { handle: string; name: string | null }
 export interface PlatformOrgRow {
   slug: string;
   name: string;
+  logo_url?: string | null;
   status: OrgStatus;
   created_at: string;
   created_by: string;
@@ -199,6 +241,7 @@ export interface UsageDay { day: string; requests: number; mcp_calls: number }
 export interface OrgUsage {
   slug: string;
   name: string;
+  logo_url?: string | null;
   status: OrgStatus;
   created_at: string;
   last_activity_at: string | null;
