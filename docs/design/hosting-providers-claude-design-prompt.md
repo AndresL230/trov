@@ -362,8 +362,8 @@ interface HostingPollOutcome { env; part; provider: HostingProviderId; status: "
 | `GET /api/o/:slug/hosting/providers` (any member) | → `{ providers: HostingProviderDTO[] }` |
 | `PUT /api/o/:slug/environments/:env/parts/:part` | `{ provider, role?, label?, settings }` → `{ part, created }` (201 new) |
 | `DELETE /api/o/:slug/environments/:env/parts/:part` | → `{ ok, removed: { env, part, provider, legacy } }` |
-| `POST /api/o/:slug/hosting/:provider/connect` | → `{ url, method, expires_at }` — then navigate to `url` |
-| `GET /hosting/:provider/callback` (the provider redirects here) | → 302 to `/o/<slug>/#org/hosting?connected=…` / `?connect_error=…` |
+| `POST /api/o/:slug/hosting/:provider/connect` | → `{ url, method, expires_at }` — then navigate to `url`; 409 `already_connected` while an install / OAuth connection is live (Disconnect first) |
+| `GET /hosting/:provider/callback` (the provider redirects here) | → 302 to `/o/<slug>/?hosting=<outcome>&provider=<id>#org` (`HOSTING_CONNECT_OUTCOMES`); `/?hosting=<outcome>` when the intent can't be read; `/` when signed out |
 | `POST /api/o/:slug/hosting/:provider/test` | `{ scope?, env?, part? }` → `{ ok, detail, connection }` |
 | `POST /api/o/:slug/hosting/:provider/disconnect` | `{ scope? }` → `{ connection, upstream: "revoked" \| "failed" \| "none" }` |
 | `PUT /api/o/:slug/integrations/:kind[/:scope]` | `{ secret, config? }` — paste a token (existing API) |

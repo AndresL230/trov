@@ -156,6 +156,54 @@ export interface HostingProviderDTO {
 
 export type ConnectionStatus = "connected" | "not_connected" | "error" | "revoked";
 
+/**
+ * Why an install / OAuth connection ended — `org_hosting_connections.revoked_reason` (0044 CHECKs it). The row
+ * stores the CODE only; the sentence a person reads is derived from it (`hostingRevokedReasonText`):
+ *   disconnected  an admin disconnected it in Trov (Disconnect, or deleting the credential on Integrations)
+ *   uninstalled   the provider said it was removed on its side (the verified uninstall notice)
+ *   superseded    a pasted token replaced it (Integrations)
+ *   refused       Test connection got a 401 for it: the grant was revoked or removed on the provider's side
+ */
+export const HOSTING_REVOKED_REASONS = ["disconnected", "uninstalled", "superseded", "refused"] as const;
+export type HostingRevokedReason = (typeof HOSTING_REVOKED_REASONS)[number];
+export const isHostingRevokedReason = (v: unknown): v is HostingRevokedReason =>
+  typeof v === "string" && (HOSTING_REVOKED_REASONS as readonly string[]).includes(v);
+
+/** The sentence `HostingConnectionDTO.revoked_reason` carries for a stored code. */
+export function hostingRevokedReasonText(reason: HostingRevokedReason, providerLabel: string): string {
+  switch (reason) {
+    case "disconnected": return "Disconnected in Trov";
+    case "uninstalled": return `Removed on ${providerLabel}`;
+    case "superseded": return "Replaced by a pasted token";
+    case "refused": return `${providerLabel} refused the token — the grant was revoked or removed there`;
+  }
+}
+
+/**
+ * How an install / OAuth return ended — `GET /hosting/:provider/callback` always redirects, to
+ * `/o/<slug>/?hosting=<outcome>&provider=<id>#org` (or `/?hosting=<outcome>` when the sealed intent could not be
+ * read). ONE vocabulary; the SPA words each code, and nothing from the provider ever rides along:
+ *   connected            stored and bound to the org
+ *   expired              no intent of ours, a state that does not match it, another provider's, or too late
+ *   wrong_person         a different person is signed in than the one who started
+ *   not_admin            the person is no longer an admin of that org
+ *   denied               the person declined on the provider's page
+ *   not_configured       this deployment has no integration for the provider (any more)
+ *   exchange_failed      no code, or the provider would not exchange it for a usable credential
+ *   secrets_unavailable  the platform key is missing: no credential can be stored right now
+ *   taken                that installation is already connected to ANOTHER Trov org
+ *   already_connected    this org got another install / OAuth connection meanwhile — disconnect it first
+ *   unknown_provider     the return named a provider Trov does not know (or one with no install)
+ *   failed               anything else
+ */
+export const HOSTING_CONNECT_OUTCOMES = [
+  "connected", "expired", "wrong_person", "not_admin", "denied", "not_configured", "exchange_failed", "secrets_unavailable",
+  "taken", "already_connected", "unknown_provider", "failed",
+] as const;
+export type HostingConnectOutcome = (typeof HOSTING_CONNECT_OUTCOMES)[number];
+export const isHostingConnectOutcome = (v: unknown): v is HostingConnectOutcome =>
+  typeof v === "string" && (HOSTING_CONNECT_OUTCOMES as readonly string[]).includes(v);
+
 export interface HostingConnectionDTO {
   provider: HostingProviderId;
   /** "" for an org-wide credential; the environment key for a per-environment one (Railway). */
@@ -177,8 +225,12 @@ export interface HostingConnectionDTO {
   last_error: string | null;
   /** SaplingLearn's cut-over only: a legacy Worker secret answers for it. */
   legacy_fallback: boolean;
-  /** Why it was revoked, when `status` is `revoked` ("uninstalled on Vercel", "disconnected by andres"). */
+  /** Why it was revoked, when `status` is `revoked` — display text derived from the stored code
+   *  (`hostingRevokedReasonText`: "Removed on Vercel", "Disconnected in Trov"). */
   revoked_reason: string | null;
+  /** Where an admin manages this grant on the provider's side (Vercel's integrations page, Netlify's
+   *  applications, a token page), or null when the provider has no such page Trov can name. */
+  manage_url: string | null;
   /** The parts that use this connection — an unused connection can be disconnected without breaking anything. */
   used_by: { env: string; part: string }[];
 }

@@ -7,17 +7,18 @@
 //   3. the signature is verified with the integration's CLIENT SECRET (the Worker var `install.clientSecretVar`).
 //      No secret configured, a signature that does not verify, a verifier that throws → the SAME bare 401
 //      `{ "error": "unauthorized" }`, and NOTHING is written — unauthenticated traffic causes no write;
-//   4. a verified body that names a removed installation (`removedExternalId`) revokes it in EVERY org whose
-//      ACTIVE connection for that provider carries that installation id — found by a cross-org read (the
-//      notice names only the installation), and revoked as each org's SYSTEM tenant
-//      (`revokeFromProviderSide`, ./connections.ts): its secret deleted, its connection marked revoked by the
-//      provider, audited. A suspended org is included: a dead installation's credential goes either way.
+//   4. a verified body that names a removed installation (`removedExternalId`) ends the connection of the org
+//      whose ACTIVE connection for that provider carries that installation id (0044's unique index: at most
+//      one) — found by a cross-org read (src/platform/jobs.ts `connectionsForExternalId`: the notice names only
+//      the installation), and ended as that org's SYSTEM tenant (`endConnectionAsSystem`, ./connections.ts):
+//      its secret deleted, its connection marked revoked by `system` (`uninstalled`), audited. A suspended org
+//      is included: a dead installation's credential goes either way.
 //   5. 200 `{ ok: true, revoked: <n> }` — also for a verified notice about something else (`revoked: 0`).
 import { isHostingProvider } from "@shared/hosting";
-import { platform, systemTenant, type PlatformContext } from "../data/context";
-import { all } from "../data/platform-sql";
+import { platform, systemTenant } from "../data/context";
 import type { Env } from "../env";
-import { revokeFromProviderSide } from "./connections";
+import { connectionsForExternalId } from "../platform/jobs";
+import { endConnectionAsSystem } from "./connections";
 import type { ProviderMap } from "./part-writes";
 import { PROVIDERS } from "./registry";
 
@@ -55,17 +56,6 @@ async function rawBody(request: Request, cap: number): Promise<string | null> {
   return new TextDecoder().decode(bytes);
 }
 
-/**
- * The orgs whose ACTIVE connection for `provider` is the installation `externalId`, with its scope — a
- * cross-org read BEFORE any org is known (the notice names only the installation). Ids and a scope only;
- * declared in test/data-layer.static.test.ts (PLATFORM_ALLOW).
- */
-export function connectionsForExternalId(p: PlatformContext, provider: string, externalId: string): Promise<{ org_id: string; scope: string }[]> {
-  return all<{ org_id: string; scope: string }>(p,
-    `SELECT c.org_id, c.scope FROM org_hosting_connections c
-      WHERE c.provider = ? AND c.external_id = ? AND c.status = 'active' ORDER BY c.org_id, c.scope`, provider, externalId);
-}
-
 export async function handleHostingWebhook(request: Request, env: Env, providerId: string, providers: ProviderMap = PROVIDERS): Promise<Response> {
   if (!isHostingProvider(providerId) || !providers[providerId]?.install?.webhook) return json({ error: "not_found" }, 404);
   const provider = providers[providerId];
@@ -89,7 +79,7 @@ export async function handleHostingWebhook(request: Request, env: Env, providerI
   let revoked = 0;
   for (const row of await connectionsForExternalId(p, provider.id, externalId)) {
     try {
-      if (await revokeFromProviderSide(systemTenant(p, row.org_id, "system"), provider, row.scope, externalId)) revoked += 1;
+      if (await endConnectionAsSystem(systemTenant(p, row.org_id, "system"), provider, row.scope, "uninstalled", { externalId })) revoked += 1;
     } catch (e) {
       // One org's failure never costs another org its revocation; the name only — never the Error.
       console.error("hosting webhook: revocation failed", provider.id, `org=${row.org_id}`, e instanceof Error ? e.name : "error");

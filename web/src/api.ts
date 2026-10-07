@@ -414,7 +414,9 @@ export function listOrgAudit(slug: string, limit = 50): Promise<IntT.OrgAuditDTO
 // Admin+ except the provider catalogue. A token is pasted through the Integrations calls above (the provider's
 // kind is `HOSTING_INTEGRATION_KIND[provider]`); an install / OAuth connection is `startHostingConnect` + a
 // full-page navigation to its `url` — the provider sends the browser back to `/hosting/<provider>/callback`,
-// which lands on `#org/hosting?connected=<provider>` or `?connect_error=<code>`.
+// which always redirects: to `/o/<slug>/?hosting=<outcome>&provider=<id>#org` (`HOSTING_CONNECT_OUTCOMES`,
+// shared/hosting.ts — read `?hosting=` once at boot, like `?github=`), `/?hosting=<outcome>` when its intent
+// could not be read, or `/` when nobody was signed in.
 import type * as HostT from "@shared/hosting";
 /** Everything Org settings › Hosting shows, in one read: providers, environments + parts, connections, checklist. */
 export function getHostingSetup(slug: string): Promise<HostT.HostingSetupDTO> { return orgSend("GET", orgPath(slug, "/hosting")); }
@@ -430,9 +432,10 @@ export function putEnvironmentPart(slug: string, env: string, part: string, body
 export function deleteEnvironmentPart(slug: string, env: string, part: string): Promise<{ ok: true; removed: { env: string; part: string; provider: HostT.HostingProviderId; legacy: boolean } }> {
   return orgSend("DELETE", orgPath(slug, `/environments/${encodeURIComponent(env)}/parts/${encodeURIComponent(part)}`));
 }
-/** Begin an install / OAuth connection; then `location.assign(result.url)`. The call also sets the nonce cookie the
- *  callback checks, so it must be made from the browser that will follow the URL. Refusals (409): `not_available`,
- *  `not_installable`, `not_configured` — offer the token method instead. */
+/** Begin an install / OAuth connection; then `location.assign(result.url)`. The call also sets the sealed-intent
+ *  cookie the callback checks, so it must be made from the browser that will follow the URL. Refusals (409):
+ *  `already_connected` — disconnect first; `not_available`, `not_installable`, `not_configured` — offer the token
+ *  method instead. */
 export function startHostingConnect(slug: string, provider: HostT.HostingProviderId): Promise<HostT.ConnectStartDTO> {
   return orgSend("POST", orgPath(slug, `/hosting/${provider}/connect`));
 }

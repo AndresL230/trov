@@ -104,7 +104,7 @@ async function integrationWrite(c: C): Promise<Response> {
     if (t.verb === "delete") {
       await deleteSecret(ctx, t.kind, t.scope);
       // A hosting provider's install / OAuth row no longer describes a credential (src/hosting/connections.ts).
-      await supersedeConnection(ctx, t.kind, t.scope, "credential deleted in Trov");
+      await supersedeConnection(ctx, t.kind, t.scope, "disconnected");
       return c.json(await row(c, t));
     }
     if (t.verb === "test") {
@@ -116,7 +116,7 @@ async function integrationWrite(c: C): Promise<Response> {
     if (!body) return badJson(c);
     if (t.verb === "rotate") {
       await rotateSecret(ctx, t.kind, t.scope, body.secret as string);
-      await supersedeConnection(ctx, t.kind, t.scope, "replaced by a pasted token");
+      await supersedeConnection(ctx, t.kind, t.scope, "superseded");
       if (t.kind === "github_token") importLogoLater(c); // the org's image comes from GitHub (./logo.ts)
       return c.json(await row(c, t));
     }
@@ -136,7 +136,7 @@ async function integrationWrite(c: C): Promise<Response> {
     const problem = secretValueProblem(t.kind, body.secret);
     if (problem) return c.json({ error: "invalid_secret", field: "secret", message: problem }, 400);
     await setSecret(ctx, t.kind, t.scope, body.secret as string, config);
-    await supersedeConnection(ctx, t.kind, t.scope, "replaced by a pasted token");
+    await supersedeConnection(ctx, t.kind, t.scope, "superseded");
     if (t.kind === "github_token") importLogoLater(c);
     return c.json(await row(c, t), 201);
   });

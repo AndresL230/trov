@@ -7,7 +7,8 @@ import {
 } from "@shared/hosting";
 import { INTEGRATION_KINDS } from "@shared/integrations";
 import { PROVIDERS, allProviders, checkFields, providerDTO } from "../src/hosting/registry";
-import { HostRefusedError, hostFetch, pollWindow, HOUR, SETTLE_MS } from "../src/hosting/http";
+import { HostRefusedError, HostingError, hostFetch, pollWindow, probeFailure, refuse, HOUR, SETTLE_MS } from "../src/hosting/http";
+import { CONNECTION_METHODS } from "@shared/hosting";
 
 const HOSTNAME = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/;
 
@@ -103,6 +104,18 @@ describe.each(HOSTING_PROVIDERS.map((id) => [id] as [HostingProviderId]))("provi
     }
   });
 
+  it("names where a grant is managed, if it can: an https URL or null, for every method and any config — never a throw", () => {
+    for (const method of CONNECTION_METHODS) {
+      for (const config of [{}, { team_id: "team_x", team_slug: "x", org_slug: "y" }, { team_slug: "../../evil" }] as Record<string, string>[]) {
+        const url = p.manageUrl ? p.manageUrl(config, method) : null;
+        if (url !== null) expect(new URL(url).protocol, `${id} ${method}`).toBe("https:");
+      }
+    }
+    // A method the provider does not offer has no page.
+    const offered = new Set(p.connectionMethods.map((m) => m.method));
+    for (const method of CONNECTION_METHODS) if (!offered.has(method) && p.manageUrl) expect(p.manageUrl({}, method), `${id} ${method}`).toBeNull();
+  });
+
   it("builds console links without throwing, from empty or partial settings", () => {
     expect(() => p.consoleUrl({ settings: {} }, {})).not.toThrow();
     const url = p.consoleUrl({ settings: {} }, {});
@@ -148,6 +161,18 @@ describe("hostFetch — the fixed-host allowlist", () => {
     await expect(f(url)).rejects.toBeInstanceOf(HostRefusedError);
     await expect(f(url)).rejects.toThrow(why);
     expect(calls.length).toBe(before);
+  });
+});
+
+describe("a refusal carries its HTTP status", () => {
+  it("`refuse` sets it on the HostingError; `probeFailure` passes it on (a 401 ends an install at Test connection); fixed-text errors have none", async () => {
+    const err = await refuse("x read", new Response("{}", { status: 401 }), "tok").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HostingError);
+    expect((err as HostingError).status).toBe(401);
+    expect(probeFailure("x", err)).toEqual({ ok: false, detail: (err as Error).message, status: 401 });
+    expect(new HostingError("fixed words").status).toBeUndefined();
+    expect(probeFailure("x", new Error("boom"))).toEqual({ ok: false, detail: "x: the request failed" });
+    expect(new HostRefusedError("not https").status).toBeUndefined();
   });
 });
 

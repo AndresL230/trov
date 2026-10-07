@@ -1,17 +1,22 @@
 // Org settings › Hosting — CONNECTIONS (src/hosting/connections.ts, src/hosting/webhook.ts, src/hosting/routes.ts):
 // the connection list's statuses, the install round trip (start → the provider → the callback), its refusals,
-// Disconnect from Trov's side, the provider-side uninstall notice, and the Integrations page keeping an install
-// row honest. Every provider with behaviour here is a FAKE (test/helpers/hosting-setup.ts) — the real ones are
-// tested in their own suites — and every check that a credential did not leak looks for any 8-character piece.
+// Disconnect from Trov's side, the provider-side uninstall notice, Test connection ending a refused grant, and the
+// Integrations page keeping an install row honest. Every provider with behaviour here is a FAKE
+// (test/helpers/hosting-setup.ts) — the real ones are tested in their own suites — and every check that a
+// credential did not leak looks for any 8-character piece.
+//
+// The property under test (issue #97, the GitHub App binding's guarantees): an installed connection is bound to
+// ONE Trov org, for the signed-in admin who started it, from the browser that started it — the provider sees only
+// a random state — and every refusal writes NOTHING and lands on a redirect, never JSON.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
-import type { ConnectStartDTO, HostingConnectionDTO, HostingTestDTO } from "@shared/hosting";
+import { HOSTING_CONNECT_OUTCOMES, type ConnectStartDTO, type HostingConnectionDTO, type HostingTestDTO } from "@shared/hosting";
 import worker from "../src/index";
 import type { Env } from "../src/env";
 import { app } from "../src/routes";
-import { b64uDecode, hmacUnseal } from "../src/auth/crypto";
+import { b64uDecode, hmacSeal, hmacUnseal } from "../src/auth/crypto";
 import { getIntegrationConfig, getSecret, getSecretMeta, recordSecretOutcome, setIntegrationConfig, setSecret } from "../src/data/secrets";
-import { completeConnect, listConnections, startConnect } from "../src/hosting/connections";
+import { ConnectionConflictError, bindConnection, completeConnect, connectReturnUrl, listConnections, startConnect } from "../src/hosting/connections";
 import { HostingError } from "../src/hosting/http";
 import { handleHostingWebhook } from "../src/hosting/webhook";
 import { all, first, run } from "./helpers/db";
@@ -46,24 +51,54 @@ async function everything(...texts: string[]): Promise<string> {
   return [...texts, ...dump.map((d) => JSON.stringify(d.results))].join("\n");
 }
 
+/** What a refusal must leave untouched: every row a connection could write, in every org. */
+async function writable(): Promise<string> {
+  const dump = await env.DB.batch([
+    env.DB.prepare(`SELECT * FROM org_hosting_connections ORDER BY org_id, provider, scope`),
+    env.DB.prepare(`SELECT org_id, kind, scope, hint_last4, created_at, rotated_at, last_error FROM org_secrets ORDER BY org_id, kind, scope`),
+    env.DB.prepare(`SELECT * FROM org_integration_config ORDER BY org_id, kind, scope`),
+    env.DB.prepare(`SELECT COUNT(*) AS n FROM org_audit`), env.DB.prepare(`SELECT COUNT(*) AS n FROM org_admin_audit WHERE action LIKE 'hosting.%'`),
+  ]);
+  return JSON.stringify(dump.map((d) => d.results));
+}
+
 /** A part on (fake) Vercel in staging, so the org USES the provider. */
 async function vercelPart(web: ReturnType<typeof hostingTestApp>, cookie: string): Promise<void> {
   expect((await send(web, "PUT", `${A}/environments/staging/parts/web`, cookie, { provider: "vercel", settings: { project: "site" } })).status).toBe(201);
 }
 
-/** Start a connect through the route; returns the DTO, the nonce cookie and the sealed state. */
+/** Start a connect through the route; returns the DTO, the Set-Cookie, the sealed intent (the cookie's value) and the state the provider got. */
 async function start(web: ReturnType<typeof hostingTestApp>, cookie: string, e: Env = installEnv()) {
   const r = await send(web, "POST", `${A}/hosting/vercel/connect`, cookie, undefined, e);
   expect(r.status, JSON.stringify(r.json)).toBe(200);
   const dto = r.json as unknown as ConnectStartDTO;
   const setCookie = r.headers.get("set-cookie") ?? "";
-  const nonce = /trov_hx=([^;]+)/.exec(setCookie)?.[1] ?? "";
+  const intent = /trov_hx=([^;]+)/.exec(setCookie)?.[1] ?? "";
   const state = new URL(dto.url).searchParams.get("state") ?? "";
-  return { dto, setCookie, nonce, state };
+  return { dto, setCookie, intent, state };
 }
 
-const callback = (web: ReturnType<typeof hostingTestApp>, cookie: string, nonce: string | null, q: Record<string, string>, e: Env = installEnv()) =>
-  web.request(`/hosting/vercel/callback?${new URLSearchParams(q)}`, { headers: { cookie: nonce === null ? cookie : `${cookie}; trov_hx=${nonce}` } }, e as unknown as Record<string, unknown>);
+/** The provider's return, as `session` (null: signed out) with the `trov_hx` intent (null: none). */
+const callback = (web: ReturnType<typeof hostingTestApp>, session: string | null, intent: string | null, q: Record<string, string>, e: Env = installEnv(), provider = "vercel") =>
+  web.request(`/hosting/${provider}/callback?${new URLSearchParams(q)}`, { headers: { cookie: [session, intent === null ? null : `trov_hx=${intent}`].filter(Boolean).join("; ") } }, e as unknown as Record<string, unknown>);
+
+/** Where a return about SaplingLearn lands. */
+const back = (outcome: string, provider: string | null = "vercel") => `/o/saplinglearn/?hosting=${outcome}${provider ? `&provider=${provider}` : ""}#org`;
+const loc = async (r: Response | Promise<Response>): Promise<string> => {
+  const res = await r;
+  expect(res.status).toBe(302);
+  expect(res.headers.get("content-type") ?? "").not.toContain("json");
+  return res.headers.get("location")!;
+};
+const cleared = (res: Response) => expect(res.headers.get("set-cookie")).toMatch(/trov_hx=; Max-Age=0; Path=\/hosting\//);
+
+/** Another org's ACTIVE install of the same installation (`icfg_one` — the token endpoint's default). */
+async function seedOtherOrgInstall(externalId = "icfg_one"): Promise<void> {
+  await ensureMember("boss", "owner", ORG_B);
+  await setSecret(await tenantCtx("boss", "owner", { orgId: ORG_B }), "vercel", "", PASTED);
+  await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, account_id, account_label, status, connected_by, connected_at)
+    VALUES (?, 'vercel', '', 'install', ?, 'team_acme', 'Acme Team', 'active', 'boss', '2026-10-01T00:00:00Z')`, ORG_B, externalId);
+}
 
 describe("the connection list", () => {
   it("one row per (provider, scope) a part uses or the org holds a credential for — each status by its rule", async () => {
@@ -79,14 +114,14 @@ describe("the connection list", () => {
 
     let l = byKey(await list());
     expect(Object.keys(l)).toEqual(["cloudflare:", "railway:staging", "railway:production", "vercel:"]);
-    expect(l["vercel:"]).toMatchObject({ status: "not_connected", method: null, account: null, legacy_fallback: false, used_by: [{ env: "staging", part: "web" }], scope_label: null });
+    expect(l["vercel:"]).toMatchObject({ status: "not_connected", method: null, account: null, legacy_fallback: false, used_by: [{ env: "staging", part: "web" }], scope_label: null, manage_url: null });
     // SaplingLearn's cut-over: a legacy Worker secret answers for Cloudflare (the list says so; it is not "connected").
     expect(l["cloudflare:"]).toMatchObject({ status: "not_connected", legacy_fallback: true, used_by: [{ env: "staging", part: "frontend" }, { env: "production", part: "frontend" }] });
-    expect(l["railway:staging"]).toMatchObject({ scope_label: "staging", used_by: [{ env: "staging", part: "backend" }] });
+    expect(l["railway:staging"]).toMatchObject({ scope_label: "staging", used_by: [{ env: "staging", part: "backend" }], manage_url: null });
 
     await setSecret(ctx, "vercel", "", PASTED);
     l = byKey(await list());
-    expect(l["vercel:"]).toMatchObject({ status: "connected", method: "token", hint_last4: PASTED.slice(-4), connected_by: "AndresL230", last_error: null });
+    expect(l["vercel:"]).toMatchObject({ status: "connected", method: "token", hint_last4: PASTED.slice(-4), connected_by: "AndresL230", last_error: null, manage_url: "https://fake-host.test/tokens" });
     await recordSecretOutcome(ctx, "vercel", "", { ok: false, message: `401 for ${PASTED}`, revealed: PASTED });
     l = byKey(await list());
     expect(l["vercel:"].status).toBe("error");
@@ -94,30 +129,60 @@ describe("the connection list", () => {
 
     // An unused provider with a credential is listed too (it can be disconnected without breaking anything).
     await setSecret(ctx, "render", "", PASTED);
-    expect(byKey(await list())["render:"]).toMatchObject({ status: "connected", used_by: [] });
+    expect(byKey(await list())["render:"]).toMatchObject({ status: "connected", used_by: [], manage_url: null });
 
-    // Revoked: a connection row that ended, with no credential behind it.
+    // Revoked: a connection row that ended, with no credential behind it — the reason is a CODE, worded by the DTO.
     await run(env.DB, `DELETE FROM org_secrets WHERE org_id = ? AND kind = 'vercel'`, ORG_A);
     await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, account_id, account_label, status, connected_by, connected_at, revoked_at, revoked_by, revoked_reason)
-      VALUES (?, 'vercel', '', 'install', 'icfg_old', 'team_x', 'Team X', 'revoked', 'AndresL230', '2026-10-01T00:00:00Z', '2026-10-02T00:00:00Z', 'vercel', 'removed on Fakecel')`, ORG_A);
-    expect(byKey(await list())["vercel:"]).toMatchObject({ status: "revoked", method: null, revoked_reason: "removed on Fakecel", account: { id: "team_x", label: "Team X" }, external_id: "icfg_old" });
+      VALUES (?, 'vercel', '', 'install', 'icfg_old', 'team_x', 'Team X', 'revoked', 'AndresL230', '2026-10-01T00:00:00Z', '2026-10-02T00:00:00Z', 'system', 'uninstalled')`, ORG_A);
+    expect(byKey(await list())["vercel:"]).toMatchObject({
+      status: "revoked", method: null, revoked_reason: "Removed on Fakecel", account: { id: "team_x", label: "Team X" }, external_id: "icfg_old",
+      manage_url: "https://fake-host.test/personal/integrations",
+    });
+    for (const [code, words] of [["disconnected", "Disconnected in Trov"], ["superseded", "Replaced by a pasted token"], ["refused", "Fakecel refused the token — the grant was revoked or removed there"]]) {
+      await run(env.DB, `UPDATE org_hosting_connections SET revoked_reason = ? WHERE org_id = ?`, code, ORG_A);
+      expect(byKey(await list())["vercel:"].revoked_reason).toBe(words);
+    }
     expect(leakedFragments(JSON.stringify(await list()), PASTED)).toEqual([]);
+  });
+
+  it("the schema: ONE active connection per installation across orgs; an ended row, or no installation id, never conflicts; the reason is a code", async () => {
+    await ensureMember("boss", "owner", ORG_B);
+    const ins = (org: string, ext: string | null, status = "active", reason: string | null = null) =>
+      run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, status, connected_by, connected_at, revoked_reason)
+        VALUES (?, 'vercel', '', 'install', ?, ?, 'x', '2026-10-01T00:00:00Z', ?)`, org, ext, status, reason);
+    await ins(ORG_A, "icfg_shared");
+    await expect(ins(ORG_B, "icfg_shared")).rejects.toThrow(/UNIQUE constraint failed: org_hosting_connections/);
+    await ins(ORG_B, "icfg_shared", "revoked", "uninstalled"); // an ended row of the same installation is fine
+    await run(env.DB, `DELETE FROM org_hosting_connections`);
+    await ins(ORG_A, null);
+    await ins(ORG_B, null); // a grant with no installation id (Netlify's) claims nothing
+    await expect(run(env.DB, `UPDATE org_hosting_connections SET status = 'revoked', revoked_reason = 'removed on Vercel' WHERE org_id = ?`, ORG_A)).rejects.toThrow(/CHECK constraint failed/);
   });
 });
 
 describe("connect: start", () => {
-  it("answers where to send the browser, with a sealed state for (org, slug, provider, person) and a nonce cookie bound to /hosting/<provider>/", async () => {
+  it("sends the provider ONLY a random state; the intent { org, slug, provider, person, state, exp } is sealed in an HttpOnly cookie on /hosting/", async () => {
     await seedOrgSettings();
     const fakes = fakeProviders();
     const web = hostingTestApp(fakes.providers);
-    const { dto, setCookie, nonce, state } = await start(web, await ownerCookie());
+    const { dto, setCookie, intent, state } = await start(web, await ownerCookie());
     expect(dto.method).toBe("install");
     expect(Date.parse(dto.expires_at) - Date.now()).toBeGreaterThan(9 * 60_000);
     expect(dto.url.startsWith("https://fake-host.test/integrations/trov-test/new?client_id=oac_fake_client")).toBe(true);
-    expect(setCookie).toMatch(/trov_hx=[A-Za-z0-9_-]{20,}; Max-Age=600; Path=\/hosting\/vercel\/; HttpOnly; Secure; SameSite=Lax/);
-    const opened = await hmacUnseal(state, "hosting-connect:test-cookie-secret");
+    expect(setCookie).toMatch(/^trov_hx=[A-Za-z0-9_.-]{40,}; Max-Age=600; Path=\/hosting\/; HttpOnly; Secure; SameSite=Lax$/);
+    // The state the provider sees: 16 random bytes — nothing of Trov's (no org, slug, handle, nothing sealed).
+    expect(state).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(dto.url).not.toContain("saplinglearn"); // nor the org id, which contains it
+    expect(dto.url).not.toContain("AndresL230");
+    // The cookie: what the state answers for, sealed with the hosting-connect key.
+    const opened = await hmacUnseal(intent, "hosting-connect:test-cookie-secret");
     expect(opened).not.toBeNull();
-    expect(JSON.parse(b64uDecode(opened!))).toMatchObject({ o: ORG_A, s: "saplinglearn", p: "vercel", h: "AndresL230", n: nonce });
+    const sealed = JSON.parse(b64uDecode(opened!));
+    expect(sealed).toMatchObject({ o: ORG_A, s: "saplinglearn", p: "vercel", h: "AndresL230", state });
+    expect(sealed.exp).toBe(Date.parse(dto.expires_at));
+    // Two starts, two states.
+    expect((await start(web, await ownerCookie())).state).not.toBe(state);
     // The provider got the redirect URI (PUBLIC_ORIGIN) and the method's vars — never the client SECRET.
     const [args] = fakes.calls.authorize;
     expect(args.redirectUri).toBe("https://trov.test/hosting/vercel/callback");
@@ -141,10 +206,26 @@ describe("connect: start", () => {
     expect((await post("vercel", installEnv(), await roleCookie("casey", "member"))).json).toEqual({ error: "forbidden" });
     expect((await post("vercel", installEnv(), me, { authorization: "Bearer x" })).status).toBe(403);
   });
+
+  it("already connected: 409 `already_connected` while an install / OAuth grant is live — a pasted token or an ended install does not block", async () => {
+    await seedOrgSettings();
+    const web = hostingTestApp(fakeProviders().providers);
+    const me = await ownerCookie();
+    await setSecret(await tenantCtx("AndresL230"), "vercel", "", PASTED);
+    expect((await send(web, "POST", `${A}/hosting/vercel/connect`, me)).status).toBe(200); // a pasted token: an install supersedes it
+    await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, status, connected_by, connected_at, revoked_at, revoked_by, revoked_reason)
+      VALUES (?, 'vercel', '', 'install', 'icfg_old', 'revoked', 'AndresL230', '2026-10-01T00:00:00Z', '2026-10-02T00:00:00Z', 'system', 'uninstalled')`, ORG_A);
+    expect((await send(web, "POST", `${A}/hosting/vercel/connect`, me)).status).toBe(200);
+    await run(env.DB, `UPDATE org_hosting_connections SET status = 'active', revoked_at = NULL, revoked_by = NULL, revoked_reason = NULL WHERE org_id = ?`, ORG_A);
+    const r = await send(web, "POST", `${A}/hosting/vercel/connect`, me);
+    expect([r.status, r.json?.error]).toEqual([409, "already_connected"]);
+    expect(String(r.json?.message)).toMatch(/disconnect it first/);
+    expect(r.headers.get("set-cookie")).toBeNull();
+  });
 });
 
 describe("connect: the callback", () => {
-  it("stores the token, the grant's config and the install row; audits it; redirects to the org's Hosting tab — and nothing echoes the token", async () => {
+  it("stores the token, the grant's config and the install row in one write; audits it; lands on Org settings with ?hosting=connected — and nothing echoes the token", async () => {
     await seedOrgSettings();
     const fakes = fakeProviders();
     const endpoint = tokenEndpoint();
@@ -152,11 +233,11 @@ describe("connect: the callback", () => {
     const me = await ownerCookie();
     await vercelPart(web, me);
     const s = await start(web, me);
-    const res = await callback(web, me, s.nonce, { code: "code-123", state: s.state, configurationId: "icfg_one", teamId: "team_acme", next: "https://fake-host.test/done" });
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("/o/saplinglearn/#org/hosting?connected=vercel");
-    expect(res.headers.get("set-cookie")).toMatch(/trov_hx=; Max-Age=0; Path=\/hosting\/vercel\//);
+    const res = await callback(web, me, s.intent, { code: "code-123", state: s.state, configurationId: "icfg_one", teamId: "team_acme", next: "https://fake-host.test/done" });
+    expect(await loc(res)).toBe(back("connected"));
+    cleared(res);
     expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
 
     // The exchange: through the fixed-host fetch, with the client secret, the same redirect URI, the callback's query.
     expect(endpoint.urls).toEqual([`https://${FAKE_HOST}/oauth/token`]);
@@ -174,8 +255,15 @@ describe("connect: the callback", () => {
     expect((await adminAudit("hosting.connect")).map((a) => [a.actor, a.target, JSON.parse(a.detail)])).toEqual([
       ["AndresL230", "vercel", { provider: "vercel", method: "install", account: "Acme Team" }],
     ]);
+    expect((await secretAudit()).map((a) => [a.actor, a.action, a.target])).toEqual([
+      ["AndresL230", "secret.set", "vercel:"], ["AndresL230", "integration.config", "vercel:"],
+    ]);
     const conn = (await listConnections(ctx, installEnv(), fakes.providers)).find((c) => c.provider === "vercel")!;
-    expect(conn).toMatchObject({ status: "connected", method: "install", external_id: "icfg_one", account: { id: "team_acme", label: "Acme Team" }, config: { team_id: "team_acme" } });
+    expect(conn).toMatchObject({
+      status: "connected", method: "install", external_id: "icfg_one", account: { id: "team_acme", label: "Acme Team" }, config: { team_id: "team_acme" },
+      manage_url: "https://fake-host.test/team_acme/integrations",
+    });
+    expect(fakes.calls.revoke).toEqual([]);
     const setup = await send(web, "GET", `${A}/hosting`, me);
     const all = await everything(res.headers.get("location")!, JSON.stringify(setup.json), JSON.stringify(conn));
     expect(leakedFragments(all, LONG_TOKEN)).toEqual([]);
@@ -189,79 +277,237 @@ describe("connect: the callback", () => {
     const me = await ownerCookie();
     await setSecret(await tenantCtx("AndresL230"), "vercel", "", PASTED);
     const s = await start(web, me);
-    expect((await callback(web, me, s.nonce, { code: "c", state: s.state })).headers.get("location")).toBe("/o/saplinglearn/#org/hosting?connected=vercel");
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("connected"));
     const meta = await getSecretMeta(await tenantCtx("AndresL230"), "vercel", "");
     expect(meta).toMatchObject({ hint_last4: LONG_TOKEN.slice(-4) });
     expect(meta!.rotated_at).not.toBeNull();
     expect((await rows())[0]).toMatchObject({ method: "install", status: "active" });
+    expect((await secretAudit()).map((a) => a.action)).toEqual(["secret.set", "secret.rotate", "integration.config"]);
+    expect(fakes.calls.revoke).toEqual([]);
   });
 
-  it("every refusal is a redirect with a fixed code, writes nothing, and quotes nothing from the provider", async () => {
+  it("every refusal is a redirect with a fixed code from the ONE vocabulary, spends the intent, writes nothing, and quotes nothing from the provider", async () => {
     await seedOrgSettings();
     const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const fakes = fakeProviders();
     const web = hostingTestApp(fakes.providers, tokenEndpoint({ status: 400 }).fetch);
     const me = await ownerCookie();
     const s = await start(web, me);
-    const loc = async (r: Response | Promise<Response>) => (await r).headers.get("location");
+    const other = await start(web, me);
+    const before = await writable();
 
-    expect(await loc(callback(web, me, s.nonce, { code: "c", state: s.state.slice(0, -2) + "xx" }))).toBe("/#org/hosting?connect_error=mismatch");
-    expect(await loc(callback(web, me, s.nonce, { code: "c" }))).toBe("/#org/hosting?connect_error=mismatch");
-    expect(await loc(callback(web, me, null, { code: "c", state: s.state }))).toBe("/o/saplinglearn/#org/hosting?connect_error=mismatch");
-    expect(await loc(callback(web, me, "another-nonce", { code: "c", state: s.state }))).toBe("/o/saplinglearn/#org/hosting?connect_error=mismatch");
-    expect(await loc(callback(web, await roleCookie("admin-user", "admin"), s.nonce, { code: "c", state: s.state }))).toBe("/o/saplinglearn/#org/hosting?connect_error=mismatch");
-    expect(await loc(web.request(`/hosting/netlify/callback?${new URLSearchParams({ code: "c", state: s.state })}`, { headers: { cookie: `${me}; trov_hx=${s.nonce}` } }, installEnv() as never)))
-      .toMatch(/connect_error=(mismatch|unknown_provider)/);
-    expect(await loc(callback(web, me, s.nonce, { error: "access_denied", state: s.state }))).toBe("/o/saplinglearn/#org/hosting?connect_error=denied");
-    expect(await loc(callback(web, me, s.nonce, { state: s.state }))).toBe("/o/saplinglearn/#org/hosting?connect_error=mismatch");
-    expect(await loc(callback(web, me, s.nonce, { code: "c", state: s.state }, noInstallEnv()))).toBe("/o/saplinglearn/#org/hosting?connect_error=not_configured");
+    // The intent cannot be read (none, tampered, sealed with another key): no org to go back to.
+    expect(await loc(callback(web, me, null, { code: "c", state: s.state }))).toBe("/?hosting=expired");
+    expect(await loc(callback(web, me, `${s.intent.slice(0, -3)}abc`, { code: "c", state: s.state }))).toBe("/?hosting=expired");
+    const resealed = await hmacSeal(s.intent.slice(0, s.intent.lastIndexOf(".")), "hosting-connect:another-secret");
+    expect(await loc(callback(web, me, resealed, { code: "c", state: s.state }))).toBe("/?hosting=expired");
+    // The state: missing, wrong, or another start's.
+    expect(await loc(callback(web, me, s.intent, { code: "c" }))).toBe(back("expired"));
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: "nope" }))).toBe(back("expired"));
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: other.state }))).toBe(back("expired"));
+    // Another provider's callback for this intent; a provider Trov does not know.
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }, installEnv(), "netlify"))).toBe(back("expired", "netlify"));
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }, installEnv(), "nope"))).toBe(back("unknown_provider", null));
+    // Someone else's browser session.
+    expect(await loc(callback(web, await roleCookie("admin-user", "admin"), s.intent, { code: "c", state: s.state }))).toBe(back("wrong_person"));
+    // The person declined; no code came back; the deployment lost its integration.
+    expect(await loc(callback(web, me, s.intent, { error: "access_denied", state: s.state }))).toBe(back("denied"));
+    expect(await loc(callback(web, me, s.intent, { state: s.state }))).toBe(back("exchange_failed"));
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }, noInstallEnv()))).toBe(back("not_configured"));
 
     // The upstream refuses AND echoes the request (code + client secret): a fixed code out, a scrubbed log line.
-    expect(await loc(callback(web, me, s.nonce, { code: "code-XYZ-1234567", state: s.state }))).toBe("/o/saplinglearn/#org/hosting?connect_error=exchange_failed");
+    const refused = await callback(web, me, s.intent, { code: "code-XYZ-1234567", state: s.state });
+    expect(await loc(refused)).toBe(back("exchange_failed"));
+    cleared(refused);
     const logged = err.mock.calls.map((c) => c.map(String).join(" ")).join("\n");
     expect(logged).toContain("hosting connect: exchange failed");
     expect(leakedFragments(logged, CLIENT_SECRET)).toEqual([]);
     expect(logged).not.toContain("code-XYZ-1234567");
 
-    // Expired: the same state, ten minutes and a second later.
+    // Expired: the same intent, ten minutes and a second later.
     const later = await completeConnect(installEnv(), {
-      handle: "AndresL230", provider: "vercel", query: { code: "c", state: s.state }, cookieNonce: s.nonce, origin: "https://trov.test",
+      handle: "AndresL230", provider: "vercel", query: { code: "c", state: s.state }, cookie: s.intent, origin: "https://trov.test",
       now: Date.now() + 10 * 60_000 + 1000, providers: fakes.providers,
     });
-    expect(later).toEqual({ location: "/o/saplinglearn/#org/hosting?connect_error=expired", ok: false, error: "expired" });
+    expect(later).toEqual({ location: back("expired"), outcome: "expired" });
 
-    // Demoted between the start and the callback: forbidden.
+    // Demoted between the start and the callback; removed from the org.
     await ensureMember("AndresL230", "member");
-    expect(await loc(callback(web, me, s.nonce, { code: "c", state: s.state }))).toBe("/o/saplinglearn/#org/hosting?connect_error=forbidden");
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("not_admin"));
+    await run(env.DB, `DELETE FROM memberships WHERE org_id = ? AND user_id = 'AndresL230'`, ORG_A);
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("not_admin"));
     await ensureMember("AndresL230", "owner");
 
-    expect(await secretCount()).toBe(0);
-    expect(await rows()).toEqual([]);
-    expect(await adminAudit("hosting.connect")).toEqual([]);
+    expect(await writable()).toBe(before);
+    expect(fakes.calls.revoke).toEqual([]);
   });
 
-  it("the callback is at the app root and reachable by a person in SEVERAL orgs (the one-org alias does not apply)", async () => {
+  it("signed out: the provider's return lands on `/` — never the gate's 401 JSON — spends the intent and writes nothing", async () => {
+    await seedOrgSettings();
+    const fakes = fakeProviders();
+    const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
+    const s = await start(web, await ownerCookie());
+    const before = await writable();
+    const res = await callback(web, null, s.intent, { code: "c", state: s.state });
+    expect(await loc(res)).toBe("/");
+    cleared(res);
+    expect(await loc(callback(web, null, null, { code: "c", state: s.state }))).toBe("/");
+    expect(fakes.calls.exchange).toEqual([]);
+    expect(await writable()).toBe(before);
+    // Through the real app: a public path, so the session gate's 401 never answers it.
+    for (const cookie of [undefined, "session=garbage"]) {
+      const real = await app.request(`/hosting/vercel/callback?state=x&code=y`, cookie ? { headers: { cookie } } : {}, env);
+      expect([real.status, real.headers.get("location")]).toEqual([302, "/"]);
+    }
+  });
+
+  it("never JSON, never a 500 for a human: every return is a redirect — the provider down included", async () => {
+    await seedOrgSettings();
+    const me = await ownerCookie();
+    const fakes = fakeProviders();
+    const down = (async () => { throw new Error("the provider is down"); }) as typeof fetch;
+    const web = hostingTestApp(fakes.providers, down);
+    const s = await start(web, me);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    for (const q of [
+      {}, { state: s.state }, { code: "c" }, { error: "x", state: s.state }, { code: "c", state: "z" }, { code: "c", state: s.state, configurationId: "icfg_x" },
+    ] as Record<string, string>[]) {
+      for (const [session, intent] of [[me, s.intent], [me, null], [null, s.intent], [null, null], [me, "garbage"]] as [string | null, string | null][]) {
+        for (const provider of ["vercel", "nope", "netlify"]) {
+          const res = await callback(web, session, intent, q, installEnv(), provider);
+          expect(res.status, `${provider} ${JSON.stringify(q)} ${!!session} ${intent}`).toBe(302);
+          expect(res.headers.get("content-type") ?? "").not.toContain("json");
+          expect(HOSTING_CONNECT_OUTCOMES.some((o) => res.headers.get("location") === "/" || res.headers.get("location")!.includes(`hosting=${o}`))).toBe(true);
+        }
+      }
+    }
+    // A D1 failure anywhere in it (the session lookup itself) is still a redirect.
+    const broken = { ...installEnv(), DB: { prepare() { throw new Error("D1 down"); } } } as unknown as Env;
+    const res = await callback(web, me, s.intent, { code: "c", state: s.state }, broken);
+    expect([res.status, res.headers.get("location")]).toEqual([302, "/?hosting=failed"]);
+    expect(await rows()).toEqual([]);
+  });
+
+  it("the callback is at the app root and reachable by a person in SEVERAL orgs; nothing else under /hosting/ escapes the one-org alias", async () => {
     await ensureMember("AndresL230", "admin", ORG_B);
     const fakes = fakeProviders();
     const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
     const me = await ownerCookie();
     const s = await start(web, me);
-    expect((await callback(web, me, s.nonce, { code: "c", state: s.state })).headers.get("location")).toBe("/o/saplinglearn/#org/hosting?connected=vercel");
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("connected"));
     expect(await rows(ORG_B)).toEqual([]);
-    // The real app mounts it too (an unsealed state is a redirect, never the 409 org_required of the alias gate).
+    // The real app mounts it too (an unreadable intent is a redirect, never the 409 org_required of the alias gate).
     const real = await app.request(`/hosting/vercel/callback?state=x&code=y`, { headers: { cookie: me } }, env);
-    expect([real.status, real.headers.get("location")]).toEqual([302, "/#org/hosting?connect_error=mismatch"]);
+    expect([real.status, real.headers.get("location")]).toEqual([302, "/?hosting=expired"]);
+    // Exactly the callback's shape is let past the alias: any other /hosting/ path meets it.
+    for (const path of ["/hosting/vercel/other", "/hosting/vercel/callback/x", "/hosting/Vercel/callback"]) {
+      expect((await app.request(path, { headers: { cookie: me } }, env)).status, path).toBe(409);
+    }
+  });
+});
+
+describe("connect: one org per installation, one install per org", () => {
+  it("an installation another org holds is `taken` — even while that org is suspended; the new grant's TOKEN is handed back, never that org's installation", async () => {
+    await seedOrgSettings();
+    await seedOtherOrgInstall();
+    const fakes = fakeProviders();
+    const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
+    const me = await ownerCookie();
+    const before = await writable();
+    const s = await start(web, me);
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("taken"));
+    expect(fakes.calls.revoke.map((r) => ({ externalId: r.externalId, token: r.secret.reveal(), config: r.config }))).toEqual([
+      { externalId: null, token: LONG_TOKEN, config: { team_id: "team_acme" } },
+    ]);
+    await run(env.DB, `UPDATE orgs SET suspended_at = '2026-10-07T00:00:00Z', suspended_by = 'x' WHERE id = ?`, ORG_B);
+    const s2 = await start(web, me);
+    expect(await loc(callback(web, me, s2.intent, { code: "c", state: s2.state }))).toBe(back("taken"));
+    await run(env.DB, `UPDATE orgs SET suspended_at = NULL, suspended_by = NULL WHERE id = ?`, ORG_B);
+    expect(await writable()).toBe(before);
+    expect((await getSecret(await tenantCtx("boss", "owner", { orgId: ORG_B }), "vercel", ""))!.reveal()).toBe(PASTED);
+    // Once that org lets it go, this one may connect it.
+    await run(env.DB, `UPDATE org_hosting_connections SET status = 'revoked', revoked_reason = 'disconnected' WHERE org_id = ?`, ORG_B);
+    const s3 = await start(web, me);
+    expect(await loc(callback(web, me, s3.intent, { code: "c", state: s3.state }))).toBe(back("connected"));
+  });
+
+  it("a lost race at the write (the unique index) is `taken` too — and the batch stores NOTHING: not the row, not the credential, not the config", async () => {
+    await seedOrgSettings();
+    await seedOtherOrgInstall("icfg_raced");
+    const fakes = fakeProviders();
+    const ctx = await tenantCtx("AndresL230");
+    await setSecret(ctx, "vercel", "", PASTED); // a pasted token that must survive the failed bind
+    const before = await writable();
+    const grant = { accessToken: LONG_TOKEN, externalId: "icfg_raced", accountId: "team_acme", accountLabel: "Acme", config: { team_id: "team_acme" } };
+    await expect(bindConnection(ctx, fakes.providers.vercel!, "install", grant)).rejects.toBeInstanceOf(ConnectionConflictError);
+    expect(await writable()).toBe(before);
+    expect((await getSecret(ctx, "vercel", ""))!.reveal()).toBe(PASTED);
+    // The same bind with an installation nobody holds goes through, whole.
+    await bindConnection(ctx, fakes.providers.vercel!, "install", { ...grant, externalId: "icfg_free" });
+    expect((await getSecret(ctx, "vercel", ""))!.reveal()).toBe(LONG_TOKEN);
+    expect((await rows())[0]).toMatchObject({ external_id: "icfg_free", status: "active" });
+  });
+
+  it("another install appeared since the start: `already_connected`, the NEW installation handed back, the live one untouched", async () => {
+    await seedOrgSettings();
+    const fakes = fakeProviders();
+    const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
+    const me = await ownerCookie();
+    const s = await start(web, me);
+    // Meanwhile (another tab): a different installation was connected.
+    await setSecret(await tenantCtx("AndresL230"), "vercel", "", PASTED);
+    await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, account_id, account_label, status, connected_by, connected_at)
+      VALUES (?, 'vercel', '', 'install', 'icfg_other', 'team_other', 'Other', 'active', 'AndresL230', '2026-10-07T00:00:00Z')`, ORG_A);
+    const before = await writable();
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("already_connected"));
+    expect(fakes.calls.revoke.map((r) => ({ externalId: r.externalId, token: r.secret.reveal() }))).toEqual([{ externalId: "icfg_one", token: LONG_TOKEN }]);
+    expect(await writable()).toBe(before);
+    expect((await getSecret(await tenantCtx("AndresL230"), "vercel", ""))!.reveal()).toBe(PASTED);
+  });
+
+  it("the SAME installation again (a re-authorization) refreshes the connection — nothing is handed back", async () => {
+    await seedOrgSettings();
+    const fakes = fakeProviders();
+    const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
+    const me = await ownerCookie();
+    const s = await start(web, me);
+    await setSecret(await tenantCtx("AndresL230"), "vercel", "", PASTED);
+    await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, account_id, account_label, status, connected_by, connected_at)
+      VALUES (?, 'vercel', '', 'install', 'icfg_one', 'team_acme', 'Acme Team', 'active', 'AndresL230', '2026-10-07T00:00:00Z')`, ORG_A);
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("connected"));
+    expect(fakes.calls.revoke).toEqual([]);
+    expect(await rows()).toHaveLength(1);
+    expect((await getSecret(await tenantCtx("AndresL230"), "vercel", ""))!.reveal()).toBe(LONG_TOKEN);
+  });
+
+  it("no platform key: `secrets_unavailable`, nothing stored — and the grant nobody holds is handed back whole", async () => {
+    await seedOrgSettings();
+    const fakes = fakeProviders();
+    const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
+    const me = await ownerCookie();
+    const s = await start(web, me);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }, installEnv({ TROV_KEK: "" })))).toBe(back("secrets_unavailable"));
+    expect(fakes.calls.revoke.map((r) => r.externalId)).toEqual(["icfg_one"]);
+    expect(await rows()).toEqual([]);
+    expect(await secretCount()).toBe(0);
+  });
+
+  it("the return URL: the outcome in the QUERY, Org settings' canonical hash; no intent → the root", () => {
+    expect(connectReturnUrl("acme", "taken", "vercel")).toBe("/o/acme/?hosting=taken&provider=vercel#org");
+    expect(connectReturnUrl("acme", "unknown_provider", null)).toBe("/o/acme/?hosting=unknown_provider#org");
+    expect(connectReturnUrl(null, "expired", "vercel")).toBe("/?hosting=expired");
   });
 });
 
 describe("disconnect", () => {
-  async function installed(fakes = fakeProviders()) {
+  async function installed(fakes = fakeProviders(), probe?: number) {
     await seedOrgSettings();
-    const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
+    const web = hostingTestApp(fakes.providers, tokenEndpoint({ probe }).fetch);
     const me = await ownerCookie();
     await vercelPart(web, me);
     const s = await start(web, me);
-    await callback(web, me, s.nonce, { code: "c", state: s.state });
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("connected"));
     return { web, me, fakes };
   }
 
@@ -269,15 +515,17 @@ describe("disconnect", () => {
     const { web, me, fakes } = await installed();
     const r = await send(web, "POST", `${A}/hosting/vercel/disconnect`, me, {});
     expect(r.status).toBe(200);
-    expect(r.json).toMatchObject({ upstream: "revoked", connection: { provider: "vercel", status: "revoked", revoked_reason: "disconnected in Trov", used_by: [{ env: "staging", part: "web" }] } });
+    expect(r.json).toMatchObject({ upstream: "revoked", connection: { provider: "vercel", status: "revoked", revoked_reason: "Disconnected in Trov", used_by: [{ env: "staging", part: "web" }] } });
     const [rv] = fakes.calls.revoke;
     expect(rv.secret.reveal()).toBe(LONG_TOKEN);
     expect(rv).toMatchObject({ externalId: "icfg_one", config: { team_id: "team_acme" } });
     expect(await secretCount()).toBe(0);
-    expect((await rows())[0]).toMatchObject({ status: "revoked", revoked_by: "AndresL230", revoked_reason: "disconnected in Trov" });
+    expect((await rows())[0]).toMatchObject({ status: "revoked", revoked_by: "AndresL230", revoked_reason: "disconnected" });
     expect((await adminAudit("hosting.disconnect")).map((a) => JSON.parse(a.detail))).toEqual([{ provider: "vercel", method: "install", upstream: "revoked" }]);
     expect((await secretAudit()).filter((a) => a.action === "secret.delete").map((a) => [a.target, JSON.parse(a.detail).reason])).toEqual([["vercel:", "disconnected"]]);
     expect((await send(web, "POST", `${A}/hosting/vercel/disconnect`, me, {})).status).toBe(404);
+    // …and it may be connected again.
+    expect((await send(web, "POST", `${A}/hosting/vercel/connect`, me)).status).toBe(200);
   });
 
   it("a provider-side failure is logged scrubbed and does not stop the disconnect", async () => {
@@ -306,6 +554,48 @@ describe("disconnect", () => {
     expect(await secretCount()).toBe(0);
     expect(await rows()).toEqual([]);
   });
+
+  it("from the provider's side, by Test connection: a 401 for an INSTALLED grant ends it as `system` — the credential deleted, the row revoked `refused`, audited", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { web, me, fakes } = await installed(fakeProviders(), 401);
+    const r = await send(web, "POST", `${A}/hosting/vercel/test`, me, {});
+    expect(r.status).toBe(200);
+    const dto = r.json as unknown as HostingTestDTO;
+    expect(dto.ok).toBe(false);
+    // The REAL Vercel probe (Test connection reads the registry), against the part's project.
+    expect(dto.detail).toBe("vercel project 401: Not authorized — the credential is not valid — Vercel no longer accepts the grant, so the connection was ended; connect it again");
+    expect(dto.connection).toMatchObject({ status: "revoked", method: null, revoked_reason: "Fakecel refused the token — the grant was revoked or removed there", manage_url: "https://fake-host.test/team_acme/integrations" });
+    expect(await secretCount()).toBe(0);
+    expect((await rows())[0]).toMatchObject({ status: "revoked", revoked_by: "system", revoked_reason: "refused" });
+    expect((await adminAudit("hosting.revoked")).map((a) => [a.actor, a.target, JSON.parse(a.detail)])).toEqual([
+      ["system", "vercel", { provider: "vercel", method: "install", reason: "refused" }],
+    ]);
+    expect((await secretAudit()).at(-1)).toMatchObject({ actor: "system", action: "secret.delete", target: "vercel:" });
+    expect(JSON.parse((await secretAudit()).at(-1)!.detail).reason).toBe("refused");
+    expect(fakes.calls.revoke).toEqual([]); // the provider already let it go: nothing to remove there
+    expect(leakedFragments(await everything(JSON.stringify(r.json)), LONG_TOKEN)).toEqual([]);
+    // Nothing left to test.
+    expect((await send(web, "POST", `${A}/hosting/vercel/test`, me, {})).json).toMatchObject({ error: "not_configured" });
+  });
+
+  it("…but never a pasted token's, and never on another refusal: those only record last_error", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { web, me } = await installed(fakeProviders(), 403);
+    const r = await send(web, "POST", `${A}/hosting/vercel/test`, me, {});
+    expect(r.json).toMatchObject({ ok: false, connection: { status: "error", method: "install" } });
+    expect((await rows())[0]).toMatchObject({ status: "active" });
+    expect(await secretCount()).toBe(1);
+
+    await run(env.DB, `DELETE FROM org_hosting_connections`);
+    await run(env.DB, `DELETE FROM org_secrets`);
+    await setSecret(await tenantCtx("AndresL230"), "vercel", "", PASTED);
+    const web401 = hostingTestApp(fakeProviders().providers, tokenEndpoint({ probe: 401 }).fetch);
+    const t = await send(web401, "POST", `${A}/hosting/vercel/test`, me, {});
+    expect(t.json).toMatchObject({ ok: false, connection: { status: "error", method: "token" } });
+    expect(String((t.json as { detail: string }).detail)).not.toContain("connection was ended");
+    expect((await getSecret(await tenantCtx("AndresL230"), "vercel", ""))!.reveal()).toBe(PASTED);
+    expect(await adminAudit("hosting.revoked")).toEqual([]);
+  });
 });
 
 describe("the provider-side uninstall notice: POST /webhook/hosting/:provider", () => {
@@ -331,20 +621,22 @@ describe("the provider-side uninstall notice: POST /webhook/hosting/:provider", 
     expect(await adminAudit("hosting.revoked")).toEqual([]);
   });
 
-  it("a verified removal revokes the org holding that installation — and only it", async () => {
+  it("a verified removal ends the connection of the org holding that installation — and only it — as `system`, never naming the provider as a person", async () => {
     await seedInstall(ORG_A, "AndresL230", "icfg_a");
     await seedInstall(ORG_B, "boss", "icfg_b");
     const body = JSON.stringify({ type: "removed", id: "icfg_a" });
     const r = await deliver(body, await hmacHex(CLIENT_SECRET, body));
     expect([r.status, await r.json()]).toEqual([200, { ok: true, revoked: 1 }]);
     expect(await secretCount(ORG_A)).toBe(0);
-    expect((await rows(ORG_A))[0]).toMatchObject({ status: "revoked", revoked_by: "vercel", revoked_reason: "removed on Fakecel" });
+    expect((await rows(ORG_A))[0]).toMatchObject({ status: "revoked", revoked_by: "system", revoked_reason: "uninstalled" });
     expect((await adminAudit("hosting.revoked")).map((a) => [a.actor, a.target, JSON.parse(a.detail)])).toEqual([
-      ["system", "vercel", { provider: "vercel", method: "install", reason: "removed on Fakecel" }],
+      ["system", "vercel", { provider: "vercel", method: "install", reason: "uninstalled" }],
     ]);
     expect((await secretAudit()).map((a) => [a.actor, a.action, a.target, JSON.parse(a.detail).reason])).toEqual([
-      ["AndresL230", "secret.set", "vercel:", undefined], ["system", "secret.delete", "vercel:", "removed on Fakecel"],
+      ["AndresL230", "secret.set", "vercel:", undefined], ["system", "secret.delete", "vercel:", "uninstalled"],
     ]);
+    const conn = (await listConnections(await tenantCtx("AndresL230"), installEnv(), fakeProviders().providers)).find((c) => c.provider === "vercel")!;
+    expect(conn).toMatchObject({ status: "revoked", revoked_reason: "Removed on Fakecel" });
     // Org B: its own installation, untouched.
     expect(await secretCount(ORG_B)).toBe(1);
     expect((await rows(ORG_B))[0]).toMatchObject({ status: "active", external_id: "icfg_b" });
@@ -378,22 +670,22 @@ describe("the Integrations page keeps an install row honest", () => {
     const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
     const me = await ownerCookie();
     const s = await start(web, me);
-    await callback(web, me, s.nonce, { code: "c", state: s.state });
+    await callback(web, me, s.intent, { code: "c", state: s.state });
     const rotated = await app.request(`${A}/integrations/vercel/rotate`, { method: "POST", headers: { cookie: me, "content-type": "application/json" }, body: JSON.stringify({ secret: PASTED }) }, env);
     expect(rotated.status).toBe(200);
-    expect((await rows())[0]).toMatchObject({ status: "revoked", revoked_by: "AndresL230", revoked_reason: "replaced by a pasted token" });
+    expect((await rows())[0]).toMatchObject({ status: "revoked", revoked_by: "AndresL230", revoked_reason: "superseded" });
     const conn = (await listConnections(await tenantCtx("AndresL230"), installEnv(), fakes.providers)).find((c) => c.provider === "vercel")!;
-    expect(conn).toMatchObject({ status: "connected", method: "token", account: null, external_id: null });
+    expect(conn).toMatchObject({ status: "connected", method: "token", account: null, external_id: null, manage_url: "https://fake-host.test/tokens" });
 
     const body = JSON.stringify({ type: "removed", id: "icfg_one" });
     const r = await handleHostingWebhook(new Request("https://trov.test/webhook/hosting/vercel", { method: "POST", body, headers: { "x-fake-signature": await hmacHex(CLIENT_SECRET, body) } }), installEnv(), "vercel", fakes.providers);
     expect(await r.json()).toEqual({ ok: true, revoked: 0 });
     expect((await getSecret(await tenantCtx("AndresL230"), "vercel", ""))!.reveal()).toBe(PASTED);
-    // Deleting it on the Integrations page after a fresh install supersedes that one too.
+    // Deleting it on the Integrations page after a fresh install disconnects that one too.
     const s2 = await start(web, me);
-    await callback(web, me, s2.nonce, { code: "c", state: s2.state });
+    expect(await loc(callback(web, me, s2.intent, { code: "c", state: s2.state }))).toBe(back("connected"));
     expect((await app.request(`${A}/integrations/vercel`, { method: "DELETE", headers: { cookie: me } }, env)).status).toBe(200);
-    expect((await rows())[0]).toMatchObject({ status: "revoked", revoked_reason: "credential deleted in Trov" });
+    expect((await rows())[0]).toMatchObject({ status: "revoked", revoked_reason: "disconnected" });
   });
 });
 
@@ -414,7 +706,7 @@ describe("test connection: POST /hosting/:provider/test", () => {
     const dto = r.json as unknown as HostingTestDTO;
     expect(dto.ok).toBe(true);
     expect(dto.detail).toContain("Cloudflare answered");
-    expect(dto.connection).toMatchObject({ provider: "cloudflare", status: "connected", last_error: null });
+    expect(dto.connection).toMatchObject({ provider: "cloudflare", status: "connected", last_error: null, manage_url: "https://dash.cloudflare.com/profile/api-tokens" });
     expect(dto.connection.last_used_at).not.toBeNull();
     expect(seen).toEqual(["https://api.cloudflare.com/client/v4/graphql"]);
     expect(leakedFragments(JSON.stringify(r.json), LONG_TOKEN)).toEqual([]);
@@ -433,5 +725,17 @@ describe("test connection: POST /hosting/:provider/test", () => {
     expect((await t("railway", { env: "staging", part: "backend", scope: "production" })).json).toMatchObject({ field: "scope" });
     expect((await t("railway", { env: "staging", part: "backend" })).json).toMatchObject({ error: "not_configured" }); // scope = the part's environment
     expect((await t("vercel", {}, await roleCookie("casey", "member"))).status).toBe(403);
+  });
+});
+
+describe("completeConnect, directly", () => {
+  it("nobody signed in: the browser goes to `/` and the provider is never asked anything", async () => {
+    await seedOrgSettings();
+    const fakes = fakeProviders();
+    const { start: dto, cookie } = await startConnect(await tenantCtx("AndresL230"), installEnv(), "vercel", "https://trov.test", "saplinglearn", Date.now(), fakes.providers);
+    const state = new URL(dto.url).searchParams.get("state")!;
+    expect(await completeConnect(installEnv(), { handle: null, provider: "vercel", query: { code: "c", state }, cookie, origin: "https://trov.test", providers: fakes.providers }))
+      .toEqual({ location: "/", outcome: null });
+    expect(fakes.calls.exchange).toEqual([]);
   });
 });

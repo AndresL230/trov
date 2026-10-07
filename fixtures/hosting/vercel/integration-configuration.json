@@ -1,0 +1,15 @@
+{
+  "id": "icfg_Rt5uV6wX7yZ8aB9cD0eF1gH2",
+  "integrationId": "oac_Trov1234567890abcdef",
+  "slug": "trov",
+  "ownerId": "team_a1B2c3D4e5F6g7H8i9J0k1L2",
+  "teamId": "team_a1B2c3D4e5F6g7H8i9J0k1L2",
+  "userId": "Xk2mP9qL4rT7vW1yZ3bN5cD8",
+  "installationType": "integration",
+  "projectSelection": "selected",
+  "projects": ["prj_Ab12Cd34Ef56Gh78Ij90Kl12"],
+  "scopes": ["read:project", "read:deployment"],
+  "source": "marketplace",
+  "createdAt": 1791331200000,
+  "updatedAt": 1791331200000
+}

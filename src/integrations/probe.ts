@@ -18,8 +18,17 @@ import { ghJson } from "../repo/github";
 import type { IntegrationKind } from "@shared/integrations";
 import { listEnvironments, primaryRepo, webhookUrl } from "./settings";
 import { probeHostingKind } from "../hosting/probe";
+import { endRefusedConnection, liveInstallConnection } from "../hosting/connections";
+import { providerOfKind } from "@shared/hosting";
+import { providerOf } from "../hosting/registry";
 
-export interface ProbeResult { ok: boolean; detail: string }
+export interface ProbeResult {
+  ok: boolean;
+  detail: string;
+  /** A hosting provider's refusal status (src/hosting/http.ts `probeFailure`) — internal: `testConnection` reads
+   *  it and never returns it. */
+  status?: number;
+}
 
 const HOUR = 3_600_000;
 const TIMEOUT_MS = 10_000;
@@ -229,6 +238,12 @@ async function probeGithub(ctx: TenantContext, secret: Secret, fetchImpl: typeof
  * and leaves `last_error` alone. Every other kind records its outcome on the org's row. `partKey` (a hosting
  * provider's kind only — Org settings › Hosting's per-part Test) probes against THAT part's settings instead
  * of the first part that uses the provider.
+ *
+ * A hosting provider that answers 401 for a credential an install / OAuth grant put there has had that grant
+ * revoked or removed on its side: the connection is ENDED, as the org's system tenant (secret deleted, row
+ * revoked `refused`, audited `hosting.revoked` — src/hosting/connections.ts `endRefusedConnection`), so it can
+ * be disconnected from either side even when the provider sends no notice. Only Test connection does this —
+ * a person asked, and saw the answer; a poll's 401 only records `last_error` (src/hosting/poll.ts).
  */
 export async function testConnection(
   ctx: TenantContext, env: Env, kind: IntegrationKind, scope: string, origin: string, now: number = Date.now(), fetchImpl?: typeof fetch,
@@ -243,6 +258,8 @@ export async function testConnection(
       ? ok(`Last verified delivery at ${meta.last_used_at}. Payload URL: ${url}`)
       : fail(`No verified delivery yet. In the repository's webhook settings on GitHub set the Payload URL to ${url} and the secret to the value saved here.`);
   }
+  // Read BEFORE the probe: a refusal ends only the install / OAuth connection that was tested, never one made since.
+  const installed = providerOfKind(kind) ? await liveInstallConnection(ctx, kind, scope) : null;
   const secret = await resolveCredential(ctx, env, kind, scope);
   if (!secret) throw new SecretNotFoundError();
   const doFetch: typeof fetch = fetchImpl ?? ((input, init) => fetch(input, init));
@@ -258,8 +275,15 @@ export async function testConnection(
     case "vercel": case "render": case "netlify": case "fly": case "aws":
       result = await probeHostingKind(ctx, env, kind, secret, now, doFetch, partKey); break;
   }
+  const refused = !result.ok && result.status === 401;
   result = { ok: result.ok, detail: scrub(result.detail, revealed).replace(/\s+/g, " ").trim().slice(0, DETAIL_CHARS) };
   await recordSecretOutcome(ctx, kind, scope, result.ok ? { ok: true } : { ok: false, message: result.detail, revealed }, now);
   if (!result.ok) console.error("integration test failed", kind, scope, result.detail);
+  if (refused && installed && (await endRefusedConnection(env, ctx, kind, scope, installed.connected_at))) {
+    const id = providerOfKind(kind)!;
+    console.error("integration test: the provider refused an installed grant — the connection was ended", kind, scope);
+    const ended = ` — ${providerOf(id).label} no longer accepts the grant, so the connection was ended; connect it again`;
+    result = { ok: false, detail: `${result.detail.slice(0, DETAIL_CHARS - ended.length)}${ended}` };
+  }
   return result;
 }

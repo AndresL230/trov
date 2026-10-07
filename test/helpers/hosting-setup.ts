@@ -83,6 +83,7 @@ export function fakeProviders(o: FakeOpts = {}): Fakes {
     ],
     capabilities: { deploys: true, metrics: [] }, planNote: null, pollCost: 1,
     consoleUrl: (part, config) => (part.settings.project ? `https://fake-host.test/${config.team_id ?? "personal"}/${part.settings.project}` : null),
+    manageUrl: (config, method) => (method === "install" ? `https://fake-host.test/${config.team_id ?? "personal"}/integrations` : method === "token" ? "https://fake-host.test/tokens" : null),
     probe: async () => ({ ok: true, detail: "Fakecel answered." }),
     poll: async () => ({ deploys: [], points: [], unavailable: [], covered: null }),
     install: {
@@ -118,12 +119,18 @@ export function fakeProviders(o: FakeOpts = {}): Fakes {
 }
 
 /** A fetch for the fake host's token endpoint: 200 with an installed grant for `LONG_TOKEN`, unless `status` says otherwise
- *  (then the body ECHOES the request — code and client secret included — as a careless upstream would). */
-export function tokenEndpoint(o: { status?: number; token?: string; installation?: string; team?: string | null } = {}): { fetch: typeof fetch; urls: string[] } {
+ *  (then the body ECHOES the request — code and client secret included — as a careless upstream would). Test
+ *  connection's probe runs the REAL Vercel provider (src/integrations/probe.ts reads the registry): with `probe`,
+ *  a request to api.vercel.com answers that status. */
+export function tokenEndpoint(o: { status?: number; token?: string; installation?: string; team?: string | null; probe?: number } = {}): { fetch: typeof fetch; urls: string[] } {
   const urls: string[] = [];
   const f = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
     urls.push(url);
+    if (new URL(url).hostname === "api.vercel.com") {
+      return new Response(JSON.stringify(o.probe === undefined || o.probe === 200 ? { id: "team_acme", slug: "acme" } : { error: { code: "forbidden", message: "Not authorized" } }),
+        { status: o.probe ?? 200, headers: { "content-type": "application/json" } });
+    }
     const sent = init?.body ? String(init.body) : "";
     if ((o.status ?? 200) !== 200) return new Response(JSON.stringify({ error: { message: `bad request: ${sent}` } }), { status: o.status, headers: { "content-type": "application/json" } });
     return new Response(JSON.stringify({

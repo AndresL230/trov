@@ -379,6 +379,34 @@ export async function rotateSecret(ctx: TenantContext, kind: IntegrationKind, sc
 }
 
 /**
+ * The statements that STORE `value` as the org's secret for (kind, scope) — a set when none is stored, a
+ * rotate otherwise (one upsert either way, so a set that raced another lands as the rotate it is) — with
+ * its `secret.set` / `secret.rotate` audit row and, when given, the integration's `config` (+ its audit row),
+ * for a caller that must write them in ITS OWN batch beside another row: a hosting install binds its
+ * connection row and its credential atomically (src/hosting/connections.ts), so a lost race for the
+ * installation (a UNIQUE violation on that row) stores nothing. Admin+, the value checked like `setSecret`'s.
+ */
+export async function secretPutStmts(
+  ctx: TenantContext, kind: IntegrationKind, scope: string, value: string, config?: IntegrationConfig, at: string = nowIso()
+): Promise<Stmt[]> {
+  requireRole(ctx, "admin");
+  const problem = secretValueProblem(kind, value);
+  if (problem) throw new SecretValueError(problem);
+  const existed = (await getSecretMeta(ctx, kind, scope)) !== null;
+  const dek = await activeDek(ctx);
+  const sealed = await seal(dek.key, secretAad(ctx.orgId, kind, scope), value);
+  const hint = hintOf(value);
+  return [
+    stmt(ctx, `INSERT INTO org_secrets (org_id, kind, scope, ciphertext, iv, key_version, hint_last4, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(org_id, kind, scope) DO UPDATE SET ciphertext = excluded.ciphertext, iv = excluded.iv, key_version = excluded.key_version,
+                 hint_last4 = excluded.hint_last4, rotated_at = excluded.created_at, last_error = NULL`,
+      ctx.orgId, kind, scope, sealed.ciphertext, sealed.iv, dek.version, hint, ctx.userId, at),
+    auditStmt(ctx, existed ? "secret.rotate" : "secret.set", targetOf(kind, scope), { hint_last4: hint, key_version: dek.version }, at),
+    ...(config ? configStmts(ctx, kind, scope, config, at) : []),
+  ];
+}
+
+/**
  * The statements that delete each of `targets` that is actually stored, each with its `secret.delete`
  * audit row — for a caller that removes secrets inside its OWN batch (deleting an environment or a
  * repo deletes its secrets with it, §8.7.3). Empty when none is stored.

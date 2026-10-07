@@ -8,33 +8,45 @@
 //                    the method, the provider-side installation id (`external_id`, what an uninstall notice
 //                    names), the account it reaches, and how it ended (`revoked_*`).
 //
-// The round trip: `startConnect` seals `{ org, slug, provider, person, nonce, exp }` with HMAC (key
-// `hosting-connect:<COOKIE_SECRET>`) as the provider's `state`, and the route sets the nonce in a short-lived
-// HttpOnly cookie (path `/hosting/<provider>/`), so the callback is bound to the BROWSER that started it as well
-// as to the person. `completeConnect` checks all of it, re-checks the person's ADMIN membership of that org
-// live, exchanges the code through the provider's fixed-host fetch, stores the token as the org's secret and
-// the grant's non-secret config beside it, and answers a redirect to the SPA with a FIXED code — never the
-// provider's own words, which stay in a scrubbed log line.
+// The round trip has the GitHub App binding's guarantees (src/github-app/connect.ts; issue #97: "an installed
+// connection is bound to one Trov org, verified against the signed-in admin the same way the GitHub App binding
+// is, and can be disconnected from either side"):
+//   - the provider sees only a RANDOM `state`; what it answers for — `{ org, slug, provider, person, state, exp }` —
+//     is HMAC-sealed (key `hosting-connect:<COOKIE_SECRET>`) in the HttpOnly `trov_hx` cookie, Path `/hosting/`,
+//     10 minutes, spent by the first callback;
+//   - `completeConnect` binds only for that browser, that provider, that person — still an admin of that org,
+//     re-checked live — and only an installation no OTHER org holds (`taken`; 0044's partial unique index
+//     enforces it at the write, which is ONE batch with the credential) into an org not already connected by
+//     another install / OAuth grant (`already_connected` — Disconnect first; a pasted token is superseded);
+//   - the installation id comes from the provider's own answer, never from the callback URL (./providers/*);
+//   - a grant it refuses is handed back to the provider, best effort — never an installation another org holds;
+//   - every outcome is a redirect with a FIXED code (`HOSTING_CONNECT_OUTCOMES`) — never the provider's own
+//     words, which stay in a scrubbed log line — and nobody signed in lands on `/`.
+// Disconnecting from either side: Disconnect here (the provider-side removal first, best effort), the
+// provider's verified uninstall notice (./webhook.ts), or a 401 at Test connection (src/integrations/probe.ts)
+// — the last two end the connection as the org's SYSTEM tenant (`endConnectionAsSystem`).
 //
 // Nothing here returns, logs or audits a credential: every message that could quote an upstream is scrubbed
 // of the token, the code and the client secret BEFORE it is cut. This module reaches src/data/secrets.ts, so
 // nothing reachable from src/mcp.ts may import it (test/secrets.mcp.test.ts).
 import {
-  HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, isHostingProvider, providerOfKind,
-  type ConnectStartDTO, type ConnectionMethod, type ConnectionStatus, type HostingConnectionDTO, type HostingProviderId,
+  HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, hostingRevokedReasonText, isHostingProvider, isHostingRevokedReason, providerOfKind,
+  type ConnectStartDTO, type ConnectionMethod, type ConnectionStatus, type HostingConnectOutcome, type HostingConnectionDTO,
+  type HostingProviderId, type HostingRevokedReason,
 } from "@shared/hosting";
 import type { IntegrationKind, OrgSettingsAuditAction } from "@shared/integrations";
 import { b64uDecode, b64uEncode, hmacSeal, hmacUnseal, randomToken } from "../auth/crypto";
-import { hasRole, requireRole, resolveTenantById } from "../data/context";
+import { hasRole, platform, requireRole, resolveTenantById } from "../data/context";
 import {
-  SecretConflictError, SecretsUnavailableError, getIntegrationConfig, getSecret, getSecretMeta, hasLegacyCredential,
-  listIntegrationConfig, listSecretMeta, rotateSecret, secretDeleteStmts, secretValueProblem, setIntegrationConfig, setSecret,
+  SecretsUnavailableError, getIntegrationConfig, getSecret, getSecretMeta, hasLegacyCredential,
+  listIntegrationConfig, listSecretMeta, secretDeleteStmts, secretPutStmts, secretValueProblem,
   systemRevocationDeleteStmts, type SecretMeta,
 } from "../data/secrets";
 import { all, batch, first, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
 import type { Env } from "../env";
 import { SettingsError, listEnvironments } from "../integrations/settings";
-import { asHostingError, hostFetch, scrub } from "./http";
+import { connectionsForExternalId, jobTenant } from "../platform/jobs";
+import { asHostingError, hostFetch, scrub, type HostFetch } from "./http";
 import { listAllParts, type PartRow } from "./parts";
 import type { ProviderMap } from "./part-writes";
 import { PROVIDERS, checkFields } from "./registry";
@@ -54,7 +66,7 @@ export interface ConnectionRow {
   connected_at: string;
   revoked_at: string | null;
   revoked_by: string | null;
-  revoked_reason: string | null;
+  revoked_reason: HostingRevokedReason | null;
 }
 const CONNECTION_COLS = `provider, scope, method, external_id, account_id, account_label, status, connected_by, connected_at, revoked_at, revoked_by, revoked_reason`;
 
@@ -106,22 +118,27 @@ export async function describeConnection(
   // describes how the last install ended, shown while nothing replaced it.
   const live = row !== null && row.status === "active" && meta !== null;
   const ended = row !== null && row.status === "revoked" && meta === null;
+  const config = s.configs.find((c) => c.kind === kind && c.scope === scope)?.config ?? {};
+  // Where the grant is managed on the provider: for the current method, or — when the last install ended —
+  // the one it was made by (the grant may still be listed there).
+  const method: ConnectionMethod | null = meta ? (live ? row!.method : "token") : ended ? row!.method : null;
   return {
     provider: provider.id,
     scope,
     scope_label: scope ? s.envLabels.get(scope) ?? null : null,
     status,
-    method: meta ? (live ? row!.method : "token") : null,
+    method: meta ? method : null,
     account: live || ended ? { id: row!.account_id, label: row!.account_label } : null,
     external_id: live || ended ? row!.external_id : null,
-    config: s.configs.find((c) => c.kind === kind && c.scope === scope)?.config ?? {},
+    config,
     hint_last4: meta?.hint_last4 ?? "",
     connected_by: live ? row!.connected_by : meta?.created_by ?? null,
     connected_at: live ? row!.connected_at : meta?.created_at ?? null,
     last_used_at: meta?.last_used_at ?? null,
     last_error: meta?.last_error ?? null,
     legacy_fallback: meta === null && (await hasLegacyCredential(ctx, env, kind, scope)),
-    revoked_reason: status === "revoked" ? row?.revoked_reason ?? null : null,
+    revoked_reason: status === "revoked" && isHostingRevokedReason(row?.revoked_reason) ? hostingRevokedReasonText(row!.revoked_reason!, provider.label) : null,
+    manage_url: method ? manageUrlOf(provider, config, method) : null,
     used_by: s.parts.filter((p) => p.provider === provider.id && credentialScopeOf(provider, p) === scope).map((p) => ({ env: p.env, part: p.key })),
   };
 }
@@ -155,6 +172,14 @@ export async function listConnections(ctx: TenantContext, env: Env, providers: P
 /** One connection's DTO (what a disconnect / test answers with) — also for a (provider, scope) no part uses. */
 export async function connectionDTO(ctx: TenantContext, env: Env, provider: HostingProviderId, scope: string, providers: ProviderMap = PROVIDERS): Promise<HostingConnectionDTO> {
   return await describeConnection(ctx, env, await loadConnectionState(ctx), providers[provider], scope);
+}
+
+/** `HostingProvider.manageUrl`, kept to an https URL (a provider is code, but the contract is cheap to hold). */
+function manageUrlOf(p: HostingProvider, config: Readonly<Record<string, string>>, method: ConnectionMethod): string | null {
+  try {
+    const url = p.manageUrl?.(config, method) ?? null;
+    return url && new URL(url).protocol === "https:" ? url : null;
+  } catch { return null; }
 }
 
 // ── shared helpers ───────────────────────────────────────────────────────────
@@ -214,24 +239,37 @@ function installChoice(p: HostingProvider, env: unknown): InstallChoice | null {
 }
 
 // ── the install / OAuth round trip ───────────────────────────────────────────
+//
+// The GitHub App's shape (src/github-app/connect.ts): the provider is handed a RANDOM `state` and nothing else
+// of Trov's — never the org id, its slug or the person's handle. What the state answers for is sealed (HMAC, key
+// `hosting-connect:<COOKIE_SECRET>`) in the HttpOnly `trov_hx` cookie: `{ o: org id, s: slug, p: provider,
+// h: handle, state, exp }`, Path `/hosting/` (every provider's callback), 10 minutes, spent by the first callback
+// whatever its outcome. So a return binds only for the browser that started it, for that org and that person.
 
 export const CONNECT_TTL_MS = 10 * 60_000;
-/** The nonce cookie: per provider (its path), so two connects in two tabs do not clobber each other. */
 export const CONNECT_COOKIE = "trov_hx";
-export const connectCookiePath = (provider: string): string => `/hosting/${provider}/`;
-const stateKey = (env: Pick<Env, "COOKIE_SECRET">): string => `hosting-connect:${env.COOKIE_SECRET}`;
+/** One path for every provider's callback: a second connect (another provider, another tab) replaces the first. */
+export const CONNECT_COOKIE_PATH = "/hosting/";
+const sealKey = (env: Pick<Env, "COOKIE_SECRET">): string => `hosting-connect:${env.COOKIE_SECRET}`;
 /** Trov's callback for a provider — what is registered as the integration's redirect URL. */
 export const connectRedirectUri = (origin: string, provider: HostingProviderId): string => `${origin.replace(/\/+$/, "")}/hosting/${provider}/callback`;
 
-interface ConnectState { o: string; s: string | null; p: string; h: string; n: string; exp: number }
+/** The sealed intent: what the random `state` answers for. */
+interface ConnectIntent { o: string; s: string | null; p: string; h: string; state: string; exp: number }
 
-function parseState(json: string): ConnectState | null {
+const sealIntent = (i: ConnectIntent, env: Pick<Env, "COOKIE_SECRET">): Promise<string> => hmacSeal(b64uEncode(JSON.stringify(i)), sealKey(env));
+
+/** The intent a cookie carries, or null: absent, tampered, sealed with another key, or not the shape. Expiry
+ *  is checked by the caller — an expired intent still names the org to send the person back to. */
+async function openIntent(sealed: string | null, env: Pick<Env, "COOKIE_SECRET">): Promise<ConnectIntent | null> {
+  const opened = sealed ? await hmacUnseal(sealed, sealKey(env)) : null;
+  if (!opened) return null;
   try {
-    const v = JSON.parse(json) as Record<string, unknown>;
+    const v = JSON.parse(b64uDecode(opened)) as Record<string, unknown> | null;
     if (!v || typeof v !== "object") return null;
-    if (typeof v.o !== "string" || typeof v.p !== "string" || typeof v.h !== "string" || typeof v.n !== "string" || typeof v.exp !== "number") return null;
+    if (typeof v.o !== "string" || typeof v.p !== "string" || typeof v.h !== "string" || typeof v.state !== "string" || typeof v.exp !== "number") return null;
     if (v.s !== null && typeof v.s !== "string") return null;
-    return { o: v.o, s: v.s as string | null, p: v.p, h: v.h, n: v.n, exp: v.exp };
+    return { o: v.o, s: v.s as string | null, p: v.p, h: v.h, state: v.state, exp: v.exp };
   } catch {
     return null;
   }
@@ -244,13 +282,27 @@ const sameText = (a: string, b: string): boolean => {
   return d === 0;
 };
 
-export interface ConnectStart { start: ConnectStartDTO; nonce: string }
+/** An ACTIVE install / OAuth connection — what makes an org "already connected" (a pasted token never does). */
+const isLiveInstall = (row: ConnectionRow | null): row is ConnectionRow =>
+  row !== null && row.status === "active" && (row.method === "install" || row.method === "oauth");
+
+/** Is a new grant the SAME installation the row describes (a re-authorization, an "update" return)? By the
+ *  installation id when both have one, else by the provider-side account. */
+const sameGrant = (row: ConnectionRow, externalId: string | null, accountId: string | null): boolean =>
+  row.external_id && externalId ? row.external_id === externalId : !!row.account_id && !!accountId && row.account_id === accountId;
+
+export interface ConnectStart {
+  start: ConnectStartDTO;
+  /** The sealed intent — the route sets it as the `trov_hx` cookie. */
+  cookie: string;
+}
 
 /**
  * Begin an install / OAuth connection (admin+). Refusals (409, fixed text): a provider not supported yet, one
- * with no install / OAuth method (paste a token instead), a credential kept per environment, or a deployment
- * that has not configured the provider's integration (its client id / secret / required vars). Returns where to
- * send the browser and the nonce the route sets in the `trov_hx` cookie.
+ * with no install / OAuth method (paste a token instead), a credential kept per environment, an org that is
+ * ALREADY connected by an install / OAuth grant (`already_connected` — disconnect it first; a pasted token does
+ * not count: an install supersedes it), or a deployment that has not configured the provider's integration.
+ * Returns where to send the browser and the sealed intent the route sets in the `trov_hx` cookie.
  */
 export async function startConnect(
   ctx: TenantContext, env: Env, providerId: string, origin: string, orgSlug: string | null, now: number = Date.now(), providers: ProviderMap = PROVIDERS,
@@ -262,146 +314,223 @@ export async function startConnect(
     throw new SettingsError("not_installable", 409, `${p.label} has no install or OAuth connection — paste a token instead`);
   }
   if (p.credentialScope !== "org") throw new SettingsError("not_installable", 409, `${p.label} is connected per environment — paste a token instead`);
+  if (isLiveInstall(await connectionRow(ctx, p.id, ""))) {
+    throw new SettingsError("already_connected", 409, `${p.label} is already connected — disconnect it first`);
+  }
   const choice = installChoice(p, env);
   if (!choice) throw new SettingsError("not_configured", 409, `this Trov deployment has no ${p.label} integration configured — paste a token instead`);
-  const nonce = randomToken(16);
+  const state = randomToken(16);
   const exp = now + CONNECT_TTL_MS;
-  const payload: ConnectState = { o: ctx.orgId, s: orgSlug, p: p.id, h: ctx.userId, n: nonce, exp };
-  const state = await hmacSeal(b64uEncode(JSON.stringify(payload)), stateKey(env));
+  const cookie = await sealIntent({ o: ctx.orgId, s: orgSlug, p: p.id, h: ctx.userId, state, exp }, env);
   const url = p.install.authorizeUrl({ clientId: choice.clientId, redirectUri: connectRedirectUri(origin, p.id), state, vars: choice.vars });
-  return { start: { url, method: choice.spec.method, expires_at: new Date(exp).toISOString() }, nonce };
+  return { start: { url, method: choice.spec.method, expires_at: new Date(exp).toISOString() }, cookie };
 }
 
-/** The fixed codes a callback redirects with — the SPA words each one; nothing from the provider ever rides along. */
-export type ConnectErrorCode =
-  | "unknown_provider" | "mismatch" | "expired" | "denied" | "forbidden" | "not_configured" | "exchange_failed" | "secrets_unavailable" | "failed";
-
 export interface ConnectCallback {
-  /** The signed-in person (the session's principal). */
-  handle: string;
+  /** The person signed in NOW (the session cookie — never a bearer), or null. */
+  handle: string | null;
   /** The callback path's provider segment. */
   provider: string;
   query: Readonly<Record<string, string>>;
-  /** The `trov_hx` cookie's value, or null. */
-  cookieNonce: string | null;
+  /** The `trov_hx` cookie's value (the sealed intent), or null. */
+  cookie: string | null;
   origin: string;
   now?: number;
   fetchImpl?: typeof fetch;
   providers?: ProviderMap;
 }
 
-export interface ConnectOutcome { location: string; ok: boolean; error: ConnectErrorCode | null }
-
-const hostingLocation = (slug: string | null, query: string): string =>
-  `${slug ? `/o/${encodeURIComponent(slug)}/` : "/"}#org/hosting?${query}`;
+/** Where the callback sends the browser, and the outcome it carries (null: nobody was signed in). */
+export interface ConnectOutcome { location: string; outcome: HostingConnectOutcome | null }
 
 /**
- * `GET /hosting/:provider/callback` — finish an install / OAuth connection. Never throws: every outcome is a
- * redirect to Org settings › Hosting, `?connected=<provider>` or `?connect_error=<fixed code>`.
+ * The page a return lands on: Org settings of the org the intent named, with the outcome in the QUERY (the
+ * hash is the SPA's route) — `/o/<slug>/?hosting=<outcome>&provider=<id>#org`; `/?hosting=<outcome>` when no
+ * intent could be read. `#org` is Org settings' canonical hash (Integrations): there is no Hosting tab yet —
+ * the UI that adds one can point this at it.
+ */
+export function connectReturnUrl(slug: string | null, outcome: HostingConnectOutcome, provider: HostingProviderId | null): string {
+  if (!slug) return `/?hosting=${outcome}`;
+  return `/o/${encodeURIComponent(slug)}/?hosting=${outcome}${provider ? `&provider=${provider}` : ""}#org`;
+}
+
+/**
+ * `GET /hosting/:provider/callback` — finish an install / OAuth connection. Never throws, and every outcome is
+ * a redirect (`connectReturnUrl`) with a FIXED code from `HOSTING_CONNECT_OUTCOMES`; nobody signed in → `/`.
+ * An installation is bound only when ALL of these hold — a failure at any step writes nothing:
+ *   1. our sealed intent is in this browser, for this provider, unexpired, and the provider handed back ITS state;
+ *   2. the person signed in now is the person who started, and is still an admin of that org;
+ *   3. the provider exchanges the code for a usable credential;
+ *   4. the installation is no OTHER org's (`taken` — 0044's unique index says so again at the write), and this
+ *      org has not been connected by ANOTHER install / OAuth grant meanwhile (`already_connected`).
+ * A grant refused at 4 (or lost to an error after the exchange) is handed back to the provider, best effort
+ * (`dropGrant`) — but an installation another org holds is never removed: only the new credential is.
  */
 export async function completeConnect(env: Env, cb: ConnectCallback): Promise<ConnectOutcome> {
   const providers = cb.providers ?? PROVIDERS;
   const now = cb.now ?? Date.now();
-  let slug: string | null = null;
-  const fail = (error: ConnectErrorCode): ConnectOutcome => ({ location: hostingLocation(slug, `connect_error=${error}`), ok: false, error });
+  // Nobody signed in: the landing page. The return cannot be tied to a person, so it says nothing either.
+  if (!cb.handle) return { location: "/", outcome: null };
+  const handle = cb.handle;
+  const intent = await openIntent(cb.cookie, env);
+  const p = isHostingProvider(cb.provider) && providers[cb.provider]?.install ? providers[cb.provider] : null;
+  const to = (outcome: HostingConnectOutcome): ConnectOutcome =>
+    ({ location: connectReturnUrl(intent?.s ?? null, outcome, outcome === "unknown_provider" ? null : p?.id ?? null), outcome });
 
-  if (!isHostingProvider(cb.provider) || !providers[cb.provider]?.install) return fail("unknown_provider");
-  const p = providers[cb.provider];
+  if (!p) return to("unknown_provider");
+  // 1 — our intent, for this provider, unexpired, and the state the provider handed back is the one sealed in it.
+  const state = cb.query.state ?? "";
+  if (!intent || intent.p !== p.id || !state || !sameText(state, intent.state) || intent.exp <= now) return to("expired");
+  // 2 — the same person, then (below, live) still an admin of that org.
+  if (intent.h.toLowerCase() !== handle.toLowerCase()) return to("wrong_person");
+  if (cb.query.error) return to("denied"); // the person declined on the provider's page
+
   const install = p.install!;
-
-  // The state: sealed by us, for this provider, still fresh, from THIS browser, for THIS person.
-  const sealed = cb.query.state ?? "";
-  const opened = sealed ? await hmacUnseal(sealed, stateKey(env)) : null;
-  let decoded: string | null = null;
-  try { decoded = opened === null ? null : b64uDecode(opened); } catch { decoded = null; }
-  const st = decoded === null ? null : parseState(decoded);
-  if (!st) return fail("mismatch");
-  slug = st.s;
-  if (st.p !== p.id) return fail("mismatch");
-  if (st.exp <= now) return fail("expired");
-  if (!cb.cookieNonce || !sameText(cb.cookieNonce, st.n)) return fail("mismatch");
-  if (st.h.toLowerCase() !== cb.handle.toLowerCase()) return fail("mismatch");
-  if (cb.query.error) return fail("denied"); // the person declined on the provider's page
-
+  const hf = hostFetch(p.apiHosts, cb.fetchImpl ?? ((input, init) => fetch(input, init)));
+  let grant: InstallGrant | null = null;
+  // What a refusal after the exchange may remove on the provider's side: the installation itself only once it
+  // is known to be nobody's (set below); until then, only the new credential.
+  let removable: string | null = null;
   try {
-    // Admin of that org NOW — a membership or role lost since the start does not survive the round trip.
-    const ctx = await resolveTenantById(env, cb.handle, st.o, "session");
-    if (!ctx || !hasRole(ctx, "admin")) return fail("forbidden");
-    const code = cb.query.code;
-    if (!code) return fail("mismatch");
+    const ctx = await resolveTenantById(env, handle, intent.o, "session");
+    if (!ctx || !hasRole(ctx, "admin")) return to("not_admin");
     const choice = installChoice(p, env);
-    if (!choice) return fail("not_configured");
-
-    const redirectUri = connectRedirectUri(cb.origin, p.id);
-    let grant: InstallGrant;
+    if (!choice) return to("not_configured");
+    // 3 — the exchange.
+    const code = cb.query.code;
+    if (!code) return to("exchange_failed");
     try {
       grant = await install.exchange({
-        fetch: hostFetch(p.apiHosts, cb.fetchImpl ?? ((input, init) => fetch(input, init))),
-        code, clientId: choice.clientId, clientSecret: choice.clientSecret, redirectUri, query: { ...cb.query },
+        fetch: hf, code, clientId: choice.clientId, clientSecret: choice.clientSecret, redirectUri: connectRedirectUri(cb.origin, p.id), query: { ...cb.query },
       });
     } catch (e) {
       // A HostingError is scrubbed by the provider; anything else is replaced by fixed words. Scrubbed again
       // here of what THIS side revealed, then cut — never the Error object itself.
       const msg = scrub(asHostingError(`${p.id} install`, e).message, [choice.clientSecret, code]).slice(0, 300);
-      console.error("hosting connect: exchange failed", p.id, `org=${st.o}`, msg);
-      return fail("exchange_failed");
+      console.error("hosting connect: exchange failed", p.id, `org=${intent.o}`, msg);
+      return to("exchange_failed");
     }
     const token = grant?.accessToken;
     if (typeof token !== "string" || secretValueProblem(HOSTING_INTEGRATION_KIND[p.id], token) !== null) {
-      console.error("hosting connect: the exchange returned no usable token", p.id, `org=${st.o}`);
-      return fail("exchange_failed");
+      grant = null; // nothing usable to hand back either
+      console.error("hosting connect: the exchange returned no usable token", p.id, `org=${intent.o}`);
+      return to("exchange_failed");
     }
+    const externalId = cleanText(grant.externalId);
+    const accountId = cleanText(grant.accountId);
 
-    const kind = HOSTING_INTEGRATION_KIND[p.id];
-    // The credential: stored, or replacing whatever was there (a pasted token, a previous install).
-    if (await getSecretMeta(ctx, kind, "")) await rotateSecret(ctx, kind, "", token);
-    else {
-      try { await setSecret(ctx, kind, "", token); } catch (e) {
-        if (!(e instanceof SecretConflictError)) throw e;
-        await rotateSecret(ctx, kind, "", token); // lost a race with another write
+    // 4 — one org per installation: held by another org (a suspended one included) is `taken`.
+    if (externalId) {
+      const holders = await connectionsForExternalId(platform(env, handle), p.id, externalId);
+      if (holders.some((h) => h.org_id !== ctx.orgId)) {
+        await dropGrant(p, hf, grant, null, intent.o, "taken");
+        return to("taken");
       }
     }
-    await mergeGrantConfig(ctx, p, kind, grant.config);
+    // …and one install / OAuth connection per org: another one appeared since the start.
+    const row = await connectionRow(ctx, p.id, "");
+    const same = isLiveInstall(row) && sameGrant(row, externalId, accountId);
+    if (isLiveInstall(row) && !same) {
+      await dropGrant(p, hf, grant, externalId, intent.o, "already_connected");
+      return to("already_connected");
+    }
+    if (!same) removable = externalId;
 
-    const at = nowIso();
-    const accountLabel = cleanText(grant.accountLabel);
-    await batch(ctx, [
-      stmt(ctx, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, account_id, account_label, status, connected_by, connected_at)
-                 VALUES (?, ?, '', ?, ?, ?, ?, 'active', ?, ?)
-                 ON CONFLICT(org_id, provider, scope) DO UPDATE SET method = excluded.method, external_id = excluded.external_id,
-                   account_id = excluded.account_id, account_label = excluded.account_label, status = 'active', connected_by = excluded.connected_by,
-                   connected_at = excluded.connected_at, revoked_at = NULL, revoked_by = NULL, revoked_reason = NULL`,
-        ctx.orgId, p.id, choice.spec.method, cleanText(grant.externalId), cleanText(grant.accountId), accountLabel, ctx.userId, at),
-      auditStmt(ctx, "hosting.connect", p.id, { provider: p.id, method: choice.spec.method, account: accountLabel }, at),
-    ]);
+    try {
+      // The same installation again keeps the id it was bound by when this grant did not carry one.
+      await bindConnection(ctx, p, choice.spec.method, { ...grant, externalId: externalId ?? (same ? row!.external_id : null), accountId });
+    } catch (e) {
+      if (!(e instanceof ConnectionConflictError)) throw e;
+      // Lost the race for the installation: another org bound it between the check above and the write.
+      await dropGrant(p, hf, grant, null, intent.o, "taken");
+      return to("taken");
+    }
     // OWNER CHECK: Vercel's callback also carries `next`, and an install may need the browser sent there to be
     // finalised (UNCONFIRMED, research doc › Vercel) — it is deliberately NOT followed; the whole query still
     // reached `exchange` above.
-    return { location: hostingLocation(slug, `connected=${p.id}`), ok: true, error: null };
+    return to("connected");
   } catch (e) {
-    if (e instanceof SecretsUnavailableError) return fail("secrets_unavailable");
-    console.error("hosting connect failed", p.id, `org=${st.o}`, e instanceof Error ? e.name : "error"); // the name only — never the Error
-    return fail("failed");
+    if (grant) await dropGrant(p, hf, grant, removable, intent.o, "error");
+    if (e instanceof SecretsUnavailableError) return to("secrets_unavailable");
+    console.error("hosting connect failed", p.id, `org=${intent.o}`, e instanceof Error ? e.name : "error"); // the name only — never the Error
+    return to("failed");
   }
 }
 
-/** Merge what the grant taught (a team id) into the org's config for the provider: only the provider's own
- *  fields, each checked against its pattern; a refused value is dropped and logged by KEY. */
-async function mergeGrantConfig(ctx: TenantContext, p: HostingProvider, kind: IntegrationKind, given: unknown): Promise<void> {
-  if (!given || typeof given !== "object" || Array.isArray(given)) return;
+/**
+ * Hand a grant Trov will NOT keep back to the provider — best effort, so no orphan stays live upstream: the
+ * provider's `install.revoke` with the NEW credential. `externalId` null removes only what that credential is,
+ * never an installation (`InstallSpec.revoke`): the caller passes the id only when the installation is nobody's
+ * — never for `taken`, where it is another org's live connection. A failure is one scrubbed log line; it never
+ * changes the outcome.
+ */
+async function dropGrant(p: HostingProvider, hf: HostFetch, grant: InstallGrant, externalId: string | null, orgId: string, why: string): Promise<void> {
+  if (!p.install?.revoke) return;
+  const token = grant.accessToken;
+  const config: Record<string, string> = {};
+  for (const [k, v] of Object.entries(grant.config ?? {})) if (typeof v === "string") config[k] = v;
+  try {
+    await p.install.revoke({ fetch: hf, secret: { reveal: () => token }, externalId, config });
+  } catch (e) {
+    console.error("hosting connect: handing the refused grant back failed", p.id, why, `org=${orgId}`, scrub(asHostingError(`${p.id} revoke`, e).message, token).slice(0, 300));
+  }
+}
+
+/** The binding lost a race: the installation went to another org between the callback's check and its write
+ *  (0044's unique index on the active installation ids). */
+export class ConnectionConflictError extends Error {
+  constructor() { super("the installation is already connected to another org"); this.name = "ConnectionConflictError"; }
+}
+const isInstallationConflict = (e: unknown): boolean =>
+  e instanceof Error && /UNIQUE constraint failed:\s*org_hosting_connections\b/i.test(e.message);
+
+/**
+ * Bind a grant to `ctx`'s org: the connection row (which CLAIMS the installation — 0044's partial unique index),
+ * the credential (stored, or replacing a pasted token or an earlier grant) and the grant's config, audited —
+ * ONE batch, so a lost race for the installation stores nothing at all (`ConnectionConflictError`).
+ */
+export async function bindConnection(
+  ctx: TenantContext, p: HostingProvider, method: "install" | "oauth", grant: InstallGrant, at: string = nowIso(),
+): Promise<void> {
+  const kind = HOSTING_INTEGRATION_KIND[p.id];
+  const config = await mergedGrantConfig(ctx, p, kind, grant.config);
+  const accountLabel = cleanText(grant.accountLabel);
+  const stmts: Stmt[] = [
+    stmt(ctx, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, account_id, account_label, status, connected_by, connected_at)
+               VALUES (?, ?, '', ?, ?, ?, ?, 'active', ?, ?)
+               ON CONFLICT(org_id, provider, scope) DO UPDATE SET method = excluded.method, external_id = excluded.external_id,
+                 account_id = excluded.account_id, account_label = excluded.account_label, status = 'active', connected_by = excluded.connected_by,
+                 connected_at = excluded.connected_at, revoked_at = NULL, revoked_by = NULL, revoked_reason = NULL`,
+      ctx.orgId, p.id, method, cleanText(grant.externalId), cleanText(grant.accountId), accountLabel, ctx.userId, at),
+    ...(await secretPutStmts(ctx, kind, "", grant.accessToken, config ?? undefined, at)),
+    auditStmt(ctx, "hosting.connect", p.id, { provider: p.id, method, account: accountLabel }, at),
+  ];
+  try {
+    await batch(ctx, stmts);
+  } catch (e) {
+    if (isInstallationConflict(e)) throw new ConnectionConflictError();
+    throw e;
+  }
+}
+
+/** What the grant taught (a team id) merged into the org's config for the provider — only the provider's own
+ *  fields, each checked against its pattern; null when nothing changes, or when a value was refused (logged
+ *  by KEY). */
+async function mergedGrantConfig(ctx: TenantContext, p: HostingProvider, kind: IntegrationKind, given: unknown): Promise<Record<string, string> | null> {
+  if (!given || typeof given !== "object" || Array.isArray(given)) return null;
   const known = new Set(p.orgConfigFields.map((f) => f.key));
   const fromGrant = Object.fromEntries(Object.entries(given as Record<string, unknown>).filter(([k]) => known.has(k)));
-  if (Object.keys(fromGrant).length === 0) return;
+  if (Object.keys(fromGrant).length === 0) return null;
   const current = await getIntegrationConfig(ctx, kind, "");
   // `required` is not this merge's question (an admin may still have to fill a field the grant did not carry).
   const checked = checkFields(p.orgConfigFields.map((f) => ({ ...f, required: false })), { ...current, ...fromGrant }, "config");
   if ("field" in checked) {
     console.error("hosting connect: a config value from the grant was refused", p.id, checked.field);
-    return;
+    return null;
   }
   const next = checked.values;
   const same = Object.keys(next).length === Object.keys(current).length && Object.keys(next).every((k) => next[k] === current[k]);
-  if (!same) await setIntegrationConfig(ctx, kind, "", next);
+  return same ? null : next;
 }
 
 // ── disconnect ───────────────────────────────────────────────────────────────
@@ -446,9 +575,9 @@ export async function disconnect(
   const at = nowIso();
   await batch(ctx, [
     ...(await secretDeleteStmts(ctx, [{ kind, scope }], "disconnected", at)),
-    ...(active ? [stmt(ctx, `UPDATE org_hosting_connections SET status = 'revoked', revoked_at = ?, revoked_by = ?, revoked_reason = ?
+    ...(active ? [stmt(ctx, `UPDATE org_hosting_connections SET status = 'revoked', revoked_at = ?, revoked_by = ?, revoked_reason = 'disconnected'
                              WHERE org_id = ? AND provider = ? AND scope = ? AND status = 'active'`,
-      at, ctx.userId, "disconnected in Trov", ctx.orgId, p.id, scope)] : []),
+      at, ctx.userId, ctx.orgId, p.id, scope)] : []),
     auditStmt(ctx, "hosting.disconnect", p.id, { provider: p.id, ...(scope ? { scope } : {}), method: active?.method ?? "token", upstream }, at),
   ]);
   return { connection: await connectionDTO(ctx, env, p.id, scope, providers), upstream };
@@ -457,10 +586,11 @@ export async function disconnect(
 /**
  * An Integrations-page write to a hosting provider's credential (src/integrations/routes.ts — a pasted token
  * over an installed one, a set, a delete) means the install / OAuth row no longer describes the secret: it is
- * marked revoked (no provider-side call — that is Disconnect's), audited. Without this, a later "uninstalled"
- * notice for the OLD installation would delete the credential that replaced it. A no-op otherwise.
+ * marked revoked (no provider-side call — that is Disconnect's), audited — `superseded` for a pasted token,
+ * `disconnected` for a delete. Without this, a later "uninstalled" notice for the OLD installation would delete
+ * the credential that replaced it. A no-op otherwise.
  */
-export async function supersedeConnection(ctx: TenantContext, kind: IntegrationKind, scope: string, reason: string): Promise<void> {
+export async function supersedeConnection(ctx: TenantContext, kind: IntegrationKind, scope: string, reason: "superseded" | "disconnected"): Promise<void> {
   const provider = providerOfKind(kind);
   if (!provider) return;
   const row = await connectionRow(ctx, provider, scope);
@@ -473,26 +603,53 @@ export async function supersedeConnection(ctx: TenantContext, kind: IntegrationK
   ]);
 }
 
-// ── provider-side revocation (src/hosting/webhook.ts) ────────────────────────
+// ── ended from the provider's side (./webhook.ts, src/integrations/probe.ts) ──
 
 /**
- * A provider's VERIFIED "uninstalled" notice, for ONE org that holds that installation: as the org's SYSTEM
- * tenant, delete the credential it granted and mark the connection revoked (`revoked_by` = the provider id,
- * "removed on <Label>"), audited `hosting.revoked` — one batch. Re-reads the row first: a connection that was
- * replaced since the lookup (another install, a pasted token) is left alone. Returns whether it revoked.
+ * End an install / OAuth connection because the PROVIDER'S side ended it — its verified uninstall notice
+ * (`uninstalled`, ./webhook.ts) or a 401 at Test connection (`refused`, `endRefusedConnection`) — as the org's
+ * SYSTEM tenant: the credential deleted (`systemRevocationDeleteStmts`), the row marked revoked by `system` (a
+ * reserved handle — never a provider id, `revoked_by` is in HANDLE_COLUMNS) with the reason's CODE, audited
+ * `hosting.revoked` — one batch. Re-reads the row first and acts only on the connection the caller saw (the
+ * installation id a notice names; the `connected_at` Test connection read before its probe): one replaced since
+ * (another install, a pasted token) is left alone. Returns whether it ended one.
  */
-export async function revokeFromProviderSide(ctx: TenantContext, provider: HostingProvider, scope: string, externalId: string): Promise<boolean> {
+export async function endConnectionAsSystem(
+  ctx: TenantContext, provider: HostingProvider, scope: string, reason: "uninstalled" | "refused", match: { externalId?: string; connectedAt?: string },
+): Promise<boolean> {
   const row = await connectionRow(ctx, provider.id, scope);
-  if (!row || row.status !== "active" || row.external_id !== externalId) return false;
+  if (!isLiveInstall(row)) return false;
+  if (match.externalId !== undefined && row.external_id !== match.externalId) return false;
+  if (match.connectedAt !== undefined && row.connected_at !== match.connectedAt) return false;
   const kind = HOSTING_INTEGRATION_KIND[provider.id];
-  const reason = `removed on ${provider.label}`;
   const at = nowIso();
   await batch(ctx, [
     ...(await systemRevocationDeleteStmts(ctx, kind, scope, reason, at)),
-    stmt(ctx, `UPDATE org_hosting_connections SET status = 'revoked', revoked_at = ?, revoked_by = ?, revoked_reason = ?
-               WHERE org_id = ? AND provider = ? AND scope = ? AND status = 'active' AND external_id = ?`,
-      at, provider.id, reason, ctx.orgId, provider.id, scope, externalId),
+    stmt(ctx, `UPDATE org_hosting_connections SET status = 'revoked', revoked_at = ?, revoked_by = 'system', revoked_reason = ?
+               WHERE org_id = ? AND provider = ? AND scope = ? AND status = 'active' AND connected_at = ?`,
+      at, reason, ctx.orgId, provider.id, scope, row.connected_at),
     auditStmt(ctx, "hosting.revoked", provider.id, { provider: provider.id, ...(scope ? { scope } : {}), method: row.method, reason }, at),
   ]);
   return true;
+}
+
+/** The org's LIVE install / OAuth connection for a hosting `kind` / `scope` — its `connected_at` — or null (no
+ *  row, ended, a pasted token, not a hosting kind). What Test connection reads BEFORE its probe. */
+export async function liveInstallConnection(ctx: TenantContext, kind: IntegrationKind, scope: string): Promise<{ connected_at: string } | null> {
+  const id = providerOfKind(kind);
+  if (!id) return null;
+  const row = await connectionRow(ctx, id, scope);
+  return isLiveInstall(row) ? { connected_at: row.connected_at } : null;
+}
+
+/**
+ * Test connection got a 401 for the credential an install / OAuth grant put there: the grant was revoked or
+ * removed on the provider's side, so the connection is ended (`refused`) — ONLY Test connection does this (a
+ * poll's 401 is recorded in `last_error` and deletes nothing: src/hosting/poll.ts). `connectedAt` is what
+ * `liveInstallConnection` read before the probe. Runs as the org's system tenant (`jobTenant` refuses a bearer).
+ */
+export async function endRefusedConnection(env: Env, ctx: TenantContext, kind: IntegrationKind, scope: string, connectedAt: string): Promise<boolean> {
+  const id = providerOfKind(kind);
+  if (!id) return false;
+  return endConnectionAsSystem(jobTenant(env, ctx), PROVIDERS[id], scope, "refused", { connectedAt });
 }

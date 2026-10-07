@@ -344,7 +344,7 @@ const PLATFORM: Record<string, string> = {
   "GET /api/invites": "the caller's own pending invites (matched on their GitHub login / provider-verified email)",
   "POST /api/invites/:id/accept": "an invite that is the caller's — anyone else's id is 404",
   "POST /api/invites/:id/decline": "an invite that is the caller's",
-  "GET /hosting/:provider/callback": "a hosting provider's install / OAuth callback (src/hosting/connections.ts `completeConnect`): the org rides in the HMAC-sealed state, bound to the browser's nonce cookie and to the signed-in person, and the person's ADMIN membership of that org is re-checked live — every refusal is a redirect with a fixed code that writes nothing",
+  "GET /hosting/:provider/callback": "a hosting provider's install / OAuth callback (src/hosting/connections.ts `completeConnect`), a PUBLIC path that reads the session cookie itself: the org rides in the HMAC-sealed intent of the browser's `trov_hx` cookie (the provider sees only a random state), bound to the signed-in person, whose ADMIN membership of that org is re-checked live — an installation another org holds is refused, and every outcome is a redirect with a fixed code (nobody signed in → `/`)",
   "GET /avatar/:sha": "content-addressed person avatar (64 hex): a person's own picture, the same in every org",
   "GET /org-logo/:sha": "content-addressed org image (64 hex of its own bytes): shown wherever the org's NAME is, and the name reaches non-members (an invitee's picker, Platform) — bytes only, no org named, and nothing but an `org-logos/` object is served",
   "GET /api/platform/orgs": "requireSuperadmin", "POST /api/platform/orgs": "requireSuperadmin", "GET /api/platform/orgs/:slug": "requireSuperadmin",

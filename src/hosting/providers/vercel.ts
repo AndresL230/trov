@@ -23,14 +23,16 @@
 // and listed in the owner checks): the `meta` commit keys (`githubCommitSha` / `…Ref` / `…Message` and the
 // gitlab / bitbucket spellings), whether `projectId=` accepts a project NAME as well as a `prj_` id (the SDK
 // says "ID or name"), whether `target=preview` is accepted (not sent — previews are filtered client-side),
-// the uninstall webhook's payload path to the configuration id and its HMAC-SHA1 signature, and whether a
-// project-scoped token may read `/v2/user`.
+// the uninstall webhook's payload path to the configuration id and its HMAC-SHA1 signature, whether a
+// project-scoped token may read `/v2/user`, whether an integration's token may read its own
+// `/v1/integrations/configuration/{id}` (the exchange's confirmation of an id it did not return), and the
+// team-scoped integrations page `manageUrl` links to.
 //
 // Pure apart from `pc.fetch` (the fixed-host fetch) — no D1, no env, no logging, no src/data/secrets.ts.
 import { metricsForRole, type DeployState, type DeployTarget, type HostingMetric, type PartRole } from "@shared/hosting";
 import type { HostingDeploy, HostingProvider, InstallGrant, ProviderContext } from "../types";
 import {
-  HostingError, asHostingError, instant, readJson, record, refuse, str,
+  HostingError, asHostingError, instant, probeFailure, readJson, record, refuse, str,
   type HostFetch, type Revealed, type SecretLike,
 } from "../http";
 
@@ -169,6 +171,22 @@ async function bestEffort(fetch: HostFetch, url: string, token: string): Promise
   } catch { return {}; }
 }
 
+/**
+ * Does Vercel confirm `id` as the configuration THIS token belongs to? ONE `GET /v1/integrations/configuration/
+ * {id}` (in the grant's team) with the new token: only a 200 whose body names exactly `id` is a yes. Anything
+ * else — a 403 / 404, a thrown fetch, a body for another id or none — is a no, never a throw: the grant itself
+ * is good, only the installation id stays unknown. UNCONFIRMED against the live API: that the endpoint answers
+ * an integration's own access token (the SDK's `getConfiguration`, `{ id, … }`); if it does not, the id is
+ * simply stored as null.
+ */
+async function confirmedConfiguration(fetch: HostFetch, id: string, config: Readonly<Record<string, string>>, token: string): Promise<boolean> {
+  try {
+    const res = await fetch(apiUrl(`/v1/integrations/configuration/${encodeURIComponent(id)}`, config), { method: "GET", headers: authHeaders(token) });
+    if (res.status !== 200) { await res.body?.cancel().catch(() => undefined); return false; }
+    return str(record(await readJson(res, "vercel configuration", EXCHANGE_READ_BYTES)).id) === id;
+  } catch { return false; }
+}
+
 /** The commit a deployment built, from its `meta` (see `GIT_PROVIDERS`). */
 function gitOf(meta: Record<string, unknown>): { sha: string | null; branch: string | null; message: string | null } {
   for (const p of GIT_PROVIDERS) {
@@ -261,6 +279,18 @@ export const vercel: HostingProvider = {
   planNote: "Vercel exposes no public usage API (its Observability Query needs Observability Plus and is undocumented), so a Vercel part shows deploys only.",
   pollCost: 1,
 
+  // Where the grant is managed. An installed integration: the team's integrations page when the install told
+  // Trov the team (`team_id` + `team_slug`) — `vercel.com/<team-slug>/~/integrations`, UNCONFIRMED (the
+  // pattern Vercel's own `next` URL used in the research, not a documented page) — else the dashboard's
+  // integrations page, which picks the scope itself. A pasted token: the account's tokens page.
+  manageUrl(config, method) {
+    if (method === "token") return "https://vercel.com/account/tokens";
+    if (method !== "install") return null;
+    const slug = config.team_slug;
+    if (config.team_id && TEAM_ID.test(config.team_id) && slug && TEAM_SLUG.test(slug)) return `https://vercel.com/${encodeURIComponent(slug)}/~/integrations`;
+    return "https://vercel.com/dashboard/integrations";
+  },
+
   // vercel.com/<scope>/<project NAME> is exact; a `prj_` id has no dashboard URL of its own, and without the
   // slug the scope is unknown — so null rather than a guess.
   consoleUrl(part, config) {
@@ -294,7 +324,7 @@ export const vercel: HostingProvider = {
       const username = shown(str(record(body.user).username), USERNAME);
       return { ok: true, detail: username ? `Vercel answered for ${username}'s account.` : "Vercel answered for this token's account." };
     } catch (e) {
-      return { ok: false, detail: asHostingError("vercel", e).message };
+      return probeFailure("vercel", e); // keeps a refusal's status: a 401 ends an installed connection
     }
   },
 
@@ -345,9 +375,18 @@ export const vercel: HostingProvider = {
 
     // `POST /v2/oauth/access_token` (form-encoded) → `{ token_type, access_token, installation_id, user_id,
     // team_id }` (team_id null = a personal account). The response is validated whole, else a fixed-text
-    // refusal; the client secret and the code are scrubbed from any upstream message (`revealed`). Then ONE
-    // best-effort read with the new token for the account's display name and URL slug (`/v2/teams/{id}` or
-    // `/v2/user`) — 2 requests at most, and a failure there only leaves the label empty.
+    // refusal; the client secret and the code are scrubbed from any upstream message (`revealed`).
+    //
+    // THE INSTALLATION ID NEVER COMES FROM THE URL. The callback's `configurationId` is something anyone can
+    // type, and the id is what binds the installation to ONE org and what an uninstall notice revokes by — so
+    // a typed id must not be able to claim another org's installation (or get its uninstall). The exchange's
+    // own `installation_id` is used when present. Without it, the callback's `configurationId` is only a
+    // CANDIDATE: ONE `GET /v1/integrations/configuration/{id}` (in the grant's team) with the NEW token must
+    // answer 200 for exactly that id — Vercel answers that only for a configuration this token belongs to —
+    // else the id is stored as null (Disconnect then removes nothing on Vercel's side; the token still works).
+    //
+    // Then ONE best-effort read with the new token for the account's display name and URL slug
+    // (`/v2/teams/{id}` or `/v2/user`) — 3 requests at most, and a failure there only leaves the label empty.
     async exchange({ fetch, code, clientId, clientSecret, redirectUri, query }) {
       const what = "vercel token exchange";
       const revealed: Revealed = [clientSecret, code];
@@ -375,14 +414,16 @@ export const vercel: HostingProvider = {
       }
       const team = typeof teamId === "string" ? teamId : null;
       const user = typeof userId === "string" ? userId : null;
-      // The installation id: the exchange's own `installation_id`, else the callback's `configurationId`.
-      const fromQuery = query.configurationId && VERCEL_ID.test(query.configurationId) ? query.configurationId : null;
-      const externalId = typeof installationId === "string" ? installationId : fromQuery;
-
       const config: Record<string, string> = {};
+      if (team) config.team_id = team;
+      // The installation id: the exchange's own `installation_id`, else the callback's `configurationId` ONLY
+      // once Vercel confirms it for this token (see above) — never the URL's word alone.
+      const candidate = query.configurationId && VERCEL_ID.test(query.configurationId) ? query.configurationId : null;
+      const externalId = typeof installationId === "string" ? installationId
+        : candidate && (await confirmedConfiguration(fetch, candidate, config, accessToken)) ? candidate : null;
+
       let accountLabel: string | null = null;
       if (team) {
-        config.team_id = team;
         const t = await bestEffort(fetch, apiUrl(`/v2/teams/${encodeURIComponent(team)}`, config), accessToken);
         const slug = shown(str(t.slug), TEAM_SLUG);
         if (slug) config.team_slug = slug;
@@ -399,7 +440,8 @@ export const vercel: HostingProvider = {
 
     // `DELETE /v1/integrations/configuration/{id}` with the installation's own token. A 404 means it is
     // already gone (uninstalled on Vercel's side) — the goal is met, so it is a success. No id: nothing to
-    // remove on Vercel's side (a pasted token), so no request at all.
+    // remove on Vercel's side (a pasted token; or a refused grant whose installation is ANOTHER org's live one —
+    // Vercel's only removal is the whole configuration, so the connect callback passes null), so no request.
     async revoke({ fetch, secret, externalId, config }) {
       if (!externalId) return;
       const what = "vercel uninstall";

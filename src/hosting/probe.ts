@@ -2,13 +2,14 @@
 // for the five hosting kinds; it scrubs, cuts and records the outcome). The provider's own `probe`, through
 // its fixed-host fetch, against the FIRST part that uses the provider — so "Test connection passes" means
 // the credential can see what the dashboard will read — or against the credential alone when no part uses
-// it yet. One or two requests; writes nothing.
+// it yet. One or two requests; writes nothing. A refusal's HTTP `status` rides along in the result, so the
+// caller can tell "the provider no longer accepts this credential" (401) from any other failure.
 import type { IntegrationKind } from "@shared/integrations";
 import { providerOfKind } from "@shared/hosting";
 import { getIntegrationConfig, type Secret } from "../data/secrets";
 import type { TenantContext } from "../data/sql";
 import type { Env } from "../env";
-import { asHostingError, hostFetch } from "./http";
+import { hostFetch, probeFailure } from "./http";
 import { listAllParts, partRef } from "./parts";
 import { providerOf } from "./registry";
 import type { ProbeResult } from "./types";
@@ -26,6 +27,6 @@ export async function probeHostingKind(
   try {
     return await p.probe({ fetch: hostFetch(p.apiHosts, fetchImpl), credential: { secret, config }, now }, part ? partRef(ctx.orgId, part) : null);
   } catch (e) {
-    return { ok: false, detail: asHostingError(p.label.toLowerCase(), e).message };
+    return probeFailure(p.label.toLowerCase(), e); // with the refusal's status (a 401 ends an install / OAuth connection)
   }
 }

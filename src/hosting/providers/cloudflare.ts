@@ -36,6 +36,10 @@ export const cloudflare: HostingProvider = {
   capabilities: { deploys: true, metrics: ["requests", "errors"] },
   planNote: null,
   pollCost: 1,
+  // A pasted API token is managed (and rolled or deleted) under My Profile › API Tokens.
+  manageUrl(_config, method) {
+    return method === "token" ? "https://dash.cloudflare.com/profile/api-tokens" : null;
+  },
   consoleUrl(part, config) {
     const account = config.account_id, worker = part.settings.worker;
     return account && worker ? `https://dash.cloudflare.com/${encodeURIComponent(account)}/workers/services/view/${encodeURIComponent(worker)}/production` : null;

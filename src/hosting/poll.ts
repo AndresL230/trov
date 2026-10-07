@@ -18,7 +18,7 @@
 //      batch of upserts into `hosting_deploys` (a deploy's state MOVES, so not first-write-wins); the
 //      outcome → `hosting_poll_state`, with the covered interval MERGED (the `cf_polled` rule, below);
 //   7. the credential's integration row learns the outcome (`recordSecretOutcome`: `last_used_at`, or a
-//      scrubbed `last_error`).
+//      scrubbed `last_error` — for a 401, the fixed `refusedText`; a poll never deletes a credential).
 //
 // `pollPart` NEVER throws. A provider's refusal is a `HostingError` (scrubbed at construction, and again
 // here with the credential this module revealed); anything else becomes `asHostingError`'s fixed text —
@@ -38,7 +38,7 @@ import { type Revealed, type Secret, getIntegrationConfig, lastErrorText, record
 import { jobTenant } from "../platform/jobs";
 import { DAY, HOSTING_DEPLOY_RETENTION_DAYS, USAGE_RETENTION_DAYS, putMetrics } from "../repo/store";
 import type { RepoMetric } from "../repo/types";
-import { HOUR, asHostingError, hostFetch, hourFloor, iso } from "./http";
+import { HOUR, HostingError, asHostingError, hostFetch, hourFloor, iso } from "./http";
 import { listStoredParts, partRef, type PartRow } from "./parts";
 import { PROVIDERS } from "./registry";
 import type { HostingField, HostingProvider, PollResult } from "./types";
@@ -332,6 +332,10 @@ function fieldProblem(fields: readonly HostingField[], values: Readonly<Record<s
 }
 
 const plural = (n: number, one: string, many: string = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
+
+/** What a poll's 401 is recorded as — in `last_error`, the poll state and the outcome. Fixed text. */
+export const refusedText = (p: Pick<HostingProvider, "label">): string =>
+  `${p.label} refused the token — the grant may have been removed; Test connection to confirm`;
 function droppedText(d: CleanPoll["dropped"]): string {
   const parts = [d.points ? plural(d.points, "point") : "", d.deploys ? plural(d.deploys, "deploy") : "", d.unavailable ? plural(d.unavailable, "unavailable note") : ""].filter(Boolean);
   return parts.length ? `dropped as invalid: ${parts.join(", ")}` : "";
@@ -394,8 +398,12 @@ export async function pollPart(
     } catch (e) {
       // `asHostingError` keeps a HostingError's message (already scrubbed by the provider with what IT
       // revealed) and replaces anything else with fixed text; `lastErrorText` scrubs again with the
-      // credential THIS module revealed, then one line, then cuts — scrub before cut, always.
-      const detail = lastErrorText(asHostingError(provider.label.toLowerCase(), e).message, revealed) || "failed";
+      // credential THIS module revealed, then one line, then cuts — scrub before cut, always. A 401 is FIXED
+      // text: the provider no longer accepts the credential — for an install / OAuth grant, most likely
+      // removed on its side. A poll never ends a connection or deletes a credential for it (a transient 401
+      // must not cost an org its install); Test connection confirms, and ends it (src/integrations/probe.ts).
+      const detail = e instanceof HostingError && e.status === 401 ? refusedText(provider)
+        : lastErrorText(asHostingError(provider.label.toLowerCase(), e).message, revealed) || "failed";
       console.error("hosting poll", part.provider, part.env, part.key, detail, `org=${ctx.orgId}`);
       await recordSecretOutcome(ctx, kind, scope, { ok: false, message: detail, revealed }, now).catch(() => undefined);
       return await settle({ ...base, status: "failed", written: 0, detail });

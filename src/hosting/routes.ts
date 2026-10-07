@@ -7,24 +7,28 @@
 //   GET    /hosting/providers                    member   { providers: HostingProviderDTO[] }
 //   PUT    /environments/:key/parts/:part        admin+   { part: EnvironmentPartDTO, created }   (201 when created)
 //   DELETE /environments/:key/parts/:part        admin+   { ok: true, removed: { env, part, provider, legacy } }
-//   POST   /hosting/:provider/connect            admin+   ConnectStartDTO, + the `trov_hx` nonce cookie
+//   POST   /hosting/:provider/connect            admin+   ConnectStartDTO, + the `trov_hx` sealed-intent cookie;
+//                                                         409 `already_connected` while an install / OAuth grant is live
 //   POST   /hosting/:provider/disconnect         admin+   { connection: HostingConnectionDTO, upstream }   body { scope? }
 //   POST   /hosting/:provider/test               admin+   HostingTestDTO   body { scope?, env?, part? }
 //
-// …and, at the app ROOT (a provider's redirect URI is fixed, so it cannot carry the org; the sealed `state`
-// does — src/data/gate.ts lets `/hosting/*` past the one-org alias gate, and the callback checks the
-// membership itself):
+// …and, at the app ROOT (a provider's redirect URI is fixed, so it cannot carry the org; the sealed intent in
+// the `trov_hx` cookie does). A PUBLIC path (src/auth/principal.ts — the session gate's 401 JSON never answers
+// a person coming back from a provider): it resolves the signed-in person from the session cookie itself, and
+// src/data/gate.ts lets exactly `/hosting/<provider>/callback` past the one-org alias gate:
 //
-//   GET    /hosting/:provider/callback           session  302 → `/o/<slug>/#org/hosting?connected=<p>` | `?connect_error=<code>`
+//   GET    /hosting/:provider/callback           public   302 → `/o/<slug>/?hosting=<outcome>&provider=<p>#org`
+//                                                         | `/?hosting=<outcome>` (no intent) | `/` (nobody signed in)
 //
-// Cookie only, never a token: a request that carries an `Authorization` header is refused outright (403), as
-// on the Integrations routes, and there is no MCP tool for any of this. Every refusal maps to a status with
-// fixed text; nothing answers 500 with an Error's own words.
+// Cookie only, never a token: a request to the org routes that carries an `Authorization` header is refused
+// outright (403), as on the Integrations routes; the callback reads the session COOKIE alone, so a bearer can
+// never finish a connection. There is no MCP tool for any of this. Every refusal maps to a status with fixed
+// text; nothing answers 500 with an Error's own words — and the callback answers nothing but a redirect.
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, isHostingProvider, type HostingTestDTO } from "@shared/hosting";
-import type { AppEnv } from "../auth/principal";
+import { resolveSessionPrincipal, type AppEnv, type Principal } from "../auth/principal";
 import { RoleError, requireRole } from "../data/context";
 import {
   SecretAccessError, SecretConflictError, SecretDecryptError, SecretNotFoundError, SecretValueError, SecretsUnavailableError,
@@ -32,7 +36,7 @@ import {
 import { testConnection } from "../integrations/probe";
 import { SettingsError } from "../integrations/settings";
 import {
-  CONNECT_COOKIE, CONNECT_TTL_MS, checkScope, completeConnect, connectCookiePath, connectionDTO, disconnect, startConnect,
+  CONNECT_COOKIE, CONNECT_COOKIE_PATH, CONNECT_TTL_MS, checkScope, completeConnect, connectionDTO, disconnect, startConnect,
 } from "./connections";
 import { deletePart, putPart, type ProviderMap } from "./part-writes";
 import { listAllParts } from "./parts";
@@ -112,11 +116,9 @@ export function makeHostingApp(o: HostingRouteOptions = {}): Hono<AppEnv> {
   }));
 
   r.post("/hosting/:provider/connect", (c) => guard(c, async () => {
-    const { start, nonce } = await startConnect(c.var.ctx, c.env, c.req.param("provider"), originOf(c), c.req.param("slug") ?? null, Date.now(), providers);
-    // `startConnect` accepted the id, so it is one of the registry's and safe in a cookie path.
-    setCookie(c, CONNECT_COOKIE, nonce, {
-      httpOnly: true, secure: true, sameSite: "Lax", path: connectCookiePath(c.req.param("provider")), maxAge: CONNECT_TTL_MS / 1000,
-    });
+    const { start, cookie } = await startConnect(c.var.ctx, c.env, c.req.param("provider"), originOf(c), c.req.param("slug") ?? null, Date.now(), providers);
+    // The sealed intent: what the random `state` in `start.url` answers for. Spent by the first callback.
+    setCookie(c, CONNECT_COOKIE, cookie, { httpOnly: true, secure: true, sameSite: "Lax", path: CONNECT_COOKIE_PATH, maxAge: CONNECT_TTL_MS / 1000 });
     return c.json(start);
   }));
 
@@ -161,24 +163,33 @@ export function makeHostingApp(o: HostingRouteOptions = {}): Hono<AppEnv> {
   return r;
 }
 
-/** `GET /hosting/:provider/callback`, mounted at `/hosting` on the app root (behind `sessionGate` only). */
+/** The signed-in person on the callback (a public path, so the session gate set no principal): the session
+ *  COOKIE alone — never an `Authorization` header — or the local-dev login, exactly as `sessionGate` reads them. */
+async function currentPerson(c: C): Promise<Principal | null> {
+  if (c.env.DEV_LOGIN) return { handle: c.env.DEV_LOGIN }; // local dev only, as in `sessionGate`
+  return resolveSessionPrincipal(c);
+}
+
+/**
+ * `GET /hosting/:provider/callback`, mounted at `/hosting` on the app root. A browser navigation back from a
+ * provider, so EVERY answer is a redirect — never JSON, never a 500 (`completeConnect` never throws; anything
+ * around it that does lands on `/?hosting=failed`). The `trov_hx` intent is spent whatever happened.
+ */
 export function makeHostingCallbackApp(o: HostingRouteOptions = {}): Hono<AppEnv> {
   const r = new Hono<AppEnv>();
-  r.use("*", personOnly);
   r.get("/:provider/callback", async (c) => {
-    const provider = c.req.param("provider");
-    let location = "/#org/hosting?connect_error=failed";
+    let location = "/?hosting=failed";
     try {
+      const me = await currentPerson(c);
       const out = await completeConnect(c.env, {
-        handle: c.get("principal").handle, provider, query: c.req.query(), cookieNonce: getCookie(c, CONNECT_COOKIE) ?? null,
+        handle: me?.handle ?? null, provider: c.req.param("provider"), query: c.req.query(), cookie: getCookie(c, CONNECT_COOKIE) ?? null,
         origin: originOf(c), fetchImpl: o.fetchImpl, providers: o.providers,
       });
       location = out.location;
     } catch (e) {
       console.error("hosting callback failed", e instanceof Error ? e.name : "error");
     }
-    // The nonce is single use: cleared whatever the outcome.
-    if (isHostingProvider(provider)) deleteCookie(c, CONNECT_COOKIE, { path: connectCookiePath(provider), secure: true, httpOnly: true, sameSite: "Lax" });
+    deleteCookie(c, CONNECT_COOKIE, { path: CONNECT_COOKIE_PATH, secure: true, httpOnly: true, sameSite: "Lax" });
     c.header("cache-control", "no-store");
     c.header("referrer-policy", "no-referrer"); // the callback URL carried a code
     return c.redirect(location, 302);

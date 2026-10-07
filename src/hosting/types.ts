@@ -72,7 +72,13 @@ export interface ProviderContext {
   now: number;
 }
 
-export interface ProbeResult { ok: boolean; detail: string }
+export interface ProbeResult {
+  ok: boolean;
+  detail: string;
+  /** The HTTP status the provider refused with, when the failure was an upstream refusal (`probeFailure`,
+   *  ./http.ts). A 401 on an install / OAuth connection ends it at Test connection (src/integrations/probe.ts). */
+  status?: number;
+}
 
 export interface HostingDeploy {
   /** The provider's deploy id — `hosting_deploys` is keyed (org, provider, id). */
@@ -127,7 +133,10 @@ export interface InstallSpec {
   exchange(args: {
     fetch: HostFetch; code: string; clientId: string; clientSecret: string; redirectUri: string; query: Readonly<Record<string, string>>;
   }): Promise<InstallGrant>;
-  /** Remove the installation on the provider's side (Disconnect from Trov). Optional: some have no API. */
+  /** Remove the installation on the provider's side (Disconnect from Trov; a new grant the connect callback
+   *  refuses). Optional: some have no API. `externalId` null = remove only what THIS credential is, never an
+   *  installation — the callback passes null when the installation is another org's live one (`taken`), so a
+   *  refusal there can never uninstall a connection someone else depends on. */
   revoke?(args: { fetch: HostFetch; secret: SecretLike; externalId: string | null; config: Readonly<Record<string, string>> }): Promise<void>;
   /** The Worker var / secret names holding this integration's client id and secret. */
   clientIdVar: string;
@@ -163,6 +172,10 @@ export interface HostingProvider {
   pollCost: number;
   /** A deep link to the part in the provider's dashboard, from its settings and the org config — or null. */
   consoleUrl(part: Pick<PartRef, "settings">, config: Readonly<Record<string, string>>): string | null;
+  /** Where an admin manages the org's GRANT on the provider's side (an integrations page, an applications
+   *  page, a token page) for a connection made by `method`, from the org config — https, or null when there
+   *  is no page Trov can name. `HostingConnectionDTO.manage_url`. Absent = null. */
+  manageUrl?(config: Readonly<Record<string, string>>, method: ConnectionMethod): string | null;
   /** Test connection: the cheapest authenticated read that proves the credential (and, given a part, that
    *  its settings name something the credential can see). ONE or two fetches; writes nothing. */
   probe(pc: ProviderContext, part: PartRef | null): Promise<ProbeResult>;

@@ -46,11 +46,16 @@ const REASON_READ_BYTES = 8192;
 const REASON_CHARS = 160;
 export const JSON_READ_BYTES = 2_000_000;
 
-/** A provider's refusal / failure. `message` is fixed text or already scrubbed — safe to log and store. */
+/** A provider's refusal / failure. `message` is fixed text or already scrubbed — safe to log and store.
+ *  `status` is the HTTP status of the upstream refusal it describes (set by `refuse`), when there was one:
+ *  a 401 is how Trov learns the provider no longer accepts the credential (src/integrations/probe.ts ends an
+ *  install / OAuth connection on it at Test connection; src/hosting/poll.ts words it for `last_error`). */
 export class HostingError extends Error {
-  constructor(message: string, revealed: Revealed = null) {
+  readonly status: number | undefined;
+  constructor(message: string, revealed: Revealed = null, status?: number) {
     super(scrub(message, revealed).replace(/\s+/g, " ").trim().slice(0, 300));
     this.name = "HostingError";
+    this.status = typeof status === "number" && Number.isInteger(status) ? status : undefined;
   }
 }
 
@@ -149,7 +154,7 @@ export function statusHint(status: number, hints: Readonly<Record<number, string
 export async function refuse(what: string, res: Response, revealed: Revealed, hints?: Readonly<Record<number, string>>): Promise<never> {
   const reason = res.status >= 300 && res.status < 400 ? "" : await failureReason(res, revealed);
   if (res.status >= 300 && res.status < 400) await res.body?.cancel().catch(() => undefined);
-  throw new HostingError(`${what} ${res.status}${reason}${statusHint(res.status, hints)}`, revealed);
+  throw new HostingError(`${what} ${res.status}${reason}${statusHint(res.status, hints)}`, revealed, res.status);
 }
 
 /** A bounded JSON read of a 2xx body. A body over `cap` or not JSON is a `HostingError` (never quoted). */
@@ -170,6 +175,16 @@ export function asHostingError(what: string, e: unknown): HostingError {
   if (name === "TimeoutError" || name === "AbortError") return new HostingError(`${what}: the request timed out`);
   if (name === "SyntaxError") return new HostingError(`${what}: the response is not JSON`);
   return new HostingError(`${what}: the request failed`);
+}
+
+/**
+ * A provider `probe`'s answer for a thrown error: `{ ok: false, detail }` with `asHostingError`'s message, and
+ * the upstream's HTTP `status` when the error carries one — Test connection ends an install / OAuth connection
+ * on a 401 (src/integrations/probe.ts), so a probe must not swallow it. (`ProbeResult`, ./types.ts.)
+ */
+export function probeFailure(what: string, e: unknown): { ok: false; detail: string; status?: number } {
+  const err = asHostingError(what, e);
+  return err.status === undefined ? { ok: false, detail: err.message } : { ok: false, detail: err.message, status: err.status };
 }
 
 // ── small parsing helpers every provider uses ────────────────────────────────

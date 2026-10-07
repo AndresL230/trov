@@ -1354,18 +1354,37 @@ section (`not_connected`, `degraded: true`). MCP `get_repo_dashboard` collapses 
 
 **Setup API** (`src/hosting/routes.ts`, cookie only — an `Authorization` header is a 403; admin unless noted), under
 `/api/o/:slug` with NO old-path alias: `GET /hosting` (`HostingSetupDTO`: providers, environments with their parts,
-connections, a checklist generated from what the parts use), `GET /hosting/providers` (any member), `PUT|DELETE
+connections — each with `manage_url`, where the grant is managed on the provider (`HostingProvider.manageUrl`) — and a
+checklist generated from what the parts use), `GET /hosting/providers` (any member), `PUT|DELETE
 /environments/:key/parts/:part` (audited `part.set` / `part.delete` in `org_admin_audit`; deleting an environment
-deletes its stored parts, poll state and deploys in the same batch), `POST /hosting/:provider/connect` (→ `{ url }`,
-an HMAC-sealed state — key `hosting-connect:<COOKIE_SECRET>` — carrying org, provider, admin and a nonce also set as
-the `trov_hx` cookie), `POST /hosting/:provider/disconnect` (best-effort provider-side revoke; always succeeds
-locally), `POST /hosting/:provider/test` (the integrations `testConnection`, optionally against one part). At the ROOT:
-`GET /hosting/:provider/callback` (session; state + nonce + the SAME admin's live membership, then the code exchange
-through `hostFetch`; 302 to `/o/<slug>/#org/hosting?connected=<p>` or `?connect_error=<fixed code>` — never provider
-text in a URL; `/hosting/` is a platform path in `src/data/gate.ts`), and before the session app `POST
-/webhook/hosting/:provider` — the provider-side uninstall notice: verified with the integration's client secret (a
-bare 401 that writes nothing otherwise), then each org holding that installation id (`connectionsForExternalId`, a
-PLATFORM_ALLOW lookup) has its secret deleted (`systemRevocationDeleteStmts`) and its connection marked `revoked`.
+deletes its stored parts, poll state and deploys in the same batch), `POST /hosting/:provider/connect` (→ `{ url }`;
+409 `already_connected` while an install / OAuth grant is live — Disconnect first; a pasted token does not block, an
+install supersedes it), `POST /hosting/:provider/disconnect` (best-effort provider-side revoke; always succeeds
+locally), `POST /hosting/:provider/test` (the integrations `testConnection`, optionally against one part). **An
+installed connection has the GitHub App binding's guarantees** (`src/hosting/connections.ts`): the provider is handed
+only a RANDOM `state`; what it answers for — `{ o, s, p, h, state, exp }`, HMAC-sealed with `hosting-connect:<COOKIE_SECRET>`
+— is the HttpOnly `trov_hx` cookie (Secure, SameSite=Lax, Path `/hosting/`, 10 minutes, spent by the first callback
+whatever the outcome). At the ROOT, `GET /hosting/:provider/callback` is a PUBLIC path (`HOSTING_CALLBACK_PATH` in
+`src/auth/principal.ts`; `src/data/gate.ts` lets exactly that shape past the one-org alias) that reads the session
+cookie itself and ALWAYS redirects — never JSON, never a 500: nobody signed in → `/`; otherwise
+`/o/<slug>/?hosting=<outcome>&provider=<id>#org` (`/?hosting=<outcome>` when the intent cannot be read; `#org` until
+the UI adds a Hosting tab), the outcome one of `HOSTING_CONNECT_OUTCOMES` (`shared/hosting.ts`) — never provider text.
+It binds only for that browser's intent, that provider, the same person, still an admin (re-checked live), after the
+code exchange through `hostFetch`; an installation ANOTHER org holds is `taken` (a platform read,
+`connectionsForExternalId` in `src/platform/jobs.ts`, and 0044's partial unique index on the active
+`(provider, external_id)` at the write — the row, the credential and the config are ONE batch, so a lost race stores
+nothing), and a different install that appeared meanwhile is `already_connected`; a refused grant is handed back to
+the provider (`install.revoke`, best effort — with `externalId: null` for `taken`, so another org's installation is
+never removed). An installation id comes from the provider's own answer, never the callback URL (Vercel confirms a
+callback `configurationId` with ONE `GET /v1/integrations/configuration/{id}` on the new token, else stores null).
+Disconnected from either side: Disconnect here; before the session app, `POST /webhook/hosting/:provider` — the
+provider-side uninstall notice, verified with the integration's client secret (a bare 401 that writes nothing
+otherwise), ending the connection of the org holding that installation id; or Test connection getting a 401 for an
+install / OAuth credential (`HostingError.status`, set by `refuse`). The last two end it as the org's SYSTEM tenant
+(`endConnectionAsSystem`: secret deleted through `systemRevocationDeleteStmts`, row revoked by `system` — never a
+provider id — audited `hosting.revoked`); a POLL's 401 only stores the fixed "<Provider> refused the token — the grant
+may have been removed; Test connection to confirm" in `last_error`. `revoked_reason` is a CHECKed code (`disconnected`
+/ `uninstalled` / `superseded` / `refused`); the DTO derives its sentence (`hostingRevokedReasonText`).
 Org settings › Integrations lists a hosting kind only once a stored part uses it (the five original slots are unchanged).
 
 **There is no UI yet**: the screens are designed from `docs/design/hosting-providers-claude-design-prompt.md` against

@@ -28,7 +28,7 @@
 import type { DeployState, HostingMetric } from "@shared/hosting";
 import type { HostingDeploy, HostingPoint, HostingProvider, PollResult, ProbeResult, ProviderContext } from "../types";
 import {
-  HostingError, type SecretLike, asHostingError, hourFloor, instant, iso, pollWindow, readJson, record, refuse, sane, scrub, str,
+  HostingError, type SecretLike, asHostingError, hourFloor, probeFailure, instant, iso, pollWindow, readJson, record, refuse, sane, scrub, str,
 } from "../http";
 
 const API = "https://api.render.com/v1";
@@ -553,6 +553,10 @@ export const render: HostingProvider = {
   // `/cron/`) and is not in the part's settings; `/web/<id>` is the guess, and Render redirects a service
   // opened under another type's path — UNCONFIRMED. (A deploy's inspect link uses the service's own
   // `dashboardUrl` instead, which the API does return.)
+  // An API key is managed (and revoked) under Account Settings › API Keys.
+  manageUrl(_config, method) {
+    return method === "token" ? `${DASHBOARD}/u/settings#api-keys` : null;
+  },
   consoleUrl(part) {
     const id = serviceIdOf(part.settings);
     return id ? `${DASHBOARD}/web/${encodeURIComponent(id)}` : null;
@@ -590,7 +594,7 @@ export const render: HostingProvider = {
       const name = upstream(record(record(list[0]).owner).name, secret, 80);
       return { ok: true, detail: say(name ? `Render answered: the API key can see workspace ${name}.` : "Render answered for the API key.") };
     } catch (e) {
-      return { ok: false, detail: asHostingError("render", e).message };
+      return probeFailure("render", e);
     }
   },
 

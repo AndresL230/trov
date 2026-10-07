@@ -104,6 +104,7 @@ export const RELEASES: Release[] = [
         "`hx_*` metrics are pruned with the hourly usage metrics (100 days); `hosting_deploys` after 180 days.",
         "Deleting an environment also deletes its stored parts, their poll state and deploy history, in the same batch.",
         "Org settings › Integrations lists a hosting provider's credential once a part uses it; pasting a token over an installed connection supersedes the install.",
+        "Connect with Vercel / Netlify holds the GitHub App's guarantees: one org per installation (a partial unique index; a second org gets `taken`), one live install per org (`already_connected`), the installation id only from the provider's own answer, a random `state` with the sealed intent in the `trov_hx` cookie, a public callback that never answers JSON, the outcome as `?hosting=<outcome>` (`HOSTING_CONNECT_OUTCOMES`), the row, credential and config written in ONE batch, a provider-side 401 at Test connection ending the binding, `revoked_by = 'system'` and a CHECKed `revoked_reason`, and `manage_url` on every connection.",
       ],
       fixed: [],
       removed: [],

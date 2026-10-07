@@ -341,6 +341,29 @@ describe("pollPart — a failure never lets the credential out", () => {
     expect(logged).toContain("org=org_saplinglearn");
   });
 
+  it("a 401 is FIXED text in last_error, the poll state and the outcome — and the credential is never deleted (only Test connection ends a grant)", async () => {
+    await setup();
+    // An install's row, so the credential is a grant the provider could have removed on its side.
+    await env.DB.prepare(`INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, status, connected_by, connected_at)
+      VALUES (?, 'vercel', '', 'install', 'icfg_poll', 'active', 'AndresL230', '2026-09-20T00:00:00.000Z')`).bind(ORG_A).run();
+    const refusing = fake(async (pc) => {
+      const res = new Response(JSON.stringify({ error: { message: `invalid token ${pc.credential.secret.reveal()}` } }), { status: 401 });
+      return (await import("../src/hosting/http")).refuse("vercel deployments", res, pc.credential.secret);
+    });
+    const { out, logged } = await captured(() => poll(refusing));
+    const words = "Vercel refused the token — the grant may have been removed; Test connection to confirm";
+    expect(out).toEqual({ env: "staging", part: "web", provider: "vercel", status: "failed", written: 0, detail: words });
+    expect((await secretRow())!.last_error).toBe(words);
+    expect((await state())!.detail).toBe(words);
+    // Nothing ended: the credential and the connection stay.
+    expect((await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM org_secrets WHERE org_id = ? AND kind = 'vercel'`, ORG_A))!.n).toBe(1);
+    expect(await first(env.DB, `SELECT status, revoked_reason FROM org_hosting_connections WHERE org_id = ?`, ORG_A)).toEqual({ status: "active", revoked_reason: null });
+    expect(leakedFragments(logged + JSON.stringify(out), LONG_TOKEN)).toEqual([]);
+    // Any other refusal keeps its scrubbed reason.
+    const forbidden = fake(async (pc) => (await import("../src/hosting/http")).refuse("vercel deployments", new Response("{}", { status: 403 }), pc.credential.secret));
+    expect((await captured(() => poll(forbidden))).out.detail).toBe("vercel deployments 403: {} — the credential lacks the permission this read needs");
+  });
+
   it("anything that is not a HostingError becomes fixed text — a thrown fetch or a parse error may quote PART of a request", async () => {
     await setup();
     const { out, logged } = await captured(() => poll(fake(async (pc) => {

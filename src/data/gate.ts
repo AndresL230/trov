@@ -1,6 +1,6 @@
 // The Hono middlewares that put a data-layer context on the request (`c.var.ctx`, `c.var.p`).
 import type { MiddlewareHandler } from "hono";
-import type { AppEnv } from "../auth/principal";
+import { HOSTING_CALLBACK_PATH, type AppEnv } from "../auth/principal";
 import { platform, resolveSoleTenant, resolveTenant } from "./context";
 import { meterApiRequest } from "./meter";
 
@@ -29,13 +29,14 @@ export const tenantGate: MiddlewareHandler<AppEnv> = async (c, next) => {
 
 /** Session routes that are NOT the cut-over alias's: the person-level surface, reachable with no org at
  *  all (/auth, /avatar, /org-logo, the org picker and invites, the superadmin surface), the routes that name
- *  their org in the path (`/api/o/:slug/*` — `tenantGate`'s), and a hosting provider's install / OAuth
- *  callback (`/hosting/<provider>/callback`, src/hosting/routes.ts): its redirect URI is fixed per provider,
- *  so the org it is for travels in the sealed `state`, and the callback checks that membership itself. */
+ *  their org in the path (`/api/o/:slug/*` — `tenantGate`'s), and EXACTLY a hosting provider's install / OAuth
+ *  callback (`/hosting/<provider>/callback`, src/hosting/routes.ts — nothing else under `/hosting/`): its
+ *  redirect URI is fixed per provider, so the org it is for travels in the sealed intent, and the callback
+ *  checks that membership itself. */
 const isPlatformPath = (path: string): boolean =>
   path.startsWith("/auth/") || path.startsWith("/avatar/") || path.startsWith("/org-logo/") ||
   path === "/api/orgs" || path.startsWith("/api/orgs/") || path === "/api/invites" || path.startsWith("/api/invites/") ||
-  path.startsWith("/api/platform/") || path.startsWith("/api/o/") || path.startsWith("/hosting/");
+  path.startsWith("/api/platform/") || path.startsWith("/api/o/") || HOSTING_CALLBACK_PATH.test(path);
 
 /**
  * CUT-OVER ALIAS (§6.3, Phases 3–5): every pre-multitenancy session route resolves its tenant as "the

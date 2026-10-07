@@ -18,6 +18,7 @@ import forbidden from "../fixtures/hosting/vercel/error.forbidden.json";
 import tokenTeam from "../fixtures/hosting/vercel/oauth-access-token.team.json";
 import tokenPersonal from "../fixtures/hosting/vercel/oauth-access-token.personal.json";
 import removed from "../fixtures/hosting/vercel/webhook.integration-configuration.removed.json";
+import configuration from "../fixtures/hosting/vercel/integration-configuration.json";
 
 const NOW = Date.parse("2026-10-07T12:20:00Z");
 const TEAM_ID = "team_a1B2c3D4e5F6g7H8i9J0k1L2";
@@ -196,7 +197,7 @@ describe("vercel — probe", () => {
   it("says a token scoped to one project may not read the account", async () => {
     const { fetchImpl } = stub(() => json(forbidden, 403));
     const r = await vercel.probe(ctx(fetchImpl, {}), null);
-    expect(r).toEqual({ ok: false, detail: "vercel user 403: Not authorized — the credential cannot read the account — a token scoped to one project may not; add a part and test against its project" });
+    expect(r).toEqual({ ok: false, status: 403, detail: "vercel user 403: Not authorized — the credential cannot read the account — a token scoped to one project may not; add a part and test against its project" });
   });
 
   it("turns a thrown fetch into fixed words — never the error's own text", async () => {
@@ -479,12 +480,67 @@ describe("vercel — install", () => {
     });
   });
 
-  it("takes the installation id from the callback when the exchange has none", async () => {
+  it("NEVER takes the installation id from the URL alone: the exchange's own id wins, and the callback's is only a candidate Vercel must confirm", async () => {
+    // The exchange names its installation: the callback's `configurationId` is ignored — no confirming read.
+    const named = stub((c) => (c.url.pathname === "/v2/oauth/access_token" ? json(tokenBody(tokenTeam)) : json(team)));
+    expect((await exchange(named.fetchImpl, { configurationId: "icfg_SomeoneElses1" })).externalId).toBe(tokenTeam.installation_id);
+    expect(named.calls.map((c) => c.url.pathname)).toEqual(["/v2/oauth/access_token", `/v2/teams/${TEAM_ID}`]);
+
+    // It does not: ONE GET of the candidate, in the grant's team, with the NEW token — a 200 for exactly that id is a yes.
     const { installation_id: _gone, ...noInstall } = tokenBody(tokenTeam);
-    const { fetchImpl } = stub((c) => (c.url.pathname === "/v2/oauth/access_token" ? json(noInstall) : json(team)));
-    expect((await exchange(fetchImpl, { configurationId: "icfg_FromTheCallback1" })).externalId).toBe("icfg_FromTheCallback1");
+    const ID = configuration.id;
+    const confirmed = stub((c) => (c.url.pathname === "/v2/oauth/access_token" ? json(noInstall)
+      : c.url.pathname.startsWith("/v1/integrations/configuration/") ? json(configuration) : json(team)));
+    expect((await exchange(confirmed.fetchImpl, { configurationId: ID })).externalId).toBe(ID);
+    expect(confirmed.calls.map((c) => `${c.method} ${c.url.pathname}`)).toEqual([
+      "POST /v2/oauth/access_token", `GET /v1/integrations/configuration/${ID}`, `GET /v2/teams/${TEAM_ID}`,
+    ]);
+    const [, check] = confirmed.calls;
+    expect(query(check)).toEqual({ teamId: TEAM_ID });
+    expectAuth(check, ACCESS);
+
+    // Anything else stores null — the grant itself still stands.
+    for (const [why, answer] of [
+      ["Vercel does not know it (404)", () => json(forbidden, 404)],
+      ["the token may not read it (403)", () => json(forbidden, 403)],
+      ["the body names ANOTHER configuration", () => json({ ...configuration, id: "icfg_AnotherOne123" })],
+      ["the body names none", () => json({})],
+      ["a redirect (never followed)", () => new Response(null, { status: 302, headers: { location: "https://evil.example/" } })],
+      ["the read throws", () => { throw new Error("boom"); }],
+    ] as [string, () => Response][]) {
+      const s = stub((c) => (c.url.pathname === "/v2/oauth/access_token" ? json(noInstall)
+        : c.url.pathname.startsWith("/v1/integrations/configuration/") ? answer() : json(team)));
+      const grant = await exchange(s.fetchImpl, { configurationId: ID });
+      expect(grant.externalId, why).toBeNull();
+      expect(grant.accessToken, why).toBe(ACCESS);
+    }
+    // A candidate that is not an id at all is never sent anywhere.
     const bare = stub((c) => (c.url.pathname === "/v2/oauth/access_token" ? json(noInstall) : json(team)));
     expect((await exchange(bare.fetchImpl, { configurationId: "not an id!" })).externalId).toBeNull();
+    expect(bare.calls.map((c) => c.url.pathname)).toEqual(["/v2/oauth/access_token", `/v2/teams/${TEAM_ID}`]);
+    // A personal account: the read carries no team.
+    const { installation_id: _none, ...personalNoInstall } = tokenBody(tokenPersonal);
+    const personal = stub((c) => (c.url.pathname === "/v2/oauth/access_token" ? json(personalNoInstall)
+      : c.url.pathname.startsWith("/v1/integrations/configuration/") ? json({ ...configuration, id: "icfg_Personal123" }) : json(user)));
+    expect((await exchange(personal.fetchImpl, { configurationId: "icfg_Personal123" })).externalId).toBe("icfg_Personal123");
+    expect(personal.calls[1].url.search).toBe("");
+  });
+
+  it("names where the grant is managed: the team's integrations page when the install told Trov the team, else the dashboard's; a token's page", () => {
+    expect(vercel.manageUrl!(TEAM, "install")).toBe("https://vercel.com/acme/~/integrations");
+    expect(vercel.manageUrl!({ team_slug: "andres" }, "install")).toBe("https://vercel.com/dashboard/integrations");
+    expect(vercel.manageUrl!({ team_id: TEAM_ID, team_slug: "../evil" }, "install")).toBe("https://vercel.com/dashboard/integrations");
+    expect(vercel.manageUrl!(TEAM, "token")).toBe("https://vercel.com/account/tokens");
+    expect(vercel.manageUrl!(TEAM, "oauth")).toBeNull();
+  });
+
+  it("a probe refused with 401 says so in its status — Test connection ends an installed connection on it", async () => {
+    const { fetchImpl } = stub(() => json({ error: { code: "forbidden", message: `bad ${LONG_TOKEN}` } }, 401));
+    const r = await vercel.probe(ctx(fetchImpl), null);
+    expect(r).toMatchObject({ ok: false, status: 401 });
+    noLeak(r.detail);
+    const thrown = stub(() => { throw new Error("down"); });
+    expect(await vercel.probe(ctx(thrown.fetchImpl), null)).toEqual({ ok: false, detail: "vercel team: the request failed" });
   });
 
   it("keeps the grant when the account read fails — the label is only a label", async () => {

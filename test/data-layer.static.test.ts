@@ -89,17 +89,13 @@ const PLATFORM_ALLOW: Allow[] = [
   // Background work is per org (§8.3, §8.5): the cron's dispatcher lists its units — (org, environment)
   // and org-with-a-primary-repo — and a webhook delivery finds its org by hook id, BEFORE any org is
   // known. Ids, an environment key and a repo name only; everything after runs as that org's tenant.
-  { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments", "org_github_installations"], why: "the cron's unit lists, the webhook's hook lookup and the GitHub App's installation → org lookup — ids and a repo name, no content, no secret" },
+  { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments", "org_github_installations", "org_hosting_connections"], why: "the cron's unit lists, the webhook's hook lookup, and the installation → org lookups of the GitHub App and of the hosting providers (the uninstall notice; the connect callback's one-org-per-installation check) — ids, a scope and a repo name, no content, no secret" },
   // The superadmin's org list says which GitHub account each org's App installation is on (0043_github_app): a name.
   { file: "src/platform/repo.ts", fn: "listPlatformOrgs", tables: ["org_github_installations"], why: "the superadmin's org list: the GitHub account an org is connected through — a name, no token exists in the table" },
   // The `hosting` job's units (src/repo/cron.ts, :40): one per (org, environment, STORED part), with the
   // part's provider id — what the unit's subrequest cost is looked up by. Keys and a provider id only;
   // the part's settings are read again by the unit, as that org's system tenant.
   { file: "src/platform/jobs.ts", fn: "listPartUnits", tables: ["org_environment_parts"], why: "the hosting job's unit list — env / part keys and a provider id, no settings, no secret" },
-  // A hosting provider's VERIFIED "uninstalled" notice names only its installation id, so the org(s) holding
-  // that installation are found across orgs BEFORE any org is known; the revocation then runs as each org's
-  // system tenant (src/hosting/connections.ts `revokeFromProviderSide`). Org ids and a scope only.
-  { file: "src/hosting/webhook.ts", fn: "connectionsForExternalId", tables: ["org_hosting_connections"], why: "the uninstall notice's org lookup by installation id — org ids and a scope, no secret" },
   // Removing a member revokes that person's tokens for the org in the same batch as the membership row.
   { file: "src/orgs/repo.ts", fn: "removeMember", tables: ["mcp_tokens", "oauth_grants"], why: "member removal revokes the person's credentials for that org, atomically" },
 ];

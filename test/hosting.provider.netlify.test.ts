@@ -186,7 +186,13 @@ describe("netlify — probe", () => {
     expect(allLeaks(res.detail)).toEqual([]);
     const g = stub(() => json(error401, 401));
     const bare = await netlify.probe(ctx(g), null);
-    expect(bare).toEqual({ ok: false, detail: "netlify user 401: Access Denied — the token is not valid (expired, revoked, or the Netlify OAuth grant was removed)" });
+    expect(bare).toEqual({ ok: false, status: 401, detail: "netlify user 401: Access Denied — the token is not valid (expired, revoked, or the Netlify OAuth grant was removed)" });
+  });
+
+  it("names where the grant is managed — an OAuth grant and a personal token both live on the person's Applications page", () => {
+    expect(netlify.manageUrl!({}, "oauth")).toBe("https://app.netlify.com/user/applications");
+    expect(netlify.manageUrl!({}, "token")).toBe("https://app.netlify.com/user/applications");
+    expect(netlify.manageUrl!({}, "install")).toBeNull();
   });
 
   it("a 404 says the site id is wrong or not visible to the token", async () => {

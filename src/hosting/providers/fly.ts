@@ -34,7 +34,7 @@
 import type { DeployState, HostingMetric } from "@shared/hosting";
 import type { HostingDeploy, HostingPoint, HostingProvider, PartRef, PollResult, ProbeResult, ProviderContext } from "../types";
 import {
-  HOUR, HostingError, asHostingError, instant, iso, num, pollWindow, readJson, record, refuse, str, type Revealed,
+  HOUR, HostingError, asHostingError, instant, iso, num, pollWindow, probeFailure, readJson, record, refuse, str, type Revealed,
 } from "../http";
 
 const MACHINES_HOST = "api.machines.dev";
@@ -396,7 +396,7 @@ export const fly: HostingProvider = {
       const status = str(body.status);
       return { ok: true, detail: status && /^[A-Za-z_ -]{1,30}$/.test(status) ? `Fly.io answered for app ${app} (${status}).` : `Fly.io answered for app ${app}.` };
     } catch (e) {
-      return { ok: false, detail: asHostingError("fly.io", e).message };
+      return probeFailure("fly.io", e);
     }
   },
 

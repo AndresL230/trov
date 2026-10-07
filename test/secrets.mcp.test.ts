@@ -69,6 +69,20 @@ describe("the import graph", () => {
     expect([...fromMcp].filter((f) => f.startsWith("src/github-app/"))).toEqual([]);
     for (const file of fromMcp) expect(SOURCES.get(file), file).not.toMatch(/\b(installationToken|mintInstallationToken|signAppJwt)\s*\(|\.GITHUB_APP_PRIVATE_KEY\b/);
   });
+
+  it("the hosting layer: MCP reaches only its secret-free read side — never the modules that hold, use or write a provider credential", () => {
+    // The Repo dashboard projection (reachable from src/mcp.ts) reads the registry, the provider descriptions and
+    // the stored parts. Everything that decrypts, stores, exchanges, revokes or polls with a credential is here:
+    const credentialed = ["connections", "poll", "routes", "webhook", "setup", "part-writes", "probe"].map((m) => `src/hosting/${m}.ts`);
+    for (const f of credentialed) expect(SOURCES.has(f), f).toBe(true);
+    const fromMcp = reachable("src/mcp.ts");
+    expect(fromMcp.has("src/hosting/parts.ts"), "the walker does reach the hosting read side").toBe(true);
+    expect(credentialed.filter((f) => fromMcp.has(f))).toEqual([]);
+    // …and the read side itself calls no credential path: no import of the secrets module, no install exchange or revoke.
+    for (const f of [...fromMcp].filter((x) => x.startsWith("src/hosting/"))) {
+      expect(SOURCES.get(f), f).not.toMatch(/from\s+["'][^"']*data\/secrets["']|\binstall!?\.(?:exchange|revoke)!?\s*\(/);
+    }
+  });
 });
 
 describe("a bearer context", () => {

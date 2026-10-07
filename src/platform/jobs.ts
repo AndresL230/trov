@@ -2,8 +2,8 @@
 // run a job for, which org a webhook delivery belongs to, and where each job's rotation stands. These
 // are the only cross-org reads a background entry point makes — they return ids and a repo name, never
 // content and never a secret — and everything after them runs as ONE org's system tenant. The reads of
-// `org_repos` / `org_environments` / `org_github_installations` / `org_environment_parts` are declared in
-// test/data-layer.static.test.ts (PLATFORM_ALLOW).
+// `org_repos` / `org_environments` / `org_github_installations` / `org_environment_parts` /
+// `org_hosting_connections` are declared in test/data-layer.static.test.ts (PLATFORM_ALLOW).
 //
 // A SUSPENDED org (0042_organizations) is absent from every list here: its crons do not run and its hooks read as
 // unknown, exactly as it resolves for no member (src/data/context.ts).
@@ -87,6 +87,22 @@ export function installationOrg(p: PlatformContext, installationId: number): Pro
     `SELECT i.org_id, o.slug AS org_slug, (o.suspended_at IS NOT NULL) AS org_suspended
        FROM org_github_installations i JOIN orgs o ON o.id = i.org_id
       WHERE i.installation_id = ? AND i.removed_at IS NULL`, installationId);
+}
+
+// ── hosting installations: which org holds one (0044_hosting_providers) ──────
+
+/**
+ * The orgs whose ACTIVE connection for hosting `provider` is the provider-side installation `externalId`,
+ * with its scope — before any org is known: the provider's uninstall notice names only the installation
+ * (src/hosting/webhook.ts), and the connect callback must see that an installation is already another org's
+ * (`taken`, src/hosting/connections.ts — 0044's unique index says so again at the write). A SUSPENDED org's
+ * row is returned too: its installation is still taken, and an uninstall must still end it. Org ids and a
+ * scope only; the connection itself is then read as that org's tenant.
+ */
+export function connectionsForExternalId(p: PlatformContext, provider: string, externalId: string): Promise<{ org_id: string; scope: string }[]> {
+  return all<{ org_id: string; scope: string }>(p,
+    `SELECT c.org_id, c.scope FROM org_hosting_connections c
+      WHERE c.provider = ? AND c.external_id = ? AND c.status = 'active' ORDER BY c.org_id, c.scope`, provider, externalId);
 }
 
 // ── the rotation cursor (`cron_cursor`, 0042_organizations) ──────────────────

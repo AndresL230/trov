@@ -10,6 +10,8 @@
 --   3. org_hosting_connections  how an org is connected to a provider when it is MORE than a pasted token:
 --                               an installed integration or an OAuth grant (its provider-side id, account,
 --                               revocation). A pasted token needs no row here: its `org_secrets` row is it.
+--                               AN INSTALLATION BELONGS TO AT MOST ONE ORG — a partial unique index over the
+--                               ACTIVE rows that carry an installation id (the GitHub App's rule, 0043).
 --   4. hosting_deploys          deploys a provider reported, normalised, upserted by (org, env, part,
 --                               provider, deploy id) — a deploy's state moves (building → ready), so this is
 --                               a computed upsert, not first-write-wins.
@@ -81,12 +83,20 @@ CREATE TABLE IF NOT EXISTS org_hosting_connections (
   connected_by   TEXT NOT NULL,                    -- a handle (HANDLE_COLUMNS)
   connected_at   TEXT NOT NULL,
   revoked_at     TEXT,
-  revoked_by     TEXT,                             -- a handle, or the provider id when it was removed on the provider's side
-  revoked_reason TEXT,
+  revoked_by     TEXT,                             -- a handle (HANDLE_COLUMNS), or 'system' (a reserved handle) when the
+                                                   -- provider's side ended it — never a provider id
+  -- A CODE, never a sentence (the DTO derives the words, shared/hosting.ts `hostingRevokedReasonText`):
+  -- disconnected (in Trov) · uninstalled (on the provider) · superseded (by a pasted token) · refused (a 401 at Test connection).
+  revoked_reason TEXT CHECK (revoked_reason IS NULL OR revoked_reason IN ('disconnected','uninstalled','superseded','refused')),
   PRIMARY KEY (org_id, provider, scope)
 );
--- The provider-side uninstall notice names only its installation id: this finds the org it belongs to.
-CREATE INDEX IF NOT EXISTS idx_org_hosting_connections_external ON org_hosting_connections(provider, external_id);
+-- One org per installation: a provider-side installation id is held by at most ONE active connection, across
+-- every org (an ended row, or a grant with no installation id — Netlify's — never conflicts). The connect
+-- callback checks it first (src/platform/jobs.ts `connectionsForExternalId`) and a lost race lands here, as a
+-- UNIQUE violation the callback answers `taken`. It also serves the uninstall notice's lookup by installation
+-- id (`provider = ? AND external_id = ? AND status = 'active'` implies the index's WHERE).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_org_hosting_connections_installation ON org_hosting_connections(provider, external_id)
+  WHERE status = 'active' AND external_id IS NOT NULL;
 
 -- ── 4. deploys ───────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS hosting_deploys (

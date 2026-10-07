@@ -219,7 +219,7 @@ describe("fly probe", () => {
   it("a 404 says no app by that name", async () => {
     const { fetch } = flyApi({ app: () => json({ error: "App not found" }, 404) });
     const r = await fly.probe(ctx(fetch), part());
-    expect(r).toEqual({ ok: false, detail: "fly.io app 404: App not found — no app by that name that the token can see" });
+    expect(r).toEqual({ ok: false, status: 404, detail: "fly.io app 404: App not found — no app by that name that the token can see" });
   });
 
   it("a Prometheus 403 (a token that may not read metrics) fails the test", async () => {

@@ -7,8 +7,9 @@
 // HOSTING_SAMPLE_PROVIDERS is the REAL catalogue: what `providerDTO` returns for every registered provider on a
 // deployment that has the Vercel integration and the Netlify OAuth app configured. test/hosting.sample.test.ts
 // fails when a provider changes and this copy does not — regenerate it from src/hosting/registry.ts.
-import type {
-  ConnectStartDTO, HostingPollOutcome, HostingProviderDTO, HostingSetupDTO, HostingTestDTO,
+import {
+  HOSTING_CONNECT_OUTCOMES,
+  type ConnectStartDTO, type HostingConnectOutcome, type HostingPollOutcome, type HostingProviderDTO, type HostingSetupDTO, type HostingTestDTO,
 } from "@shared/hosting";
 
 export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
@@ -775,6 +776,7 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": "https://dash.cloudflare.com/profile/api-tokens",
       "used_by": [
         {
           "env": "staging",
@@ -798,6 +800,7 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": null,
       "used_by": [
         {
           "env": "staging",
@@ -827,6 +830,7 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": "https://vercel.com/acme/~/integrations",
       "used_by": [
         {
           "env": "staging",
@@ -854,6 +858,7 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "last_error": "render deployments 401: Unauthorized — the credential is not valid",
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": "https://dashboard.render.com/u/settings#api-keys",
       "used_by": [
         {
           "env": "staging",
@@ -883,6 +888,7 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": null,
       "used_by": [
         {
           "env": "production",
@@ -906,6 +912,7 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": null,
       "used_by": [
         {
           "env": "production",
@@ -1330,6 +1337,7 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": "https://dash.cloudflare.com/profile/api-tokens",
       "used_by": [
         {
           "env": "staging",
@@ -1353,6 +1361,7 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": null,
       "used_by": [
         {
           "env": "staging",
@@ -1382,6 +1391,7 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": "Removed on Vercel",
+      "manage_url": "https://vercel.com/acme/~/integrations",
       "used_by": [
         {
           "env": "staging",
@@ -1409,6 +1419,7 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "last_error": "render deployments 401: Unauthorized — the credential is not valid",
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": "https://dashboard.render.com/u/settings#api-keys",
       "used_by": [
         {
           "env": "staging",
@@ -1438,6 +1449,7 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": null,
       "used_by": [
         {
           "env": "production",
@@ -1461,6 +1473,7 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": null,
       "used_by": [
         {
           "env": "production",
@@ -1816,6 +1829,7 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": "https://dash.cloudflare.com/profile/api-tokens",
       "used_by": [
         {
           "env": "staging",
@@ -1839,6 +1853,7 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": null,
       "used_by": [
         {
           "env": "staging",
@@ -1868,6 +1883,7 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": "https://vercel.com/acme/~/integrations",
       "used_by": [
         {
           "env": "staging",
@@ -1895,6 +1911,7 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "last_error": "render deployments 401: Unauthorized — the credential is not valid",
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": "https://dashboard.render.com/u/settings#api-keys",
       "used_by": [
         {
           "env": "staging",
@@ -1924,6 +1941,7 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": null,
       "used_by": [
         {
           "env": "production",
@@ -1947,6 +1965,7 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "last_error": null,
       "legacy_fallback": false,
       "revoked_reason": null,
+      "manage_url": null,
       "used_by": [
         {
           "env": "production",
@@ -2062,5 +2081,8 @@ export const HOSTING_SAMPLE_POLL: HostingPollOutcome[] = [
   { env: "production", part: "docs", provider: "netlify", status: "skipped", written: 0, detail: "not connected" },
 ];
 
-/** The redirect back from a provider: `#org/hosting?connected=<provider>` / `?connect_error=<code>`. */
-export const HOSTING_CONNECT_ERROR_CODES = ["expired", "mismatch", "forbidden", "exchange_failed"] as const;
+/** The return from a provider lands on `/o/<slug>/?hosting=<outcome>&provider=<id>#org` (src/hosting/connections.ts
+ *  `connectReturnUrl`). The vocabulary is ONE list, `HOSTING_CONNECT_OUTCOMES` (shared/hosting.ts); these are its
+ *  refusals — every outcome but `connected` — each of which the UI words as a sentence. */
+export const HOSTING_CONNECT_ERROR_CODES: readonly Exclude<HostingConnectOutcome, "connected">[] =
+  HOSTING_CONNECT_OUTCOMES.filter((o): o is Exclude<HostingConnectOutcome, "connected"> => o !== "connected");

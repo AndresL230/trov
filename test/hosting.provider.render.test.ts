@@ -203,7 +203,7 @@ describe("render: probe", () => {
   it("a 404 says the id may be wrong or out of the key's reach", async () => {
     const { pc } = harness({ [`/v1/services/${SRV}`]: () => json({ id: "not_found", message: "service not found" }, 404) });
     const r = await render.probe(pc, part("web"));
-    expect(r).toEqual({ ok: false, detail: "render service 404: service not found — not found (check the id, and that the credential can see it)" });
+    expect(r).toEqual({ ok: false, status: 404, detail: "render service 404: service not found — not found (check the id, and that the credential can see it)" });
   });
 
   it("a redirect is never followed, and a thrown fetch is fixed text", async () => {

@@ -37,7 +37,7 @@
 //   - the token endpoint's response (`access_token` is all Trov reads) and the OAuth error body.
 import { metricsForRole, type DeployState } from "@shared/hosting";
 import type { HostingDeploy, HostingField, HostingProvider, InstallGrant, PartRef, ProviderContext } from "../types";
-import { HostingError, type Revealed, type SecretLike, asHostingError, instant, readJson, record, refuse, str } from "../http";
+import { HostingError, type Revealed, type SecretLike, asHostingError, instant, probeFailure, readJson, record, refuse, str } from "../http";
 
 const API = "https://api.netlify.com/api/v1";
 const TOKEN_URL = "https://api.netlify.com/oauth/token";
@@ -292,6 +292,12 @@ export const netlify: HostingProvider = {
   planNote: "Netlify publishes no usage or analytics API (Observability is dashboard-only), so a Netlify part shows its deploys but no traffic.",
   pollCost: 1,
 
+  // Both an OAuth grant ("Authorized applications") and a personal access token are listed — and revoked — on
+  // the person's Applications page; Netlify documents no API for either.
+  manageUrl(_config, method) {
+    return method === "oauth" || method === "token" ? `${APP}/user/applications` : null;
+  },
+
   consoleUrl(part) {
     const name = siteName(part.settings.site_name);
     return name ? `${APP}/sites/${encodeURIComponent(name)}/overview` : null;
@@ -316,7 +322,7 @@ export const netlify: HostingProvider = {
       const what = reads.production ? "its production deploys" : `the deploys of branch ${reads.branch}`;
       return { ok: true, detail: `Netlify answered for site ${name}${where ? ` (${where})` : ""}. Trov reads ${what}.` };
     } catch (e) {
-      return { ok: false, detail: asHostingError("netlify", e).message };
+      return probeFailure("netlify", e); // keeps a refusal's status: a 401 ends an OAuth connection
     }
   },
 
