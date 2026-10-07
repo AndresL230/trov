@@ -1,4 +1,4 @@
--- 0043_hosting_providers — hosting providers behind one interface (issues #97–#102).
+-- 0044_hosting_providers — hosting providers behind one interface (issues #97–#102).
 --
 -- Additive apart from section 1. Nothing here touches an existing row's meaning: an environment's
 -- Cloudflare frontend and Railway backend stay in `org_environments`' own columns (the LEGACY parts,
@@ -18,7 +18,7 @@
 --
 -- Normalised metric POINTS need no table: they are `repo_metrics` rows named `hx_<metric>` (env = the
 -- environment key, part = the part key), pruned with the other hourly usage metrics (src/repo/store.ts).
--- Rollback: scripts/hosting/0043_hosting_providers.down.sql (run it BEFORE 0042's own rollback).
+-- Rollback: scripts/hosting/0044_hosting_providers.down.sql (run it BEFORE 0042's own rollback).
 
 -- ── 1. org_secrets: the kind CHECK admits the hosting providers ──────────────
 PRAGMA defer_foreign_keys = true;

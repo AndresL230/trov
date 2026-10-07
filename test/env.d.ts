@@ -19,6 +19,12 @@ declare global {
       GOOGLE_CLIENT_ID?: string;
       GOOGLE_CLIENT_SECRET?: string;
       GITHUB_WEBHOOK_SECRET?: string;
+      GITHUB_APP_ID?: string;
+      GITHUB_APP_SLUG?: string;
+      GITHUB_APP_WEBHOOK_SECRET?: string;
+      GITHUB_APP_PRIVATE_KEY?: string;
+      TEST_GITHUB_APP_PKCS8: string;      // the same throwaway key as PKCS#8 (vitest.config.ts)
+      TEST_GITHUB_APP_PUBLIC_JWK: string; // its public half, to verify a signed JWT with
       GITHUB_REPO?: string;
       GITHUB_SERVICE_TOKEN?: string;
       GEMINI_API_KEY?: string;

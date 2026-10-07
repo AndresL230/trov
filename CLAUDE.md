@@ -172,9 +172,9 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   fixed mail sender and what is still open to abuse: `docs/architecture/abuse-limits.md`; the deploy runbook: `HANDOFF.md`.
   How an org is added, set up and run, role by role — and that a ticket's / handoff's `id` on every surface is its
   per-org NUMBER, never the row id: `docs/architecture/organizations.md`, `docs/architecture/data-layer.md`.
-  Then `0043_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
+  Then `0044_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
   `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback
-  `scripts/hosting/0043_hosting_providers.down.sql`, run before 0042's] — see "Hosting providers" below.
+  `scripts/hosting/0044_hosting_providers.down.sql`, run before 0042's] — see "Hosting providers" below.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,
@@ -531,6 +531,15 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
   nothing — and an unknown or suspended hook id is that SAME bare `401` (hook ids cannot be probed). The
   writer principal is the fixed string `"github-webhook"`; the delivery's own `subject_login` is trusted
   only post-verify. This branch never touches `sessionGate`.
+- **The GitHub App** (`src/github-app/`, `0043_github_app`; the whole of it — the connect flow and why a
+  forged `installation_id` cannot bind, tokens, the webhook, permissions, the owner checklist — is
+  `docs/architecture/github-app.md`; keep the detail THERE). An org connects GitHub by installing the App:
+  `GET /api/o/:slug/github/install` → GitHub → `/auth/callback` (the install return, recognised by
+  `installation_id` / `setup_action`). Every GitHub read resolves its credential with
+  `resolveGithubCredential` — the org's installation token, then its stored `github_token`, then
+  SaplingLearn's legacy secret — never with a bare `resolveCredential(…, "github_token", …)`. The App's ONE
+  webhook is `POST /webhook/github/app` (`GITHUB_APP_WEBHOOK_SECRET`; the same bare 401). Nothing reachable
+  from `src/mcp.ts` may import `src/github-app/` (`test/secrets.mcp.test.ts`).
 
 ## Identity — persons, not logins
 
@@ -787,7 +796,7 @@ fire time's UTC minute/hour, each job in its own `safely` arm:
   issue number of every array-ref sprint); `:20` `reconcileRepo` alone (19 + 2N worst case, below — **19 + 4N with the tick's own
   pings: 27 today, N ≤ 7 under the 50**; logs `failed` when non-empty); `:30` `pruneRepoCapture` (D1 only). `:10` and `:20` need `GITHUB_SERVICE_TOKEN`
   + `GITHUB_REPO`; `:30` and the pings run regardless.
-- **`:40`, every hour** — the `hosting` job (0043; "Hosting providers" below): one unit per (org, environment, STORED
+- **`:40`, every hour** — the `hosting` job (0044; "Hosting providers" below): one unit per (org, environment, STORED
   part) from `listPartUnits`, each costing its provider's `pollCost` (≤ 6), served by rotation like the others; health
   keeps half the budget on this tick only when some org has a stored part. Legacy Cloudflare / Railway parts stay on
   the `:00` usage job.
@@ -1282,7 +1291,7 @@ issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source 
   truncates persons): `listPersons` never lists a reserved handle and the ticket writers' `requirePerson`
   refuses one, so it can never be assigned, file, comment or link.
 
-## Hosting providers — one interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0043_hosting_providers`)
+## Hosting providers — one interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0044_hosting_providers`)
 
 The Repo dashboard was built around one stack (a Cloudflare Worker frontend, a Railway backend). It now reads any
 host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free — the SPA imports its vocabularies):
@@ -1696,7 +1705,10 @@ secrets.** App-level token for the sprint-progress backstop, for `reconcileRepo`
 the cron's 6-hourly `:10` and `:20` ticks and those follow-ups are skipped, while the `:30` prune and the
 health pings run regardless), `GEMINI_API_KEY`
 (Google Gemini key for capture-time PR/issue summaries — absent → the excerpt fallback), `RESEND_API_KEY`
-(email delivery; needed only when `NOTIFICATIONS_MODE = "resend"`).
+(email delivery; needed only when `NOTIFICATIONS_MODE = "resend"`), and the GitHub App's three:
+`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (the whole `.pem`), `GITHUB_APP_WEBHOOK_SECRET` — with the var
+`GITHUB_APP_SLUG`; missing any of slug / id / key → only the token path is offered, nothing 500s
+(`docs/architecture/github-app.md`).
 
 The repo cron's three hourly pollers each have their own secret(s). Each poller is skipped when its secret
 is absent — its section then stays `not_connected` — and none of these values may ever be logged:
@@ -1725,7 +1737,8 @@ the secret also verifies the uninstall webhook) + `VERCEL_INTEGRATION_SLUG` (the
 `<origin>/hosting/netlify/callback`). Every provider CREDENTIAL is per org (Org settings), never a Worker secret.
 
 Vars (`[vars]` in `wrangler.toml`): `PUBLIC_ORIGIN` (absolute origin for links inside email),
-`NOTIFICATIONS_MODE` (`local` default / `resend`), and two LEGACY ones nothing reads any more (`0042_organizations` copied them
+`NOTIFICATIONS_MODE` (`local` default / `resend`), `GITHUB_APP_SLUG` (the App's URL name; empty = not
+configured), and two LEGACY ones nothing reads any more (`0042_organizations` copied them
 into SaplingLearn's `org_repos` / `org_environments` rows; Phase 7 deletes them): `GITHUB_REPO` and
 `REPO_ENVIRONMENTS` — a JSON list in the shape `repoEnvironments()` (`src/repo/config.ts`) parses: per environment
 `key`, `label`, `note`, `branch`, `railwayEnv` (the GitHub deployment environment name), `worker` +

@@ -1,4 +1,4 @@
--- Rollback of migrations/0043_hosting_providers.sql. Run it BEFORE scripts/mt/rollback/0042_organizations.down.sql.
+-- Rollback of migrations/0044_hosting_providers.sql. Run it BEFORE scripts/mt/rollback/0042_organizations.down.sql.
 -- The hosting tables go; org_secrets is rebuilt back to the five kinds 0042 admitted, and any hosting
 -- credential stored since 0043 is DROPPED with it (their parts and connections go too — nothing reads them).
 DROP TABLE IF EXISTS hosting_poll_state;
@@ -31,4 +31,4 @@ DROP TABLE org_secrets;
 ALTER TABLE org_secrets_old RENAME TO org_secrets;
 PRAGMA defer_foreign_keys = false;
 
-DELETE FROM d1_migrations WHERE name = '0043_hosting_providers.sql';
+DELETE FROM d1_migrations WHERE name = '0044_hosting_providers.sql';

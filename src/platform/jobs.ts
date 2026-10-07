@@ -2,8 +2,8 @@
 // run a job for, which org a webhook delivery belongs to, and where each job's rotation stands. These
 // are the only cross-org reads a background entry point makes — they return ids and a repo name, never
 // content and never a secret — and everything after them runs as ONE org's system tenant. The reads of
-// `org_repos` / `org_environments` / `org_environment_parts` are declared in test/data-layer.static.test.ts
-// (PLATFORM_ALLOW).
+// `org_repos` / `org_environments` / `org_github_installations` / `org_environment_parts` are declared in
+// test/data-layer.static.test.ts (PLATFORM_ALLOW).
 //
 // A SUSPENDED org (0042_organizations) is absent from every list here: its crons do not run and its hooks read as
 // unknown, exactly as it resolves for no member (src/data/context.ts).
@@ -40,7 +40,7 @@ export function listRepoUnits(p: PlatformContext): Promise<RepoUnit[]> {
 
 export interface PartUnit { org_id: string; env_key: string; part_key: string; provider: string }
 
-/** One row per STORED part (`org_environment_parts`, 0043_hosting_providers) of every active org — the
+/** One row per STORED part (`org_environment_parts`, 0044_hosting_providers) of every active org — the
  *  units of the `hosting` job — in org, environment `position`, part `position` order, so the rotation
  *  is stable from tick to tick. A legacy Cloudflare / Railway part has no row here (it is the
  *  environment's own columns, polled by `usage`), so an org without a stored part contributes nothing.
@@ -68,6 +68,25 @@ export function legacyHookRepo(p: PlatformContext): Promise<HookRepo | null> {
   return first<HookRepo>(p,
     `SELECT ${HOOK_COLS} FROM org_repos r JOIN orgs o ON o.id = r.org_id
       WHERE r.legacy_hook = 1 AND o.suspended_at IS NULL ORDER BY r.created_at, r.id LIMIT 1`);
+}
+
+// ── the GitHub App: which org an installation is connected to (0043_github_app) ──
+
+export interface InstallationOrg { org_id: string; org_slug: string; org_suspended: number }
+
+/**
+ * The org a LIVE binding of GitHub installation `installationId` belongs to, or null — the App
+ * webhook's and the connect callback's lookup, before any org is known. It returns the org and whether
+ * it is suspended, nothing else: the binding itself is then read as that org's tenant
+ * (src/github-app/store.ts). A suspended org's binding IS returned (flagged): the connect flow must
+ * still see that the installation is taken, and an uninstall on GitHub must still end it — a delivery
+ * to CAPTURE is dropped by the caller.
+ */
+export function installationOrg(p: PlatformContext, installationId: number): Promise<InstallationOrg | null> {
+  return first<InstallationOrg>(p,
+    `SELECT i.org_id, o.slug AS org_slug, (o.suspended_at IS NOT NULL) AS org_suspended
+       FROM org_github_installations i JOIN orgs o ON o.id = i.org_id
+      WHERE i.installation_id = ? AND i.removed_at IS NULL`, installationId);
 }
 
 // ── the rotation cursor (`cron_cursor`, 0042_organizations) ──────────────────

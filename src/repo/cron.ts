@@ -16,8 +16,9 @@ import { recomputeAllProgress } from "../tools/progress";
 import { orgEnvironment, orgEnvironments, orgPrimaryRepo, type RepoEnvConfig } from "./config";
 import { run } from "../data/sql";
 import { platform, systemTenant, type TenantContext } from "../data/context";
-import { type Revealed, type Secret, markSecretUsed, recordSecretOutcome, resolveCloudflareAccountId, resolveCredential, scrub } from "../data/secrets";
+import { type Revealed, type Secret, recordSecretOutcome, resolveCloudflareAccountId, resolveCredential, scrub } from "../data/secrets";
 import { jobTenant, listEnvUnits, listPartUnits, listRepoUnits } from "../platform/jobs";
+import { resolveGithubCredential, type GithubCredential } from "../github-app/credential";
 import { importLogoForOrg } from "../integrations/logo";
 import { LOGO_IMPORT_COST } from "../orgs/logo";
 import { CRON_SUBREQUEST_BUDGET, newBudget, serveJob, type Unit } from "./dispatch";
@@ -75,6 +76,21 @@ async function credential(ctx: TenantContext, env: Env, kind: IntegrationKind, s
     return secret;
   } catch (e) {
     console.error("repo cron", "credential", kind, scrubbedLog(e, env, revealed), `org=${ctx.orgId}`);
+    return null;
+  }
+}
+
+/** The org's GitHub credential for a unit (src/github-app/credential.ts): its App installation's token,
+ *  else its stored `github_token`, else — SaplingLearn only — the legacy Worker secret. Remembered in
+ *  `revealed` like any other; a failure to resolve reads as not configured, logged by kind. `fetchImpl`
+ *  is what a mint is requested through — the unit's own (budgeted) fetch. */
+async function githubCredential(ctx: TenantContext, env: Env, repo: string, revealed: Revealed[], fetchImpl: typeof fetch | undefined, now: number): Promise<GithubCredential | null> {
+  try {
+    const found = await resolveGithubCredential(ctx, env, { repo, fetchImpl, now });
+    if (found) revealed.push(found.token);
+    return found;
+  } catch (e) {
+    console.error("repo cron", "credential", "github", scrubbedLog(e, env, revealed), `org=${ctx.orgId}`);
     return null;
   }
 }
@@ -179,7 +195,8 @@ export async function runEnvJob(env: Env, orgId: string, envKey: string, job: En
  *  on-demand refresh is still held to (`runRepoRefresh`). The cron's own budget: ./dispatch.ts. */
 export const SUBREQUEST_CAP = 50;
 /** `runRepoRefresh`'s worst case for N environments: health 2N + usage 3N +
- *  reconcile (19 + 2N) = 19 + 7N. 33 for two; 47 at N = 4; 54 at N = 5. */
+ *  reconcile (19 + 2N) = 19 + 7N. 33 for two; 47 at N = 4; 54 at N = 5. (An org on the GitHub App may
+ *  spend one more, minting its installation token: 48 at N = 4, still inside the cap.) */
 export const refreshSubrequests = (n: number): number => 19 + 7 * n;
 /** The one fixed phrase `github.failed` carries when the arm was not run — and every hosting part's
  *  `detail` when the hosting arm was not. */
@@ -196,12 +213,14 @@ export interface ReconcileJobOpts {
 }
 
 /**
- * The org's GitHub reconcile (`reconcileRepo`): its PRIMARY repo, read with its `github_token`.
+ * The org's GitHub reconcile (`reconcileRepo`): its PRIMARY repo, read with its GitHub credential
+ * (`githubCredential` — the App installation's token, else its `github_token`).
  * The cron's `:20` unit, "Poll now"'s GitHub arm and Sync GitHub's closing reconcile all call THIS.
- * `null` = not configured (no primary repo, or no token): nothing was fetched and nothing is logged.
+ * `null` = not configured (no primary repo, or no credential): nothing was read and nothing is logged.
  * Never throws for a system or session caller: an unexpected throw is logged scrubbed and reported
  * as `failed: ["unexpected error"]` (reconcile's own arms never throw out of it — they land in
- * `failed` by NAME). 19 + 2N subrequests worst case for N environments.
+ * `failed` by NAME). 19 + 2N subrequests worst case for N environments — plus ONE when the org is on
+ * the App and its installation token has to be minted (at most once an hour per isolate; `GITHUB_MINT_COST`).
  */
 export async function runReconcileJob(env: Env, caller: TenantContext, now: number = Date.now(), opts: ReconcileJobOpts = {}): Promise<ReconcileResult | null> {
   const ctx = jobTenant(env, caller);
@@ -209,15 +228,14 @@ export async function runReconcileJob(env: Env, caller: TenantContext, now: numb
   const revealed: Revealed[] = [];
   try {
     const repo = await orgPrimaryRepo(ctx);
-    const token = repo ? await credential(ctx, env, "github_token", "", revealed) : null;
-    if (!repo || !token) return null;
+    const gh = repo ? await githubCredential(ctx, env, repo.repo, revealed, opts.fetchImpl, now) : null;
+    if (!repo || !gh) return null;
     const envs = await orgEnvironments(ctx);
     if (opts.budgetSkip && refreshSubrequests(envs.length) > SUBREQUEST_CAP) return { written: 0, unchanged: 0, failed: [BUDGET_SKIP] };
-    const res = await (opts.reconcile ?? reconcileRepo)(ctx, { token: token.reveal(), repo: repo.repo, fetchImpl: opts.fetchImpl }, envs, now);
+    const res = await (opts.reconcile ?? reconcileRepo)(ctx, { token: gh.token.reveal(), repo: repo.repo, fetchImpl: gh.fetch(opts.fetchImpl) }, envs, now);
     if (res.failed.length) console.error(`${label} reconcile: arms failed`, res.failed, `org=${ctx.orgId}`);
     // `failed` is arm NAMES — nothing an upstream wrote — so it is safe to keep as the last error.
-    await recordSecretOutcome(ctx, "github_token", "",
-      res.failed.length ? { ok: false, message: `reconcile: arms failed: ${res.failed.join(", ")}`, revealed } : { ok: true }, now).catch(() => undefined);
+    await gh.recordOutcome(res.failed.length ? { ok: false, message: `reconcile: arms failed: ${res.failed.join(", ")}`, revealed } : { ok: true }, now);
     return res;
   } catch (e) {
     console.error(label, "reconcile", scrubbedLog(e, env, revealed), `org=${ctx.orgId}`);
@@ -247,10 +265,10 @@ export async function runOrgJob(env: Env, orgId: string, job: OrgJob, now: numbe
   const revealed: Revealed[] = [];
   try {
     const repo = await orgPrimaryRepo(ctx);
-    const token = repo ? await credential(ctx, env, "github_token", "", revealed) : null;
-    if (!repo || !token) return;
-    await recomputeAllProgress(ctx, { token: token.reveal(), repo: repo.repo, fetchImpl });
-    await markSecretUsed(ctx, "github_token", "", now).catch(() => undefined);
+    const gh = repo ? await githubCredential(ctx, env, repo.repo, revealed, fetchImpl, now) : null;
+    if (!repo || !gh) return;
+    await recomputeAllProgress(ctx, { token: gh.token.reveal(), repo: repo.repo, fetchImpl: gh.fetch(fetchImpl) });
+    await gh.markUsed(now);
   } catch (e) {
     console.error("repo cron", job, scrubbedLog(e, env, revealed), `org=${orgId}`);
   }
@@ -403,7 +421,7 @@ export async function runRepoRefresh(
   try {
     const parts = await listStoredParts(ctx);
     if (parts.length) {
-      hosting = refreshSubrequests(envs.length) + hostingPollCost(parts, providers) > SUBREQUEST_CAP
+      hosting = refreshSubrequests(envs.length) + GITHUB_MINT_COST + hostingPollCost(parts, providers) > SUBREQUEST_CAP
         ? parts.map((p) => ({ env: p.env, part: p.key, provider: p.provider, status: "skipped" as const, written: 0, detail: BUDGET_SKIP }))
         : await pollParts(env, ctx, parts, now, fetchImpl, providers);
     }
@@ -474,8 +492,10 @@ export async function runLockedRepoRefresh(env: Env, caller: TenantContext, by: 
 /** Worst-case subrequests of one unit, per job — what the rotation budgets with (./dispatch.ts). */
 export const HEALTH_COST = 2;                                   // the two pings (a redirect costs one more: the budget's headroom)
 export const USAGE_COST = 3;                                    // Cloudflare + Railway + the app's metrics
-/** `reconcileRepo`'s 19 + 2N, plus the org image's import that rides the same unit (`runOrgJob`). */
-export const reconcileCost = (envs: number): number => 19 + 2 * envs + LOGO_IMPORT_COST;
+/** An installation token's mint: one POST, when the isolate holds no fresh one (src/github-app/api.ts). */
+export const GITHUB_MINT_COST = 1;
+/** `reconcileRepo`'s 19 + 2N, plus the org image's import that rides the same unit (`runOrgJob`) and a mint. */
+export const reconcileCost = (envs: number): number => 19 + 2 * envs + LOGO_IMPORT_COST + GITHUB_MINT_COST;
 /** `recomputeAllProgress` is UNBOUNDED (one request per issue number of every array-ref sprint), so
  *  this is an ESTIMATE for deciding whether another org may start; what a unit really spent is
  *  counted (`Budget.spent`), so one large org shortens the slice instead of overrunning it. */

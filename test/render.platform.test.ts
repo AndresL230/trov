@@ -270,6 +270,11 @@ describe("one organization", () => {
     expect(NOT_A_MEMBER).toContain("not a member");
     expect(NOT_A_MEMBER).toContain("cannot open or read its content");
     expect(platformOrgView(open())).toContain(NOT_A_MEMBER);
+    // 0043_github_app: whether the org is connected through the GitHub App, and on which account — read-only.
+    const plain = (h: string) => h.replace(/<[^>]+>/g, "");
+    expect(plain(platformOrgView(open()))).toContain("GitHub not connected through the App");
+    const viaApp = plain(platformOrgView({ ...open(), detail: { status: "ok", data: detailOf({ org: org({ github_account: "acme-gh" }) }) } }));
+    expect(viaApp).toContain("GitHub through the App on acme-gh");
   });
   it("an active org offers Suspend; a suspended one says so and offers Unsuspend", () => {
     const active = platformOrgView(open());

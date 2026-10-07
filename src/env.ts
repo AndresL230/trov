@@ -10,6 +10,14 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;     // Google OAuth client (second session-class provider); absent → /auth/google/login 503s
   GOOGLE_CLIENT_SECRET?: string; // Google OAuth client secret
   COOKIE_SECRET: string;
+  // The GitHub App (docs/architecture/github-app.md). GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET above are the SAME
+  // App's — it signs people in as well. The three secrets and the one var below are what let an org connect its
+  // repositories by installing it. Missing any of slug / id / key → Org settings offers only the pasted-token
+  // path and says the App is not configured on this deployment; nothing 500s.
+  GITHUB_APP_ID?: string;             // SECRET — the App's numeric id (the JWT's `iss`)
+  GITHUB_APP_PRIVATE_KEY?: string;    // SECRET — the whole .pem GitHub generated (PKCS#1; a PKCS#8 PEM works too). Signs the App JWT; never logged
+  GITHUB_APP_WEBHOOK_SECRET?: string; // SECRET — verifies deliveries to POST /webhook/github/app. Absent → every delivery there is the bare 401
+  GITHUB_APP_SLUG?: string;           // VAR (wrangler.toml) — the App's URL name: https://github.com/apps/<slug>/installations/new
   GITHUB_WEBHOOK_SECRET?: string; // LEGACY: SaplingLearn's fallback for the old /webhook/github hook (src/data/secrets.ts `resolveCredential`); Phase 7 deletes it
   GITHUB_REPO?: string;   // LEGACY: read by nothing — an org's repo is its `org_repos` row (0042_organizations copied this one); Phase 7 deletes it
   DEV_LOGIN?: string;     // LOCAL DEV ONLY (set in .dev.vars): bypass OAuth, act as this seeded user. Never set in prod.

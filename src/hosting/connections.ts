@@ -4,7 +4,7 @@
 //   the credential   always an `org_secrets` row (src/data/secrets.ts — write-only, encrypted, audited), under
 //                    the provider's kind (`HOSTING_INTEGRATION_KIND`) and scope ("" — or the environment key for
 //                    Railway's per-environment project token). A pasted token is ONLY that row.
-//   the connection   `org_hosting_connections` (0043): what an install / OAuth grant adds beside the secret —
+//   the connection   `org_hosting_connections` (0044): what an install / OAuth grant adds beside the secret —
 //                    the method, the provider-side installation id (`external_id`, what an uninstall notice
 //                    names), the account it reaches, and how it ended (`revoked_*`).
 //

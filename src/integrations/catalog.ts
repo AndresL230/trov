@@ -10,6 +10,7 @@ import {
 } from "../data/secrets";
 import type { TenantContext } from "../data/sql";
 import { listEnvironments, listRepoRows, webhookUrl } from "./settings";
+import { githubAppStatus } from "../github-app/status";
 import { HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, isLegacyProvider, providerOfKind, type HostingProviderId } from "@shared/hosting";
 import { listStoredParts } from "../hosting/parts";
 import { checkFields, providerOf } from "../hosting/registry";
@@ -40,14 +41,14 @@ export const INTEGRATION_CATALOG: Record<IntegrationKind, KindInfo> = {
   github_token: {
     scope: "org",
     label: "GitHub token",
-    description: "Reads the primary repository — deployments, check runs, workflow runs, branches, drift, open pull requests and issue progress — for Sync GitHub, the scheduled reconcile and the webhook's follow-up reads.",
-    how_to: "On GitHub open Settings › Developer settings › Personal access tokens › Fine-grained tokens and generate a token. Resource owner: the account that owns the repository. Repository access: only the primary repository. Repository permissions, all Read-only: Metadata, Contents, Pull requests, Issues, Actions, Deployments and Commit statuses. A classic token with the repo scope also works. Trov only reads with it and only ever sends it to api.github.com. It is an interim credential until Trov has a GitHub App.",
+    description: "Reads the primary repository — deployments, check runs, workflow runs, branches, drift, open pull requests and issue progress — for Sync GitHub, the scheduled reconcile and the webhook's follow-up reads. Not needed while the GitHub App is connected.",
+    how_to: "The simpler way is the GitHub App: Org settings › Repositories › Connect with GitHub, which needs no token at all. To use a token instead: on GitHub open Settings › Developer settings › Personal access tokens › Fine-grained tokens and generate one. Resource owner: the account that owns the repository. Repository access: only the primary repository. Repository permissions, all Read-only: Metadata, Contents, Pull requests, Issues, Actions, Checks, Deployments and Commit statuses. A classic token with the repo scope also works. Trov only reads with it and only ever sends it to api.github.com.",
     config_fields: [],
   },
   github_webhook: {
     scope: "repo",
     label: "GitHub webhook secret",
-    description: "Proves that a delivery to this repository's webhook URL came from GitHub: every delivery's HMAC-SHA256 signature is checked against it before anything is read.",
+    description: "Proves that a delivery to this repository's webhook URL came from GitHub: every delivery's HMAC-SHA256 signature is checked against it before anything is read. Not needed while the GitHub App is connected: the App delivers events itself.",
     how_to: "Generate a long random value (the Generate button, or `openssl rand -hex 32`). In the repository on GitHub open Settings › Webhooks › Add webhook: Payload URL = the webhook URL shown here, Content type = application/json, Secret = that value, events = Send me everything. Then save the same value here. Trov never shows it again — to change it, rotate it here and update the webhook on GitHub.",
     config_fields: [],
   },
@@ -169,7 +170,7 @@ export async function listIntegrations(ctx: TenantContext, env: Env, origin: str
   const [secrets, configs] = [await listSecretMeta(ctx), await listIntegrationConfig(ctx)];
   const integrations: IntegrationDTO[] = [];
   for (const slot of await slots(ctx, origin, secrets)) integrations.push(await describe(ctx, env, slot, secrets, configs));
-  return { integrations, secrets_available: await secretsAvailable(env), key_version: await currentKeyVersion(ctx) };
+  return { integrations, github_app: await githubAppStatus(ctx, env), secrets_available: await secretsAvailable(env), key_version: await currentKeyVersion(ctx) };
 }
 
 /** The metadata row every write answers with — also for a (kind, scope) the org no longer expects. */
