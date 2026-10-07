@@ -1,7 +1,8 @@
 // The org image's GitHub import, for a caller that has an org but not its credential
 // (docs/architecture/organizations.md › The organization's image). The rule and the fetch are
 // `importOrgLogo` (src/orgs/logo.ts); this module only finds what it needs — the org's PRIMARY
-// repository and, when it has one, its `github_token` — and hands them down. It lives here because
+// repository and, when it has one, its GitHub credential (the App installation's token, else its
+// `github_token` — src/github-app/credential.ts) — and hands them down. It lives here because
 // it resolves a credential: nothing reachable from src/mcp.ts may (test/secrets.mcp.test.ts).
 //
 // Called when a repository is connected or made primary and when the GitHub token is set or rotated
@@ -11,7 +12,7 @@ import type { Context } from "hono";
 import type { AppEnv } from "../auth/principal";
 import type { Env } from "../env";
 import type { PlatformContext, TenantContext } from "../data/context";
-import { resolveCredential } from "../data/secrets";
+import { resolveGithubCredential } from "../github-app/credential";
 import { jobTenant } from "../platform/jobs";
 import { orgPrimaryRepo } from "../repo/config";
 import { scrubbedMessage } from "../repo/github";
@@ -38,7 +39,7 @@ export async function importLogoForOrg(env: Env, p: PlatformContext, caller: Ten
     const repo = await orgPrimaryRepo(ctx);
     if (!repo) return { status: "no_repo" };
     // A secret that cannot be read (no key, a row that does not decrypt) reads as "no token".
-    token = (await resolveCredential(ctx, env, "github_token", "").catch(() => null))?.reveal() ?? null;
+    token = (await resolveGithubCredential(ctx, env, { repo: repo.repo, fetchImpl: opts.fetchImpl }).catch(() => null))?.token.reveal() ?? null;
     if (!token && opts.tokenOnly) return { status: "no_token" };
     return await importOrgLogo(p, env.ARTIFACTS_BUCKET, ctx.orgId, { repo: repo.repo, token, fetchImpl: opts.fetchImpl });
   } catch (e) {
