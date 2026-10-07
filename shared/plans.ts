@@ -5,7 +5,9 @@
 // per-org OVERRIDES of any limit (`orgs.plan_overrides`) — how the superadmin sizes an Enterprise org, and
 // how they make an exception on any plan. Every number below is a PLACEHOLDER for the owner to decide:
 // change it here and nothing else needs to change (the enforcement points read the resolved value).
-// No prices: they arrive with billing, on `PlanDef.billing`.
+// No prices, here or anywhere in Trov: a plan's price is a Stripe Price id in `wrangler.toml`
+// (src/billing/config.ts, docs/architecture/billing.md) and its amount is shown at Stripe's checkout.
+import type { OrgBillingView, PlatformOrgBilling } from "./billing";
 
 export const PLAN_IDS = ["personal", "team", "enterprise"] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
@@ -41,7 +43,8 @@ export const LIMITS: Record<LimitKey, LimitDef> = {
   agent_connections: { label: "Agent connections", one: "agent connection", many: "agent connections", counts: "Your own MCP tokens and connected apps for this organization.", per: "person", unit: "count", min: 0 },
 };
 
-/** Where a plan's price will hang once billing exists. Opaque to everything in this branch. */
+/** A plan's price, when one is written in code. Unused: prices are deployment config (`STRIPE_PRICE_*`),
+ *  resolved by src/billing/config.ts, so the owner changes one without a release. */
 export interface PlanBilling {
   /** The payment provider's id of this plan's price. */
   price_id: string;
@@ -53,7 +56,7 @@ export interface PlanDef {
   /** One line: who it is for. */
   description: string;
   entitlements: Entitlements;
-  /** null until billing sets prices; nothing reads it yet. */
+  /** null: the price id is deployment config (see `PlanBilling`). */
   billing: PlanBilling | null;
 }
 
@@ -90,12 +93,16 @@ export const planDef = (id: string | null | undefined): PlanDef => (isPlanId(id)
 /** `orgs.plan_source` — who put the org on its plan: the superadmin (or a grant of theirs), or billing. */
 export const PLAN_SOURCES = ["granted", "billing"] as const;
 export type PlanSource = (typeof PLAN_SOURCES)[number];
-/** `orgs.plan_status`. `past_due` changes nothing (billing's grace period); `canceled` keeps the org
+/** `orgs.plan_status`. `past_due` changes nothing (the grace period is Stripe's retry schedule); `canceled` keeps the org
  *  readable and working but refuses every ADDITION a limit governs, until the plan is set again. */
 export const PLAN_STATUSES = ["active", "past_due", "canceled"] as const;
 export type PlanStatus = (typeof PLAN_STATUSES)[number];
 
-export interface OrgPlanState { plan: PlanId; overrides: PlanOverrides; status: PlanStatus }
+export interface OrgPlanState {
+  plan: PlanId; overrides: PlanOverrides; status: PlanStatus;
+  /** Who put the org on the plan. Only `billing` matters here: a refusal then says so (`PlanRefusal.paid`). */
+  source?: PlanSource | null;
+}
 
 const OVERRIDE_MAX = Number.MAX_SAFE_INTEGER;
 
@@ -145,6 +152,8 @@ export interface PlanRefusal {
   status: PlanStatus;
   /** One plain sentence. */
   message: string;
+  /** The org pays for its plan through billing: its owner can change it themselves (Org settings). Absent otherwise. */
+  paid?: true;
 }
 
 /** The smallest plan whose own seats allow more than one person — what a Personal org is pointed at. */
@@ -194,9 +203,10 @@ function refusalMessage(state: OrgPlanState, limit: LimitKey, cap: number): stri
 export function planRefusal(state: OrgPlanState, limit: LimitKey, used: number, adding = 1): PlanRefusal | null {
   const cap = resolveEntitlements(state.plan, state.overrides)[limit];
   const plan = planDef(state.plan).id;
-  if (state.status === "canceled") return { error: "plan_limit", limit, used, cap: cap ?? used, plan, status: state.status, message: refusalMessage(state, limit, cap ?? used) };
+  const paid = state.source === "billing" ? { paid: true as const } : {};
+  if (state.status === "canceled") return { error: "plan_limit", limit, used, cap: cap ?? used, plan, status: state.status, message: refusalMessage(state, limit, cap ?? used), ...paid };
   if (cap === null || used + adding <= cap) return null;
-  return { error: "plan_limit", limit, used, cap, plan, status: state.status, message: refusalMessage(state, limit, cap) };
+  return { error: "plan_limit", limit, used, cap, plan, status: state.status, message: refusalMessage(state, limit, cap), ...paid };
 }
 
 /** Is a parsed JSON body a plan refusal? (The SPA's one check, on a 402.) */
@@ -205,11 +215,20 @@ export function isPlanRefusal(v: unknown): v is PlanRefusal {
   return !!r && typeof r === "object" && r.error === "plan_limit" && typeof r.limit === "string" && typeof r.message === "string";
 }
 
-/** Who can change a plan, said to the person who hit a limit. Billing replaces this pointer. */
-export const PLAN_CHANGE_POINTER = { owner: "Ask Trov to change your plan.", other: "Ask one of this organization's owners." } as const;
+/** Who can change a plan, said to the person who hit a limit. An owner of an org that PAYS for its plan
+ *  changes it themselves (`paid_owner`, `ended_owner`); an owner of a granted one asks Trov. */
+export const PLAN_CHANGE_POINTER = {
+  owner: "Ask Trov to change your plan.",
+  paid_owner: "You can upgrade or manage billing in Org settings.",
+  ended_owner: "You can renew it in Org settings.",
+  other: "Ask one of this organization's owners.",
+} as const;
 /** A refusal as the ONE sentence the SPA shows, with who can change it. */
-export function planRefusalSentence(r: Pick<PlanRefusal, "message">, role: "owner" | "admin" | "member" | null): string {
-  return `${r.message} ${role === "owner" ? PLAN_CHANGE_POINTER.owner : PLAN_CHANGE_POINTER.other}`;
+export function planRefusalSentence(r: Pick<PlanRefusal, "message"> & Partial<Pick<PlanRefusal, "paid" | "status">>, role: "owner" | "admin" | "member" | null): string {
+  const pointer = role !== "owner" ? PLAN_CHANGE_POINTER.other
+    : !r.paid ? PLAN_CHANGE_POINTER.owner
+    : r.status === "canceled" ? PLAN_CHANGE_POINTER.ended_owner : PLAN_CHANGE_POINTER.paid_owner;
+  return `${r.message} ${pointer}`;
 }
 
 // ── wire: an org's plan, as its members read it (GET /api/o/:slug/plan) ───────
@@ -220,8 +239,10 @@ export interface OrgPlanView {
   description: string;
   status: PlanStatus;
   source: PlanSource | null;
-  /** Reserved for billing (`orgs.plan_period_end`); null today. */
+  /** The paid period's end (`orgs.plan_period_end`): the renewal date, or when a cancelled plan ends. Null for a granted org. */
   period_end: string | null;
+  /** How the org pays (shared/billing.ts) — only for an org on a Stripe subscription; null / absent = nothing about payment is shown. */
+  billing?: OrgBillingView | null;
   entitlements: Entitlements;
   /** The limits this org has an override for. */
   overridden: LimitKey[];
@@ -295,4 +316,6 @@ export interface PlatformOrgPlan {
   entitlements: Entitlements;
   /** Members + pending invitations. */
   seats_used: number;
+  /** The Stripe subscription behind a paid org (shared/billing.ts); null / absent for a granted one. */
+  billing?: PlatformOrgBilling | null;
 }

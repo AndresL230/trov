@@ -45,4 +45,18 @@ export interface Env {
   // stored credentials. TROV_KEK_PREVIOUS is set only during a KEK rotation: the old key, picked by fingerprint.
   TROV_KEK?: string;
   TROV_KEK_PREVIOUS?: string;
+  // BILLING — Stripe (docs/architecture/billing.md; src/billing/config.ts is the only reader). Two SECRETS and the
+  // price ids as VARS (wrangler.toml). Absent the key or the webhook secret → billing is off: every billing route
+  // answers 503 `billing_unavailable`, the purchase buttons say so, and nothing else in the app changes. A plan
+  // with no price id is not purchasable. Test mode or live mode is whichever key is set (`sk_test_…` / `sk_live_…`).
+  STRIPE_SECRET_KEY?: string;     // SECRET — sent only as the bearer of a request to api.stripe.com (src/billing/stripe.ts); never logged
+  STRIPE_WEBHOOK_SECRET?: string; // SECRET — the `whsec_…` of the endpoint POST /webhook/stripe; absent → every delivery there is the bare 401
+  STRIPE_PRICE_PERSONAL?: string;        // VAR — the Stripe Price id (`price_…`) of Trov Personal, monthly
+  STRIPE_PRICE_TEAM?: string;            // VAR — Trov Team, monthly
+  STRIPE_PRICE_PERSONAL_YEARLY?: string; // VAR — optional yearly prices; a plan is offered on the intervals it has a price for
+  STRIPE_PRICE_TEAM_YEARLY?: string;
+  // LOCAL / TEST ONLY: a stand-in for api.stripe.com. Honoured ONLY for a loopback http origin (127.0.0.1 /
+  // localhost) and ONLY with a key that is not a live one, so production — where it is unset, and where a
+  // Worker cannot reach loopback anyway — always talks to api.stripe.com.
+  STRIPE_TEST_API_BASE?: string;
 }
