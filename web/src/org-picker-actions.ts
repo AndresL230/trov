@@ -52,7 +52,7 @@ export function createOrgsController(h: OrgsHost) {
     if (!d || d.busy) return;
     ui().create = null;
     h.rerender();
-    focus(state.view === "app" ? "[data-orgsw-trigger]" : '[data-field="orgsCreateOpen"]');
+    focus(state.view === "app" ? "[data-orgsw-trigger]" : '[data-field^="orgsCreateOpen"]');
   }
   function submitCreate(): void {
     const d = ui().create;
@@ -64,7 +64,7 @@ export function createOrgsController(h: OrgsHost) {
       return;
     }
     d.busy = true; h.rerender();
-    createOrg({ slug: d.slug, name: d.name.trim() })
+    createOrg({ slug: d.slug, name: d.name.trim(), ...(d.grant ? { grant: d.grant.id } : {}) })
       // Its admin lands in Org settings, on the setup checklist.
       .then((org) => h.go(orgHref(org.slug, "#org")))
       .catch((e) => {
@@ -72,7 +72,8 @@ export function createOrgsController(h: OrgsHost) {
         const cur = ui().create;
         if (!cur) return;
         cur.busy = false;
-        cur.errors = createOrgServerError(code(e), cur, state.myOrgs.data);
+        cur.errors = createOrgServerError(code(e), cur);
+        if (code(e) === "no_grant") void h.reloadOrgs(); // the grant is gone: the card and the menu row go with it
         h.rerender();
         focus(cur.errors.slug ? "#orgs-create-slug" : "#orgs-create-name");
       });
@@ -118,12 +119,16 @@ export function createOrgsController(h: OrgsHost) {
         if ((what === "accept" || what === "decline") && Number.isInteger(n)) answerInvite(n, what === "accept");
         return;
       }
-      case "orgsCreateOpen":
+      case "orgsCreateOpen": {
+        // `arg` = the grant to use (a card on the picker); from the switcher's menu, the oldest.
+        const grants = state.myOrgs.data?.grants ?? [];
+        const grant = grants.find((g) => String(g.id) === arg) ?? grants[0] ?? null;
         u.menu = false;
-        u.create = blankCreateOrg();
+        u.create = blankCreateOrg(grant);
         h.rerender();
         focus("#orgs-create-name");
         return;
+      }
       case "orgsCreateClose": closeCreate(); return;
       case "orgsCreateName":
         if (!u.create) return;

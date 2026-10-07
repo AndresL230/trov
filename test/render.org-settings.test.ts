@@ -100,7 +100,7 @@ const form = (o: Partial<SecretFormState> = {}): SecretFormState => ({
 
 describe("the current org — one place", () => {
   it("is the org the page's path names (`orgSlug`), with my role there — never 'the first of mine'", () => {
-    const mine: MyOrgsResponse = { orgs: [org("admin"), { slug: "other", name: "Other", role: "member" }], invites: [], superadmin: false, can_create: true, created: 1, limit: 3 };
+    const mine: MyOrgsResponse = { orgs: [org("admin"), { slug: "other", name: "Other", role: "member" }], invites: [], superadmin: false, can_create: true, grants: [] };
     const at = (orgSlug: string | null, data: MyOrgsResponse | null = mine, me: { orgs: MyOrgsResponse["orgs"] } | null = null) => currentOrg({ orgSlug, myOrgs: { data }, me });
     expect(at("acme")?.role).toBe("admin");
     expect(at("other")).toEqual({ slug: "other", name: "Other", role: "member" });
@@ -140,7 +140,7 @@ describe("route, hash and sidebar", () => {
     expect(sidebarView({ ...base, screen: "feed", orgSwitcher: "<b>switcher</b>" })).toContain('<div class="cnpy-orgslot"><b>switcher</b></div>');
   });
   it("the app renders the screen under its header title, and its hash never carries more than the tab", () => {
-    const s: AppState = { ...initialState(), view: "app", screen: "org", orgSlug: "acme", myOrgs: { status: "ok", data: { orgs: [org()], invites: [], superadmin: false, can_create: true, created: 1, limit: 3 } }, org: fullUi() };
+    const s: AppState = { ...initialState(), view: "app", screen: "org", orgSlug: "acme", myOrgs: { status: "ok", data: { orgs: [org()], invites: [], superadmin: false, can_create: true, grants: [] } }, org: fullUi() };
     const html = render(s);
     expect(html).toContain('data-screen-label="Org settings"');
     expect(html).toContain(">Org settings<");
@@ -515,7 +515,7 @@ describe("a secret's value is never in the markup", () => {
     });
     const s: AppState = {
       ...initialState(), view: "app", screen: "org", orgSlug: "acme", toast: "Saved the GitHub token", toastAt: Date.now(), toastMs: 2200,
-      myOrgs: { status: "ok", data: { orgs: [org()], invites: [], superadmin: false, can_create: true, created: 1, limit: 3 } }, org: saved,
+      myOrgs: { status: "ok", data: { orgs: [org()], invites: [], superadmin: false, can_create: true, grants: [] } }, org: saved,
     };
     const html = render(s);
     expect(html).toContain("ends in 1a2b");

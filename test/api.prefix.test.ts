@@ -42,7 +42,7 @@ const any: unknown = new Proxy(function () { /* callable */ }, {
   ownKeys: () => [],
 });
 /** Not request functions: the prefix's own controls, and the error classes. */
-const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText"]);
+const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "planLimitText"]);
 /** Functions whose arguments must be real values (a Blob for a multipart body). */
 const SPECIAL: Record<string, unknown[]> = {
   uploadAvatar: [new Blob(["x"]), "a.png"],
@@ -141,6 +141,44 @@ describe("every request function of api.ts", () => {
       expect((init.headers as Record<string, string>).accept).toBe("application/json");
     }
     expect((seen[1].headers as Record<string, string>)["content-type"]).toBe("application/json");
+  });
+});
+
+describe("plans and grants (0044_plans)", () => {
+  it("an org's plan is read under that org; grants and plan changes are platform routes, as written; creating an org names its grant", async () => {
+    const sent: { method: string; url: string; body: string | null }[] = [];
+    vi.stubGlobal("fetch", async (input: unknown, init?: RequestInit) => { sent.push({ method: init?.method ?? "GET", url: String(input), body: typeof init?.body === "string" ? init.body : null }); return respond(); });
+    await api.getOrgPlan("acme").catch(() => undefined);
+    await api.listPlatformGrants().catch(() => undefined);
+    await api.createPlatformGrant({ to: { email: "a@b.io" }, plan: "team" }).catch(() => undefined);
+    await api.revokePlatformGrant(7).catch(() => undefined);
+    await api.setPlatformOrgPlan("big co", { plan: "enterprise", overrides: { seats: 40 } }).catch(() => undefined);
+    await api.createOrg({ slug: "new-co", name: "New Co", grant: 4 }).catch(() => undefined);
+    expect(sent.map((a) => `${a.method} ${a.url}`)).toEqual([
+      "GET /api/o/acme/plan", "GET /api/platform/grants", "POST /api/platform/grants", "POST /api/platform/grants/7/revoke",
+      "PUT /api/platform/orgs/big%20co/plan", "POST /api/orgs",
+    ]);
+    expect(JSON.parse(sent[5].body ?? "null")).toEqual({ slug: "new-co", name: "New Co", grant: 4 });
+    expect(JSON.parse(sent[4].body ?? "null")).toEqual({ plan: "enterprise", overrides: { seats: 40 } });
+  });
+
+  it("a 402 plan_limit keeps the server's refusal on the error, from every sender; planLimitText is its one sentence", async () => {
+    const refusal = { error: "plan_limit", limit: "seats", used: 10, cap: 10, plan: "team", status: "active", message: "This organization has reached the 10 seats its Team plan includes." };
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify(refusal), { status: 402, headers: { "content-type": "application/json" } }));
+    const errors = await Promise.all([
+      api.createOrgInvite("acme", { github_login: "x", role: "member" }).catch((e: unknown) => e),                       // the org sender
+      api.createArtifact({ title: "t", kind: "markdown", area: "ui", repo: "", visibility: "org", summary: "s" } as never, { content: "c" }).catch((e: unknown) => e), // the artifact sender
+      api.createTicket({ title: "t" } as never).catch((e: unknown) => e),                                                 // the plain sender
+    ]);
+    for (const e of errors) {
+      expect(e).toBeInstanceOf(api.ApiError);
+      expect((e as InstanceType<typeof api.ApiError>).status).toBe(402);
+      expect((e as InstanceType<typeof api.ApiError>).plan).toEqual(refusal);
+    }
+    expect(api.planLimitText(errors[0], "owner")).toBe("This organization has reached the 10 seats its Team plan includes. Ask Trov to change your plan.");
+    expect(api.planLimitText(errors[0], "admin")).toBe("This organization has reached the 10 seats its Team plan includes. Ask one of this organization's owners.");
+    expect(api.planLimitText(new api.ApiError(403, "forbidden"), "owner")).toBeNull();
+    expect(api.planLimitText(new Error("offline"), "owner")).toBeNull();
   });
 });
 

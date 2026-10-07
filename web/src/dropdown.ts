@@ -266,6 +266,11 @@ export function createDropdowns(h: DropdownHost): Dropdowns {
   if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
     window.addEventListener("scroll", (e) => { if (!(e.target instanceof Element && e.target.closest("[data-dd-pop]"))) place(); }, true);
     window.addEventListener("resize", place);
+    // …and when something around it stops moving: a trigger inside a dialog that is still sliding in
+    // (Platform's grant and plan dialogs) was measured mid-flight, so it is measured again at rest.
+    const settled = (e: Event): void => { if (ui().open && !(e.target instanceof Element && e.target.closest("[data-dd-pop]"))) place(); };
+    window.addEventListener("animationend", settled, true);
+    window.addEventListener("transitionend", settled, true);
   }
 
   return { act, afterPaint };
