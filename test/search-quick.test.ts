@@ -4,6 +4,8 @@
 // humans), the per-group limit, and a short query answering without touching D1.
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
+import { ORG_A, systemCtx } from "./helpers/tenant";
+import type { Env } from "../src/env";
 import { app } from "../src/routes";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { propose_doc_update, promote_doc, append_feed, stage_adr, ratify_adr } from "../src/tools/writes";
@@ -37,22 +39,22 @@ async function publishedText(cookie: string, o: Record<string, unknown>): Promis
 }
 
 async function liveDoc(slug: string, title: string, body: string): Promise<void> {
-  await propose_doc_update(env.DB, { slug, section: "reference", title, body, change_summary: "s", confidence: "high" }, "agent");
-  await promote_doc(env.DB, slug, 1, "agent");
+  await propose_doc_update(systemCtx(), { slug, section: "reference", title, body, change_summary: "s", confidence: "high" }, "agent");
+  await promote_doc(systemCtx(), slug, 1, "agent");
 }
 
 describe("GET /search/quick — every type", () => {
   it("finds a ticket, doc, decision, sprint, artifact, prompt, handoff, person and feed entry by one word", async () => {
     await seedPerson("zebrafan", { name: "Zebra Person" });
-    const tid = await create_ticket(env.DB, { title: "Zebra crossing is broken", body: "", category: "bug", priority: "normal", assignees: [] }, ME);
+    const tid = await create_ticket(systemCtx(), { title: "Zebra crossing is broken", body: "", category: "bug", priority: "normal", assignees: [] }, ME);
     await liveDoc("zebra-doc", "Zebra runbook", "how the zebra pipeline deploys");
-    const adr = await stage_adr(env.DB, { title: "Adopt zebra stripes", context: "c", decision: "use zebra", rationale: "r", confidence: "high" }, "agent");
-    await ratify_adr(env.DB, adr);
-    const sp = await create_sprint(env.DB, { label: "Zebra sprint", urgency: "normal" }, ME);
+    const adr = await stage_adr(systemCtx(), { title: "Adopt zebra stripes", context: "c", decision: "use zebra", rationale: "r", confidence: "high" }, "agent");
+    await ratify_adr(systemCtx(), adr);
+    const sp = await create_sprint(systemCtx(), { label: "Zebra sprint", urgency: "normal" }, ME);
     await publishedText(await cookieFor(ME), { title: "Zebra diagram", content: "# zebra" });
-    await savePrompt(env.DB, ME, { slug: "zebra-review", title: "Zebra review", body: "Review the zebra", status: "published", description: "Checks stripes" }, "human");
-    const { handoff } = await createHandoff(env.DB, OTHER, { recipient: ME, body: "Finish the zebra migration" });
-    await append_feed(env.DB, { author: ME, summary: "Shipped the zebra importer", brief: "Imports zebras now." });
+    await savePrompt(systemCtx(), ME, { slug: "zebra-review", title: "Zebra review", body: "Review the zebra", status: "published", description: "Checks stripes" }, "human");
+    const { handoff } = await createHandoff(systemCtx(), OTHER, { recipient: ME, body: "Finish the zebra migration" });
+    await append_feed(systemCtx(), { author: ME, summary: "Shipped the zebra importer", brief: "Imports zebras now." });
 
     const r = await quick("zebra");
     expect(ids(r, "ticket")).toEqual([String(tid)]);
@@ -84,7 +86,7 @@ describe("GET /search/quick — every type", () => {
 
   it("finds a ticket by its number, and a person by @handle or a word of their name", async () => {
     await seedPerson("qiulinzy", { name: "Qiu Linzy Chenq" });
-    const tid = await create_ticket(env.DB, { title: "Unrelated title", body: "", category: "other", priority: "normal", assignees: [] }, ME);
+    const tid = await create_ticket(systemCtx(), { title: "Unrelated title", body: "", category: "other", priority: "normal", assignees: [] }, ME);
     expect(ids(await quick(`#${tid}`), "ticket")[0]).toBe(String(tid));
     expect(ids(await quick("@qiulin"), "person")).toEqual(["qiulinzy"]);
     expect(ids(await quick("chenq"), "person")).toEqual(["qiulinzy"]);
@@ -119,8 +121,8 @@ describe("GET /search/quick — visibility", () => {
 
   it("a draft artifact, an unpromoted doc and a draft decision are withheld (live-only, like /search)", async () => {
     await createText(await cookieFor(ME), { title: "Walrus draft", content: "walrus" }); // v1 = draft
-    await propose_doc_update(env.DB, { slug: "walrus-doc", section: "reference", title: "Walrus doc", body: "walrus", change_summary: "s", confidence: "high" }, "agent");
-    await stage_adr(env.DB, { title: "Walrus decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await propose_doc_update(systemCtx(), { slug: "walrus-doc", section: "reference", title: "Walrus doc", body: "walrus", change_summary: "s", confidence: "high" }, "agent");
+    await stage_adr(systemCtx(), { title: "Walrus decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
     const r = await quick("walrus");
     expect(ids(r, "artifact")).toEqual([]);
     expect(ids(r, "doc")).toEqual([]);
@@ -128,19 +130,19 @@ describe("GET /search/quick — visibility", () => {
   });
 
   it("a prompt with no published version is withheld; publishing it makes it findable", async () => {
-    await savePrompt(env.DB, ME, { slug: "narwhal", title: "Narwhal prompt", body: "narwhal body", status: "staged" }, "human");
+    await savePrompt(systemCtx(), ME, { slug: "narwhal", title: "Narwhal prompt", body: "narwhal body", status: "staged" }, "human");
     expect(ids(await quick("narwhal"), "prompt")).toEqual([]);
-    await savePrompt(env.DB, ME, { slug: "narwhal", title: "Narwhal prompt", body: "narwhal body v2", status: "published" }, "human");
+    await savePrompt(systemCtx(), ME, { slug: "narwhal", title: "Narwhal prompt", body: "narwhal body v2", status: "published" }, "human");
     expect(ids(await quick("narwhal"), "prompt")).toEqual(["narwhal"]);
   });
 
   it("handoffs: mine, anyone's and ones I sent are found; one between two other people never is; expired never", async () => {
     await seedPerson(ME); await seedPerson(OTHER); await seedPerson("third");
-    const toMe = (await createHandoff(env.DB, OTHER, { recipient: ME, body: "Ibex work for you" })).handoff.id;
-    const toAnyone = (await createHandoff(env.DB, OTHER, { recipient: "anyone", body: "Ibex work for anyone" })).handoff.id;
-    const sent = (await createHandoff(env.DB, ME, { recipient: OTHER, body: "Ibex work I sent" })).handoff.id;
-    const private3 = (await createHandoff(env.DB, OTHER, { recipient: "third", body: "Ibex work for third" })).handoff.id;
-    const expired = (await createHandoff(env.DB, OTHER, { recipient: ME, body: "Ibex expired" })).handoff.id;
+    const toMe = (await createHandoff(systemCtx(), OTHER, { recipient: ME, body: "Ibex work for you" })).handoff.id;
+    const toAnyone = (await createHandoff(systemCtx(), OTHER, { recipient: "anyone", body: "Ibex work for anyone" })).handoff.id;
+    const sent = (await createHandoff(systemCtx(), ME, { recipient: OTHER, body: "Ibex work I sent" })).handoff.id;
+    const private3 = (await createHandoff(systemCtx(), OTHER, { recipient: "third", body: "Ibex work for third" })).handoff.id;
+    const expired = (await createHandoff(systemCtx(), OTHER, { recipient: ME, body: "Ibex expired" })).handoff.id;
     await env.DB.prepare(`UPDATE handoffs SET status = 'expired' WHERE id = ?`).bind(expired).run();
     const got = ids(await quick("ibex"), "handoff").map(Number).sort((a, b) => a - b);
     expect(got).toEqual([toMe, toAnyone, sent].sort((a, b) => a - b));
@@ -152,7 +154,7 @@ describe("GET /search/quick — visibility", () => {
 
 describe("GET /search/quick — limits and short queries", () => {
   it("caps each group at `limit` (default 4, ceiling 8)", async () => {
-    for (let i = 0; i < 10; i++) await create_ticket(env.DB, { title: `Gecko ticket ${i}`, body: "", category: "other", priority: "normal", assignees: [] }, ME);
+    for (let i = 0; i < 10; i++) await create_ticket(systemCtx(), { title: `Gecko ticket ${i}`, body: "", category: "other", priority: "normal", assignees: [] }, ME);
     expect(ids(await quick("gecko"), "ticket").length).toBe(4);
     expect(ids(await quick("gecko", ME, "&limit=2"), "ticket").length).toBe(2);
     expect(ids(await quick("gecko", ME, "&limit=50"), "ticket").length).toBe(8);
@@ -160,7 +162,7 @@ describe("GET /search/quick — limits and short queries", () => {
   });
 
   it("an empty, 1-character or symbols-only query answers with no groups and never touches D1", async () => {
-    const noDb = new Proxy({}, { get() { throw new Error("D1 touched"); } }) as unknown as D1Database;
+    const noDb = systemCtx(ORG_A, "system", { get DB(): D1Database { throw new Error("D1 touched"); } } as unknown as Env);
     for (const q of ["", " ", "a", "  z ", "!!", "@@"]) {
       expect(await quickSearch(noDb, q, ME)).toEqual({ q: q.trim(), groups: [] });
     }

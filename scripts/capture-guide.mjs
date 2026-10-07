@@ -79,7 +79,7 @@ const SHOTS = [
   { name: "search", hash: "#search",
     step: async (p) => { await p.locator("input[data-act=setSearch]").first().fill("gate"); } },
   { name: "review", hash: "#review" },
-  { name: "maintenance", hash: "#maintenance" },
+  { name: "maintenance", hash: "#unplaced" },   // Triage › Unplaced (the screen is still `maintenance`)
   { name: "settings", hash: "#settings" },
   { name: "releases", hash: "#releases" },
 ];

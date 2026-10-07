@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first } from "../src/db";
+import { systemCtx } from "./helpers/tenant";
+import { all, first } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { reconcileRepo } from "../src/repo/github";
 import { getSnapshot } from "../src/repo/store";
@@ -33,7 +34,7 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
       "/actions/runs?": { workflow_runs: [{ id: 99, name: "CI", head_branch: "main", head_sha: "becdbac", status: "completed", conclusion: "success", run_attempt: 1, event: "push", html_url: "https://github.com/o/r/actions/runs/99", updated_at: "2026-09-20T09:10:00Z", run_started_at: "2026-09-20T09:05:00Z", actor: { login: "AndresL230" } }] },
       "/commits/main/check-runs": { check_runs: [{ id: 5001, name: "Workers Builds: frontend-staging", status: "completed", conclusion: "success", head_sha: "becdbac", details_url: "https://dash", started_at: "2026-09-20T09:05:00Z", completed_at: "2026-09-20T09:06:32Z", app: { slug: "cloudflare-workers-and-pages" }, check_suite: { head_branch: "main" } }] },
     });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     const kinds = await all<{ kind: string; n: number }>(env.DB, `SELECT kind, COUNT(*) AS n FROM repo_events GROUP BY kind ORDER BY kind`);
     expect(kinds).toEqual([{ kind: "check", n: 1 }, { kind: "deploy", n: 2 }, { kind: "run", n: 1 }]);
     // The check-runs list omits check_suite.head_branch reliably only per-ref: the branch we ASKED for is the branch.
@@ -48,7 +49,7 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
 
   it("lowercases the GraphQL states and re-suffixes a Bot creator so backfill and webhook rows agree", async () => {
     const gh = fakeGithub({ graphql: deployments(deployNode()) });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     const rows = await all<RepoEventRow>(env.DB, `SELECT * FROM repo_events WHERE kind = 'deploy' ORDER BY occurred_at`);
     expect(rows.map((r) => [r.semantic_key, r.state, r.env, r.part, r.actor_login, r.sha, r.provenance])).toEqual([
       ["gh:deploy:7001:in_progress", "in_progress", "staging", "backend", "railway-app[bot]", "becdbac", "backfill"],
@@ -60,14 +61,14 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
 
   it("asks GraphQL only for the configured environments, so a preview deployment can never appear", async () => {
     const gh = fakeGithub({ graphql: deployments(deployNode({ databaseId: 8002, environment: "Sapling / pr-91" })) });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(gh.graphql[0].variables).toEqual({ owner: "o", name: "r", envs: ["Sapling / staging", "Sapling / production"] });
     expect(await all(env.DB, `SELECT * FROM repo_events WHERE kind = 'deploy'`)).toEqual([]);
   });
 
   it("skips the deployments request entirely when no environment is configured — but the branches refs query still runs", async () => {
     const gh = fakeGithub({});
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, [], NOW);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, [], NOW);
     // `deployments` genuinely cannot filter without environment names, so it
     // stays gated; `branches` degrades fine with envs: [] (see the dedicated
     // test below), so a refs query is legitimate here — only the deployments
@@ -86,23 +87,23 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
         { name: "feature/x", target: { committedDate: "2026-09-19T00:00:00Z" }, compare: { aheadBy: 0, behindBy: 2 } },
       ] } } } },
     });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, [], NOW);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, [], NOW);
     const call = gh.graphql.find((c) => c.query.includes("refs(refPrefix"));
     expect(call?.variables).toMatchObject({ owner: "o", name: "r", head: "main" });
-    const snap = await getSnapshot(env.DB, "branches");
+    const snap = await getSnapshot(systemCtx(), "branches");
     expect(snap?.data).toEqual({ active: 1, stale: 0, head: "main", rows: [{ name: "feature/x", at: "2026-09-19T00:00:00Z", ahead: 2, behind: 0, stale: false }] });
   });
 
   it("an errors body writes nothing, does not throw, and names the arm in `failed`", async () => {
     const gh = fakeGithub({ graphql: { data: { repository: null }, errors: [{ message: "Could not resolve to a Repository" }] } });
-    const res = await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    const res = await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(await all(env.DB, `SELECT * FROM repo_events WHERE kind = 'deploy'`)).toEqual([]);
     expect(res.failed).toContain("deployments");
   });
 
   it("survives a GraphQL body with no nodes at all", async () => {
     const gh = fakeGithub({ graphql: { data: {} } });
-    const res = await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    const res = await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(res.failed).not.toContain("deployments");
     expect(await all(env.DB, `SELECT * FROM repo_events WHERE kind = 'deploy'`)).toEqual([]);
   });
@@ -112,8 +113,8 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
       "/commits?sha=main&per_page=1": [{ sha: "mainhead0000001", commit: { message: "ship it", committer: { date: "2026-09-20T10:00:00Z" } }, author: { login: "AndresL230" } }],
       "/commits?sha=production&per_page=1": [{ sha: "prodhead1234567", commit: { message: "release cut", committer: { date: "2026-09-19T10:00:00Z" } }, author: { login: "AndresL230" } }],
     });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
-    const snap = await getSnapshot<Record<string, string>>(env.DB, "env_heads");
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    const snap = await getSnapshot<Record<string, string>>(systemCtx(), "env_heads");
     expect(snap!.data).toEqual({ main: "mainhead0000001", production: "prodhead1234567" });
     expect(snap!.computedAt).toBe(new Date(NOW).toISOString());
     // A synthetic count-1 push row would shadow the real push that follows it.
@@ -131,7 +132,7 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
       "/commits?sha=main&per_page=1": [head], "/commits?sha=production&per_page=1": [head],
       "/commits/main/check-runs": runs, "/commits/production/check-runs": runs,
     });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(await all(env.DB, `SELECT number, env, part, ref FROM repo_events WHERE kind = 'check' ORDER BY number`)).toEqual([
       { number: 5001, env: "staging", part: "frontend", ref: "main" },
       { number: 5002, env: "production", part: "frontend", ref: "production" },
@@ -149,7 +150,7 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
       "/actions/runs?": { workflow_runs: runs },
       "/jobs": { jobs: [{ name: "e2e", conclusion: "failure", steps: [{ name: "run suite", conclusion: "failure" }] }] },
     });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     const jobCalls = gh.calls.filter((c) => c.includes("/jobs"));
     expect(jobCalls.length).toBe(5);
     const titled = await all<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM repo_events WHERE kind = 'run' AND title IS NOT NULL`);
@@ -160,17 +161,17 @@ describe("reconcileRepo — deployments, workflow runs and env-head checks", () 
   // the rows this Sync happened to write — so a first Sync's leftovers drain
   // over later Syncs instead of staying nameless forever.
   it("labels a failed run left untitled by an earlier Sync, even though this Sync writes nothing new", async () => {
-    await ingestRepoEvent(env.DB, { semantic_key: "gh:run:77:1", kind: "run", number: 77, name: "CI", state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-19T09:00:00Z" });
+    await ingestRepoEvent(systemCtx(), { semantic_key: "gh:run:77:1", kind: "run", number: 77, name: "CI", state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-19T09:00:00Z" });
     const gh = fakeGithub({ "/jobs": { jobs: [{ name: "e2e", conclusion: "failure", steps: [{ name: "run suite", conclusion: "failure" }] }] } });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(await first(env.DB, `SELECT title FROM repo_events WHERE semantic_key = 'gh:run:77:1'`)).toEqual({ title: "e2e · run suite" });
   });
 
   it("never looks up a run outside the last 7 days, or one that already has a title", async () => {
-    await ingestRepoEvent(env.DB, { semantic_key: "gh:run:70:1", kind: "run", number: 70, state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-01T09:00:00Z" });
-    await ingestRepoEvent(env.DB, { semantic_key: "gh:run:71:1", kind: "run", number: 71, state: "failure", title: "e2e", raw: "{}", provenance: "webhook", occurred_at: "2026-09-19T09:00:00Z" });
+    await ingestRepoEvent(systemCtx(), { semantic_key: "gh:run:70:1", kind: "run", number: 70, state: "failure", raw: "{}", provenance: "webhook", occurred_at: "2026-09-01T09:00:00Z" });
+    await ingestRepoEvent(systemCtx(), { semantic_key: "gh:run:71:1", kind: "run", number: 71, state: "failure", title: "e2e", raw: "{}", provenance: "webhook", occurred_at: "2026-09-19T09:00:00Z" });
     const gh = fakeGithub({});
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(gh.calls.filter((c) => c.includes("/jobs")).length).toBe(0);
   });
 });
@@ -181,9 +182,9 @@ describe("reconcileRepo", () => {
     // also answer the per-environment-head commit fetch (`&per_page=1`, no `since`)
     // the env_heads snapshot is built from — those are separate, unmocked here.
     const gh = fakeGithub({ "/pulls?state=open": [openPr], "/pulls?state=closed": [], "/commits?sha=main&since=": [commit] });
-    const firstRun = await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    const firstRun = await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(firstRun).toEqual({ written: 2, unchanged: 0, failed: [] });
-    const again = await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    const again = await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(again).toEqual({ written: 0, unchanged: 2, failed: [] });
 
     const rows = await all<RepoEventRow>(env.DB, `SELECT * FROM repo_events ORDER BY kind`);
@@ -198,7 +199,7 @@ describe("reconcileRepo", () => {
       calls.push(init ?? {});
       return new Response("nope", { status: 500 });
     }) as typeof fetch;
-    const res = await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
+    const res = await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
     expect(res).toEqual({ written: 0, unchanged: 0, failed: ["open_prs", "closed_prs", "commits", "deployments", "runs", "env_heads", "checks", "statuses", "reviews", "branches", "drift"] });
     expect(calls.length).toBeGreaterThan(0);
     for (const init of calls) {
@@ -220,19 +221,19 @@ describe("reconcileRepo", () => {
       ] } } } },
       "/compare/production...main": { ahead_by: 1, behind_by: 0, commits: [{ sha: "aaa1111bbb", commit: { message: "direct push", committer: { date: "2026-09-20T09:00:00Z" } }, author: { login: "AndresL230" } }] },
     });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: goodGh.fetchImpl }, ENVS, NOW);
-    const driftBefore = await getSnapshot(env.DB, "drift");
-    const branchesBefore = await getSnapshot(env.DB, "branches");
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: goodGh.fetchImpl }, ENVS, NOW);
+    const driftBefore = await getSnapshot(systemCtx(), "drift");
+    const branchesBefore = await getSnapshot(systemCtx(), "branches");
     expect(driftBefore).not.toBeNull();
     expect(branchesBefore).not.toBeNull();
 
     // A blanket 500 (the same shape as the "never throws" test above) fails
     // every arm, drift and branches included.
     const failingFetch = (async () => new Response("nope", { status: 500 })) as typeof fetch;
-    const res = await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: failingFetch }, ENVS, NOW);
+    const res = await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: failingFetch }, ENVS, NOW);
     expect(res.failed).toEqual(expect.arrayContaining(["drift", "branches"]));
-    expect(await getSnapshot(env.DB, "drift")).toEqual(driftBefore);
-    expect(await getSnapshot(env.DB, "branches")).toEqual(branchesBefore);
+    expect(await getSnapshot(systemCtx(), "drift")).toEqual(driftBefore);
+    expect(await getSnapshot(systemCtx(), "branches")).toEqual(branchesBefore);
   });
 
   // The subrequest budget: `reconcileRepo` shares one Cloudflare invocation (50
@@ -258,7 +259,7 @@ describe("reconcileRepo", () => {
       "/compare/production...main": { ahead_by: 1, behind_by: 1, commits: [compareCommit] },
       "/compare/main...production": { ahead_by: 1, behind_by: 1, commits: [compareCommit] },
     });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
     expect(gh.calls.length).toBe(19); // 5 + 5 job lookups + 2 environments × 2 + 1 status list + 1 reviews query + 1 branches refs page + 2 drift compares
   });
 });
@@ -270,16 +271,16 @@ describe("reconcileRepo", () => {
 describe("reconcileRepo — the prs_reconciled completeness marker", () => {
   it("writes the marker once the open-PR list is fetched and ingested without throwing", async () => {
     const gh = fakeGithub({ "/pulls?state=open": [openPr], "/pulls?state=closed": [], "/commits?": [] });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
-    const marker = await getSnapshot<{ at: string }>(env.DB, "prs_reconciled");
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    const marker = await getSnapshot<{ at: string }>(systemCtx(), "prs_reconciled");
     expect(marker).not.toBeNull();
     expect(marker!.data.at).toBe(new Date(NOW).toISOString());
   });
 
   it("writes the marker even for a repo with zero open PRs — a marker, not a backfill row, earns it", async () => {
     const gh = fakeGithub({ "/pulls?state=open": [], "/pulls?state=closed": [], "/commits?": [] });
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
-    expect(await getSnapshot(env.DB, "prs_reconciled")).not.toBeNull();
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW);
+    expect(await getSnapshot(systemCtx(), "prs_reconciled")).not.toBeNull();
   });
 
   it("does NOT write the marker when the open-PR fetch itself fails", async () => {
@@ -287,7 +288,7 @@ describe("reconcileRepo — the prs_reconciled completeness marker", () => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       return url.includes("/pulls?state=open") ? new Response("nope", { status: 500 }) : new Response("[]", { status: 200 });
     }) as typeof fetch;
-    await reconcileRepo(env.DB, { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
-    expect(await getSnapshot(env.DB, "prs_reconciled")).toBeNull();
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
+    expect(await getSnapshot(systemCtx(), "prs_reconciled")).toBeNull();
   });
 });

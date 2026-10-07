@@ -3,18 +3,19 @@ import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import type { SprintRow, PlanRow, PlanVersionRow } from "@shared/rows";
 import { PLAN_NARRATIVE_MAX } from "@shared/sprints";
+import { bearerCtx } from "./helpers/tenant";
 
-// ADMIN_LOGINS binds "admin-user" in vitest.config.ts — this login clears isAdmin().
+// update_plan registers for an org ADMIN (§7.2): the client below binds this handle as one.
 const AUTHOR = "admin-user";
 
 // Drive the ACTUAL registered MCP `update_plan` tool through an in-memory MCP
 // client/server pair — the same closure production runs (mirrors
 // test/mcp.append_feed.test.ts's callTool helper).
 async function withClient<T>(login: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: login });
+  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, await bearerCtx(login, login === AUTHOR ? "admin" : undefined));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -48,7 +49,7 @@ describe("registered MCP update_plan tool", () => {
     expect(body.version).toBe(1);
     expect(body.sprints).toHaveLength(1);
 
-    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan?.updated_by).toBe(AUTHOR);
     expect(plan?.narrative).toBe("shipped via MCP");
 
@@ -86,7 +87,7 @@ describe("registered MCP update_plan tool — the narrative cap", () => {
     const narrative = "x".repeat(PLAN_NARRATIVE_MAX);
     const res = await callTool(AUTHOR, "update_plan", { narrative });
     expect(res.isError).toBeFalsy();
-    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan?.narrative).toBe(narrative);
   });
 
@@ -99,7 +100,7 @@ describe("registered MCP update_plan tool — the narrative cap", () => {
     expect(res.text).toContain(`${PLAN_NARRATIVE_MAX + 1} characters`);
     expect(res.text).toContain(`the cap is ${PLAN_NARRATIVE_MAX}`);
 
-    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan?.narrative).toBe("");
     expect(plan?.current_version).toBe(0);
     expect(await all<PlanVersionRow>(env.DB, `SELECT * FROM plan_versions`)).toHaveLength(0);
@@ -135,7 +136,7 @@ describe("update_plan is admin-only — non-admin principals don't even get the 
     expect(res.text.toLowerCase()).toContain("not found");
 
     // Nothing was written — the seeded plan row is untouched.
-    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE id = 1`);
+    const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan?.narrative).not.toBe("should not land");
   });
 });

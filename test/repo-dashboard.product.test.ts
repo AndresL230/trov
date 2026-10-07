@@ -18,6 +18,7 @@ import { getRepoDashboard, emptyRepoDashboard } from "../src/tools/repo";
 import type { RepoProductEnv } from "@shared/repo";
 import { ENVS } from "./helpers/repo";
 
+import { systemCtx } from "./helpers/tenant";
 const NOW = Date.parse("2026-09-20T12:05:00Z");
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -26,11 +27,11 @@ const MIDNIGHT = Date.parse("2026-09-20T00:00:00Z");
 
 const iso = (ms: number) => new Date(ms).toISOString();
 type Row = [metric: string, env: string, at: number, value: number];
-const seed = (rows: Row[]) => putMetrics(env.DB, rows.map(([metric, envKey, at, value]) => ({ metric, env: envKey, part: "", value, at: iso(at) })));
+const seed = (rows: Row[]) => putMetrics(systemCtx(), rows.map(([metric, envKey, at, value]) => ({ metric, env: envKey, part: "", value, at: iso(at) })));
 const count = (key: string, envKey: string, at: number, h24: number, d7: number, d30: number): Row[] =>
   [[`sap_c_${key}_24h`, envKey, at, h24], [`sap_c_${key}_7d`, envKey, at, d7], [`sap_c_${key}_30d`, envKey, at, d30]];
 const product = async (now = NOW): Promise<RepoProductEnv[]> => {
-  const s = (await getRepoDashboard(env.DB, "o/r", now, ENVS)).product;
+  const s = (await getRepoDashboard(systemCtx(), "o/r", now, ENVS)).product;
   expect(s.status).toBe("ok");
   return (s as { data: RepoProductEnv[] }).data;
 };
@@ -38,16 +39,16 @@ const metricOf = (e: RepoProductEnv, key: string) => e.groups.flatMap((g) => g.m
 
 describe("getRepoDashboard — product metrics", () => {
   it("never reported → not_connected; an empty dashboard says the same", async () => {
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).product).toEqual({ status: "not_connected" });
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).product).toEqual({ status: "not_connected" });
     expect(emptyRepoDashboard("o/r", true).product).toEqual({ status: "not_connected" });
     // …and active users alone are not product metrics.
     await seed([["active_users_24h", "staging", AT, 74]]);
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).product).toEqual({ status: "not_connected" });
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).product).toEqual({ status: "not_connected" });
   });
 
   it("no environment configured → not_connected, whatever is stored", async () => {
     await seed(count("signups", "staging", AT, 3, 21, 96));
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, [])).product).toEqual({ status: "not_connected" });
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, [])).product).toEqual({ status: "not_connected" });
   });
 
   it("fresh readings: each range picks ITS OWN window, totals ignore the range, per environment", async () => {
@@ -171,8 +172,8 @@ describe("getRepoDashboard — product metrics", () => {
 
   it("only stale readings → empty (the poll has gone quiet); aged out of the read entirely → still empty", async () => {
     await seed(count("signups", "staging", MIDNIGHT, 3, 21, 96));
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).product).toEqual({ status: "empty" });
-    expect((await getRepoDashboard(env.DB, "o/r", NOW + 60 * DAY, ENVS)).product).toEqual({ status: "empty" });
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).product).toEqual({ status: "empty" });
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW + 60 * DAY, ENVS)).product).toEqual({ status: "empty" });
   });
 
   it("the trend is the 00:00 UTC `24h` readings of the last 30 days, oldest first — a missed midnight is absent, never zero", async () => {
@@ -198,7 +199,7 @@ describe("getRepoDashboard — product metrics", () => {
       ...count("signups", "staging", AT, 3, 21, 96), ["sap_t_users", "staging", AT, 1204],
     ]);
     // a copy-paste while adding a third environment: two entries, one key
-    const s = (await getRepoDashboard(env.DB, "o/r", NOW, [ENVS[0], { ...ENVS[0], label: "staging (copy)" }, ENVS[1]])).product;
+    const s = (await getRepoDashboard(systemCtx(), "o/r", NOW, [ENVS[0], { ...ENVS[0], label: "staging (copy)" }, ENVS[1]])).product;
     const data = (s as { data: RepoProductEnv[] }).data;
     const staging = data.find((e) => e.name === "staging")!;
     expect(metricOf(staging, "signups")?.trend).toEqual([13, 12, 11, 10]);
@@ -212,25 +213,25 @@ describe("getRepoDashboard — product metrics", () => {
 
   it("a row for an unconfigured environment, with a part, or with a malformed name is nobody's product metric", async () => {
     await seed([...count("signups", "elsewhere", AT, 3, 21, 96), ["sap_c_signups", "staging", AT, 1], ["sap_x_users", "staging", AT, 1], ["sap_t_", "staging", AT, 1]]);
-    await putMetrics(env.DB, [{ metric: "sap_t_users", env: "staging", part: "backend", value: 1, at: iso(AT) }]);
+    await putMetrics(systemCtx(), [{ metric: "sap_t_users", env: "staging", part: "backend", value: 1, at: iso(AT) }]);
     // Rows HAVE landed, so the section is `empty`, not `not_connected` — but nothing is shown.
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).product).toEqual({ status: "empty" });
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).product).toEqual({ status: "empty" });
   });
 
   it("the product section never changes the usage / hosting sections' states, nor they its own", async () => {
     await seed(count("signups", "staging", AT, 3, 21, 96));
-    const d = await getRepoDashboard(env.DB, "o/r", NOW, ENVS);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
     expect([d.usage.status, d.cloudflare.status, d.hosting.status, d.product.status]).toEqual(["not_connected", "not_connected", "not_connected", "ok"]);
     await env.DB.prepare(`DELETE FROM repo_metrics`).run();
     await seed([["active_users_24h", "staging", AT, 74], ["rw_cpu", "staging", AT - 9 * HOUR, 1]]);
-    const e = await getRepoDashboard(env.DB, "o/r", NOW, ENVS);
+    const e = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
     expect([e.usage.status, e.cloudflare.status, e.hosting.status, e.product.status]).toEqual(["ok", "not_connected", "empty", "not_connected"]);
   });
 
   it("the render adds exactly ONE statement for product metrics — and none beyond the shared existence check when it is quiet", async () => {
     const countStatements = async () => {
       const spy = vi.spyOn(env.DB, "prepare");
-      try { await getRepoDashboard(env.DB, "o/r", NOW, ENVS); return spy.mock.calls.map((c) => String(c[0])); } finally { spy.mockRestore(); }
+      try { await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS); return spy.mock.calls.map((c) => String(c[0])); } finally { spy.mockRestore(); }
     };
     const quiet = await countStatements();
     expect(quiet.filter((q) => q.includes("names(m)"))).toHaveLength(1);
@@ -242,7 +243,7 @@ describe("getRepoDashboard — product metrics", () => {
 
   it("what the poller writes is what the screen reads", async () => {
     const body = { active_users: { "24h": 6, "7d": 9, "30d": 9 }, counts: { signups: { "24h": 3, "7d": 21, "30d": 96 }, new_thing: { "24h": 1, "7d": 1, "30d": 2 } }, totals: { users: 1204 } };
-    await pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW, (async () => new Response(JSON.stringify(body), { status: 200 })) as typeof fetch);
+    await pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW, (async () => new Response(JSON.stringify(body), { status: 200 })) as typeof fetch);
     const [staging] = await product();
     expect(staging.groups.map((g) => [g.id, g.metrics.map((m) => [m.key, m.values["7d"]])])).toEqual([["growth", [["signups", "21"]]], ["other", [["new_thing", "1"]]]]);
     expect(staging.totals.map((t) => [t.key, t.value])).toEqual([["users", "1.2K"]]);

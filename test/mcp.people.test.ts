@@ -9,13 +9,14 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { run } from "../src/db";
+import { run } from "./helpers/db";
 import type { PersonForAgents } from "@shared/people";
 import { seedPerson } from "./helpers/persons";
+import { bearerCtx } from "./helpers/tenant";
 
 async function withClient<T>(handle: string, fn: (client: Client) => Promise<T>): Promise<T> {
   await seedPerson(handle);
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);

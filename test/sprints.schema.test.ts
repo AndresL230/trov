@@ -15,7 +15,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run, nowIso } from "../src/db";
+import { all, first, run, nowIso } from "./helpers/db";
 import type { SprintRow } from "@shared/rows";
 import { sprintActive, toSprintView } from "@shared/sprints";
 import { get_plan } from "../src/tools/plan";
@@ -23,6 +23,7 @@ import { upsertProgress, getProgress } from "../src/tools/progress";
 import { app } from "../src/routes";
 import { cookieFor } from "./helpers/persons";
 
+import { systemCtx } from "./helpers/tenant";
 /** A row inserted with EXACTLY the pre-0025 column set — what every migrated row looks like. */
 async function seedLegacyRow(title: string, status: string, targetDate = "2026-08-01"): Promise<number> {
   const now = nowIso();
@@ -44,7 +45,7 @@ describe("0025: the table was RENAMED in place, never re-created", () => {
     const laterId = await seedLegacyRow("Later", "upcoming", "2026-08-02");
     const doneId = await seedLegacyRow("Shipped", "done", "2026-08-03");
 
-    const view = await get_plan(env.DB);
+    const view = await get_plan(systemCtx());
     const byId = new Map(view.sprints.map((s) => [s.id, s]));
 
     expect(byId.get(runningId)).toMatchObject({ label: "Running", due: "2026-08-01", active: true, status: "in_progress" });
@@ -99,22 +100,22 @@ describe("0025: the progress cache followed the table", () => {
 
   it("the cache round-trips through upsertProgress/getProgress on the renamed table", async () => {
     const id = await seedLegacyRow("Cached", "in_progress");
-    await upsertProgress(env.DB, id, 2, 5, "event");
-    expect((await getProgress(env.DB)).get(id)).toMatchObject({ sprint_id: id, closed: 2, total: 5, source: "event" });
+    await upsertProgress(systemCtx(), id, 2, 5, "event");
+    expect((await getProgress(systemCtx())).get(id)).toMatchObject({ sprint_id: id, closed: 2, total: 5, source: "event" });
 
     // Absolute overwrite — the last write wins, no row duplication.
-    await upsertProgress(env.DB, id, 4, 5, "recompute");
+    await upsertProgress(systemCtx(), id, 4, 5, "recompute");
     const rows = await all(env.DB, `SELECT * FROM sprint_progress WHERE sprint_id = ?`, id);
     expect(rows).toHaveLength(1);
     // The cache surfaces as `issues` on the read DTO; `progress` is the sprint's
     // tickets, and this legacy row has none.
-    const view = await get_plan(env.DB).then((v) => v.sprints.find((s) => s.id === id)!);
+    const view = await get_plan(systemCtx()).then((v) => v.sprints.find((s) => s.id === id)!);
     expect(view.issues).toEqual({ closed: 4, total: 5 });
     expect(view.progress).toEqual({ closed: 0, total: 0, pct: 0 });
   });
 
   it("a cache row cannot point at a sprint that does not exist (the FK bites)", async () => {
-    await expect(upsertProgress(env.DB, 999999, 1, 1, "event")).rejects.toThrow();
+    await expect(upsertProgress(systemCtx(), 999999, 1, 1, "event")).rejects.toThrow();
   });
 });
 
@@ -192,7 +193,7 @@ describe("0025: sprint_resources", () => {
   it("the harness truncation clears sprints and sprint_resources (FK-safe order)", async () => {
     const id = await seedLegacyRow("Truncated", "upcoming");
     await run(env.DB, `INSERT INTO sprint_resources (sprint_id, url, kind, label, meta) VALUES (?, 'u', 'plain', 'l', 'm')`, id);
-    await upsertProgress(env.DB, id, 1, 1, "event");
+    await upsertProgress(systemCtx(), id, 1, 1, "event");
 
     const { RESET_STATEMENTS } = await import("../scripts/seed/reset.mjs");
     await env.DB.exec(RESET_STATEMENTS.join("; ") + ";");

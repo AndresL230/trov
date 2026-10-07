@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { all, run, nowIso } from "../src/db";
+import { all, run, nowIso } from "./helpers/db";
 import type { EventRow } from "@shared/rows";
 import type { Env } from "../src/env";
 import worker from "../src/index";
@@ -8,8 +8,8 @@ import {
   verifyGithubSignature,
   eventsFromDelivery,
   progressFromIssueEvent,
-  handleGithubWebhook,
 } from "../src/webhook";
+import { handleGithubWebhook, syncOrgConfig } from "./helpers/org-config";
 import prMerged from "./fixtures/gh-pr-merged.json";
 import issueAssigned from "./fixtures/gh-issue-assigned.json";
 import issueClosed from "./fixtures/gh-issue-closed.json";
@@ -24,6 +24,7 @@ import { getSnapshot } from "../src/repo/store";
 import type { RepoDrift } from "@shared/repo";
 import { ENVS } from "./helpers/repo";
 
+import { systemCtx } from "./helpers/tenant";
 const SECRET = "test-webhook-secret"; // matches vitest.config.ts binding
 
 // GitHub's own signing recipe — HMAC-SHA256 hex, prefixed `sha256=`.
@@ -126,6 +127,7 @@ describe("handleGithubWebhook — the third auth class", () => {
     const body = JSON.stringify(prMerged);
     const sig = await sign(SECRET, body);
     const ctx = { waitUntil() {}, passThroughException() {} } as unknown as ExecutionContext;
+    await syncOrgConfig(); // SaplingLearn's repo row — the one the legacy URL delivers to
     const res = await worker.fetch(
       req(body, { "x-github-event": "pull_request", "x-hub-signature-256": sig }),
       env,
@@ -423,7 +425,7 @@ describe("handleGithubWebhook — drift snapshot on a push to an environment bra
     }) as typeof fetch;
     const res = await postWebhook("push", pushFixture, withRepoConfig, { fetchImpl });
     expect(res.status).toBe(200);
-    const snap = await getSnapshot<RepoDrift>(env.DB, "drift");
+    const snap = await getSnapshot<RepoDrift>(systemCtx(), "drift");
     expect(snap?.data).toMatchObject({ head: "main", base: "production", ahead: 2, behind: 0 });
   });
 
@@ -433,7 +435,7 @@ describe("handleGithubWebhook — drift snapshot on a push to an environment bra
     const offBranchPush = { ...pushFixture, ref: "refs/heads/feature/off-environment" };
     await postWebhook("push", offBranchPush, withRepoConfig, { fetchImpl });
     expect(calls).toBe(0);
-    expect(await getSnapshot(env.DB, "drift")).toBeNull();
+    expect(await getSnapshot(systemCtx(), "drift")).toBeNull();
   });
 
   it("with no GITHUB_SERVICE_TOKEN, no fetch is attempted and no snapshot is written", async () => {
@@ -442,6 +444,6 @@ describe("handleGithubWebhook — drift snapshot on a push to an environment bra
     const noToken = { ...env, GITHUB_REPO: "o/r", REPO_ENVIRONMENTS: JSON.stringify(ENVS) } as Env;
     await postWebhook("push", pushFixture, noToken, { fetchImpl });
     expect(calls).toBe(0);
-    expect(await getSnapshot(env.DB, "drift")).toBeNull();
+    expect(await getSnapshot(systemCtx(), "drift")).toBeNull();
   });
 });

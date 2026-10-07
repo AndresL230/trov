@@ -1,5 +1,8 @@
+import type { Database } from "./data/context";
+
 export interface Env {
-  DB: D1Database;
+  DB: Database; // reached only through a context (src/data/) — test/data-layer.static.test.ts
+
   ASSETS: Fetcher;
   ARTIFACTS_BUCKET: R2Bucket; // binary artifact bytes at `artifacts/<sha256>` (src/tools/artifacts.ts)
   GITHUB_CLIENT_ID: string;
@@ -7,16 +10,17 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;     // Google OAuth client (second session-class provider); absent → /auth/google/login 503s
   GOOGLE_CLIENT_SECRET?: string; // Google OAuth client secret
   COOKIE_SECRET: string;
-  GITHUB_WEBHOOK_SECRET?: string; // HMAC key for the /webhook/github third auth class; absent → the surface 401s
-  GITHUB_REPO?: string;   // "owner/repo" for live roadmap progress; absent → sprints without progress
+  GITHUB_WEBHOOK_SECRET?: string; // LEGACY: SaplingLearn's fallback for the old /webhook/github hook (src/data/secrets.ts `resolveCredential`); Phase 7 deletes it
+  GITHUB_REPO?: string;   // LEGACY: read by nothing — an org's repo is its `org_repos` row (0042_organizations copied this one); Phase 7 deletes it
   DEV_LOGIN?: string;     // LOCAL DEV ONLY (set in .dev.vars): bypass OAuth, act as this seeded user. Never set in prod.
   GEMINI_API_KEY?: string; // Google Gemini key for capture-time PR/issue summaries (REST generateContent); absent → excerpt fallback.
-  GITHUB_SERVICE_TOKEN?: string; // app-level token for the scheduled progress-cache recompute backstop; absent → scheduled() no-ops
-  ADMIN_LOGINS?: string;  // comma-separated GitHub logins allowed to run admin actions (e.g. the server-side backfill)
+  GITHUB_SERVICE_TOKEN?: string; // LEGACY: SaplingLearn's `github_token` fallback until its admin stores one (`resolveCredential`); no other org ever reads it
   PUBLIC_ORIGIN?: string; // absolute origin for links in email (deep links, unsubscribe); absent → relative links
   NOTIFICATIONS_MODE?: "local" | "resend"; // delivery gate; absent → local (bodies to the dev table, Resend never called)
   RESEND_API_KEY?: string; // Resend API key; required only when NOTIFICATIONS_MODE = "resend"
-  REPO_ENVIRONMENTS?: string; // JSON RepoEnvConfig[] (src/repo/config.ts): which branch deploys to which environment, and its URLs
+  REPO_ENVIRONMENTS?: string; // LEGACY: read by nothing — environments are `org_environments` rows (0042_organizations copied this one); Phase 7 deletes it
+  // The five below are LEGACY too: SaplingLearn's fallback credentials (`resolveCredential`), each read only until its
+  // admin stores that integration on Org settings › Integrations, and never for another org. What each one is:
   // Both SECRETS, and both needed: absent either → the hourly Cloudflare analytics poll (src/repo/poll.ts) is skipped
   // and the Usage tab's requests/error-rate + Cloudflare panel stay not_connected. Deliberately NOT named
   // CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID — those are the names the wrangler CLI authenticates with.
@@ -34,4 +38,11 @@ export interface Env {
   // an https `apiUrl` and never across a redirect. Absent/empty → the hourly active-users poll (src/repo/poll.ts)
   // is not called and the Usage tab's Active users stays "not connected".
   SAPLING_METRICS_TOKEN?: string;
+  // SECRET — the key-encryption key for per-org integration secrets (src/data/secrets.ts; canopy-multitenancy.md
+  // §8.7.1): 32 random bytes, base64 (`openssl rand -base64 32`). It wraps each org's data key and never encrypts
+  // a credential itself. Absent or malformed → every secret read and write fails closed (the Integrations API
+  // answers 503 `secrets_unavailable`); nothing is ever stored in plaintext instead. LOSING IT loses every org's
+  // stored credentials. TROV_KEK_PREVIOUS is set only during a KEK rotation: the old key, picked by fingerprint.
+  TROV_KEK?: string;
+  TROV_KEK_PREVIOUS?: string;
 }

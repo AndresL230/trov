@@ -5,6 +5,7 @@ import { getSnapshot } from "../src/repo/store";
 import type { RepoBranches } from "@shared/repo";
 import { ENVS } from "./helpers/repo";
 
+import { systemCtx } from "./helpers/tenant";
 const NOW = Date.parse("2026-09-20T12:00:00Z");
 const node = (name: string, date: string, aheadBy: number, behindBy: number) => ({ name, target: { committedDate: date }, compare: { aheadBy, behindBy } });
 
@@ -21,8 +22,8 @@ describe("refreshBranches", () => {
       return new Response(JSON.stringify({ data: { repository: { refs: pages[call++] } } }), { status: 200 });
     }) as typeof fetch;
 
-    await refreshBranches(env.DB, { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
-    const snap = (await getSnapshot<RepoBranches>(env.DB, "branches"))!.data;
+    await refreshBranches(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
+    const snap = (await getSnapshot<RepoBranches>(systemCtx(), "branches"))!.data;
     // P5-8: the snapshot NAMES the branch its ahead/behind were compared against,
     // so the screen never has to assume it was `main`.
     expect(snap).toMatchObject({ active: 1, stale: 1, head: "main" });
@@ -53,8 +54,8 @@ describe("refreshBranches", () => {
     let call = 0;
     const fetchImpl = (async () => new Response(JSON.stringify({ data: { repository: { refs: pages[call++] } } }), { status: 200 })) as typeof fetch;
 
-    await refreshBranches(env.DB, { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
-    const snap = (await getSnapshot<RepoBranches>(env.DB, "branches"))!.data;
+    await refreshBranches(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
+    const snap = (await getSnapshot<RepoBranches>(systemCtx(), "branches"))!.data;
     expect(snap).toMatchObject({ active: 1, stale: 5 });
     expect(snap.rows).toEqual([
       { name: "fresh/a", at: "2026-09-19T00:00:00Z", ahead: 1, behind: 0, stale: false },
@@ -77,8 +78,8 @@ describe("refreshBranches", () => {
     let call = 0;
     const fetchImpl = (async () => new Response(JSON.stringify({ data: { repository: { refs: pages[call++] } } }), { status: 200 })) as typeof fetch;
 
-    await refreshBranches(env.DB, { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
-    const snap = (await getSnapshot<RepoBranches>(env.DB, "branches"))!.data;
+    await refreshBranches(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
+    const snap = (await getSnapshot<RepoBranches>(systemCtx(), "branches"))!.data;
     expect(snap).toMatchObject({ active: 9, stale: 1 });
     expect(snap.rows.map((r) => r.name)).toEqual(["fresh/1", "fresh/2", "fresh/3", "fresh/4", "fresh/5", "fresh/6", "fresh/7", "fresh/8"]);
   });
@@ -91,36 +92,36 @@ describe("refreshBranches", () => {
       return new Response(JSON.stringify({ data: { repository: { refs: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [node("feature/x", "2026-09-19T00:00:00Z", 0, 1)] } } } }), { status: 200 });
     }) as typeof fetch;
     const seen: string[] = [];
-    await refreshBranches(env.DB, { token: "t", repo: "o/r", fetchImpl: refs }, [{ ...ENVS[0], branch: "develop" }, ENVS[1]], NOW);
-    expect((await getSnapshot<RepoBranches>(env.DB, "branches"))!.data.head).toBe("develop");
-    await refreshBranches(env.DB, { token: "t", repo: "o/r", fetchImpl: refs }, [], NOW);
-    expect((await getSnapshot<RepoBranches>(env.DB, "branches"))!.data.head).toBe("main");
+    await refreshBranches(systemCtx(), { token: "t", repo: "o/r", fetchImpl: refs }, [{ ...ENVS[0], branch: "develop" }, ENVS[1]], NOW);
+    expect((await getSnapshot<RepoBranches>(systemCtx(), "branches"))!.data.head).toBe("develop");
+    await refreshBranches(systemCtx(), { token: "t", repo: "o/r", fetchImpl: refs }, [], NOW);
+    expect((await getSnapshot<RepoBranches>(systemCtx(), "branches"))!.data.head).toBe("main");
     expect(seen).toEqual(["develop", "main"]); // the recorded head IS the one the compare was asked for
   });
 
   // the arm lands in reconcileRepo's `failed[]` and the last good snapshot stands.
   it("throws rather than under-reporting when the refs still have a next page after the last one", async () => {
-    await refreshBranches(env.DB, { token: "t", repo: "o/r", fetchImpl: (async () => new Response(JSON.stringify({ data: { repository: { refs: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [node("feature/x", "2026-09-19T00:00:00Z", 0, 1)] } } } }), { status: 200 })) as typeof fetch }, ENVS, NOW);
-    const before = await getSnapshot<RepoBranches>(env.DB, "branches");
+    await refreshBranches(systemCtx(), { token: "t", repo: "o/r", fetchImpl: (async () => new Response(JSON.stringify({ data: { repository: { refs: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [node("feature/x", "2026-09-19T00:00:00Z", 0, 1)] } } } }), { status: 200 })) as typeof fetch }, ENVS, NOW);
+    const before = await getSnapshot<RepoBranches>(systemCtx(), "branches");
 
     let pages = 0;
     const endless = (async () => {
       pages++;
       return new Response(JSON.stringify({ data: { repository: { refs: { pageInfo: { hasNextPage: true, endCursor: `c${pages}` }, nodes: [node(`feature/p${pages}`, "2026-09-19T00:00:00Z", 0, 1)] } } } }), { status: 200 });
     }) as typeof fetch;
-    await expect(refreshBranches(env.DB, { token: "t", repo: "o/r", fetchImpl: endless }, ENVS, NOW)).resolves.toBeUndefined();
+    await expect(refreshBranches(systemCtx(), { token: "t", repo: "o/r", fetchImpl: endless }, ENVS, NOW)).resolves.toBeUndefined();
     expect(pages).toBe(5); // the ceiling still bounds the requests
-    expect(await getSnapshot<RepoBranches>(env.DB, "branches")).toEqual(before);
+    expect(await getSnapshot<RepoBranches>(systemCtx(), "branches")).toEqual(before);
   });
 
   it("keeps the previous snapshot when the refs query fails, and never throws", async () => {
-    await refreshBranches(env.DB, { token: "t", repo: "o/r", fetchImpl: (async () => new Response(JSON.stringify({ data: { repository: { refs: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [node("feature/x", "2026-09-19T00:00:00Z", 0, 1)] } } } }), { status: 200 })) as typeof fetch }, ENVS, NOW);
-    const before = await getSnapshot<RepoBranches>(env.DB, "branches");
+    await refreshBranches(systemCtx(), { token: "t", repo: "o/r", fetchImpl: (async () => new Response(JSON.stringify({ data: { repository: { refs: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [node("feature/x", "2026-09-19T00:00:00Z", 0, 1)] } } } }), { status: 200 })) as typeof fetch }, ENVS, NOW);
+    const before = await getSnapshot<RepoBranches>(systemCtx(), "branches");
     expect(before).not.toBeNull();
 
     const fetchImpl = (async () => new Response("no", { status: 500 })) as typeof fetch;
-    await expect(refreshBranches(env.DB, { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW)).resolves.toBeUndefined();
-    const after = await getSnapshot<RepoBranches>(env.DB, "branches");
+    await expect(refreshBranches(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW)).resolves.toBeUndefined();
+    const after = await getSnapshot<RepoBranches>(systemCtx(), "branches");
     expect(after).toEqual(before);
   });
 });

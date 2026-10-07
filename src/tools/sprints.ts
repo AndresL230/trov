@@ -36,8 +36,10 @@ import {
 } from "@shared/sprints";
 import { normalizeSprintDate, sprintDatesProblem } from "@shared/sprints-core";
 import { parseTicketLink } from "@shared/tickets";
-import { type DB, first, all, run, nowIso, ph, fanOut } from "../db";
+import { type TenantContext, first, all, run, stmt, batch, nowIso, ph, fanOut } from "../data/sql";
 import { getProgress } from "./progress";
+import { ticketLinkRepo, unusableLink } from "./tickets";
+import { requireMember } from "../auth/persons";
 
 /**
  * A typed failure the sprint routes map onto an HTTP status — the same three
@@ -95,7 +97,7 @@ export const sprintIssueCounts = (cache: SprintProgressRow | undefined | null): 
  * (D1's 100-bound-parameter ceiling — see `fanOut` in src/db.ts).
  */
 export async function ticketCountsBySprint(
-  db: DB,
+  ctx: TenantContext,
   ids?: number[]
 ): Promise<Map<number, { total: number; closed: number }>> {
   if (ids && ids.length === 0) return new Map();
@@ -103,11 +105,11 @@ export async function ticketCountsBySprint(
     `SELECT sprint_id,
             COUNT(*) AS total,
             SUM(CASE WHEN status IN (${ph(CLOSED_TICKET_STATUSES.length)}) THEN 1 ELSE 0 END) AS closed
-       FROM tickets WHERE sprint_id IS NOT NULL${scope} GROUP BY sprint_id`;
+       FROM tickets WHERE org_id = ? AND sprint_id IS NOT NULL${scope} GROUP BY sprint_id`;
   type CountRow = { sprint_id: number; total: number; closed: number };
   const rows = ids
-    ? await fanOut<CountRow>(db, ids, (p) => select(` AND sprint_id IN (${p})`), [...CLOSED_TICKET_STATUSES])
-    : await all<CountRow>(db, select(""), ...CLOSED_TICKET_STATUSES);
+    ? await fanOut<CountRow>(ctx, ids, (p) => select(` AND sprint_id IN (${p})`), [...CLOSED_TICKET_STATUSES, ctx.orgId])
+    : await all<CountRow>(ctx, select(""), ...CLOSED_TICKET_STATUSES, ctx.orgId);
   return new Map(rows.map((r) => [r.sprint_id, { total: r.total, closed: r.closed }]));
 }
 
@@ -116,13 +118,15 @@ export async function ticketCountsBySprint(
  * ASC` — stable and independent of ticket order, so the Roadmap card's avatar
  * row does not reshuffle when a ticket is touched.
  */
-async function membersBySprint(db: DB): Promise<Map<number, string[]>> {
+async function membersBySprint(ctx: TenantContext): Promise<Map<number, string[]>> {
   const rows = await all<{ sprint_id: number; login: string }>(
-    db,
+    ctx,
     `SELECT DISTINCT t.sprint_id AS sprint_id, a.login AS login
-       FROM tickets t JOIN ticket_assignees a ON a.ticket_id = t.id
-      WHERE t.sprint_id IS NOT NULL
-      ORDER BY t.sprint_id ASC, a.login ASC`
+       FROM tickets t JOIN ticket_assignees a ON a.ticket_id = t.id AND a.org_id = ?
+      WHERE t.org_id = ? AND t.sprint_id IS NOT NULL
+      ORDER BY t.sprint_id ASC, a.login ASC`,
+    ctx.orgId,
+    ctx.orgId
   );
   const out = new Map<number, string[]>();
   for (const r of rows) {
@@ -134,12 +138,14 @@ async function membersBySprint(db: DB): Promise<Map<number, string[]>> {
 }
 
 /** The distinct assignee handles over ONE sprint's tickets (login ASC). */
-export async function sprintMembers(db: DB, sprintId: number): Promise<string[]> {
+export async function sprintMembers(ctx: TenantContext, sprintId: number): Promise<string[]> {
   const rows = await all<{ login: string }>(
-    db,
+    ctx,
     `SELECT DISTINCT a.login AS login
-       FROM tickets t JOIN ticket_assignees a ON a.ticket_id = t.id
-      WHERE t.sprint_id = ? ORDER BY a.login ASC`,
+       FROM tickets t JOIN ticket_assignees a ON a.ticket_id = t.id AND a.org_id = ?
+      WHERE t.org_id = ? AND t.sprint_id = ? ORDER BY a.login ASC`,
+    ctx.orgId,
+    ctx.orgId,
     sprintId
   );
   return rows.map((r) => r.login);
@@ -158,13 +164,13 @@ const SPRINT_ORDER = `ORDER BY CASE WHEN target_date IS NULL OR target_date = ''
  * how many sprints exist: the rows, the grouped ticket counts, the grouped
  * assignees, the progress cache. No N+1.
  */
-export async function list_sprints(db: DB): Promise<SprintView[]> {
-  const rows = await all<SprintRow>(db, `SELECT * FROM sprints ${SPRINT_ORDER}`);
+export async function list_sprints(ctx: TenantContext): Promise<SprintView[]> {
+  const rows = await all<SprintRow>(ctx, `SELECT * FROM sprints WHERE org_id = ? ${SPRINT_ORDER}`, ctx.orgId);
   if (rows.length === 0) return [];
 
-  const counts = await ticketCountsBySprint(db);
-  const members = await membersBySprint(db);
-  const cache = await getProgress(db);
+  const counts = await ticketCountsBySprint(ctx);
+  const members = await membersBySprint(ctx);
+  const cache = await getProgress(ctx);
 
   return rows.map((row) => viewOf(row, counts.get(row.id), cache.get(row.id), members.get(row.id) ?? []));
 }
@@ -186,25 +192,37 @@ function viewOf(
   return toSprintView(row, { closed: progress.closed, total: progress.total }, members, sprintIssueCounts(cache));
 }
 
+/**
+ * A sprint's `lead` as it may be stored: a member of THIS org, by their canonical handle. `undefined`
+ * (not supplied) stays undefined and null / blank is null (no lead); anything else must pass
+ * `requireMember` — so a sprint can never name a person who is not in the org (or another org's).
+ */
+export async function sprintLead(ctx: TenantContext, lead: string | null | undefined): Promise<string | null | undefined> {
+  if (lead === undefined) return undefined;
+  const handle = (lead ?? "").trim().replace(/^@/, "");
+  return handle === "" ? null : requireMember(ctx, handle);
+}
+
 /** One sprint's row, or a 404-shaped throw. */
-async function requireSprint(db: DB, id: number): Promise<SprintRow> {
-  const sp = await first<SprintRow>(db, `SELECT * FROM sprints WHERE id = ?`, id);
+async function requireSprint(ctx: TenantContext, id: number): Promise<SprintRow> {
+  const sp = await first<SprintRow>(ctx, `SELECT * FROM sprints WHERE id = ? AND org_id = ?`, id, ctx.orgId);
   if (!sp) throw new SprintError("not_found", `no such sprint: ${id}`);
   return sp;
 }
 
 /** One sprint as a view (used by every writer's response). */
-async function viewFor(db: DB, id: number): Promise<SprintView> {
-  const row = await requireSprint(db, id);
+async function viewFor(ctx: TenantContext, id: number): Promise<SprintView> {
+  const row = await requireSprint(ctx, id);
   const counts = await first<{ total: number; closed: number }>(
-    db,
+    ctx,
     `SELECT COUNT(*) AS total, SUM(CASE WHEN status IN (${ph(CLOSED_TICKET_STATUSES.length)}) THEN 1 ELSE 0 END) AS closed
-       FROM tickets WHERE sprint_id = ?`,
+       FROM tickets WHERE sprint_id = ? AND org_id = ?`,
     ...CLOSED_TICKET_STATUSES,
-    id
+    id,
+    ctx.orgId
   );
-  const cache = await first<SprintProgressRow>(db, `SELECT * FROM sprint_progress WHERE sprint_id = ?`, id);
-  const members = await sprintMembers(db, id);
+  const cache = await first<SprintProgressRow>(ctx, `SELECT * FROM sprint_progress WHERE sprint_id = ? AND org_id = ?`, id, ctx.orgId);
+  const members = await sprintMembers(ctx, id);
   return viewOf(row, counts ? { total: counts.total, closed: counts.closed ?? 0 } : undefined, cache ?? undefined, members);
 }
 
@@ -224,23 +242,29 @@ async function viewFor(db: DB, id: number): Promise<SprintView> {
  * occurrence winning (so a url attached to both the sprint and a ticket shows
  * once, as the sprint's).
  */
-export async function get_sprint(db: DB, id: number): Promise<SprintDetail | null> {
-  const row = await first<SprintRow>(db, `SELECT * FROM sprints WHERE id = ?`, id);
+export async function get_sprint(ctx: TenantContext, id: number): Promise<SprintDetail | null> {
+  const row = await first<SprintRow>(ctx, `SELECT * FROM sprints WHERE id = ? AND org_id = ?`, id, ctx.orgId);
   if (!row) return null;
 
-  const inSprint = await all<TicketRow>(
-    db,
-    `SELECT * FROM tickets WHERE sprint_id = ? ORDER BY updated_at DESC, id DESC`,
-    id
+  // Rows as stored: `id` / `parent_id` are row ids (the tree and the joins below); what goes out is
+  // each ticket's per-org NUMBER and its parent's (`out`, at the end — src/tools/tickets.ts).
+  const inSprint = await all<TicketRow & { number: number; parent_number: number | null }>(
+    ctx,
+    `SELECT t.*, (SELECT p.number FROM tickets p WHERE p.id = t.parent_id AND p.org_id = ?) AS parent_number
+       FROM tickets t WHERE t.sprint_id = ? AND t.org_id = ? ORDER BY t.updated_at DESC, t.id DESC`,
+    ctx.orgId,
+    id,
+    ctx.orgId
   );
   const present = new Set(inSprint.map((t) => t.id));
 
   // Per-ticket assignees, in ONE grouped query per chunk (the design's stacked
   // avatars on a sprint's ticket rows, line 514) — never a lookup per row.
   const asgRows = await fanOut<{ ticket_id: number; login: string }>(
-    db,
+    ctx,
     inSprint.map((t) => t.id),
-    (p) => `SELECT ticket_id, login FROM ticket_assignees WHERE ticket_id IN (${p}) ORDER BY login ASC`
+    (p) => `SELECT ticket_id, login FROM ticket_assignees WHERE org_id = ? AND ticket_id IN (${p}) ORDER BY login ASC`,
+    [ctx.orgId]
   );
   const asgByTicket = new Map<number, string[]>();
   for (const a of asgRows) {
@@ -248,9 +272,11 @@ export async function get_sprint(db: DB, id: number): Promise<SprintDetail | nul
     list.push(a.login);
     asgByTicket.set(a.ticket_id, list);
   }
-  const withAsg = (t: TicketRow, depth: 0 | 1): SprintTicketRow => ({ ...t, depth, assignees: asgByTicket.get(t.id) ?? [] });
+  type Stored = (typeof inSprint)[number];
+  const withAsg = (t: Stored, depth: 0 | 1): Stored & { depth: 0 | 1; assignees: string[] } => ({ ...t, depth, assignees: asgByTicket.get(t.id) ?? [] });
+  const out = ({ number, parent_number, ...t }: ReturnType<typeof withAsg>): SprintTicketRow => ({ ...t, id: number, parent_id: parent_number });
 
-  const ordered: SprintTicketRow[] = [];
+  const ordered: ReturnType<typeof withAsg>[] = [];
   for (const t of inSprint) {
     if (t.parent_id !== null && present.has(t.parent_id)) continue; // emitted under its root below
     ordered.push(withAsg(t, 0));
@@ -260,17 +286,19 @@ export async function get_sprint(db: DB, id: number): Promise<SprintDetail | nul
   }
 
   const own = await all<SprintResourceView>(
-    db,
-    `SELECT url, kind, label, meta FROM sprint_resources WHERE sprint_id = ? ORDER BY id ASC`,
-    id
+    ctx,
+    `SELECT url, kind, label, meta FROM sprint_resources WHERE sprint_id = ? AND org_id = ? ORDER BY id ASC`,
+    id,
+    ctx.orgId
   );
   const ticketIds = ordered.map((t) => t.id);
   // Chunked: a sprint can hold more tickets than D1 allows bound params.
   const linkRows = await fanOut<SprintResourceView & { ticket_id: number }>(
-    db,
+    ctx,
     ticketIds,
-    (p) => `SELECT ticket_id, url, kind, label, meta FROM ticket_links WHERE ticket_id IN (${p})
-             ORDER BY created_at ASC, id ASC`
+    (p) => `SELECT ticket_id, url, kind, label, meta FROM ticket_links WHERE org_id = ? AND ticket_id IN (${p})
+             ORDER BY created_at ASC, id ASC`,
+    [ctx.orgId]
   );
   const linksByTicket = new Map<number, SprintResourceView[]>();
   for (const l of linkRows) {
@@ -288,11 +316,11 @@ export async function get_sprint(db: DB, id: number): Promise<SprintDetail | nul
   }
 
   const closed = ordered.filter((t) => t.status === "done" || t.status === "declined").length;
-  const cache = await first<SprintProgressRow>(db, `SELECT * FROM sprint_progress WHERE sprint_id = ?`, id);
-  const members = await sprintMembers(db, id);
+  const cache = await first<SprintProgressRow>(ctx, `SELECT * FROM sprint_progress WHERE sprint_id = ? AND org_id = ?`, id, ctx.orgId);
+  const members = await sprintMembers(ctx, id);
   const view = viewOf(row, { total: ordered.length, closed }, cache ?? undefined, members);
 
-  return { ...view, tickets: ordered, resources };
+  return { ...view, tickets: ordered.map(out), resources };
 }
 
 // ── writers ──────────────────────────────────────────────────────────────────
@@ -307,22 +335,27 @@ export async function get_sprint(db: DB, id: number): Promise<SprintDetail | nul
  * `due: null`. '' is the one sentinel; nothing else means "unscheduled", and
  * the list order (SPRINT_ORDER above) sorts those rows last.
  *
- * `lead` is stored as given (a person handle) without a persons lookup — the
- * same contract the admin plan write has, so the two paths cannot disagree.
+ * `lead` is a MEMBER of this org, checked like a ticket's assignee (`sprintLead` →
+ * `requireMember`): an unknown, reserved or non-member handle is a `bad_request`
+ * (`PersonError`) that writes nothing, and the stored value is the person's canonical
+ * handle. The admin plan write goes through the same check, so the two paths cannot
+ * disagree. Blank / null = no lead.
  *
  * `start` / `due` are re-checked HERE with the one validator (`sprintDatesProblem`,
  * shared/sprints-core.ts) even though `SprintCreate` already did: a bad pair is a
  * `bad_request` that writes nothing, whoever the caller. Blank = not set.
  */
-export async function create_sprint(db: DB, input: SprintCreate, author: string): Promise<SprintView> {
+export async function create_sprint(ctx: TenantContext, input: SprintCreate, author: string): Promise<SprintView> {
   const problem = sprintDatesProblem(input);
   if (problem) throw new SprintError("bad_request", problem);
+  const lead = await sprintLead(ctx, input.lead);
   const now = nowIso();
   const res = await run(
-    db,
-    `INSERT INTO sprints (title, description, summary, phase, dates, start_date, target_date, status, urgency, lead, domain,
+    ctx,
+    `INSERT INTO sprints (org_id, title, description, summary, phase, dates, start_date, target_date, status, urgency, lead, domain,
                           github_ref, created_at, created_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'upcoming', ?, ?, ?, NULL, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'upcoming', ?, ?, ?, NULL, ?, ?, ?)`,
+    ctx.orgId,
     input.label,
     input.description ?? null,
     input.summary ?? null,
@@ -331,13 +364,13 @@ export async function create_sprint(db: DB, input: SprintCreate, author: string)
     normalizeSprintDate(input.start),
     normalizeSprintDate(input.due) ?? "",
     input.urgency,
-    input.lead ?? null,
+    lead ?? null,
     input.domain ?? null,
     now,
     author,
     now
   );
-  return viewFor(db, res.meta.last_row_id as number);
+  return viewFor(ctx, res.meta.last_row_id as number);
 }
 
 /**
@@ -352,14 +385,14 @@ export async function create_sprint(db: DB, input: SprintCreate, author: string)
  *                                the plan write can move it off 'done'.
  *   active: false, otherwise   → 'upcoming'
  */
-export async function set_sprint_active(db: DB, id: number, active: boolean): Promise<SprintView> {
-  const sp = await requireSprint(db, id);
-  if (!active && sp.status === "done") return viewFor(db, id);
+export async function set_sprint_active(ctx: TenantContext, id: number, active: boolean): Promise<SprintView> {
+  const sp = await requireSprint(ctx, id);
+  if (!active && sp.status === "done") return viewFor(ctx, id);
   const status = active ? "in_progress" : "upcoming";
   if (sp.status !== status) {
-    await run(db, `UPDATE sprints SET status = ?, updated_at = ? WHERE id = ?`, status, nowIso(), id);
+    await run(ctx, `UPDATE sprints SET status = ?, updated_at = ? WHERE id = ? AND org_id = ?`, status, nowIso(), id, ctx.orgId);
   }
-  return viewFor(db, id);
+  return viewFor(ctx, id);
 }
 
 /**
@@ -368,8 +401,8 @@ export async function set_sprint_active(db: DB, id: number, active: boolean): Pr
  * (with the other sprint writers) and is re-exported from writes.ts so the older
  * import path keeps working.
  */
-export async function complete_sprint(db: DB, id: number): Promise<SprintView> {
-  const sp = await first<{ id: number }>(db, `SELECT id FROM sprints WHERE id = ?`, id);
+export async function complete_sprint(ctx: TenantContext, id: number): Promise<SprintView> {
+  const sp = await first<{ id: number }>(ctx, `SELECT id FROM sprints WHERE id = ? AND org_id = ?`, id, ctx.orgId);
   // Typed like every other writer in this file: the MCP adapter surfaces `code`
   // to the caller, and "no such sprint" vs "already done" are different answers
   // for an agent (retry with a real id, versus nothing to do). The cookie route
@@ -383,10 +416,11 @@ export async function complete_sprint(db: DB, id: number): Promise<SprintView> {
   // both would then report success for the one sprint. `changes === 0` means
   // some other caller got there first, which is exactly the conflict.
   const res = await run(
-    db,
-    `UPDATE sprints SET status = 'done', updated_at = ? WHERE id = ? AND status != 'done'`,
+    ctx,
+    `UPDATE sprints SET status = 'done', updated_at = ? WHERE id = ? AND org_id = ? AND status != 'done'`,
     nowIso(),
-    id
+    id,
+    ctx.orgId
   );
   if (!res.meta.changes) throw new SprintError("conflict", `sprint already done: ${id}`);
   // Answers with the VIEW, like create_sprint and set_sprint_active — column
@@ -394,7 +428,7 @@ export async function complete_sprint(db: DB, id: number): Promise<SprintView> {
   // to read the new state off the write response, and a raw row would hand it
   // `label: undefined` and no `active`. The cookie route's body changes shape
   // with it; web/src/api.ts types that call `Promise<{ok:true}>` and drops it.
-  return viewFor(db, id);
+  return viewFor(ctx, id);
 }
 
 /**
@@ -409,14 +443,14 @@ export async function complete_sprint(db: DB, id: number): Promise<SprintView> {
  * ONE `db.batch` (a single implicit transaction), children before the parent
  * so the FKs hold. Answers with how many tickets moved to the backlog.
  */
-export async function delete_sprint(db: DB, id: number): Promise<{ id: number; label: string; moved: number }> {
-  const sp = await requireSprint(db, id);
+export async function delete_sprint(ctx: TenantContext, id: number): Promise<{ id: number; label: string; moved: number }> {
+  const sp = await requireSprint(ctx, id);
   const now = nowIso();
-  const [moved] = await db.batch([
-    db.prepare(`UPDATE tickets SET sprint_id = NULL, updated_at = ? WHERE sprint_id = ?`).bind(now, id),
-    db.prepare(`DELETE FROM sprint_resources WHERE sprint_id = ?`).bind(id),
-    db.prepare(`DELETE FROM sprint_progress WHERE sprint_id = ?`).bind(id),
-    db.prepare(`DELETE FROM sprints WHERE id = ?`).bind(id),
+  const [moved] = await batch(ctx, [
+    stmt(ctx, `UPDATE tickets SET sprint_id = NULL, updated_at = ? WHERE sprint_id = ? AND org_id = ?`, now, id, ctx.orgId),
+    stmt(ctx, `DELETE FROM sprint_resources WHERE sprint_id = ? AND org_id = ?`, id, ctx.orgId),
+    stmt(ctx, `DELETE FROM sprint_progress WHERE sprint_id = ? AND org_id = ?`, id, ctx.orgId),
+    stmt(ctx, `DELETE FROM sprints WHERE id = ? AND org_id = ?`, id, ctx.orgId),
   ]);
   return { id, label: sp.title, moved: moved.meta.changes ?? 0 };
 }
@@ -430,23 +464,25 @@ export async function delete_sprint(db: DB, id: number): Promise<{ id: number; l
  * Idempotent: the same url twice adds one row. (The read side dedupes by url
  * anyway, so a duplicate would be invisible — but it would still be a row.)
  */
-export async function add_sprint_resource(db: DB, id: number, raw: string): Promise<SprintDetail> {
-  await requireSprint(db, id);
-  const link = parseTicketLink(raw);
-  if (!link) throw new SprintError("bad_request", `unusable link: ${raw}`);
+export async function add_sprint_resource(ctx: TenantContext, id: number, raw: string): Promise<SprintDetail> {
+  await requireSprint(ctx, id);
+  const repo = await ticketLinkRepo(ctx);
+  const link = parseTicketLink(raw, repo);
+  if (!link) throw new SprintError("bad_request", unusableLink(raw, repo));
 
   const existing = await first<{ id: number }>(
-    db,
-    `SELECT id FROM sprint_resources WHERE sprint_id = ? AND url = ?`,
+    ctx,
+    `SELECT id FROM sprint_resources WHERE sprint_id = ? AND url = ? AND org_id = ?`,
     id,
-    link.url
+    link.url,
+    ctx.orgId
   );
   if (!existing) {
     await run(
-      db,
-      `INSERT INTO sprint_resources (sprint_id, url, kind, label, meta) VALUES (?, ?, ?, ?, ?)`,
-      id, link.url, link.kind, link.label, link.meta
+      ctx,
+      `INSERT INTO sprint_resources (org_id, sprint_id, url, kind, label, meta) VALUES (?, ?, ?, ?, ?, ?)`,
+      ctx.orgId, id, link.url, link.kind, link.label, link.meta
     );
   }
-  return (await get_sprint(db, id))!;
+  return (await get_sprint(ctx, id))!;
 }

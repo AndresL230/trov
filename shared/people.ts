@@ -12,7 +12,7 @@
 //     where an agent reads it when assigning work.
 //
 // Who writes (the owner's call, 2026-09-27): a person changes only their OWN avatar
-// (Settings); role and responsibilities are set by an ADMIN (`isAdmin`), in Maintenance ›
+// (Settings); role and responsibilities are set by an org ADMIN or OWNER (§5.2), in Maintenance ›
 // People — never by the person themselves. Nothing here is an MCP write.
 
 import type { PersonColor } from "./rows";

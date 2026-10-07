@@ -8,11 +8,16 @@
 //     claim>`), so two sessions racing on an `anyone` handoff cannot both win;
 //   · a create that carries a session id is replay-safe through processed_items,
 //     keyed exactly like /ingest and record_session (session id + item index).
+//
+// A handoff's two ids (canopy-multitenancy.md §12 Q2), as for a ticket (./tickets.ts): `number` is
+// the per-org number (0042_organizations — allocated by the insert trigger) and it is what every function here
+// takes and returns: the wire's `id`, `#12`, a link, the feed line. The row `id` is internal and
+// never leaves this file. Another org's number is simply not there.
 
 import { z } from "zod";
-import { all, first, run, nowIso, type DB } from "../db";
+import { all, first, run, nowIso, type TenantContext } from "../data/sql";
 import { append_feed } from "./writes";
-import { getPerson } from "../auth/persons";
+import { memberHandle } from "../auth/persons";
 import {
   EMPTY_CONTEXT, firstLine,
   type HandoffBox, type HandoffContext, type HandoffStatus, type HandoffView,
@@ -50,7 +55,7 @@ export const HandoffCreateInput = z.object({
 export type HandoffCreateInput = z.infer<typeof HandoffCreateInput>;
 
 interface HandoffRow {
-  id: number; sender: string; recipient: string; status: HandoffStatus; body: string; context: string;
+  id: number; number: number; sender: string; recipient: string; status: HandoffStatus; body: string; context: string;
   prompt_title: string | null; prompt_body: string | null;
   created_at: string; claimed_at: string | null; claimed_by: string | null; claimed_by_session: string | null;
   expires_at: string;
@@ -66,13 +71,14 @@ function parseContext(json: string): HandoffContext {
 
 export function toHandoffView(r: HandoffRow): HandoffView {
   return {
-    id: r.id, sender: r.sender, recipient: r.recipient, status: r.status,
+    id: r.number, sender: r.sender, recipient: r.recipient, status: r.status,
     created_at: r.created_at, claimed_at: r.claimed_at, claimed_by: r.claimed_by, claimed_by_session: r.claimed_by_session,
     prompt: r.prompt_title !== null && r.prompt_body !== null ? { title: r.prompt_title, body: r.prompt_body } : null,
     body: r.body, context: parseContext(r.context),
   };
 }
 
+// `?1` is the caller; the org predicate follows it in the statement, so its `?` binds second.
 const BOX_WHERE: Record<HandoffBox, string> = {
   mine: "(recipient = ?1 COLLATE NOCASE OR sender = ?1 COLLATE NOCASE)",
   me: "recipient = ?1 COLLATE NOCASE",
@@ -81,14 +87,15 @@ const BOX_WHERE: Record<HandoffBox, string> = {
 };
 
 /** The caller's handoffs in one box, newest first. `statuses` narrows (the MCP list reads pending only). */
-export async function listHandoffs(db: DB, me: string, box: HandoffBox, statuses?: HandoffStatus[]): Promise<HandoffView[]> {
+export async function listHandoffs(ctx: TenantContext, me: string, box: HandoffBox, statuses?: HandoffStatus[]): Promise<HandoffView[]> {
   const st = statuses && statuses.length ? ` AND status IN (${statuses.map((s) => `'${s}'`).join(", ")})` : "";
-  const rows = await all<HandoffRow>(db, `SELECT * FROM handoffs WHERE ${BOX_WHERE[box]}${st} ORDER BY created_at DESC, id DESC`, me);
+  const rows = await all<HandoffRow>(ctx, `SELECT * FROM handoffs WHERE ${BOX_WHERE[box]} AND org_id = ?${st} ORDER BY created_at DESC, id DESC`, me, ctx.orgId);
   return rows.map(toHandoffView);
 }
 
-export async function getHandoff(db: DB, id: number): Promise<HandoffView | null> {
-  const r = await first<HandoffRow>(db, `SELECT * FROM handoffs WHERE id = ?`, id);
+/** One handoff of the org BY NUMBER; another org's number reads as absent. */
+export async function getHandoff(ctx: TenantContext, number: number): Promise<HandoffView | null> {
+  const r = await first<HandoffRow>(ctx, `SELECT * FROM handoffs WHERE number = ? AND org_id = ?`, number, ctx.orgId);
   return r ? toHandoffView(r) : null;
 }
 
@@ -99,12 +106,12 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
  * call return the FIRST call's handoff instead of writing a second row.
  */
 export async function createHandoff(
-  db: DB, sender: string, input: HandoffCreateInput, ledger?: { sessionId: string; itemIndex: number },
+  ctx: TenantContext, sender: string, input: HandoffCreateInput, ledger?: { sessionId: string; itemIndex: number },
 ): Promise<{ handoff: HandoffView; replayed: boolean }> {
   if (ledger) {
-    const hit = await first<{ ref: string | null }>(db, `SELECT ref FROM processed_items WHERE session_id = ? AND item_index = ?`, ledger.sessionId, ledger.itemIndex);
+    const hit = await first<{ ref: string | null }>(ctx, `SELECT ref FROM processed_items WHERE org_id = ? AND session_id = ? AND item_index = ?`, ctx.orgId, ledger.sessionId, ledger.itemIndex);
     if (hit) {
-      const prior = hit.ref ? await getHandoff(db, Number(hit.ref)) : null;
+      const prior = hit.ref ? await getHandoff(ctx, Number(hit.ref)) : null;
       if (prior) return { handoff: prior, replayed: true };
       throw new HandoffError("conflict", "this session item was already recorded");
     }
@@ -112,9 +119,10 @@ export async function createHandoff(
   let recipient = input.recipient ?? "anyone";
   if (recipient.toLowerCase() === "anyone") recipient = "anyone";
   else {
-    const p = await getPerson(db, recipient.replace(/^@/, ""));
-    if (!p) throw new HandoffError("bad_request", `unknown recipient: ${recipient}`);
-    recipient = p.handle;
+    // A recipient is a MEMBER of this org (§4.3): another org's person reads as unknown.
+    const member = await memberHandle(ctx, recipient.replace(/^@/, ""));
+    if (!member) throw new HandoffError("bad_request", `unknown recipient: ${recipient}`);
+    recipient = member;
   }
   const c = { ...EMPTY_CONTEXT, ...(input.context ?? {}) };
   const context: HandoffContext = {
@@ -125,30 +133,31 @@ export async function createHandoff(
   const created_at = now.toISOString();
   const expires_at = new Date(now.getTime() + HANDOFF_TTL_MS).toISOString();
   const res = await run(
-    db,
-    `INSERT INTO handoffs (sender, recipient, status, body, context, prompt_title, prompt_body, created_at, expires_at)
-     VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
-    sender, recipient, input.body, JSON.stringify(context),
+    ctx,
+    `INSERT INTO handoffs (org_id, sender, recipient, status, body, context, prompt_title, prompt_body, created_at, expires_at)
+     VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
+    ctx.orgId, sender, recipient, input.body, JSON.stringify(context),
     input.prompt?.title ?? null, input.prompt?.body ?? null, created_at, expires_at,
   );
-  const id = res.meta.last_row_id as number;
+  // The row id is used once, to read back the number the trigger gave it; everything after is the number.
+  const id = (await first<{ number: number }>(ctx, `SELECT number FROM handoffs WHERE id = ? AND org_id = ?`, res.meta.last_row_id as number, ctx.orgId))!.number;
   if (ledger) {
-    await run(db, `INSERT OR IGNORE INTO processed_items (session_id, item_index, item_type, outcome, ref, created_at) VALUES (?, ?, 'handoff', 'written', ?, ?)`,
-      ledger.sessionId, ledger.itemIndex, String(id), created_at);
+    await run(ctx, `INSERT OR IGNORE INTO processed_items (org_id, session_id, item_index, item_type, outcome, ref, created_at) VALUES (?, ?, ?, 'handoff', 'written', ?, ?)`,
+      ctx.orgId, ledger.sessionId, ledger.itemIndex, String(id), created_at);
   }
   // The feed shows the handoff happened (who → whom, and its title). Direct
   // writer, no tags: an addressed message is not topic-tagged knowledge.
-  await append_feed(db, {
+  await append_feed(ctx, {
     author: sender,
     summary: `${sender} left a handoff for ${recipient === "anyone" ? "anyone" : recipient}: #${id} ${firstLine(input.body)}`.slice(0, 300),
     body: context.task ? `Task: ${context.task}${context.branch ? ` (\`${context.branch}\`)` : ""}` : undefined,
   });
-  return { handoff: (await getHandoff(db, id))!, replayed: false };
+  return { handoff: (await getHandoff(ctx, id))!, replayed: false };
 }
 
 /** After a guarded UPDATE touched nothing, say why: unknown, not yours, or no longer pending. */
-async function explainMiss(db: DB, id: number, allowed: (r: HandoffRow) => boolean): Promise<never> {
-  const r = await first<HandoffRow>(db, `SELECT * FROM handoffs WHERE id = ?`, id);
+async function explainMiss(ctx: TenantContext, id: number, allowed: (r: HandoffRow) => boolean): Promise<never> {
+  const r = await first<HandoffRow>(ctx, `SELECT * FROM handoffs WHERE number = ? AND org_id = ?`, id, ctx.orgId);
   if (!r) throw new HandoffError("not_found", "handoff not found");
   if (!allowed(r)) throw new HandoffError("forbidden", "not your handoff");
   throw new HandoffError("conflict", `handoff is ${r.status}`);
@@ -158,36 +167,30 @@ async function explainMiss(db: DB, id: number, allowed: (r: HandoffRow) => boole
  * Claim atomically: ONE statement flips pending → claimed only when the caller
  * may claim it (the recipient, anyone for an `anyone` handoff, or the sender).
  * Two racing claims: exactly one UPDATE changes a row; the other re-reads and
- * gets `handoff is claimed`.
+ * gets `handoff is claimed`. `id` is the handoff's NUMBER here and in `expireHandoff`.
  */
-export async function claimHandoff(db: DB, id: number, me: string, session: string): Promise<HandoffView> {
+export async function claimHandoff(ctx: TenantContext, id: number, me: string, session: string): Promise<HandoffView> {
   const res = await run(
-    db,
+    ctx,
     `UPDATE handoffs SET status = 'claimed', claimed_at = ?, claimed_by = ?, claimed_by_session = ?
-     WHERE id = ? AND status = 'pending'
+     WHERE number = ? AND org_id = ? AND status = 'pending'
        AND (recipient = 'anyone' OR recipient = ? COLLATE NOCASE OR sender = ? COLLATE NOCASE)`,
-    nowIso(), me, session, id, me, me,
+    nowIso(), me, session, id, ctx.orgId, me, me,
   );
-  if (!res.meta.changes) await explainMiss(db, id, (r) => r.recipient === "anyone" || same(r.recipient, me) || same(r.sender, me));
-  return (await getHandoff(db, id))!;
+  if (!res.meta.changes) await explainMiss(ctx, id, (r) => r.recipient === "anyone" || same(r.recipient, me) || same(r.sender, me));
+  return (await getHandoff(ctx, id))!;
 }
 
 /** Expire by hand: only the sender or the named recipient, pending only. */
-export async function expireHandoff(db: DB, id: number, me: string): Promise<HandoffView> {
+export async function expireHandoff(ctx: TenantContext, id: number, me: string): Promise<HandoffView> {
   const res = await run(
-    db,
+    ctx,
     `UPDATE handoffs SET status = 'expired'
-     WHERE id = ? AND status = 'pending' AND (sender = ? COLLATE NOCASE OR recipient = ? COLLATE NOCASE)`,
-    id, me, me,
+     WHERE number = ? AND org_id = ? AND status = 'pending' AND (sender = ? COLLATE NOCASE OR recipient = ? COLLATE NOCASE)`,
+    id, ctx.orgId, me, me,
   );
-  if (!res.meta.changes) await explainMiss(db, id, (r) => same(r.sender, me) || same(r.recipient, me));
-  return (await getHandoff(db, id))!;
-}
-
-/** The cron sweep: every pending handoff past its expires_at. Returns how many flipped. */
-export async function expireDueHandoffs(db: DB, nowMs: number): Promise<number> {
-  const res = await run(db, `UPDATE handoffs SET status = 'expired' WHERE status = 'pending' AND expires_at < ?`, new Date(nowMs).toISOString());
-  return res.meta.changes ?? 0;
+  if (!res.meta.changes) await explainMiss(ctx, id, (r) => same(r.sender, me) || same(r.recipient, me));
+  return (await getHandoff(ctx, id))!;
 }
 
 /**

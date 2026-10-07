@@ -1,22 +1,22 @@
-import { type DB, all, first, run, nowIso, ph, chunked } from "../db";
+import { type TenantContext, type Stmt, all, first, run, stmt, batch, nowIso, ph, chunked } from "../data/sql";
 import { PRODUCT_PREFIX } from "./product";
 import type { RepoMetric } from "./types";
 
-const DAY = 86_400_000;
+export const DAY = 86_400_000;
 /** High-frequency series and rows that lose their value quickly. Deliberately
  *  does NOT cover `pr` / `push` — those stay forever (the dashboard's
- *  week-over-week deltas and 14-day bars read them). Called every 6-hourly
- *  tick of the repo cron (src/repo/cron.ts). */
-const FAST_METRICS = ["health_up", "health_ms"];
-const FAST_KINDS = ["check"];
-const FAST_RETENTION_DAYS = 45;
+ *  week-over-week deltas and 14-day bars read them). The sweep that applies these
+ *  bounds is `pruneRepoCapture` (src/platform/sweeps.ts) — cross-org, so not here. */
+export const FAST_METRICS = ["health_up", "health_ms"];
+export const FAST_KINDS = ["check"];
+export const FAST_RETENTION_DAYS = 45;
 /** Hourly usage series — Cloudflare analytics (`cf_*`), and the Railway
  *  (`rw_*`) and active-user (`active_users_*`) gauges later tasks add. The Usage
  *  tab reads 30 days at most, so 100 days is ample; unbounded, two environments
  *  add ~35,000 rows a year. GLOB, not LIKE: in LIKE `_` is itself a wildcard
  *  (`cf_%` would also match `cfx…`), and GLOB is case-sensitive like the names. */
 const USAGE_METRIC_GLOBS = ["cf_*", "rw_*", "active_users_*"];
-const USAGE_RETENTION_DAYS = 100;
+export const USAGE_RETENTION_DAYS = 100;
 /** Sapling's product metrics (`sap_c_*` / `sap_t_*`, src/repo/poll.ts) are the
  *  widest hourly series by far — up to 168 metrics per environment — and the
  *  projection reads them two ways only: the last 3 hours (the figure) and the
@@ -37,25 +37,25 @@ const globLiteral = (pattern: string): string => {
   if (!/^[a-z_]+\*$/.test(pattern)) throw new Error(`not a constant prefix glob: ${pattern}`);
   return `'${pattern}'`;
 };
-const USAGE_GLOB_SQL = USAGE_METRIC_GLOBS.map((g) => `metric GLOB ${globLiteral(g)}`).join(" OR ");
-const PRODUCT_GLOB_SQL = `metric GLOB ${globLiteral(PRODUCT_METRIC_GLOB)}`;
-const PRODUCT_HOURLY_RETENTION_DAYS = 7;
-const PRODUCT_DAILY_RETENTION_DAYS = 100;
+export const USAGE_GLOB_SQL = USAGE_METRIC_GLOBS.map((g) => `metric GLOB ${globLiteral(g)}`).join(" OR ");
+export const PRODUCT_GLOB_SQL = `metric GLOB ${globLiteral(PRODUCT_METRIC_GLOB)}`;
+export const PRODUCT_HOURLY_RETENTION_DAYS = 7;
+export const PRODUCT_DAILY_RETENTION_DAYS = 100;
 export const MIDNIGHT_TAIL = "T00:00:00.000Z";
 /** A bound on `productReadings`' midnight list — it is one bound parameter each. */
 const MAX_MIDNIGHTS = 62;
 /** One D1 batch holds at most this many statements — see `putMetrics`. */
 const BATCH_STATEMENTS = 50;
 
-export async function putSnapshot(db: DB, kind: string, data: unknown, now: string = nowIso()): Promise<void> {
-  await run(db,
-    `INSERT INTO repo_snapshots (kind, json, computed_at) VALUES (?, ?, ?)
-     ON CONFLICT(kind) DO UPDATE SET json = excluded.json, computed_at = excluded.computed_at`,
-    kind, JSON.stringify(data), now);
+export async function putSnapshot(ctx: TenantContext, kind: string, data: unknown, now: string = nowIso()): Promise<void> {
+  await run(ctx,
+    `INSERT INTO repo_snapshots (org_id, kind, json, computed_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(org_id, kind) DO UPDATE SET json = excluded.json, computed_at = excluded.computed_at`,
+    ctx.orgId, kind, JSON.stringify(data), now);
 }
 
-export async function getSnapshot<T>(db: DB, kind: string): Promise<{ data: T; computedAt: string } | null> {
-  const row = await first<{ json: string; computed_at: string }>(db, `SELECT json, computed_at FROM repo_snapshots WHERE kind = ?`, kind);
+export async function getSnapshot<T>(ctx: TenantContext, kind: string): Promise<{ data: T; computedAt: string } | null> {
+  const row = await first<{ json: string; computed_at: string }>(ctx, `SELECT json, computed_at FROM repo_snapshots WHERE org_id = ? AND kind = ?`, ctx.orgId, kind);
   if (!row) return null;
   try { return { data: JSON.parse(row.json) as T, computedAt: row.computed_at }; } catch { return null; }
 }
@@ -79,17 +79,17 @@ function normaliseAt(at: string): string | null {
  *  (Task 14) uses this to count only newly-captured metrics into
  *  `repo.captured`, a redelivery into `repo.unchanged` — the same shape
  *  `ingestRepoEvent` reports for every other repo-capture kind. */
-export async function putMetric(db: DB, m: RepoMetric): Promise<boolean> {
+export async function putMetric(ctx: TenantContext, m: RepoMetric): Promise<boolean> {
   const at = normaliseAt(m.at);
   if (at === null) {
     console.error("putMetric: unparseable at", m.metric, m.at);
     return false;
   }
-  const res = await run(db, PUT_METRIC_SQL, m.metric, m.env, m.part, m.value, at);
+  const res = await run(ctx, PUT_METRIC_SQL, ctx.orgId, m.metric, m.env, m.part, m.value, at);
   return res.meta.changes > 0;
 }
 
-const PUT_METRIC_SQL = `INSERT OR IGNORE INTO repo_metrics (metric, env, part, value, at) VALUES (?, ?, ?, ?, ?)`;
+const PUT_METRIC_SQL = `INSERT OR IGNORE INTO repo_metrics (org_id, metric, env, part, value, at) VALUES (?, ?, ?, ?, ?, ?)`;
 
 /** `putMetric` for MANY rows: the same first-write-wins `INSERT OR IGNORE`, the
  *  same `at` normalisation (an unparseable `at` skips THAT row and is logged),
@@ -104,19 +104,19 @@ const PUT_METRIC_SQL = `INSERT OR IGNORE INTO repo_metrics (metric, env, part, v
  *  chunks committed, and the count the caller sees is then 0 (it never gets a
  *  return value) — the next poll is idempotent, and an in-hour re-poll fills
  *  the gap exactly (`INSERT OR IGNORE`). */
-export async function putMetrics(db: DB, rows: RepoMetric[]): Promise<number> {
-  const statements: D1PreparedStatement[] = [];
+export async function putMetrics(ctx: TenantContext, rows: RepoMetric[]): Promise<number> {
+  const statements: Stmt[] = [];
   for (const m of rows) {
     const at = normaliseAt(m.at);
     if (at === null) {
       console.error("putMetrics: unparseable at", m.metric, m.at);
       continue;
     }
-    statements.push(db.prepare(PUT_METRIC_SQL).bind(m.metric, m.env, m.part, m.value, at));
+    statements.push(stmt(ctx, PUT_METRIC_SQL, ctx.orgId, m.metric, m.env, m.part, m.value, at));
   }
   let written = 0;
   for (const chunk of chunked(statements, BATCH_STATEMENTS)) {
-    for (const res of await db.batch(chunk)) if (res.meta.changes > 0) written++;
+    for (const res of await batch(ctx, chunk)) if (res.meta.changes > 0) written++;
   }
   return written;
 }
@@ -127,12 +127,12 @@ export async function putMetrics(db: DB, rows: RepoMetric[]): Promise<number> {
  *  milliseconds every stored `at` carries; compared as raw strings, "…00Z"
  *  sorts AFTER "…00.000Z" and would wrongly exclude that exact instant. An
  *  unparseable bound returns [] rather than every row ever written. */
-export async function metricSeries(db: DB, metric: string, env: string, part: string, sinceIso: string): Promise<{ at: string; value: number }[]> {
+export async function metricSeries(ctx: TenantContext, metric: string, env: string, part: string, sinceIso: string): Promise<{ at: string; value: number }[]> {
   const since = normaliseAt(sinceIso);
   if (since === null) return [];
-  return all<{ at: string; value: number }>(db,
-    `SELECT at, value FROM repo_metrics WHERE metric = ? AND env = ? AND part = ? AND at >= ? ORDER BY at ASC`,
-    metric, env, part, since);
+  return all<{ at: string; value: number }>(ctx,
+    `SELECT at, value FROM repo_metrics WHERE org_id = ? AND metric = ? AND env = ? AND part = ? AND at >= ? ORDER BY at ASC`,
+    ctx.orgId, metric, env, part, since);
 }
 
 /** One bound for a set of metric names — see `metricsSince`. */
@@ -147,7 +147,7 @@ export interface MetricGroup { metrics: string[]; since: string }
  *  Each bound is normalised exactly as `metricSeries` normalises its own (see
  *  above); a group with an unparseable bound, or no metric names, is DROPPED —
  *  never widened — and with no usable group the answer is []. */
-export async function metricsSince(db: DB, groups: MetricGroup[]): Promise<{ metric: string; env: string; part: string; at: string; value: number }[]> {
+export async function metricsSince(ctx: TenantContext, groups: MetricGroup[]): Promise<{ metric: string; env: string; part: string; at: string; value: number }[]> {
   const clauses: string[] = [];
   const binds: string[] = [];
   for (const g of groups) {
@@ -157,9 +157,9 @@ export async function metricsSince(db: DB, groups: MetricGroup[]): Promise<{ met
     binds.push(...g.metrics, since);
   }
   if (!clauses.length) return [];
-  return all<{ metric: string; env: string; part: string; at: string; value: number }>(db,
-    `SELECT metric, env, part, at, value FROM repo_metrics WHERE ${clauses.join(" OR ")} ORDER BY at ASC, id ASC`,
-    ...binds);
+  return all<{ metric: string; env: string; part: string; at: string; value: number }>(ctx,
+    `SELECT metric, env, part, at, value FROM repo_metrics WHERE org_id = ? AND (${clauses.join(" OR ")}) ORDER BY at ASC, id ASC`,
+    ctx.orgId, ...binds);
 }
 
 /** Which of `metrics` have EVER landed — any env, any part, any age. ONE
@@ -173,21 +173,21 @@ export async function metricsSince(db: DB, groups: MetricGroup[]): Promise<{ met
  *  advance (Sapling's product metrics, `sap_`): "has any metric starting with
  *  this ever landed?" — answered in the SAME statement by one more index seek
  *  (a range on `metric`, `LIMIT`ed by `EXISTS`), and reported as `<prefix>*`. */
-export async function metricsEver(db: DB, metrics: string[], prefixes: string[] = []): Promise<Set<string>> {
+export async function metricsEver(ctx: TenantContext, metrics: string[], prefixes: string[] = []): Promise<Set<string>> {
   const families = prefixes.filter((p) => p.length > 0);
   const ctes: string[] = [];
   const arms: string[] = [];
   if (metrics.length) {
     ctes.push(`asked(metric) AS (VALUES ${metrics.map(() => "(?)").join(", ")})`);
-    arms.push(`SELECT metric FROM asked WHERE EXISTS (SELECT 1 FROM repo_metrics r WHERE r.metric = asked.metric)`);
+    arms.push(`SELECT metric FROM asked WHERE EXISTS (SELECT 1 FROM repo_metrics r WHERE r.org_id = ? AND r.metric = asked.metric)`);
   }
   if (families.length) {
     ctes.push(`family(name, lo, hi) AS (VALUES ${families.map(() => "(?, ?, ?)").join(", ")})`);
-    arms.push(`SELECT name AS metric FROM family WHERE EXISTS (SELECT 1 FROM repo_metrics r WHERE r.metric >= family.lo AND r.metric < family.hi)`);
+    arms.push(`SELECT name AS metric FROM family WHERE EXISTS (SELECT 1 FROM repo_metrics r WHERE r.org_id = ? AND r.metric >= family.lo AND r.metric < family.hi)`);
   }
   if (!arms.length) return new Set();
-  const rows = await all<{ metric: string }>(db, `WITH ${ctes.join(", ")} ${arms.join(" UNION ALL ")}`,
-    ...metrics, ...families.flatMap((p) => [`${p}*`, p, prefixEnd(p)]));
+  const rows = await all<{ metric: string }>(ctx, `WITH ${ctes.join(", ")} ${arms.join(" UNION ALL ")}`,
+    ...metrics, ...families.flatMap((p) => [`${p}*`, p, prefixEnd(p)]), ...arms.map(() => ctx.orgId));
   return new Set(rows.map((r) => r.metric));
 }
 
@@ -225,10 +225,12 @@ const prefixEnd = (prefix: string): string =>
  * one returns []. Ascending by `at`.
  */
 export async function productReadings(
-  db: DB, envKeys: string[], freshSinceIso: string, trendSinceIso: string
+  ctx: TenantContext, envKeys: string[], freshSinceIso: string, trendSinceIso: string
 ): Promise<{ metric: string; env: string; at: string; value: number }[]> {
   const fresh = normaliseAt(freshSinceIso);
   const trend = normaliseAt(trendSinceIso);
+  // `r.org_id = ?` (multitenancy): the per-org UNIQUE (org_id, metric, env, part, at) is the index both arms
+  // SEARCH by full equality — without the org term the planner falls back to an automatic index.
   if (fresh === null || trend === null || !envKeys.length) return [];
   const midnights: string[] = [];
   for (let t = Math.ceil(Date.parse(trend) / DAY) * DAY; t < Date.parse(fresh) && midnights.length < MAX_MIDNIGHTS; t += DAY) {
@@ -236,27 +238,27 @@ export async function productReadings(
   }
   const hi = prefixEnd(PRODUCT_PREFIX);
   const names = `names(m) AS (
-       SELECT MIN(metric) FROM repo_metrics WHERE metric >= '${PRODUCT_PREFIX}' AND metric < '${hi}'
+       SELECT MIN(metric) FROM repo_metrics WHERE org_id = ? AND metric >= '${PRODUCT_PREFIX}' AND metric < '${hi}'
        UNION ALL
-       SELECT (SELECT MIN(metric) FROM repo_metrics WHERE metric > names.m AND metric < '${hi}') FROM names WHERE names.m IS NOT NULL
+       SELECT (SELECT MIN(metric) FROM repo_metrics WHERE org_id = ? AND metric > names.m AND metric < '${hi}') FROM names WHERE names.m IS NOT NULL
      ),
      envs(e) AS (VALUES ${envKeys.map(() => "(?)").join(", ")})`;
   const freshArm = `SELECT r.metric, r.env, r.at, r.value FROM names CROSS JOIN envs CROSS JOIN repo_metrics r
-       WHERE names.m IS NOT NULL AND r.metric = names.m AND r.env = envs.e AND r.part = '' AND r.at >= ?`;
+       WHERE names.m IS NOT NULL AND r.org_id = ? AND r.metric = names.m AND r.env = envs.e AND r.part = '' AND r.at >= ?`;
   const trendArm = `SELECT r.metric, r.env, r.at, r.value FROM names CROSS JOIN envs CROSS JOIN mids CROSS JOIN repo_metrics r
        WHERE names.m IS NOT NULL AND (names.m GLOB '${PRODUCT_PREFIX}c_*_24h' OR names.m GLOB '${PRODUCT_PREFIX}t_*')
-         AND r.metric = names.m AND r.env = envs.e AND r.part = '' AND r.at = mids.a`;
+         AND r.org_id = ? AND r.metric = names.m AND r.env = envs.e AND r.part = '' AND r.at = mids.a`;
   return midnights.length
-    ? all(db,
+    ? all(ctx,
         `WITH RECURSIVE ${names}, mids(a) AS (VALUES ${midnights.map(() => "(?)").join(", ")})
          ${freshArm} UNION ALL ${trendArm} ORDER BY 3 ASC`,
-        ...envKeys, ...midnights, fresh)
-    : all(db, `WITH RECURSIVE ${names} ${freshArm} ORDER BY 3 ASC`, ...envKeys, fresh);
+        ctx.orgId, ctx.orgId, ...envKeys, ...midnights, ctx.orgId, fresh, ctx.orgId)
+    : all(ctx, `WITH RECURSIVE ${names} ${freshArm} ORDER BY 3 ASC`, ctx.orgId, ctx.orgId, ...envKeys, ctx.orgId, fresh);
 }
 
-export async function latestMetric(db: DB, metric: string, env: string, part: string): Promise<{ at: string; value: number } | null> {
-  return first<{ at: string; value: number }>(db,
-    `SELECT at, value FROM repo_metrics WHERE metric = ? AND env = ? AND part = ? ORDER BY at DESC LIMIT 1`, metric, env, part);
+export async function latestMetric(ctx: TenantContext, metric: string, env: string, part: string): Promise<{ at: string; value: number } | null> {
+  return first<{ at: string; value: number }>(ctx,
+    `SELECT at, value FROM repo_metrics WHERE org_id = ? AND metric = ? AND env = ? AND part = ? ORDER BY at DESC LIMIT 1`, ctx.orgId, metric, env, part);
 }
 
 /** The latest `health_up` / `health_ms` reading of EVERY environment half, keyed
@@ -265,32 +267,12 @@ export async function latestMetric(db: DB, metric: string, env: string, part: st
  *  environments). The map also answers "has a reading EVER landed", which is
  *  what separates a health block that is `empty` (the pings stopped) from one
  *  that is `not_connected` (they were never set up). */
-export async function latestHealth(db: DB): Promise<Map<string, { at: string; value: number }>> {
-  const rows = await all<{ metric: string; env: string; part: string; at: string; value: number }>(db,
+export async function latestHealth(ctx: TenantContext): Promise<Map<string, { at: string; value: number }>> {
+  const rows = await all<{ metric: string; env: string; part: string; at: string; value: number }>(ctx,
     `SELECT metric, env, part, at, value FROM (
        SELECT metric, env, part, at, value,
               ROW_NUMBER() OVER (PARTITION BY metric, env, part ORDER BY at DESC) AS rn
-         FROM repo_metrics WHERE metric IN ('health_up', 'health_ms')
-     ) WHERE rn = 1`);
+         FROM repo_metrics WHERE org_id = ? AND metric IN ('health_up', 'health_ms')
+     ) WHERE rn = 1`, ctx.orgId);
   return new Map(rows.map((r) => [`${r.metric}:${r.env}:${r.part}`, { at: r.at, value: r.value }]));
-}
-
-export async function pruneRepoCapture(db: DB, now: number): Promise<void> {
-  const cutoff = new Date(now - FAST_RETENTION_DAYS * DAY).toISOString();
-  await run(db, `DELETE FROM repo_metrics WHERE metric IN (${ph(FAST_METRICS.length)}) AND at < ?`, ...FAST_METRICS, cutoff);
-  // Hourly usage series get their own, longer bound. Every other metric
-  // (coverage, bundle_kb, todo_count) matches neither rule and is kept forever.
-  const usageCutoff = new Date(now - USAGE_RETENTION_DAYS * DAY).toISOString();
-  await run(db, `DELETE FROM repo_metrics WHERE (${USAGE_GLOB_SQL}) AND at < ?`, usageCutoff);
-  // Sapling's product metrics: hourly rows 7 days, the 00:00 UTC rows 100 days.
-  const productHourly = new Date(now - PRODUCT_HOURLY_RETENTION_DAYS * DAY).toISOString();
-  const productDaily = new Date(now - PRODUCT_DAILY_RETENTION_DAYS * DAY).toISOString();
-  await run(db,
-    `DELETE FROM repo_metrics WHERE ${PRODUCT_GLOB_SQL} AND (at < ? OR (at < ? AND substr(at, 11) != ?))`,
-    productDaily, productHourly, MIDNIGHT_TAIL);
-  // `part IS NULL` only: a `check` row carrying a `part` (a Workers Builds run
-  // tagged as a frontend deploy — see the migration's column notes) is a
-  // DEPLOY record and must be kept forever like `deploy` rows, or the
-  // frontend dot strip would age out asymmetrically from the backend's.
-  await run(db, `DELETE FROM repo_events WHERE kind IN (${ph(FAST_KINDS.length)}) AND part IS NULL AND occurred_at < ?`, ...FAST_KINDS, cutoff);
 }

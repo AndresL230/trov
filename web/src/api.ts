@@ -6,7 +6,7 @@
 // the MCP bearer is for /mcp only and never appears here.
 import type {
   FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, EventRow,
-  PersonColor, InviteRow,
+  PersonColor,
 } from "@shared/rows";
 // Type-only (erased at build): the sprint DTOs the roadmap renders. Importing the
 // zod module for types costs the bundle nothing.
@@ -18,14 +18,14 @@ import type { DashboardData } from "@shared/dashboard";
 import type { FeedStats } from "@shared/feed-stats";
 import type { RepoDashboard, RepoRefreshResult } from "@shared/repo";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
-import type { NotificationOutboxRow, NotificationSettingsRow, OAuthGrantSummary } from "@shared/rows";
+import type { NotificationOutboxRow, NotificationSettingsRow, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
 import type {
   ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactDiffDTO, ArtifactFetchDTO,
   ArtifactKind, ArtifactVisibility, ArtifactLinkType,
 } from "@shared/artifacts-core";
 import type { QuickSearchResult } from "@shared/quick-search";
 // Person profiles (0036): the DTOs and caps are one zod-free contract with the Worker.
-import type { PersonSummary, PersonProfile, PersonProfileWrite } from "@shared/people";
+import type { PersonSummary, PersonProfile } from "@shared/people";
 import type {
   HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody,
 } from "@shared/handoffs";
@@ -35,48 +35,110 @@ export class Unauthorized extends Error {
 }
 export class ApiError extends Error {
   status: number;
+  /** A 429 `rate_limited`'s `retry_after`: whole seconds until the caller's limit turns over. */
+  retryAfter: number | null = null;
   constructor(status: number, message: string) { super(message); this.status = status; }
+}
+const retryAfterOf = (j: { retry_after?: unknown }): number | null =>
+  typeof j.retry_after === "number" && Number.isFinite(j.retry_after) && j.retry_after > 0 ? j.retry_after : null;
+
+/** Is this the per-person limit's refusal (docs/architecture/abuse-limits.md)? */
+export const isRateLimited = (e: unknown): e is ApiError => e instanceof ApiError && (e.message === "rate_limited" || e.status === 429);
+/**
+ * The ONE sentence a limited route's refusal is shown as, wherever it is called (invites, the test
+ * send, the notification address, an avatar upload, the handle check); null for any other error.
+ * The time is the viewer's local clock, with the weekday when it is not today.
+ */
+export function rateLimitText(e: unknown, now: Date = new Date()): string | null {
+  if (!isRateLimited(e)) return null;
+  if (e.retryAfter === null) return "You've hit today's limit for this; try again later.";
+  const at = new Date(now.getTime() + e.retryAfter * 1000);
+  const time = at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const day = at.toDateString() === now.toDateString() ? "" : `${at.toLocaleDateString(undefined, { weekday: "long" })} `;
+  return `You've hit today's limit for this; try again after ${day}${time}.`;
 }
 export class NotFound extends Error {}
 
+// ── the current org: ONE prefix ──────────────────────────────────────────────
+// Every tenant route lives at `/api/o/<slug>/<suffix>` (canopy-multitenancy.md §6.3). The functions
+// below still name a route by its SUFFIX (`/feed`, `/api/handoffs`); `apiUrl` is the one place that
+// turns it into the current org's URL, and every request in the SPA is sent through `call`. main.ts
+// sets the slug once at boot from the page's path (`/o/<slug>/`); switching org is a page load.
+let apiOrg: string | null = null;
+export function setApiOrg(slug: string | null): void { apiOrg = slug; }
+export const apiOrgSlug = (): string | null => apiOrg;
+
+/** Person-level and platform routes: not an org's, so never prefixed (docs/architecture/data-layer.md › Routes and gates). */
+const GLOBAL_PATH = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|o)(?:[/?]|$)/;
+export const isGlobalPath = (path: string): boolean => GLOBAL_PATH.test(path);
+
+/** The URL a route is requested at: a tenant route under the current org, anything else as written.
+ *  The old `/api/` of handoffs / prompts / docs / people / artifacts / notifications is dropped. */
+export function apiUrl(path: string): string {
+  if (GLOBAL_PATH.test(path)) return path;
+  if (!apiOrg) throw new ApiError(409, "org_required");
+  return `/api/o/${encodeURIComponent(apiOrg)}${path.replace(/^\/api(?=\/)/, "")}`;
+}
+
+/** The same URL for markup (an `href`, an image `src`): never throws — with no org open (a
+ *  render before boot has one) it is an inert `#`, never the unprefixed alias. */
+export function tenantHref(path: string): string {
+  try { return apiUrl(path); } catch { return "#"; }
+}
+
+// A 404 from an org's route is either a missing thing or the membership gate (removed from the org,
+// org suspended, unknown slug) — the same answer by design. So a 404 there asks the gate directly,
+// once: `GET /api/o/<slug>/me` answers 404 only when the org is no longer the caller's.
+let onOrgLost: ((slug: string) => void) | null = null;
+/** main.ts: what to do when the current org turns out not to be the caller's (the org picker). */
+export function setOrgLostHandler(fn: ((slug: string) => void) | null): void { onOrgLost = fn; }
+let probing = false;
+function probeOrg(): void {
+  const slug = apiOrg;
+  if (!slug || probing || !onOrgLost) return;
+  probing = true;
+  fetch(`/api/o/${encodeURIComponent(slug)}/me`, { credentials: "same-origin", headers: { accept: "application/json" } })
+    .then((res) => { if (res.status === 404 && apiOrg === slug) onOrgLost?.(slug); })
+    .catch(() => undefined)
+    .finally(() => { probing = false; });
+}
+
+/** THE sender: prefixes the path, carries the session cookie, turns a 401 into `Unauthorized`. */
+async function call(path: string, init: RequestInit = {}): Promise<Response> {
+  const url = apiUrl(path);
+  const res = await fetch(url, { credentials: "same-origin", ...init, headers: { accept: "application/json", ...(init.headers as Record<string, string> | undefined) } });
+  if (res.status === 401) throw new Unauthorized();
+  if (res.status === 404 && url.startsWith("/api/o/") && !url.endsWith("/me")) probeOrg();
+  return res;
+}
+/** A refused call's error code: the body's `error`, else the status. */
+async function refusal(res: Response): Promise<ApiError> {
+  let msg = String(res.status);
+  let retryAfter: number | null = null;
+  try { const j = (await res.json()) as { error?: string; retry_after?: unknown }; if (j.error) msg = j.error; retryAfter = retryAfterOf(j); } catch { /* non-JSON */ }
+  const err = new ApiError(res.status, msg);
+  err.retryAfter = retryAfter;
+  return err;
+}
+
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path, { credentials: "same-origin", headers: { accept: "application/json" } });
-  if (res.status === 401) throw new Unauthorized();
-  if (!res.ok) throw new ApiError(res.status, `${path} -> ${res.status}`);
-  return res.json() as Promise<T>;
-}
-
-async function postJson<T>(path: string, body: unknown = {}): Promise<T> {
-  const res = await fetch(path, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (res.status === 401) throw new Unauthorized();
+  const res = await call(path);
   if (!res.ok) {
-    let msg = String(res.status);
-    try { const j = (await res.json()) as { error?: string }; if (j.error) msg = j.error; } catch { /* non-JSON */ }
-    throw new ApiError(res.status, msg);
+    const err = new ApiError(res.status, `${path} -> ${res.status}`);
+    // A limited read (the handle check) says when it may be asked again.
+    if (res.status === 429) { try { err.retryAfter = retryAfterOf((await res.json()) as { retry_after?: unknown }); } catch { /* non-JSON */ } }
+    throw err;
   }
   return res.json() as Promise<T>;
 }
 
-async function putJson<T>(path: string, body: unknown = {}): Promise<T> {
-  const res = await fetch(path, {
-    method: "PUT",
-    credentials: "same-origin",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (res.status === 401) throw new Unauthorized();
-  if (!res.ok) {
-    let msg = String(res.status);
-    try { const j = (await res.json()) as { error?: string }; if (j.error) msg = j.error; } catch { /* non-JSON */ }
-    throw new ApiError(res.status, msg);
-  }
+async function writeJson<T>(method: "POST" | "PUT", path: string, body: unknown): Promise<T> {
+  const res = await call(path, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) throw await refusal(res);
   return res.json() as Promise<T>;
 }
+const postJson = <T>(path: string, body: unknown = {}): Promise<T> => writeJson<T>("POST", path, body);
+const putJson = <T>(path: string, body: unknown = {}): Promise<T> => writeJson<T>("PUT", path, body);
 
 // ── reads ────────────────────────────────────────────────────────────────────
 export interface FeedQuery { author?: string; tags?: string[]; limit?: number; }
@@ -135,8 +197,7 @@ export interface QueryResult {
 export async function quickSearch(q: string, signal?: AbortSignal, limit?: number): Promise<QuickSearchResult> {
   const p = new URLSearchParams({ q });
   if (limit) p.set("limit", String(limit));
-  const res = await fetch(`/search/quick?${p}`, { credentials: "same-origin", headers: { accept: "application/json" }, signal });
-  if (res.status === 401) throw new Unauthorized();
+  const res = await call(`/search/quick?${p}`, { signal });
   if (!res.ok) throw new ApiError(res.status, `/search/quick -> ${res.status}`);
   return ((await res.json()) as { result: QuickSearchResult }).result;
 }
@@ -176,7 +237,12 @@ export function listAdrs(status?: string): Promise<AdrRow[]> {
 export interface MeIdentity { provider: "github" | "google"; label: string; linked_at: string }
 /** `avatar_url` is already resolved (`avatarSrc`: an uploaded photo, else the provider's
  *  picture). `role` is optional so a Worker from before 0036 still reads. */
-export interface Me { handle: string; name: string | null; avatar_url: string | null; color: PersonColor; identities: MeIdentity[]; org: string; admin: boolean; role?: string | null }
+/** `orgs` is every org the person is in, each with THEIR role there — what the SPA routes and gates on
+ *  (there is no person-level `admin`: admin means admin or owner of the org on screen). */
+export interface Me {
+  handle: string; name: string | null; avatar_url: string | null; color: PersonColor; identities: MeIdentity[];
+  orgs: OrgT.MyOrg[]; superadmin: boolean; pending_invites: number;
+}
 export function getMe(): Promise<Me> {
   return getJson<Me>("/auth/me");
 }
@@ -204,23 +270,13 @@ export function getPersonProfile(handle: string): Promise<PersonProfile> {
     throw e;
   });
 }
-/** Role and/or responsibilities — the person themselves or an admin (403 otherwise, 400 over
- *  the caps). Answers with the fresh profile. */
-export function updatePersonProfile(handle: string, body: PersonProfileWrite): Promise<PersonProfile> {
-  return putJson<PersonProfile>(`/api/people/${encodeURIComponent(handle)}`, body);
-}
 /** Upload MY avatar (multipart `file`; the caller downsizes it first). 400 a type the Worker
  *  refuses, 413 over `AVATAR_MAX_BYTES`. Answers with the resolved `avatar_url`. */
 export async function uploadAvatar(file: Blob, filename = "avatar"): Promise<{ ok: true; avatar_url: string | null }> {
   const fd = new FormData();
   fd.set("file", file, filename);
-  const res = await fetch("/api/people/me/avatar", { method: "POST", credentials: "same-origin", headers: { accept: "application/json" }, body: fd });
-  if (res.status === 401) throw new Unauthorized();
-  if (!res.ok) {
-    let msg = String(res.status);
-    try { const j = (await res.json()) as { error?: string }; if (j.error) msg = j.error; } catch { /* non-JSON */ }
-    throw new ApiError(res.status, msg);
-  }
+  const res = await call("/api/people/me/avatar", { method: "POST", body: fd });
+  if (!res.ok) throw await refusal(res);
   return res.json() as Promise<{ ok: true; avatar_url: string | null }>;
 }
 /** Drop MY uploaded avatar: `avatar_url` falls back to the provider picture, or null (initials). */
@@ -228,11 +284,111 @@ export function removeAvatar(): Promise<{ ok: true; avatar_url: string | null }>
   return postJson("/api/people/me/avatar/remove");
 }
 
-// ── invites (admin) ───────────────────────────────────────────────────────────
-export function listInvites(): Promise<InviteRow[]> { return getJson<{ invites: InviteRow[] }>("/invites").then((r) => r.invites); }
-export function createInvite(email: string, name?: string): Promise<{ ok: true; invite: InviteRow; email: { status: "sent" | "failed"; error: string | null } }> { return postJson("/invites", { email, name }); }
-export function revokeInvite(email: string): Promise<{ ok: true }> { return postJson(`/invites/${encodeURIComponent(email)}/revoke`); }
-export function resendInvite(email: string): Promise<{ ok: true; email: { status: "sent" | "failed"; error: string | null } }> { return postJson(`/invites/${encodeURIComponent(email)}/resend`); }
+// ── Org settings (/api/orgs, /api/o/:slug/… — web/src/org-settings.ts, integrations.ts) ──
+// Self-contained: its own sender, so a refusal keeps the server's `message` and `field` (they
+// never carry a submitted value). Nothing here ever RECEIVES a secret: the API is write-only.
+// Namespace imports under names of their own, so this block never collides with another import of the same types.
+import type * as OrgT from "@shared/orgs";
+import type * as IntT from "@shared/integrations";
+/** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
+ *  `detail` the server's sentence, `field` the input it is about. */
+export class OrgApiError extends ApiError {
+  constructor(status: number, code: string, readonly detail: string | null, readonly field: string | null) { super(status, code); }
+}
+async function orgRefusal(res: Response): Promise<OrgApiError> {
+  let j: { error?: unknown; message?: unknown; field?: unknown; retry_after?: unknown } = {};
+  try { j = (await res.json()) as typeof j; } catch { /* non-JSON */ }
+  const err = new OrgApiError(res.status, typeof j.error === "string" ? j.error : String(res.status), typeof j.message === "string" ? j.message : null, typeof j.field === "string" ? j.field : null);
+  err.retryAfter = retryAfterOf(j);
+  return err;
+}
+async function orgSend<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+  const init: RequestInit = { method };
+  if (body !== undefined) { init.body = JSON.stringify(body); init.headers = { "content-type": "application/json" }; }
+  const res = await call(path, init);
+  if (!res.ok) throw await orgRefusal(res);
+  return res.json() as Promise<T>;
+}
+const orgPath = (slug: string, rest: string): string => `/api/o/${encodeURIComponent(slug)}${rest}`;
+const integrationPath = (slug: string, kind: IntT.IntegrationKind, scope: string, action = ""): string =>
+  orgPath(slug, `/integrations/${kind}${scope ? `/${encodeURIComponent(scope)}` : ""}${action}`);
+
+/** My orgs, my pending invites and the superadmin flag (`GET /api/orgs`). */
+export function getMyOrgs(): Promise<OrgT.MyOrgsResponse> { return orgSend("GET", "/api/orgs"); }
+/** Create an org; the caller becomes its owner. Refusals: `invalid_slug`, `reserved_slug`, `slug_taken`, `invalid_name`, `org_limit`. */
+export function createOrg(body: { slug: string; name: string }): Promise<OrgT.MyOrg> {
+  return orgSend<{ org: OrgT.MyOrg }>("POST", "/api/orgs", body).then((r) => r.org);
+}
+/** Answer one of MY pending invites (`GET /api/orgs`'s `invites`). */
+export function respondToInvite(id: number, accept: boolean): Promise<unknown> { return orgSend("POST", `/api/invites/${id}/${accept ? "accept" : "decline"}`); }
+/** My membership of one org, and its connected repositories. A 404 = not mine (or suspended, or unknown). */
+export function getOrgMe(slug: string): Promise<OrgT.OrgMeResponse> { return orgSend("GET", orgPath(slug, "/me")); }
+/** MY personal MCP tokens for the CURRENT org (never another org's, never anyone else's). */
+export function listMcpTokens(): Promise<McpTokenSummary[]> { return getJson<{ tokens: McpTokenSummary[] }>("/mcp-tokens").then((r) => r.tokens); }
+export function revokeMcpToken(id: number): Promise<{ ok: true }> { return postJson(`/mcp-tokens/${id}/revoke`); }
+export function getOrgSettings(slug: string): Promise<{ org: OrgT.OrgSettings; can_edit: boolean }> { return orgSend("GET", orgPath(slug, "/settings")); }
+export function putOrgSettings(slug: string, name: string): Promise<{ ok: true; org: OrgT.OrgSettings }> { return orgSend("PUT", orgPath(slug, "/settings"), { name }); }
+/** Upload the org's image (multipart `file`; the caller crops and downsizes it first — avatar.ts). Admin+.
+ *  Refusals: `invalid_image` (400), `too_large` (413), `rate_limited` (429). Answers with the image that shows now. */
+export async function uploadOrgLogo(slug: string, file: Blob, filename = "logo"): Promise<OrgT.OrgLogo> {
+  const fd = new FormData();
+  fd.set("file", file, filename);
+  const res = await call(orgPath(slug, "/logo"), { method: "POST", body: fd });
+  if (!res.ok) throw await orgRefusal(res);
+  return ((await res.json()) as OrgT.OrgLogoResponse).logo;
+}
+/** Remove the org's UPLOADED image. What shows now: GitHub's, when the org has a repository to import from, else none. */
+export function removeOrgLogo(slug: string): Promise<OrgT.OrgLogo> {
+  return orgSend<OrgT.OrgLogoResponse>("POST", orgPath(slug, "/logo/remove")).then((r) => r.logo);
+}
+export function listOrgMembers(slug: string): Promise<OrgT.OrgMember[]> { return orgSend<{ members: OrgT.OrgMember[] }>("GET", orgPath(slug, "/members")).then((r) => r.members); }
+export function updateOrgMember(slug: string, handle: string, patch: { role?: OrgT.OrgRole; title?: string | null; responsibilities?: string | null }): Promise<OrgT.OrgMember[]> {
+  return orgSend<{ members: OrgT.OrgMember[] }>("PUT", orgPath(slug, `/members/${encodeURIComponent(handle)}`), patch).then((r) => r.members);
+}
+export function removeOrgMember(slug: string, handle: string): Promise<{ ok: true; left: boolean }> { return orgSend("DELETE", orgPath(slug, `/members/${encodeURIComponent(handle)}`)); }
+export function listOrgInvites(slug: string): Promise<OrgT.OrgInvite[]> { return orgSend<{ invites: OrgT.OrgInvite[] }>("GET", orgPath(slug, "/invites")).then((r) => r.invites); }
+/** Invite by GitHub login or e-mail. An e-mail invite is MAILED by the same call — the row's `mail_status` says how that went. */
+export function createOrgInvite(slug: string, body: ({ github_login: string } | { email: string; name?: string }) & { role: "admin" | "member" }): Promise<OrgT.OrgInvite> {
+  return orgSend<{ invite: OrgT.OrgInvite }>("POST", orgPath(slug, "/invites"), body).then((r) => r.invite);
+}
+/** Mail a pending e-mail invite again; the row comes back with the new outcome. 409 `no_address` for a GitHub-login invite. */
+export function resendOrgInvite(slug: string, id: number): Promise<OrgT.OrgInvite> {
+  return orgSend<{ invite: OrgT.OrgInvite }>("POST", orgPath(slug, `/invites/${id}/resend`)).then((r) => r.invite);
+}
+export function revokeOrgInvite(slug: string, id: number): Promise<{ ok: true }> { return orgSend("POST", orgPath(slug, `/invites/${id}/revoke`)); }
+export function listOrgRepos(slug: string): Promise<IntT.OrgRepoDTO[]> { return orgSend<{ repos: IntT.OrgRepoDTO[] }>("GET", orgPath(slug, "/repos")).then((r) => r.repos); }
+/** Add a repository, or — naming one the org already has with `is_primary: true` — make it the primary. */
+export function addOrgRepo(slug: string, repo_full_name: string, is_primary?: boolean): Promise<IntT.OrgRepoDTO[]> {
+  return orgSend<{ repos: IntT.OrgRepoDTO[] }>("POST", orgPath(slug, "/repos"), is_primary === undefined ? { repo_full_name } : { repo_full_name, is_primary }).then((r) => r.repos);
+}
+export function removeOrgRepo(slug: string, id: string): Promise<{ removed_secrets: string[]; repos: IntT.OrgRepoDTO[] }> { return orgSend("DELETE", orgPath(slug, `/repos/${encodeURIComponent(id)}`)); }
+export function listOrgEnvironments(slug: string): Promise<IntT.OrgEnvironmentDTO[]> { return orgSend<{ environments: IntT.OrgEnvironmentDTO[] }>("GET", orgPath(slug, "/environments")).then((r) => r.environments); }
+export type OrgEnvironmentWrite = Partial<Omit<IntT.OrgEnvironmentDTO, "key" | "position" | "created_at" | "updated_at" | "updated_by">>;
+export function putOrgEnvironment(slug: string, key: string, body: OrgEnvironmentWrite): Promise<{ environment: IntT.OrgEnvironmentDTO; created: boolean; removed_secrets: string[] }> {
+  return orgSend("PUT", orgPath(slug, `/environments/${encodeURIComponent(key)}`), body);
+}
+export function reorderOrgEnvironments(slug: string, order: string[]): Promise<IntT.OrgEnvironmentDTO[]> {
+  return orgSend<{ environments: IntT.OrgEnvironmentDTO[] }>("PUT", orgPath(slug, "/environments"), { order }).then((r) => r.environments);
+}
+export function deleteOrgEnvironment(slug: string, key: string): Promise<{ removed_secrets: string[]; environments: IntT.OrgEnvironmentDTO[] }> { return orgSend("DELETE", orgPath(slug, `/environments/${encodeURIComponent(key)}`)); }
+export function listOrgIntegrations(slug: string): Promise<IntT.IntegrationsListDTO> { return orgSend("GET", orgPath(slug, "/integrations")); }
+/** Store a credential (409 `already_configured` if one is set — rotate instead). The value goes out once and never comes back. */
+export function setOrgIntegration(slug: string, kind: IntT.IntegrationKind, scope: string, secret: string, config?: Record<string, string>): Promise<IntT.IntegrationDTO> {
+  return orgSend<{ integration: IntT.IntegrationDTO }>("PUT", integrationPath(slug, kind, scope), config ? { secret, config } : { secret }).then((r) => r.integration);
+}
+export function rotateOrgIntegration(slug: string, kind: IntT.IntegrationKind, scope: string, secret: string): Promise<IntT.IntegrationDTO> {
+  return orgSend<{ integration: IntT.IntegrationDTO }>("POST", integrationPath(slug, kind, scope, "/rotate"), { secret }).then((r) => r.integration);
+}
+export function deleteOrgIntegration(slug: string, kind: IntT.IntegrationKind, scope: string): Promise<IntT.IntegrationDTO> {
+  return orgSend<{ integration: IntT.IntegrationDTO }>("DELETE", integrationPath(slug, kind, scope)).then((r) => r.integration);
+}
+export function putOrgIntegrationConfig(slug: string, kind: IntT.IntegrationKind, scope: string, config: Record<string, string>): Promise<IntT.IntegrationDTO> {
+  return orgSend<{ integration: IntT.IntegrationDTO }>("PUT", integrationPath(slug, kind, scope, "/config"), { config }).then((r) => r.integration);
+}
+export function testOrgIntegration(slug: string, kind: IntT.IntegrationKind, scope: string): Promise<IntT.IntegrationTestDTO> { return orgSend("POST", integrationPath(slug, kind, scope, "/test")); }
+/** Owner only: a new data key, every stored secret re-encrypted under it. */
+export function rotateOrgKey(slug: string): Promise<{ rotated: boolean; key_version: number | null; secrets: number }> { return orgSend("POST", orgPath(slug, "/integrations/rotate-key")); }
+export function listOrgAudit(slug: string, limit = 50): Promise<IntT.OrgAuditDTO[]> { return orgSend<{ audit: IntT.OrgAuditDTO[] }>("GET", orgPath(slug, `/integrations/audit?limit=${limit}`)).then((r) => r.audit); }
 
 // ADMIN action: trigger the server-side GitHub backfill (admin-only route). The
 // worker holds the service token and fetches GitHub directly — no webhook secret.
@@ -305,7 +461,7 @@ export function listStagedProposals(): Promise<StagedProposal[]> {
   return getJson<{ proposals: StagedProposal[] }>("/proposals").then((r) => r.proposals);
 }
 
-// Maintenance · Identity: pending unknown-login tasks, each with a small LIVE
+// Org settings › Members · Unmatched logins: pending unknown-login tasks, each with a small LIVE
 // activity sample. Mirrors src/tools/reads.ts IdentityTaskWithSample exactly
 // (web/ can't import src/, so it's re-declared here atop @shared/rows's
 // IdentityTaskRow shape). Envelope: { tasks, discarded }.
@@ -362,7 +518,7 @@ export function assignTriage(id: number, target: AssignTarget): Promise<{ ok: tr
   return postJson<{ ok: true }>(`/needs-triage/${id}/assign`, target);
 }
 
-// Maintenance · Identity: map a login to a person — the `people` table's only
+// Org settings › Members · Unmatched logins: map a login to a person — the `people` table's only
 // runtime write. `person` is a free non-empty string; the picker posts a
 // teammate's GitHub login as that value.
 export function mapIdentity(login: string, person: string): Promise<{ ok: true; login: string; person: string; status: "resolved" }> {
@@ -502,14 +658,13 @@ export function deleteSprint(id: number): Promise<{ ok: true; id: number; label:
 // A 404 is NotFound — the API answers a missing slug and one private to someone
 // else identically, and the SPA shows both as the not-found page.
 async function sendJson<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const init: RequestInit = { method, credentials: "same-origin", headers: { accept: "application/json" } };
+  const init: RequestInit = { method };
   if (body instanceof FormData) init.body = body;
   else if (body !== undefined) {
     init.body = JSON.stringify(body);
-    init.headers = { accept: "application/json", "content-type": "application/json" };
+    init.headers = { "content-type": "application/json" };
   }
-  const res = await fetch(path, init);
-  if (res.status === 401) throw new Unauthorized();
+  const res = await call(path, init);
   if (res.status === 404) throw new NotFound(path);
   if (!res.ok) {
     let msg = String(res.status);
@@ -599,8 +754,8 @@ export type { SprintView, SprintDetail, SprintCreate };
 export type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory, TicketCreate };
 export type { DashboardData };
 export type { PrefsView, PolicyKindView, Cadence, NotificationOutboxRow, NotificationSettingsRow };
-export type { InviteRow, PersonColor };
-export type { PersonSummary, PersonProfile, PersonProfileWrite };
+export type { PersonColor };
+export type { PersonSummary, PersonProfile };
 
 // ── Handoffs + Prompt Library ────────────────────────────────────────────────
 export async function listHandoffs(box: HandoffBox = "mine"): Promise<HandoffView[]> {
@@ -664,3 +819,48 @@ export async function proposeDoc(body: DocProposeBody): Promise<StagedProposal> 
   return (await postJson<{ ok: true; proposal: StagedProposal }>("/api/docs/propose", body)).proposal;
 }
 export type { HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody };
+
+// ── orgs + the superadmin surface (/api/orgs, /api/platform/*) ───────────────
+// Every /api/platform route answers 404 to a non-superadmin. A failed write throws an
+// `ApiError` whose message is the server's error CODE (`slug_taken`, `last_superadmin`, …).
+import type {
+  PlatformOrgRow, PlatformOrgDetail, AdminTarget, AdminAssignment,
+  PlatformAdmin, PlatformAuditRow, PlatformUsageResponse,
+} from "@shared/orgs";
+export function listPlatformOrgs(): Promise<PlatformOrgRow[]> {
+  return getJson<{ orgs: PlatformOrgRow[] }>("/api/platform/orgs").then((r) => r.orgs);
+}
+export function getPlatformOrg(slug: string): Promise<PlatformOrgDetail> {
+  return getJson<PlatformOrgDetail>(`/api/platform/orgs/${encodeURIComponent(slug)}`);
+}
+export function createPlatformOrg(body: { slug: string; name: string; admin: AdminTarget }): Promise<{ org: PlatformOrgRow; admin: AdminAssignment }> {
+  return postJson<{ ok: true; org: PlatformOrgRow; admin: AdminAssignment }>("/api/platform/orgs", body);
+}
+export function assignPlatformOrgAdmin(slug: string, target: AdminTarget): Promise<AdminAssignment> {
+  return postJson<{ ok: true; admin: AdminAssignment }>(`/api/platform/orgs/${encodeURIComponent(slug)}/admin`, target).then((r) => r.admin);
+}
+export function setPlatformOrgSuspended(slug: string, suspended: boolean): Promise<PlatformOrgRow> {
+  return postJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/${suspended ? "suspend" : "unsuspend"}`).then((r) => r.org);
+}
+/** `limit` null = back to the default. */
+export function setPersonOrgLimit(handle: string, limit: number | null): Promise<{ handle: string; org_limit: number | null }> {
+  return putJson<{ ok: true; person: { handle: string; org_limit: number | null } }>(`/api/platform/persons/${encodeURIComponent(handle)}/org-limit`, { limit }).then((r) => r.person);
+}
+export function listPlatformAdmins(): Promise<PlatformAdmin[]> {
+  return getJson<{ admins: PlatformAdmin[] }>("/api/platform/admins").then((r) => r.admins);
+}
+export function grantPlatformAdmin(handle: string): Promise<PlatformAdmin[]> {
+  return postJson<{ ok: true; admins: PlatformAdmin[] }>("/api/platform/admins", { handle }).then((r) => r.admins);
+}
+/** 409 `last_superadmin` when it would leave the platform with none. */
+export async function revokePlatformAdmin(handle: string): Promise<PlatformAdmin[]> {
+  const res = await call(`/api/platform/admins/${encodeURIComponent(handle)}`, { method: "DELETE" });
+  if (!res.ok) throw await refusal(res);
+  return ((await res.json()) as { admins: PlatformAdmin[] }).admins;
+}
+export function listPlatformAudit(org = "", limit = 100): Promise<PlatformAuditRow[]> {
+  return getJson<{ audit: PlatformAuditRow[] }>(`/api/platform/audit?limit=${limit}${org ? `&org=${encodeURIComponent(org)}` : ""}`).then((r) => r.audit);
+}
+export function getPlatformUsage(days: number): Promise<PlatformUsageResponse> {
+  return getJson<PlatformUsageResponse>(`/api/platform/usage?days=${days}`);
+}

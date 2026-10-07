@@ -13,20 +13,20 @@ import type { PersonColor } from "@shared/rows";
 import { esc, attr } from "./ui";
 import { personChip, handleTag } from "./people";
 
-/** The nav entries that own a sub-page list — only Docs now. Roadmap, Tickets, Maintenance
- *  and Repo have none: their switches are on the screen itself (Roadmap's Narrative /
- *  Timeline, removed from the rail 2026-09-26; Tickets' Board / Table and Submit a ticket,
- *  removed 2026-09-27; Maintenance's Unplaced / Identity / People and Repo's Overview /
- *  Code / CI / Usage / Planning — each a tab bar heading the page body — removed
- *  2026-09-27). A stored `trov.navOpen` naming a retired group is simply not read back
- *  (main.ts). */
+/** The nav entries that own a sub-page list — only Docs now. Roadmap, Tickets and Repo have
+ *  none: their switches are on the screen itself (Roadmap's Narrative / Timeline, removed
+ *  from the rail 2026-09-26; Tickets' Board / Table and Submit a ticket, removed 2026-09-27;
+ *  Repo's Overview / Code / CI / Usage / Planning — a tab bar heading the page body —
+ *  removed 2026-09-27). Unplaced (the `maintenance` key: it was Maintenance, with Identity and
+ *  People tabs that moved into Org settings 2026-10-06) is one queue. A stored `trov.navOpen`
+ *  naming a retired group is simply not read back (main.ts). */
 export const NAV_GROUPS = ["docs"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 export type NavOpen = Record<NavGroup, boolean>;
 export const NAV_CLOSED: NavOpen = { docs: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
-export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases";
+export type NavKey = "mywork" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases" | "platform" | "org";
 const NAV_OF: Record<string, NavKey> = {
   mywork: "mywork", feed: "feed", docs: "docs", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
   review: "review", maintenance: "maintenance", guide: "guide", releases: "releases",
@@ -35,6 +35,8 @@ const NAV_OF: Record<string, NavKey> = {
   handoffs: "handoffs", handoff: "handoffs", newhandoff: "handoffs",
   prompts: "prompts", prompt: "prompts", promptedit: "prompts",
   newdoc: "docs",
+  platform: "platform", platformorg: "platform",
+  org: "org",
 };
 export const navKeyOf = (screen: string): NavKey | null => NAV_OF[screen] ?? null;
 /** The group whose sub-pages a screen belongs to, or null. */
@@ -55,6 +57,11 @@ export interface SidebarProps {
   me: { handle: string; name: string | null; color: PersonColor; avatar_url?: string | null } | null;
   displayName: string;
   logo: string;
+  /** The org switcher's button (org-picker.ts `orgSwitcherButton`), under the logo. Its menu holds
+   *  Org settings, so the rail has no Organization section of its own. */
+  orgSwitcher?: string;
+  /** Org settings is the screen showing: the switcher reads as the current place. */
+  orgActive?: boolean;
 }
 
 const ICON = (paths: string): string =>
@@ -71,10 +78,15 @@ const ICONS: Record<NavKey | "search" | "collapse", string> = {
   docs: ICON(`<path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path>`),
   artifacts: ICON(`<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path>`),
   review: ICON(`<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path>`),
-  maintenance: ICON(`<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>`),
+  // An inbox tray: the Unplaced queue (the key is still `maintenance`).
+  maintenance: ICON(`<path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>`),
   guide: ICON(`<path d="M2 4h7a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2z"></path><path d="M22 4h-7a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H22z"></path>`),
   // A sparkle: what's new.
   releases: ICON(`<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path>`),
+  // A globe: the whole platform, every organization.
+  platform: ICON(`<circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z"></path>`),
+  // A building: the org's own settings.
+  org: ICON(`<path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"></path><path d="M16 9h2a2 2 0 0 1 2 2v10"></path><path d="M2 21h20"></path><path d="M8 7h4M8 11h4M8 15h4"></path>`),
   search: `<svg class="cnpy-nav-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>`,
   // Drawn in its "expanded" pose; trov.css mirrors it (scaleX(-1)) when collapsed,
   // which is exactly the design's second icon — so the swap is a flip, not a cut.
@@ -137,6 +149,7 @@ export function sidebarView(p: SidebarProps): string {
     <div class="cnpy-logo">
       <button data-act="goSite" aria-label="About Trov" data-tip="About Trov" class="cnpy-logo-b">${p.logo}<span class="cnpy-lbl cnpy-logo-t">Trov</span></button>
     </div>
+    <div class="cnpy-orgslot${p.orgActive ? " is-active" : ""}">${p.orgSwitcher ?? ""}</div>
     <nav class="cnpy-navlist" aria-label="Primary">
       <div class="cnpy-searchwrap" data-tip="Search">
         <div data-act="sideSearchFocus" class="cnpy-search${p.screen === "search" ? " is-active" : ""}">
@@ -159,7 +172,7 @@ export function sidebarView(p: SidebarProps): string {
       ${item("prompts", "goPrompts", "Prompt Library", c.prompts)}
       ${section("Triage")}
       ${item("review", "goReview", "Review", c.review)}
-      ${item("maintenance", "goMaintenance", "Maintenance", c.maintenance)}
+      ${item("maintenance", "goMaintenance", "Unplaced", c.maintenance)}
       ${section("Help")}
       ${item("guide", "goGuide", "Get Started")}
       ${item("releases", "goReleases", "What's new")}

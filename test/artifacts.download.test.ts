@@ -19,6 +19,7 @@ import {
 } from "../src/artifacts/download";
 import { ARTIFACT_DOWNLOAD_TTL_MS } from "@shared/artifacts";
 import { seedPerson } from "./helpers/persons";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const ME = "dl-author";
 const YOU = "dl-teammate";
@@ -30,7 +31,7 @@ const ctx = { waitUntil() {}, passThroughException() {} } as unknown as Executio
 
 async function call(handle: string, name: string, args: Record<string, unknown>): Promise<{ body: any; isError: boolean; text: string }> {
   await seedPerson(handle);
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -66,7 +67,7 @@ async function binaryPage(handle: string, bytes: Uint8Array, o: Record<string, u
   });
   expect(r.isError).toBe(false);
   const token = String(r.body.upload_url).split("/").pop()!;
-  await consumeUploadToken(env.DB, env.ARTIFACTS_BUCKET, token, new Response(bytes).body!);
+  await consumeUploadToken(systemCtx(), env.ARTIFACTS_BUCKET, token, new Response(bytes).body!);
   return { slug: r.body.slug as string, sha };
 }
 
@@ -155,7 +156,7 @@ describe("artifact_get → download_url", () => {
   it("no COOKIE_SECRET → download_url is null (fails closed), the rest of the read is unchanged", async () => {
     const { slug } = await textPage(ME);
     await seedPerson(ME);
-    const server = buildTrovMcpServer({ ...(env as unknown as Env), COOKIE_SECRET: "" }, { handle: ME });
+    const server = buildTrovMcpServer({ ...(env as unknown as Env), COOKIE_SECRET: "" }, await bearerCtx(ME));
     const client = new Client({ name: "t", version: "1" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);
@@ -230,7 +231,7 @@ describe("the download token", () => {
     const { slug, id } = await textPage(ME, { title: "Soon private" });
     const g = await call(YOU, "artifact_get", { slug });
     expect((await fetchUrl(g.body.download_url)).status).toBe(200);
-    await patchPage(env.DB, slug, { visibility: "private" }, ME);
+    await patchPage(systemCtx(), slug, { visibility: "private" }, ME);
     const res = await fetchUrl(g.body.download_url);
     expect(res.status).toBe(404);
     const bogus = await fetchUrl(`${ORIGIN}/api/artifacts/download/${(await mintDownloadToken("nope", { handle: YOU, page_id: id, version_no: 1 })).token}`);
@@ -282,7 +283,7 @@ describe("artifact_list", () => {
 
   it("filters: q, kind, status, author, ticket; limit truncates", async () => {
     await seedPerson(ME);
-    const ticket = await create_ticket(env.DB, { title: "T", body: "", category: "other", priority: "normal", assignees: [] }, ME);
+    const ticket = await create_ticket(systemCtx(), { title: "T", body: "", category: "other", priority: "normal", assignees: [] }, ME);
     await textPage(ME, { title: "Checkout flow", content: "<p>zebra</p>", links: [{ target_type: "ticket", target_ref: String(ticket) }] });
     await call(ME, "upload_asset", { title: "Notes", kind: "markdown", area: "api", repo: "", visibility: "org", content: "# notes" });
     await binaryPage(YOU, pngBytes("track-f-list"), { title: "Badge" });
@@ -302,7 +303,7 @@ describe("artifact_list", () => {
     expect(one.body.artifacts[0].slug).toBe("notes"); // newest version first
     // an unknown kind is refused by the tool's input schema
     await seedPerson(ME);
-    const server = buildTrovMcpServer(env as unknown as Env, { handle: ME });
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(ME));
     const client = new Client({ name: "t", version: "1" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);
@@ -314,7 +315,7 @@ describe("artifact_list", () => {
 
   it("is registered for every principal", async () => {
     await seedPerson(YOU);
-    const server = buildTrovMcpServer(env as unknown as Env, { handle: YOU });
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(YOU));
     const client = new Client({ name: "t", version: "1" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);

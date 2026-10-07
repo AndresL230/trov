@@ -12,11 +12,13 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import { pollSaplingMetrics, saplingProductMetrics } from "../src/repo/poll";
-import { putMetrics, pruneRepoCapture, putMetric } from "../src/repo/store";
+import { putMetrics, putMetric } from "../src/repo/store";
 import { ENVS, LONG_TOKEN, leakedFragments } from "./helpers/repo";
 
+import { platformCtx, systemCtx } from "./helpers/tenant";
+import { pruneRepoCapture } from "../src/platform/sweeps";
 const NOW = Date.parse("2026-09-20T12:05:00Z");
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -186,9 +188,9 @@ describe("putMetrics", () => {
     const rows = Array.from({ length: 120 }, (_, i) => ({ metric: `sap_t_k${i}`, env: "staging", part: "", value: i, at: "2026-09-20T12:00:00Z" }));
     const spy = vi.spyOn(env.DB, "batch");
     try {
-      expect(await putMetrics(env.DB, rows)).toBe(120);
+      expect(await putMetrics(systemCtx(), rows)).toBe(120);
       expect(spy.mock.calls.map((c) => c[0].length)).toEqual([50, 50, 20]);
-      expect(await putMetrics(env.DB, [...rows, { metric: "sap_t_new", env: "staging", part: "", value: 1, at: AT }])).toBe(1);
+      expect(await putMetrics(systemCtx(), [...rows, { metric: "sap_t_new", env: "staging", part: "", value: 1, at: AT }])).toBe(1);
     } finally { spy.mockRestore(); }
     const back = await stored();
     expect(back).toHaveLength(121);
@@ -198,8 +200,8 @@ describe("putMetrics", () => {
   it("skips an unparseable `at`, writes the rest, and an empty list touches nothing", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
-      expect(await putMetrics(env.DB, [])).toBe(0);
-      expect(await putMetrics(env.DB, [
+      expect(await putMetrics(systemCtx(), [])).toBe(0);
+      expect(await putMetrics(systemCtx(), [
         { metric: "sap_t_a", env: "staging", part: "", value: 1, at: "not a date" },
         { metric: "sap_t_b", env: "staging", part: "", value: 2, at: "2026-09-20T14:00:00+02:00" },
       ])).toBe(1);
@@ -213,14 +215,14 @@ describe("pollSaplingMetrics — product metrics", () => {
   const V2 = { ...USERS, counts: { signups: w(3, 21, 96), llm_cost_cents: w(412, 2961, 11830) }, totals: { users: 1204, users_pending: 7 } };
 
   it("a v1 body is still ok, and stores the three active-user rows only", async () => {
-    const { out } = await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json(USERS))));
+    const { out } = await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json(USERS))));
     expect(out).toEqual([{ env: "staging", status: "ok", written: 3 }]);
     expect(await stored()).toEqual([]);
     expect(await stored("active_users_%")).toHaveLength(3);
   });
 
   it("a v2 body stores exactly the expected rows at the hour floor", async () => {
-    const { out, logged } = await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json(V2))));
+    const { out, logged } = await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json(V2))));
     expect(out).toEqual([{ env: "staging", status: "ok", written: 11 }]);
     expect(logged).toEqual([]);
     const row = (metric: string, value: number) => ({ metric, env: "staging", part: "", value, at: AT });
@@ -234,17 +236,17 @@ describe("pollSaplingMetrics — product metrics", () => {
 
   it("a repeat poll inside the hour writes 0 new rows; the next hour is its own reading", async () => {
     const fetchImpl = stagingAnswers(() => json(V2));
-    await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW, fetchImpl));
-    const again = await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW + 20 * 60_000, stagingAnswers(() => json({ ...V2, totals: { users: 9999 } }))));
+    await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW, fetchImpl));
+    const again = await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW + 20 * 60_000, stagingAnswers(() => json({ ...V2, totals: { users: 9999 } }))));
     expect(again.out).toEqual([{ env: "staging", status: "ok", written: 0 }]);
     expect((await stored("sap_t_users")).map((r) => r.value)).toEqual([1204]); // first write of the hour wins
-    const next = await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW + HOUR, fetchImpl));
+    const next = await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW + HOUR, fetchImpl));
     expect(next.out).toEqual([{ env: "staging", status: "ok", written: 11 }]);
   });
 
   it("dropped keys are reported BY NAME — in the outcome and once in the log — and never cost the valid ones", async () => {
     const body = { ...USERS, counts: { signups: w(3, 21, 96), foo: w(9, 2, 3) }, totals: { users: 1204, bar: "12", Baz: 1 } };
-    const { out, logged } = await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json(body))));
+    const { out, logged } = await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json(body))));
     expect(out).toEqual([{ env: "staging", status: "ok", written: 7, detail: "3 keys dropped: counts.foo, totals.bar, totals.Baz" }]);
     expect(logged).toEqual([["pollSaplingMetrics", "staging", "3 keys dropped: counts.foo, totals.bar, totals.Baz"]]);
     expect((await stored()).map((r) => r.metric)).toEqual(["sap_c_signups_24h", "sap_c_signups_30d", "sap_c_signups_7d", "sap_t_users"]);
@@ -252,17 +254,17 @@ describe("pollSaplingMetrics — product metrics", () => {
   });
 
   it("one dropped key reads in the singular; more than 20 are counted, not all named", async () => {
-    const one = await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json({ ...USERS, totals: { Bad: 1 } }))));
+    const one = await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json({ ...USERS, totals: { Bad: 1 } }))));
     expect(one.out[0].detail).toBe("1 key dropped: totals.Bad");
     const many = Object.fromEntries(Array.from({ length: 22 }, (_, i) => [`B${i}`, 1]));
-    const lots = await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW + HOUR, stagingAnswers(() => json({ ...USERS, totals: many }))));
+    const lots = await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW + HOUR, stagingAnswers(() => json({ ...USERS, totals: many }))));
     expect(lots.out[0].detail).toMatch(/^22 keys dropped: totals\.B0, /);
     expect(lots.out[0].detail!.length).toBeLessThanOrEqual(200);
   });
 
   it("active_users refused but counts/totals valid → the product rows ARE stored, and the environment still reads failed", async () => {
     const body = { active_users: w(10, 9, 12), counts: { signups: w(3, 21, 96) }, totals: { users: 1204 } };
-    const { out, logged } = await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json(body))));
+    const { out, logged } = await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json(body))));
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ env: "staging", status: "failed", written: 4 });
     expect(out[0].detail).toContain("the windows do not nest");
@@ -278,7 +280,7 @@ describe("pollSaplingMetrics — product metrics", () => {
     const totals = Object.fromEntries(Array.from({ length: 24 }, (_, i) => [`t${i}`, i]));
     const batch = vi.spyOn(env.DB, "batch");
     try {
-      const { out } = await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json({ ...USERS, counts, totals }))));
+      const { out } = await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json({ ...USERS, counts, totals }))));
       expect(out).toEqual([{ env: "staging", status: "ok", written: 171 }]);
       expect(batch.mock.calls.map((c) => c[0].length)).toEqual([50, 50, 50, 21]);
     } finally { batch.mockRestore(); }
@@ -287,20 +289,20 @@ describe("pollSaplingMetrics — product metrics", () => {
 
   it("a non-200, a redirect and a non-JSON body still write nothing at all", async () => {
     for (const res of [() => new Response("no", { status: 500 }), () => new Response(null, { status: 302, headers: { location: "https://x.example" } }), () => new Response("<html>", { status: 200 })]) {
-      await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW, stagingAnswers(res)));
+      await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW, stagingAnswers(res)));
     }
     expect(await stored("%")).toEqual([]);
   });
 
   it("an over-cap section reports how many keys were ignored, not 1", async () => {
     const counts = Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`c${i}`, w(1, 2, 3)]));
-    const { out } = await run(() => pollSaplingMetrics(env.DB, "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json({ ...USERS, counts, totals: { users: 5 } }))));
+    const { out } = await run(() => pollSaplingMetrics(systemCtx(), "s3cret", [ENVS[0]], NOW, stagingAnswers(() => json({ ...USERS, counts, totals: { users: 5 } }))));
     expect(out).toEqual([{ env: "staging", status: "ok", written: 4, detail: "60 keys dropped: counts.*" }]);
   });
 
   it("active_users refused AND product keys dropped → the failed outcome's detail carries both", async () => {
     const body = { active_users: w(10, 9, 12), counts: { signups: w(3, 21, 96), foo: w(9, 2, 3) }, totals: { users: 1204, Baz: 1 } };
-    const { out, logged } = await run(() => pollSaplingMetrics(env.DB, LONG_TOKEN, [ENVS[0]], NOW, stagingAnswers(() => json(body))));
+    const { out, logged } = await run(() => pollSaplingMetrics(systemCtx(), LONG_TOKEN, [ENVS[0]], NOW, stagingAnswers(() => json(body))));
     expect(out[0]).toMatchObject({ env: "staging", status: "failed", written: 4 });
     expect(out[0].detail).toMatch(/^the windows do not nest \(24h ≤ 7d ≤ 30d\) · 2 keys dropped: counts\.foo, totals\.Baz: /);
     expect(out[0].detail!.length).toBeLessThanOrEqual(200);
@@ -309,7 +311,7 @@ describe("pollSaplingMetrics — product metrics", () => {
 
   it("the refusal + dropped note stays inside the detail cap, and is scrubbed, even with 20 long hostile names", async () => {
     const totals = Object.fromEntries(Array.from({ length: 22 }, (_, i) => [`${LONG_TOKEN}-${i}`, 1]));
-    const { out, logged } = await run(() => pollSaplingMetrics(env.DB, LONG_TOKEN, [ENVS[0]], NOW, stagingAnswers(() => json({ active_users: null, totals }))));
+    const { out, logged } = await run(() => pollSaplingMetrics(systemCtx(), LONG_TOKEN, [ENVS[0]], NOW, stagingAnswers(() => json({ active_users: null, totals }))));
     expect(out[0].status).toBe("failed");
     expect(out[0].detail).toMatch(/^no active_users object · 22 keys dropped: totals\.\[redacted\]-0, /);
     expect(out[0].detail!.length).toBeLessThanOrEqual(200);
@@ -326,7 +328,7 @@ describe("pollSaplingMetrics — product metrics", () => {
     ["both sections, with active_users refused as well", (t: string) => ({ active_users: null, counts: { [t]: w(1, 2, 3) }, totals: { [t]: 1 } })],
   ])("never lets ANY 8-character piece of a 64-character token out — echoed as %s", async (_n, body) => {
     expect(LONG_TOKEN).toHaveLength(64);
-    const { out, logged } = await run(() => pollSaplingMetrics(env.DB, LONG_TOKEN, [ENVS[0]], NOW, stagingAnswers(() => json(body(LONG_TOKEN)))));
+    const { out, logged } = await run(() => pollSaplingMetrics(systemCtx(), LONG_TOKEN, [ENVS[0]], NOW, stagingAnswers(() => json(body(LONG_TOKEN)))));
     expect(logged.length).toBeGreaterThan(0);
     expect(JSON.stringify(out)).toContain("[redacted]");
     expect(leakedFragments(JSON.stringify(out), LONG_TOKEN)).toEqual([]);
@@ -338,7 +340,7 @@ describe("pollSaplingMetrics — product metrics", () => {
 describe("pruneRepoCapture — sap_* rows", () => {
   it("hourly rows go after 7 days; the 00:00 UTC rows stay 100 days; active_users keeps its own rule", async () => {
     const now = Date.parse("2026-09-20T12:00:00Z");
-    const put = (metric: string, at: string, value = 1) => putMetric(env.DB, { metric, env: "staging", part: "", value, at });
+    const put = (metric: string, at: string, value = 1) => putMetric(systemCtx(), { metric, env: "staging", part: "", value, at });
     const iso = (ms: number) => new Date(ms).toISOString();
     // hourly, around the 7-day boundary (the cutoff itself is kept: `at < cutoff` is deleted)
     await put("sap_c_signups_24h", iso(now - 7 * DAY - HOUR), 1);   // gone
@@ -355,7 +357,7 @@ describe("pruneRepoCapture — sap_* rows", () => {
     await put("active_users_24h", iso(now - 101 * DAY), 10);        // gone
     await put("sapling", iso(now - 300 * DAY), 11);                 // not a sap_ metric → kept forever
     await put("xsap_t_users", iso(now - 300 * DAY), 12);            // kept forever
-    await pruneRepoCapture(env.DB, now);
+    await pruneRepoCapture(platformCtx(), now);
     const kept = await all<{ value: number }>(env.DB, `SELECT value FROM repo_metrics ORDER BY value`);
     expect(kept.map((r) => r.value)).toEqual([2, 4, 5, 6, 9, 11, 12]);
   });
@@ -365,7 +367,7 @@ describe("pruneRepoCapture — sap_* rows", () => {
   it("the prune's GLOB patterns are literals in the SQL, never bound parameters", async () => {
     const prepare = vi.spyOn(env.DB, "prepare");
     try {
-      await pruneRepoCapture(env.DB, Date.parse("2026-09-20T12:00:00Z"));
+      await pruneRepoCapture(platformCtx(), Date.parse("2026-09-20T12:00:00Z"));
       const sql = prepare.mock.calls.map((c) => String(c[0]));
       expect(sql.some((q) => q.includes("metric GLOB 'sap_*'"))).toBe(true);
       expect(sql.some((q) => q.includes("metric GLOB 'cf_*' OR metric GLOB 'rw_*' OR metric GLOB 'active_users_*'"))).toBe(true);

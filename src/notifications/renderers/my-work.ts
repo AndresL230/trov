@@ -1,7 +1,7 @@
 import type { NotificationKind, Section, Window } from "@shared/notifications";
-import { type DB, all } from "../../db";
+import { type TenantContext, all } from "../../data/sql";
 import { listOpenAssignedIssues, toMyWorkPr, type PrEventJoinRow } from "../../tools/mywork";
-import { getPerson, listIdentities } from "../../auth/persons";
+import { memberPerson, memberGithubLogins } from "../../auth/persons";
 import { escapeHtml, isoOf } from "../html";
 import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP } from "../assemble";
 
@@ -55,28 +55,31 @@ function issueItem(i: Awaited<ReturnType<typeof listOpenAssignedIssues>>[number]
  * plate). Same identity gate as the dashboard: an unknown handle, or one with
  * no GitHub identity, renders null.
  */
-async function render(db: DB, handle: string, window: Window): Promise<Section | null> {
-  const me = await getPerson(db, handle);
+async function render(ctx: TenantContext, handle: string, window: Window): Promise<Section | null> {
+  const me = await memberPerson(ctx, handle);
   if (!me) return null;
-  const logins = (await listIdentities(db, handle)).filter((i) => i.provider === "github").map((i) => i.subject);
+  const logins = await memberGithubLogins(ctx, me.handle);
   if (logins.length === 0) return null;
 
   const prRows = await all<PrEventJoinRow>(
-    db,
+    ctx,
     `SELECT e.*, s.title AS s_title, s.what AS s_what, s.why AS s_why, s.impact AS s_impact
        FROM events e
-       LEFT JOIN pr_summaries s ON s.semantic_key = e.semantic_key
-      WHERE e.event_type = 'pr_merged'
+       LEFT JOIN pr_summaries s ON s.semantic_key = e.semantic_key AND s.org_id = ?
+      WHERE e.org_id = ?
+        AND e.event_type = 'pr_merged'
         AND e.subject_login IN (${logins.map(() => "?").join(",")})
         AND datetime(e.occurred_at) >= datetime(?)
         AND datetime(e.occurred_at) <  datetime(?)
       ORDER BY e.occurred_at DESC, e.id DESC`,
+    ctx.orgId,
+    ctx.orgId,
     ...logins,
     isoOf(window.start),
     isoOf(window.end)
   );
   const merged = prRows.map(toMyWorkPr);
-  const todo = await listOpenAssignedIssues(db, logins);
+  const todo = await listOpenAssignedIssues(ctx, logins);
   if (merged.length === 0 && todo.length === 0) return null;
 
   const html: string[] = [];
@@ -109,7 +112,7 @@ async function render(db: DB, handle: string, window: Window): Promise<Section |
   return { heading: "My Work", summary, html: html.join(""), text: text.join("\n"), deepLink: DEEP_LINK, linkLabel: "My Work" };
 }
 
-export const myWorkKind: NotificationKind<DB> = {
+export const myWorkKind: NotificationKind<TenantContext> = {
   id: "my_work",
   label: "My Work",
   description: "Your merged PRs and the issues assigned to you.",

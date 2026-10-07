@@ -6,12 +6,12 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run } from "../src/db";
-import { mintToken } from "../src/auth/tokens";
+import { all, first, run } from "./helpers/db";
 import { ARTIFACT_UPLOAD_TTL_MS } from "@shared/artifacts";
 import {
   NOT_FOUND, cookieFor, createBinary, createText, get, jsonInit, mcpCall, put, sha256Hex, uniqueBytes, uploadUrl, wf,
 } from "./helpers/artifacts";
+import { platformCtx, mintTokenFor, ensureMember, ORG_A, ORG_B } from "./helpers/tenant";
 
 const ME = "raw-author";
 const YOU = "raw-teammate";
@@ -32,7 +32,8 @@ const lockedDown = (res: Response, csp: string, label: string) => {
 
 // ── 7. raw headers per kind ──────────────────────────────────────────────────
 
-describe("7 · raw route headers, per kind", () => {
+// Both mounts of the one sub-app: the per-org route and the one-org alias must agree on EVERY guarantee.
+describe.each([["the per-org route", "/api/o/saplinglearn/raw/a"], ["the one-org alias", "/raw/a"]])("7 · raw route headers, per kind — %s", (_name, RAW) => {
   it("every kind: CSP, frame / sniff / cache lock-down, content type, inline vs attachment, <slug>-v<n>.<ext>, height script only in inline html", async () => {
     const me = await cookieFor(ME);
     const bodyish = "</body>"; // a text kind containing </body> must NOT get the script
@@ -55,7 +56,7 @@ describe("7 · raw route headers, per kind", () => {
       ["k-file", CSP_PASSIVE, "text/csv", "csv", false],
     ];
     for (const [slug, csp, type, ext, inline] of table) {
-      for (const path of [`/raw/a/${slug}`, `/raw/a/${slug}@v1`, `/raw/a/${slug}/v1`]) {
+      for (const path of [`${RAW}/${slug}`, `${RAW}/${slug}@v1`, `${RAW}/${slug}/v1`]) {
         const res = await get(path, me);
         expect(res.status, path).toBe(200);
         lockedDown(res, csp, path);
@@ -64,7 +65,7 @@ describe("7 · raw route headers, per kind", () => {
         const text = await res.text();
         expect(text.includes("trov:height"), path).toBe(slug === "k-html");
       }
-      const dl = await get(`/raw/a/${slug}?download=1`, me);
+      const dl = await get(`${RAW}/${slug}?download=1`, me);
       lockedDown(dl, csp, `${slug} download`);
       expect(dl.headers.get("content-disposition")).toBe(`attachment; filename="${slug}-v1.${ext}"`);
       expect(await dl.text()).not.toContain("trov:height");
@@ -74,16 +75,16 @@ describe("7 · raw route headers, per kind", () => {
     // text/html with script-bearing bytes is still application/pdf + nosniff + the
     // passive CSP.
     await createBinary(me, { title: "K evil pdf", kind: "pdf", area: "api" }, { bytes: new TextEncoder().encode("<html><script>alert(1)</script></html>"), name: "x.html", type: "text/html" });
-    const evil = await get("/raw/a/k-evil-pdf", me);
+    const evil = await get(`${RAW}/k-evil-pdf`, me);
     expect(evil.status).toBe(200);
     lockedDown(evil, CSP_PASSIVE, "evil pdf");
     expect(evil.headers.get("content-type")).toBe("application/pdf");
     // the download of html is the stored bytes, untouched
-    expect(await (await get("/raw/a/k-html?download=1", me)).text()).toBe("<html><body><p>x</p></body></html>");
+    expect(await (await get(`${RAW}/k-html?download=1`, me)).text()).toBe("<html><body><p>x</p></body></html>");
     // a later version's download name carries its number
     await wf("/api/artifacts/k-md/versions", jsonInit("POST", { content: "# v2" }, me));
-    expect((await get("/raw/a/k-md@v2?download=1", me)).headers.get("content-disposition")).toBe(`attachment; filename="k-md-v2.md"`);
-    expect((await get("/raw/a/k-md?download=1", me)).headers.get("content-disposition")).toBe(`attachment; filename="k-md-v2.md"`);
+    expect((await get(`${RAW}/k-md@v2?download=1`, me)).headers.get("content-disposition")).toBe(`attachment; filename="k-md-v2.md"`);
+    expect((await get(`${RAW}/k-md?download=1`, me)).headers.get("content-disposition")).toBe(`attachment; filename="k-md-v2.md"`);
   });
 
   it("html and svg opened TOP-LEVEL are sandboxed by the CSP itself (opaque origin — never Trov's)", async () => {
@@ -93,7 +94,7 @@ describe("7 · raw route headers, per kind", () => {
     await createText(me, { title: "Top html", kind: "html", area: "ui", content: "<script>fetch('/api/artifacts')</script>" });
     await createText(me, { title: "Top svg", kind: "svg", area: "ui", content: `<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>` });
     for (const slug of ["top-html", "top-svg"]) {
-      const csp = (await get(`/raw/a/${slug}`, me)).headers.get("content-security-policy")!;
+      const csp = (await get(`${RAW}/${slug}`, me)).headers.get("content-security-policy")!;
       const sandbox = csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("sandbox"));
       expect(sandbox, slug).toBeDefined();
       expect(sandbox).not.toContain("allow-same-origin");
@@ -105,20 +106,90 @@ describe("7 · raw route headers, per kind", () => {
   it("401 (no session, or a bearer) and 404 carry the passive lock-down too", async () => {
     const me = await cookieFor(ME);
     await createText(me, { title: "Hidden", visibility: "private" });
-    const { raw } = await mintToken(env.DB, ME);
+    const { raw } = await mintTokenFor(ME);
     for (const [label, init] of [["none", {}], ["bearer", { headers: { authorization: `Bearer ${raw}` } }]] as const) {
-      const res = await wf("/raw/a/hidden", init);
+      const res = await wf(`${RAW}/hidden`, init);
       expect(res.status, label).toBe(401);
       lockedDown(res, CSP_PASSIVE, label);
     }
     const you = await cookieFor(YOU);
-    for (const path of ["/raw/a/hidden", "/raw/a/nope", "/raw/a/hidden@v1?download=1", "/raw/a/Not%20A%20Slug"]) {
+    for (const path of [`${RAW}/hidden`, `${RAW}/nope`, `${RAW}/hidden@v1?download=1`, `${RAW}/Not%20A%20Slug`]) {
       const res = await get(path, you);
       expect(res.status, path).toBe(404);
       lockedDown(res, CSP_PASSIVE, path);
       expect(res.headers.get("content-disposition")).toBeNull();
       expect(await res.text()).toBe(NOT_FOUND);
     }
+  });
+});
+
+// ── 7b. the per-org route is the ORG's ───────────────────────────────────────
+describe("7b · /api/o/:slug/raw/a — the org in the path, and nothing of another org", () => {
+  const TWO = "raw-two-orgs";
+  const B_ONLY = "raw-b-only";
+
+  it("a person in two orgs: the alias is 409, each org's route serves that org's bytes for the same slug", async () => {
+    const me = await cookieFor(TWO);
+    await ensureMember(TWO, "member", ORG_B);
+    const mk = (slug: string, content: string) => wf(`/api/o/${slug}/artifacts`, jsonInit("POST", { title: "Same slug", kind: "html", area: "ui", content }, me));
+    expect((await mk("saplinglearn", "<p>from A</p>")).status).toBe(201);
+    expect((await mk("acme", "<p>from B</p>")).status).toBe(201);
+    const alias = await get("/raw/a/same-slug", me);
+    expect(alias.status).toBe(409);
+    lockedDown(alias, CSP_PASSIVE, "alias 409");
+    const a = await get("/api/o/saplinglearn/raw/a/same-slug", me);
+    const b = await get("/api/o/acme/raw/a/same-slug@v1", me);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    lockedDown(a, CSP_ACTIVE, "A"); lockedDown(b, CSP_ACTIVE, "B");
+    expect(await a.text()).toContain("<p>from A</p>");
+    const bText = await b.text();
+    expect(bText).toContain("<p>from B</p>");
+    expect(bText).not.toContain("from A");
+    expect((await get("/api/o/acme/raw/a/same-slug/v1?download=1", me)).headers.get("content-disposition")).toBe(`attachment; filename="same-slug-v1.html"`);
+  });
+
+  it("another org's slug is the one locked-down 404 — for a member of the other org and for an outsider alike; a binary's bytes never cross", async () => {
+    const author = await cookieFor(ME);
+    await createText(author, { title: "A only", kind: "html", area: "ui", content: "<p>org A secret</p>" });
+    const bytes = uniqueBytes("a-only-png");
+    await createBinary(author, { title: "A img", kind: "image", area: "ui" }, { bytes, name: "a.png", type: "image/png" });
+    const outsider = await cookieFor(B_ONLY, { member: false });
+    await ensureMember(B_ONLY, "admin", ORG_B);
+    const two = await cookieFor(TWO);
+    await ensureMember(TWO, "member", ORG_B);
+    for (const [who, cookie] of [["B's admin", outsider], ["in both", two]] as const) {
+      for (const path of ["/api/o/acme/raw/a/a-only", "/api/o/acme/raw/a/a-only@v1", "/api/o/acme/raw/a/a-only/v1?download=1", "/api/o/acme/raw/a/a-img"]) {
+        const res = await get(path, cookie);
+        expect(res.status, `${who} ${path}`).toBe(404);
+        lockedDown(res, CSP_PASSIVE, `${who} ${path}`);
+        expect(res.headers.get("content-disposition")).toBeNull();
+        expect(await res.text(), `${who} ${path}`).toBe(NOT_FOUND);
+      }
+    }
+    // B's admin is not a member of A: the tenant gate's own 404, with the same headers and body.
+    for (const path of ["/api/o/saplinglearn/raw/a/a-only", "/api/o/saplinglearn/raw/a/a-img", "/api/o/no-such-org/raw/a/a-only"]) {
+      const res = await get(path, outsider);
+      expect(res.status, path).toBe(404);
+      lockedDown(res, CSP_PASSIVE, path);
+      expect(await res.text(), path).toBe(NOT_FOUND);
+    }
+    // …while A's member reads both.
+    expect(new Uint8Array(await (await get("/api/o/saplinglearn/raw/a/a-img", two)).arrayBuffer())).toEqual(bytes);
+  });
+
+  it("a private page stays its author's on the org route, and a suspended org serves nothing", async () => {
+    const me = await cookieFor(ME);
+    const you = await cookieFor(YOU);
+    await createText(me, { title: "Mine alone", visibility: "private" });
+    expect((await get("/api/o/saplinglearn/raw/a/mine-alone", me)).status).toBe(200);
+    const hidden = await get("/api/o/saplinglearn/raw/a/mine-alone", you);
+    expect(hidden.status).toBe(404);
+    lockedDown(hidden, CSP_PASSIVE, "private");
+    await run(env.DB, `UPDATE orgs SET suspended_at = 't', suspended_by = 'x' WHERE id = ?`, ORG_A);
+    const gone = await get("/api/o/saplinglearn/raw/a/mine-alone", me);
+    expect(gone.status).toBe(404);
+    lockedDown(gone, CSP_PASSIVE, "suspended");
+    expect(await gone.text()).toBe(NOT_FOUND);
   });
 });
 
@@ -397,7 +468,7 @@ describe("10 · SSRF guard (POST /api/artifacts/fetch through the Worker, outbou
   it("the fetch route is session-only: a bearer alone is 401 and never fetches", async () => {
     await cookieFor(ME); // seeds the person the token belongs to
     const calls = stubFetch(doc);
-    const { raw } = await mintToken(env.DB, ME);
+    const { raw } = await mintTokenFor(ME);
     const res = await wf("/api/artifacts/fetch", jsonInit("POST", { url: "https://example.com/a.md" }, undefined, { authorization: `Bearer ${raw}` }));
     expect(res.status).toBe(401);
     expect(calls).toEqual([]);

@@ -20,8 +20,8 @@ describe("POST /admin/backfill (session- + admin-gated)", () => {
   });
 
   it("passes the admin gate and 503s when the service token is unset (proves wiring, no network)", async () => {
-    // ADMIN_LOGINS binds "admin-user" in vitest.config.ts, so this login clears
-    // isAdmin. GITHUB_SERVICE_TOKEN is a secret never set in tests, so runBackfill
+    // "admin-user" is seeded as an org admin (test/helpers/persons.ts), so this login clears
+    // the role gate. The org has no repo and no GitHub token in tests, so runBackfill
     // returns ok:false BEFORE any GitHub fetch → 503 with the config error.
     const res = await app.request(
       "/admin/backfill",

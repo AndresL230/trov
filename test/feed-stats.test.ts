@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx, platformCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
@@ -15,7 +16,7 @@ import type { FeedStats } from "@shared/feed-stats";
 
 async function cookieFor(login: string): Promise<string> {
   await seedPerson(login);
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 
@@ -59,7 +60,7 @@ describe("feedStats", () => {
     await entry("mira", "2026-09-24T23:30:00.000Z");
     await entry("mira", "2026-09-20T00:00:00.000Z");          // the window's first instant
     await entry("old", "2026-09-19T23:59:59.999Z");           // one ms before it — out
-    const s = await feedStats(env.DB, { days: 7, now: NOW });
+    const s = await feedStats(systemCtx(), { days: 7, now: NOW });
     expect(s.days).toEqual([
       { date: "2026-09-20", count: 1 }, { date: "2026-09-21", count: 0 }, { date: "2026-09-22", count: 0 },
       { date: "2026-09-23", count: 0 }, { date: "2026-09-24", count: 1 }, { date: "2026-09-25", count: 0 },
@@ -73,8 +74,8 @@ describe("feedStats", () => {
   it("with a tz offset, an entry lands on the viewer's local day", async () => {
     // 2026-09-25T02:00Z is still the 24th in UTC-5.
     await entry("kai", "2026-09-25T02:00:00.000Z");
-    const utc = await feedStats(env.DB, { days: 7, now: NOW });
-    const local = await feedStats(env.DB, { days: 7, tzOffsetMin: -300, now: NOW });
+    const utc = await feedStats(systemCtx(), { days: 7, now: NOW });
+    const local = await feedStats(systemCtx(), { days: 7, tzOffsetMin: -300, now: NOW });
     expect(utc.days.find((d) => d.date === "2026-09-25")?.count).toBe(1);
     expect(local.days.find((d) => d.date === "2026-09-24")?.count).toBe(1);
     expect(local.days.find((d) => d.date === "2026-09-25")?.count).toBe(0);
@@ -82,7 +83,7 @@ describe("feedStats", () => {
 
   it("orders top authors by count, ties by handle, at most three", async () => {
     for (const a of ["zed", "zed", "zed", "bo", "bo", "al", "al", "cy"]) await entry(a, "2026-09-25T10:00:00.000Z");
-    const s = await feedStats(env.DB, { days: 7, now: NOW });
+    const s = await feedStats(systemCtx(), { days: 7, now: NOW });
     expect(s.topAuthors).toEqual([{ author: "zed", count: 3 }, { author: "al", count: 2 }, { author: "bo", count: 2 }]);
     expect(s.people).toBe(4);
   });
@@ -94,14 +95,14 @@ describe("feedStats", () => {
     await entry("kai", "2026-09-10T12:00:00.000Z", ["architecture", "auth"]); // out of window
     // A doc tag with the same id is not a feed tag.
     await env.DB.prepare(`INSERT INTO entry_tags (tag, entry_type, entry_id) VALUES ('architecture', 'doc', '1')`).run();
-    const s = await feedStats(env.DB, { days: 7, now: NOW });
+    const s = await feedStats(systemCtx(), { days: 7, now: NOW });
     expect(s.topTags).toEqual([
       { tag: "ui", count: 3 }, { tag: "api", count: 1 }, { tag: "auth", count: 1 }, { tag: "data", count: 1 },
     ]);
   });
 
   it("an empty window is all zero days, not an error", async () => {
-    const s = await feedStats(env.DB, { days: 3, now: NOW });
+    const s = await feedStats(systemCtx(), { days: 3, now: NOW });
     expect(s).toEqual({ days: [
       { date: "2026-09-24", count: 0 }, { date: "2026-09-25", count: 0 }, { date: "2026-09-26", count: 0 },
     ], total: 0, people: 0, topTags: [], topAuthors: [] });

@@ -8,8 +8,9 @@
 // page are indistinguishable), caps, the sha no-op, the status machine. What this
 // module adds is only the agent's SHAPE of it:
 //
-//   • absolute links — `url` (the SPA page `<origin>/#artifacts/<slug>`), an absolute
-//     `upload_url` for the binary PUT, an absolute `raw_url`;
+//   • absolute links INTO THE TOKEN'S ORG — `url` (the SPA page `<origin>/o/<org>/#artifacts/<slug>`)
+//     and `raw_url` (`<origin>/api/o/<org>/raw/a/<slug>@v<n>`), built from the bearer's own org
+//     (./org-links.ts); an absolute `upload_url` / `download_url` (token paths: they name no org);
 //   • `warnings: string[]` on EVERY result — non-empty when text content calls into
 //     something only claude.ai provides (`CLAUDE_ONLY_MARKERS`) or is a bundled Claude
 //     Design export that must be flattened (`isBundledExport`). A warning, never a
@@ -22,12 +23,13 @@
 // like /doc/:slug/promote and /adr/:id/ratify. Artifacts are authored writes in the
 // promote class — nothing is staged, nothing goes through the ingestion gate.
 
-import type { DB } from "../db";
+import type { TenantContext } from "../data/sql";
 import {
   ArtifactError, addLink, addTextVersion, createPage, getPage, listPages, mintUploadToken, versionFilename, writablePageKind,
 } from "./artifacts";
 import { downloadFilename, mintDownloadToken } from "../artifacts/download";
 import { mintDocImageUpload } from "./doc-images";
+import { apiBase, appBase } from "./org-links";
 import {
   ARTIFACT_INLINE_MAX, claudeOnlyHits, isBinaryKind, isBundledExport, isTextKind, parseSlugVersion,
   type ArtifactArea, type ArtifactDetailDTO, type ArtifactKind, type ArtifactLinkInput, type ArtifactLinkType,
@@ -35,11 +37,15 @@ import {
 } from "@shared/artifacts";
 
 export interface ArtifactAgentCtx {
-  db: DB;
+  /** The caller's org — every repository call below is bound to it. */
+  tenant: TenantContext;
   /** The bearer principal's handle — the author and the viewer of every call. */
   handle: string;
   /** Absolute origin for links (`env.PUBLIC_ORIGIN`, else the request's), no trailing slash. "" → relative. */
   origin: string;
+  /** The tenant's org slug — every page / raw link is under it. Absent (a caller that did not look it
+   *  up) → the pre-org shape `<origin>/#…`, which only opens for a person in one org. */
+  orgSlug?: string | null;
   /** COOKIE_SECRET — the root the download-URL key is DERIVED from (src/artifacts/download.ts). Absent → no download_url. */
   downloadSecret?: string;
 }
@@ -49,8 +55,11 @@ export function artifactOrigin(publicOrigin: string | undefined, requestOrigin: 
   return (publicOrigin || requestOrigin || "").replace(/\/+$/, "");
 }
 
-const pageUrl = (ctx: ArtifactAgentCtx, slug: string): string => `${ctx.origin}/#artifacts/${slug}`;
+const pageUrl = (ctx: ArtifactAgentCtx, slug: string): string => `${appBase(ctx.origin, ctx.orgSlug)}/#artifacts/${slug}`;
+/** A token path (`/api/artifacts/upload/<token>`, `…/download/<token>`): it names no org. */
 const absolute = (ctx: ArtifactAgentCtx, path: string): string => `${ctx.origin}${path}`;
+/** The repository's `raw_url` is the raw route's SUFFIX (`/raw/a/<slug>@v<n>`): here it gets the org's API prefix. */
+const rawUrl = (ctx: ArtifactAgentCtx, suffix: string): string => `${apiBase(ctx.origin, ctx.orgSlug)}${suffix}`;
 const bad = (m: string): ArtifactError => new ArtifactError("bad_request", m);
 
 /** One warning per CLAUDE_ONLY_MARKERS hit in text content, plus one for a bundled Claude Design
@@ -110,7 +119,7 @@ export async function agentUploadAsset(ctx: ArtifactAgentCtx, input: AgentCreate
     if (input.kind !== undefined && input.kind !== "image") throw bad(`destination "doc" is for images — kind must be "image" (or omitted)`);
     const extra = PAGE_FIELDS.filter((f) => input[f] !== undefined);
     if (extra.length) throw bad(`${extra.join(", ")} are for artifact pages — a doc image takes only size_bytes, sha256 and content_type`);
-    const m = await mintDocImageUpload(ctx.db, input, ctx.handle);
+    const m = await mintDocImageUpload(ctx.tenant, input, ctx.handle);
     const markdown = `![<describe the image>](${m.ref})`;
     return m.uploaded
       ? { destination: "doc", ref: m.ref, markdown, sha256: m.sha256, uploaded: true, warnings: [] }
@@ -119,7 +128,10 @@ export async function agentUploadAsset(ctx: ArtifactAgentCtx, input: AgentCreate
   if (destination !== "artifact") throw bad(`destination must be "artifact" or "doc"`);
   const missing = (["title", "kind", "area", "repo", "visibility"] as const).filter((f) => input[f] === undefined);
   if (missing.length) throw bad(`an artifact needs ${missing.join(", ")}`);
-  return createArtifact(ctx, input as AgentCreateInput & { title: string; kind: ArtifactKind; area: ArtifactArea; repo: string; visibility: ArtifactVisibility });
+  // `return await`, not `return`: createArtifact refuses a bad shape BEFORE its first await, so the promise it
+  // hands back is already rejected. Returned bare, this function's own promise adopts it a microtask LATER —
+  // and for that tick the rejection has no handler, which workerd reports as an unhandled rejection.
+  return await createArtifact(ctx, input as AgentCreateInput & { title: string; kind: ArtifactKind; area: ArtifactArea; repo: string; visibility: ArtifactVisibility });
 }
 
 async function createArtifact(
@@ -130,7 +142,7 @@ async function createArtifact(
     if (typeof input.content !== "string") throw bad(`a ${input.kind} artifact needs \`content\``);
     const extra = BINARY_FIELDS.filter((f) => input[f] !== undefined);
     if (extra.length) throw bad(`${extra.join(", ")} are for binary kinds (image, pdf, file) — a ${input.kind} artifact takes \`content\``);
-    const d = await createPage(ctx.db, { ...page, kind: input.kind as ArtifactTextKind, content: input.content, summary: input.summary }, ctx.handle);
+    const d = await createPage(ctx.tenant, { ...page, kind: input.kind as ArtifactTextKind, content: input.content, summary: input.summary }, ctx.handle);
     return { id: d.id, slug: d.slug, url: pageUrl(ctx, d.slug), version: d.current_version, warnings: artifactWarnings(d.content) };
   }
   if (!isBinaryKind(input.kind)) throw bad("unknown kind");
@@ -138,7 +150,7 @@ async function createArtifact(
   if (input.size_bytes === undefined || input.sha256 === undefined) {
     throw bad(`a ${input.kind} artifact needs size_bytes and sha256 (e.g. \`shasum -a 256 <file>\`)`);
   }
-  const t = await mintUploadToken(ctx.db, {
+  const t = await mintUploadToken(ctx.tenant, {
     ...page, kind: input.kind, size_bytes: input.size_bytes, sha256: input.sha256,
     content_type: input.content_type, filename: input.filename, summary: input.summary,
   }, ctx.handle);
@@ -167,7 +179,7 @@ export async function agentArtifactUpdate(ctx: ArtifactAgentCtx, input: AgentUpd
   // The page's kind decides the path. Resolved through the repository's visibility
   // rule FIRST, so a private / missing / pending-for-someone-else slug is the one
   // not_found before any input-shape error could hint at what the page is.
-  const kind = await writablePageKind(ctx.db, input.slug, ctx.handle);
+  const kind = await writablePageKind(ctx.tenant, input.slug, ctx.handle);
   const hasText = input.content !== undefined || input.old_str !== undefined || input.new_str !== undefined;
   if (isTextKind(kind)) {
     const extra = BINARY_FIELDS.filter((f) => input[f] !== undefined);
@@ -182,7 +194,7 @@ export async function agentArtifactUpdate(ctx: ArtifactAgentCtx, input: AgentUpd
     } else {
       throw bad("give content, or old_str and new_str (old_str must occur exactly once in the latest version)");
     }
-    const r = await addTextVersion(ctx.db, input.slug, edit, ctx.handle);
+    const r = await addTextVersion(ctx.tenant, input.slug, edit, ctx.handle);
     return {
       id: r.page.id, slug: r.page.slug, url: pageUrl(ctx, r.page.slug), version: r.version_no, unchanged: r.unchanged,
       warnings: artifactWarnings(r.page.content),
@@ -191,7 +203,7 @@ export async function agentArtifactUpdate(ctx: ArtifactAgentCtx, input: AgentUpd
   if (!isBinaryKind(kind)) throw bad("unknown kind");
   if (hasText) throw bad(`this is a ${kind} artifact — upload a new file with size_bytes and sha256, not text`);
   if (input.size_bytes === undefined || input.sha256 === undefined) throw bad(`a new ${kind} version needs size_bytes and sha256`);
-  const t = await mintUploadToken(ctx.db, {
+  const t = await mintUploadToken(ctx.tenant, {
     slug: input.slug, kind, size_bytes: input.size_bytes, sha256: input.sha256,
     content_type: input.content_type, filename: input.filename, summary: input.summary,
   }, ctx.handle);
@@ -236,12 +248,12 @@ export async function agentArtifactGet(
   if (input.version !== undefined && parsed.version !== null && input.version !== parsed.version) {
     throw bad(`the slug names v${parsed.version} but version is ${input.version}`);
   }
-  const d = await getPage(ctx.db, parsed.slug, input.version ?? parsed.version, ctx.handle);
+  const d = await getPage(ctx.tenant, parsed.slug, input.version ?? parsed.version, ctx.handle);
   const v = d.version;
-  const filename = await versionFilename(ctx.db, d.id, v.version_no);
+  const filename = await versionFilename(ctx.tenant, d.id, v.version_no);
   const omit = isTextKind(d.kind) && typeof d.content === "string" && v.size_bytes > ARTIFACT_INLINE_MAX && input.include_content !== true;
   const dl = ctx.downloadSecret
-    ? await mintDownloadToken(ctx.downloadSecret, { handle: ctx.handle, page_id: d.id, version_no: v.version_no })
+    ? await mintDownloadToken(ctx.downloadSecret, { handle: ctx.handle, org_id: ctx.tenant.orgId, page_id: d.id, version_no: v.version_no })
     : null;
   return {
     ...d,
@@ -249,7 +261,7 @@ export async function agentArtifactGet(
     content_omitted: omit,
     size_bytes: v.size_bytes,
     sha256: v.sha256,
-    raw_url: absolute(ctx, d.raw_url),
+    raw_url: rawUrl(ctx, d.raw_url),
     url: pageUrl(ctx, d.slug),
     download_url: dl ? absolute(ctx, `/api/artifacts/download/${dl.token}`) : null,
     download_expires_at: dl ? dl.expires_at : null,
@@ -296,7 +308,7 @@ export async function agentArtifactList(
   ctx: ArtifactAgentCtx, input: AgentListInput = {}
 ): Promise<{ artifacts: AgentListItem[]; total: number; truncated: boolean }> {
   const str = (x: string | number | undefined): string | undefined => (x === undefined ? undefined : String(x));
-  const pages = await listPages(ctx.db, {
+  const pages = await listPages(ctx.tenant, {
     q: input.q, kind: input.kind, area: input.area, author: input.author, status: input.status,
     ticket: str(input.ticket), sprint: str(input.sprint),
   }, ctx.handle);
@@ -313,8 +325,8 @@ export async function agentArtifactList(
 export interface TicketArtifactRef { slug: string; title: string; kind: ArtifactKind; status: ArtifactStatus; version: number }
 
 /** The pages linked to a ticket that `handle` can see (private ones only to their author). */
-export async function artifactsForTicket(db: DB, ticketId: number, handle: string): Promise<TicketArtifactRef[]> {
-  const pages = await listPages(db, { ticket: String(ticketId) }, handle);
+export async function artifactsForTicket(tenant: TenantContext, ticketId: number, handle: string): Promise<TicketArtifactRef[]> {
+  const pages = await listPages(tenant, { ticket: String(ticketId) }, handle);
   return pages.map((p) => ({ slug: p.slug, title: p.title, kind: p.kind, status: p.status, version: p.current_version }));
 }
 
@@ -334,12 +346,12 @@ export type ArtifactLinkOutcome = ArtifactLinkRequest & (
  * item, so no ledger: `addLink` is idempotent, which is what makes a replay safe.
  * One failure never stops the rest.
  */
-export async function applyArtifactLinks(db: DB, links: readonly ArtifactLinkRequest[], handle: string): Promise<ArtifactLinkOutcome[]> {
+export async function applyArtifactLinks(tenant: TenantContext, links: readonly ArtifactLinkRequest[], handle: string): Promise<ArtifactLinkOutcome[]> {
   const out: ArtifactLinkOutcome[] = [];
   for (const l of links) {
     const base = { slug: l.slug, target_type: l.target_type, target_ref: l.target_ref };
     try {
-      await addLink(db, l.slug, { target_type: l.target_type, target_ref: l.target_ref }, handle);
+      await addLink(tenant, l.slug, { target_type: l.target_type, target_ref: l.target_ref }, handle);
       out.push({ ...base, outcome: "linked" });
     } catch (e) {
       if (e instanceof ArtifactError && e.code === "not_found") out.push({ ...base, outcome: "not_found" });

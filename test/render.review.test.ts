@@ -11,11 +11,13 @@
  * All tests are pure (no D1 / Miniflare bindings). They run in the same Vitest
  * pool-workers harness as the backend tests; nothing here touches the DOM.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { setApiOrg } from "../web/src/api";
 import { lineDiff, collapsedLineDiff } from "../web/src/diff";
 import { reviewView, reviewDetail, reviewCard, unifiedDiff, renderedPreview, splitDiffRows, type ReviewItem, type ReviewProps } from "../web/src/review";
-import { maintenanceView, assignPanel, personPicker, fileHint, type MaintenanceProps, type UnplacedItem, type IdentityGroup } from "../web/src/maintenance";
-import { render, initialState } from "../web/src/render";
+import { maintenanceView, assignPanel, fileHint, type MaintenanceProps, type UnplacedItem } from "../web/src/maintenance";
+import { identitySection, personPicker, type IdentityProps, type IdentityGroup } from "../web/src/identity";
+import { render, initialState, triageCounts, identityCount } from "../web/src/render";
 import mainSrc from "../web/src/main.ts?raw";
 
 // ── lineDiff ──────────────────────────────────────────────────────────────────
@@ -380,7 +382,6 @@ function makeGroup(overrides: Partial<IdentityGroup> = {}): IdentityGroup {
 
 function makeMaintProps(overrides: Partial<MaintenanceProps> = {}): MaintenanceProps {
   return {
-    tab: "unplaced",
     unplaced: [makeUnplaced()],
     assign: {
       kinds: [
@@ -394,17 +395,21 @@ function makeMaintProps(overrides: Partial<MaintenanceProps> = {}): MaintenanceP
     },
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
     discardArm: false,
-    identity: [makeGroup()],
-    discarded: [],
-    showDiscarded: false,
     people: [{ id: "maya-k", name: "maya-k", initials: "MA" }],
-    mapPicks: {},
-    mapConfirm: null,
     ...overrides,
   };
 }
 
-describe("maintenanceView — Unplaced tab", () => {
+/** Org settings › Members › Unmatched logins (it was Maintenance › Identity). */
+function makeIdentity(overrides: Partial<IdentityProps> = {}): IdentityProps {
+  return {
+    status: "ok", groups: [makeGroup()], discarded: [], showDiscarded: false,
+    people: [{ id: "maya-k", name: "maya-k", initials: "MA" }], mapPicks: {}, mapConfirm: null,
+    ...overrides,
+  };
+}
+
+describe("maintenanceView — the Unplaced queue", () => {
   it("lists the items and shows the first one on screen with its position", () => {
     const html = maintenanceView(makeMaintProps({ unplaced: [makeUnplaced(), makeUnplaced({ id: "u2", title: "Second thing", snippet: "Second." })] }));
     expect(html).toContain("Things an agent produced but couldn&#39;t place.");
@@ -441,45 +446,44 @@ describe("maintenanceView — Unplaced tab", () => {
   });
 });
 
-describe("maintenanceView — Identity tab", () => {
+describe("identitySection — the unmatched logins (Org settings › Members)", () => {
   it("pairs the activity sample with the person picker", () => {
-    const html = maintenanceView(makeMaintProps({ tab: "identity" }));
+    const html = identitySection(makeIdentity());
     expect(html).toContain("mk-dev2");
     expect(html).toContain("#412 Fix a thing");
     expect(html).toContain("Who is this?");
     expect(html).toContain("maya-k");
     expect(html).toContain("Map login");
-    expect(html).not.toContain("Loose thing");
   });
 
   it("each card has a one-click Discard (no arm step — the toast carries the Undo)", () => {
-    const html = maintenanceView(makeMaintProps({ tab: "identity" }));
-    expect(html).toContain('data-act="identityDiscard" data-arg="mk-dev2" class="cnpy-mutelink"');
-    expect(html).toMatch(/data-act="identityDiscard"[^>]*>Discard</);
+    const html = identitySection(makeIdentity());
+    expect(html).toMatch(/data-act="identityDiscard" data-arg="mk-dev2"[^>]*>Discard</);
   });
 
   it("no discarded logins → no discarded line; some → a quiet 'N discarded' toggle, Restore rows only when open", () => {
-    expect(maintenanceView(makeMaintProps({ tab: "identity" }))).not.toContain("identityToggleDiscarded");
+    expect(identitySection(makeIdentity())).not.toContain("identityToggleDiscarded");
     const discarded = [{ login: "rando-1", meta: "discarded 2h ago by andres" }, { login: "rando-2", meta: "discarded 1d ago by andres" }];
-    const closed = maintenanceView(makeMaintProps({ tab: "identity", discarded }));
+    const closed = identitySection(makeIdentity({ discarded }));
     expect(closed).toContain('data-act="identityToggleDiscarded" aria-expanded="false"');
     expect(closed).toContain("2 discarded &middot; Show");
     expect(closed).not.toContain('data-act="identityRestore"');
-    const open = maintenanceView(makeMaintProps({ tab: "identity", discarded, showDiscarded: true }));
+    const open = identitySection(makeIdentity({ discarded, showDiscarded: true }));
     expect(open).toContain('aria-expanded="true"');
     expect(open).toContain('data-act="identityRestore" data-arg="rando-1"');
     expect(open).toContain('data-act="identityRestore" data-arg="rando-2"');
     expect(open).toContain("discarded 2h ago by andres");
-    // An empty list still reaches the discarded logins, so the last one can be brought back.
-    const empty = maintenanceView(makeMaintProps({ tab: "identity", identity: [], discarded, showDiscarded: true }));
-    expect(empty).toContain("Everyone is accounted for");
+    // With nothing waiting, the discarded logins are still reachable, so the last one can be brought back.
+    const empty = identitySection(makeIdentity({ groups: [], discarded, showDiscarded: true }));
     expect(empty).toContain('data-act="identityRestore" data-arg="rando-1"');
+    // Nothing waiting and nothing discarded: the section is simply not there.
+    expect(identitySection(makeIdentity({ groups: [] }))).toBe("");
   });
 
   it("the discard toast carries the Undo that restores the login", () => {
     const html = render({
       ...initialState(), view: "app",
-      me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false },
+      me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
       toast: "Discarded @rando-1", toastAction: { label: "Undo", act: "identityRestore", arg: "rando-1" }, toastAt: Date.now(), toastMs: 8000,
     });
     expect(html).toContain("Discarded @rando-1");
@@ -489,113 +493,86 @@ describe("maintenanceView — Identity tab", () => {
   });
 });
 
-describe("Maintenance — the tab bar heading the page (the sidebar has no sub-page list)", () => {
-  /** The `.cnpy-tabs` bar carrying `data-tabs="maint-tab"`, up to its closing </div>. */
-  const tabs = (html: string) => {
-    const at = html.indexOf('data-tabs="maint-tab"');
-    return at < 0 ? "" : html.slice(at, html.indexOf("</div>", at));
-  };
+describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
   const triage = (id: number) => ({ id, raw: "{}", reason: "low_confidence", source_author: null, resolved: 0, created_at: "2026-09-27T00:00:00Z", resolved_at: null, resolved_by: null, resolution: null, assigned_ref: null }) as never;
   const task = (login: string) => ({ login, first_seen: "2026-09-27T00:00:00Z", status: "pending", resolved_at: null, resolved_by: null, sample: [] }) as never;
-  const app = (over: Partial<ReturnType<typeof initialState>> = {}) => render({
-    ...initialState(), view: "app", screen: "maintenance",
-    me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: true },
+  const app = (over: Partial<ReturnType<typeof initialState>> = {}, role: "admin" | "member" = "admin") => render({
+    ...initialState(), view: "app", screen: "maintenance", orgSlug: "saplinglearn",
+    me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role }], superadmin: false, pending_invites: 0 },
     needsTriage: { status: "ok", data: [triage(1), triage(2), triage(3)] },
-    identityTasks: { status: "ok", data: [task("mk-dev2")] },
+    identityTasks: { status: "ok", data: [task("mk-dev2"), task("sky-42")] },
     ...over,
   });
   const header = (html: string) => html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-  const main = (html: string) => html.slice(html.indexOf("</header>"));
+  const main = (html: string) => html.slice(html.indexOf("</header>"), html.indexOf('class="cnpy-scrim"'));
+  const navRow = (html: string, key: string) => { const at = html.indexOf(`cnpy-navrow n-${key}`); return html.slice(at, html.indexOf("</div>", at)); };
 
-  it("offers Unplaced · Identity · People as tabs, the current one selected and inert", () => {
-    const bar = tabs(app({ maintTab: "identity" }));
-    expect(bar).toContain('role="tablist" aria-label="Maintenance sections"');
-    expect(bar.match(/role="tab"/g)?.length).toBe(3);
-    expect(bar.indexOf(">Unplaced<")).toBeLessThan(bar.indexOf(">Identity<"));
-    expect(bar.indexOf(">Identity<")).toBeLessThan(bar.indexOf(">People<"));
-    // The picked tab dispatches nothing; the other two switch it (setMaintTab — one rerender).
-    expect(bar).toMatch(/id="maint-tab-identity" class="cnpy-tab is-on" aria-selected="true"[^>]*tabindex="0"[^>]*>Identity/);
-    expect(bar).not.toContain('data-arg="identity"');
-    expect(bar).toContain('class="cnpy-tab" data-act="setMaintTab" data-arg="unplaced" aria-selected="false"');
-    expect(bar).toContain('class="cnpy-tab" data-act="setMaintTab" data-arg="people" aria-selected="false"');
-    expect(mainSrc).toMatch(/case "setMaintTab":[\s\S]{0,200}state\.maintTab = arg as MaintTab;[\s\S]{0,80}break;/);
+  it("is titled Unplaced, with no tab bar, no back button and no crumb", () => {
+    const html = app();
+    expect(header(html)).toContain(">Unplaced</h1>");
+    expect(header(html)).not.toContain("›");
+    expect(main(html)).toContain('data-screen-label="Unplaced"');
+    expect(main(html)).not.toContain('role="tablist"');
+    expect(main(html)).not.toContain('role="tabpanel"');
+    expect(html).not.toContain("setMaintTab");
+    expect(mainSrc).not.toContain("setMaintTab");
   });
 
-  it("carries the sidebar's count badges: unplaced items and pending identity tasks, none on People", () => {
-    const bar = tabs(app());
-    expect(bar).toMatch(/>Unplaced<span class="cnpy-badge" data-n="3">3<\/span><\/button>/);
-    expect(bar).toMatch(/>Identity<span class="cnpy-badge" data-n="1">1<\/span><\/button>/);
-    expect(bar).toMatch(/>People<\/button>/);
-    // An empty queue keeps the badge (a stable tree) and data-n="0" hides it.
-    const clear = tabs(app({ needsTriage: { status: "ok", data: [] } }));
-    expect(clear).toContain('<span class="cnpy-badge" data-n="0">0</span>');
+  it("holds only the queue: nothing of Identity, People or the e-mail digests is on it", () => {
+    const body = main(app());
+    expect(body).toContain("Things an agent produced");
+    expect(body).toContain('data-act="maintFile"');
+    for (const gone of ["Who is this?", "identityMap", "mk-dev2", "Unmatched logins", "policyToggle", "schedHour", "outboxToggle", "openPerson\" data-arg=\"andres"]) expect(body, gone).not.toContain(gone);
   });
 
-  it("heads the page BODY, not the header, and the labelled panel with the intro follows its line", () => {
-    for (const maintTab of ["unplaced", "identity", "people"] as const) {
-      const html = app({ maintTab });
-      expect(header(html), maintTab).not.toContain('data-tabs="maint-tab"');
-      expect(header(html), maintTab).not.toContain("cnpy-seg");
-      const body = main(html);
-      const page = body.indexOf('data-screen-label="Maintenance"');
-      const at = body.indexOf('data-tabs="maint-tab"');
-      const panel = body.indexOf(`role="tabpanel" id="maint-tab-panel" aria-labelledby="maint-tab-${maintTab}"`);
-      expect(at, maintTab).toBeGreaterThan(page);
-      expect(panel, maintTab).toBeGreaterThan(at);
-      // Nothing of the page sits above the bar: it is the page's first thing.
-      expect(body.slice(page, at), maintTab).not.toMatch(/>[^<\s]/);
-    }
-    const unplaced = main(app({ maintTab: "unplaced" }));
-    expect(unplaced.indexOf("Things an agent produced")).toBeGreaterThan(unplaced.indexOf('id="maint-tab-panel"'));
+  it("the sidebar entry is Unplaced, and its count is the queue alone", () => {
+    const row = navRow(app(), "maintenance");
+    expect(row).toContain('data-act="goMaintenance"');
+    expect(row).toContain('aria-label="Unplaced"');
+    expect(row).toContain(">Unplaced</span>");
+    expect(row).toContain('<span class="cnpy-lbl cnpy-badge" data-n="3">3</span>');   // 3 unplaced; the 2 logins are not in it
+    expect(app()).not.toContain(">Maintenance<");
+    expect(triageCounts({ ...initialState(), needsTriage: { status: "ok", data: [triage(1)] }, identityTasks: { status: "ok", data: [task("a"), task("b")] } }).maintenance).toBe(1);
   });
 
-  it("puts a degraded hint under the line, inside the panel", () => {
-    const html = main(app({ maintTab: "unplaced", needsTriage: { status: "error", data: [], error: "x" } as never }));
+  it("the logins to match are counted where an admin will act on them: the org switcher and its Org settings row", () => {
+    const admin = app();
+    expect(admin).toMatch(/data-orgsw-trigger[\s\S]*?<span class="cnpy-lbl cnpy-badge" data-n="2" title="2 logins to match in Org settings">2<\/span>/);
+    const menu = app({ orgsUi: { ...initialState().orgsUi, menu: true } });
+    expect(menu).toMatch(/data-act="orgsSettings"[^>]*>[\s\S]*?Org settings<\/span><span class="cnpy-badge" data-n="2" title="2 logins to match">2<\/span>/);
+    // …and nowhere for a member, who cannot map a login.
+    const member = app({ orgsUi: { ...initialState().orgsUi, menu: true } }, "member");
+    expect(identityCount({ ...initialState(), identityTasks: { status: "ok", data: [task("a")] } })).toBe(0);
+    expect(member).toMatch(/data-orgsw-trigger[\s\S]*?<span class="cnpy-lbl cnpy-badge" data-n="0"/);
+    expect(member).toMatch(/Org settings<\/span><span class="cnpy-badge" data-n="0"/);
+  });
+
+  it("puts a degraded hint above the queue it could not refresh", () => {
+    const html = main(app({ needsTriage: { status: "error", data: [triage(1)], error: "x" } as never }));
     expect(html).toContain("Couldn't load the triage queue.");
-    expect(html.indexOf("Couldn't load the triage queue.")).toBeGreaterThan(html.indexOf('id="maint-tab-panel"'));
+    expect(html.indexOf("Couldn't load the triage queue.")).toBeLessThan(html.indexOf("Things an agent produced"));
+    expect(main(app({ needsTriage: { status: "error", data: [], error: "x" } as never }))).toContain("Couldn't load the Unplaced queue.");
   });
 
-  it("the tabs are peers: a plain title on every tab, no back button and no › crumb", () => {
-    for (const maintTab of ["unplaced", "identity", "people"] as const) {
-      const h = header(app({ maintTab }));
-      expect(h, maintTab).toContain(">Maintenance</h1>");
-      expect(h, maintTab).not.toContain('<button data-act="goMaintenance" style=');
-      expect(h, maintTab).not.toContain("›");
-    }
-  });
-
-  it("switching tabs never replays the screen's entrance (the underline slides unbroken)", () => {
-    expect(mainSrc).toMatch(/hashForRoute\(\{ \.\.\.currentRoute\(\), [^}]*maintTab: undefined[^}]*\}\)/);
-  });
-
-  it("appears only on Maintenance", () => {
-    expect(render({ ...initialState(), view: "app", screen: "review" })).not.toContain('data-tabs="maint-tab"');
+  it("a stale goMaintenance for a tab that moved opens Org settings › Members", () => {
+    expect(mainSrc).toMatch(/case "goMaintenance":\s*if \(arg === "identity" \|\| arg === "people"\) \{ dispatch\("orgGo", "members", null\); return; \}/);
   });
 });
 
 describe("maintenanceView — surface cards", () => {
-  it("Unplaced and Identity each sit in ONE surface card, rows hairline-divided inside", () => {
-    for (const tab of ["unplaced", "identity"] as const) {
-      const html = maintenanceView(makeMaintProps({ tab }));
-      expect(html.match(/cnpy-surface/g)?.length, tab).toBe(1);
-      expect(html, tab).not.toContain("border-radius:12px");
-      expect(html, tab).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
-    }
+  it("the queue sits in ONE surface card, rows hairline-divided inside", () => {
+    const html = maintenanceView(makeMaintProps());
+    expect(html.match(/cnpy-surface/g)?.length).toBe(1);
+    expect(html).not.toContain("border-radius:12px");
+    expect(html).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
   });
 });
 
-describe("maintenanceView — empty states", () => {
-  it("Unplaced and Identity each have their own empty card", () => {
-    const u = maintenanceView(makeMaintProps({ unplaced: [], identity: [] }));
+describe("maintenanceView — empty state", () => {
+  it("an empty queue has its own card", () => {
+    const u = maintenanceView(makeMaintProps({ unplaced: [] }));
     expect(u).toContain("All clear");
     expect(u).toContain("Everything an agent produced found its place on its own.");
-    const i = maintenanceView(makeMaintProps({ tab: "identity", unplaced: [], identity: [] }));
-    expect(i).toContain("Everyone is accounted for");
-    expect(i).toContain("Every login in the activity stream is matched to a person.");
-  });
-
-  it("People renders the body the caller passes", () => {
-    expect(maintenanceView(makeMaintProps({ tab: "people" }), "<p>directory</p>")).toContain("<p>directory</p>");
   });
 });
 
@@ -610,7 +587,7 @@ describe("XSS: maintenance fields are escaped in text and attributes", () => {
 
   it("escapes a hostile login and sample text", () => {
     const hostile = makeGroup({ login: "x<script>y", sample: [{ kind: "PR", text: '<svg onload="alert(1)">', when: "now" }] });
-    const html = maintenanceView(makeMaintProps({ tab: "identity", identity: [hostile] }));
+    const html = identitySection(makeIdentity({ groups: [hostile] }));
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("<svg onload");
     expect(html).toContain("&lt;script&gt;");
@@ -670,9 +647,13 @@ describe("personPicker — two-step confirm guard", () => {
 
 describe("Review › Rendered shows the proposed images", () => {
   const A = "f".repeat(64);
+  beforeAll(() => setApiOrg("acme"));
+  afterAll(() => setApiOrg(null));
   it("an added image line renders the picture (zoomable), outlined as added, with its alt as caption", () => {
     const html = renderedPreview([{ t: "add", s: `![The deploy flow](/img/${A})` }]);
-    expect(html).toContain(`<img src="/img/${A}" alt="The deploy flow"`);
+    // The image is the ORG's: its bytes are behind the org's membership gate, like every request.
+    expect(html).toContain(`<img src="/api/o/acme/img/${A}" alt="The deploy flow"`);
+    expect(html).not.toContain(`src="/img/`);
     expect(html).toContain(`data-act="docImgZoom" data-arg="${A}"`);
     expect(html).toContain("border-color:var(--green)");
     expect(html).toContain("<figcaption");

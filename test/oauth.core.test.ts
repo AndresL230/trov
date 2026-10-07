@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, type DB } from "../src/db";
+import type { Env } from "../src/env";
+import { all, first, type DB } from "./helpers/db";
 import { pkce, sha256Hex } from "../src/auth/crypto";
 import { seedPerson } from "./helpers/persons";
 import {
@@ -10,6 +11,7 @@ import {
   canonicalAuthorizeQuery, type RegisteredClient, refreshAccessToken, revokeOAuthToken, listGrants, revokeGrant, pruneOAuth, mcpUnauthorized,
 } from "../src/auth/oauth";
 
+import { platformCtx, tenantCtx, ORG_A } from "./helpers/tenant";
 const NOW = Date.parse("2026-09-24T12:00:00.000Z");
 
 describe("0029_oauth schema", () => {
@@ -103,11 +105,11 @@ describe("validateRegistration", () => {
 
 describe("registerClient / getClient", () => {
   it("stores a client and reads it back with its redirect list", async () => {
-    const c = await registerClient(env.DB, { client_name: "Claude Code", redirect_uris: ["http://localhost:1/callback"] }, NOW);
+    const c = await registerClient(platformCtx(), { client_name: "Claude Code", redirect_uris: ["http://localhost:1/callback"] }, NOW);
     expect(c.client_id).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(await getClient(env.DB, c.client_id)).toEqual(c);
+    expect(await getClient(platformCtx(), c.client_id)).toEqual(c);
     expect((await first<{ created_at: string }>(env.DB, `SELECT created_at FROM oauth_clients WHERE client_id = ?`, c.client_id))?.created_at).toBe("2026-09-24T12:00:00.000Z");
-    expect(await getClient(env.DB, "nope")).toBeNull();
+    expect(await getClient(platformCtx(), "nope")).toBeNull();
   });
 });
 
@@ -115,7 +117,7 @@ const ORIGIN = "https://trov.test";
 const REDIRECT = "http://localhost:4444/callback";
 
 async function client(): Promise<RegisteredClient> {
-  return registerClient(env.DB, { client_name: "Claude Code", redirect_uris: [REDIRECT] }, NOW);
+  return registerClient(platformCtx(), { client_name: "Claude Code", redirect_uris: [REDIRECT] }, NOW);
 }
 function authQuery(c: RegisteredClient, challenge: string, extra: Record<string, string> = {}): URLSearchParams {
   return new URLSearchParams({
@@ -128,9 +130,9 @@ async function authorized(person = "real-user", extra: Record<string, string> = 
   await seedPerson(person);
   const c = await client();
   const { verifier, challenge } = await pkce();
-  const check = await checkAuthorizeRequest(env.DB, authQuery(c, challenge, extra), ORIGIN);
+  const check = await checkAuthorizeRequest(platformCtx(), authQuery(c, challenge, extra), ORIGIN);
   if (!check.ok) throw new Error("expected ok");
-  const { code, grantId } = await issueAuthorization(env.DB, { client: c, params: check.params, person, nowMs: NOW });
+  const { code, grantId } = await issueAuthorization(await tenantCtx(person), { client: c, params: check.params, nowMs: NOW });
   return { c, verifier, code, grantId };
 }
 
@@ -138,25 +140,25 @@ describe("checkAuthorizeRequest", () => {
   it("accepts a well-formed request", async () => {
     const c = await client();
     const { challenge } = await pkce();
-    const r = await checkAuthorizeRequest(env.DB, authQuery(c, challenge, { resource: `${ORIGIN}/mcp`, scope: "mcp" }), ORIGIN);
+    const r = await checkAuthorizeRequest(platformCtx(), authQuery(c, challenge, { resource: `${ORIGIN}/mcp`, scope: "mcp" }), ORIGIN);
     expect(r).toEqual({ ok: true, client: c, params: { client_id: c.client_id, redirect_uri: REDIRECT, code_challenge: challenge, state: "st-1", resource: `${ORIGIN}/mcp` } });
   });
   it("unknown client or unregistered redirect → an error PAGE, never a redirect", async () => {
     const c = await client();
     const { challenge } = await pkce();
-    const unknown = await checkAuthorizeRequest(env.DB, authQuery({ ...c, client_id: "nope" }, challenge), ORIGIN);
+    const unknown = await checkAuthorizeRequest(platformCtx(), authQuery({ ...c, client_id: "nope" }, challenge), ORIGIN);
     expect(unknown).toMatchObject({
       ok: false, kind: "page",
       message: "Trov doesn't recognise this app's registration. In Claude Code, run /mcp, choose trov → Clear authentication, then Authenticate again.",
     });
     const q = authQuery(c, challenge); q.set("redirect_uri", "https://evil.example/cb");
-    expect(await checkAuthorizeRequest(env.DB, q, ORIGIN)).toMatchObject({ ok: false, kind: "page" });
+    expect(await checkAuthorizeRequest(platformCtx(), q, ORIGIN)).toMatchObject({ ok: false, kind: "page" });
   });
   it("loopback redirect matches on any port", async () => {
     const c = await client();
     const { challenge } = await pkce();
     const q = authQuery(c, challenge); q.set("redirect_uri", "http://localhost:9999/callback");
-    const r = await checkAuthorizeRequest(env.DB, q, ORIGIN);
+    const r = await checkAuthorizeRequest(platformCtx(), q, ORIGIN);
     expect(r.ok && r.params.redirect_uri).toBe("http://localhost:9999/callback");
   });
   it.each([
@@ -168,13 +170,13 @@ describe("checkAuthorizeRequest", () => {
   ])("%s → invalid_request redirect carrying state", async (_l, extra) => {
     const c = await client();
     const { challenge } = await pkce();
-    const r = await checkAuthorizeRequest(env.DB, authQuery(c, challenge, extra), ORIGIN);
+    const r = await checkAuthorizeRequest(platformCtx(), authQuery(c, challenge, extra), ORIGIN);
     expect(r).toMatchObject({ ok: false, kind: "redirect", redirect_uri: REDIRECT });
   });
   it("resource with trailing slash is the same resource; an unknown scope is ignored", async () => {
     const c = await client();
     const { challenge } = await pkce();
-    const r = await checkAuthorizeRequest(env.DB, authQuery(c, challenge, { resource: `${ORIGIN}/mcp/`, scope: "claudeai offline_access" }), ORIGIN);
+    const r = await checkAuthorizeRequest(platformCtx(), authQuery(c, challenge, { resource: `${ORIGIN}/mcp/`, scope: "claudeai offline_access" }), ORIGIN);
     expect(r.ok).toBe(true);
   });
   it("canonicalAuthorizeQuery keeps only the authorize keys, in a fixed order, skipping empties", () => {
@@ -186,29 +188,29 @@ describe("checkAuthorizeRequest", () => {
 describe("code exchange", () => {
   it("swaps a code + verifier for a token pair that resolves to the person", async () => {
     const { c, verifier, code } = await authorized();
-    const t = await exchangeAuthorizationCode(env.DB, { code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id, resource: null }, ORIGIN, NOW + 1000);
+    const t = await exchangeAuthorizationCode(platformCtx(), { code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id, resource: null }, ORIGIN, NOW + 1000);
     expect(t).toMatchObject({ token_type: "Bearer", expires_in: 3600, scope: "mcp" });
     expect(t.access_token.startsWith("trov_oat_")).toBe(true);
     expect(t.refresh_token.startsWith("trov_ort_")).toBe(true);
-    expect(await resolveOAuthAccessToken(env.DB, t.access_token, NOW + 2000)).toEqual({ handle: "real-user" });
+    expect(await resolveOAuthAccessToken(platformCtx(), t.access_token, NOW + 2000)).toEqual({ handle: "real-user", orgId: ORG_A });
     // hashes only
     expect(await first(env.DB, `SELECT 1 AS x FROM oauth_tokens WHERE token_hash IN (?, ?)`, t.access_token, t.refresh_token)).toBeNull();
   });
   it("an access token issued before the rename (`canopy_oat_…`) still resolves until it expires", async () => {
     const { c, verifier, code } = await authorized();
-    await exchangeAuthorizationCode(env.DB, { code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id, resource: null }, ORIGIN, NOW + 1000);
+    await exchangeAuthorizationCode(platformCtx(), { code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id, resource: null }, ORIGIN, NOW + 1000);
     const grant = (await first<{ id: number }>(env.DB, `SELECT id FROM oauth_grants ORDER BY id DESC LIMIT 1`))!.id;
     const legacy = "canopy_oat_issued-before-the-rename-0123456789";
     await env.DB.prepare(`INSERT INTO oauth_tokens (token_hash, grant_id, kind, created_at, expires_at) VALUES (?, ?, 'access', ?, ?)`)
       .bind(await sha256Hex(legacy), grant, new Date(NOW).toISOString(), new Date(NOW + 3_600_000).toISOString()).run();
-    expect(await resolveOAuthAccessToken(env.DB, legacy, NOW + 2000)).toEqual({ handle: "real-user" });
-    expect(await resolveOAuthAccessToken(env.DB, legacy, NOW + 3_600_001)).toBeNull();
+    expect(await resolveOAuthAccessToken(platformCtx(), legacy, NOW + 2000)).toEqual({ handle: "real-user", orgId: ORG_A });
+    expect(await resolveOAuthAccessToken(platformCtx(), legacy, NOW + 3_600_001)).toBeNull();
   });
   it("a code works once", async () => {
     const { c, verifier, code } = await authorized();
     const req = { code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id, resource: null };
-    await exchangeAuthorizationCode(env.DB, req, ORIGIN, NOW + 1000);
-    await expect(exchangeAuthorizationCode(env.DB, req, ORIGIN, NOW + 2000)).rejects.toMatchObject({ code: "invalid_grant" });
+    await exchangeAuthorizationCode(platformCtx(), req, ORIGIN, NOW + 1000);
+    await expect(exchangeAuthorizationCode(platformCtx(), req, ORIGIN, NOW + 2000)).rejects.toMatchObject({ code: "invalid_grant" });
   });
   it("rejects an expired code, a wrong verifier, and a redirect/client/resource mismatch — and burns the code", async () => {
     const cases: Array<(a: Awaited<ReturnType<typeof authorized>>) => Parameters<typeof exchangeAuthorizationCode>[1]> = [
@@ -219,18 +221,18 @@ describe("code exchange", () => {
     ];
     for (const [i, make] of cases.entries()) {
       const a = await authorized(`p-case-${i}`);
-      await expect(exchangeAuthorizationCode(env.DB, make(a), ORIGIN, NOW + 1000)).rejects.toMatchObject({ code: "invalid_grant" });
+      await expect(exchangeAuthorizationCode(platformCtx(), make(a), ORIGIN, NOW + 1000)).rejects.toMatchObject({ code: "invalid_grant" });
       const good = { code: a.code, code_verifier: a.verifier, redirect_uri: REDIRECT, client_id: a.c.client_id, resource: null };
-      await expect(exchangeAuthorizationCode(env.DB, good, ORIGIN, NOW + 2000)).rejects.toMatchObject({ code: "invalid_grant" });
+      await expect(exchangeAuthorizationCode(platformCtx(), good, ORIGIN, NOW + 2000)).rejects.toMatchObject({ code: "invalid_grant" });
     }
     const late = await authorized("p-late");
-    await expect(exchangeAuthorizationCode(env.DB, { code: late.code, code_verifier: late.verifier, redirect_uri: REDIRECT, client_id: late.c.client_id, resource: null }, ORIGIN, NOW + 61_000))
+    await expect(exchangeAuthorizationCode(platformCtx(), { code: late.code, code_verifier: late.verifier, redirect_uri: REDIRECT, client_id: late.c.client_id, resource: null }, ORIGIN, NOW + 61_000))
       .rejects.toMatchObject({ code: "invalid_grant" });
   });
   it("a code on a grant revoked before the exchange is refused", async () => {
     const a = await authorized();
     await env.DB.prepare(`UPDATE oauth_grants SET revoked_at = 't', revoked_reason = 'user' WHERE id = ?`).bind(a.grantId).run();
-    await expect(exchangeAuthorizationCode(env.DB, { code: a.code, code_verifier: a.verifier, redirect_uri: REDIRECT, client_id: a.c.client_id, resource: null }, ORIGIN, NOW + 1000))
+    await expect(exchangeAuthorizationCode(platformCtx(), { code: a.code, code_verifier: a.verifier, redirect_uri: REDIRECT, client_id: a.c.client_id, resource: null }, ORIGIN, NOW + 1000))
       .rejects.toMatchObject({ code: "invalid_grant" });
   });
 });
@@ -238,17 +240,17 @@ describe("code exchange", () => {
 describe("resolveOAuthAccessToken", () => {
   it("expires after an hour, stops on a revoked grant, and throttles last_used_at", async () => {
     const a = await authorized();
-    const t = await exchangeAuthorizationCode(env.DB, { code: a.code, code_verifier: a.verifier, redirect_uri: REDIRECT, client_id: a.c.client_id, resource: null }, ORIGIN, NOW);
-    expect(await resolveOAuthAccessToken(env.DB, t.access_token, NOW + 1000)).toEqual({ handle: "real-user" });
+    const t = await exchangeAuthorizationCode(platformCtx(), { code: a.code, code_verifier: a.verifier, redirect_uri: REDIRECT, client_id: a.c.client_id, resource: null }, ORIGIN, NOW);
+    expect(await resolveOAuthAccessToken(platformCtx(), t.access_token, NOW + 1000)).toEqual({ handle: "real-user", orgId: ORG_A });
     const used1 = (await first<{ last_used_at: string }>(env.DB, `SELECT last_used_at FROM oauth_grants WHERE id = ?`, a.grantId))!.last_used_at;
     expect(used1).toBe(new Date(NOW + 1000).toISOString());
-    await resolveOAuthAccessToken(env.DB, t.access_token, NOW + 30_000); // inside the throttle: no write
+    await resolveOAuthAccessToken(platformCtx(), t.access_token, NOW + 30_000); // inside the throttle: no write
     expect((await first<{ last_used_at: string }>(env.DB, `SELECT last_used_at FROM oauth_grants WHERE id = ?`, a.grantId))!.last_used_at).toBe(used1);
-    expect(await resolveOAuthAccessToken(env.DB, t.access_token, NOW + 3_600_000)).toBeNull();
+    expect(await resolveOAuthAccessToken(platformCtx(), t.access_token, NOW + 3_600_000)).toBeNull();
     await env.DB.prepare(`UPDATE oauth_grants SET revoked_at = 't' WHERE id = ?`).bind(a.grantId).run();
-    expect(await resolveOAuthAccessToken(env.DB, t.access_token, NOW + 2000)).toBeNull();
-    expect(await resolveOAuthAccessToken(env.DB, t.refresh_token, NOW + 2000)).toBeNull(); // a refresh token is never a bearer
-    expect(await resolveOAuthAccessToken(env.DB, "canopy_oat_unknown", NOW)).toBeNull();
+    expect(await resolveOAuthAccessToken(platformCtx(), t.access_token, NOW + 2000)).toBeNull();
+    expect(await resolveOAuthAccessToken(platformCtx(), t.refresh_token, NOW + 2000)).toBeNull(); // a refresh token is never a bearer
+    expect(await resolveOAuthAccessToken(platformCtx(), "canopy_oat_unknown", NOW)).toBeNull();
   });
   it("the throttled last_used_at bump is best-effort — a DB error there still resolves the handle", async () => {
     const a = await connected();
@@ -264,7 +266,7 @@ describe("resolveOAuthAccessToken", () => {
       },
     }) as unknown as DB;
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(await resolveOAuthAccessToken(throwingDB, a.t.access_token, NOW + 1000)).toEqual({ handle: "real-user" });
+    expect(await resolveOAuthAccessToken(platformCtx("test", { ...env, DB: throwingDB } as unknown as Env), a.t.access_token, NOW + 1000)).toEqual({ handle: "real-user", orgId: ORG_A });
     expect(errSpy).toHaveBeenCalledWith(expect.stringContaining("oauth last_used_at"));
     errSpy.mockRestore();
   });
@@ -272,7 +274,7 @@ describe("resolveOAuthAccessToken", () => {
 
 async function connected(person = "real-user") {
   const a = await authorized(person);
-  const t = await exchangeAuthorizationCode(env.DB, { code: a.code, code_verifier: a.verifier, redirect_uri: REDIRECT, client_id: a.c.client_id, resource: null }, ORIGIN, NOW);
+  const t = await exchangeAuthorizationCode(platformCtx(), { code: a.code, code_verifier: a.verifier, redirect_uri: REDIRECT, client_id: a.c.client_id, resource: null }, ORIGIN, NOW);
   return { ...a, t };
 }
 const grantRow = (id: number) => first<{ revoked_at: string | null; revoked_reason: string | null }>(env.DB, `SELECT revoked_at, revoked_reason FROM oauth_grants WHERE id = ?`, id);
@@ -280,91 +282,91 @@ const grantRow = (id: number) => first<{ revoked_at: string | null; revoked_reas
 describe("refresh", () => {
   it("rotates: a new pair, the old access token keeps working until it expires, the idle window moves", async () => {
     const a = await connected();
-    const r = await refreshAccessToken(env.DB, { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 10 * 86_400_000);
+    const r = await refreshAccessToken(platformCtx(), { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 10 * 86_400_000);
     expect(r.refresh_token).not.toBe(a.t.refresh_token);
-    expect(await resolveOAuthAccessToken(env.DB, r.access_token, NOW + 10 * 86_400_000 + 1)).toEqual({ handle: "real-user" });
+    expect(await resolveOAuthAccessToken(platformCtx(), r.access_token, NOW + 10 * 86_400_000 + 1)).toEqual({ handle: "real-user", orgId: ORG_A });
     const exp = await first<{ expires_at: string }>(env.DB, `SELECT expires_at FROM oauth_tokens WHERE kind = 'refresh' AND rotated_at IS NULL`);
     expect(exp?.expires_at).toBe(new Date(NOW + 100 * 86_400_000).toISOString());
   });
   it("reuse within 60 s (concurrent sessions) → another fresh pair, grant untouched", async () => {
     const a = await connected();
-    await refreshAccessToken(env.DB, { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 1000);
-    const again = await refreshAccessToken(env.DB, { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 30_000);
-    expect(await resolveOAuthAccessToken(env.DB, again.access_token, NOW + 31_000)).toEqual({ handle: "real-user" });
+    await refreshAccessToken(platformCtx(), { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 1000);
+    const again = await refreshAccessToken(platformCtx(), { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 30_000);
+    expect(await resolveOAuthAccessToken(platformCtx(), again.access_token, NOW + 31_000)).toEqual({ handle: "real-user", orgId: ORG_A });
     expect((await grantRow(a.grantId))?.revoked_at).toBeNull();
   });
   it("reuse after 60 s → the whole grant is revoked (reason 'reuse') and its tokens stop", async () => {
     const a = await connected();
-    const fresh = await refreshAccessToken(env.DB, { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 1000);
-    await expect(refreshAccessToken(env.DB, { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 62_000)).rejects.toMatchObject({ code: "invalid_grant" });
+    const fresh = await refreshAccessToken(platformCtx(), { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 1000);
+    await expect(refreshAccessToken(platformCtx(), { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 62_000)).rejects.toMatchObject({ code: "invalid_grant" });
     expect((await grantRow(a.grantId))?.revoked_reason).toBe("reuse");
-    expect(await resolveOAuthAccessToken(env.DB, fresh.access_token, NOW + 63_000)).toBeNull();
-    await expect(refreshAccessToken(env.DB, { refresh_token: fresh.refresh_token, client_id: a.c.client_id }, NOW + 64_000)).rejects.toMatchObject({ code: "invalid_grant" });
+    expect(await resolveOAuthAccessToken(platformCtx(), fresh.access_token, NOW + 63_000)).toBeNull();
+    await expect(refreshAccessToken(platformCtx(), { refresh_token: fresh.refresh_token, client_id: a.c.client_id }, NOW + 64_000)).rejects.toMatchObject({ code: "invalid_grant" });
   });
   it("revoked grant's refresh token → invalid_grant, reason stays 'user'", async () => {
     const a = await connected();
-    expect(await revokeGrant(env.DB, "real-user", a.grantId, NOW + 1000)).toBe(true);
-    await expect(refreshAccessToken(env.DB, { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 2000)).rejects.toMatchObject({ code: "invalid_grant" });
+    expect(await revokeGrant(platformCtx(), "real-user", a.grantId, NOW + 1000)).toBe(true);
+    await expect(refreshAccessToken(platformCtx(), { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 2000)).rejects.toMatchObject({ code: "invalid_grant" });
     expect((await grantRow(a.grantId))?.revoked_reason).toBe("user");
   });
   it("rejects an expired refresh token, a wrong client_id, an access token, and an unknown token; client_id may be omitted", async () => {
     const a = await connected();
-    await expect(refreshAccessToken(env.DB, { refresh_token: a.t.refresh_token, client_id: "other" }, NOW + 1000)).rejects.toMatchObject({ code: "invalid_grant" });
-    await expect(refreshAccessToken(env.DB, { refresh_token: a.t.access_token, client_id: null }, NOW + 1000)).rejects.toMatchObject({ code: "invalid_grant" });
-    await expect(refreshAccessToken(env.DB, { refresh_token: "canopy_ort_nope", client_id: null }, NOW + 1000)).rejects.toMatchObject({ code: "invalid_grant" });
-    await expect(refreshAccessToken(env.DB, { refresh_token: a.t.refresh_token, client_id: null }, NOW + 91 * 86_400_000)).rejects.toMatchObject({ code: "invalid_grant" });
+    await expect(refreshAccessToken(platformCtx(), { refresh_token: a.t.refresh_token, client_id: "other" }, NOW + 1000)).rejects.toMatchObject({ code: "invalid_grant" });
+    await expect(refreshAccessToken(platformCtx(), { refresh_token: a.t.access_token, client_id: null }, NOW + 1000)).rejects.toMatchObject({ code: "invalid_grant" });
+    await expect(refreshAccessToken(platformCtx(), { refresh_token: "canopy_ort_nope", client_id: null }, NOW + 1000)).rejects.toMatchObject({ code: "invalid_grant" });
+    await expect(refreshAccessToken(platformCtx(), { refresh_token: a.t.refresh_token, client_id: null }, NOW + 91 * 86_400_000)).rejects.toMatchObject({ code: "invalid_grant" });
     const b = await connected("p-omit");
-    expect((await refreshAccessToken(env.DB, { refresh_token: b.t.refresh_token, client_id: null }, NOW + 1000)).token_type).toBe("Bearer");
+    expect((await refreshAccessToken(platformCtx(), { refresh_token: b.t.refresh_token, client_id: null }, NOW + 1000)).token_type).toBe("Bearer");
   });
 });
 
 describe("revocation", () => {
   it("revoking a refresh token revokes the grant; revoking an access token expires just it; unknown is a no-op", async () => {
     const a = await connected();
-    await revokeOAuthToken(env.DB, a.t.access_token, NOW + 1000);
-    expect(await resolveOAuthAccessToken(env.DB, a.t.access_token, NOW + 2000)).toBeNull();
+    await revokeOAuthToken(platformCtx(), a.t.access_token, NOW + 1000);
+    expect(await resolveOAuthAccessToken(platformCtx(), a.t.access_token, NOW + 2000)).toBeNull();
     expect((await grantRow(a.grantId))?.revoked_at).toBeNull();
-    await revokeOAuthToken(env.DB, a.t.refresh_token, NOW + 3000);
+    await revokeOAuthToken(platformCtx(), a.t.refresh_token, NOW + 3000);
     expect((await grantRow(a.grantId))?.revoked_reason).toBe("user");
-    await revokeOAuthToken(env.DB, "canopy_ort_unknown", NOW); // no throw
+    await revokeOAuthToken(platformCtx(), "canopy_ort_unknown", NOW); // no throw
   });
   it("listGrants shows only the caller's live grants, newest first; revokeGrant is own-only and idempotent", async () => {
     const a = await connected("real-user");
     const b = await connected("other-user");
     const later = await authorized("real-user");
     await env.DB.prepare(`UPDATE oauth_grants SET created_at = '2026-09-25T00:00:00.000Z' WHERE id = ?`).bind(later.grantId).run();
-    expect((await listGrants(env.DB, "real-user")).map((g) => g.id)).toEqual([later.grantId, a.grantId]);
-    expect(Object.keys((await listGrants(env.DB, "real-user"))[0]).sort()).toEqual(["client_name", "created_at", "id", "last_used_at"]);
-    expect(await revokeGrant(env.DB, "real-user", b.grantId, NOW)).toBe(false);
+    expect((await listGrants(platformCtx(), "real-user")).map((g) => g.id)).toEqual([later.grantId, a.grantId]);
+    expect(Object.keys((await listGrants(platformCtx(), "real-user"))[0]).sort()).toEqual(["client_name", "created_at", "id", "last_used_at", "org"]);
+    expect(await revokeGrant(platformCtx(), "real-user", b.grantId, NOW)).toBe(false);
     expect((await grantRow(b.grantId))?.revoked_at).toBeNull();
-    expect(await revokeGrant(env.DB, "real-user", a.grantId, NOW)).toBe(true);
-    expect(await revokeGrant(env.DB, "real-user", a.grantId, NOW + 5)).toBe(true);
-    expect((await listGrants(env.DB, "real-user")).map((g) => g.id)).toEqual([later.grantId]);
+    expect(await revokeGrant(platformCtx(), "real-user", a.grantId, NOW)).toBe(true);
+    expect(await revokeGrant(platformCtx(), "real-user", a.grantId, NOW + 5)).toBe(true);
+    expect((await listGrants(platformCtx(), "real-user")).map((g) => g.id)).toEqual([later.grantId]);
   });
 });
 
 describe("pruneOAuth", () => {
   it("drops spent codes and dead tokens; keeps grants, live rows, and a grant-less client under 90 days", async () => {
     const a = await connected();
-    await refreshAccessToken(env.DB, { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 1000);
-    const recentOrphan = await registerClient(env.DB, { client_name: "Recent orphan", redirect_uris: [REDIRECT] }, NOW);
-    const staleOrphan = await registerClient(env.DB, { client_name: "Stale orphan", redirect_uris: [REDIRECT] }, NOW - 91 * 86_400_000);
-    await pruneOAuth(env.DB, NOW + 2 * 86_400_000);
+    await refreshAccessToken(platformCtx(), { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 1000);
+    const recentOrphan = await registerClient(platformCtx(), { client_name: "Recent orphan", redirect_uris: [REDIRECT] }, NOW);
+    const staleOrphan = await registerClient(platformCtx(), { client_name: "Stale orphan", redirect_uris: [REDIRECT] }, NOW - 91 * 86_400_000);
+    await pruneOAuth(platformCtx(), NOW + 2 * 86_400_000);
     expect(await all(env.DB, `SELECT code_hash FROM oauth_codes`)).toEqual([]);
     const tokens = await all<{ kind: string }>(env.DB, `SELECT kind FROM oauth_tokens ORDER BY kind`);
     expect(tokens.map((t) => t.kind)).toEqual(["refresh", "refresh"]); // the original and rotated refresh tokens
     // 2 days old, never granted — a denied/not-yet-invited person retrying keeps their registration.
-    expect(await getClient(env.DB, recentOrphan.client_id)).not.toBeNull();
+    expect(await getClient(platformCtx(), recentOrphan.client_id)).not.toBeNull();
     // 91 days old, never granted — truly abandoned.
-    expect(await getClient(env.DB, staleOrphan.client_id)).toBeNull();
-    expect(await getClient(env.DB, a.c.client_id)).not.toBeNull();
+    expect(await getClient(platformCtx(), staleOrphan.client_id)).toBeNull();
+    expect(await getClient(platformCtx(), a.c.client_id)).not.toBeNull();
     expect(await grantRow(a.grantId)).not.toBeNull();
   });
   it("keeps rotated refresh tokens until expiry so late reuse is still detected", async () => {
     const a = await connected();
-    const rotated = await refreshAccessToken(env.DB, { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 1000);
-    await pruneOAuth(env.DB, NOW + 2 * 86_400_000);
-    await expect(refreshAccessToken(env.DB, { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 2 * 86_400_000 + 1000)).rejects.toMatchObject({ code: "invalid_grant" });
+    const rotated = await refreshAccessToken(platformCtx(), { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 1000);
+    await pruneOAuth(platformCtx(), NOW + 2 * 86_400_000);
+    await expect(refreshAccessToken(platformCtx(), { refresh_token: a.t.refresh_token, client_id: a.c.client_id }, NOW + 2 * 86_400_000 + 1000)).rejects.toMatchObject({ code: "invalid_grant" });
     expect((await grantRow(a.grantId))?.revoked_reason).toBe("reuse");
   });
 });

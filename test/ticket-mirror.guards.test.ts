@@ -1,15 +1,21 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { app } from "../src/routes";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { mirrorIssue } from "../src/tools/ticket-mirror";
 import { create_ticket } from "../src/tools/tickets";
 import type { TicketDetail } from "@shared/tickets";
 import { cookieFor } from "./helpers/persons";
+import { bearerCtx, systemCtx, platformCtx } from "./helpers/tenant";
+import { addOrgRepo } from "./helpers/org-config";
+
+// A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
+// so the suite's org has SaplingLearn's connected, as 0042_organizations seeds it in production.
+beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 
 // Phase 3 (0032): the lock and what stays writable on a mirrored ticket. The
 // owner's ruling: ONLY the source link is locked. Title, body, status (under the
@@ -19,7 +25,7 @@ import { cookieFor } from "./helpers/persons";
 const REPO = "SaplingLearn/sapling";
 
 async function mirrored(number = 214, o: { assignees?: string[] } = {}): Promise<number> {
-  await mirrorIssue(env.DB, REPO, {
+  await mirrorIssue(systemCtx(), platformCtx(), REPO, {
     action: "opened",
     repository: { full_name: REPO },
     issue: {
@@ -38,7 +44,7 @@ const get = (path: string, cookie: string) => app.request(path, { headers: { coo
 const linksOf = (id: number) => all<{ id: number; url: string; locked: number }>(env.DB, `SELECT id, url, locked FROM ticket_links WHERE ticket_id = ? ORDER BY id`, id);
 
 async function callTool(handle: string, name: string, args: Record<string, unknown> = {}) {
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -52,7 +58,7 @@ async function callTool(handle: string, name: string, args: Record<string, unkno
   }
 }
 async function toolNames(handle: string): Promise<string[]> {
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -80,7 +86,7 @@ describe("the lock — the source link can never be removed", () => {
 
   it("an unlocked link on a NATIVE ticket removes exactly as before", async () => {
     const cookie = await cookieFor("meilin", { github: false });
-    const id = await create_ticket(env.DB, { title: "native", body: "", category: "other", priority: "normal", assignees: [], link: "#12" }, "meilin");
+    const id = await create_ticket(systemCtx(), { title: "native", body: "", category: "other", priority: "normal", assignees: [], link: "#12" }, "meilin");
     const [l] = await linksOf(id);
     expect((await post(`/tickets/${id}/links/${l.id}/remove`, cookie)).status).toBe(200);
     expect(await linksOf(id)).toHaveLength(0);
@@ -124,7 +130,7 @@ describe("what stays writable on a mirrored ticket", () => {
 
   it("edit_ticket on a NATIVE ticket works too; an empty patch or a blank title is a 400 that writes nothing", async () => {
     const cookie = await cookieFor("meilin", { github: false });
-    const id = await create_ticket(env.DB, { title: "Native", body: "b", category: "other", priority: "normal", assignees: [] }, "meilin");
+    const id = await create_ticket(systemCtx(), { title: "Native", body: "b", category: "other", priority: "normal", assignees: [] }, "meilin");
     expect((await post(`/tickets/${id}/edit`, cookie, { title: "Renamed" })).status).toBe(200);
     expect((await post(`/tickets/${id}/edit`, cookie, {})).status).toBe(400);
     expect((await post(`/tickets/${id}/edit`, cookie, { title: "   " })).status).toBe(400);

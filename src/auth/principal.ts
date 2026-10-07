@@ -1,24 +1,14 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { Env } from "../env";
 import { readSessionCookie, getSessionUser } from "./session";
-import { resolveToken } from "./tokens";
-import { isAccessToken, resolveOAuthAccessToken } from "./oauth";
+import { platform, type PlatformContext, type TenantContext } from "../data/context";
 
 export interface Principal {
   handle: string;
 }
 
-export type AppEnv = { Bindings: Env; Variables: { principal: Principal } };
-
-/**
- * Is this login an admin? ADMIN_LOGINS is a comma-separated allowlist of GitHub
- * logins permitted to run admin actions (e.g. the server-side backfill). An
- * absent/empty var means nobody is an admin — fails closed.
- */
-export function isAdmin(env: Env, login: string): boolean {
-  const allow = (env.ADMIN_LOGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  return allow.includes(login);
-}
+// `p` (every request) and `ctx` (every tenant route) are set by the middlewares in src/data/gate.ts.
+export type AppEnv = { Bindings: Env; Variables: { principal: Principal; p: PlatformContext; ctx: TenantContext } };
 
 // The only routes reachable without a session. Everything else is gated.
 const PUBLIC_PATHS = new Set([
@@ -35,20 +25,8 @@ const isPublicPath = (path: string): boolean =>
 export async function resolveSessionPrincipal(c: Context<AppEnv>): Promise<Principal | null> {
   const id = await readSessionCookie(c, c.env.COOKIE_SECRET);
   if (!id) return null;
-  const handle = await getSessionUser(c.env.DB, id);
+  const handle = await getSessionUser(platform(c.env, "anonymous"), id);
   return handle ? { handle } : null;
-}
-
-/** The /mcp principal. Dispatches on the token prefix: an OAuth access token
- *  (`trov_oat_`, legacy `canopy_oat_`, obtained through /oauth/*) or a pasted `trov_mcp_` / legacy `canopy_mcp_` token — both
- *  resolve to the same `{ handle }`, so nothing downstream of /mcp can tell them apart. */
-export async function resolveBearerPrincipal(request: Request, env: Env): Promise<Principal | null> {
-  const header = request.headers.get("authorization") ?? "";
-  const match = /^Bearer\s+(.+)$/i.exec(header);
-  if (!match) return null;
-  const raw = match[1].trim();
-  if (isAccessToken(raw)) return resolveOAuthAccessToken(env.DB, raw, Date.now());
-  return resolveToken(env.DB, raw);
 }
 
 /**

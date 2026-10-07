@@ -13,7 +13,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { app } from "../src/routes";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { write_plan } from "../src/tools/plan";
 import { create_sprint, list_sprints } from "../src/tools/sprints";
 import type { SprintRow } from "@shared/rows";
@@ -22,17 +22,18 @@ import {
 } from "@shared/sprints";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import combined from "../migrations/0035_library_and_sprint_dates.sql?raw";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 /** PART B of the consolidated migration — the sprint-dates part: the text between the
  *  PART B and PART C marker lines (PART C, prompt soft delete, follows it). */
 const migration = (combined.split("-- ═══ PART B")[1] ?? "").split("-- ═══ PART C")[0];
 
-const ADMIN = "admin-user"; // ADMIN_LOGINS in vitest.config.ts
+const ADMIN = "admin-user"; // bound as an org admin by callTool
 
 const sprintCount = async () => (await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM sprints`))!.n;
 const planVersions = async () => (await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM plan_versions`))!.n;
 
 async function callTool(handle: string, name: string, args: Record<string, unknown>) {
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle, handle === "admin-user" ? "admin" : undefined));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await server.connect(b);
@@ -147,7 +148,7 @@ describe("POST /sprints — start/due validated, nothing written on a refusal", 
   });
 
   it("the writer re-checks too (a caller that skipped the schema) — bad_request, nothing written", async () => {
-    await expect(create_sprint(env.DB, { label: "S", urgency: "normal", start: "2026-10-20", due: "2026-10-17" }, "andres"))
+    await expect(create_sprint(systemCtx(), { label: "S", urgency: "normal", start: "2026-10-20", due: "2026-10-17" }, "andres"))
       .rejects.toMatchObject({ code: "bad_request" });
     expect(await sprintCount()).toBe(0);
   });
@@ -182,14 +183,14 @@ describe("update_plan / write_plan — the same rule, before the first write", (
       sprints: [{ label: "Planned", start: "2026-10-06", due: "2026-10-17", status: "upcoming" }],
     });
     expect(res.isError).toBeFalsy();
-    const [sp] = await list_sprints(env.DB);
+    const [sp] = await list_sprints(systemCtx());
     expect(sp.start).toBe("2026-10-06");
 
-    await write_plan(env.DB, { narrative: "n", sprints: [{ id: sp.id, label: "Planned", due: "2026-10-24", status: "upcoming" }] }, ADMIN);
-    expect((await list_sprints(env.DB))[0]).toMatchObject({ start: "2026-10-06", due: "2026-10-24" });
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ id: sp.id, label: "Planned", due: "2026-10-24", status: "upcoming" }] }, ADMIN);
+    expect((await list_sprints(systemCtx()))[0]).toMatchObject({ start: "2026-10-06", due: "2026-10-24" });
 
-    await write_plan(env.DB, { narrative: "n", sprints: [{ id: sp.id, label: "Planned", start: null, due: "2026-10-24", status: "upcoming" }] }, ADMIN);
-    expect((await list_sprints(env.DB))[0].start).toBeNull();
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ id: sp.id, label: "Planned", start: null, due: "2026-10-24", status: "upcoming" }] }, ADMIN);
+    expect((await list_sprints(systemCtx()))[0].start).toBeNull();
   });
 
   it("refuses a bad due, a bad start or start > due over MCP — no plan row, no version, no sprint", async () => {
@@ -207,12 +208,12 @@ describe("update_plan / write_plan — the same rule, before the first write", (
   });
 
   it("write_plan checks a new due against the STORED start when start is omitted", async () => {
-    await write_plan(env.DB, { narrative: "n", sprints: [{ label: "S", start: "2026-10-06", due: "2026-10-17", status: "upcoming" }] }, ADMIN);
-    const [sp] = await list_sprints(env.DB);
-    await expect(write_plan(env.DB, { narrative: "moved", sprints: [{ id: sp.id, label: "S", due: "2026-10-01", status: "upcoming" }] }, ADMIN))
+    await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "S", start: "2026-10-06", due: "2026-10-17", status: "upcoming" }] }, ADMIN);
+    const [sp] = await list_sprints(systemCtx());
+    await expect(write_plan(systemCtx(), { narrative: "moved", sprints: [{ id: sp.id, label: "S", due: "2026-10-01", status: "upcoming" }] }, ADMIN))
       .rejects.toMatchObject({ code: "bad_request", message: expect.stringMatching(/start \(2026-10-06\) is after due \(2026-10-01\)/) });
     expect(await planVersions()).toBe(1);
-    expect((await list_sprints(env.DB))[0].due).toBe("2026-10-17");
+    expect((await list_sprints(systemCtx()))[0].due).toBe("2026-10-17");
   });
 });
 
@@ -222,7 +223,7 @@ describe("a legacy non-ISO due stored before the rule", () => {
   it("still reads back as stored, through the list and the roadmap route", async () => {
     await seedPerson("andres");
     await run(env.DB, `INSERT INTO sprints (title, target_date, status, created_at, created_by) VALUES ('Legacy', 'Oct 17', 'upcoming', '2026-09-01T00:00:00Z', 'andres')`);
-    const [sp] = await list_sprints(env.DB);
+    const [sp] = await list_sprints(systemCtx());
     expect(sp).toMatchObject({ label: "Legacy", due: "Oct 17", start: null });
     const res = await app.request("/roadmap", { headers: { cookie: await cookieFor("andres") } }, env);
     expect(res.status).toBe(200);

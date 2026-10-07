@@ -11,9 +11,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.worker.json && tsc -p tsconfig.web.json",
     "check": "npm run typecheck && npm run build:web",
-    "db:create": "wrangler d1 create canopy",
-    "db:migrate:local": "wrangler d1 migrations apply canopy --local",
-    "db:migrate:remote": "wrangler d1 migrations apply canopy --remote",
+    "db:create": "wrangler d1 create trov",
+    "db:migrate:local": "wrangler d1 migrations apply trov --local",
+    "db:migrate:remote": "wrangler d1 migrations apply trov --remote",
     "seed": "node scripts/seed-dev.mjs"
   },
   "dependencies": {

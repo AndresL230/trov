@@ -3,11 +3,13 @@ import type { Context } from "hono";
 import { z } from "zod";
 import { IngestPayload, QueryType } from "@shared/contract";
 import type { AppEnv } from "./auth/principal";
-import { sessionGate, isAdmin } from "./auth/principal";
+import { sessionGate } from "./auth/principal";
 import { authApp } from "./auth/routes";
 import { oauthApp } from "./auth/oauth-routes";
+import { mcpTokensApp } from "./auth/token-routes";
 import { notificationsApp } from "./notifications/routes";
 import { artifactsApp } from "./artifacts/routes";
+import { orgSettingsApp } from "./integrations/routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runBackfill, isFinalBackfillBatch } from "./tools/backfill";
@@ -39,42 +41,81 @@ import { quickSearch } from "./tools/quick-search";
 import { QUICK_TYPES, type QuickType } from "@shared/quick-search";
 import { feedStats, isFeedStatsDays, isFeedStatsTz } from "./tools/feed-stats";
 import { getRepoDashboard, emptyRepoDashboard } from "./tools/repo";
-import { reconcileRepo, type ReconcileResult } from "./repo/github";
-import { repoEnvironments } from "./repo/config";
-import { runLockedRepoRefresh, runUsagePolls } from "./repo/cron";
+import type { ReconcileResult } from "./repo/github";
+import { orgEnvironments, orgPrimaryRepo } from "./repo/config";
+import { runLockedRepoRefresh, runReconcileJob, runUsagePolls } from "./repo/cron";
 import type { DashboardData } from "@shared/dashboard";
-import { first } from "./db";
-import { createInvite, revokeInvite, listInvites } from "./auth/invites";
-import { listPersons } from "./auth/persons";
-import { sendInvite } from "./notifications/invite";
+import { platformContext, soleTenantGate, tenantGate } from "./data/gate";
+import { orgsApp, myInvitesApp, orgTenantApp, cookieOnly } from "./orgs/routes";
+import { hasRole } from "./data/context";
+import { platformApp } from "./platform/routes";
+import { listLegacyInvites, getLegacyInvite, createLegacyInvite, revokeLegacyInvite, pendingInviteId, LegacyInviteError } from "./orgs/legacy-invites";
+import { mailInvite, mailOrigin } from "./orgs/mail";
+import { listPersons, PersonError } from "./auth/persons";
 import type { InviteRow } from "@shared/rows";
 import { readDocImage } from "./tools/doc-images";
 import { getPersonProfile, writePersonProfile, setAvatar, clearAvatar, readAvatar, PeopleError, PEOPLE_ERROR_STATUS } from "./tools/people";
 import { AVATAR_MAX_BYTES } from "@shared/people";
+import { readOrgLogo } from "./orgs/logo";
+import { rateLimited } from "./platform/limits";
 
 export const app = new Hono<AppEnv>();
 
-// The raw artifact route's lock-down headers wrap EVERYTHING under /raw/, the gate's
-// own 401 included — so this one middleware runs before the gate.
+// ── The tenant routes (canopy-multitenancy.md §6.3) ──────────────────────────
+// Every route that reads or writes an org's data is defined ONCE, on one of these two sub-apps, and
+// mounted TWICE at the bottom of this file: under `/api/o/:slug` (behind `tenantGate` — the org the path
+// names, 404 for a non-member) and, as the cut-over alias, at its old path (behind `soleTenantGate` — the
+// caller's only org, 409 `org_required` otherwise). A handler reads its tenant from `c.var.ctx` and never
+// from the path, so it cannot tell which mount it was reached through.
+//   • `tenantRoot` — the suffix IS the old path:   /api/o/:slug/docs       ↔ /docs
+//   • `tenantApi`  — the old path had an `/api/`:  /api/o/:slug/handoffs   ↔ /api/handoffs
+// Neither takes a `use("*")`: mounted at `/` it would wrap every later route of the app.
+const tenantRoot = new Hono<AppEnv>();
+const tenantApi = new Hono<AppEnv>();
+/** The alias-only routes: old paths whose `/api/o/:slug` form is a DIFFERENT route (src/orgs/routes.ts) —
+ *  the email invite list (`/invites…` → `/api/o/:slug/invites…`) and `PUT /api/people/:handle`
+ *  (→ `PUT /api/o/:slug/members/:handle`). Behind `soleTenantGate`; Phase 7 deletes them with the aliases. */
+const legacyOnly = new Hono<AppEnv>();
+
+/** An org role gate (§5.2) for a route whose 403 body predates the roles: admin or owner of `c.var.ctx`'s org. */
+const adminGate = async (c: Context<AppEnv>, next: () => Promise<void>) =>
+  hasRole(c.var.ctx, "admin") ? next() : c.json({ error: "admin only" }, 403);
+
+// The raw artifact route's lock-down headers wrap EVERYTHING under its two mounts — the session gate's
+// own 401 and the tenant gate's 404 included — so this one middleware runs before both gates.
+app.use("/api/o/:slug/raw/*", rawHeaders);
 app.use("/raw/*", rawHeaders);
 
 // Gate first: everything except /auth/login and /auth/callback requires a session.
 // Fails closed with 401 (no data in the body).
 app.use("*", sessionGate);
 
-// Artifacts (issue #52): the JSON API and the raw bytes, both session-gated. The
-// token-authenticated upload PUT is dispatched in src/index.ts, before this app.
-app.route("/api/artifacts", artifactsApp);
+// The data-layer contexts (src/data/gate.ts): `c.var.p` for the global tables on every request, and
+// `c.var.ctx` on every tenant route — from `tenantGate` under `/api/o/:slug/*`, and from `soleTenantGate`
+// (the caller's ONE org, the cut-over alias) on EVERY other session path that is not person-level
+// (/auth/*, /avatar/*, /org-logo/*, /api/orgs, /api/invites, /api/platform). So a route added without thought is
+// tenant-gated: a signed-in person with no single org gets 409 `org_required` there.
+app.use("*", platformContext);
+app.use("*", soleTenantGate);
+app.use("/api/o/:slug/*", tenantGate);
+
+// The raw artifact bytes (issue #52), session-gated: `/api/o/:slug/raw/a/…` for the org the path names
+// (`tenantGate`), and `/raw/a/…` as the cut-over alias for a person with exactly one org. ONE sub-app, so
+// the two mounts share every header and access rule (src/artifacts/raw.ts); a slug that is another org's
+// is the same 404 as an unknown one. Still on the app origin — moving them to an artifact origin (§8.6)
+// is a later phase. The org segment is `:org` here because the sub-app has a `:slug` of its own.
+// The token-authenticated upload PUT is dispatched in src/index.ts, before this app.
+app.route("/api/o/:org/raw/a", rawApp);
 app.route("/raw/a", rawApp);
 
 // Doc images: the bytes behind `![alt](/img/<sha256>)` in a doc body, session-gated like
 // the docs themselves. Content-addressed and immutable, so the cache can keep them
 // forever; `default-src 'none'` + nosniff so the bytes are only ever an image.
-app.get("/img/:sha", async (c) => {
+tenantRoot.get("/img/:sha", async (c) => {
   const sha = c.req.param("sha");
   const lockdown = { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" };
   if (!/^[0-9a-f]{64}$/.test(sha)) return c.json({ error: "not_found" }, 404, lockdown);
-  const img = await readDocImage(c.env.DB, c.env.ARTIFACTS_BUCKET, sha);
+  const img = await readDocImage(c.var.ctx, c.env.ARTIFACTS_BUCKET, sha);
   if (!img) return c.json({ error: "not_found" }, 404, lockdown);
   return new Response(img.body, {
     headers: {
@@ -89,9 +130,8 @@ app.get("/img/:sha", async (c) => {
 // Person avatars (0036): the bytes behind an uploaded `/avatar/<sha256>`, served exactly
 // like a doc image — session-gated, content-addressed and immutable, `default-src 'none'`
 // + nosniff. The type is the one SNIFFED at upload (the R2 object's own metadata).
-app.get("/avatar/:sha", async (c) => {
+const storedImage = (c: Context<AppEnv>, img: Awaited<ReturnType<typeof readAvatar>>): Response => {
   const lockdown = { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" };
-  const img = await readAvatar(c.env.ARTIFACTS_BUCKET, c.req.param("sha"));
   if (!img) return c.json({ error: "not_found" }, 404, lockdown);
   return new Response(img.body, {
     headers: {
@@ -101,7 +141,16 @@ app.get("/avatar/:sha", async (c) => {
       "cache-control": "private, max-age=31536000, immutable",
     },
   });
-});
+};
+app.get("/avatar/:sha", async (c) => storedImage(c, await readAvatar(c.env.ARTIFACTS_BUCKET, c.req.param("sha"))));
+
+// Org images (0042_organizations): the bytes behind `/org-logo/<sha256>`, served exactly like a person's photo — the
+// same headers, the type from the stored object and never from the request, and never a redirect: an
+// imported GitHub avatar is served from HERE, so no browser hot-links GitHub. Person-level, like
+// `/avatar`: an org's image shows wherever its name does, and its name reaches people who are not (yet)
+// members — an invitee on the org picker, the superadmin in Platform. The address is the image's own
+// 256-bit hash, so it can only be asked for by someone who was already shown it.
+app.get("/org-logo/:sha", async (c) => storedImage(c, await readOrgLogo(c.env.ARTIFACTS_BUCKET, c.req.param("sha"))));
 
 // Auth endpoints (login/callback public via the gate's allowlist; logout/mcp-token gated).
 app.route("/auth", authApp);
@@ -110,12 +159,26 @@ app.route("/auth", authApp);
 // /oauth/authorize reads the session itself.
 app.route("/", oauthApp);
 
-// Email notification prefs/policy/settings/outbox (session-gated; admin routes
-// re-check isAdmin inside). The signed one-click unsubscribe POST is NOT here —
-// it lives in src/index.ts, outside the gate, and can only turn email off.
-app.route("/api/notifications", notificationsApp);
+// Orgs (§5.3) and the superadmin surface (§5.4): person-level, no membership needed.
+app.route("/api/orgs", orgsApp);
+app.route("/api/invites", myInvitesApp);
+app.route("/api/platform", platformApp);
 
-app.post("/ingest", async (c) => {
+// Artifacts (issue #52) and the email notification prefs / policy / settings / outbox: tenant sub-apps,
+// `/api/o/:slug/artifacts…` ↔ `/api/artifacts…`, `/api/o/:slug/notifications…` ↔ `/api/notifications…`.
+// Their admin routes re-check the org role inside. The signed one-click unsubscribe POST is NOT here —
+// it lives in src/index.ts, outside the gate, and can only turn email off.
+tenantApi.route("/artifacts", artifactsApp);
+tenantApi.route("/notifications", notificationsApp);
+
+// ── Confirm verbs (§6.3, D6): a signed-in person's action, never a token's ────
+// Promote / reject a doc version, ratify / reject an ADR, publish a prompt (artifact ratify does the same
+// inside its sub-app): a request that carries an Authorization header is refused outright, so no future
+// change to `sessionGate` can turn a bearer into a confirmation.
+for (const path of ["/doc/:slug/promote", "/doc/:slug/reject", "/adr/:id/ratify", "/adr/:id/reject"]) tenantRoot.use(path, cookieOnly);
+tenantApi.use("/prompts/:slug/publish", cookieOnly);
+
+tenantRoot.post("/ingest", async (c) => {
   const json = await c.req.json().catch(() => null);
   const parsed = IngestPayload.safeParse(json);
   if (!parsed.success) {
@@ -123,27 +186,27 @@ app.post("/ingest", async (c) => {
   }
   // SEAM: a Cloudflare Queue producer.send({ payload, principal }) would slot in here.
   // recordBatch = consume() + the post-batch artifact_links step, identical to MCP record_session.
-  const result = await recordBatch(c.env.DB, parsed.data, c.get("principal"));
+  const result = await recordBatch(c.var.ctx, parsed.data, c.get("principal"));
   return c.json({ ok: true, result });
 });
 
-app.get("/docs", async (c) => {
+tenantRoot.get("/docs", async (c) => {
   // `?fields=meta` drops the bodies (and ignores `section`) — a list-only read.
-  if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(c.env.DB) });
-  const docs = await list_docs(c.env.DB, c.req.query("section"));
+  if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(c.var.ctx) });
+  const docs = await list_docs(c.var.ctx, c.req.query("section"));
   return c.json({ docs });
 });
 
-app.get("/doc/:slug", async (c) => {
-  const found = await get_doc(c.env.DB, c.req.param("slug"));
+tenantRoot.get("/doc/:slug", async (c) => {
+  const found = await get_doc(c.var.ctx, c.req.param("slug"));
   if (!found) return c.json({ error: "not found" }, 404);
   return c.json(found);
 });
 
-app.get("/feed", async (c) => {
+tenantRoot.get("/feed", async (c) => {
   const tags = c.req.query("tags");
   const limit = c.req.query("limit");
-  const feed = await get_feed(c.env.DB, {
+  const feed = await get_feed(c.var.ctx, {
     author: c.req.query("author"),
     tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
     since: c.req.query("since"),
@@ -156,7 +219,7 @@ app.get("/feed", async (c) => {
 // the WHOLE window (never the Feed's loaded page). `days` 1–30 (default 7); `tz` = the
 // viewer's minutes EAST of UTC, so the day buckets are their local days (default 0 = UTC).
 // A bad parameter is a 400; a failed read is a 503 `{ error }` — never a 500.
-app.get("/feed/stats", async (c) => {
+tenantRoot.get("/feed/stats", async (c) => {
   const daysRaw = c.req.query("days");
   const tzRaw = c.req.query("tz");
   const days = daysRaw === undefined ? 7 : /^\d{1,3}$/.test(daysRaw) ? Number(daysRaw) : NaN;
@@ -164,7 +227,7 @@ app.get("/feed/stats", async (c) => {
   const tz = tzRaw === undefined ? 0 : /^-?\d{1,4}$/.test(tzRaw) ? Number(tzRaw) : NaN;
   if (!isFeedStatsTz(tz)) return c.json({ error: "tz must be whole minutes east of UTC, within ±840" }, 400);
   try {
-    return c.json(await feedStats(c.env.DB, { days, tzOffsetMin: tz }));
+    return c.json(await feedStats(c.var.ctx, { days, tzOffsetMin: tz }));
   } catch (e) {
     console.error("feed stats failed", e instanceof Error ? e.message : String(e));
     return c.json({ error: "Couldn't read the feed stats" }, 503);
@@ -173,7 +236,7 @@ app.get("/feed/stats", async (c) => {
 
 // Human Search backs onto the same query() engine as MCP, but include_staged is
 // false — the human screen surfaces only settled (live) context, never staged.
-app.get("/search", async (c) => {
+tenantRoot.get("/search", async (c) => {
   const typesCsv = c.req.query("types");
   const types = typesCsv
     ? (typesCsv.split(",").map((t) => t.trim()).filter((t): t is QueryType => QueryType.safeParse(t).success))
@@ -181,7 +244,7 @@ app.get("/search", async (c) => {
   const spaceRaw = c.req.query("space");
   const space = spaceRaw === "technical" || spaceRaw === "product" ? spaceRaw : undefined;
   const limit = c.req.query("limit");
-  const result = await query(c.env.DB, {
+  const result = await query(c.var.ctx, {
     q: c.req.query("q") ?? "",
     types: types && types.length ? types : undefined,
     section: c.req.query("section"),
@@ -196,7 +259,7 @@ app.get("/search", async (c) => {
 // LIMITed per-type lookups — titles + one-line excerpts, never bodies — for the
 // session principal, live-only like /search. `q` under 2 characters answers without
 // touching D1. Never a 500: a failure is an empty answer flagged `degraded`.
-app.get("/search/quick", async (c) => {
+tenantRoot.get("/search/quick", async (c) => {
   const typesCsv = c.req.query("types");
   const types = typesCsv
     ? typesCsv.split(",").map((t) => t.trim()).filter((t): t is QuickType => (QUICK_TYPES as readonly string[]).includes(t))
@@ -205,7 +268,7 @@ app.get("/search/quick", async (c) => {
   const q = c.req.query("q") ?? "";
   c.header("cache-control", "private, no-store");
   try {
-    const result = await quickSearch(c.env.DB, q, c.get("principal").handle, {
+    const result = await quickSearch(c.var.ctx, q, c.get("principal").handle, {
       limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
       types,
     });
@@ -218,9 +281,9 @@ app.get("/search/quick", async (c) => {
 
 // SEAM: POST /ask — retrieve via query(), synthesize a grounded, slug-citing answer. Out of scope.
 
-app.get("/needs-triage", async (c) => c.json({ items: await list_needs_triage(c.env.DB) }));
+tenantRoot.get("/needs-triage", async (c) => c.json({ items: await list_needs_triage(c.var.ctx) }));
 
-app.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.env.DB, c.req.query("status")) }));
+tenantRoot.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.var.ctx, c.req.query("status")) }));
 
 // ── Review group (session-cookie only, NEVER MCP): Proposals (staged doc
 // versions) + Decisions (ADR drafts) — GET /proposals, GET /adrs, and their
@@ -229,7 +292,7 @@ app.get("/adrs", async (c) => c.json({ adrs: await list_adrs(c.env.DB, c.req.que
 // The Proposals queue (Phase 3): staged doc versions newer than their live doc,
 // not rejected, server-joined with both bodies + reconciler metadata. Kills the
 // old web N+1 (audit G9) and is the data source Phase 4's detail pane renders.
-app.get("/proposals", async (c) => c.json({ proposals: await list_proposals(c.env.DB) }));
+tenantRoot.get("/proposals", async (c) => c.json({ proposals: await list_proposals(c.var.ctx) }));
 
 // ── Handoffs + Prompt Library (session-cookie; the MCP tools are the agent side) ──
 // A handoff is an addressed message, not knowledge: its writers are direct (NOT
@@ -243,17 +306,17 @@ const handoffFail = (c: Context<AppEnv>, e: unknown) => {
 };
 const handoffId = (raw: string): number | null => (/^\d+$/.test(raw) && Number(raw) > 0 ? Number(raw) : null);
 
-app.get("/api/handoffs", async (c) => {
+tenantApi.get("/handoffs", async (c) => {
   const box = c.req.query("box") ?? "mine";
   if (!(HANDOFF_BOXES as readonly string[]).includes(box)) return c.json({ error: "unknown box" }, 400);
-  return c.json({ handoffs: await listHandoffs(c.env.DB, c.get("principal").handle, box as HandoffBox) });
+  return c.json({ handoffs: await listHandoffs(c.var.ctx, c.get("principal").handle, box as HandoffBox) });
 });
-app.get("/api/handoffs/:id", async (c) => {
+tenantApi.get("/handoffs/:id", async (c) => {
   const id = handoffId(c.req.param("id"));
-  const handoff = id === null ? null : await getHandoff(c.env.DB, id);
+  const handoff = id === null ? null : await getHandoff(c.var.ctx, id);
   return handoff ? c.json({ handoff }) : c.json({ error: "not found" }, 404);
 });
-app.post("/api/handoffs", async (c) => {
+tenantApi.post("/handoffs", async (c) => {
   const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
   const parsed = HandoffCreateInput.safeParse(raw);
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
@@ -263,59 +326,59 @@ app.post("/api/handoffs", async (c) => {
     ? { sessionId: sess.id, itemIndex: Number.isInteger(raw?.item_index) ? (raw!.item_index as number) : 0 }
     : undefined;
   try {
-    const { handoff } = await createHandoff(c.env.DB, c.get("principal").handle, parsed.data, ledger);
+    const { handoff } = await createHandoff(c.var.ctx, c.get("principal").handle, parsed.data, ledger);
     return c.json({ ok: true, handoff });
   } catch (e) { return handoffFail(c, e); }
 });
-app.post("/api/handoffs/:id/claim", async (c) => {
+tenantApi.post("/handoffs/:id/claim", async (c) => {
   const id = handoffId(c.req.param("id"));
   if (id === null) return c.json({ error: "not found" }, 404);
   const body = (await c.req.json().catch(() => ({}))) as { session?: unknown };
   const session = typeof body.session === "string" && body.session.trim() ? body.session.trim().slice(0, 120) : `web_${crypto.randomUUID().slice(0, 8)}`;
-  try { return c.json({ ok: true, handoff: await claimHandoff(c.env.DB, id, c.get("principal").handle, session) }); }
+  try { return c.json({ ok: true, handoff: await claimHandoff(c.var.ctx, id, c.get("principal").handle, session) }); }
   catch (e) { return handoffFail(c, e); }
 });
-app.post("/api/handoffs/:id/expire", async (c) => {
+tenantApi.post("/handoffs/:id/expire", async (c) => {
   const id = handoffId(c.req.param("id"));
   if (id === null) return c.json({ error: "not found" }, 404);
-  try { return c.json({ ok: true, handoff: await expireHandoff(c.env.DB, id, c.get("principal").handle) }); }
+  try { return c.json({ ok: true, handoff: await expireHandoff(c.var.ctx, id, c.get("principal").handle) }); }
   catch (e) { return handoffFail(c, e); }
 });
 
-app.get("/api/prompts", async (c) => {
+tenantApi.get("/prompts", async (c) => {
   const tags = (c.req.query("tags") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
   const want = c.req.query("sort");
   const sort = want === "updated_asc" || want === "used" ? want : "updated_desc";
-  return c.json({ prompts: await listPrompts(c.env.DB, { q: c.req.query("q") ?? "", tags, sort }) });
+  return c.json({ prompts: await listPrompts(c.var.ctx, { q: c.req.query("q") ?? "", tags, sort }) });
 });
-app.get("/api/prompts/:slug", async (c) => {
-  const prompt = await getPrompt(c.env.DB, c.req.param("slug"));
+tenantApi.get("/prompts/:slug", async (c) => {
+  const prompt = await getPrompt(c.var.ctx, c.req.param("slug"));
   return prompt ? c.json({ prompt }) : c.json({ error: "not found" }, 404);
 });
-app.get("/api/prompts/:slug/versions", async (c) => {
+tenantApi.get("/prompts/:slug/versions", async (c) => {
   const slug = c.req.param("slug");
-  if (!(await getPrompt(c.env.DB, slug))) return c.json({ error: "not found" }, 404);
-  return c.json({ versions: await listPromptVersions(c.env.DB, slug) });
+  if (!(await getPrompt(c.var.ctx, slug))) return c.json({ error: "not found" }, 404);
+  return c.json({ versions: await listPromptVersions(c.var.ctx, slug) });
 });
-app.post("/api/prompts", async (c) => {
+tenantApi.post("/prompts", async (c) => {
   const parsed = PromptSaveInput.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
-  try { return c.json({ ok: true, prompt: await savePrompt(c.env.DB, c.get("principal").handle, parsed.data, "human") }); }
+  try { return c.json({ ok: true, prompt: await savePrompt(c.var.ctx, c.get("principal").handle, parsed.data, "human") }); }
   catch (e) { return handoffFail(c, e); }
 });
-app.post("/api/prompts/:slug/tags", async (c) => {
+tenantApi.post("/prompts/:slug/tags", async (c) => {
   const body = (await c.req.json().catch(() => null)) as { tags?: unknown } | null;
   if (!body || !Array.isArray(body.tags) || !body.tags.every((t) => typeof t === "string")) return c.json({ error: "tags (string[]) required" }, 400);
-  try { return c.json({ ok: true, prompt: await setPromptTags(c.env.DB, c.req.param("slug"), body.tags as string[]) }); }
+  try { return c.json({ ok: true, prompt: await setPromptTags(c.var.ctx, c.req.param("slug"), body.tags as string[]) }); }
   catch (e) { return handoffFail(c, e); }
 });
 // One USE of a prompt (the web Copy button; MCP get_prompt counts its own): one
 // conditional UPDATE, so a request counts once. Unknown slug → 404; a D1 failure is a
 // 503, never a 500 — a lost count must not break the copy.
-app.post("/api/prompts/:slug/used", async (c) => {
+tenantApi.post("/prompts/:slug/used", async (c) => {
   try {
-    if (!(await recordPromptUse(c.env.DB, c.req.param("slug")))) return c.json({ error: "not found" }, 404);
-    const prompt = await getPrompt(c.env.DB, c.req.param("slug"));
+    if (!(await recordPromptUse(c.var.ctx, c.req.param("slug")))) return c.json({ error: "not found" }, 404);
+    const prompt = await getPrompt(c.var.ctx, c.req.param("slug"));
     return prompt ? c.json({ ok: true, use_count: prompt.use_count, last_used_at: prompt.last_used_at }) : c.json({ error: "not found" }, 404);
   } catch {
     return c.json({ error: "temporarily unavailable" }, 503);
@@ -323,25 +386,25 @@ app.post("/api/prompts/:slug/used", async (c) => {
 });
 // Publishing is a human confirmation, gated exactly like POST /doc/:slug/promote:
 // any signed-in person (sessionGate), never an MCP tool.
-app.post("/api/prompts/:slug/publish", async (c) => {
+tenantApi.post("/prompts/:slug/publish", async (c) => {
   const body = (await c.req.json().catch(() => null)) as { version?: unknown } | null;
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
-  try { return c.json({ ok: true, prompt: await publishPrompt(c.env.DB, c.req.param("slug"), version) }); }
+  try { return c.json({ ok: true, prompt: await publishPrompt(c.var.ctx, c.req.param("slug"), version) }); }
   catch (e) { return handoffFail(c, e); }
 });
-// Soft delete + restore (0035 PART C): the prompt's author or an admin; anyone else
+// Soft delete + restore (0035 PART C): the prompt's author or an org admin (admin or owner, §5.2); anyone else
 // is a 403 with nothing written. Session-cookie only — there is NO MCP delete, so an
 // agent can never remove a prompt. A deleted prompt's slug stays reserved (a save to
 // it is a 409), and restore is the one way back.
-app.post("/api/prompts/:slug/delete", async (c) => {
+tenantApi.post("/prompts/:slug/delete", async (c) => {
   const me = c.get("principal").handle;
-  try { return c.json({ ok: true, ...(await deletePrompt(c.env.DB, c.req.param("slug"), me, isAdmin(c.env, me))) }); }
+  try { return c.json({ ok: true, ...(await deletePrompt(c.var.ctx, c.req.param("slug"), me, hasRole(c.var.ctx, "admin"))) }); }
   catch (e) { return handoffFail(c, e); }
 });
-app.post("/api/prompts/:slug/restore", async (c) => {
+tenantApi.post("/prompts/:slug/restore", async (c) => {
   const me = c.get("principal").handle;
-  try { return c.json({ ok: true, prompt: await restorePrompt(c.env.DB, c.req.param("slug"), me, isAdmin(c.env, me)) }); }
+  try { return c.json({ ok: true, prompt: await restorePrompt(c.var.ctx, c.req.param("slug"), me, hasRole(c.var.ctx, "admin")) }); }
   catch (e) { return handoffFail(c, e); }
 });
 
@@ -356,32 +419,32 @@ const DocPropose = z.object({
   summary: z.string().max(300).optional(),
   slug: z.string().regex(/^[a-z0-9][a-z0-9_/-]*$/).optional(),
 });
-app.post("/api/docs/propose", async (c) => {
+tenantApi.post("/docs/propose", async (c) => {
   const parsed = DocPropose.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
   const d = parsed.data;
   if (!isSection(d.section)) return c.json({ error: `unknown section: ${d.section}` }, 400);
   const slug = d.slug ?? d.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
   if (!slug) return c.json({ error: "title has no usable slug" }, 400);
-  if (await first(c.env.DB, `SELECT 1 FROM docs WHERE slug = ?`, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
+  if (await get_doc(c.var.ctx, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
   const result = await ingestDocProposal(
-    c.env.DB,
+    c.var.ctx,
     { slug, section: d.section, space: d.space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high" },
     c.get("principal").handle,
   );
   if (result.outcome === "refused") return c.json({ error: result.reason }, 400);
   if (result.outcome !== "written") return c.json({ error: result.outcome === "triaged" ? result.reason : "nothing to stage" }, 409);
-  const proposal = (await list_proposals(c.env.DB)).find((p) => p.slug === slug && p.version === result.version) ?? null;
+  const proposal = (await list_proposals(c.var.ctx)).find((p) => p.slug === slug && p.version === result.version) ?? null;
   return c.json({ ok: true, proposal });
 });
 
 // Human confirmation (session-gated): promote a staged doc version into the live doc.
-app.post("/doc/:slug/promote", async (c) => {
+tenantRoot.post("/doc/:slug/promote", async (c) => {
   const body = await c.req.json().catch(() => null);
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
   try {
-    const res = await promote_doc(c.env.DB, c.req.param("slug"), version, c.get("principal").handle);
+    const res = await promote_doc(c.var.ctx, c.req.param("slug"), version, c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -390,12 +453,12 @@ app.post("/doc/:slug/promote", async (c) => {
 
 // Human write-back (session-gated): reject a staged doc version. Soft status flip
 // to 'rejected' so it leaves the proposals queue; the row + body remain.
-app.post("/doc/:slug/reject", async (c) => {
+tenantRoot.post("/doc/:slug/reject", async (c) => {
   const body = await c.req.json().catch(() => null);
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
   try {
-    const res = await reject_doc_version(c.env.DB, c.req.param("slug"), version);
+    const res = await reject_doc_version(c.var.ctx, c.req.param("slug"), version);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -403,11 +466,11 @@ app.post("/doc/:slug/reject", async (c) => {
 });
 
 // Human confirmation (session-gated): ratify an ADR draft.
-app.post("/adr/:id/ratify", async (c) => {
+tenantRoot.post("/adr/:id/ratify", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const res = await ratify_adr(c.env.DB, id);
+    const res = await ratify_adr(c.var.ctx, id);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -416,11 +479,11 @@ app.post("/adr/:id/ratify", async (c) => {
 
 // Human write-back (session-gated): reject an ADR draft. Soft flip to 'rejected'
 // so it leaves the decisions queue; the row remains.
-app.post("/adr/:id/reject", async (c) => {
+tenantRoot.post("/adr/:id/reject", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const res = await reject_adr(c.env.DB, id);
+    const res = await reject_adr(c.var.ctx, id);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -429,11 +492,11 @@ app.post("/adr/:id/reject", async (c) => {
 
 // Human write-back (session-gated): discard a triage item. Soft — sets the audit
 // columns + resolved flag so it leaves the queue; never a hard-delete.
-app.post("/needs-triage/:id/discard", async (c) => {
+tenantRoot.post("/needs-triage/:id/discard", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const res = await resolve_triage(c.env.DB, id, c.get("principal").handle, "discarded");
+    const res = await resolve_triage(c.var.ctx, id, c.get("principal").handle, "discarded");
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -443,14 +506,14 @@ app.post("/needs-triage/:id/discard", async (c) => {
 // Human write-back (session-gated): assign-materialize a triage item. Re-runs the
 // item's `raw` through the SAME gate for the chosen target type, then resolves it
 // as 'assigned' with assigned_ref. The author is the authenticated principal.
-app.post("/needs-triage/:id/assign", async (c) => {
+tenantRoot.post("/needs-triage/:id/assign", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   const body = (await c.req.json().catch(() => ({}))) as {
     type?: AssignType; section?: string; space?: "technical" | "product"; tags?: string[];
   } | null;
   try {
-    const res = await assign_triage(c.env.DB, id, c.get("principal").handle, {
+    const res = await assign_triage(c.var.ctx, id, c.get("principal").handle, {
       type: body?.type,
       section: body?.section,
       space: body?.space,
@@ -468,19 +531,21 @@ app.post("/needs-triage/:id/assign", async (c) => {
 // Pending unknown-login identity tasks, each with a small LIVE activity sample
 // pulled from `events` at read time — activity is never copied onto the task —
 // plus the discarded logins Undo can still restore.
-app.get("/identity-tasks", async (c) =>
-  c.json({ tasks: await list_identity_tasks(c.env.DB), discarded: await list_discarded_identities(c.env.DB) }));
+tenantRoot.get("/identity-tasks", async (c) =>
+  c.json({ tasks: await list_identity_tasks(c.var.ctx), discarded: await list_discarded_identities(c.var.ctx) }));
 
-// Human placement (session-gated): link a login to an EXISTING person (by
-// handle) as a github identity (a direct authored write, not a gate re-run),
-// then a soft resolve of the task. My Work picks the mapping up at read time,
-// so every already-captured event for this login surfaces with no backfill.
-app.post("/identity-tasks/:login/map", async (c) => {
+// Human placement (session-gated, org ADMIN+ — §6.3): attribute a login to an
+// existing MEMBER (by handle) in the org's own map, `org_login_map` — never the
+// global `identities` table, which is sign-in (a direct authored write, not a
+// gate re-run), then a soft resolve of the task. My Work picks the mapping up at
+// read time, so every already-captured event for this login surfaces with no backfill.
+tenantRoot.use("/identity-tasks/:login/map", adminGate);
+tenantRoot.post("/identity-tasks/:login/map", async (c) => {
   const body = (await c.req.json().catch(() => null)) as { person?: string } | null;
   const person = typeof body?.person === "string" ? body.person.trim() : "";
   if (!person) return c.json({ error: "person (non-empty string) required" }, 400);
   try {
-    const res = await map_identity(c.env.DB, c.req.param("login"), person, c.get("principal").handle);
+    const res = await map_identity(c.var.ctx, c.var.p, c.req.param("login"), person, c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -495,17 +560,17 @@ const identityFail = (c: Context<AppEnv>, e: unknown) =>
   e instanceof IdentityTaskError
     ? c.json({ error: e.message }, e.code === "not_found" ? 404 : 409)
     : c.json({ error: "temporarily unavailable" }, 503);
-app.post("/identity-tasks/:login/discard", async (c) => {
+tenantRoot.post("/identity-tasks/:login/discard", async (c) => {
   try {
-    const res = await discard_identity_task(c.env.DB, c.req.param("login"), c.get("principal").handle);
+    const res = await discard_identity_task(c.var.ctx, c.req.param("login"), c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
     return identityFail(c, e);
   }
 });
-app.post("/identity-tasks/:login/restore", async (c) => {
+tenantRoot.post("/identity-tasks/:login/restore", async (c) => {
   try {
-    const res = await restore_identity_task(c.env.DB, c.req.param("login"));
+    const res = await restore_identity_task(c.var.ctx, c.var.p, c.req.param("login"));
     return c.json({ ok: true, ...res });
   } catch (e) {
     return identityFail(c, e);
@@ -513,11 +578,11 @@ app.post("/identity-tasks/:login/restore", async (c) => {
 });
 
 // Person directory (session-gated): the avatar-chip source for every screen and the identity picker.
-app.get("/persons", async (c) => c.json({ persons: await listPersons(c.env.DB) }));
+tenantRoot.get("/persons", async (c) => c.json({ persons: await listPersons(c.var.ctx) }));
 
 // ── People profiles (0036; the contract is shared/people.ts) — session cookie, NEVER MCP ──
-// Read: any signed-in member; `responsibilities` only to the person and admins. Write:
-// the person or an admin (403 otherwise, nothing written). Avatar: the viewer's OWN only.
+// Read: any member of the org; `responsibilities` only to its admins. Write (the alias below):
+// an org admin or owner (403 otherwise, nothing written). Avatar: the viewer's OWN only.
 // `me` names the viewer (it is a reserved handle, so it can never be someone else's).
 // A PeopleError is its status; anything else (a D1 failure) is a 503, never a 500.
 const peopleFail = (c: Context<AppEnv>, e: unknown) =>
@@ -526,21 +591,25 @@ const profileHandle = (c: Context<AppEnv>): string => {
   const h = c.req.param("handle") ?? "";
   return h.toLowerCase() === "me" ? c.get("principal").handle : h;
 };
-const adminCheck = (c: Context<AppEnv>) => (h: string) => isAdmin(c.env, h);
-app.get("/api/people/:handle", async (c) => {
-  try { return c.json(await getPersonProfile(c.env.DB, profileHandle(c), c.get("principal").handle, adminCheck(c))); }
+tenantApi.get("/people/:handle", async (c) => {
+  try { return c.json(await getPersonProfile(c.var.ctx, profileHandle(c), c.get("principal").handle)); }
   catch (e) { return peopleFail(c, e); }
 });
-app.put("/api/people/:handle", async (c) => {
+// ALIAS ONLY (§6.3): under `/api/o/:slug` a member's title and responsibilities are written through
+// `PUT /api/o/:slug/members/:handle` (src/orgs/routes.ts). This keeps the current SPA's request — and its
+// `{ role, responsibilities }` body, where `role` is the TITLE — working, with the same gate: admin+.
+legacyOnly.put("/api/people/:handle", async (c) => {
   const body = await c.req.json().catch(() => undefined);
-  try { return c.json(await writePersonProfile(c.env.DB, profileHandle(c), c.get("principal").handle, adminCheck(c), body)); }
+  try { return c.json(await writePersonProfile(c.var.ctx, profileHandle(c), c.get("principal").handle, body)); }
   catch (e) { return peopleFail(c, e); }
 });
 // Multipart, field `file`. A declared length past the cap (plus multipart framing) is
 // refused before the body is read.
-app.post("/api/people/me/avatar", async (c) => {
+tenantApi.post("/people/me/avatar", async (c) => {
   const len = Number(c.req.header("content-length"));
   if (Number.isFinite(len) && len > AVATAR_MAX_BYTES + 64 * 1024) return c.json({ error: `an avatar is at most ${AVATAR_MAX_BYTES} bytes` }, 413);
+  const refused = await rateLimited(c, "avatar_upload");
+  if (refused) return refused;
   let file: File | null = null;
   try {
     const form = await c.req.raw.formData();
@@ -549,62 +618,69 @@ app.post("/api/people/me/avatar", async (c) => {
   } catch {
     return c.json({ error: "the body must be multipart/form-data" }, 400);
   }
-  try { return c.json({ ok: true, ...(await setAvatar(c.env.DB, c.env.ARTIFACTS_BUCKET, c.get("principal").handle, file)) }); }
+  try { return c.json({ ok: true, ...(await setAvatar(c.var.p, c.env.ARTIFACTS_BUCKET, c.get("principal").handle, file)) }); }
   catch (e) { return peopleFail(c, e); }
 });
-app.post("/api/people/me/avatar/remove", async (c) => {
-  try { return c.json({ ok: true, ...(await clearAvatar(c.env.DB, c.get("principal").handle)) }); }
+tenantApi.post("/people/me/avatar/remove", async (c) => {
+  try { return c.json({ ok: true, ...(await clearAvatar(c.var.p, c.get("principal").handle)) }); }
   catch (e) { return peopleFail(c, e); }
 });
 
-// ── Maintenance › People: the invite list (admin, session-cookie only, NEVER MCP) ──
+// ── Maintenance › People: the EMAIL invite list (org admin+, session-cookie only, NEVER MCP) ──
+// ALIAS ONLY (§6.3): under `/api/o/:slug` invites are `GET|POST /api/o/:slug/invites`, addressed by id
+// (src/orgs/routes.ts). These four keep the current SPA's screen working and are ORG-SCOPED: an invite
+// made here is an `org_invites` row of the caller's org, listed and revoked by address
+// (src/orgs/legacy-invites.ts — the model, and what the legacy `invites` table still holds).
 const InviteWrite = z.object({ email: z.string().trim().max(254).regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "invalid email"), name: z.string().trim().max(120).optional() });
-const adminGate = async (c: Context<AppEnv>, next: () => Promise<void>) =>
-  isAdmin(c.env, c.get("principal").handle) ? next() : c.json({ error: "admin only" }, 403);
-app.use("/invites", adminGate);
-app.use("/invites/*", adminGate);
-app.get("/invites", async (c) => c.json({ invites: await listInvites(c.env.DB) }));
-app.post("/invites", async (c) => {
+/** The alias's mail is the org route's (src/orgs/mail.ts), reported in the old `{ status, id, error }` shape. */
+async function mailLegacyInvite(c: Context<AppEnv>, email: string, name: string | null): Promise<{ status: "sent" | "failed"; id: string | null; error: string | null }> {
+  const id = await pendingInviteId(c.var.p, c.var.ctx, email);
+  const sent = id === null ? null : await mailInvite(c.env, c.var.p, c.var.ctx.orgId, { id, email, name, role: "member" }, mailOrigin(c.env, c.req.url));
+  return sent ? { status: sent.status, id: sent.id, error: sent.error } : { status: "failed", id: null, error: "no such invite" };
+}
+legacyOnly.use("/invites", adminGate);
+legacyOnly.use("/invites/*", adminGate);
+legacyOnly.get("/invites", async (c) => c.json({ invites: await listLegacyInvites(c.var.p, c.var.ctx) }));
+legacyOnly.post("/invites", async (c) => {
   const parsed = InviteWrite.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
+  const refused = await rateLimited(c, "invite");
+  if (refused) return refused;
   let invite: InviteRow;
   try {
-    invite = await createInvite(c.env.DB, { email: parsed.data.email, name: parsed.data.name ?? null, invitedBy: c.get("principal").handle });
+    invite = await createLegacyInvite(c.var.p, c.var.ctx, { email: parsed.data.email, name: parsed.data.name ?? null });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg === "invite_exists" || msg === "already_a_person") return c.json({ error: msg }, 409);
+    if (e instanceof LegacyInviteError) return c.json({ error: e.code }, 409);
     throw e;
   }
-  const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-  const email = await sendInvite(c.env, c.env.DB, { email: invite.email, inviteeName: invite.name, inviterHandle: c.get("principal").handle, origin });
-  return c.json({ ok: true, invite: (await first<InviteRow>(c.env.DB, `SELECT * FROM invites WHERE email = ?`, invite.email))!, email });
+  const email = await mailLegacyInvite(c, invite.email, parsed.data.name ?? null);
+  return c.json({ ok: true, invite: (await getLegacyInvite(c.var.p, c.var.ctx, invite.email))!, email });
 });
-app.post("/invites/:email/revoke", async (c) => {
-  const ok = await revokeInvite(c.env.DB, decodeURIComponent(c.req.param("email")));
+legacyOnly.post("/invites/:email/revoke", async (c) => {
+  const ok = await revokeLegacyInvite(c.var.p, c.var.ctx, decodeURIComponent(c.req.param("email")));
   return ok ? c.json({ ok: true }) : c.json({ error: "no such invite" }, 404);
 });
-app.post("/invites/:email/resend", async (c) => {
-  const email = decodeURIComponent(c.req.param("email")).toLowerCase();
-  const row = await first<InviteRow>(c.env.DB, `SELECT * FROM invites WHERE email = ?`, email);
+legacyOnly.post("/invites/:email/resend", async (c) => {
+  const row = await getLegacyInvite(c.var.p, c.var.ctx, decodeURIComponent(c.req.param("email")));
   if (!row) return c.json({ error: "no such invite" }, 404);
   if (row.revoked_at || row.accepted_by) return c.json({ error: row.revoked_at ? "revoked" : "accepted" }, 409);
-  const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-  const result = await sendInvite(c.env, c.env.DB, { email: row.email, inviteeName: row.name, inviterHandle: c.get("principal").handle, origin });
-  return c.json({ ok: true, email: result });
+  const refused = await rateLimited(c, "invite");
+  if (refused) return refused;
+  return c.json({ ok: true, email: await mailLegacyInvite(c, row.email, row.name) });
 });
 
 // Roadmap read (session-gated): admin narrative + sprints in target-date order,
 // merged with cached progress from the plan store. No live GitHub, no per-user token.
-app.get("/roadmap", async (c) => c.json(await get_plan(c.env.DB)));
+tenantRoot.get("/roadmap", async (c) => c.json(await get_plan(c.var.ctx)));
 
 // Personal dashboard (session-gated): the signed-in user's My Work projection —
 // previous activity (summarized merged/closed PRs), open assigned issues, and open
 // assigned tickets (native + mirrored, with the uncapped `ticketsTotal`), all D1.
 // Stored nowhere; never 500s.
-app.get("/me/dashboard", async (c) => {
+tenantRoot.get("/me/dashboard", async (c) => {
   const login = c.get("principal").handle;
   try {
-    const data: DashboardData = await getMyWork(c.env.DB, login);
+    const data: DashboardData = await getMyWork(c.var.ctx, login);
     return c.json(data);
   } catch {
     // Absolute backstop: never 500. Anything unexpected (D1) → empty degraded payload.
@@ -617,10 +693,12 @@ app.get("/me/dashboard", async (c) => {
 // projection over captured events, tickets and sprints (src/tools/repo.ts). No
 // live GitHub; whatever Trov has no capture path for is `not_connected`.
 // Stored nowhere; never 500s.
-app.get("/repo/dashboard", async (c) => {
-  const repo = c.env.GITHUB_REPO ?? "";
+tenantRoot.get("/repo/dashboard", async (c) => {
+  // The org's own primary repository and environments (`org_repos`, `org_environments`).
+  let repo = "";
   try {
-    return c.json(await getRepoDashboard(c.env.DB, repo, Date.now(), repoEnvironments(c.env)));
+    repo = (await orgPrimaryRepo(c.var.ctx))?.repo ?? "";
+    return c.json(await getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx)));
   } catch {
     return c.json(emptyRepoDashboard(repo, true));
   }
@@ -630,10 +708,10 @@ app.get("/repo/dashboard", async (c) => {
 // A computed/authored direct writer in the promote class — humans (admins)
 // trigger it — but every captured event still funnels through the ingestEvent
 // gate fn. Non-admins get 403; a missing service token/repo → 503 with the error.
-app.post("/admin/backfill", async (c) => {
+tenantRoot.post("/admin/backfill", async (c) => {
   const login = c.get("principal").handle;
-  if (!isAdmin(c.env, login)) return c.json({ error: "admin only" }, 403);
-  const res = await runBackfill(c.env, login);
+  if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "admin only" }, 403);
+  const res = await runBackfill(c.env, c.var.ctx, login);
   if (!res.ok) return c.json({ error: res.error }, 503);
   // Best-effort, and only on the batch that ENDS a Sync (web/src/main.ts
   // re-POSTs this route up to 10 times while the summary budget stays
@@ -652,9 +730,7 @@ app.post("/admin/backfill", async (c) => {
   // so a Sync that silently lost one is distinguishable from one that had
   // nothing to do.
   let repo: ReconcileResult | undefined;
-  if (isFinalBackfillBatch(res, batch, of) && c.env.GITHUB_SERVICE_TOKEN && c.env.GITHUB_REPO) {
-    repo = await reconcileRepo(c.env.DB, { token: c.env.GITHUB_SERVICE_TOKEN, repo: c.env.GITHUB_REPO }, repoEnvironments(c.env)).catch(() => undefined);
-  }
+  if (isFinalBackfillBatch(res, batch, of)) repo = (await runReconcileJob(c.env, c.var.ctx).catch(() => null)) ?? undefined;
   return c.json(repo ? { ...res, repo } : res);
 });
 
@@ -669,11 +745,11 @@ app.post("/admin/backfill", async (c) => {
 // is reconcile's ARM NAMES). Overlapping runs are correct (every write is
 // idempotent) but wasteful, so a `refresh_lock` snapshot younger than 3 minutes
 // is a 409 that runs nothing; the lock is cleared in a `finally`. Never a 500.
-app.post("/admin/poll", async (c) => {
+tenantRoot.post("/admin/poll", async (c) => {
   const handle = c.get("principal").handle;
-  if (!isAdmin(c.env, handle)) return c.json({ error: "admin only" }, 403);
+  if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "admin only" }, 403);
   try {
-    const res = await runLockedRepoRefresh(c.env, handle, Date.now());
+    const res = await runLockedRepoRefresh(c.env, c.var.ctx, handle, Date.now());
     return res.ok ? c.json(res.result) : c.json({ error: "a refresh is already running", since: res.since }, 409);
   } catch (e) {
     // The lock statement itself failing (D1) — runRepoRefresh is total. Only
@@ -695,10 +771,10 @@ app.post("/admin/poll", async (c) => {
 // body. 200 even when every source failed — the body says so; it carries
 // per-environment outcomes and NEVER a token, a header or an account id (a
 // `detail` is the poller's own scrubbed log message). Never a 500.
-app.post("/admin/poll-usage", async (c) => {
-  if (!isAdmin(c.env, c.get("principal").handle)) return c.json({ error: "admin only" }, 403);
+tenantRoot.post("/admin/poll-usage", async (c) => {
+  if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "admin only" }, 403);
   try {
-    return c.json(await runUsagePolls(c.env, Date.now()));
+    return c.json(await runUsagePolls(c.env, c.var.ctx, Date.now()));
   } catch (e) {
     // Unreachable today (runUsagePolls is total) — but never swallow it silently.
     console.error("poll-usage", e instanceof Error ? e.message : String(e));
@@ -711,9 +787,10 @@ app.post("/admin/poll-usage", async (c) => {
 // consume(), no gate, no staged state, no proposals. The requester/actor/author
 // is ALWAYS the authenticated principal; a client-supplied one is ignored. ────
 
-/** Map a TicketError onto its status (404 unknown / 409 rule / 400 payload). */
+/** Map a TicketError onto its status (404 unknown / 409 rule / 400 payload). A PersonError — a handle
+ *  that is not a member of this org (`requireMember`) — is the same 400 a `bad_request` is. */
 const ticketFail = (c: Context<AppEnv>, e: unknown): Response => {
-  if (e instanceof TicketError) return c.json({ error: e.message }, TICKET_ERROR_STATUS[e.code]);
+  if (e instanceof TicketError || e instanceof PersonError) return c.json({ error: e.message }, TICKET_ERROR_STATUS[e.code]);
   throw e; // not ours — a real 500
 };
 
@@ -725,17 +802,17 @@ const ticketId = (c: Context<AppEnv>): number | null => {
 
 /** Every write answers with the freshly re-read detail DTO, so one round-trip repaints. */
 const ticketDetailResponse = async (c: Context<AppEnv>, id: number): Promise<Response> => {
-  const ticket = await get_ticket(c.env.DB, id);
+  const ticket = await get_ticket(c.var.ctx, id);
   if (!ticket) return c.json({ error: "not found" }, 404);
   return c.json({ ok: true, ticket });
 };
 
-app.post("/tickets", async (c) => {
+tenantRoot.post("/tickets", async (c) => {
   const parsed = TicketCreate.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
     // The principal is the requester, full stop — parsed.data has no requester field.
-    const id = await create_ticket(c.env.DB, parsed.data, c.get("principal").handle);
+    const id = await create_ticket(c.var.ctx, parsed.data, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -745,7 +822,7 @@ app.post("/tickets", async (c) => {
 // The queue list. seg=open|closed|all (open = submitted + in_progress),
 // assignee=anyone|me|unassigned (me = the principal), category = a vocab value
 // ('all'/absent = every category). Sorted updated_at DESC.
-app.get("/tickets", async (c) => {
+tenantRoot.get("/tickets", async (c) => {
   const segRaw = c.req.query("seg");
   const asgRaw = c.req.query("assignee");
   const catRaw = c.req.query("category");
@@ -761,7 +838,7 @@ app.get("/tickets", async (c) => {
     category = parsed.data;
   }
 
-  const tickets = await list_tickets(c.env.DB, {
+  const tickets = await list_tickets(c.var.ctx, {
     seg: seg.data,
     assignee: assignee.data,
     category,
@@ -772,25 +849,25 @@ app.get("/tickets", async (c) => {
 
 // REGISTERED BEFORE /tickets/:id ON PURPOSE: Hono matches in registration order,
 // so a later ':id' route would otherwise swallow the literal '/tickets/badge'.
-app.get("/tickets/badge", async (c) => c.json({ count: await ticket_badge(c.env.DB) }));
+tenantRoot.get("/tickets/badge", async (c) => c.json({ count: await ticket_badge(c.var.ctx) }));
 
-app.get("/tickets/:id", async (c) => {
+tenantRoot.get("/tickets/:id", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
-  const ticket = await get_ticket(c.env.DB, id);
+  const ticket = await get_ticket(c.var.ctx, id);
   if (!ticket) return c.json({ error: "not found" }, 404);
   return c.json(ticket);
 });
 
 // Edit the title and/or body — a mirrored ticket's too (seeded from the issue at
 // import, Trov's afterwards). A patch that changes neither is a 400.
-app.post("/tickets/:id/edit", async (c) => {
+tenantRoot.post("/tickets/:id/edit", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketEdit.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await edit_ticket(c.env.DB, id, parsed.data, c.get("principal").handle);
+    await edit_ticket(c.var.ctx, id, parsed.data, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -799,13 +876,13 @@ app.post("/tickets/:id/edit", async (c) => {
 
 // A status move. Legality is decided by the ONE shared transition table; an
 // illegal move is a 409 and writes nothing at all (not even a history row).
-app.post("/tickets/:id/status", async (c) => {
+tenantRoot.post("/tickets/:id/status", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketTransition.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await transition_ticket(c.env.DB, id, parsed.data.to, c.get("principal").handle);
+    await transition_ticket(c.var.ctx, id, parsed.data.to, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -815,13 +892,13 @@ app.post("/tickets/:id/status", async (c) => {
 // A board drop (the queue's Board view): status and position in one write —
 // `move_ticket`. Cookie-only, like every ticket route; agents move a ticket with
 // the MCP `transition_ticket`, which leaves it at the top of its new column.
-app.post("/tickets/:id/move", async (c) => {
+tenantRoot.post("/tickets/:id/move", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketMove.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await move_ticket(c.env.DB, id, parsed.data.to, parsed.data.after_id, c.get("principal").handle);
+    await move_ticket(c.var.ctx, id, parsed.data.to, parsed.data.after_id, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -829,26 +906,26 @@ app.post("/tickets/:id/move", async (c) => {
 });
 
 // Assignment is immediate and reversible, so it is a toggle with no confirm step.
-app.post("/tickets/:id/assignees", async (c) => {
+tenantRoot.post("/tickets/:id/assignees", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketAssigneeToggle.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await toggle_assignee(c.env.DB, id, parsed.data.login, parsed.data.on);
+    await toggle_assignee(c.var.ctx, id, parsed.data.login, parsed.data.on);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
   }
 });
 
-app.post("/tickets/:id/links", async (c) => {
+tenantRoot.post("/tickets/:id/links", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketLinkAdd.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await add_ticket_link(c.env.DB, id, parsed.data.raw, c.get("principal").handle);
+    await add_ticket_link(c.var.ctx, id, parsed.data.raw, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -857,12 +934,12 @@ app.post("/tickets/:id/links", async (c) => {
 
 // Detach one link. The link must be on :id — another ticket's link id is a 404.
 // A LOCKED link (a mirrored ticket's GitHub issue, 0032) is a 403, left in place.
-app.post("/tickets/:id/links/:linkId/remove", async (c) => {
+tenantRoot.post("/tickets/:id/links/:linkId/remove", async (c) => {
   const id = ticketId(c);
   const linkId = Number(c.req.param("linkId"));
   if (id === null || !Number.isInteger(linkId)) return c.json({ error: "invalid id" }, 400);
   try {
-    await remove_ticket_link(c.env.DB, id, linkId);
+    await remove_ticket_link(c.var.ctx, id, linkId);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -871,24 +948,24 @@ app.post("/tickets/:id/links/:linkId/remove", async (c) => {
 
 // Delete a ticket (session-gated, any member — no adminGate). A HARD delete; a
 // ticket mirrored from a GitHub issue is a 403, left in place. See delete_ticket.
-app.post("/tickets/:id/delete", async (c) => {
+tenantRoot.post("/tickets/:id/delete", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   try {
-    return c.json({ ok: true, ...(await delete_ticket(c.env.DB, id)) });
+    return c.json({ ok: true, ...(await delete_ticket(c.var.ctx, id)) });
   } catch (e) {
     return ticketFail(c, e);
   }
 });
 
 // sprint_id null = the backlog. An unknown sprint id is a 404, not a silent write.
-app.post("/tickets/:id/sprint", async (c) => {
+tenantRoot.post("/tickets/:id/sprint", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketSprintSet.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await set_ticket_sprint(c.env.DB, id, parsed.data.sprint_id);
+    await set_ticket_sprint(c.var.ctx, id, parsed.data.sprint_id);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -897,26 +974,26 @@ app.post("/tickets/:id/sprint", async (c) => {
 
 // Nest child_id under :id. Tickets nest ONE level — the four rejections live in
 // set_ticket_parent and come back as 409s with the database untouched.
-app.post("/tickets/:id/parent", async (c) => {
+tenantRoot.post("/tickets/:id/parent", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketParentSet.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await set_ticket_parent(c.env.DB, id, parsed.data.child_id);
+    await set_ticket_parent(c.var.ctx, id, parsed.data.child_id);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
   }
 });
 
-app.post("/tickets/:id/comment", async (c) => {
+tenantRoot.post("/tickets/:id/comment", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketCommentAdd.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    await add_ticket_comment(c.env.DB, id, parsed.data.body, c.get("principal").handle);
+    await add_ticket_comment(c.var.ctx, id, parsed.data.body, c.get("principal").handle);
     return ticketDetailResponse(c, id);
   } catch (e) {
     return ticketFail(c, e);
@@ -930,7 +1007,8 @@ app.post("/tickets/:id/comment", async (c) => {
 
 /** Map a SprintError onto its status (404 unknown / 409 rule / 400 payload). */
 const sprintFail = (c: Context<AppEnv>, e: unknown): Response => {
-  if (e instanceof SprintError) return c.json({ error: e.message }, SPRINT_ERROR_STATUS[e.code]);
+  // A `lead` that is not a member of this org is a PersonError (`requireMember`): the same 400 a bad assignee is.
+  if (e instanceof SprintError || e instanceof PersonError) return c.json({ error: e.message }, SPRINT_ERROR_STATUS[e.code]);
   throw e; // not ours — a real 500
 };
 
@@ -945,14 +1023,14 @@ const sprintId = (c: Context<AppEnv>): number | null => {
 // `start` / `due` must be real YYYY-MM-DD days (or blank) with start <= due — the
 // ONE rule in shared/sprints-core.ts; a refusal's `error` IS that rule's message
 // (the New sprint panel shows it), and nothing is written.
-app.post("/sprints", async (c) => {
+tenantRoot.post("/sprints", async (c) => {
   const parsed = SprintCreate.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     const custom = parsed.error.issues.find((i) => i.code === "custom")?.message;
     return c.json({ error: custom ?? "invalid payload", issues: parsed.error.issues }, 400);
   }
   try {
-    const sprint = await create_sprint(c.env.DB, parsed.data, c.get("principal").handle);
+    const sprint = await create_sprint(c.var.ctx, parsed.data, c.get("principal").handle);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return sprintFail(c, e);
@@ -962,25 +1040,25 @@ app.post("/sprints", async (c) => {
 // The roadmap's sprint list: each with its tickets-only progress, the separate
 // cached GitHub issue counts, and members.
 // Registered before /sprints/:id (Hono matches in registration order).
-app.get("/sprints", async (c) => c.json({ sprints: await list_sprints(c.env.DB) }));
+tenantRoot.get("/sprints", async (c) => c.json({ sprints: await list_sprints(c.var.ctx) }));
 
-app.get("/sprints/:id", async (c) => {
+tenantRoot.get("/sprints/:id", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
-  const sprint = await get_sprint(c.env.DB, id);
+  const sprint = await get_sprint(c.var.ctx, id);
   if (!sprint) return c.json({ error: "not found" }, 404);
   return c.json(sprint);
 });
 
 // The In Progress ↔ Upcoming toggle. `active` is derived from status, so this
 // writes status; clearing active on a DONE sprint is a no-op (see set_sprint_active).
-app.post("/sprints/:id/active", async (c) => {
+tenantRoot.post("/sprints/:id/active", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = SprintActiveSet.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    const sprint = await set_sprint_active(c.env.DB, id, parsed.data.active);
+    const sprint = await set_sprint_active(c.var.ctx, id, parsed.data.active);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return sprintFail(c, e);
@@ -990,13 +1068,13 @@ app.post("/sprints/:id/active", async (c) => {
 // A resource on the sprint itself, parsed by the SHARED link parser (`#214`
 // resolves the same way it does on a ticket). Answers with the full detail so
 // one round-trip repaints the Resources list.
-app.post("/sprints/:id/resources", async (c) => {
+tenantRoot.post("/sprints/:id/resources", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = SprintResourceAdd.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
-    const sprint = await add_sprint_resource(c.env.DB, id, parsed.data.raw);
+    const sprint = await add_sprint_resource(c.var.ctx, id, parsed.data.raw);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return sprintFail(c, e);
@@ -1005,11 +1083,11 @@ app.post("/sprints/:id/resources", async (c) => {
 
 // Delete a sprint (session-gated, any member — no adminGate). Its tickets move
 // to the backlog; see delete_sprint. Never an ingestion path.
-app.post("/sprints/:id/delete", async (c) => {
+tenantRoot.post("/sprints/:id/delete", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   try {
-    return c.json({ ok: true, ...(await delete_sprint(c.env.DB, id)) });
+    return c.json({ ok: true, ...(await delete_sprint(c.var.ctx, id)) });
   } catch (e) {
     return sprintFail(c, e);
   }
@@ -1017,13 +1095,30 @@ app.post("/sprints/:id/delete", async (c) => {
 
 // Human confirmation (session-gated): flip a live sprint to 'done'. Admin action
 // in the promote class — 'done' is never inferred from issues or tickets closing.
-app.post("/sprints/:id/complete", async (c) => {
+tenantRoot.post("/sprints/:id/complete", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
-    const sprint = await complete_sprint(c.env.DB, id);
+    const sprint = await complete_sprint(c.var.ctx, id);
     return c.json({ ok: true, sprint });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
+
+// ── Mounts ───────────────────────────────────────────────────────────────────
+// `/api/o/:slug/*` first — the org surface (me, settings, members, invites), org settings (integrations,
+// repos, environments; cookie only, secrets write-only and admin+), then every tenant route above.
+app.route("/api/o/:slug", orgTenantApp);
+app.route("/api/o/:slug", orgSettingsApp);
+app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
+// The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
+// their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name
+// twice. Nothing reads `:org` — `tenantGate` (mounted on `/api/o/:slug/*` above) resolved the org from
+// its own pattern, and a handler reads `c.var.ctx`.
+app.route("/api/o/:org", tenantRoot);
+app.route("/api/o/:org", tenantApi);
+// The cut-over aliases (§6.3): the same routes at their old paths, for the caller's only org.
+app.route("/", tenantRoot);
+app.route("/api", tenantApi);
+app.route("/", legacyOnly);

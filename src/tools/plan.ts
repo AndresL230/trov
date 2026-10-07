@@ -1,8 +1,8 @@
 import type { SprintRow, PlanRow } from "@shared/rows";
 import type { SprintView } from "@shared/sprints";
 import { planNarrativeProblem, normalizeSprintDate, sprintDateProblem, sprintDatesProblem } from "@shared/sprints-core";
-import { type DB, first, all, run, nowIso } from "../db";
-import { list_sprints, SprintError } from "./sprints";
+import { type TenantContext, first, all, run, nowIso } from "../data/sql";
+import { list_sprints, sprintLead, SprintError } from "./sprints";
 
 /**
  * One sprint as the ADMIN plan write receives it. This is the DTO vocabulary
@@ -61,7 +61,7 @@ const githubRefJson = (ref: number | number[] | null | undefined): string | null
  * an update omits `start`, so a new due cannot slip in before an existing start.
  */
 export async function write_plan(
-  db: DB,
+  ctx: TenantContext,
   input: PlanWrite,
   author: string
 ): Promise<{ version: number; sprints: SprintRow[] }> {
@@ -73,7 +73,8 @@ export async function write_plan(
     if (own) throw new SprintError("bad_request", `sprint "${sp.label}": ${own}`);
     let start = sp.start;
     if (sp.id !== undefined) {
-      const exists = await first<{ id: number; start_date: string | null }>(db, `SELECT id, start_date FROM sprints WHERE id = ?`, sp.id);
+      const exists = await first<{ id: number; start_date: string | null }>(
+        ctx, `SELECT id, start_date FROM sprints WHERE id = ? AND org_id = ?`, sp.id, ctx.orgId);
       if (!exists) throw new Error(`no such sprint: ${sp.id}`);
       if (start === undefined) start = exists.start_date;
     }
@@ -82,10 +83,14 @@ export async function write_plan(
     const order = sprintDatesProblem({ start, due: sp.due });
     if (order) throw new SprintError("bad_request", `sprint "${sp.label}": ${order}`);
   }
+  // Every named lead is a member of this org (./sprints.ts `sprintLead`) — checked for the WHOLE plan
+  // before the first write, and stored by canonical handle. Omitted stays unchanged; null clears.
+  const leads = new Map<PlanWrite["sprints"][number], string | null | undefined>();
+  for (const sp of input.sprints) leads.set(sp, await sprintLead(ctx, sp.lead));
 
-  await run(db, `INSERT OR IGNORE INTO plan (id, narrative, current_version) VALUES (1, '', 0)`);
+  await run(ctx, `INSERT OR IGNORE INTO plan (org_id, narrative, current_version) VALUES (?, '', 0)`, ctx.orgId);
 
-  const plan = await first<PlanRow>(db, `SELECT * FROM plan WHERE id = 1`);
+  const plan = await first<PlanRow>(ctx, `SELECT * FROM plan WHERE org_id = ?`, ctx.orgId);
   const version = (plan?.current_version ?? 0) + 1;
   const now = nowIso();
 
@@ -110,7 +115,7 @@ export async function write_plan(
         ["dates", sp.dates],
         ["start_date", sp.start === undefined ? undefined : normalizeSprintDate(sp.start)],
         ["urgency", sp.urgency],
-        ["lead", sp.lead],
+        ["lead", leads.get(sp)],
         ["domain", sp.domain],
         ["github_ref", sp.github_ref === undefined ? undefined : github_ref],
       ];
@@ -119,14 +124,15 @@ export async function write_plan(
         sets.push(`${col} = ?`);
         binds.push(value);
       }
-      const res = await run(db, `UPDATE sprints SET ${sets.join(", ")} WHERE id = ?`, ...binds, sp.id);
+      const res = await run(ctx, `UPDATE sprints SET ${sets.join(", ")} WHERE id = ? AND org_id = ?`, ...binds, sp.id, ctx.orgId);
       if ((res.meta.changes ?? 0) === 0) throw new Error(`no such sprint: ${sp.id}`);
     } else {
       await run(
-        db,
-        `INSERT INTO sprints (title, description, summary, phase, dates, start_date, target_date, status, urgency, lead, domain,
+        ctx,
+        `INSERT INTO sprints (org_id, title, description, summary, phase, dates, start_date, target_date, status, urgency, lead, domain,
                               github_ref, created_at, created_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ctx.orgId,
         sp.label,
         sp.description ?? null,
         sp.summary ?? null,
@@ -136,7 +142,7 @@ export async function write_plan(
         normalizeSprintDate(sp.due) ?? "",
         sp.status,
         sp.urgency ?? "normal",
-        sp.lead ?? null,
+        leads.get(sp) ?? null,
         sp.domain ?? null,
         github_ref,
         now,
@@ -146,19 +152,21 @@ export async function write_plan(
     }
   }
 
-  const sprints = await all<SprintRow>(db, `SELECT * FROM sprints ORDER BY target_date ASC, id ASC`);
+  const sprints = await all<SprintRow>(ctx, `SELECT * FROM sprints WHERE org_id = ? ORDER BY target_date ASC, id ASC`, ctx.orgId);
 
   await run(
-    db,
-    `UPDATE plan SET narrative = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE id = 1`,
+    ctx,
+    `UPDATE plan SET narrative = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE org_id = ?`,
     narrative,
     version,
     now,
-    author
+    author,
+    ctx.orgId
   );
   await run(
-    db,
-    `INSERT INTO plan_versions (version, narrative, sprints_json, created_at, created_by) VALUES (?, ?, ?, ?, ?)`,
+    ctx,
+    `INSERT INTO plan_versions (org_id, version, narrative, sprints_json, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
+    ctx.orgId,
     version,
     narrative,
     JSON.stringify(sprints),
@@ -181,9 +189,9 @@ export async function write_plan(
  * sprint's real distinct assignees.
  * One read model, shared by GET /roadmap, MCP get_roadmap and GET /sprints.
  */
-export async function get_plan(db: DB): Promise<PlanView> {
-  const plan = await first<PlanRow>(db, `SELECT * FROM plan WHERE id = 1`);
-  const sprints = await list_sprints(db);
+export async function get_plan(ctx: TenantContext): Promise<PlanView> {
+  const plan = await first<PlanRow>(ctx, `SELECT * FROM plan WHERE org_id = ?`, ctx.orgId);
+  const sprints = await list_sprints(ctx);
 
   return {
     narrative: plan?.narrative ?? "",

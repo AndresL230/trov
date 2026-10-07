@@ -1,29 +1,35 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { all, first, run, nowIso } from "../src/db";
+import { all, first, run, nowIso } from "./helpers/db";
 import { create_ticket, transition_ticket } from "../src/tools/tickets";
 import { mirrorIssue } from "../src/tools/ticket-mirror";
 import { getMyWork } from "../src/tools/mywork";
 import type { TicketDetail } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
 import { seedPerson } from "./helpers/persons";
+import { bearerCtx, systemCtx, platformCtx } from "./helpers/tenant";
+import { addOrgRepo } from "./helpers/org-config";
+
+// A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
+// so the suite's org has SaplingLearn's connected, as 0042_organizations seeds it in production.
+beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 
 // Phase 2: the ticket WRITE tools, driven through the REAL registered closures
 // over an in-memory transport — never the writers directly, so a missing or
 // renamed registration is a failure rather than a green.
 //
 // The property this file exists for: an agent writes only inside its principal's
-// own lane, and a refusal writes NOTHING. ADMIN_LOGINS binds only "admin-user"
-// (vitest.config.ts), so andres/beatrix are plain principals.
+// own lane, and a refusal writes NOTHING. Only "admin-user" is bound as an org admin
+// (see the client below), so andres/beatrix are plain principals.
 
 const ISSUE_214 = "https://github.com/SaplingLearn/sapling/issues/214";
 
 async function withClient<T>(handle: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle, handle === "admin-user" ? "admin" : undefined));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -74,7 +80,7 @@ async function seedSprint(title: string): Promise<number> {
 
 async function ticketFor(requester: string, assignees: string[], title = "a ticket"): Promise<number> {
   for (const h of [requester, ...assignees]) await seedPerson(h);
-  return create_ticket(env.DB, { title, body: "", category: "other", priority: "normal", assignees }, requester);
+  return create_ticket(systemCtx(), { title, body: "", category: "other", priority: "normal", assignees }, requester);
 }
 
 /** Everything a ticket write could touch — for the untouched-on-refusal assertions. */
@@ -392,7 +398,7 @@ describe("assign_ticket — issue #90: admin, requester or current assignee", ()
     await seedPerson("admin-user");
     await seedPerson("meilin", { github: false }); // a Google-only teammate GitHub cannot reach
     // An unmapped author files as the system person, with nobody on it.
-    expect(await mirrorIssue(env.DB, "SaplingLearn/sapling", {
+    expect(await mirrorIssue(systemCtx(), platformCtx(), "SaplingLearn/sapling", {
       action: "opened",
       repository: { full_name: "SaplingLearn/sapling" },
       issue: {
@@ -412,14 +418,14 @@ describe("assign_ticket — issue #90: admin, requester or current assignee", ()
     expect(t.assignees).toEqual(["meilin"]);
     expect(t.status).toBe("submitted");
 
-    const mw = await getMyWork(env.DB, "meilin");
+    const mw = await getMyWork(systemCtx(), "meilin");
     expect(mw.tickets.map((x) => x.id)).toContain(id);
     expect(mw.ticketsTotal).toBe(1);
   });
 
   it("leaves a resolved ticket resolved", async () => {
     const id = await ticketFor("andres", ["andres"]);
-    await transition_ticket(env.DB, id, "done", "andres");
+    await transition_ticket(systemCtx(), id, "done", "andres");
     await seedPerson("beatrix");
     expect(ok<TicketDetail>(await callTool("andres", "assign_ticket", { id, login: "beatrix", on: true })).status).toBe("done");
   });

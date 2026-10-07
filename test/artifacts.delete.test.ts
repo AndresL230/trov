@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { create_ticket } from "../src/tools/tickets";
 import { deletePage, restorePage } from "../src/tools/artifacts";
 import { renamePerson } from "../src/auth/persons";
@@ -18,16 +18,17 @@ import {
   MCP_NOT_FOUND, NOT_FOUND, cookieFor, createBinary, createText, get, jsonInit, mcpCall, mcpToolNames, put, seedPerson, uniqueBytes,
   sha256Hex, uploadUrl, wf,
 } from "./helpers/artifacts";
+import { systemCtx, platformCtx } from "./helpers/tenant";
 
 const AUTHOR = "adel-author";
 const OTHER = "adel-other";
-const ADMIN = "admin-user"; // ADMIN_LOGINS in vitest.config.ts
+const ADMIN = "admin-user"; // FIXTURE_ADMIN: seeded as an org admin (test/helpers/persons.ts)
 const SLUG = "zebra-page";
 
 let tid = 0;
 beforeEach(async () => {
   for (const h of [AUTHOR, OTHER, ADMIN]) await seedPerson(h);
-  tid = await create_ticket(env.DB, { title: "Zebra ticket", body: "", category: "other", priority: "normal", assignees: [] }, AUTHOR);
+  tid = await create_ticket(systemCtx(), { title: "Zebra ticket", body: "", category: "other", priority: "normal", assignees: [] }, AUTHOR);
   const c = await cookieFor(AUTHOR);
   await createText(c, { title: "Zebra page", content: "# Zebra\n\nstripes quagga", summary: "quagga", links: [{ target_type: "ticket", target_ref: String(tid) }] });
   await wf(`/api/artifacts/${SLUG}/versions`, jsonInit("POST", { content: "# Zebra\n\nstripes quagga v2", summary: "quagga two" }, c)); // v2 publishes it
@@ -138,7 +139,7 @@ describe("POST /api/artifacts/:slug/delete", () => {
   });
 
   it("the author check is case-insensitive, like every handle", async () => {
-    await expect(deletePage(env.DB, SLUG, AUTHOR.toUpperCase(), false)).resolves.toEqual({ slug: SLUG, title: "Zebra page", versions: 2 });
+    await expect(deletePage(systemCtx(), SLUG, AUTHOR.toUpperCase(), false)).resolves.toEqual({ slug: SLUG, title: "Zebra page", versions: 2 });
   });
 
   it("private pages keep their rule: only the author sees it, so only the author can delete it — an admin gets the plain 404", async () => {
@@ -238,7 +239,7 @@ describe("POST /api/artifacts/:slug/restore", () => {
     const res = await restore(AUTHOR);
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ error: "conflict", message: "artifact is not deleted" });
-    await expect(restorePage(env.DB, "no-such-page", AUTHOR, false)).rejects.toMatchObject({ code: "not_found" });
+    await expect(restorePage(systemCtx(), "no-such-page", AUTHOR, false)).rejects.toMatchObject({ code: "not_found" });
   });
 });
 
@@ -259,7 +260,7 @@ describe("a deleted page's slug stays reserved", () => {
 describe("a handle rename rewrites deleted_by", () => {
   it("deleted_by follows the person, and they can still restore", async () => {
     await del(AUTHOR);
-    expect(await renamePerson(env.DB, AUTHOR, "adel-renamed")).toEqual({ ok: true });
+    expect(await renamePerson(platformCtx(), AUTHOR, "adel-renamed")).toEqual({ ok: true });
     expect(await first(env.DB, `SELECT author_id, deleted_by FROM artifact_pages WHERE slug = ?`, SLUG)).toEqual({ author_id: "adel-renamed", deleted_by: "adel-renamed" });
     expect((await restore("adel-renamed")).status).toBe(200);
   });

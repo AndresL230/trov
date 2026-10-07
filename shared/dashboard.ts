@@ -44,7 +44,7 @@ export interface MyWorkTodo {
  * tickets never reach My Work.
  */
 export interface MyWorkTicket {
-  id: number;
+  id: number; // the ticket's per-org NUMBER (`#12`) — the wire's `id` everywhere; the row id never leaves the server
   title: string;
   body: string; // the ticket's description, rendered as escaped prose (never markdown)
   category: TicketCategory;

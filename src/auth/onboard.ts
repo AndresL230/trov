@@ -1,21 +1,23 @@
-import type { DB } from "../db";
-import type { IdentityProvider } from "@shared/rows";
+import { type PlatformContext, first } from "../data/platform-sql";
+import type { IdentityProvider, IdentityRow } from "@shared/rows";
 import { hmacSeal, hmacUnseal, b64uEncode, b64uDecode } from "./crypto";
-import { findIdentity, findPersonByEmail, linkIdentity, listIdentities, recordSignIn, isValidHandle } from "./persons";
-import { findLiveInvite } from "./invites";
+import { liveLegacyInvite } from "../data/legacy";
+import { findIdentity, findPersonByVerifiedEmail, linkIdentity, listIdentities, recordSignIn, recordVerifiedEmail, bindProviderUid, isValidHandle } from "./persons";
 
-export interface ProviderProfile { provider: IdentityProvider; subject: string; label: string; email: string | null; name: string | null; avatar_url: string | null }
+// `uid` is the provider's IMMUTABLE account id where `subject` is not one already: GitHub's numeric id
+// (its `subject` is the login, which can be renamed away and re-registered — 0042_organizations). Absent for Google.
+export interface ProviderProfile { provider: IdentityProvider; subject: string; label: string; email: string | null; name: string | null; avatar_url: string | null; uid?: string | null }
 // `exp` is added internally by sealOnboard (not supplied by callers building a payload
 // to hand to it) and is present once a sealed cookie has been opened by openOnboard.
+// `invite_email` is set when onboarding REQUIRES a pending invite for that address — a Google sign-in
+// (below); it is null for GitHub, which needs none.
 export interface OnboardPayload extends ProviderProfile { suggested_handle: string; invite_email: string | null; exp?: number }
 export const ONBOARD_COOKIE = "onboard";
-// The sealed cookie deliberately carries the provider gate result (GitHub org
-// membership checked in /auth/callback; the Google admin invite checked in
-// completeSignIn) forward for its lifetime below. It is NOT re-checked for GitHub —
-// the callback's org-membership check is the only gate a GitHub onboard gets. The
-// invite IS re-checked for Google, in POST /auth/onboard, because an invite can be
-// revoked within the 10-minute window and the person row must not be created for a
-// no-longer-invited address.
+// The sealed cookie carries the provider gate result forward for its lifetime below. A GitHub
+// account has no gate (§5.1): anyone with one reaches onboarding. A Google account's gate — a
+// pending invite for its verified email, checked in completeSignIn — IS re-checked in
+// POST /auth/onboard, because an invite can be revoked within the 10-minute window and the
+// person row must not be created for a no-longer-invited address.
 export const ONBOARD_TTL_S = 600;
 
 export type ForkResult = { kind: "session"; handle: string } | { kind: "onboard"; payload: OnboardPayload } | { kind: "denied" };
@@ -53,36 +55,68 @@ export async function openOnboard(sealed: string, secret: string, now: () => num
   return o as unknown as OnboardPayload;
 }
 
+/** The identity row was bound to one provider account (0042_organizations) and this sign-in comes from ANOTHER with the
+ *  same login. Unbound rows (never signed in since 0042_organizations) and providers with no `uid` never mismatch. */
+const uidMismatch = (known: IdentityRow, profile: ProviderProfile): boolean =>
+  !!known.provider_uid && !!profile.uid && known.provider_uid !== profile.uid;
+
 /**
- * The fork both callbacks run after their provider gate passed.
- * 1 known identity → session. 2 verified email matches a person → link + session.
- * 3 live invite (Google) / org member (GitHub) → onboard. 4 otherwise → denied.
+ * Is there a PENDING invite addressed to this (provider-verified) email — an `org_invites` row of any
+ * org that is not suspended, or a live legacy invite (org #1's old `invites` table)? This is what lets a
+ * Google account reach onboarding (Q1). It grants nothing by itself: becoming a member is the accept
+ * step (or, for a legacy invite, `consumeLegacyInvite`).
+ */
+export async function hasPendingEmailInvite(p: PlatformContext, email: string): Promise<boolean> {
+  const org = await first(p,
+    `SELECT 1 AS x FROM org_invites i JOIN orgs o ON o.id = i.org_id
+      WHERE i.email = ? AND i.status = 'pending' AND o.suspended_at IS NULL LIMIT 1`, email.trim().toLowerCase());
+  // MT: the legacy table is read until Phase 7 moves what is left of it onto `org_invites`.
+  return org !== null || (await liveLegacyInvite(p, email)) !== null;
+}
+
+/**
+ * The fork both callbacks run once the provider has named the account (§5.1) — sign-in is tied to no
+ * GitHub org:
+ * 1 known identity → session.
+ * 2 the provider-verified email is another identity's verified email → link + session.
+ * 3 GitHub → onboard, always. Google → onboard only with a pending invite for the verified email.
+ * 4 otherwise (a Google account nobody invited) → denied.
+ * Onboarding creates a PERSON, never a membership: a new person is in no org until they accept an invite
+ * or create one (the one exception is a legacy invite — POST /auth/onboard).
  *
- * Contract: `p.email` MUST already be provider-verified by the CALLER before this
+ * Contract: `profile.email` MUST already be provider-verified by the CALLER before this
  * runs (GitHub: the primary + verified address from `GET /user/emails`; Google:
  * the ID token claim with `email_verified === true`) or passed as `null` — branch 2
  * links a new identity onto whichever person owns that address, so an unverified
  * email here would let an attacker hijack someone else's account by claiming their
- * address.
+ * address. For the same reason branch 2 matches `identities.verified_email` — what a
+ * provider asserted at an earlier sign-in — and never `persons.email`, which is editable.
  */
-export async function completeSignIn(db: DB, p: ProviderProfile): Promise<ForkResult> {
-  const known = await findIdentity(db, p.provider, p.subject);
+export async function completeSignIn(p: PlatformContext, profile: ProviderProfile): Promise<ForkResult> {
+  const known = await findIdentity(p, profile.provider, profile.subject);
   if (known) {
-    await recordSignIn(db, known.person, { provider: p.provider, avatar_url: p.avatar_url, email: p.email });
+    // The login is on file — but is it the same ACCOUNT? A GitHub login that was renamed away and
+    // re-registered by someone else must not sign in as the person the row names (0042_organizations).
+    if (uidMismatch(known, profile)) return { kind: "denied" };
+    await bindProviderUid(p, profile.provider, profile.subject, profile.uid);
+    await recordSignIn(p, known.person, { provider: profile.provider, avatar_url: profile.avatar_url, email: profile.email });
+    await recordVerifiedEmail(p, profile.provider, profile.subject, profile.email);
     return { kind: "session", handle: known.person };
   }
-  if (p.email) {
-    const byEmail = await findPersonByEmail(db, p.email);
+  if (profile.email) {
+    const byEmail = await findPersonByVerifiedEmail(p, profile.email);
     if (byEmail) {
-      await linkIdentity(db, { provider: p.provider, subject: p.subject, label: p.label, person: byEmail.handle, linkedBy: byEmail.handle });
-      await recordSignIn(db, byEmail.handle, { provider: p.provider, avatar_url: p.avatar_url, email: p.email });
+      await linkIdentity(p, { provider: profile.provider, subject: profile.subject, label: profile.label, person: byEmail.handle, linkedBy: byEmail.handle, verifiedEmail: profile.email, providerUid: profile.uid });
+      await recordSignIn(p, byEmail.handle, { provider: profile.provider, avatar_url: profile.avatar_url, email: profile.email });
       return { kind: "session", handle: byEmail.handle };
     }
   }
-  const invite = p.email ? await findLiveInvite(db, p.email) : null;
-  if (p.provider === "github" || invite) {
-    return { kind: "onboard", payload: { ...p, name: p.name ?? invite?.name ?? null, suggested_handle: suggestHandle(p), invite_email: invite?.email ?? null } };
-  }
+  // MT: a legacy invite still seeds the name the admin typed for the invitee.
+  const legacy = profile.email ? await liveLegacyInvite(p, profile.email) : null;
+  const payload = (inviteEmail: string | null): OnboardPayload =>
+    ({ ...profile, name: profile.name ?? legacy?.name ?? null, suggested_handle: suggestHandle(profile), invite_email: inviteEmail });
+  if (profile.provider === "github") return { kind: "onboard", payload: payload(null) };
+  if (profile.email && (legacy || (await hasPendingEmailInvite(p, profile.email)))) return { kind: "onboard", payload: payload(profile.email.trim().toLowerCase()) };
   return { kind: "denied" };
 }
 
@@ -92,11 +126,11 @@ export async function completeSignIn(db: DB, p: ProviderProfile): Promise<ForkRe
  * gets at most one github + one google identity — `unlinkIdentity` couldn't otherwise
  * disambiguate which one to remove).
  */
-export async function linkSignIn(db: DB, handle: string, p: ProviderProfile): Promise<"linked" | "belongs_to_other" | "provider_already_linked"> {
-  const known = await findIdentity(db, p.provider, p.subject);
-  if (known) return known.person.toLowerCase() === handle.toLowerCase() ? "linked" : "belongs_to_other";
-  const mine = await listIdentities(db, handle);
-  if (mine.some((i) => i.provider === p.provider)) return "provider_already_linked";
-  await linkIdentity(db, { provider: p.provider, subject: p.subject, label: p.label, person: handle, linkedBy: handle });
+export async function linkSignIn(p: PlatformContext, handle: string, profile: ProviderProfile): Promise<"linked" | "belongs_to_other" | "provider_already_linked"> {
+  const known = await findIdentity(p, profile.provider, profile.subject);
+  if (known) return known.person.toLowerCase() === handle.toLowerCase() && !uidMismatch(known, profile) ? "linked" : "belongs_to_other";
+  const mine = await listIdentities(p, handle);
+  if (mine.some((i) => i.provider === profile.provider)) return "provider_already_linked";
+  await linkIdentity(p, { provider: profile.provider, subject: profile.subject, label: profile.label, person: handle, linkedBy: handle, verifiedEmail: profile.email, providerUid: profile.uid });
   return "linked";
 }

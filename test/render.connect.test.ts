@@ -14,7 +14,7 @@ import { esc } from "../web/src/ui";
 import css from "../web/src/trov.css?raw";
 
 const URL = "https://trov.example.com/mcp";
-const ME = { handle: "alice", name: null, avatar_url: null, color: "moss" as const, identities: [], org: "SaplingLearn", admin: false };
+const ME = { handle: "alice", name: null, avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 };
 
 describe("browserConnectCommand", () => {
   it("adds the server with no header — Claude Code signs in through the browser", () => {
@@ -50,7 +50,7 @@ describe("Get Started guide — Connect your agent", () => {
 });
 
 describe("grantListBody", () => {
-  const grant = { id: 7, client_name: "Claude <Code>", created_at: "2026-09-20T00:00:00.000Z", last_used_at: null };
+  const grant = { id: 7, client_name: "Claude <Code>", created_at: "2026-09-20T00:00:00.000Z", last_used_at: null, org: { slug: "saplinglearn", name: "SaplingLearn" } };
   it("empty, loading and error states", () => {
     expect(grantListBody({ grants: { status: "ok", data: [] }, grantRevokeArm: null })).toContain("No apps connected");
     expect(grantListBody({ grants: { status: "loading", data: [] }, grantRevokeArm: null })).toContain("Loading");
@@ -100,7 +100,8 @@ describe("Settings › MCP access — the browser sign-in, then Connected apps",
       at("Sign Claude Code in with your browser"),
       at("Install the Trov plugin"),
       at("/mcp"),
-      at("Click <strong"),
+      at("Pick the organization to connect"),
+      at("A connection reaches one organization"),
       at('data-list="grants"'),
     ];
     expect(order).toEqual([...order].sort((a, b) => a - b));
@@ -230,7 +231,7 @@ describe("Settings › Appearance — three theme cards in one row", () => {
     view: "app" as const,
     screen: "settings" as const,
     theme,
-    me: { handle: "alice", name: null, avatar_url: null, color: "moss" as const, identities: [], org: "SaplingLearn", admin: false },
+    me: { handle: "alice", name: null, avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
   });
   const appearance = (html: string) => html.match(/<section class="[^"]*cnpy-set-appear[\s\S]*?<\/section>/)?.[0] ?? "";
 

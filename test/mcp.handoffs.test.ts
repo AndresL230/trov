@@ -6,17 +6,18 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { buildSeedStatements } from "../scripts/seed/build.mjs";
 import handoffs from "../fixtures/dev/handoffs.json";
 import prompts from "../fixtures/dev/prompts.json";
+import { bearerCtx } from "./helpers/tenant";
 
 beforeEach(async () => {
   for (const stmt of buildSeedStatements({ handoffs, prompts })) await env.DB.prepare(stmt).run();
 });
 
 async function call(handle: string, name: string, args: Record<string, unknown> = {}): Promise<{ text: string; isError?: boolean }> {
-  const server = buildTrovMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://trov.example/" } as Env, { handle });
+  const server = buildTrovMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://trov.example/" } as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);

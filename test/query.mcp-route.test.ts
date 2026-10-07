@@ -8,13 +8,14 @@ import { propose_doc_update, promote_doc } from "../src/tools/writes";
 import type { QueryResult } from "@shared/contract";
 import { cookieFor as authedCookie, seedPerson } from "./helpers/persons";
 import { create_ticket } from "../src/tools/tickets";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const AUTHOR = "agent";
 
 // Drive the ACTUAL registered MCP `query` tool through an in-memory MCP
 // client/server pair — the same closures production runs, not a re-impl.
 async function callQuery(args: Record<string, unknown>): Promise<QueryResult> {
-  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: AUTHOR });
+  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, await bearerCtx(AUTHOR));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -40,8 +41,8 @@ async function searchRoute(qs: string): Promise<QueryResult> {
 
 describe("registered MCP query tool + live GET /search route", () => {
   it("the MCP query tool returns the assembled QueryResult envelope from the real registration", async () => {
-    await propose_doc_update(env.DB, { slug: "live-doc", section: "reference", title: "Live Doc", body: "the promoted falcon body", change_summary: "s", confidence: "high" }, AUTHOR);
-    await promote_doc(env.DB, "live-doc", 1, AUTHOR);
+    await propose_doc_update(systemCtx(), { slug: "live-doc", section: "reference", title: "Live Doc", body: "the promoted falcon body", change_summary: "s", confidence: "high" }, AUTHOR);
+    await promote_doc(systemCtx(), "live-doc", 1, AUTHOR);
 
     const r = await callQuery({ q: "falcon" });
     expect(r.meta.engine).toBe("fts5");
@@ -52,7 +53,7 @@ describe("registered MCP query tool + live GET /search route", () => {
 
   it("MCP surfaces staged (agent default include_staged:true); /search does not (human default false)", async () => {
     // An UNPROMOTED doc — found by title (its live body is empty until promotion).
-    await propose_doc_update(env.DB, { slug: "secret-plan", section: "reference", title: "Pelican Plan", body: "the unpromoted pelican details", change_summary: "s", confidence: "high" }, AUTHOR);
+    await propose_doc_update(systemCtx(), { slug: "secret-plan", section: "reference", title: "Pelican Plan", body: "the unpromoted pelican details", change_summary: "s", confidence: "high" }, AUTHOR);
 
     // Agent via the registered MCP tool: sees it, flagged unpromoted, staged body reached.
     const mcp = await callQuery({ q: "pelican" });
@@ -67,8 +68,8 @@ describe("registered MCP query tool + live GET /search route", () => {
   });
 
   it("/search returns { result } and a promoted doc is visible to humans", async () => {
-    await propose_doc_update(env.DB, { slug: "human-doc", section: "reference", title: "Human Doc", body: "the heron is promoted", change_summary: "s", confidence: "high" }, AUTHOR);
-    await promote_doc(env.DB, "human-doc", 1, AUTHOR);
+    await propose_doc_update(systemCtx(), { slug: "human-doc", section: "reference", title: "Human Doc", body: "the heron is promoted", change_summary: "s", confidence: "high" }, AUTHOR);
+    await promote_doc(systemCtx(), "human-doc", 1, AUTHOR);
 
     const result = await searchRoute("q=heron");
     expect(result.meta.engine).toBe("fts5");
@@ -78,8 +79,8 @@ describe("registered MCP query tool + live GET /search route", () => {
   });
 
   it("/search honors the types csv filter", async () => {
-    await propose_doc_update(env.DB, { slug: "owl-doc", section: "reference", title: "Owl Doc", body: "owl content", change_summary: "s", confidence: "high" }, AUTHOR);
-    await promote_doc(env.DB, "owl-doc", 1, AUTHOR);
+    await propose_doc_update(systemCtx(), { slug: "owl-doc", section: "reference", title: "Owl Doc", body: "owl content", change_summary: "s", confidence: "high" }, AUTHOR);
+    await promote_doc(systemCtx(), "owl-doc", 1, AUTHOR);
     await env.DB.prepare(`INSERT INTO feed (author, summary, body, artifacts, created_at) VALUES (?, 'owl feed', 'owl content', NULL, ?)`)
       .bind(AUTHOR, "2026-01-01T00:00:00Z").run();
 
@@ -91,13 +92,13 @@ describe("registered MCP query tool + live GET /search route", () => {
   it("tickets are not a query type: the MCP tool schema has no `ticket`, and /search never returns one", async () => {
     await seedPerson(AUTHOR);
     const id = await create_ticket(
-      env.DB,
+      systemCtx(),
       { title: "Kestrel import crashes", body: "kestrel payloads over 1MB", category: "bug", priority: "high", assignees: [] },
       AUTHOR
     );
 
     // The registered MCP tool's `types` enum lists exactly four types — no ticket.
-    const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: AUTHOR });
+    const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, await bearerCtx(AUTHOR));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);

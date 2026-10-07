@@ -8,16 +8,17 @@ import { app } from "../src/routes";
 import worker from "../src/index";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { seedNotificationPolicy } from "../src/notifications/policy";
 import { unsubscribeToken } from "../src/notifications/unsubscribe";
 import { seedPerson } from "./helpers/persons";
 import type { NotificationPolicyRow, NotificationPrefRow, NotificationSettingsRow, PersonRow } from "@shared/rows";
 import type { Env } from "../src/env";
 
+import { platformCtx, systemCtx } from "./helpers/tenant";
 async function cookieFor(login: string, email: string | null = "me@example.com"): Promise<string> {
   await seedPerson(login, { email });
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 const json = (method: string, body: unknown, cookie: string): RequestInit => ({
@@ -35,7 +36,7 @@ describe("GET/PUT /api/notifications/prefs", () => {
   });
 
   it("GET returns the address, the flag, and one resolved row per ENABLED kind, hiding policy-disabled kinds", async () => {
-    await seedNotificationPolicy(env.DB);
+    await seedNotificationPolicy(systemCtx());
     await run(env.DB, `UPDATE notification_policy SET enabled = 0 WHERE kind = 'review_queue'`);
     await run(env.DB, `UPDATE notification_policy SET default_cadence = 'daily' WHERE kind = 'roadmap_plan'`);
     const cookie = await cookieFor("u1");
@@ -97,19 +98,19 @@ describe("GET/PUT /api/notifications/prefs", () => {
     expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u2'`))!.email).toBe("other@example.com");
   });
 
-  it("PUT refuses an address already on another person's row (409, nothing written), but allows re-saving your own", async () => {
-    const cookie1 = await cookieFor("u1", "taken@example.com");
+  it("PUT does not say whether an address is on someone else's row: taken and free answer alike, and both are saved", async () => {
+    await cookieFor("u1", "taken@example.com");
     const cookie2 = await cookieFor("u2", "u2@example.com");
-    let res = await app.request("/api/notifications/prefs", json("PUT", { email: "taken@example.com" }, cookie2), env);
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "email_in_use" });
-    expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u2'`))!.email).toBe("u2@example.com");
-    // Case-insensitive match too.
-    res = await app.request("/api/notifications/prefs", json("PUT", { email: "TAKEN@example.com" }, cookie2), env);
-    expect(res.status).toBe(409);
-    // The owner can re-save their own address.
-    res = await app.request("/api/notifications/prefs", json("PUT", { email: "taken@example.com" }, cookie1), env);
-    expect(res.status).toBe(200);
+    const put = async (email: string) => {
+      const res = await app.request("/api/notifications/prefs", json("PUT", { email }, cookie2), env);
+      return { status: res.status, keys: Object.keys((await res.json()) as object).sort(), headers: [...res.headers.keys()].sort() };
+    };
+    const taken = await put("TAKEN@example.com");
+    expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u2'`))!.email).toBe("TAKEN@example.com");
+    const free = await put("nobody-has-this@example.com");
+    expect(taken).toEqual(free);
+    expect(taken).toMatchObject({ status: 200, keys: ["email", "kinds", "unsubscribed"] });
+    // The other person's row is theirs, untouched: the address is where mail goes, not who someone is.
     expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u1'`))!.email).toBe("taken@example.com");
   });
 });
@@ -153,9 +154,12 @@ describe("admin routes: policy, settings, outbox, user email", () => {
     let res = await app.request("/api/notifications/settings", { headers: { cookie } }, env);
     expect(await res.json()).toMatchObject({ send_hour: 8, timezone: "America/New_York" });
 
-    res = await app.request("/api/notifications/settings", json("PUT", { send_hour: 7, timezone: "Europe/Berlin", from_address: "Trov <digest@mail.example>" }, cookie), env);
+    res = await app.request("/api/notifications/settings", json("PUT", { send_hour: 7, timezone: "Europe/Berlin", from_address: "Sapling Digest <hello@trov.dev>" }, cookie), env);
     expect(res.status).toBe(200);
-    expect(await first<NotificationSettingsRow>(env.DB, `SELECT * FROM notification_settings WHERE id = 1`)).toMatchObject({ send_hour: 7, timezone: "Europe/Berlin", from_address: "Trov <digest@mail.example>" });
+    expect(await first<NotificationSettingsRow>(env.DB, `SELECT * FROM notification_settings WHERE org_id = 'org_saplinglearn'`)).toMatchObject({ send_hour: 7, timezone: "Europe/Berlin", from_address: "Sapling Digest <hello@trov.dev>" });
+    // The address is the platform's: another one is refused, and nothing is written (test/abuse-limits.test.ts has the rest).
+    expect((await app.request("/api/notifications/settings", json("PUT", { from_address: "Trov <digest@mail.example>" }, cookie), env)).status).toBe(400);
+    expect((await first<NotificationSettingsRow>(env.DB, `SELECT * FROM notification_settings WHERE org_id = 'org_saplinglearn'`))!.from_address).toBe("Sapling Digest <hello@trov.dev>");
 
     expect((await app.request("/api/notifications/settings", json("PUT", { send_hour: 24 }, cookie), env)).status).toBe(400);
     expect((await app.request("/api/notifications/settings", json("PUT", { timezone: "Mars/Olympus" }, cookie), env)).status).toBe(400);
@@ -181,14 +185,14 @@ describe("admin routes: policy, settings, outbox, user email", () => {
     expect((await app.request("/api/notifications/persons/ghost", json("PUT", { email: "x@example.com" }, cookie), env)).status).toBe(404);
   });
 
-  it("PUT persons/:handle refuses an address already on a different person's row (409, nothing written)", async () => {
+  it("PUT persons/:handle does not say whether an address is on a different person's row either", async () => {
     const cookie = await cookieFor("admin-user");
     await cookieFor("u1", "taken3@example.com");
     await cookieFor("u2", null);
     const res = await app.request("/api/notifications/persons/u2", json("PUT", { email: "taken3@example.com" }, cookie), env);
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "email_in_use" });
-    expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u2'`))!.email).toBeNull();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, handle: "u2", email: "taken3@example.com" });
+    expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'u1'`))!.email).toBe("taken3@example.com");
   });
 });
 

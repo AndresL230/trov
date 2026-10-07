@@ -21,17 +21,28 @@ export default defineConfig({
       remoteBindings: false,
       miniflare: {
         // exposed to tests as env.TEST_MIGRATIONS; applied in the setup file
+        // A second, EMPTY database for the multitenancy migration tests (test/migrations.multitenancy.test.ts):
+        // they build a 0036 + 0041 database with data, apply the organizations migration and its rollback, and
+        // compare — never touching DB, which the setup file has already migrated. DB is restated so this list
+        // cannot drop it.
+        d1Databases: { DB: "80386dc4-deef-461d-932a-0670d22ddf83", MT_DB: "multitenancy-migration-test" },
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations(
             path.join(import.meta.dirname, "migrations")
           ),
+          // The generated rollback (scripts/mt/build-rollback.py — one file), split into statements the same way.
+          MT_ROLLBACK: await readD1Migrations(path.join(import.meta.dirname, "scripts", "mt", "rollback")),
           COOKIE_SECRET: "test-cookie-secret",
           GITHUB_CLIENT_ID: "test-client-id",
           GITHUB_CLIENT_SECRET: "test-client-secret",
           GOOGLE_CLIENT_ID: "test-google-client-id",
           GOOGLE_CLIENT_SECRET: "test-google-secret",
           GITHUB_WEBHOOK_SECRET: "test-webhook-secret",
-          ADMIN_LOGINS: "admin-user", // the admin allowlist the admin-gated route + isAdmin() test against
+          // SaplingLearn's repository and environments as they were when they lived in wrangler.toml [vars].
+          // The Worker reads neither any more (`org_repos` / `org_environments`); the one-org suites copy
+          // them into its rows (test/helpers/org-config.ts `syncOrgConfig`).
+          GITHUB_REPO: "SaplingLearn/sapling",
+          REPO_ENVIRONMENTS: "[{\"key\":\"staging\",\"label\":\"staging\",\"note\":\"main\",\"branch\":\"main\",\"railwayEnv\":\"Sapling / staging\",\"worker\":\"frontend-staging\",\"workerCheck\":\"Workers Builds: frontend-staging\",\"frontendUrl\":\"https://staging.saplinglearn.com\",\"apiUrl\":\"https://api.staging.saplinglearn.com\",\"healthPath\":\"/api/health\",\"railwayEnvironmentId\":\"76bb36e5-cf12-4b1e-b47f-d276a56c3b85\",\"railwayServiceId\":\"c67bfc38-32a9-41a7-9440-f033d255af30\"},{\"key\":\"production\",\"label\":\"production\",\"note\":\"production\",\"branch\":\"production\",\"railwayEnv\":\"Sapling / production\",\"worker\":\"frontend\",\"workerCheck\":\"Workers Builds: frontend\",\"frontendUrl\":\"https://saplinglearn.com\",\"apiUrl\":\"https://api.saplinglearn.com\",\"healthPath\":\"/api/health\",\"railwayEnvironmentId\":\"dd058398-45bc-4c7d-80b1-12d46e3f28fb\",\"railwayServiceId\":\"c67bfc38-32a9-41a7-9440-f033d255af30\"}]",
           DEV_LOGIN: "", // override .dev.vars: tests exercise REAL auth, never the dev bypass
           NOTIFICATIONS_MODE: "", // override wrangler.toml [vars]: tests always run email in LOCAL mode
           // The pool loads `.dev.vars` through the wrangler config, so every secret
@@ -50,6 +61,10 @@ export default defineConfig({
           RAILWAY_TOKEN_PRODUCTION: "",
           SAPLING_METRICS_TOKEN: "",
           PUBLIC_ORIGIN: "https://trov.test",
+          // A FIXED key-encryption key (32 bytes, base64) for per-org secrets (src/data/secrets.ts), so the
+          // suite never depends on a developer's `.dev.vars`; TROV_KEK_PREVIOUS is blanked for the same reason.
+          TROV_KEK: "dGVzdC1rZWstMDEyMzQ1Njc4OWFiY2RlZi10cm92ISE=",
+          TROV_KEK_PREVIOUS: "",
         },
       },
     })),

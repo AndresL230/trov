@@ -4,12 +4,13 @@ import { Hono } from "hono";
 import { buildAuthApp } from "../src/auth/routes";
 import { sessionGate, type AppEnv } from "../src/auth/principal";
 import { hmacSeal } from "../src/auth/crypto";
-import { first, all } from "../src/db";
+import { first, all } from "./helpers/db";
 import { createInvite } from "../src/auth/invites";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { makeGoogleKeys, signIdToken, googleFetch, CLAIMS } from "./helpers/google";
 import type { IdentityRow } from "@shared/rows";
 
+import { platformCtx } from "./helpers/tenant";
 const NOW = () => 1_800_000_100_000;
 function appWith(fetchImpl: typeof fetch) {
   const app = new Hono<AppEnv>();
@@ -42,7 +43,7 @@ describe("GET /auth/google/login", () => {
 
 describe("GET /auth/google/callback", () => {
   it("invited + unknown → onboard cookie + redirect /#onboard", async () => {
-    await createInvite(env.DB, { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
+    await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
     const keys = await makeGoogleKeys();
     const app = appWith(googleFetch(keys, { idToken: await signIdToken(keys, CLAIMS) }).fetchImpl);
     const res = await app.request("/auth/google/callback?code=c&state=st", { headers: { cookie: await tx() } }, env);
@@ -57,7 +58,7 @@ describe("GET /auth/google/callback", () => {
     expect(res.headers.get("location")).toBe("/?denied=invite&email=priya.n%40gmail.com");
   });
   it("unverified email → denied even when invited", async () => {
-    await createInvite(env.DB, { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
+    await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
     const keys = await makeGoogleKeys();
     const app = appWith(googleFetch(keys, { idToken: await signIdToken(keys, { ...CLAIMS, email_verified: false }) }).fetchImpl);
     const res = await app.request("/auth/google/callback?code=c&state=st", { headers: { cookie: await tx() } }, env);

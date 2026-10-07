@@ -1,6 +1,6 @@
 import type { SprintRow, PlanVersionRow } from "@shared/rows";
 import type { NotificationKind, Section, Window } from "@shared/notifications";
-import { type DB, first } from "../../db";
+import { type TenantContext, first } from "../../data/sql";
 import { escapeHtml, isoOf } from "../html";
 import { EMAIL_STYLE as S, EMAIL_CARD as K, EMAIL_SPACE as SP, type ChipTone } from "../assemble";
 
@@ -49,21 +49,23 @@ export function diffSprints(before: SprintRow[], after: SprintRow[]): PlanDiffLi
  * window against the last version BEFORE the window. No version in the window,
  * or no sprint-level change between the two, renders null.
  */
-async function render(db: DB, _login: string, window: Window): Promise<Section | null> {
+async function render(ctx: TenantContext, _login: string, window: Window): Promise<Section | null> {
   const start = isoOf(window.start);
   const end = isoOf(window.end);
   const latest = await first<PlanVersionRow>(
-    db,
+    ctx,
     `SELECT * FROM plan_versions
-      WHERE datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)
+      WHERE org_id = ? AND datetime(created_at) >= datetime(?) AND datetime(created_at) < datetime(?)
       ORDER BY version DESC LIMIT 1`,
+    ctx.orgId,
     start,
     end
   );
   if (!latest) return null;
   const baseline = await first<PlanVersionRow>(
-    db,
-    `SELECT * FROM plan_versions WHERE datetime(created_at) < datetime(?) ORDER BY version DESC LIMIT 1`,
+    ctx,
+    `SELECT * FROM plan_versions WHERE org_id = ? AND datetime(created_at) < datetime(?) ORDER BY version DESC LIMIT 1`,
+    ctx.orgId,
     start
   );
 
@@ -82,7 +84,7 @@ async function render(db: DB, _login: string, window: Window): Promise<Section |
   return { heading: "Roadmap plan changes", summary, html, text, deepLink: DEEP_LINK, linkLabel: "Roadmap" };
 }
 
-export const roadmapPlanKind: NotificationKind<DB> = {
+export const roadmapPlanKind: NotificationKind<TenantContext> = {
   id: "roadmap_plan",
   label: "Roadmap plan changes",
   description: "Sprint progress and slips.",

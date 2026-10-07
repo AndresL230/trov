@@ -1,12 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { first } from "../src/db";
+import { first } from "./helpers/db";
 import { completeSignIn, linkSignIn, suggestHandle, sealOnboard, openOnboard, type ProviderProfile } from "../src/auth/onboard";
 import { createInvite } from "../src/auth/invites";
 import { seedPerson } from "./helpers/persons";
 import { hmacSeal, b64uEncode } from "../src/auth/crypto";
 import type { IdentityRow, PersonRow } from "@shared/rows";
 
+import { platformCtx } from "./helpers/tenant";
 const google = (over: Partial<ProviderProfile> = {}): ProviderProfile => ({
   provider: "google", subject: "g-123", label: "priya.n@gmail.com", email: "priya.n@gmail.com", name: "Priya Natarajan", avatar_url: "https://lh3/p.png", ...over,
 });
@@ -16,23 +17,30 @@ const github = (over: Partial<ProviderProfile> = {}): ProviderProfile => ({
 
 describe("completeSignIn — the fork", () => {
   it("1. known identity → session; the name kept, email COALESCEd", async () => {
-    const r = await completeSignIn(env.DB, github({ subject: "AndresL230", label: "AndresL230", name: "Andrés L", email: "x@y.z" }));
+    const r = await completeSignIn(platformCtx(), github({ subject: "AndresL230", label: "AndresL230", name: "Andrés L", email: "x@y.z" }));
     expect(r).toEqual({ kind: "session", handle: "AndresL230" });
     const p = (await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'AndresL230'`))!;
     expect(p.name).toBe("Andres"); // a sign-in never writes the name (0036 PART B)
     expect(p.email).toBe("x@y.z"); // was NULL in the seed → filled
   });
   it("2. unknown identity, verified email matches a person → linked + session, no onboarding", async () => {
-    await seedPerson("priya", { email: "priya.n@gmail.com", github: true });
-    const r = await completeSignIn(env.DB, google());
+    await seedPerson("priya", { email: "priya.n@gmail.com", github: true, verified: true }); // GitHub vouched for the address
+    const r = await completeSignIn(platformCtx(), google());
     expect(r).toEqual({ kind: "session", handle: "priya" });
     const id = await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE provider = 'google' AND subject = 'g-123'`);
     expect(id?.person).toBe("priya");
     expect(id?.linked_by).toBe("priya");
   });
+  // Phase 4 (§5.1): with sign-in open to anyone, the link matches what a PROVIDER verified — never
+  // `persons.email`, which the person (or their org's admin) can type anything into.
+  it("2b. an address that is only on persons.email is NOT a match: no link, no session", async () => {
+    await seedPerson("priya", { email: "priya.n@gmail.com" });
+    expect(await completeSignIn(platformCtx(), google())).toEqual({ kind: "denied" });
+    expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
+  });
   it("3a. unknown Google identity with a live invite → onboard payload (nothing written)", async () => {
-    await createInvite(env.DB, { email: "priya.n@gmail.com", name: "Priya", invitedBy: "AndresL230" });
-    const r = await completeSignIn(env.DB, google());
+    await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: "Priya", invitedBy: "AndresL230" });
+    const r = await completeSignIn(platformCtx(), google());
     expect(r.kind).toBe("onboard");
     if (r.kind !== "onboard") throw new Error();
     expect(r.payload.suggested_handle).toBe("priya-n");
@@ -40,27 +48,27 @@ describe("completeSignIn — the fork", () => {
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
     expect(await first(env.DB, `SELECT 1 AS x FROM persons WHERE handle = 'priya-n'`)).toBeNull();
   });
-  it("3b. unknown GitHub identity (org member) → onboard with the login as suggested handle, no invite needed", async () => {
-    const r = await completeSignIn(env.DB, github());
+  it("3b. unknown GitHub identity (ANY GitHub account — §5.1) → onboard with the login as suggested handle, no invite needed", async () => {
+    const r = await completeSignIn(platformCtx(), github());
     expect(r.kind).toBe("onboard");
     if (r.kind !== "onboard") throw new Error();
     expect(r.payload.suggested_handle).toBe("newdev");
     expect(r.payload.invite_email).toBeNull();
   });
   it("4. unknown Google identity, no match, no invite (or revoked) → denied", async () => {
-    expect(await completeSignIn(env.DB, google())).toEqual({ kind: "denied" });
-    await createInvite(env.DB, { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
+    expect(await completeSignIn(platformCtx(), google())).toEqual({ kind: "denied" });
+    await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
     await env.DB.prepare(`UPDATE invites SET revoked_at = 't' WHERE email = 'priya.n@gmail.com'`).run();
-    expect(await completeSignIn(env.DB, google())).toEqual({ kind: "denied" });
+    expect(await completeSignIn(platformCtx(), google())).toEqual({ kind: "denied" });
   });
   it("a null email never auto-links", async () => {
     await seedPerson("priya", { email: null });
-    expect(await completeSignIn(env.DB, google({ email: null }))).toEqual({ kind: "denied" });
+    expect(await completeSignIn(platformCtx(), google({ email: null }))).toEqual({ kind: "denied" });
   });
   it("5. two persons already share an email (ambiguous) → denied, never auto-linked to either", async () => {
-    await seedPerson("priya", { email: "priya.n@gmail.com" });
-    await seedPerson("priyb", { email: "priya.n@gmail.com", github: false });
-    expect(await completeSignIn(env.DB, google())).toEqual({ kind: "denied" });
+    await seedPerson("priya", { email: "priya.n@gmail.com", verified: true });
+    await seedPerson("priyb", { email: "priya.n@gmail.com", verified: true });
+    expect(await completeSignIn(platformCtx(), google())).toEqual({ kind: "denied" });
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
   });
 });
@@ -68,15 +76,15 @@ describe("completeSignIn — the fork", () => {
 describe("linkSignIn", () => {
   it("attaches a free identity to the caller; refuses one that belongs to someone else", async () => {
     await seedPerson("priya");
-    expect(await linkSignIn(env.DB, "AndresL230", google())).toBe("linked");
+    expect(await linkSignIn(platformCtx(), "AndresL230", google())).toBe("linked");
     expect((await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE subject = 'g-123'`))?.person).toBe("AndresL230");
-    expect(await linkSignIn(env.DB, "priya", google())).toBe("belongs_to_other");
+    expect(await linkSignIn(platformCtx(), "priya", google())).toBe("belongs_to_other");
   });
   it("refuses a second identity of the same provider on one person, without writing", async () => {
     // AndresL230 already has a github identity (seeded). A second github identity for
     // the same person must be refused — one identity per provider, or unlinkIdentity
     // could never disambiguate which to remove.
-    const r = await linkSignIn(env.DB, "AndresL230", github({ subject: "alt-login", label: "alt-login" }));
+    const r = await linkSignIn(platformCtx(), "AndresL230", github({ subject: "alt-login", label: "alt-login" }));
     expect(r).toBe("provider_already_linked");
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'alt-login'`)).toBeNull();
   });

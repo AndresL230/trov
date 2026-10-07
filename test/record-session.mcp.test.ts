@@ -3,32 +3,31 @@ import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
-import { resolveBearerPrincipal } from "../src/auth/principal";
 import type { Principal } from "../src/auth/principal";
-import { mintToken } from "../src/auth/tokens";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import type { FeedRow, DocVersionRow, AdrRow } from "@shared/rows";
 import type { IngestResult } from "../src/consumer";
 import { seedPerson } from "./helpers/persons";
+import { bearerCtx, credentialOf, mintTokenFor } from "./helpers/tenant";
 
 type Env = import("../src/env").Env;
 
 // Seed a member and mint a REAL bearer token for them (hash stored, raw returned once).
 async function seedUserWithBearer(login: string): Promise<string> {
   await seedPerson(login);
-  const { raw } = await mintToken(env.DB, login);
+  const { raw } = await mintTokenFor(login);
   return raw;
 }
 
 // Resolve the principal the SAME way index.ts does for /mcp: a bearer token in the
-// Authorization header, NO cookie, through the real resolveBearerPrincipal. The
+// Authorization header, NO cookie, through the real bearer resolver. The
 // principal handed to the server is the resolver's output, never a hand-written literal.
 async function bearerPrincipal(rawToken: string): Promise<Principal> {
   const req = new Request("https://trov.example/mcp", {
     method: "POST",
     headers: { authorization: `Bearer ${rawToken}` },
   });
-  const principal = await resolveBearerPrincipal(req, env as unknown as Env);
+  const principal = await credentialOf(req);
   if (!principal) throw new Error("bearer did not resolve — test setup is wrong");
   return principal;
 }
@@ -40,7 +39,7 @@ async function callRecordSession(
   principal: Principal,
   payload: unknown
 ): Promise<{ result: IngestResult; isError?: boolean }> {
-  const server = buildTrovMcpServer(env as unknown as Env, principal);
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(principal.handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -78,7 +77,7 @@ describe("record_session MCP tool — the real bearer-only agent write path", ()
   it("a bearer principal (no cookie) writes a whole session through record_session and gets counts back", async () => {
     const raw = await seedUserWithBearer("bearer-agent");
     const principal = await bearerPrincipal(raw); // real auth resolution, no cookie
-    expect(principal).toEqual({ handle: "bearer-agent" });
+    expect(principal).toMatchObject({ handle: "bearer-agent" });
 
     const { result, isError } = await callRecordSession(principal, fullPayload("record-session-mcp-S1"));
     expect(isError).toBeFalsy();
@@ -129,7 +128,7 @@ describe("record_session MCP tool — the real bearer-only agent write path", ()
     const raw = await seedUserWithBearer("bearer-agent-narrow");
     const principal = await bearerPrincipal(raw);
 
-    const server = buildTrovMcpServer(env as unknown as Env, principal);
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(principal.handle));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);

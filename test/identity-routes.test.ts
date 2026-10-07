@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
+import { ensureMember, platformCtx, systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { ingestEvent } from "../src/consumer";
 import { getMyWork } from "../src/tools/mywork";
 import { seedPerson } from "./helpers/persons";
@@ -11,9 +12,12 @@ import type { IdentityTaskWithSample } from "../src/tools/reads";
 import type { IdentityTaskRow, IdentityRow } from "@shared/rows";
 import type { CapturedEvent } from "@shared/contract";
 
+// `POST /identity-tasks/:login/map` is org ADMIN+ (§6.3): `andres`, this file's actor, is one.
+beforeEach(() => ensureMember("andres", "admin"));
+
 async function authedCookie(login: string): Promise<string> {
   await seedPerson(login);
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
 
@@ -45,7 +49,7 @@ describe("GET /identity-tasks", () => {
   it("lists pending tasks with a small LIVE sample: newest-first, capped at 3, titles extracted from raw", async () => {
     const cookie = await authedCookie("andres");
     for (let i = 1; i <= 4; i++) {
-      await ingestEvent(env.DB, prEvent(i, "mystery-dev", `PR number ${i}`, `2026-07-0${i}T10:00:00Z`), "github-webhook");
+      await ingestEvent(systemCtx(), platformCtx(), prEvent(i, "mystery-dev", `PR number ${i}`, `2026-07-0${i}T10:00:00Z`), "github-webhook");
     }
 
     const { tasks } = await getJson<{ tasks: IdentityTaskWithSample[] }>("/identity-tasks", cookie);
@@ -65,7 +69,8 @@ describe("GET /identity-tasks", () => {
   it("a malformed raw yields title:null instead of failing the list", async () => {
     const cookie = await authedCookie("andres");
     await ingestEvent(
-      env.DB,
+      systemCtx(),
+      platformCtx(),
       { ...prEvent(5, "glitchy-dev", "x", "2026-07-05T10:00:00Z"), raw: "not json at all" },
       "github-webhook"
     );
@@ -82,14 +87,16 @@ describe("GET /identity-tasks", () => {
 describe("POST /identity-tasks/:login/map", () => {
   it("maps the login, resolves the task, and drops it from the pending list", async () => {
     const cookie = await authedCookie("andres");
-    await ingestEvent(env.DB, prEvent(1, "mystery-dev", "t", "2026-07-01T10:00:00Z"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(1, "mystery-dev", "t", "2026-07-01T10:00:00Z"), "github-webhook");
     await seedPerson("casey");
 
     const res = await post("/identity-tasks/mystery-dev/map", cookie, { person: "casey" });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, login: "mystery-dev", person: "casey", status: "resolved" });
 
-    expect((await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE provider = 'github' AND subject = 'mystery-dev'`))?.person).toBe("casey");
+    // The mapping is the ORG's attribution (`org_login_map`), never a sign-in identity (§5.3, C-1).
+    expect(await first(env.DB, `SELECT org_id, person, mapped_by FROM org_login_map WHERE github_login = 'mystery-dev'`)).toEqual({ org_id: "org_saplinglearn", person: "casey", mapped_by: "andres" });
+    expect(await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE provider = 'github' AND subject = 'mystery-dev'`)).toBeNull();
     const { tasks } = await getJson<{ tasks: unknown[] }>("/identity-tasks", cookie);
     expect(tasks.length).toBe(0); // leaves the queue
     const row = await first<IdentityTaskRow>(env.DB, `SELECT * FROM identity_tasks WHERE login = 'mystery-dev'`);
@@ -99,7 +106,7 @@ describe("POST /identity-tasks/:login/map", () => {
 
   it("400 on a missing/empty person, an unknown person, and an unknown login", async () => {
     const cookie = await authedCookie("andres");
-    await ingestEvent(env.DB, prEvent(1, "mystery-dev", "t", "2026-07-01T10:00:00Z"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(1, "mystery-dev", "t", "2026-07-01T10:00:00Z"), "github-webhook");
     await seedPerson("casey");
     expect((await post("/identity-tasks/mystery-dev/map", cookie, {})).status).toBe(400);
     expect((await post("/identity-tasks/mystery-dev/map", cookie, { person: "   " })).status).toBe(400);
@@ -108,7 +115,7 @@ describe("POST /identity-tasks/:login/map", () => {
   });
 
   it("returns 401 without a session cookie (and does not mutate)", async () => {
-    await ingestEvent(env.DB, prEvent(1, "mystery-dev", "t", "2026-07-01T10:00:00Z"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(1, "mystery-dev", "t", "2026-07-01T10:00:00Z"), "github-webhook");
     const res = await app.request("/identity-tasks/mystery-dev/map", { method: "POST" }, env);
     expect(res.status).toBe(401);
     expect(await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE provider = 'github' AND subject = 'mystery-dev'`)).toBeNull();
@@ -128,18 +135,18 @@ describe("POST /identity-tasks/:login/map", () => {
     const dayMs = 24 * 60 * 60 * 1000;
     const twoDaysAgo = new Date(Date.now() - 2 * dayMs).toISOString();
     const oneDayAgo = new Date(Date.now() - 1 * dayMs).toISOString();
-    await ingestEvent(env.DB, prEvent(1, "mystery-dev", "First PR", twoDaysAgo), "github-webhook");
-    await ingestEvent(env.DB, prEvent(2, "mystery-dev", "Second PR", oneDayAgo), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(1, "mystery-dev", "First PR", twoDaysAgo), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(2, "mystery-dev", "Second PR", oneDayAgo), "github-webhook");
 
     // Before mapping: captured but unsurfaced — "mystery-dev" is not (yet) any
     // person's handle or identity, so it resolves to nothing.
-    const before = await getMyWork(env.DB, "mystery-dev");
+    const before = await getMyWork(systemCtx(), "mystery-dev");
     expect(before).toEqual({ person: null, previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false });
 
     expect((await post("/identity-tasks/mystery-dev/map", cookie, { person: "casey" })).status).toBe(200);
 
     // After mapping: BOTH pre-existing events surface for the PERSON, purely at read time.
-    const after = await getMyWork(env.DB, "casey");
+    const after = await getMyWork(systemCtx(), "casey");
     expect(after.person).toBe("casey");
     expect(after.previousActivity.length).toBe(2);
     expect(after.previousActivity[0].title).toBe("Second PR"); // newest first
@@ -149,11 +156,11 @@ describe("POST /identity-tasks/:login/map", () => {
   it("map to an existing handle links the login; unknown person → 400", async () => {
     const cookie = await authedCookie("andres");
     await seedPerson("casey");
-    await ingestEvent(env.DB, prEvent(1, "mystery-dev", "t", "2026-07-01T00:00:00Z"), "github-webhook");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(1, "mystery-dev", "t", "2026-07-01T00:00:00Z"), "github-webhook");
     const ok = await post("/identity-tasks/mystery-dev/map", cookie, { person: "casey" });
     expect(ok.status).toBe(200);
-    expect((await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE subject = 'mystery-dev'`))?.person).toBe("casey");
-    await ingestEvent(env.DB, prEvent(2, "other-dev", "t", "2026-07-01T00:00:00Z"), "github-webhook");
+    expect((await first<{ person: string }>(env.DB, `SELECT person FROM org_login_map WHERE github_login = 'mystery-dev'`))?.person).toBe("casey");
+    await ingestEvent(systemCtx(), platformCtx(), prEvent(2, "other-dev", "t", "2026-07-01T00:00:00Z"), "github-webhook");
     expect((await post("/identity-tasks/other-dev/map", cookie, { person: "ghost" })).status).toBe(400);
   });
 });

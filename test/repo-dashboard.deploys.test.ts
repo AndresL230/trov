@@ -8,7 +8,8 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { run } from "../src/db";
+import { systemCtx } from "./helpers/tenant";
+import { run } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
 import { getRepoDashboard } from "../src/tools/repo";
 import { branchHeads, checkState, deployHistories } from "../src/repo/reads";
@@ -18,7 +19,7 @@ import { ENVS } from "./helpers/repo";
 
 const NOW = Date.parse("2026-09-20T12:00:00Z");
 const at = (minsAgo: number) => new Date(NOW - minsAgo * 60_000).toISOString();
-const put = async (rows: RepoEvent[]) => { for (const r of rows) await ingestRepoEvent(env.DB, r); };
+const put = async (rows: RepoEvent[]) => { for (const r of rows) await ingestRepoEvent(systemCtx(), r); };
 const base = { raw: "{}", provenance: "webhook" as const };
 const deploy = (id: number, state: string, sha: string, mins: number, envKey = "staging"): RepoEvent =>
   ({ ...base, semantic_key: `gh:deploy:${id}:${state}`, kind: "deploy", number: id, env: envKey, part: "backend", sha, state, actor_login: "railway-app[bot]", occurred_at: at(mins) });
@@ -28,7 +29,7 @@ const ok = <T>(s: { status: string; data?: T }): T => { expect(s.status).toBe("o
 
 describe("environment cards", () => {
   it("not_connected until an environment is configured AND something deployed", async () => {
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).environments.status).toBe("not_connected");
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).environments.status).toBe("not_connected");
   });
 
   it("shows both deployables, resolves the bot to the pusher, and summarises head checks", async () => {
@@ -39,7 +40,7 @@ describe("environment cards", () => {
       check(11, "Backend (pytest)", "success", "abc", 24),
       check(12, "e2e", "failure", "abc", 20),
     ]);
-    const [staging, production] = ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).environments);
+    const [staging, production] = ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).environments);
     expect(staging).toMatchObject({ key: "staging", name: "staging", note: "main", pill: "DEGRADED", tone: "warn", ci: "1 of 3 checks failing — e2e", ciTone: "bad", url: "https://staging.saplinglearn.com" });
     expect(staging.parts).toEqual([
       { part: "backend", host: "Railway", sha: "abc", deployedAt: at(26), deployedBy: "AndresL230", result: "ok" },
@@ -52,7 +53,7 @@ describe("environment cards", () => {
 
   it("a superseded deploy (success → inactive) still counts as deployed; a never-succeeded one is cancelled", async () => {
     await put([deploy(1, "success", "a", 300), deploy(1, "inactive", "a", 200), deploy(2, "in_progress", "b", 190), deploy(2, "inactive", "b", 180), deploy(3, "failure", "c", 100), deploy(4, "success", "d", 10)]);
-    const rows = ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).deploys);
+    const rows = ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).deploys);
     const backend = rows.find((r) => r.env === "staging" && r.part === "backend")!;
     expect(backend.label).toBe("staging · api");
     expect(backend.deploys.map((d) => [d.sha, d.result])).toEqual([["a", "ok"], ["b", "cancel"], ["c", "fail"], ["d", "ok"]]);
@@ -64,7 +65,7 @@ describe("environment cards", () => {
 
   it("a deploy still in flight is not a dot, and leaves the card UNKNOWN", async () => {
     await put([deploy(9, "in_progress", "z", 5)]);
-    const d = await getRepoDashboard(env.DB, "o/r", NOW, ENVS);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
     expect(d.environments.status).toBe("not_connected");
     expect(d.deploys.status).toBe("not_connected");
   });
@@ -74,7 +75,7 @@ describe("environment cards", () => {
       { ...base, semantic_key: "gh:push:abc:main", kind: "push", ref: "main", sha: "abcdef1234", actor_login: "AndresL230", count: 1, occurred_at: at(40) },
       deploy(1, "success", "abcdef1234", 30),
     ]);
-    const d = await getRepoDashboard(env.DB, "o/r", NOW, ENVS);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
     const [staging] = ok(d.environments);
     expect(staging.parts[0]).toMatchObject({ sha: "abcdef1", deployedBy: "AndresL230" });
     expect(ok(d.activity).map((a) => [a.kind, a.text])).toContainEqual(["deploy", "abcdef1 deployed to staging · api"]);
@@ -86,7 +87,7 @@ describe("environment cards", () => {
 describe("the environment pill", () => {
   it("a successful deploy with no checks captured is UNKNOWN, not HEALTHY — but the section IS connected", async () => {
     await put([deploy(1, "success", "abc", 20)]);
-    const [staging] = ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).environments);
+    const [staging] = ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).environments);
     expect(staging).toMatchObject({ pill: "UNKNOWN", tone: "neutral", ci: "No checks captured" });
     expect(staging.parts[0].result).toBe("ok");
   });
@@ -96,13 +97,13 @@ describe("the environment pill", () => {
       { ...base, semantic_key: "gh:push:abc:main", kind: "push", ref: "main", sha: "abc", actor_login: "AndresL230", count: 1, occurred_at: at(30) },
       deploy(1, "success", "abc", 20), check(11, "Backend (pytest)", "success", "abc", 18),
     ]);
-    const [staging] = ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).environments);
+    const [staging] = ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).environments);
     expect(staging).toMatchObject({ pill: "HEALTHY", tone: "good", ci: "All 1 checks passing" });
   });
 
   it("a failed deploy is FAILING even with no checks captured", async () => {
     await put([deploy(1, "failure", "abc", 20)]);
-    const [staging] = ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).environments);
+    const [staging] = ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).environments);
     expect(staging).toMatchObject({ pill: "FAILING", tone: "bad" });
   });
 
@@ -111,7 +112,7 @@ describe("the environment pill", () => {
       { ...base, semantic_key: "gh:push:abc:main", kind: "push", ref: "main", sha: "abc", actor_login: "AndresL230", count: 1, occurred_at: at(30) },
       check(11, "Backend (pytest)", "success", "abc", 18),
     ]);
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).environments.status).toBe("ok");
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).environments.status).toBe("ok");
   });
 });
 
@@ -123,7 +124,7 @@ describe("non-decisive conclusions", () => {
       deploy(1, "stale", "a", 300), deploy(2, "action_required", "b", 200),
       deploy(3, "neutral", "c", 100), deploy(4, "skipped", "d", 50),
     ]);
-    const strips = await deployHistories(env.DB, NOW);
+    const strips = await deployHistories(systemCtx(), NOW);
     expect(strips.get("staging:backend")!.map((d) => [d.sha, d.result])).toEqual([["a", "cancel"], ["b", "cancel"]]);
   });
 
@@ -131,7 +132,7 @@ describe("non-decisive conclusions", () => {
   // read needs its own bound — 90 days, like `recentPrRows`.
   it("ignores a deploy older than 90 days", async () => {
     await put([deploy(1, "success", "old", 91 * 24 * 60), deploy(2, "success", "new", 60)]);
-    const strips = await deployHistories(env.DB, NOW);
+    const strips = await deployHistories(systemCtx(), NOW);
     expect(strips.get("staging:backend")!.map((d) => d.sha)).toEqual(["new"]);
   });
 
@@ -152,29 +153,29 @@ describe("branchHeads — env_heads snapshot precedence", () => {
 
   it("uses the captured push when no snapshot exists", async () => {
     await put([push("pushed1", 30)]);
-    expect([...(await branchHeads(env.DB, ["main"]))]).toEqual([["main", "pushed1"]]);
+    expect([...(await branchHeads(systemCtx(), ["main"]))]).toEqual([["main", "pushed1"]]);
   });
 
   it("uses the snapshot when it is newer than the branch's latest push", async () => {
     await put([push("pushed1", 60)]);
-    await putSnapshot(env.DB, "env_heads", { main: "synced1" }, at(10));
-    expect((await branchHeads(env.DB, ["main"])).get("main")).toBe("synced1");
+    await putSnapshot(systemCtx(), "env_heads", { main: "synced1" }, at(10));
+    expect((await branchHeads(systemCtx(), ["main"])).get("main")).toBe("synced1");
   });
 
   it("keeps the push when the push landed after the last Sync", async () => {
     await put([push("pushed1", 10)]);
-    await putSnapshot(env.DB, "env_heads", { main: "synced1" }, at(60));
-    expect((await branchHeads(env.DB, ["main"])).get("main")).toBe("pushed1");
+    await putSnapshot(systemCtx(), "env_heads", { main: "synced1" }, at(60));
+    expect((await branchHeads(systemCtx(), ["main"])).get("main")).toBe("pushed1");
   });
 
   it("uses the snapshot for a branch with no captured push at all", async () => {
-    await putSnapshot(env.DB, "env_heads", { production: "prodhead" }, at(60));
-    expect((await branchHeads(env.DB, ["main", "production"])).get("production")).toBe("prodhead");
+    await putSnapshot(systemCtx(), "env_heads", { production: "prodhead" }, at(60));
+    expect((await branchHeads(systemCtx(), ["main", "production"])).get("production")).toBe("prodhead");
   });
 
   it("ignores a snapshot entry that is not a sha string", async () => {
-    await putSnapshot(env.DB, "env_heads", { main: null, production: 7 }, at(10));
-    expect([...(await branchHeads(env.DB, ["main", "production"]))]).toEqual([]);
+    await putSnapshot(systemCtx(), "env_heads", { main: null, production: 7 }, at(10));
+    expect([...(await branchHeads(systemCtx(), ["main", "production"]))]).toEqual([]);
   });
 
   // P1 (Task 13 parked finding): occurred_at is stored WITHOUT milliseconds
@@ -185,8 +186,8 @@ describe("branchHeads — env_heads snapshot precedence", () => {
   // tests above, which format both sides identically) are what catch this.
   it("prefers a snapshot that is newer by milliseconds within the same UTC second, over a same-second push", async () => {
     await put([{ ...base, semantic_key: "gh:push:pushed1:main", kind: "push", ref: "main", sha: "pushed1", count: 1, occurred_at: "2026-09-20T12:00:30Z" }]);
-    await putSnapshot(env.DB, "env_heads", { main: "synced1" }, "2026-09-20T12:00:30.500Z");
-    expect((await branchHeads(env.DB, ["main"])).get("main")).toBe("synced1");
+    await putSnapshot(systemCtx(), "env_heads", { main: "synced1" }, "2026-09-20T12:00:30.500Z");
+    expect((await branchHeads(systemCtx(), ["main"])).get("main")).toBe("synced1");
   });
 });
 
@@ -200,7 +201,7 @@ describe("CI failures", () => {
   it("lists failed runs with their job, and a 7-day rate over decisive runs only", async () => {
     await put([ciRun(1, "success", 500), ciRun(2, "success", 400), ciRun(3, "failure", 60, "e2e · Run supabase/setup-cli@v1"), ciRun(4, "cancelled", 30), ciRun(5, "success", 20)]);
     await backdateRecording(new Date(NOW - 30 * 86_400_000).toISOString());
-    const f = ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).ciFailures);
+    const f = ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).ciFailures);
     expect(f.rate).toBe(25);                     // 1 failure / 4 decisive (cancelled excluded)
     expect(f.trend).toHaveLength(7);
     expect(f.rows).toEqual([{ workflow: "e2e (browser lane)", branch: "main", job: "e2e · Run supabase/setup-cli@v1", at: at(60), url: "https://github.com/o/r/actions/runs/3" }]);
@@ -209,7 +210,7 @@ describe("CI failures", () => {
   it("publishes no rate or trend until run capture predates the whole week — but still lists the failures", async () => {
     await put([ciRun(3, "failure", 60, "e2e · Run supabase/setup-cli@v1"), ciRun(5, "success", 20)]);
     // recorded_at is NOW (these rows just landed), so the week is not covered.
-    const f = ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).ciFailures);
+    const f = ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).ciFailures);
     expect(f.rate).toBeNull();
     expect(f.trend).toEqual([]);
     expect(f.rows).toHaveLength(1);              // the failures themselves are facts
@@ -222,19 +223,19 @@ describe("CI failures", () => {
       ...Array.from({ length: 7 }, (_, i) => ciRun(10 + i, "failure", 30 + i * 60)),
       ciRun(20, "timed_out", 600), ciRun(21, "failure", 8 * 24 * 60), ciRun(22, "success", 5),
     ]);
-    const f = ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).ciFailures);
+    const f = ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).ciFailures);
     expect(f.rows).toHaveLength(5);
     expect(f.total).toBe(8);
   });
 
   it("`total` is 0 in a week with no failures", async () => {
     await put([ciRun(22, "success", 5)]);
-    const f = ok((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).ciFailures);
+    const f = ok((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).ciFailures);
     expect(f).toMatchObject({ rows: [], total: 0 });
   });
 
   it("is not_connected until a workflow run has ever been captured", async () => {
-    expect((await getRepoDashboard(env.DB, "o/r", NOW, ENVS)).ciFailures.status).toBe("not_connected");
+    expect((await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)).ciFailures.status).toBe("not_connected");
   });
 });
 
@@ -244,7 +245,7 @@ describe("reviews", () => {
 
   it("counts this week's reviews per person and puts them in the feed", async () => {
     await put([review(1, 7, "approved", "AndresL230", 30), review(2, 7, "commented", "meilin", 60)]);
-    const d = await getRepoDashboard(env.DB, "o/r", NOW, ENVS);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS);
     expect(ok(d.contributors).map((c) => [c.person.login, c.reviews])).toEqual([["AndresL230", 1], ["meilin", 1]]);
     expect(ok(d.activity).map((a) => [a.kind, a.text])).toEqual([["review", "approved #7"], ["review", "commented on #7"]]);
   });

@@ -16,7 +16,10 @@ import { ARTIFACT_BINARY_CAP } from "@shared/artifacts";
 import { consumeUploadToken } from "../tools/artifacts";
 import { consumeDocImageToken } from "../tools/doc-images";
 import type { Env } from "../env";
-import { artifactErrorResponse, jsonResponse } from "./http";
+import { sha256Hex } from "../auth/crypto";
+import { platform, systemTenant } from "../data/context";
+import { type PlatformContext, first } from "../data/platform-sql";
+import { artifactErrorResponse, jsonResponse, NOT_FOUND_BODY } from "./http";
 
 export const UPLOAD_PREFIX = "/api/artifacts/upload/";
 /** A minted token: 32 random bytes, base64url, no padding. */
@@ -35,6 +38,22 @@ export function isUploadRequest(method: string, pathname: string): boolean {
   return method === "PUT" || TOKEN_RE.test(rest);
 }
 
+/**
+ * The org an upload token was minted in — a PLATFORM read, by hash, because the request carries nothing
+ * else (the token/grant-by-hash exception of §4.4): a doc-image token or an artifact one. Null for an
+ * unknown token, and for a token of a SUSPENDED org, which answers like an org that is not there.
+ */
+async function uploadTokenOrg(p: PlatformContext, token: string): Promise<string | null> {
+  const hash = await sha256Hex(token);
+  const row = await first<{ org_id: string }>(p,
+    `SELECT t.org_id FROM (
+       SELECT org_id FROM doc_image_upload_tokens WHERE token_hash = ?
+       UNION ALL
+       SELECT org_id FROM artifact_upload_tokens WHERE token_hash = ?
+     ) t JOIN orgs o ON o.id = t.org_id AND o.suspended_at IS NULL LIMIT 1`, hash, hash);
+  return row?.org_id ?? null;
+}
+
 export async function handleArtifactUpload(request: Request, env: Env): Promise<Response> {
   if (request.method !== "PUT") {
     return jsonResponse({ error: "method_not_allowed" }, 405, { allow: "PUT" });
@@ -44,12 +63,18 @@ export async function handleArtifactUpload(request: Request, env: Env): Promise<
   if (len !== null && Number(len) > ARTIFACT_BINARY_CAP) {
     return jsonResponse({ error: "too_large", message: `file exceeds ${ARTIFACT_BINARY_CAP} bytes` }, 413);
   }
+  // No session: the single-use token is the auth, and its row names its org. Everything after this
+  // lookup runs as that org's system tenant, so a token can only ever write where it was minted.
+  const p = platform(env, "system");
+  const orgId = await uploadTokenOrg(p, token);
+  if (!orgId) return new Response(NOT_FOUND_BODY, { status: 404, headers: { "content-type": "application/json; charset=UTF-8" } });
+  const ctx = systemTenant(p, orgId, "system");
   try {
     // ONE upload route for every asset: a doc-image token (MCP upload_asset with
     // destination "doc") is looked up first; any other token is an artifact's.
-    const image = await consumeDocImageToken(env.DB, env.ARTIFACTS_BUCKET, token, request.body);
+    const image = await consumeDocImageToken(ctx, env.ARTIFACTS_BUCKET, token, request.body);
     if (image) return jsonResponse(image, 200);
-    const result = await consumeUploadToken(env.DB, env.ARTIFACTS_BUCKET, token, request.body);
+    const result = await consumeUploadToken(ctx, env.ARTIFACTS_BUCKET, token, request.body);
     return jsonResponse(result, 200);
   } catch (e) {
     const res = artifactErrorResponse(e);

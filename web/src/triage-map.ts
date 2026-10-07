@@ -5,7 +5,8 @@
 
 import type { StagedProposal, AdrRow, NeedsTriageRow, IdentityTask, DiscardedIdentity, PersonSummary } from "./api";
 import type { ReviewItem } from "./review";
-import type { AssignOptions, UnplacedItem, IdentityGroup, DiscardedLogin, Person } from "./maintenance";
+import type { AssignOptions, UnplacedItem, Person } from "./maintenance";
+import type { IdentityGroup, DiscardedLogin } from "./identity";
 import { collapsedLineDiff } from "./diff";
 import { initialsOf, relTime } from "./ui";
 import { initialsOfName } from "./people";
@@ -118,7 +119,7 @@ export function decodeReviewId(id: string): ReviewRef | null {
   return null;
 }
 
-// ── Maintenance · assign vocabulary ──────────────────────────────────────────
+// ── Unplaced · assign vocabulary ──────────────────────────────────────────
 /** The real assign options: gate types × @shared/vocabulary targets.
  *  'needs-triage' is the queue itself, never an assignable section. */
 export const ASSIGN_OPTIONS: AssignOptions = {
@@ -132,7 +133,7 @@ export const ASSIGN_OPTIONS: AssignOptions = {
   tags: [...TAGS],
 };
 
-// ── Maintenance · Unplaced ───────────────────────────────────────────────────
+// ── Unplaced · the queue ─────────────────────────────────────────────────────
 function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
@@ -169,7 +170,7 @@ export function unplacedFromRow(r: NeedsTriageRow): UnplacedItem {
   };
 }
 
-// ── Maintenance · Identity ───────────────────────────────────────────────────
+// ── Org settings › Members · Unmatched logins ───────────────────────────────────────────────────
 /** Real sample kinds are only pr_merged / pr_closed / issue — commits are never
  *  captured events. The read returns samples, not a total, so the accent line
  *  says "recent activity" instead of fabricating a count. */

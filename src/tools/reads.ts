@@ -4,37 +4,40 @@ import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@sh
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
 import type { TicketListItem, TicketDetail, TicketRef, TicketSeg, TicketAssigneeFilter, TicketCategory } from "@shared/tickets";
 import { OPEN_STATUSES, OPEN_STATUS_SQL, TICKET_STATUSES } from "@shared/tickets-core";
-import { type DB, first, all, ph, fanOut } from "../db";
+import { type TenantContext, first, all, ph, fanOut } from "../data/sql";
 // The sprint read model lives next to the sprint writers; `query()` borrows its
 // progress RULE so the assembled sprint body and the Roadmap can never disagree.
 import { sprintProgress, ticketCountsBySprint } from "./sprints";
+import type { TicketDbRow } from "./tickets";
 
 export async function get_doc(
-  db: DB,
+  ctx: TenantContext,
   slug: string
 ): Promise<{ doc: DocRow; versions: DocVersionRow[] } | null> {
-  const doc = await first<DocRow>(db, `SELECT * FROM docs WHERE slug = ?`, slug);
+  const doc = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
   if (!doc) return null;
   const versions = await all<DocVersionRow>(
-    db,
-    `SELECT * FROM doc_versions WHERE slug = ? ORDER BY version ASC`,
+    ctx,
+    `SELECT * FROM doc_versions WHERE org_id = ? AND slug = ? ORDER BY version ASC`,
+    ctx.orgId,
     slug
   );
   return { doc, versions };
 }
 
-export async function list_docs(db: DB, section?: string): Promise<DocRow[]> {
+export async function list_docs(ctx: TenantContext, section?: string): Promise<DocRow[]> {
   if (section) {
-    return all<DocRow>(db, `SELECT * FROM docs WHERE section = ? ORDER BY slug ASC`, section);
+    return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? ORDER BY slug ASC`, ctx.orgId, section);
   }
-  return all<DocRow>(db, `SELECT * FROM docs ORDER BY slug ASC`);
+  return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? ORDER BY slug ASC`, ctx.orgId);
 }
 
 /** Every doc WITHOUT its body — for a surface that only lists (My Work's "Docs you
  *  own"), so it never pulls every doc's full text over the wire. */
-export async function list_doc_meta(db: DB): Promise<DocMetaRow[]> {
-  return all<DocMetaRow>(db,
-    `SELECT slug, section, title, current_version, updated_at, updated_by, space, owner FROM docs ORDER BY slug ASC`);
+export async function list_doc_meta(ctx: TenantContext): Promise<DocMetaRow[]> {
+  return all<DocMetaRow>(ctx,
+    `SELECT slug, section, title, current_version, updated_at, updated_by, space, owner FROM docs WHERE org_id = ? ORDER BY slug ASC`,
+    ctx.orgId);
 }
 
 export interface FeedFilter {
@@ -44,9 +47,10 @@ export interface FeedFilter {
   limit?: number;
 }
 
-export async function get_feed(db: DB, filter: FeedFilter = {}): Promise<FeedRow[]> {
+export async function get_feed(ctx: TenantContext, filter: FeedFilter = {}): Promise<FeedRow[]> {
   const clauses: string[] = [];
-  const params: unknown[] = [];
+  const params: unknown[] = [ctx.orgId];
+  const joinParams: unknown[] = [];
   let join = "";
 
   if (filter.author) {
@@ -59,18 +63,19 @@ export async function get_feed(db: DB, filter: FeedFilter = {}): Promise<FeedRow
   }
   if (filter.tags && filter.tags.length > 0) {
     const placeholders = filter.tags.map(() => "?").join(", ");
-    join = `JOIN entry_tags et ON et.entry_type = 'feed'
+    join = `JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'feed'
             AND et.entry_id = CAST(f.id AS TEXT) AND et.tag IN (${placeholders})`;
-    params.push(...filter.tags);
+    joinParams.push(ctx.orgId, ...filter.tags);
   }
 
-  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   // Clamp to a safe integer; interpolated (not bound) because SQLite rejects bound LIMIT in some drivers.
   const limit = Math.trunc(Math.min(Math.max(filter.limit ?? 50, 1), 500));
 
   return all<FeedRow>(
-    db,
-    `SELECT DISTINCT f.* FROM feed f ${join} ${where} ORDER BY f.created_at DESC, f.id DESC LIMIT ${limit}`,
+    ctx,
+    `SELECT DISTINCT f.* FROM feed f ${join} WHERE f.org_id = ?${clauses.map((c) => ` AND ${c}`).join("")}
+      ORDER BY f.created_at DESC, f.id DESC LIMIT ${limit}`,
+    ...joinParams,
     ...params
   );
 }
@@ -78,17 +83,17 @@ export async function get_feed(db: DB, filter: FeedFilter = {}): Promise<FeedRow
 // NOTE: the old flat-LIKE search_context was replaced by query() (below) — one
 // engine. /search and the MCP `query` tool both back onto it.
 
-export async function list_needs_triage(db: DB): Promise<NeedsTriageRow[]> {
-  return all<NeedsTriageRow>(db, `SELECT * FROM needs_triage WHERE resolved = 0 ORDER BY created_at DESC, id DESC`);
+export async function list_needs_triage(ctx: TenantContext): Promise<NeedsTriageRow[]> {
+  return all<NeedsTriageRow>(ctx, `SELECT * FROM needs_triage WHERE org_id = ? AND resolved = 0 ORDER BY created_at DESC, id DESC`, ctx.orgId);
 }
 
-export async function list_adrs(db: DB, status?: string): Promise<AdrRow[]> {
+export async function list_adrs(ctx: TenantContext, status?: string): Promise<AdrRow[]> {
   // Decision reads exclude 'rejected' (Phase 3): a rejected draft leaves the queue.
   // With an explicit status filter the caller already constrains it (the UI asks
   // for 'draft' / 'ratified', never 'rejected').
   return status
-    ? all<AdrRow>(db, `SELECT * FROM adrs WHERE status = ? ORDER BY created_at DESC, id DESC`, status)
-    : all<AdrRow>(db, `SELECT * FROM adrs WHERE status != 'rejected' ORDER BY created_at DESC, id DESC`);
+    ? all<AdrRow>(ctx, `SELECT * FROM adrs WHERE org_id = ? AND status = ? ORDER BY created_at DESC, id DESC`, ctx.orgId, status)
+    : all<AdrRow>(ctx, `SELECT * FROM adrs WHERE org_id = ? AND status != 'rejected' ORDER BY created_at DESC, id DESC`, ctx.orgId);
 }
 
 // The Proposals queue, server-joined (Phase 3, audit G9): every staged doc version
@@ -114,17 +119,19 @@ export interface ProposalRow {
   promotedBody: string;  // docs.body (the current live body)
 }
 
-export async function list_proposals(db: DB): Promise<ProposalRow[]> {
+export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]> {
   return all<ProposalRow>(
-    db,
+    ctx,
     `SELECT v.slug AS slug, v.version AS version, d.title AS title, d.section AS section, d.space AS space,
             v.summary AS summary, v.created_by AS author, v.confidence AS confidence, v.status AS status,
             v.change_kind AS change_kind, v.low_confidence AS low_confidence, v.base_version AS base_version,
             d.current_version AS current_version, v.created_at AS created_at,
             v.body AS stagedBody, d.body AS promotedBody
-       FROM doc_versions v JOIN docs d ON d.slug = v.slug
-      WHERE v.status = 'staged' AND v.version > d.current_version
-      ORDER BY v.created_at DESC, v.id DESC`
+       FROM doc_versions v JOIN docs d ON d.slug = v.slug AND d.org_id = ?
+      WHERE v.org_id = ? AND v.status = 'staged' AND v.version > d.current_version
+      ORDER BY v.created_at DESC, v.id DESC`,
+    ctx.orgId,
+    ctx.orgId
   );
 }
 
@@ -160,16 +167,18 @@ function titleFromRaw(raw: string): string | null {
  * never copied onto the task — events are already stored by raw login, so the
  * sample is just a per-login SELECT at read time (the queue is human-scale).
  */
-export async function list_identity_tasks(db: DB): Promise<IdentityTaskWithSample[]> {
+export async function list_identity_tasks(ctx: TenantContext): Promise<IdentityTaskWithSample[]> {
   const tasks = await all<IdentityTaskRow>(
-    db,
-    `SELECT * FROM identity_tasks WHERE status = 'pending' ORDER BY first_seen DESC, login ASC`
+    ctx,
+    `SELECT * FROM identity_tasks WHERE org_id = ? AND status = 'pending' ORDER BY first_seen DESC, login ASC`,
+    ctx.orgId
   );
   const out: IdentityTaskWithSample[] = [];
   for (const t of tasks) {
     const rows = await all<EventRow>(
-      db,
-      `SELECT * FROM events WHERE subject_login = ? ORDER BY occurred_at DESC, id DESC LIMIT ${IDENTITY_SAMPLE_LIMIT}`,
+      ctx,
+      `SELECT * FROM events WHERE org_id = ? AND subject_login = ? ORDER BY occurred_at DESC, id DESC LIMIT ${IDENTITY_SAMPLE_LIMIT}`,
+      ctx.orgId,
       t.login
     );
     out.push({
@@ -195,16 +204,21 @@ export interface DiscardedIdentity {
 
 /**
  * Discarded identity tasks, newest discard first — what Undo can still bring
- * back. A login linked since (a GitHub sign-in) is left out: restoring it would
- * list a task there is nothing left to map.
+ * back. A login this org attributes since (a MEMBER's GitHub sign-in, or the org's
+ * attribution map — `resolvePersonForLogin`'s two sources) is left out: restoring it
+ * would list a task there is nothing left to map.
  */
-export async function list_discarded_identities(db: DB): Promise<DiscardedIdentity[]> {
+export async function list_discarded_identities(ctx: TenantContext): Promise<DiscardedIdentity[]> {
   return all<DiscardedIdentity>(
-    db,
+    ctx,
     `SELECT t.login, t.resolved_at, t.resolved_by FROM identity_tasks t
-     WHERE t.status = 'discarded'
-       AND NOT EXISTS (SELECT 1 FROM identities i WHERE i.provider = 'github' AND i.subject = t.login)
-     ORDER BY t.resolved_at DESC, t.login ASC`
+     WHERE t.org_id = ? AND t.status = 'discarded'
+       AND NOT EXISTS (SELECT 1 FROM identities i JOIN memberships m ON m.user_id = i.person AND m.org_id = ?
+                        WHERE i.provider = 'github' AND i.subject = t.login)
+       AND NOT EXISTS (SELECT 1 FROM org_login_map l JOIN memberships m ON m.user_id = l.person AND m.org_id = ?
+                        WHERE l.org_id = ? AND l.github_login = t.login)
+     ORDER BY t.resolved_at DESC, t.login ASC`,
+    ctx.orgId, ctx.orgId, ctx.orgId, ctx.orgId
   );
 }
 
@@ -230,13 +244,22 @@ export interface TicketListFilter {
   me?: string;
 }
 
-export async function list_tickets(db: DB, filter: TicketListFilter = {}): Promise<TicketListItem[]> {
+/** The parent's NUMBER beside a `tickets t` row (`parent_id` stores its row id). */
+const PARENT_NUMBER = `(SELECT p.number FROM tickets p WHERE p.id = t.parent_id AND p.org_id = ?) AS parent_number`;
+type TicketReadRow = TicketDbRow & { parent_number: number | null };
+/** A stored row as it goes out: `id` and `parent_id` are per-org NUMBERS (src/tools/tickets.ts › a
+ *  ticket's two ids); the row id and the helper columns stay behind. */
+function ticketOut({ number, parent_number, ...row }: TicketReadRow): TicketRow {
+  return { ...row, id: number, parent_id: parent_number };
+}
+
+export async function list_tickets(ctx: TenantContext, filter: TicketListFilter = {}): Promise<TicketListItem[]> {
   const seg = filter.seg ?? "open";
   const assignee = filter.assignee ?? "anyone";
   const statuses = SEG_STATUSES[seg];
 
   const clauses: string[] = [`t.status IN (${ph(statuses.length)})`];
-  const params: unknown[] = [...statuses];
+  const params: unknown[] = [ctx.orgId, ctx.orgId, ...statuses];
   if (filter.category) {
     clauses.push(`t.category = ?`);
     params.push(filter.category);
@@ -245,44 +268,50 @@ export async function list_tickets(db: DB, filter: TicketListFilter = {}): Promi
     // An unresolvable `me` (no principal) matches nothing rather than everything.
     // NOCASE, like `persons.handle` and `getPerson` — a principal spelled with a
     // different case must not silently match nothing.
-    clauses.push(`EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.ticket_id = t.id AND a.login = ? COLLATE NOCASE)`);
-    params.push(filter.me ?? "");
+    clauses.push(`EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.org_id = ? AND a.ticket_id = t.id AND a.login = ? COLLATE NOCASE)`);
+    params.push(ctx.orgId, filter.me ?? "");
   } else if (assignee === "unassigned") {
-    clauses.push(`NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.ticket_id = t.id)`);
+    clauses.push(`NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.org_id = ? AND a.ticket_id = t.id)`);
+    params.push(ctx.orgId);
   }
 
-  const rows = await all<TicketRow>(
-    db,
-    `SELECT t.* FROM tickets t WHERE ${clauses.join(" AND ")} ORDER BY t.updated_at DESC, t.id DESC`,
+  const rows = await all<TicketReadRow>(
+    ctx,
+    `SELECT t.*, ${PARENT_NUMBER} FROM tickets t WHERE t.org_id = ? AND ${clauses.join(" AND ")} ORDER BY t.updated_at DESC, t.id DESC`,
     ...params
   );
   if (rows.length === 0) return [];
 
   // The queue is org-wide and unpaginated, so these id lists routinely outgrow
   // D1's 100-bound-parameter ceiling: every one goes through `fanOut` (src/db.ts).
+  // These are ROW ids — the joins' key; what goes out is each row's number (`ticketOut`).
   const ids = rows.map((r) => r.id);
 
   const assigneeRows = await fanOut<{ ticket_id: number; login: string }>(
-    db,
+    ctx,
     ids,
-    (p) => `SELECT ticket_id, login FROM ticket_assignees WHERE ticket_id IN (${p}) ORDER BY login ASC`
+    (p) => `SELECT ticket_id, login FROM ticket_assignees WHERE org_id = ? AND ticket_id IN (${p}) ORDER BY login ASC`,
+    [ctx.orgId]
   );
   const linkRows = await fanOut<{ ticket_id: number; n: number }>(
-    db,
+    ctx,
     ids,
-    (p) => `SELECT ticket_id, COUNT(*) AS n FROM ticket_links WHERE ticket_id IN (${p}) GROUP BY ticket_id`
+    (p) => `SELECT ticket_id, COUNT(*) AS n FROM ticket_links WHERE org_id = ? AND ticket_id IN (${p}) GROUP BY ticket_id`,
+    [ctx.orgId]
   );
   const subRows = await fanOut<{ parent_id: number; n: number }>(
-    db,
+    ctx,
     ids,
-    (p) => `SELECT parent_id, COUNT(*) AS n FROM tickets WHERE parent_id IN (${p}) GROUP BY parent_id`
+    (p) => `SELECT parent_id, COUNT(*) AS n FROM tickets WHERE org_id = ? AND parent_id IN (${p}) GROUP BY parent_id`,
+    [ctx.orgId]
   );
 
   const sprintIds = [...new Set(rows.map((r) => r.sprint_id).filter((v): v is number => v !== null))];
   const sprintRows = await fanOut<{ id: number; title: string }>(
-    db,
+    ctx,
     sprintIds,
-    (p) => `SELECT id, title FROM sprints WHERE id IN (${p})`
+    (p) => `SELECT id, title FROM sprints WHERE org_id = ? AND id IN (${p})`,
+    [ctx.orgId]
   );
 
   const byTicket = new Map<number, string[]>();
@@ -296,7 +325,7 @@ export async function list_tickets(db: DB, filter: TicketListFilter = {}): Promi
   const sprintLabels = new Map(sprintRows.map((r) => [r.id, r.title]));
 
   return rows.map((r) => ({
-    ...r,
+    ...ticketOut(r),
     assignees: byTicket.get(r.id) ?? [],
     link_count: links.get(r.id) ?? 0,
     sub_count: subs.get(r.id) ?? 0,
@@ -304,31 +333,36 @@ export async function list_tickets(db: DB, filter: TicketListFilter = {}): Promi
   }));
 }
 
-/** One ticket, whole: assignees, links, comments, history, parent + children, sprint. */
-export async function get_ticket(db: DB, id: number): Promise<TicketDetail | null> {
-  const t = await first<TicketRow>(db, `SELECT * FROM tickets WHERE id = ?`, id);
+/** One ticket BY NUMBER, whole: assignees, links, comments, history, parent + children, sprint.
+ *  Every ticket reference in it — its own `id`, `parent_id`, each sub-row's `ticket_id`, the parent
+ *  and child refs — is a per-org number. */
+export async function get_ticket(ctx: TenantContext, number: number): Promise<TicketDetail | null> {
+  const t = await first<TicketReadRow>(ctx, `SELECT t.*, ${PARENT_NUMBER} FROM tickets t WHERE t.number = ? AND t.org_id = ?`, ctx.orgId, number, ctx.orgId);
   if (!t) return null;
+  const id = t.id; // the row id, for the joins below
+  const mine = <R extends { ticket_id: number }>(rows: R[]): R[] => rows.map((r) => ({ ...r, ticket_id: number }));
 
   const assignees = (
-    await all<{ login: string }>(db, `SELECT login FROM ticket_assignees WHERE ticket_id = ? ORDER BY login ASC`, id)
+    await all<{ login: string }>(ctx, `SELECT login FROM ticket_assignees WHERE org_id = ? AND ticket_id = ? ORDER BY login ASC`, ctx.orgId, id)
   ).map((a) => a.login);
-  const links = await all<TicketLinkRow>(db, `SELECT * FROM ticket_links WHERE ticket_id = ? ORDER BY created_at ASC, id ASC`, id);
-  const comments = await all<TicketCommentRow>(db, `SELECT * FROM ticket_comments WHERE ticket_id = ? ORDER BY created_at ASC, id ASC`, id);
-  const events = await all<TicketEventRow>(db, `SELECT * FROM ticket_events WHERE ticket_id = ? ORDER BY created_at ASC, id ASC`, id);
+  const links = mine(await all<TicketLinkRow>(ctx, `SELECT * FROM ticket_links WHERE org_id = ? AND ticket_id = ? ORDER BY created_at ASC, id ASC`, ctx.orgId, id));
+  const comments = mine(await all<TicketCommentRow>(ctx, `SELECT * FROM ticket_comments WHERE org_id = ? AND ticket_id = ? ORDER BY created_at ASC, id ASC`, ctx.orgId, id));
+  const events = mine(await all<TicketEventRow>(ctx, `SELECT * FROM ticket_events WHERE org_id = ? AND ticket_id = ? ORDER BY created_at ASC, id ASC`, ctx.orgId, id));
   const children = await all<TicketRef>(
-    db,
-    `SELECT id, title, status FROM tickets WHERE parent_id = ? ORDER BY updated_at DESC, id DESC`,
+    ctx,
+    `SELECT number AS id, title, status FROM tickets WHERE org_id = ? AND parent_id = ? ORDER BY updated_at DESC, id DESC`,
+    ctx.orgId,
     id
   );
   const parent = t.parent_id !== null
-    ? await first<TicketRef>(db, `SELECT id, title, status FROM tickets WHERE id = ?`, t.parent_id)
+    ? await first<TicketRef>(ctx, `SELECT number AS id, title, status FROM tickets WHERE id = ? AND org_id = ?`, t.parent_id, ctx.orgId)
     : null;
   const sprintRow = t.sprint_id !== null
-    ? await first<{ id: number; title: string }>(db, `SELECT id, title FROM sprints WHERE id = ?`, t.sprint_id)
+    ? await first<{ id: number; title: string }>(ctx, `SELECT id, title FROM sprints WHERE id = ? AND org_id = ?`, t.sprint_id, ctx.orgId)
     : null;
 
   return {
-    ...t,
+    ...ticketOut(t),
     assignees,
     links,
     comments,
@@ -342,12 +376,14 @@ export async function get_ticket(db: DB, id: number): Promise<TicketDetail | nul
 /** The sidebar badge: active tickets nobody has picked up (unassigned + open).
  *  NATIVE tickets only — an unassigned mirrored ticket is an unassigned GitHub
  *  issue, triaged on GitHub, and would otherwise flood the badge (0032). */
-export async function ticket_badge(db: DB): Promise<number> {
+export async function ticket_badge(ctx: TenantContext): Promise<number> {
   const row = await first<{ n: number }>(
-    db,
+    ctx,
     `SELECT COUNT(*) AS n FROM tickets t
-      WHERE t.status IN ${OPEN_STATUS_SQL} AND t.source = 'canopy'
-        AND NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.ticket_id = t.id)`
+      WHERE t.org_id = ? AND t.status IN ${OPEN_STATUS_SQL} AND t.source = 'canopy'
+        AND NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.org_id = ? AND a.ticket_id = t.id)`,
+    ctx.orgId,
+    ctx.orgId
   );
   return row?.n ?? 0;
 }
@@ -511,7 +547,7 @@ function assembleSprintBody(
  * visible (only their author's). Omitted → no private artifact is returned.
  * Every other type is org-wide and ignores it.
  */
-export async function query(db: DB, req: QueryRequest, viewer?: string): Promise<QueryResult> {
+export async function query(ctx: TenantContext, req: QueryRequest, viewer?: string): Promise<QueryResult> {
   const types: readonly QueryType[] = req.types ?? DEFAULT_QUERY_TYPES;
   const artifactViewer = viewer ?? "";
   const limit = Math.trunc(Math.min(Math.max(req.limit ?? 6, 0), 50));
@@ -532,28 +568,27 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
 
   if (types.includes("doc")) {
     if (match) {
-      const clauses = ["docs_fts MATCH ?"];
-      const params: unknown[] = [match];
+      const clauses: string[] = [];
+      const params: unknown[] = [ctx.orgId, match, ctx.orgId];
       if (section !== undefined) { clauses.push("docs.section = ?"); params.push(section); }
       if (space !== undefined) { clauses.push("docs.space = ?"); params.push(space); }
       const rows = await all<{ key: string; rank: number; snip: string }>(
-        db,
+        ctx,
         `SELECT docs_fts.slug AS key, bm25(docs_fts, 1.0, 5.0, 1.0, 1.0) AS rank,
                 snippet(docs_fts, -1, ${SNIPPET}) AS snip
-         FROM docs_fts JOIN docs ON docs.slug = docs_fts.slug
-         WHERE ${clauses.join(" AND ")} ORDER BY rank LIMIT ${fetchCap}`,
+         FROM docs_fts JOIN docs ON docs.slug = docs_fts.slug AND docs.org_id = ?
+         WHERE docs_fts MATCH ? AND docs_fts.org_id = ?${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY rank LIMIT ${fetchCap}`,
         ...params
       );
       for (const r of rows) candidates.push({ type: "doc", key: String(r.key), score: -r.rank, snippet: r.snip });
     } else {
       const clauses: string[] = [];
-      const params: unknown[] = [];
+      const params: unknown[] = [ctx.orgId];
       if (section !== undefined) { clauses.push("section = ?"); params.push(section); }
       if (space !== undefined) { clauses.push("space = ?"); params.push(space); }
-      const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
       const rows = await all<{ key: string; ts: string | null }>(
-        db,
-        `SELECT slug AS key, updated_at AS ts FROM docs ${where}
+        ctx,
+        `SELECT slug AS key, updated_at AS ts FROM docs WHERE org_id = ?${clauses.map((c) => ` AND ${c}`).join("")}
          ORDER BY (updated_at IS NULL), updated_at DESC, slug DESC LIMIT ${fetchCap}`,
         ...params
       );
@@ -564,17 +599,19 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
   if (types.includes("feed") && !docsOnly) {
     if (match) {
       const rows = await all<{ key: string; rank: number; snip: string }>(
-        db,
+        ctx,
         `SELECT feed_id AS key, bm25(feed_fts, 1.0, 5.0, 1.0) AS rank,
                 snippet(feed_fts, -1, ${SNIPPET}) AS snip
-         FROM feed_fts WHERE feed_fts MATCH ? ORDER BY rank LIMIT ${fetchCap}`,
-        match
+         FROM feed_fts WHERE feed_fts MATCH ? AND feed_fts.org_id = ? ORDER BY rank LIMIT ${fetchCap}`,
+        match,
+        ctx.orgId
       );
       for (const r of rows) candidates.push({ type: "feed", key: String(r.key), score: -r.rank, snippet: r.snip });
     } else {
       const rows = await all<{ key: string }>(
-        db,
-        `SELECT id AS key FROM feed ORDER BY created_at DESC, id DESC LIMIT ${fetchCap}`
+        ctx,
+        `SELECT id AS key FROM feed WHERE org_id = ? ORDER BY created_at DESC, id DESC LIMIT ${fetchCap}`,
+        ctx.orgId
       );
       for (const r of rows) candidates.push({ type: "feed", key: String(r.key), score: 0, snippet: "" });
     }
@@ -583,17 +620,19 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
   if (types.includes("decision") && !docsOnly) {
     if (match) {
       const rows = await all<{ key: string; rank: number; snip: string }>(
-        db,
+        ctx,
         `SELECT adr_id AS key, bm25(adrs_fts, 1.0, 5.0, 1.0, 1.0, 1.0) AS rank,
                 snippet(adrs_fts, -1, ${SNIPPET}) AS snip
-         FROM adrs_fts WHERE adrs_fts MATCH ? ORDER BY rank LIMIT ${fetchCap}`,
-        match
+         FROM adrs_fts WHERE adrs_fts MATCH ? AND adrs_fts.org_id = ? ORDER BY rank LIMIT ${fetchCap}`,
+        match,
+        ctx.orgId
       );
       for (const r of rows) candidates.push({ type: "decision", key: String(r.key), score: -r.rank, snippet: r.snip });
     } else {
       const rows = await all<{ key: string }>(
-        db,
-        `SELECT id AS key FROM adrs ORDER BY created_at DESC, id DESC LIMIT ${fetchCap}`
+        ctx,
+        `SELECT id AS key FROM adrs WHERE org_id = ? ORDER BY created_at DESC, id DESC LIMIT ${fetchCap}`,
+        ctx.orgId
       );
       for (const r of rows) candidates.push({ type: "decision", key: String(r.key), score: 0, snippet: "" });
     }
@@ -604,24 +643,26 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
   if (types.includes("sprint") && !docsOnly) {
     if (match) {
       const rows = await all<{ key: string; rank: number; snip: string }>(
-        db,
+        ctx,
         `SELECT ref AS key, bm25(roadmap_fts, 1.0, 5.0, 1.0) AS rank,
                 snippet(roadmap_fts, -1, ${SNIPPET}) AS snip
-         FROM roadmap_fts WHERE roadmap_fts MATCH ? ORDER BY rank LIMIT ${fetchCap}`,
-        match
+         FROM roadmap_fts WHERE roadmap_fts MATCH ? AND roadmap_fts.org_id = ? ORDER BY rank LIMIT ${fetchCap}`,
+        match,
+        ctx.orgId
       );
       for (const r of rows) candidates.push({ type: "sprint", key: String(r.key), score: -r.rank, snippet: r.snip });
     } else {
       // Browse: the plan row first (only when it carries a narrative), then
       // sprints by recency (updated_at, then created_at).
-      const planRow = await first<PlanRow>(db, `SELECT * FROM plan WHERE id = 1`);
+      const planRow = await first<PlanRow>(ctx, `SELECT * FROM plan WHERE org_id = ?`, ctx.orgId);
       if (planRow && planRow.narrative.trim() !== "") {
         candidates.push({ type: "sprint", key: "plan", score: 0, snippet: "" });
       }
       const rows = await all<{ key: number }>(
-        db,
-        `SELECT id AS key FROM sprints
-         ORDER BY (updated_at IS NULL), updated_at DESC, created_at DESC, id DESC LIMIT ${fetchCap}`
+        ctx,
+        `SELECT id AS key FROM sprints WHERE org_id = ?
+         ORDER BY (updated_at IS NULL), updated_at DESC, created_at DESC, id DESC LIMIT ${fetchCap}`,
+        ctx.orgId
       );
       for (const r of rows) candidates.push({ type: "sprint", key: `sprint:${r.key}`, score: 0, snippet: "" });
     }
@@ -631,10 +672,10 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
   // version-0 pages). section/space are doc-only, so artifacts drop out under docsOnly.
   if (types.includes("artifact") && !docsOnly) {
     if (match) {
-      const hits = fetchCap > 0 ? await searchArtifacts(db, req.q ?? "", artifactViewer, fetchCap) : [];
+      const hits = fetchCap > 0 ? await searchArtifacts(ctx, req.q ?? "", artifactViewer, fetchCap) : [];
       for (const h of hits) candidates.push({ type: "artifact", key: String(h.id), score: -h.rank, snippet: h.snippet });
     } else {
-      const pages = (await listPages(db, {}, artifactViewer)).slice(0, fetchCap);
+      const pages = (await listPages(ctx, {}, artifactViewer)).slice(0, fetchCap);
       for (const p of pages) candidates.push({ type: "artifact", key: String(p.id), score: 0, snippet: "" });
     }
   }
@@ -648,11 +689,12 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
 
   const docMap = new Map<string, DocRow>();
   const stagedMap = new Map<string, DocVersionRow[]>();
-  for (const d of await fanOut<DocRow>(db, docKeys, (p) => `SELECT * FROM docs WHERE slug IN (${p})`)) docMap.set(d.slug, d);
+  for (const d of await fanOut<DocRow>(ctx, docKeys, (p) => `SELECT * FROM docs WHERE org_id = ? AND slug IN (${p})`, [ctx.orgId])) docMap.set(d.slug, d);
   for (const v of await fanOut<DocVersionRow>(
-    db,
+    ctx,
     docKeys,
-    (p) => `SELECT * FROM doc_versions WHERE status = 'staged' AND slug IN (${p}) ORDER BY version ASC`
+    (p) => `SELECT * FROM doc_versions WHERE org_id = ? AND status = 'staged' AND slug IN (${p}) ORDER BY version ASC`,
+    [ctx.orgId]
   )) {
     const list = stagedMap.get(v.slug) ?? [];
     list.push(v);
@@ -660,10 +702,10 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
   }
 
   const feedMap = new Map<string, FeedRow>();
-  for (const f of await fanOut<FeedRow>(db, feedKeys, (p) => `SELECT * FROM feed WHERE id IN (${p})`)) feedMap.set(String(f.id), f);
+  for (const f of await fanOut<FeedRow>(ctx, feedKeys, (p) => `SELECT * FROM feed WHERE org_id = ? AND id IN (${p})`, [ctx.orgId])) feedMap.set(String(f.id), f);
 
   const adrMap = new Map<string, AdrRow>();
-  for (const a of await fanOut<AdrRow>(db, adrKeys, (p) => `SELECT * FROM adrs WHERE id IN (${p})`)) adrMap.set(String(a.id), a);
+  for (const a of await fanOut<AdrRow>(ctx, adrKeys, (p) => `SELECT * FROM adrs WHERE org_id = ? AND id IN (${p})`, [ctx.orgId])) adrMap.set(String(a.id), a);
 
   // Roadmap hydration: sprint ids (from 'sprint:<id>' refs) + the plan flag.
   const sprintIds = candidates
@@ -672,28 +714,28 @@ export async function query(db: DB, req: QueryRequest, viewer?: string): Promise
   const needPlan = candidates.some((c) => c.type === "sprint" && c.key === "plan");
 
   const sprintMap = new Map<string, SprintRow>();
-  for (const sp of await fanOut<SprintRow>(db, sprintIds, (p) => `SELECT * FROM sprints WHERE id IN (${p})`)) {
+  for (const sp of await fanOut<SprintRow>(ctx, sprintIds, (p) => `SELECT * FROM sprints WHERE org_id = ? AND id IN (${p})`, [ctx.orgId])) {
     sprintMap.set(`sprint:${sp.id}`, sp);
   }
   // The progress line is TICKETS ONLY, for the hydrated sprints only — one
   // grouped query, sharing `sprintProgress`'s definition of "closed". The
   // `sprint_progress` cache is deliberately NOT read here.
-  const sprintTicketCounts = await ticketCountsBySprint(db, sprintIds);
-  const planRow = needPlan ? await first<PlanRow>(db, `SELECT * FROM plan WHERE id = 1`) : null;
+  const sprintTicketCounts = await ticketCountsBySprint(ctx, sprintIds);
+  const planRow = needPlan ? await first<PlanRow>(ctx, `SELECT * FROM plan WHERE org_id = ?`, ctx.orgId) : null;
 
   // Artifact hydration: each candidate page joined to its current version. The ids
   // came from visibility-checked reads; the rule is repeated here as a guard anyway.
   const artifactKeys = candidates.filter((c) => c.type === "artifact").map((c) => Number(c.key));
   const artifactMap = new Map<string, ArtifactHydrateRow>();
   for (const r of await fanOut<ArtifactHydrateRow>(
-    db,
+    ctx,
     artifactKeys,
     (p) => `SELECT p.id, p.slug, p.title, p.kind, p.area, p.repo, p.status, p.author_id, p.current_version, p.updated_at,
                    v.content, v.summary, v.content_type, v.size_bytes, v.created_by
               FROM artifact_pages p
-              JOIN artifact_versions v ON v.page_id = p.id AND v.version_no = p.current_version
-             WHERE (p.visibility = 'org' OR p.author_id = ? COLLATE NOCASE) AND p.deleted_at IS NULL AND p.id IN (${p})`,
-    [artifactViewer]
+              JOIN artifact_versions v ON v.page_id = p.id AND v.version_no = p.current_version AND v.org_id = ?
+             WHERE p.org_id = ? AND (p.visibility = 'org' OR p.author_id = ? COLLATE NOCASE) AND p.deleted_at IS NULL AND p.id IN (${p})`,
+    [ctx.orgId, ctx.orgId, artifactViewer]
   )) artifactMap.set(String(r.id), r);
 
   // Browse mode carries no per-row score, so order is by the merged recency from

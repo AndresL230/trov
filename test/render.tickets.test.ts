@@ -139,7 +139,7 @@ function detailProps(t: TicketDetail, o: Partial<TicketDetailProps> = {}): Ticke
 function appState(o: Partial<AppState> = {}): AppState {
   const s = initialState();
   s.view = "app";
-  s.me = { handle: "jose-a", name: "Jose Alvarez", avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false };
+  s.me = { handle: "jose-a", name: "Jose Alvarez", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 };
   s.persons = { status: "ok", data: PERSONS };
   return Object.assign(s, o);
 }
@@ -214,7 +214,7 @@ describe("sidebar — the Tickets entry (design call #2)", () => {
     expect(html).toContain('data-collapsed="1"');
     expect(ticketsRow(html)).toContain('<span class="cnpy-dot" data-n="4"></span>');
     // review/maintenance counts are 0 here, so theirs stay hidden
-    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(12); // every other entry
+    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(13); // every other entry (the Unplaced queue included)
   });
 
   it("lights Tickets on all three ticket screens", () => {

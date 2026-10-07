@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env, SELF } from "cloudflare:test";
-import { all } from "../src/db";
+import { all } from "./helpers/db";
 import type { FeedRow } from "@shared/rows";
 
 const ingestBody = JSON.stringify({

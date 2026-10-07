@@ -24,19 +24,15 @@ binding = "ARTIFACTS_BUCKET"
 bucket_name = "trov-artifacts"
 
 [vars]
+# An organization's repository and environments are rows it edits in Org settings (`org_repos`,
+# `org_environments`), not vars here.
 # GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are secrets, not vars. Set them via
 # `wrangler secret put GOOGLE_CLIENT_ID` / `wrangler secret put GOOGLE_CLIENT_SECRET`.
-GITHUB_REPO = "SaplingLearn/sapling"
-# Comma-separated handles allowed to run admin actions (e.g. the server-side backfill).
-ADMIN_LOGINS = "AndresL230,andres"
-# Absolute origin used for links inside email and artifact results.
-# Set to your workers.dev URL after the first deploy; switch to https://trov.dev once the domain is attached.
+# Absolute origin used for links inside email, artifact results and webhook URLs.
 PUBLIC_ORIGIN = "https://trov.dev"
 # Email delivery gate. "local" while this copy runs alongside Canopy, so the team
 # never gets duplicate digests. Flip to "resend" at cutover (needs RESEND_API_KEY).
 NOTIFICATIONS_MODE = "local"
-# The environments the repo dashboard reports on (src/repo/config.ts).
-REPO_ENVIRONMENTS = "[{\"key\":\"staging\",\"label\":\"staging\",\"note\":\"main\",\"branch\":\"main\",\"railwayEnv\":\"Sapling / staging\",\"worker\":\"frontend-staging\",\"workerCheck\":\"Workers Builds: frontend-staging\",\"frontendUrl\":\"https://staging.saplinglearn.com\",\"apiUrl\":\"https://api.staging.saplinglearn.com\",\"healthPath\":\"/api/health\",\"railwayEnvironmentId\":\"76bb36e5-cf12-4b1e-b47f-d276a56c3b85\",\"railwayServiceId\":\"c67bfc38-32a9-41a7-9440-f033d255af30\"},{\"key\":\"production\",\"label\":\"production\",\"note\":\"production\",\"branch\":\"production\",\"railwayEnv\":\"Sapling / production\",\"worker\":\"frontend\",\"workerCheck\":\"Workers Builds: frontend\",\"frontendUrl\":\"https://saplinglearn.com\",\"apiUrl\":\"https://api.saplinglearn.com\",\"healthPath\":\"/api/health\",\"railwayEnvironmentId\":\"dd058398-45bc-4c7d-80b1-12d46e3f28fb\",\"railwayServiceId\":\"c67bfc38-32a9-41a7-9440-f033d255af30\"}]"
 
 [observability]
 enabled = true

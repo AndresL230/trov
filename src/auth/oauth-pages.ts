@@ -43,6 +43,15 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;back
 .perms{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px}
 .perms li{display:flex;gap:10px;align-items:flex-start;font-size:13.5px;color:var(--fg-70);line-height:1.5}
 .perms svg{flex:none;margin-top:3px;color:var(--accent)}
+.orgs{margin:0;padding:0;border:0;min-width:0;display:flex;flex-direction:column;gap:8px}
+.orgs .label{padding:0}
+.org{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;font-size:14px;cursor:pointer;transition:background .12s,border-color .12s}
+.org:hover{background:var(--hover)}
+.org:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.org:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.org input{flex:none;margin:0;accent-color:var(--accent)}
+.org-name{min-width:0;font-weight:600;overflow-wrap:anywhere}
+.org-slug{margin-left:auto;flex:none;font-family:var(--label);font-size:12px;color:var(--fg-55)}
 .row{display:flex;gap:10px;margin-top:24px}
 .row .btn{flex:1}
 .err{margin-top:20px;padding:12px 14px;border-radius:4px;background:var(--red-soft);border:1px solid var(--border);color:var(--red);font-size:13.5px;line-height:1.55;overflow-wrap:anywhere}`;
@@ -78,23 +87,49 @@ export function signInPage(clientName: string): string {
     + `<div class="foot">After you sign in, Trov asks you to confirm before anything is connected.</div>`);
 }
 
-export function consentPage(p: { clientName: string; redirectHost: string; handle: string; hidden: Record<string, string>; csrf: string }): string {
-  const inputs = Object.entries({ ...p.hidden, csrf: p.csrf })
+/** Signed in, but a member of no organization: a connection is made INTO one (§7.1), so there is
+ *  nothing to approve yet. No form — the person joins or creates an org in the app and starts again. */
+export function noOrgPage(clientName: string, handle: string): string {
+  return shell("Join an organization first", head("Join an organization first")
+    + `<p class="lede"><strong>${esc(clientName)}</strong> connects to one organization's workspace, and <strong>@${esc(handle)}</strong> isn't a member of one yet.</p>`
+    + `<div class="stack"><a class="btn primary" href="/">Open Trov</a></div>`
+    + `<div class="foot">Create an organization or accept an invite there, then start the connection again from the app.</div>`);
+}
+
+/**
+ * The consent page. `orgs` are the signed-in person's organizations (never empty — `noOrgPage` is that
+ * case): with ONE the page is the plain Allow / Deny it always was, the org named in the lede and sent
+ * as a hidden field; with several, a radio group asks which one the connection is for — none
+ * preselected, required to Allow (Deny skips the check). The radios sit above the permissions and
+ * belong to the form below through `form="consent"`. The posted slug is only a request: the server
+ * binds the grant to it through a live membership check.
+ */
+export function consentPage(p: {
+  clientName: string; redirectHost: string; handle: string; orgs: { slug: string; name: string }[];
+  hidden: Record<string, string>; csrf: string;
+}): string {
+  const one = p.orgs.length === 1 ? p.orgs[0] : null;
+  const inputs = Object.entries({ ...p.hidden, csrf: p.csrf, ...(one ? { org: one.slug } : {}) })
     .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("");
+  const picker = one ? "" : `<fieldset class="orgs"><legend class="label">Connect it to</legend>`
+    + p.orgs.map((o) => `<label class="org"><input type="radio" name="org" value="${esc(o.slug)}" form="consent" required>`
+      + `<span class="org-name">${esc(o.name)}</span><span class="org-slug">${esc(o.slug)}</span></label>`).join("")
+    + `</fieldset>`;
   return shell("Connect an app", head("Connect an app")
-    + `<p class="lede sm">It will act as <strong>@${esc(p.handle)}</strong></p>`
+    + `<p class="lede sm">It will act as <strong>@${esc(p.handle)}</strong>${one ? ` in <strong>${esc(one.name)}</strong>` : ""}</p>`
     + `<div class="app"><div class="app-ic">${APP}</div><div style="min-width:0">`
     + `<div class="app-name">${esc(p.clientName)}</div>`
     + `<div class="app-sub">Returns you to <span class="host">${esc(p.redirectHost)}</span></div>`
     + `</div></div>`
+    + picker
     + `<div class="label">It can</div>`
     + `<ul class="perms">`
-    + `<li>${CHECK}<span>Read what you can read in Trov: docs, decisions, the roadmap, tickets and your work</span></li>`
+    + `<li>${CHECK}<span>Read what you can read in ${one ? "that organization" : "the organization you choose"}: docs, decisions, the roadmap, tickets and your work</span></li>`
     + `<li>${CHECK}<span>Write as you through MCP: file and update tickets, stage docs and decisions</span></li>`
-    + `<li>${CHECK}<span>If you're an admin, edit the plan and sprints</span></li>`
+    + `<li>${CHECK}<span>If you're an admin there, edit the plan and sprints</span></li>`
     + `</ul>`
-    + `<form method="post" action="/oauth/authorize">${inputs}<div class="row">`
-    + `<button class="btn" type="submit" name="decision" value="deny">Deny</button>`
+    + `<form id="consent" method="post" action="/oauth/authorize">${inputs}<div class="row">`
+    + `<button class="btn" type="submit" name="decision" value="deny" formnovalidate>Deny</button>`
     + `<button class="btn primary" type="submit" name="decision" value="allow">Allow</button></div></form>`
     + `<div class="foot">The app's name is supplied by the app. You can disconnect it any time in Settings › MCP access.</div>`);
 }

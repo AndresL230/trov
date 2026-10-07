@@ -1,13 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { sprintProgress, sprintIssueCounts } from "../src/tools/sprints";
 import { upsertProgress } from "../src/tools/progress";
 import type { SprintDetail, SprintView } from "@shared/sprints";
 import type { TicketDetail } from "@shared/tickets";
 import { cookieFor, seedPerson } from "./helpers/persons";
 
+import { systemCtx } from "./helpers/tenant";
+import { addOrgRepo } from "./helpers/org-config";
+
+// A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
+// so the suite's org has SaplingLearn's connected, as 0042_organizations seeds it in production.
+beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 // ── harness (the Phase 2 route-test idiom: real routes, real cookies, real D1) ─
 
 const post = (path: string, cookie: string, body?: unknown) =>
@@ -107,7 +113,7 @@ describe("GET /sprints — tickets-only progress, issues as their own field", ()
   it("issues only: the cache row NEVER enters the bar — progress 0/0, issues 2/3", async () => {
     const cookie = await cookieFor("andres");
     const sp = await createSprint(cookie, { label: "Token rotation" });
-    await upsertProgress(env.DB, sp.id, 2, 3, "event");
+    await upsertProgress(systemCtx(), sp.id, 2, 3, "event");
 
     const { sprints } = await json<{ sprints: SprintView[] }>(await get("/sprints", cookie));
     const v = sprints.find((s) => s.id === sp.id)!;
@@ -118,7 +124,7 @@ describe("GET /sprints — tickets-only progress, issues as their own field", ()
   it("both: the two halves stay SEPARATE — they never add", async () => {
     const cookie = await cookieFor("andres");
     const sp = await createSprint(cookie, { label: "Both" });
-    await upsertProgress(env.DB, sp.id, 2, 3, "event");
+    await upsertProgress(systemCtx(), sp.id, 2, 3, "event");
 
     const ids: number[] = [];
     for (let i = 0; i < 4; i++) ids.push((await createTicket(cookie, { title: `t${i}`, sprint_id: sp.id })).id);
@@ -145,7 +151,7 @@ describe("GET /sprints — tickets-only progress, issues as their own field", ()
   it("GET /sprints/:id carries the same split", async () => {
     const cookie = await cookieFor("andres");
     const sp = await createSprint(cookie, { label: "Detail split" });
-    await upsertProgress(env.DB, sp.id, 1, 5, "event");
+    await upsertProgress(systemCtx(), sp.id, 1, 5, "event");
     const t = await createTicket(cookie, { title: "one", sprint_id: sp.id });
     await moveTo(cookie, t.id, "in_progress");
     await moveTo(cookie, t.id, "done");
@@ -289,7 +295,8 @@ describe("GET /sprints/:id", () => {
     const triggers = await all<{ name: string; sql: string }>(
       env.DB, `SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'tickets'`
     );
-    expect(triggers.map((t) => t.name).sort()).toEqual(["tickets_fts_ad", "tickets_fts_ai", "tickets_fts_au"]);
+    // tickets_number_ai (0042_organizations) allocates the per-org display number — it touches no sprint either.
+    expect(triggers.map((t) => t.name).sort()).toEqual(["tickets_fts_ad", "tickets_fts_ai", "tickets_fts_au", "tickets_number_ai"]);
     expect(triggers.every((t) => !/sprint_id/i.test(t.sql))).toBe(true);
   });
 
@@ -322,7 +329,7 @@ describe("GET /sprints/:id", () => {
     const cookie = await cookieFor("andres");
     await cookieFor("beatrix");
     const sp = await createSprint(cookie, { label: "Detail" });
-    await upsertProgress(env.DB, sp.id, 1, 2, "event");
+    await upsertProgress(systemCtx(), sp.id, 1, 2, "event");
     const t = await createTicket(cookie, { title: "one", sprint_id: sp.id, assignees: ["beatrix"] });
     await moveTo(cookie, t.id, "declined");
 

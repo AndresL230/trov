@@ -41,13 +41,14 @@
 //      The scope check must not double as an existence oracle.
 
 import type { Env } from "../env";
-import { isAdmin } from "../auth/principal";
-import { type DB, first } from "../db";
+import { hasRole } from "../data/context";
+import { type TenantContext, first } from "../data/sql";
 import {
   TicketError,
   create_ticket, edit_ticket, transition_ticket, add_ticket_comment, add_ticket_link,
-  set_ticket_sprint, set_ticket_parent, toggle_assignee, requirePerson,
+  set_ticket_sprint, set_ticket_parent, toggle_assignee,
 } from "./tickets";
+import { requireMember } from "../auth/persons";
 import type { TicketCreate, TicketEdit, TicketStatus } from "@shared/tickets";
 
 /** The lane-scoped verbs. `create_ticket` is absent on purpose — it is the unscoped
@@ -59,6 +60,15 @@ export type AgentVerb =
   | "add_ticket_link"
   | "set_ticket_sprint"
   | "set_ticket_parent";
+
+/**
+ * "An admin" in both rules below is the ORG's (§7.2): the bearer context's own role in the org the
+ * token is bound to — admin or owner there, re-read on every request — and only for the context's own
+ * person. Being an admin of another org grants nothing.
+ * (`env` stays in the signatures for the callers; nothing here reads it any more.)
+ */
+const isOrgAdmin = (ctx: TenantContext, handle: string): boolean =>
+  hasRole(ctx, "admin") && ctx.userId.toLowerCase() === handle.toLowerCase();
 
 /**
  * The lane rule, in one function.
@@ -79,21 +89,23 @@ export type AgentVerb =
  * so a case variant can never widen or narrow a lane.
  */
 export async function assertTicketWritable(
-  db: DB,
+  ctx: TenantContext,
   env: Env,
   id: number,
   handle: string,
   verb: AgentVerb,
 ): Promise<void> {
-  const exists = await first<{ id: number }>(db, `SELECT id FROM tickets WHERE id = ?`, id);
+  // `id` is the ticket's per-org NUMBER (src/tools/tickets.ts › a ticket's two ids); the assignee rows are keyed by its row id.
+  const exists = await first<{ id: number }>(ctx, `SELECT id FROM tickets WHERE number = ? AND org_id = ?`, id, ctx.orgId);
   if (!exists) throw new TicketError("not_found", `no such ticket: ${id}`);
 
-  if (verb === "set_ticket_sprint" && isAdmin(env, handle)) return;
+  if (verb === "set_ticket_sprint" && isOrgAdmin(ctx, handle)) return;
 
   const mine = await first<{ n: number }>(
-    db,
-    `SELECT COUNT(*) AS n FROM ticket_assignees WHERE ticket_id = ? AND login = ? COLLATE NOCASE`,
-    id,
+    ctx,
+    `SELECT COUNT(*) AS n FROM ticket_assignees WHERE ticket_id = ? AND org_id = ? AND login = ? COLLATE NOCASE`,
+    exists.id,
+    ctx.orgId,
     handle,
   );
   if (!(mine?.n ?? 0)) {
@@ -108,18 +120,22 @@ export async function assertTicketWritable(
  * unless the handle is an admin, the ticket's requester or one of its current
  * assignees. Handles compare COLLATE NOCASE, like the lane.
  */
-export async function assertTicketAssignable(db: DB, env: Env, id: number, handle: string): Promise<void> {
+export async function assertTicketAssignable(ctx: TenantContext, env: Env, id: number, handle: string): Promise<void> {
   const t = await first<{ requester: number; assignee: number }>(
-    db,
-    `SELECT requester = ?1 COLLATE NOCASE AS requester,
-            EXISTS (SELECT 1 FROM ticket_assignees WHERE ticket_id = tickets.id AND login = ?1 COLLATE NOCASE) AS assignee
-       FROM tickets WHERE id = ?2`,
+    ctx,
+    `SELECT requester = ? COLLATE NOCASE AS requester,
+            EXISTS (SELECT 1 FROM ticket_assignees a
+                     WHERE a.ticket_id = tickets.id AND a.org_id = ? AND a.login = ? COLLATE NOCASE) AS assignee
+       FROM tickets WHERE number = ? AND org_id = ?`,
+    handle,
+    ctx.orgId,
     handle,
     id,
+    ctx.orgId,
   );
   if (!t) throw new TicketError("not_found", `no such ticket: ${id}`);
 
-  if (isAdmin(env, handle) || t.requester || t.assignee) return;
+  if (isOrgAdmin(ctx, handle) || t.requester || t.assignee) return;
   throw new TicketError("forbidden", `ticket ${id} can be (re)assigned only by an admin, its requester or one of its assignees`);
 }
 
@@ -140,15 +156,15 @@ export async function assertTicketAssignable(db: DB, env: Env, id: number, handl
  * change it could have set here, and the ticket is one it opened. That is the
  * whole of the escalation, and it is named rather than hidden.
  */
-export function agentCreateTicket(db: DB, input: TicketCreate, requester: string): Promise<number> {
-  return create_ticket(db, input, requester);
+export function agentCreateTicket(ctx: TenantContext, input: TicketCreate, requester: string): Promise<number> {
+  return create_ticket(ctx, input, requester);
 }
 
 /** Edit a ticket's title and/or body, inside the lane. A mirrored ticket's title
  *  and body are Trov's after import, so this works on those too. */
-export async function agentEditTicket(db: DB, env: Env, id: number, patch: TicketEdit, actor: string): Promise<void> {
-  await assertTicketWritable(db, env, id, actor, "edit_ticket");
-  await edit_ticket(db, id, patch, actor);
+export async function agentEditTicket(ctx: TenantContext, env: Env, id: number, patch: TicketEdit, actor: string): Promise<void> {
+  await assertTicketWritable(ctx, env, id, actor, "edit_ticket");
+  await edit_ticket(ctx, id, patch, actor);
 }
 
 /**
@@ -158,31 +174,31 @@ export async function agentEditTicket(db: DB, env: Env, id: number, patch: Ticke
  * not from a machine. What the invariant forbids is INFERENCE, and nothing on
  * this path infers: a caller asked, under that person's own credential.
  */
-export async function agentTransitionTicket(db: DB, env: Env, id: number, to: TicketStatus, actor: string): Promise<void> {
-  await assertTicketWritable(db, env, id, actor, "transition_ticket");
-  await transition_ticket(db, id, to, actor);
+export async function agentTransitionTicket(ctx: TenantContext, env: Env, id: number, to: TicketStatus, actor: string): Promise<void> {
+  await assertTicketWritable(ctx, env, id, actor, "transition_ticket");
+  await transition_ticket(ctx, id, to, actor);
 }
 
 /** Append a comment, inside the lane. Attributed to the author with no provenance
  *  marking it agent-written (design D4) — the skill's `comment_prefix` is the only
  *  thing that makes one recognizable. */
-export async function agentAddTicketComment(db: DB, env: Env, id: number, body: string, author: string): Promise<number> {
-  await assertTicketWritable(db, env, id, author, "add_ticket_comment");
-  return add_ticket_comment(db, id, body, author);
+export async function agentAddTicketComment(ctx: TenantContext, env: Env, id: number, body: string, author: string): Promise<number> {
+  await assertTicketWritable(ctx, env, id, author, "add_ticket_comment");
+  return add_ticket_comment(ctx, id, body, author);
 }
 
 /** Attach linked work, inside the lane. `raw` goes through the SHARED parser, so
  *  `#214` resolves the same way it does when a person types it into the web UI. */
-export async function agentAddTicketLink(db: DB, env: Env, id: number, raw: string, by: string): Promise<number> {
-  await assertTicketWritable(db, env, id, by, "add_ticket_link");
-  return add_ticket_link(db, id, raw, by);
+export async function agentAddTicketLink(ctx: TenantContext, env: Env, id: number, raw: string, by: string): Promise<number> {
+  await assertTicketWritable(ctx, env, id, by, "add_ticket_link");
+  return add_ticket_link(ctx, id, raw, by);
 }
 
 /** Move a ticket into a sprint, or back to the backlog (`null`). The ONE verb an
  *  admin may use outside their lane — see the D6 note on assertTicketWritable. */
-export async function agentSetTicketSprint(db: DB, env: Env, id: number, sprintId: number | null, actor: string): Promise<void> {
-  await assertTicketWritable(db, env, id, actor, "set_ticket_sprint");
-  await set_ticket_sprint(db, id, sprintId);
+export async function agentSetTicketSprint(ctx: TenantContext, env: Env, id: number, sprintId: number | null, actor: string): Promise<void> {
+  await assertTicketWritable(ctx, env, id, actor, "set_ticket_sprint");
+  await set_ticket_sprint(ctx, id, sprintId);
 }
 
 /**
@@ -191,10 +207,10 @@ export async function agentSetTicketSprint(db: DB, env: Env, id: number, sprintI
  * changed), so both rows are the subject of the write. The conservative reading,
  * and the easy one to relax — drop the second assertion.
  */
-export async function agentSetTicketParent(db: DB, env: Env, parentId: number, childId: number, actor: string): Promise<void> {
-  await assertTicketWritable(db, env, parentId, actor, "set_ticket_parent");
-  await assertTicketWritable(db, env, childId, actor, "set_ticket_parent");
-  await set_ticket_parent(db, parentId, childId);
+export async function agentSetTicketParent(ctx: TenantContext, env: Env, parentId: number, childId: number, actor: string): Promise<void> {
+  await assertTicketWritable(ctx, env, parentId, actor, "set_ticket_parent");
+  await assertTicketWritable(ctx, env, childId, actor, "set_ticket_parent");
+  await set_ticket_parent(ctx, parentId, childId);
 }
 
 /**
@@ -211,15 +227,18 @@ export async function agentSetTicketParent(db: DB, env: Env, parentId: number, c
  * success. A mirrored ticket's assignees are Trov's after import, so this works
  * on those too.
  */
-export async function agentAssignTicket(db: DB, env: Env, id: number, login: string, on: boolean, actor: string): Promise<void> {
-  await assertTicketAssignable(db, env, id, actor);
-  const handle = await requirePerson(db, login);
+export async function agentAssignTicket(ctx: TenantContext, env: Env, id: number, login: string, on: boolean, actor: string): Promise<void> {
+  await assertTicketAssignable(ctx, env, id, actor);
+  const handle = await requireMember(ctx, login);
   const has = await first<{ n: number }>(
-    db,
-    `SELECT COUNT(*) AS n FROM ticket_assignees WHERE ticket_id = ? AND login = ? COLLATE NOCASE`,
+    ctx,
+    `SELECT COUNT(*) AS n FROM ticket_assignees a JOIN tickets t ON t.id = a.ticket_id AND t.org_id = ?
+      WHERE t.number = ? AND a.org_id = ? AND a.login = ? COLLATE NOCASE`,
+    ctx.orgId,
     id,
+    ctx.orgId,
     handle,
   );
   if (Boolean(has?.n) === on) return;
-  await toggle_assignee(db, id, handle, on);
+  await toggle_assignee(ctx, id, handle, on);
 }

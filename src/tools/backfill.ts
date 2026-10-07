@@ -1,6 +1,10 @@
 import type { Env } from "../env";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
-import { first } from "../db";
+import { first } from "../data/sql";
+import { platform, type TenantContext } from "../data/context";
+import { markSecretUsed, resolveCredential } from "../data/secrets";
+import { jobTenant } from "../platform/jobs";
+import { orgPrimaryRepo } from "../repo/config";
 import { ingestEvent } from "../consumer";
 import { mirrorIssue } from "./ticket-mirror";
 import { eventsFromDelivery } from "../webhook";
@@ -9,7 +13,7 @@ import { applyEventProgress } from "./progress";
 
 // Admin-triggered server-side GitHub backfill. Unlike scripts/backfill-events.mjs
 // (which signs synthetic webhook deliveries with the webhook secret), this runs
-// INSIDE the Worker with GITHUB_SERVICE_TOKEN — the same token the scheduled()
+// INSIDE the Worker with the org's `github_token` — the same credential the scheduled()
 // progress recompute uses — so it fetches GitHub REST directly, no webhook secret.
 //
 // It reconstructs the SAME deliveries the webhook would have received, reuses the
@@ -185,6 +189,7 @@ function issueDelivery(issue: GhIssueListItem, repo: string) {
 
 export async function runBackfill(
   env: Env,
+  caller: TenantContext,
   principalLogin: string,
   opts?: {
     fetchImpl?: typeof fetch;
@@ -194,6 +199,9 @@ export async function runBackfill(
     summaryCallDelayMs?: number;
   }
 ): Promise<BackfillResult> {
+  // The backfill replays GitHub into the CALLER's org, as system — the webhook's own context
+  // (`jobTenant`; the route's gate decides who may ask, and a bearer context is refused).
+  const ctx = jobTenant(env, caller);
   // Nothing-ran failure envelope. The route turns this into a 503 whose error
   // reaches the admin's toast — a Sync that can't reach GitHub must say so, not
   // report zeros as if the repo were empty.
@@ -211,9 +219,13 @@ export async function runBackfill(
     issuesToSummarize: 0,
   });
 
-  const token = env.GITHUB_SERVICE_TOKEN;
-  const repo = env.GITHUB_REPO;
+  // The org's PRIMARY repo and its `github_token` (the org's stored secret; for SaplingLearn, until
+  // its admin enters one, the legacy GITHUB_SERVICE_TOKEN — src/data/secrets.ts). This module is not
+  // reachable from src/mcp.ts, so it may resolve one. A secret that cannot be read is "not configured".
+  const repo = (await orgPrimaryRepo(ctx))?.repo;
+  const token = repo ? (await resolveCredential(ctx, env, "github_token", "").catch(() => null))?.reveal() : undefined;
   if (!token || !repo) return failed("service token or repo not configured");
+  await markSecretUsed(ctx, "github_token", "").catch(() => undefined);
 
   const doFetch = opts?.fetchImpl ?? fetch;
   const summarizer = opts?.summarizer ?? (env.GEMINI_API_KEY ? geminiPrSummarizer(env.GEMINI_API_KEY) : null);
@@ -234,10 +246,10 @@ export async function runBackfill(
     let url: string | null = `https://api.github.com/repos/${repo}/pulls?state=closed&sort=updated&direction=desc&per_page=100`;
     while (url) {
       const res: Response = await doFetch(url, { headers });
-      // Fail the whole run, loud: a 401/403/404 here (dead or under-scoped
-      // GITHUB_SERVICE_TOKEN) would otherwise read as "0 PRs" — fake success.
+      // Fail the whole run, loud: a 401/403/404 here (a dead or under-scoped
+      // token) would otherwise read as "0 PRs" — fake success.
       // Both lists are fetched before any ingestion, so nothing is half-written.
-      if (!res.ok) return failed(`GitHub ${res.status} listing closed PRs (check GITHUB_SERVICE_TOKEN)`);
+      if (!res.ok) return failed(`GitHub ${res.status} listing closed PRs (check the org's GitHub token)`);
       const page = (await res.json()) as GhPrListItem[];
       prList.push(...page);
       url = nextLink(res);
@@ -251,7 +263,7 @@ export async function runBackfill(
     let url: string | null = `https://api.github.com/repos/${repo}/issues?state=open&per_page=100`;
     while (url) {
       const res: Response = await doFetch(url, { headers });
-      if (!res.ok) return failed(`GitHub ${res.status} listing open issues (check GITHUB_SERVICE_TOKEN)`);
+      if (!res.ok) return failed(`GitHub ${res.status} listing open issues (check the org's GitHub token)`);
       const page = (await res.json()) as GhIssueListItem[];
       for (const issue of page) {
         if (issue.pull_request) continue;
@@ -289,7 +301,7 @@ export async function runBackfill(
     // effort, like the webhook's: a mirror failure never costs the capture.
     if (issue.state === "open") {
       try {
-        await mirrorIssue(env.DB, repo, payload);
+        await mirrorIssue(ctx, platform(env, "system"), repo, payload);
       } catch (e) {
         console.error("ticket mirror failed (backfill)", issue.number, e instanceof Error ? e.message : String(e));
       }
@@ -298,11 +310,11 @@ export async function runBackfill(
 
     for (const base of eventsFromDelivery("issues", payload)) {
       const ev = { ...base, provenance: "backfill" as const };
-      const res = await ingestEvent(env.DB, ev, principalLogin);
+      const res = await ingestEvent(ctx, platform(env, principalLogin), ev, principalLogin);
       if (res.outcome === "written") {
         captured++;
         // Mirror handleGithubWebhook's progress seam for newly-written issues.
-        await applyEventProgress(env.DB, payload);
+        await applyEventProgress(ctx, payload);
       } else {
         unchanged++;
       }
@@ -310,9 +322,9 @@ export async function runBackfill(
       if (!isAssigned) continue; // unassigned issues never appear in anyone's to-do
 
       const existing = await first<IssueSummaryRow>(
-        env.DB,
-        `SELECT model, title FROM issue_summaries WHERE issue_number = ?`,
-        issue.number
+        ctx,
+        `SELECT model, title FROM issue_summaries WHERE org_id = ? AND issue_number = ?`,
+        ctx.orgId, issue.number
       );
       const alreadySummarized = existing !== null && existing.model !== "excerpt" && existing.title !== null;
       if (alreadySummarized) {
@@ -327,7 +339,7 @@ export async function runBackfill(
         continue;
       }
 
-      const stored = await storeIssueSummary(env.DB, issueSummarizer, {
+      const stored = await storeIssueSummary(ctx, issueSummarizer, {
         issue_number: issue.number,
         title: issue.title,
         body: issue.body ?? "",
@@ -347,7 +359,7 @@ export async function runBackfill(
     const payload = prClosedDelivery(pr);
     for (const base of eventsFromDelivery("pull_request", payload)) {
       const ev = { ...base, provenance: "backfill" as const };
-      const res = await ingestEvent(env.DB, ev, principalLogin);
+      const res = await ingestEvent(ctx, platform(env, principalLogin), ev, principalLogin);
       if (res.outcome === "written") {
         captured++;
       } else {
@@ -358,9 +370,9 @@ export async function runBackfill(
       // event-capture outcome so a Sync also migrates PRs that fell back to the
       // excerpt summary, not just brand-new ones.
       const existing = await first<PrSummaryRow>(
-        env.DB,
-        `SELECT model, title FROM pr_summaries WHERE semantic_key = ?`,
-        ev.semantic_key
+        ctx,
+        `SELECT model, title FROM pr_summaries WHERE org_id = ? AND semantic_key = ?`,
+        ctx.orgId, ev.semantic_key
       );
       // "Done" = a real (non-excerpt) summary that is ALSO structured — title
       // doubles as the structured-generation marker (0018), so prose-era rows
@@ -377,7 +389,7 @@ export async function runBackfill(
       }
 
       const parsed = JSON.parse(ev.raw) as { pr: { number: number; title: string; body: string | null } };
-      const stored = await storePrSummary(env.DB, summarizer, {
+      const stored = await storePrSummary(ctx, summarizer, {
         semantic_key: ev.semantic_key,
         pr_number: parsed.pr.number,
         title: parsed.pr.title,

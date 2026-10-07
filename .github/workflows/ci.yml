@@ -1,0 +1,33 @@
+# The full suite on every push and pull request (canopy-multitenancy.md §10.4). Hermetic: Vitest runs
+# against a real Miniflare D1 with every network client blanked (vitest.config.ts), so no secrets.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck (worker + web)
+        run: npm run typecheck
+      - name: Test suite
+        run: npm test
+      - name: Web build
+        run: npm run build:web
+      - name: Rollback script is up to date with 0042_organizations
+        run: |
+          python3 scripts/mt/build-rollback.py
+          git diff --exit-code -- scripts/mt/rollback/

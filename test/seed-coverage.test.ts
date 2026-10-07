@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { buildSeedStatements } from "../scripts/seed/build.mjs";
 import { getMyWork } from "../src/tools/mywork";
 import { get_plan } from "../src/tools/plan";
 import { query, get_feed, list_proposals, list_needs_triage, list_adrs, list_identity_tasks, list_tickets, get_ticket, ticket_badge } from "../src/tools/reads";
 import { get_sprint } from "../src/tools/sprints";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import docs from "../fixtures/dev/docs.json";
 import feed from "../fixtures/dev/feed.json";
 import adrs from "../fixtures/dev/adrs.json";
@@ -25,7 +26,7 @@ beforeEach(async () => {
 
 describe("dev seed lights up every surface", () => {
   it("My Work: previous activity + to-dos for AndresL230", async () => {
-    const mw = await getMyWork(env.DB, "AndresL230");
+    const mw = await getMyWork(systemCtx(), "AndresL230");
     expect(mw.degraded).toBe(false);
     expect(mw.person).toBe("Andres");
     expect(mw.previousActivity.length).toBeGreaterThan(0);
@@ -43,7 +44,7 @@ describe("dev seed lights up every surface", () => {
   });
 
   it("Roadmap: narrative + sprints carrying progress, the 0025 fields, and resources", async () => {
-    const plan = await get_plan(env.DB);
+    const plan = await get_plan(systemCtx());
     expect(plan.narrative.length).toBeGreaterThan(0);
     expect(plan.sprints.length).toBe(7);
     expect(plan.sprints.some((sp) => sp.progress.total > 0)).toBe(true);
@@ -73,7 +74,7 @@ describe("dev seed lights up every surface", () => {
   });
 
   it("Roadmap: a sprint's resources merge its own links with its tickets', deduped by url", async () => {
-    const detail = (await get_sprint(env.DB, 3))!;
+    const detail = (await get_sprint(systemCtx(), 3))!;
     const urls = detail.resources.map((r) => r.url);
     const shared = "https://github.com/SaplingLearn/sapling/issues/214";
 
@@ -107,19 +108,19 @@ describe("dev seed lights up every surface", () => {
 
   it("Tickets: the queue lights up — badge, links, nesting, sprint labels, comments, history", async () => {
     // The sidebar badge is non-zero, so the nav renders it out of the box.
-    const badge = await ticket_badge(env.DB);
+    const badge = await ticket_badge(systemCtx());
     expect(badge).toBeGreaterThan(0);
 
     // `seg=open` = submitted + in_progress only; nothing closed leaks in.
-    const open = await list_tickets(env.DB, { seg: "open" });
+    const open = await list_tickets(systemCtx(), { seg: "open" });
     expect(open.length).toBeGreaterThan(0);
     expect(open.every((t) => t.status === "submitted" || t.status === "in_progress")).toBe(true);
     // …and the closed segment is populated too (the seed has a done and a declined).
-    const closed = await list_tickets(env.DB, { seg: "closed" });
+    const closed = await list_tickets(systemCtx(), { seg: "closed" });
     expect(new Set(closed.map((t) => t.status))).toEqual(new Set(["done", "declined"]));
 
     // Every requester is one of the two non-engineer staff — the queue's whole point.
-    const allTickets = await list_tickets(env.DB, { seg: "all" });
+    const allTickets = await list_tickets(systemCtx(), { seg: "all" });
     expect(new Set(allTickets.map((t) => t.requester))).toEqual(new Set(["meilin", "sanaok"]));
     // …and the badge counts exactly the unassigned open ones.
     expect(badge).toBe(open.filter((t) => t.assignees.length === 0).length);
@@ -130,7 +131,7 @@ describe("dev seed lights up every surface", () => {
     expect(linked!.sub_count).toBe(1);
     expect(linked!.sprint_label, "a sprint-assigned ticket shows its sprint label").not.toBeNull();
 
-    const detail = (await get_ticket(env.DB, linked!.id))!;
+    const detail = (await get_ticket(systemCtx(), linked!.id))!;
     expect(detail.children.length).toBe(1);
     expect(detail.parent).toBeNull();
     expect(new Set(detail.links.map((l) => l.kind))).toEqual(new Set(["github", "figma"]));
@@ -140,32 +141,32 @@ describe("dev seed lights up every surface", () => {
     expect(detail.events[0].to_status).toBe("submitted");
 
     // The child points back at it, and lives in a different sprint.
-    const child = (await get_ticket(env.DB, detail.children[0].id))!;
+    const child = (await get_ticket(systemCtx(), detail.children[0].id))!;
     expect(child.parent?.id).toBe(detail.id);
     expect(child.sprint?.id).not.toBe(detail.sprint?.id);
 
     // Assignees are engineers; assignee:'me' narrows to one person's tickets.
-    const mine = await list_tickets(env.DB, { seg: "all", assignee: "me", me: "AndresL230" });
+    const mine = await list_tickets(systemCtx(), { seg: "all", assignee: "me", me: "AndresL230" });
     expect(mine.length).toBeGreaterThan(0);
     expect(mine.every((t) => t.assignees.includes("AndresL230"))).toBe(true);
   });
 
   it("Search: ranked hits for a known term", async () => {
-    const r = await query(env.DB, { q: "MCP", include_staged: true });
+    const r = await query(systemCtx(), { q: "MCP", include_staged: true });
     expect(r.primary.length).toBeGreaterThan(0);
   });
 
   it("Feed: tagged entries present", async () => {
-    expect((await get_feed(env.DB, {})).length).toBeGreaterThan(0);
-    expect((await get_feed(env.DB, { tags: ["auth"] })).length).toBeGreaterThan(0);
+    expect((await get_feed(systemCtx(), {})).length).toBeGreaterThan(0);
+    expect((await get_feed(systemCtx(), { tags: ["auth"] })).length).toBeGreaterThan(0);
   });
 
   // Four queues, and four is now the total: the roadmap-proposal queue was
   // dropped along with its table in 0025, so these are all of them.
   it("Triage: all four queues populated", async () => {
-    expect((await list_proposals(env.DB)).length).toBeGreaterThan(0);
-    expect((await list_needs_triage(env.DB)).length).toBeGreaterThan(0);
-    expect((await list_adrs(env.DB, "draft")).length).toBeGreaterThan(0);
-    expect((await list_identity_tasks(env.DB)).length).toBeGreaterThan(0);
+    expect((await list_proposals(systemCtx())).length).toBeGreaterThan(0);
+    expect((await list_needs_triage(systemCtx())).length).toBeGreaterThan(0);
+    expect((await list_adrs(systemCtx(), "draft")).length).toBeGreaterThan(0);
+    expect((await list_identity_tasks(systemCtx())).length).toBeGreaterThan(0);
   });
 });

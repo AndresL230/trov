@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import type { IssueSummaryRow } from "@shared/rows";
 
 describe("issue_summaries schema (0017)", () => {

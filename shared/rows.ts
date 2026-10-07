@@ -137,6 +137,10 @@ export interface IdentityRow {
   person: string;
   linked_at: string;
   linked_by: string;
+  /** The email the provider VERIFIED at this identity's last sign-in (0042_organizations) — what invites and the sign-in link match. */
+  verified_email?: string | null;
+  /** The provider account's immutable id where `subject` is not one — GitHub's numeric id (0042_organizations); NULL until its next sign-in. */
+  provider_uid?: string | null;
 }
 
 // The Google gate (0023): only an invited, verified address may create a person.
@@ -177,12 +181,14 @@ export interface McpTokenSummary {
   last_used_at: string | null;
 }
 
-/** Settings › Connected apps: one OAuth connection (a grant). Never a token. */
+/** Settings › Connected apps: one OAuth connection (a grant). Never a token. A connection is made
+ *  into ONE org (the consent page's choice, §7.1); `org` names it. */
 export interface OAuthGrantSummary {
   id: number;
   client_name: string;
   created_at: string;
   last_used_at: string | null;
+  org: { slug: string; name: string };
 }
 
 // The replay ledger (0009). One row per (session_id, item_index) the worker has
@@ -265,7 +271,7 @@ export interface IdentityTaskRow {
 
 // The plan singleton (0012).
 export interface PlanRow {
-  id: number;
+  org_id: string;
   narrative: string;
   current_version: number;
   updated_at: string | null;
@@ -294,7 +300,7 @@ export interface NotificationPolicyRow {
 
 // The org-level schedule singleton (id = 1).
 export interface NotificationSettingsRow {
-  id: 1;
+  org_id: string;
   send_hour: number;
   timezone: string;
   from_address: string;
@@ -310,7 +316,7 @@ export interface NotificationPrefRow {
 
 // One row per (user, cadence, window) — the run idempotency ledger.
 export interface NotificationOutboxRow {
-  idempotency_key: string;            // user:cadence:window_id
+  idempotency_key: string;            // org:user:cadence:window_id
   user_id: string;
   cadence: "daily" | "weekly";
   window_id: string;

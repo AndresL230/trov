@@ -37,7 +37,7 @@ All optional. Unknown keys are ignored.
 | `offer_transitions` | `all` | Which moves the skill proposes. `all`, or `start-only` (`submitted → in_progress` and nothing else — a team that wants people to close things). Advisory. |
 | `comment_prefix` | *(none)* | Prepended to every comment the agent posts, e.g. `[via claude]`. Trov stores **no** provenance on a write, so this is the only thing that makes an agent's comment recognizable in the ticket history. |
 | `require_confirmation` | `true` | Show the one-line diff and wait before any write. `done` / `declined` and `complete_sprint` are **always** confirmed regardless of this setting — they resolve work for the whole org. |
-| `link_repo` | `SaplingLearn/sapling` | The repo a bare `#214` resolves against. Must match `DEFAULT_TICKET_REPO` in `shared/tickets.ts` — the server parses the link, not the skill, so a mismatch here just makes the skill's preview wrong. |
+| `link_repo` | `SaplingLearn/sapling` | The repo a bare `#214` resolves against. Set it to your organization's **primary repository** (Org settings › Repositories) — that is what the server resolves a bare ref against (it falls back to `DEFAULT_TICKET_REPO` in `shared/tickets.ts` only while an organization has none). The server parses the link, not the skill, so a mismatch here just makes the skill's preview wrong. |
 
 ## Example
 

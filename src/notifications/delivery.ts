@@ -1,6 +1,6 @@
 // The delivery seam. The run assembler only knows `Delivery`; local mode writes
 // the rendered message to the dev-only bodies table and never touches Resend.
-import { type DB, run, nowIso } from "../db";
+import { type TenantContext, run, nowIso } from "../data/sql";
 
 export interface OutboundMessage {
   idempotencyKey: string;
@@ -18,13 +18,14 @@ export interface Delivery {
   send(msg: OutboundMessage): Promise<{ id: string | null }>;
 }
 
-export function localDelivery(db: DB): Delivery {
+export function localDelivery(ctx: TenantContext): Delivery {
   return {
     mode: "local",
     async send(msg) {
       await run(
-        db,
-        `INSERT INTO notification_outbox_bodies (idempotency_key, to_address, subject, html, text, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+        ctx,
+        `INSERT INTO notification_outbox_bodies (org_id, idempotency_key, to_address, subject, html, text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        ctx.orgId,
         msg.idempotencyKey,
         msg.to,
         msg.subject,

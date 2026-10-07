@@ -63,7 +63,7 @@ describe("sidebar — groups and order (the design's five sections)", () => {
       expect(html).toContain(`data-act="navSub" data-arg="${arg}"`);
     }
     expect((html.match(/data-act="navSub"/g) ?? []).length).toBe(2);
-    // Roadmap, Tickets, Maintenance and Repo have no sub-pages in the rail (their switches
+    // Roadmap, Tickets, Unplaced (`maintenance`) and Repo have no sub-pages in the rail (their switches
     // are on the screen itself) — and no chevron.
     for (const g of ["roadmap", "tickets", "maintenance", "repo"]) {
       expect(html).not.toContain(`data-arg="${g}:`);
@@ -71,7 +71,7 @@ describe("sidebar — groups and order (the design's five sections)", () => {
     }
   });
 
-  it("Maintenance is a plain row with its count badge — no chevron, no sub-page list", () => {
+  it("Unplaced (the `maintenance` key) is a plain row with its count badge — no chevron, no sub-page list", () => {
     const html = sidebarView(props({ screen: "maintenance", counts: { review: 0, maintenance: 4, tickets: 0, handoffs: 0, prompts: 0 } }));
     const row = html.slice(html.indexOf('class="cnpy-navrow n-maintenance'), html.indexOf(">Help<"));
     expect(row).toContain('class="cnpy-navrow n-maintenance is-active"');
@@ -118,7 +118,7 @@ describe("sidebar — active state", () => {
     const docs = sidebarView(props({ screen: "docs", docSpace: "product" }));
     expect(docs).toContain('data-arg="docs:product" class="cnpy-sub-i is-active" aria-current="page"');
     expect(docs).not.toContain('data-arg="docs:technical" class="cnpy-sub-i is-active"');
-    // Tickets, Maintenance and Repo have no rail sub-pages, so none of their screens lights one up.
+    // Tickets, Unplaced and Repo have no rail sub-pages, so none of their screens lights one up.
     for (const screen of ["tickets", "ticketdetail", "newticket", "maintenance", "repo"]) {
       expect(sidebarView(props({ screen }))).not.toContain("cnpy-sub-i is-active");
     }
@@ -152,7 +152,7 @@ describe("sidebar — open/closed and collapsed are attributes", () => {
     const html = sidebarView(props({ collapsed: true, navOpen: { ...NAV_CLOSED, docs: true } }));
     expect(html).toContain('data-arg="docs:product" class="cnpy-sub-i" tabindex="-1"');
     expect(html).toContain('aria-label="Expand sidebar" aria-expanded="false"');
-    for (const tip of ["My Work", "Tickets", "Roadmap", "Handoffs", "Repo", "Feed", "Docs", "Artifacts", "Prompt Library", "Review", "Maintenance", "Get Started", "What&#39;s new", "Search", "Settings"]) {
+    for (const tip of ["My Work", "Tickets", "Roadmap", "Handoffs", "Repo", "Feed", "Docs", "Artifacts", "Prompt Library", "Review", "Unplaced", "Get Started", "What&#39;s new", "Search", "Settings"]) {
       expect(html).toContain(`data-tip="${tip}"`);
     }
   });

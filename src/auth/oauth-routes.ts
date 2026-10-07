@@ -11,7 +11,10 @@ import {
 } from "./oauth";
 import { readSessionCookie, getSessionUser } from "./session";
 import { hmacSeal, hmacUnseal, b64uEncode, b64uDecode } from "./crypto";
-import { errorPage, signInPage, consentPage } from "./oauth-pages";
+import { errorPage, signInPage, consentPage, noOrgPage } from "./oauth-pages";
+import { platformContext } from "../data/gate";
+import { resolveSoleTenant, resolveTenant, type TenantContext } from "../data/context";
+import { listMyOrgs } from "../orgs/repo";
 
 const MAX_REGISTER_BYTES = 8 * 1024;
 const CORS: Record<string, string> = {
@@ -66,7 +69,7 @@ async function consentSession(c: Context<AppEnv>): Promise<{ id: string; handle:
   if (c.env.DEV_LOGIN) return { id: "dev", handle: c.env.DEV_LOGIN };
   const id = await readSessionCookie(c, c.env.COOKIE_SECRET);
   if (!id) return null;
-  const handle = await getSessionUser(c.env.DB, id);
+  const handle = await getSessionUser(c.var.p, id);
   return handle ? { id, handle } : null;
 }
 
@@ -79,6 +82,8 @@ export interface OAuthDeps { now?: () => number }
 export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
   const now = deps.now ?? Date.now;
   const o = new Hono<AppEnv>();
+  // OAuth clients, codes, grants and tokens are global tables: `c.var.p` (set here too, so the app stands alone).
+  o.use("*", platformContext);
 
   const json = (c: Context<AppEnv>, body: unknown, status: 200 | 201 | 400 | 401 | 503 = 200, cache = "no-store") =>
     c.json(body, status, { ...CORS, "cache-control": cache });
@@ -107,7 +112,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
     let body: unknown;
     try { body = JSON.parse(text); } catch { return oauthError(c, new OAuthError("invalid_client_metadata", "the body must be JSON")); }
     try {
-      const client = await registerClient(c.env.DB, validateRegistration(body), now());
+      const client = await registerClient(c.var.p, validateRegistration(body), now());
       return json(c, {
         ...client, client_id_issued_at: Math.floor(now() / 1000), token_endpoint_auth_method: "none",
         grant_types: ["authorization_code", "refresh_token"], response_types: ["code"],
@@ -144,13 +149,13 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
     try {
       const grant = p.get("grant_type");
       if (grant === "authorization_code") {
-        return json(c, await exchangeAuthorizationCode(c.env.DB, {
+        return json(c, await exchangeAuthorizationCode(c.var.p, {
           code: need(p, "code"), code_verifier: need(p, "code_verifier"), redirect_uri: need(p, "redirect_uri"),
           client_id: need(p, "client_id"), resource: p.get("resource"),
         }, oauthOrigin(c.req.url), now()));
       }
       if (grant === "refresh_token") {
-        return json(c, await refreshAccessToken(c.env.DB, { refresh_token: need(p, "refresh_token"), client_id: p.get("client_id") }, now()));
+        return json(c, await refreshAccessToken(c.var.p, { refresh_token: need(p, "refresh_token"), client_id: p.get("client_id") }, now()));
       }
       throw new OAuthError("unsupported_grant_type", "grant_type must be authorization_code or refresh_token");
     } catch (e) {
@@ -164,7 +169,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
   o.post("/oauth/revoke", async (c) => {
     const token = (await params(c)).get("token");
     try {
-      if (token) await revokeOAuthToken(c.env.DB, token, now());
+      if (token) await revokeOAuthToken(c.var.p, token, now());
     } catch (e) {
       console.error("oauth revoke: unexpected error", e instanceof Error ? e.message : "unknown");
       return json(c, { error: "temporarily_unavailable" }, 503);
@@ -175,7 +180,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
   // ── Authorize ──
   // Chrome applies form-action to the redirect that follows a form POST, so the
   // consent page must also allow the app's redirect origin.
-  const page = (c: Context<AppEnv>, html: string, status: 200 | 400 | 403 | 503, formTarget?: string) =>
+  const page = (c: Context<AppEnv>, html: string, status: 200 | 400 | 403 | 409 | 503, formTarget?: string) =>
     c.html(html, status, {
       "cache-control": "no-store", "x-frame-options": "DENY",
       "content-security-policy": formTarget ? `${PAGE_CSP} ${formTarget}` : PAGE_CSP,
@@ -200,18 +205,24 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
   o.get("/oauth/authorize", async (c) => {
     try {
       const q = new URL(c.req.url).searchParams;
-      const check = await checkAuthorizeRequest(c.env.DB, q, oauthOrigin(c.req.url));
+      const check = await checkAuthorizeRequest(c.var.p, q, oauthOrigin(c.req.url));
       if (!check.ok) return refuse(c, check);
       const s = await consentSession(c);
       if (!s) {
         await setOAuthPending(c, q, now());
         return page(c, signInPage(check.client.client_name), 200);
       }
+      // A connection is made INTO one org (§7.1): the page offers the person's orgs — a choice when
+      // there are several, nothing extra to do when there is one — and with none there is nothing
+      // to connect to. Suspended orgs are not listed (`listMyOrgs`).
+      const orgs = await listMyOrgs(c.var.p, s.handle);
+      if (orgs.length === 0) return page(c, noOrgPage(check.client.client_name, s.handle), 409);
       const hidden: Record<string, string> = {};
       for (const k of AUTHORIZE_KEYS) { const v = q.get(k); if (v) hidden[k] = v; }
       const target = new URL(check.params.redirect_uri);
       return page(c, consentPage({
         clientName: check.client.client_name, redirectHost: target.hostname, handle: s.handle,
+        orgs: orgs.map((o) => ({ slug: o.slug, name: o.name })),
         hidden, csrf: await consentCsrf(c.env.COOKIE_SECRET, s.id, q),
       }), 200, target.origin);
     } catch (e) {
@@ -224,7 +235,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
       const body = await c.req.parseBody();
       const q = new URLSearchParams();
       for (const k of AUTHORIZE_KEYS) { const v = body[k]; if (typeof v === "string" && v) q.set(k, v); }
-      const check = await checkAuthorizeRequest(c.env.DB, q, oauthOrigin(c.req.url));
+      const check = await checkAuthorizeRequest(c.var.p, q, oauthOrigin(c.req.url));
       if (!check.ok) return refuse(c, check);
       const s = await consentSession(c);
       const csrf = typeof body.csrf === "string" ? body.csrf : "";
@@ -232,7 +243,26 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
         return page(c, errorPage("This approval form expired or didn't come from your session. Start the connection again from the app."), 403);
       }
       if (body.decision !== "allow") return c.redirect(back(check.params.redirect_uri, check.params.state, { error: "access_denied" }), 302);
-      const { code } = await issueAuthorization(c.env.DB, { client: check.client, params: check.params, person: s.handle, nowMs: now() });
+      // The connection is granted FOR one org (§7.1): the `org` the form carries (a slug — the picker's
+      // radio, or the hidden field when the person has one org). It is only a REQUEST: the grant is
+      // bound to it through `resolveTenant`, the live-membership check every `/api/o/:slug` route makes,
+      // so a slug the person is not a member of — forged, unknown, or a suspended org (§5.4) — is
+      // refused in the same words and nothing is written.
+      const slug = typeof body.org === "string" ? body.org.trim() : "";
+      let tenant: TenantContext | null;
+      if (slug) {
+        tenant = await resolveTenant(c.env, s.handle, slug);
+        if (!tenant) return page(c, errorPage("You aren't a member of that organization, so this app can't be connected to it. Start the connection again from the app."), 403);
+      } else {
+        // No org named: fine for a person with exactly one (it is theirs), refused otherwise.
+        const sole = await resolveSoleTenant(c.env, s.handle, "session");
+        if (!sole.ok && sole.reason === "org_required") {
+          return page(c, errorPage("Choose which organization to connect this app to. Start the connection again from the app."), 400);
+        }
+        if (!sole.ok) return page(c, noOrgPage(check.client.client_name, s.handle), 409);
+        tenant = sole.ctx;
+      }
+      const { code } = await issueAuthorization(tenant, { client: check.client, params: check.params, nowMs: now() });
       return c.redirect(back(check.params.redirect_uri, check.params.state, { code }), 302);
     } catch (e) {
       return unavailable(c, e);

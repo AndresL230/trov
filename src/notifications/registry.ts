@@ -2,15 +2,15 @@
 // entry here plus one renderer under ./renderers — no migration: policy rows
 // are seeded from this list, and the UIs iterate it.
 import type { NotificationKind, NotificationKindMeta } from "@shared/notifications";
-import type { DB } from "../db";
+import type { TenantContext } from "../data/sql";
 import { myWorkKind } from "./renderers/my-work";
 import { reviewQueueKind } from "./renderers/review-queue";
 import { roadmapPlanKind } from "./renderers/roadmap-plan";
 import { ticketQueueKind } from "./renderers/ticket-queue";
 
-export const REGISTRY: readonly NotificationKind<DB>[] = [myWorkKind, reviewQueueKind, roadmapPlanKind, ticketQueueKind];
+export const REGISTRY: readonly NotificationKind<TenantContext>[] = [myWorkKind, reviewQueueKind, roadmapPlanKind, ticketQueueKind];
 
-export function getKind(id: string): NotificationKind<DB> | undefined {
+export function getKind(id: string): NotificationKind<TenantContext> | undefined {
   return REGISTRY.find((k) => k.id === id);
 }
 

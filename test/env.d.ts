@@ -11,6 +11,8 @@ declare global {
       ASSETS: Fetcher;
       ARTIFACTS_BUCKET: R2Bucket;
       TEST_MIGRATIONS: D1Migration[];
+      MT_DB: D1Database;
+      MT_ROLLBACK: D1Migration[];
       COOKIE_SECRET: string;
       GITHUB_CLIENT_ID: string;
       GITHUB_CLIENT_SECRET: string;
@@ -21,7 +23,6 @@ declare global {
       GITHUB_SERVICE_TOKEN?: string;
       GEMINI_API_KEY?: string;
       RESEND_API_KEY?: string;
-      ADMIN_LOGINS?: string;
       PUBLIC_ORIGIN?: string;
       NOTIFICATIONS_MODE?: "local" | "resend";
       REPO_ENVIRONMENTS?: string;
@@ -30,6 +31,8 @@ declare global {
       RAILWAY_TOKEN_STAGING?: string;
       RAILWAY_TOKEN_PRODUCTION?: string;
       SAPLING_METRICS_TOKEN?: string;
+      TROV_KEK?: string;
+      TROV_KEK_PREVIOUS?: string;
     }
   }
 }

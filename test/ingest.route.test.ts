@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import type { DocRow, DocVersionRow, FeedRow } from "@shared/rows";
 import type { IngestResult } from "../src/consumer";
 import { cookieFor as authedCookie } from "./helpers/persons";

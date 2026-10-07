@@ -8,6 +8,7 @@
 // no inline data.
 
 import { esc, attr, statusBadge, selectChip, dashedCard, MONO_LABEL, surface, SURFACE } from "./ui";
+import { tenantHref } from "./api";
 import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
 
@@ -201,7 +202,7 @@ function lineImages(text: string, t: DiffEntry["t"]): string {
   if (!imgs.length) return "";
   const edge = t === "add" ? "var(--green)" : t === "del" ? "var(--red)" : "var(--border)";
   return imgs.map((m) => `<figure style="margin:4px 0 14px">
-      <button type="button" class="cnpy-md-img" data-act="docImgZoom" data-arg="${m[2]}" aria-label="Expand image${m[1] ? `: ${esc(m[1])}` : ""}" style="border-color:${edge}${t === "del" ? ";opacity:.55" : ""}"><img src="/img/${m[2]}" alt="${esc(m[1])}" loading="lazy" decoding="async" /></button>
+      <button type="button" class="cnpy-md-img" data-act="docImgZoom" data-arg="${m[2]}" aria-label="Expand image${m[1] ? `: ${esc(m[1])}` : ""}" style="border-color:${edge}${t === "del" ? ";opacity:.55" : ""}"><img src="${attr(tenantHref(`/img/${m[2]}`))}" alt="${esc(m[1])}" loading="lazy" decoding="async" /></button>
       ${m[1] ? `<figcaption style="font-size:12px;color:var(--fg-40);margin-top:6px${t === "del" ? ";text-decoration:line-through" : ""}">${esc(m[1])}</figcaption>` : ""}
     </figure>`).join("");
 }

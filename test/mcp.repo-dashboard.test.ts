@@ -17,7 +17,9 @@ import { emptyRepoDashboard } from "../src/tools/repo";
 import { DRIFT_GROUP_LIMIT, shapeRepoDashboard, type RepoAgentView } from "../src/tools/repo-agent";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoDashboard, type RepoDrift, type RepoRange, type RepoUsageEnv } from "@shared/repo";
 import type { Env } from "../src/env";
-import { LONG_TOKEN, leakedFragments } from "./helpers/repo";
+import { LONG_TOKEN, leakedFragments, seedOrgRepoConfig } from "./helpers/repo";
+import type { RepoEnvConfig } from "../src/repo/config";
+import { bearerCtx, systemCtx, ORG_A } from "./helpers/tenant";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -42,7 +44,7 @@ const testEnv = (over: Partial<Record<keyof Env, unknown>> = {}): Env =>
   ({ ...(env as unknown as Env), ...SECRETS, ...over }) as Env;
 
 async function withClient<T>(handle: string, e: Env, fn: (c: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(e, { handle });
+  const server = buildTrovMcpServer(e, await bearerCtx(handle, handle === "admin-user" ? "admin" : undefined, e));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -89,6 +91,8 @@ function trendPaths(v: unknown, path = "$", out: string[] = []): string[] {
  *  snapshot — relative to the real clock, because the tool reads `Date.now()`.
  *  Hosting, branches, health, environments… are deliberately left uncaptured. */
 async function seedDashboard(): Promise<void> {
+  // The dashboard reads the ORG's configuration (org_repos / org_environments), as 0042_organizations seeded it from these vars.
+  await seedOrgRepoConfig(env.DB, ORG_A, "SaplingLearn/sapling", JSON.parse((env as unknown as Env).REPO_ENVIRONMENTS ?? "[]") as RepoEnvConfig[]);
   const hourFloor = Math.floor(Date.now() / HOUR) * HOUR;
   const midnight = Math.floor(Date.now() / DAY) * DAY;
   const iso = (ms: number) => new Date(ms).toISOString();
@@ -108,7 +112,7 @@ async function seedDashboard(): Promise<void> {
     rows.push({ metric: "sap_t_users", env: "staging", part: "", value: 1204, at: iso(at) });
   }
   for (const d of [12, 8, 4, 0]) rows.push({ metric: "coverage", env: "", part: "", value: 70 + d / 4, at: iso(hourFloor - d * DAY) });
-  await putMetrics(env.DB, rows);
+  await putMetrics(systemCtx(), rows);
 
   const drift: RepoDrift = {
     head: "main", base: "production", ahead: 3, behind: 0,
@@ -117,7 +121,7 @@ async function seedDashboard(): Promise<void> {
       commits: [1, 2, 3].map((n) => ({ sha: `abc000${n}`, msg: `commit ${n}`, at: iso(hourFloor - n * HOUR) })),
     }],
   };
-  await putSnapshot(env.DB, "drift", drift);
+  await putSnapshot(systemCtx(), "drift", drift);
 }
 
 describe("MCP get_repo_dashboard — registration", () => {
@@ -195,7 +199,7 @@ describe("MCP get_repo_dashboard — the default call", () => {
         commits: [{ sha: `sha${g}`, msg: `Squash merge ${600 - g} (#${600 - g})`, at }],
       })),
     };
-    await putSnapshot(env.DB, "drift", big);
+    await putSnapshot(systemCtx(), "drift", big);
 
     type DriftView = { ahead: number; groupCount: number; groups: { tag: string; commitCount: number; commits?: unknown[] }[] };
     const cut = okData<DriftView>((await view({ tab: "overview" })).sections.drift);
@@ -225,7 +229,7 @@ describe("MCP get_repo_dashboard — the default call", () => {
     // Before the marker there is nothing to count off — the section is `empty`,
     // never an ok list claiming "0 open".
     expect((await view({ tab: "code" })).sections.prs).toEqual({ status: "empty" });
-    await putSnapshot(env.DB, "prs_reconciled", { at: new Date().toISOString() });
+    await putSnapshot(systemCtx(), "prs_reconciled", { at: new Date().toISOString() });
     expect(okData<{ openCount: number | null; rows: unknown[] }>((await view({ tab: "code" })).sections.prs)).toEqual({ rows: [], openCount: 0 });
   });
 
@@ -299,7 +303,17 @@ describe("MCP get_repo_dashboard — never an MCP error, never a secret", () => 
       prepare() { throw new Error("D1 is down"); },
       batch() { throw new Error("D1 is down"); },
     } as unknown as Env["DB"];
-    const r = await call({ tab: "overview", range: "24h" }, testEnv({ DB: throwingDb }));
+    // The bearer context is bound to its Env, and resolving it reads the membership — so D1 goes down
+    // AFTER that (`down` flips once the client is connected): the tool's own read is the one that fails.
+    let down = false;
+    const flaky = Object.defineProperty(testEnv(), "DB", { get: () => (down ? throwingDb : env.DB) }) as Env;
+    const r = await withClient("beatrix", flaky, async (client) => {
+      down = true;
+      const res = (await client.callTool({ name: "get_repo_dashboard", arguments: { tab: "overview", range: "24h" } })) as {
+        content: Array<{ type: string; text: string }>; isError?: boolean;
+      };
+      return { text: res.content[0].text, isError: res.isError };
+    });
     expect(r.isError).toBeFalsy();
     const v = JSON.parse(r.text) as RepoAgentView;
     expect(v.degraded).toBe(true);

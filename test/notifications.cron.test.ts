@@ -5,9 +5,10 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx, platformCtx } from "./helpers/tenant";
 import wranglerToml from "../wrangler.toml?raw";
 import worker from "../src/index";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import { ingestAdrDraft } from "../src/consumer";
 import { DAILY_CRON, WEEKLY_CRON, dueCadence } from "../src/notifications/cron";
 import { REPO_CRON } from "../src/repo/cron";
@@ -20,7 +21,7 @@ import type { Env } from "../src/env";
 
 const FRI_8_ET = new Date("2026-09-11T12:00:00.000Z");
 const MON_8_ET = new Date("2026-09-14T12:00:00.000Z");
-const SETTINGS: NotificationSettingsRow = { id: 1, send_hour: 8, timezone: "America/New_York", from_address: "Trov <trov@mail.example>" };
+const SETTINGS: NotificationSettingsRow = { org_id: "org_saplinglearn", send_hour: 8, timezone: "America/New_York", from_address: "Trov <trov@mail.example>" };
 
 const outbox = () => all<NotificationOutboxRow>(env.DB, `SELECT * FROM notification_outbox ORDER BY idempotency_key`);
 const bodies = () => all<{ idempotency_key: string; html: string; text: string }>(env.DB, `SELECT * FROM notification_outbox_bodies`);
@@ -31,7 +32,7 @@ async function user(login: string, email: string, unsubscribed: 0 | 1 = 0): Prom
   await run(env.DB, `UPDATE persons SET email = ?, email_unsubscribed = ? WHERE handle = ?`, email, unsubscribed, login);
 }
 async function pendingDecision(): Promise<void> {
-  await ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+  await ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
 }
 const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
 const localEnv = (): Env => ({ ...(env as unknown as Env), NOTIFICATIONS_MODE: undefined, PUBLIC_ORIGIN: "https://trov.example" });
@@ -73,7 +74,9 @@ describe("scheduled() dispatch (local mode)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ cadence: "daily", window_id: "2026-09-11", status: "sent", resend_id: null });
     const [b] = await bodies();
-    expect(b.html).toContain("https://trov.example/#review");
+    // The deep link opens the org the digest is about (src/tools/org-links.ts), not whichever org the browser last had.
+    expect(b.html).toContain("https://trov.example/o/saplinglearn/#review");
+    expect(b.html).not.toContain("https://trov.example/#review");
   });
 
   it("the daily trigger at another hour, and the weekly trigger on a Friday, do nothing", async () => {
@@ -87,7 +90,7 @@ describe("scheduled() dispatch (local mode)", () => {
   it("honours an admin-edited send_hour", async () => {
     await user("AndresL230", "andres@example.com");
     await pendingDecision();
-    await run(env.DB, `UPDATE notification_settings SET send_hour = 11 WHERE id = 1`);
+    await run(env.DB, `UPDATE notification_settings SET send_hour = 11 WHERE org_id = 'org_saplinglearn'`);
     await worker.scheduled({ cron: DAILY_CRON, scheduledTime: FRI_8_ET.getTime(), noRetry() {} }, localEnv(), ctx);
     expect(await outbox()).toHaveLength(0);
     await worker.scheduled({ cron: DAILY_CRON, scheduledTime: new Date("2026-09-11T15:00:00.000Z").getTime(), noRetry() {} }, localEnv(), ctx);
@@ -124,7 +127,7 @@ describe("retryFailed — failed rows only", () => {
     await user("AndresL230", "andres@example.com");
     await pendingDecision();
     await failedRow();
-    const r = await retryFailed(env.DB, { delivery: localDelivery(env.DB), origin: "" });
+    const r = await retryFailed(systemCtx(), platformCtx(), { delivery: localDelivery(systemCtx()), origin: "" });
     expect(r.retried).toBe(1);
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "sent", error: null });
@@ -136,7 +139,7 @@ describe("retryFailed — failed rows only", () => {
     await user("AndresL230", "andres@example.com");
     await run(env.DB, `INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at, sent_at) VALUES ('AndresL230:daily:2026-09-10', 'AndresL230', 'daily', '2026-09-10', '["review_queue"]', 'sent', 'x', 'x')`);
     await run(env.DB, `INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES ('AndresL230:daily:2026-09-09', 'AndresL230', 'daily', '2026-09-09', '[]', 'skipped', 'x')`);
-    const r = await retryFailed(env.DB, { delivery: localDelivery(env.DB), origin: "" });
+    const r = await retryFailed(systemCtx(), platformCtx(), { delivery: localDelivery(systemCtx()), origin: "" });
     expect(r.retried).toBe(0);
     expect(await bodies()).toHaveLength(0);
   });
@@ -144,7 +147,7 @@ describe("retryFailed — failed rows only", () => {
   it("a failed row whose re-render now has nothing to say becomes skipped", async () => {
     await user("AndresL230", "andres@example.com");
     await failedRow();
-    await retryFailed(env.DB, { delivery: localDelivery(env.DB), origin: "" });
+    await retryFailed(systemCtx(), platformCtx(), { delivery: localDelivery(systemCtx()), origin: "" });
     const [row] = await outbox();
     expect(row).toMatchObject({ status: "skipped", kinds: "[]" });
     expect(await bodies()).toHaveLength(0);
@@ -154,7 +157,7 @@ describe("retryFailed — failed rows only", () => {
     await user("AndresL230", "andres@example.com");
     await pendingDecision();
     await failedRow();
-    await retryFailed(env.DB, { delivery: { send: async () => { throw new Error("still down"); } }, origin: "" });
+    await retryFailed(systemCtx(), platformCtx(), { delivery: { send: async () => { throw new Error("still down"); } }, origin: "" });
     const [row] = await outbox();
     expect(row.status).toBe("failed");
     expect(row.error).toContain("still down");
@@ -164,7 +167,7 @@ describe("retryFailed — failed rows only", () => {
     await user("AndresL230", "a@example.com", 1);
     await pendingDecision();
     await failedRow();
-    const r = await retryFailed(env.DB, { delivery: localDelivery(env.DB), origin: "" });
+    const r = await retryFailed(systemCtx(), platformCtx(), { delivery: localDelivery(systemCtx()), origin: "" });
     expect(r.retried).toBe(0);
     expect((await outbox())[0].status).toBe("failed");
   });

@@ -6,13 +6,14 @@ import { env } from "cloudflare:test";
 import { app } from "../src/routes";
 import { cookieFor } from "./helpers/persons";
 import { buildSeedStatements } from "../scripts/seed/build.mjs";
-import { all, first, run } from "../src/db";
-import { handleRepoCron } from "../src/repo/cron";
-import { expireDueHandoffs } from "../src/tools/handoffs";
+import { all, first, run } from "./helpers/db";
+import { handleRepoCron } from "./helpers/org-config";
+import { expireDueHandoffs } from "../src/platform/sweeps";
 import type { Env } from "../src/env";
 import handoffs from "../fixtures/dev/handoffs.json";
 import prompts from "../fixtures/dev/prompts.json";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion } from "../shared/handoffs";
+import { platformCtx, systemCtx } from "./helpers/tenant";
 
 beforeEach(async () => {
   for (const stmt of buildSeedStatements({ handoffs, prompts })) await env.DB.prepare(stmt).run();
@@ -130,7 +131,7 @@ describe("claim / expire", () => {
 describe("expiry sweep", () => {
   it("flips pending handoffs past expires_at, leaves the rest", async () => {
     await run(env.DB, `UPDATE handoffs SET expires_at = '2020-01-01T00:00:00.000Z' WHERE id = 16`);
-    expect(await expireDueHandoffs(env.DB, Date.now())).toBe(1);
+    expect(await expireDueHandoffs(platformCtx("system"), Date.now())).toBe(1);
     const st = await all<{ id: number; status: string }>(env.DB, `SELECT id, status FROM handoffs WHERE id IN (16, 17) ORDER BY id`);
     expect(st).toEqual([{ id: 16, status: "expired" }, { id: 17, status: "pending" }]);
   });

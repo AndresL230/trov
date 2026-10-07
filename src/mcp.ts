@@ -3,7 +3,8 @@ import { createMcpHandler } from "agents/mcp";
 import { z } from "zod";
 import type { Env } from "./env";
 import type { Principal } from "./auth/principal";
-import { isAdmin } from "./auth/principal";
+import { hasRole, type TenantContext } from "./data/context";
+import { appBase, orgSlugOf } from "./tools/org-links";
 import { get_doc, list_docs, get_feed, query, list_tickets, get_ticket, list_sprints, get_sprint } from "./tools/reads";
 import {
   TicketSeg, TicketAssigneeFilter, TicketCategory,
@@ -11,6 +12,7 @@ import {
   TicketAssigneeToggle,
 } from "@shared/tickets";
 import { TicketError } from "./tools/tickets";
+import { PersonError } from "./auth/persons";
 import {
   SprintError, create_sprint, set_sprint_active, complete_sprint, add_sprint_resource, delete_sprint,
 } from "./tools/sprints";
@@ -21,8 +23,7 @@ import {
 } from "./tools/tickets-agent";
 import { getMyWork, list_events } from "./tools/mywork";
 import { listPeopleForAgents } from "./tools/people";
-import { getRepoDashboardForAgent } from "./tools/repo-agent";
-import { repoEnvironments } from "./repo/config";
+import { getRepoDashboardForAgent, orgRepoConfig } from "./tools/repo-agent";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoTab } from "@shared/repo";
 import { ingestFeedEntry, ingestDocProposal, recordBatch } from "./consumer";
 import { feedEntryFromMcpArgs } from "./mcp-args";
@@ -63,7 +64,7 @@ async function runTool(fn: () => Promise<unknown>) {
     // An ArtifactError travels the same way. Its not_found message IS "not_found", so a
     // missing slug, a private page and a version-0 page all read exactly
     // { error: "not_found", code: "not_found" } — the check is never an existence oracle.
-    const code = err instanceof TicketError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError || err instanceof PromptError ? err.code : undefined;
+    const code = err instanceof TicketError || err instanceof PersonError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError || err instanceof PromptError ? err.code : undefined;
     return {
       content: [{ type: "text" as const, text: JSON.stringify(code ? { error: message, code } : { error: message }) }],
       isError: true as const,
@@ -72,19 +73,21 @@ async function runTool(fn: () => Promise<unknown>) {
 }
 
 /**
- * Build a fully-registered Trov MCP server for one principal. Exported so tests
+ * Build a fully-registered Trov MCP server bound to one (user, org) — the bearer TenantContext
+ * (src/data/bearer.ts); the principal is its `userId`. Exported so tests
  * can drive the REAL registered tools (e.g. over an in-memory transport) rather
  * than re-implementing the tool bodies — the same closures production runs.
  *
  * A fresh McpServer per request is required (SDK 1.26+ guards against reuse), so
  * this must NOT be hoisted to global scope.
  */
-export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origin?: string } = {}): McpServer {
+export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?: string; orgSlug?: string | null } = {}): McpServer {
+  const principal: Principal = { handle: ctx.userId };
   const server = new McpServer({ name: "trov", version: "1.0.0" });
   // Absolute links in artifact results: PUBLIC_ORIGIN, else the /mcp request's origin.
   // COOKIE_SECRET is only the ROOT of the download-URL key (derived with a purpose label).
   const artifactCtx = {
-    db: env.DB, handle: principal.handle, origin: artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), downloadSecret: env.COOKIE_SECRET,
+    tenant: ctx, handle: principal.handle, origin: artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), orgSlug: opts.orgSlug, downloadSecret: env.COOKIE_SECRET,
   };
 
   server.tool(
@@ -102,22 +105,22 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     // Agent default include_staged:true — the agent should see staged/unpromoted
     // context (flagged), unlike the human Search which defaults false.
     // The bearer principal is the viewer: a private artifact reaches only its author.
-    async (args) => runTool(() => query(env.DB, { ...args, q: args.q ?? "", include_staged: args.include_staged ?? true }, principal.handle)),
+    async (args) => runTool(() => query(ctx, { ...args, q: args.q ?? "", include_staged: args.include_staged ?? true }, principal.handle)),
   );
 
   server.tool("get_doc", "Get a doc and all its versions by slug.", { slug: z.string() }, async ({ slug }) =>
-    runTool(() => get_doc(env.DB, slug))
+    runTool(() => get_doc(ctx, slug))
   );
 
   server.tool("list_docs", "List docs, optionally filtered by section.", { section: z.string().optional() }, async ({ section }) =>
-    runTool(() => list_docs(env.DB, section))
+    runTool(() => list_docs(ctx, section))
   );
 
   server.tool(
     "get_feed",
     "Read the feed with optional author/tags/since/limit filters.",
     { author: z.string().optional(), tags: z.array(z.string()).optional(), since: z.string().optional(), limit: z.number().optional() },
-    async (args) => runTool(() => get_feed(env.DB, args))
+    async (args) => runTool(() => get_feed(ctx, args))
   );
 
   server.tool(
@@ -137,7 +140,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
       // (carrying prs/commits/issues), then the gate decides write-vs-triage.
       runTool(() =>
         ingestFeedEntry(
-          env.DB,
+          ctx,
           feedEntryFromMcpArgs({ summary, brief, body, tags, prs, commits, issues }),
           principal.handle,
           ephemeralLedger()
@@ -159,14 +162,14 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
       base_version: z.number().optional(),
       force: z.boolean().optional(),
     },
-    async (proposal) => runTool(() => ingestDocProposal(env.DB, proposal, principal.handle, ephemeralLedger()))
+    async (proposal) => runTool(() => ingestDocProposal(ctx, proposal, principal.handle, ephemeralLedger()))
   );
 
   server.tool(
     "get_roadmap",
     "Read the roadmap plan: admin narrative + sprints in target-date order with their progress — `progress` is the sprint's TICKETS (done + declined over total), `issues` the cached GitHub issue counts behind it (no live GitHub). Each sprint carries label, summary, phase, dates, due, status, active, urgency, lead and domain.",
     {},
-    async () => runTool(() => get_plan(env.DB))
+    async () => runTool(() => get_plan(ctx))
   );
 
   // ── Tickets + sprints: READS, for every principal ──────────────────────────
@@ -184,18 +187,18 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     },
     // `me` is bound to the authenticated bearer principal, never a client
     // argument — the same rule the cookie route applies to its session.
-    async (args) => runTool(() => list_tickets(env.DB, { ...args, me: principal.handle })),
+    async (args) => runTool(() => list_tickets(ctx, { ...args, me: principal.handle })),
   );
 
   server.tool(
     "get_ticket",
-    "Read-only: one whole ticket by id — body, category, priority, status, requester, assignees, linked work, comments, the full status history, its parent and sub-tickets, its sprint, and `artifacts` ([{slug, title, kind, status, version}] — the artifact pages linked to it that you can see; open one with artifact_get). A ticket is a Trov D1 row that may be sourced from a GitHub issue but is never the issue itself (ADR-007, amended) — `source`, `source_ref` and each link's `locked` say whether it is mirrored and which link is its source. Read this BEFORE any write: its `assignees` tell you whether the ticket is in your lane at all.",
+    "Read-only: one whole ticket by id — a ticket's `id` is its NUMBER within your organization (`#12`), here and in every ticket tool's arguments and results (`parent_id`, sub-tickets, `ticket_id`) — body, category, priority, status, requester, assignees, linked work, comments, the full status history, its parent and sub-tickets, its sprint, and `artifacts` ([{slug, title, kind, status, version}] — the artifact pages linked to it that you can see; open one with artifact_get). A ticket is a Trov D1 row that may be sourced from a GitHub issue but is never the issue itself (ADR-007, amended) — `source`, `source_ref` and each link's `locked` say whether it is mirrored and which link is its source. Read this BEFORE any write: its `assignees` tell you whether the ticket is in your lane at all.",
     { id: z.number() },
     async ({ id }) =>
       runTool(async () => {
-        const ticket = await get_ticket(env.DB, id);
+        const ticket = await get_ticket(ctx, id);
         if (!ticket) throw new Error(`no such ticket: ${id}`);
-        return { ...ticket, artifacts: await artifactsForTicket(env.DB, id, principal.handle) };
+        return { ...ticket, artifacts: await artifactsForTicket(ctx, id, principal.handle) };
       }),
   );
 
@@ -203,7 +206,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "list_sprints",
     "Read-only: every sprint in roadmap order. Sprints are the roadmap's containers — a sprint holds tickets, and its `progress` is its TICKETS only (closed/total/pct, where closed = done + declined). The GitHub issues behind a sprint are a separate `issues` field, the cached closed/total from its github_ref (null when it has no cache row); no live GitHub at read time. Each carries label, summary, phase, dates (a free-text label), start and due (YYYY-MM-DD or null), status/active, urgency, lead, domain and members (the handles assigned to its tickets). Sprint writes (create_sprint / set_sprint_active / complete_sprint / add_sprint_resource / delete_sprint) are open to every principal; only the bulk plan write update_plan is admin-only.",
     {},
-    async () => runTool(() => list_sprints(env.DB)),
+    async () => runTool(() => list_sprints(ctx)),
   );
 
   server.tool(
@@ -212,7 +215,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     { id: z.number() },
     async ({ id }) =>
       runTool(async () => {
-        const sprint = await get_sprint(env.DB, id);
+        const sprint = await get_sprint(ctx, id);
         if (!sprint) throw new Error(`no such sprint: ${id}`);
         return sprint;
       }),
@@ -239,7 +242,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
 
   /** Every write returns the whole ticket, exactly like the cookie routes do. */
   const ticketDetail = async (id: number) => {
-    const ticket = await get_ticket(env.DB, id);
+    const ticket = await get_ticket(ctx, id);
     if (!ticket) throw new TicketError("not_found", `no such ticket: ${id}`);
     return ticket;
   };
@@ -248,7 +251,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "create_ticket",
     "File a ticket. THE ONE UNSCOPED WRITE — you may file freely; every other ticket write requires the ticket to be assigned to you already. The requester is YOU (the bearer principal); a client-supplied requester is ignored. `assignees` (person handles) — call `list_people` first and match the work to each person's role and responsibilities. After filing, assign_ticket adds or removes one assignee (as the ticket's requester you may, so you can route it later). Optional `link` takes a bare issue number ('#214'), a GitHub/Figma URL, or any URL. `sprint_id` omitted = the backlog. Returns the whole ticket. Confirm the exact fields with the person before calling — a ticket is org-visible the moment it exists.",
     TicketCreate.shape,
-    async (input) => runTool(async () => ticketDetail(await agentCreateTicket(env.DB, TicketCreate.parse(input), principal.handle))),
+    async (input) => runTool(async () => ticketDetail(await agentCreateTicket(ctx, TicketCreate.parse(input), principal.handle))),
   );
 
   server.tool(
@@ -256,7 +259,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "Edit a ticket's title and/or body (markdown). SCOPED: only on a ticket already assigned to you, else `forbidden` and nothing is written. Pass at least one of `title` / `body`; the other is left as it is. A ticket mirrored from a GitHub issue is editable too — its title and body were copied from the issue when it was imported and are Trov's from then on (GitHub edits never overwrite them). Records no history row (history is status moves). Returns the whole ticket.",
     { id: z.number(), ...TicketEdit.shape },
     async ({ id, title, body }) => runTool(async () => {
-      await agentEditTicket(env.DB, env, id, { title, body }, principal.handle);
+      await agentEditTicket(ctx, env, id, { title, body }, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -266,7 +269,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "Move a ticket's status. SCOPED: only on a ticket already assigned to you, else `forbidden` and nothing is written. Any status may move to any other — done and declined included, so a resolved ticket can be moved back (only a move to the status it already has is `conflict`, and writes nothing). `done`/`declined` resolve the ticket for the whole org, so confirm with the person first. Appends a ticket_events row attributed to you.",
     { id: z.number(), ...TicketTransition.shape },
     async ({ id, to }) => runTool(async () => {
-      await agentTransitionTicket(env.DB, env, id, to, principal.handle);
+      await agentTransitionTicket(ctx, env, id, to, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -276,17 +279,17 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "Append a comment to a ticket. SCOPED: only on a ticket already assigned to you. Raw text — mentions are a rendering concern, not a write one. Bumps the ticket's updated_at (the queue's sort key), and is attributed to you with nothing marking it as agent-written, so say so in the text if the team wants that.",
     { id: z.number(), ...TicketCommentAdd.shape },
     async ({ id, body }) => runTool(async () => {
-      await agentAddTicketComment(env.DB, env, id, body, principal.handle);
+      await agentAddTicketComment(ctx, env, id, body, principal.handle);
       return ticketDetail(id);
     }),
   );
 
   server.tool(
     "add_ticket_link",
-    "Attach linked work to a ticket (GitHub issue/PR, Figma file, or any URL). SCOPED: only on a ticket already assigned to you. `raw` is parsed by the same parser the web UI uses: a bare '#214' or '214' resolves against the default repo, github.com and figma.com URLs are labelled by kind, anything else is a plain link. An unusable input is `bad_request`.",
+    "Attach linked work to a ticket (GitHub issue/PR, Figma file, or any URL). SCOPED: only on a ticket already assigned to you. `raw` is parsed by the same parser the web UI uses: a bare '#214' or '214' resolves against the org's primary repository, github.com and figma.com URLs are labelled by kind, anything else is a plain link. An unusable input is `bad_request`.",
     { id: z.number(), ...TicketLinkAdd.shape },
     async ({ id, raw }) => runTool(async () => {
-      await agentAddTicketLink(env.DB, env, id, raw, principal.handle);
+      await agentAddTicketLink(ctx, env, id, raw, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -296,7 +299,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "Move a ticket into a sprint, or back to the backlog with sprint_id null. SCOPED to a ticket assigned to you — with ONE exception: an ADMIN may re-home any ticket, because composing a sprint is sprint management. This is the only ticket verb an admin may use outside their own lane; it moves the ticket and nothing else. An unknown sprint is `not_found`, and nothing is written.",
     { id: z.number(), ...TicketSprintSet.shape },
     async ({ id, sprint_id }) => runTool(async () => {
-      await agentSetTicketSprint(env.DB, env, id, sprint_id, principal.handle);
+      await agentSetTicketSprint(ctx, env, id, sprint_id, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -306,7 +309,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "Nest `child_id` under ticket `id`. SCOPED on BOTH tickets — the call re-homes the child and changes the parent's shape, so both must already be assigned to you. Tickets nest EXACTLY ONE level: it is a `conflict` (writing nothing) if the parent already has a parent, the child already has a parent, the child is done/declined, or the child has sub-tickets of its own.",
     { id: z.number(), ...TicketParentSet.shape },
     async ({ id, child_id }) => runTool(async () => {
-      await agentSetTicketParent(env.DB, env, id, child_id, principal.handle);
+      await agentSetTicketParent(ctx, env, id, child_id, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -316,7 +319,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "Add (`on: true`) or remove (`on: false`) ONE assignee on an existing ticket. `login` is a person HANDLE — take it from `list_people`, matching the work to each person's role and responsibilities; an unknown handle is `bad_request`. SCOPED by its own rule, not the lane: only an ADMIN, the ticket's REQUESTER or one of its CURRENT assignees may (re)assign it, else `forbidden` and nothing is written. Idempotent: adding someone already assigned, or removing someone who isn't, succeeds and writes nothing. It never changes status (assigning a submitted ticket does not start it — use transition_ticket), and records no history row — history is status moves, so nothing records who (un)assigned, exactly as with the web UI's picker. Works on a ticket mirrored from a GitHub issue — its assignees are Trov's after import. Removing yourself takes the ticket out of your lane. Returns the whole ticket; read `assignees` back. Confirm who with the person before calling.",
     { id: z.number(), ...TicketAssigneeToggle.shape },
     async ({ id, login, on }) => runTool(async () => {
-      await agentAssignTicket(env.DB, env, id, login, on, principal.handle);
+      await agentAssignTicket(ctx, env, id, login, on, principal.handle);
       return ticketDetail(id);
     }),
   );
@@ -325,7 +328,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "get_my_work",
     "Your personal My Work projection (D1 only, no live GitHub): previous-activity (your most recent summarized merged/closed PRs), to-do (your open assigned GitHub issues), and tickets (your open assigned tickets, native AND mirrored from GitHub issues — `source: \"github\"` marks a mirrored one, whose issue may also be in to-do; capped, with `ticketsTotal` the full count). Read-only.",
     {},
-    async () => runTool(() => getMyWork(env.DB, principal.handle))
+    async () => runTool(() => getMyWork(ctx, principal.handle))
   );
 
   // ── People: ONE read, for every principal (0036) ─────────────────────────────
@@ -337,14 +340,14 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "list_people",
     "Read-only: every person in the org as { handle, name, role, responsibilities }. Call this BEFORE choosing `assignees` on create_ticket: match the work to each person's `role` and `responsibilities` and use their `handle`. `role` / `responsibilities` may be null — that means unknown, never guess what someone owns from their name or handle; if nobody clearly fits, file the ticket unassigned (or ask the person you are working for) rather than pick someone. Returns { people }.",
     {},
-    async () => runTool(async () => ({ people: await listPeopleForAgents(env.DB) })),
+    async () => runTool(async () => ({ people: await listPeopleForAgents(ctx) })),
   );
 
   server.tool(
     "get_events",
     "Recent captured GitHub events (raw log behind My Work and roadmap progress). Filter by type/subject. Read-only.",
     { type: z.enum(["pr_merged", "pr_closed", "issue"]).optional(), subject: z.string().optional(), limit: z.number().optional() },
-    async (args) => runTool(() => list_events(env.DB, args))
+    async (args) => runTool(() => list_events(ctx, args))
   );
 
   // ── The Repo dashboard: a READ, for every principal ────────────────────────
@@ -363,12 +366,14 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
       range: z.enum(REPO_RANGES).optional(),
       include_trends: z.boolean().optional(),
     },
+    // Which repository and which environments is the ORG's configuration (`org_repos` /
+    // `org_environments`), never the Worker's `GITHUB_REPO` / `REPO_ENVIRONMENTS`: a token bound to
+    // another org must not be told org #1's repository name or environment list.
     async ({ tab, range, include_trends }) =>
-      runTool(() =>
-        getRepoDashboardForAgent(env.DB, env.GITHUB_REPO ?? "", repoEnvironments(env), {
-          tab, range, includeTrends: include_trends,
-        })
-      ),
+      runTool(async () => {
+        const { repo, envs } = await orgRepoConfig(ctx);
+        return getRepoDashboardForAgent(ctx, repo, envs, { tab, range, includeTrends: include_trends });
+      }),
   );
 
   server.tool(
@@ -381,7 +386,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     // the SDK already validated against IngestPayload.shape, so this never throws.
     // recordBatch = consume() (the gate) + the post-batch artifact_links step — the same
     // function /ingest calls, so the two surfaces cannot drift.
-    async (payload) => runTool(() => recordBatch(env.DB, IngestPayload.parse(payload), principal)),
+    async (payload) => runTool(() => recordBatch(ctx, IngestPayload.parse(payload), principal)),
   );
 
   // ── Artifacts: for every principal (issue #52; docs/artifact-contract.md) ─────
@@ -482,48 +487,45 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "create_sprint",
     "Create a sprint. It lands INACTIVE and unscheduled — status 'upcoming', phase 'Unscheduled' unless you pass one, and no `due` stores an empty target date that reads back as due: null (those sort last on the Roadmap). `start` and `due` are real calendar days written YYYY-MM-DD, start on or before due — anything else (\"Oct 17\", 2026-02-30) is refused and nothing is written. `dates` is only an optional free-text display label. `label` is the sprint name; `lead` is a person handle. Which TICKETS are in the sprint is not set here — that is set_ticket_sprint. Direct promote-class write, not staged.",
     SprintCreate.shape,
-    async (input) => runTool(() => create_sprint(env.DB, SprintCreate.parse(input), principal.handle)),
+    async (input) => runTool(() => create_sprint(ctx, SprintCreate.parse(input), principal.handle)),
   );
 
   server.tool(
     "set_sprint_active",
     "Move a sprint between the Roadmap's In Progress and Upcoming groups. `active` is DERIVED from status, never stored: true → 'in_progress' (from ANY status, including 'done' — that is re-opening a sprint that turned out not to be finished); false → 'upcoming', EXCEPT on a done sprint where it is a NO-OP, because clearing 'active' must never un-finish a sprint.",
     { id: z.number(), active: z.boolean() },
-    async ({ id, active }) => runTool(() => set_sprint_active(env.DB, id, active)),
+    async ({ id, active }) => runTool(() => set_sprint_active(ctx, id, active)),
   );
 
   server.tool(
     "complete_sprint",
     "Flip a sprint to 'done'. A sprint is completed by a PERSON — 'done' is NEVER inferred from its tickets resolving or its GitHub issues closing, not by the cron, not by the webhook, not by this tool being available. Confirm with the person before calling: it is how the Roadmap reports the sprint finished. Already-done is an error, not a silent no-op.",
     { id: z.number() },
-    async ({ id }) => runTool(() => complete_sprint(env.DB, id)),
+    async ({ id }) => runTool(() => complete_sprint(ctx, id)),
   );
 
   server.tool(
     "delete_sprint",
     "Delete a sprint for good (hard delete). Its tickets are NOT deleted — they move to the backlog (no sprint) and keep all their history; the sprint's own resources go with it. Answers with the label and how many tickets moved. Confirm with the person before calling: the Roadmap loses the sprint and it cannot be undone.",
     { id: z.number() },
-    async ({ id }) => runTool(() => delete_sprint(env.DB, id)),
+    async ({ id }) => runTool(() => delete_sprint(ctx, id)),
   );
 
   server.tool(
     "add_sprint_resource",
     "Attach a resource link to the sprint itself (as opposed to one of its tickets). `raw` goes through the SAME parser as ticket links, so '#214' means the same thing wherever it is typed. Idempotent on url. The sprint's read model merges these with its tickets' links, deduped by url.",
     { id: z.number(), raw: z.string().min(1) },
-    async ({ id, raw }) => runTool(() => add_sprint_resource(env.DB, id, raw)),
+    async ({ id, raw }) => runTool(() => add_sprint_resource(ctx, id, raw)),
   );
 
-  // ADMIN-only: the plan write surface — non-admin principals don't even see the tool
-  // (conditional registration means it's absent from tools/list and calling it by
-  // name errors tool-not-found, since a fresh server is built per request with the
-  // principal already in scope).
   // ── Handoffs (0028): addressed messages between sessions ──────────────────
   //
   // Direct writers in src/tools/handoffs.ts, NOT the ingestion gate — a handoff is
   // not knowledge. The bearer principal is the sender / claimer, never an input.
   // `session` on send_handoff is the replay key (processed_items, item index 0),
   // so a retried call returns the first call's handoff instead of a second row.
-  const handoffUrl = (id: number) => `${(env.PUBLIC_ORIGIN ?? "").replace(/\/+$/, "")}/#handoffs/${id}`;
+  // A link into the TOKEN'S org (src/tools/org-links.ts): `<origin>/o/<slug>/#handoffs/<number>`.
+  const handoffUrl = (id: number) => `${appBase(artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), opts.orgSlug)}/#handoffs/${id}`;
   const handoffLine = (h: HandoffView) => ({
     id: h.id, sender: h.sender, recipient: h.recipient, status: h.status, created_at: h.created_at,
     task: h.context.task, excerpt: firstLine(h.body),
@@ -545,7 +547,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     async (args) => runTool(async () => {
       const input = HandoffCreateInput.parse({ body: args.body, recipient: args.recipient, context: args.context, prompt: args.prompt ?? null });
       const ledger = args.session ? { sessionId: args.session, itemIndex: 0 } : undefined;
-      const { handoff, replayed } = await createHandoff(env.DB, principal.handle, input, ledger);
+      const { handoff, replayed } = await createHandoff(ctx, principal.handle, input, ledger);
       return { id: handoff.id, url: handoffUrl(handoff.id), ...(replayed ? { replayed: true } : {}) };
     }),
   );
@@ -555,11 +557,11 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "List handoffs waiting for you. With no `box`, returns the PENDING ones left for you ('me') plus open 'anyone' handoffs from other people — call this at session start and tell the person what is waiting; never claim one without asking. box: 'me' (left for you), 'anyone' (open to all, from others), 'mine' (sent by or left for you), 'sent' (what you sent — the only box that includes claimed and expired ones). Returns id, sender, recipient, status, created_at, task and a one-line excerpt. Read-only.",
     { box: z.enum(["mine", "me", "anyone", "sent"]).optional() },
     async ({ box }) => runTool(async () => {
-      if (box === "sent") return (await listHandoffs(env.DB, principal.handle, "sent")).map(handoffLine);
-      if (box) return (await listHandoffs(env.DB, principal.handle, box, ["pending"])).map(handoffLine);
+      if (box === "sent") return (await listHandoffs(ctx, principal.handle, "sent")).map(handoffLine);
+      if (box) return (await listHandoffs(ctx, principal.handle, box, ["pending"])).map(handoffLine);
       const [me, anyone] = await Promise.all([
-        listHandoffs(env.DB, principal.handle, "me", ["pending"]),
-        listHandoffs(env.DB, principal.handle, "anyone", ["pending"]),
+        listHandoffs(ctx, principal.handle, "me", ["pending"]),
+        listHandoffs(ctx, principal.handle, "anyone", ["pending"]),
       ]);
       return [...me, ...anyone].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).map(handoffLine);
     }),
@@ -567,10 +569,10 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
 
   server.tool(
     "get_handoff",
-    "Read one handoff in full by its numeric id (body, context, inline prompt, status). Read-only: it does NOT claim it — use claim_handoff once the person has chosen to pick it up.",
+    "Read one handoff in full by its numeric id — its number within your organization, as send_handoff and list_handoffs return it (body, context, inline prompt, status). Read-only: it does NOT claim it — use claim_handoff once the person has chosen to pick it up.",
     { id: z.number().int() },
     async ({ id }) => runTool(async () => {
-      const h = await getHandoff(env.DB, id);
+      const h = await getHandoff(ctx, id);
       if (!h) throw new HandoffError("not_found", "handoff not found");
       return h;
     }),
@@ -582,11 +584,11 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     { id: z.number().int(), session: z.string().min(1) },
     async ({ id, session }) => {
       try {
-        const h = await claimHandoff(env.DB, id, principal.handle, session);
+        const h = await claimHandoff(ctx, id, principal.handle, session);
         return { content: [{ type: "text" as const, text: `# Handoff #${h.id} — claimed\n\n${handoffAsTask(h)}` }] };
       } catch (err) {
         if (err instanceof HandoffError) {
-          const current = await getHandoff(env.DB, id);
+          const current = await getHandoff(ctx, id);
           const body = { error: err.message, code: err.code, ...(current ? { status: current.status, claimed_by: current.claimed_by } : {}) };
           return { content: [{ type: "text" as const, text: JSON.stringify(body) }], isError: true as const };
         }
@@ -599,7 +601,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "expire_handoff",
     "Expire a PENDING handoff you sent or that was left for you, so nobody picks it up (the work was finished another way, or it no longer applies). Pending handoffs also expire on their own 7 days after they were sent. A claimed or already-expired handoff is an error naming its status.",
     { id: z.number().int() },
-    async ({ id }) => runTool(() => expireHandoff(env.DB, id, principal.handle)),
+    async ({ id }) => runTool(() => expireHandoff(ctx, id, principal.handle)),
   );
 
   // ── Prompt Library (0028) ──────────────────────────────────────────────────
@@ -607,7 +609,7 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     "search_prompts",
     "Search the team's Prompt Library for a reusable prompt. `q` is full-text over slug, title, description, body and tags; `tags` must ALL match. Returns summaries (slug, title, tags, author, version, status, updated_at, excerpt) — prefer 'published' ones; 'staged' and 'draft' are not settled yet. Use get_prompt to read one. Read-only.",
     { q: z.string().optional(), tags: z.array(z.string()).optional() },
-    async ({ q, tags }) => runTool(() => listPrompts(env.DB, { q, tags })),
+    async ({ q, tags }) => runTool(() => listPrompts(ctx, { q, tags })),
   );
 
   server.tool(
@@ -616,8 +618,8 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
     { slug: z.string(), vars: z.record(z.string(), z.string()).optional() },
     async ({ slug, vars }) => runTool(async () => {
       // One conditional UPDATE: counts this call once, and writes nothing for an unknown slug.
-      await recordPromptUse(env.DB, slug);
-      const p = await getPrompt(env.DB, slug);
+      await recordPromptUse(ctx, slug);
+      const p = await getPrompt(ctx, slug);
       if (!p) throw new PromptError("not_found", "prompt not found");
       const variables = detectVars(p.body);
       const values = vars ?? {};
@@ -633,12 +635,17 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
       tags: z.array(z.string()).optional(), summary: z.string().optional(), branch: z.string().optional(),
     },
     async ({ slug, title, body, tags, summary, branch }) => runTool(async () => {
-      const p = await savePrompt(env.DB, principal.handle, PromptSaveInput.parse({ slug, title, body, tags, summary }), "agent", { branch });
+      const p = await savePrompt(ctx, principal.handle, PromptSaveInput.parse({ slug, title, body, tags, summary }), "agent", { branch });
       return { slug: p.slug, version: p.version, status: p.status };
     }),
   );
 
-  if (isAdmin(env, principal.handle)) {
+  // ADMIN-only: the plan write surface — non-admin principals don't even see the tool
+  // (conditional registration means it's absent from tools/list and calling it by
+  // name errors tool-not-found, since a fresh server is built per request with the
+  // context already in scope). "Admin" is the bearer's role IN THE TOKEN'S ORG today (§7.2) —
+  // admin or owner there; a role change shows on the very next request.
+  if (hasRole(ctx, "admin")) {
     server.tool(
       "update_plan",
       `ADMIN plan write: replace the roadmap narrative and create/update sprints (including status 'done') in one direct, non-destructively versioned write — same authored-write class as promote, NOT the ingestion gate. Sprints not listed are untouched. \`label\` is the sprint name, \`start\` its start date and \`due\` its target date — each a real calendar day written YYYY-MM-DD (\`due\` may be "" for unscheduled; \`start\` omitted keeps the stored one, null clears it), start on or before due, else the whole call is refused and nothing is written. \`dates\` is only a free-text display label. Which tickets are IN a sprint is set from the Tickets UI, not here. The narrative is SHORT — 2–3 sentences up to two short paragraphs (Now / Next / Later), at most ${PLAN_NARRATIVE_MAX} characters after trimming; leave out sprint-by-sprint detail, issue lists, dated status logs and ops steps (the sprints and the timeline carry those). Over the cap the whole call is refused and nothing is written — plan, versions and sprints alike. The narrative is always a full replacement, so an over-cap narrative already stored must be shortened, not resent. Use via the update-plan skill.`,
@@ -650,16 +657,17 @@ export function buildTrovMcpServer(env: Env, principal: Principal, opts: { origi
         // are real YYYY-MM-DD days (or "" / null), start <= due — the ONE sprint-date rule.
         sprints: z.array(PlanSprintEntry).default([]),
       },
-      async (input) => runTool(() => write_plan(env.DB, input as PlanWrite, principal.handle))
+      async (input) => runTool(() => write_plan(ctx, input as PlanWrite, principal.handle))
     );
   }
 
   return server;
 }
 
-export function handleMcp(request: Request, env: Env, ctx: ExecutionContext, principal: Principal): Promise<Response> {
-  const server = buildTrovMcpServer(env, principal, { origin: new URL(request.url).origin });
+export async function handleMcp(request: Request, env: Env, exec: ExecutionContext, ctx: TenantContext): Promise<Response> {
+  // The org's slug, for the links tool results carry (`<origin>/o/<slug>/#…`): the org on the token's own row.
+  const server = buildTrovMcpServer(env, ctx, { origin: new URL(request.url).origin, orgSlug: await orgSlugOf(ctx) });
   // createMcpHandler wraps @modelcontextprotocol/sdk over Streamable HTTP, stateless (no McpAgent/DO).
   const handler = createMcpHandler(server, { route: "/mcp" });
-  return handler(request, env, ctx);
+  return handler(request, env, exec);
 }

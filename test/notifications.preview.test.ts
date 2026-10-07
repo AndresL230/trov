@@ -5,20 +5,21 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx, platformCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { createSession } from "../src/auth/session";
 import { hmacSeal } from "../src/auth/crypto";
-import { all, run } from "../src/db";
+import { all, run } from "./helpers/db";
 import { ingestAdrDraft } from "../src/consumer";
 import { seedPerson } from "./helpers/persons";
 import type { NotificationOutboxRow } from "@shared/rows";
 
 async function cookieFor(login: string, email: string | null = "me@example.com"): Promise<string> {
   await seedPerson(login, { email });
-  const { id } = await createSession(env.DB, login);
+  const { id } = await createSession(platformCtx(), login);
   return `session=${await hmacSeal(id, "test-cookie-secret")}`;
 }
-const pending = () => ingestAdrDraft(env.DB, { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+const pending = () => ingestAdrDraft(systemCtx(), { title: "Pending decision", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
 
 describe("GET /api/notifications/preview", () => {
   it("403s for a non-admin", async () => {
@@ -87,7 +88,7 @@ describe("POST /api/notifications/test-send", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; status: string; key: string; mode: string; to: string };
     expect(body).toMatchObject({ ok: true, status: "sent", mode: "local", to: "admin@example.com" });
-    expect(body.key.startsWith("admin-user:daily:test-")).toBe(true);
+    expect(body.key.startsWith("org_saplinglearn:admin-user:daily:test-")).toBe(true);
     const rows = await all<NotificationOutboxRow>(env.DB, `SELECT * FROM notification_outbox`);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ user_id: "admin-user", cadence: "daily", status: "sent" });
@@ -103,7 +104,7 @@ describe("POST /api/notifications/test-send", () => {
     await send(cookie, { cadence: "daily" });
     const { runDigest } = await import("../src/notifications/run");
     const { localDelivery } = await import("../src/notifications/delivery");
-    const r = await runDigest(env.DB, "daily", new Date(), { delivery: localDelivery(env.DB) });
+    const r = await runDigest(systemCtx(), platformCtx(), "daily", new Date(), { delivery: localDelivery(systemCtx()) });
     expect(r.sent).toBe(1);
     expect(r.alreadyRan).toBe(0);
   });

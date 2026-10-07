@@ -10,22 +10,23 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { app } from "../src/routes";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import { savePrompt, deletePrompt, recordPromptUse, PromptSaveInput } from "../src/tools/prompts";
 import { renamePerson } from "../src/auth/persons";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import type { PromptDetail, PromptSummary } from "../shared/handoffs";
 import type { QuickSearchResult } from "@shared/quick-search";
+import { bearerCtx, platformCtx, systemCtx } from "./helpers/tenant";
 
 const AUTHOR = "pauthor";
 const OTHER = "pother";
-const ADMIN = "admin-user"; // ADMIN_LOGINS in vitest.config.ts
+const ADMIN = "admin-user"; // FIXTURE_ADMIN: seeded as an org admin (test/helpers/persons.ts)
 const SLUG = "zebra-review";
 
 beforeEach(async () => {
   for (const h of [AUTHOR, OTHER, ADMIN]) await seedPerson(h);
-  await savePrompt(env.DB, AUTHOR, PromptSaveInput.parse({ slug: SLUG, title: "Zebra review", body: "Review the zebra {{thing}}.", status: "published", description: "Stripes" }), "human");
-  await savePrompt(env.DB, AUTHOR, PromptSaveInput.parse({ slug: SLUG, title: "Zebra review", body: "Review the zebra {{thing}} twice.", status: "published" }), "human");
+  await savePrompt(systemCtx(), AUTHOR, PromptSaveInput.parse({ slug: SLUG, title: "Zebra review", body: "Review the zebra {{thing}}.", status: "published", description: "Stripes" }), "human");
+  await savePrompt(systemCtx(), AUTHOR, PromptSaveInput.parse({ slug: SLUG, title: "Zebra review", body: "Review the zebra {{thing}} twice.", status: "published" }), "human");
 });
 
 async function req(method: string, path: string, who: string, body?: unknown): Promise<Response> {
@@ -38,7 +39,7 @@ const del = (who: string, slug = SLUG) => req("POST", `/api/prompts/${slug}/dele
 const restore = (who: string, slug = SLUG) => req("POST", `/api/prompts/${slug}/restore`, who, {});
 
 async function mcp(handle: string, name: string, args: Record<string, unknown> = {}): Promise<{ text: string; isError?: boolean }> {
-  const server = buildTrovMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://trov.example/" } as Env, { handle });
+  const server = buildTrovMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://trov.example/" } as Env, await bearerCtx(handle));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -101,7 +102,7 @@ describe("POST /api/prompts/:slug/delete", () => {
     expect((await req("POST", `/api/prompts/${SLUG}/tags`, AUTHOR, { tags: ["ui"] })).status).toBe(404);
     expect((await req("POST", `/api/prompts/${SLUG}/publish`, AUTHOR, { version: 2 })).status).toBe(404);
     expect((await req("POST", `/api/prompts/${SLUG}/used`, AUTHOR, {})).status).toBe(404);
-    expect(await recordPromptUse(env.DB, SLUG)).toBe(false);
+    expect(await recordPromptUse(systemCtx(), SLUG)).toBe(false);
     expect((await del(AUTHOR)).status).toBe(404);
   });
 
@@ -119,7 +120,7 @@ describe("POST /api/prompts/:slug/delete", () => {
   });
 
   it("the author check is case-insensitive, like every handle", async () => {
-    await expect(deletePrompt(env.DB, SLUG, AUTHOR.toUpperCase(), false)).resolves.toEqual({ slug: SLUG, title: "Zebra review" });
+    await expect(deletePrompt(systemCtx(), SLUG, AUTHOR.toUpperCase(), false)).resolves.toEqual({ slug: SLUG, title: "Zebra review" });
   });
 
   it("an unknown slug is 404", async () => {
@@ -127,7 +128,7 @@ describe("POST /api/prompts/:slug/delete", () => {
   });
 
   it("is never an MCP tool — no agent can delete or restore a prompt", async () => {
-    const server = buildTrovMcpServer(env as unknown as Env, { handle: ADMIN });
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(ADMIN));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     await server.connect(st);
@@ -181,7 +182,7 @@ describe("a deleted prompt's slug stays reserved", () => {
   });
 
   it("so is renaming another prompt onto it, and an agent's save_prompt", async () => {
-    await savePrompt(env.DB, OTHER, PromptSaveInput.parse({ slug: "other-one", title: "Other", body: "b" }), "human");
+    await savePrompt(systemCtx(), OTHER, PromptSaveInput.parse({ slug: "other-one", title: "Other", body: "b" }), "human");
     await del(AUTHOR);
     const rn = await save(OTHER, { slug: SLUG, base_slug: "other-one", title: "Other", body: "b2" });
     expect(rn.status).toBe(409);
@@ -203,7 +204,7 @@ describe("a deleted prompt's slug stays reserved", () => {
 describe("a handle rename rewrites deleted_by", () => {
   it("deleted_by follows the person", async () => {
     await del(AUTHOR);
-    expect(await renamePerson(env.DB, AUTHOR, "pauthor-renamed")).toEqual({ ok: true });
+    expect(await renamePerson(platformCtx(), AUTHOR, "pauthor-renamed")).toEqual({ ok: true });
     expect(await first(env.DB, `SELECT author, deleted_by FROM prompts WHERE slug = ?`, SLUG)).toEqual({ author: "pauthor-renamed", deleted_by: "pauthor-renamed" });
     expect((await restore("pauthor-renamed")).status).toBe(200);
   });

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
-import { first, run } from "../src/db";
+import { first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import type { PersonRow } from "@shared/rows";
 

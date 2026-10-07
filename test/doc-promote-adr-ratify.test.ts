@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { propose_doc_update, stage_adr, promote_doc, ratify_adr } from "../src/tools/writes";
-import { first } from "../src/db";
+import { first } from "./helpers/db";
 import type { DocRow, DocVersionRow, AdrRow } from "@shared/rows";
 import { app } from "../src/routes";
 import { cookieFor } from "./helpers/persons";
@@ -10,10 +11,10 @@ const base = { slug: "architecture", section: "reference", title: "Architecture"
 
 describe("promote_doc", () => {
   it("flips the version to promoted, copies body into docs, bumps current_version, keeps prior versions", async () => {
-    await propose_doc_update(env.DB, { ...base, body: "# v1", change_summary: "first" }, "andres");
-    await propose_doc_update(env.DB, { ...base, body: "# v2", change_summary: "second" }, "andres");
+    await propose_doc_update(systemCtx(), { ...base, body: "# v1", change_summary: "first" }, "andres");
+    await propose_doc_update(systemCtx(), { ...base, body: "# v2", change_summary: "second" }, "andres");
 
-    const out = await promote_doc(env.DB, "architecture", 2, "andres");
+    const out = await promote_doc(systemCtx(), "architecture", 2, "andres");
     expect(out).toEqual({ slug: "architecture", version: 2, status: "promoted" });
 
     const doc = await first<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = ?`, "architecture");
@@ -29,40 +30,40 @@ describe("promote_doc", () => {
   });
 
   it("rejects a version that does not exist", async () => {
-    await propose_doc_update(env.DB, { ...base, body: "# v1", change_summary: "first" }, "andres");
-    await expect(promote_doc(env.DB, "architecture", 99, "andres")).rejects.toThrow();
+    await propose_doc_update(systemCtx(), { ...base, body: "# v1", change_summary: "first" }, "andres");
+    await expect(promote_doc(systemCtx(), "architecture", 99, "andres")).rejects.toThrow();
   });
 
   it("rejects promoting an already-promoted (non-staged) version", async () => {
-    await propose_doc_update(env.DB, { ...base, body: "# v1", change_summary: "first" }, "andres");
-    await promote_doc(env.DB, "architecture", 1, "andres");
-    await expect(promote_doc(env.DB, "architecture", 1, "andres")).rejects.toThrow();
+    await propose_doc_update(systemCtx(), { ...base, body: "# v1", change_summary: "first" }, "andres");
+    await promote_doc(systemCtx(), "architecture", 1, "andres");
+    await expect(promote_doc(systemCtx(), "architecture", 1, "andres")).rejects.toThrow();
   });
 });
 
 describe("ratify_adr", () => {
   it("flips a draft to ratified", async () => {
-    const id = await stage_adr(env.DB, { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
-    const out = await ratify_adr(env.DB, id);
+    const id = await stage_adr(systemCtx(), { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
+    const out = await ratify_adr(systemCtx(), id);
     expect(out).toEqual({ id, status: "ratified" });
     const adr = await first<AdrRow>(env.DB, `SELECT * FROM adrs WHERE id = ?`, id);
     expect(adr?.status).toBe("ratified");
   });
 
   it("rejects a missing adr", async () => {
-    await expect(ratify_adr(env.DB, 4242)).rejects.toThrow();
+    await expect(ratify_adr(systemCtx(), 4242)).rejects.toThrow();
   });
 
   it("rejects an already-ratified adr", async () => {
-    const id = await stage_adr(env.DB, { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
-    await ratify_adr(env.DB, id);
-    await expect(ratify_adr(env.DB, id)).rejects.toThrow();
+    const id = await stage_adr(systemCtx(), { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
+    await ratify_adr(systemCtx(), id);
+    await expect(ratify_adr(systemCtx(), id)).rejects.toThrow();
   });
 });
 
 describe("promote/ratify HTTP routes (session-gated)", () => {
   it("POST /doc/:slug/promote promotes for an authenticated principal", async () => {
-    await propose_doc_update(env.DB, { ...base, body: "# v1", change_summary: "first" }, "andres");
+    await propose_doc_update(systemCtx(), { ...base, body: "# v1", change_summary: "first" }, "andres");
     const cookie = await cookieFor("andres");
     const res = await app.request(
       "/doc/architecture/promote",
@@ -75,7 +76,7 @@ describe("promote/ratify HTTP routes (session-gated)", () => {
   });
 
   it("POST /adr/:id/ratify is rejected with 401 without a session", async () => {
-    const id = await stage_adr(env.DB, { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
+    const id = await stage_adr(systemCtx(), { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
     const res = await app.request(`/adr/${id}/ratify`, { method: "POST" }, env);
     expect(res.status).toBe(401);
     const adr = await first<AdrRow>(env.DB, `SELECT * FROM adrs WHERE id = ?`, id);
@@ -83,7 +84,7 @@ describe("promote/ratify HTTP routes (session-gated)", () => {
   });
 
   it("POST /adr/:id/ratify ratifies for an authenticated principal", async () => {
-    const id = await stage_adr(env.DB, { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
+    const id = await stage_adr(systemCtx(), { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
     const cookie = await cookieFor("andres");
     const res = await app.request(`/adr/${id}/ratify`, { method: "POST", headers: { cookie } }, env);
     expect(res.status).toBe(200);

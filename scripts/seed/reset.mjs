@@ -3,6 +3,32 @@
 // re-seeds the people identity map. When a migration adds a data table, add
 // its DELETE here.
 export const RESET_STATEMENTS = [
+  // Multitenancy (0042_organizations): the org platform tables clear FIRST — memberships, invites and the
+  // attribution map reference persons, every org_* table references orgs. The two SEED orgs are kept
+  // (every tenant table's transitional org_id DEFAULT points at org_saplinglearn); any org a test
+  // created is removed once its rows are gone (the per-org singletons are trimmed further down).
+  "DELETE FROM abuse_counters",
+  "DELETE FROM org_usage_daily",
+  "DELETE FROM org_admin_audit",
+  "UPDATE orgs SET suspended_at = NULL, suspended_by = NULL, logo_sha = NULL, logo_source = NULL, logo_by = NULL, logo_from = NULL, logo_at = NULL",
+  "DELETE FROM org_audit",
+  "DELETE FROM org_secrets",
+  "DELETE FROM org_keys",
+  "DELETE FROM org_integration_config",
+  "DELETE FROM org_environments",
+  "DELETE FROM org_repos",
+  "DELETE FROM org_login_map",
+  "DELETE FROM org_invites",
+  "DELETE FROM memberships",
+  "DELETE FROM org_counters",
+  // …and with the per-org counters (ticket / handoff NUMBERS restart at 1), the two tables' own row-id
+  // counters restart too — so in the seed org a fresh ticket's number equals its row id, exactly as it
+  // does for SaplingLearn in production (0042_organizations backfilled number = id). The wire only ever carries the
+  // NUMBER (src/tools/tickets.ts); a suite that must tell the two apart offsets the ids itself
+  // (test/numbers.per-org.test.ts) or files into the second org.
+  "DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'handoffs')",
+  "DELETE FROM platform_admins",
+  "UPDATE cron_cursor SET last_key = ''",
   // Tickets (0024) first: the ticket_* children reference tickets, and tickets
   // references persons(handle) (and, from 0025, sprints(id)) — so the whole tree
   // clears before anything it points at. tickets_fts needs no DELETE: the
@@ -35,6 +61,8 @@ export const RESET_STATEMENTS = [
   "DELETE FROM repo_metrics",
   "DELETE FROM sprint_progress",
   "DELETE FROM plan_versions",
+  "DELETE FROM plan WHERE org_id <> 'org_saplinglearn'",
+  "INSERT OR IGNORE INTO plan (org_id, narrative, current_version) VALUES ('org_saplinglearn', '', 0)",
   "UPDATE plan SET narrative = '', current_version = 0, updated_at = NULL, updated_by = NULL",
   // sprint_resources references sprints(id), so it clears first (as do the
   // tickets above, whose soft sprint_id points here). milestone_proposals is
@@ -52,7 +80,9 @@ export const RESET_STATEMENTS = [
   "DELETE FROM notification_outbox",
   "DELETE FROM notification_prefs",
   "DELETE FROM notification_policy",
-  "UPDATE notification_settings SET send_hour = 8, timezone = 'America/New_York', from_address = 'Trov <hello@trov.dev>' WHERE id = 1",
+  "DELETE FROM notification_settings WHERE org_id <> 'org_saplinglearn'",
+  "INSERT OR IGNORE INTO notification_settings (org_id, send_hour, timezone, from_address) VALUES ('org_saplinglearn', 8, 'America/New_York', 'Trov <hello@trov.dev>')",
+  "UPDATE notification_settings SET send_hour = 8, timezone = 'America/New_York', from_address = 'Trov <hello@trov.dev>' WHERE org_id = 'org_saplinglearn'",
   "DELETE FROM oauth_tokens",
   "DELETE FROM oauth_codes",
   "DELETE FROM oauth_grants",
@@ -61,6 +91,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM mcp_tokens",
   "DELETE FROM identities",
   "DELETE FROM invites",
+  "DELETE FROM orgs WHERE id NOT IN ('org_saplinglearn', 'org_b')",
   "DELETE FROM persons",
   // The dev/test person seed (was the `people` map): the four engineers, each with their github identity…
   "INSERT INTO persons (handle, name, color, created_at, onboarded_at) VALUES ('AndresL230', 'Andres', 'moss', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'), ('Jose-Gael-Cruz-Lopez', 'Jose', 'sky', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'), ('lpcooper-arch', 'Luke', 'fern', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'), ('Darkest-Teddy', 'Jack', 'plum', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
@@ -81,4 +112,12 @@ export const RESET_STATEMENTS = [
   // …and the system person 0032 seeds: the GitHub mirror's fallback requester.
   // The DELETE FROM persons above wipes the migration's row, so it is re-seeded here.
   "INSERT INTO persons (handle, name, color, created_at, onboarded_at) VALUES ('github-webhook', 'GitHub', 'stone', '2026-09-24T00:00:00Z', '2026-09-24T00:00:00Z')",
+  // The two seed orgs (multitenancy): SaplingLearn holds the six persons above — what 0042_organizations produces from
+  // them, AndresL230 its owner — and `org_b` (Acme) is the empty neighbour the isolation suite fills.
+  "INSERT OR IGNORE INTO orgs (id, slug, name, created_at, created_by) VALUES ('org_saplinglearn', 'saplinglearn', 'SaplingLearn', '2026-10-06T00:00:00.000Z', 'migration'), ('org_b', 'acme', 'Acme', '2026-10-06T00:00:00.000Z', 'migration')",
+  "INSERT INTO memberships (org_id, user_id, role, title, responsibilities, created_at, created_by) SELECT 'org_saplinglearn', handle, CASE WHEN handle = 'AndresL230' THEN 'owner' ELSE 'member' END, role, responsibilities, created_at, 'seed' FROM persons WHERE handle <> 'github-webhook'",
+  "INSERT INTO org_login_map (org_id, github_login, person, mapped_at, mapped_by) SELECT 'org_saplinglearn', subject, person, linked_at, 'seed' FROM identities WHERE provider = 'github'",
+  "UPDATE identities SET verified_email = lower(label) WHERE provider = 'google'",
+  // …and the one superadmin (0042_organizations), as production has it: the SaplingLearn owner.
+  "INSERT INTO platform_admins (person, granted_at, granted_by) VALUES ('AndresL230', '2026-10-06T00:00:00.000Z', 'seed')",
 ];

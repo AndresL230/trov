@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import {
   route_triage,
@@ -18,29 +19,29 @@ import { cookieFor as authedCookie } from "./helpers/persons";
 
 describe("list_needs_triage", () => {
   it("returns only unresolved triage items", async () => {
-    const id1 = await route_triage(env.DB, { raw: "item1", reason: "bad tag" });
-    await route_triage(env.DB, { raw: "item2", reason: "low confidence" });
+    const id1 = await route_triage(systemCtx(), { raw: "item1", reason: "bad tag" });
+    await route_triage(systemCtx(), { raw: "item2", reason: "low confidence" });
     // mark first one resolved
     await env.DB.prepare(`UPDATE needs_triage SET resolved = 1 WHERE id = ?`).bind(id1).run();
 
-    const items = await list_needs_triage(env.DB);
+    const items = await list_needs_triage(systemCtx());
     expect(items.length).toBe(1);
     expect(items[0].raw).toBe("item2");
     expect(items[0].resolved).toBe(0);
   });
 
   it("returns empty array when all items are resolved", async () => {
-    const id = await route_triage(env.DB, { raw: "item", reason: "test" });
+    const id = await route_triage(systemCtx(), { raw: "item", reason: "test" });
     await env.DB.prepare(`UPDATE needs_triage SET resolved = 1 WHERE id = ?`).bind(id).run();
-    const items = await list_needs_triage(env.DB);
+    const items = await list_needs_triage(systemCtx());
     expect(items).toHaveLength(0);
   });
 });
 
 describe("GET /needs-triage", () => {
   it("returns { items: [...] } with only unresolved items for an authenticated user", async () => {
-    const id1 = await route_triage(env.DB, { raw: "alpha", reason: "out of vocab" });
-    await route_triage(env.DB, { raw: "beta", reason: "low confidence" });
+    const id1 = await route_triage(systemCtx(), { raw: "alpha", reason: "out of vocab" });
+    await route_triage(systemCtx(), { raw: "beta", reason: "low confidence" });
     await env.DB.prepare(`UPDATE needs_triage SET resolved = 1 WHERE id = ?`).bind(id1).run();
 
     const cookie = await authedCookie("andres");
@@ -66,31 +67,31 @@ const adrBase = { title: "Use SQLite", context: "We need storage", decision: "SQ
 
 describe("list_adrs", () => {
   it("returns all adrs when no status filter", async () => {
-    const id1 = await stage_adr(env.DB, adrBase, "andres");
-    const id2 = await stage_adr(env.DB, { ...adrBase, title: "Use Hono" }, "andres");
-    await ratify_adr(env.DB, id1);
+    const id1 = await stage_adr(systemCtx(), adrBase, "andres");
+    const id2 = await stage_adr(systemCtx(), { ...adrBase, title: "Use Hono" }, "andres");
+    await ratify_adr(systemCtx(), id1);
 
-    const adrs = await list_adrs(env.DB);
+    const adrs = await list_adrs(systemCtx());
     expect(adrs.length).toBe(2);
   });
 
   it("filters by status=draft", async () => {
-    const id1 = await stage_adr(env.DB, adrBase, "andres");
-    await stage_adr(env.DB, { ...adrBase, title: "Use Hono" }, "andres");
-    await ratify_adr(env.DB, id1);
+    const id1 = await stage_adr(systemCtx(), adrBase, "andres");
+    await stage_adr(systemCtx(), { ...adrBase, title: "Use Hono" }, "andres");
+    await ratify_adr(systemCtx(), id1);
 
-    const drafts = await list_adrs(env.DB, "draft");
+    const drafts = await list_adrs(systemCtx(), "draft");
     expect(drafts.length).toBe(1);
     expect(drafts[0].status).toBe("draft");
     expect(drafts[0].title).toBe("Use Hono");
   });
 
   it("filters by status=ratified", async () => {
-    const id1 = await stage_adr(env.DB, adrBase, "andres");
-    await stage_adr(env.DB, { ...adrBase, title: "Use Hono" }, "andres");
-    await ratify_adr(env.DB, id1);
+    const id1 = await stage_adr(systemCtx(), adrBase, "andres");
+    await stage_adr(systemCtx(), { ...adrBase, title: "Use Hono" }, "andres");
+    await ratify_adr(systemCtx(), id1);
 
-    const ratified = await list_adrs(env.DB, "ratified");
+    const ratified = await list_adrs(systemCtx(), "ratified");
     expect(ratified.length).toBe(1);
     expect(ratified[0].status).toBe("ratified");
   });
@@ -98,9 +99,9 @@ describe("list_adrs", () => {
 
 describe("GET /adrs", () => {
   it("returns { adrs: [...] } for all adrs when no filter", async () => {
-    const id1 = await stage_adr(env.DB, adrBase, "andres");
-    await stage_adr(env.DB, { ...adrBase, title: "Use Hono" }, "andres");
-    await ratify_adr(env.DB, id1);
+    const id1 = await stage_adr(systemCtx(), adrBase, "andres");
+    await stage_adr(systemCtx(), { ...adrBase, title: "Use Hono" }, "andres");
+    await ratify_adr(systemCtx(), id1);
 
     const cookie = await authedCookie("andres");
     const res = await app.request("/adrs", { headers: { cookie } }, env);
@@ -110,9 +111,9 @@ describe("GET /adrs", () => {
   });
 
   it("filters by ?status=draft", async () => {
-    const id1 = await stage_adr(env.DB, adrBase, "andres");
-    await stage_adr(env.DB, { ...adrBase, title: "Use Hono" }, "andres");
-    await ratify_adr(env.DB, id1);
+    const id1 = await stage_adr(systemCtx(), adrBase, "andres");
+    await stage_adr(systemCtx(), { ...adrBase, title: "Use Hono" }, "andres");
+    await ratify_adr(systemCtx(), id1);
 
     const cookie = await authedCookie("andres");
     const res = await app.request("/adrs?status=draft", { headers: { cookie } }, env);

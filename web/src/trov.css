@@ -173,8 +173,6 @@ input, select { font-family: inherit; }
 .cnpy-logo { display:flex; align-items:center; padding:16px 14px 12px 17.5px; min-height:56px; transition:padding var(--side-t) var(--side-e); }
 [data-collapsed="1"] .cnpy-logo { padding-left:20px; padding-right:0; }
 .cnpy-logo-b { display:flex; align-items:center; gap:10px; overflow:hidden; padding:0; color:inherit; border-radius:7px; min-width:0; }
-.cnpy-logo-b svg { transition:transform .3s cubic-bezier(.34,1.56,.64,1); }
-.cnpy-logo-b:hover svg { transform:scale(1.08) rotate(-4deg); }
 .cnpy-logo-t { font-size:18px; font-weight:600; letter-spacing:-0.02em; white-space:nowrap; }
 
 .cnpy-navlist { display:flex; flex-direction:column; gap:3px; padding:0 10px 6px; flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-width:none; }
@@ -388,7 +386,7 @@ input, select { font-family: inherit; }
 @media (max-width:640px) {
   .cnpy-hscroll { overflow-x:auto; overscroll-behavior-x:contain; }
   .cnpy-hscroll > * { min-width:560px; }
-  /* Maintenance › Notifications › Schedule: hour + timezone, the from address under them. */
+  /* Org settings › Notifications › Schedule: hour + timezone, the from address under them. */
   .cnpy-sched { grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) !important; }
   .cnpy-sched > :nth-child(3) { grid-column:1 / -1; }
 }
@@ -795,7 +793,7 @@ input, select { font-family: inherit; }
 .cnpy-profile-grid { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:18px; align-items:start; margin-top:26px; }
 @media (max-width:900px) { .cnpy-profile-grid { grid-template-columns:minmax(0,1fr); } }
 @media (max-width:640px) { .cnpy-profile-opt { display:none; } }
-/* A person's name that opens their profile (the ticket rail, the feed, Maintenance › People). */
+/* A person's name that opens their profile (the ticket rail, the feed, Org settings › Members). */
 .cnpy-personlink { cursor:pointer; text-underline-offset:2px; }
 /* A person's photo + name as one chip (people.ts `personLink`): the pair lights up together. */
 .cnpy-personchip { cursor:pointer; transition:background .12s ease; }
@@ -853,40 +851,6 @@ input, select { font-family: inherit; }
 .cnpy-td-body p { white-space:pre-line; }
 .cnpy-ghostbtn { transition:all .12s ease; }
 .cnpy-ghostbtn:hover { border-color:var(--border-strong); color:var(--fg); }
-/* Maintenance › People: the admin's role editor (maintenance.ts `personRoleEditor`). The row and
-   its editor read as one tinted block — the row hands its divider to the editor (border AND the
-   -1px overlap, which would stack the two translucent tints into a seam), so the editor's border
-   sits exactly where the row's did at every height. It opens by growing its ONE grid row
-   0fr → 1fr (a real height animation, nothing measured) with a fade and a small drop of its
-   body; `data-roleedit="out"` is the collapsed state a closed editor lingers in for its exit.
-   The animations play only while main.ts `syncRoleEdit` has set `data-anim` (the 200ms open /
-   close window), joined mid-way through the negative `--re-t` — so a rerender never replays them. */
-.cnpy-prow[data-roleedit] { border-bottom:0 !important; margin-bottom:0 !important; }
-.cnpy-prow[data-roleedit="in"] { background:var(--hover); }
-.cnpy-prow-edit { color:var(--fg-55); border:1px solid var(--border); background:transparent; }
-.cnpy-prow-edit[aria-expanded="true"] { color:var(--fg); border-color:var(--border-strong); background:var(--surface); }
-.cnpy-roleedit { display:grid; grid-template-rows:1fr; background:var(--hover); border-bottom:1px solid var(--border); margin-bottom:-1px; }
-.cnpy-roleedit[data-roleedit="out"] { grid-template-rows:0fr; opacity:0; }
-.cnpy-roleedit-clip { min-height:0; overflow:hidden; }
-.cnpy-roleedit-body { box-sizing:border-box; max-width:640px; padding:4px 16px 18px 56px; }
-.cnpy-roleedit-count { font-size:11px; color:var(--fg-40); font-variant-numeric:tabular-nums; white-space:nowrap; }
-.cnpy-roleedit-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:16px; }
-.cnpy-roleedit-keys { margin-right:auto; min-width:0; font-size:11px; color:var(--fg-40); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.cnpy-roleedit-skel { background:var(--hover) !important; border-color:var(--border) !important; animation:cnpy-shimmer 1.4s ease infinite; }
-[data-phone="1"] .cnpy-roleedit-body { padding-left:16px; }
-[data-phone="1"] .cnpy-roleedit-keys { display:none; }
-.cnpy-roleedit[data-anim] { animation:cnpy-re-open .2s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--re-t, 0ms); }
-.cnpy-roleedit[data-anim] .cnpy-roleedit-body { animation:cnpy-re-drop .2s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--re-t, 0ms); }
-.cnpy-roleedit[data-roleedit="out"][data-anim] { animation:cnpy-re-close .2s cubic-bezier(.4,0,.2,1) both; animation-delay:var(--re-t, 0ms); }
-.cnpy-roleedit[data-roleedit="out"][data-anim] .cnpy-roleedit-body { animation:none; }
-.cnpy-prow[data-roleedit="in"][data-anim] { animation:cnpy-re-tint .2s ease both; animation-delay:var(--re-t, 0ms); }
-.cnpy-prow[data-roleedit="out"][data-anim] { animation:cnpy-re-untint .2s ease both; animation-delay:var(--re-t, 0ms); }
-@keyframes cnpy-re-open { from { grid-template-rows:0fr; opacity:0; } 70% { opacity:1; } to { grid-template-rows:1fr; opacity:1; } }
-@keyframes cnpy-re-close { from { grid-template-rows:1fr; opacity:1; } 60% { opacity:0; } to { grid-template-rows:0fr; opacity:0; } }
-@keyframes cnpy-re-drop { from { transform:translateY(-6px); } to { transform:none; } }
-@keyframes cnpy-re-tint { from { background-color:transparent; } to { background-color:var(--hover); } }
-@keyframes cnpy-re-untint { from { background-color:var(--hover); } to { background-color:transparent; } }
-@media (prefers-reduced-motion: reduce) { .cnpy-roleedit[data-anim], .cnpy-roleedit[data-anim] .cnpy-roleedit-body, .cnpy-prow[data-anim], .cnpy-roleedit-skel { animation:none !important; } }
 .cnpy-iconbtn { transition:background .12s ease, color .12s ease; }
 .cnpy-iconbtn:hover { background:var(--hover); color:var(--fg-70); }
 .cnpy-link:hover { text-decoration:underline; }
@@ -1013,6 +977,131 @@ input, select { font-family: inherit; }
 .cnpy-tabs.is-live > .cnpy-tabs-ind { opacity:1; }
 .cnpy-tabs-ind.is-sliding { transition:transform .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1); }
 @media (prefers-reduced-motion: reduce) { .cnpy-tabs-ind.is-sliding { transition:none; } .cnpy-tab { transition:none; } }
+/* ── the dropdown (web/src/dropdown.ts): a trigger at a field's height, and its menu ──
+   The trigger is the page's input (surface, strong hairline) with a caret; open, it wears the
+   focused input's accent ring. Its radius is inline (the corners layer keys on that). */
+.cnpy-dd { display:inline-flex; align-items:center; justify-content:space-between; gap:8px; flex:none; box-sizing:border-box; max-width:100%; height:36px; padding:0 10px 0 11px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-family:var(--sans); font-size:13px; font-weight:500; white-space:nowrap; text-align:left; cursor:pointer; transition:border-color .12s ease, box-shadow .12s ease; }
+.cnpy-dd.is-sm { height:30px; padding:0 8px 0 10px; font-size:12.5px; border-color:var(--border); color:var(--fg-70); }
+.cnpy-dd.is-fill { display:flex; width:100%; }
+.cnpy-dd-v { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-dd-caret { flex:none; color:var(--fg-40); transition:transform .14s ease; }
+.cnpy-dd:hover:not(:disabled) { border-color:var(--fg-40); }
+.cnpy-dd.is-open { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
+.cnpy-dd.is-open .cnpy-dd-caret { transform:rotate(180deg); }
+.cnpy-dd:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+.cnpy-dd:disabled { cursor:default; background:var(--hover); color:var(--fg-40); opacity:.7; }
+/* The menu: a root-level layer (a click on its backdrop closes), the popover fixed against the
+   trigger by dropdown.ts. The entrance is the link menu's pop, from the trigger's corner, on
+   the paint that opens it only; `data-closing` plays the exit before the menu leaves the DOM. */
+[data-cnpy-theme="light"] { --menu-shadow:0 14px 38px rgba(20,20,30,0.16); }
+[data-cnpy-theme="dark"] { --menu-shadow:0 14px 38px rgba(0,0,0,0.38); }
+.cnpy-dd-layer { position:fixed; inset:0; z-index:95; }
+.cnpy-dd-back { position:absolute; inset:0; }
+.cnpy-dd-pop { position:fixed; box-sizing:border-box; display:flex; flex-direction:column; gap:1px; width:max-content; max-width:min(440px, calc(100vw - 16px)); max-height:298px; padding:5px; overflow-y:auto; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--menu-shadow); transform-origin:top left; outline:none; }
+.cnpy-dd-pop[data-align="right"] { transform-origin:top right; }
+.cnpy-dd-pop[data-side="up"] { transform-origin:bottom left; }
+.cnpy-dd-pop[data-side="up"][data-align="right"] { transform-origin:bottom right; }
+.cnpy-dd-pop.is-opening { animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
+.cnpy-dd-layer[data-closing] { pointer-events:none; }
+.cnpy-dd-layer[data-closing] .cnpy-dd-pop { animation:cnpy-dd-out .12s cubic-bezier(.4,0,1,1) both; }
+@keyframes cnpy-dd-out { to { opacity:0; transform:scale(.94); } }
+.cnpy-dd-opt { display:flex; align-items:center; justify-content:space-between; gap:14px; flex:none; width:100%; box-sizing:border-box; padding:7px 10px; text-align:left; font-size:12.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-dd-opt.is-on { color:var(--fg); }
+/* The keyboard's row is painted like the hovered one (`.cnpy-menurow`). */
+.cnpy-dd-opt:focus-visible { outline:none; background:var(--hover); }
+.cnpy-dd-optt { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.cnpy-dd-optl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dd-opth { font-size:11.5px; font-weight:400; line-height:1.4; color:var(--fg-55); }
+.cnpy-dd-optt:has(.cnpy-dd-opth) .cnpy-dd-optl { font-size:13px; color:var(--fg); }
+.cnpy-dd-check { flex:none; color:var(--accent); visibility:hidden; }
+.cnpy-dd-opt.is-on .cnpy-dd-check { visibility:visible; }
+@media (prefers-reduced-motion: reduce) { .cnpy-dd, .cnpy-dd-caret { transition:none; } .cnpy-dd-pop.is-opening, .cnpy-dd-layer[data-closing] .cnpy-dd-pop { animation:none !important; } }
+/* ── Org settings (web/src/org-settings.ts, integrations.ts, org-ui.ts) ───────
+   Layout only: colours are the tokens, set inline like everywhere else, and no rule here
+   declares a radius (those are inline too, so the corners block scales them). A row is
+   text on the left and its actions on the right; both wrap, so at phone width the actions
+   drop under the text instead of squeezing it. The secret form is the confirmation modal's
+   shell (`.cnpy-cmodal`), wider, in two columns: the value, and where to get it. */
+.cnpy-sr { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+.cnpy-org-narrow { max-width:640px; }
+.cnpy-org-head { min-width:0; }
+/* The organization pages' hierarchy (org-ui.ts): a tab's lead line, the section eyebrow, a
+   row that opens. Shared by Org settings, Platform and the picker. */
+.cnpy-lead { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; flex-wrap:wrap; min-height:32px; margin:0 0 24px; }
+.cnpy-lead-t { flex:1 1 280px; min-width:0; margin:0; font-size:13px; line-height:1.55; color:var(--fg-55); }
+.cnpy-lead-t strong { font-weight:600; color:var(--fg); }
+.cnpy-lead-t code { font-family:var(--code); font-size:12px; color:var(--fg-70); overflow-wrap:anywhere; }
+.cnpy-lead-a { display:flex; align-items:center; gap:8px; flex-wrap:wrap; flex:none; max-width:100%; }
+.cnpy-lead-flag { display:inline-flex; align-items:center; gap:5px; font-weight:500; white-space:nowrap; vertical-align:bottom; }
+.cnpy-sechead { display:flex; align-items:center; gap:8px; min-height:20px; margin:30px 0 9px; }
+.cnpy-lead + .cnpy-sechead, .cnpy-lead + section > .cnpy-sechead:first-child, .cnpy-sechead.is-first { margin-top:0; }
+.cnpy-sechead-a { margin-left:auto; min-width:0; font-size:11.5px; line-height:1.4; color:var(--fg-40); text-align:right; }
+.cnpy-xrow { border-bottom:1px solid var(--border); margin-bottom:-1px; }
+.cnpy-xrow-h { display:flex; align-items:center; gap:6px 12px; padding:0 16px 0 6px; min-height:50px; }
+.cnpy-xrow-t { flex:1 1 0; min-width:0; display:flex; align-items:center; gap:10px; min-height:50px; padding:0 0 0 10px; text-align:left; color:var(--fg); }
+.cnpy-xrow-c { flex:none; color:var(--fg-40); transition:transform .18s ease, color .12s ease; }
+.cnpy-xrow-t:hover .cnpy-xrow-c { color:var(--fg-70); }
+.cnpy-xrow-n { display:flex; align-items:center; gap:6px 9px; flex-wrap:wrap; min-width:0; font-size:13.5px; font-weight:600; letter-spacing:-0.003em; overflow-wrap:anywhere; }
+.cnpy-xrow-m { margin-left:auto; flex:0 1 auto; min-width:0; font-size:12px; font-weight:400; color:var(--fg-40); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; }
+.cnpy-xrow-a { display:flex; align-items:center; gap:6px; flex:none; }
+.cnpy-xrow-x { padding:0 16px 12px 38px; }
+.cnpy-xrow-b { padding:0 16px 16px 38px; font-size:12.5px; line-height:1.55; color:var(--fg-55); }
+.cnpy-xrow-b[hidden] { display:none; }
+.cnpy-xrow-acts { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:14px; }
+.cnpy-xrow-acts > .cnpy-org-danger, .cnpy-xrow-acts > .cnpy-org-off:last-child { margin-left:auto; }
+.cnpy-org-danger { transition:color .12s ease; }
+.cnpy-org-danger:hover, .cnpy-org-danger:focus-visible { color:var(--red) !important; }
+.cnpy-setup { display:flex; align-items:center; gap:10px 20px; flex-wrap:wrap; padding:11px 16px; margin-bottom:18px; }
+.cnpy-setup-steps { display:flex; align-items:center; gap:6px 6px; flex-wrap:wrap; list-style:none; margin:0 0 0 auto; padding:0; }
+.cnpy-setup-step { display:inline-flex; align-items:center; gap:7px; height:30px; padding:0 10px 0 8px; font-size:12.5px; font-weight:500; white-space:nowrap; color:var(--fg-55); }
+button.cnpy-setup-step { border:1px solid var(--border); color:var(--fg); transition:border-color .12s ease, background .12s ease; }
+button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var(--hover); }
+@media (max-width:640px) {
+  .cnpy-lead-a { width:100%; }
+  .cnpy-lead-a > button, .cnpy-lead-a > a { flex:1 1 auto; min-height:38px; justify-content:center; }
+  /* A row at phone width: the chevron keeps its column, the name wraps beside it, the quiet
+     metadata sits under the name, and the row's action is under that, at its own width. */
+  .cnpy-xrow-h { flex-wrap:wrap; padding-right:12px; }
+  .cnpy-xrow-t { flex:1 1 100%; display:grid; grid-template-columns:12px minmax(0,1fr); align-items:center; gap:2px 10px; padding-top:12px; padding-bottom:12px; }
+  .cnpy-xrow-m { grid-column:2; margin-left:0; text-align:left; white-space:normal; }
+  .cnpy-xrow-a { padding:0 0 12px 32px; }
+  .cnpy-xrow-a > button { min-height:36px; }
+  .cnpy-sechead { flex-wrap:wrap; }
+  .cnpy-sechead-a { flex:1 1 100%; margin-left:0; text-align:left; }
+  .cnpy-org-actions.is-inline { width:auto; }
+  .cnpy-xrow-x, .cnpy-xrow-b { padding-left:16px; }
+  .cnpy-xrow-acts > button { min-height:36px; }
+  .cnpy-setup-steps { margin-left:0; width:100%; }
+  .cnpy-setup-step { flex:1 1 100%; height:36px; }
+}
+@media (prefers-reduced-motion: reduce) { .cnpy-xrow-c { transition:none; } }
+.cnpy-org-field { min-width:0; }
+.cnpy-org-row { display:flex; align-items:flex-start; gap:10px 14px; flex-wrap:wrap; padding:13px 16px; border-bottom:1px solid var(--border); margin-bottom:-1px; }
+.cnpy-org-actions { display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap; flex:none; max-width:100%; margin-left:auto; }
+.cnpy-org-step { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:11px 0; }
+.cnpy-org-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr)); gap:16px 18px; }
+.cnpy-org-addbar { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; max-width:640px; }
+.cnpy-org-invite { display:flex; align-items:center; gap:8px; flex-wrap:wrap; max-width:820px; }
+.cnpy-org-editor { padding:4px 16px 16px; }
+.cnpy-org-code { display:block; margin:3px 0; font-family:var(--code); font-size:11.5px; color:var(--fg-70); overflow-wrap:anywhere; }
+.cnpy-org-off { cursor:default; opacity:.6; }
+/* Every control here shows where the keyboard is. */
+.cnpy-org button:focus-visible, .cnpy-org select:focus-visible, .cnpy-org-secret button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+.cnpy-org .cnpy-input:focus-visible, .cnpy-org-secret .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
+.cnpy-org-secret { width:min(820px, 100%); max-height:calc(100vh - 32px); overflow-y:auto; }
+.cnpy-org-secretgrid { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1fr); gap:24px; margin-top:18px; }
+.cnpy-org-how { min-width:0; padding-left:24px; border-left:1px solid var(--border); }
+@media (max-width:760px) {
+  .cnpy-org-secretgrid { grid-template-columns:minmax(0,1fr); gap:18px; }
+  .cnpy-org-how { padding-left:0; border-left:0; padding-top:16px; border-top:1px solid var(--border); }
+}
+@media (max-width:640px) {
+  .cnpy-org-actions { width:100%; }
+  .cnpy-org-actions > button, .cnpy-org-step > button { min-height:36px; }
+  /* A checklist step's button drops under its text, in line with it. */
+  .cnpy-org-step > button { flex:1 1 100%; margin-left:30px; }
+  .cnpy-org-addbar > button, .cnpy-org-invite > button, .cnpy-org-invite > .cnpy-seg, .cnpy-org-invite > .cnpy-dd { flex:1 1 100%; }
+}
 /* The queue group header's "Open sprint →". */
 .cnpy-grouplink { transition:color .12s ease, background .12s ease; border-radius:6px; }
 .cnpy-grouplink:hover { color:var(--fg) !important; background:var(--hover); }
@@ -1166,7 +1255,7 @@ input, select { font-family: inherit; }
 
 .repo-gdot { display:inline-block; width:.6em; height:.6em; border-radius:50%; background:currentColor; vertical-align:.05em; }
 .repo-dot { transition:box-shadow .15s ease, transform .15s ease; }
-.repo-dot:hover, .repo-dot:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb,var(--fg) 12%,transparent); transform:scale(1.12); outline:none; }
+.repo-dot:hover, .repo-dot:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb,var(--fg) 12%,transparent); outline:none; }
 [data-enter] .repo-dot { animation:cnpy-dot .3s cubic-bezier(.34,1.56,.64,1) both; animation-delay:calc(var(--i, 0) * 30ms + 140ms + var(--enter-t, 0ms)); }
 .repo-tip { position:absolute; bottom:24px; left:50%; z-index:30; display:block; background:var(--bg); border:1px solid var(--border-strong); border-radius:9px; padding:9px 12px; box-shadow:0 8px 30px rgba(0,0,0,.35); white-space:nowrap; pointer-events:none; opacity:0; visibility:hidden; transform:translate(-50%,6px) scale(.98); transition:opacity .15s ease, transform .15s ease, visibility 0s .15s; }
 .repo-dotwrap:hover .repo-tip, .repo-dot:focus-visible + .repo-tip { opacity:1; visibility:visible; transform:translate(-50%,0); transition-delay:0s; }
@@ -1488,6 +1577,134 @@ input, select { font-family: inherit; }
   .cnpy-qs-layer, .cnpy-qs { animation:none !important; transition:none !important; }
 }
 
+/* ── Platform (web/src/platform.ts, platform-usage.ts) — the superadmin's screens ──────
+   The tables are grids that reflow BY THEIR OWN WIDTH
+   (`.plat-table` is the container): under 860px the header row goes and each row becomes
+   a small card of labelled cells, so nothing scrolls sideways on a phone. */
+
+/* ── organizations: the switcher, its menu, the picker (web/src/org-picker.ts) ──
+   THE SWITCHER sits under the logo: the current org's initial and name. Collapsed, the rail
+   keeps the tile alone, centred on the nav icons' axis. Its MENU is a root-level overlay
+   (never a child of the rail, which clips), anchored under the button — beside it when the
+   rail is collapsed — and above the phone drawer it was opened from. Radii are inline (the
+   corners layer keys them by value). */
+.cnpy-orgslot { flex:none; padding:0 10px 8px; transition:padding var(--side-t) var(--side-e); }
+.cnpy-orgsw-b { display:flex; align-items:center; gap:9px; width:100%; min-width:0; height:38px; box-sizing:border-box; padding:0 9px 0 6.5px; border:1px solid var(--border); background:var(--surface); color:var(--fg); text-align:left; overflow:hidden; transition:background .15s ease, border-color .15s ease, padding var(--side-t) var(--side-e); }
+.cnpy-orgsw-b:hover, .cnpy-orgsw-b.is-open, .cnpy-orgslot.is-active .cnpy-orgsw-b { border-color:var(--border-strong); }
+[data-cnpy-theme="dark"] .cnpy-orgsw-b:hover, [data-cnpy-theme="dark"] .cnpy-orgsw-b.is-open { background:var(--hover); }
+.cnpy-orgsw-n { flex:1; min-width:0; font-family:'Geist',system-ui,sans-serif; font-size:13px; font-weight:600; letter-spacing:-0.005em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-orgsw-b .cnpy-dot { display:none; }
+[data-collapsed="1"] .cnpy-orgsw-b { padding:0 0 0 9px; border-color:transparent; background:transparent; }
+[data-collapsed="1"] .cnpy-orgsw-b:hover, [data-collapsed="1"] .cnpy-orgsw-b.is-open { background:var(--hover); }
+.cnpy-orgtile { display:inline-grid; place-items:center; flex:none; box-sizing:border-box; background:var(--hover); border:1px solid var(--border-strong); color:var(--fg-70); font-family:'Geist',system-ui,sans-serif; font-weight:600; line-height:1; }
+.cnpy-orgmenu-layer { position:fixed; inset:0; z-index:95; }
+.cnpy-orgmenu-back { position:absolute; inset:0; }
+.cnpy-orgmenu { position:absolute; top:calc(100px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); width:316px; max-width:calc(100vw - 20px); max-height:calc(100dvh - 116px); overflow-y:auto; box-sizing:border-box; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
+[data-collapsed="1"] .cnpy-orgmenu { top:56px; left:70px; max-height:calc(100dvh - 72px); }
+.cnpy-orgmenu .cnpy-menurow:focus-visible, .cnpy-orgmenu button:focus-visible, .cnpy-orgs a:focus-visible, .cnpy-orgs button:focus-visible, [data-orgs-create] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+[data-orgs-create] .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
+.cnpy-orgs-inv { display:flex; align-items:center; gap:10px 12px; flex-wrap:wrap; }
+/* THE PICKER: one calm column, the app's surfaces. */
+.cnpy-orgs { min-height:100vh; box-sizing:border-box; display:flex; justify-content:center; padding:64px 24px 80px; }
+.cnpy-orgs-col { width:100%; max-width:620px; min-width:0; }
+.cnpy-orgs-row { display:flex; align-items:center; gap:12px; padding:13px 16px; transition:background .12s ease; }
+.cnpy-orgs-opt { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; padding:14px 16px; border-bottom:1px solid var(--border); margin-bottom:-1px; }
+/* THE PLATFORM PAGE (`/platform/`, platform.ts `platformPage`): the superadmin's screens outside any
+   org — a header on the app header's line and the same frame under it; the window scrolls. */
+.cnpy-platpage { min-height:100vh; display:flex; flex-direction:column; }
+.cnpy-platpage-hdr { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; flex-wrap:wrap; min-height:57px; padding:8px clamp(20px,2.6vw,46px); border-bottom:1px solid var(--border); box-sizing:border-box; }
+.cnpy-platpage-l { display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto; }
+.cnpy-platpage-r { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.cnpy-platpage-home { display:inline-flex; align-items:center; gap:8px; flex:none; color:var(--fg); text-decoration:none; font-size:15px; font-weight:600; letter-spacing:-0.02em; border-radius:6px; }
+.cnpy-platpage-t { margin:0; font-size:15px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; flex:none; }
+.cnpy-platpage a:focus-visible, .cnpy-platpage-hdr button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+@media (max-width: 640px) {
+  .cnpy-platpage-hdr { padding:max(10px, env(safe-area-inset-top)) 16px 10px; }
+  .cnpy-platpage-r { width:100%; }
+  .cnpy-platpage-r > * { flex:1 1 auto; justify-content:center; min-height:38px; }
+}
+.cnpy-orgs-row:hover { background:var(--hover); }
+@media (max-width: 640px) {
+  .cnpy-orgs { padding:max(28px, env(safe-area-inset-top)) 16px max(40px, env(safe-area-inset-bottom)); }
+  .cnpy-orgs-inv > div:last-child { width:100%; }
+  .cnpy-orgs-inv > div:last-child > button { flex:1; min-height:38px; }
+  .cnpy-orgmenu { width:auto; right:10px; max-width:none; }
+}
+@media (prefers-reduced-motion: reduce) { .cnpy-orgmenu { animation:none; } }
+/* A short window: the rail tightens rather than scroll its last rows out of sight. At full size
+   a superadmin's rail (13 entries, Platform, Collapse) needs about 980px; so below that the
+   rows and section labels lose a few pixels each and the tagline steps aside, and below 850px
+   (a laptop at 800) they lose a few more — every entry stays on screen, none scrolls. Never on
+   a phone, whose drawer has its own (larger) touch rows. */
+@media (max-height: 990px) {
+  [data-phone="0"] .cnpy-nav-i { padding-top:6px; padding-bottom:6px; }
+  [data-phone="0"][data-collapsed="1"] .cnpy-nav-i { padding-top:7px; padding-bottom:7px; }
+  [data-phone="0"] .cnpy-navlist { gap:2px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec { height:25px; padding-top:6px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec.is-first { height:26px; padding-top:7px; }
+  [data-phone="0"] .cnpy-ghost { display:none; }
+  [data-phone="0"] .cnpy-collapse { padding-bottom:4px; }
+  [data-phone="0"] .cnpy-foot { padding:6px 10px; }
+}
+@media (max-height: 850px) {
+  [data-phone="0"] .cnpy-nav-i { padding-top:5px; padding-bottom:5px; }
+  [data-phone="0"][data-collapsed="1"] .cnpy-nav-i { padding-top:6px; padding-bottom:6px; }
+  [data-phone="0"] .cnpy-navlist { gap:1px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec { height:22px; padding-top:5px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec.is-first { height:23px; padding-top:6px; }
+  [data-phone="0"] .cnpy-logo { min-height:50px; padding-top:13px; padding-bottom:9px; }
+  [data-phone="0"] .cnpy-orgslot { padding-bottom:5px; }
+  [data-phone="0"] .cnpy-searchwrap { padding-top:3px; padding-bottom:2px; }
+}
+/* The confirmation modal's NEUTRAL confirm (confirm.ts `tone: "neutral"`): an action that undoes
+   or restores — Unsuspend — is the accent button, not the destructive red. */
+.cnpy-confirm-go--neutral:focus-visible { outline-color:color-mix(in srgb, var(--accent) 60%, transparent); }
+.plat button:focus-visible, .plat select:focus-visible, [data-plat-dialog] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+.plat .plat-row:focus-visible { outline-offset:-2px; }
+.plat-table, .plat-cq { container-type:inline-size; }
+.plat-thead { display:grid; gap:12px; align-items:center; font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); white-space:nowrap; }
+.plat-thead > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.plat-row { display:grid; gap:12px; align-items:center; transition:background .12s ease; }
+.plat-row:hover { background:var(--hover); }
+.plat-orgs-grid { grid-template-columns:minmax(0,2fr) 92px minmax(0,1.7fr) 68px 60px 96px 96px; }
+.plat-usage-grid { grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr) 48px 62px 44px 54px minmax(0,.95fr) 88px; }
+.plat-cl { display:none; font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); margin-bottom:3px; }
+.plat-urow { border-bottom:1px solid var(--border); margin-bottom:-1px; }
+.plat-chev { color:var(--fg-40); transition:transform .2s ease; }
+.plat-tiles { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); }
+.plat-breakdown { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px 36px; }
+.plat-breakdown-foot { grid-column:1 / -1; }
+.plat-sizes { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 36px; }
+.plat-busy { opacity:.6; transition:opacity .15s ease; }
+.plat-audit { display:flex; flex-wrap:wrap; align-items:baseline; gap:3px 14px; }
+.plat-audit > :nth-child(1) { flex:0 0 168px; }
+.plat-audit > :nth-child(2) { flex:1 1 240px; }
+.plat-au-org, .plat-au-actor { flex:0 0 112px; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.plat-au-time { flex:0 0 64px; text-align:right; }
+.plat-inline { display:flex; gap:8px; }
+@container (max-width: 860px) {
+  .plat-thead { display:none !important; }
+  .plat-row { grid-template-columns:repeat(6,minmax(0,1fr)) !important; gap:10px 14px; align-items:start; padding-top:14px !important; padding-bottom:14px !important; }
+  .plat-row > .plat-c { grid-column:span 2; }
+  .plat-row > .plat-c-name { grid-column:1 / -1; }
+  .plat-row > .plat-c-wide { grid-column:span 3; }
+  .plat-orgs-grid > .plat-c-wide { grid-column:span 4; }
+  .plat-cl { display:block; }
+  .plat-urow-body { padding-left:20px !important; }
+}
+@container (max-width: 620px) {
+  .plat-breakdown, .plat-sizes { grid-template-columns:minmax(0,1fr); }
+  .plat-tile-n { font-size:22px !important; }
+}
+@media (max-width:640px) {
+  .plat-inline { flex-direction:column; align-items:stretch !important; }
+  .plat-inline > * { flex:none !important; }
+  .plat-au-org, .plat-au-actor, .plat-au-time { flex:none; text-align:left; }
+  .plat-audit > :nth-child(1), .plat-audit > :nth-child(2) { flex:1 1 100%; }
+  .plat-hide-sm { display:none; }
+}
+@media (prefers-reduced-motion: reduce) { .plat-row, .plat-chev, .plat-busy { transition:none; } }
+
 /* ── corners: tightened ──────────────────────────────────────────────────────
    Trov's corners are TIGHTER than the design file's: every radius is shrunk by one
    factor, --corner-scale, so a card stays rounder than a chip and the hierarchy of the
@@ -1518,6 +1735,7 @@ input, select { font-family: inherit; }
 [data-cnpy-theme] .cnpy-kbd,
 [data-cnpy-theme] .cnpy-qs-kbd,
 [data-cnpy-theme] .cnpy-treechev { border-radius:calc(4px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-platpage-home { border-radius:calc(6px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs-hl { border-radius:calc(3px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs-row { border-radius:calc(7px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs { border-radius:calc(12px * var(--corner-scale)) !important; }

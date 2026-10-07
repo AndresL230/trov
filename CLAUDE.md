@@ -65,9 +65,10 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   the SPA imports as a VALUE (`canTransition` / `legalMoves` / `TICKET_STATUS_LABEL` / `isOpenStatus`,
   the status/urgency/domain tuples) lives in the zod-free core so the browser bundle never drags zod in;
   the zod module re-exports it, so the server still has one definition.
-- `src/` — the Worker. `index.ts` (fetch entry: `/mcp` by bearer, `/webhook/github` by HMAC, everything
-  else to the Hono app; plus `scheduled()`, which dispatches the repo cron and the two digest crons by exact
-  cron expression), `routes.ts` (Hono HTTP), `mcp.ts` (MCP
+- `src/` — the Worker. `index.ts` (fetch entry: `/mcp` by bearer, `/webhook/github[/:hookId]` by HMAC
+  (`github-hook.ts`), everything else to the Hono app; plus `scheduled()`, which dispatches the repo cron and
+  the two digest crons by exact cron expression — each runs for EVERY active org, `docs/architecture/data-layer.md`
+  › Background jobs), `routes.ts` (Hono HTTP), `mcp.ts` (MCP
   tools), `consumer.ts` (THE GATE), `webhook.ts` (GitHub event capture), `tools/` (`writes.ts`, `reads.ts`,
   `plan.ts`, `tickets.ts`, `sprints.ts`, `mywork.ts`, `repo.ts`, `repo-agent.ts`, `progress.ts`, `summarize.ts`), `notifications/` (email digests — see the
   Email notifications section), `db.ts` (D1 helpers), `auth/` (`persons.ts` — the identity root;
@@ -89,10 +90,13 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   never on the render path), `poll.ts` (the four scheduled pulls, none of which may throw: `pingHealth` every tick,
   and the three hourly usage pollers `pollCloudflare`, `pollRailway`, `pollSaplingMetrics`, each returning a
   `PollOutcome` per environment), and `cron.ts`
-  (`handleRepoCron` — the repo trigger's one dispatcher, ONE heavy job per invocation, the subrequest budget
-  stated at the dispatcher — `runUsagePolls`, the one function behind the `:00` tick and the usage half of
-  the admin's "Poll now"; `runRepoRefresh` / `runLockedRepoRefresh`, the on-demand refresh of EVERY source
-  behind `POST /admin/poll`, which the cron never calls; and `railwayTokens`). Retention, the cron schedule and every capture path are
+  (`handleRepoCron` — the repo trigger's one dispatcher, ONE heavy job per invocation, each job run for every
+  org by ROTATION (`dispatch.ts`: units, budget, `cron_cursor`), the subrequest budget stated at the
+  dispatcher — the job functions `runEnvJob` / `runOrgJob` / `runReconcileJob`; `runUsagePolls`, the org's
+  usage job on demand; `runRepoRefresh` / `runLockedRepoRefresh`, the on-demand refresh of EVERY source
+  behind `POST /admin/poll`, which the cron never calls). A job reads its repo and environments from the
+  org's rows (`config.ts`: `orgPrimaryRepo`, `orgEnvironments`) and its credentials through
+  `resolveCredential` — never from `GITHUB_REPO` / `REPO_ENVIRONMENTS` / a Worker secret directly. Retention, the cron schedule and every capture path are
   described once, in the Repo dashboard section below.
 - `migrations/` — D1 SQL (`0001_init` … `0010_triage_resolve`, then `0011_fts_recreate`,
   `0012_events_plan` [events / pr_summaries / milestone_progress / people / plan / plan_versions +
@@ -139,12 +143,38 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   trigger, `artifacts_fts` is kept by the repository — see Artifacts below]), then `0036_person_profiles`
   (two marked parts) — PART A [`persons.avatar_sha` (64 lowercase hex, CHECKed) / `role` / `responsibilities`, all
   nullable, never backfilled], PART B [`persons.avatar_source` (`github` / `google`, CHECKed), backfilled
-  conservatively from the picture URL's host] — see "People profiles" below.
+  conservatively from the picture URL's host] — see "People profiles" below. Then `0041_trov_name` [the untouched default digest
+  sender → `Trov <hello@trov.dev>`; it shipped on its own, first] and the MULTITENANCY schema, ONE migration
+  (`canopy-multitenancy.md`; audit `canopy-multitenancy-audit.md`): `0042_organizations` — ten titled sections, written
+  as ten files and consolidated before release (old → new map: spec §3): 1 orgs [the platform tables —
+  `orgs`, `memberships` (role owner/admin/member + the per-org `title` / `responsibilities`), `org_invites` (a GitHub
+  login OR an email), `org_repos`, `org_environments` (was `REPO_ENVIRONMENTS`), `org_keys` / `org_secrets` /
+  `org_integration_config` / `org_audit` (integration secrets), `org_login_map` (per-org ATTRIBUTION,
+  never sign-in), `org_counters`, `cron_cursor`; `persons.org_limit`, `identities.verified_email`; SaplingLearn seeded
+  as `org_saplinglearn` from the data already in D1], 2 tenant columns [`org_id` ADDED to every tenant table whose
+  keys do not change; per-org `tickets.number` / `handoffs.number`, allocated by AFTER INSERT triggers from
+  `org_counters`], 3 tenant rebuilds [the 20 tables whose key must include `org_id` REBUILT — docs, doc_versions,
+  entry_tags, processed_items, events / pr_summaries / issue_summaries (+ `repo`), plan, plan_versions, identity_tasks,
+  the notification policy / settings / prefs, repo_events / repo_snapshots / repo_metrics, prompts, prompt_versions,
+  artifact_pages, doc_images — ending in a GUARD that fails the WHOLE migration on any dangling reference], 4 tenant FTS
+  [every FTS table re-created with `org_id UNINDEXED` as its LAST column (positional bm25 weights / snippet columns are
+  unchanged) and every FTS trigger org-scoped], 5 platform admins [the SUPERADMIN role — one table, seeded with andres;
+  no implicit access to any org's content; read by `/api/platform/*` — spec §5.4], 6 platform orgs [suspension, the
+  owner invite, `org_usage_daily`, `org_admin_audit`], 7 identity uid [`identities.provider_uid`], 8 abuse limits
+  [`abuse_counters`], 9 org invite mail, 10 org logo. **Every tenant `org_id` has a transitional `DEFAULT 'org_saplinglearn'`**
+  (spec §3.2); since Phase 3 no statement relies on it — every statement binds `ctx.orgId`
+  (`docs/architecture/data-layer.md`) — and the Phase 7 cleanup migration drops it. The file is all-or-nothing (one D1
+  batch) and must stay under 100 KB. Rollback: `scripts/mt/rollback/0042_organizations.down.sql`, GENERATED by
+  `scripts/mt/build-rollback.py` (CI fails if it is stale); production check: `scripts/mt/verify-migration.mjs`.
+  Admin is the ORG role (`hasRole(ctx, "admin")`) everywhere — there is no handle allowlist. Per-person rate limits, the
+  fixed mail sender and what is still open to abuse: `docs/architecture/abuse-limits.md`; the deploy runbook: `HANDOFF.md`.
+  How an org is added, set up and run, role by role — and that a ticket's / handoff's `id` on every surface is its
+  per-org NUMBER, never the row id: `docs/architecture/organizations.md`, `docs/architecture/data-layer.md`.
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
   `web/src/markdown.ts` renders PR summaries, the roadmap narrative and a sprint description as styled HTML;
-  `web/src/notifications.ts` holds the Settings › Email notifications and Maintenance › Notifications views;
+  `web/src/notifications.ts` holds the Settings › Email notifications and Org settings › Notifications views;
   `web/src/tickets.ts` + `web/src/sprints.ts` are the (purely presentational) tickets/sprint components, and
   `web/src/hash.ts` is the hash-route seam (`parseHash` / `hashForRoute` — `#tickets/7`, `#sprints/3`,
   `#repo/<tab>`). `web/src/repo.ts` is the Repo dashboard (ported from the Claude Design `Trov Repo
@@ -436,7 +466,9 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
   Settings; the last identity can't be unlinked.
 - **Bearer token** (agents, `/mcp`): either a pasted per-person `canopy_mcp_` token (stored hashed) or an
   OAuth access token (`canopy_oat_`) obtained through Trov's own OAuth server — both resolve to the same
-  person handle in `resolveBearerPrincipal`, so OAuth is how a bearer is OBTAINED, not a fourth class.
+  (person, org) in `resolveBearerTenant` (`src/data/bearer.ts`), so OAuth is how a bearer is OBTAINED, not a
+  fourth class. **A bearer is bound to ONE org** — the org on its token row / OAuth grant, never a request
+  value — through a live membership check: removed member, suspended org → 401 (`docs/architecture/data-layer.md`).
   **The Settings UI is OAuth-only** (the owner's call, 2026-09-27): nothing in the SPA mints, lists or revokes a
   `canopy_mcp_` token any more — the Get connection command modal, the token list and their web client calls are
   gone. The token routes REMAIN, so a token already in use keeps working: `POST /auth/mcp-token` still mints,
@@ -481,9 +513,13 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
   deleted. An unknown `client_id` at authorize is an error PAGE naming the Claude Code fix (`/mcp` → trov
   → Clear authentication → Authenticate again), never a silent redirect. Every OAuth endpoint answers an unexpected error
   with `503 { error: "temporarily_unavailable" }` (the authorize pages with a 503 error page), never a 500.
-- **GitHub webhook** (`/webhook/github`, `src/webhook.ts`): a delivery authenticates by an HMAC-SHA256
-  `X-Hub-Signature-256` over the raw body against `GITHUB_WEBHOOK_SECRET` (NOT `COOKIE_SECRET`). HMAC is
-  verified in the branch BEFORE the gate; a bad/absent signature (or unset secret) is a bare `401`. The
+- **GitHub webhook** (`POST /webhook/github/:hookId`, `src/github-hook.ts` → `src/webhook.ts`): `hookId` is
+  the repo's `org_repos.id`; a delivery authenticates by an HMAC-SHA256 `X-Hub-Signature-256` over the raw
+  body against THAT repo's `github_webhook` secret (NOT `COOKIE_SECRET`), must name that repo (else 202,
+  ignored), and is captured as that org's system tenant. The legacy `POST /webhook/github` delivers only to
+  the `legacy_hook` repo (SaplingLearn's, on `GITHUB_WEBHOOK_SECRET` until its admin stores a secret). HMAC is
+  verified in the branch BEFORE the gate; a bad/absent signature (or no secret) is a bare `401` that writes
+  nothing — and an unknown or suspended hook id is that SAME bare `401` (hook ids cannot be probed). The
   writer principal is the fixed string `"github-webhook"`; the delivery's own `subject_login` is trusted
   only post-verify. This branch never touches `sessionGate`.
 
@@ -494,8 +530,8 @@ with the GitHub login, and renameable from Settings (`renamePerson` rewrites eve
 atomically via `HANDLE_COLUMNS`, in one D1 batch with FK checks deferred for the transaction).
 `identities(provider, subject) → person` holds the GitHub login and Google `sub`. Event subjects
 (`events.subject_login`) resolve to a person through the github identity row at read time
-(`resolvePersonForLogin`); an unmapped login raises an `identity_tasks` row and Maintenance › Identity
-links it to an existing handle. Mapping a login there calls the same `linkIdentity` as sign-in linking, so
+(`resolvePersonForLogin`); an unmapped login raises an `identity_tasks` row and Org settings › Members
+(its Unmatched logins section, `web/src/identity.ts`) links it to an existing handle. Mapping a login there calls the same `linkIdentity` as sign-in linking, so
 it also grants that GitHub account sign-in as the mapped person, not just attribution — there is no undo
 route yet; fix a wrong mapping by deleting the `identities` row with `wrangler d1 execute`. A login that will
 never be a person (an outside contributor's PR) is DISCARDED instead: `POST /identity-tasks/:login/discard`
@@ -504,8 +540,8 @@ never be a person (an outside contributor's PR) is DISCARDED instead: `POST /ide
 `ensure_identity_task`'s `INSERT OR IGNORE` never re-raises it, while its events are captured as before.
 `POST /identity-tasks/:login/restore` puts it back to `pending` (409 once the login has been linked some other
 way); `GET /identity-tasks` returns `{ tasks, discarded }` (discarded minus since-linked logins). On screen:
-Discard on each card (no confirm), a "Discarded @login · Undo" toast, and an "N discarded" list with Restore. `ADMIN_LOGINS`
-holds handles — list the new handle there before an admin renames (`POST /auth/me/handle` 403s otherwise).
+Discard on each card (no confirm), a "Discarded @login · Undo" toast, and an "N discarded" list with Restore. Admin is the org role on
+the membership, which a rename carries — there is no allowlist of handles.
 Every `recorded_by` / `created_by` / `user_id` is a handle. Migrated GitHub users kept their login as handle.
 `docs.owner` (0035) is one too — the proposer of a doc's FIRST version, set once at creation and never
 overwritten by edits or promotions (`updated_by` is the last promoter) — listed in `HANDLE_COLUMNS`; there is no
@@ -539,11 +575,11 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   is 404): `PersonProfile` — role, GitHub login, joined, `admin`, `editable` (the VIEWER is an admin), `self`, and
   nothing else (no tickets, sessions or docs — there is no profile page) — the person and their GitHub login in ONE
   `db.batch`. A D1 failure is 503 `{ error }`, never a 500.
-- **`responsibilities` is never rendered.** It travels only to admins (Maintenance › People's editor
+- **`responsibilities` is never rendered.** It travels only to admins (Org settings › Members' editor
   fills from it) and to MCP `list_people` — not even to the person themselves.
 - **Role and responsibilities are ADMIN-set** (the owner's call, 2026-09-27): a person changes only their own photo
   (and name / color / handle, as before). **Write** `PUT /api/people/:handle` (`PersonProfileWrite`): an admin
-  (`isAdmin`) only — anyone else, the person themselves included, is 403 with nothing written. Trimmed; absent = untouched, `""` / null / whitespace clears; over
+  (the org role) only — anyone else, the person themselves included, is 403 with nothing written. Trimmed; absent = untouched, `""` / null / whitespace clears; over
   `ROLE_MAX` (80) / `RESPONSIBILITIES_MAX` (2000) is 400 and writes NOTHING (every field is validated before the
   one UPDATE). Returns the fresh profile. Name and color stay on `PUT /auth/me`.
 - **MCP gets ONE read, `list_people`** (every principal): `{ people: [{ handle, name, role, responsibilities }] }`
@@ -552,13 +588,12 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   it before choosing `assignees`, and that a null is unknown, never to be guessed.
 - `scripts/seed/reset.mjs` seeds a role + responsibilities for the six dev/test persons.
 - **On screen there is NO People screen and no profile page** (the owner's call, 2026-09-27): a click on anyone's
-  name — the ticket rail's people, Feed authors, quick search's person hits, Maintenance › People's rows — opens the
+  name — the ticket rail's people, Feed authors, quick search's person hits, Org settings › Members' rows — opens the
   **person card** (`personCardModal`, `web/src/profile.ts`): a modal in the confirm modal's `.cnpy-cmodal` shell,
   rendered at the app root (`state.personCard`), with the large avatar, name, handle and role painted at once from
   `GET /persons`, then joined / GitHub / the admin badge when `GET /api/people/:handle` lands; the backdrop, × and
-  Escape close it, and one's OWN card links to Settings (photo, name). Role + responsibilities are edited in ONE place: Maintenance › People, where
-  an admin's "Edit role" opens `personRoleEditor` (`web/src/maintenance.ts`) under that row, filled from the
-  person's profile read. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in the browser before
+  Escape close it, and one's OWN card links to Settings (photo, name). Role + responsibilities are edited in ONE place: Org settings › Members, where
+  an admin's "Edit" opens `memberEditor` (`web/src/org-settings.ts`) under that row. Settings › Profile uploads a photo (center-cropped, ≤ 512px, WebP/PNG in the browser before
   the POST — so a GIF loses its animation) and removes one (shown only for an `/avatar/` URL) — both from a small
   menu the AVATAR opens (`.cnpy-avbtn`: a camera veil on hover / focus, a spinner while a write is in flight, when
   it won't open; Escape closes, ↑/↓ move); it has no role or responsibilities field. A `personChip` whose image fails to load shows the initials under it. **Every name or
@@ -850,7 +885,7 @@ compares `envs[0]`'s branch (the head, e.g. `main`) against `envs[last]`'s (the 
 TWO `GET /compare/<base>...<head>` calls (compare returns only the AHEAD side's commits, so the BEHIND side
 needs its own), groups the ahead commits by the PR that landed them (a squash merge's trailing `(#123)`) or
 as a direct push, and stores one `RepoDrift` snapshot. The PR-title lookup fans out in chunks (`fanOut`,
-`src/db.ts`) — a compare returns up to 250 commits and D1 caps a statement at 100 bound parameters.
+`src/data/sql.ts`) — a compare returns up to 250 commits and D1 caps a statement at 100 bound parameters.
 `ahead`/`behind` are GitHub's own TOTALS while `groups` is built from the commits actually returned, so past
 the 250 cap the strip's HEADER stays truthful and only the expanded breakdown is partial. Two triggers: a
 webhook `push` to a configured environment branch (the never-throwing `refreshDrift`, needs
@@ -1238,9 +1273,10 @@ issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source 
 Ported from the Claude Design project `2c8cfa50`: **Handoffs** (Workspace; `#handoffs`, `#handoffs/new`,
 `#handoffs/<id>` — `web/src/handoffs.ts`), **Prompt Library** (Knowledge; `#prompts`, `#prompts/new`,
 `#prompts/<slug>`, `#prompts/<slug>/edit|version` — `web/src/prompts.ts`), **Docs › New doc** (`#docs/new`) and
-the tabbed **Maintenance** (Unplaced / Identity / People — `#maintenance[/identity|/people]`, switched by the
-underline tab bar heading its page body, not the header or the sidebar; the admin email-notification sections
-sit under People).
+**Unplaced** (Triage; `#unplaced` — `web/src/maintenance.ts`, the screen id is still `maintenance`). It was the
+tabbed Maintenance until 2026-10-06: Identity and People moved into Org settings › Members and the admin
+email-notification sections into Org settings › Notifications; `#maintenance`, `#maintenance/identity` and
+`#maintenance/people` still resolve (`web/src/hash.ts`).
 Storage is `0028_handoffs_prompts` (`handoffs` with an INTEGER id rendered `#12`, `context` JSON
 `{ repo, branch, task, done[], next[], files[] }`, an inline prompt that is both-or-neither, `expires_at` =
 created + 7 days; `prompts` / `prompt_versions`; standalone `prompts_fts` over slug/title/description/body/tags
@@ -1264,7 +1300,7 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   `GET /api/prompts?sort=used` lists the most used first.
 - **Delete is SOFT** (0035 PART C; `deletePrompt` / `restorePrompt`): `POST /api/prompts/:slug/delete` stamps
   `deleted_at` / `deleted_by` and touches nothing else — every `prompt_versions` row stays in D1. Only the prompt's
-  AUTHOR (case-insensitive) or an ADMIN (`isAdmin`); anyone else is 403 with nothing written. A deleted prompt is
+  AUTHOR (case-insensitive) or an org ADMIN / owner; anyone else is 403 with nothing written. A deleted prompt is
   gone from EVERY read — the library, `GET /api/prompts/:slug` (the same 404 as an unknown slug), versions,
   `/search/quick`, MCP `search_prompts` / `get_prompt`, `prompts_fts`, and so every picker fed by the library — and
   takes no write (tags / publish / use / a second delete are 404). **Its slug stays RESERVED**: a save to it (new,
@@ -1325,7 +1361,7 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
 - **Delete is SOFT** (0035 PART D; `deletePage` / `restorePage` in `src/tools/artifacts.ts`):
   `POST /api/artifacts/:slug/delete` stamps `deleted_at` / `deleted_by` and drops the page's `artifacts_fts` row in
   ONE batch — every version, every `artifact_links` row and the R2 bytes stay, so restore is lossless. Only the
-  page's AUTHOR (case-insensitive) or an ADMIN (`isAdmin`), and only on a page they can SEE (an admin gets the plain
+  page's AUTHOR (case-insensitive) or an org ADMIN / owner, and only on a page they can SEE (an admin gets the plain
   404 on someone's private page); anyone else is 403 with nothing written. `VISIBLE_SQL` carries `p.deleted_at IS
   NULL`, so a deleted page is the ONE byte-identical not-found on EVERY surface — library, detail, diff, raw, MCP
   `artifact_get` / `artifact_list` / `artifact_update` / `upload_asset` targeting it, `query` (its hydration repeats
@@ -1425,16 +1461,20 @@ node conditionally there swaps it out from under its own animation — `test/ren
 element tree across every state. `data-keep` marks a script-owned node (the collapsed-rail tooltip) the
 patcher leaves alone. A sub-page list the app opened on entry folds again on leaving; one opened by hand
 sticks and is what persists (`trov.navOpen`). Only **Docs** owns a sub-page list (`NAV_GROUPS`);
-Roadmap, Tickets, Maintenance and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's,
-Maintenance's and Repo's tabs head their page body), and a stored
+Roadmap, Tickets, Unplaced and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's
+and Repo's tabs head their page body), and a stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
+
+**A pick-one with no room for a switch is `dropdown()`** (`web/src/dropdown.ts`), never a native `<select>`:
+the trigger where the control sits, its menu a root-level overlay (`dropdownMenu`, the same props) that opens
+and closes with an animation — Org settings' role and Notifications pickers.
 
 **Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, the queue's
 Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, form segments. Never
 hand-roll a segment group. It picks a VALUE or a view; moving between a page's own SECTIONS is the **underline
-tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Maintenance's Unplaced / Identity / People, `maintTabBar`,
-with the rail's count badges; the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
+tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Org settings' and Platform's tabs, patched in place so a switch replaces
+only the panel (`web/src/morph.ts` `data-morph` / `data-morph-key`); the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
 tab carrying the red overdue dot, in the same page frame on both tabs — `asideColumns`' optional `tabs` heads
 the Narrative's two columns with it — and New sprint staying in the header; the Repo dashboard's Overview / Code /
 CI & Deploys / Usage / Team & Planning, `repoTabBar`, in every state of the dashboard, its switch `setRepoTab`
@@ -1525,8 +1565,10 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
 ## Conventions & gotchas
 
 - `shared/vocabulary.ts` MUST match `migrations/0002_seed_vocab.sql` — it's the gate's source of truth.
-- D1 helpers live in `src/db.ts` (`first` / `all` / `run` / `nowIso`); writers in `src/tools/writes.ts`.
-- Tests use real Miniflare D1; `test/apply-migrations.ts` truncates data tables `beforeEach` via
+- D1 is reached ONLY through a context, inside `src/data/` (`sql.ts` for tenant data, `platform-sql.ts` for the global tables: `first` / `all` / `run` / `stmt` / `batch` / `fanOut`); every tenant statement binds `ctx.orgId`. The conventions, and the static test that enforces them (`test/data-layer.static.test.ts`), are in `docs/architecture/data-layer.md`. Writers live in `src/tools/writes.ts`.
+- Tests use real Miniflare D1 (a second, empty binding `MT_DB` exists only for `test/migrations.multitenancy.test.ts`,
+  which builds 0036 + 0041 databases and applies `0042_organizations` and its rollback to them); the reset seeds two orgs —
+  `org_saplinglearn` (the six persons, AndresL230 owner) and an empty `org_b`. `test/apply-migrations.ts` truncates data tables `beforeEach` via
   `scripts/seed/reset.mjs` (add new tables — `events`, `repo_events`, `repo_snapshots`, `repo_metrics`,
   `pr_summaries`, `sprints`, `sprint_progress`,
   `sprint_resources`, `tickets` + `ticket_*`, `persons`, `identities`, `invites`, `plan`,
@@ -1549,8 +1591,11 @@ Secrets (`wrangler secret put …`; local: `.dev.vars`): `GITHUB_CLIENT_ID`, `GI
 `GOOGLE_CLIENT_ID` (Google OAuth client id for the second session-class provider — absent →
 `/auth/google/login` itself returns 503), `GOOGLE_CLIENT_SECRET` (absent → the login redirect still
 happens, but the code exchange fails and `/auth/google/callback` 401s `exchange_failed`), `COOKIE_SECRET`,
-`GITHUB_WEBHOOK_SECRET` (HMAC for the webhook — absent → the surface 401s), `GITHUB_SERVICE_TOKEN`
-(app-level token for the sprint-progress backstop, for `reconcileRepo` — from Sync GitHub AND the repo cron
+`GITHUB_WEBHOOK_SECRET` (HMAC for the LEGACY webhook URL — absent → that surface 401s), `GITHUB_SERVICE_TOKEN`
+(**with `GITHUB_WEBHOOK_SECRET`, `CF_ANALYTICS_*`, `RAILWAY_TOKEN_*` and `SAPLING_METRICS_TOKEN`: read ONLY as
+SaplingLearn's fallback, through `resolveCredential`, until its admin enters each on the Integrations screen —
+every other org's credentials are per-org secrets; the cleanup phase deletes the fallback and these Worker
+secrets.** App-level token for the sprint-progress backstop, for `reconcileRepo` — from Sync GitHub AND the repo cron
 — and for the webhook's two follow-up reads, `fillFailedJob` and `refreshDrift`; absent → Sync GitHub 503s,
 the cron's 6-hourly `:10` and `:20` ticks and those follow-ups are skipped, while the `:30` prune and the
 health pings run regardless), `GEMINI_API_KEY`
@@ -1576,9 +1621,10 @@ is absent — its section then stays `not_connected` — and none of these value
   same one — a stated limitation of the contract doc). Absent or empty → `pollSaplingMetrics` is not called
   and the Usage tab's Active users stays "not connected". Never sent to a non-https URL or across a redirect.
 
-Vars (`[vars]` in `wrangler.toml`): `GITHUB_REPO` (e.g. `SaplingLearn/sapling`), `ADMIN_LOGINS`,
-`PUBLIC_ORIGIN` (absolute origin for links inside email), `NOTIFICATIONS_MODE` (`local` default / `resend`),
-and `REPO_ENVIRONMENTS` — a JSON list parsed by `repoEnvironments()` (`src/repo/config.ts`): per environment
+Vars (`[vars]` in `wrangler.toml`): `PUBLIC_ORIGIN` (absolute origin for links inside email),
+`NOTIFICATIONS_MODE` (`local` default / `resend`), and two LEGACY ones nothing reads any more (`0042_organizations` copied them
+into SaplingLearn's `org_repos` / `org_environments` rows; Phase 7 deletes them): `GITHUB_REPO` and
+`REPO_ENVIRONMENTS` — a JSON list in the shape `repoEnvironments()` (`src/repo/config.ts`) parses: per environment
 `key`, `label`, `note`, `branch`, `railwayEnv` (the GitHub deployment environment name), `worker` +
 `workerCheck` (the Cloudflare script and its Workers Builds check name), `frontendUrl`, `apiUrl`,
 `healthPath`, and — optional — `railwayEnvironmentId` / `railwayServiceId` (ids, not secrets; the service id

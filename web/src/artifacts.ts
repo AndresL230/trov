@@ -8,7 +8,7 @@
 // Real against /api/artifacts (the wire DTOs are shared/artifacts-core.ts — the
 // ZOD-FREE core; this module never imports shared/artifacts, so zod stays out of
 // the browser bundle). Bodies are never inlined from a string the page trusts:
-//   • html  → <iframe src="/raw/a/<slug>@v<n>" sandbox="allow-scripts">, sized by
+//   • html  → <iframe src="/api/o/<org>/raw/a/<slug>@v<n>" sandbox="allow-scripts">, sized by
 //             the raw route's injected `trov:height` postMessage (main.ts listens,
 //             matching e.source to the frame). NEVER srcdoc, NEVER allow-same-origin.
 //   • svg   → inline, only after DOMPurify's svg profile (sanitizeSvg).
@@ -22,6 +22,7 @@
 // toast, download, open a tab, copy) it returns as an effect for main.ts.
 
 import { esc, attr, relTime, surface, hitArea, HITBOX } from "./ui";
+import { tenantHref } from "./api";
 import { personLink, personNameLink } from "./people";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
@@ -37,7 +38,10 @@ import {
 } from "@shared/artifacts-core";
 
 export { ARTIFACT_AREAS, ARTIFACT_KINDS };
-export const ARTIFACT_REPOS = ["AndresL230/trov", "SaplingLearn/sapling"] as const;
+/** The repositories a new artifact may be filed under: the ORG's connected ones (`GET /api/o/:slug/me`
+ *  `repos.all`, primary first) — plus the draft's own value when it is none of them. */
+export const artifactRepoOptions = (repos: readonly string[], current: string): string[] =>
+  current && !repos.includes(current) ? [...repos, current] : [...repos];
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -119,9 +123,9 @@ export interface ArtUi {
   deleteBusy: boolean;
   c: ArtCreate;
 }
-export function initialArtCreate(): ArtCreate {
+export function initialArtCreate(repo = ""): ArtCreate {
   return {
-    title: "", kind: "html", area: "ui", repo: ARTIFACT_REPOS[0], vis: "org", links: [], linkDraft: "", linkErr: false,
+    title: "", kind: "html", area: "ui", repo, vis: "org", links: [], linkDraft: "", linkErr: false,
     tab: "paste", paste: "", file: null, url: "", urlFetched: null, fetching: false, urlErr: null, submitting: false,
   };
 }
@@ -149,8 +153,11 @@ export interface ArtProps {
   ui: ArtUi;
   /** The signed-in handle — the author check for private artifacts and the visibility toggle. */
   me: string;
-  /** The signed-in person is an admin — may delete any artifact they can see. */
+  /** The signed-in person is an admin or owner of this org — may delete any artifact they can see. */
   admin: boolean;
+  /** The org's name (the visibility help says who "everyone" is) and its connected repositories. */
+  orgName?: string;
+  repos?: readonly string[];
   persons: ArtPerson[];
   /** `location.host` in the browser; the address strips print it. */
   host: string;
@@ -266,8 +273,11 @@ export function artFileName(slug: string, kind: ArtifactKind, v: ArtifactVersion
   const ext = isTextKind(kind) ? ARTIFACT_TEXT_EXT[kind] : BINARY_EXT[v.content_type.split(";")[0].trim().toLowerCase()] ?? "bin";
   return `${slug}-v${v.version_no}.${ext}`;
 }
-/** `/raw/a/<slug>@v<n>` — the raw route for one version (the API's `raw_url` when we have it). */
-export const rawUrl = (slug: string, v: number): string => `/raw/a/${encodeURIComponent(slug)}@v${v}`;
+/** The raw route for one version, under the CURRENT org: `/api/o/<org>/raw/a/<slug>@v<n>` (api.ts `tenantHref`).
+ *  The API's `raw_url` names the same route by its suffix (`/raw/a/<slug>@v<n>`), so it goes through the same prefix. */
+export const rawUrl = (slug: string, v: number): string => tenantHref(`/raw/a/${encodeURIComponent(slug)}@v${v}`);
+const rawOf = (apiRawUrl: string | undefined, slug: string, v: number): string =>
+  apiRawUrl && apiRawUrl.startsWith("/raw/a/") ? tenantHref(apiRawUrl) : rawUrl(slug, v);
 const withDownload = (u: string): string => `${u}${u.includes("?") ? "&" : "?"}download=1`;
 
 /** The create form's current text (paste / a text file / a fetched URL); "" for a binary file. */
@@ -602,7 +612,7 @@ function ratifyHint(d: ArtifactDetailDTO, isLatest: boolean, p: ArtProps): strin
 /** The viewer's body for one version, per kind. */
 function contentBlock(p: ArtProps, d: ArtifactDetailDTO): string {
   const ver = d.version;
-  const raw = d.raw_url || rawUrl(d.slug, ver.version_no);
+  const raw = rawOf(d.raw_url, d.slug, ver.version_no);
   const key = `${d.slug}@${ver.version_no}`;
   switch (d.kind) {
     case "html": {
@@ -856,7 +866,7 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
       }).join("")}</div>`;
   } else if (d.kind === "image") {
     const pane = (x: typeof dd.a, tag: string) => `<figure${surface("margin:0;overflow:hidden")}>
-      <div style="display:grid;place-items:center;padding:18px;min-height:220px"><img src="${attr(x.raw_url || rawUrl(d.slug, x.version_no))}" alt="${attr(`${d.title} v${x.version_no}`)}" style="display:block;max-width:100%;height:auto"></div>
+      <div style="position:relative;display:grid;place-items:center;padding:18px;min-height:220px"><img src="${attr(rawOf(x.raw_url, d.slug, x.version_no))}" alt="${attr(`${d.title} v${x.version_no}`)}" style="display:block;max-width:100%;height:auto"></div>
       <figcaption style="padding:8px 12px;border-top:1px solid var(--border);font-family:var(--label);font-size:11px;color:var(--fg-55)">${tag} · v${x.version_no} · ${esc(fmtKB(x.size_bytes))}</figcaption>
     </figure>`;
     body = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:10px;margin-top:18px">${pane(dd.a, "BASE")}${pane(dd.b, "COMPARED")}</div>`;
@@ -987,14 +997,19 @@ function createView(p: ArtProps): string {
         <div>${label("Area")}<div style="display:flex;gap:6px;flex-wrap:wrap">${ARTIFACT_AREAS.map((k) => `<button data-act="artCArea" data-arg="${k}" class="cnpy-pickchip${c.area === k ? " is-on" : ""}" style="${chipSt(c.area === k)}">${k}</button>`).join("")}</div></div>
         <div>
           ${label("Repo")}
-          <select data-act="artCRepo" class="cnpy-select" style="width:100%;height:40px;font-size:13.5px;border-color:var(--border-strong);color:var(--fg)">${ARTIFACT_REPOS.map((r) => `<option value="${r}"${c.repo === r ? " selected" : ""}>${r}</option>`).join("")}</select>
+          ${(() => {
+            const options = artifactRepoOptions(p.repos ?? [], c.repo);
+            // No repository connected: the artifact is filed under none, and the field says where to connect one.
+            if (!options.length) return `<div data-art-norepo style="min-height:40px;box-sizing:border-box;border:1px dashed var(--border-strong);border-radius:8px;padding:9px 12px;font-size:12.5px;line-height:1.5;color:var(--fg-55)">No repository is connected to this organization. <button type="button" data-act="orgGo" data-arg="repos" class="cnpy-mutelink" style="padding:0;font-size:12.5px;font-weight:500;color:var(--fg-70);text-decoration:underline;text-underline-offset:2px">Org settings &rsaquo; Repositories</button></div>`;
+            return `<select data-act="artCRepo" aria-label="Repository" class="cnpy-select" style="width:100%;height:40px;font-size:13.5px;border-color:var(--border-strong);color:var(--fg)">${options.map((r) => `<option value="${attr(r)}"${c.repo === r ? " selected" : ""}>${esc(r)}</option>`).join("")}</select>`;
+          })()}
         </div>
         <div>
           ${label("Visibility")}${segmented({
             id: "art-create-vis", ariaLabel: "Visibility", act: "artCVis", value: c.vis, size: "sm",
             options: [{ value: "org", label: "Org" }, { value: "private", label: "Private" }],
           })}
-          <div style="font-size:12px;color:var(--fg-40);margin-top:7px;line-height:1.5">${c.vis === "org" ? "Everyone in SaplingLearn can open it once it's uploaded." : "Only you can open it. Teammates who follow the link see a not-found page until you publish."}</div>
+          <div style="font-size:12px;color:var(--fg-40);margin-top:7px;line-height:1.5">${c.vis === "org" ? `Everyone in ${esc(p.orgName || "this organization")} can open it once it's uploaded.` : "Only you can open it. Teammates who follow the link see a not-found page until you publish."}</div>
         </div>
         <div>
           ${label("Links")}
@@ -1342,11 +1357,11 @@ export function artifactsAct(
     case "artDownload":
       if (!d) return null;
       closeMenus();
-      return { download: { url: withDownload(d.raw_url || rawUrl(d.slug, d.version.version_no)), name: artFileName(d.slug, d.kind, d.version) } };
+      return { download: { url: withDownload(rawOf(d.raw_url, d.slug, d.version.version_no)), name: artFileName(d.slug, d.kind, d.version) } };
     case "artOpenTab":
       if (!d) return null;
       closeMenus();
-      return { openUrl: d.raw_url || rawUrl(d.slug, d.version.version_no) };
+      return { openUrl: rawOf(d.raw_url, d.slug, d.version.version_no) };
 
     // new version (the viewer's dialog)
     case "artNvOpen": {

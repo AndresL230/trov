@@ -8,23 +8,24 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { all, run, nowIso } from "../src/db";
+import { all, run, nowIso } from "./helpers/db";
 import { consumeUploadToken, createPage, sha256Hex, mintUploadToken } from "../src/tools/artifacts";
 import { create_ticket } from "../src/tools/tickets";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { app } from "../src/routes";
 import { ARTIFACT_INLINE_MAX } from "@shared/artifacts";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const ME = "arti-author";
 const YOU = "arti-teammate";
-const ADMIN = "admin-user"; // the one ADMIN_LOGINS handle in vitest.config.ts
+const ADMIN = "admin-user"; // FIXTURE_ADMIN: seeded as an org admin (test/helpers/persons.ts)
 const ORIGIN = "https://trov.test"; // PUBLIC_ORIGIN in vitest.config.ts
 
 type ToolRes = { content: Array<{ type: string; text: string }>; isError?: boolean };
 
 async function withClient<T>(handle: string, fn: (c: Client) => Promise<T>, e: Env = env as unknown as Env, origin?: string): Promise<T> {
   await seedPerson(handle);
-  const server = buildTrovMcpServer(e, { handle }, { origin });
+  const server = buildTrovMcpServer(e, await bearerCtx(handle), { origin });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -50,7 +51,7 @@ const textArgs = (o: Record<string, unknown> = {}) => ({
 
 async function seedTicket(title = "Fix login", requester = ME): Promise<number> {
   await seedPerson(requester);
-  return create_ticket(env.DB, { title, body: "", category: "other", priority: "normal", assignees: [] }, requester);
+  return create_ticket(systemCtx(), { title, body: "", category: "other", priority: "normal", assignees: [] }, requester);
 }
 
 // ── registration ─────────────────────────────────────────────────────────────
@@ -291,7 +292,7 @@ describe("binary artifacts — the upload_url flow", () => {
 
     // the minted token is the real one: land the bytes the way Track B's PUT does
     const token = r.body.upload_url.split("/").pop();
-    await consumeUploadToken(env.DB, env.ARTIFACTS_BUCKET, token, new Response(PDF).body!);
+    await consumeUploadToken(systemCtx(), env.ARTIFACTS_BUCKET, token, new Response(PDF).body!);
     const g = await call(YOU, "artifact_get", { slug: "threat-model" });
     expect(g.body.kind).toBe("pdf");
     expect(g.body.content).toBeNull();
@@ -310,7 +311,7 @@ describe("binary artifacts — the upload_url flow", () => {
   });
 
   it("artifact_update on a binary page → upload_url; text inputs are refused", async () => {
-    await createPage(env.DB, { title: "Logo", kind: "image", area: "ui", bytes: new TextEncoder().encode("PNG-track-c-1"), content_type: "image/png" }, ME, env.ARTIFACTS_BUCKET);
+    await createPage(systemCtx(), { title: "Logo", kind: "image", area: "ui", bytes: new TextEncoder().encode("PNG-track-c-1"), content_type: "image/png" }, ME, env.ARTIFACTS_BUCKET);
     const noType = await call(YOU, "artifact_update", { slug: "logo", size_bytes: 13, sha256: "b".repeat(64), summary: "v2" });
     expect(noType.body.code).toBe("bad_request"); // an image needs a type (or a filename to infer it from)
     const r = await call(YOU, "artifact_update", { slug: "logo", size_bytes: 13, sha256: "b".repeat(64), filename: "logo-v2.png", summary: "v2" });
@@ -320,7 +321,7 @@ describe("binary artifacts — the upload_url flow", () => {
   });
 
   it("the author may re-mint an upload for their own pending page; anyone else gets not_found", async () => {
-    await mintUploadToken(env.DB, { kind: "file", size_bytes: 4, sha256: "c".repeat(64), title: "Dump", area: "data" }, ME);
+    await mintUploadToken(systemCtx(), { kind: "file", size_bytes: 4, sha256: "c".repeat(64), title: "Dump", area: "data" }, ME);
     const mine = await call(ME, "artifact_update", { slug: "dump", size_bytes: 4, sha256: "c".repeat(64), summary: "retry" });
     expect(mine.body.upload_url).toBeTruthy();
     const theirs = await call(YOU, "artifact_update", { slug: "dump", size_bytes: 4, sha256: "c".repeat(64), summary: "x" });

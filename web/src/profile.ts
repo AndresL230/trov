@@ -1,5 +1,5 @@
 // The person card: the modal a click on anyone's name opens (the ticket rail's people,
-// Feed authors, quick search's person hits, Maintenance › People's rows). There is no
+// Feed authors, quick search's person hits, Org settings › Members' rows). There is no
 // People screen and no profile page (the owner's call, 2026-09-27) — a person is their
 // photo, name, handle and role, plus when they joined, their GitHub and an admin badge.
 // Purely presentational: props in, markup out.
@@ -7,7 +7,7 @@
 // It paints at once from the `GET /persons` summary (photo, name, handle, role) and fills
 // the rest when `GET /api/people/:handle` lands. `responsibilities` is NEVER rendered here:
 // it is what agents read when deciding whom to assign work, and it (with the role) is set
-// only by an ADMIN in Maintenance › People (maintenance.ts `personRoleEditor`).
+// only by an ADMIN in Org settings › Members (org-settings.ts `memberEditor`).
 //
 // The shell is the confirmation modal's (`.cnpy-cmodal` in trov.css — a dimmed backdrop,
 // a centered card, a bottom sheet at phone width), rendered at the app ROOT as a

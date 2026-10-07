@@ -18,7 +18,7 @@ function root(pane: Pane | null) {
 
 describe("main pane scroll survives a rerender on the same screen", () => {
   it("the app shell renders the main pane with the id the helper looks for", () => {
-    const s: ReturnType<typeof initialState> = { ...initialState(), view: "app", screen: "settings", me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], org: "SaplingLearn", admin: false } };
+    const s: ReturnType<typeof initialState> = { ...initialState(), view: "app", screen: "settings", me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 } };
     expect(render(s)).toContain(`id="${MAIN_PANE.slice(1)}"`);
   });
 

@@ -4,8 +4,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import { promote_doc } from "../src/tools/writes";
-import { all, first } from "../src/db";
+import { all, first } from "./helpers/db";
 import type { DocRow, DocVersionRow, NeedsTriageRow } from "@shared/rows";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 const AUTHOR = "agent";
 
@@ -21,7 +22,7 @@ async function callTool(
 ): Promise<{ text: string; isError?: boolean }> {
   const server = buildTrovMcpServer(
     env as unknown as import("../src/env").Env,
-    { handle: AUTHOR }
+    await bearerCtx(AUTHOR)
   );
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -277,7 +278,7 @@ describe("registered MCP propose_doc_update tool — reconciler behaviors", () =
       confidence: "high",
     });
     // Promote it — a human action, never an MCP tool.
-    await promote_doc(env.DB, "base-version-doc", 1, "human");
+    await promote_doc(systemCtx(), "base-version-doc", 1, "human");
 
     // Now current_version = 1. Propose v2 and pass base_version: 1 through the tool.
     const result = await propose({

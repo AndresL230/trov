@@ -133,7 +133,7 @@ describe("email spacing — 8pt grid with a 4pt sub-grid", () => {
 });
 
 describe("email shell — width", () => {
-  const invite = () => renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "p@example.com", signInUrl: "https://trov.example/x", host: "trov.example" }).html;
+  const invite = () => renderInviteEmail({ orgName: "Acme Robotics", role: "member", inviteeName: "Priya", inviterName: "Andres", email: "p@example.com", signInUrl: "https://trov.example/x", host: "trov.example" }).html;
 
   it("gives the card more room than the stock 600px, on both the attribute and the style", () => {
     expect(EMAIL_WIDTH).toBeGreaterThan(600);

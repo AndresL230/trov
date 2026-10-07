@@ -4,19 +4,23 @@ import { z } from "zod";
 import { PERSON_COLORS } from "@shared/rows";
 import { avatarSrc } from "@shared/people";
 import type { AppEnv } from "./principal";
-import { isAdmin, resolveSessionPrincipal } from "./principal";
+import { resolveSessionPrincipal } from "./principal";
 import { pkce, randomToken, hmacSeal, hmacUnseal } from "./crypto";
-import { buildAuthorizeUrl, exchangeCode, getUser, getPrimaryEmail, isActiveOrgMember, SAPLING_ORG } from "./github";
+import { buildAuthorizeUrl, exchangeCode, getUser, getPrimaryEmail } from "./github";
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode, verifyGoogleIdToken } from "./google";
 import { createSession, setSessionCookie, readSessionCookie, deleteSession, clearSessionCookie } from "./session";
 import { mintToken, listTokens, revokeToken } from "./tokens";
-import { getPerson, listIdentities, findIdentity, handleAvailable, createPerson, HandleTakenError, linkIdentity, unlinkIdentity, updateProfile, renamePerson } from "./persons";
-import { run } from "../db";
-import { completeSignIn, linkSignIn, sealOnboard, openOnboard, ONBOARD_COOKIE, ONBOARD_TTL_S, type ProviderProfile, type ForkResult } from "./onboard";
-import { findLiveInvite, acceptInvite } from "./invites";
-import { sendWelcome } from "../notifications/welcome";
+import { getPerson, listIdentities, findIdentity, handleAvailable, createPerson, HandleTakenError, linkIdentity, unlinkIdentity, updateProfile, renamePerson, soleTitle } from "./persons";
+import { run } from "../data/platform-sql";
+import { completeSignIn, linkSignIn, hasPendingEmailInvite, sealOnboard, openOnboard, ONBOARD_COOKIE, ONBOARD_TTL_S, type ProviderProfile, type ForkResult } from "./onboard";
+import { mailOrigin, welcomeFirstJoin } from "../orgs/mail";
 import { takeOAuthPending } from "./oauth-routes";
 import { listGrants, revokeGrant } from "./oauth";
+import { platformContext } from "../data/gate";
+import { hasRole, isSuperadmin, resolveSoleTenant } from "../data/context";
+import { consumeLegacyInvite } from "../data/legacy";
+import { listMyOrgs, listMyInvites } from "../orgs/repo";
+import { rateLimited } from "../platform/limits";
 
 const OAUTH_TX_COOKIE = "oauth_tx";
 export interface AuthDeps { fetchImpl?: typeof fetch; now?: () => number }
@@ -47,6 +51,9 @@ async function beginTx(c: Context<AppEnv>, mode: TxMode): Promise<{ state: strin
 
 export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
   const authApp = new Hono<AppEnv>();
+  // Everything here is person-level: the global tables through `c.var.p`, never a tenant. Set here as
+  // well as in src/routes.ts so the sub-app stands alone.
+  authApp.use("*", platformContext);
   const f = deps.fetchImpl;
 
   /** Common tail after a provider profile is in hand. */
@@ -54,7 +61,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     if (mode === "link") {
       const me = await resolveSessionPrincipal(c);
       if (!me) return c.json({ error: "unauthorized" }, 403);
-      const r = await linkSignIn(c.env.DB, me.handle, profile);
+      const r = await linkSignIn(c.var.p, me.handle, profile);
       if (r === "linked") return c.redirect("/#settings", 302);
       // Two distinct conflict states: the identity belongs to someone else (real
       // conflict) vs. the caller already has an identity of this provider (their own,
@@ -62,13 +69,13 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
       // the right message instead of one generic "conflict".
       return c.redirect(r === "provider_already_linked" ? "/?link=already#settings" : "/?link=conflict#settings", 302);
     }
-    const r: ForkResult = await completeSignIn(c.env.DB, profile);
+    const r: ForkResult = await completeSignIn(c.var.p, profile);
     if (r.kind === "denied") return c.redirect(denied, 302);
     if (r.kind === "onboard") {
       setCookie(c, ONBOARD_COOKIE, await sealOnboard(r.payload, c.env.COOKIE_SECRET), { httpOnly: true, secure: true, sameSite: "Lax", path: "/", maxAge: ONBOARD_TTL_S });
       return c.redirect("/#onboard", 302);
     }
-    const { id } = await createSession(c.env.DB, r.handle);
+    const { id } = await createSession(c.var.p, r.handle);
     await setSessionCookie(c, id, c.env.COOKIE_SECRET);
     // Signed in from an MCP client's authorize link: go back to the consent screen.
     return c.redirect((await takeOAuthPending(c)) ?? "/", 302);
@@ -99,8 +106,8 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     if (!token) return c.json({ error: "exchange_failed" }, 401);
     const gh = await getUser(token, f);
     if (!gh) return c.json({ error: "identity_failed" }, 401);
-    if (!(await isActiveOrgMember(token, f))) return c.redirect("/?denied=1", 302);
-    const profile: ProviderProfile = { provider: "github", subject: gh.login, label: gh.login, email: await getPrimaryEmail(token, f), name: gh.name, avatar_url: gh.avatar_url };
+    // No org gate (§5.1): any GitHub account signs in. `email` is the primary VERIFIED address or null.
+    const profile: ProviderProfile = { provider: "github", subject: gh.login, label: gh.login, email: await getPrimaryEmail(token, f), name: gh.name, avatar_url: gh.avatar_url, uid: gh.id };
     return finish(c, tx.mode, profile, "/?denied=1");
   });
 
@@ -141,8 +148,15 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     // Onboarding (no session yet) OR a signed-in person checking a rename target — either
     // capability is enough. sessionGate lets this path through as public, so both branches
     // are checked here.
-    if (!(await onboardPayload(c)) && !(await resolveSessionPrincipal(c))) return c.json({ error: "unauthorized" }, 401);
-    return c.json(await handleAvailable(c.env.DB, (c.req.query("handle") ?? "").trim()));
+    const onboarding = await onboardPayload(c);
+    const me = onboarding ? null : await resolveSessionPrincipal(c);
+    if (!onboarding && !me) return c.json({ error: "unauthorized" }, 401);
+    // Persons are global, so this answers "is there a person called X" — capped per caller: the
+    // signed-in person, or the provider account an onboarding cookie was sealed for.
+    if (me) c.set("principal", me);
+    const refused = await rateLimited(c, "handle_check", onboarding ? `onboard:${onboarding.provider}:${onboarding.subject}` : undefined);
+    if (refused) return refused;
+    return c.json(await handleAvailable(c.var.p, (c.req.query("handle") ?? "").trim()));
   });
   const OnboardWrite = z.object({ handle: z.string().trim(), name: z.string().trim().max(120).nullable().optional(), color: z.enum(PERSON_COLORS) });
   authApp.post("/onboard", async (c) => {
@@ -154,43 +168,44 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     // with the same cookie and a different handle) — once the (provider, subject) pair
     // is actually linked, treat the cookie as spent instead of racing createPerson into
     // an orphan persons row that linkIdentity's PK conflict would otherwise leave behind.
-    if (await findIdentity(c.env.DB, p.provider, p.subject)) {
+    if (await findIdentity(c.var.p, p.provider, p.subject)) {
       deleteCookie(c, ONBOARD_COOKIE, { path: "/" });
       return c.json({ error: "already_onboarded" }, 409);
     }
-    const avail = await handleAvailable(c.env.DB, parsed.data.handle);
+    const avail = await handleAvailable(c.var.p, parsed.data.handle);
     if (!avail.available) return c.json({ error: avail.reason === "taken" ? "handle_taken" : `handle_${avail.reason}` }, avail.reason === "taken" ? 409 : 400);
-    if (p.invite_email && !(await findLiveInvite(c.env.DB, p.invite_email))) return c.json({ error: "invite_revoked" }, 403);
+    // A Google account got here on a pending invite (`invite_email`); it must still be pending now.
+    if (p.invite_email && !(await hasPendingEmailInvite(c.var.p, p.invite_email))) return c.json({ error: "invite_revoked" }, 403);
     try {
-      await createPerson(c.env.DB, { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, avatar_source: p.provider, email: p.email });
+      await createPerson(c.var.p, { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, avatar_source: p.provider, email: p.email });
     } catch (e) {
       if (e instanceof HandleTakenError) return c.json({ error: "handle_taken" }, 409);
       throw e;
     }
     try {
-      await linkIdentity(c.env.DB, { provider: p.provider, subject: p.subject, label: p.label, person: parsed.data.handle, linkedBy: parsed.data.handle });
+      // `p.email` is provider-verified (completeSignIn's contract) — recorded on the identity (Q1).
+      await linkIdentity(c.var.p, { provider: p.provider, subject: p.subject, label: p.label, person: parsed.data.handle, linkedBy: parsed.data.handle, verifiedEmail: p.email, providerUid: p.uid });
     } catch (e) {
       // The findIdentity pre-check above closes the common replay window, but a second
       // request racing between that check and this insert can still collide on the
       // (provider, subject) primary key — never leave a persons row with no identity.
-      await run(c.env.DB, `DELETE FROM persons WHERE handle = ?`, parsed.data.handle);
+      await run(c.var.p, `DELETE FROM persons WHERE handle = ?`, parsed.data.handle);
       if (/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) return c.json({ error: "already_onboarded" }, 409);
       throw e;
     }
-    if (p.invite_email) await acceptInvite(c.env.DB, p.invite_email, parsed.data.handle);
+    // A new person is in NO org (§5.1): they accept an invite (`/api/invites`) or create one (`/api/orgs`).
+    // MT: the one exception — a live LEGACY invite for their verified email is consumed as a membership of
+    // org #1, as it always was (src/data/legacy.ts). After the identity is linked, so the compensating
+    // DELETE above never meets a membership row.
+    const joinedLegacy = await consumeLegacyInvite(c.var.p, parsed.data.handle, p.email);
     deleteCookie(c, ONBOARD_COOKIE, { path: "/" });
-    const { id } = await createSession(c.env.DB, parsed.data.handle);
+    const { id } = await createSession(c.var.p, parsed.data.handle);
     await setSessionCookie(c, id, c.env.COOKIE_SECRET);
-    // The welcome email, once the person exists and their session is in hand. It
-    // is a courtesy, not part of the write: `sendWelcome` never throws, and its
-    // outcome is deliberately ignored here so a mailer problem can never cost
-    // somebody their sign-up. No address on file (GitHub returned none) = no mail.
-    const email = p.email;
-    if (email) {
-      const origin = c.env.PUBLIC_ORIGIN ?? new URL(c.req.url).origin;
-      await sendWelcome(c.env, c.env.DB, {
-        email, name: parsed.data.name ?? p.name, handle: parsed.data.handle, origin, fetchImpl: deps.fetchImpl,
-      });
+    // The welcome email, once the person exists and their session is in hand: sent when a person FIRST
+    // joins an org (src/orgs/mail.ts), which for a new person is here only on the legacy path — everyone
+    // else gets it when they accept an invitation or create an org. A courtesy, never part of the write.
+    if (joinedLegacy) {
+      await welcomeFirstJoin(c.env, c.var.p, joinedLegacy.orgId, parsed.data.handle, true, mailOrigin(c.env, c.req.url), deps.fetchImpl);
     }
     // Signed up from an MCP client's authorize link: the SPA follows `redirect` back
     // to the consent screen instead of Get Started.
@@ -201,16 +216,28 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
   // ── Session-gated ──
   authApp.get("/me", async (c) => {
     const handle = c.get("principal").handle;
-    const row = await getPerson(c.env.DB, handle);
-    const identities = (await listIdentities(c.env.DB, handle)).map((i) => ({ provider: i.provider, label: i.label, linked_at: i.linked_at }));
-    // `avatar_url` goes out RESOLVED: an uploaded avatar (0036) outranks the provider's.
-    return c.json({ handle, name: row?.name ?? null, avatar_url: row ? avatarSrc(row) : null, role: row?.role ?? null, color: row?.color ?? "stone", identities, org: SAPLING_ORG, admin: isAdmin(c.env, handle) });
+    const row = await getPerson(c.var.p, handle);
+    const identities = (await listIdentities(c.var.p, handle)).map((i) => ({ provider: i.provider, label: i.label, linked_at: i.linked_at }));
+    // `avatar_url` goes out RESOLVED: an uploaded avatar (0036) outranks the provider's. `role` is the
+    // title held in the person's only org (Q9: it lives on the membership) — null with none or several.
+    // §5.1: `orgs` (each with the caller's role), `superadmin` and `pending_invites` are what the SPA routes
+    // on — an org picker when there is not exactly one. `org` and `admin` are kept for the current SPA and
+    // speak for the SOLE org the old paths resolve (`resolveSoleTenant`): its name, and whether the caller
+    // is its admin or owner — "" / false with no org, several, or a suspended one.
+    const [orgs, invites, superadmin, sole] = await Promise.all([
+      listMyOrgs(c.var.p, handle), listMyInvites(c.var.p, handle), isSuperadmin(c.var.p, handle), resolveSoleTenant(c.env, handle, "session"),
+    ]);
+    return c.json({
+      handle, name: row?.name ?? null, avatar_url: row ? avatarSrc(row) : null, role: row ? await soleTitle(c.var.p, handle) : null, color: row?.color ?? "stone", identities,
+      org: sole.ok ? orgs[0]?.name ?? "" : "", admin: sole.ok && hasRole(sole.ctx, "admin"),
+      orgs, superadmin, pending_invites: invites.length,
+    });
   });
   const ProfileWrite = z.object({ name: z.string().trim().max(120).nullable().optional(), color: z.enum(PERSON_COLORS).optional() });
   authApp.put("/me", async (c) => {
     const parsed = ProfileWrite.safeParse(await c.req.json().catch(() => null));
     if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
-    const row = await updateProfile(c.env.DB, c.get("principal").handle, parsed.data);
+    const row = await updateProfile(c.var.p, c.get("principal").handle, parsed.data);
     if (!row) return c.json({ error: "not found" }, 404);
     return c.json({ ok: true, name: row.name, color: row.color });
   });
@@ -220,11 +247,10 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     if (!parsed.success) return c.json({ error: "invalid payload" }, 400);
     const oldHandle = c.get("principal").handle;
     const newHandle = parsed.data.handle;
-    // Case-insensitive "same" first: a no-op rename (including an admin re-submitting
-    // their own handle in a different case) is never an admin-allowlist question.
+    // Roles live on the membership and on `platform_admins`, both of which a rename carries
+    // (HANDLE_COLUMNS) — there is no allowlist of handles left for a rename to fall out of.
     if (oldHandle.toLowerCase() === newHandle.toLowerCase()) return c.json({ error: "handle_same" }, 400);
-    if (isAdmin(c.env, oldHandle) && !isAdmin(c.env, newHandle)) return c.json({ error: "admin_handle_not_allowlisted" }, 403);
-    const r = await renamePerson(c.env.DB, oldHandle, newHandle);
+    const r = await renamePerson(c.var.p, oldHandle, newHandle);
     if (!r.ok) {
       if (r.reason === "taken") return c.json({ error: "handle_taken" }, 409);
       // Defensive only — oldHandle always comes from a live session, so the person
@@ -237,33 +263,49 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
   authApp.post("/identities/:provider/unlink", async (c) => {
     const provider = c.req.param("provider");
     if (provider !== "github" && provider !== "google") return c.json({ error: "unknown provider" }, 400);
-    const r = await unlinkIdentity(c.env.DB, c.get("principal").handle, provider);
+    const r = await unlinkIdentity(c.var.p, c.get("principal").handle, provider);
     if (r === "last_identity") return c.json({ error: "last_identity" }, 409);
     if (r === "not_found") return c.json({ error: "not linked" }, 404);
     return c.json({ ok: true });
   });
   authApp.post("/logout", async (c) => {
     const id = await readSessionCookie(c, c.env.COOKIE_SECRET);
-    if (id) await deleteSession(c.env.DB, id);
+    if (id) await deleteSession(c.var.p, id);
     clearSessionCookie(c);
     return c.json({ ok: true });
   });
+  // CUT-OVER ALIAS (§6.3): a token is minted, listed and revoked PER ORG at `/api/o/:slug/mcp-tokens…`
+  // (./token-routes.ts). These three old paths answer for a person with exactly ONE org — the same alias
+  // every tenant route resolves through, and the same refusals as `soleTenantGate`. Phase 7 deletes them.
+  const soleOrg = async (c: Context<AppEnv>) => {
+    const sole = await resolveSoleTenant(c.env, c.get("principal").handle, "session");
+    if (sole.ok) return { ctx: sole.ctx };
+    return { refused: sole.reason === "suspended" ? c.json({ error: "not_found" }, 404) : c.json({ error: "org_required" }, 409) };
+  };
   authApp.post("/mcp-token", async (c) => {
-    const { raw } = await mintToken(c.env.DB, c.get("principal").handle);
-    return c.json({ token: raw });
+    const sole = await soleOrg(c);
+    if (!sole.ctx) return sole.refused;
+    return c.json({ token: (await mintToken(sole.ctx)).raw });
   });
-  authApp.get("/mcp-tokens", async (c) => c.json({ tokens: await listTokens(c.env.DB, c.get("principal").handle) }));
+  authApp.get("/mcp-tokens", async (c) => {
+    const sole = await soleOrg(c);
+    if (!sole.ctx) return sole.refused;
+    return c.json({ tokens: await listTokens(sole.ctx) });
+  });
   authApp.post("/mcp-tokens/:id/revoke", async (c) => {
+    const sole = await soleOrg(c);
+    if (!sole.ctx) return sole.refused;
     const id = Number(c.req.param("id"));
-    if (!Number.isInteger(id) || !(await revokeToken(c.env.DB, c.get("principal").handle, id))) return c.json({ error: "not_found" }, 404);
+    if (!Number.isInteger(id) || !(await revokeToken(sole.ctx, id))) return c.json({ error: "not_found" }, 404);
     return c.json({ ok: true });
   });
-  // Settings › Connected apps: the caller's OAuth connections. Session-cookie only,
-  // never MCP. Someone else's id is the same 404 as an unknown one.
-  authApp.get("/oauth-grants", async (c) => c.json({ grants: await listGrants(c.env.DB, c.get("principal").handle) }));
+  // Settings › Connected apps: the caller's OAuth connections — USER-level (every org the person
+  // connected an app into; each row names its org). Session-cookie only, never MCP. Someone else's
+  // id is the same 404 as an unknown one.
+  authApp.get("/oauth-grants", async (c) => c.json({ grants: await listGrants(c.var.p, c.get("principal").handle) }));
   authApp.post("/oauth-grants/:id/revoke", async (c) => {
     const id = Number(c.req.param("id"));
-    if (!Number.isInteger(id) || !(await revokeGrant(c.env.DB, c.get("principal").handle, id, Date.now()))) return c.json({ error: "not_found" }, 404);
+    if (!Number.isInteger(id) || !(await revokeGrant(c.var.p, c.get("principal").handle, id, Date.now()))) return c.json({ error: "not_found" }, 404);
     return c.json({ ok: true });
   });
   return authApp;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run, nowIso } from "../src/db";
+import { all, first, run, nowIso } from "./helpers/db";
 import type { SprintRow } from "@shared/rows";
 import { fetchGithubRefProgress, upsertProgress } from "../src/tools/progress";
 import { get_plan, write_plan } from "../src/tools/plan";
@@ -13,6 +13,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { cookieFor, seedPerson } from "./helpers/persons";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
 
 /** A TicketCreate with the schema's defaults filled in (these tests bypass the route's parse). */
 const ticket = (o: Partial<TicketCreate> & { title: string }): TicketCreate => ({
@@ -75,23 +76,23 @@ describe("fetchGithubRefProgress", () => {
 describe("complete_sprint", () => {
   it("flips a live sprint to 'done'; rejects missing/already-done", async () => {
     const id = await seedSprint("GA", "in_progress");
-    const done = await complete_sprint(env.DB, id);
+    const done = await complete_sprint(systemCtx(), id);
     expect(done.status).toBe("done");
     const row = await first<SprintRow>(env.DB, `SELECT * FROM sprints WHERE id = ?`, id);
     expect(row?.status).toBe("done");
-    await expect(complete_sprint(env.DB, id)).rejects.toThrow();     // already done
-    await expect(complete_sprint(env.DB, 9999)).rejects.toThrow();   // missing
+    await expect(complete_sprint(systemCtx(), id)).rejects.toThrow();     // already done
+    await expect(complete_sprint(systemCtx(), 9999)).rejects.toThrow();   // missing
   });
 });
 
 describe("roadmap HTTP routes (session-gated)", () => {
   it("GET /roadmap reads the plan store — narrative + sprints + progress, no live GitHub — and 401s without a session", async () => {
     const { sprints } = await write_plan(
-      env.DB,
+      systemCtx(),
       { narrative: "Q3 push", sprints: [{ label: "GA", due: "2026-09-01", status: "upcoming", github_ref: 3 }] },
       "andres"
     );
-    await upsertProgress(env.DB, sprints[0].id, 4, 6, "event");
+    await upsertProgress(systemCtx(), sprints[0].id, 4, 6, "event");
 
     const unauth = await app.request("/roadmap", {}, env);
     expect(unauth.status).toBe(401);
@@ -155,11 +156,11 @@ describe("roadmap HTTP routes (session-gated)", () => {
     // The pre-0025 row shape: no summary/dates/urgency/lead/domain, no
     // plan_versions entry — exactly what a migrated row looks like.
     const id = await seedSprint("Legacy row", "in_progress", "2026-09-01");
-    await upsertProgress(env.DB, id, 2, 3, "event");          // the GitHub half (cache)
-    const a = await create_ticket(env.DB, ticket({ title: "shipped", sprint_id: id, assignees: ["beatrix"] }), "andres");
-    await create_ticket(env.DB, ticket({ title: "still open", sprint_id: id }), "andres");
-    await transition_ticket(env.DB, a, "in_progress", "andres");
-    await transition_ticket(env.DB, a, "done", "andres");
+    await upsertProgress(systemCtx(), id, 2, 3, "event");          // the GitHub half (cache)
+    const a = await create_ticket(systemCtx(), ticket({ title: "shipped", sprint_id: id, assignees: ["beatrix"] }), "andres");
+    await create_ticket(systemCtx(), ticket({ title: "still open", sprint_id: id }), "andres");
+    await transition_ticket(systemCtx(), a, "in_progress", "andres");
+    await transition_ticket(systemCtx(), a, "done", "andres");
 
     const res = await app.request("/roadmap", { headers: { cookie } }, env);
     expect(res.status).toBe(200);
@@ -182,13 +183,13 @@ describe("roadmap HTTP routes (session-gated)", () => {
 describe("registered MCP get_roadmap tool", () => {
   it("returns the same PlanView shape as GET /roadmap — the plan store, no token plumbing", async () => {
     const { sprints } = await write_plan(
-      env.DB,
+      systemCtx(),
       { narrative: "MCP view", sprints: [{ label: "GA", due: "2026-09-01", status: "in_progress", github_ref: 3 }] },
       "andres"
     );
-    await upsertProgress(env.DB, sprints[0].id, 4, 6, "event");
+    await upsertProgress(systemCtx(), sprints[0].id, 4, 6, "event");
 
-    const server = buildTrovMcpServer(env as unknown as Env, { handle: "andres" });
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx("andres"));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -216,13 +217,13 @@ describe("registered MCP get_roadmap tool", () => {
     await seedPerson("andres");
     await seedPerson("beatrix");
     const id = await seedSprint("Legacy row", "in_progress", "2026-09-01");
-    await upsertProgress(env.DB, id, 2, 3, "event");
-    const a = await create_ticket(env.DB, ticket({ title: "shipped", sprint_id: id, assignees: ["beatrix"] }), "andres");
-    await create_ticket(env.DB, ticket({ title: "still open", sprint_id: id }), "andres");
-    await transition_ticket(env.DB, a, "in_progress", "andres");
-    await transition_ticket(env.DB, a, "done", "andres");
+    await upsertProgress(systemCtx(), id, 2, 3, "event");
+    const a = await create_ticket(systemCtx(), ticket({ title: "shipped", sprint_id: id, assignees: ["beatrix"] }), "andres");
+    await create_ticket(systemCtx(), ticket({ title: "still open", sprint_id: id }), "andres");
+    await transition_ticket(systemCtx(), a, "in_progress", "andres");
+    await transition_ticket(systemCtx(), a, "done", "andres");
 
-    const server = buildTrovMcpServer(env as unknown as Env, { handle: "andres" });
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx("andres"));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
@@ -248,7 +249,7 @@ describe("registered MCP get_roadmap tool", () => {
   });
 
   it("MCP registers no agent-PROPOSED sprint tool — sprints are authored, never staged", async () => {
-    const server = buildTrovMcpServer(env as unknown as Env, { handle: "andres" });
+    const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx("andres"));
     const client = new Client({ name: "test", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);

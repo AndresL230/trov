@@ -7,15 +7,15 @@ import { env } from "cloudflare:test";
 import { Hono } from "hono";
 import { app } from "../src/routes";
 import worker from "../src/index";
-import { run, nowIso } from "../src/db";
+import { run, nowIso } from "./helpers/db";
 import { sessionGate, type AppEnv } from "../src/auth/principal";
-import { mintToken } from "../src/auth/tokens";
 import { sha256Hex } from "../src/tools/artifacts";
 import { createArtifactsApp } from "../src/artifacts/routes";
 import { RAW_CSP_ACTIVE, RAW_CSP_PASSIVE, HEIGHT_SCRIPT, injectHeightScript } from "../src/artifacts/raw";
 import { checkFetchUrl, expandIpv6, fetchArtifactUrl, FetchUrlError, inferFetchedKind } from "../src/artifacts/fetch-url";
 import { ARTIFACT_BINARY_CAP, ARTIFACT_TEXT_CAP, type ArtifactDetailDTO } from "@shared/artifacts";
 import { cookieFor } from "./helpers/persons";
+import { platformCtx, mintTokenFor, ORG_A } from "./helpers/tenant";
 
 const ME = "AndresL230";
 const YOU = "Jose-Gael-Cruz-Lopez";
@@ -52,7 +52,7 @@ async function seedTicket(title = "Fix login"): Promise<number> {
 
 describe("auth", () => {
   it("every route is session-gated (401), and a bearer token does not count", async () => {
-    const { raw } = await mintToken(env.DB, ME);
+    const { raw } = await mintTokenFor(ME);
     for (const [method, path] of [
       ["GET", "/api/artifacts"], ["GET", "/api/artifacts/x"], ["POST", "/api/artifacts"], ["PATCH", "/api/artifacts/x"],
       ["POST", "/api/artifacts/x/versions"], ["GET", "/api/artifacts/x/diff?a=1&b=1"], ["POST", "/api/artifacts/x/links"],
@@ -236,7 +236,7 @@ describe("ratify — the session-only confirm gate", () => {
     await req("/api/artifacts/auth-flow/versions", json("POST", { content: "v2" }, me));
     expect((await req("/api/artifacts/auth-flow/ratify", json("POST", { version: 1 }, you))).status).toBe(409);
     expect((await req("/api/artifacts/auth-flow/ratify", json("POST", {}, you))).status).toBe(400);
-    const { raw } = await mintToken(env.DB, YOU);
+    const { raw } = await mintTokenFor(YOU);
     const withBearer = await req("/api/artifacts/auth-flow/ratify", json("POST", { version: 2 }, you, { authorization: `Bearer ${raw}` }));
     expect(withBearer.status).toBe(403);
     const ok = await req("/api/artifacts/auth-flow/ratify", json("POST", { version: 2 }, you));

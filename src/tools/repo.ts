@@ -8,7 +8,7 @@ import {
 } from "@shared/repo";
 import type { PersonColor } from "@shared/rows";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
-import { type DB, all, first, nowIso, ph } from "../db";
+import { type TenantContext, all, first, nowIso, ph } from "../data/sql";
 import { ISSUE_GONE_ACTIONS } from "./issue-gone";
 import { list_sprints } from "./sprints";
 import {
@@ -113,12 +113,20 @@ const REVIEW_TEXT: Record<string, string> = {
 // ── people ───────────────────────────────────────────────────────────────────
 type PersonMap = Map<string, RepoPerson>;
 
-/** Every mapped GitHub login → its person, in ONE query (logins are case-insensitive). */
-async function personsByLogin(db: DB): Promise<PersonMap> {
+/** Every GitHub login this org attributes → its person, in ONE query (logins are case-insensitive):
+ *  a member's own sign-in identity, then the org's attribution map (`org_login_map`), which wins. */
+async function personsByLogin(ctx: TenantContext): Promise<PersonMap> {
   const rows = await all<{ subject: string; handle: string; name: string | null; color: PersonColor }>(
-    db,
+    ctx,
     `SELECT i.subject, p.handle, p.name, p.color FROM identities i
-       JOIN persons p ON p.handle = i.person WHERE i.provider = 'github'`
+       JOIN persons p ON p.handle = i.person
+       JOIN memberships m ON m.user_id = p.handle AND m.org_id = ?
+      WHERE i.provider = 'github'
+      UNION ALL
+     SELECT l.github_login AS subject, p.handle, p.name, p.color FROM org_login_map l
+       JOIN persons p ON p.handle = l.person
+      WHERE l.org_id = ?`,
+    ctx.orgId, ctx.orgId
   );
   const out: PersonMap = new Map();
   for (const r of rows) out.set(r.subject.toLowerCase(), { login: r.subject, handle: r.handle, name: r.name, color: r.color });
@@ -133,18 +141,18 @@ interface OpenIssue { number: number; labels: string[] }
 /** The issues whose LATEST captured snapshot at `asOf` says `open` (and is not a
  *  deleted / transferred delivery, whose snapshot still says open). Reads the
  *  state/labels with json_extract so the (large) issue bodies never leave D1. */
-async function openIssuesAsOf(db: DB, asOf: string): Promise<OpenIssue[]> {
+async function openIssuesAsOf(ctx: TenantContext, asOf: string): Promise<OpenIssue[]> {
   const rows = await all<{ ref_number: number; state: string | null; labels: string | null }>(
-    db,
+    ctx,
     `SELECT ref_number, state, labels FROM (
        SELECT ref_number,
               json_extract(raw, '$.issue.state')  AS state,
               json_extract(raw, '$.issue.labels') AS labels,
               json_extract(raw, '$.action')       AS action,
               ROW_NUMBER() OVER (PARTITION BY ref_number ORDER BY ${AT} DESC, id DESC) AS rn
-         FROM events WHERE event_type = 'issue' AND ${AT} <= ?
+         FROM events WHERE org_id = ? AND event_type = 'issue' AND ${AT} <= ?
      ) WHERE rn = 1 AND state = 'open' AND (action IS NULL OR action NOT IN (${ph(ISSUE_GONE_ACTIONS.length)}))`,
-    asOf, ...ISSUE_GONE_ACTIONS
+    ctx.orgId, asOf, ...ISSUE_GONE_ACTIONS
   );
   return rows.map((r) => ({ number: r.ref_number, labels: parseLabels(r.labels) }));
 }
@@ -162,16 +170,16 @@ const isBug = (i: OpenIssue): boolean => i.labels.some((l) => l.toLowerCase() ==
 /** Open tickets now, and the NET change over the window: filed − resolved + re-opened.
  *  NATIVE tickets only: the tile sits beside the open-ISSUE tiles, and a ticket
  *  mirrored from an issue (0032) is already counted there. */
-async function ticketCounts(db: DB, since: string): Promise<{ open: number; delta: number }> {
-  const open = await first<{ n: number }>(db, `SELECT COUNT(*) AS n FROM tickets WHERE status IN ${OPEN_STATUS_SQL} AND source = 'canopy'`);
-  const filed = await first<{ n: number }>(db, `SELECT COUNT(*) AS n FROM tickets WHERE created_at > ? AND source = 'canopy'`, since);
+async function ticketCounts(ctx: TenantContext, since: string): Promise<{ open: number; delta: number }> {
+  const open = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ? AND status IN ${OPEN_STATUS_SQL} AND source = 'canopy'`, ctx.orgId);
+  const filed = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ? AND created_at > ? AND source = 'canopy'`, ctx.orgId, since);
   const moves = await first<{ resolved: number | null; reopened: number | null }>(
-    db,
+    ctx,
     `SELECT SUM(CASE WHEN e.to_status IN ('done','declined') AND (e.from_status IS NULL OR e.from_status NOT IN ('done','declined')) THEN 1 ELSE 0 END) AS resolved,
             SUM(CASE WHEN e.from_status IN ('done','declined') AND e.to_status NOT IN ('done','declined') THEN 1 ELSE 0 END) AS reopened
-       FROM ticket_events e JOIN tickets t ON t.id = e.ticket_id AND t.source = 'canopy'
-      WHERE e.created_at > ?`,
-    since
+       FROM ticket_events e JOIN tickets t ON t.id = e.ticket_id AND t.org_id = ? AND t.source = 'canopy'
+      WHERE e.org_id = ? AND e.created_at > ?`,
+    ctx.orgId, ctx.orgId, since
   );
   return { open: open?.n ?? 0, delta: (filed?.n ?? 0) - (moves?.resolved ?? 0) + (moves?.reopened ?? 0) };
 }
@@ -578,7 +586,7 @@ function activityOf(people: PersonMap, r: IssueRow): RepoActivity | null {
 }
 
 export async function getRepoDashboard(
-  db: DB,
+  ctx: TenantContext,
   repo: string,
   now: number = Date.now(),
   /** The environments this deployment reports on (`REPO_ENVIRONMENTS`). None
@@ -595,18 +603,18 @@ export async function getRepoDashboard(
   // snapshot yet → not_connected; a stale one is still shown, same as `drift`
   // below — and NOTHING on screen says how old it is (`computedAt` is stored
   // but never travels in the DTO).
-  const branchSnap = await getSnapshot<RepoBranches>(db, "branches");
+  const branchSnap = await getSnapshot<RepoBranches>(ctx, "branches");
 
-  const people = await personsByLogin(db);
+  const people = await personsByLogin(ctx);
 
   // Two weeks of PR closes cover the week-over-week delta AND the 14-day bars.
   const recentPrs = await all<PrRow>(
-    db, `SELECT ${PR_COLS} FROM events WHERE event_type IN ('pr_merged','pr_closed') AND ${AT} > ? ORDER BY ${AT} DESC, id DESC`,
-    twoWeeksAgo
+    ctx, `SELECT ${PR_COLS} FROM events WHERE org_id = ? AND event_type IN ('pr_merged','pr_closed') AND ${AT} > ? ORDER BY ${AT} DESC, id DESC`,
+    ctx.orgId, twoWeeksAgo
   );
   // The list and the feed are NOT window-scoped: a quiet fortnight still shows the last PRs.
   const latestPrs = await all<PrRow>(
-    db, `SELECT ${PR_COLS} FROM events WHERE event_type IN ('pr_merged','pr_closed') ORDER BY ${AT} DESC, id DESC LIMIT ?`, ACTIVITY_LIMIT
+    ctx, `SELECT ${PR_COLS} FROM events WHERE org_id = ? AND event_type IN ('pr_merged','pr_closed') ORDER BY ${AT} DESC, id DESC LIMIT ?`, ctx.orgId, ACTIVITY_LIMIT
   );
   const listPrs = latestPrs.slice(0, PR_LIMIT);
   const merged = recentPrs.filter((p) => p.event_type === "pr_merged");
@@ -614,8 +622,8 @@ export async function getRepoDashboard(
   const mergedLastWeek = merged.filter((p) => p.at <= weekAgo && p.at > twoWeeksAgo);
   const closedUnmerged = recentPrs.filter((p) => p.event_type === "pr_closed" && p.at > weekAgo);
 
-  const openNow = await openIssuesAsOf(db, nowAt);
-  const openThen = await openIssuesAsOf(db, weekAgo);
+  const openNow = await openIssuesAsOf(ctx, nowAt);
+  const openThen = await openIssuesAsOf(ctx, weekAgo);
 
   // ── repo capture (sources A, B) ───────────────────────────────────────────
   // `prCaptured` is a COMPLETENESS marker (`prs_reconciled`, written by
@@ -623,30 +631,30 @@ export async function getRepoDashboard(
   // "any pr row exists" — a single webhook delivery must not claim a complete
   // open-PR count. Same field name/shape as before; only what it gates on
   // changed.
-  const prCaptured = (await getSnapshot(db, "prs_reconciled")) !== null;
+  const prCaptured = (await getSnapshot(ctx, "prs_reconciled")) !== null;
   const isOpen = (r: RepoPrRow) => r.state === "draft" || r.state === "review";
-  const prsNow = prCaptured ? (await prStatesAsOf(db, nowAt)).filter(isOpen) : [];
-  const prsThen = prCaptured ? (await prStatesAsOf(db, weekAgo)).filter(isOpen) : [];
+  const prsNow = prCaptured ? (await prStatesAsOf(ctx, nowAt)).filter(isOpen) : [];
+  const prsThen = prCaptured ? (await prStatesAsOf(ctx, weekAgo)).filter(isOpen) : [];
   // The PR list: the latest state per PR, unknown states dropped (never guessed).
-  const prRows = prCaptured ? (await recentPrRows(db, PR_LIMIT, ninetyDaysAgo)).filter((r) => isKnownPrState(r.state)) : [];
+  const prRows = prCaptured ? (await recentPrRows(ctx, PR_LIMIT, ninetyDaysAgo)).filter((r) => isKnownPrState(r.state)) : [];
   // ONE approval read for both consumers below — the listed PRs and the open-PR
   // tile. An approved PR is no longer "awaiting review".
-  const approved = await approvedPrs(db, [...prsNow, ...prRows].filter((r) => r.state === "review").map((r) => r.number ?? 0));
+  const approved = await approvedPrs(ctx, [...prsNow, ...prRows].filter((r) => r.state === "review").map((r) => r.number ?? 0));
   const awaiting = (rows: RepoPrRow[], done: Set<number> = new Set()) =>
     rows.filter((r) => r.state === "review" && !done.has(r.number ?? -1)).length;
   // A delta is only real once capture was RECORDING for the whole comparison
   // window — otherwise "now vs a week ago" is really "now vs whenever capture
   // began", which reads as a spurious spike. `tickets` is the fallback tile's
   // own read, so skip it entirely once PR capture makes that tile unreachable.
-  const prRecordingSince = prCaptured ? await recordingSince(db, "pr") : null;
+  const prRecordingSince = prCaptured ? await recordingSince(ctx, "pr") : null;
   const prDeltaOk = prRecordingSince !== null && prRecordingSince <= weekAgo;
-  const tickets = prCaptured ? { open: 0, delta: 0 } : await ticketCounts(db, weekAgo);
-  const pushes = await pushRowsSince(db, twoWeeksAgo);
+  const tickets = prCaptured ? { open: 0, delta: 0 } : await ticketCounts(ctx, weekAgo);
+  const pushes = await pushRowsSince(ctx, twoWeeksAgo);
   const pushesThisWeek = pushes.filter((p) => p.occurred_at > weekAgo);
   const sum = (rows: RepoEventRow[]) => rows.reduce((n, r) => n + (r.count ?? 0), 0);
   const commitsThisWeek = sum(pushesThisWeek);
   const commitsLastWeek = sum(pushes.filter((p) => p.occurred_at <= weekAgo));
-  const pushRecordingSince = pushes.length ? await recordingSince(db, "push") : null;
+  const pushRecordingSince = pushes.length ? await recordingSince(ctx, "push") : null;
   const pushDeltaOk = pushRecordingSince !== null && pushRecordingSince <= twoWeeksAgo;
 
   // ── environments: two deployables each (Railway backend, Cloudflare frontend) ─
@@ -654,9 +662,9 @@ export async function getRepoDashboard(
   // both halves, ONE branch-head read, and ONE check read covering the
   // environment heads AND the listed PRs' heads together. N environments cost
   // the same three round-trips as one.
-  const strips = envs.length ? await deployHistories(db, now) : new Map<string, RepoDeploy[]>();
-  const heads = envs.length ? await branchHeads(db, envs.map((e) => e.branch)) : new Map<string, string>();
-  const checks = await latestChecks(db, [...heads.values(), ...prRows.map((r) => r.sha ?? "")]);
+  const strips = envs.length ? await deployHistories(ctx, now) : new Map<string, RepoDeploy[]>();
+  const heads = envs.length ? await branchHeads(ctx, envs.map((e) => e.branch)) : new Map<string, string>();
+  const checks = await latestChecks(ctx, [...heads.values(), ...prRows.map((r) => r.sha ?? "")]);
 
   // Environment health: 10-minute pings the repo cron writes (src/repo/poll.ts).
   // A row older than HEALTH_STALE_MS means the cron has stopped — never guess
@@ -666,7 +674,7 @@ export async function getRepoDashboard(
   // from never having been set up: `healthEver` carries that apart, so the
   // block can read `empty` ("the last ping is old") rather than claiming
   // nothing pings these URLs. ONE query for every environment half.
-  const healthRows = envs.length ? await latestHealth(db) : new Map<string, { at: string; value: number }>();
+  const healthRows = envs.length ? await latestHealth(ctx) : new Map<string, { at: string; value: number }>();
   const health: RepoHealth[] = [];
   let healthEver = false;
   for (const cfg of envs) {
@@ -734,29 +742,29 @@ export async function getRepoDashboard(
   // commit deltas use: until `run` capture predates the whole week, a day with
   // no captured runs is a day capture was not running, not a green day. The
   // failures LIST is not gated — those rows are facts.
-  const runCaptured = await hasCaptured(db, "run");
-  const runRecordingSince = runCaptured ? await recordingSince(db, "run") : null;
-  const ciRates = runRecordingSince !== null && runRecordingSince <= weekAgo ? await ciDailyRates(db, now) : null;
-  const failureRows = runCaptured ? await ciFailureRows(db, weekAgo, CI_FAILURE_LIMIT) : [];
+  const runCaptured = await hasCaptured(ctx, "run");
+  const runRecordingSince = runCaptured ? await recordingSince(ctx, "run") : null;
+  const ciRates = runRecordingSince !== null && runRecordingSince <= weekAgo ? await ciDailyRates(ctx, now) : null;
+  const failureRows = runCaptured ? await ciFailureRows(ctx, weekAgo, CI_FAILURE_LIMIT) : [];
   // The list is capped; the COUNT is not. Same window and definition as
   // `ciFailureRows` (a failed/timed-out run after `weekAgo`), so "N failures"
   // never reads the cap off the list.
   const failureTotal = !runCaptured ? 0
     : failureRows.length < CI_FAILURE_LIMIT ? failureRows.length
-    : (await first<{ n: number }>(db,
-        `SELECT COUNT(*) AS n FROM repo_events WHERE kind = 'run' AND state IN ('failure', 'timed_out') AND occurred_at > ?`, weekAgo))?.n ?? failureRows.length;
-  const reviews = await reviewRowsSince(db, twoWeeksAgo);
+    : (await first<{ n: number }>(ctx,
+        `SELECT COUNT(*) AS n FROM repo_events WHERE org_id = ? AND kind = 'run' AND state IN ('failure', 'timed_out') AND occurred_at > ?`, ctx.orgId, weekAgo))?.n ?? failureRows.length;
+  const reviews = await reviewRowsSince(ctx, twoWeeksAgo);
 
   const issueEvents = await all<IssueRow>(
-    db,
+    ctx,
     `SELECT ref_number, subject_login, ${AT} AS at,
             json_extract(raw, '$.action') AS action, json_extract(raw, '$.issue.title') AS title,
             json_extract(raw, '$.issue.html_url') AS url, json_extract(raw, '$.issue.user.login') AS author
-       FROM events WHERE event_type = 'issue'
+       FROM events WHERE org_id = ? AND event_type = 'issue'
         AND json_extract(raw, '$.action') IN ('opened','closed','reopened','assigned')
       ORDER BY ${AT} DESC, id DESC LIMIT ?`,
     // Enough to fill the feed AND cover a busy week of opens/closes for the tiles.
-    200
+    ctx.orgId, 200
   );
   const issuesThisWeek = issueEvents.filter((e) => e.at > weekAgo);
   const openedThisWeek = issuesThisWeek.filter((e) => e.action === "opened");
@@ -808,7 +816,7 @@ export async function getRepoDashboard(
   ];
 
   // Commits once pushes are captured; merges (what `events` has always had) until then.
-  const commitDays = pushes.length ? await commitsByDay(db, twoWeeksAgo) : null;
+  const commitDays = pushes.length ? await commitsByDay(ctx, twoWeeksAgo) : null;
   const perDay = new Map<string, number>();
   for (const p of merged) perDay.set(p.at.slice(0, 10), (perDay.get(p.at.slice(0, 10)) ?? 0) + 1);
   const days = lastDays(now, BAR_DAYS).map((date) => ({ date, count: (commitDays ?? perDay).get(date) ?? 0 }));
@@ -877,7 +885,7 @@ export async function getRepoDashboard(
   // miss (an open PR past the 30th, an approval buried under 10 later reviews)
   // leaves that PR reading "awaiting review", which is what EVERY open PR read
   // before the arm existed: a polled row can only make that tile more right.
-  const hasReviewCapture = await hasCaptured(db, "review", "webhook");
+  const hasReviewCapture = await hasCaptured(ctx, "review", "webhook");
   // Tallied only with the gate open: a hidden count must not order the list or
   // add a row ("0 · 0 · —") for someone known only by a polled review. Same
   // rule as the pushes above: a review bot (CodeRabbit, Copilot) is not a
@@ -899,7 +907,7 @@ export async function getRepoDashboard(
   };
 
   // The sprint a person marked active (roadmap order) — never inferred from dates.
-  const current = (await list_sprints(db)).find((sp) => sp.active) ?? null;
+  const current = (await list_sprints(ctx)).find((sp) => sp.active) ?? null;
   const sprint: RepoSprint | null = current
     ? { id: current.id, label: current.label, due: current.due, closed: current.progress.closed, total: current.progress.total, pct: current.progress.pct }
     : null;
@@ -922,7 +930,7 @@ export async function getRepoDashboard(
   // webhook or reconcileRepo, never here — this only reads back what one of
   // those already wrote. No snapshot yet → not_connected; a stale one is
   // still shown, with nothing on screen saying how old it is (see `branches`).
-  const driftSnap = await getSnapshot<RepoDrift>(db, "drift");
+  const driftSnap = await getSnapshot<RepoDrift>(ctx, "drift");
 
   // ── coverage / bundle / TODO count — repo_metrics, fed by the target repo's
   // CI posting a commit status that `handleGithubWebhook`'s `status` branch
@@ -933,9 +941,9 @@ export async function getRepoDashboard(
   const todoWindowStart = new Date(now - 90 * DAY).toISOString();
   // Three independent reads (M9) — batched rather than three sequential round-trips.
   const [covPts, bunPts, todoPts] = await Promise.all([
-    metricSeries(db, "coverage", "", "", monthAgo),
-    metricSeries(db, "bundle_kb", "", "", monthAgo),
-    metricSeries(db, "todo_count", "", "", todoWindowStart),
+    metricSeries(ctx, "coverage", "", "", monthAgo),
+    metricSeries(ctx, "bundle_kb", "", "", monthAgo),
+    metricSeries(ctx, "todo_count", "", "", todoWindowStart),
   ]);
   // I2: a metric that has gone QUIET (nothing in the window) is not the same
   // as one that was never connected. `latestMetric` with no time bound answers
@@ -943,7 +951,7 @@ export async function getRepoDashboard(
   // reading in the window"), null → `not_connected` ("nothing reports this at
   // all"). Only reached on the empty path, so it costs nothing once the
   // window already has points.
-  const everEmpty = async (metric: string) => ((await latestMetric(db, metric, "", "")) !== null ? EMPTY : NOT_CONNECTED);
+  const everEmpty = async (metric: string) => ((await latestMetric(ctx, metric, "", "")) !== null ? EMPTY : NOT_CONNECTED);
   // windowDelta's baseline is the window's FIRST point — once a series holds
   // more than 10 readings, that baseline can lie to the LEFT of the 10-point
   // sparkline drawn below (`.slice(-10)`): the delta and the drawn trend may
@@ -1004,12 +1012,12 @@ export async function getRepoDashboard(
   // question rides the SAME `metricsEver` statement, as a prefix family.
   const [usageRows, polledSnap, productRows] = envs.length
     ? await Promise.all([
-        metricsSince(db, usageReadGroups(usageEnd, now)),
-        getSnapshot<unknown>(db, CF_POLLED),
+        metricsSince(ctx, usageReadGroups(usageEnd, now)),
+        getSnapshot<unknown>(ctx, CF_POLLED),
         // DISTINCT keys: the read joins against a `VALUES` list of them, so a key
         // listed twice in `REPO_ENVIRONMENTS` would return every row twice — and
         // every midnight would be pushed into its trend twice.
-        productReadings(db, [...new Set(envs.map((e) => e.key))], new Date(now - HOSTING_STALE_MS).toISOString(), new Date(now - PRODUCT_TREND_DAYS * DAY).toISOString()),
+        productReadings(ctx, [...new Set(envs.map((e) => e.key))], new Date(now - HOSTING_STALE_MS).toISOString(), new Date(now - PRODUCT_TREND_DAYS * DAY).toISOString()),
       ])
     : [[], null, []];
   const polled = polledSnap?.data && typeof polledSnap.data === "object" ? (polledSnap.data as Record<string, unknown>) : {};
@@ -1019,7 +1027,7 @@ export async function getRepoDashboard(
   const hosting = projectHosting(usageRows, envs, now);
   const produced = projectProduct(productRows, envs, now);
   const ever = envs.length && (!used.anyUsage || !anyCf || !hosting.length || !produced.anyProduct)
-    ? await metricsEver(db, [...USAGE_METRICS, ...HOSTING_METRICS], [PRODUCT_PREFIX])
+    ? await metricsEver(ctx, [...USAGE_METRICS, ...HOSTING_METRICS], [PRODUCT_PREFIX])
     : new Set<string>();
   const everAny = (metrics: string[]) => metrics.some((m) => ever.has(m));
 

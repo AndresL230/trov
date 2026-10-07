@@ -4,8 +4,10 @@
  * schedule / outbox), and the unsubscribe confirmation view. Pure functions,
  * mock-fed props, HTML-string assertions (pattern: render.review.test.ts).
  */
-import { describe, it, expect } from "vitest";
-import { emailNotificationsSection, notificationsMaintenanceSections, unsubscribeView } from "../web/src/notifications";
+import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
+import { describe, it, expect, afterEach } from "vitest";
+import { setApiOrg } from "../web/src/api";
+import { emailNotificationsSection, notificationsAdminSections, notifDropdowns, unsubscribeView } from "../web/src/notifications";
 import type { PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 
@@ -125,60 +127,112 @@ describe("unsubscribeView", () => {
   });
 });
 
-describe("notificationsMaintenanceSections", () => {
+describe("notificationsAdminSections", () => {
   const policy: PolicyKindView[] = [
     { id: "my_work", label: "My Work", description: "d", allowedCadences: ["daily", "weekly", "off"], registryDefault: "daily", enabled: true, default_cadence: "daily", updated_at: null, updated_by: null },
     { id: "review_queue", label: "Review queue", description: "d", allowedCadences: ["daily", "off"], registryDefault: "daily", enabled: false, default_cadence: "daily", updated_at: null, updated_by: null },
   ];
-  const settings: NotificationSettingsRow = { id: 1, send_hour: 8, timezone: "America/New_York", from_address: "Trov <c@mail.example>" };
+  const settings: NotificationSettingsRow = { org_id: "org_saplinglearn", send_hour: 8, timezone: "America/New_York", from_address: "Trov <c@mail.example>" };
   const outbox: NotificationOutboxRow[] = [
     { idempotency_key: "jose:daily:2026-09-11", user_id: "jose", cadence: "daily", window_id: "2026-09-11", kinds: '["my_work"]', status: "sent", resend_id: "em_1", error: null, created_at: "2026-09-11T12:00:00Z", sent_at: "2026-09-11T12:00:01Z" },
     { idempotency_key: "dev:daily:2026-09-11", user_id: "dev", cadence: "daily", window_id: "2026-09-11", kinds: '["my_work"]', status: "failed", resend_id: null, error: "send: resend 422: mailbox unavailable", created_at: "2026-09-11T12:00:00Z", sent_at: null },
   ];
 
-  it("policy rows carry a switch, a cadence select limited to allowed non-off cadences, disabled when off", () => {
-    const v = notificationsMaintenanceSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: null });
-    expect(v).toContain("NOTIFICATIONS · POLICY");
-    expect(v).toContain("1 of 2 enabled");
+  it("policy rows carry a switch and a cadence dropdown limited to allowed non-off cadences, disabled when off", () => {
+    const v = notificationsAdminSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: null });
+    // The lead says the state in one sentence; the section is an eyebrow, like every other.
+    expect(v).toContain("<strong>1 of 2</strong> digests on");
+    expect(v).toMatch(/class="cnpy-sechead"><h2[^>]*>Digests<\/h2>/);
+    expect(v).toContain('aria-label="My Work: send org-wide"');
+    expect(v).toContain('aria-label="My Work: default cadence: Daily"');
     expect(v).toContain('data-act="policyToggle" data-arg="my_work"');
-    const selectOf = (id: string) => { const i = v.indexOf(`data-act="policyCadence" data-arg="${id}"`); return v.slice(i, v.indexOf("</select>", i)); };
-    const mw = selectOf("my_work");
-    expect(mw).toContain('value="weekly"');
-    const rq = selectOf("review_queue");
-    expect(rq).not.toContain('value="weekly"');
-    expect(rq).toContain("disabled");
+    expect(v).not.toContain("<select");
+    const dds = notifDropdowns({ policy, settings });
+    const mw = dds.find((d) => d.id === "policy-cad-my_work")!;
+    expect(mw).toMatchObject({ act: "policyCadence", arg: "my_work", disabled: false });
+    expect(mw.options.map((o) => o.value)).toContain("weekly");
+    const rq = dds.find((d) => d.id === "policy-cad-review_queue")!;
+    expect(rq.options.map((o) => o.value)).not.toContain("weekly");
+    expect(rq.disabled).toBe(true);
+    expect(v).toMatch(/id="policy-cad-review_queue"[^>]* disabled/);
   });
 
   it("schedule shows the current hour, timezone and from address as editable controls", () => {
-    const v = notificationsMaintenanceSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: null });
-    expect(v).toContain("NOTIFICATIONS · SCHEDULE");
-    expect(v).toMatch(/<option value="8" selected>08:00<\/option>/);
-    expect(v).toMatch(/<option value="America\/New_York" selected>/);
-    expect(v).toContain('value="Trov &lt;c@mail.example&gt;"');
-    expect(v).toContain('data-act="schedFrom"');
+    const v = notificationsAdminSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: null });
+    expect(v).toMatch(/<h2[^>]*>Schedule and sender<\/h2>/);
+    expect(v).toContain("sent at <strong>08:00</strong> America/New_York as <strong>Trov</strong>");
+    expect(v).toMatch(/id="sched-hour"[^>]*aria-labelledby="sched-hour-l sched-hour"><span class="cnpy-dd-v">08:00<\/span>/);
+    expect(v).toMatch(/id="sched-tz"[^>]*aria-labelledby="sched-tz-l sched-tz"><span class="cnpy-dd-v">America\/New_York<\/span>/);
+    const dds = notifDropdowns({ policy, settings });
+    expect(dds.find((d) => d.id === "sched-hour")).toMatchObject({ act: "schedHour", value: "8" });
+    expect(dds.find((d) => d.id === "sched-hour")!.options).toHaveLength(24);
+    expect(dds.find((d) => d.id === "sched-tz")).toMatchObject({ act: "schedTz", value: "America/New_York" });
+    // The sender field takes a NAME only — whatever address is stored, the one shown is the platform's.
+    expect(v).toMatch(/<label for="sched-from"[^>]*>Sender name<\/label>/);
+    expect(v).toMatch(/<input id="sched-from" data-act="schedFrom"[^>]*maxlength="64"[^>]*value="Trov"/);
+    expect(v).not.toContain("c@mail.example");
+    expect(v).toContain("Trov &lt;hello@trov.dev&gt;");
+    expect(v).toContain("The address is Trov's and can't be changed.");
+    expect(v).not.toContain("FROM ADDRESS");
+  });
+
+  it("the sender name echoes into the fixed address while typing, and a refused name is said under the field", () => {
+    const typing = notificationsAdminSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: "Acme Robotics" });
+    expect(typing).toContain('value="Acme Robotics"');
+    expect(typing).toContain("Acme Robotics &lt;hello@trov.dev&gt;");
+    expect(typing).not.toContain("data-sender-error");
+    const bad = notificationsAdminSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: "Trov Security", fromError: SENDER_NAME_HELP.reserved });
+    expect(bad).toMatch(/<input id="sched-from"[^>]*aria-invalid="true"/);
+    expect(bad).toMatch(/<div role="alert" data-sender-error[^>]*>A sender name can&#39;t contain &quot;trov&quot; unless it is exactly &quot;Trov&quot;\.<\/div>/);
+  });
+
+  it("the sender-name rule is the Worker's own (shared/sender.ts): letters, digits, space and . & ' + _ -, 64 at most, no 'trov' unless exactly Trov", () => {
+    for (const ok of ["Trov", "Acme Robotics", "R&D - Team_2", "O'Neil + Co.", "a".repeat(64)]) expect(senderNameProblem(ok), ok).toBeNull();
+    expect(senderNameProblem("")).toBe("empty");
+    expect(senderNameProblem("a".repeat(65))).toBe("too_long");
+    for (const bad of ["Acme <x@y.z>", "Acme, Inc", "Zoë", "a@b", 'Say "hi"', "line\nbreak", "semi;colon"]) expect(senderNameProblem(bad), bad).toBe("characters");
+    for (const bad of ["Trov Security", "trov", "T.r.o.v", "The TROV team"]) expect(senderNameProblem(bad), bad).toBe("reserved");
+    expect(senderNamePart("Acme Robotics <hello@trov.dev>")).toBe("Acme Robotics");
+    expect(senderNamePart("someone@example.com")).toBe("");
+    expect(senderNamePart('"Quoted Name" <x@y.z>')).toBe("Quoted Name");
+    expect(Object.keys(SENDER_NAME_HELP).sort()).toEqual(["characters", "empty", "reserved", "too_long"]);
   });
 
   it("outbox lists rows newest first with status; a failed row expands to its error", () => {
-    const collapsed = notificationsMaintenanceSections({ policy, settings, outbox, outboxExpanded: null, fromDraft: null });
-    expect(collapsed).toContain("2 runs");
+    const collapsed = notificationsAdminSections({ policy, settings, outbox, outboxExpanded: null, fromDraft: null });
+    expect(collapsed).toMatch(/<h2[^>]*>Outbox<\/h2><span class="cnpy-badge" data-n="2">2<\/span>/);
+    // A failure is in the lead (seen without scrolling) and on its row, in words.
+    expect(collapsed).toContain("data-outbox-failed");
+    expect(collapsed).toContain("1 recent send failed");
+    expect(collapsed).toMatch(/data-status="failed">[\s\S]*?>Failed<\/span>/);
+    expect(collapsed).toMatch(/data-status="sent">[\s\S]*?>Sent<\/span>/);
+    expect(collapsed).toContain('aria-expanded="false"');
     expect(collapsed).toContain('data-act="outboxToggle" data-arg="dev:daily:2026-09-11"');
     expect(collapsed).not.toContain("mailbox unavailable");
-    const expanded = notificationsMaintenanceSections({ policy, settings, outbox, outboxExpanded: "dev:daily:2026-09-11", fromDraft: null });
+    const expanded = notificationsAdminSections({ policy, settings, outbox, outboxExpanded: "dev:daily:2026-09-11", fromDraft: null });
     expect(expanded).toContain("mailbox unavailable");
   });
 
   it("outbox empty state", () => {
-    const v = notificationsMaintenanceSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: null });
+    const v = notificationsAdminSections({ policy, settings, outbox: [], outboxExpanded: null, fromDraft: null });
     expect(v).toContain("No sends yet");
   });
 });
 
-describe("maintenance schedule — preview + test send controls", () => {
+describe("Org settings › Notifications — preview + test send controls", () => {
+  afterEach(() => setApiOrg(null));
   it("offers preview links for daily, weekly and sample, and test-send buttons for both cadences", () => {
-    const v = notificationsMaintenanceSections({ policy: [], settings: { id: 1, send_hour: 8, timezone: "UTC", from_address: "a@b.co" }, outbox: [], outboxExpanded: null, fromDraft: null });
-    expect(v).toContain('href="/api/notifications/preview?cadence=daily"');
-    expect(v).toContain('href="/api/notifications/preview?cadence=weekly"');
-    expect(v).toContain('href="/api/notifications/preview?cadence=daily&amp;sample=1"');
+    const sections = () => notificationsAdminSections({ policy: [], settings: { org_id: "org_saplinglearn", send_hour: 8, timezone: "UTC", from_address: "a@b.co" }, outbox: [], outboxExpanded: null, fromDraft: null });
+    // The preview is the ORG's digest: its links are under the org on screen, like every request.
+    setApiOrg("acme");
+    const v = sections();
+    expect(v).toContain('href="/api/o/acme/notifications/preview?cadence=daily"');
+    expect(v).toContain('href="/api/o/acme/notifications/preview?cadence=weekly"');
+    expect(v).toContain('href="/api/o/acme/notifications/preview?cadence=daily&amp;sample=1"');
+    expect(v).not.toContain('href="/api/notifications/');
+    // With no org open the links are inert, never the unprefixed alias.
+    setApiOrg(null);
+    expect(sections()).not.toContain("/notifications/preview");
     expect(v).toContain('data-act="testSend" data-arg="daily"');
     expect(v).toContain('data-act="testSend" data-arg="weekly"');
   });

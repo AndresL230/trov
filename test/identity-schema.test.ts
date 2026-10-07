@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import type { IdentityTaskRow, IdentityRow } from "@shared/rows";
 
 describe("identity_tasks schema (0016)", () => {

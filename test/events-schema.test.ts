@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, run, nowIso } from "../src/db";
+import { all, run, nowIso } from "./helpers/db";
 import type { EventRow } from "@shared/rows";
 
 describe("0012 stores", () => {

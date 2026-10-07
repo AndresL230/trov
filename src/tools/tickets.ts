@@ -22,8 +22,8 @@
 import type { TicketCreate, TicketEdit, TicketStatus } from "@shared/tickets";
 import { canTransition, parseTicketLink, placeInColumn } from "@shared/tickets";
 import type { TicketRow } from "@shared/rows";
-import { type DB, first, all, run, nowIso } from "../db";
-import { getPerson, RESERVED_HANDLES } from "../auth/persons";
+import { type TenantContext, type Stmt, first, all, run, stmt, batch, nowIso } from "../data/sql";
+import { requireMember } from "../auth/persons";
 
 /**
  * A typed failure the routes map onto an HTTP status:
@@ -48,36 +48,64 @@ export class TicketError extends Error {
 
 export const TICKET_ERROR_STATUS = { not_found: 404, conflict: 409, bad_request: 400, forbidden: 403 } as const;
 
-const getTicketRow = async (db: DB, id: number): Promise<TicketRow> => {
-  const t = await first<TicketRow>(db, `SELECT * FROM tickets WHERE id = ?`, id);
-  if (!t) throw new TicketError("not_found", `no such ticket: ${id}`);
+// ── a ticket's two ids (canopy-multitenancy.md §12 Q2) ───────────────────────
+// `tickets.number` is the per-org number — what a person or an agent SEES and TYPES: every route
+// param and body field, every MCP argument and result, `#12` in the app, a link, an e-mail. The
+// wire's `id` IS that number. `tickets.id` is the global row id: it is what `parent_id`,
+// `ticket_assignees.ticket_id`, the links / comments / history rows and `tickets_fts` are keyed by,
+// and it NEVER leaves the server. So every exported function in this file and in ./reads.ts takes
+// and returns NUMBERS, resolves the row once (`getTicketRow`) and works on its `id` inside.
+// (`artifact_links.target_ref` holds the number: that row carries its own `org_id`.)
+
+/** A `tickets` row as stored: `id` is the global row id, `number` the per-org number. */
+export type TicketDbRow = TicketRow & { number: number };
+
+/** A ticket of this org by its NUMBER, or null. Another org's number is simply not there. */
+export function ticketByNumber(ctx: TenantContext, number: number): Promise<TicketDbRow | null> {
+  return first<TicketDbRow>(ctx, `SELECT * FROM tickets WHERE number = ? AND org_id = ?`, number, ctx.orgId);
+}
+
+const getTicketRow = async (ctx: TenantContext, number: number): Promise<TicketDbRow> => {
+  const t = await ticketByNumber(ctx, number);
+  if (!t) throw new TicketError("not_found", `no such ticket: ${number}`);
   return t;
 };
 
 /** Bump `updated_at` on a ticket. Called by EVERY writer below — the queue's sort key. */
-const touch = (db: DB, id: number, at: string) => run(db, `UPDATE tickets SET updated_at = ? WHERE id = ?`, at, id);
+const touch = (ctx: TenantContext, id: number, at: string) =>
+  run(ctx, `UPDATE tickets SET updated_at = ? WHERE id = ? AND org_id = ?`, at, id, ctx.orgId);
 
-/** Resolve a handle to its canonical `persons.handle` spelling, or 400. A RESERVED
- *  handle (`github-webhook`, 0032) has a persons row but is not a person: it can
- *  never be assigned, file, comment or link through these writers — only the
- *  GitHub mirror (./ticket-mirror.ts) writes as it. Exported for ./tickets-agent.ts,
- *  whose `assign_ticket` must validate a handle on its no-op path too. */
-export async function requirePerson(db: DB, handle: string): Promise<string> {
-  const p = await getPerson(db, handle);
-  if (!p || RESERVED_HANDLES.includes(p.handle)) throw new TicketError("bad_request", `no such person: ${handle}`);
-  return p.handle;
-}
+// Every handle these writers take — requester, actor, assignee, author — goes through `requireMember`
+// (src/auth/persons.ts, §4.3): its canonical `persons.handle` spelling, or a `PersonError` the routes
+// and /mcp answer exactly as a `bad_request` TicketError. A RESERVED handle (`github-webhook`, 0032)
+// has a persons row but is not a person: it can never be assigned, file, comment or link through
+// these writers — only the GitHub mirror (./ticket-mirror.ts) writes as it.
 
 /** An explicit sprint must exist (the column is a soft INTEGER ref — 0024 could not FK it). */
-async function requireSprint(db: DB, sprintId: number): Promise<void> {
-  const sp = await first<{ id: number }>(db, `SELECT id FROM sprints WHERE id = ?`, sprintId);
+async function requireSprint(ctx: TenantContext, sprintId: number): Promise<void> {
+  const sp = await first<{ id: number }>(ctx, `SELECT id FROM sprints WHERE id = ? AND org_id = ?`, sprintId, ctx.orgId);
   if (!sp) throw new TicketError("not_found", `no such sprint: ${sprintId}`);
 }
 
+/**
+ * The repository a BARE issue ref (`#214`) resolves against: the org's primary repository (`org_repos`,
+ * D16) — never another org's, and never a default: an org that has connected none gets null, and a
+ * bare ref there is refused (`unusableLink`) rather than pointed at somebody else's repository.
+ */
+export async function ticketLinkRepo(ctx: TenantContext): Promise<string | null> {
+  const row = await first<{ repo_full_name: string }>(ctx, `SELECT repo_full_name FROM org_repos WHERE org_id = ? AND is_primary = 1`, ctx.orgId);
+  return row?.repo_full_name ?? null;
+}
+
+/** Why a raw link was unusable, as the refusal's message: a bare `#n` with no repository says what to do. */
+export const unusableLink = (raw: string, repo: string | null): string =>
+  !repo && /^#?\d+$/.test(raw.trim()) ? `"${raw.trim()}" needs a repository: connect one in Org settings › Repositories, or paste the full URL` : `unusable link: ${raw}`;
+
 /** Parse a raw link input, or 400. A blank raw is the caller's business, not this helper's. */
-function requireParsedLink(raw: string) {
-  const parsed = parseTicketLink(raw);
-  if (!parsed) throw new TicketError("bad_request", `unusable link: ${raw}`);
+async function requireParsedLink(ctx: TenantContext, raw: string) {
+  const repo = await ticketLinkRepo(ctx);
+  const parsed = parseTicketLink(raw, repo);
+  if (!parsed) throw new TicketError("bad_request", unusableLink(raw, repo));
   return parsed;
 }
 
@@ -88,27 +116,29 @@ function requireParsedLink(raw: string) {
  * Writes, in one logical unit: the ticket row (status 'submitted'), its
  * assignees, the OPENING `ticket_events` row (from_status NULL → 'submitted',
  * which the detail screen renders as "opened this ticket"), and the parsed link
- * when one was given.
+ * when one was given. Returns the new ticket's per-org NUMBER (allocated by the organizations migration's trigger in the
+ * same statement as the insert).
  */
-export async function create_ticket(db: DB, input: TicketCreate, requester: string): Promise<number> {
-  const author = await requirePerson(db, requester);
+export async function create_ticket(ctx: TenantContext, input: TicketCreate, requester: string): Promise<number> {
+  const author = await requireMember(ctx, requester);
   // Validate everything BEFORE the first insert: a bad assignee or sprint must
   // not leave a half-built ticket behind (D1 has no transaction here).
   const assignees: string[] = [];
   for (const a of input.assignees) {
-    const handle = await requirePerson(db, a);
+    const handle = await requireMember(ctx, a);
     if (!assignees.includes(handle)) assignees.push(handle);
   }
   const sprintId = input.sprint_id ?? null;
-  if (sprintId !== null) await requireSprint(db, sprintId);
+  if (sprintId !== null) await requireSprint(ctx, sprintId);
   const rawLink = (input.link ?? "").trim();
-  const link = rawLink ? requireParsedLink(rawLink) : null;
+  const link = rawLink ? await requireParsedLink(ctx, rawLink) : null;
 
   const now = nowIso();
   const res = await run(
-    db,
-    `INSERT INTO tickets (title, body, category, priority, status, requester, parent_id, sprint_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'submitted', ?, NULL, ?, ?, ?)`,
+    ctx,
+    `INSERT INTO tickets (org_id, title, body, category, priority, status, requester, parent_id, sprint_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'submitted', ?, NULL, ?, ?, ?)`,
+    ctx.orgId,
     input.title,
     input.body,
     input.category,
@@ -121,13 +151,14 @@ export async function create_ticket(db: DB, input: TicketCreate, requester: stri
   const id = res.meta.last_row_id as number;
 
   for (const handle of assignees) {
-    await run(db, `INSERT OR IGNORE INTO ticket_assignees (ticket_id, login) VALUES (?, ?)`, id, handle);
+    await run(ctx, `INSERT OR IGNORE INTO ticket_assignees (org_id, ticket_id, login) VALUES (?, ?, ?)`, ctx.orgId, id, handle);
   }
 
   // The opening history row. Every later status change appends one more.
   await run(
-    db,
-    `INSERT INTO ticket_events (ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, NULL, 'submitted', ?)`,
+    ctx,
+    `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, NULL, 'submitted', ?)`,
+    ctx.orgId,
     id,
     author,
     now
@@ -135,13 +166,13 @@ export async function create_ticket(db: DB, input: TicketCreate, requester: stri
 
   if (link) {
     await run(
-      db,
-      `INSERT INTO ticket_links (ticket_id, url, kind, label, meta, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      id, link.url, link.kind, link.label, link.meta, author, now
+      ctx,
+      `INSERT INTO ticket_links (org_id, ticket_id, url, kind, label, meta, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ctx.orgId, id, link.url, link.kind, link.label, link.meta, author, now
     );
   }
 
-  return id;
+  return (await first<{ number: number }>(ctx, `SELECT number FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId))!.number;
 }
 
 /**
@@ -149,26 +180,27 @@ export async function create_ticket(db: DB, input: TicketCreate, requester: stri
  * table in shared/tickets.ts) — an illegal one throws and writes NOTHING, not
  * even the history row.
  */
-export async function transition_ticket(db: DB, id: number, to: TicketStatus, actor: string): Promise<void> {
-  const t = await getTicketRow(db, id);
-  const who = await requirePerson(db, actor);
+export async function transition_ticket(ctx: TenantContext, number: number, to: TicketStatus, actor: string): Promise<void> {
+  const t = await getTicketRow(ctx, number);
+  const id = t.id;
+  const who = await requireMember(ctx, actor);
   if (!canTransition(t.status, to)) {
     throw new TicketError("conflict", `illegal transition: ${t.status} → ${to}`);
   }
   const now = nowIso();
   await run(
-    db,
-    `INSERT INTO ticket_events (ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?)`,
-    id, who, t.status, to, now
+    ctx,
+    `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    ctx.orgId, id, who, t.status, to, now
   );
   // A move that is not a board drop clears the card's position: it lands at the
   // TOP of its new column (`boardOrder`), where a person will see it.
-  await run(db, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ? WHERE id = ?`, to, now, id);
+  await run(ctx, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ? WHERE id = ? AND org_id = ?`, to, now, id, ctx.orgId);
 }
 
 /**
- * A board drop: move a ticket to column `to` (a status) right after `afterId`
- * (null = the top), in one write. A status change must be legal per
+ * A board drop: move a ticket to column `to` (a status) right after ticket NUMBER
+ * `afterNumber` (null = the top), in one write. A status change must be legal per
  * `canTransition` and appends the same history row as `transition_ticket`; a drop
  * back into its own column only reorders. The position comes from the ONE
  * `placeInColumn` the board uses for its optimistic drop, over the WHOLE column —
@@ -176,28 +208,31 @@ export async function transition_ticket(db: DB, id: number, to: TicketStatus, ac
  * keep their order. When the column had to be renumbered, every renumbered row is
  * written in the same batch.
  */
-export async function move_ticket(db: DB, id: number, to: TicketStatus, afterId: number | null, actor: string): Promise<void> {
-  const t = await getTicketRow(db, id);
-  const who = await requirePerson(db, actor);
+export async function move_ticket(ctx: TenantContext, number: number, to: TicketStatus, afterNumber: number | null, actor: string): Promise<void> {
+  const t = await getTicketRow(ctx, number);
+  const id = t.id;
+  const who = await requireMember(ctx, actor);
   if (to !== t.status && !canTransition(t.status, to)) {
     throw new TicketError("conflict", `illegal transition: ${t.status} → ${to}`);
   }
+  // The column is read, placed and renumbered BY NUMBER (`number AS id`): the same key the board's
+  // optimistic drop places with, so the two always agree — ties included.
   const column = await all<{ id: number; board_rank: number | null; updated_at: string }>(
-    db,
-    `SELECT id, board_rank, updated_at FROM tickets WHERE status = ? AND id != ?`,
-    to, id
+    ctx,
+    `SELECT number AS id, board_rank, updated_at FROM tickets WHERE org_id = ? AND status = ? AND id != ?`,
+    ctx.orgId, to, id
   );
-  const { rank, renumber } = placeInColumn(column, afterId);
+  const { rank, renumber } = placeInColumn(column, afterNumber);
   const now = nowIso();
-  const stmts: D1PreparedStatement[] = [];
-  for (const [rid, r] of renumber ?? []) stmts.push(db.prepare(`UPDATE tickets SET board_rank = ? WHERE id = ?`).bind(r, rid));
+  const stmts: Stmt[] = [];
+  for (const [n, r] of renumber ?? []) stmts.push(stmt(ctx, `UPDATE tickets SET board_rank = ? WHERE number = ? AND org_id = ?`, r, n, ctx.orgId));
   if (to !== t.status) {
-    stmts.push(db.prepare(`INSERT INTO ticket_events (ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?)`)
-      .bind(id, who, t.status, to, now));
+    stmts.push(stmt(ctx, `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      ctx.orgId, id, who, t.status, to, now));
   }
-  stmts.push(db.prepare(`UPDATE tickets SET status = ?, board_rank = ?, updated_at = ? WHERE id = ?`).bind(to, rank, now, id));
+  stmts.push(stmt(ctx, `UPDATE tickets SET status = ?, board_rank = ?, updated_at = ? WHERE id = ? AND org_id = ?`, to, rank, now, id, ctx.orgId));
   // D1 caps a batch well above a board column; chunk anyway so a huge Done column never trips it.
-  for (let i = 0; i < stmts.length; i += 100) await db.batch(stmts.slice(i, i + 100));
+  for (let i = 0; i < stmts.length; i += 100) await batch(ctx, stmts.slice(i, i + 100));
 }
 
 /**
@@ -205,29 +240,29 @@ export async function move_ticket(db: DB, id: number, to: TicketStatus, afterId:
  * (ticket_id, login) PK / an unconditional DELETE), because the design's picker
  * toggles with no confirm step and may fire twice.
  */
-export async function toggle_assignee(db: DB, id: number, login: string, on: boolean): Promise<void> {
-  await getTicketRow(db, id);
-  const handle = await requirePerson(db, login);
+export async function toggle_assignee(ctx: TenantContext, number: number, login: string, on: boolean): Promise<void> {
+  const { id } = await getTicketRow(ctx, number);
+  const handle = await requireMember(ctx, login);
   if (on) {
-    await run(db, `INSERT OR IGNORE INTO ticket_assignees (ticket_id, login) VALUES (?, ?)`, id, handle);
+    await run(ctx, `INSERT OR IGNORE INTO ticket_assignees (org_id, ticket_id, login) VALUES (?, ?, ?)`, ctx.orgId, id, handle);
   } else {
-    await run(db, `DELETE FROM ticket_assignees WHERE ticket_id = ? AND login = ?`, id, handle);
+    await run(ctx, `DELETE FROM ticket_assignees WHERE ticket_id = ? AND login = ? AND org_id = ?`, id, handle, ctx.orgId);
   }
-  await touch(db, id, nowIso());
+  await touch(ctx, id, nowIso());
 }
 
 /** Attach one linked-work reference, parsed by the SHARED parser the SPA also uses. */
-export async function add_ticket_link(db: DB, id: number, raw: string, by: string): Promise<number> {
-  await getTicketRow(db, id);
-  const who = await requirePerson(db, by);
-  const link = requireParsedLink(raw);
+export async function add_ticket_link(ctx: TenantContext, number: number, raw: string, by: string): Promise<number> {
+  const { id } = await getTicketRow(ctx, number);
+  const who = await requireMember(ctx, by);
+  const link = await requireParsedLink(ctx, raw);
   const now = nowIso();
   const res = await run(
-    db,
-    `INSERT INTO ticket_links (ticket_id, url, kind, label, meta, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    id, link.url, link.kind, link.label, link.meta, who, now
+    ctx,
+    `INSERT INTO ticket_links (org_id, ticket_id, url, kind, label, meta, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ctx.orgId, id, link.url, link.kind, link.label, link.meta, who, now
   );
-  await touch(db, id, now);
+  await touch(ctx, id, now);
   return res.meta.last_row_id as number;
 }
 
@@ -243,14 +278,15 @@ export async function add_ticket_link(db: DB, id: number, raw: string, by: strin
  * the test harness truncates ticket_links), so keep it the only one. The DELETE
  * repeats `locked = 0`, so even a lock set between the read and the write holds.
  */
-export async function remove_ticket_link(db: DB, id: number, linkId: number): Promise<void> {
-  await getTicketRow(db, id);
-  const link = await first<{ locked: number }>(db, `SELECT locked FROM ticket_links WHERE id = ? AND ticket_id = ?`, linkId, id);
-  if (!link) throw new TicketError("not_found", `no such link on ticket ${id}: ${linkId}`);
+export async function remove_ticket_link(ctx: TenantContext, number: number, linkId: number): Promise<void> {
+  const { id } = await getTicketRow(ctx, number);
+  const link = await first<{ locked: number }>(
+    ctx, `SELECT locked FROM ticket_links WHERE id = ? AND ticket_id = ? AND org_id = ?`, linkId, id, ctx.orgId);
+  if (!link) throw new TicketError("not_found", `no such link on ticket ${number}: ${linkId}`);
   if (link.locked) throw new TicketError("forbidden", "this is the GitHub issue the ticket mirrors — its link cannot be removed");
-  const res = await run(db, `DELETE FROM ticket_links WHERE id = ? AND ticket_id = ? AND locked = 0`, linkId, id);
+  const res = await run(ctx, `DELETE FROM ticket_links WHERE id = ? AND ticket_id = ? AND org_id = ? AND locked = 0`, linkId, id, ctx.orgId);
   if (!res.meta.changes) throw new TicketError("forbidden", "this link is locked");
-  await touch(db, id, nowIso());
+  await touch(ctx, id, nowIso());
 }
 
 /**
@@ -261,26 +297,28 @@ export async function remove_ticket_link(db: DB, id: number, linkId: number): Pr
  * row — `ticket_events` audits status moves only. The tickets_fts_au trigger
  * re-indexes the new text.
  */
-export async function edit_ticket(db: DB, id: number, patch: TicketEdit, actor: string): Promise<void> {
-  const t = await getTicketRow(db, id);
-  await requirePerson(db, actor);
+export async function edit_ticket(ctx: TenantContext, number: number, patch: TicketEdit, actor: string): Promise<void> {
+  const t = await getTicketRow(ctx, number);
+  const id = t.id;
+  await requireMember(ctx, actor);
   const title = patch.title !== undefined ? patch.title.trim() : undefined;
   if (title !== undefined && !title) throw new TicketError("bad_request", "title is empty");
   if (title === undefined && patch.body === undefined) throw new TicketError("bad_request", "nothing to edit: pass title and/or body");
-  await run(db, `UPDATE tickets SET title = ?, body = ?, updated_at = ? WHERE id = ?`,
-    title ?? t.title, patch.body ?? t.body, nowIso(), id);
+  await run(ctx, `UPDATE tickets SET title = ?, body = ?, updated_at = ? WHERE id = ? AND org_id = ?`,
+    title ?? t.title, patch.body ?? t.body, nowIso(), id, ctx.orgId);
 }
 
 /** Move a ticket into a sprint, or back to the backlog (`null`). */
-export async function set_ticket_sprint(db: DB, id: number, sprintId: number | null): Promise<void> {
-  await getTicketRow(db, id);
-  if (sprintId !== null) await requireSprint(db, sprintId);
+export async function set_ticket_sprint(ctx: TenantContext, number: number, sprintId: number | null): Promise<void> {
+  const { id } = await getTicketRow(ctx, number);
+  if (sprintId !== null) await requireSprint(ctx, sprintId);
   const now = nowIso();
-  await run(db, `UPDATE tickets SET sprint_id = ?, updated_at = ? WHERE id = ?`, sprintId, now, id);
+  await run(ctx, `UPDATE tickets SET sprint_id = ?, updated_at = ? WHERE id = ? AND org_id = ?`, sprintId, now, id, ctx.orgId);
 }
 
 /**
- * Nest `childId` under `parentId`. Tickets nest EXACTLY ONE level, so four
+ * Nest ticket NUMBER `childNumber` under ticket NUMBER `parentNumber` (`parent_id` stores the
+ * parent's row id). Tickets nest EXACTLY ONE level, so four
  * rejections guard the write (plus the degenerate self-parent):
  *   - the parent itself has a parent      → that would be level two
  *   - the child already has a parent      → it is already nested somewhere
@@ -288,36 +326,36 @@ export async function set_ticket_sprint(db: DB, id: number, sprintId: number | n
  *   - the child has children of its own   → it is a parent, and would become level two
  * Every rejection leaves the database untouched.
  */
-export async function set_ticket_parent(db: DB, parentId: number, childId: number): Promise<void> {
-  const parent = await getTicketRow(db, parentId);
-  const child = await getTicketRow(db, childId);
+export async function set_ticket_parent(ctx: TenantContext, parentNumber: number, childNumber: number): Promise<void> {
+  const parent = await getTicketRow(ctx, parentNumber);
+  const child = await getTicketRow(ctx, childNumber);
 
   if (parent.id === child.id) throw new TicketError("conflict", "a ticket cannot be its own sub-ticket");
   if (parent.parent_id !== null) throw new TicketError("conflict", "tickets nest one level: this ticket already has a parent");
   if (child.parent_id !== null) throw new TicketError("conflict", "that ticket already has a parent");
   if (child.status === "done" || child.status === "declined") throw new TicketError("conflict", "that ticket is closed");
-  const kids = await first<{ n: number }>(db, `SELECT COUNT(*) AS n FROM tickets WHERE parent_id = ?`, child.id);
+  const kids = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE parent_id = ? AND org_id = ?`, child.id, ctx.orgId);
   if ((kids?.n ?? 0) > 0) throw new TicketError("conflict", "that ticket has sub-tickets of its own");
 
   const now = nowIso();
-  await run(db, `UPDATE tickets SET parent_id = ?, updated_at = ? WHERE id = ?`, parent.id, now, child.id);
+  await run(ctx, `UPDATE tickets SET parent_id = ?, updated_at = ? WHERE id = ? AND org_id = ?`, parent.id, now, child.id, ctx.orgId);
   // The parent's sub-ticket count changed, so it is a write on the parent too.
-  await touch(db, parent.id, now);
+  await touch(ctx, parent.id, now);
 }
 
 /** Append one comment. The body is trimmed and must survive it (min 1 char). */
-export async function add_ticket_comment(db: DB, id: number, body: string, author: string): Promise<number> {
-  await getTicketRow(db, id);
-  const who = await requirePerson(db, author);
+export async function add_ticket_comment(ctx: TenantContext, number: number, body: string, author: string): Promise<number> {
+  const { id } = await getTicketRow(ctx, number);
+  const who = await requireMember(ctx, author);
   const text = body.trim();
   if (!text) throw new TicketError("bad_request", "comment body is empty");
   const now = nowIso();
   const res = await run(
-    db,
-    `INSERT INTO ticket_comments (ticket_id, author, body, created_at) VALUES (?, ?, ?, ?)`,
-    id, who, text, now
+    ctx,
+    `INSERT INTO ticket_comments (org_id, ticket_id, author, body, created_at) VALUES (?, ?, ?, ?, ?)`,
+    ctx.orgId, id, who, text, now
   );
-  await touch(db, id, now);
+  await touch(ctx, id, now);
   return res.meta.last_row_id as number;
 }
 
@@ -328,23 +366,25 @@ export async function add_ticket_comment(db: DB, id: number, body: string, autho
  * there and the mirror would only re-create it on the next delivery or Sync.
  * Its assignees, links, comments and history go with it; its sub-tickets are
  * detached (top-level again, never deleted); an artifact linked to it keeps the
- * page and loses only the link. The number is never reissued (AUTOINCREMENT),
- * and `tickets_fts_ad` drops the search row.
+ * page and loses only the link. The number is never reissued (the org's counter
+ * only moves forward), and `tickets_fts_ad` drops the search row. The `id` it
+ * returns is the deleted ticket's NUMBER.
  */
-export async function delete_ticket(db: DB, id: number): Promise<{ id: number; title: string; detached: number }> {
-  const t = await getTicketRow(db, id);
+export async function delete_ticket(ctx: TenantContext, number: number): Promise<{ id: number; title: string; detached: number }> {
+  const t = await getTicketRow(ctx, number);
+  const id = t.id;
   if (t.source === "github") {
     throw new TicketError("forbidden", "this ticket mirrors a GitHub issue — close the issue on GitHub instead");
   }
   const now = nowIso();
-  const [detached] = await db.batch([
-    db.prepare(`UPDATE tickets SET parent_id = NULL, updated_at = ? WHERE parent_id = ?`).bind(now, id),
-    db.prepare(`DELETE FROM ticket_assignees WHERE ticket_id = ?`).bind(id),
-    db.prepare(`DELETE FROM ticket_links WHERE ticket_id = ?`).bind(id),
-    db.prepare(`DELETE FROM ticket_comments WHERE ticket_id = ?`).bind(id),
-    db.prepare(`DELETE FROM ticket_events WHERE ticket_id = ?`).bind(id),
-    db.prepare(`DELETE FROM artifact_links WHERE target_type = 'ticket' AND target_ref = ?`).bind(String(id)),
-    db.prepare(`DELETE FROM tickets WHERE id = ? AND source = 'canopy'`).bind(id),
+  const [detached] = await batch(ctx, [
+    stmt(ctx, `UPDATE tickets SET parent_id = NULL, updated_at = ? WHERE parent_id = ? AND org_id = ?`, now, id, ctx.orgId),
+    stmt(ctx, `DELETE FROM ticket_assignees WHERE ticket_id = ? AND org_id = ?`, id, ctx.orgId),
+    stmt(ctx, `DELETE FROM ticket_links WHERE ticket_id = ? AND org_id = ?`, id, ctx.orgId),
+    stmt(ctx, `DELETE FROM ticket_comments WHERE ticket_id = ? AND org_id = ?`, id, ctx.orgId),
+    stmt(ctx, `DELETE FROM ticket_events WHERE ticket_id = ? AND org_id = ?`, id, ctx.orgId),
+    stmt(ctx, `DELETE FROM artifact_links WHERE target_type = 'ticket' AND target_ref = ? AND org_id = ?`, String(number), ctx.orgId), // the ref is the NUMBER
+    stmt(ctx, `DELETE FROM tickets WHERE id = ? AND org_id = ? AND source = 'canopy'`, id, ctx.orgId),
   ]);
-  return { id, title: t.title, detached: detached.meta.changes ?? 0 };
+  return { id: number, title: t.title, detached: detached.meta.changes ?? 0 };
 }

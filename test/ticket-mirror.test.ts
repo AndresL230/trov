@@ -1,18 +1,18 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { all, first, run } from "../src/db";
+import { all, first, run } from "./helpers/db";
 import type { Env } from "../src/env";
-import { handleGithubWebhook } from "../src/webhook";
 import { ticketFromIssue, mirrorIssue } from "../src/tools/ticket-mirror";
-import { runBackfill } from "../src/tools/backfill";
+import { handleGithubWebhook, runBackfill } from "./helpers/org-config";
 import { listOpenAssignedIssues } from "../src/tools/mywork";
 import { transition_ticket } from "../src/tools/tickets";
 
+import { systemCtx, platformCtx } from "./helpers/tenant";
 // The GitHub issue → ticket mirror (0032). Every assertion reads ROWS — tickets,
 // ticket_links, ticket_events, ticket_assignees, events — never a mock call.
 
 const SECRET = "test-webhook-secret"; // matches vitest.config.ts binding
-const REPO = "SaplingLearn/sapling";  // wrangler.toml's GITHUB_REPO, which the pool env carries
+const REPO = "SaplingLearn/sapling";  // the pool env's GITHUB_REPO (vitest.config.ts)
 
 async function sign(body: string): Promise<string> {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -61,7 +61,7 @@ interface T { id: number; title: string; body: string; status: string; priority:
 const tickets = () => all<T>(env.DB, `SELECT * FROM tickets ORDER BY id`);
 const links = () => all<{ ticket_id: number; url: string; kind: string; label: string; locked: number; created_by: string }>(env.DB, `SELECT * FROM ticket_links ORDER BY id`);
 const events = () => all<{ ticket_id: number; actor: string; from_status: string | null; to_status: string }>(env.DB, `SELECT * FROM ticket_events ORDER BY id`);
-const assignees = () => all<{ ticket_id: number; login: string }>(env.DB, `SELECT * FROM ticket_assignees ORDER BY login`);
+const assignees = () => all<{ ticket_id: number; login: string }>(env.DB, `SELECT ticket_id, login FROM ticket_assignees ORDER BY login`);
 const counts = async () => ({ tickets: (await tickets()).length, links: (await links()).length, events: (await events()).length, assignees: (await assignees()).length });
 
 describe("ticketFromIssue — the pure mapping", () => {
@@ -220,7 +220,7 @@ describe("the mirror, through the webhook", () => {
     await deliver(issuePayload("opened", { updated_at: "2026-09-20T10:00:00Z" }));
     const id = (await tickets())[0].id;
     await run(env.DB, `UPDATE tickets SET title = 'Trov title', body = 'Trov body' WHERE id = ?`, id);
-    await transition_ticket(env.DB, id, "in_progress", "meilin");
+    await transition_ticket(systemCtx(), id, "in_progress", "meilin");
 
     await deliver(issuePayload("edited", { title: "[P3] GitHub retitled", body: "GitHub body", updated_at: "2026-09-20T11:00:00Z" }));
     await deliver(issuePayload("assigned", { assignees: ["Darkest-Teddy"], updated_at: "2026-09-20T12:00:00Z" }));
@@ -245,9 +245,9 @@ describe("the mirror, through the webhook", () => {
 describe("capture changes for deleted / transferred", () => {
   it("a deleted issue leaves the To-do even though its snapshot still reads open", async () => {
     await deliver(issuePayload("assigned", { assignees: ["AndresL230"], updated_at: "2026-09-20T10:00:00Z" }));
-    expect(await listOpenAssignedIssues(env.DB, ["AndresL230"])).toHaveLength(1);
+    expect(await listOpenAssignedIssues(systemCtx(), ["AndresL230"])).toHaveLength(1);
     await deliver(issuePayload("deleted", { assignees: ["AndresL230"], updated_at: "2026-09-20T11:00:00Z" }));
-    expect(await listOpenAssignedIssues(env.DB, ["AndresL230"])).toHaveLength(0);
+    expect(await listOpenAssignedIssues(systemCtx(), ["AndresL230"])).toHaveLength(0);
   });
 
   it("the raw snapshot carries state_reason", async () => {
@@ -260,16 +260,16 @@ describe("capture changes for deleted / transferred", () => {
 describe("mirrorIssue directly", () => {
   it("matches GITHUB_REPO without case, and keys the webhook's and a backfill's spelling to ONE ticket", async () => {
     // GitHub's own full_name for this repo is "SaplingLearn/Sapling"; wrangler.toml says "SaplingLearn/sapling".
-    expect(await mirrorIssue(env.DB, REPO, issuePayload("opened", { repo: "SaplingLearn/Sapling" }))).toBe("created");
-    expect(await mirrorIssue(env.DB, REPO, issuePayload("opened", { repo: REPO }))).toBe("unchanged");
+    expect(await mirrorIssue(systemCtx(), platformCtx(), REPO, issuePayload("opened", { repo: "SaplingLearn/Sapling" }))).toBe("created");
+    expect(await mirrorIssue(systemCtx(), platformCtx(), REPO, issuePayload("opened", { repo: REPO }))).toBe("unchanged");
     expect((await tickets()).map((t) => t.source_ref)).toEqual([`${REPO}#214`]);
   });
 
   it("is out of scope for an unset repo and a foreign one", async () => {
-    expect(await mirrorIssue(env.DB, undefined, issuePayload("opened"))).toBe("out_of_scope");
-    expect(await mirrorIssue(env.DB, "o/r", issuePayload("opened"))).toBe("out_of_scope");
-    expect(await mirrorIssue(env.DB, REPO, issuePayload("opened"))).toBe("created");
-    expect(await mirrorIssue(env.DB, REPO, issuePayload("opened"))).toBe("unchanged");
+    expect(await mirrorIssue(systemCtx(), platformCtx(), undefined, issuePayload("opened"))).toBe("out_of_scope");
+    expect(await mirrorIssue(systemCtx(), platformCtx(), "o/r", issuePayload("opened"))).toBe("out_of_scope");
+    expect(await mirrorIssue(systemCtx(), platformCtx(), REPO, issuePayload("opened"))).toBe("created");
+    expect(await mirrorIssue(systemCtx(), platformCtx(), REPO, issuePayload("opened"))).toBe("unchanged");
   });
 });
 

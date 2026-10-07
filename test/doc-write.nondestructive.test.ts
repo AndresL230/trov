@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import { systemCtx } from "./helpers/tenant";
 import { propose_doc_update } from "../src/tools/writes";
-import { first, all } from "../src/db";
+import { first, all } from "./helpers/db";
 import type { DocRow, DocVersionRow } from "@shared/rows";
 
 describe("non-destructive doc write", () => {
@@ -15,7 +16,7 @@ describe("non-destructive doc write", () => {
       confidence: "high" as const,
     };
 
-    const out = await propose_doc_update(env.DB, proposal, "andres");
+    const out = await propose_doc_update(systemCtx(), proposal, "andres");
     expect(out).toEqual({ slug: "architecture", version: 1, status: "staged" });
 
     const doc = await first<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = ?`, "architecture");
@@ -36,7 +37,7 @@ describe("non-destructive doc write", () => {
 
   it("derives a humanized title when the proposal omits one", async () => {
     const out = await propose_doc_update(
-      env.DB,
+      systemCtx(),
       { slug: "auth-flow", section: "reference", body: "x", change_summary: "s", confidence: "high" },
       "andres"
     );
@@ -47,8 +48,8 @@ describe("non-destructive doc write", () => {
 
   it("appends v2 on a second proposal and still promotes nothing", async () => {
     const base = { slug: "architecture", section: "reference", title: "Architecture", confidence: "high" as const };
-    await propose_doc_update(env.DB, { ...base, body: "# v1", change_summary: "first" }, "andres");
-    const second = await propose_doc_update(env.DB, { ...base, body: "# v2", change_summary: "second" }, "andres");
+    await propose_doc_update(systemCtx(), { ...base, body: "# v1", change_summary: "first" }, "andres");
+    const second = await propose_doc_update(systemCtx(), { ...base, body: "# v2", change_summary: "second" }, "andres");
     expect(second.version).toBe(2);
 
     const doc = await first<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = ?`, "architecture");

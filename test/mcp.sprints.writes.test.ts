@@ -1,21 +1,27 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
-import { first } from "../src/db";
+import { first } from "./helpers/db";
 import { create_sprint } from "../src/tools/sprints";
 import { create_ticket } from "../src/tools/tickets";
 import { TicketCreate } from "@shared/tickets";
 import { SprintCreate, type SprintDetail, type SprintView } from "@shared/sprints";
 import type { SprintRow } from "@shared/rows";
 import { seedPerson } from "./helpers/persons";
+import { bearerCtx, systemCtx } from "./helpers/tenant";
+import { addOrgRepo } from "./helpers/org-config";
+
+// A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
+// so the suite's org has SaplingLearn's connected, as 0042_organizations seeds it in production.
+beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 
 // The FIVE sprint write tools, driven through the REAL registered closures.
 // They are open to EVERY principal, matching the web (every sprint route sits
 // under sessionGate with no adminGate). Only update_plan stays admin-only.
-// ADMIN_LOGINS binds only "admin-user" (vitest.config.ts).
+// Only "admin-user" is bound as an org admin (see withClient).
 
 const ADMIN = "admin-user";
 const SPRINT_WRITE_TOOLS = [
@@ -23,7 +29,7 @@ const SPRINT_WRITE_TOOLS = [
 ] as const;
 
 async function withClient<T>(handle: string, fn: (client: Client) => Promise<T>): Promise<T> {
-  const server = buildTrovMcpServer(env as unknown as Env, { handle });
+  const server = buildTrovMcpServer(env as unknown as Env, await bearerCtx(handle, handle === "admin-user" ? "admin" : undefined));
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
@@ -56,7 +62,7 @@ function failed(r: { text: string; isError?: boolean }) {
 }
 
 const seedSprint = (label: string, due = "2026-09-01") =>
-  create_sprint(env.DB, SprintCreate.parse({ label, due }), ADMIN);
+  create_sprint(systemCtx(), SprintCreate.parse({ label, due }), ADMIN);
 
 describe("the sprint write surface is open to every member", () => {
   it("registers all five for an admin", async () => {
@@ -225,8 +231,8 @@ describe("delete_sprint", () => {
     const seeded = await seedSprint("Doomed");
     ok(await callTool("andres", "add_sprint_resource", { id: seeded.id, raw: "#214" }));
     await env.DB.prepare(`INSERT INTO sprint_progress (sprint_id, closed, total, source, computed_at) VALUES (?, 1, 2, 'event', '2026-09-01T00:00:00.000Z')`).bind(seeded.id).run();
-    const t1 = await create_ticket(env.DB, TicketCreate.parse({ title: "one", sprint_id: seeded.id }), "andres");
-    const t2 = await create_ticket(env.DB, TicketCreate.parse({ title: "two", sprint_id: seeded.id }), "andres");
+    const t1 = await create_ticket(systemCtx(), TicketCreate.parse({ title: "one", sprint_id: seeded.id }), "andres");
+    const t2 = await create_ticket(systemCtx(), TicketCreate.parse({ title: "two", sprint_id: seeded.id }), "andres");
 
     const res = ok<{ id: number; label: string; moved: number }>(await callTool("andres", "delete_sprint", { id: seeded.id }));
     expect(res).toEqual({ id: seeded.id, label: "Doomed", moved: 2 });
@@ -246,7 +252,7 @@ describe("delete_sprint", () => {
     await seedPerson("andres");
     const doomed = await seedSprint("Doomed");
     const kept = await seedSprint("Kept");
-    const t = await create_ticket(env.DB, TicketCreate.parse({ title: "stays", sprint_id: kept.id }), "andres");
+    const t = await create_ticket(systemCtx(), TicketCreate.parse({ title: "stays", sprint_id: kept.id }), "andres");
     ok(await callTool("andres", "delete_sprint", { id: doomed.id }));
     expect(await first(env.DB, `SELECT id FROM sprints WHERE id = ?`, kept.id)).not.toBeNull();
     const row = await first<{ sprint_id: number | null }>(env.DB, `SELECT sprint_id FROM tickets WHERE id = ?`, t);

@@ -27,9 +27,29 @@ describe("parseHash", () => {
     for (const s of ["mywork", "feed", "docs", "review", "search", "settings", "guide", "unsubscribe", "handoffs", "prompts"]) {
       expect(parseHash(`#${s}`)).toEqual({ screen: s, ticketId: null, sprintId: null });
     }
-    // Maintenance now names its sub-page (Unplaced is the bare hash).
     expect(parseHash("#roadmap")).toEqual({ screen: "roadmap", ticketId: null, sprintId: null, roadmapTab: "narrative" });
-    expect(parseHash("#maintenance")).toEqual({ screen: "maintenance", ticketId: null, sprintId: null, maintTab: "unplaced" });
+    // Triage › Unplaced: the screen is still `maintenance`; its address is `#unplaced`.
+    expect(parseHash("#unplaced")).toEqual({ screen: "maintenance", ticketId: null, sprintId: null });
+    expect(hashForRoute({ screen: "maintenance", ticketId: null, sprintId: null })).toBe("#unplaced");
+  });
+
+  it("the old Maintenance addresses still land: the queue, and its two tabs that moved into Org settings", () => {
+    const base = { ticketId: null, sprintId: null };
+    expect(parseHash("#maintenance")).toEqual({ screen: "maintenance", ...base });
+    expect(parseHash("#maintenance/unplaced")).toEqual({ screen: "maintenance", ...base });
+    // Identity (matching a login to a person) and People (the directory) are Org settings › Members.
+    expect(parseHash("#maintenance/identity")).toEqual({ screen: "org", ...base, orgTab: "members" });
+    expect(parseHash("#maintenance/people")).toEqual({ screen: "org", ...base, orgTab: "members" });
+    // …and the address bar is rewritten to where they are now.
+    expect(hashForRoute(parseHash("#maintenance"))).toBe("#unplaced");
+    expect(hashForRoute(parseHash("#maintenance/people"))).toBe("#org/members");
+    expect(hashForRoute(parseHash("#maintenance/identity"))).toBe("#org/members");
+    expect(parseHash("#unplaced/identity")).toEqual({ screen: "mywork", ...base });
+  });
+
+  it("Org settings has a Notifications tab", () => {
+    expect(parseHash("#org/notifications")).toEqual({ screen: "org", ticketId: null, sprintId: null, orgTab: "notifications" });
+    expect(hashForRoute(parseHash("#org/notifications"))).toBe("#org/notifications");
   });
 
   it("keeps the Roadmap tab in the hash, so a reload stays on it", () => {
@@ -43,7 +63,7 @@ describe("parseHash", () => {
     for (const tab of ["narrative", "timeline"] as const) expect(parseHash(hashForRoute({ ...base, roadmapTab: tab }))).toEqual({ ...base, roadmapTab: tab });
   });
 
-  it("parses the handoff, prompt, new-doc and maintenance sub-routes, and round-trips them", () => {
+  it("parses the handoff, prompt and new-doc sub-routes, and round-trips them", () => {
     const base = { ticketId: null, sprintId: null };
     const cases: [string, object][] = [
       ["#handoffs/new", { screen: "newhandoff", ...base }],
@@ -53,8 +73,6 @@ describe("parseHash", () => {
       ["#prompts/adr-draft/edit", { screen: "promptedit", ...base, promptSlug: "adr-draft", promptMode: "edit" }],
       ["#prompts/adr-draft/version", { screen: "promptedit", ...base, promptSlug: "adr-draft", promptMode: "version" }],
       ["#docs/new", { screen: "newdoc", ...base }],
-      ["#maintenance/identity", { screen: "maintenance", ...base, maintTab: "identity" }],
-      ["#maintenance/people", { screen: "maintenance", ...base, maintTab: "people" }],
     ];
     for (const [hash, route] of cases) {
       expect(parseHash(hash), hash).toEqual(route);

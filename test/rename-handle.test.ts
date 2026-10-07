@@ -1,11 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
+import { platformCtx, systemCtx, mintTokenFor, ORG_A } from "./helpers/tenant";
 import { app } from "../src/routes";
-import { all, run, nowIso } from "../src/db";
+import { all, first, run, nowIso } from "./helpers/db";
 import { renamePerson, HANDLE_COLUMNS, getPerson } from "../src/auth/persons";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { createSession } from "../src/auth/session";
-import { mintToken } from "../src/auth/tokens";
 import { createInvite, acceptInvite } from "../src/auth/invites";
 import { ingestEvent, ingestFeedEntry } from "../src/consumer";
 import { createPage as createArtifact, setStatus as setArtifactStatus, ratify as ratifyArtifact, mintUploadToken, deletePage as deleteArtifact } from "../src/tools/artifacts";
@@ -16,6 +16,11 @@ import {
   ensure_identity_task, map_identity,
 } from "../src/tools/writes";
 import { create_ticket, add_ticket_comment } from "../src/tools/tickets";
+import { addOrgRepo } from "./helpers/org-config";
+
+// A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
+// so the suite's org has SaplingLearn's connected, as 0042_organizations seeds it in production.
+beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 
 const post = (path: string, c: string, body: unknown) =>
   app.request(path, { method: "POST", headers: { cookie: c, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
@@ -24,77 +29,80 @@ const post = (path: string, c: string, body: unknown) =>
  *  where one exists, minimal direct inserts otherwise. */
 async function seedEveryHandleColumn(handle: string): Promise<void> {
   await seedPerson(handle); // persons + identities.person (github identity)
-  await createSession(env.DB, handle); // sessions.person
-  await mintToken(env.DB, handle); // mcp_tokens.person
-  await append_feed(env.DB, { author: handle, summary: "did a thing" }); // feed.author
+  await createSession(platformCtx(), handle); // sessions.person
+  await mintTokenFor(handle); // mcp_tokens.person
+  await append_feed(systemCtx(), { author: handle, summary: "did a thing" }); // feed.author
   await propose_doc_update(
-    env.DB,
+    systemCtx(),
     { slug: "rename-test-doc", section: "reference", title: "T", body: "b", change_summary: "s", confidence: "high" },
     handle
   ); // docs.updated_by + docs.owner (0035) + doc_versions.created_by
-  await stage_adr(env.DB, { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, handle); // adrs.created_by
+  await stage_adr(systemCtx(), { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, handle); // adrs.created_by
   // sprints.created_by + sprints.lead — the admin plan write is the real writer
   // of both (0025 added `lead`; the proposal path that used to create these rows
   // is gone along with the whole proposal queue).
   await write_plan(
-    env.DB,
+    systemCtx(),
     { narrative: "n", sprints: [{ label: "Rename test sprint", due: "2026-01-01", status: "upcoming", lead: handle }] },
     handle
   );
-  const tid = await route_triage(env.DB, { raw: "x", reason: "y" });
-  await resolve_triage(env.DB, tid, handle); // needs_triage.resolved_by
+  const tid = await route_triage(systemCtx(), { raw: "x", reason: "y" });
+  await resolve_triage(systemCtx(), tid, handle); // needs_triage.resolved_by
   // needs_triage.source_author: route an out-of-vocab feed entry through the REAL
   // gate (src/consumer.ts ingestFeedEntry), not a direct insert — this is the
   // actual writer of that column on every triage-routing path.
   await ingestFeedEntry(
-    env.DB,
+    systemCtx(),
     { summary: "bad", body: "b", tags: ["not-a-real-tag"], artifacts: { prs: [], commits: [], issues: [] } },
     handle
   ); // needs_triage.source_author
-  await ensure_identity_task(env.DB, "unmapped-login-1");
-  await map_identity(env.DB, "unmapped-login-1", handle, handle); // identities.linked_by + identity_tasks.resolved_by
+  await ensure_identity_task(systemCtx(), platformCtx(), "unmapped-login-1");
+  await map_identity(systemCtx(), platformCtx(), "unmapped-login-1", handle, handle); // org_login_map.person / mapped_by + identity_tasks.resolved_by
+  // identities.linked_by: the map no longer writes `identities` (Phase 4, C-1) — a second provider the person linked themselves.
+  await run(env.DB, `INSERT INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES ('google', ?, ?, ?, ?, ?)`, `g-${handle}`, `${handle}@x.io`, handle, nowIso(), handle);
   await ingestEvent(
-    env.DB,
+    systemCtx(),
+    platformCtx(),
     { semantic_key: "gh:pr:777:merged", event_type: "pr_merged", ref_number: 777, subject_login: "someone-else", raw: "{}", provenance: "backfill" },
     handle
   ); // events.recorded_by
-  await write_plan(env.DB, { narrative: "n", sprints: [] }, handle); // plan.updated_by + plan_versions.created_by
+  await write_plan(systemCtx(), { narrative: "n", sprints: [] }, handle); // plan.updated_by + plan_versions.created_by
   // Tickets (0024): tickets.requester + ticket_assignees.login + ticket_links.created_by
   // + ticket_comments.author + ticket_events.actor — all five through the REAL
   // writers (src/tools/tickets.ts, Phase 2). create_ticket alone covers requester,
   // the assignee, the link and the OPENING event row; the comment writer covers
   // ticket_comments.author.
   const ticketId = await create_ticket(
-    env.DB,
+    systemCtx(),
     {
       title: "Rename test ticket", body: "b", category: "other", priority: "normal",
       assignees: [handle], link: "#1",
     },
     handle
   );
-  await add_ticket_comment(env.DB, ticketId, "looking into it", handle);
+  await add_ticket_comment(systemCtx(), ticketId, "looking into it", handle);
   await run(env.DB, `INSERT INTO notification_policy (kind, default_cadence, enabled, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)`,
     "rename_test_kind", "off", 1, nowIso(), handle); // notification_policy.updated_by
   await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES (?, ?, ?, ?)`,
     handle, "rename_test_kind", "off", nowIso()); // notification_prefs.user_id
   await run(env.DB, `INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     `${handle}:daily:w1`, handle, "daily", "w1", "[]", "pending", nowIso()); // notification_outbox.user_id
-  await createInvite(env.DB, { email: "old-me-invite@test.io", name: null, invitedBy: handle }); // invites.invited_by
-  await acceptInvite(env.DB, "old-me-invite@test.io", handle); // invites.accepted_by
+  await createInvite(platformCtx(), { email: "old-me-invite@test.io", name: null, invitedBy: handle }); // invites.invited_by
+  await acceptInvite(platformCtx(), "old-me-invite@test.io", handle); // invites.accepted_by
   // Artifacts (0030), through the REAL writers (src/tools/artifacts.ts): the create
   // covers artifact_pages.author_id + artifact_versions.created_by + (with a link)
   // artifact_links.created_by; publish + ratify covers ratified_by; a minted upload
   // token covers artifact_upload_tokens.principal.
-  const art = await createArtifact(env.DB, {
+  const art = await createArtifact(systemCtx(), {
     title: "Rename test artifact", kind: "markdown", area: "ui", content: "# hi",
     links: [{ target_type: "ticket", target_ref: String(ticketId) }],
   }, handle);
-  await setArtifactStatus(env.DB, art.slug, "published", handle);
-  await ratifyArtifact(env.DB, art.slug, 1, handle);
-  await mintUploadToken(env.DB, { kind: "file", size_bytes: 1, sha256: "e".repeat(64), title: "Rename test upload", area: "ui" }, handle);
+  await setArtifactStatus(systemCtx(), art.slug, "published", handle);
+  await ratifyArtifact(systemCtx(), art.slug, 1, handle);
+  await mintUploadToken(systemCtx(), { kind: "file", size_bytes: 1, sha256: "e".repeat(64), title: "Rename test upload", area: "ui" }, handle);
   // artifact_pages.deleted_by (0035 PART D): a second page, soft-deleted by the person.
-  const gone = await createArtifact(env.DB, { title: "Rename test deleted artifact", kind: "markdown", area: "ui", content: "# bye" }, handle);
-  await deleteArtifact(env.DB, gone.slug, handle, false);
+  const gone = await createArtifact(systemCtx(), { title: "Rename test deleted artifact", kind: "markdown", area: "ui", content: "# bye" }, handle);
+  await deleteArtifact(systemCtx(), gone.slug, handle, false);
   // Handoffs + Prompt Library (0028): direct inserts for sender / recipient /
   // claimed_by and the prompt's author plus its version's (the real writers
   // take the principal from auth, which this seed does not have).
@@ -110,13 +118,34 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   const grant = await run(env.DB, `INSERT INTO oauth_grants (person, client_id, client_name, created_at) VALUES (?, 'rename-client', 'C', ?)`, handle, nowIso());
   await run(env.DB, `INSERT INTO oauth_codes (code_hash, client_id, person, grant_id, redirect_uri, code_challenge, created_at, expires_at) VALUES (?, 'rename-client', ?, ?, 'http://localhost/cb', 'x', ?, ?)`,
     `rename-code-${handle}`, handle, grant.meta.last_row_id, nowIso(), nowIso());
+  // Multitenancy (0042_organizations): every org table that stores a handle — direct inserts; their writers land in
+  // later phases. One org the person created, their membership, an invite they sent and answered, an
+  // attribution they made, and the integration rows they last touched.
+  const org = `org_rename_${handle.replace(/[^a-z0-9]/g, "")}`;
+  await run(env.DB, `INSERT INTO orgs (id, slug, name, created_at, created_by) VALUES (?, ?, 'Rename', ?, ?)`, org, `rn-${handle}`, nowIso(), handle);
+  await run(env.DB, `INSERT INTO memberships (org_id, user_id, role, created_at, created_by) VALUES (?, ?, 'owner', ?, ?)`, org, handle, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_invites (org_id, github_login, invited_by, status, created_at, responded_at, responded_by) VALUES (?, 'someone', ?, 'accepted', ?, ?, ?)`, org, handle, nowIso(), nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_login_map (org_id, github_login, person, mapped_at, mapped_by) VALUES (?, 'rename-gh', ?, ?, ?)`, org, handle, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, created_at, created_by) VALUES (?, ?, 'o/r', ?, ?)`, `hook_${org}`, org, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_environments (org_id, key, position, label, branch, created_at, updated_at, updated_by) VALUES (?, 'staging', 0, 'staging', 'main', ?, ?, ?)`, org, nowIso(), nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_keys (org_id, key_version, wrapped_key, wrap_iv, kek_fingerprint, created_at) VALUES (?, 1, 'k', 'iv', 'fp', ?)`, org, nowIso());
+  await run(env.DB, `INSERT INTO org_secrets (org_id, kind, scope, ciphertext, iv, key_version, created_by, created_at) VALUES (?, 'github_token', '', 'c', 'iv', 1, ?, ?)`, org, handle, nowIso());
+  await run(env.DB, `INSERT INTO org_integration_config (org_id, kind, scope, config, updated_at, updated_by) VALUES (?, 'cloudflare_analytics', '', '{}', ?, ?)`, org, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_audit (org_id, actor, action, target, at) VALUES (?, ?, 'secret.set', 'github_token:', ?)`, org, handle, nowIso());
+  await run(env.DB, `INSERT INTO platform_admins (person, granted_at, granted_by) VALUES (?, ?, ?)`, handle, nowIso(), handle); // 0042_organizations
+  // 0042_organizations: orgs.suspended_by, org_usage_daily.actor, org_admin_audit.actor
+  await run(env.DB, `UPDATE orgs SET suspended_at = ?, suspended_by = ? WHERE id = 'org_b'`, nowIso(), handle);
+  // 0042_organizations: orgs.logo_by — who uploaded the org's image
+  await run(env.DB, `UPDATE orgs SET logo_sha = ?, logo_source = 'upload', logo_by = ?, logo_at = ? WHERE id = 'org_b'`, "a".repeat(64), handle, nowIso());
+  await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-01-01', 'api_read', ?, 1, ?)`, org, handle, nowIso());
+  await run(env.DB, `INSERT INTO org_admin_audit (org_id, actor, action, target, at) VALUES (?, ?, 'org.update', 'settings', ?)`, org, handle, nowIso());
 }
 
 describe("renamePerson", () => {
   it("rewrites every HANDLE_COLUMNS entry atomically, and leaves referential integrity intact", async () => {
     await seedEveryHandleColumn("old-me");
 
-    const result = await renamePerson(env.DB, "old-me", "new-me");
+    const result = await renamePerson(platformCtx(), "old-me", "new-me");
     expect(result).toEqual({ ok: true });
 
     for (const [table, column] of HANDLE_COLUMNS) {
@@ -126,8 +155,8 @@ describe("renamePerson", () => {
       expect(newCount[0].n, `${table}.${column} has no new-me row`).toBeGreaterThanOrEqual(1);
     }
 
-    expect(await getPerson(env.DB, "new-me")).not.toBeNull();
-    expect(await getPerson(env.DB, "old-me")).toBeNull();
+    expect(await getPerson(platformCtx(), "new-me")).not.toBeNull();
+    expect(await getPerson(platformCtx(), "old-me")).toBeNull();
 
     const fkViolations = await all(env.DB, `PRAGMA foreign_key_check`);
     expect(fkViolations).toEqual([]);
@@ -143,7 +172,7 @@ describe("renamePerson", () => {
       expect(HANDLE_COLUMNS.some(([t, c]) => t === "sprints" && c === column), `sprints.${column} missing from HANDLE_COLUMNS`).toBe(true);
     }
 
-    expect(await renamePerson(env.DB, "old-me", "new-me")).toEqual({ ok: true });
+    expect(await renamePerson(platformCtx(), "old-me", "new-me")).toEqual({ ok: true });
 
     for (const column of ["created_by", "lead"] as const) {
       const old = await all<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM sprints WHERE ${column} = ?`, "old-me");
@@ -173,7 +202,7 @@ describe("renamePerson", () => {
       expect(HANDLE_COLUMNS.some(([t, c]) => t === table && c === column), `${table}.${column} missing from HANDLE_COLUMNS`).toBe(true);
     }
 
-    expect(await renamePerson(env.DB, "old-me", "new-me")).toEqual({ ok: true });
+    expect(await renamePerson(platformCtx(), "old-me", "new-me")).toEqual({ ok: true });
 
     for (const [table, column] of TICKET_HANDLE_COLUMNS) {
       const old = await all<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM ${table} WHERE ${column} = ?`, "old-me");
@@ -186,11 +215,11 @@ describe("renamePerson", () => {
   it("is case-insensitive: a same-value-different-case target is rejected as 'same', a genuinely different value renames", async () => {
     // The default seeded person (test/helpers seed) is "AndresL230" — check the
     // case-insensitive "same" rejection against it before mutating it.
-    expect(await renamePerson(env.DB, "andresl230", "AndresL230")).toEqual({ ok: false, reason: "same" });
+    expect(await renamePerson(platformCtx(), "andresl230", "AndresL230")).toEqual({ ok: false, reason: "same" });
 
-    expect(await renamePerson(env.DB, "AndresL230", "andres")).toEqual({ ok: true });
-    expect(await getPerson(env.DB, "andres")).not.toBeNull();
-    expect(await getPerson(env.DB, "AndresL230")).toBeNull();
+    expect(await renamePerson(platformCtx(), "AndresL230", "andres")).toEqual({ ok: true });
+    expect(await getPerson(platformCtx(), "andres")).not.toBeNull();
+    expect(await getPerson(platformCtx(), "AndresL230")).toBeNull();
   });
 
   it("refuses: taken, invalid, reserved, not_found", async () => {
@@ -199,10 +228,10 @@ describe("renamePerson", () => {
 
     // "taken" is case-insensitive: a validly-formatted (lowercase) target still
     // collides with an existing person stored in a different case.
-    expect(await renamePerson(env.DB, "old-me", "taken-person")).toEqual({ ok: false, reason: "taken" });
-    expect(await renamePerson(env.DB, "old-me", "Admin")).toEqual({ ok: false, reason: "invalid" });
-    expect(await renamePerson(env.DB, "old-me", "admin")).toEqual({ ok: false, reason: "reserved" });
-    expect(await renamePerson(env.DB, "no-such-person", "some-new-handle")).toEqual({ ok: false, reason: "not_found" });
+    expect(await renamePerson(platformCtx(), "old-me", "taken-person")).toEqual({ ok: false, reason: "taken" });
+    expect(await renamePerson(platformCtx(), "old-me", "Admin")).toEqual({ ok: false, reason: "invalid" });
+    expect(await renamePerson(platformCtx(), "old-me", "admin")).toEqual({ ok: false, reason: "reserved" });
+    expect(await renamePerson(platformCtx(), "no-such-person", "some-new-handle")).toEqual({ ok: false, reason: "not_found" });
   });
 });
 
@@ -240,17 +269,20 @@ describe("POST /auth/me/handle", () => {
   });
 });
 
-describe("POST /auth/me/handle — admin guard", () => {
-  it("403s when the old handle is admin-allowlisted and the new one isn't; row unchanged", async () => {
+// Phase 4 (§5.2): there is no allowlist of handles to fall out of — the org role lives on the membership
+// and the superadmin grant on `platform_admins`, and a rename carries both (HANDLE_COLUMNS).
+describe("POST /auth/me/handle — an admin's rename", () => {
+  it("an org admin renames freely and is still that org's admin afterwards", async () => {
     const cookie = await cookieFor("admin-user");
     const res = await post("/auth/me/handle", cookie, { handle: "someone" });
-    expect(res.status).toBe(403);
-    expect(await res.json()).toEqual({ error: "admin_handle_not_allowlisted" });
-    expect(await getPerson(env.DB, "admin-user")).not.toBeNull();
-    expect(await getPerson(env.DB, "someone")).toBeNull();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, handle: "someone" });
+    expect(await getPerson(platformCtx(), "admin-user")).toBeNull();
+    expect(await first(env.DB, `SELECT user_id, role FROM memberships WHERE org_id = ? AND user_id = 'someone'`, ORG_A)).toEqual({ user_id: "someone", role: "admin" });
+    expect((await app.request("/invites", { headers: { cookie } }, env)).status).toBe(200); // an admin-only route, same session
   });
 
-  it("the case-insensitive 'same' check runs before the admin guard: an admin re-submitting their own handle gets 400, not 403", async () => {
+  it("an admin re-submitting their own handle gets 400 handle_same", async () => {
     const cookie = await cookieFor("admin-user");
     const res = await post("/auth/me/handle", cookie, { handle: "admin-user" });
     expect(res.status).toBe(400);
