@@ -448,19 +448,10 @@ describe("Admins & limits", () => {
     expect(html).toContain('role="alert"');
     expect(html).toContain("is the only superadmin");
   });
-  it("the org-creation limit: person + number, the default, and what happened", () => {
-    const blank = adminsTab(admins(), null);
-    expect(blank).toContain('<label for="plat-limit-handle"');
-    expect(blank).toContain('<label for="plat-limit-value"');
-    expect(blank).toContain("default 0");
-    expect(blank).toMatch(/data-act="platLimitSubmit" disabled/);
-    expect(blank).toMatch(/data-act="platLimitDefault" disabled/);
-    const ready = adminsTab(admins({ limitHandle: "maya", limitValue: "5" }), null);
-    expect(ready).toContain('data-act="platLimitSubmit" class="cnpy-accentbtn"');
-    expect(ready).toContain('data-act="platLimitDefault" class="cnpy-outlinebtn"');
-    expect(adminsTab(admins({ limitHandle: "maya", limitValue: "5000" }), null)).toMatch(/data-act="platLimitSubmit" disabled/);
-    expect(adminsTab(admins({ limitDone: "@maya can now create up to 5 organizations." }), null)).toContain("@maya can now create up to 5 organizations.");
-    expect(adminsTab(admins({ limitError: "No one has the handle @ghost. Check the spelling." }), null)).toContain("Check the spelling.");
+  it("has no org-creation limit control any more: a grant (the Access tab) is how a person gets to create one", () => {
+    const html = adminsTab(admins(), null);
+    expect(html).not.toMatch(/plat-limit|platLimit|Organization limit/);
+    expect(html).toContain("grant them");
   });
   it("loading and failed states", () => {
     expect(adminsTab(plat({ admins: { status: "loading", data: [] } }), null)).toContain("Loading superadmins…");

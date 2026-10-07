@@ -16,7 +16,7 @@ vi.mock("../web/src/markdown", () => ({
 import css from "../web/src/trov.css?raw";
 import { orgSlugFromPath, orgBase, orgHref, resolveLanding, isOrgAdmin, findOrg } from "../web/src/org-context";
 import {
-  orgSwitcherButton, orgMenu, orgPickerView, acceptLanding, createOrgModal, createOrgErrors, createOrgServerError, orgCapSentence, inviteSentence,
+  orgSwitcherButton, orgMenu, orgPickerView, acceptLanding, createOrgModal, createOrgErrors, createOrgServerError, NO_GRANT_SENTENCE, inviteSentence,
   lostOrgSentence, blankCreateOrg, initialOrgsUi, type OrgsUi,
 } from "../web/src/org-picker";
 import { render, initialState, viewerIsAdmin, viewerOrg, mcpAccessSection, grantListBody, tokenListBody, type AppState } from "../web/src/render";
@@ -30,6 +30,7 @@ import { setPrimaryRepo, repoUrl, primaryRepo } from "../web/src/github";
 import { matchIssueRef } from "../web/src/issue-ref";
 import type { Me } from "../web/src/api";
 import type { MyInvite, MyOrg, MyOrgsResponse, OrgRole } from "@shared/orgs";
+import { PLANS, type MyGrant } from "@shared/plans";
 
 const sources = import.meta.glob("../web/src/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
@@ -38,7 +39,10 @@ const sapling = (role: OrgRole = "member"): MyOrg => ({ slug: "saplinglearn", na
 const invite = (o: Partial<MyInvite> = {}): MyInvite => ({
   id: 7, org: { slug: "globex", name: "Globex" }, role: "admin", invited_by: "hank", created_at: "2026-10-05T09:00:00.000Z", github_login: "ines-vidal", email: null, ...o,
 });
-const mine = (o: Partial<MyOrgsResponse> = {}): MyOrgsResponse => ({ orgs: [acme(), sapling()], invites: [], superadmin: false, can_create: true, created: 1, limit: 3, ...o });
+/** A grant (shared/plans.ts): what lets a person create an organization. `mine()` holds one by default. */
+const teamGrant = (o: Partial<MyGrant> = {}): MyGrant => ({ id: 4, plan: "team", plan_name: "Team", entitlements: PLANS.team.entitlements, granted_by: "andres", created_at: "2026-10-05T09:00:00.000Z", expires_at: null, ...o });
+const mine = (o: Partial<MyOrgsResponse> = {}): MyOrgsResponse => ({ orgs: [acme(), sapling()], invites: [], superadmin: false, can_create: true, grants: [teamGrant()], ...o });
+const noGrant = { can_create: false, grants: [] };
 const me = (orgs: MyOrg[], o: Partial<Me> = {}): Me => ({
   handle: "ines", name: "Ines Vidal", avatar_url: null, color: "fern", identities: [{ provider: "github", label: "ines-vidal", linked_at: "t" }],
   orgs, superadmin: false, pending_invites: 0, ...o,
@@ -185,10 +189,11 @@ describe("the switcher's menu", () => {
     expect(html).toMatch(/<button type="button" data-act="orgsSettings" data-orgs-item class="cnpy-menurow"[^>]*>[\s\S]*?Org settings/);
     expect(html).toMatch(/<button type="button" data-act="orgsCreateOpen" data-orgs-item class="cnpy-menurow"[^>]*>[\s\S]*?Create organization/);
   });
-  it("at the cap there is no Create button: the menu says how many, and whom to ask", () => {
-    const html = menu(mine({ can_create: false, created: 3, limit: 3 }));
+  it("without a usable grant there is no Create row at all — creating an organization takes one", () => {
+    const html = menu(mine(noGrant));
     expect(html).not.toContain("orgsCreateOpen");
-    expect(html).toContain("You&#39;ve created 3 of the 3 organizations your account can create.");
+    expect(html).not.toContain("Create organization");
+    expect(html).toContain("Org settings");
   });
   it("its backdrop closes it", () => {
     expect(menu(mine())).toContain('<div data-act="orgsMenuClose" class="cnpy-orgmenu-back" aria-hidden="true"></div>');
@@ -213,28 +218,28 @@ describe("the org picker / first run", () => {
     expect(acceptLanding(inv("member"))).toBe("/o/acme/");
   });
   it("a superadmin — with no organization at all — is offered the Platform area; nobody else is", () => {
-    const none = mine({ orgs: [], invites: [], created: 0, superadmin: true });
+    const none = mine({ orgs: [], invites: [], superadmin: true });
     const html = orgPickerView({ me: me([]), mine: [], orgs: none, status: "ok", ui: ui(), hash: "", superadmin: true });
     expect(html).toContain("data-orgs-platform");
     expect(html).toMatch(/<a href="\/platform\/"[^>]*>Open Platform<\/a>/);
     expect(html).toContain("No membership needed.");
-    expect(picker(mine({ orgs: [], invites: [], created: 0 }))).not.toContain("/platform/");
+    expect(picker(mine({ orgs: [], invites: [] }))).not.toContain("/platform/");
   });
-  it("NOTHING AT ALL: says what Trov is for, offers to create an org, and says how to get invited — by this person's own login", () => {
-    const html = picker(mine({ orgs: [], invites: [], created: 0 }));
+  it("NOTHING AT ALL: says what Trov is for and how to get invited — by this person's own login; creating one is not offered", () => {
+    const html = picker(mine({ orgs: [], invites: [], ...noGrant }));
     expect(html).toContain("Welcome to Trov, Ines");
     expect(html).toContain("Trov is a team&#39;s working memory");
     expect(html).toContain("Everything in it belongs to an organization.");
-    expect(html).toContain("Create an organization for your team");
-    expect(html).toMatch(/<button type="button" data-act="orgsCreateOpen" data-field="orgsCreateOpen"[^>]*>Create an organization<\/button>/);
-    expect(html).toContain("Or wait for an invitation");
+    expect(html).not.toContain("orgsCreateOpen");
+    expect(html).toContain("Wait for an invitation");
+    expect(html).not.toContain("Or wait for an invitation");
     expect(html).toContain("ask one of its admins to invite your GitHub login (ines-vidal)");
     expect(html).not.toContain("Your organizations");
     expect(html).not.toContain("Invitations");
   });
   it("a Google-only person is told to be invited by their email", () => {
     const who = me([], { identities: [{ provider: "google", label: "ines@acme.dev", linked_at: "t" }] });
-    expect(picker(mine({ orgs: [], created: 0 }), { who })).toContain("invite your email (ines@acme.dev)");
+    expect(picker(mine({ orgs: [] }), { who })).toContain("invite your email (ines@acme.dev)");
   });
   it("SEVERAL ORGS: each is a real link that keeps the hash of the link that brought them here", () => {
     const html = picker(mine(), { hash: "#tickets/12" });
@@ -256,7 +261,7 @@ describe("the org picker / first run", () => {
     expect(html.match(/class="cnpy-orgs-row"/g)).toHaveLength(1);
   });
   it("INVITATIONS: who invited me, to what and as what, with Accept and Decline — also for a person with no org yet", () => {
-    const html = picker(mine({ orgs: [], invites: [invite(), invite({ id: 8, org: { slug: "initech", name: "Initech" }, role: "member", invited_by: "bill", github_login: null, email: "ines@acme.dev" })], created: 0 }));
+    const html = picker(mine({ orgs: [], invites: [invite(), invite({ id: 8, org: { slug: "initech", name: "Initech" }, role: "member", invited_by: "bill", github_login: null, email: "ines@acme.dev" })] }));
     expect(html).toContain("You&#39;ve been invited.");
     expect(html).toContain("@hank invited you to join as an admin");
     expect(html).toContain("@bill invited you to join as a member");
@@ -267,12 +272,10 @@ describe("the org picker / first run", () => {
     expect(html).not.toContain("Or wait for an invitation");
     expect(inviteSentence(invite({ role: "owner" }))).toBe("@hank invited you to join as an owner");
   });
-  it("CAP REACHED: no Create button — the count, the limit and whom to ask", () => {
-    const html = picker(mine({ orgs: [acme()], can_create: false, created: 3, limit: 3 }));
+  it("NO GRANT, with an organization already: nothing about creating one — not a button, not a sentence", () => {
+    const html = picker(mine({ orgs: [acme()], ...noGrant }));
     expect(html).not.toContain("orgsCreateOpen");
-    expect(html).toContain("You&#39;ve created 3 of the 3 organizations your account can create. Ask whoever runs this Trov to raise the limit.");
-    expect(orgCapSentence({ created: 0, limit: 0 })).toBe("Your account can't create organizations. Ask whoever runs this Trov if you need one.");
-    expect(orgCapSentence({ created: 1, limit: 1 })).toContain("1 of the 1 organization your");
+    expect(html).not.toMatch(/set up an organization|Create an organization/i);
   });
   it("before GET /api/orgs lands it shows what sign-in already knew, and says it is loading; a failure offers a retry", () => {
     const loading = picker(null, { mine: [acme()] });
@@ -289,7 +292,7 @@ describe("the org picker / first run", () => {
     expect(html).toContain('data-act="signOut"');
   });
   it("render(): view `orgs` is the picker alone — no app shell, no sidebar", () => {
-    const html = render({ ...initialState(), view: "orgs", me: me([]), myOrgs: { status: "ok", data: mine({ orgs: [], created: 0 }) } });
+    const html = render({ ...initialState(), view: "orgs", me: me([]), myOrgs: { status: "ok", data: mine({ orgs: [] }) } });
     expect(html).toContain('data-screen-label="Organizations"');
     expect(html).not.toContain("cnpy-shell");
     expect(html).not.toContain("cnpy-aside");
@@ -322,11 +325,13 @@ describe("create an organization — the Add organization dialog's rules, minus 
   });
   it("puts a server refusal beside the field it is about", () => {
     const d = { slug: "acme" };
-    expect(createOrgServerError("slug_taken", d, mine())).toEqual({ name: undefined, slug: "“acme” is already in use. Pick another slug.", form: undefined });
-    expect(createOrgServerError("reserved_slug", d, mine()).slug).toContain("reserved");
-    expect(createOrgServerError("invalid_name", d, mine()).name).toContain("1 to 80 characters");
-    expect(createOrgServerError("org_limit", d, mine({ created: 3, limit: 3 })).form).toContain("3 of the 3 organizations");
-    expect(createOrgServerError("", d, mine()).form).toContain("wasn't created");
+    expect(createOrgServerError("slug_taken", d)).toEqual({ name: undefined, slug: "“acme” is already in use. Pick another slug.", form: undefined });
+    expect(createOrgServerError("reserved_slug", d).slug).toContain("reserved");
+    expect(createOrgServerError("invalid_name", d).name).toContain("1 to 80 characters");
+    // The grant behind the dialog went (used in another tab, revoked, expired) while it was open.
+    expect(createOrgServerError("no_grant", d)).toEqual({ form: NO_GRANT_SENTENCE });
+    expect(NO_GRANT_SENTENCE).toContain("Ask Trov if you need one.");
+    expect(createOrgServerError("", d).form).toContain("wasn't created");
     const html = createOrgModal({ ...blankCreateOrg(), name: "Acme", slug: "acme", errors: { slug: "“acme” is already in use. Pick another slug." } });
     expect(html).toMatch(/id="orgs-create-slug"[^>]*aria-invalid="true" aria-describedby="orgs-create-slug-err"/);
     expect(html).toContain('<div id="orgs-create-slug-err" role="alert"');

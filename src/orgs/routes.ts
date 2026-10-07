@@ -16,8 +16,11 @@ import { importLogoForOrg } from "../integrations/logo";
 import { PeopleError } from "../tools/people";
 import { getOrgLogo, removeOrgLogo, setOrgLogo } from "./logo";
 import { rateLimited } from "../platform/limits";
+import { usableGrants, createOrgFromGrant } from "../plans/grants";
+import { orgPlanView } from "../plans/gate";
+import type { MyOrgsResponse } from "@shared/orgs";
 import {
-  OrgError, ORG_ERROR_STATUS, myOrgs, listMyInvites, createOrgForSelf, respondToInvite,
+  OrgError, ORG_ERROR_STATUS, myOrgs, listMyInvites, respondToInvite,
   orgMe, getOrgSettings, updateOrgSettings, listMembers, updateMember, removeMember,
   listOrgInvites, createInvite, revokeInvite, resendableInvite, getOrgInvite, neverJoined,
 } from "./repo";
@@ -29,7 +32,8 @@ export const cookieOnly: MiddlewareHandler<AppEnv> = async (c, next) =>
     ? c.json({ error: "forbidden", message: "this is a signed-in person's action, never a token's" }, 403)
     : next();
 
-/** `RoleError` → 403 `forbidden`; an `OrgError` → its status and code. Anything else is a real 500. */
+/** `RoleError` → 403 `forbidden`; an `OrgError` → its status and code. Anything else is rethrown: a
+ *  `PlanLimitError` to the app's one handler (src/routes.ts, 402 `plan_limit`), the rest a real 500. */
 export function orgFail(c: Context<AppEnv>, e: unknown): Response {
   if (e instanceof RoleError) return c.json({ error: "forbidden" }, 403);
   if (e instanceof OrgError) return c.json({ error: e.code, message: e.message }, ORG_ERROR_STATUS[e.code]);
@@ -51,14 +55,19 @@ const me = (c: Context<AppEnv>): string => c.get("principal").handle;
 export const orgsApp = new Hono<AppEnv>();
 orgsApp.use("*", cookieOnly);
 
-orgsApp.get("/", async (c) => c.json(await myOrgs(c.var.p, me(c))));
+// `grants` are what the person may still create an org WITH (0044_plans): one org per grant.
+orgsApp.get("/", async (c) => {
+  const [mine, grants] = await Promise.all([myOrgs(c.var.p, me(c)), usableGrants(c.var.p, me(c))]);
+  return c.json({ ...mine, grants, can_create: grants.length > 0 } satisfies MyOrgsResponse);
+});
 
 orgsApp.post("/", async (c) => {
   const b = await body(c);
   if (!b) return invalid(c);
   try {
     const firstJoin = await neverJoined(c.var.p, me(c));
-    const org = await createOrgForSelf(c.var.p, me(c), { slug: b.slug as string, name: b.name as string });
+    // Uses one of the caller's grants — `grant` (its id), else the oldest — and consumes it with the org.
+    const org = await createOrgFromGrant(c.var.p, me(c), { slug: b.slug as string, name: b.name as string, grant: b.grant });
     await welcomeFirstJoin(c.env, c.var.p, org.id, me(c), firstJoin, mailOrigin(c.env, c.req.url));
     return c.json({ ok: true, org: { slug: org.slug, name: org.name, role: "owner" as const, logo_url: null } }, 201);
   } catch (e) { return orgFail(c, e); }
@@ -85,7 +94,7 @@ myInvitesApp.post("/:id/decline", respond(false));
 // ── /api/o/:slug ─────────────────────────────────────────────────────────────
 // `tenantGate` (mounted on /api/o/:slug/* in src/routes.ts) has already resolved `c.var.ctx`.
 export const orgTenantApp = new Hono<AppEnv>();
-for (const path of ["/me", "/settings", "/logo", "/logo/*", "/members", "/members/*", "/invites", "/invites/*"]) orgTenantApp.use(path, cookieOnly);
+for (const path of ["/me", "/settings", "/plan", "/logo", "/logo/*", "/members", "/members/*", "/invites", "/invites/*"]) orgTenantApp.use(path, cookieOnly);
 
 orgTenantApp.get("/me", async (c) => {
   const [row, repos] = await Promise.all([orgMe(c.var.p, c.var.ctx), listRepoRows(c.var.ctx)]);
@@ -102,6 +111,10 @@ orgTenantApp.put("/settings", async (c) => {
     return c.json({ ok: true, org: await updateOrgSettings(c.var.p, c.var.ctx, { name: b.name }) });
   } catch (e) { return orgFail(c, e); }
 });
+
+// The org's plan (0044_plans): what it is on, its limits and its use of each — any member reads it;
+// nobody changes it here (the superadmin does, in Platform).
+orgTenantApp.get("/plan", async (c) => c.json(await orgPlanView(c.var.ctx)));
 
 // The org's image (0042_organizations, ./logo.ts) — admin+. Upload: multipart, field `file`, checked like a person's
 // photo; a declared length past the cap (plus multipart framing) is refused before the body is read, and

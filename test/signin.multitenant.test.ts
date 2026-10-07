@@ -107,8 +107,8 @@ describe("a new GitHub account", () => {
 
     // They cannot make themselves an org either: creation is the superadmin's until self-serve opens.
     expect((await json("POST", "/api/orgs", session, { slug: "stranger-co", name: "Stranger Co" })).status).toBe(403);
-    // With an allowance from the superadmin (persons.org_limit) they can, and see only its content.
-    await env.DB.prepare(`UPDATE persons SET org_limit = 1 WHERE handle = 'stranger'`).run();
+    // With a grant from the superadmin (0044_plans `org_grants`) they can, and see only its content.
+    await env.DB.prepare(`INSERT INTO org_grants (person, plan, granted_by, created_at) VALUES ('stranger', 'team', 'AndresL230', '2026-10-06T00:00:00.000Z')`).run();
     expect((await json("POST", "/api/orgs", session, { slug: "stranger-co", name: "Stranger Co" })).status).toBe(201);
     expect((await json("GET", "/auth/me", session)).json).toMatchObject({ org: "Stranger Co", admin: true, orgs: [{ slug: "stranger-co", name: "Stranger Co", role: "owner" }] });
     expect((await json("GET", "/docs", session)).json).toEqual({ docs: [] });

@@ -37,8 +37,21 @@ export class ApiError extends Error {
   status: number;
   /** A 429 `rate_limited`'s `retry_after`: whole seconds until the caller's limit turns over. */
   retryAfter: number | null = null;
+  /** A 402 `plan_limit`'s body (shared/plans.ts): which limit of the org's plan refused, and its sentence. */
+  plan: PlanRefusal | null = null;
   constructor(status: number, message: string) { super(message); this.status = status; }
 }
+/** The plan refusal in a refused call's JSON body, if that is what it is. */
+const planOf = (j: unknown): PlanRefusal | null => (isPlanRefusal(j) ? j : null);
+/**
+ * The ONE sentence a plan refusal is shown as, wherever it happens (an invitation, a repository, an
+ * environment, an artifact, an agent token); null for any other error. It ends with who can change the
+ * plan — said to an owner differently than to everyone else (shared/plans.ts `planRefusalSentence`).
+ */
+export function planLimitText(e: unknown, role: OrgRoleName | null): string | null {
+  return e instanceof ApiError && e.plan ? planRefusalSentence(e.plan, role) : null;
+}
+type OrgRoleName = "owner" | "admin" | "member";
 const retryAfterOf = (j: { retry_after?: unknown }): number | null =>
   typeof j.retry_after === "number" && Number.isFinite(j.retry_after) && j.retry_after > 0 ? j.retry_after : null;
 
@@ -115,9 +128,11 @@ async function call(path: string, init: RequestInit = {}): Promise<Response> {
 async function refusal(res: Response): Promise<ApiError> {
   let msg = String(res.status);
   let retryAfter: number | null = null;
-  try { const j = (await res.json()) as { error?: string; retry_after?: unknown }; if (j.error) msg = j.error; retryAfter = retryAfterOf(j); } catch { /* non-JSON */ }
+  let plan: PlanRefusal | null = null;
+  try { const j = (await res.json()) as { error?: string; retry_after?: unknown }; if (j.error) msg = j.error; retryAfter = retryAfterOf(j); plan = planOf(j); } catch { /* non-JSON */ }
   const err = new ApiError(res.status, msg);
   err.retryAfter = retryAfter;
+  err.plan = plan;
   return err;
 }
 
@@ -289,6 +304,7 @@ export function removeAvatar(): Promise<{ ok: true; avatar_url: string | null }>
 // never carry a submitted value). Nothing here ever RECEIVES a secret: the API is write-only.
 // Namespace imports under names of their own, so this block never collides with another import of the same types.
 import type * as OrgT from "@shared/orgs";
+import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView, type PlatformGrant, type GrantTarget, type PlanId, type PlanOverrides } from "@shared/plans";
 import type * as IntT from "@shared/integrations";
 import type * as GhT from "@shared/github-app";
 /** A refused org-settings call: `message` is the error CODE (as everywhere in this file),
@@ -301,6 +317,7 @@ async function orgRefusal(res: Response): Promise<OrgApiError> {
   try { j = (await res.json()) as typeof j; } catch { /* non-JSON */ }
   const err = new OrgApiError(res.status, typeof j.error === "string" ? j.error : String(res.status), typeof j.message === "string" ? j.message : null, typeof j.field === "string" ? j.field : null);
   err.retryAfter = retryAfterOf(j);
+  err.plan = planOf(j);
   return err;
 }
 async function orgSend<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
@@ -316,8 +333,9 @@ const integrationPath = (slug: string, kind: IntT.IntegrationKind, scope: string
 
 /** My orgs, my pending invites and the superadmin flag (`GET /api/orgs`). */
 export function getMyOrgs(): Promise<OrgT.MyOrgsResponse> { return orgSend("GET", "/api/orgs"); }
-/** Create an org; the caller becomes its owner. Refusals: `invalid_slug`, `reserved_slug`, `slug_taken`, `invalid_name`, `org_limit`. */
-export function createOrg(body: { slug: string; name: string }): Promise<OrgT.MyOrg> {
+/** Create an org by USING a grant (`GET /api/orgs`'s `grants`; `grant` = its id, else the oldest): the
+ *  caller becomes its owner. Refusals: `invalid_slug`, `reserved_slug`, `slug_taken`, `invalid_name`, `no_grant`. */
+export function createOrg(body: { slug: string; name: string; grant?: number }): Promise<OrgT.MyOrg> {
   return orgSend<{ org: OrgT.MyOrg }>("POST", "/api/orgs", body).then((r) => r.org);
 }
 /** Answer one of MY pending invites (`GET /api/orgs`'s `invites`). */
@@ -327,6 +345,8 @@ export function getOrgMe(slug: string): Promise<OrgT.OrgMeResponse> { return org
 /** MY personal MCP tokens for the CURRENT org (never another org's, never anyone else's). */
 export function listMcpTokens(): Promise<McpTokenSummary[]> { return getJson<{ tokens: McpTokenSummary[] }>("/mcp-tokens").then((r) => r.tokens); }
 export function revokeMcpToken(id: number): Promise<{ ok: true }> { return postJson(`/mcp-tokens/${id}/revoke`); }
+/** The org's plan, its limits and its use of each (any member). */
+export function getOrgPlan(slug: string): Promise<OrgPlanView> { return orgSend("GET", orgPath(slug, "/plan")); }
 export function getOrgSettings(slug: string): Promise<{ org: OrgT.OrgSettings; can_edit: boolean }> { return orgSend("GET", orgPath(slug, "/settings")); }
 export function putOrgSettings(slug: string, name: string): Promise<{ ok: true; org: OrgT.OrgSettings }> { return orgSend("PUT", orgPath(slug, "/settings"), { name }); }
 /** Upload the org's image (multipart `file`; the caller crops and downsizes it first — avatar.ts). Admin+.
@@ -688,8 +708,11 @@ async function sendJson<T>(method: string, path: string, body?: unknown): Promis
   if (res.status === 404) throw new NotFound(path);
   if (!res.ok) {
     let msg = String(res.status);
-    try { const j = (await res.json()) as { error?: string; message?: string }; msg = j.message || j.error || msg; } catch { /* non-JSON */ }
-    throw new ApiError(res.status, msg);
+    let plan: PlanRefusal | null = null;
+    try { const j = (await res.json()) as { error?: string; message?: string }; msg = j.message || j.error || msg; plan = planOf(j); } catch { /* non-JSON */ }
+    const err = new ApiError(res.status, msg);
+    err.plan = plan; // the org's artifact storage is full: `msg` is already the plan's sentence
+    throw err;
   }
   return res.json() as Promise<T>;
 }
@@ -853,7 +876,7 @@ export function listPlatformOrgs(): Promise<PlatformOrgRow[]> {
 export function getPlatformOrg(slug: string): Promise<PlatformOrgDetail> {
   return getJson<PlatformOrgDetail>(`/api/platform/orgs/${encodeURIComponent(slug)}`);
 }
-export function createPlatformOrg(body: { slug: string; name: string; admin: AdminTarget }): Promise<{ org: PlatformOrgRow; admin: AdminAssignment }> {
+export function createPlatformOrg(body: { slug: string; name: string; admin: AdminTarget; plan?: PlanId; overrides?: PlanOverrides }): Promise<{ org: PlatformOrgRow; admin: AdminAssignment }> {
   return postJson<{ ok: true; org: PlatformOrgRow; admin: AdminAssignment }>("/api/platform/orgs", body);
 }
 export function assignPlatformOrgAdmin(slug: string, target: AdminTarget): Promise<AdminAssignment> {
@@ -862,9 +885,21 @@ export function assignPlatformOrgAdmin(slug: string, target: AdminTarget): Promi
 export function setPlatformOrgSuspended(slug: string, suspended: boolean): Promise<PlatformOrgRow> {
   return postJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/${suspended ? "suspend" : "unsuspend"}`).then((r) => r.org);
 }
-/** `limit` null = back to the default. */
-export function setPersonOrgLimit(handle: string, limit: number | null): Promise<{ handle: string; org_limit: number | null }> {
-  return putJson<{ ok: true; person: { handle: string; org_limit: number | null } }>(`/api/platform/persons/${encodeURIComponent(handle)}/org-limit`, { limit }).then((r) => r.person);
+// Plans and grants (shared/plans.ts; src/plans/routes.ts).
+/** Change an org's plan and its limit overrides. Nothing in the org is removed by it. */
+export function setPlatformOrgPlan(slug: string, body: { plan: PlanId; overrides: PlanOverrides }): Promise<PlatformOrgRow> {
+  return putJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/plan`, body).then((r) => r.org);
+}
+export function listPlatformGrants(): Promise<PlatformGrant[]> {
+  return getJson<{ grants: PlatformGrant[] }>("/api/platform/grants").then((r) => r.grants);
+}
+/** Grant a person an organization of their own. Refusals: `invalid_grant`, `no_such_person`. */
+export function createPlatformGrant(body: { to: GrantTarget; plan: PlanId; overrides?: PlanOverrides; note?: string; expires_in_days?: number | null }): Promise<PlatformGrant> {
+  return postJson<{ ok: true; grant: PlatformGrant }>("/api/platform/grants", body).then((r) => r.grant);
+}
+/** Revoke an UNUSED grant. 409 `grant_used` once it has become an org; 404 otherwise. */
+export function revokePlatformGrant(id: number): Promise<PlatformGrant> {
+  return postJson<{ ok: true; grant: PlatformGrant }>(`/api/platform/grants/${id}/revoke`).then((r) => r.grant);
 }
 export function listPlatformAdmins(): Promise<PlatformAdmin[]> {
   return getJson<{ admins: PlatformAdmin[] }>("/api/platform/admins").then((r) => r.admins);

@@ -12,8 +12,10 @@ import { OrgError, ORG_ERROR_STATUS } from "../orgs/repo";
 import { cookieOnly } from "../orgs/routes";
 import {
   PlatformError, PLATFORM_ERROR_STATUS, createOrgWithAdmin, assignOrgAdmin, listPlatformOrgs, platformOrgPeople,
-  setSuspended, setOrgLimit, listAdmins, grantAdmin, revokeAdmin, listAudit,
+  setSuspended, listAdmins, grantAdmin, revokeAdmin, listAudit,
 } from "./repo";
+import { PlanError, PLAN_ERROR_STATUS } from "../plans/state";
+import { registerPlanRoutes } from "../plans/routes";
 import { platformUsage, usageDays, USAGE_DEFAULT_DAYS } from "./usage";
 import { mailInvite, mailOrigin, welcomeFirstJoin } from "../orgs/mail";
 import { rateLimited } from "./limits";
@@ -35,7 +37,8 @@ platformApp.use("*", cookieOnly);
 function fail(c: Context<AppEnv>, e: unknown): Response {
   if (e instanceof PlatformError) return c.json({ error: e.code, message: e.message }, PLATFORM_ERROR_STATUS[e.code]);
   if (e instanceof OrgError) return c.json({ error: e.code, message: e.message }, ORG_ERROR_STATUS[e.code]);
-  throw e;
+  if (e instanceof PlanError) return c.json({ error: e.code, message: e.message }, PLAN_ERROR_STATUS[e.code]);
+  throw e; // a PlanLimitError goes on to the app's one handler (src/routes.ts): 402
 }
 const body = async (c: Context<AppEnv>): Promise<Record<string, unknown> | null> => {
   const json: unknown = await c.req.json().catch(() => null);
@@ -65,7 +68,7 @@ platformApp.post("/orgs", async (c) => {
   const b = await body(c);
   if (!b) return invalid(c);
   try {
-    const { org, admin, first_join } = await createOrgWithAdmin(c.var.p, { slug: b.slug as string, name: b.name as string, admin: b.admin });
+    const { org, admin, first_join } = await createOrgWithAdmin(c.var.p, { slug: b.slug as string, name: b.name as string, admin: b.admin, plan: b.plan, overrides: b.overrides });
     await notifyAdmin(c, org.id, admin, first_join);
     return c.json({ ok: true, org: publicRow((await listPlatformOrgs(c.var.p, org.slug))[0]), admin }, 201);
   } catch (e) { return fail(c, e); }
@@ -102,14 +105,8 @@ const suspend = (suspended: boolean) => async (c: Context<AppEnv>) => {
 platformApp.post("/orgs/:slug/suspend", suspend(true));
 platformApp.post("/orgs/:slug/unsuspend", suspend(false));
 
-// ── persons ──────────────────────────────────────────────────────────────────
-platformApp.put("/persons/:handle/org-limit", async (c) => {
-  const b = await body(c);
-  if (!b || !("limit" in b)) return invalid(c);
-  try {
-    return c.json({ ok: true, person: await setOrgLimit(c.var.p, c.req.param("handle"), b.limit) });
-  } catch (e) { return fail(c, e); }
-});
+// ── plans and grants (0044_plans): /orgs/:slug/plan, /grants… — src/plans/routes.ts ──
+registerPlanRoutes(platformApp, (slug, p) => listPlatformOrgs(p, slug).then((rows) => (rows[0] ? publicRow(rows[0]) : null)));
 
 // ── superadmins ──────────────────────────────────────────────────────────────
 platformApp.get("/admins", async (c) => c.json({ admins: await listAdmins(c.var.p) }));

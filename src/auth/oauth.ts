@@ -8,6 +8,7 @@
 // A connection (grant) is made FOR one org (§7.1): `issueAuthorization` writes the org of the
 // TenantContext it is handed onto the grant and its code, and nothing later changes it — a code, an
 // access token and a refresh token all reach their org through the grant row.
+import { requirePlan } from "../plans/gate";
 import { type PlatformContext, all, first, run, stmt, batch } from "../data/platform-sql";
 import { type TenantContext, run as tenantRun } from "../data/sql";
 import { randomToken, sha256Hex, pkceChallenge } from "./crypto";
@@ -203,10 +204,12 @@ export async function checkAuthorizeRequest(p: PlatformContext, q: URLSearchPara
 /** Consent given: the grant (the connection Settings lists) exists from here; the
  *  code is single-use, lives 60 s, and carries the grant id. The connection is `ctx.userId`'s INTO
  *  `ctx.orgId` (§7.1) — the membership the consent POST just resolved, never a request value — and
- *  the grant and its code both record it. */
+ *  the grant and its code both record it. A connected app is one of the person's AGENT CONNECTIONS
+ *  into the org (0044_plans): at the plan's cap this throws `PlanLimitError` and nothing is written. */
 export async function issueAuthorization(
   ctx: TenantContext, a: { client: RegisteredClient; params: AuthorizeParams; nowMs: number },
 ): Promise<{ code: string; grantId: number }> {
+  await requirePlan(ctx, "agent_connections");
   const g = await tenantRun(ctx, `INSERT INTO oauth_grants (org_id, person, client_id, client_name, created_at) VALUES (?, ?, ?, ?, ?)`,
     ctx.orgId, ctx.userId, a.client.client_id, a.client.client_name, iso(a.nowMs));
   const grantId = Number(g.meta.last_row_id);

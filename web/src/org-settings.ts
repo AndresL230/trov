@@ -20,6 +20,8 @@
 //
 // "The current org" is ONE function, `currentOrg`: the org the page's path names.
 
+import { planBlock, inviteGate, seatsLead } from "./org-plan";
+import type { OrgPlanView } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, YOU, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, loadingNote, failedNote,
@@ -103,6 +105,8 @@ export interface OrgUi {
   envs: OrgSlice<OrgEnvironmentDTO[]>;
   integrations: OrgSlice<IntegrationsListDTO | null>;
   audit: OrgSlice<OrgAuditDTO[]>;
+  /** The org's plan and its use of each limit (shared/plans.ts; org-plan.ts renders it). */
+  plan: OrgSlice<OrgPlanView | null>;
   // General
   nameDraft: string | null;
   nameSaving: boolean;
@@ -149,7 +153,7 @@ export interface OrgUi {
 export function initialOrgUi(): OrgUi {
   return {
     tab: "integrations", slug: null,
-    settings: idle(null), members: idle([]), invites: idle([]), repos: idle([]), envs: idle([]), integrations: idle(null), audit: idle([]),
+    settings: idle(null), members: idle([]), invites: idle([]), repos: idle([]), envs: idle([]), integrations: idle(null), audit: idle([]), plan: idle(null),
     nameDraft: null, nameSaving: false, nameError: null, logo: initialOrgLogoUi(),
     memberEdit: null, inviteBy: "github", inviteDraft: "", inviteName: "", inviteRole: "member", inviteBusy: false, inviteError: null, mailBusy: null,
     repoDraft: "", repoBusy: false, repoError: null,
@@ -206,11 +210,13 @@ export const githubOf = (ui: Pick<OrgUi, "github" | "integrations">): GithubAppS
 export function setupSteps(ui: OrgUi): SetupStep[] | null {
   if (ui.repos.status !== "ok" || ui.envs.status !== "ok" || ui.members.status !== "ok" || ui.invites.status !== "ok" || ui.integrations.status !== "ok" || !ui.integrations.data) return null;
   const token = ui.integrations.data.integrations.find((i) => i.kind === "github_token");
+  // A one-person plan has no team to invite: the step would never be done, so it is not asked.
+  const solo = ui.plan.data?.entitlements.seats === 1;
   // GitHub is connected by the App's installation or, by hand, by a token: either satisfies the step.
   const app = githubOf(ui);
   const offered = app?.configured === true;
   const connected = !!app?.installation || (!!token && (token.configured || token.legacy_fallback));
-  return [
+  const steps: SetupStep[] = [
     { key: "repo", title: "Connect a repository", why: "Trov reads its deployments, checks, pull requests and issues.", tab: "repos", go: "Open Repositories", done: ui.repos.data.length > 0 },
     { key: "env", title: "Add an environment", why: "The Repo dashboard reports on each one: staging, production.", tab: "environments", go: "Open Environments", done: ui.envs.data.length > 0 },
     offered
@@ -218,6 +224,7 @@ export function setupSteps(ui: OrgUi): SetupStep[] | null {
       : { key: "token", title: "Set the GitHub token", why: "Without it Trov cannot read the repository.", tab: "integrations", go: "Open Integrations", done: connected },
     { key: "team", title: "Invite your team", why: "By GitHub login or email; they join when they accept.", tab: "members", go: "Open Members", done: ui.members.data.length > 1 || ui.invites.data.some((i) => i.status === "pending") },
   ];
+  return solo ? steps.filter((s) => s.key !== "team") : steps;
 }
 
 const STEP_DONE = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12.5 2.5 2.5 4.5-5"></path></svg>`;
@@ -267,6 +274,7 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
         <div style="${O_HELP}">The org's permanent address in links and in the API. It cannot be changed.</div>
       </div>
     </section>
+    ${planBlock(ui.plan, org.role)}
   </div>`;
 }
 
@@ -594,9 +602,17 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
   if (note) return note;
   const owners = members.filter((m) => m.role === "owner").length;
   const canSend = inviteDraftOk(ui.inviteBy, ui.inviteDraft) && !ui.inviteBusy;
+  // The plan's seats (org-plan.ts): a one-person plan offers no invitation at all; with every
+  // seat in use the form gives way to the sentence the server would answer with.
+  const gate = inviteGate(ui.plan.data, org.role);
   // Inviting is this tab's primary action (its one accent button): one line of controls in
   // one surface, with what happens next said once, under them.
-  const invite = admin ? `<section aria-labelledby="org-invite-t">
+  const invite = !admin || gate.kind === "solo" ? ""
+    : gate.kind !== "open" ? `<section aria-labelledby="org-invite-t" data-invite-gate="${gate.kind}">
+      ${orgHead("Invite someone", "", null, "org-invite-t")}
+      <div${surface("padding:14px 16px")}><p role="status" style="margin:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${esc(gate.sentence)}${gate.kind === "full" ? " Removing a member or revoking a pending invite frees a seat." : ""}</p></div>
+    </section>`
+    : `<section aria-labelledby="org-invite-t">
       ${orgHead("Invite someone", "", null, "org-invite-t")}
       <div${surface("padding:14px 16px")}>
         <div class="cnpy-org-invite">
@@ -611,7 +627,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
           ? "Trov emails them the invitation. They join when they sign in with that address and accept. A Google account can only sign in once it is invited."
           : "They see the invitation the next time they sign in with that GitHub account, and join when they accept. No email is sent: tell them it is waiting."}</div>
       </div>
-    </section>` : "";
+    </section>`;
 
   const rows = members.map((m) => {
     const d = admin && ui.memberEdit && sameHandle(ui.memberEdit.handle, m.handle) ? ui.memberEdit : null;
@@ -654,7 +670,10 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
     : "";
 
   const waiting = admin ? identity?.groups.length ?? 0 : 0;
-  const lead = tabLead(`<strong>${members.length}</strong> ${members.length === 1 ? "member" : "members"}${admin ? ` &middot; ${pending.length ? `<strong>${pending.length}</strong> ${pending.length === 1 ? "invite" : "invites"} pending` : "no invite pending"}` : ""}${waiting ? ` &middot; ${leadFlag(`${waiting} ${waiting === 1 ? "login" : "logins"} to match`, "amber")}` : ""}.${admin ? "" : READ_ONLY}`);
+  const seats = seatsLead(ui.plan.data);
+  // A one-person plan: the tab says so (an admin also reads which plan allows invitations, and who changes it).
+  const solo = gate.kind === "solo" ? ` <span data-plan-solo>${esc(admin ? gate.sentence : `${gate.sentence.split(". ")[0]}.`)}</span>` : "";
+  const lead = tabLead(`${seats ? `${seats} &middot; ` : ""}<strong>${members.length}</strong> ${members.length === 1 ? "member" : "members"}${admin ? ` &middot; ${pending.length ? `<strong>${pending.length}</strong> ${pending.length === 1 ? "invite" : "invites"} pending` : "no invite pending"}` : ""}${waiting ? ` &middot; ${leadFlag(`${waiting} ${waiting === 1 ? "login" : "logins"} to match`, "amber")}` : ""}.${solo}${admin ? "" : READ_ONLY}`);
   const logins = unmatchedLogins(admin, identity);
   return `${lead}${waiting ? logins : ""}${invite}
     ${orgHead("Members", admin ? "Owners manage owners and the encryption key; admins everything else here" : "", members.length)}

@@ -71,6 +71,59 @@ export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
   {
+    version: "0.20",
+    date: "2026-10-07",
+    title: "Plans",
+    headline: "An organization is now on a plan (Personal, Team or Enterprise), and Trov can hand someone an organization to set up themselves.",
+    highlights: [
+      "Every organization is on a plan. Personal is for one person, Team is for up to 10 people, and Enterprise has limits Trov sets for that organization. Org settings › General shows your plan, what it includes, and how much of each limit you use.",
+      "Org settings › Members shows your seats, like 7 of 10 seats used. A seat is a member or a pending invitation. When every seat is in use the invite form gives way to a sentence saying so, and how to free one.",
+      "You can be given an organization of your own. When Trov grants you one, the page that lists your organizations says You can set up an organization, with its plan. You choose its name and address and become its owner.",
+      "When a plan's limit stops something, Trov says which limit and who can change it, in one sentence, wherever it happens.",
+    ],
+    headsUp: [
+      "Organizations that existed before plans are on Enterprise with no limit on people, so nothing changes for them.",
+      "On the Personal plan there are no invitations: Members says the plan is for one person.",
+      "If an organization ends up over a limit after its plan changes, nothing is removed and nobody loses access. You can't add more of that kind until it is back under the limit.",
+      "A plan also limits connected repositories, environments, stored artifacts and how many agent connections each person has. Removing one you no longer use frees room.",
+      "Create organization appears in the switcher's menu only when you have been given an organization to set up.",
+    ],
+    ops: [
+      "Apply migration `0044_plans` (additive: nine columns on `orgs`, the tables `org_grants` and `platform_outbox_bodies`, and one backfill that puts every existing org on `enterprise` with `plan_source = 'granted'`). It is safe on live data and with the previous Worker running. Rollback steps are in the file's header.",
+      "No secret, no cron trigger and no plugin change. No prices and no payment code: `src/plans/billing.ts` is the seam a billing integration calls, and `orgs.plan_period_end`, `orgs.billing_customer_id`, `orgs.billing_subscription_id` and `org_grants.external_ref` are reserved for it, written by nothing yet.",
+      "Every plan number is a placeholder in `shared/plans.ts` `PLANS`: change a number there and nothing else. The numbers and what counts toward each are in `docs/architecture/plans.md`.",
+      "`persons.org_limit` is no longer read and Platform's Organization limit control is gone. To let someone create an organization, grant them one in Platform › Access. Anyone given an allowance by hand before this needs a grant instead.",
+      "A grant by e-mail sends a notice through the platform's own sender. `NOTIFICATIONS_MODE` is `local` today, so nothing leaves: the body is written to `platform_outbox_bodies`.",
+    ],
+    patches: {
+      added: [
+        "`shared/plans.ts`: the three plans, the five limits (`seats`, `repositories`, `environments`, `artifact_bytes`, `agent_connections`), `resolveEntitlements` (plan + per-org overrides) and `planRefusal`, the one answer to \"may this org add this now\"",
+        "Migration `0044_plans`: `orgs.plan`, `plan_overrides`, `plan_source`, `plan_status`, the billing columns; `org_grants`; `platform_outbox_bodies`",
+        "`src/plans/`: `state.ts` (the org's plan, the seat gate, `setOrgPlan`, `setOrgPlanStatus`), `gate.ts` (`requirePlan` for the limits counted over tenant tables, `orgPlanView`), `grants.ts`, `billing.ts` (the seam: `grantOrganization`, `setOrgPlan`, `markOrgPastDue`, `cancelOrgPlan`), `routes.ts`",
+        "`GET /api/o/:slug/plan` (any member); `GET|POST /api/platform/grants`, `POST /api/platform/grants/:id/revoke`, `PUT /api/platform/orgs/:slug/plan` (superadmin)",
+        "A plan refusal is HTTP 402 `{ error: \"plan_limit\", limit, used, cap, plan, status, message }` from every route (one `app.onError` in `src/routes.ts`), and an MCP tool error with `code: \"plan_limit\"`",
+        "Enforcement at the write: an invitation created (members + pending) and accepted (members), the superadmin's owner, the legacy invite alias, a repository connected, an environment added, an artifact version stored (and its upload link), an MCP token minted and an app connected",
+        "The grant notice e-mail (`src/notifications/grant.ts`, `platformDeliveryFor`): names the granter and the plan, links only to the site root",
+        "Audit actions `plan.change`, `plan.overrides`, `plan.status`, `grant.create`, `grant.revoke`, `grant.use`",
+        "SPA: `web/src/org-plan.ts` (the Plan block, the seats lead, the invite gate), `web/src/platform-access.ts` and `platform-access-actions.ts` (Platform › Access, the grant dialog, Change plan and its confirmation)",
+      ],
+      changed: [
+        "`POST /api/orgs` creates an org by consuming one of the caller's grants (`grant` = its id, else the oldest) in the creating batch; refused with 403 `no_grant` otherwise, and for a superadmin",
+        "`GET /api/orgs` carries `grants` (the usable ones) and `can_create` (holds one); `created` and `limit` are gone",
+        "`POST /api/platform/orgs` takes `plan` and `overrides` (default `team`); `PlatformOrgRow` carries `plan` (plan, overrides, status, source, entitlements, seats used)",
+        "The repository and environment caps (10 each) are the Enterprise plan's defaults now: `too_many_repos` / `too_many_environments` (409) became the 402 `plan_limit`",
+        "Platform: the Organizations list shows each org's plan and seats; Add organization picks a plan; the tab Admins & limits is Admins",
+        "The setup checklist leaves out Invite your team on a one-person plan",
+        "A dropdown opened inside a dialog that is still sliding in is placed again once it settles (`web/src/dropdown.ts`)",
+      ],
+      fixed: [],
+      removed: [
+        "`PUT /api/platform/persons/:handle/org-limit`, `setOrgLimit`, `orgAllowance`, the error code `org_limit` and Platform's Organization limit form. `persons.org_limit` stays as a dead column until the cleanup migration",
+      ],
+    },
+    prs: [104],
+  },
+  {
     version: "0.19",
     date: "2026-10-07",
     title: "Connect with GitHub",

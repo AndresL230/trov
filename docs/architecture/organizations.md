@@ -9,7 +9,7 @@ each step is named in brackets; the rules those modules obey are in `data-layer.
 | | Scope | Becomes one by |
 |---|---|---|
 | **Superadmin** | the platform: the list of organizations, who owns each, suspension, usage, the audit trail | a row in `platform_admins` (0042_organizations seeds andres); another superadmin adds more in Platform › Admins & limits |
-| **Owner** | one organization, everything in it | creating the organization, accepting a superadmin's owner invitation, or being made one by another owner |
+| **Owner** | one organization, everything in it | creating the organization with a grant (§1b), accepting a superadmin's owner invitation, or being made one by another owner |
 | **Admin** | one organization, everything but owners and the encryption key | an invitation "as admin", or a role change by an admin or owner |
 | **Member** | one organization: reads and the everyday writes | an invitation "as member" |
 
@@ -23,7 +23,11 @@ Platform › Organizations › **Add organization** [`web/src/platform.ts`, `POS
 organization — so a superadmin who belongs to none still reaches it; the org switcher's menu and the org
 picker link to it.
 
-Give the organization a name, a slug (its address: `/o/<slug>/`, not editable later) and its first owner:
+An organization comes to exist in one of two ways: the superadmin creates it for someone (this section), or
+grants someone the right to create their own (§1b). Nobody else can create one.
+
+Give the organization a name, a slug (its address: `/o/<slug>/`, not editable later), the **plan** it starts
+on (Personal, Team or Enterprise — `plans.md`; Team unless you pick another) and its first owner:
 
 - **An existing person** (their Trov handle): they are the owner at once. If it is their first organization
   they get the welcome e-mail.
@@ -36,8 +40,29 @@ Give the organization a name, a slug (its address: `/o/<slug>/`, not editable la
 The superadmin is **not** made a member. To rescue an organization whose owner left, open it in Platform and
 use **Add another owner** [`POST /api/platform/orgs/:slug/admin`].
 
-Nobody else can create an organization: self-serve creation is off (`DEFAULT_ORG_LIMIT = 0`,
-`shared/orgs.ts`). Platform › Admins & limits can give one named person an allowance.
+### 1b. …or grants someone an organization of their own
+
+Platform › Access › **Grant an organization** [`web/src/platform-access.ts`, `POST /api/platform/grants`,
+`src/plans/grants.ts`]: name the person — by Trov handle, GitHub login or e-mail, the same three ways — and
+the plan (for Enterprise, its limits; optionally a note and an expiry). They do not need an account yet. An
+e-mail grant is told by mail; for a GitHub login, tell them yourself.
+
+When they sign in, the org picker says **You can set up an organization — <Plan>**. They choose its name
+and slug and become its owner, on that plan, and land on the setup checklist [`POST /api/orgs`]. One grant
+makes one organization; until it is used you can **Revoke** it, and afterwards the Access tab shows which
+organization it became.
+
+That is the only way anyone but a superadmin creates an organization (`DEFAULT_ORG_LIMIT = 0`,
+`shared/orgs.ts`). The per-person allowance that used to be set in Platform is gone.
+
+### The organization's plan
+
+Open the organization in Platform: its **Plan** section shows the plan, each limit and the seats in use.
+**Change plan** sets the plan and, per organization, any of its limits [`PUT /api/platform/orgs/:slug/plan`].
+The confirmation says what happens if the organization is over the new limits: nothing is removed and nobody
+loses access; it cannot add more of that kind until it is back under. Everyone in the organization reads its
+plan in Org settings › General; only you change it. The limits, what counts toward each and the seam for
+billing: `plans.md`.
 
 ## 2. The owner signs in, accepts, and lands on the setup checklist
 
@@ -93,6 +118,10 @@ Org settings › Members › **Invite someone** [`POST /api/o/:slug/invites`, `s
 - **By GitHub login**: no e-mail; the person sees the invitation the next time they sign in with that
   account.
 
+An invitation takes a **seat** (a seat is a member or a pending invitation): Members shows "7 of 10 seats
+used", and when none is free the form gives way to a sentence saying so. A Personal organization has no
+invitations at all [`plans.md` › Seats].
+
 An invitation is as **member** or **admin**; only the superadmin's invitation makes an owner. Pending
 invitations can be revoked. A person joining their first organization gets a welcome e-mail that links
 into it. Every organization's mail is sent from the platform's one address, under the sender **name** its
@@ -134,7 +163,7 @@ One place: **Org settings**, opened from the switcher at the top of the sidebar 
 | Environments | the environments the Repo dashboard reports on, in drift order | everyone (read), admin+ (write) |
 | Members | the people directory; for admins also invitations, roles and titles, removal, and **Unmatched logins** — GitHub logins in captured activity to map to a person or discard [`web/src/identity.ts`] | everyone (read), admin+ (write) |
 | Notifications | the e-mail digests: which exist and their default cadence, send hour, timezone and sender name, preview, test send, the outbox [`web/src/notifications.ts`] | admin, owner |
-| General | the image; the name; the slug, read-only | everyone (read), admin+ (image, rename) |
+| General | the image; the name; the slug, read-only; the **Plan** — what it includes and the org's use of each limit [`web/src/org-plan.ts`] | everyone (read), admin+ (image, rename); nobody changes the plan here |
 
 A person's own digest preferences stay in their Settings. The daily queue of things an agent could not
 place is not administration: it is **Triage › Unplaced** in the sidebar (`#unplaced`). Old links —
@@ -194,7 +223,8 @@ Platform › **Usage** [`src/platform/usage.ts`, `org_usage_daily`]: per organiz
 tool calls by day, active people, what was created in the window (feed entries, tickets, doc versions,
 sprints, prompts, handoffs, artifacts), e-mails sent, the most-called tools, and sizes now (rows per kind,
 artifact bytes, tokens and connected apps). Platform › an organization shows the same for that one.
-Requests are metered, not limited: there is no per-organization quota yet.
+Requests are metered, not limited. What IS limited per organization — people, repositories, environments,
+stored artifacts, agent connections per person — is its plan's (`plans.md`).
 
 ## 7. What the superadmin can and cannot see
 

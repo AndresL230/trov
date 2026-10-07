@@ -141,6 +141,11 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `UPDATE orgs SET logo_sha = ?, logo_source = 'upload', logo_by = ?, logo_at = ? WHERE id = 'org_b'`, "a".repeat(64), handle, nowIso());
   await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-01-01', 'api_read', ?, 1, ?)`, org, handle, nowIso());
   await run(env.DB, `INSERT INTO org_admin_audit (org_id, actor, action, target, at) VALUES (?, ?, 'org.update', 'settings', ?)`, org, handle, nowIso());
+  // 0044_plans: orgs.plan_changed_by, and a grant the person holds, made, used and revoked (two rows: a
+  // grant is used OR revoked, never both).
+  await run(env.DB, `UPDATE orgs SET plan_changed_at = ?, plan_changed_by = ? WHERE id = 'org_b'`, nowIso(), handle);
+  await run(env.DB, `INSERT INTO org_grants (person, plan, granted_by, created_at, status, used_at, used_by, used_org) VALUES (?, 'team', ?, ?, 'used', ?, ?, ?)`, handle, handle, nowIso(), nowIso(), handle, org);
+  await run(env.DB, `INSERT INTO org_grants (github_login, plan, granted_by, created_at, status, revoked_at, revoked_by) VALUES ('rename-gh', 'team', ?, ?, 'revoked', ?, ?)`, handle, nowIso(), nowIso(), handle);
 }
 
 describe("renamePerson", () => {

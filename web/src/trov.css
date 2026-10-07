@@ -1024,6 +1024,10 @@ input, select { font-family: inherit; }
    shell (`.cnpy-cmodal`), wider, in two columns: the value, and where to get it. */
 .cnpy-sr { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
 .cnpy-org-narrow { max-width:640px; }
+/* Org settings › General › Plan (org-plan.ts): one row per limit — what it is, and the org's use of it. */
+.cnpy-plan-rows { list-style:none; margin:14px 0 0; padding:0; border-top:1px solid var(--border); }
+.cnpy-plan-row { display:flex; align-items:flex-start; justify-content:space-between; gap:4px 16px; flex-wrap:wrap; padding:11px 0; border-bottom:1px solid var(--border); }
+.cnpy-plan-note { margin-top:12px; padding:10px 12px; border:1px solid color-mix(in srgb,var(--amber) 45%,transparent); background:color-mix(in srgb,var(--amber) 9%,transparent); font-size:12.5px; line-height:1.55; color:var(--fg-70); }
 .cnpy-org-head { min-width:0; }
 /* The organization pages' hierarchy (org-ui.ts): a tab's lead line, the section eyebrow, a
    row that opens. Shared by Org settings, Platform and the picker. */
@@ -1666,7 +1670,9 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .plat-thead > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .plat-row { display:grid; gap:12px; align-items:center; transition:background .12s ease; }
 .plat-row:hover { background:var(--hover); }
-.plat-orgs-grid { grid-template-columns:minmax(0,2fr) 92px minmax(0,1.7fr) 68px 60px 96px 96px; }
+.plat-orgs-grid { grid-template-columns:minmax(0,2fr) 92px 118px minmax(0,1.5fr) 68px 60px 96px 96px; }
+/* Platform › Access / Change plan (platform-access.ts): the five limits, as fields or as figures. */
+.plat-limits { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px 14px; }
 .plat-usage-grid { grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr) 48px 62px 44px 54px minmax(0,.95fr) 88px; }
 .plat-cl { display:none; font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); margin-bottom:3px; }
 .plat-urow { border-bottom:1px solid var(--border); margin-bottom:-1px; }

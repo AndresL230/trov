@@ -267,6 +267,9 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["orgs", "suspended_by"], ["org_usage_daily", "actor"], ["org_admin_audit", "actor"],
   // The org's image (0042_organizations): who uploaded it.
   ["orgs", "logo_by"],
+  // Plans and grants (0044_plans): who changed an org's plan; a grant's person, granter, user and revoker.
+  ["orgs", "plan_changed_by"],
+  ["org_grants", "person"], ["org_grants", "granted_by"], ["org_grants", "used_by"], ["org_grants", "revoked_by"],
   // The GitHub App (0043_github_app): who connected the org's installation.
   ["org_github_installations", "connected_by"],
 ];

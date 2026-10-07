@@ -5,7 +5,7 @@
 
 import {
   listPlatformOrgs, getPlatformOrg, createPlatformOrg, assignPlatformOrgAdmin, setPlatformOrgSuspended,
-  setPersonOrgLimit, listPlatformAdmins, grantPlatformAdmin, revokePlatformAdmin, listPlatformAudit, getPlatformUsage,
+  listPlatformAdmins, grantPlatformAdmin, revokePlatformAdmin, listPlatformAudit, getPlatformUsage,
   Unauthorized, ApiError,
 } from "./api";
 import {
@@ -14,7 +14,8 @@ import {
   type PlatState, type PlatTab, type AdminKind,
 } from "./platform";
 import { USAGE_WINDOWS, type UsageWindow } from "./platform-usage";
-import { DEFAULT_ORG_LIMIT } from "@shared/orgs";
+import { isPlanId } from "@shared/plans";
+import { createAccess } from "./platform-access-actions";
 
 export interface PlatformHost {
   /** The live state (main.ts's single object). */
@@ -44,6 +45,17 @@ export function createPlatform(h: PlatformHost) {
     return false;
   };
   const focus = (sel: string): void => { h.mount.querySelector<HTMLElement>(sel)?.focus(); };
+  // Platform › Access and "Change plan" (platform-access-actions.ts): the grants, and an org's plan.
+  const access = createAccess({
+    state: h.state, mount: h.mount, rerender: h.rerender, flash: h.flash, unauth: h.unauth, confirmOut: h.confirmOut,
+    orgChanged: (org) => {
+      const q = s();
+      if (q.detail.data?.org.slug === org.slug) q.detail = { status: "ok", data: { ...q.detail.data, org } };
+      q.orgs = { status: q.orgs.status, data: q.orgs.data.map((o) => (o.slug === org.slug ? org : o)) };
+      if (q.orgSlug === org.slug) loadDetail(org.slug); // its audit trail has a new row
+      h.rerender();
+    },
+  });
 
   // Every read here is a REFRESH once its slice holds an answer: what is on screen stays (status
   // "ok", the same rows) and the fresh answer replaces it when it lands. Only a first read — or
@@ -101,6 +113,7 @@ export function createPlatform(h: PlatformHost) {
       if (h.state.screen === "platformorg") { if (p.orgSlug) loadDetail(p.orgSlug); }
       else if (p.tab === "usage") loadUsage(true);
       else if (p.tab === "admins") loadAdmins();
+      else if (p.tab === "access") access.load();
       else if (p.tab === "audit") { loadAudit(true); if (p.orgs.status === "idle") loadOrgs(); }
       else loadOrgs();
       // The other tabs' first read rides along with the page's (as Org settings does: entering
@@ -110,6 +123,7 @@ export function createPlatform(h: PlatformHost) {
         if (p.usage.status === "idle") loadUsage();
         if (p.admins.status === "idle") loadAdmins();
         if (p.audit.status === "idle") loadAudit();
+        if (p.access.grants.status === "idle") access.load();
       }
     }
     h.rerender();
@@ -129,13 +143,14 @@ export function createPlatform(h: PlatformHost) {
     h.state.screen = "platform";
     p.tab = tab; p.orgSlug = null;
     p.suspendArm = null; p.revokeArm = null;
+    p.access.revokeArm = null; p.access.plan = null;
     load();
   }
   function openOrg(slug: string): void {
     const p = s();
     p.add = null;
     h.state.screen = "platformorg";
-    p.orgSlug = slug; p.suspendArm = null; p.ownerOpen = false;
+    p.orgSlug = slug; p.suspendArm = null; p.ownerOpen = false; p.access.grant = null; p.access.plan = null;
     load();
     h.mount.querySelector<HTMLElement>("#cnpy-main")?.scrollTo(0, 0);
     if (h.state.view === "platform") window.scrollTo(0, 0); // the standalone page scrolls the window
@@ -158,7 +173,7 @@ export function createPlatform(h: PlatformHost) {
       return;
     }
     d.busy = true; h.rerender();
-    createPlatformOrg({ slug: d.slug, name: d.name.trim(), admin: adminTarget(d.adminKind, d.adminValue) }).then((r) => {
+    createPlatformOrg({ slug: d.slug, name: d.name.trim(), admin: adminTarget(d.adminKind, d.adminValue), plan: d.plan }).then((r) => {
       const cur = s().add;
       if (cur) { cur.busy = false; cur.done = { name: r.org.name, slug: r.org.slug, admin: r.admin }; }
       loadOrgs();
@@ -254,32 +269,11 @@ export function createPlatform(h: PlatformHost) {
       h.rerender();
     });
   }
-  function setLimit(limit: number | null): void {
-    const p = s();
-    const handle = p.limitHandle.trim().replace(/^@/, "");
-    if (!handle || p.limitBusy) return;
-    p.limitBusy = true; p.limitError = null; p.limitDone = null; h.rerender();
-    setPersonOrgLimit(handle, limit).then((r) => {
-      const q = s();
-      q.limitBusy = false; q.limitValue = "";
-      q.limitDone = r.org_limit === null
-        ? (DEFAULT_ORG_LIMIT === 0 ? `@${r.handle} is back on the default: they can't create organizations.` : `@${r.handle} is back on the default: ${DEFAULT_ORG_LIMIT} organizations.`)
-        : `@${r.handle} can now create up to ${r.org_limit} ${r.org_limit === 1 ? "organization" : "organizations"}.`;
-      h.rerender();
-    }).catch((e) => {
-      if (readFailed(e)) return;
-      const q = s();
-      q.limitBusy = false;
-      q.limitError = code(e) === "no_such_person" ? `No one has the handle @${handle}. Check the spelling.`
-        : code(e) === "invalid_limit" ? "Enter a whole number from 0 to 1000." : "The limit wasn't saved. Try again.";
-      h.rerender();
-    });
-  }
-
   /** Every `plat…` act. */
   function act(name: string, arg: string | null, value: string | null): void {
     const p = s();
     if (p.superadmin !== true) return;
+    if (access.act(name, arg, value)) return;
     switch (name) {
       case "platGo": go("orgs"); return;
       case "platTab": if ((PLAT_TABS as readonly string[]).includes(arg ?? "")) go(arg as PlatTab); return;
@@ -309,6 +303,7 @@ export function createPlatform(h: PlatformHost) {
         if (!p.add) return;
         p.add.adminValue = value ?? ""; delete p.add.errors.admin; delete p.add.errors.form;
         break;
+      case "platAddPlan": if (p.add && isPlanId(value)) p.add.plan = value; break;
       case "platAddSubmit": submitAdd(); return;
 
       case "platOwnerKind":
@@ -345,15 +340,6 @@ export function createPlatform(h: PlatformHost) {
         return;
       }
       case "platRevokeGo": revokeGo(); return;
-      case "platLimitHandle": p.limitHandle = value ?? ""; p.limitError = null; p.limitDone = null; break;
-      case "platLimitValue": p.limitValue = value ?? ""; p.limitError = null; p.limitDone = null; break;
-      case "platLimitSubmit": {
-        const v = p.limitValue.trim();
-        if (!/^\d{1,4}$/.test(v) || Number(v) > 1000) { p.limitError = "Enter a whole number from 0 to 1000."; break; }
-        setLimit(Number(v));
-        return;
-      }
-      case "platLimitDefault": setLimit(null); return;
 
       case "platAuditOrg": p.auditOrg = value ?? ""; loadAudit(); break;
       default: return;
@@ -364,6 +350,7 @@ export function createPlatform(h: PlatformHost) {
   // The add dialog's keyboard: Escape closes it, Tab stays inside it.
   document.addEventListener("keydown", (e) => {
     if ((h.state.view !== "app" && h.state.view !== "platform") || !s().add) return;
+    if (h.mount.querySelector("[data-dd-pop]")) return; // an open dropdown (the plan) owns the keyboard
     const dlg = h.mount.querySelector<HTMLElement>("[data-plat-dialog]");
     if (!dlg) return;
     if (e.key === "Escape") { e.preventDefault(); closeAdd(); return; }

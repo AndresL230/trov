@@ -97,6 +97,19 @@ real round trip is unverified until the owner runs it (that doc › "Verify afte
      dead CSS removed; Settings › Account wraps; a sprint's `lead` must be a member.
   8. Docs: this file, `docs/architecture/data-layer.md`, `docs/architecture/organizations.md`.
 
+### Plans and grants (branch `feat/plans`, on top of main — NOT merged)
+
+`docs/architecture/plans.md` is the whole of it. In short: every org is on a plan (`shared/plans.ts`:
+Personal 1 seat, Team 10, Enterprise set per org — every number a placeholder for the owner), enforced at
+the server with one refusal (402 `plan_limit`); a person who is not a superadmin creates an org only by
+using a GRANT (Platform › Access); `persons.org_limit` and its Platform control are gone. One additive
+migration, `0044_plans` (existing orgs → Enterprise, unlimited seats). No prices, no payment code:
+`src/plans/billing.ts` is the seam the billing work builds on. Owner's calls before it ships: the default
+numbers, whether a pending invitation counts as a seat, the over-limit rule, whether grants should expire by
+default.
+Another branch (`feat/github-app`) adds `0043_github_app.sql` and a release entry at the same spot in
+`web/src/releases.ts`: whichever merges second renumbers its release to 0.20.
+
 ### Changed for API clients since the pushed commit
 
 | Route / tool | Was | Is |

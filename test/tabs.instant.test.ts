@@ -175,7 +175,8 @@ describe("Platform — switching tabs", () => {
     expect(asked.some((u) => u.includes("/api/platform/usage"))).toBe(true);
     expect(asked.some((u) => u.includes("/api/platform/admins"))).toBe(true);
     expect(asked.some((u) => u.includes("/api/platform/audit"))).toBe(true);
-    expect(asked.length).toBe(4);                     // each exactly once
+    expect(asked.some((u) => u.includes("/api/platform/grants"))).toBe(true); // the Access tab (0044_plans)
+    expect(asked.length).toBe(5);                     // each exactly once
   });
 
   it("a tab that is loaded stays loaded: no status flip, no emptied rows", () => {
