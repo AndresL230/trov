@@ -42,7 +42,7 @@ const any: unknown = new Proxy(function () { /* callable */ }, {
   ownKeys: () => [],
 });
 /** Not request functions: the prefix's own controls, and the error classes. */
-const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText"]);
+const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "githubInstallHref"]);
 /** Functions whose arguments must be real values (a Blob for a multipart body). */
 const SPECIAL: Record<string, unknown[]> = {
   uploadAvatar: [new Blob(["x"]), "a.png"],
@@ -79,6 +79,14 @@ describe("apiUrl — the one prefix", () => {
     }
     // Look-alikes are tenant routes: `/api/orgsx`, `/authx`.
     expect(api.apiUrl("/api/orgsx")).toBe("/api/o/acme/orgsx");
+  });
+  it("the GitHub App: Connect is a link to the org's own start route — a tenant route — and the callback GitHub returns to is not", () => {
+    expect(api.githubInstallHref("acme")).toBe("/api/o/acme/github/install");
+    expect(api.githubInstallHref("acme", { existing: true, account: "acme-gh" })).toBe("/api/o/acme/github/install?existing=1&account=acme-gh");
+    expect(api.isGlobalPath(api.githubInstallHref("acme"))).toBe(true); // already under an org's prefix: never prefixed twice
+    expect(api.apiUrl("/github/repositories")).toBe("/api/o/acme/github/repositories");
+    expect(api.isGlobalPath("/auth/callback")).toBe(true);
+    expect(api.apiUrl("/auth/callback?code=x&installation_id=1")).toBe("/auth/callback?code=x&installation_id=1");
   });
   it("follows the org it is given, encoded", () => {
     api.setApiOrg("big-co");

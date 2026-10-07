@@ -634,7 +634,7 @@ describe("when the import runs", () => {
     await captured(() => runOrgJob(e, ORG_B, "reconcile", Date.parse("2026-09-20T18:20:00Z"), g2.fetchImpl));
     expect(await cols(ORG_B)).toMatchObject({ logo_sha: await sha256Hex(PNG("cron-2")) });
     // The dispatcher budgets the unit for it.
-    expect(reconcileCost(2)).toBe(19 + 2 * 2 + LOGO_IMPORT_COST);
+    expect(reconcileCost(2)).toBe(19 + 2 * 2 + LOGO_IMPORT_COST + 1); // + an installation token's mint (0043_github_app)
   });
 });
 

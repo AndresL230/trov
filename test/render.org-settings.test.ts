@@ -42,7 +42,7 @@ const set = (kind: IntegrationKind, last4: string, o: Partial<IntegrationDTO> = 
   integ(kind, { configured: true, hint_last4: last4, created_by: "andres", created_at: "2026-10-01T10:00:00.000Z", last_used_at: "2026-10-05T10:00:00.000Z", ...o });
 const repo = (o: Partial<OrgRepoDTO> = {}): OrgRepoDTO => ({
   id: HOOK, repo_full_name: "acme/web", is_primary: true, legacy_hook: false, webhook_url: `https://trov.dev/webhook/github/${HOOK}`,
-  webhook_secret_configured: false, created_at: "2026-10-01T10:00:00.000Z", created_by: "andres", ...o,
+  webhook_secret_configured: false, connection: "manual", access_lost: false, created_at: "2026-10-01T10:00:00.000Z", created_by: "andres", ...o,
 });
 const env = (key: string, position: number, o: Partial<OrgEnvironmentDTO> = {}): OrgEnvironmentDTO => ({
   key, position, label: key[0].toUpperCase() + key.slice(1), note: null, branch: key === "staging" ? "main" : key, railway_env: "", worker: "", worker_check: "",
@@ -64,6 +64,9 @@ function emptyUi(over: Partial<OrgUi> = {}): OrgUi {
     settings: ok({ org: { slug: "acme", name: "Acme Robotics", created_at: "2026-10-01T10:00:00.000Z", created_by: "andres" }, can_edit: true }),
     members: ok([member("andres", "owner")]), invites: ok([]), repos: ok([]), envs: ok([]),
     integrations: ok({ integrations: [integ("github_token"), integ("cloudflare_analytics")], secrets_available: true, key_version: null }),
+    // The GitHub App is NOT configured on this deployment (the state every org was in before 0.19):
+    // repositories are connected by name. The App's own states are test/render.github-app.test.ts.
+    github: ok({ configured: false, installation: null, lost: null }),
     audit: ok([]), ...over,
   };
 }

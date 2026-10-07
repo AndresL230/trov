@@ -30,8 +30,12 @@ const auditStmt = (ctx: TenantContext, action: OrgSettingsAuditAction, target: s
 
 // ── repos ────────────────────────────────────────────────────────────────────
 
-export interface OrgRepoRow { id: string; repo_full_name: string; is_primary: number; legacy_hook: number; created_at: string; created_by: string }
-const REPO_COLS = `id, repo_full_name, is_primary, legacy_hook, created_at, created_by`;
+export interface OrgRepoRow {
+  id: string; repo_full_name: string; is_primary: number; legacy_hook: number; created_at: string; created_by: string;
+  /** 0043_github_app: `app` = visible to the org's GitHub App installation (src/github-app/store.ts keeps it in step). */
+  connection: "manual" | "app"; access_lost_at: string | null;
+}
+const REPO_COLS = `id, repo_full_name, is_primary, legacy_hook, created_at, created_by, connection, access_lost_at`;
 export const MAX_ORG_REPOS = 10;
 // GitHub's own shape: an owner login (≤ 39, alphanumerics and inner hyphens) and a repository name.
 const REPO_FULL_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
@@ -59,6 +63,8 @@ export async function listRepos(ctx: TenantContext, origin: string, admin: boole
     legacy_hook: r.legacy_hook === 1,
     webhook_url: admin ? webhookUrl(origin, r.id) : null,
     webhook_secret_configured: hooked.has(r.id),
+    connection: r.connection,
+    access_lost: r.access_lost_at !== null,
     created_at: r.created_at,
     created_by: r.created_by,
   }));
@@ -70,9 +76,12 @@ const newHookId = (): string =>
 /**
  * Add a repository (admin+). The org's FIRST repo is its primary; `is_primary: true` on a later one
  * moves the primary to it — and naming a repo the org already has, with `is_primary: true`, promotes
- * that one. Returns the row's id.
+ * that one. Returns the row's id. `connection: "app"` is passed ONLY by the installation's picker
+ * (src/github-app/routes.ts), after it has checked that the installation can see the repository.
  */
-export async function addRepo(ctx: TenantContext, input: { repo_full_name: unknown; is_primary?: unknown }): Promise<{ id: string; created: boolean }> {
+export async function addRepo(
+  ctx: TenantContext, input: { repo_full_name: unknown; is_primary?: unknown }, opts: { connection?: "app" } = {}
+): Promise<{ id: string; created: boolean }> {
   requireRole(ctx, "admin");
   const name = typeof input.repo_full_name === "string" ? input.repo_full_name.trim() : "";
   if (!REPO_FULL_NAME.test(name)) throw invalid("repo_full_name", "repo_full_name must be owner/repo");
@@ -97,9 +106,9 @@ export async function addRepo(ctx: TenantContext, input: { repo_full_name: unkno
   const at = nowIso();
   await batch(ctx, [
     ...(primary && rows.length > 0 ? [unsetPrimary] : []),
-    stmt(ctx, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES (?, ?, ?, ?, 0, ?, ?)`,
-      id, ctx.orgId, name, primary ? 1 : 0, at, ctx.userId),
-    auditStmt(ctx, "repo.add", name, { primary }, at),
+    stmt(ctx, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by, connection) VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
+      id, ctx.orgId, name, primary ? 1 : 0, at, ctx.userId, opts.connection ?? "manual"),
+    auditStmt(ctx, "repo.add", name, { primary, ...(opts.connection ? { connection: opts.connection } : {}) }, at),
   ]);
   return { id, created: true };
 }

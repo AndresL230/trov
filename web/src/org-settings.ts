@@ -39,6 +39,8 @@ import { integrationsTab, secretFormModal, integrationLabel, SECRET_DELETE_EFFEC
 import { identitySection, type IdentityProps } from "./identity";
 import { notificationsAdminSections, notifDropdowns, type NotifAdminProps } from "./notifications";
 import { orgLogoSection, initialOrgLogoUi, type OrgLogoUi } from "./org-logo";
+import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, repoPicker, suspendedBanner, type GithubNotice } from "./github-app";
+import type { GithubAppStatusDTO, GithubReposDTO } from "@shared/github-app";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -86,7 +88,7 @@ export interface MemberDraft {
 
 /** What the open confirmation modal is about. `arg` = a repo id, an environment key,
  *  `<kind>:<scope>`, a member's handle, or "" for the key. */
-export interface OrgConfirm { what: "repo" | "env" | "secret" | "member" | "key"; arg: string; busy: boolean }
+export interface OrgConfirm { what: "repo" | "env" | "secret" | "member" | "key" | "github"; arg: string; busy: boolean }
 
 /** Everything Org settings keeps in AppState (`state.org`). It NEVER holds a secret's value:
  *  a credential being typed lives only in the input and in org-actions.ts's private draft. */
@@ -122,6 +124,15 @@ export interface OrgUi {
   repoDraft: string;
   repoBusy: boolean;
   repoError: string | null;
+  /** The org's GitHub App connection (github-app.ts): read by every member, for both GitHub tabs. */
+  github: OrgSlice<GithubAppStatusDTO | null>;
+  /** The repositories the installation can see (admins, while one is live). */
+  githubRepos: OrgSlice<GithubReposDTO | null>;
+  /** What the return from GitHub said (`?github=` on the page it redirected to), until dismissed. */
+  githubNotice: GithubNotice | null;
+  githubFilter: string;
+  /** The repository being tracked from the installation's list (its full name). */
+  githubBusy: string | null;
   // Environments
   envEdit: EnvDraft | null;
   envBusy: boolean;
@@ -142,6 +153,7 @@ export function initialOrgUi(): OrgUi {
     nameDraft: null, nameSaving: false, nameError: null, logo: initialOrgLogoUi(),
     memberEdit: null, inviteBy: "github", inviteDraft: "", inviteName: "", inviteRole: "member", inviteBusy: false, inviteError: null, mailBusy: null,
     repoDraft: "", repoBusy: false, repoError: null,
+    github: idle(null), githubRepos: idle(null), githubNotice: null, githubFilter: "", githubBusy: null,
     envEdit: null, envBusy: false,
     secretForm: null, tests: {}, auditOpen: false, openRows: [], confirm: null,
   };
@@ -180,18 +192,30 @@ export interface OrgSettingsProps {
 
 export interface SetupStep { key: "repo" | "env" | "token" | "team"; title: string; why: string; tab: OrgTab; go: string; done: boolean }
 
+/** The org's GitHub App connection, from whichever read has it: its own (`GET …/github`, every member)
+ *  or the Integrations list's copy (admins). null until one has answered. */
+export const githubOf = (ui: Pick<OrgUi, "github" | "integrations">): GithubAppStatusDTO | null =>
+  ui.github.data ?? ui.integrations.data?.github_app ?? null;
+
 /**
  * A new org's four first steps, each read off live data — or null while any of that data
- * has not arrived (a checklist that flickers to "all done" and back helps nobody). The
- * GitHub token counts as set when the platform's legacy credential answers for it.
+ * has not arrived (a checklist that flickers to "all done" and back helps nobody). GitHub
+ * counts as connected through the App's installation, a stored token, or the platform's
+ * legacy credential answering for it.
  */
 export function setupSteps(ui: OrgUi): SetupStep[] | null {
   if (ui.repos.status !== "ok" || ui.envs.status !== "ok" || ui.members.status !== "ok" || ui.invites.status !== "ok" || ui.integrations.status !== "ok" || !ui.integrations.data) return null;
   const token = ui.integrations.data.integrations.find((i) => i.kind === "github_token");
+  // GitHub is connected by the App's installation or, by hand, by a token: either satisfies the step.
+  const app = githubOf(ui);
+  const offered = app?.configured === true;
+  const connected = !!app?.installation || (!!token && (token.configured || token.legacy_fallback));
   return [
     { key: "repo", title: "Connect a repository", why: "Trov reads its deployments, checks, pull requests and issues.", tab: "repos", go: "Open Repositories", done: ui.repos.data.length > 0 },
     { key: "env", title: "Add an environment", why: "The Repo dashboard reports on each one: staging, production.", tab: "environments", go: "Open Environments", done: ui.envs.data.length > 0 },
-    { key: "token", title: "Set the GitHub token", why: "Without it Trov cannot read the repository.", tab: "integrations", go: "Open Integrations", done: !!token && (token.configured || token.legacy_fallback) },
+    offered
+      ? { key: "token", title: "Connect GitHub", why: "Install the Trov App on GitHub so Trov can read the repository. A token also works.", tab: "repos", go: "Open Repositories", done: connected }
+      : { key: "token", title: "Set the GitHub token", why: "Without it Trov cannot read the repository.", tab: "integrations", go: "Open Integrations", done: connected },
     { key: "team", title: "Invite your team", why: "By GitHub login or email; they join when they accept.", tab: "members", go: "Open Members", done: ui.members.data.length > 1 || ui.invites.data.some((i) => i.status === "pending") },
   ];
 }
@@ -254,52 +278,110 @@ export const repoDraftOk = (v: string): boolean => REPO_RE.test(v.trim());
 const READ_ONLY = " You can read this; an admin or an owner can change it.";
 const LIST = "overflow:hidden;list-style:none;margin:0;padding:0";
 
+/** The by-name add: the name, and Add. `accent` only where it is the tab's primary action (no App). */
+function repoAddBar(ui: OrgUi, accent: boolean): string {
+  const btn = accent ? accentBtn : quietBtn;
+  return `<div class="cnpy-org-addbar">
+      <input id="org-repo" data-act="orgRepoDraft" data-field="orgRepo" data-enter="orgRepoAdd" value="${attr(ui.repoDraft)}" placeholder="owner/repo" aria-label="Repository to add, as owner/repo" title="The name as it appears on GitHub, for example acme/web" autocomplete="off" autocapitalize="off" spellcheck="false"${ui.repoError ? ' aria-invalid="true" aria-describedby="org-repo-e"' : ""} class="cnpy-input" style="${O_FIELD};height:32px;width:220px;flex:1 1 180px;font-size:13px;${ui.repoError ? "border-color:var(--red);" : ""}" />
+      ${btn(ui.repoBusy ? "Adding…" : "Add repository", "orgRepoAdd", { disabled: !repoDraftOk(ui.repoDraft) || ui.repoBusy, busy: ui.repoBusy })}
+    </div>`;
+}
+
+/**
+ * Repositories. How an org connects GitHub decides the tab's ONE primary action:
+ *   the App is not set up on this Trov → add a repository by name (as before the App existed);
+ *   the App is offered, not connected  → Connect with GitHub; by name is the quiet alternative;
+ *   connected                          → pick from what the installation can see (quiet Track buttons).
+ */
 export function reposTab(org: MyOrg, ui: OrgUi): string {
   const admin = roleAtLeast(org.role, "admin");
   const repos = ui.repos.data;
+  const app = githubOf(ui);
+  const appKnown = app !== null || ui.github.status === "error";
   const note = sliceNote(ui.repos, "repositories", repos.length > 0 || ui.repos.status === "ok");
   if (note) return note;
-  // The tab's primary action: the name, and Add. The field's rule is its placeholder and its
-  // tooltip; a refusal is said under the lead.
-  const add = admin ? `<div class="cnpy-org-addbar">
-      <input id="org-repo" data-act="orgRepoDraft" data-field="orgRepo" data-enter="orgRepoAdd" value="${attr(ui.repoDraft)}" placeholder="owner/repo" aria-label="Repository to add, as owner/repo" title="The name as it appears on GitHub, for example acme/web" autocomplete="off" autocapitalize="off" spellcheck="false"${ui.repoError ? ' aria-invalid="true" aria-describedby="org-repo-e"' : ""} class="cnpy-input" style="${O_FIELD};height:32px;width:220px;flex:1 1 180px;font-size:13px;${ui.repoError ? "border-color:var(--red);" : ""}" />
-      ${accentBtn(ui.repoBusy ? "Adding…" : "Add repository", "orgRepoAdd", { disabled: !repoDraftOk(ui.repoDraft) || ui.repoBusy, busy: ui.repoBusy })}
-    </div>` : "";
-  const err = ui.repoError ? `<div id="org-repo-e" role="alert" style="${O_ERR};margin:-14px 0 20px">${esc(ui.repoError)}</div>` : "";
+  // Whether the App is offered decides the tab's primary action: wait for it rather than flash the wrong one.
+  if (!appKnown) return loadingNote("repositories");
+  const inst = app?.installation ?? null;
+  const offered = app?.configured === true;
+  const live = !!inst && !inst.suspended_at;
+  const err = ui.repoError ? `<div id="org-repo-e" role="alert" style="${O_ERR};margin:8px 0 0">${esc(ui.repoError)}</div>` : "";
   const primary = repos.find((r) => r.is_primary);
-  const unsigned = admin ? repos.filter((r) => !r.webhook_secret_configured).length : 0;
-  const lead = tabLead(repos.length === 0
-    ? `No repository connected.${admin ? " The first one you add becomes the primary." : READ_ONLY}`
-    : `<strong>${repos.length}</strong> ${repos.length === 1 ? "repository" : "repositories"}${primary ? ` &middot; primary <code title="The Repo dashboard, Sync GitHub and drift read the primary repository">${esc(primary.repo_full_name)}</code>` : ""}${unsigned ? ` &middot; ${leadFlag(`${unsigned} without a webhook secret`, "amber")}` : ""}.${admin ? "" : READ_ONLY}`, add);
-  if (repos.length === 0) {
-    return `${lead}${err}${orgEmpty("No repository connected", admin ? "Add the repository your team ships from. Trov reads its deployments, checks, pull requests and issues." : "An admin has not connected a repository yet.")}`;
-  }
+  const viaApp = (r: OrgRepoDTO): boolean => !!inst && r.connection === "app";
+  // A missing webhook secret is worth flagging only on the by-hand path: where the App is offered and
+  // no token is set, the next step is Connect with GitHub, not a webhook.
+  const token = ui.integrations.data?.integrations.find((i) => i.kind === "github_token");
+  const byHand = !offered || (!!token && (token.configured || token.legacy_fallback));
+  const unsigned = admin && byHand ? repos.filter((r) => !viaApp(r) && !r.webhook_secret_configured).length : 0;
+  const lost = inst ? repos.filter((r) => viaApp(r) && r.access_lost).length : 0;
+
+  const action = !admin ? ""
+    : inst ? (inst.manage_url ? githubLink("Manage on GitHub", inst.manage_url, `Manage the Trov App on ${inst.account_login}, on GitHub`) : "")
+    : offered ? connectLink(org.slug)
+    : repoAddBar(ui, true);
+  const none = inst ? `Connected to GitHub ${appLeadPhrase(inst)}. No repository is tracked yet${admin ? ": pick one below. The first becomes the primary" : ""}.`
+    : `No repository connected.${admin ? (offered ? " Connect GitHub to choose from your repositories." : " The first one you add becomes the primary.") : READ_ONLY}`;
+  const lead = tabLead(repos.length === 0 ? none
+    : `<strong>${repos.length}</strong> ${repos.length === 1 ? "repository" : "repositories"}${primary ? ` &middot; primary <code title="The Repo dashboard, Sync GitHub and drift read the primary repository">${esc(primary.repo_full_name)}</code>` : ""}${inst ? ` &middot; ${appLeadPhrase(inst)}` : ""}${lost ? ` &middot; ${leadFlag(`${lost} no longer visible to the App`, "amber")}` : ""}${unsigned && !inst ? ` &middot; ${leadFlag(`${unsigned} without a webhook secret`, "amber")}` : ""}.${admin ? "" : READ_ONLY}`, action);
+
   const rows = repos.map((r) => {
     const id = r.id ?? "";
+    const through = viaApp(r);
     // The primary can only be removed last (the API's `primary_repo`): say so instead of offering a button that fails.
     const locked = r.is_primary && repos.length > 1;
-    const hook = admin && r.webhook_url ? `<div style="margin-top:10px">
+    const hook = admin && r.webhook_url && !through ? `<div style="margin-top:10px">
         <span style="${O_LABEL};font-size:10px">Webhook URL</span>
         <code class="cnpy-org-code">${esc(r.webhook_url)}</code>
         <span style="display:block;font-size:12px;color:var(--fg-40)">${r.webhook_secret_configured ? "The payload URL of this repository's GitHub webhook. Deliveries are checked against the secret set in Integrations." : "Deliveries to this URL are rejected until its webhook secret is set in Integrations. Set the secret first, then add the webhook on GitHub."}</span>
       </div>` : "";
+    const how = through
+      ? r.access_lost
+        ? `<div data-org-repo-lost style="margin-top:6px;color:var(--fg-70)">The Trov App on ${esc(inst?.account_login ?? "GitHub")} can no longer see this repository, so nothing new is read from it. Give the App access to it again on GitHub${admin ? ", or remove it here" : ""}.</div>`
+        : `<div style="margin-top:6px">Read through the GitHub App: it needs no token and no webhook of its own.</div>`
+      : inst ? `<div style="margin-top:6px">Outside the account the GitHub App is installed on, so it is read with the GitHub token and its own webhook.</div>` : "";
+    const capture = r.is_primary ? "" : `<div style="margin-top:6px">Events are captured for the primary repository only. This one resolves links and can be made the primary.</div>`;
     const actions = admin ? `<div class="cnpy-xrow-acts">
         ${r.is_primary ? "" : quietBtn("Make primary", "orgRepoPrimary", { arg: r.repo_full_name, disabled: ui.repoBusy, label: `Make ${r.repo_full_name} the primary repository` })}
-        ${r.webhook_secret_configured ? "" : quietBtn("Set its webhook secret", "orgTab", { arg: "integrations" })}
+        ${through || r.webhook_secret_configured ? "" : quietBtn("Set its webhook secret", "orgTab", { arg: "integrations" })}
         ${dangerLink("Remove", "orgConfirm", { arg: `repo:${id}`, disabled: locked, label: `Remove ${r.repo_full_name}`, field: `orgConfirm:repo:${id}`, title: locked ? "Make another repository the primary first" : undefined })}
       </div>` : "";
     const key = `repo:${r.repo_full_name}`;
     return openRow({
-      key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${r.repo_full_name}${r.is_primary ? ", primary" : ""}`,
-      head: `<span>${esc(r.repo_full_name)}</span>${r.is_primary ? chip("Primary", "var(--accent)") : ""}`,
-      meta: admin ? `Webhook secret ${r.webhook_secret_configured ? "set" : "not set"}` : `Added ${esc(relTime(r.created_at))}`,
-      body: `<div>Added ${esc(relTime(r.created_at))} by ${esc(r.created_by)}.${locked && admin ? " To remove it, make another repository the primary first." : ""}</div>${hook}${actions}`,
-      attrs: ` data-org-repo="${attr(r.repo_full_name)}"`,
+      key, open: ui.openRows.includes(key), act: "orgRowToggle", label: `${r.repo_full_name}${r.is_primary ? ", primary" : ""}${through && r.access_lost ? ", no longer visible to the App" : ""}`,
+      head: `<span>${esc(r.repo_full_name)}</span>${r.is_primary ? chip("Primary", "var(--accent)") : ""}${through && r.access_lost ? chip("No longer visible", "var(--amber)") : ""}`,
+      meta: !admin ? `Added ${esc(relTime(r.created_at))}` : through ? (r.access_lost ? "Not visible to the App" : "Through the GitHub App") : `Webhook secret ${r.webhook_secret_configured ? "set" : "not set"}`,
+      body: `<div>Added ${esc(relTime(r.created_at))} by ${esc(r.created_by)}.${locked && admin ? " To remove it, make another repository the primary first." : ""}</div>${how}${capture}${hook}${actions}`,
+      attrs: ` data-org-repo="${attr(r.repo_full_name)}" data-connection="${through ? "app" : "manual"}"`,
     });
   }).join("");
-  return `${lead}${err}
-    ${orgHead("Connected", "", repos.length)}
-    <ul${surface(LIST)}>${rows}</ul>`;
+
+  const connected = repos.length
+    ? `${orgHead("Connected", "", repos.length)}<ul${surface(LIST)}>${rows}</ul>`
+    : inst ? ""
+    : orgEmpty("No repository connected", admin ? (offered ? "Connect GitHub and pick the repository your team ships from. Trov reads its deployments, checks, pull requests and issues." : "Add the repository your team ships from. Trov reads its deployments, checks, pull requests and issues.") : "An admin has not connected a repository yet.");
+  const picker = admin && inst && live ? repoPicker(ui.githubRepos, inst.account_login, { filter: ui.githubFilter, busy: ui.githubBusy, }) : "";
+  const appRow = inst ? `<section aria-labelledby="org-gh-conn" data-org-group="github-app">
+      ${orgHead("Connection", "", null, "org-gh-conn")}
+      <ul${surface(LIST)}>${githubAppRow(inst, { open: ui.openRows.includes("github-app"), admin, tracked: repos.filter(viaApp).length, test: ui.tests.github_app, busy: ui.confirm?.what === "github" })}</ul>
+    </section>` : "";
+  // By name: the tab's primary where the App is not offered (it is in the lead); otherwise the
+  // quiet alternative, behind a disclosure — for a repository the App cannot see.
+  const manualOpen = ui.openRows.includes("repo-manual") || !!ui.repoError;
+  const manual = !admin ? ""
+    : !offered ? `${err}${app ? `<div data-org-github-off style="${O_HELP};margin:-12px 0 20px">${esc(NOT_CONFIGURED_LINE)}</div>` : ""}`
+    : `<div style="margin-top:22px" data-org-repo-manual>
+        <button type="button" data-act="orgRowToggle" data-arg="repo-manual" data-field="row:repo-manual" aria-expanded="${manualOpen}" aria-controls="org-repo-manual" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55);text-align:left"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="transform:${manualOpen ? "rotate(90deg)" : "none"};transition:transform .15s ease"><path d="M9 6l6 6-6 6"></path></svg>Add a repository by name instead</button>
+        <div id="org-repo-manual"${manualOpen ? "" : " hidden"} style="padding-top:8px">
+          ${repoAddBar(ui, false)}${err}
+          <div style="${O_HELP}">For a repository the GitHub App cannot see. It is read with the GitHub token, and needs its own webhook: both are set in Integrations.</div>
+        </div>
+      </div>`;
+  const already = admin && offered && !inst ? `<div style="font-size:12.5px;color:var(--fg-55);margin:-12px 0 20px">Already installed the Trov App on GitHub? ${existingLink(org.slug, "Link the existing installation")}</div>` : "";
+  return `${connectNotice(ui.githubNotice, org.slug, org.name)}${lostBanner(app, admin)}${suspendedBanner(inst)}${lead}${offered ? "" : manual}${already}
+    ${connected}
+    ${picker}
+    ${appRow}
+    ${offered ? manual : ""}`;
 }
 
 // ── ENVIRONMENTS ─────────────────────────────────────────────────────────────
@@ -618,6 +700,16 @@ export function orgConfirmCopy(c: OrgConfirm, org: MyOrg, ui: OrgUi): { title: s
       confirmLabel: "Remove repository", busyLabel: "Removing…",
     };
   }
+  if (c.what === "github") {
+    const i = githubOf(ui)?.installation;
+    if (!i) return null;
+    const n = ui.repos.data.length;
+    return {
+      title: `Disconnect GitHub from ${org.name}?`,
+      body: `Trov stops reading through the installation on ${i.account_login} and ignores the events it sends. The Trov App stays installed on GitHub until you uninstall it there. ${n === 0 ? "No repository is tracked." : `${n === 1 ? "Your repository stays connected: it is read with the GitHub token if one is set, and otherwise stops updating." : `Your ${n} repositories stay connected: they are read with the GitHub token if one is set, and otherwise stop updating.`}`}`,
+      confirmLabel: "Disconnect", busyLabel: "Disconnecting…",
+    };
+  }
   if (c.what === "env") {
     const e = ui.envs.data.find((x) => x.key === c.arg);
     if (!e) return null;
@@ -677,7 +769,11 @@ export function orgOverlays(p: OrgSettingsProps): string {
 /** The tab bar. Two tabs carry a count of what needs an admin there: integrations with an error,
  *  and (Members) logins waiting to be matched — `logins` is 0 for anyone who is not an admin. */
 export function orgTabBar(tab: OrgTab, role: OrgRole | null, ui: OrgUi, logins = 0): string {
-  const todo = ui.integrations.data ? ui.integrations.data.integrations.filter((i) => i.expected && (i.last_error !== null)).length : 0;
+  // An org on the App does not need its token / webhook-secret rows: an old error on one is not a to-do.
+  const inst = githubOf(ui)?.installation ?? null;
+  const manual = (i: IntegrationDTO): boolean => i.kind === "github_token" || i.kind === "github_webhook";
+  const todo = (ui.integrations.data ? ui.integrations.data.integrations.filter((i) => i.expected && i.last_error !== null && !(inst && manual(i))).length : 0)
+    + (inst && (inst.suspended_at || inst.last_error) ? 1 : 0);
   const badge = (n: number, title: string) => `<span class="cnpy-badge" data-n="${n}" title="${attr(title)}">${n}</span>`;
   return tabBar({
     id: "org-tab", ariaLabel: "Org settings sections", act: "orgTab", value: tab,
