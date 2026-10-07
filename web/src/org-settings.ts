@@ -37,6 +37,7 @@ import type { IntegrationDTO, IntegrationKind, IntegrationsListDTO, OrgAuditDTO,
 import { integrationsTab, secretFormModal, integrationLabel, SECRET_DELETE_EFFECT, type SecretFormState, type TestState } from "./integrations";
 import { identitySection, type IdentityProps } from "./identity";
 import { notificationsAdminSections, type NotifAdminProps } from "./notifications";
+import { orgLogoSection, initialOrgLogoUi, type OrgLogoUi } from "./org-logo";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -103,6 +104,8 @@ export interface OrgUi {
   nameDraft: string | null;
   nameSaving: boolean;
   nameError: string | null;
+  /** General's image control (org-logo.ts): its menu, a write in flight, the last refusal. */
+  logo: OrgLogoUi;
   // Members
   memberEdit: MemberDraft | null;
   inviteBy: "github" | "email";
@@ -135,7 +138,7 @@ export function initialOrgUi(): OrgUi {
   return {
     tab: "integrations", slug: null,
     settings: idle(null), members: idle([]), invites: idle([]), repos: idle([]), envs: idle([]), integrations: idle(null), audit: idle([]),
-    nameDraft: null, nameSaving: false, nameError: null,
+    nameDraft: null, nameSaving: false, nameError: null, logo: initialOrgLogoUi(),
     memberEdit: null, inviteBy: "github", inviteDraft: "", inviteName: "", inviteRole: "member", inviteBusy: false, inviteError: null, mailBusy: null,
     repoDraft: "", repoBusy: false, repoError: null,
     envEdit: null, envBusy: false,
@@ -229,6 +232,7 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
   return `${tabLead(`Created ${esc(relTime(s.data.org.created_at))} by <strong>${esc(s.data.org.created_by)}</strong> &middot; you are ${org.role === "member" ? "a" : "an"} ${roleChip(org.role)} here${canEdit ? "" : ". Only an admin or an owner can rename the org."}`)}
     <div class="cnpy-org-narrow">
     <section${surface("padding:18px 20px")}>
+      ${orgLogoSection({ name: stored, logo: s.data.org.logo, canEdit, ui: ui.logo, repo: ui.repos.data.find((r) => r.is_primary)?.repo_full_name ?? null })}
       ${nameRow}
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
         <div style="${O_LABEL}">Slug</div>

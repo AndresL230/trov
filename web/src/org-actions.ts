@@ -24,6 +24,7 @@ import {
 import { GENERATED_KINDS, integrationKey, integrationLabel } from "./integrations";
 import { isIntegrationKind, type IntegrationDTO, type IntegrationKind } from "@shared/integrations";
 import type { OrgInvite, OrgRole } from "@shared/orgs";
+import { createOrgLogoActions } from "./org-logo-actions";
 
 export interface OrgHost {
   state: AppState;
@@ -88,6 +89,8 @@ export function createOrgController(host: OrgHost): OrgController {
   const ui = (): OrgUi => state.org;
   const org = () => currentOrg(state);
   const rerender = () => host.rerender();
+  /** General's image control: its own acts, file input and Escape (org-logo-actions.ts). */
+  const logo = createOrgLogoActions(host);
 
   // ── the secret draft (see the header) ──────────────────────────────────────
   let secretDraft = "";
@@ -508,6 +511,7 @@ export function createOrgController(host: OrgHost): OrgController {
 
   // ── acts ───────────────────────────────────────────────────────────────────
   function act(name: string, arg: string | null, value: string | null): void {
+    if (logo.act(name)) return;
     const u = ui();
     const o = org();
     const admin = roleAtLeast(o?.role, "admin");

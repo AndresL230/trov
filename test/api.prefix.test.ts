@@ -12,7 +12,7 @@ import * as api from "../web/src/api";
 const sources = import.meta.glob("../web/src/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /** Person-level and platform routes: the only paths that may go out without the org prefix. */
-const GLOBAL = /^\/(?:auth|avatar)\/|^\/api\/(?:orgs|invites|platform)(?:[/?]|$)/;
+const GLOBAL = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform)(?:[/?]|$)/;
 const TENANT = /^\/api\/o\/acme\//;
 /** Org settings' functions take the slug as an argument (`any` → "x"): still under an org's prefix. */
 const ANY_ORG = /^\/api\/o\/[^/]+\//;
@@ -46,6 +46,7 @@ const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref",
 /** Functions whose arguments must be real values (a Blob for a multipart body). */
 const SPECIAL: Record<string, unknown[]> = {
   uploadAvatar: [new Blob(["x"]), "a.png"],
+  uploadOrgLogo: ["x", new Blob(["x"]), "logo.png"],
   listArtifacts: [{ area: "ui", q: "x" }],
   createArtifact: [{ title: "t", kind: "markdown", area: "ui", repo: "", visibility: "org", summary: "s" }, { content: "c" }],
   addArtifactVersion: ["slug", { content: "c", summary: "s" }],
@@ -72,7 +73,7 @@ describe("apiUrl — the one prefix", () => {
     expect(api.apiUrl("/docs?fields=meta")).toBe("/api/o/acme/docs?fields=meta");
   });
   it("leaves person-level and platform routes alone", () => {
-    for (const p of ["/auth/me", "/auth/oauth-grants/3/revoke", "/avatar/abc", "/api/orgs", "/api/invites/3/accept", "/api/platform/usage?days=30", "/api/o/other/settings"]) {
+    for (const p of ["/auth/me", "/auth/oauth-grants/3/revoke", "/avatar/abc", "/org-logo/abc", "/api/orgs", "/api/invites/3/accept", "/api/platform/usage?days=30", "/api/o/other/settings"]) {
       expect(api.apiUrl(p), p).toBe(p);
       expect(api.isGlobalPath(p), p).toBe(true);
     }
@@ -194,6 +195,7 @@ describe("429 rate_limited — one sentence, wherever a limited route is called"
       ["testSendNotification", () => api.testSendNotification("daily")],
       ["putNotificationPrefs", () => api.putNotificationPrefs({ email: "a@b.co" })],
       ["uploadAvatar", () => api.uploadAvatar(new Blob(["x"]), "a.png")],
+      ["uploadOrgLogo", () => api.uploadOrgLogo("acme", new Blob(["x"]), "logo.png")],
       ["checkHandle", () => api.checkHandle("someone")],
     ];
     for (const [name, call] of calls) {

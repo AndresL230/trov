@@ -17,6 +17,8 @@ import { esc, attr, relTime, surface } from "./ui";
 import { accentBtn, quietBtn, orgBanner, roleChip } from "./org-ui";
 import { nameError, slugError, addOrgServerError } from "./platform";
 import { orgHref } from "./org-context";
+import { orgTile } from "./org-logo";
+export { orgTile };
 
 // ── state ────────────────────────────────────────────────────────────────────
 export interface CreateOrgErrors { name?: string; slug?: string; form?: string }
@@ -73,11 +75,6 @@ const PLUS = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke
 const GEAR = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"></path><path d="M16 9h2a2 2 0 0 1 2 2v10"></path><path d="M2 21h20"></path><path d="M8 7h4M8 11h4M8 15h4"></path></svg>`;
 const CLOSE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
 
-/** An org's square initial — the mark an org has until it can have a logo. */
-export function orgTile(name: string, size = 24): string {
-  const letter = (name.trim()[0] ?? "?").toUpperCase();
-  return `<span class="cnpy-orgtile" aria-hidden="true" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.5)}px;border-radius:7px">${esc(letter)}</span>`;
-}
 const ROLE_WORD: Record<OrgRole, string> = { owner: "owner", admin: "admin", member: "member" };
 /** "an admin" / "a member" — the role an invite grants, in a sentence. */
 const asRole = (r: OrgRole): string => `${r === "member" ? "a" : "an"} ${ROLE_WORD[r]}`;
@@ -92,7 +89,7 @@ function inviteRow(i: MyInvite, ui: Pick<OrgsUi, "inviteBusy">, compact: boolean
   const off = ui.inviteBusy !== null;
   const sent = i.github_login ? `to @${i.github_login}` : i.email ? `to ${i.email}` : "";
   return `<li class="cnpy-orgs-inv" style="${compact ? "padding:9px 10px" : "padding:13px 16px;border-bottom:1px solid var(--border);margin-bottom:-1px"}">
-    ${orgTile(i.org.name, compact ? 24 : 28)}
+    ${orgTile(i.org.name, compact ? 24 : 28, i.org.logo_url)}
     <div style="flex:1 1 160px;min-width:0;line-height:1.35">
       <div style="font-size:13.5px;font-weight:600;overflow-wrap:anywhere">${esc(i.org.name)}</div>
       <div style="font-size:12px;color:var(--fg-55);overflow-wrap:anywhere">${esc(inviteSentence(i))}${compact ? "" : ` &middot; sent ${esc(sent)} ${esc(relTime(i.created_at))}`}</div>
@@ -128,7 +125,7 @@ export function orgSwitcherButton(p: OrgSwitcherProps): string {
   const waiting = p.invites + (p.logins ?? 0);
   return `<div class="cnpy-orgsw" data-tip="${attr(p.org ? `${name}: switch organization` : "Organizations")}">
     <button type="button" data-act="orgsMenu" data-field="orgsMenu" data-orgsw-trigger class="cnpy-orgsw-b${p.open ? " is-open" : ""}" style="border-radius:8px" aria-haspopup="dialog" aria-expanded="${p.open}" aria-controls="orgs-menu" aria-label="${attr(p.org ? `${name}: switch organization` : "Organizations")}">
-      ${orgTile(name, 24)}
+      ${orgTile(name, 24, p.org?.logo_url)}
       <span class="cnpy-lbl cnpy-orgsw-n">${esc(name)}</span>
       <span class="cnpy-lbl cnpy-badge" data-n="${waiting}" title="${attr(orgWaitingTitle(p.invites, p.logins ?? 0))}">${waiting}</span><span class="cnpy-dot" data-n="${waiting}"></span>
       ${UPDOWN}
@@ -162,7 +159,7 @@ export function orgMenu(p: OrgMenuProps): string {
   const rows = orgs.map((o) => {
     const here = o.slug === p.current;
     return `<li><a href="${attr(orgHref(o.slug))}" data-act="orgsSwitch" data-arg="${attr(o.slug)}" data-orgs-item class="cnpy-menurow${here ? " is-active" : ""}"${here ? ' aria-current="true"' : ""} style="${MENU_ROW};text-decoration:none;box-sizing:border-box">
-      ${orgTile(o.name, 24)}
+      ${orgTile(o.name, 24, o.logo_url)}
       <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg)">${esc(o.name)}</span>
       ${roleChip(o.role)}
       <span style="width:14px;flex:none;display:grid;place-items:center">${here ? CHECK : ""}</span>
@@ -266,7 +263,7 @@ export function orgPickerView(p: OrgPickerProps): string {
 
   const orgRows = orgs.map((o) => `<li style="border-bottom:1px solid var(--border);margin-bottom:-1px">
       <a href="${attr(orgHref(o.slug, p.hash))}" data-act="orgsSwitch" data-arg="${attr(o.slug)}" class="cnpy-orgs-row" aria-label="Open ${attr(o.name)}" style="text-decoration:none;color:inherit">
-        ${orgTile(o.name, 32)}
+        ${orgTile(o.name, 32, o.logo_url)}
         <span style="flex:1;min-width:0;line-height:1.35">
           <span style="display:block;font-size:14px;font-weight:600;overflow-wrap:anywhere">${esc(o.name)}</span>
           <span style="display:block;font-family:var(--code);font-size:11.5px;color:var(--fg-40);overflow-wrap:anywhere">/o/${esc(o.slug)}/</span>
