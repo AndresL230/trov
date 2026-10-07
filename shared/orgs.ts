@@ -41,6 +41,8 @@ export const ORG_AUDIT_ACTIONS = [
   "invite.create", "invite.revoke", "invite.accept", "invite.decline",
   // Org settings › Repositories / Environments (src/integrations/settings.ts).
   "repo.add", "repo.remove", "repo.primary", "environment.set", "environment.delete", "environment.reorder",
+  // The GitHub App's installation (0043_github_app, src/github-app/store.ts).
+  "github.connect", "github.disconnect", "github.uninstall", "github.suspend", "github.unsuspend", "github.repos", "github.permissions",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
@@ -181,6 +183,9 @@ export interface PlatformOrgRow {
   member_count: number;
   pending_invites: number;
   last_activity_at: string | null;
+  /** The GitHub account the org's App installation is on (0043_github_app), or null: connected by a
+   *  pasted token, or not at all. Read-only here. */
+  github_account?: string | null;
 }
 
 /** Who a superadmin names as an org's admin: exactly one key. */
