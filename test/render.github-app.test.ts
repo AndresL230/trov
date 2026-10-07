@@ -23,7 +23,7 @@ const inst = (o: Partial<GithubInstallationDTO> = {}): GithubInstallationDTO => 
   connected_at: "2026-10-05T10:00:00.000Z", suspended_at: null, last_used_at: "2026-10-07T01:00:00.000Z", last_error: null,
   manage_url: "https://github.com/organizations/acme-gh/settings/installations/5551234", ...o,
 });
-const status = (o: Partial<GithubAppStatusDTO> = {}): GithubAppStatusDTO => ({ configured: true, installation: null, lost: null, ...o });
+const status = (o: Partial<GithubAppStatusDTO> = {}): GithubAppStatusDTO => ({ configured: true, installation: null, lost: null, mismatch: null, ...o });
 const repo = (name: string, o: Partial<OrgRepoDTO> = {}): OrgRepoDTO => ({
   id: `hook_${name.replace(/\W/g, "_")}`, repo_full_name: name, is_primary: false, legacy_hook: false, webhook_url: `https://trov.dev/webhook/github/${HOOK}`,
   webhook_secret_configured: false, connection: "manual", access_lost: false, created_at: "2026-10-01T10:00:00.000Z", created_by: "andres", ...o,
@@ -281,6 +281,26 @@ describe("Repositories — suspended, a repository no longer visible, and a bind
     expect(page(ui(status(), { repos }))).not.toContain("data-org-github-lost");
     // A member is told, without the admin's next step.
     expect(text(page(ui(status({ lost: { account_login: "acme-gh", reason: "uninstalled", at: "2026-10-06T20:00:00.000Z" } }), { repos }), "member"))).not.toContain("Connect again");
+  });
+});
+
+describe("the App on an account that does not own the primary repository", () => {
+  const repos = ok([repo("acme-gh/web", { is_primary: true })]);
+  const wrong = status({ installation: inst({ account_login: "olive", account_type: "User" }), mismatch: { account_login: "olive", repo_full_name: "acme-gh/web" } });
+  it("says which account and which repository, and offers connecting the right one", () => {
+    const html = page(ui(wrong, { repos }));
+    expect(html).toContain("data-org-github-mismatch");
+    expect(text(html)).toContain("The GitHub App is on a different account");
+    const said = text(html).replace(/\s+([,.:])/g, "$1"); // the helper spaces out the bold names
+    expect(said).toContain("The Trov App is installed on olive, which does not own acme-gh/web, so that repository is not read through it.");
+    expect(said).toContain("Connect acme-gh instead: it takes the place of this connection.");
+    expect(html).toContain('data-field="orgGithubReconnect"');
+  });
+  it("a member is told, without the admin's action; no mismatch, no banner", () => {
+    const member = page(ui(wrong, { repos }), "member");
+    expect(member).toContain("data-org-github-mismatch");
+    expect(member).not.toContain("orgGithubReconnect");
+    expect(page(ui(status({ installation: inst() }), { repos }))).not.toContain("data-org-github-mismatch");
   });
 });
 

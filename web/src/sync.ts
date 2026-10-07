@@ -323,7 +323,7 @@ function panelParts(p: SyncProps): { body: string; foot: string } {
     };
   }
   if (mode === "blocked") {
-    const b = syncBlockText(st!.blocked!, null, st!.connect);
+    const b = syncBlockText(st!.blocked!, null, st!.connect, st!.wrong_account && st!.repo ? { account: st!.wrong_account, repo: st!.repo } : null);
     return {
       body: `${problem}${note(I_WARN(15), `<div style="${P_MAIN};font-weight:500">${esc(b.what)}</div><div style="${P_QUIET};margin-top:2px">${esc(syncNeedsText(st!.connect))}</div>${b.link && b.tab ? `<div style="margin-top:8px">${goLink(b.link, "orgGo", b.tab)}</div>` : ""}`)}
         ${st!.last ? facts() : ""}`,

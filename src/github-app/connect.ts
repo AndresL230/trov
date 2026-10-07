@@ -20,7 +20,8 @@
 //      repository ids are a subset of the ids GitHub says this user can read in it — so the org gains
 //      nothing through the installation that the person connecting it could not already read (a
 //      collaborator on one repository must not be able to attach an organization's whole installation);
-//   6. no other Trov org holds the installation, and this org holds no other.
+//   6. no other Trov org holds the installation. An org holds ONE: connecting a different one (the App
+//      on another GitHub account) REPLACES the org's current binding, in the same write.
 // A failure at any step redirects to Org settings with a sentence and writes NOTHING. Every outcome is a
 // redirect — a human never gets JSON here.
 //
@@ -40,10 +41,10 @@ import { importLogoForOrg } from "../integrations/logo";
 import { listMyOrgs } from "../orgs/repo";
 import { installationOrg } from "../platform/jobs";
 import {
-  INSTALLATION_SCOPE, appConfigured, appSlug, getInstallation, installUrl, installationRepoIds, installationToken, listUserInstallations,
+  INSTALLATION_SCOPE, appConfigured, appSlug, forgetInstallationToken, getInstallation, installUrl, installationRepoIds, installationToken, listUserInstallations,
   revokeUserToken, userInstallationRepoIds, type AppRefusal,
 } from "./api";
-import { visibleRepos } from "./repos";
+import { forgetRepoList, visibleRepos } from "./repos";
 import { InstallationConflictError, bindInstallation, liveInstallation } from "./store";
 
 type C = Context<AppEnv>;
@@ -199,11 +200,13 @@ async function verifyAndBind(c: C, deps: ConnectDeps, intent: Intent, userToken:
     installationId = free[0].installation_id;
   }
 
-  // 6 — one org per installation, one installation per org (the unique indexes say so again at the write).
+  // 6 — one org per installation (the unique index says so again at the write). An org has one
+  //     installation: a different one — the admin chose another GitHub account — takes the place of
+  //     the org's current binding, ended in the same batch as the new one is written.
   const held = await installationOrg(p, installationId);
   if (held && held.org_id !== ctx.orgId) return no("taken");
   const live = await liveInstallation(ctx);
-  if (live && live.installation_id !== installationId) return no("already_connected");
+  const replaced = live && live.installation_id !== installationId ? live : null;
 
   // The installation's account, from GitHub AS THE APP — never from the URL, never from the user's list.
   const info = await getInstallation(c.env, installationId, f, nowOf(deps));
@@ -229,10 +232,14 @@ async function verifyAndBind(c: C, deps: ConnectDeps, intent: Intent, userToken:
   if (unreadable > 0) return no("partial_access", `&missing=${unreadable}`);
 
   try {
-    await bindInstallation(ctx, info.installation);
+    await bindInstallation(ctx, info.installation, replaced);
   } catch (e) {
     if (e instanceof InstallationConflictError) return no("taken");
     throw e;
+  }
+  if (replaced) { // what the isolate held for the installation that was replaced, as Disconnect drops it
+    forgetInstallationToken(c.env, replaced.installation_id);
+    forgetRepoList(replaced.installation_id);
   }
   // Courtesies, after the binding stands: mark the org's repositories the installation can see, and let
   // the org's image follow its repository's owner. Neither can undo or fail the connection.

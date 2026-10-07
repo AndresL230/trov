@@ -133,6 +133,9 @@ export interface SyncStatusView {
   connect: SyncCredential;
   /** The credential a sync would read the repository with now; null = none (`blocked: "no_token"`). */
   via: SyncCredential | null;
+  /** The GitHub account the org's App installation is on, when that account does NOT own `repo` — the
+   *  App is connected, but to the wrong account, so it cannot read the repository. null otherwise. */
+  wrong_account: string | null;
   /** The run in progress, or null. */
   running: SyncRunView | null;
   /** The latest run that is no longer running, or null. */
@@ -230,9 +233,12 @@ export function syncFailureText(f: SyncFailure, repo: string): { what: string; f
 /** Why nothing can run, and where to fix it (`tab` is an Org settings tab). With no credential the
  *  fix is where THIS deployment connects GitHub (`connect`): Repositories' "Connect with GitHub" where
  *  the App is configured, the token in Integrations where it is not. */
-export function syncBlockText(block: SyncBlock, running: SyncRunView | null, connect: SyncCredential = "token"): { what: string; tab: "repos" | "integrations" | null; link: string | null } {
+export function syncBlockText(block: SyncBlock, running: SyncRunView | null, connect: SyncCredential = "token", wrong: { account: string; repo: string } | null = null): { what: string; tab: "repos" | "integrations" | null; link: string | null } {
   if (block === "no_repo") return { what: "No repository is connected to this organization yet.", tab: "repos", link: "Connect one in Org settings › Repositories" };
   if (block === "no_token") {
+    // Connected — to the wrong account. "GitHub is not connected" would send the admin to connect again
+    // with no idea what to choose differently.
+    if (wrong) return { what: `The GitHub App is installed on ${wrong.account}, which does not own ${wrong.repo}.`, tab: "repos", link: "Connect the account that owns it in Org settings › Repositories" };
     return connect === "app"
       ? { what: "GitHub is not connected, so the repository cannot be read.", tab: "repos", link: "Connect with GitHub in Org settings › Repositories" }
       : { what: "There is no GitHub token to read the repository with.", tab: "integrations", link: "Add one in Org settings › Integrations" };

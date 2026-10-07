@@ -33,6 +33,10 @@ export interface GithubAppStatusDTO {
   /** The last binding that ended WITHOUT the org asking (uninstalled on GitHub, or gone), while nothing
    *  replaced it — what the screen explains. null once reconnected, and after a Disconnect. */
   lost: { account_login: string; reason: Exclude<GithubRemovedReason, "disconnected">; at: string } | null;
+  /** The live installation is on an account that does NOT own the org's primary repository, so nothing
+   *  is read from that repository through the App (an installation answers only for its own account's
+   *  repositories). null when there is no installation, no primary repository, or the account owns it. */
+  mismatch: { account_login: string; repo_full_name: string } | null;
 }
 
 /** One repository the installation can see (`GET /api/o/:slug/github/repositories`). */
@@ -70,7 +74,6 @@ export const GITHUB_CONNECT_OUTCOMES = [
   "partial_access",     // this GitHub account cannot read every repository the installation covers (`missing=` how many)
   "too_many_repos",     // the installation covers more repositories than the check reads (1,000): select some on GitHub
   "taken",              // the installation is connected to another Trov organization
-  "already_connected",  // this org already has a different live installation
   "suspended",          // the installation is suspended on GitHub; nothing connected
   "none_found",         // linking an existing installation: this account can reach none
   "choose",             // linking an existing installation: several to choose from (`accounts=`)

@@ -17,7 +17,8 @@ A row is never deleted; ending a binding sets `removed_at`.
 
 - **An installation belongs to at most one org, and an org has at most one live installation** — two partial
   unique indexes (`WHERE removed_at IS NULL`). One installation is one GitHub account, so an org connects
-  one account at a time. That is the simplest rule that is correct today: an org's GitHub credential is a
+  one account at a time. Connecting a DIFFERENT installation replaces the current one (below): the old
+  binding is ended as `disconnected` in the same batch the new one is written in. That is the simplest rule that is correct today: an org's GitHub credential is a
   single value and only its primary repository is captured, so a second account could be listed but not
   read. Lifting it means dropping the org index and resolving the credential per repository owner.
 - `org_repos.connection` is `app` for a repository the installation can see and `manual` otherwise;
@@ -73,8 +74,12 @@ ALL of these hold; a failure at any step writes nothing:
    one of its repositories, so step 4 alone would let a collaborator on one repository attach an
    organization's whole installation. The account must be able to read EVERY repository the installation
    covers — see "The no-escalation check" below.
-6. **One org, one installation.** No other org holds it (`installationOrg`, a platform read — it sees a
-   suspended org's binding too) and this org holds no other; the unique indexes say so again at the write.
+6. **One org per installation.** No other org holds it (`installationOrg`, a platform read — it sees a
+   suspended org's binding too); the unique index says so again at the write. **A different installation
+   for an org that already has one REPLACES it** (`bindInstallation(ctx, info, replace)`): the admin went
+   through every check above for the new one, so the old binding is ended (`disconnected`, audited with
+   `replaced_by`), its repositories go back to `manual`, and the new row is written — one batch, so the org
+   never holds two and never none. No manual Disconnect is needed to move to another GitHub account.
 
 The installation's account comes from GitHub **as the App** (`GET /app/installations/:id`), never from
 the URL or the user's list. The user token is used for those reads and then revoked (below).
@@ -134,6 +139,28 @@ for it and there is no verifier to present: the exchange sends `client_id`, `cli
 only (`exchangeCode` leaves `code_verifier` and `redirect_uri` out when it has none). The binding to this
 browser is the `state` round trip plus the sealed cookie. **This could not be run against real GitHub
 from here** — see "Verify after deploy".
+
+### The App on the wrong account (`accountMismatch`, `status.ts`)
+
+An installation answers only for repositories its own account owns (`credential.ts` `covers`). When the
+live installation's account does NOT own the org's primary repository — the App went onto a personal
+account while the repository belongs to an organization — nothing is read through it, and the repository
+still reads `manual`. That used to be silent. Now `GET …/github` carries `mismatch: { account_login,
+repo_full_name }` (owner compared without case, D1 only) and:
+
+- Repositories shows "The GitHub App is on a different account" (`mismatchBanner`), naming both, with a
+  Connect link for an admin — which replaces the connection, above;
+- `GET /sync` carries `wrong_account`, and the Sync panel's block reads "The GitHub App is installed on
+  X, which does not own owner/repo." instead of "GitHub is not connected" (`syncBlockText`'s 4th argument).
+
+**Why GitHub may not offer the right account.** `installations/new` shows GitHub's account picker only
+for accounts the App CAN be installed on. A **private** App ("Only on this account") installs on its
+owner's account alone, so the picker is skipped and every install lands there — exactly what happened in
+production on 2026-10-07 until the App was made public (the App's settings › Advanced › Make public).
+A person who is not an owner of the GitHub organization gets a request instead of an install. Trov cannot
+see either from its side, so the banner says both. `installations/new?state=…` stays the link: it is the
+only form GitHub documents as carrying `state` back; `installations/select_target` and
+`suggested_target_id` are undocumented and were not adopted.
 
 ### Linking an installation that already exists
 
@@ -294,6 +321,7 @@ Nothing 500s.
 4. **In Trov:** sign in as SaplingLearn's owner → Org settings › Repositories › **Connect with GitHub** →
    install on the SaplingLearn GitHub organization, choose the repositories → you come back to
    Repositories with "GitHub is connected". `SaplingLearn/sapling` is marked "Through the GitHub App".
+   (The App must be PUBLIC for GitHub to offer the organization: App settings › Advanced › Make public.)
    Open Integrations → the App's row → **Test connection**.
 5. **Check deliveries.** On GitHub: the App's settings › Advanced › Recent Deliveries should show 200s
    (202 for events about repositories Trov does not capture).
@@ -303,10 +331,17 @@ Nothing 500s.
    Worker secrets `GITHUB_SERVICE_TOKEN` and `GITHUB_WEBHOOK_SECRET` (they are only SaplingLearn's
    fallback). Nothing breaks if you leave them: the App is asked first.
 
-## Verify after deploy (could not be run against real GitHub)
+## Verify after deploy
 
-Everything above is tested against a stubbed GitHub. These rest on GitHub's documented behaviour and
-were not exercised for real:
+**Seen working against real GitHub on 2026-10-07** (SaplingLearn, installation on the `SaplingLearn`
+organization, all repositories): the install return with `state` on `install`; the exchange with no
+`code_verifier` / `redirect_uri`; the no-escalation check passing for an organization owner; the
+Metadata-only mint (the connect flow uses it); the repository-scoped mint and the three GraphQL reads
+(sync run 1: status `ok`, no failures, 364 pull requests and 69 issues listed); `iss` as a number.
+
+Still resting on GitHub's documented behaviour, not exercised for real — the `update` return's `state`,
+the revoke, a suspended installation's 403 body, and a delivery to the App's webhook (none had arrived
+when this was written). The full list as first written:
 
 - that the install return carries `state` back when `installations/new?state=…` was used, on `install`
   AND on `update`. If it does not, the return reads as "not started here" (`expired`) and binds nothing —

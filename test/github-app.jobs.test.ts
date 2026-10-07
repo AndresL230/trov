@@ -424,7 +424,7 @@ describe("Org settings › the App's routes", () => {
     const gone = await call(admin, "/github/disconnect", { slug: "acme", method: "POST", body: {} });
     expect(gone.status).toBe(200);
     const after = await J<{ ok: true; github_app: GithubAppStatusDTO; repos: OrgRepoDTO[] }>(gone);
-    expect(after.github_app).toEqual({ configured: true, installation: null, lost: null }); // asked for: not "lost"
+    expect(after.github_app).toEqual({ configured: true, installation: null, lost: null, mismatch: null }); // asked for: not "lost"
     expect(after.repos.map((r) => [r.repo_full_name, r.connection])).toEqual([[REPO_B, "manual"]]);
     expect(await binding(ORG_B)).toMatchObject({ removed_reason: "disconnected" });
     expect(await all(env.DB, `SELECT actor, action, target FROM org_admin_audit WHERE org_id = ? AND action LIKE 'github.%'`, ORG_B)).toEqual([{ actor: "olive", action: "github.disconnect", target: "beta-co" }]);
@@ -445,8 +445,8 @@ describe("Org settings › the App's routes", () => {
   it("a deployment with no App configured says so and offers nothing that would reach GitHub", async () => {
     const { admin } = await acme();
     const bare = { ...e, GITHUB_APP_SLUG: "", GITHUB_APP_ID: "", GITHUB_APP_PRIVATE_KEY: "" } as Env;
-    expect(await J(await call(admin, "/github", { slug: "acme", env: bare }))).toEqual({ configured: false, installation: null, lost: null });
-    expect((await J<IntegrationsListDTO>(await call(admin, "/integrations", { slug: "acme", env: bare }))).github_app).toEqual({ configured: false, installation: null, lost: null });
+    expect(await J(await call(admin, "/github", { slug: "acme", env: bare }))).toEqual({ configured: false, installation: null, lost: null, mismatch: null });
+    expect((await J<IntegrationsListDTO>(await call(admin, "/integrations", { slug: "acme", env: bare }))).github_app).toEqual({ configured: false, installation: null, lost: null, mismatch: null });
     for (const [method, path] of [["GET", "/github/repositories"], ["POST", "/github/test"], ["POST", "/github/disconnect"]] as const) {
       const res = await call(admin, path, { slug: "acme", method, env: bare, ...(method === "POST" ? { body: {} } : {}) });
       expect(res.status, path).toBe(404);

@@ -21,6 +21,8 @@ import { type TenantContext, all, first, run } from "../data/sql";
 import { hasRole } from "../data/context";
 import { appConfigured } from "../github-app/api";
 import { githubCredentialSource } from "../github-app/credential";
+import { accountMismatch } from "../github-app/status";
+import { liveInstallation } from "../github-app/store";
 import { jobTenant } from "../platform/jobs";
 import { orgPrimaryRepo } from "../repo/config";
 import { runReconcileJob } from "../repo/cron";
@@ -98,11 +100,14 @@ async function report(ctx: TenantContext, id: number, set: Partial<Pick<RunRow, 
 /** The org's primary repository, and where the credential to read it with would come from — the org's
  *  GitHub App installation, its stored token (SaplingLearn's legacy one), or nowhere. Asked as the
  *  org's system tenant, of the ONE source every GitHub read resolves from; nothing is minted or revealed. */
-async function readiness(env: Env, ctx: TenantContext): Promise<{ repo: string | null; via: SyncCredential | null }> {
+async function readiness(env: Env, ctx: TenantContext): Promise<{ repo: string | null; via: SyncCredential | null; wrongAccount: string | null }> {
   const job = jobTenant(env, ctx);
   const repo = (await orgPrimaryRepo(job))?.repo ?? null;
   const via = repo ? await githubCredentialSource(job, env, { repo }).catch(() => null) : null;
-  return { repo, via };
+  // The App is connected, but on an account that does not own the repository: said by name, D1 only.
+  const live = repo && via !== "app" ? await liveInstallation(job).catch(() => null) : null;
+  const wrongAccount = live ? (await accountMismatch(job, live).catch(() => null))?.account_login ?? null : null;
+  return { repo, via, wrongAccount };
 }
 
 /** Items stored with an excerpt, which a sync would try to summarize: every pull request marker row,
@@ -135,7 +140,7 @@ export async function syncStatus(env: Env, ctx: TenantContext, now: number = Dat
   const last = views.find((v) => v.status !== "running") ?? null;
   const blocked: SyncBlock | null = !ready.repo ? "no_repo" : !ready.via ? "no_token" : running ? "running" : null;
   return {
-    repo: ready.repo, admin: hasRole(ctx, "admin"), blocked, connect: appConfigured(env) ? "app" : "token", via: ready.via, running, last,
+    repo: ready.repo, admin: hasRole(ctx, "admin"), blocked, connect: appConfigured(env) ? "app" : "token", via: ready.via, wrong_account: ready.wrongAccount, running, last,
     summaries: summariesView(allowance, pending), refreshed_at: reconciled?.computedAt ?? null,
   };
 }
