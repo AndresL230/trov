@@ -23,6 +23,7 @@ import { importLogoLater } from "../integrations/logo";
 import type { ProbeResult } from "../integrations/probe";
 import { SettingsError, addRepo, listRepoRows, listRepos } from "../integrations/settings";
 import { cookieOnly } from "../orgs/routes";
+import { PlanLimitError } from "../plans/state";
 import { countInstallationRepos, forgetInstallationToken, getInstallation } from "./api";
 import { startInstall } from "./connect";
 import { resolveGithubCredential } from "./credential";
@@ -39,6 +40,7 @@ async function guard(c: C, fn: () => Promise<Response>): Promise<Response> {
   } catch (e) {
     if (e instanceof RoleError || e instanceof SecretAccessError) return c.json({ error: "forbidden" }, 403);
     if (e instanceof SettingsError) return c.json({ error: e.code, ...(e.field ? { field: e.field } : {}), message: e.message }, e.status);
+    if (e instanceof PlanLimitError) throw e; // the org's plan refused the repository (0044_plans): the app's one handler answers 402
     console.error("github app route failed", e instanceof Error ? e.name : "error"); // the name only — never the Error
     return c.json({ error: "internal" }, 500);
   }

@@ -198,11 +198,12 @@ export function createOrgController(host: OrgHost): OrgController {
         if (list) for (const r of list.repositories) if (r.full_name === name) r.tracked = true;
         host.flash(repos.find((r) => r.repo_full_name === name)?.is_primary ? `Tracking ${name} as the primary repository` : `Tracking ${name}`);
         loadAdmin();
+        loadPlan(); // a tracked repository counts against the plan, like a typed one
       })
       .catch((e) => {
         u.githubBusy = null;
         if (fail(e)) return;
-        host.flash(orgErrorText(e, `Couldn't track ${name}.`), 6000);
+        host.flash(errorText(e, `Couldn't track ${name}.`), 6000); // at the plan's repository cap: the plan's own sentence (402)
         if (e instanceof ApiError && (e.message === "not_connected" || e.message === "not_visible")) loadGithub();
         rerender();
       });
