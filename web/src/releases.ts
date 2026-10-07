@@ -124,7 +124,9 @@ export const RELEASES: Release[] = [
         "The picker says Paid for, not Granted by, on a grant a payment made",
         "`PlanDef.billing` stays null: a plan's price is deployment config",
       ],
-      fixed: [],
+      fixed: [
+        "Tracking a repository from the GitHub App's list when the plan's repositories are all used answered 500 `internal`. It is the 402 `plan_limit` every other route gives, and Org settings shows the plan's sentence",
+      ],
       removed: [],
     },
     prs: [105, 106],
