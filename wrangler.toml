@@ -35,7 +35,7 @@ PUBLIC_ORIGIN = "https://trov.dev"
 # fills it in: while it is, Org settings offers only the pasted-token path and says the App is not
 # configured on this deployment. GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY and GITHUB_APP_WEBHOOK_SECRET are
 # secrets (`wrangler secret put …`) — see docs/architecture/github-app.md › Owner checklist.
-GITHUB_APP_SLUG = ""
+GITHUB_APP_SLUG = "trov-by-trovlabs"
 # Email delivery gate. "local" while this copy runs alongside Canopy, so the team
 # never gets duplicate digests. Flip to "resend" at cutover (needs RESEND_API_KEY).
 NOTIFICATIONS_MODE = "local"
