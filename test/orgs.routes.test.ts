@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { cookieFor } from "./helpers/persons";
 import { ensureMember, ORG_A, ORG_B } from "./helpers/tenant";
-import { call, one, rows, exec, SUPERADMIN } from "./helpers/orgs";
+import { call, one, rows, exec, grantOrgs, SUPERADMIN } from "./helpers/orgs";
 import { REGISTRY } from "../src/notifications/registry";
 import { RESERVED_ORG_SLUGS, type MyOrgsResponse, type OrgInvite, type OrgMember, type OrgMeResponse } from "@shared/orgs";
 
@@ -15,7 +15,7 @@ describe("GET /api/orgs — reachable with no org, and with several", () => {
   it("a person in no org gets an empty picker, not org_required", async () => {
     const { status, json } = await call<MyOrgsResponse>("GET", "/api/orgs", await loner("nomad"));
     expect(status).toBe(200);
-    expect(json).toEqual({ orgs: [], invites: [], superadmin: false, can_create: false, created: 0, limit: 0 });
+    expect(json).toEqual({ orgs: [], invites: [], superadmin: false, can_create: false, grants: [] });
   });
 
   it("lists every membership with its role, and says who is superadmin", async () => {
@@ -23,7 +23,7 @@ describe("GET /api/orgs — reachable with no org, and with several", () => {
     const { status, json } = await call<MyOrgsResponse>("GET", "/api/orgs", await cookieFor(SUPERADMIN));
     expect(status).toBe(200);
     expect(json.orgs).toEqual([{ slug: "acme", name: "Acme", role: "admin", logo_url: null }, { slug: "saplinglearn", name: "SaplingLearn", role: "owner", logo_url: null }]);
-    expect(json).toMatchObject({ superadmin: true, can_create: false, limit: 0 }); // a superadmin adds orgs in Platform, not here
+    expect(json).toMatchObject({ superadmin: true, can_create: false, grants: [] }); // a superadmin adds orgs in Platform, not here
   });
 
   it("refuses a request carrying an Authorization header", async () => {
@@ -33,18 +33,18 @@ describe("GET /api/orgs — reachable with no org, and with several", () => {
 });
 
 describe("POST /api/orgs", () => {
-  it("by default nobody but a superadmin creates one: a person with no allowance is refused and nothing is written", async () => {
+  it("by default nobody but a superadmin creates one: a person with no grant is refused and nothing is written", async () => {
     const cookie = await loner("hopeful");
     const before = await one(`SELECT COUNT(*) AS n FROM orgs`);
     const r = await call("POST", "/api/orgs", cookie, { slug: "hopeful-co", name: "Hopeful Co" });
-    expect([r.status, r.json.error]).toEqual([403, "org_limit"]);
+    expect([r.status, r.json.error]).toEqual([403, "no_grant"]);
     expect(await one(`SELECT COUNT(*) AS n FROM orgs`)).toEqual(before);
     expect(await one(`SELECT COUNT(*) AS n FROM memberships WHERE user_id = 'hopeful'`)).toEqual({ n: 0 });
   });
 
   it("creates the org, makes the creator its owner, and seeds every per-org singleton", async () => {
     const cookie = await loner("founder");
-    await exec(`UPDATE persons SET org_limit = 3 WHERE handle = 'founder'`);
+    const [grant] = await grantOrgs("founder");
     const { status, json } = await call("POST", "/api/orgs", cookie, { slug: "birch", name: "  Birch Labs " });
     expect(status).toBe(201);
     expect(json).toEqual({ ok: true, org: { slug: "birch", name: "Birch Labs", role: "owner", logo_url: null } });
@@ -66,6 +66,7 @@ describe("POST /api/orgs", () => {
     expect(await audit(id)).toEqual([
       { actor: "founder", action: "org.create", target: "birch" },
       { actor: "founder", action: "member.add", target: "founder" },
+      { actor: "founder", action: "grant.use", target: `grant:${grant}` },
     ]);
 
     // …and it is a working tenant: the creator reaches it, a stranger gets 404.
@@ -76,7 +77,7 @@ describe("POST /api/orgs", () => {
 
   it("refuses invalid and reserved slugs, a bad name, and a taken slug", async () => {
     const cookie = await loner("founder");
-    await exec(`UPDATE persons SET org_limit = 3 WHERE handle = 'founder'`);
+    await grantOrgs("founder");
     for (const slug of ["a", "-lead", "Has-Caps", "under_score", "x".repeat(40), "", 7]) {
       const r = await call("POST", "/api/orgs", cookie, { slug, name: "N" });
       expect([r.status, r.json.error], String(slug)).toEqual([400, "invalid_slug"]);
@@ -91,24 +92,29 @@ describe("POST /api/orgs", () => {
     const taken = await call("POST", "/api/orgs", cookie, { slug: "acme", name: "Another Acme" });
     expect([taken.status, taken.json.error]).toEqual([409, "slug_taken"]);
     expect(await one(`SELECT COUNT(*) AS n FROM orgs`)).toEqual({ n: 2 });
+    // A refused create spends nothing: the grant is still there to use.
+    expect(await one(`SELECT status FROM org_grants WHERE person = 'founder'`)).toEqual({ status: "unused" });
   });
 
-  it("caps a person at their allowance; persons.org_limit sets it; a superadmin has no exemption", async () => {
+  it("one org per grant; persons.org_limit grants nothing any more; a superadmin has no exemption", async () => {
     const cookie = await loner("founder");
-    await exec(`UPDATE persons SET org_limit = 3 WHERE handle = 'founder'`);
+    await grantOrgs("founder", 3);
     for (const slug of ["one-co", "two-co", "three-co"]) expect((await call("POST", "/api/orgs", cookie, { slug, name: slug })).status).toBe(201);
     const fourth = await call("POST", "/api/orgs", cookie, { slug: "four-co", name: "Four" });
-    expect([fourth.status, fourth.json.error]).toEqual([403, "org_limit"]);
-    expect((await call<MyOrgsResponse>("GET", "/api/orgs", cookie)).json).toMatchObject({ can_create: false, created: 3, limit: 3 });
+    expect([fourth.status, fourth.json.error]).toEqual([403, "no_grant"]);
+    expect((await call<MyOrgsResponse>("GET", "/api/orgs", cookie)).json).toMatchObject({ can_create: false, grants: [] });
 
-    await exec(`UPDATE persons SET org_limit = 4 WHERE handle = 'founder'`);
+    // The allowance from before grants is a dead column: setting it opens nothing.
+    await exec(`UPDATE persons SET org_limit = 10 WHERE handle = 'founder'`);
+    expect((await call("POST", "/api/orgs", cookie, { slug: "four-co", name: "Four" })).status).toBe(403);
+    await grantOrgs("founder");
     expect((await call("POST", "/api/orgs", cookie, { slug: "four-co", name: "Four" })).status).toBe(201);
     expect((await call("POST", "/api/orgs", cookie, { slug: "five-co", name: "Five" })).status).toBe(403);
 
     // A superadmin creates organizations in Platform (which names the admin), not through this route.
     const boss = await cookieFor(SUPERADMIN);
     const self = await call("POST", "/api/orgs", boss, { slug: "super-own", name: "Super Own" });
-    expect([self.status, self.json.error]).toEqual([403, "org_limit"]);
+    expect([self.status, self.json.error]).toEqual([403, "no_grant"]);
     expect((await call("POST", "/api/platform/orgs", boss, { slug: "super-made", name: "Super Made", admin: { handle: "founder" } })).status).toBe(201);
   });
 });

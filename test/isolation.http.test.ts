@@ -271,6 +271,8 @@ const TENANT: Record<string, Row> = {
   "GET /raw/a/:ref": {}, "GET /raw/a/:slug/:ver": {},
   // src/orgs/routes.ts
   "GET /me": {}, "GET /settings": {}, "PUT /settings": J({ name: "Acme (renamed)" }),
+  // The org's plan and its use of each limit (0044_plans, src/plans/gate.ts): counts of the PATH's org only.
+  "GET /plan": {},
   // The org's image (0042_organizations): the upload is multipart, so this JSON body is A's own 400; the removal is a no-op 200 for A.
   "POST /logo": J({}), "POST /logo/remove": J({}),
   "GET /members": {}, "PUT /members/:handle": J({ title: "hijacked", role: "admin" }), "DELETE /members/:handle": {},
@@ -290,7 +292,7 @@ const TENANT: Record<string, Row> = {
  *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
  *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
 const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
+  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/mcp-tokens"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
 
 /** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
 const LEGACY_ONLY: Record<string, Row> = {
@@ -337,7 +339,10 @@ const PLATFORM: Record<string, string> = {
   "GET /org-logo/:sha": "content-addressed org image (64 hex of its own bytes): shown wherever the org's NAME is, and the name reaches non-members (an invitee's picker, Platform) — bytes only, no org named, and nothing but an `org-logos/` object is served",
   "GET /api/platform/orgs": "requireSuperadmin", "POST /api/platform/orgs": "requireSuperadmin", "GET /api/platform/orgs/:slug": "requireSuperadmin",
   "POST /api/platform/orgs/:slug/admin": "requireSuperadmin", "POST /api/platform/orgs/:slug/suspend": "requireSuperadmin",
-  "POST /api/platform/orgs/:slug/unsuspend": "requireSuperadmin", "PUT /api/platform/persons/:handle/org-limit": "requireSuperadmin",
+  "POST /api/platform/orgs/:slug/unsuspend": "requireSuperadmin",
+  // Plans and grants (0044_plans, src/plans/routes.ts): registered on the same app, behind the same gate.
+  "PUT /api/platform/orgs/:slug/plan": "requireSuperadmin", "GET /api/platform/grants": "requireSuperadmin",
+  "POST /api/platform/grants": "requireSuperadmin", "POST /api/platform/grants/:id/revoke": "requireSuperadmin",
   "GET /api/platform/admins": "requireSuperadmin", "POST /api/platform/admins": "requireSuperadmin", "DELETE /api/platform/admins/:handle": "requireSuperadmin",
   "GET /api/platform/audit": "requireSuperadmin", "GET /api/platform/usage": "requireSuperadmin",
 };

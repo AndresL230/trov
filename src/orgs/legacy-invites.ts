@@ -22,6 +22,7 @@ import { isLegacyOrg } from "../data/legacy";
 import type { InviteRow } from "@shared/rows";
 import type { OrgInviteStatus } from "@shared/orgs";
 import { inviteStmt } from "./repo";
+import { seatGate } from "../plans/state";
 
 export type LegacyInviteErrorCode = "invite_exists" | "already_a_person";
 export class LegacyInviteError extends Error {
@@ -84,21 +85,24 @@ export async function createLegacyInvite(p: PlatformContext, ctx: TenantContext,
          OR EXISTS (SELECT 1 FROM identities d WHERE d.person = pe.handle AND lower(d.verified_email) = ?2))`, ctx.orgId, email);
   if (member) throw new LegacyInviteError("already_a_person");
   if (await first(p, `SELECT 1 AS x FROM org_invites WHERE org_id = ? AND email = ? AND status = 'pending'`, ctx.orgId, email)) throw new LegacyInviteError("invite_exists");
+  const gate = await seatGate(p, ctx.orgId, "reserve"); // an invitation reserves a seat (0044_plans), as on the org route
   const at = nowIso();
   const stmts: Stmt[] = [
-    inviteStmt(p, ctx.orgId, { email }, "member", false, at, i.name),
+    inviteStmt(p, ctx.orgId, { email }, "member", false, at, i.name, gate.cap),
     stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at)
-             VALUES (?, ?, 'invite.create', 'invite:' || last_insert_rowid(), ?, ?)`, ctx.orgId, p.actor, JSON.stringify({ email, role: "member" }), at),
+             SELECT ?, ?, 'invite.create', 'invite:' || last_insert_rowid(), ?, ? WHERE changes() > 0`, ctx.orgId, p.actor, JSON.stringify({ email, role: "member" }), at),
   ];
   if (sidecar(ctx)) {
     stmts.push(stmt(p,
-      `INSERT INTO invites (email, name, invited_by, invited_at) VALUES (?, ?, ?, ?)
+      `INSERT INTO invites (email, name, invited_by, invited_at)
+       SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM org_invites WHERE org_id = ? AND email = ? AND status = 'pending')
        ON CONFLICT(email) DO UPDATE SET name = excluded.name, invited_by = excluded.invited_by, invited_at = excluded.invited_at,
          accepted_by = NULL, revoked_at = NULL, email_sent_at = NULL, email_id = NULL, email_error = NULL`,
-      email, i.name, p.actor, at));
+      email, i.name, p.actor, at, ctx.orgId, email));
   }
   try {
-    await batch(p, stmts);
+    const [res] = await batch(p, stmts);
+    if ((res.meta.changes ?? 0) === 0) throw gate.refuse(); // another invitation took the last seat
   } catch (e) {
     if (isUniqueViolation(e)) throw new LegacyInviteError("invite_exists"); // lost a race for the pending slot
     throw e;

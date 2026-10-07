@@ -2,13 +2,14 @@
 // contract the Worker and the SPA share. Zod-free: the SPA imports the slug rule and these types as-is.
 import type { PersonColor } from "./rows";
 import { AVATAR_MAX_BYTES, AVATAR_TYPES } from "./people";
+import type { MyGrant, PlatformOrgPlan } from "./plans";
 
 export type OrgRole = "owner" | "admin" | "member";
 export type OrgStatus = "active" | "suspended";
 
-/** How many orgs a person may CREATE when `persons.org_limit` is NULL. Zero: only a superadmin adds an
- *  organization, and does it in Platform (Add organization), until self-serve creation is opened;
- *  `persons.org_limit` (Platform › Admins & limits) lets one named person create some. */
+/** How many orgs a person may create with NO grant. Zero: an organization comes to exist because a
+ *  superadmin adds it in Platform, or because a person USES A GRANT (0044_plans, shared/plans.ts) — never
+ *  freely. `persons.org_limit`, the per-person allowance from before grants, is read by nothing. */
 export const DEFAULT_ORG_LIMIT = 0;
 export const ORG_NAME_MAX = 80;
 
@@ -42,6 +43,8 @@ export const ORG_AUDIT_ACTIONS = [
   // Org settings › Repositories / Environments (src/integrations/settings.ts).
   "repo.add", "repo.remove", "repo.primary", "environment.set", "environment.delete", "environment.reorder",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
+  // Plans and grants (0044_plans, src/plans): an org's plan / limits / status changed; a grant made, revoked, used.
+  "plan.change", "plan.overrides", "plan.status", "grant.create", "grant.revoke", "grant.use",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 
@@ -99,10 +102,11 @@ export interface MyOrgsResponse {
   orgs: MyOrg[];
   invites: MyInvite[];
   superadmin: boolean;
+  /** The person holds a usable grant (0044_plans) — the only way to create an org here. Never true for a
+   *  superadmin: Platform is where they add one. */
   can_create: boolean;
-  /** Orgs this person has created / may create (a superadmin has no exemption: Platform is where they add one). */
-  created: number;
-  limit: number | null;
+  /** The grants this person can use, oldest first: each makes ONE organization on its plan. */
+  grants: MyGrant[];
 }
 
 // ── tenant: /api/o/:slug/… ───────────────────────────────────────────────────
@@ -181,6 +185,8 @@ export interface PlatformOrgRow {
   member_count: number;
   pending_invites: number;
   last_activity_at: string | null;
+  /** The org's plan and seat use (0044_plans). Optional: an answer cached from before it reads as "unknown". */
+  plan?: PlatformOrgPlan;
 }
 
 /** Who a superadmin names as an org's admin: exactly one key. */

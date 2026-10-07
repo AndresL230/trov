@@ -1,6 +1,7 @@
 // MCP OAuth — the HTTP surface over ./oauth.ts. Metadata, register, token and revoke
 // are public JSON endpoints with open CORS (no cookies are read); authorize is the
 // one route that reads the session, to show the consent page. Never a 500.
+import { PlanLimitError, PLAN_LIMIT_STATUS } from "../plans/state";
 import { Hono, type Context } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import type { AppEnv } from "./principal";
@@ -180,7 +181,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
   // ── Authorize ──
   // Chrome applies form-action to the redirect that follows a form POST, so the
   // consent page must also allow the app's redirect origin.
-  const page = (c: Context<AppEnv>, html: string, status: 200 | 400 | 403 | 409 | 503, formTarget?: string) =>
+  const page = (c: Context<AppEnv>, html: string, status: 200 | 400 | 402 | 403 | 409 | 503, formTarget?: string) =>
     c.html(html, status, {
       "cache-control": "no-store", "x-frame-options": "DENY",
       "content-security-policy": formTarget ? `${PAGE_CSP} ${formTarget}` : PAGE_CSP,
@@ -265,6 +266,8 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
       const { code } = await issueAuthorization(tenant, { client: check.client, params: check.params, nowMs: now() });
       return c.redirect(back(check.params.redirect_uri, check.params.state, { code }), 302);
     } catch (e) {
+      // The org's plan caps a person's agent connections (0044_plans): say so, and where to free one.
+      if (e instanceof PlanLimitError) return page(c, errorPage(`${e.refusal.message} Remove a connection you no longer use in Settings › MCP access, then start the connection again from the app.`), PLAN_LIMIT_STATUS);
       return unavailable(c, e);
     }
   });
