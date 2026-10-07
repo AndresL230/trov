@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Canopy — a shared context store backend. **One** Cloudflare Worker on one origin serves the HTTP API,
+Trov — a shared context store backend. **One** Cloudflare Worker on one origin serves the HTTP API,
 a stateless MCP endpoint at `/mcp`, a GitHub webhook receiver at `/webhook/github`, and the static web
 build (via the assets binding); a `scheduled()` cron recomputes roadmap progress. Agents propose context
 through a reconciling gate and humans confirm the consequential changes; authored (plan) and computed
@@ -8,10 +8,10 @@ through a reconciling gate and humans confirm the consequential changes; authore
 
 ## Working memory (use the skills)
 
-Canopy is the team's working memory, and the skills under `.claude/skills/` are **the root of how it
+Trov is the team's working memory, and the skills under `.claude/skills/` are **the root of how it
 stays living** (orient → work → record), not a side feature. The core loop is three skills:
 
-- **`canopy`** — the umbrella/overview skill: the whole loop, the authority model, and the read/write
+- **`trov`** — the umbrella/overview skill: the whole loop, the authority model, and the read/write
   tool map (the plan model; no `focus`, no agent-proposed sprints). Its `references/querying.md` is the full
   `query` parameter reference (filtering, browse, pointers, `include_staged`). Start here.
 - **`load-context`** (auto-fires, read-only) — **orient before touching an existing area**: it calls
@@ -19,7 +19,7 @@ stays living** (orient → work → record), not a side feature. The core loop i
   exists instead of guessing, and at session start also calls `get_my_work`. ALWAYS run it before
   proposing a doc change (note the doc's `current_version` as the writer's base).
 - **`record-session`** (explicit only — never auto-fires) — at **session end**, observe what actually
-  shipped (`git`/`gh`), read the touched docs back from Canopy, and stage **one** reconciled batch via
+  shipped (`git`/`gh`), read the touched docs back from Trov, and stage **one** reconciled batch via
   the `record_session` MCP tool (feed / doc / ADR / triage / event items — a bearer-reachable batch over
   the same gate as `/ingest`).
 
@@ -147,7 +147,7 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   `web/src/notifications.ts` holds the Settings › Email notifications and Maintenance › Notifications views;
   `web/src/tickets.ts` + `web/src/sprints.ts` are the (purely presentational) tickets/sprint components, and
   `web/src/hash.ts` is the hash-route seam (`parseHash` / `hashForRoute` — `#tickets/7`, `#sprints/3`,
-  `#repo/<tab>`). `web/src/repo.ts` is the Repo dashboard (ported from the Claude Design `Canopy Repo
+  `#repo/<tab>`). `web/src/repo.ts` is the Repo dashboard (ported from the Claude Design `Trov Repo
   Dashboard.dc.html`), `web/src/repo-sample.ts` its design-placeholder set (a dynamic import, never in the main
   bundle), and `web/src/sidebar.ts` + `web/src/morph.ts` the sidebar — see "Sidebar & motion" below.
   Signed out, the app renders the **landing page** (`web/src/landing.ts`, ported from the Claude Design
@@ -164,9 +164,9 @@ Triage. That staging-plus-confirmation loop is what keeps the store trustworthy 
   entry** (highlights / heads-up in product words, deploy steps in `ops`, patch lines ending `(#N)` to link the
   PR) — and since a merge to `main` deploys, the PR that merges also CUTS "Unreleased" into the next `0.N`, so
   main never shows a shipped batch as unreleased; the header comment says how.
-- `.claude/skills/` — Claude Code skills: `canopy`, `load-context`, `record-session`, `tickets`, and the
+- `.claude/skills/` — Claude Code skills: `trov`, `load-context`, `record-session`, `tickets`, and the
   roadmap/my-work skills `read-plan`, `update-plan`, `my-work`. Described in the Working memory section
-  above. (Symlinks into `plugins/canopy/skills/` — one source of truth.)
+  above. (Symlinks into `plugins/trov/skills/` — one source of truth.)
 
 ## Core invariant — ingested content is gated; authored & computed writes are direct
 
@@ -276,7 +276,7 @@ feed entry has two readers. `summary` is the one-line title; `brief` (optional, 
 `FEED_BRIEF_MAX` = 280 characters, over it is a validation error that writes nothing) is the problem solved
 in product words, for PEOPLE; `body` is the agent record. The Feed screen's header switch **For reading**
 (default; title + brief + artifact chips, no body — an entry with no brief is title-only) / **For agents**
-(the full body) is client-side, saved per browser as `canopy.feedView`. `get_feed` returns both, and
+(the full body) is client-side, saved per browser as `trov.feedView`. `get_feed` returns both, and
 `query`'s assembled feed body leads with `Brief: …`. The Feed screen has the Roadmap Narrative's two columns — ONE shared
 helper, `asideColumns` (`web/src/ui.ts`; CSS `.cnpy-cols-page` / `.cnpy-cols` / `.cnpy-cols-aside`: a 360px aside,
 sticky at the page's own top padding `--cols-pad-top`, one column under an 880px page; not the sidebar's
@@ -377,7 +377,7 @@ spreads to no other verb; and **`assign_ticket { id, login, on }`** (over `toggl
 someone already on it / removing someone who is not returns before `toggle_assignee`, which would still bump
 `updated_at`), still validates the handle on that path (`requirePerson`: unknown or RESERVED → `bad_request`),
 never touches status, writes no history row (`ticket_events` audits status moves only — assignment has no audit,
-from the web either), and works on mirrored tickets (their assignees are Canopy's after import). **Sprint writes are
+from the web either), and works on mirrored tickets (their assignees are Trov's after import). **Sprint writes are
 open to every principal** (`create_sprint` / `set_sprint_active` / `complete_sprint` /
 `add_sprint_resource` / `delete_sprint`), matching the web, where every sprint route sits under
 `sessionGate` with no `adminGate`; only the whole-plan rewrite `update_plan` stays admin-only. **No provenance is stored** (design D4): an
@@ -435,7 +435,7 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
   with handle + color); else denied. Link mode (`?link=1` with a session) attaches a second provider in
   Settings; the last identity can't be unlinked.
 - **Bearer token** (agents, `/mcp`): either a pasted per-person `canopy_mcp_` token (stored hashed) or an
-  OAuth access token (`canopy_oat_`) obtained through Canopy's own OAuth server — both resolve to the same
+  OAuth access token (`canopy_oat_`) obtained through Trov's own OAuth server — both resolve to the same
   person handle in `resolveBearerPrincipal`, so OAuth is how a bearer is OBTAINED, not a fourth class.
   **The Settings UI is OAuth-only** (the owner's call, 2026-09-27): nothing in the SPA mints, lists or revokes a
   `canopy_mcp_` token any more — the Get connection command modal, the token list and their web client calls are
@@ -447,10 +447,10 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
   "Set it up without the plugin" link that opens a MODAL (`mcpSetupModal`, `state.mcpSetup`: the confirmation
   modal's `.cnpy-cmodal` shell as a root-level `data-overlay`, focus in on open and back to the link on close,
   the backdrop / × / Escape close it, a bottom sheet on a phone) holding the by-hand
-  `claude mcp add --transport http --scope user canopy <origin>/mcp` (`browserConnectCommand`, no header) with a
+  `claude mcp add --transport http --scope user trov <origin>/mcp` (`browserConnectCommand`, no header) with a
   Copy button and the `/mcp` → Authenticate follow-up — so using it never changes the tile's height. The tile
   then reads top to bottom: one line of what it is; the browser sign-in as three steps — install the
-  plugin (`PLUGIN_INSTALL`, the same two commands the Get Started guide shows), `/mcp` → canopy → Authenticate,
+  plugin (`PLUGIN_INSTALL`, the same two commands the Get Started guide shows), `/mcp` → trov → Authenticate,
   click Allow in the browser; then **Connected apps** (the OAuth grants — below the steps, or beside them once
   the tile is ≥ 620px, the `cnpy-mcp` container — with a count, its own empty state, a two-click Revoke per row
   and its first `MCP_LIST_CAP` (3) rows until "Show all N"; no fixed height, no inner scroller).
@@ -478,7 +478,7 @@ GitHub OAuth + PKCE, gated to **active members of the `SaplingLearn` org** (`SAP
   codes, access tokens a day past expiry, refresh tokens past expiry, and client registrations that never
   got a grant after 90 days (`UNGRANTED_CLIENT_TTL_MS` — long enough that a person denied at authorize,
   e.g. not yet invited, still finds their registration on a retry days later) — grants themselves are never
-  deleted. An unknown `client_id` at authorize is an error PAGE naming the Claude Code fix (`/mcp` → canopy
+  deleted. An unknown `client_id` at authorize is an error PAGE naming the Claude Code fix (`/mcp` → trov
   → Clear authentication → Authenticate again), never a silent redirect. Every OAuth endpoint answers an unexpected error
   with `503 { error: "temporarily_unavailable" }` (the authorize pages with a 503 error page), never a 500.
 - **GitHub webhook** (`/webhook/github`, `src/webhook.ts`): a delivery authenticates by an HMAC-SHA256
@@ -548,7 +548,7 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   one UPDATE). Returns the fresh profile. Name and color stay on `PUT /auth/me`.
 - **MCP gets ONE read, `list_people`** (every principal): `{ people: [{ handle, name, role, responsibilities }] }`
   for every non-reserved person — nothing else about a person (no avatar, no load, no profile), and NO people
-  write of any kind. Its description, `create_ticket`'s and the `tickets` / `canopy` skills tell an agent to read
+  write of any kind. Its description, `create_ticket`'s and the `tickets` / `trov` skills tell an agent to read
   it before choosing `assignees`, and that a null is unknown, never to be guessed.
 - `scripts/seed/reset.mjs` seeds a role + responsibilities for the six dev/test persons.
 - **On screen there is NO People screen and no profile page** (the owner's call, 2026-09-27): a click on anyone's
@@ -996,9 +996,9 @@ the cron's generic `safely` logger — which wraps the progress arm's service-to
 **On screen** the button lives in the **Repo top bar, beside the refresh icon, on every tab** and in every
 state of the dashboard (loading, failed, degraded, all `not_connected`) — admins only, hidden in sample
 mode, and a non-admin's bar is byte-for-byte what it was (pinned by a test; the refresh icon's title is
-"Reload from Canopy's database" only beside the button, whose own is "Poll deploys, CI, usage and health now
+"Reload from Trov's database" only beside the button, whose own is "Poll deploys, CI, usage and health now
 (admin) — issues refresh with Sync GitHub", and "Polling…" while it runs). A
-container query on the BAR (`.repo-pollbtn` in `canopy.css`; only a bar that has the button is a container)
+container query on the BAR (`.repo-pollbtn` in `trov.css`; only a bar that has the button is a container)
 makes it icon-only when title + repo slug + labelled controls no longer fit (bar content < 624px — a viewport
 under ~735px with the rail collapsed; the crumb is only the slug, the tab bar names the tab) and drops the
 "updated …" text under 560px, so at phone width an admin's
@@ -1107,7 +1107,7 @@ never connects `hosting`. **A "current" figure must be current: a value shows on
 ≤ 3 hours older than `now`**, else that cell reads "—"; `hosting` is `empty` when an `rw_*` row has EVER
 landed but none is fresh ("No fresh hosting reading — the last Railway sample is over 3 hours old.").
 
-**Active users come from Sapling's own backend** — the one number Canopy CANNOT compute. `pollSaplingMetrics`
+**Active users come from Sapling's own backend** — the one number Trov CANNOT compute. `pollSaplingMetrics`
 sends `GET {cfg.apiUrl}/api/internal/metrics` with `Authorization: Bearer <SAPLING_METRICS_TOKEN>`
 (user-agent `canopy-metrics`, the 8s timeout) per environment and expects `200` → `{ "active_users": {
 "24h": n, "7d": n, "30d": n } }`. **The token goes to ONE place**: a non-`https:` `apiUrl` is never fetched,
@@ -1131,9 +1131,9 @@ current users reading makes `usage` `ok` on its own; readings all gone stale lea
 integers) and `totals` (point-in-time integers). `saplingProductMetrics` (`src/repo/poll.ts`, pure) validates
 them **per key** — key `^[a-z][a-z0-9_]{0,39}$`, JSON integers `0..1e12`, a count's windows exactly three and
 nesting; a section that is not an object or holds more than 48 / 24 keys is ignored whole — reading OWN keys
-only into prototype-less objects. Canopy is **generic over keys**: every valid key is stored, as
+only into prototype-less objects. Trov is **generic over keys**: every valid key is stored, as
 `sap_c_<key>_<window>` / `sap_t_<key>` hourly gauges (`part = ''`, the hour floor, first write wins), so
-Sapling adds a metric with no Canopy change. The two halves never cost each other: a v1 body is a plain
+Sapling adds a metric with no Trov change. The two halves never cost each other: a v1 body is a plain
 success, and a body whose `active_users` is refused still stores its product keys — that environment reads
 `failed`, with `written` the rows that landed. One environment's rows (≤ 171) go in ONE `putMetrics` call.
 Dropped keys are logged once per environment by NAME only and named in the outcome's `detail` — an `ok`'s,
@@ -1210,16 +1210,16 @@ issue itself.** Every issue of `GITHUB_REPO` is mirrored into a ticket (`source 
   assignees map through `identities` (unmapped dropped); open → `in_progress` with a mapped assignee, else
   `submitted`; closed `completed` → `done`, `not_planned` / `duplicate` → `declined`.
 - **Ownership (the owner's ruling)**: title, body, category, priority, requester and assignees are seeded at
-  IMPORT and are Canopy's afterwards — later deliveries never overwrite them, and they are edited like any
+  IMPORT and are Trov's afterwards — later deliveries never overwrite them, and they are edited like any
   ticket (`edit_ticket`, `toggle_assignee` — `assign_ticket` over MCP — the normal transition table). GitHub drives only CLOSURE: a
   `closed` delivery forces `done`/`declined`, `deleted` / `transferred` forces `declined`, `reopened` puts a
   resolved ticket back to `submitted` — through the module-private `forceStatus`, the ONE writer allowed to
-  bypass `TICKET_TRANSITIONS`, writing a `ticket_events` row as `github-webhook`. Canopy never writes back to
+  bypass `TICKET_TRANSITIONS`, writing a `ticket_events` row as `github-webhook`. Trov never writes back to
   GitHub, and a sprint is still completed only by a person.
 - **Idempotency / ordering**: creation is ONE guarded D1 batch (ticket, assignees, opening row, locked link —
   each child keyed by `source_ref`), so a replay writes nothing twice; a delivery older than
   `source_updated_at` is skipped whole; one already applied (same `updated_at`) forces nothing, so a
-  redelivery cannot undo a later Canopy change.
+  redelivery cannot undo a later Trov change.
 - **The lock**: the source link is inserted `locked = 1`; `remove_ticket_link` (the ONLY link delete path —
   there is deliberately no trigger, the harness truncates `ticket_links`) refuses it with 403 and the UI
   shows a lock with no Remove row. Everything else stays writable.
@@ -1287,13 +1287,13 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
 - **MCP** (every principal): `send_handoff`, `list_handoffs` (pending `me` + `anyone` by default; only `sent`
   shows claimed/expired), `get_handoff`, `claim_handoff` (returns one markdown block: prompt, `## Handoff
   summary`, `## Context`), `expire_handoff`, `search_prompts`, `get_prompt` (fills `{{vars}}`, lists `unfilled`),
-  `save_prompt` (always staged). There is no per-token rate limit in Canopy today.
+  `save_prompt` (always staged). There is no per-token rate limit in Trov today.
 - Skills: `handoff`, `prompts`, and `load-context` (lists waiting handoffs at session start; never auto-claims).
 
 ## Artifacts — stored, versioned pages; direct writers, human ratify (spec: `docs/superpowers/specs/2026-09-24-artifacts-implementation.md`, issue #52)
 
 An artifact is one self-contained page an agent or person produced (a design page, spec, report, diagram, image,
-PDF, file), stored and versioned in Canopy and linked to the work it came from. Knowledge › **Artifacts** in the
+PDF, file), stored and versioned in Trov and linked to the work it came from. Knowledge › **Artifacts** in the
 SPA (`#artifacts`, `#artifacts/new`, `#artifacts/<slug>[/v<n>|@v<n>]`, `#artifacts/<slug>/diff/<a>..<b>` —
 `web/src/artifacts.ts`, ported from the Claude Design `Canopy Artifacts.dc.html`, decoded copy in
 `docs/superpowers/specs/artifacts-prototype/`), plus an Artifacts block on the ticket detail. The viewer's
@@ -1301,7 +1301,7 @@ SPA (`#artifacts`, `#artifacts/new`, `#artifacts/<slug>[/v<n>|@v<n>]`, `#artifac
 text (text kinds; from an older version that is a restore) or uploads a replacement file on the page's own side
 (text / binary — `artAcceptNvFile` refuses the other), with the create form's size / claude.ai / flatten checks
 (`contentChecks`); an unchanged save is the API's `unchanged` no-op. The contract for
-agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy` / `artifacts` skills).
+agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` / `artifacts` skills).
 
 - **Kinds and storage**: text kinds `html` / `markdown` / `svg` / `mermaid` (≤ 750 KB of UTF-8, the `content`
   column in D1) and binary kinds `image` (png/jpeg/gif/webp only) / `pdf` / `file` (≤ 10 MB, R2 bucket
@@ -1368,7 +1368,7 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy
   html/svg get the active CSP (inline scripts + the two CDNs, `connect-src 'none'`) PLUS `sandbox allow-scripts`,
   so an artifact opened in its own tab still runs at an opaque origin; image/pdf/file get
   `default-src 'none'; frame-ancestors 'self'`; always nosniff, `X-Frame-Options: SAMEORIGIN`,
-  `Cache-Control: private`; html alone gets the injected `canopy:height` postMessage script (never on
+  `Cache-Control: private`; html alone gets the injected `trov:height` postMessage script (never on
   `?download=1`). The SPA frames html as `<iframe src="/raw/…" sandbox="allow-scripts">` — never `srcdoc`, never
   `allow-same-origin` — and inlines svg ONLY through `sanitizeSvg` (DOMPurify, `web/src/markdown.ts`).
 - **MCP** (every principal, `src/tools/artifacts-agent.ts`): `artifact_list`, `artifact_get` (text content inline
@@ -1382,8 +1382,8 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `canopy
   (draft → `draft`, published/ratified → `live`; private only to the author — `query()` takes a viewer);
   `get_ticket` lists the ticket's visible artifacts; `record_session` and `/ingest` accept `artifact_links`,
   applied after the batch as direct writes (`recordBatch` in `src/consumer.ts`).
-- **Skills**: `artifacts` (find / pull into `.canopy/artifacts/<slug>/v<n>.<ext>` and verify the sha256 / serve an
-  html one locally / link / publish), plus `canopy`, `load-context` and `record-session`. `.canopy/` is gitignored.
+- **Skills**: `artifacts` (find / pull into `.trov/artifacts/<slug>/v<n>.<ext>` and verify the sha256 / serve an
+  html one locally / link / publish), plus `trov`, `load-context` and `record-session`. `.trov/` is gitignored.
   End-to-end check against a live `wrangler dev`: `scripts/e2e/artifacts-agent.mjs` (start dev with
   `--var PUBLIC_ORIGIN:<its URL>`, or the script refuses the production-origin upload/download URLs).
 - **Deferred on purpose**: external share links, per-person sharing, a raw-content subdomain, PDF text extraction
@@ -1419,15 +1419,15 @@ in `shared/doc-images.ts` (`scanDocImages`, zod-free); the repository is `src/to
 opening sub-page list can only animate on an element that SURVIVES the state change. So `web/src/morph.ts`
 `paint()` patches the `<aside>` in place and swaps only `<main>` (the seam is `.cnpy-shell`). That only works
 because **the sidebar's structure is stable** (`web/src/sidebar.ts`): every label, badge, dot, chevron and
-sub-page list is ALWAYS emitted, and collapsed / open / active are attributes and classes that `canopy.css`
+sub-page list is ALWAYS emitted, and collapsed / open / active are attributes and classes that `trov.css`
 animates (`data-collapsed`, `.cnpy-sub[data-open]`, `.is-active`, `data-n="0"` hides a badge). Emitting a
 node conditionally there swaps it out from under its own animation — `test/render.sidebar.test.ts` pins the
 element tree across every state. `data-keep` marks a script-owned node (the collapsed-rail tooltip) the
 patcher leaves alone. A sub-page list the app opened on entry folds again on leaving; one opened by hand
-sticks and is what persists (`canopy.navOpen`). Only **Docs** owns a sub-page list (`NAV_GROUPS`);
+sticks and is what persists (`trov.navOpen`). Only **Docs** owns a sub-page list (`NAV_GROUPS`);
 Roadmap, Tickets, Maintenance and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's,
 Maintenance's and Repo's tabs head their page body), and a stored
-`canopy.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
+`trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
 **Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, the queue's
@@ -1459,9 +1459,9 @@ one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 ## Corners — tighter than the design file
 
 Every radius renders at `--corner-scale` (`.4`) of its authored value: ONE block at the end of
-`web/src/canopy.css` zeroes everything with `!important` (the radii are INLINE styles in the TS templates, and
+`web/src/trov.css` zeroes everything with `!important` (the radii are INLINE styles in the TS templates, and
 only `!important` outranks those), then restores each radius the app uses at `calc(<its value> *
-var(--corner-scale))` — canopy.css classes by name, inline styles by `[style*="border-radius:Npx"]` — and
+var(--corner-scale))` — trov.css classes by name, inline styles by `[style*="border-radius:Npx"]` — and
 circles/pills at `min(calc(12px * scale), 25%)`, so dots and avatars are small rounded squares. The authored
 values stay as written (`1` restores them, `0` squares everything). So a NEW radius value or a new class with a
 radius needs a line in that block, else it renders square; `test/render.corners.test.ts` fails until it has one.
@@ -1514,7 +1514,7 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   `POST /auth/onboard` once the person row and session exist, linking Get Started (`/#guide`, where a
   fresh sign-in lands). Also not a kind. It fires THERE and not when someone joins the GitHub org
   because the address comes from the person's OWN OAuth token (`getPrimaryEmail`), which does not
-  exist until they sign in — nothing Canopy holds can reach a new org member before that. No outcome
+  exist until they sign in — nothing Trov holds can reach a new org member before that. No outcome
   column and the result is ignored at the call site: `sendWelcome` never throws, and a mailer problem
   must never cost somebody their sign-up. No address from the provider = no mail.
 - **Deferred:** the digest's ledger layout (`EMAIL_CARD.item`) has no avatar chips today, so a person's

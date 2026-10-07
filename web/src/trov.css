@@ -1,0 +1,1615 @@
+/* ───────────────────────────────────────────────────────────────────────────
+   Trov design system — ported VERBATIM from Canopy.dc.html (the <style> block
+   in <helmet>). The file is the spec; do not retune these values.
+
+   Below the verbatim block is a small hover/focus utility layer that reproduces
+   the dc-runtime's `style-hover` / `style-active` / `style-focus` pseudo-props
+   as real CSS (the canvas runtime applied those inline; plain CSS needs rules).
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── verbatim from Canopy.dc.html ──────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+input, select { font-family: inherit; }
+::selection { background: var(--accent, #2BFF88); color: var(--accent-fg, #000); }
+.cnpy-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.cnpy-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+.cnpy-scroll::-webkit-scrollbar-track { background: transparent; }
+/* The app's one page scroller always reserves its scrollbar's width, so a screen whose height
+   crosses the viewport mid-render (a tab switch, an entrance animation) never jumps sideways. */
+#cnpy-main { scrollbar-gutter: stable; }
+@keyframes cnpy-spin { to { transform: rotate(360deg); } }
+@keyframes cnpy-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes cnpy-pop { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
+@keyframes cnpy-toast-out { to { opacity: 0; transform: translateY(4px); } }
+.cnpy-toast { animation: cnpy-pop .25s ease both, cnpy-toast-out .4s ease forwards; }
+@media (prefers-reduced-motion: reduce) { .cnpy-toast { animation: none; } }
+
+[data-cnpy-theme="dark"] { --mark:#9aab65; --bg:#1c1a16; --surface:#221f1b; --shadow:0 1px 2px rgba(0,0,0,0.35); --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.40); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --hover:rgba(237,233,226,0.07); --accent:#9aab65; --accent-fg:#131a07; --accent-soft:rgba(154,171,101,0.14); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#cc6262; --purple:#a98bd6; --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Geist',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+/* Light = the palette of the Claude Design `Canopy Restyled.dc.html` (2026-09-26): a cool neutral
+   ground, white surfaces with a hairline shadow, an indigo accent. Trov's fonts stay. */
+[data-cnpy-theme="light"] { --mark:#616ACB; --bg:#f6f6f7; --surface:#ffffff; --fg:#16161a; --fg-70:#4f4f58; --fg-55:#6e6e78; --fg-40:#8e8e98; --border:rgba(20,20,30,0.08); --border-strong:rgba(20,20,30,0.15); --hover:rgba(20,20,30,0.04); --accent:#5e6ad2; --accent-fg:#ffffff; --accent-soft:rgba(94,106,210,0.12); --green:#2f9e6b; --amber:#c98a1a; --blue:#4c8ed9; --red:#e5484d; --purple:#8e5cc7; --shadow:0 1px 2px rgba(20,20,30,0.05); --sans:'Geist',system-ui,-apple-system,sans-serif; --label:'Geist',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+
+/* ── My Work (web/src/mywork.ts) ──────────────────────────────────────────────
+   The Claude Design bento on a 12-column grid (each tile says its own --span).
+   It collapses by CONTAINER width, not viewport, so the rail's collapse state
+   never matters. */
+.mw-main { min-width:0; container:mwmain / inline-size; }
+.mw-bento { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:12px; align-items:stretch; }
+.mw-tile { grid-column:span var(--span, 12); }
+.mw-lib { display:grid; grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr) 1px minmax(0,1fr); }
+.mw-libdiv { width:1px; height:100%; }
+.mw-row { transition:background .12s ease; }
+.mw-row:hover { background:var(--hover); }
+.mw-more { transition:color .12s ease; }
+.mw-more:hover { color:var(--fg) !important; }
+.mw-reject { transition:border-color .12s ease, color .12s ease; }
+.mw-reject:hover { border-color:var(--red) !important; color:var(--red) !important; }
+.mw-handoff { transition:border-color .12s ease; }
+/* Repo tile: a FIXED floor — the summary line + three one-line rows, the most any tab
+   shows — so switching to a tab with fewer rows (or a note) never shrinks the tile.
+   Every line is pinned to 20px (the rows ellipsize rather than wrap), so the sum is exact:
+   summary 20 + 2×10 + 1 = 41, each row 20 + 2×9 + 1 = 39 — 158, plus 2px because a 1px
+   border renders a little over 1px at fractional display scaling (measured 158.66). */
+.mw-repo-sum, .mw-repo-row { line-height:20px; }
+.mw-repo-swap { min-height:calc(41px + 3 * 39px + 2px); }
+.mw-handoff:hover { border-color:color-mix(in srgb,var(--blue) 45%,transparent) !important; }
+@container mwmain (max-width: 700px) {
+  .mw-tile { grid-column:span 12; }
+  .mw-lib { grid-template-columns:minmax(0,1fr); }
+  .mw-libdiv { width:100%; height:1px; }
+}
+
+/* ── Two columns + a sticky aside (ui.ts `asideColumns`) — Roadmap › Narrative (the
+   narrative beside Now + Recent happenings) and the Feed (entries beside This week +
+   Waiting on review): the main column on the left, a sticky 360px aside on the right,
+   a single column (aside below) under an 880px page — where the main column would drop
+   under ~510px beside a 360px aside. */
+/* --cols-pad-top is BOTH the page's top padding and the aside's sticky top, so the aside
+   pins the instant the page scrolls — zero travel before it sticks. */
+.cnpy-cols-page { container:colspage / inline-size; --cols-pad-top:28px; }
+.cnpy-cols { display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:12px; align-items:start; }
+.cnpy-cols-aside { min-width:0; display:flex; flex-direction:column; gap:12px; position:sticky; top:var(--cols-pad-top); }
+@container colspage (max-width: 880px) {
+  .cnpy-cols { grid-template-columns:minmax(0,1fr); }
+  .cnpy-cols-aside { position:static; }
+}
+/* The Now box's sprint description: the sprint's own markdown (renderMarkdown, so
+   `#123` still links), set at the aside's body size and CLAMPED to three lines with
+   an ellipsis — the Sprint screen shows it whole. Blocks lose their document
+   spacing so the clamp counts text lines, not margins. */
+.cnpy-md.rm-now-about { font-size:13px; line-height:1.55; color:var(--fg-70); margin:10px 0 0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; overflow:hidden; overflow-wrap:anywhere; }
+.cnpy-md.rm-now-about :is(h1,h2,h3,h4,h5,h6) { font:inherit; font-weight:600; color:var(--fg); letter-spacing:0; text-transform:none; margin:0; padding:0; border:0; }
+.cnpy-md.rm-now-about :is(p,ul,ol,pre,blockquote,table,li) { margin:0; }
+.cnpy-md.rm-now-about :is(pre,blockquote) { padding:0; border:0; background:none; }
+.cnpy-md.rm-now-about :is(img,hr) { display:none; }
+
+/* ── Roadmap › Timeline (web/src/timeline.ts): the sprints as a Gantt graph. Every
+   position is a PERCENT of the track, so the graph fits its card rather than
+   scrolling; --tl-lab is the label column the axis, the gridline layer, the lanes
+   and every row share. Each bar sits in a `.tl-barwrap` that is a size container:
+   the name + count go ON the bar when it is ≥ 104px wide, else beside it
+   (`.tl-out`). The popover is the barwrap's next sibling (pure CSS :hover /
+   :focus-within), positioned against the TRACK and clamped inline, so it never
+   runs off the graph. Radii are inline (the corners block already lists them).
+   Narrow: label above bar, every other axis label hidden, the summary stacks. */
+.tl-card { container:tlcard / inline-size; }
+.tl-sum { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1fr); margin-bottom:18px; }
+.tl-sum-cell { min-width:0; padding:13px 16px; }
+.tl-sum-cell + .tl-sum-cell { border-left:1px solid var(--border); }
+.tl-graph { --tl-lab:200px; position:relative; }
+.tl-row { display:grid; grid-template-columns:var(--tl-lab) minmax(0,1fr); align-items:center; min-height:54px; padding:0; }
+.tl-head { min-height:0; padding:0 0 4px; border-bottom:1px solid var(--border); }
+.tl-lab { min-width:0; padding-right:14px; display:flex; align-items:center; gap:10px; }
+.tl-axis { position:relative; height:58px; overflow:hidden; }
+.tl-major { position:absolute; top:2px; box-sizing:border-box; padding-left:6px; font-size:12px; font-weight:600; color:var(--fg-70); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tl-tick { position:absolute; top:22px; padding-left:5px; font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.04em; color:var(--fg-40); white-space:nowrap; }
+.tl-todaytag { position:absolute; bottom:1px; width:44px; box-sizing:border-box; text-align:center; font-family:var(--label); font-size:9.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; line-height:14px; color:var(--red); background:color-mix(in srgb,var(--red) 12%,var(--surface)); border:1px solid color-mix(in srgb,var(--red) 40%,transparent); }
+.tl-body { position:relative; padding-bottom:6px; }
+.tl-layer { position:absolute; top:0; bottom:0; left:var(--tl-lab); right:0; pointer-events:none; }
+.tl-band { position:absolute; top:0; bottom:0; background:var(--hover); }
+.tl-grid { position:absolute; top:0; bottom:0; width:1px; background:var(--border); opacity:.7; }
+.tl-grid--major { background:var(--border-strong); opacity:1; }
+.tl-today { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--red); }
+.tl-lane { position:relative; padding:14px 0 2px; }
+.tl-layer + .tl-lane { padding-top:10px; }
+.tl-lanelab { position:relative; display:inline-flex; align-items:center; gap:7px; font-family:var(--label); font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-70); }
+.tl-track { position:relative; height:32px; }
+.tl-barwrap { container:tlbar / inline-size; position:absolute; top:0; bottom:0; min-width:10px; }
+.tl-bar { position:absolute; inset:0; width:100%; padding:0; overflow:hidden; cursor:pointer; text-align:left; transition:box-shadow .12s ease; }
+.tl-barwrap:hover .tl-bar, .tl-bar:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb,var(--tl-c) 25%,transparent); }
+.tl-fill { position:absolute; top:0; bottom:0; left:0; transform-origin:0 50%; }
+[data-enter] .tl-fill, [data-enter] .tl-sumfill { animation:cnpy-grow-x .7s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 40ms + 200ms + var(--enter-t, 0ms)); }
+.tl-sumfill { transform-origin:0 50%; }
+.tl-in { position:absolute; inset:0; display:none; align-items:center; gap:8px; padding:0 10px; }
+.tl-name { min-width:0; flex:1; font-size:12.5px; font-weight:600; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tl-cnt { flex:none; font-family:var(--label); font-size:11px; font-weight:600; color:var(--fg-70); }
+.tl-out { position:absolute; top:50%; transform:translateY(-50%); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--fg-55); pointer-events:none; }
+.tl-out b { font-weight:600; color:var(--fg); }
+.tl-out span { font-family:var(--label); font-size:11px; }
+.tl-out--r { left:calc(100% + 8px); }
+.tl-out--l { right:calc(100% + 8px); }
+@container tlbar (min-width: 104px) { .tl-in { display:flex; } .tl-out { display:none; } }
+.tl-pop { position:absolute; z-index:30; width:min(280px,100%); box-sizing:border-box; padding:12px 14px; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--lift-shadow); text-align:left; pointer-events:none; visibility:hidden; opacity:0; transform:translateY(3px); transition:opacity .12s ease, transform .12s ease, visibility 0s linear .12s; }
+.tl-barwrap:hover + .tl-pop, .tl-barwrap:focus-within + .tl-pop { visibility:visible; opacity:1; transform:none; transition:opacity .12s ease, transform .12s ease; }
+.tl-unsched { cursor:pointer; transition:background .12s ease, border-color .12s ease; }
+.tl-unsched:hover { background:var(--hover) !important; border-color:var(--border-strong) !important; }
+@media (prefers-reduced-motion: reduce) { .tl-bar, .tl-pop, .tl-unsched { transition:none !important; } .tl-pop { transform:none; } }
+@container tlcard (max-width: 640px) {
+  .tl-sum { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .tl-sum-cell:first-child { grid-column:1 / -1; border-bottom:1px solid var(--border); }
+  .tl-sum-cell + .tl-sum-cell { border-left:none; }
+  .tl-sum-cell:last-child { border-left:1px solid var(--border); }
+}
+@container tlcard (max-width: 540px) {
+  .tl-graph { --tl-lab:0px; }
+  .tl-row { grid-template-columns:minmax(0,1fr); row-gap:6px; padding:8px 0 4px; }
+  .tl-head { padding:0 0 4px; }
+  .tl-head > .tl-lab { display:none; }
+  .tl-lab { padding-right:0; }
+  .tl-alt { display:none; }
+  .tl-out { max-width:140px; }
+}
+
+/* ── sidebar ─────────────────────────────────────────────────────────────────
+   Ported from `Canopy Repo Dashboard.dc.html`. The <aside> outlives rerenders
+   (web/src/morph.ts patches it in place), so every state below is an attribute
+   or class flip on a LIVING element and therefore animates: the rail width, the
+   labels, the section headers folding into hairlines, the sub-page lists, the
+   chevrons, the active row.
+
+   One easing, one duration, so the pieces move as a single gesture. Labels fade
+   FAST on the way out (they would otherwise be seen squeezed) and LATE on the way
+   in (they arrive once there is room for them). */
+.cnpy-aside { --side-t:.24s; --side-e:cubic-bezier(.4,0,.2,1); width:244px; flex:none; display:flex; flex-direction:column; border-right:1px solid var(--border); background:var(--bg); transition:width var(--side-t) var(--side-e); position:relative; z-index:2; }
+[data-collapsed="1"] .cnpy-aside { width:64px; }
+.cnpy-aside button:focus-visible, .cnpy-search:focus-within { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+
+/* anything that only exists in the expanded rail */
+.cnpy-lbl { transition:opacity .16s ease .1s; }
+[data-collapsed="1"] .cnpy-lbl { opacity:0; pointer-events:none; transition:opacity .09s ease; }
+
+.cnpy-logo { display:flex; align-items:center; padding:16px 14px 12px 17.5px; min-height:56px; transition:padding var(--side-t) var(--side-e); }
+[data-collapsed="1"] .cnpy-logo { padding-left:20px; padding-right:0; }
+.cnpy-logo-b { display:flex; align-items:center; gap:10px; overflow:hidden; padding:0; color:inherit; border-radius:7px; min-width:0; }
+.cnpy-logo-b svg { transition:transform .3s cubic-bezier(.34,1.56,.64,1); }
+.cnpy-logo-b:hover svg { transform:scale(1.08) rotate(-4deg); }
+.cnpy-logo-t { font-size:18px; font-weight:600; letter-spacing:-0.02em; white-space:nowrap; }
+
+.cnpy-navlist { display:flex; flex-direction:column; gap:3px; padding:0 10px 6px; flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; scrollbar-width:none; }
+.cnpy-navlist::-webkit-scrollbar { display:none; }
+
+.cnpy-searchwrap { padding:6px 1px 4px; }
+.cnpy-search { display:flex; align-items:center; gap:9px; padding:8px 10px; border:1px solid var(--border); border-radius:8px; color:var(--fg-40); cursor:text; overflow:hidden; transition:border-color .12s ease, color .12s ease, background .15s ease, padding var(--side-t) var(--side-e); }
+.cnpy-search:hover { border-color:var(--border-strong); }
+.cnpy-search:focus-within { border-color:var(--border-strong); color:var(--fg-70); }
+.cnpy-search.is-active { background:var(--hover); color:var(--fg); }
+.cnpy-search .cnpy-nav-ic { flex:none; }
+.cnpy-search-in { flex:1; min-width:0; background:none; border:none; outline:none; color:var(--fg); font-size:13px; font-family:inherit; padding:0; }
+.cnpy-search-in::placeholder { color:var(--fg-40); }
+.cnpy-kbd { font-family:var(--label); font-size:10.5px; border:1px solid var(--border); border-radius:4px; padding:0 5px; color:var(--fg-40); flex:none; white-space:nowrap; }
+.cnpy-search:focus-within .cnpy-kbd { opacity:0; }
+/* No keyboard shortcut to hint at on a phone (the drawer's search box). */
+[data-phone="1"] .cnpy-kbd { display:none; }
+[data-collapsed="1"] .cnpy-search { padding-left:12.5px; padding-right:0; cursor:pointer; }
+
+/* Section header → the collapsed rail's hairline divider, in one element. */
+/* Archivo Narrow is the SIDEBAR's face only (2026-09-26): everywhere else --label is the body
+   font (Geist), set in the theme blocks above. Inside the rail it is restored, so the badges,
+   the ⌘K key and the section labels keep the narrow face. */
+.cnpy-aside { --label:'Archivo Narrow',system-ui,sans-serif; }
+/* Sidebar section labels (WORKSPACE, MONITOR…): Archivo Narrow, chosen over the mono treatment 2026-09-25. */
+.cnpy-sec { position:relative; flex:none; height:28px; padding:7px 11px 0; overflow:hidden; font-family:'Archivo Narrow',system-ui,sans-serif; font-size:11.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); white-space:nowrap; transition:height var(--side-t) var(--side-e), padding var(--side-t) var(--side-e); }
+.cnpy-sec.is-first { height:31px; padding-top:10px; }
+.cnpy-sec::after { content:""; position:absolute; left:8px; right:8px; top:7px; height:1px; background:var(--border); opacity:0; transition:opacity var(--side-t) ease; }
+.cnpy-sec.is-first::after { top:4px; }
+[data-collapsed="1"] .cnpy-sec { height:10px; }
+[data-collapsed="1"] .cnpy-sec.is-first { height:7px; }
+[data-collapsed="1"] .cnpy-sec::after { opacity:1; }
+
+.cnpy-navrow { display:flex; align-items:center; flex:none; border-radius:8px; transition:background .15s ease; }
+.cnpy-navrow:hover { background:var(--hover); }
+.cnpy-navrow.is-active { background:var(--hover); }
+/* Light: the picked row is LIGHTER than the rail — a white card, like the tiles — not a darker fill. */
+[data-cnpy-theme="light"] .cnpy-navrow { transition:background .15s ease, box-shadow .15s ease; }
+[data-cnpy-theme="light"] .cnpy-navrow.is-active { background:var(--surface); box-shadow:var(--shadow), 0 0 0 1px var(--border); }
+/* …and hover is the same card, half-drawn: a translucent white with the hairline, no lift —
+   so hovering previews the selected look instead of darkening the rail. Also the rail's
+   other row, Collapse. (The person chip has no fill at all — see `.cnpy-chip`.) */
+[data-cnpy-theme="light"] .cnpy-navrow:not(.is-active):hover,
+[data-cnpy-theme="light"] .cnpy-collapse .cnpy-nav-i:hover { background:color-mix(in srgb,var(--surface) 60%,transparent); box-shadow:0 0 0 1px var(--border); }
+.cnpy-nav-i { position:relative; display:flex; align-items:center; gap:11px; flex:1; min-width:0; width:100%; padding:8px 11px; border-radius:8px; font-size:13.5px; font-weight:500; color:var(--fg-55); text-align:left; overflow:hidden; transition:color .12s ease, padding var(--side-t) var(--side-e); }
+.cnpy-navrow:hover .cnpy-nav-i { color:var(--fg-70); }
+.cnpy-navrow.is-active .cnpy-nav-i { color:var(--fg); }
+.cnpy-nav-ic { flex:none; transition:transform .2s cubic-bezier(.34,1.56,.64,1); }
+.cnpy-nav-i:active .cnpy-nav-ic { transform:scale(.88); }
+.cnpy-nav-t { white-space:nowrap; flex:1; min-width:0; text-align:left; }
+[data-collapsed="1"] .cnpy-nav-i { padding:9px 0 9px 13.5px; }
+
+/* ONE count badge for every sidebar entry (and a tab bar's tabs): a quiet pill that
+   brightens on the active row / the picked tab. */
+.cnpy-badge { font-family:var(--label); font-size:11px; font-weight:600; flex:none; min-width:18px; height:18px; line-height:18px; padding:0 6px; border-radius:999px; text-align:center; color:var(--fg-55); background:var(--hover); box-shadow:inset 0 0 0 1px var(--border); }
+.cnpy-navrow.is-active .cnpy-badge, .cnpy-tab.is-on > .cnpy-badge { color:var(--fg); box-shadow:inset 0 0 0 1px var(--border-strong); }
+/* Rows without a chevron reserve its 30px (24 wide + 6 margin), so every count sits in one column. */
+[data-collapsed="0"] .cnpy-navrow:not(:has(> .cnpy-chev)) .cnpy-nav-i { padding-right:41px; }
+.cnpy-badge[data-n="0"], .cnpy-dot[data-n="0"] { display:none; }
+/* the collapsed rail keeps the signal as a dot on the icon's shoulder */
+.cnpy-dot { position:absolute; left:27px; top:6px; width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 2px var(--bg); opacity:0; transform:scale(.4); transition:opacity .16s ease, transform .2s cubic-bezier(.34,1.56,.64,1); pointer-events:none; }
+[data-collapsed="1"] .cnpy-dot { opacity:1; transform:none; transition-delay:.12s; }
+
+.cnpy-chev { flex:none; width:24px; height:30px; margin-right:6px; display:grid; place-items:center; color:var(--fg-40); opacity:.8; border-radius:6px; overflow:hidden; transition:opacity .16s ease .1s, color .12s ease, width var(--side-t) var(--side-e), margin var(--side-t) var(--side-e); }
+/* A <button>'s UA padding (1px 6px) kept the collapsed, width:0 chevron ~12px wide, which
+   narrowed its row and clipped the rail's badge dot to a sliver. */
+.cnpy-chev { padding:0; }
+.cnpy-chev:hover { opacity:1; color:var(--fg-70); }
+.cnpy-navrow.is-active .cnpy-chev { color:var(--fg-55); }
+.cnpy-chev svg { transition:transform .2s var(--side-e); }
+.cnpy-chev[aria-expanded="true"] svg { transform:rotate(90deg); }
+[data-collapsed="1"] .cnpy-chev { width:0; margin-right:0; opacity:0; pointer-events:none; transition:opacity .09s ease, width var(--side-t) var(--side-e), margin var(--side-t) var(--side-e); }
+
+/* sub-pages: 0fr ↔ 1fr is the one way to animate to an intrinsic height */
+.cnpy-sub { display:grid; grid-template-rows:0fr; flex:none; transition:grid-template-rows var(--side-t) var(--side-e); }
+.cnpy-sub[data-open="1"] { grid-template-rows:1fr; }
+[data-collapsed="1"] .cnpy-sub { grid-template-rows:0fr; }
+.cnpy-sub-clip { overflow:hidden; min-height:0; }
+.cnpy-sub-list { display:flex; flex-direction:column; gap:1px; padding:2px 0 4px 10px; margin-left:19px; border-left:1px solid var(--border); opacity:0; transform:translateY(-4px); transition:opacity .16s ease, transform var(--side-t) var(--side-e); }
+.cnpy-sub[data-open="1"] .cnpy-sub-list { opacity:1; transform:none; transition-delay:.04s; }
+[data-collapsed="1"] .cnpy-sub .cnpy-sub-list { opacity:0; }
+.cnpy-sub-i { position:relative; display:block; width:100%; text-align:left; padding:5px 8px 5px 10px; border-radius:6px; font-size:12.5px; color:var(--fg-55); white-space:nowrap; transition:color .12s ease; }
+/* Hover changes COLOUR only — a sub-page row never moves or resizes under the cursor. */
+.cnpy-sub-i:hover { color:var(--fg); }
+.cnpy-sub-i.is-active { color:var(--fg); font-weight:500; }
+/* the active page marks its stretch of the list's rule */
+.cnpy-sub-i::before { content:""; position:absolute; left:-11px; top:50%; width:1px; height:0; background:var(--fg-70); transform:translateY(-50%); transition:height .2s var(--side-e); }
+.cnpy-sub-i.is-active::before { height:16px; }
+
+.cnpy-collapse { padding:0 10px 6px; flex:none; }
+.cnpy-collapse .cnpy-navrow, .cnpy-collapse .cnpy-nav-i { border-radius:7px; }
+.cnpy-collapse .cnpy-nav-i { font-size:12.5px; color:var(--fg-40); transition:color .12s ease, background .15s ease, padding var(--side-t) var(--side-e); }
+.cnpy-collapse .cnpy-nav-i:hover { color:var(--fg-70); background:var(--hover); }
+.cnpy-collapse .cnpy-nav-ic { transition:transform .32s var(--side-e); }
+[data-collapsed="1"] .cnpy-collapse .cnpy-nav-ic { transform:scaleX(-1); }
+/* The viewport is too narrow for the full rail: it stays collapsed, so the toggle goes. */
+[data-narrow="1"] .cnpy-collapse { display:none; }
+
+.cnpy-ghost { padding:0 21px 9px; font-size:11.5px; color:var(--fg-40); white-space:nowrap; overflow:hidden; flex:none; }
+.cnpy-foot { padding:10px; border-top:1px solid var(--border); flex:none; }
+/* The account chip is not a nav row: no fill or ring on hover or on Settings (the owner's
+   call, 2026-09-27). Its only cue, hovered or on Settings, is the gear — turned and brighter. */
+.cnpy-chip { display:flex; align-items:center; gap:10px; width:100%; padding:8px 9px; border-radius:9px; text-align:left; overflow:hidden; transition:padding var(--side-t) var(--side-e); }
+.cnpy-chip:hover svg.cnpy-lbl { transform:rotate(45deg); color:var(--fg-70); }
+.cnpy-chip svg.cnpy-lbl { color:var(--fg-40); transition:opacity .16s ease .1s, transform .4s var(--side-e), color .15s ease; }
+.cnpy-chip-t { overflow:hidden; flex:1; min-width:0; }
+.cnpy-chip-n { font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-chip-h { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.4; }
+[data-collapsed="1"] .cnpy-chip { padding-left:8px; padding-right:0; }
+[data-screen="settings"] .cnpy-chip svg.cnpy-lbl { transform:rotate(45deg); color:var(--fg-70); }
+
+/* Collapsed-rail tooltip. Positioned by main.ts (the nav list scrolls, and a
+   scroll container clips — so it cannot be a CSS ::after on the row). */
+.cnpy-tip { position:fixed; left:72px; top:0; z-index:60; padding:6px 10px; border-radius:7px; border:1px solid var(--border-strong); background:var(--bg); color:var(--fg); font-size:12.5px; font-weight:500; white-space:nowrap; box-shadow:0 8px 24px rgba(0,0,0,.28); pointer-events:none; opacity:0; transform:translate(-4px,-50%); transition:opacity .12s ease, transform .16s var(--side-e); }
+.cnpy-tip[data-on="1"] { opacity:1; transform:translate(0,-50%); }
+
+/* ── phone: the rail becomes a drawer ─────────────────────────────────────────
+   At phone width (main.ts `state.phone`, ≤ 640px) even the 64px rail starves the screen,
+   so the <aside> leaves the layout: it is the FULL rail (render.ts `railCollapsed` is false
+   on a phone), fixed off-canvas, and the header's menu button slides it in over a scrim.
+   Same element tree, same morph — only attributes on the root flip (`data-phone`,
+   `data-drawer`), so the slide is a transition like every other rail change. Closed, it is
+   `visibility:hidden` (after the slide), which also takes its rows out of the tab order. */
+.cnpy-menubtn, .cnpy-scrim { display:none; }
+.cnpy-menubtn { border-radius:8px; }
+[data-phone="1"] .cnpy-menubtn { display:grid; place-items:center; flex:none; width:40px; height:40px; margin-left:-8px; color:var(--fg-70); }
+[data-phone="1"] .cnpy-aside { position:fixed; top:0; bottom:0; left:0; z-index:90; width:min(292px, calc(100vw - 48px)); padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); transform:translateX(-100%); visibility:hidden; transition:transform .26s var(--side-e), visibility 0s linear .26s; }
+[data-phone="1"][data-drawer="1"] .cnpy-aside { transform:none; visibility:visible; box-shadow:0 0 48px rgba(0,0,0,.32); transition:transform .26s var(--side-e); }
+[data-phone="1"] .cnpy-scrim { display:block; position:fixed; inset:0; z-index:85; background:rgba(0,0,0,.45); opacity:0; pointer-events:none; transition:opacity .26s ease; -webkit-tap-highlight-color:transparent; }
+[data-phone="1"][data-drawer="1"] .cnpy-scrim { opacity:1; pointer-events:auto; }
+/* Finger-sized rows in the drawer (≥ 40px). */
+[data-phone="1"] .cnpy-nav-i { padding-top:11px; padding-bottom:11px; font-size:14.5px; }
+[data-phone="1"] .cnpy-chev { height:42px; width:36px; margin-right:2px; }
+[data-phone="1"] .cnpy-sub-i { padding-top:10px; padding-bottom:10px; font-size:13.5px; }
+[data-phone="1"] .cnpy-chip { padding-top:10px; padding-bottom:10px; }
+@media (prefers-reduced-motion: reduce) { .cnpy-scrim { transition:none !important; } }
+
+/* The header at phone width: tighter gutters (plus the notch), and the screen's controls
+   wrap onto a second row, right-aligned, when they no longer fit beside the title. */
+[data-phone="1"] .cnpy-hdr { flex-wrap:wrap; row-gap:8px; column-gap:10px; min-height:56px !important; padding:8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)) !important; }
+[data-phone="1"] .cnpy-hdr-l { flex:1 1 auto; gap:10px !important; }
+/* A crumb (a ticket's title, a prompt's) claims no width of its own, so a long one never
+   pushes the controls to a second row: it takes what is left and ellipsizes. */
+[data-phone="1"] .cnpy-hdr-l > span { contain:inline-size; flex:1 1 0; min-width:0; overflow:hidden; }
+[data-phone="1"] .cnpy-hdr-r { margin-left:auto; max-width:100%; flex-wrap:wrap; justify-content:flex-end; row-gap:8px; }
+/* Finger-sized header controls (≥ 40px): icon buttons, labelled buttons, the switches and
+   the Feed's Filter (their sizes are inline styles, hence !important). */
+[data-phone="1"] .cnpy-hdr-r > button { min-height:40px; }
+[data-phone="1"] .cnpy-hdr-r > .cnpy-iconbtn, [data-phone="1"] .cnpy-hdr-r > .repo-pollbtn { width:40px !important; height:40px !important; }
+[data-phone="1"] .cnpy-hdr-r > div:has(> [data-hover-menu]) { height:40px !important; }
+[data-phone="1"] .cnpy-hdr-r > .cnpy-seg > .cnpy-seg-btn { min-height:32px; padding-left:10px; padding-right:10px; }
+/* …and a little tighter, so a switch + its button + the theme toggle share ONE second row
+   on a 360px screen (the Board / Table glyphs go; their words stay). */
+[data-phone="1"] .cnpy-hdr-r { gap:6px !important; }
+[data-phone="1"] .cnpy-hdr-r > .cnpy-seg > .cnpy-seg-btn > svg { display:none; }
+[data-phone="1"] .cnpy-hdr-r > .cnpy-accentbtn { padding-left:12px !important; padding-right:12px !important; }
+/* The app shell fills the VISIBLE viewport (100vh on a phone runs under its toolbars). */
+@supports (height:100dvh) { .cnpy-shell { height:100dvh !important; } }
+/* Edge to edge (index.html `viewport-fit=cover`): the shell and the landing keep clear of a
+   notch and the status bar; the toast clears the home indicator. All 0 off a notched phone. */
+.cnpy-shell { padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.cnpy-site { padding-left:env(safe-area-inset-left); padding-right:env(safe-area-inset-right); }
+.cnpy-toast { margin-bottom:env(safe-area-inset-bottom) !important; }
+/* No zoom-on-focus on iOS: a text field under 16px makes Safari zoom the page. */
+@media (max-width:640px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select { font-size:16px !important; }
+}
+
+.cnpy-achip { padding:5px 11px; border-radius:7px; font-size:12.5px; font-weight:500; border:1px solid var(--border); color:var(--fg-55); background:transparent; transition:border-color .12s ease; white-space:nowrap; }
+.cnpy-achip:hover { border-color:var(--border-strong); }
+[data-author="all"] .cnpy-achip.a-all, [data-author="jose-a"] .cnpy-achip.a-jose-a, [data-author="meilin"] .cnpy-achip.a-meilin, [data-author="dev-raj"] .cnpy-achip.a-dev-raj, [data-author="sanaok"] .cnpy-achip.a-sanaok { border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+/* A Review queue card: a surface (class="cnpy-titem cnpy-surface cnpy-card") — this only lays it out. */
+.cnpy-titem { display:block; width:100%; text-align:left; padding:13px 15px; margin-bottom:8px; position:relative; transition:all .12s ease; cursor:pointer; }
+.cnpy-selbar { position:absolute; inset:0; border-radius:inherit; border:1px solid var(--border-strong); background:var(--hover); box-shadow:inset 2px 0 0 var(--accent); pointer-events:none; }
+/* Review list cards: selected state keeps the border + fill, no left accent bar. */
+.cnpy-titem .cnpy-selbar { box-shadow:none; }
+/* Review under a tablet's width: the list and the detail take turns (review.ts
+   `data-pane`), and the detail's header lets its buttons drop under the title. */
+.cnpy-rv-back { display:none; }
+@media (max-width:900px) {
+  .cnpy-rv-list { width:auto !important; flex:1 1 auto !important; border-right:none !important; }
+  .cnpy-rv[data-pane="detail"] > .cnpy-rv-list, .cnpy-rv[data-pane="list"] > .cnpy-rv-detail { display:none !important; }
+  .cnpy-rv-back { display:inline-flex; align-items:center; gap:4px; min-height:40px; margin:10px 0 0 10px; padding:0 8px; font-size:13px; font-weight:500; color:var(--fg-55); }
+  .cnpy-rv-body { padding:8px 20px 80px !important; }
+  .cnpy-rv-head { flex-wrap:wrap; row-gap:12px !important; }
+  .cnpy-rv-head > :last-child { flex-wrap:wrap; }
+}
+@media (max-width:640px) { .cnpy-rv-body { padding-left:16px !important; padding-right:16px !important; } }
+/* Docs under ~760px: the page list and the reader take turns (render.ts `.cnpy-docs`
+   `data-tree`), swapped by the Pages button in the bar above them; the reader's page
+   keeps a phone's gutter instead of the desktop's 52px. */
+.cnpy-docs-bar { display:none; }
+@media (max-width:760px) {
+  .cnpy-docs { flex-direction:column; }
+  .cnpy-docs-bar { display:flex; align-items:center; flex:none; padding:10px 16px; border-bottom:1px solid var(--border); }
+  .cnpy-docs-bar > button { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px; border:1px solid var(--border-strong); border-radius:8px; font-size:13px; font-weight:500; color:var(--fg-70); }
+  .cnpy-docs > .cnpy-docs-tree { width:auto !important; flex:1 1 auto !important; min-height:0; border-right:none !important; padding:14px 10px !important; }
+  .cnpy-docs[data-tree="0"] > .cnpy-docs-tree, .cnpy-docs[data-tree="1"] > #cnpy-reader { display:none !important; }
+  .cnpy-docpage { padding:22px 16px 96px !important; }
+  .cnpy-docs .cnpy-tree, .cnpy-docs .cnpy-outline-item { min-height:40px; }
+}
+/* A detail page's head — title on the left, its actions on the right (a handoff, a prompt):
+   at phone width the actions drop under the title instead of squeezing it to a column. */
+@media (max-width:640px) {
+  .cnpy-dhead { flex-wrap:wrap; row-gap:14px !important; }
+  .cnpy-dhead > :first-child { flex:1 1 100% !important; }
+  .cnpy-dhead > :last-child { flex-wrap:wrap; }
+}
+/* A wide ledger (the notification outbox) at phone width: it keeps its columns and scrolls
+   sideways inside its own box. On a wider screen the wrapper is a plain block. */
+@media (max-width:640px) {
+  .cnpy-hscroll { overflow-x:auto; overscroll-behavior-x:contain; }
+  .cnpy-hscroll > * { min-width:560px; }
+  /* Maintenance › Notifications › Schedule: hour + timezone, the from address under them. */
+  .cnpy-sched { grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) !important; }
+  .cnpy-sched > :nth-child(3) { grid-column:1 / -1; }
+}
+/* A modal dialog at phone width is a SHEET: full width, along the bottom edge, rounded only
+   on top, clear of the home indicator (the transparent bottom border is the safe area —
+   the surface's own background fills it). Every modal — connect, the artifact dialogs, an
+   expanded prompt, sign-in — sits in a full-screen wrapper whose child is the dialog. */
+@media (max-width:640px) {
+  [data-cnpy-theme] :has(> [role="dialog"][aria-modal="true"]),
+  [data-cnpy-theme] :has(> [role="alertdialog"][aria-modal="true"]) { grid-template-columns:minmax(0,1fr) !important; place-items:end stretch !important; align-items:flex-end !important; padding:env(safe-area-inset-top) 0 0 !important; }
+  [data-cnpy-theme] [role="alertdialog"][aria-modal="true"],
+  [data-cnpy-theme] [role="dialog"][aria-modal="true"] { width:100% !important; max-width:none !important; max-height:calc(100dvh - 20px - env(safe-area-inset-top)) !important; border-left:none !important; border-right:none !important; border-bottom:env(safe-area-inset-bottom, 0px) solid transparent !important; border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
+}
+/* The signed-out cards (not a member, not invited, onboarding) at phone width: a phone's
+   gutter, and the nested onboarding wrapper adds none of its own. */
+@media (max-width:640px) {
+  .cnpy-authwrap { padding:max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)) !important; }
+  .cnpy-authwrap .cnpy-authwrap { padding:0 !important; min-height:0 !important; }
+  .cnpy-authcard { padding:26px 20px !important; }
+}
+/* ── docs nav tree (static section labels · pages · per-page outline) ───────── */
+.cnpy-treesec { font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); padding:0 10px 7px 8px; }
+.cnpy-tree { display:flex; align-items:center; gap:5px; width:100%; text-align:left; padding:6px 10px 6px 6px; border-radius:7px; font-size:13px; font-weight:400; color:var(--fg-55); background:transparent; transition:background .12s ease, color .12s ease; }
+.cnpy-tree:hover { color:var(--fg); }
+.cnpy-tree.is-active { color:var(--accent); font-weight:500; }
+.cnpy-tree.is-active:hover { color:var(--accent); }
+.cnpy-treechev { flex:none; display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:4px; color:var(--fg-40); transition:transform .16s ease, color .12s ease, background .12s ease; }
+.cnpy-treechev.is-open { transform:rotate(90deg); }
+.cnpy-treechev:hover { color:var(--fg-70); }
+.cnpy-tree.is-active .cnpy-treechev { color:var(--accent); }
+.cnpy-treechev.is-empty, .cnpy-treechev.is-empty:hover { background:transparent; pointer-events:none; }
+/* Grid-rows trick animates to the exact content height. Only one transition runs at
+   a time — the chevron is a single toggle, and the accordion collapses the previous
+   outline instantly (main.ts) — so two fr transitions never overlap (that wedges).
+   Vertical breathing room rides on the last item → a collapsed outline is a true 0px. */
+.cnpy-outline { display:grid; grid-template-rows:0fr; transition:grid-template-rows .22s cubic-bezier(.4,0,.2,1); }
+.cnpy-outline.is-open { grid-template-rows:1fr; }
+.cnpy-outline-inner { overflow:hidden; min-height:0; display:flex; flex-direction:column; gap:1px; padding-left:23px; }
+.cnpy-outline-inner > :last-child { margin-bottom:5px; }
+@media (prefers-reduced-motion: reduce) { .cnpy-outline { transition:none; } }
+.cnpy-outline-item { text-align:left; width:100%; padding:4px 8px 4px 11px; border-radius:6px; font-size:12px; color:var(--fg-40); background:transparent; transition:color .12s ease, background .12s ease; }
+.cnpy-outline-item:hover { color:var(--fg-70); }
+.cnpy-outline-item.is-current { color:var(--accent); font-weight:500; }
+.cnpy-outline-item.is-current:hover { color:var(--accent); }
+.cnpy-outline-item.lvl3 { padding-left:23px; font-size:11.5px; }
+.cnpy-outline-item > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Get Started's table of contents: a sticky rail inside #cnpy-main (the scroller). The
+   section rows read like the docs tree's pages, the sub-rows reuse .cnpy-outline-item. */
+.cnpy-guide-toc { position:sticky; top:24px; width:210px; flex:none; max-height:calc(100vh - 110px); overflow-y:auto; display:flex; flex-direction:column; gap:1px; padding-bottom:12px; }
+.cnpy-guide-toc-h { font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); padding:0 8px 10px; }
+.cnpy-guide-toc-sec { text-align:left; width:100%; padding:6px 8px; border-radius:7px; font-size:13px; font-weight:500; color:var(--fg-55); background:transparent; transition:color .12s ease, background .12s ease; }
+.cnpy-guide-toc-sec:hover { color:var(--fg); background:var(--hover); }
+.cnpy-guide-toc-sec.is-current { color:var(--accent); }
+.cnpy-guide-toc-sec > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-guide-toc-subs { display:flex; flex-direction:column; gap:1px; margin:1px 0 4px; }
+.cnpy-guide-anchor { scroll-margin-top:24px; }
+@media (max-width: 1180px) { .cnpy-guide-toc { display:none; } }
+
+/* ── What's new (web/src/releases.ts). The INDEX is a grid of release cards (.cnpy-surface).
+   A release PAGE is one wide document: its header on the page background, then ONE
+   full-width surface card (.cnpy-reldoc-card) holding the body — two columns for the notes,
+   the patch groups side by side — split by hairlines, no box inside it; newer / older links
+   under it. No radius is declared here (the corners layer would need a rule for it). Long
+   `code` runs wrap anywhere, so a phone never scrolls sideways; under 600px every page keeps
+   a 16px gutter and stacks to one column. */
+.cnpy-relidx { max-width:1180px; margin:0 auto; padding:40px 32px 120px; }
+.cnpy-relidx-head { max-width:720px; margin-bottom:28px; }
+.cnpy-relidx-title { margin:0; font-size:26px; font-weight:650; letter-spacing:-0.02em; line-height:1.2; color:var(--fg); }
+.cnpy-relidx-intro { margin:10px 0 0; font-size:14.5px; line-height:1.6; color:var(--fg-55); text-wrap:pretty; }
+.cnpy-relgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap:16px; }
+.cnpy-relcard { display:flex; flex-direction:column; min-width:0; padding:18px 20px 16px; color:inherit; text-decoration:none; transition:border-color .15s ease; }
+.cnpy-relcard:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.cnpy-relcard.is-next { border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.cnpy-relcard-title { margin:10px 0 0; font-size:16px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; color:var(--fg); text-wrap:balance; }
+.cnpy-relcard-headline { margin:8px 0 0; flex:1; font-size:13.5px; line-height:1.6; color:var(--fg-55); text-wrap:pretty; }
+.cnpy-relcard-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:12.5px; color:var(--fg-40); }
+.cnpy-relcard-go { display:inline-flex; color:var(--fg-40); transition:transform .15s ease, color .15s ease; }
+.cnpy-relcard:hover .cnpy-relcard-go { color:var(--accent); transform:translateX(2px); }
+
+.cnpy-reldoc { max-width:1180px; margin:0 auto; padding:28px 32px 120px; display:flex; flex-direction:column; gap:28px; container:reldoc / inline-size; }
+/* The page header: the title block, and — when the page has a note (the Heads-up on the
+   release notes, the Upgrade notes on the patch notes) — that note on the right, top-aligned
+   with the title; under 900px of page the note drops under the lede. The Release notes /
+   Patch notes switch is in the app's top bar. */
+.cnpy-reldoc-head { display:grid; grid-template-columns:minmax(0, 1fr); gap:14px 48px; align-items:start; }
+.cnpy-reldoc-head.has-heads { grid-template-columns:minmax(0, 1fr) minmax(280px, 330px); }
+.cnpy-reldoc-head-main { display:flex; flex-direction:column; align-items:flex-start; gap:10px; min-width:0; }
+/* The back link and, right-aligned on the same row, the Release notes / Patch notes switch —
+   the row spans the header, so the switch's right edge is the note's. It wraps under the back
+   link when both do not fit. */
+.cnpy-reldoc-toprow { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; min-width:0; }
+.cnpy-reldoc-toprow .cnpy-rel-back { margin-bottom:0; }
+@container reldoc (max-width: 899px) {
+  .cnpy-reldoc-head.has-heads { grid-template-columns:minmax(0, 1fr); }
+}
+.cnpy-rel-back { display:inline-flex; align-items:center; gap:6px; margin-bottom:10px; font-size:13px; font-weight:500; color:var(--fg-55); text-decoration:none; }
+.cnpy-rel-back:hover { color:var(--fg); }
+.cnpy-reldoc-title { margin:0; max-width:900px; font-size:32px; font-weight:650; letter-spacing:-0.025em; line-height:1.15; color:var(--fg); text-wrap:balance; }
+.cnpy-reldoc-lede { margin:0; max-width:780px; font-size:17px; line-height:1.6; color:var(--fg-70); text-wrap:pretty; }
+.cnpy-reldoc-facts { margin-top:2px; font-size:13px; color:var(--fg-40); }
+.cnpy-reldoc-card { min-width:0; overflow:hidden; }
+.cnpy-reldoc-main { padding:30px 36px 34px; min-width:0; }
+.cnpy-reldoc-hl { font-size:15.5px; gap:14px; max-width:820px; }
+.cnpy-reldoc-hl li { break-inside:avoid; }
+/* The release notes' Heads-up, in the page header: compact and calm — a faint neutral fill (its
+   6px radius is inline), a small icon + label, the lines in --fg-70 at 13px. Its margin-top
+   (the meta row above the title) top-aligns it with the title. */
+.cnpy-relheads { display:flex; flex-direction:column; gap:7px; padding:12px 14px 13px; background:var(--hover); min-width:0; margin-top:30px; }
+.cnpy-relheads-l { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600; color:var(--fg-55); white-space:nowrap; }
+.cnpy-relheads-one { margin:0; font-size:13px; line-height:1.55; color:var(--fg-70); overflow-wrap:anywhere; text-wrap:pretty; }
+.cnpy-relheads-list { margin:0; padding-left:16px; display:flex; flex-direction:column; gap:5px; font-size:13px; line-height:1.55; color:var(--fg-70); }
+.cnpy-relheads-list li { overflow-wrap:anywhere; text-wrap:pretty; }
+.cnpy-relheads-list li::marker { color:var(--fg-40); }
+@container reldoc (max-width: 899px) { .cnpy-relheads { margin-top:4px; } }
+/* Release notes' "At a glance": a full-width strip across the card's top — version and date as
+   facts, the change counts as large figures (each a button to that patch group), then the
+   link to every patch line. Stacks under 760px of card (container query below). */
+.cnpy-relglance { display:grid; grid-template-columns:auto auto minmax(0, 1fr) auto; align-items:center; gap:14px 40px; padding:14px 32px 15px; border-bottom:1px solid var(--border); }
+.cnpy-relglance-fact { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.cnpy-relglance-lab { font-size:12px; color:var(--fg-40); }
+.cnpy-relglance-val { font-size:16px; font-weight:500; color:var(--fg); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.cnpy-relglance-stats { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; min-width:0; }
+.cnpy-relstat { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0; padding:6px 14px; text-align:left; background:transparent; transition:background .12s ease; }
+.cnpy-relstat:hover { background:var(--hover); }
+.cnpy-relstat:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.cnpy-relstat-n { font-size:26px; font-weight:600; letter-spacing:-0.02em; line-height:1.1; color:var(--fg); font-variant-numeric:tabular-nums; }
+.cnpy-relstat-l { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--fg-55); white-space:nowrap; }
+.cnpy-relglance-all { display:inline-flex; align-items:center; gap:6px; font-size:14px; white-space:nowrap; }
+/* Beside the highlights, the Heads-up fills its column top to bottom. */
+/* Patch notes: the groups STACKED, full width, one row per line at a readable measure; a
+   hairline between groups only; the PRs as one quiet line of chips. */
+.cnpy-relpatch-group { padding:26px 32px 28px; min-width:0; }
+.cnpy-relpatch-group + .cnpy-relpatch-group { border-top:1px solid var(--border); }
+.cnpy-relpatch-h { display:flex; align-items:center; gap:8px; margin:0 0 14px; font-size:14px; font-weight:600; color:var(--fg); }
+.cnpy-relpatch-n { font-size:12.5px; font-weight:500; color:var(--fg-40); font-variant-numeric:tabular-nums; }
+.cnpy-relpatch-list { margin:0; padding-left:20px; max-width:900px; font-size:14.5px; line-height:1.6; color:var(--fg-70); }
+.cnpy-relpatch-list li { padding-left:4px; overflow-wrap:anywhere; text-wrap:pretty; break-inside:avoid; }
+.cnpy-relpatch-list li + li { margin-top:10px; }
+.cnpy-relpatch-list li::marker { color:var(--fg-40); }
+.cnpy-relpatch-prs { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; padding:16px 32px 18px; border-top:1px solid var(--border); }
+.cnpy-relpatch-prs-l { font-size:12.5px; color:var(--fg-40); }
+.cnpy-relpatch-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.cnpy-relpr-chip { font-size:12.5px; line-height:1; padding:4px 7px; color:var(--fg-55); background:var(--hover); text-decoration:none; font-variant-numeric:tabular-nums; transition:color .12s ease; }
+.cnpy-relpr-chip:hover { color:var(--accent); }
+.cnpy-reldoc-pad { padding:28px 32px; }
+.cnpy-rel-empty { margin:0; font-size:14px; color:var(--fg-55); }
+
+.cnpy-rel-meta { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:12.5px; color:var(--fg-40); }
+.cnpy-rel-ver { font-family:var(--label); font-size:12.5px; font-weight:600; color:var(--fg-70); font-variant-numeric:tabular-nums; }
+.cnpy-rel-tag { font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); background:var(--accent-soft); padding:2px 7px; }
+.cnpy-rel-h3 { display:flex; align-items:center; gap:8px; margin:0 0 16px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
+.cnpy-rel-n { margin-left:auto; font-weight:500; color:var(--fg-40); letter-spacing:0; font-variant-numeric:tabular-nums; }
+.cnpy-rel-list { margin:0; padding-left:20px; display:flex; flex-direction:column; gap:10px; font-size:15px; line-height:1.6; color:var(--fg-70); }
+.cnpy-rel-list li { padding-left:4px; overflow-wrap:anywhere; text-wrap:pretty; }
+.cnpy-rel-list li::marker { color:var(--fg-40); }
+.cnpy-rel-log { font-size:13.5px; gap:10px; }
+/* Inline code, light: the code face at .9em on a faint fill, no border; a short token stays on
+   one line (.is-short), a long path may wrap. */
+.cnpy-reldoc code, .cnpy-relidx code { font-family:var(--code); font-size:.9em; color:var(--fg); background:var(--hover); padding:1px 3px; overflow-wrap:anywhere; }
+.cnpy-reldoc code.is-short, .cnpy-relidx code.is-short { white-space:nowrap; }
+.cnpy-rel-pr { color:var(--accent); text-decoration:none; font-variant-numeric:tabular-nums; }
+.cnpy-rel-pr:hover { text-decoration:underline; }
+.cnpy-relpager { display:grid; grid-template-columns:1fr 1fr; gap:24px; padding-top:4px; }
+.cnpy-relpager-i { display:flex; flex-direction:column; gap:6px; min-width:0; color:inherit; text-decoration:none; }
+.cnpy-relpager-i.is-older { text-align:right; align-items:flex-end; }
+.cnpy-relpager-i.is-none { visibility:hidden; }
+.cnpy-relpager-dir { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-40); }
+.cnpy-relpager-name { font-size:15px; font-weight:500; line-height:1.4; color:var(--fg-70); overflow-wrap:anywhere; transition:color .12s ease; }
+.cnpy-relpager-i:hover .cnpy-relpager-name { color:var(--accent); }
+/* The body follows the CARD's width (a container query — the rail collapses, so the
+   viewport lies about the room): the notes' two columns from 760px; a LONG patch group
+   (.is-long) flows into two balanced columns only on a very wide card (1040px+). */
+.cnpy-reldoc-card { container-type:inline-size; }
+@container (min-width: 1040px) {
+  .cnpy-reldoc-hl.is-long { display:block; max-width:none; columns:2; column-gap:56px; }
+  .cnpy-reldoc-hl.is-long li { padding-bottom:14px; }
+  .cnpy-relpatch-list.is-long { max-width:none; columns:2; column-gap:56px; }
+  .cnpy-relpatch-list.is-long li + li { margin-top:0; }
+  .cnpy-relpatch-list.is-long li { padding-bottom:10px; }
+}
+@container (max-width: 959px) {
+  .cnpy-relglance { grid-template-columns:auto auto minmax(0, 1fr); }
+  .cnpy-relglance-stats { grid-column:1 / -1; grid-row:2; }
+  .cnpy-relglance-all { justify-self:end; }
+}
+@container (max-width: 759px) {
+  .cnpy-relglance { grid-template-columns:1fr 1fr; gap:16px 20px; }
+  .cnpy-relglance-stats { grid-column:1 / -1; grid-row:auto; grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .cnpy-relglance-all { grid-column:1 / -1; justify-self:start; }
+}
+@media (max-width: 600px) {
+  .cnpy-relidx { padding:24px 16px 80px; }
+  .cnpy-reldoc { padding:20px 16px 80px; gap:22px; }
+  .cnpy-reldoc-title { font-size:25px; }
+  .cnpy-reldoc-lede { font-size:15.5px; }
+  .cnpy-reldoc-main, .cnpy-relpatch-group { padding:20px 16px 22px; }
+  .cnpy-relglance { padding:14px 16px; }
+  .cnpy-relpatch-prs { padding:14px 16px 16px; }
+  .cnpy-relpatch-list { font-size:14px; padding-left:18px; }
+  .cnpy-rel-list { font-size:14.5px; padding-left:18px; }
+  .cnpy-relpager { grid-template-columns:1fr; gap:16px; }
+  .cnpy-relpager-i.is-older { text-align:left; align-items:flex-start; }
+  .cnpy-relpager-i.is-none { display:none; }
+}
+/* Guide figures open in the lightbox (web/src/lightbox.ts). The thumbnail lifts on
+   hover like Sapling's .cp-shot. */
+.cnpy-guide-shot { display:block; width:100%; padding:0; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--bg); cursor:zoom-in; transition:border-color .22s, box-shadow .22s, transform .22s; }
+.cnpy-guide-shot img { display:block; width:100%; height:auto; }
+.cnpy-guide-shot:hover { border-color:var(--border-strong); box-shadow:var(--lift-shadow); transform:translateY(-2px); }
+.cnpy-guide-shot:active { transform:translateY(-1px); transition-duration:90ms; }
+.cnpy-guide-shot:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+
+/* Lightbox (ported from Sapling's companion Lightbox). Mounted on <body> with the
+   app's data-cnpy-theme, so the tokens and the corners layer below apply to it.
+   Keyframes, not a transition: the node is inserted at its final state, so only an
+   animation that runs on insertion can play the entrance. */
+@keyframes cnpy-lb-in { from { opacity:0; } to { opacity:1; } }
+@keyframes cnpy-lb-panel-in { from { opacity:0; transform:scale(.965) translateY(8px); } to { opacity:1; transform:none; } }
+@keyframes cnpy-lb-out { from { opacity:1; } to { opacity:0; } }
+@keyframes cnpy-lb-panel-out { from { opacity:1; transform:none; } to { opacity:0; transform:scale(.975) translateY(6px); } }
+.cnpy-lightbox { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; padding:clamp(16px, 4vw, 48px); background:rgba(12,11,9,.66); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); font-family:'Geist',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; animation:cnpy-lb-in .2s ease both; }
+/* The panel is as wide as the SMALLER of the width and height budgets allow, so the
+   frame keeps its ratio (a max-height on the frame alone clamps its height while its
+   width stays 100%, stretching the box). 16:10 is the default (the guide's captures);
+   lightbox.ts swaps in the image's own ratio once it loads, for doc images of any shape. */
+.cnpy-lightbox-panel { position:relative; width:min(1400px, 100%, calc((100vh - 170px) * 1.6)); max-height:100%; display:flex; flex-direction:column; gap:14px; outline:none; animation:cnpy-lb-panel-in .28s cubic-bezier(.22,1,.36,1) both; }
+.cnpy-lightbox-frame { position:relative; width:100%; aspect-ratio:16 / 10; border-radius:14px; overflow:hidden; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 30px 80px -30px rgba(0,0,0,.7); }
+.cnpy-lightbox-frame img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+.cnpy-lightbox-cap { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+.cnpy-lightbox-eyebrow { font-family:var(--label); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:rgba(250,248,243,.62); }
+.cnpy-lightbox-title { font-size:15px; font-weight:600; letter-spacing:-.01em; color:#faf8f3; }
+.cnpy-lightbox-text { flex-basis:100%; font-size:13.5px; line-height:1.6; color:rgba(250,248,243,.72); }
+.cnpy-lightbox-text strong { color:#faf8f3 !important; }
+.cnpy-lightbox-close { position:absolute; top:12px; right:12px; width:32px; height:32px; display:grid; place-items:center; padding:0; border-radius:50%; border:1px solid rgba(250,248,243,.22); background:rgba(12,11,9,.55); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); color:#faf8f3; cursor:pointer; transition:background .18s, border-color .18s; }
+.cnpy-lightbox-close:hover { background:rgba(12,11,9,.8); border-color:rgba(250,248,243,.45); }
+.cnpy-lightbox-close:focus-visible { outline:2px solid #faf8f3; outline-offset:2px; }
+/* AFTER the entrance rules: mid-exit the element carries both classes at equal
+   specificity, so source order decides which animation wins. */
+.cnpy-lightbox--closing { animation:cnpy-lb-out .17s ease both; }
+.cnpy-lightbox--closing .cnpy-lightbox-panel { animation:cnpy-lb-panel-out .17s ease both; }
+@media (prefers-reduced-motion: reduce) { .cnpy-lightbox, .cnpy-lightbox-panel, .cnpy-guide-shot { animation:none !important; transition:none !important; transform:none !important; } }
+
+/* ── hover / focus utility layer (reproduces dc-runtime style-* pseudo-props) ─ */
+.cnpy-select { appearance:none; -webkit-appearance:none; padding:5px 28px 5px 11px; border-radius:7px; font-size:12.5px; font-weight:500; border:1px solid var(--border); color:var(--fg-70); cursor:pointer; background:var(--bg) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23888' stroke-width='2'><path d='M2 4l4 4 4-4'/></svg>") no-repeat right 9px center; }
+/* The SURFACE card — the app's ONE card look (Claude Design `Canopy Restyled.dc.html`): white in
+   the light theme, a lifted tone in dark (both --surface), a hairline border and a small shadow
+   (--shadow — not the landing's --lift-shadow). Markup opts in with class="cnpy-surface", usually
+   through `surface()` in web/src/ui.ts; its inline style then carries only the card's own layout
+   and padding, never a border / background / radius / shadow (an inline one would override this).
+   A card inside a surface is NOT another surface — it becomes a row or a divider. */
+.cnpy-surface { background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); }
+/* The interactive modifier: a card that opens something darkens its hairline on hover. Also used
+   on its own by a few bordered rows that are not surfaces. */
+.cnpy-card { transition:border-color .14s ease; }
+.cnpy-card:hover { border-color:var(--border-strong); }
+.cnpy-mw-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:1fr; gap:14px; align-items:stretch; }
+@media (max-width:760px) { .cnpy-mw-grid { grid-template-columns:1fr; } }
+/* Prompt Library: three cards a row, two when the main pane is medium, one on a phone. */
+.cnpy-mw-grid.is-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+@media (max-width:1180px) { .cnpy-mw-grid.is-3 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:760px) { .cnpy-mw-grid.is-3 { grid-template-columns:1fr; } }
+/* Handoffs inbox row: on a phone the who / branch columns give way, leaving the
+   title, the status pill and the age (the grid is an inline style, hence !important). */
+@media (max-width:760px) {
+  .cnpy-hrow { grid-template-columns:minmax(0,1fr) auto auto !important; }
+  .cnpy-hrow > .cnpy-hrow-who, .cnpy-hrow > .cnpy-hrow-ref, .cnpy-hrow .cnpy-hrow-chip { display:none !important; }
+}
+/* Settings: a bento of tiles on three columns — Profile / Account / tokens across the
+   top (their natural heights match), then Email and the Appearance strip at full
+   width. At two columns Appearance drops beside the tokens (dense flow); then one
+   column. These are CONTAINER queries, not viewport ones: the sidebar collapses, so
+   the viewport says little about the room the page actually has. */
+/* Prompt detail: the page fills the scroll area (min-height:100% of #cnpy-main) and the
+   body row flexes into the rest, so the prompt box reaches the bottom of the screen.
+   Side by side the rail sits right; once they no longer fit (content < 760px) the rail
+   drops below and the box keeps most of a screen for itself. */
+.cnpy-pdetail-page { container:cnpy-pdetail / inline-size; min-height:100%; box-sizing:border-box; display:flex; flex-direction:column; }
+.cnpy-pdetail { flex:1 0 auto; display:flex; gap:32px 40px; margin-top:28px; align-items:stretch; }
+.cnpy-pdetail-main { flex:1 1 480px; min-width:0; display:flex; flex-direction:column; }
+.cnpy-pdetail-rail { flex:1 0 240px; max-width:300px; }
+@container cnpy-pdetail (max-width:759px) {
+  .cnpy-pdetail { flex-direction:column; }
+  .cnpy-pdetail-main { flex:none; min-height:70vh; }
+  .cnpy-pdetail-rail { flex:none; max-width:none; }
+}
+.cnpy-set-wrap { container:cnpy-set / inline-size; }
+/* Settings is ONE bento grid with even edges: row 1 is Profile | Account | MCP access (MCP
+   spans rows 1–2, down a slightly wider third column — its install command fits on one
+   line), row 2 is Appearance under the first two, row 3 Email notifications at full width.
+   Every tile STRETCHES to its grid area (the default), so tiles in a row share one top and
+   one bottom and the left block ends where MCP access does. The stretch is kept to a few
+   pixels by balancing content, not by sizing tiles: the by-hand setup is a modal (it never
+   grows the MCP tile) and Connected apps shows at most MCP_LIST_CAP rows. */
+.cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr); gap:14px; }
+.cnpy-set-appear { grid-column:1 / span 2; }
+.cnpy-set-mcp { grid-column:3; grid-row:1 / span 2; }
+/* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this adds its padding, and
+   a column flow so a stretched tile keeps its content at the top — with `.cnpy-tile-foot`
+   (Profile's color swatches, Account's sign-in methods) pinned to the bottom edge. */
+.cnpy-tile { min-width:0; padding:20px 22px; display:flex; flex-direction:column; }
+.cnpy-tile-foot { margin-top:auto; }
+.cnpy-set-email { grid-column:1 / -1; container:cnpy-email / inline-size; }
+.cnpy-set-pairs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:40px; }
+@container cnpy-email (max-width:935px) {
+  .cnpy-set-pairs { grid-template-columns:minmax(0,1fr); }
+}
+/* Appearance: Light / Dark / System are ONE row of three equal cards at every width, edge to
+   edge of the tile's content box. The row is its own container, so a card's form follows the
+   room it actually has (not the viewport): icon beside label, or — once a card is too narrow
+   for that (row < 350px, ~110px a card) — icon stacked over label, still three across. */
+.cnpy-set-themes { container:cnpy-themes / inline-size; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.cnpy-themecard { display:flex; align-items:center; justify-content:center; gap:9px; min-width:0; padding:13px 8px; }
+.cnpy-themecard > svg { flex:none; display:block; }
+@container cnpy-themes (max-width:349px) {
+  .cnpy-themecard { flex-direction:column; gap:6px; padding:12px 6px; }
+}
+.cnpy-set .cnpy-sw.compact { padding:6px 0; }
+/* MCP access: the sign-in steps, then Connected apps — beside them once the tile is wide
+   (it spans the page when the bento folds). The list has no fixed height and no scroller:
+   it shows its first rows and a "Show all N" (render.ts `grantListBody`). */
+.cnpy-set-mcp { container:cnpy-mcp / inline-size; }
+.cnpy-mcp-body { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; margin-top:20px; }
+@container cnpy-mcp (min-width:620px) {
+  .cnpy-mcp-body { grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:32px; }
+}
+/* Narrower: two columns — Profile | Account in one row (equal heights), Appearance and then
+   MCP access at full width under them; on a phone, one column. */
+@container cnpy-set (max-width:999px) {
+  .cnpy-set { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .cnpy-set-appear, .cnpy-set-mcp { grid-column:1 / -1; grid-row:auto; }
+}
+@container cnpy-set (max-width:759px) {
+  .cnpy-set { padding:24px 16px 64px; grid-template-columns:minmax(0,1fr); }
+}
+/* Tickets: the queue's table rows, and the two-column form/detail layouts that
+   collapse to one column on a narrow viewport. */
+.cnpy-trow { transition:background .12s ease; cursor:pointer; }
+.cnpy-tcard { transition:border-color .12s ease, background .12s ease, transform .12s ease; cursor:pointer; }
+.cnpy-tcard:hover { border-color:var(--border-strong) !important; background:var(--hover) !important; }
+.cnpy-tcard:active { transform:translateY(1px); }
+@media (prefers-reduced-motion: reduce) { .cnpy-tcard:active { transform:none; } }
+.cnpy-trow:hover { background:var(--hover); }
+/* The queue's Table under ~640px of its own width: the column head goes and each row
+   reflows into a small card — the title (two lines) and its age, then status · category ·
+   priority, the assignee at the far right. "Opened by" is on the ticket. The row's grid is
+   an inline style, hence !important. */
+.cnpy-ttable { container:ttable / inline-size; }
+.cnpy-ttable { padding-bottom:8px; }
+.cnpy-tgroup + .cnpy-tgroup { border-top:1px solid var(--border); margin-top:8px; }
+@container ttable (max-width: 640px) {
+  .cnpy-thead { display:none !important; }
+  .cnpy-trow { display:flex !important; flex-wrap:wrap; align-items:center; gap:8px 8px !important; padding:12px 14px !important; }
+  .cnpy-trow > :nth-child(1) { order:0; flex:1 1 calc(100% - 64px); align-items:flex-start !important; }
+  .cnpy-trow > :nth-child(1) > span:first-child { white-space:normal !important; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
+  .cnpy-trow > :nth-child(7) { order:1; flex:none; margin-left:auto; }
+  .cnpy-trow > :nth-child(2) { display:none !important; }
+  .cnpy-trow > :nth-child(5) { order:2; }
+  .cnpy-trow > :nth-child(3) { order:3; }
+  .cnpy-trow > :nth-child(4) { order:4; }
+  .cnpy-trow > :nth-child(6) { order:5; flex:0 1 auto; margin-left:auto; max-width:50%; }
+  .cnpy-tgrp { flex-wrap:wrap; row-gap:4px !important; padding-left:14px !important; padding-right:14px !important; }
+  .cnpy-tgrp > div { display:none; }
+  .cnpy-tgrp > :last-child { margin-left:auto; }
+}
+/* Design call #6 — "needs attention" (unassigned + Submitted). The faint accent
+   fill lives HERE rather than inline so that :hover (class + pseudo-class, higher
+   specificity) still wins and the row keeps its hover background. It is now the
+   WHOLE marker: the 2px inset left rule that tickets.ts used to add inline was
+   dropped at the owner's request — no box-shadow, no left border here either. */
+.cnpy-attn { background:color-mix(in srgb,var(--accent) 4%,transparent); }
+/* On a surface card both fills mix INTO the surface, so the card stays opaque over its column. */
+.cnpy-surface.cnpy-attn { background:color-mix(in srgb,var(--accent) 4%,var(--surface)); }
+.cnpy-surface.cnpy-tcard:hover { background:linear-gradient(var(--hover),var(--hover)) var(--surface) !important; }
+/* The ticket board's drag (main.ts). The columns stay as they are — the lifted
+   card and the slot the other cards slide around already say a drag is on. */
+.cnpy-tcard[data-tdrag] { user-select:none; -webkit-user-select:none; }
+.cnpy-tcard.is-lifted { display:none !important; }   /* the card carries an inline display */
+/* Where the held card will land: the gap the other cards slide apart for. */
+.cnpy-tslot { margin-bottom:8px; border-radius:10px; border:1px dashed color-mix(in srgb,var(--accent) 55%,transparent); background:color-mix(in srgb,var(--accent) 6%,transparent); }
+.cnpy-tcol:has(.cnpy-tslot) .cnpy-tdrop-empty { display:none; }
+/* The held card: a full-size clone that follows the pointer (never the browser's
+   shrunken drag image). Lifted with a shadow, held straight. Its radius is a CLASS
+   rule (in the corners block): setting its size from script re-serialises the
+   style attribute as "border-radius: 10px", which the inline-radius selectors no
+   longer match. */
+.cnpy-tghost { position:fixed; z-index:1000; margin:0 !important; pointer-events:none; box-sizing:border-box; background:var(--surface); border-color:var(--border-strong) !important; box-shadow:0 18px 40px rgba(0,0,0,.35); cursor:grabbing; }
+.cnpy-grabbing, .cnpy-grabbing * { cursor:grabbing !important; }
+/* The board under a tablet's width: every column keeps a readable width and the board
+   scrolls sideways INSIDE itself, bleeding to the screen's edges (the shell's gutter moves
+   into its padding), one column per snap. The grid is an inline style, hence !important. */
+@media (max-width:900px) {
+  .cnpy-board { --bg-gut:clamp(20px,2.6vw,46px); grid-template-columns:none !important; grid-auto-flow:column; grid-auto-columns:minmax(250px,1fr); overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x mandatory; scroll-padding-inline:var(--bg-gut); margin-left:calc(-1 * var(--bg-gut)); margin-right:calc(-1 * var(--bg-gut)); padding:0 var(--bg-gut) 6px; scrollbar-width:none; }
+  .cnpy-board::-webkit-scrollbar { display:none; }
+  .cnpy-board > .cnpy-tcol { scroll-snap-align:start; }
+}
+@media (max-width:640px) { .cnpy-board { grid-auto-columns:min(290px, calc(100vw - 64px)); } }
+@media (max-width:860px) {
+  .cnpy-nt-grid, .cnpy-td-grid, .cnpy-sprint-grid { grid-template-columns:minmax(0,1fr) !important; }
+  .cnpy-nt-grid > div + div, .cnpy-td-grid > div + div, .cnpy-sprint-grid > div + div { border-left:none !important; padding-left:0 !important; }
+}
+/* People (web/src/profile.ts): the directory's card grid, and a profile's open tickets beside
+   its sessions + docs — one column under 900px; at phone width a ticket row keeps only its pill. */
+.cnpy-people-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr)); gap:10px; }
+.cnpy-profile-grid { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:18px; align-items:start; margin-top:26px; }
+@media (max-width:900px) { .cnpy-profile-grid { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:640px) { .cnpy-profile-opt { display:none; } }
+/* A person's name that opens their profile (the ticket rail, the feed, Maintenance › People). */
+.cnpy-personlink { cursor:pointer; text-underline-offset:2px; }
+/* A person's photo + name as one chip (people.ts `personLink`): the pair lights up together. */
+.cnpy-personchip { cursor:pointer; transition:background .12s ease; }
+.cnpy-personchip:hover { background:var(--hover); }
+.cnpy-personchip:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.cnpy-personav { cursor:pointer; transition:transform .12s ease, opacity .12s ease; }
+.cnpy-personav:hover { opacity:.85; }
+.cnpy-personav:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+/* Settings › Profile: the avatar is the photo control (render.ts profileSection). A veil
+   with a camera fades in on hover / keyboard focus / while its menu is open; while a
+   write is in flight it stays up with a spinner instead, and the cursor says wait. The
+   button clips the veil to the avatar's own (corner-scaled) shape. On a touch screen,
+   where nothing hovers, a small camera badge on the corner says the same at rest. */
+.cnpy-avbtn { cursor:pointer; }
+.cnpy-avbtn.is-busy { cursor:progress; }
+.cnpy-avbtn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.cnpy-avbtn-veil { position:absolute; inset:0; display:grid; place-items:center; color:#fff; background:rgba(0,0,0,.5); opacity:0; transition:opacity .14s ease; pointer-events:none; }
+.cnpy-avbtn:hover .cnpy-avbtn-veil,
+.cnpy-avbtn:focus-visible .cnpy-avbtn-veil,
+.cnpy-avbtn[aria-expanded="true"] .cnpy-avbtn-veil,
+.cnpy-avbtn.is-busy .cnpy-avbtn-veil { opacity:1; }
+.cnpy-avbtn-veil svg { transition:transform .14s ease; transform:scale(.88); }
+.cnpy-avbtn:hover .cnpy-avbtn-veil svg,
+.cnpy-avbtn:focus-visible .cnpy-avbtn-veil svg,
+.cnpy-avbtn[aria-expanded="true"] .cnpy-avbtn-veil svg { transform:none; }
+.cnpy-avbtn-badge { display:none; position:absolute; right:-4px; bottom:-4px; width:22px; height:22px; place-items:center; background:var(--bg); border:1px solid var(--border-strong); color:var(--fg-55); pointer-events:none; }
+@media (hover:none) { .cnpy-avbtn-badge { display:grid; } .cnpy-avbtn.is-busy + .cnpy-avbtn-badge { display:none; } }
+/* Its menu pops out of the avatar once — on the paint that opens it (main.ts adds
+   .cnpy-flash), never on a later rerender. */
+.cnpy-avmenu { transform-origin:top left; }
+.cnpy-avmenu .cnpy-menurow:focus-visible { outline:none; background:var(--hover); }
+.cnpy-avmenu.cnpy-flash { animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
+.cnpy-mention:hover { text-decoration:underline; text-underline-offset:2px; }
+.cnpy-personlink:hover, .cnpy-maint-person:hover > span > span:first-child { text-decoration:underline; text-underline-offset:2px; }
+.cnpy-personlink:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+/* A card that opens something and shows people (ui.ts `hitArea`): an empty button laid over the
+   whole card is its click target, and every person button in it sits above it as its own. */
+.cnpy-hitbox { position:relative; }
+.cnpy-hit { position:absolute; inset:0; z-index:1; padding:0; border-radius:inherit; cursor:inherit; }
+.cnpy-hit:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.cnpy-hitbox .cnpy-personchip, .cnpy-hitbox .cnpy-personav, .cnpy-hitbox .cnpy-personlink, .cnpy-hitbox .cnpy-avstack { position:relative; z-index:2; }
+.cnpy-accentbtn { transition:filter .12s ease, transform .12s ease; }
+.cnpy-accentbtn:hover { filter:brightness(1.06); }
+.cnpy-accentbtn:active { transform:translateY(1px); }
+.cnpy-outlinebtn { transition:all .12s ease; }
+.cnpy-outlinebtn:hover { background:var(--hover); color:var(--fg); }
+/* The ticket status trigger is the status pill itself (tickets.ts statusControl):
+   no box around it — the ring takes the pill's own colour. */
+.cnpy-statusbtn { transition:box-shadow .14s ease, filter .14s ease; }
+.cnpy-statusbtn:hover, .cnpy-statusbtn[aria-expanded="true"] { box-shadow:0 0 0 3px color-mix(in srgb, currentColor 16%, transparent); filter:brightness(1.12); }
+.cnpy-statusbtn:focus-visible { outline:none; box-shadow:0 0 0 3px color-mix(in srgb, currentColor 30%, transparent); }
+.cnpy-statusbtn svg { transition:transform .16s ease; }
+.cnpy-statusbtn[aria-expanded="true"] svg { transform:rotate(180deg); }
+/* A ticket body is markdown, but a typed single line break still breaks. */
+.cnpy-td-body p { white-space:pre-line; }
+.cnpy-ghostbtn { transition:all .12s ease; }
+.cnpy-ghostbtn:hover { border-color:var(--border-strong); color:var(--fg); }
+/* Maintenance › People: the admin's role editor (maintenance.ts `personRoleEditor`). The row and
+   its editor read as one tinted block — the row hands its divider to the editor (border AND the
+   -1px overlap, which would stack the two translucent tints into a seam), so the editor's border
+   sits exactly where the row's did at every height. It opens by growing its ONE grid row
+   0fr → 1fr (a real height animation, nothing measured) with a fade and a small drop of its
+   body; `data-roleedit="out"` is the collapsed state a closed editor lingers in for its exit.
+   The animations play only while main.ts `syncRoleEdit` has set `data-anim` (the 200ms open /
+   close window), joined mid-way through the negative `--re-t` — so a rerender never replays them. */
+.cnpy-prow[data-roleedit] { border-bottom:0 !important; margin-bottom:0 !important; }
+.cnpy-prow[data-roleedit="in"] { background:var(--hover); }
+.cnpy-prow-edit { color:var(--fg-55); border:1px solid var(--border); background:transparent; }
+.cnpy-prow-edit[aria-expanded="true"] { color:var(--fg); border-color:var(--border-strong); background:var(--surface); }
+.cnpy-roleedit { display:grid; grid-template-rows:1fr; background:var(--hover); border-bottom:1px solid var(--border); margin-bottom:-1px; }
+.cnpy-roleedit[data-roleedit="out"] { grid-template-rows:0fr; opacity:0; }
+.cnpy-roleedit-clip { min-height:0; overflow:hidden; }
+.cnpy-roleedit-body { box-sizing:border-box; max-width:640px; padding:4px 16px 18px 56px; }
+.cnpy-roleedit-count { font-size:11px; color:var(--fg-40); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.cnpy-roleedit-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:16px; }
+.cnpy-roleedit-keys { margin-right:auto; min-width:0; font-size:11px; color:var(--fg-40); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-roleedit-skel { background:var(--hover) !important; border-color:var(--border) !important; animation:cnpy-shimmer 1.4s ease infinite; }
+[data-phone="1"] .cnpy-roleedit-body { padding-left:16px; }
+[data-phone="1"] .cnpy-roleedit-keys { display:none; }
+.cnpy-roleedit[data-anim] { animation:cnpy-re-open .2s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--re-t, 0ms); }
+.cnpy-roleedit[data-anim] .cnpy-roleedit-body { animation:cnpy-re-drop .2s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--re-t, 0ms); }
+.cnpy-roleedit[data-roleedit="out"][data-anim] { animation:cnpy-re-close .2s cubic-bezier(.4,0,.2,1) both; animation-delay:var(--re-t, 0ms); }
+.cnpy-roleedit[data-roleedit="out"][data-anim] .cnpy-roleedit-body { animation:none; }
+.cnpy-prow[data-roleedit="in"][data-anim] { animation:cnpy-re-tint .2s ease both; animation-delay:var(--re-t, 0ms); }
+.cnpy-prow[data-roleedit="out"][data-anim] { animation:cnpy-re-untint .2s ease both; animation-delay:var(--re-t, 0ms); }
+@keyframes cnpy-re-open { from { grid-template-rows:0fr; opacity:0; } 70% { opacity:1; } to { grid-template-rows:1fr; opacity:1; } }
+@keyframes cnpy-re-close { from { grid-template-rows:1fr; opacity:1; } 60% { opacity:0; } to { grid-template-rows:0fr; opacity:0; } }
+@keyframes cnpy-re-drop { from { transform:translateY(-6px); } to { transform:none; } }
+@keyframes cnpy-re-tint { from { background-color:transparent; } to { background-color:var(--hover); } }
+@keyframes cnpy-re-untint { from { background-color:var(--hover); } to { background-color:transparent; } }
+@media (prefers-reduced-motion: reduce) { .cnpy-roleedit[data-anim], .cnpy-roleedit[data-anim] .cnpy-roleedit-body, .cnpy-prow[data-anim], .cnpy-roleedit-skel { animation:none !important; } }
+.cnpy-iconbtn { transition:background .12s ease, color .12s ease; }
+.cnpy-iconbtn:hover { background:var(--hover); color:var(--fg-70); }
+.cnpy-link:hover { text-decoration:underline; }
+.cnpy-lkmore, .cnpy-lkarr { transition:opacity .12s ease, color .12s ease, background .12s ease; }
+.cnpy-lkmore { opacity:0; pointer-events:none; }
+.cnpy-lk:hover .cnpy-lkmore, .cnpy-lk:focus-within .cnpy-lkmore, .cnpy-lk.is-open .cnpy-lkmore { opacity:1; pointer-events:auto; }
+.cnpy-lk:hover .cnpy-lkarr, .cnpy-lk:focus-within .cnpy-lkarr, .cnpy-lk.is-open .cnpy-lkarr { opacity:0; }
+.cnpy-lkmore:hover, .cnpy-lk.is-open .cnpy-lkmore { color:var(--fg); background:var(--hover); }
+.cnpy-lkmenu { transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2); }
+@keyframes cnpy-lkpop { from { opacity:0; transform:scale(.9); } }
+@media (prefers-reduced-motion: reduce) { .cnpy-lkmenu { animation:none; } }
+@media (hover:none) { .cnpy-lkmore { opacity:1; pointer-events:auto; } .cnpy-lkarr { opacity:0; } }
+.cnpy-rejectbtn:hover { border-color:var(--red); color:var(--red); background:color-mix(in srgb, var(--red) 10%, transparent); }
+/* The destructive trigger + its confirmation modal (web/src/confirm.ts): the trigger is muted
+   until hovered, focused or open, then red. The modal is a root-level overlay: a dimmed
+   backdrop (a click cancels) and a centered surface that fades/scales in and, with
+   `data-closing`, out. At phone width it is a bottom SHEET (the modal/sheet rule above,
+   which also names role="alertdialog") that slides up. No motion under reduced motion. */
+.cnpy-dangerbtn { transition:background .15s ease, color .15s ease, border-color .15s ease; }
+.cnpy-dangerbtn:hover, .cnpy-dangerbtn:focus-visible, .cnpy-dangerbtn[aria-expanded="true"] { border-color:color-mix(in srgb, var(--red) 55%, transparent) !important; color:var(--red) !important; background:color-mix(in srgb, var(--red) 8%, transparent); }
+.cnpy-confirm-go { transition:filter .12s ease; }
+.cnpy-confirm-go:hover { filter:brightness(1.1); }
+.cnpy-confirm-go:focus-visible { outline:2px solid color-mix(in srgb, var(--red) 55%, transparent); outline-offset:2px; }
+.cnpy-confirm-go:disabled, .cnpy-cmodal button:disabled { opacity:.6; cursor:default; }
+.cnpy-cmodal { position:fixed; inset:0; z-index:80; }
+.cnpy-cmodal-back { position:absolute; inset:0; background:rgba(0,0,0,.5); animation:cnpy-cm-fade .16s ease both; }
+.cnpy-cmodal-wrap { position:absolute; inset:0; display:grid; place-items:center; padding:16px; pointer-events:none; }
+.cnpy-cmodal-box { pointer-events:auto; box-sizing:border-box; width:min(420px, 100%); padding:20px 22px 18px; border-color:var(--border-strong) !important; box-shadow:0 20px 60px rgba(0,0,0,.45); outline:none; animation:cnpy-cm-in .18s cubic-bezier(.2,.8,.2,1) both; }
+.cnpy-cmodal[data-closing] .cnpy-cmodal-back { animation:cnpy-cm-fade-out .14s ease both; }
+.cnpy-cmodal[data-closing] .cnpy-cmodal-box { animation:cnpy-cm-out .14s ease both; }
+@keyframes cnpy-cm-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes cnpy-cm-fade-out { from { opacity:1; } to { opacity:0; } }
+@keyframes cnpy-cm-in { from { opacity:0; transform:scale(.96); } to { opacity:1; transform:none; } }
+@keyframes cnpy-cm-out { from { opacity:1; transform:none; } to { opacity:0; transform:scale(.97); } }
+@keyframes cnpy-cm-up { from { transform:translateY(100%); } to { transform:none; } }
+@keyframes cnpy-cm-down { from { transform:none; } to { transform:translateY(100%); } }
+@media (max-width:640px) {
+  .cnpy-cmodal-box { padding:20px max(18px, env(safe-area-inset-right)) 16px max(18px, env(safe-area-inset-left)); animation:cnpy-cm-up .22s cubic-bezier(.2,.8,.2,1) both; }
+  .cnpy-cmodal[data-closing] .cnpy-cmodal-box { animation:cnpy-cm-down .14s ease both; }
+  .cnpy-cmodal-btns > button { flex:1; padding-top:11px !important; padding-bottom:11px !important; }
+}
+@media (prefers-reduced-motion: reduce) { .cnpy-cmodal-back, .cnpy-cmodal-box, .cnpy-cmodal[data-closing] .cnpy-cmodal-back, .cnpy-cmodal[data-closing] .cnpy-cmodal-box { animation:none !important; } }
+.cnpy-toast-act:hover { text-decoration:underline; text-underline-offset:3px; }
+.cnpy-rejectbtn:active { transform:translateY(1px); }
+.cnpy-issuechip { transition:border-color .12s ease, color .12s ease; }
+.cnpy-issuechip:hover { border-color:var(--border-strong); color:var(--fg); }
+.cnpy-revoke { transition:all .12s ease; }
+.cnpy-revoke:hover { border-color:var(--red); background:color-mix(in srgb, var(--red) 10%, transparent); }
+.cnpy-xbtn:hover { background:color-mix(in srgb, var(--accent) 22%, transparent); }
+.cnpy-input:focus { border-color:var(--accent); }
+.cnpy-themecard { transition:all .12s ease; }
+.cnpy-numpill { transition:filter .12s ease; }
+.cnpy-numpill:hover { filter:brightness(1.15); }
+.cnpy-copybtn { transition:filter .12s ease, transform .12s ease; }
+.cnpy-copybtn:hover { filter:brightness(1.06); }
+.cnpy-copybtn:active { transform:translateY(1px); }
+.cnpy-signout { transition:all .12s ease; }
+.cnpy-signout:hover { border-color:var(--red); color:var(--red); }
+.cnpy-mutelink:hover { color:var(--fg-70); }
+
+/* ── ticket & sprint surfaces: menu rows, pick chips, segments, grip ─────────
+   Inline styles cannot express `:hover`, so every dropdown row / chip we added
+   for the ticket screens gets its hover HERE. `--hover` and `--border-strong`
+   are defined by dark AND light, so one rule covers both themes.
+
+   These surfaces paint their selected state INLINE (the app's template-string
+   idiom), so a plain class rule loses the cascade to the element's own style
+   attribute: wherever a hover has to repaint a property the inline style
+   already sets, the rule says !important. That is what makes this layer
+   expressible at all — the dc-runtime applied `style-hover` inline, and plain
+   CSS has to outrank it. */
+.cnpy-menurow { transition:background .12s ease; }
+.cnpy-menurow:hover { background:var(--hover); }
+/* The keyboard-active picker row is painted by the SAME declaration as hover, so
+   ↑↓ and the mouse land on an identical-looking row. */
+.cnpy-menurow.is-active { background:var(--hover); }
+/* Single-choice chips (category / sprint / assignee / lead / domain). The picked
+   chip keeps its accent border — only the unpicked ones firm up on hover. */
+.cnpy-pickchip { transition:border-color .12s ease, color .12s ease; }
+.cnpy-pickchip:not(.is-on):hover { border-color:var(--border-strong) !important; color:var(--fg-70) !important; }
+/* The segmented switch (web/src/segmented.ts) — every "pick one of a few" control. One
+   indicator slides under the picked option (syncSegments places it after each paint);
+   before it is placed, the picked button carries the fill itself. */
+.cnpy-seg { position:relative; display:inline-flex; align-items:center; gap:2px; padding:3px; border:1px solid var(--border); border-radius:9px; flex:none; isolation:isolate; }
+.cnpy-seg--fill { display:flex; }
+.cnpy-seg--fill > .cnpy-seg-btn { flex:1 1 0; }
+.cnpy-seg-btn { position:relative; z-index:1; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:5px 12px; border-radius:7px; font-size:12.5px; font-weight:500; white-space:nowrap; color:var(--fg-55); transition:color .15s ease; }
+.cnpy-seg--sm > .cnpy-seg-btn { padding:4px 12px; font-size:12px; }
+.cnpy-seg--xs { padding:2px; gap:1px; border-radius:8px; }
+.cnpy-seg--xs > .cnpy-seg-btn { height:22px; padding:0 9px; border-radius:6px; font-size:11.5px; }
+/* A long option list (an artifact's seven kinds) wraps on a narrow screen; the indicator
+   follows the picked option onto its row (syncSegments tracks y as well as x). */
+.cnpy-seg--wrap { flex-wrap:wrap; max-width:100%; }
+/* In a 34px toolbar row (the queue's search + Filter): match its height. */
+.cnpy-seg--bar { height:34px; box-sizing:border-box; padding:2px; }
+.cnpy-seg--bar > .cnpy-seg-btn { height:100%; padding-top:0; padding-bottom:0; }
+.cnpy-seg-btn:not(.is-on):not(:disabled):hover { color:var(--fg); }
+.cnpy-seg-btn.is-on { color:var(--fg); background:var(--hover); }
+.cnpy-seg-btn.is-on[data-tone="accent"] { color:var(--accent); background:var(--accent-soft); }
+.cnpy-seg-btn:disabled { color:var(--fg-40); opacity:.55; cursor:not-allowed; }
+/* Once the indicator is placed the picked button's own fill goes at once — never faded
+   (a fading fill under the sliding indicator reads as two selections). */
+.cnpy-seg.is-live > .cnpy-seg-btn.is-on { background:transparent; }
+.cnpy-seg-ind { position:absolute; z-index:0; top:0; left:0; width:0; height:0; border-radius:7px; background:var(--hover); opacity:0; pointer-events:none; }
+.cnpy-seg--xs > .cnpy-seg-ind { border-radius:6px; }
+.cnpy-seg-ind[data-tone="accent"] { background:var(--accent-soft); }
+.cnpy-seg.is-live > .cnpy-seg-ind { opacity:1; }
+.cnpy-seg-ind.is-sliding { transition:transform .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1), height .28s cubic-bezier(.3,.7,.2,1), background-color .2s ease; }
+@media (prefers-reduced-motion: reduce) { .cnpy-seg-ind.is-sliding { transition:none; } }
+/* The underline tab bar (web/src/tabs.ts) — page-level navigation between a screen's
+   sections, heading the page body. Text tabs on a full-width hairline (an inset shadow, so
+   it stays put while a too-wide row scrolls sideways inside the bar — never the page); the
+   picked tab's 2px accent underline sits ON it. One indicator slides under the picked tab
+   (syncTabBars places it after each paint); before it is placed, the picked tab draws its
+   own. Every tab is 40px tall, so a badge never makes one taller than another. */
+.cnpy-tabs { position:relative; display:flex; align-items:stretch; gap:22px; overflow-x:auto; overflow-y:hidden; scrollbar-width:none; overscroll-behavior-x:contain; box-shadow:inset 0 -1px 0 var(--border); }
+.cnpy-tabs::-webkit-scrollbar { display:none; }
+.cnpy-tab { position:relative; flex:none; display:inline-flex; align-items:center; gap:7px; height:40px; padding:0 2px; font-size:13.5px; font-weight:500; white-space:nowrap; color:var(--fg-55); transition:color .15s ease; }
+.cnpy-tab:not(.is-on):hover { color:var(--fg); }
+.cnpy-tab.is-on { color:var(--fg); box-shadow:inset 0 -2px 0 var(--accent); }
+.cnpy-tab:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+.cnpy-tabs.is-live > .cnpy-tab.is-on { box-shadow:none; }
+.cnpy-tabs-ind { position:absolute; z-index:1; left:0; bottom:0; width:0; height:2px; background:var(--accent); opacity:0; pointer-events:none; }
+.cnpy-tabs.is-live > .cnpy-tabs-ind { opacity:1; }
+.cnpy-tabs-ind.is-sliding { transition:transform .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1); }
+@media (prefers-reduced-motion: reduce) { .cnpy-tabs-ind.is-sliding { transition:none; } .cnpy-tab { transition:none; } }
+/* The queue group header's "Open sprint →". */
+.cnpy-grouplink { transition:color .12s ease, background .12s ease; border-radius:6px; }
+.cnpy-grouplink:hover { color:var(--fg) !important; background:var(--hover); }
+/* The comment box's own resize grip (bottom-left). */
+.cnpy-grip { transition:color .12s ease; }
+.cnpy-grip:hover { color:var(--fg-70) !important; }
+
+/* ── rendered markdown (docs reader) ───────────────────────────────────────── */
+/* A typeset technical document: comfortable measure, label-face structural spine.
+   Every color derives from the theme vars so it holds in dark and light. */
+.cnpy-md { font-size:15px; line-height:1.75; color:color-mix(in srgb, var(--fg) 82%, transparent); }
+.cnpy-md > :first-child { margin-top:0 !important; }
+.cnpy-md > :last-child { margin-bottom:0; }
+
+.cnpy-md h1, .cnpy-md h2, .cnpy-md h3, .cnpy-md h4 { color:var(--fg); scroll-margin-top:24px; }
+.cnpy-md h1 { font-size:23px; font-weight:650; letter-spacing:-0.02em; line-height:1.2; margin:42px 0 15px; }
+.cnpy-md h2 { font-size:18.5px; font-weight:640; letter-spacing:-0.012em; line-height:1.25; margin:36px 0 14px; padding-bottom:7px; border-bottom:1px solid var(--border); }
+.cnpy-md h3 { font-size:16px; font-weight:640; letter-spacing:-0.006em; margin:28px 0 9px; }
+.cnpy-md h4 { font-family:var(--label); font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:.09em; color:var(--fg-55); margin:24px 0 9px; }
+
+.cnpy-md p { margin:0 0 15px; }
+.cnpy-md a { color:var(--accent); text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--accent) 34%, transparent); text-underline-offset:2px; text-decoration-thickness:1px; }
+.cnpy-md a:hover { text-decoration-color:var(--accent); }
+/* Inline-only markdown (a feed summary): links and code spans, no block typography. */
+.cnpy-md-inline a { color:var(--accent); text-decoration:none; }
+.cnpy-md-inline a:hover { text-decoration:underline; text-underline-offset:2px; }
+.cnpy-md-inline code { font-family:var(--code); font-size:.88em; background:color-mix(in srgb, var(--fg) 6%, transparent); border:1px solid var(--border); border-radius:5px; padding:1px 4px; }
+/* A feed entry's body: the doc typography at a card's scale; a typed line break still breaks. */
+.cnpy-feed-body p { white-space:pre-line; margin:0 0 8px; }
+.cnpy-feed-body h1, .cnpy-feed-body h2, .cnpy-feed-body h3, .cnpy-feed-body h4 { font-size:13.5px; font-weight:600; letter-spacing:0; line-height:1.4; margin:12px 0 6px; padding:0; border:0; }
+.cnpy-feed-body ul, .cnpy-feed-body ol { margin:4px 0 8px; padding-left:20px; }
+.cnpy-feed-body li { margin:2px 0; }
+.cnpy-feed-body pre, .cnpy-feed-body .cnpy-code { margin:8px 0; font-size:12px; }
+.cnpy-feed-body blockquote { margin:8px 0; }
+.cnpy-md strong { color:var(--fg); font-weight:650; }
+.cnpy-md em { font-style:italic; }
+
+/* lists — accent-numbered ordered (sequence), quiet bulleted (items) */
+.cnpy-md ul, .cnpy-md ol { margin:0 0 15px; padding-left:24px; }
+.cnpy-md li { margin:6px 0; padding-left:3px; }
+.cnpy-md li::marker { color:var(--fg-40); }
+.cnpy-md ol > li::marker { font-family:var(--label); font-size:.9em; font-weight:600; color:var(--accent); }
+.cnpy-md li > ul, .cnpy-md li > ol { margin:6px 0; }
+.cnpy-md li > p { margin:0 0 8px; }
+
+/* inline code — crisp monospace chip */
+.cnpy-md code { font-family:var(--code); font-size:.86em; color:var(--fg); background:color-mix(in srgb, var(--fg) 6%, transparent); border:1px solid var(--border); border-radius:5px; padding:1.5px 5px; }
+.cnpy-md a code { color:var(--accent); }
+
+/* code panel — a bordered card with an optional label-face language tag (added in markdown.ts) */
+.cnpy-code { margin:0 0 18px; border:1px solid var(--border); border-radius:11px; overflow:hidden; background:color-mix(in srgb, var(--fg) 4%, var(--bg)); }
+.cnpy-code-lang { font-family:var(--label); font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); padding:8px 15px; border-bottom:1px solid var(--border); }
+.cnpy-md pre { background:color-mix(in srgb, var(--fg) 4%, var(--bg)); border:1px solid var(--border); border-radius:11px; padding:15px 16px; overflow-x:auto; margin:0 0 18px; }
+.cnpy-md .cnpy-code pre { margin:0; background:none; border:none; border-radius:0; }
+.cnpy-md pre code { font-family:var(--code); font-size:12.5px; line-height:1.65; color:var(--fg); background:none; border:none; padding:0; white-space:pre; }
+
+/* blockquote — a note callout, not a whisper */
+.cnpy-md blockquote { border-left:2px solid var(--accent); background:var(--accent-soft); padding:12px 16px; margin:0 0 16px; border-radius:0 8px 8px 0; color:color-mix(in srgb, var(--fg) 78%, transparent); }
+.cnpy-md blockquote > :first-child { margin-top:0; }
+.cnpy-md blockquote > :last-child { margin-bottom:0; }
+
+.cnpy-md hr { border:none; border-top:1px solid var(--border); margin:30px 0; }
+.cnpy-md img { max-width:100%; border-radius:10px; border:1px solid var(--border); }
+/* An uploaded doc image (/img/<sha256>): a zoom button around the picture that opens
+   the lightbox. The button carries the frame; the image inside fills it. */
+.cnpy-md-img { display:block; max-width:100%; margin:6px 0; padding:0; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg); cursor:zoom-in; transition:border-color .2s, box-shadow .2s; }
+.cnpy-md-img:hover { border-color:var(--border-strong); box-shadow:var(--lift-shadow); }
+.cnpy-md-img:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
+.cnpy-md-img img, .cnpy-md .cnpy-md-img img { display:block; max-width:100%; height:auto; border:0; border-radius:0; }
+
+/* tables — editorial ledger: rule-only borders, uppercase label-face header */
+.cnpy-md-tablewrap { overflow-x:auto; margin:0 0 18px; }
+.cnpy-md table { border-collapse:collapse; width:100%; font-size:13.5px; }
+.cnpy-md-tablewrap > table { margin:0; }
+.cnpy-md th, .cnpy-md td { text-align:left; padding:9px 13px; vertical-align:top; }
+.cnpy-md th { font-family:var(--label); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--fg-55); border-bottom:1.5px solid var(--border-strong); white-space:nowrap; }
+.cnpy-md td { border-bottom:1px solid var(--border); }
+.cnpy-md tbody tr:last-child td { border-bottom:none; }
+.cnpy-md th:first-child, .cnpy-md td:first-child { padding-left:2px; }
+
+/* ── person colors (0023): stored by name; one set per theme ── */
+[data-cnpy-theme="light"] { --p-moss:#6f8a3a; --p-fern:#2f7d57; --p-sky:#3e6f8a; --p-slate:#5b6b8c; --p-plum:#7a4f8f; --p-rose:#a84a68; --p-rust:#b4562c; --p-ochre:#a8791e; --p-clay:#8c5a3c; --p-stone:#6b665e; }
+[data-cnpy-theme="dark"] { --p-moss:#9aab65; --p-fern:#5ab88a; --p-sky:#6aa8c4; --p-slate:#8d9bc0; --p-plum:#b48ac8; --p-rose:#d47a97; --p-rust:#d98a52; --p-ochre:#d4a84a; --p-clay:#c2895f; --p-stone:#9a958d; }
+.cnpy-sw { display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 6px 8px; border-radius:10px; border:1px solid transparent; transition:border-color .12s ease, background .12s ease; }
+.cnpy-sw:hover { background:var(--hover); }
+.cnpy-sw i { width:28px; height:28px; border-radius:50%; background:var(--c); display:block; box-shadow:0 0 0 2px var(--bg), 0 0 0 3px transparent; }
+.cnpy-sw span { font-family:var(--label); font-size:10.5px; color:var(--fg-55); }
+.cnpy-sw.is-on { border-color:var(--border-strong); background:var(--hover); }
+.cnpy-sw.is-on i { box-shadow:0 0 0 2px var(--bg), 0 0 0 3px var(--c); }
+.cnpy-sw.is-on span { color:var(--fg); }
+.cnpy-sw.compact { padding:6px 2px; } .cnpy-sw.compact i { width:22px; height:22px; } .cnpy-sw.compact span { display:none; }
+
+/* ── motion: screen entrances ────────────────────────────────────────────────
+   `[data-enter]` is set by main.ts only when what is on screen CHANGED (a new
+   route, or its data arriving) — so none of this replays on a keystroke.
+   `--enter-t` is a negative delay: a rerender mid-entrance swaps <main>, and the
+   new DOM joins the animation where the old one left off instead of restarting.
+   Everything animates `both`-filled from its resting state, so with no
+   `[data-enter]` (or with reduced motion) the page is simply there. */
+@keyframes cnpy-screen { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+@keyframes cnpy-rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+@keyframes cnpy-grow-y { from { transform:scaleY(0); } to { transform:none; } }
+@keyframes cnpy-grow-x { from { transform:scaleX(0); } to { transform:none; } }
+@keyframes cnpy-wipe { from { clip-path:inset(0 100% 0 0); } to { clip-path:inset(0 0 0 0); } }
+@keyframes cnpy-dot { from { opacity:0; transform:scale(.2); } to { opacity:1; transform:none; } }
+@keyframes cnpy-shimmer { 0% { opacity:.45; } 50% { opacity:.95; } 100% { opacity:.45; } }
+@keyframes cnpy-pulse { 0% { box-shadow:0 0 0 0 color-mix(in srgb,var(--c) 45%,transparent); } 100% { box-shadow:0 0 0 7px color-mix(in srgb,var(--c) 0%,transparent); } }
+
+[data-enter] #cnpy-main > * { animation:cnpy-screen .32s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--enter-t, 0ms); }
+[data-enter] header h1, [data-enter] header h1 + span { animation:cnpy-screen .28s ease both; animation-delay:var(--enter-t, 0ms); }
+[data-enter] .cnpy-rise { animation:cnpy-rise .42s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 45ms + 40ms + var(--enter-t, 0ms)); }
+/* lists cascade in: the first dozen rows step, the rest arrive together */
+[data-enter] .cnpy-stagger > * { animation:cnpy-rise .36s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--n, 12) * 28ms + 60ms + var(--enter-t, 0ms)); }
+[data-enter] .cnpy-stagger > :nth-child(1) { --n:0; } [data-enter] .cnpy-stagger > :nth-child(2) { --n:1; }
+[data-enter] .cnpy-stagger > :nth-child(3) { --n:2; } [data-enter] .cnpy-stagger > :nth-child(4) { --n:3; }
+[data-enter] .cnpy-stagger > :nth-child(5) { --n:4; } [data-enter] .cnpy-stagger > :nth-child(6) { --n:5; }
+[data-enter] .cnpy-stagger > :nth-child(7) { --n:6; } [data-enter] .cnpy-stagger > :nth-child(8) { --n:7; }
+[data-enter] .cnpy-stagger > :nth-child(9) { --n:8; } [data-enter] .cnpy-stagger > :nth-child(10) { --n:9; }
+[data-enter] .cnpy-stagger > :nth-child(11) { --n:10; } [data-enter] .cnpy-stagger > :nth-child(12) { --n:11; }
+/* one-shot: main.ts adds this after an in-place change (a range switch, a panel opening) */
+.cnpy-flash { animation:cnpy-rise .3s cubic-bezier(.2,.7,.2,1) both; }
+
+/* chrome that is swapped with <main> still eases its hover/press */
+.cnpy-iconbtn, .cnpy-outlinebtn { transition:background .15s ease, color .15s ease, border-color .15s ease, transform .15s ease; }
+.cnpy-iconbtn:active, .cnpy-outlinebtn:active, .cnpy-accentbtn:active { transform:scale(.96); }
+
+/* ── Repo dashboard (web/src/repo.ts) ────────────────────────────────────────── */
+.repo-row { transition:background .14s ease; }
+.repo-row:hover { background:var(--hover); text-decoration:none; }
+.repo-strip { transition:background .14s ease; }
+.repo-strip:hover { background:var(--hover); }
+.repo-chev { transition:transform .2s cubic-bezier(.4,0,.2,1); }
+.repo-link { color:var(--accent); text-decoration:none; }
+.repo-link:hover { text-decoration:underline; text-underline-offset:3px; }
+.repo-quiet { color:inherit; transition:color .12s ease; }
+.repo-quiet:hover { color:var(--fg); }
+.repo-textbtn:hover { text-decoration:underline; text-underline-offset:3px; }
+.repo-shimmer { animation:cnpy-shimmer 1.4s ease infinite; }
+.repo-pulse { animation:cnpy-pulse 1.8s ease-out infinite; }
+
+.repo-drift { display:grid; grid-template-rows:0fr; }
+.repo-drift[data-open="1"] { grid-template-rows:1fr; }
+
+.repo-bar { transform-box:fill-box; transform-origin:50% 100%; transition:opacity .15s ease; }
+.repo-bar:hover { opacity:1; }
+[data-enter] .repo-bar { animation:cnpy-grow-y .5s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 22ms + 160ms + var(--enter-t, 0ms)); }
+.repo-fill { transform-origin:0 50%; }
+[data-enter] .repo-fill { animation:cnpy-grow-x .7s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 35ms + 180ms + var(--enter-t, 0ms)); }
+[data-enter] .repo-spark, .cnpy-flash .repo-spark { animation:cnpy-wipe .8s cubic-bezier(.4,0,.2,1) both; animation-delay:calc(160ms + var(--enter-t, 0ms)); }
+.cnpy-flash .repo-spark { animation-delay:0ms; }
+
+.repo-gdot { display:inline-block; width:.6em; height:.6em; border-radius:50%; background:currentColor; vertical-align:.05em; }
+.repo-dot { transition:box-shadow .15s ease, transform .15s ease; }
+.repo-dot:hover, .repo-dot:focus-visible { box-shadow:0 0 0 3px color-mix(in srgb,var(--fg) 12%,transparent); transform:scale(1.12); outline:none; }
+[data-enter] .repo-dot { animation:cnpy-dot .3s cubic-bezier(.34,1.56,.64,1) both; animation-delay:calc(var(--i, 0) * 30ms + 140ms + var(--enter-t, 0ms)); }
+.repo-tip { position:absolute; bottom:24px; left:50%; z-index:30; display:block; background:var(--bg); border:1px solid var(--border-strong); border-radius:9px; padding:9px 12px; box-shadow:0 8px 30px rgba(0,0,0,.35); white-space:nowrap; pointer-events:none; opacity:0; visibility:hidden; transform:translate(-50%,6px) scale(.98); transition:opacity .15s ease, transform .15s ease, visibility 0s .15s; }
+.repo-dotwrap:hover .repo-tip, .repo-dot:focus-visible + .repo-tip { opacity:1; visibility:visible; transform:translate(-50%,0); transition-delay:0s; }
+/* Touch has no hover: a tapped (focused) deploy dot shows its tip. */
+@media (hover:none) { .repo-dot:focus + .repo-tip { opacity:1; visibility:visible; transform:translate(-50%,0); transition-delay:0s; } }
+
+/* the panel's two-up splits stack on a laptop-and-below width */
+@container (max-width: 760px) { .repo-split { grid-template-columns:minmax(0,1fr) !important; } .repo-split-r { border-left:none !important; border-top:1px solid var(--border); } .repo-tiles { grid-template-columns:repeat(2,minmax(0,1fr)) !important; } }
+/* Usage › Product. `.repo-cells` is a hairline lattice that survives any column
+   count: every cell draws its left + top line and the -1px margin tucks the outer
+   ones under the wrapper's clip — so a 4-up strip can fold to 2×2 with no stray edge. */
+.repo-cells { overflow:hidden; }
+.repo-cells > div { display:grid; margin:-1px 0 0 -1px; }
+.repo-cells > div > * { border-left:1px solid var(--border); border-top:1px solid var(--border); min-width:0; }
+.repo-rank { display:grid; grid-template-columns:minmax(0,156px) minmax(0,1fr) 60px; gap:14px; align-items:center; padding:5.5px 0; }
+.repo-rank-l { transition:color .12s ease; }
+.repo-rank:hover .repo-rank-l, .repo-rank-h:hover .repo-rank-l { color:var(--fg) !important; }
+.cnpy-flash .repo-fill { animation:cnpy-grow-x .5s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 22ms + 60ms); }
+/* A Repo tab switch replays no entrance (the tab bar's underline must slide unbroken), so the
+   new tab's content flashes instead (main.ts `setRepoTab`): the 14-day bars grow and the deploy
+   dots pop again. `backwards`, not `both`: a filled transform would outlive the flash and
+   swallow the dot's hover scale. */
+.cnpy-flash .repo-bar { animation:cnpy-grow-y .45s cubic-bezier(.2,.7,.2,1) backwards; animation-delay:calc(var(--i, 0) * 16ms + 60ms); }
+.cnpy-flash .repo-dot { animation:cnpy-dot .3s cubic-bezier(.34,1.56,.64,1) backwards; animation-delay:calc(var(--i, 0) * 22ms + 60ms); }
+@container (max-width: 760px) { .repo-kpis { grid-template-columns:repeat(2,minmax(0,1fr)) !important; } .repo-pgrid > * { grid-column:1 / -1 !important; } }
+@container (max-width: 420px) { .repo-kpis > * { padding:14px 14px 14px !important; } .repo-kpi-n { font-size:20px !important; } .repo-kpi-s { flex-basis:100%; } }
+/* phone: the frame keeps a 16px gutter instead of the desktop 32px */
+@media (max-width: 600px) { .repo-frame { padding-left:16px !important; padding-right:16px !important; } }
+/* phone: the bar drops under its label and figure, so the label keeps room to be read */
+@container (max-width: 520px) { .repo-rank { grid-template-columns:minmax(0,1fr) auto; gap:5px 12px; padding:7px 0; } .repo-rank > .repo-rank-bar { grid-column:1 / -1; grid-row:2; } }
+.repo-panel { container-type:inline-size; }
+/* phone: a branch row and a health row fold to two lines instead of squeezing the name
+   (or the URL) to nothing — name + STALE / env + state + latency, then the rest under it. */
+@container (max-width: 520px) {
+  .repo-brow { grid-template-columns:minmax(0,1fr) auto !important; row-gap:2px !important; }
+  .repo-brow > :nth-child(1) { grid-area:1 / 1; }
+  .repo-brow > :nth-child(4) { grid-area:1 / 2; }
+  .repo-brow > :nth-child(2) { grid-area:2 / 1; }
+  .repo-brow > :nth-child(3) { grid-area:2 / 2; text-align:right; }
+  .repo-hrow { grid-template-columns:minmax(0,1fr) auto auto !important; row-gap:4px !important; }
+  .repo-hrow > :nth-child(1) { grid-area:1 / 1; }
+  .repo-hrow > :nth-child(3) { grid-area:1 / 2; }
+  .repo-hrow > :nth-child(4) { grid-area:1 / 3; }
+  .repo-hrow > :nth-child(2) { grid-area:2 / 1 / 3 / 4; min-width:0; }
+}
+/* "Poll now" in the Repo top bar (admins only). The bar's room depends on the
+   rail as much as on the viewport, so this keys off the BAR's own width — and
+   only a bar that HAS the button becomes a container, so nobody else's changes.
+   Measured (a container query sees the CONTENT box, 48px inside the bar): the
+   title + repo slug need ~156px + a 16px gap (the crumb no longer names the tab —
+   the page's tab bar does), the labelled controls 446px → 618px. Under 624px the
+   button is icon-only, the size of the refresh icon beside it (controls 383px →
+   555px); under 560px the "updated …" text gives up its room too (281px —
+   narrower than the 343px a non-admin's bar already takes, so the phone-width bar
+   is never tighter for having the button). In viewport terms with the rail
+   collapsed (it is, under 900px): icon-only below ~735px, no "updated …" below
+   ~670px. */
+[data-screen="repo"] header:has(.repo-pollbtn) { container:repohead / inline-size; }
+@container repohead (max-width: 624px) {
+  .repo-pollbtn { width:32px; padding:0 !important; justify-content:center; }
+  .repo-pollbtn-label { display:none; }
+}
+@container repohead (max-width: 560px) { [data-repo-updated] { display:none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-aside, .cnpy-aside *, .cnpy-aside *::before, .cnpy-aside *::after { transition:none !important; }
+  [data-enter] *, .cnpy-flash, .cnpy-flash *, .repo-shimmer, .repo-pulse, .repo-pollbtn svg { animation:none !important; }
+  .repo-tip, .repo-dot, .repo-row, .repo-chev, .repo-rank-l { transition:none !important; }
+  .cnpy-statusbtn, .cnpy-statusbtn svg { transition:none !important; }
+  .cnpy-avbtn-veil, .cnpy-avbtn-veil svg { transition:none !important; animation:none !important; }
+}
+
+/* ── landing (signed-out screen, web/src/landing.ts) ──────────────────────────
+   Ported from Canopy Site.dc.html. The page rides the app's three themes; these
+   are the tokens the site needs that the app themes don't carry, plus the
+   dc-runtime `style-hover` pseudo-props as real rules. */
+.cnpy-site { font-size:16px; line-height:normal; text-rendering:optimizeLegibility; }
+[data-cnpy-theme="light"] { --lift-shadow:0 32px 64px -24px rgba(42,39,31,0.18), 0 4px 12px -4px rgba(42,39,31,0.08); --term:#1c1a16; --term-fg:#ede9e2; }
+[data-cnpy-theme="dark"] { --lift-shadow:0 32px 64px -24px rgba(0,0,0,0.55), 0 4px 12px -4px rgba(0,0,0,0.3); --term:#131210; --term-fg:#ede9e2; }
+/* :where keeps this at element specificity so the button-like links below win. */
+:where(.cnpy-site) a { color:var(--accent); text-decoration:none; }
+:where(.cnpy-site) a:hover { text-decoration:underline; text-underline-offset:3px; }
+.site-navlink { color:var(--fg-55); font-size:13.5px; font-weight:500; padding:6px 10px; border-radius:7px; transition:color .12s ease, background .12s ease; }
+.site-navlink:hover { color:var(--fg); background:var(--hover); }
+.site-iconbtn { display:grid; place-items:center; width:32px; height:32px; border-radius:8px; color:var(--fg-55); transition:color .12s ease, background .12s ease; }
+.site-iconbtn:hover { background:var(--hover); color:var(--fg); text-decoration:none; }
+.site-btn { display:inline-flex; align-items:center; gap:8px; font-size:14px; font-weight:600; padding:11px 22px; border-radius:9px; text-decoration:none; transition:filter .12s ease, background .12s ease, scale .12s ease; }
+.site-btn:hover { text-decoration:none; }
+.site-btn:active { scale:.97; }
+.site-btn-solid { background:var(--fg); color:var(--bg); }
+.site-btn-solid:hover { filter:brightness(1.12); color:var(--bg); }
+.site-btn-outline { border:1px solid var(--border-strong); color:var(--fg); }
+.site-btn-outline:hover { background:var(--hover); color:var(--fg); }
+@media (max-width:900px) { .site-hide-sm { display:none !important; } }
+/* The legal pages (/terms, /privacy — web/src/legal.ts): a long single-column text, the
+   landing's type scale. Section anchors clear the 60px sticky nav. */
+.site-legal-lede { margin:28px 0 0; font-size:16.5px; line-height:1.65; color:var(--fg-70); text-wrap:pretty; }
+.site-legal-toc { margin:36px 0 0; padding:18px 22px; border:1px solid var(--border); background:var(--surface); }
+.site-legal-toc-h { font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--fg-40); }
+.site-legal-toc ol { list-style:none; margin:10px 0 0; padding:0; columns:2 220px; column-gap:28px; font-size:14px; line-height:1.9; }
+.site-legal-sec { scroll-margin-top:84px; margin-top:44px; }
+.site-legal-sec h2 { margin:0; font-size:20px; font-weight:650; letter-spacing:-0.015em; }
+.site-legal-sec p, .site-legal-sec li { font-size:15px; line-height:1.7; color:var(--fg-70); text-wrap:pretty; }
+.site-legal-sec p { margin:12px 0 0; }
+.site-legal-sec ul { margin:12px 0 0; padding-left:22px; }
+.site-legal-sec li + li { margin-top:6px; }
+.site-legal-sec b { color:var(--fg); font-weight:600; }
+.site-legal-sec code { font-family:var(--code); font-size:.86em; padding:1px 5px; background:var(--hover); }
+/* phone: the nav's logo, icons and Sign in / Back to the app fit a 360px screen. */
+@media (max-width:480px) { .site-navin { gap:12px !important; padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)) !important; } .site-navin > div:last-child { gap:8px !important; } }
+
+/* ── landing motion ───────────────────────────────────────────────────────────
+   The choreography for landing.ts. An element with `data-rv` renders hidden;
+   landing-motion.ts adds `is-play` when it scrolls into view, and every step
+   inside it starts at its own `--d` (ms after that reveal). An element that has
+   already played re-renders `is-done`: its settled state, with nothing to
+   transition from, so a rerender never replays it. Only transform-family
+   properties, opacity and clip-path move. Reduced motion: landing-motion.ts
+   settles everything up front; the media block at the end is the CSS backstop. */
+.cnpy-site { overflow-x:clip; --ease-out:cubic-bezier(0.22, 1, 0.36, 1); --ease-expo:cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* reveal: the section (`site-rv`) and its staggered children (`site-st`) */
+.site-rv { opacity:0; --from:0 22px; translate:var(--from); }
+.site-rv.rv-l { --from:-36px 0; }
+.site-rv.rv-r { --from:36px 0; }
+.site-rv.rv-lift { --from:0 56px; scale:.975; }
+.site-rv.rv-static { opacity:1; translate:none; }
+.site-st { opacity:0; --from:0 12px; translate:var(--from); }
+.site-st.st-l { --from:-12px 0; }
+.site-st.st-word { display:inline-block; --from:0 .45em; }
+.site-st.st-pop { --from:0 4px; scale:.9; }
+.site-rv.is-play, .site-rv.is-done, .is-play .site-st, .is-done .site-st { opacity:1; translate:none; scale:none; }
+.site-rv.is-play, .is-play .site-st {
+  transition: opacity .7s var(--ease-out) var(--d, 0ms), translate 1s var(--ease-expo) var(--d, 0ms), scale 1s var(--ease-expo) var(--d, 0ms),
+              transform .3s var(--ease-out), box-shadow .3s ease;
+}
+
+/* hover: cards and mockups rise a little (transform, so it composes with the reveal's translate) */
+.site-card, .site-lift { transition:transform .3s var(--ease-out), box-shadow .3s ease; }
+.site-card:hover { transform:translateY(-3px); box-shadow:var(--lift-shadow); }
+.site-lift:hover { transform:translateY(-4px); }
+
+/* text that types itself in: one clip step per character (even steps — exact only in the monospace terminal lines) */
+.site-type { display:inline-block; clip-path:inset(0 100% 0 0); }
+.is-play .site-type, .is-done .site-type { clip-path:inset(0); }
+.is-play .site-type { transition:clip-path var(--t, .8s) steps(var(--n, 20), end) var(--d, 0ms); }
+.site-caret { display:inline-block; opacity:0; }
+.is-play .site-caret, .is-done .site-caret { opacity:1; }
+.is-play .site-caret { transition:opacity .15s linear var(--d, 0ms); }
+.site-caret::after { content:""; display:inline-block; width:.5em; height:1.05em; margin-left:3px; vertical-align:-.2em; background:currentColor; animation:site-blink 1.1s steps(1) infinite; }
+@keyframes site-blink { 50% { opacity:0; } }
+
+/* diff rows: the highlight washes in under the text */
+.site-hl { position:relative; }
+.site-hl > * { position:relative; }
+.site-hl::before { content:""; position:absolute; inset:0; opacity:0; background:var(--hl-bg); box-shadow:var(--hl-edge, none); }
+.site-hl.hl-add { --hl-bg:color-mix(in srgb, var(--green) 11%, transparent); --hl-edge:inset 2px 0 0 var(--green); }
+.site-hl.hl-del { --hl-bg:color-mix(in srgb, var(--red) 10%, transparent); }
+.is-play .site-hl, .is-done .site-hl { color:var(--fg); }
+.is-play .site-hl::before, .is-done .site-hl::before { opacity:1; }
+.is-play .site-hl { transition:color .45s ease var(--d, 0ms); }
+.is-play .site-hl::before { transition:opacity .45s ease var(--d, 0ms); }
+
+/* checks draw on; progress bars fill from the left */
+.site-check path { stroke-dasharray:24; stroke-dashoffset:24; }
+.is-play .site-check path, .is-done .site-check path { stroke-dashoffset:0; }
+.is-play .site-check path { transition:stroke-dashoffset .5s var(--ease-out) var(--d, 0ms); }
+.site-bar { transform-origin:left center; scale:0 1; }
+.is-play .site-bar, .is-done .site-bar { scale:none; }
+.is-play .site-bar { transition:scale 1.4s var(--ease-expo) var(--d, 0ms); }
+
+/* the hero's verdict: Promote draws the eye, is pressed, becomes "Promoted";
+   Reject steps back, the Review badge counts down, a toast confirms */
+.site-swap { display:inline-grid; }
+.site-swap > * { grid-area:1 / 1; text-align:center; }
+.site-swap > :last-child { opacity:0; translate:0 6px; }
+.is-play .site-swap > :first-child, .is-done .site-swap > :first-child { opacity:0; translate:0 -6px; }
+.is-play .site-swap > :last-child, .is-done .site-swap > :last-child { opacity:1; translate:none; }
+.is-play .site-swap > * { transition:opacity .25s ease var(--d, 0ms), translate .4s var(--ease-out) var(--d, 0ms); }
+.is-play .site-dim, .is-done .site-dim { opacity:.4; }
+.is-play .site-dim { transition:opacity .4s ease var(--d, 0ms); }
+.is-play .site-ring { animation:site-ring 1.1s var(--ease-out) var(--ring, 0ms) 2; }
+.is-play .site-ring.site-press { animation:site-ring 1.1s var(--ease-out) var(--ring, 0ms) 2, site-press .32s var(--ease-out) var(--press, 0ms); }
+@keyframes site-ring { from { box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } to { box-shadow:0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); } }
+@keyframes site-press { 45% { scale:.92; } }
+.site-toast { opacity:0; pointer-events:none; }
+.is-play .site-toast { animation:site-toast 4.6s var(--ease-out) var(--d, 0ms) both; }
+@keyframes site-toast { 0% { opacity:0; translate:0 14px; } 8%, 86% { opacity:1; translate:none; } 100% { opacity:0; translate:0 6px; } }
+
+/* nav: a hairline and soft shadow once the page scrolls under it */
+.site-nav { border-bottom:1px solid transparent; transition:border-color .3s ease, box-shadow .3s ease; }
+.site-nav[data-scrolled] { border-bottom-color:var(--border); box-shadow:0 12px 32px -24px rgba(0,0,0,.4); }
+
+/* ── Filter menu (web/src/filter-menu.ts; behavior in main.ts's filter-menu registry) ──
+   Open: the popover scales in from its trigger's corner, then the category rows and the
+   shown options stagger in — ONLY on the paint that opens it (.is-opening), never on a
+   later rerender. Switching category rerenders nothing: the highlight (.fm-ind) slides on
+   a transform transition and the new panel's options play in from the direction moved
+   (.is-switching + data-dir). Close: a short exit on the live popover (.is-closing). */
+/* Search + Filter as ONE control (filter-menu.ts searchFilterBar): one bordered field,
+   the query on the left, the Filter button on the right past a hairline. No overflow
+   clip — the Filter popover hangs below it. The input shrinks; the button never wraps. */
+.cnpy-sfbar { position:relative; display:flex; align-items:stretch; flex:1 1 260px; max-width:480px; min-width:0; height:34px; box-sizing:border-box; border:1px solid var(--border); border-radius:8px; background:var(--surface); box-shadow:var(--shadow); transition:border-color .12s ease; }
+.cnpy-sfbar:hover { border-color:var(--border-strong); }
+.cnpy-sfbar:focus-within { border-color:var(--border-strong); outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
+.cnpy-sfbar-q { flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:9px; padding:0 11px; color:var(--fg-40); cursor:text; transition:color .12s ease; }
+.cnpy-sfbar-q:focus-within { color:var(--fg-70); }
+.cnpy-sfbar-div { flex:none; width:1px; margin:7px 0; background:var(--border); }
+.cnpy-sfbar > [data-hover-menu] { flex:none; }
+.cnpy-sfbar .fm-btn { border-radius:0 7px 7px 0; }
+.cnpy-sfbar .fm-btn:hover, .cnpy-sfbar .fm-btn:focus-visible { background:var(--hover); color:var(--fg) !important; outline:none; }
+/* The popover spans the whole control, border included (the bar is its positioned parent). */
+.cnpy-sfbar .fm-pop:not(.is-right) { left:-1px !important; right:-1px !important; }
+.fm-pop { transform-origin:top left; }
+/* The option list never shows a scrollbar: the popover is sized to fit it, and a list
+   past MAX_ROWS (filter-menu.ts) still scrolls, just without the bar. */
+.fm-scroll { scrollbar-width:none; }
+.fm-scroll::-webkit-scrollbar { display:none; }
+.fm-pop.is-right { transform-origin:top right; }
+/* At phone width a right-anchored menu (the Feed's, in the header) has no room to hang off
+   its button, so it opens as a sheet along the bottom of the screen, clear of the notch. */
+[data-phone="1"] .fm-pop.is-right { position:fixed !important; top:auto !important; left:8px !important; right:8px !important; bottom:calc(8px + env(safe-area-inset-bottom)) !important; width:auto !important; max-width:none !important; transform-origin:bottom center; }
+.fm-pop.is-opening { animation:fm-in .26s cubic-bezier(.2,.9,.25,1) both; }
+.fm-pop.is-closing { animation:fm-out .13s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
+.fm-pop.is-opening .fm-cat { animation:fm-rise .24s cubic-bezier(.2,.8,.2,1) both; animation-delay:calc(70ms + var(--i) * 30ms); }
+/* The options cascade in FROM THE TOP, one after another, unhurried — on the paint that
+   opens the menu and on every category switch (main.ts restarts it by re-adding
+   .is-switching). Hover intent (main.ts) keeps a sweep across the categories from
+   starting a cascade per row it passes. */
+.fm-pop.is-opening .fm-panel:not([hidden]) .fm-opt,
+.fm-panel.is-switching .fm-opt { animation:fm-opt-drop .38s cubic-bezier(.22,.8,.26,1) both; animation-delay:calc(var(--i) * 40ms); }
+.fm-pop.is-opening .fm-panel:not([hidden]) .fm-opt { animation-delay:calc(120ms + var(--i) * 40ms); }
+.fm-ind { position:absolute; left:6px; right:6px; top:6px; height:32px; background:var(--hover); pointer-events:none;
+  transform:translateY(calc(var(--ci) * 33px)); transition:transform .26s cubic-bezier(.3,.85,.25,1); }
+.fm-pop.is-opening .fm-ind { animation:fm-fade .2s ease both; animation-delay:.08s; }
+.fm-cat { position:relative; color:var(--fg-55); transition:color .16s ease; }
+.fm-cat.is-on { color:var(--fg); }
+.fm-cat.cnpy-menurow:hover { background:transparent; color:var(--fg); }
+@keyframes fm-in { from { opacity:0; transform:translateY(-6px) scale(.96); } to { opacity:1; transform:none; } }
+@keyframes fm-out { to { opacity:0; transform:translateY(-4px) scale(.98); } }
+@keyframes fm-rise { from { opacity:0; transform:translateX(5px); } to { opacity:1; transform:none; } }
+@keyframes fm-opt-drop { from { opacity:0; transform:translateY(-9px); } to { opacity:1; transform:none; } }
+@keyframes fm-fade { from { opacity:0; } to { opacity:1; } }
+@media (prefers-reduced-motion: reduce) {
+  .fm-pop, .fm-pop *, .fm-panel, .fm-panel * { animation:none !important; transition:none !important; }
+}
+
+/* ── Artifacts (web/src/artifacts.ts) ───────────────────────────────────────── */
+/* The viewer's details: Properties beside Linked work, stacking on a narrow screen. */
+.art-bento { grid-template-columns:repeat(12,minmax(0,1fr)); }
+.art-b-props { grid-column:span 5; }
+.art-b-links { grid-column:span 7; }
+@media (max-width:1150px) { .art-b-props, .art-b-links { grid-column:span 6; } }
+@media (max-width:860px) { .art-b-props, .art-b-links { grid-column:1 / -1; } }
+/* An inlined (sanitized) SVG and a rendered mermaid diagram fit the viewer's width. */
+.art-svg svg, .art-mermaid svg { max-width:100%; height:auto; }
+/* A framed HTML artifact's box follows the page's reported height. */
+.art-frame { transition:height .18s ease; }
+@media (prefers-reduced-motion: reduce) { .art-frame { transition:none; } }
+
+/* A native date field (the New sprint panel's Start / Due): the browser draws its own
+   text, calendar icon and picker, so tell it the app's theme — without this a dark
+   theme gets the light picker and a near-black icon on a dark field. */
+[data-cnpy-theme="dark"] .cnpy-date { color-scheme:dark; }
+[data-cnpy-theme="light"] .cnpy-date { color-scheme:light; }
+.cnpy-date::-webkit-calendar-picker-indicator { cursor:pointer; opacity:.6; }
+.cnpy-date::-webkit-calendar-picker-indicator:hover { opacity:1; }
+
+/* ── Quick search (web/src/quicksearch.ts) ─────────────────────────────────────
+   The sidebar's "search everything" dropdown. Its node is mounted on <body>, OUTSIDE
+   the app root (so rerender() never touches it), carrying the app's data-cnpy-theme like
+   the lightbox, so the tokens and the corners layer below apply. `anchor`: hangs under
+   the sidebar box (placed in script). `palette`: centered over a dim backdrop with its
+   own input — the collapsed rail's and the narrow viewport's presentation. */
+@keyframes cnpy-qs-in { from { opacity:0; transform:translateY(-6px) scale(.985); } to { opacity:1; transform:none; } }
+@keyframes cnpy-qs-out { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(-4px) scale(.985); } }
+@keyframes cnpy-qs-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes cnpy-qs-fade-out { from { opacity:1; } to { opacity:0; } }
+.cnpy-qs-layer { position:fixed; inset:0; z-index:150; display:none; pointer-events:none; font-family:'Geist',system-ui,-apple-system,sans-serif; font-size:14px; line-height:1.45; color:var(--fg); -webkit-font-smoothing:antialiased; }
+.cnpy-qs-layer[data-open] { display:block; }
+.cnpy-qs-layer[data-mode="palette"] { pointer-events:auto; background:rgba(12,11,9,.42); animation:cnpy-qs-fade .14s ease both; }
+.cnpy-qs { position:absolute; pointer-events:auto; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--border-strong); border-radius:12px; box-shadow:var(--lift-shadow); overflow:hidden; transform-origin:top center; animation:cnpy-qs-in .2s cubic-bezier(.2,.7,.2,1) both; transition:height .22s cubic-bezier(.2,.7,.2,1); }
+/* Closing: MUST match CLOSE_MS in quicksearch.ts. */
+.cnpy-qs-layer[data-closing] { pointer-events:none; }
+.cnpy-qs-layer[data-closing] .cnpy-qs { pointer-events:none; animation:cnpy-qs-out .16s ease both; }
+.cnpy-qs-layer[data-closing][data-mode="palette"] { animation:cnpy-qs-fade-out .16s ease both; }
+.cnpy-qs-layer[data-mode="anchor"][data-empty] .cnpy-qs { display:none; }
+.cnpy-qs-layer[data-mode="palette"] .cnpy-qs { left:0; right:0; top:12vh; margin:0 auto; width:min(480px, calc(100vw - 32px)); max-height:min(520px, 76vh); }
+.cnpy-qs-inbar { display:none; flex:none; align-items:center; gap:9px; height:44px; padding:0 12px; border-bottom:1px solid var(--border); color:var(--fg-40); }
+.cnpy-qs-layer[data-mode="palette"] .cnpy-qs-inbar { display:flex; }
+.cnpy-qs-in { flex:1; min-width:0; padding:0; border:none; outline:none; background:none; color:var(--fg); font-size:15px; font-family:inherit; }
+.cnpy-qs-in::placeholder { color:var(--fg-40); }
+.cnpy-qs-list { flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; padding:4px; }
+.cnpy-qs-list:empty { display:none; }
+.cnpy-qs-g + .cnpy-qs-g { margin-top:1px; }
+.cnpy-qs-gh { display:flex; align-items:center; gap:6px; padding:6px 8px 2px; font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--fg-40); }
+.cnpy-qs-gall { margin-top:4px; padding-top:4px; border-top:1px solid var(--border); }
+.cnpy-qs-row { display:flex; align-items:center; gap:8px; min-width:0; padding:3px 8px; border-radius:7px; cursor:pointer; }
+.cnpy-qs-row.is-sel { background:var(--hover); }
+.cnpy-qs-ic { flex:none; display:grid; place-items:center; width:18px; color:var(--fg-40); }
+/* One line per row: the title, then its context muted beside it; both truncate. */
+.cnpy-qs-main { flex:1; min-width:0; display:flex; align-items:baseline; gap:7px; }
+.cnpy-qs-t { flex:0 1 auto; max-width:70%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:12.5px; line-height:20px; font-weight:500; letter-spacing:-0.005em; color:var(--fg); }
+.cnpy-qs-c { flex:1 1 0; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:11.5px; color:var(--fg-55); }
+.cnpy-qs-all .cnpy-qs-t { max-width:none; font-weight:400; color:var(--fg-70); }
+.cnpy-qs-m { flex:none; font-family:var(--label); font-size:11px; color:var(--fg-40); white-space:nowrap; }
+.cnpy-qs-hl { padding:0 1px; border-radius:3px; background:var(--accent-soft); color:inherit; font-weight:600; }
+.cnpy-qs-note { padding:7px 8px; font-size:12.5px; color:var(--fg-55); }
+.cnpy-qs-note.is-err { color:var(--red); }
+.cnpy-qs-list { position:relative; }
+.cnpy-qs-note.is-float { position:absolute; top:6px; right:8px; padding:3px 8px; font-size:11.5px; background:var(--surface); }
+.cnpy-qs-foot { flex:none; display:flex; flex-wrap:wrap; gap:4px 10px; padding:5px 10px; border-top:1px solid var(--border); font-size:11.5px; color:var(--fg-40); }
+.cnpy-qs-kbd { margin-right:3px; padding:0 4px; border:1px solid var(--border); border-radius:4px; font-family:var(--label); font-size:10.5px; color:var(--fg-55); }
+@media (max-width: 560px) {
+  .cnpy-qs-foot { display:none; }
+  .cnpy-qs-layer[data-mode="palette"] .cnpy-qs { top:16px; max-height:calc(100dvh - 32px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-qs-layer, .cnpy-qs { animation:none !important; transition:none !important; }
+}
+
+/* ── corners: tightened ──────────────────────────────────────────────────────
+   Trov's corners are TIGHTER than the design file's: every radius is shrunk by one
+   factor, --corner-scale, so a card stays rounder than a chip and the hierarchy of the
+   design survives at a crisper size. 1 would restore the design's values, 0 would
+   square everything; the values above stay verbatim and this layer scales them.
+
+   Nearly every radius is an INLINE style in a TS template, so this takes !important
+   (it outranks a non-important inline declaration), and CSS cannot read a radius back
+   to scale it — so each radius the app USES has a rule keyed on its value: the classes
+   below by name, inline styles by `[style*="border-radius:Npx"]`. The base rule zeroes
+   everything first, so an edge that was square stays square (joined panels, table
+   cells, a quote's ruled edge) and a value nobody listed fails SQUARE, never full-round.
+   test/render.corners.test.ts fails when a radius in use has no rule here. Circles
+   and pills scale to a capped radius (at most a quarter of the box), so a 7px dot
+   reads as a small rounded square, not a circle again. */
+[data-cnpy-theme] { --corner-scale:.4; }
+[data-cnpy-theme] *,
+[data-cnpy-theme] *::before,
+[data-cnpy-theme] *::after { border-radius:0 !important; }
+/* The segmented switch (segmented.ts). */
+[data-cnpy-theme] .cnpy-seg { border-radius:calc(9px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-seg--xs { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-seg-btn,
+[data-cnpy-theme] .cnpy-seg-ind { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-seg--xs > .cnpy-seg-btn,
+[data-cnpy-theme] .cnpy-seg--xs > .cnpy-seg-ind { border-radius:calc(6px * var(--corner-scale)) !important; }
+/* trov.css classes, by the radius each declares above. */
+[data-cnpy-theme] .cnpy-kbd,
+[data-cnpy-theme] .cnpy-qs-kbd,
+[data-cnpy-theme] .cnpy-treechev { border-radius:calc(4px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-qs-hl { border-radius:calc(3px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-qs-row { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-qs { border-radius:calc(12px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-md code,
+[data-cnpy-theme] .cnpy-md-inline code { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-chev,
+[data-cnpy-theme] .cnpy-sub-i,
+[data-cnpy-theme] .cnpy-outline-item,
+[data-cnpy-theme] .cnpy-grouplink { border-radius:calc(6px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-guide-toc-sec { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-guide-shot { border-radius:calc(12px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-lightbox-frame { border-radius:calc(14px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-lightbox-close { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
+[data-cnpy-theme] .cnpy-logo-b,
+[data-cnpy-theme] .cnpy-collapse .cnpy-navrow,
+[data-cnpy-theme] .cnpy-collapse .cnpy-nav-i,
+[data-cnpy-theme] .cnpy-tip,
+[data-cnpy-theme] .cnpy-achip,
+[data-cnpy-theme] .cnpy-tree,
+[data-cnpy-theme] .cnpy-select,
+[data-cnpy-theme] .site-navlink { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-search,
+[data-cnpy-theme] .cnpy-sfbar,
+[data-cnpy-theme] .cnpy-navrow,
+[data-cnpy-theme] .cnpy-nav-i,
+[data-cnpy-theme] .cnpy-menubtn,
+[data-cnpy-theme] .cnpy-docs-bar > button,
+[data-cnpy-theme] .site-iconbtn { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-chip,
+[data-cnpy-theme] .repo-tip,
+[data-cnpy-theme] .site-btn { border-radius:calc(9px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-surface,
+[data-cnpy-theme] .cnpy-md img,
+[data-cnpy-theme] .cnpy-md-img,
+[data-cnpy-theme] .cnpy-sw { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-tslot,
+[data-cnpy-theme] .cnpy-tghost { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-code,
+[data-cnpy-theme] .cnpy-md pre { border-radius:calc(11px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-badge,
+[data-cnpy-theme] .cnpy-dot,
+[data-cnpy-theme] .cnpy-sw i,
+[data-cnpy-theme] .repo-gdot { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
+/* The Filter button inside the search + Filter bar: rounded only where the bar is. */
+[data-cnpy-theme] .cnpy-sfbar .fm-btn { border-radius:0 calc(7px * var(--corner-scale)) calc(7px * var(--corner-scale)) 0 !important; }
+[data-cnpy-theme] .cnpy-md blockquote { border-radius:0 calc(8px * var(--corner-scale)) calc(8px * var(--corner-scale)) 0 !important; }
+[data-cnpy-theme] .cnpy-md .cnpy-code pre { border-radius:0 !important; }
+[data-cnpy-theme] .cnpy-selbar { border-radius:inherit !important; }
+/* A rule of its own: an engine that rejects the pseudo-element drops only this one. */
+[data-cnpy-theme] .cnpy-scroll::-webkit-scrollbar-thumb { border-radius:calc(8px * var(--corner-scale)) !important; }
+/* Inline styles, by value. AFTER the classes on purpose: equal specificity, so an
+   inline radius beats its element's class radius here exactly as it does unscaled. */
+[data-cnpy-theme] [style*="border-radius:2px"] { border-radius:calc(2px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:3px"] { border-radius:calc(3px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:4px"] { border-radius:calc(4px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:5px"] { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:6px"] { border-radius:calc(6px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:7px"] { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:8px"] { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:9px"] { border-radius:calc(9px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:10px"] { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:11px"] { border-radius:calc(11px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:12px"] { border-radius:calc(12px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:13px"] { border-radius:calc(13px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:14px"] { border-radius:calc(14px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:16px"] { border-radius:calc(16px * var(--corner-scale)) !important; }
+[data-cnpy-theme] [style*="border-radius:50%"],
+[data-cnpy-theme] [style*="border-radius:999px"] { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
+
+/* What a circle got away with and a near-square does not. Each rule below was found by
+   comparing every surface before and after the tightening. */
+/* Halos: a ring around a dot or an avatar reads as a soft glow; around a near-square
+   it reads as a bevel or a checkbox frame. They go flat. */
+[data-cnpy-theme] .cnpy-av { box-shadow:none !important; }
+[data-cnpy-theme] .cnpy-av-anon { border-color:transparent !important; background:color-mix(in srgb,var(--fg) 14%,transparent) !important; }
+[data-cnpy-theme] .cnpy-dot { box-shadow:none; }
+[data-cnpy-theme] .repo-envdot { box-shadow:none !important; width:8px !important; height:8px !important; }
+/* A growing boxy frame is not a pulse; a boxy LED blinks instead. */
+[data-cnpy-theme] .repo-envdot.repo-pulse { animation:cnpy-blink 1.4s ease-in-out infinite; }
+@keyframes cnpy-blink { 50% { opacity:.3; } }
+/* Overlapping near-squares merge into one two-tone tile; side by side they stay two people. */
+[data-cnpy-theme] .cnpy-avstack > span { box-shadow:none !important; }
+[data-cnpy-theme] .cnpy-avstack > span + span { margin-left:2px !important; }
+/* A check in a bordered near-square is a checkbox. The status badges become filled tiles. */
+[data-cnpy-theme] .cnpy-seal { border-color:transparent !important; background:var(--hover); }
+/* The compact swatch's selected frame is narrower than the swatch's own ring: two
+   crossed rectangles. The ring alone marks the choice. */
+[data-cnpy-theme] .cnpy-sw.compact.is-on,
+[data-cnpy-theme] .cnpy-sw.compact:hover { border-color:transparent; background:transparent; }
+[data-cnpy-theme] .cnpy-sw.compact:not(.is-on):hover i { box-shadow:0 0 0 2px var(--bg), 0 0 0 3px var(--border-strong); }
+
+@media (prefers-reduced-motion: reduce) {
+  .site-rv, .site-st { opacity:1 !important; translate:none !important; scale:none !important; }
+  .cnpy-site *, .cnpy-site *::before, .cnpy-site *::after { transition:none !important; animation:none !important; }
+}

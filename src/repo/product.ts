@@ -3,10 +3,10 @@
 // that knows how a key is stored and how it is shown. The poller
 // (src/repo/poll.ts) writes through `countMetric` / `totalMetric`; the
 // projection (src/tools/repo.ts) reads back through `parseProductMetric` and
-// labels / groups through `productLabel` / `productGroup`. Canopy is GENERIC over
+// labels / groups through `productLabel` / `productGroup`. Trov is GENERIC over
 // keys: a key missing from the registry below is still stored and still shown
 // (under "Other", labelled from the key) — so Sapling can add a metric with no
-// Canopy change. The labels travel in the DTO; the browser bundle gains nothing.
+// Trov change. The labels travel in the DTO; the browser bundle gains nothing.
 
 import type { RepoRange } from "@shared/repo";
 
@@ -32,7 +32,7 @@ export function parseProductMetric(metric: string): ProductMetricName | null {
   return m ? { kind: "count", key: m[1], range: m[2] as RepoRange } : null;
 }
 
-// ── the registry: group, order and label of the keys Canopy knows today ──────
+// ── the registry: group, order and label of the keys Trov knows today ──────
 export const PRODUCT_GROUPS = [
   ["growth", "Growth"],
   ["learning", "Learning activity"],

@@ -3,6 +3,7 @@
 // `.map().join('')`, `sc-if` to ternaries, and `onClick="{{ fn }}"` to
 // `data-act` / `data-arg` attributes dispatched in main.ts.
 
+import { trovMark } from "@shared/mark";
 import type { Me, StagedProposal, IdentityTask, DiscardedIdentity, PersonSummary, PersonProfile, InviteRow } from "./api";
 import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary } from "@shared/rows";
 import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
@@ -554,7 +555,7 @@ function personFor(s: AppState, handle: string): PersonSummary | null {
 }
 
 function logo(size: number): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" style="flex:none"><rect x="2" y="4.5" width="20" height="3.4" rx="1.7" fill="var(--accent)"></rect><rect x="5" y="10.3" width="14" height="3.4" rx="1.7" fill="currentColor"></rect><rect x="8" y="16.1" width="8" height="3.4" rx="1.7" fill="currentColor" opacity="0.5"></rect></svg>`;
+  return trovMark(size);
 }
 
 // ── real-data helpers (authors are github logins; no curated display map) ─────
@@ -598,7 +599,7 @@ function sprintRefChips(github_ref: string | null): { kind: string; label: strin
   if (!github_ref) return [];
   try {
     const p = JSON.parse(github_ref);
-    // The path segment is GitHub's own — not Canopy vocabulary.
+    // The path segment is GitHub's own — not Trov vocabulary.
     if (typeof p === "number") return [{ kind: "group", label: `#${p}`, href: `${REPO_URL}/milestone/${p}` }];
     if (Array.isArray(p)) return p.map((n) => ({ kind: "issue", label: `#${n}`, href: `${REPO_URL}/issues/${n}` }));
   } catch { /* malformed ref → no chips */ }
@@ -628,7 +629,7 @@ function nonmemberCard(): string {
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
       </div>
       <div>
-        <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">Canopy is limited to the Sapling team.</div>
+        <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">Trov is limited to the Sapling team.</div>
         <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Your GitHub account isn't a member of the <span style="font-family:var(--label);font-size:12.5px">SaplingLearn</span> organization, so there's nothing here for you yet.</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;padding:9px 14px 9px 9px;border:1px solid var(--border);border-radius:999px">
@@ -648,7 +649,7 @@ function notInvitedCard(email: string | null): string {
       </div>
       <div>
         <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">This Google account hasn't been invited yet.</div>
-        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Canopy is limited to the Sapling team. Ask an admin to invite <span style="font-family:var(--label);font-size:12.5px">${esc(email ?? "your address")}</span>, then sign in again.</div>
+        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Trov is limited to the Sapling team. Ask an admin to invite <span style="font-family:var(--label);font-size:12.5px">${esc(email ?? "your address")}</span>, then sign in again.</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;padding:9px 14px 9px 9px;border:1px solid var(--border);border-radius:999px">
         <div class="cnpy-av cnpy-av-anon" style="width:26px;height:26px;border-radius:50%;${AVATAR};font-size:10px;font-weight:600;color:var(--fg-70)">${esc(initialsOf(email ?? "?"))}</div>
@@ -663,7 +664,7 @@ function verifyingCard(): string {
   return `<div style="display:flex;flex-direction:column;align-items:center;gap:22px">
     <div style="display:flex;align-items:center;gap:11px;opacity:.95">
       ${logo(28)}
-      <span style="font-size:23px;font-weight:600;letter-spacing:-0.02em">Canopy</span>
+      <span style="font-size:23px;font-weight:600;letter-spacing:-0.02em">Trov</span>
     </div>
     <div style="display:flex;align-items:center;gap:11px;color:var(--fg-55);font-size:13px">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="animation:cnpy-spin .8s linear infinite"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"></path></svg>
@@ -674,7 +675,7 @@ function verifyingCard(): string {
 
 // ── app shell ────────────────────────────────────────────────────────────────
 /** The rail is collapsed when the person collapsed it OR the viewport forces it. On a phone
- *  it is neither: it is the full rail, in a drawer (canopy.css `[data-phone="1"]`). */
+ *  it is neither: it is the full rail, in a drawer (trov.css `[data-phone="1"]`). */
 export const railCollapsed = (s: AppState): boolean => !s.phone && (s.collapsed || s.narrow);
 
 function sidebar(s: AppState): string {
@@ -723,7 +724,7 @@ function header(s: AppState): string {
   const titles: Record<Screen, string> = {
     mywork: "My Work", feed: "Feed", docs: "Docs", roadmap: "Roadmap", review: "Review",
     maintenance: "Maintenance", search: "Search", settings: "Settings", guide: "Get Started",
-    unsubscribe: "Unsubscribe", site: "Canopy",
+    unsubscribe: "Unsubscribe", site: "Trov",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
     repo: "Repo",
@@ -814,7 +815,7 @@ function header(s: AppState): string {
   // The Artifacts screens draw their own title + crumbs (a diff has two crumbs).
   const art = isArtScreen(s.screen) ? artifactsHeader(artProps(s, s.screen)) : null;
 
-  // The phone drawer's toggle: always emitted, shown only at phone width (canopy.css
+  // The phone drawer's toggle: always emitted, shown only at phone width (trov.css
   // `.cnpy-menubtn`), where the header also wraps its controls under the title (`.cnpy-hdr`).
   const menuBtn = `<button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="${s.drawer}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button>`;
 
@@ -1119,7 +1120,7 @@ function docsView(s: AppState): string {
   // ── reader (right pane) ─────────────────────────────────────────────────────
   const readerHtml = docReaderHtml(s);
 
-  // Narrow (canopy.css `.cnpy-docs`): the page list and the reader take turns; the bar's
+  // Narrow (trov.css `.cnpy-docs`): the page list and the reader take turns; the bar's
   // Pages button swaps them (hidden on a wide screen, where both panes show).
   return `<div class="cnpy-docs" data-tree="${s.docsTree ? "1" : "0"}" style="display:flex;height:100%">
     <div class="cnpy-docs-bar"><button data-act="docsTree" class="cnpy-outlinebtn" aria-expanded="${s.docsTree}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h13"></path></svg>${s.docsTree ? "Back to the page" : `${esc(spaceLabel(s.docSpace))} pages`}</button></div>
@@ -1587,7 +1588,7 @@ function guideView(s: AppState): string {
   const gPre = (body: string) => `<pre style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:12px 0 0"><code style="font-family:var(--code);font-size:12.5px;line-height:1.6;color:var(--fg-70)">${body}</code></pre>`;
   const body = `<div style="flex:1;min-width:0;max-width:860px">
     <h1 id="guide-top" class="cnpy-guide-anchor" style="font-size:30px;font-weight:650;letter-spacing:-0.025em;margin:0 0 14px">Get Started</h1>
-    <p style="font-size:16px;line-height:1.8;color:var(--fg-70);margin:0 0 14px">Canopy is the team's shared memory: docs, decisions, the roadmap, the ticket queue, and a running record of what shipped, open to people and to their coding agents alike. It has one rule: ${gStrong("agents only ever stage changes, and a person confirms the ones that matter")}. That keeps what Canopy says trustworthy no matter how many agents write to it.</p>
+    <p style="font-size:16px;line-height:1.8;color:var(--fg-70);margin:0 0 14px">Trov is the team's shared memory: docs, decisions, the roadmap, the ticket queue, and a running record of what shipped, open to people and to their coding agents alike. It has one rule: ${gStrong("agents only ever stage changes, and a person confirms the ones that matter")}. That keeps what Trov says trustworthy no matter how many agents write to it.</p>
     <p style="${gP}">This page takes you from zero to productive in order: sign in, connect your agent, learn the skills, then the everyday workflows and a tour of every screen. Troubleshooting is at the end.</p>
 
     ${sec("Step 1", "Sign in", "Sign in")}
@@ -1599,27 +1600,27 @@ function guideView(s: AppState): string {
     </ul>
 
     ${sec("Step 2", "Connect your coding agent", "Connect your agent")}
-    <p style="${gP}">Your agent talks to Canopy over the ${gStrong("Model Context Protocol")} (MCP). You connect it by signing in to Canopy in your browser, once. It acts as you: it sees what you see, and what it writes is recorded as yours.</p>
+    <p style="${gP}">Your agent talks to Trov over the ${gStrong("Model Context Protocol")} (MCP). You connect it by signing in to Trov in your browser, once. It acts as you: it sees what you see, and what it writes is recorded as yours.</p>
 
     ${sub("Claude Code: install the plugin")}
     <p style="${gP}">The plugin wires up the MCP server and installs every skill below. Three steps, the same ones ${gStrong("Settings › MCP access")} shows:</p>
     <ol style="${gList}">
       <li>In Claude Code, install the plugin:
         ${gPre(PLUGIN_INSTALL)}</li>
-      <li>Run ${gCode("/mcp")}, pick ${gStrong("canopy")} and choose ${gStrong("Authenticate")}.</li>
-      <li>Your browser opens Canopy: sign in if asked, then click ${gStrong("Allow")}. The connection is listed in ${gStrong("Settings › MCP access")} under ${gStrong("Connected apps")}, where ${gStrong("Revoke")} disconnects it immediately.</li>
+      <li>Run ${gCode("/mcp")}, pick ${gStrong("trov")} and choose ${gStrong("Authenticate")}.</li>
+      <li>Your browser opens Trov: sign in if asked, then click ${gStrong("Allow")}. The connection is listed in ${gStrong("Settings › MCP access")} under ${gStrong("Connected apps")}, where ${gStrong("Revoke")} disconnects it immediately.</li>
     </ol>
-    <p style="${gP}">Not using the plugin? Open ${gStrong("Set it up without the plugin")} in ${gStrong("Settings › MCP access")} for the command that adds the server by hand. Run it, then do steps 2 and 3. Don't do both, or you'll have two Canopy servers.</p>
+    <p style="${gP}">Not using the plugin? Open ${gStrong("Set it up without the plugin")} in ${gStrong("Settings › MCP access")} for the command that adds the server by hand. Run it, then do steps 2 and 3. Don't do both, or you'll have two Trov servers.</p>
 
     ${sub("Other agents")}
-    <p style="${gP}">Any MCP client that can sign in through the browser (OAuth) connects to the same address, ${gCode(esc(mcpEndpoint()))}, and shows up under ${gStrong("Connected apps")} once you approve it. Canopy no longer creates access tokens in Settings; a token you already set up (for Codex or CI) keeps working.</p>
+    <p style="${gP}">Any MCP client that can sign in through the browser (OAuth) connects to the same address, ${gCode(esc(mcpEndpoint()))}, and shows up under ${gStrong("Connected apps")} once you approve it. Trov no longer creates access tokens in Settings; a token you already set up (for Codex or CI) keeps working.</p>
     ${gFig("settings", `${gEm("Settings")}: profile, sign-in methods, MCP access, appearance, and email digests.`)}
 
     ${sec("Step 3", "Learn the skills", "Learn the skills")}
-    <p style="${gP}">The plugin's skills are how your agent keeps Canopy current. Three of them form a loop you'll use every session, ${gStrong("orient → work → record")}:</p>
+    <p style="${gP}">The plugin's skills are how your agent keeps Trov current. Three of them form a loop you'll use every session, ${gStrong("orient → work → record")}:</p>
     <ul style="${gList}">
-      <li>${gStrong("canopy")}: the overview. It explains the whole system and every tool. Ask about it when you're unsure where something lives.</li>
-      <li>${gStrong("load-context")}: ${gStrong("runs on its own")} before your agent works on an area the team already knows about, and always before it proposes a doc change. It reads what Canopy has, checks what's settled and what's only proposed, and at the start of a session shows your My Work and any handoffs waiting for you. It never writes.</li>
+      <li>${gStrong("trov")}: the overview. It explains the whole system and every tool. Ask about it when you're unsure where something lives.</li>
+      <li>${gStrong("load-context")}: ${gStrong("runs on its own")} before your agent works on an area the team already knows about, and always before it proposes a doc change. It reads what Trov has, checks what's settled and what's only proposed, and at the start of a session shows your My Work and any handoffs waiting for you. It never writes.</li>
       <li>${gStrong("record-session")}: ${gStrong("only when you ask")} ("record this session"). It checks what actually shipped with ${gCode("git")} and ${gCode("gh")}, reads back the docs it touched, and stages one batch of updates: feed entries, doc changes, and decisions. Repeats are dropped, and anything it can't place goes to Maintenance.</li>
     </ul>
     <p style="${gP};margin-top:12px">The rest cover one surface each:</p>
@@ -1642,7 +1643,7 @@ function guideView(s: AppState): string {
     ${gFig("search", `${gEm("Search")}: ranked results across every type, with your query highlighted.`)}
 
     ${sub("How agent writes are staged")}
-    <p style="${gP}">When an agent proposes a doc change or drafts a decision (an ADR), it becomes a ${gStrong("staged")} version. The live doc stays untouched until a person promotes the change. Each proposal is labelled ${gStrong("new")}, ${gStrong("edit")}, or ${gStrong("rewrite")}, and an edit written against an out-of-date version is flagged. Sending the same content twice changes nothing, so re-running a session doesn't pile up noise. Docs can include images too: your agent uploads each image to Canopy first and then references it, and a proposal that points at an image that isn't uploaded (or at one elsewhere on the web) is refused. Click any image to see it full size. No agent tool can promote, ratify, or reject anything. Those buttons only exist here, in the web app.</p>
+    <p style="${gP}">When an agent proposes a doc change or drafts a decision (an ADR), it becomes a ${gStrong("staged")} version. The live doc stays untouched until a person promotes the change. Each proposal is labelled ${gStrong("new")}, ${gStrong("edit")}, or ${gStrong("rewrite")}, and an edit written against an out-of-date version is flagged. Sending the same content twice changes nothing, so re-running a session doesn't pile up noise. Docs can include images too: your agent uploads each image to Trov first and then references it, and a proposal that points at an image that isn't uploaded (or at one elsewhere on the web) is refused. Click any image to see it full size. No agent tool can promote, ratify, or reject anything. Those buttons only exist here, in the web app.</p>
 
     ${sub("Review: promote, ratify, or reject")}
     <p style="${gP}">${gStrong("Triage › Review")} is one queue for everything awaiting a decision. A doc proposal shows as a diff against the live version (unified, side by side, or rendered). ${gStrong("Promote")} makes it live; ${gStrong("Reject")} sets it aside. A drafted decision shows the proposed record: ${gStrong("Ratify")} or ${gStrong("Reject")} it. Nothing is deleted either way, and the sidebar count shows what's waiting.</p>
@@ -1654,14 +1655,14 @@ function guideView(s: AppState): string {
     <p style="${gP}">The sidebar groups screens into ${gStrong("Workspace")}, ${gStrong("Monitor")}, ${gStrong("Knowledge")}, ${gStrong("Triage")}, and ${gStrong("Help")} (this guide and What's new). A chevron opens a screen's sub-pages, ${gStrong("Collapse")} folds the rail to icons, and every screen has its own address (${gCode("#tickets/7")}, ${gCode("#artifacts")}) you can send to a teammate. On a phone the sidebar opens as a drawer.</p>
 
     ${sub("My Work")}
-    <p style="${gP}">Canopy opens here. ${gStrong("Tickets for you")}: your open tickets, with their sprint and when it is due. ${gStrong("Needs your review")}: what agents staged, with Promote, Ratify and Reject right there. ${gStrong("Your sessions")}: what you recorded lately and the handoffs waiting for you. ${gStrong("Repo")}: pull requests, CI and deploys at a glance. Under them, the docs you own, artifacts published this week, and handoffs queued for you, each with ${gStrong("Copy")} to paste it into a fresh session as a prompt. It reads only what Canopy has already captured, so it loads instantly.</p>
+    <p style="${gP}">Trov opens here. ${gStrong("Tickets for you")}: your open tickets, with their sprint and when it is due. ${gStrong("Needs your review")}: what agents staged, with Promote, Ratify and Reject right there. ${gStrong("Your sessions")}: what you recorded lately and the handoffs waiting for you. ${gStrong("Repo")}: pull requests, CI and deploys at a glance. Under them, the docs you own, artifacts published this week, and handoffs queued for you, each with ${gStrong("Copy")} to paste it into a fresh session as a prompt. It reads only what Trov has already captured, so it loads instantly.</p>
     ${gFig("mywork", `${gEm("My Work")}: your tickets, the review queue, your sessions, and the repo at a glance.`)}
 
     ${sub("Tickets")}
     <p style="${gP}">The team's request queue. Anyone can file a bug, request, question, or access ask with ${gStrong("Submit a ticket")}. The ${gStrong("Board")} is the default view, one column per status: ${gStrong("Triage")}, ${gStrong("In progress")}, ${gStrong("Testing")}, ${gStrong("Done")}, and ${gStrong("Declined")}. Drag a card to change its status or its place in a column. An open ticket can move to any column, and Testing is optional. ${gStrong("Table")} lists the same tickets grouped by sprint (no sprint means ${gStrong("Backlog")}). Both have a search box and a ${gStrong("Filter")} menu.</p>
     ${gFig("board", `${gEm("Board")}: a column per status, in the order people dragged them.`)}
     ${gFig("tickets", `${gEm("Table")}: the same tickets grouped by sprint.`)}
-    <p style="${gP};margin-top:14px">Issues in the product's GitHub repo also show up as tickets, each with a locked link back to its issue. Closing or reopening the issue closes or reopens its ticket; everything else about it is edited in Canopy. Apart from that, only a person closes a ticket: a merged PR never does.</p>
+    <p style="${gP};margin-top:14px">Issues in the product's GitHub repo also show up as tickets, each with a locked link back to its issue. Closing or reopening the issue closes or reopens its ticket; everything else about it is edited in Trov. Apart from that, only a person closes a ticket: a merged PR never does.</p>
     <p style="${gP};margin-top:14px">A ticket's page holds its thread (comments with ${gCode("@mentions")}, next to every status change), its assignees and sprint, one level of sub-tickets, and ${gStrong("Linked work")}: paste a GitHub or Figma URL, or a bare ${gCode("#123")}. Artifacts linked to the ticket show here too. Your agent can file tickets, and on tickets ${gStrong("assigned to you")} it can move status, comment, link, set the sprint, or nest. It can't change who a ticket is assigned to.</p>
     ${gFig("ticket", `${gEm("A ticket")}: description, linked work, and thread, with status, assignees, and sprint alongside.`)}
 
@@ -1676,7 +1677,7 @@ function guideView(s: AppState): string {
     ${gFig("handoffs", `${gEm("Handoffs")}: pending ones first, then claimed and expired history.`)}
 
     ${sub("Repo")}
-    <p style="${gP}">A dashboard over the product repo in five tabs: ${gStrong("Overview")} (each environment's deploys, checks, health, and drift), ${gStrong("Code")}, ${gStrong("CI &amp; Deploys")}, ${gStrong("Usage")}, and ${gStrong("Team &amp; Planning")}. It reads only what Canopy has captured from the GitHub webhook and scheduled polls. A section with nothing yet reads ${gStrong("not connected")} and names what it's waiting on, never a made-up zero. ${gStrong("Preview with sample data")} shows the full layout with labelled placeholder numbers. Admins also get ${gStrong("Poll now")}.</p>
+    <p style="${gP}">A dashboard over the product repo in five tabs: ${gStrong("Overview")} (each environment's deploys, checks, health, and drift), ${gStrong("Code")}, ${gStrong("CI &amp; Deploys")}, ${gStrong("Usage")}, and ${gStrong("Team &amp; Planning")}. It reads only what Trov has captured from the GitHub webhook and scheduled polls. A section with nothing yet reads ${gStrong("not connected")} and names what it's waiting on, never a made-up zero. ${gStrong("Preview with sample data")} shows the full layout with labelled placeholder numbers. Admins also get ${gStrong("Poll now")}.</p>
     ${gFig("repo", `${gEm("Repo › Overview")} (sample data): both environments with deploys, checks, and health.`)}
     ${gFig("repo-usage", `${gEm("Repo › Usage")} (sample data): traffic, errors, active users, and product metrics.`)}
 
@@ -1685,7 +1686,7 @@ function guideView(s: AppState): string {
     ${gFig("feed", `${gEm("Feed")}: every change with its brief and its PR, commit, and issue links.`)}
 
     ${sub("Artifacts")}
-    <p style="${gP}">An artifact is a page an agent or person made: an HTML design, a markdown report, an SVG or mermaid diagram, an image, a PDF, or a file. Canopy stores every version and links it to the ticket or sprint it came from. ${gStrong("New artifact")} takes pasted source, an upload, or a URL. A new artifact starts as a ${gStrong("draft")}; ${gStrong("Published")} shares it; ${gStrong("Ratify")} is a person's sign-off on the latest version, and only a person can give it. ${gStrong("Compare versions")} diffs any two. Flip its ${gStrong("Org")} switch to ${gStrong("Private")} to keep one to yourself.</p>
+    <p style="${gP}">An artifact is a page an agent or person made: an HTML design, a markdown report, an SVG or mermaid diagram, an image, a PDF, or a file. Trov stores every version and links it to the ticket or sprint it came from. ${gStrong("New artifact")} takes pasted source, an upload, or a URL. A new artifact starts as a ${gStrong("draft")}; ${gStrong("Published")} shares it; ${gStrong("Ratify")} is a person's sign-off on the latest version, and only a person can give it. ${gStrong("Compare versions")} diffs any two. Flip its ${gStrong("Org")} switch to ${gStrong("Private")} to keep one to yourself.</p>
     ${gFig("artifacts", `${gEm("Artifacts")}: every page with a live preview, its author, and its area.`)}
     ${gFig("artifact", `${gEm("An artifact")}: the latest version, ratified, with its status and version picker.`)}
 
@@ -1697,18 +1698,18 @@ function guideView(s: AppState): string {
     <p style="${gP}">Click your name at the bottom of the sidebar. ${gStrong("Profile")} sets your name, handle, and color. ${gStrong("Account")} links GitHub and Google. ${gStrong("MCP access")} is where agents connect: the browser sign-in steps and the apps you have connected. ${gStrong("Appearance")} switches between Light, Dark, and System. ${gStrong("Email notifications")} sets each digest (your work, the review queue, roadmap changes, the ticket queue) to daily, weekly, or off.</p>
 
     ${sub("What's new")}
-    <p style="${gP}">Every release of Canopy, newest first. Open one for its notes, or switch to ${gStrong("Patch notes")} for the full list of changes with links to the pull requests.</p>
+    <p style="${gP}">Every release of Trov, newest first. Open one for its notes, or switch to ${gStrong("Patch notes")} for the full list of changes with links to the pull requests.</p>
     ${gFig("releases", `${gEm("What's new")}: one card per release.`)}
 
     ${sec("Troubleshooting", "When something doesn't work", "Troubleshooting")}
     <ul style="${gList}">
       <li>${gStrong("GitHub sign-in says you're not a member.")} Accept the SaplingLearn org invite on GitHub, then sign in again.</li>
       <li>${gStrong("Google sign-in says you're not invited.")} Ask an admin to invite the exact address you signed in with.</li>
-      <li>${gStrong("Canopy shows as needing authentication in Claude Code.")} Run ${gCode("/mcp")}, pick ${gStrong("canopy")} and choose ${gStrong("Authenticate")}. If the browser says Canopy doesn't recognise the app, choose ${gStrong("Clear authentication")} first, then Authenticate again. A connection you revoked in Settings needs the same.</li>
-      <li>${gStrong("An agent set up with an older access token (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $CANOPY_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. Settings no longer creates tokens, so if the agent can sign in through the browser, reconnect it that way instead.</li>
-      <li>${gStrong("The Canopy server doesn't appear in /mcp.")} Restart Claude Code after installing the plugin. Run ${gCode("/plugin")} to check that ${gCode("canopy")} is installed and enabled.</li>
-      <li>${gStrong("The plugin is out of date.")} Run ${gCode("/plugin marketplace update canopy")}, then restart.</li>
-      <li>${gStrong("Your agent sees every tool twice.")} It's connected both through the plugin and through a manual setup. Remove one: ${gCode("claude mcp remove canopy")} drops the manual one.</li>
+      <li>${gStrong("Trov shows as needing authentication in Claude Code.")} Run ${gCode("/mcp")}, pick ${gStrong("trov")} and choose ${gStrong("Authenticate")}. If the browser says Trov doesn't recognise the app, choose ${gStrong("Clear authentication")} first, then Authenticate again. A connection you revoked in Settings needs the same.</li>
+      <li>${gStrong("An agent set up with an older access token (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $TROV_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. Settings no longer creates tokens, so if the agent can sign in through the browser, reconnect it that way instead.</li>
+      <li>${gStrong("The Trov server doesn't appear in /mcp.")} Restart Claude Code after installing the plugin. Run ${gCode("/plugin")} to check that ${gCode("trov")} is installed and enabled.</li>
+      <li>${gStrong("The plugin is out of date.")} Run ${gCode("/plugin marketplace update trov")}, then restart.</li>
+      <li>${gStrong("Your agent sees every tool twice.")} It's connected both through the plugin and through a manual setup. Remove one: ${gCode("claude mcp remove trov")} drops the manual one.</li>
       <li>${gStrong("Your agent can't change a ticket.")} Agents can only change tickets assigned to you. Assign yourself in the web app first.</li>
       <li>${gStrong("An agent's change isn't live.")} That's by design: it's waiting in ${gStrong("Review")} for a person to promote it.</li>
       <li>${gStrong("A Repo section reads not connected.")} Nothing has been captured for it yet. The section names what it's waiting on.</li>
@@ -1849,15 +1850,15 @@ export function accountSection(s: AppState): string {
   </section>`;
 }
 
-/** This Canopy's own MCP endpoint — the origin the SPA is served from, so a local
+/** This Trov's own MCP endpoint — the origin the SPA is served from, so a local
  *  `wrangler dev` hands out a local URL and prod hands out prod's. */
 const mcpEndpoint = (): string =>
   `${typeof location !== "undefined" && location.origin ? location.origin : "https://canopy.saplinglearn.com"}/mcp`;
 
-/** The two Claude Code commands that install the Canopy plugin — Settings › MCP access
+/** The two Claude Code commands that install the Trov plugin — Settings › MCP access
  *  and the Get Started guide both show exactly this. */
-export const PLUGIN_INSTALL = `/plugin marketplace add SaplingLearn/canopy
-/plugin install canopy@canopy`;
+export const PLUGIN_INSTALL = `/plugin marketplace add AndresL230/trov
+/plugin install trov@trov`;
 
 /** How many Connected apps rows Settings › MCP access shows before its "Show all N". */
 export const MCP_LIST_CAP = 3;
@@ -1904,7 +1905,7 @@ export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & P
 /** The by-hand setup: the server with no header — Claude Code then signs in through the
  *  browser on `/mcp` → Authenticate, exactly as the plugin does. Mints nothing. */
 export function browserConnectCommand(url: string = mcpEndpoint()): string {
-  return `claude mcp add --transport http --scope user canopy ${url}`;
+  return `claude mcp add --transport http --scope user trov ${url}`;
 }
 
 const mcpCode = (t: string) => `<code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${t}</code>`;
@@ -1919,7 +1920,7 @@ function copyBox(text: string, act: string, label: string): string {
 }
 
 /**
- * Settings › MCP access — OAuth only: Canopy no longer mints tokens here (the token routes
+ * Settings › MCP access — OAuth only: Trov no longer mints tokens here (the token routes
  * stay, so a token already in use keeps working). Beside the heading, a quiet link to the
  * by-hand `claude mcp add` for anyone not using the plugin — it opens a MODAL
  * (`mcpSetupModal`), so using it never changes the tile's height. Then, top to bottom: what
@@ -1938,9 +1939,9 @@ export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" |
     <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you.</div>
     <div class="cnpy-mcp-body">
       <ol aria-label="Connect Claude Code" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0">
-        ${step(`Install the Canopy plugin in Claude Code:${copyBox(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
-        ${step(`Run ${mcpCode("/mcp")}, choose ${mcpStrong("canopy")}, then ${mcpStrong("Authenticate")}.`)}
-        ${step(`Your browser opens Canopy. Click ${mcpStrong("Allow")} and you're connected &mdash; it shows up under Connected apps.`)}
+        ${step(`Install the Trov plugin in Claude Code:${copyBox(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
+        ${step(`Run ${mcpCode("/mcp")}, choose ${mcpStrong("trov")}, then ${mcpStrong("Authenticate")}.`)}
+        ${step(`Your browser opens Trov. Click ${mcpStrong("Allow")} and you're connected &mdash; it shows up under Connected apps.`)}
       </ol>
       ${grantListBody(s)}
     </div>
@@ -1959,9 +1960,9 @@ export function mcpSetupModal(url: string = mcpEndpoint()): string {
       <div id="mcp-setup" role="dialog" aria-modal="true" aria-labelledby="mcp-setup-t" aria-describedby="mcp-setup-d" tabindex="-1" data-mcp-setup class="cnpy-surface cnpy-cmodal-box" style="position:relative;width:min(480px, 100%)">
         <button data-act="mcpSetupClose" aria-label="Close" title="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${close}</button>
         <div id="mcp-setup-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em">Set it up without the plugin</div>
-        <p id="mcp-setup-d" style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">Add the Canopy server to Claude Code by hand &mdash; skip this if you installed the plugin, or you'll have two Canopy servers.</p>
+        <p id="mcp-setup-d" style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">Add the Trov server to Claude Code by hand &mdash; skip this if you installed the plugin, or you'll have two Trov servers.</p>
         ${copyBox(browserConnectCommand(url), "copyBrowserConnect", "Copy the command")}
-        <p style="margin:12px 0 0;font-size:13px;line-height:1.55;color:var(--fg-70)">Then run ${mcpCode("/mcp")}, choose ${mcpStrong("canopy")}, then ${mcpStrong("Authenticate")}, and click ${mcpStrong("Allow")} in the browser.</p>
+        <p style="margin:12px 0 0;font-size:13px;line-height:1.55;color:var(--fg-70)">Then run ${mcpCode("/mcp")}, choose ${mcpStrong("trov")}, then ${mcpStrong("Authenticate")}, and click ${mcpStrong("Allow")} in the browser.</p>
       </div>
     </div>
   </div>`;
@@ -1973,7 +1974,7 @@ function settingsView(s: AppState): string {
     ["system", "System"],
   ].map(([k, label]) => {
     const sel = s.theme === k;
-    // Layout (flex, gap, padding, the narrow stacked form) is canopy.css's `.cnpy-themecard`,
+    // Layout (flex, gap, padding, the narrow stacked form) is trov.css's `.cnpy-themecard`,
     // so its container query can restack it; only the radius and the picked colours are inline.
     const style = `border-radius:11px;border:1px solid ${sel ? "var(--accent)" : "var(--border)"};background:${sel ? "var(--accent-soft)" : "transparent"};color:${sel ? "var(--accent)" : "var(--fg-70)"}`;
     const icon = k === "light"
@@ -1984,7 +1985,7 @@ function settingsView(s: AppState): string {
     return `<button data-act="setTheme" data-arg="${k}" class="cnpy-themecard" aria-pressed="${sel}" style="${style}">${icon}<span style="font-size:13px;font-weight:500;line-height:18px">${label}</span></button>`;
   }).join("");
 
-  // ONE bento grid (canopy.css), every tile stretched to its grid area so every edge lines
+  // ONE bento grid (trov.css), every tile stretched to its grid area so every edge lines
   // up: Profile | Account | MCP access (spanning two rows), Appearance under the first two,
   // Email notifications at full width. DOM order is the folded order — Profile, Account,
   // Appearance, then MCP access — so the narrower layouts need no reordering.
@@ -2322,7 +2323,7 @@ function repoProps(s: AppState): RepoProps {
 function artProps(s: AppState, screen: ArtScreen): ArtProps {
   return {
     screen, route: s.artRoute, ui: s.art, me: s.me?.handle ?? "", admin: s.me?.admin === true, fmOpening: s.fmOpening,
-    persons: s.persons.data, host: typeof location !== "undefined" ? location.host : "canopy",
+    persons: s.persons.data, host: typeof location !== "undefined" ? location.host : "trov",
     theme: resolved(s),
     // Every ticket (the attach dialog's own read); the queue's filtered list until it lands.
     tickets: s.art.attachTickets.data ?? s.tickets.data.map((t) => ({ id: t.id, title: t.title, status: t.status })),

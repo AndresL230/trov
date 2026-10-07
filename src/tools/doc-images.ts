@@ -115,7 +115,7 @@ export async function docImageProblems(db: DB, body: string): Promise<string | n
   const problems: string[] = [];
   if (others.length) {
     const shown = others.slice(0, 3).map((s) => (s.length > 60 ? `${s.slice(0, 60)}…` : s) || "(empty)").join(", ");
-    problems.push(`images must be uploaded to Canopy (upload_asset with destination "doc") and referenced as /img/<sha256>; not allowed: ${shown}`);
+    problems.push(`images must be uploaded to Trov (upload_asset with destination "doc") and referenced as /img/<sha256>; not allowed: ${shown}`);
   }
   if (shas.length) {
     // ≤ 90 per statement — D1 caps bound parameters at 100.

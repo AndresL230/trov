@@ -3,7 +3,8 @@
 // routes via ./api. Wiring proceeds screen by screen (Phase 2); unwired screens
 // still render their Phase-1 mock until their task lands.
 
-import "./canopy.css";
+import "./trov.css";
+import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments } from "./segmented";
 import { syncTabBars, onTabBarKey } from "./tabs";
@@ -68,7 +69,7 @@ import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 
 const root = document.getElementById("app");
-if (!root) throw new Error("Canopy: #app mount point missing");
+if (!root) throw new Error("Trov: #app mount point missing");
 const mount = root;
 
 const state: AppState = initialState();
@@ -83,17 +84,18 @@ const qs = createQuickSearch({
 });
 
 // ── persisted client prefs (theme + sidebar only; not backend state) ─────────
+migrateBrowserStorage(); // canopy.* → trov.* (the rename) before the first read
 try {
-  const t = localStorage.getItem("canopy.theme");
+  const t = localStorage.getItem("trov.theme");
   if (t === "dark" || t === "light" || t === "system") state.theme = t;
   else if (t === "midnight") state.theme = "dark"; // Midnight was retired (2026-09-26) — its closest theme
-  const fv = localStorage.getItem("canopy.feedView");
+  const fv = localStorage.getItem("trov.feedView");
   if (fv === "reading" || fv === "agents") state.feedView = fv;
-  const pv = localStorage.getItem("canopy.promptView");
+  const pv = localStorage.getItem("trov.promptView");
   if (pv === "raw" || pv === "rendered") state.promptView = pv;
-  const c = localStorage.getItem("canopy.collapsed");
+  const c = localStorage.getItem("trov.collapsed");
   if (c) state.collapsed = c === "1";
-  const open = JSON.parse(localStorage.getItem("canopy.navOpen") ?? "{}") as Record<string, unknown>;
+  const open = JSON.parse(localStorage.getItem("trov.navOpen") ?? "{}") as Record<string, unknown>;
   // Only live groups are read, so a retired one's key (tickets, maintenance, repo) is ignored.
   for (const g of NAV_GROUPS) if (typeof open[g] === "boolean") state.navOpen[g] = open[g] as boolean;
 } catch { /* localStorage unavailable, or a hand-edited value */ }
@@ -114,7 +116,7 @@ if (window.matchMedia) {
   else narrow.addListener(onNarrow);
 
   // At phone width even the collapsed rail starves the screen: it leaves the layout and
-  // opens as a drawer from the header's menu button (canopy.css `[data-phone="1"]`).
+  // opens as a drawer from the header's menu button (trov.css `[data-phone="1"]`).
   const phone = window.matchMedia("(max-width: 640px)");
   state.phone = phone.matches;
   const onPhone = (ev: MediaQueryListEvent) => { state.phone = ev.matches; state.drawer = false; rerender(); };
@@ -124,7 +126,7 @@ if (window.matchMedia) {
 
 // ── render with focus/caret + main-pane scroll preservation ──────────────────
 // ── screen-enter motion ──────────────────────────────────────────────────────
-// A screen's entrance (canopy.css `[data-enter]`) plays when WHAT IS ON SCREEN
+// A screen's entrance (trov.css `[data-enter]`) plays when WHAT IS ON SCREEN
 // changes — a new route, or its data arriving — never on the other rerenders (a
 // keystroke, a hover, a badge landing), which would replay it endlessly.
 // rerender() swaps <main> wholesale, so a rerender DURING an entrance would cut
@@ -418,7 +420,7 @@ function persist(key: string, value: string): void {
 }
 // Only what the person chose persists — a list the app opened by itself is not a preference.
 function persistNavOpen(): void {
-  persist("canopy.navOpen", JSON.stringify(autoOpened ? { ...state.navOpen, [autoOpened]: false } : state.navOpen));
+  persist("trov.navOpen", JSON.stringify(autoOpened ? { ...state.navOpen, [autoOpened]: false } : state.navOpen));
 }
 
 // ── screen ↔ URL hash (so a reload stays on the current page) ─────────────────
@@ -1677,7 +1679,7 @@ function readArtFile(file: File | undefined | null, target: "create" | "nv" = "c
 // no rerender (which would rebuild, and so reload, the frame).
 window.addEventListener("message", (e) => {
   const data = e.data as { type?: unknown; height?: unknown } | null;
-  if (!data || typeof data !== "object" || data.type !== "canopy:height") return;
+  if (!data || typeof data !== "object" || data.type !== "trov:height") return;
   const h = Number(data.height);
   if (!Number.isFinite(h) || h <= 0) return;
   for (const frame of Array.from(mount.querySelectorAll<HTMLIFrameElement>(".art-frame iframe"))) {
@@ -1700,7 +1702,7 @@ function flash(msg: string, ms = 2200, action: ToastAction | null = null): void 
 }
 /** How long a toast carrying an Undo stays up — long enough to read it and reach the button. */
 const UNDO_TOAST_MS = 8000;
-/** The confirmation modal's exit (canopy.css `.cnpy-cmodal[data-closing]`), then `then` — which
+/** The confirmation modal's exit (trov.css `.cnpy-cmodal[data-closing]`), then `then` — which
  *  closes it in state. Instant under prefers-reduced-motion or when no modal is open. */
 const CONFIRM_OUT_MS = 140;
 function confirmOut(then: () => void): void {
@@ -1718,7 +1720,7 @@ function confirmOut(then: () => void): void {
 // runs after every paint and marks the editor (and its row) `data-anim` only while its
 // open / close is still inside ROLE_EDIT_MS, with a NEGATIVE delay (`--re-t`) so a
 // rerender mid-way joins the animation where the old element left off. Past the window
-// the element renders plain (open, or collapsed under canopy.css `[data-roleedit="out"]`).
+// the element renders plain (open, or collapsed under trov.css `[data-roleedit="out"]`).
 // A closed editor lingers as `state.personEditOut` for its exit, then drops out.
 const ROLE_EDIT_MS = 200;
 let roleEditInAt = -Infinity;
@@ -1868,11 +1870,11 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // Return-to: the hash never reaches the server, so stash it for the boot
       // after /auth/callback lands on "/" (an email deep link survives sign-in).
       // Not #site: that IS the landing page, and returning to it strands them outside the app.
-      try { if (location.hash && location.hash !== "#site") sessionStorage.setItem("canopy.returnHash", location.hash); } catch { /* ignore */ }
+      try { if (location.hash && location.hash !== "#site") sessionStorage.setItem("trov.returnHash", location.hash); } catch { /* ignore */ }
       window.location.href = "/auth/login";
       return;
     case "signInGoogle":
-      try { if (location.hash && location.hash !== "#site") sessionStorage.setItem("canopy.returnHash", location.hash); } catch { /* ignore */ }
+      try { if (location.hash && location.hash !== "#site") sessionStorage.setItem("trov.returnHash", location.hash); } catch { /* ignore */ }
       window.location.href = "/auth/google/login";
       return;
     case "signInGoogleSwitch": window.location.href = "/auth/google/login?prompt=select_account"; return;
@@ -2515,7 +2517,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     // The title/description editor (POST /tickets/:id/edit). A mirrored ticket's
-    // title and body are Canopy's after import, so it edits those too.
+    // title and body are Trov's after import, so it edits those too.
     case "ticketEdit": {
       const d = state.ticketDetail.data;
       if (!d) return;
@@ -2678,20 +2680,20 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "closeDrawer": state.drawer = false; break;
     case "toggleCollapse":
       state.collapsed = !state.collapsed;
-      persist("canopy.collapsed", state.collapsed ? "1" : "0");
+      persist("trov.collapsed", state.collapsed ? "1" : "0");
       railTip(null);
       break;
     case "cycleTheme": {
       // header button flips between the two concrete themes; settings can also pick "system".
       const next = resolvedTheme() === "light" ? "dark" : "light";
       state.theme = next;
-      persist("canopy.theme", next);
+      persist("trov.theme", next);
       break;
     }
     case "setTheme":
       if (arg === "dark" || arg === "light" || arg === "system") {
         state.theme = arg;
-        persist("canopy.theme", arg);
+        persist("trov.theme", arg);
       }
       break;
 
@@ -2699,7 +2701,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "setFeedView":
       if (arg !== "reading" && arg !== "agents") return;
       state.feedView = arg;
-      persist("canopy.feedView", arg);
+      persist("trov.feedView", arg);
       break;
     case "setAuthor": state.feedAuthor = arg ?? "all"; loadFeed(); return;
     case "setTag": state.feedTag = arg ?? value ?? "all"; loadFeed(); return;
@@ -2969,7 +2971,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "promptBoxView":
       if (arg !== "raw" && arg !== "rendered") return;
       state.promptView = arg;
-      persist("canopy.promptView", arg);
+      persist("trov.promptView", arg);
       break;
     case "promptExpandClose": state.promptExpanded = false; break;
     case "promptTagMenu": state.promptTagMenu = !state.promptTagMenu; state.promptTagDraft = ""; break;
@@ -4202,8 +4204,8 @@ if (params.get("denied") === "1") {
       state.view = "app";
       // Return-to after sign-in (see "signIn"): re-apply the stashed hash once.
       try {
-        const back = sessionStorage.getItem("canopy.returnHash");
-        if (back) { sessionStorage.removeItem("canopy.returnHash"); history.replaceState(null, "", back); }
+        const back = sessionStorage.getItem("trov.returnHash");
+        if (back) { sessionStorage.removeItem("trov.returnHash"); history.replaceState(null, "", back); }
       } catch { /* ignore */ }
       // Restore the route from the URL hash (reload stays put, including
       // #tickets/<id> and #sprints/<id>) instead of always My Work.

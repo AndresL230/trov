@@ -71,8 +71,8 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "Settings › MCP access", hint: "Connect Claude Code: sign-in steps and connected apps", keys: "mcp tokens connect agent claude code plugin oauth authenticate", steps: [["goSettings", null]] },
   { label: "Settings › Appearance", hint: "Light, dark or system theme", keys: "theme dark light mode", steps: [["goSettings", null]] },
   { label: "Settings › Email notifications", hint: "Daily and weekly digests", keys: "digest email unsubscribe", steps: [["goSettings", null]] },
-  { label: "Get Started", hint: "The guide to Canopy", keys: "guide help onboarding tour", steps: [["goGuide", null]] },
-  { label: "Release notes", hint: "What's new in Canopy", keys: "whats new changelog releases updates patches", steps: [["goReleases", null]] },
+  { label: "Get Started", hint: "The guide to Trov", keys: "guide help onboarding tour", steps: [["goGuide", null]] },
+  { label: "Release notes", hint: "What's new in Trov", keys: "whats new changelog releases updates patches", steps: [["goReleases", null]] },
   { label: "Search", hint: "Full results across the store", keys: "find all results", steps: [["goSearch", null]] },
 ];
 
@@ -352,7 +352,7 @@ const PREFETCH_MS = 120;
 /** How long the person must pause before the panel opens or changes: it never reshapes
  *  under a keystroke. Enter / ⌘Enter / Tab act at once on whatever is typed. */
 const PAUSE_MS = 1000;
-/** The close animation's length — MUST match `.cnpy-qs-layer[data-closing]` in canopy.css. */
+/** The close animation's length — MUST match `.cnpy-qs-layer[data-closing]` in trov.css. */
 const CLOSE_MS = 160;
 const ERROR_LINE = "Search didn’t answer — keep typing to try again.";
 
@@ -395,8 +395,8 @@ export function createQuickSearch(deps: QuickSearchDeps): QuickSearch {
     if (layer?.isConnected) return;
     layer = document.createElement("div");
     layer.className = "cnpy-qs-layer";
-    layer.innerHTML = `<div class="cnpy-qs" role="dialog" aria-label="Search Canopy">
-        <div class="cnpy-qs-inbar">${svg(`<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path>`)}<input class="cnpy-qs-in" placeholder="Search tickets, docs, people, screens…" aria-label="Search Canopy" autocomplete="off" spellcheck="false" role="combobox" aria-controls="cnpy-qs-list" aria-expanded="true" /><kbd class="cnpy-qs-kbd">Esc</kbd></div>
+    layer.innerHTML = `<div class="cnpy-qs" role="dialog" aria-label="Search Trov">
+        <div class="cnpy-qs-inbar">${svg(`<circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path>`)}<input class="cnpy-qs-in" placeholder="Search tickets, docs, people, screens…" aria-label="Search Trov" autocomplete="off" spellcheck="false" role="combobox" aria-controls="cnpy-qs-list" aria-expanded="true" /><kbd class="cnpy-qs-kbd">Esc</kbd></div>
         <div class="cnpy-qs-list cnpy-scroll" id="cnpy-qs-list" role="listbox" aria-label="Results"></div>
         <div class="cnpy-qs-foot"><span><kbd class="cnpy-qs-kbd">↑</kbd><kbd class="cnpy-qs-kbd">↓</kbd> move</span><span><kbd class="cnpy-qs-kbd">↵</kbd> open</span><span><kbd class="cnpy-qs-kbd">Tab</kbd> all</span><span><kbd class="cnpy-qs-kbd">Esc</kbd> close</span></div>
       </div>`;
@@ -473,7 +473,7 @@ export function createQuickSearch(deps: QuickSearchDeps): QuickSearch {
     if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
     layer.removeAttribute("data-closing");
     if (!layer.hasAttribute("data-open")) { layer.setAttribute("data-open", "1"); return; }
-    // Height: natural now → pin the old height → next frame, the new one (canopy.css transitions it).
+    // Height: natural now → pin the old height → next frame, the new one (trov.css transitions it).
     panel.style.height = "";
     const to = panel.getBoundingClientRect().height;
     if (!wasVisible || Math.abs(to - from) < 1 || reducedMotion()) return;

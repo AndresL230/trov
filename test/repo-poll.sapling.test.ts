@@ -1,7 +1,7 @@
 /**
  * Task 18 — active users, from Sapling's own metrics endpoint (source M).
  *
- * Canopy cannot compute active users; only Sapling's database knows. The repo
+ * Trov cannot compute active users; only Sapling's database knows. The repo
  * cron's minute-0 tick asks each environment's backend
  * (`GET {apiUrl}/api/internal/metrics`, a bearer token) and `pollSaplingMetrics`
  * stores the three windows as hourly GAUGES — `active_users_24h` / `_7d` /

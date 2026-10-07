@@ -1,13 +1,13 @@
 /**
- * The tab icon follows the app's resolved theme (web/src/favicon.ts): the ORIGINAL
- * three-bar mark — dark in its original electric-green/white colourway, light the same mark
- * with the indigo accent on top — written to the SVG icon link as a data: URL, and
- * only when the theme actually changes.
+ * The tab icon follows the app's resolved theme (web/src/favicon.ts): the Trov mark,
+ * brand purple in light and the dark theme's green in dark, written to the SVG icon link
+ * as a data: URL, and only when the theme actually changes.
  */
 import { describe, it, expect } from "vitest";
 import {
   createFaviconSync, faviconHref, faviconSvg, FAVICON_COLORS, type FaviconDoc,
 } from "../web/src/favicon";
+import { TROV_MARK_PATH } from "@shared/mark";
 
 function fakeDoc(withLink = true) {
   const writes: string[] = [];
@@ -26,21 +26,18 @@ function fakeDoc(withLink = true) {
 }
 
 describe("favicon — follows the app theme", () => {
-  it("draws the original mark: the top bar, then the two ink bars, the bottom at 50%", () => {
-    const svg = faviconSvg({ top: "#5e6ad2", ink: "#16161a" });
-    expect(svg).toContain('viewBox="0 0 24 24"');
-    expect(svg).toContain('<rect x="2" y="4.5" width="20" height="3.4" rx="1.7" fill="#5e6ad2"/>');
-    expect(svg).toContain('<rect x="5" y="10.3" width="14" height="3.4" rx="1.7" fill="#16161a"/>');
-    expect(svg).toContain('<rect x="8" y="16.1" width="8" height="3.4" rx="1.7" fill="#16161a" opacity="0.5"/>');
-    const href = faviconHref({ top: "#5e6ad2", ink: "#16161a" });
+  it("draws the Trov mark: one path, in the given fill, with air around it", () => {
+    const svg = faviconSvg("#616ACB");
+    expect(svg).toContain('viewBox="-4 -4 108 108"');
+    expect(svg).toContain(`<path fill="#616ACB" d="${TROV_MARK_PATH}"/>`);
+    const href = faviconHref("#616ACB");
     expect(href.startsWith("data:image/svg+xml,")).toBe(true);
     expect(href).not.toMatch(/[#<>"]/);
     expect(decodeURIComponent(href.slice("data:image/svg+xml,".length))).toBe(svg);
   });
 
-  it("dark is the original colourway; light is its purple variant", () => {
-    expect(FAVICON_COLORS.dark).toEqual({ top: "#2BFF88", ink: "#FFFFFF" });
-    expect(FAVICON_COLORS.light).toEqual({ top: "#5e6ad2", ink: "#FFFFFF" });
+  it("light is the brand purple; dark is the dark theme's green", () => {
+    expect(FAVICON_COLORS).toEqual({ light: "#616ACB", dark: "#9aab65" });
   });
 
   it("writes the link once per theme change — rerenders on the same theme are no-ops", () => {

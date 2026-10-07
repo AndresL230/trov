@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { tabBar, tabPanelAttrs, tabKeyTarget } from "../web/src/tabs";
-import css from "../web/src/canopy.css?raw";
+import css from "../web/src/trov.css?raw";
 import mainSrc from "../web/src/main.ts?raw";
 
 const bar = (value = "b") => tabBar({

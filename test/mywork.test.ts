@@ -28,7 +28,7 @@ function prEvent(over: Partial<CapturedEvent> & { number: number; login: string;
       merged_at: merged ? NOW : null,
       closed_at: NOW,
       user: { login },
-      milestone: null, // GitHub's own key — not Canopy vocabulary
+      milestone: null, // GitHub's own key — not Trov vocabulary
       base: baseRef ? { ref: baseRef } : null,
     },
   });
@@ -53,10 +53,10 @@ function issueEvent(over: {
   title?: string;
   labels?: string[];
   assigneeLogin?: string;
-  // GitHub's own key — not Canopy vocabulary (this is a GitHub payload literal).
+  // GitHub's own key — not Trov vocabulary (this is a GitHub payload literal).
   milestone?: { title?: string | null; due_on?: string | null; number?: number } | null;
 }): CapturedEvent {
-  // `milestone` is GitHub's own key — not Canopy vocabulary (a payload literal).
+  // `milestone` is GitHub's own key — not Trov vocabulary (a payload literal).
   const { number, login, action, state, updatedAt, title = `Issue ${number}`, labels = [], assigneeLogin = login, milestone = null } = over;
   const raw = JSON.stringify({
     action,
@@ -69,7 +69,7 @@ function issueEvent(over: {
       user: { login },
       assignees: [{ login: assigneeLogin }],
       labels,
-      milestone: milestone ?? null, // GitHub's own key — not Canopy vocabulary
+      milestone: milestone ?? null, // GitHub's own key — not Trov vocabulary
     },
   });
   return {

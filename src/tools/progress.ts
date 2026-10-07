@@ -4,7 +4,7 @@ import { progressFromIssueEvent } from "../webhook";
 import { isIssueGone } from "./issue-gone";
 
 const GH_API = "application/vnd.github+json";
-const USER_AGENT = "canopy";
+const USER_AGENT = "trov";
 
 /**
  * Live progress for a sprint's `github_ref`, computed from GitHub. `ref` is JSON:
@@ -48,7 +48,7 @@ export async function fetchGithubRefProgress(opts: {
       return { closed, total };
     }
     if (typeof parsed === "number") {
-      // GitHub's own REST path — not Canopy vocabulary.
+      // GitHub's own REST path — not Trov vocabulary.
       const res = await doFetch(`https://api.github.com/repos/${opts.repo}/milestones/${parsed}`, { headers });
       if (!res.ok) return null;
       const data = (await res.json()) as { open_issues?: number; closed_issues?: number };

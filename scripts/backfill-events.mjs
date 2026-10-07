@@ -1,4 +1,4 @@
-// Backfill Canopy's captured `events` table from GitHub REST by synthesizing
+// Backfill Trov's captured `events` table from GitHub REST by synthesizing
 // signed webhook deliveries and POSTing them through the SAME gate
 // (/webhook/github, src/webhook.ts handleGithubWebhook) that live deliveries
 // go through — there is no second write path here, only a client that
@@ -75,7 +75,7 @@ async function ghGet(path) {
         Authorization: `Bearer ${TOKEN}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "canopy-backfill-script",
+        "User-Agent": "trov-backfill-script",
       },
     });
     if (!res.ok) {

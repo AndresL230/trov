@@ -130,10 +130,10 @@ describe("parseTicketLink", () => {
   });
 
   it("honours a non-default repo for bare refs", () => {
-    expect(parseTicketLink("#7", "SaplingLearn/canopy")).toEqual({
-      url: "https://github.com/SaplingLearn/canopy/issues/7",
+    expect(parseTicketLink("#7", "AndresL230/trov")).toEqual({
+      url: "https://github.com/AndresL230/trov/issues/7",
       kind: "github",
-      label: "canopy #7",
+      label: "trov #7",
       meta: "GITHUB · ISSUE",
     });
   });
@@ -148,28 +148,28 @@ describe("parseTicketLink", () => {
   });
 
   it("shape 2 — a GitHub pull request URL", () => {
-    expect(parseTicketLink("https://github.com/SaplingLearn/canopy/pull/43")).toEqual({
-      url: "https://github.com/SaplingLearn/canopy/pull/43",
+    expect(parseTicketLink("https://github.com/AndresL230/trov/pull/43")).toEqual({
+      url: "https://github.com/AndresL230/trov/pull/43",
       kind: "github",
-      label: "canopy #43",
+      label: "trov #43",
       meta: "GITHUB · PULL REQUEST",
     });
   });
 
   it("shape 3 — any other github.com URL keeps kind github with the path as label (40 chars)", () => {
-    // A GitHub url, verbatim — not Canopy vocabulary.
-    expect(parseTicketLink("https://github.com/SaplingLearn/canopy/milestone/4")).toEqual({
-      url: "https://github.com/SaplingLearn/canopy/milestone/4",
+    // A GitHub url, verbatim — not Trov vocabulary.
+    expect(parseTicketLink("https://github.com/AndresL230/trov/milestone/4")).toEqual({
+      url: "https://github.com/AndresL230/trov/milestone/4",
       kind: "github",
-      label: "SaplingLearn/canopy/milestone/4",
+      label: "AndresL230/trov/milestone/4",
       meta: "GITHUB",
     });
 
-    const long = parseTicketLink("https://github.com/SaplingLearn/canopy/tree/feat/tickets/some/deep/path/that/keeps/going");
+    const long = parseTicketLink("https://github.com/AndresL230/trov/tree/feat/tickets/some/deep/path/that/keeps/going");
     expect(long!.kind).toBe("github");
     expect(long!.meta).toBe("GITHUB");
     expect(long!.label.length).toBe(40);
-    expect(long!.label).toBe("SaplingLearn/canopy/tree/feat/tickets/so");
+    expect(long!.label).toBe("AndresL230/trov/tree/feat/tickets/some/d");
 
     // Bare github.com with nothing after it → the "GitHub" fallback label.
     expect(parseTicketLink("https://github.com/")).toEqual({
@@ -181,10 +181,10 @@ describe("parseTicketLink", () => {
   });
 
   it("shape 4 — a Figma URL humanizes the last path segment", () => {
-    expect(parseTicketLink("https://www.figma.com/design/abc123/canopy-tickets_queue?node-id=1-2")).toEqual({
-      url: "https://www.figma.com/design/abc123/canopy-tickets_queue?node-id=1-2",
+    expect(parseTicketLink("https://www.figma.com/design/abc123/trov-tickets_queue?node-id=1-2")).toEqual({
+      url: "https://www.figma.com/design/abc123/trov-tickets_queue?node-id=1-2",
       kind: "figma",
-      label: "Canopy tickets queue",
+      label: "Trov tickets queue",
       meta: "FIGMA · DESIGN",
     });
   });

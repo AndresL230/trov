@@ -115,7 +115,7 @@ export function checkFetchUrl(input: string | URL, base?: string | URL): URL {
   let host = u.hostname.toLowerCase().replace(/\.+$/, "");
   if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1);
   if (!host) throw new FetchUrlError("bad_request", "the URL has no host");
-  const blocked = (why: string) => new FetchUrlError("bad_request", `that address is not reachable from Canopy (${why})`);
+  const blocked = (why: string) => new FetchUrlError("bad_request", `that address is not reachable from Trov (${why})`);
   if (host === "localhost" || host.endsWith(".localhost")) throw blocked("localhost");
   if (host === "local" || host.endsWith(".local") || host === "internal" || host.endsWith(".internal")) throw blocked("private name");
   const v4 = ipv4Blocked(host);
@@ -187,7 +187,7 @@ export async function fetchArtifactUrl(url: string, fetchImpl: typeof fetch = fe
         method: "GET",
         redirect: "manual",
         signal,
-        headers: { accept: "text/*, image/svg+xml, application/xhtml+xml;q=0.9, */*;q=0.1", "user-agent": "canopy-artifact-fetch" },
+        headers: { accept: "text/*, image/svg+xml, application/xhtml+xml;q=0.9, */*;q=0.1", "user-agent": "trov-artifact-fetch" },
       });
     } catch (e) {
       const timedOut = signal.aborted || (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError"));

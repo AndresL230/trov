@@ -9,7 +9,7 @@
  * sheets); these tests pin that the hooks exist and the CSS that uses them is there.
  */
 import { describe, it, expect } from "vitest";
-import css from "../web/src/canopy.css?raw";
+import css from "../web/src/trov.css?raw";
 import { render, initialState, railCollapsed, type AppState } from "../web/src/render";
 import { reviewView, type ReviewItem, type ReviewProps } from "../web/src/review";
 

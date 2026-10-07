@@ -92,9 +92,9 @@ const spTicket = (o: Partial<SprintTicketRow> & { id: number; title: string; dep
 });
 
 const resource = (o: Partial<SprintResourceView> = {}): SprintResourceView => ({
-  // The url is GitHub's own — not Canopy vocabulary. `meta` is what the SHARED
+  // The url is GitHub's own — not Trov vocabulary. `meta` is what the SHARED
   // parseTicketLink actually produces for a github.com url of this shape.
-  url: "https://github.com/SaplingLearn/canopy/milestone/4",
+  url: "https://github.com/AndresL230/trov/milestone/4",
   kind: "github", label: "notifications-ga", meta: "GITHUB", ...o,
 });
 
@@ -347,7 +347,7 @@ describe("newSprintPanel", () => {
   });
 
   it("hangs the hover layer's chip/segment classes on the panel's picks", () => {
-    // Inline styles can't express `:hover`; the class is what canopy.css hooks,
+    // Inline styles can't express `:hover`; the class is what trov.css hooks,
     // and `is-on` is what keeps the hover off the chip that is already picked.
     const html = newSprintPanel({ ...NS, open: true, urgency: "high", lead: "sanaok", domain: "tickets" }, PERSONS);
     expect(html).toContain('<button type="button" class="cnpy-seg-btn is-on" data-act="nsUrg" data-arg="high" aria-pressed="true"');
@@ -510,8 +510,8 @@ describe("sprintScreen", () => {
     expect(html).toContain("Tickets — queue");
     expect(html).toContain("#1abcfe");                 // the Figma glyph
     expect(html).toContain("notion.so");
-    // The href is GitHub's own url, verbatim — not Canopy vocabulary.
-    expect(html).toContain('href="https://github.com/SaplingLearn/canopy/milestone/4"');
+    // The href is GitHub's own url, verbatim — not Trov vocabulary.
+    expect(html).toContain('href="https://github.com/AndresL230/trov/milestone/4"');
     expect(html).toContain('data-act="sprintResourceAdd"');
     expect(html).toContain('value="https://example.com/x"');
     // Each resource row is a clickable surface, never the old 2.5% tinted box.

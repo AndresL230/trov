@@ -2,6 +2,7 @@
 // Canopy.dc.html: Settings › Email notifications, Maintenance › NOTIFICATIONS
 // (policy / schedule / outbox), and the unsubscribe confirmation view. Pure
 // presentational functions over props — no fetch, no state.
+import { trovMark } from "@shared/mark";
 import type { Cadence, PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 import { esc, attr, surface } from "./ui";
@@ -102,7 +103,7 @@ export function emailNotificationsSection(p: NotifSettingsProps): string {
   const rows = v.kinds.map(kindRow).join("");
   const listStyle = `opacity:${v.unsubscribed ? ".45" : "1"};pointer-events:${v.unsubscribed ? "none" : "auto"};transition:opacity .15s ease`;
   // Two columns inside once the tile is wide enough: address beside the all-off switch, then
-  // the kinds two-up — half the height of one long list. canopy.css folds it to one column
+  // the kinds two-up — half the height of one long list. trov.css folds it to one column
   // by the TILE's own width, since it sits in Settings' wide column, not across the page.
   return `<section class="cnpy-tile cnpy-surface cnpy-set-email">
     ${head}
@@ -136,8 +137,8 @@ export function unsubscribeView(p: { email: string | null; pending: boolean; err
   return `<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px;background:var(--bg);color:var(--fg)">
     <div style="width:400px;max-width:100%">
       <div style="display:flex;align-items:center;justify-content:center;gap:11px;margin-bottom:36px">
-        <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4.5" width="20" height="3.4" rx="1.7" fill="var(--accent)"></rect><rect x="5" y="10.3" width="14" height="3.4" rx="1.7" fill="currentColor"></rect><rect x="8" y="16.1" width="8" height="3.4" rx="1.7" fill="currentColor" opacity="0.5"></rect></svg>
-        <span style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Canopy</span>
+        ${trovMark(26)}
+        <span style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Trov</span>
       </div>
       <div${surface("padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center")}>
         <div class="cnpy-seal" style="width:52px;height:52px;border-radius:50%;border:1px solid var(--border-strong);display:grid;place-items:center;color:var(--accent)">

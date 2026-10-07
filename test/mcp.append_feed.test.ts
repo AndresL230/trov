@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import { all } from "../src/db";
 import type { FeedRow, NeedsTriageRow } from "@shared/rows";
 
@@ -14,7 +14,7 @@ const AUTHOR = "agent";
 // so prs/commits were silently dropped at the real call site. This drives the
 // registered tool end-to-end through the gate (audit F3).
 async function callTool(name: string, args: Record<string, unknown>): Promise<{ text: string; isError?: boolean }> {
-  const server = buildCanopyMcpServer(env as unknown as import("../src/env").Env, { handle: AUTHOR });
+  const server = buildTrovMcpServer(env as unknown as import("../src/env").Env, { handle: AUTHOR });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);

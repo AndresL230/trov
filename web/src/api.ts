@@ -449,7 +449,7 @@ export function moveTicket(id: number, to: TicketDetail["status"], afterId: numb
 export function toggleTicketAssignee(id: number, login: string, on: boolean): TicketWrite {
   return ticketWrite(`/tickets/${id}/assignees`, { login, on });
 }
-/** Edit the title and/or body — a mirrored ticket's too (Canopy's after import). */
+/** Edit the title and/or body — a mirrored ticket's too (Trov's after import). */
 export function editTicket(id: number, patch: { title?: string; body?: string }): TicketWrite {
   return ticketWrite(`/tickets/${id}/edit`, patch);
 }

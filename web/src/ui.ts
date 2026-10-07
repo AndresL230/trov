@@ -1,7 +1,7 @@
 // Shared presentational atoms for the componentized surfaces (Review /
 // Maintenance) and the render layer. Pure functions over props — no data,
 // no fetching, no state. Markup follows the app's template-string idiom:
-// inline styles over the canopy.css custom properties, interactions via
+// inline styles over the trov.css custom properties, interactions via
 // data-act / data-arg dispatched in main.ts.
 
 /** Escape text content for safe insertion into innerHTML. */
@@ -19,7 +19,7 @@ export function attr(v: string): string {
 export const MONO_LABEL =
   "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)";
 
-/** The surface card's class (canopy.css `.cnpy-surface`): background, hairline border, 10px
+/** The surface card's class (trov.css `.cnpy-surface`): background, hairline border, 10px
  *  radius and small shadow, defined ONCE there. */
 export const SURFACE = "cnpy-surface";
 
@@ -38,7 +38,7 @@ export function surface(style = "", opts: { hover?: boolean; cls?: string } = {}
  *  (`HITBOX`, position:relative) and this empty button, laid over the whole of it as its
  *  LAST child, is the card's own click target and focus stop (`label` its accessible name);
  *  every person button inside (people.ts's links, a linked avatar stack) sits above it
- *  (canopy.css). Last, so a card that lays out by `:nth-child` (the queue table's narrow
+ *  (trov.css). Last, so a card that lays out by `:nth-child` (the queue table's narrow
  *  reflow) counts the same children. */
 export function hitArea(act: string, arg: string, label: string): string {
   return `<button data-act="${attr(act)}" data-arg="${attr(arg)}" class="cnpy-hit" aria-label="${attr(label)}"></button>`;
@@ -47,7 +47,7 @@ export function hitArea(act: string, arg: string, label: string): string {
 export const HITBOX = "cnpy-hitbox";
 
 // ── two columns + a sticky aside (Roadmap › Narrative, Feed) ─────────────────
-// canopy.css `.cnpy-cols-page` / `.cnpy-cols` / `.cnpy-cols-aside`: the main column beside a
+// trov.css `.cnpy-cols-page` / `.cnpy-cols` / `.cnpy-cols-aside`: the main column beside a
 // 360px aside that sticks at the page's own top padding (--cols-pad-top), one column (aside below) under an 880px page.
 
 /** A page in two columns: `main` on the left, `aside` (its boxes) as the sticky right column.

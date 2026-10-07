@@ -25,7 +25,7 @@ describe("0032_ticket_source", () => {
     expect(row).toEqual({ source: "canopy", source_ref: null, source_author: null, source_updated_at: null });
   });
 
-  it("CHECK rejects a source outside canopy/github", async () => {
+  it("CHECK rejects a source outside trov/github", async () => {
     await expect(insertTicket({ source: "jira" })).rejects.toThrow();
     await expect(insertTicket({ source: "github", source_ref: "o/r#1" })).resolves.toBeTypeOf("number");
   });

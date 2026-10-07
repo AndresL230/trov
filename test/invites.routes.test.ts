@@ -12,58 +12,58 @@ const bodies = () => all<{ idempotency_key: string; to_address: string; subject:
 
 describe("renderInviteEmail", () => {
   it("names the inviter, the address, and links the Google sign-in with login_hint", () => {
-    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://canopy.test/auth/google/login?login_hint=priya.n%40gmail.com", host: "canopy.test" });
-    expect(m.subject).toBe("Andres invited you to Canopy");
+    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://trov.test/auth/google/login?login_hint=priya.n%40gmail.com", host: "trov.test" });
+    expect(m.subject).toBe("Andres invited you to Trov");
     expect(m.html).toContain("Hi Priya,");
-    expect(m.html).toContain('href="https://canopy.test/auth/google/login?login_hint=priya.n%40gmail.com"');
+    expect(m.html).toContain('href="https://trov.test/auth/google/login?login_hint=priya.n%40gmail.com"');
     expect(m.html).toContain("priya.n@gmail.com");
-    expect(m.text).toContain("https://canopy.test/auth/google/login?login_hint=priya.n%40gmail.com");
+    expect(m.text).toContain("https://trov.test/auth/google/login?login_hint=priya.n%40gmail.com");
     expect(m.html).not.toContain("Unsubscribe");
   });
 
-  it("carries the same Canopy banner as the digests: three-bar mark, no SVG, wordmark beside it", () => {
-    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://canopy.test/x", host: "canopy.test" });
+  it("carries the same Trov banner as the digests: the mark as table cells, no SVG, wordmark beside it", () => {
+    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://trov.test/x", host: "trov.test" });
     expect(m.html).not.toContain("<svg");
-    expect(m.html).toContain('data-mark="canopy"');
-    expect((m.html.match(/data-bar="/g) ?? []).length).toBe(3);
-    expect(m.html).toMatch(/data-mark="canopy"[\s\S]*?Canopy<\/(span|strong|td)>/);
+    expect(m.html).toContain('data-mark="trov"');
+    expect((m.html.match(/data-cell="on"/g) ?? []).length).toBe(5);
+    expect(m.html).toMatch(/data-mark="trov"[\s\S]*?Trov<\/(span|strong|td)>/);
   });
 
   it("opens with the editorial headline, above the greeting", () => {
-    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://canopy.test/x", host: "canopy.test" });
+    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://trov.test/x", host: "trov.test" });
     expect(m.html).toContain("You're invited to the Sapling team's shared workspace.");
     expect(m.html).toMatch(/font-size:26px/);
     expect(m.html.indexOf("You're invited to")).toBeLessThan(m.html.indexOf("Hi Priya,"));
   });
 
   it("centres the sign-in button in the card", () => {
-    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "p@x.com", signInUrl: "https://canopy.test/x", host: "canopy.test" });
-    expect(m.html).toMatch(/<div style="[^"]*text-align:center[^"]*"><a href="https:\/\/canopy\.test\/x"/);
+    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "p@x.com", signInUrl: "https://trov.test/x", host: "trov.test" });
+    expect(m.html).toMatch(/<div style="[^"]*text-align:center[^"]*"><a href="https:\/\/trov\.test\/x"/);
   });
 
-  it("says what Canopy actually is — an invitee has no other way to know", () => {
-    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "p@x.com", signInUrl: "https://canopy.test/x", host: "canopy.test" });
+  it("says what Trov actually is — an invitee has no other way to know", () => {
+    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "p@x.com", signInUrl: "https://trov.test/x", host: "trov.test" });
     expect(m.html).toContain("shared memory");
     expect(m.text).toContain("shared memory");
   });
 
-  it("lands on Canopy's own sign-in screen, not Google's account chooser", () => {
-    expect(inviteSignInUrl("https://canopy.test")).toBe("https://canopy.test/");
-    const m = renderInviteEmail({ inviteeName: null, inviterName: "Andres", email: "p@x.com", signInUrl: inviteSignInUrl("https://canopy.test"), host: "canopy.test" });
-    expect(m.html).toContain('href="https://canopy.test/"');
+  it("lands on Trov's own sign-in screen, not Google's account chooser", () => {
+    expect(inviteSignInUrl("https://trov.test")).toBe("https://trov.test/");
+    const m = renderInviteEmail({ inviteeName: null, inviterName: "Andres", email: "p@x.com", signInUrl: inviteSignInUrl("https://trov.test"), host: "trov.test" });
+    expect(m.html).toContain('href="https://trov.test/"');
     expect(m.html).not.toContain("accounts.google.com");
     expect(m.html).not.toContain("login_hint");
-    expect(m.text).toContain("https://canopy.test/");
+    expect(m.text).toContain("https://trov.test/");
   });
 
   it("carries that headline into the plain-text part too", () => {
-    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://canopy.test/x", host: "canopy.test" });
+    const m = renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://trov.test/x", host: "trov.test" });
     expect(m.text).toContain("You're invited to the Sapling team's shared workspace.");
   });
 
   it("centres that banner the way the digest shell does", () => {
-    const m = renderInviteEmail({ inviteeName: null, inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://canopy.test/x", host: "canopy.test" });
-    expect(m.html).toMatch(/<td[^>]*text-align:center[^>]*>[\s\S]*?<table[^>]*align="center"[^>]*>[\s\S]*?data-mark="canopy"/);
+    const m = renderInviteEmail({ inviteeName: null, inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://trov.test/x", host: "trov.test" });
+    expect(m.html).toMatch(/<td[^>]*text-align:center[^>]*>[\s\S]*?<table[^>]*align="center"[^>]*>[\s\S]*?data-mark="trov"/);
   });
 });
 
@@ -82,7 +82,7 @@ describe("/invites (admin, session-cookie)", () => {
     const rows = await bodies();
     expect(rows).toHaveLength(1);
     expect(rows[0].to_address).toBe("priya.n@gmail.com");
-    expect(rows[0].subject).toBe("Admin invited you to Canopy");
+    expect(rows[0].subject).toBe("Admin invited you to Trov");
     expect(rows[0].idempotency_key).toMatch(/^invite:priya\.n@gmail\.com:/);
     const inv = (await first<InviteRow>(env.DB, `SELECT * FROM invites WHERE email = 'priya.n@gmail.com'`))!;
     expect(inv.email_sent_at).toBeTruthy(); expect(inv.email_error).toBeNull();

@@ -27,7 +27,7 @@ function prEvent(number: number, occurredAt: string, title: string): CapturedEve
     raw: JSON.stringify({ pr: { number, title, body: "b", html_url: `https://github.com/o/r/pull/${number}`, merged: true, merged_at: occurredAt, user: { login: LOGIN }, base: { ref: "main" } } }),
   };
 }
-// `milestone` here is GitHub's own key — not Canopy vocabulary (a payload literal).
+// `milestone` here is GitHub's own key — not Trov vocabulary (a payload literal).
 function issueEvent(number: number, title: string, extra: { labels?: string[]; milestone?: { number?: number; title: string; due_on: string | null } | null } = {}): CapturedEvent {
   return {
     semantic_key: `gh:issue:${number}:open:${IN_WINDOW}`, event_type: "issue", ref_number: number, subject_login: LOGIN, provenance: "webhook", occurred_at: IN_WINDOW,
@@ -74,7 +74,7 @@ describe("My Work items (ledger layout)", () => {
   });
 
   it("renders an assigned issue as a card: Summary / Sprint · due / Next step rows, priority chip and label chips", async () => {
-    // `milestone` is GitHub's own key — not Canopy vocabulary (a payload literal).
+    // `milestone` is GitHub's own key — not Trov vocabulary (a payload literal).
     await ingestEvent(env.DB, issueEvent(20, "[P1] Fix the gate", { labels: ["bug", "gate", "urgent", "fourth"], milestone: { title: "Launch", due_on: "2026-09-20" } }), "github-webhook");
     await storeIssueSummary(env.DB, issueStub({ title: "Fix the gate", summary: "The gate drops items", next_step: "Add the missing branch" }), { issue_number: 20, title: "[P1] Fix the gate", body: "b" });
     const s = (await kind().render(env.DB, LOGIN, WINDOW))!;

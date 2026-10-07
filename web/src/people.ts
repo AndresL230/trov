@@ -124,7 +124,7 @@ export function onboardView(o: OnboardState): string {
   const input = "flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--fg);font-size:14px;padding:11px 12px";
   return `<div class="cnpy-authwrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px"><div style="width:100%;max-width:520px">
     <div style="margin-bottom:26px">
-      <div style="font-family:var(--label);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">Welcome to Canopy · one step</div>
+      <div style="font-family:var(--label);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">Welcome to Trov · one step</div>
       <h1 style="font-size:22px;font-weight:600;letter-spacing:-0.02em;margin:0 0 6px">Choose how you'll appear.</h1>
       <p style="font-size:14px;color:var(--fg-70);margin:0;line-height:1.55">Your handle is how work gets attributed to you, in the feed, in decisions, in My Work. You can change it later in Settings. Your color can too.</p>
     </div>
@@ -140,7 +140,7 @@ export function onboardView(o: OnboardState): string {
       ${o.error ? `<div style="font-size:12.5px;color:var(--red)">${esc(o.error)}</div>` : ""}
       <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
         <div style="font-size:12px;color:var(--fg-40)">${signedAs}</div>
-        <button data-act="onbSubmit" class="cnpy-accentbtn" ${canSubmit ? "" : "disabled "}style="padding:11px 20px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600;${canSubmit ? "" : "opacity:.45;cursor:default"}">${o.submitting ? "Entering…" : "Enter Canopy"}</button>
+        <button data-act="onbSubmit" class="cnpy-accentbtn" ${canSubmit ? "" : "disabled "}style="padding:11px 20px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600;${canSubmit ? "" : "opacity:.45;cursor:default"}">${o.submitting ? "Entering…" : "Enter Trov"}</button>
       </div>
     </div>
   </div></div>`;

@@ -1,5 +1,5 @@
 /**
- * Email shell follows the site theme (light tokens from web/src/canopy.css,
+ * Email shell follows the site theme (light tokens from web/src/trov.css,
  * flattened to hex, with a prefers-color-scheme dark swap). The Helvetica /
  * #00A859 / #f2f2f2 look from the original email mockup is gone.
  */
@@ -10,7 +10,7 @@ import { sampleSections } from "../src/notifications/sample";
 
 const window = { cadence: "daily" as const, id: "2026-09-13", start: new Date("2026-09-12T12:00:00Z"), end: new Date("2026-09-13T12:00:00Z") };
 const msg = () =>
-  assembleMessage({ sections: sampleSections(), window, timeZone: "America/New_York", origin: "https://canopy.example", login: "andres", unsubscribeUrl: "https://canopy.example/u/x.y" });
+  assembleMessage({ sections: sampleSections(), window, timeZone: "America/New_York", origin: "https://trov.example", login: "andres", unsubscribeUrl: "https://trov.example/u/x.y" });
 
 describe("email shell — site theming", () => {
   it("paints the light palette: cream ground, cream card, olive accent, warm ink", () => {
@@ -45,13 +45,13 @@ describe("email shell — site theming", () => {
 
   it("keeps every section, its deep link and the unsubscribe link", () => {
     const { html, text, subject } = msg();
-    expect(subject).toBe("Canopy daily, Sep 13");
+    expect(subject).toBe("Trov daily, Sep 13");
     for (const s of sampleSections()) {
       expect(html).toContain(s.heading);
-      expect(html).toContain(`https://canopy.example${s.deepLink}`);
+      expect(html).toContain(`https://trov.example${s.deepLink}`);
     }
-    expect(html).toContain("https://canopy.example/u/x.y");
-    expect(text).toContain("Unsubscribe: https://canopy.example/u/x.y");
+    expect(html).toContain("https://trov.example/u/x.y");
+    expect(text).toContain("Unsubscribe: https://trov.example/u/x.y");
   });
 
   it("section renderers no longer carry hardcoded mockup greys", () => {
@@ -61,18 +61,18 @@ describe("email shell — site theming", () => {
   });
 });
 
-describe("email header — Canopy branding", () => {
-  it("renders the three-bar mark as HTML blocks (no SVG) with the wordmark beside it", () => {
+describe("email header — Trov branding", () => {
+  it("renders the Trov mark as table cells (no SVG) with the wordmark beside it", () => {
     const { html } = msg();
     expect(html).not.toContain("<svg");
-    expect(html).toContain('data-mark="canopy"');
-    expect((html.match(/data-bar="/g) ?? []).length).toBe(3);
-    expect(html).toMatch(/data-mark="canopy"[\s\S]*?Canopy<\/(span|strong|td)>/);
+    expect(html).toContain('data-mark="trov"');
+    expect((html.match(/data-cell="on"/g) ?? []).length).toBe(5);
+    expect(html).toMatch(/data-mark="trov"[\s\S]*?Trov<\/(span|strong|td)>/);
   });
 
   it("centres the header block: the mark table is align=center inside a text-align:center cell", () => {
     const { html } = msg();
-    expect(html).toMatch(/<td[^>]*text-align:center[^>]*>[\s\S]*?<table[^>]*align="center"[^>]*>[\s\S]*?data-mark="canopy"/);
+    expect(html).toMatch(/<td[^>]*text-align:center[^>]*>[\s\S]*?<table[^>]*align="center"[^>]*>[\s\S]*?data-mark="trov"/);
   });
 
   it("names the cadence under the wordmark: 'Daily digest · Sep 13'", () => {
@@ -133,7 +133,7 @@ describe("email spacing — 8pt grid with a 4pt sub-grid", () => {
 });
 
 describe("email shell — width", () => {
-  const invite = () => renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "p@example.com", signInUrl: "https://canopy.example/x", host: "canopy.example" }).html;
+  const invite = () => renderInviteEmail({ inviteeName: "Priya", inviterName: "Andres", email: "p@example.com", signInUrl: "https://trov.example/x", host: "trov.example" }).html;
 
   it("gives the card more room than the stock 600px, on both the attribute and the style", () => {
     expect(EMAIL_WIDTH).toBeGreaterThan(600);
@@ -143,7 +143,7 @@ describe("email shell — width", () => {
     expect(html).not.toContain('width="600"');
   });
 
-  it("uses that one width for the invite too, so every Canopy email is the same shell", () => {
+  it("uses that one width for the invite too, so every Trov email is the same shell", () => {
     expect(invite()).toContain(`width="${EMAIL_WIDTH}"`);
     expect(invite()).toContain(`width:${EMAIL_WIDTH}px;max-width:100%`);
   });
@@ -165,12 +165,12 @@ describe("email banner — the brand band", () => {
   });
 
   it("inverts the wordmark to white — on an accent field the ink tokens would sink into it", () => {
-    expect(emailBanner()).toMatch(/color:#ffffff[^"]*">Canopy<\/td>/);
+    expect(emailBanner()).toMatch(/color:#ffffff[^"]*">Trov<\/td>/);
   });
 
   it("drops the accent-coloured bar: it would vanish against an accent band", () => {
-    expect(emailBanner()).not.toMatch(/data-bar="[0-9]"[^>]*background-color:#8a9a5b/);
-    expect((emailBanner().match(/data-bar="/g) ?? []).length).toBe(3);
+    expect(emailBanner()).not.toMatch(/data-cell="on"[^>]*background-color:#8a9a5b/);
+    expect((emailBanner().match(/data-cell="on"/g) ?? []).length).toBe(5);
   });
 
   it("uses literal whites on the band, never theme tokens the dark swap would flip into the olive", () => {

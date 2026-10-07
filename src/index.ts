@@ -20,7 +20,7 @@ export default {
     const url = new URL(request.url);
     // Static assets are served by the assets binding before this handler runs.
     if (url.pathname === "/mcp") {
-      // Bearer class: a pasted `canopy_mcp_` token or an OAuth access token. The 401
+      // Bearer class: a pasted `trov_mcp_` (or legacy `canopy_mcp_`) token or an OAuth access token. The 401
       // points MCP clients at the OAuth metadata (RFC 9728) so Claude Code / claude.ai
       // can sign the person in; `error="invalid_token"` when a token was presented.
       const principal = await resolveBearerPrincipal(request, env);

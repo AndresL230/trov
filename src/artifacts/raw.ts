@@ -1,6 +1,6 @@
 // The raw route (issue #52 · Track B; spec:
 // docs/superpowers/specs/2026-09-24-artifacts-implementation.md): the bytes of one
-// artifact version, served from Canopy's own origin — which is why every response is
+// artifact version, served from Trov's own origin — which is why every response is
 // locked down. Mounted at `/raw/a` in src/routes.ts, behind `sessionGate`.
 //
 //   GET /raw/a/:slug          the latest version
@@ -19,7 +19,7 @@
 // opaque origin despite being served from this one.
 //
 // HTML (inline only) gets a small script injected before `</body>` (appended when there
-// is none) that posts `{ type: "canopy:height", height }` to the parent whenever the
+// is none) that posts `{ type: "trov:height", height }` to the parent whenever the
 // document resizes, so the viewer can size its iframe. A download is the stored bytes,
 // untouched.
 //
@@ -37,7 +37,7 @@ export const RAW_CSP_ACTIVE =
   "style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; " +
   "img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; " +
   // `sandbox` in the CSP itself: a raw html/svg opened TOP-LEVEL ("Open in new tab", a pasted
-  // link) runs at an opaque origin, never Canopy's — the iframe's sandbox attribute only
+  // link) runs at an opaque origin, never Trov's — the iframe's sandbox attribute only
   // covers the framed case (Track E, 2026-09-24).
   "sandbox allow-scripts";
 export const RAW_CSP_PASSIVE = "default-src 'none'; frame-ancestors 'self'";
@@ -54,7 +54,7 @@ const baseHeaders = (kind: ArtifactKind | null): Record<string, string> => ({
 
 /** Injected into inline HTML: report the document height to the embedding viewer. */
 export const HEIGHT_SCRIPT =
-  `<script>(function(){function s(){try{parent.postMessage({type:"canopy:height",height:document.documentElement.scrollHeight},"*")}catch(e){}}` +
+  `<script>(function(){function s(){try{parent.postMessage({type:"trov:height",height:document.documentElement.scrollHeight},"*")}catch(e){}}` +
   `try{new ResizeObserver(s).observe(document.documentElement)}catch(e){}addEventListener("load",s);s()})();</script>`;
 
 /** `html` with `HEIGHT_SCRIPT` before its LAST `</body>`, or appended when there is none. */

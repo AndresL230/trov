@@ -198,7 +198,7 @@ describe("sidebar — the Tickets entry (design call #2)", () => {
   });
 
   // The badge is ALWAYS emitted (the rail is patched in place, so its structure
-  // never changes); `data-n="0"` is what canopy.css hides.
+  // never changes); `data-n="0"` is what trov.css hides.
   const ticketsRow = (html: string): string => html.slice(html.indexOf("cnpy-navrow n-tickets"), html.indexOf("cnpy-navrow n-roadmap"));
 
   it("hides the badge at 0 and shows the count in an accent pill above it", () => {
@@ -551,7 +551,7 @@ describe("tickets — cards are the shared surface", () => {
     expect(html).toContain('class="cnpy-thead"');
     expect(html).toMatch(/class="cnpy-thead" style="[^"]*padding:14px 20px 10px/);
     expect(html).toMatch(/class="cnpy-tgrp" style="[^"]*padding:18px 20px 6px/);
-    expect(html).toContain("cnpy-stagger cnpy-tgroup"); // canopy.css draws the one hairline between groups
+    expect(html).toContain("cnpy-stagger cnpy-tgroup"); // trov.css draws the one hairline between groups
     // Only the status pill is boxed; category and priority are plain text.
     const row = html.slice(html.indexOf('class="cnpy-trow'), html.indexOf('class="cnpy-hit"', html.indexOf('class="cnpy-trow')));
     expect((row.match(/border:1px solid/g) ?? []).length).toBe(1);
@@ -1150,10 +1150,10 @@ describe("ticketDetailView — the @mention picker", () => {
   });
 });
 
-// ── the hover layer (canopy.css) ─────────────────────────────────────────────
+// ── the hover layer (trov.css) ─────────────────────────────────────────────
 // Inline styles cannot express `:hover`, so every row/chip/segment we added has
 // to carry the shared class that CAN. These assert the hook is on the markup;
-// the rules themselves live in web/src/canopy.css.
+// the rules themselves live in web/src/trov.css.
 
 describe("hover classes — menu rows, pick chips, segments", () => {
   const s12 = sprint({ id: 12, label: "Sprint 12" });

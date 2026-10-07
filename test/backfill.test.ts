@@ -49,7 +49,7 @@ const mergedPr = {
   closed_at: threeDaysAgo,
   updated_at: threeDaysAgo,
   user: { login: "octocat" },
-  milestone: null, // GitHub's own key — not Canopy vocabulary
+  milestone: null, // GitHub's own key — not Trov vocabulary
 };
 const olderPr = {
   number: 5,
@@ -60,7 +60,7 @@ const olderPr = {
   closed_at: twentyDaysAgo,
   updated_at: twentyDaysAgo, // older than the old 14-day window — now included too (full history, no cutoff)
   user: { login: "octocat" },
-  milestone: null, // GitHub's own key — not Canopy vocabulary
+  milestone: null, // GitHub's own key — not Trov vocabulary
 };
 const openIssue = {
   number: 20,
@@ -72,7 +72,7 @@ const openIssue = {
   user: { login: "octocat" },
   assignees: [{ login: "octocat" }], // has an assignee → "assigned"
   labels: ["bug"],
-  milestone: null, // GitHub's own key — not Canopy vocabulary
+  milestone: null, // GitHub's own key — not Trov vocabulary
 };
 const prAsIssue = {
   number: 21,
@@ -84,7 +84,7 @@ const prAsIssue = {
   pull_request: { url: "https://api.github.com/repos/o/r/pulls/21" }, // → skipped
   assignees: [],
   labels: [],
-  milestone: null, // GitHub's own key — not Canopy vocabulary
+  milestone: null, // GitHub's own key — not Trov vocabulary
 };
 
 const unassignedIssue = {
@@ -96,7 +96,7 @@ const unassignedIssue = {
   user: { login: "octocat" },
   assignees: [], // no assignee → "opened", never summarized
   labels: [],
-  milestone: null, // GitHub's own key — not Canopy vocabulary
+  milestone: null, // GitHub's own key — not Trov vocabulary
   body: "Nobody has looked at this yet.",
 };
 
@@ -110,7 +110,7 @@ function makePr(number: number): typeof mergedPr {
     closed_at: threeDaysAgo,
     updated_at: threeDaysAgo,
     user: { login: "octocat" },
-    milestone: null, // GitHub's own key — not Canopy vocabulary
+    milestone: null, // GitHub's own key — not Trov vocabulary
   };
 }
 const prA = makePr(100);

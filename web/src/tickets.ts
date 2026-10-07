@@ -3,7 +3,7 @@
 //
 // Every function here is PURELY presentational: data arrives through props and
 // renders to an HTML string in the app's template-string idiom (inline styles
-// over the canopy.css custom properties). Interactions dispatch via
+// over the trov.css custom properties). Interactions dispatch via
 // data-act / data-arg, handled in main.ts. No fetching, no state, no inline data
 // — same contract as review.ts / maintenance.ts.
 //
@@ -122,7 +122,7 @@ function personName(persons: PersonSummary[], handle: string, label: string, sty
 const firstNameOf = (persons: PersonSummary[], handle: string): string => nameOf(persons, handle).split(" ")[0];
 
 /** Avatar row — the design's `asgAvs` (-7px overlap, ring in the page background). The
- *  corners layer in canopy.css lays them side by side instead (`.cnpy-avstack`). `linked`:
+ *  corners layer in trov.css lays them side by side instead (`.cnpy-avstack`). `linked`:
  *  each known person's photo is its own button to their card — for a stack that is not
  *  itself inside a button (a `hitArea` card, the sprint card); an unknown handle stays plain. */
 export function avatarStack(handles: string[], persons: PersonSummary[], size = 20, linked = false): string {
@@ -150,7 +150,7 @@ export const SEG_STATUSES: Record<TicketSeg, TicketStatus[]> = {
 export function needsAttention(t: { assignees: string[]; status: TicketStatus }): boolean {
   return t.assignees.length === 0 && t.status === "submitted";
 }
-/** The marker is the faint fill ALONE — `.cnpy-attn` in canopy.css, kept there
+/** The marker is the faint fill ALONE — `.cnpy-attn` in trov.css, kept there
  *  rather than inline so `.cnpy-trow:hover` (class + pseudo-class) still outranks
  *  it and a needs-attention row keeps its hover background. The 2px inset left
  *  rule this used to carry inline was dropped at the owner's request: the fill
@@ -159,7 +159,7 @@ const NEEDS_ATTENTION_CLASS = " cnpy-attn";
 
 const chipStyle = (on: boolean) =>
   `padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid ${on ? "var(--accent);color:var(--accent);background:var(--accent-soft)" : "var(--border);color:var(--fg-55);background:transparent"}`;
-/** The hover layer's hook for the chip pick idiom (canopy.css). The state above
+/** The hover layer's hook for the chip pick idiom (trov.css). The state above
  *  is painted inline, so `is-on` is what tells the hover rule which chips to leave
  *  alone — an unpicked one firms its border, the current pick keeps its accent.
  *  (Segments are the shared `segmented()` switch.) */
@@ -393,7 +393,7 @@ function tableView(p: QueueProps): string {
   const head = `<div class="cnpy-thead" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;padding:14px 20px 10px;border-bottom:1px solid var(--border);font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">
     <div>TITLE</div><div>OPENED BY</div><div>CATEGORY</div><div>PRIORITY</div><div>STATUS</div><div>ASSIGNEE</div><div style="text-align:right">AGE</div>
   </div>`;
-  // Each group is a `.cnpy-tgroup`; canopy.css draws the ONE hairline between groups.
+  // Each group is a `.cnpy-tgroup`; trov.css draws the ONE hairline between groups.
   const groups = queueGroups(p.tickets, p.sprints)
     .map((g) => `<div class="cnpy-stagger cnpy-tgroup">${groupHeader(g)}${g.rows.map((t) => tableRow(t, p.persons)).join("")}</div>`)
     .join("");
@@ -403,7 +403,7 @@ function tableView(p: QueueProps): string {
   // The table is ONE surface with 20px sides; rows carry no dividers (a hairline
   // separates sprint groups), and a row's hover fill runs to the surface's edges
   // (overflow clips the corners). Narrow
-  // (`.cnpy-ttable`, a container query in canopy.css) each row reflows into a small card.
+  // (`.cnpy-ttable`, a container query in trov.css) each row reflows into a small card.
   return `<div${surface("margin-top:8px;overflow:hidden", { cls: "cnpy-ttable" })}>${head}${groups}${empty}</div>`;
 }
 
@@ -465,7 +465,7 @@ function boardView(p: QueueProps, rows: TicketListItem[]): string {
     </div>`;
   }).join("");
   // `.cnpy-board`: under a tablet's width the columns keep a readable width and the board
-  // scrolls sideways inside itself, a column per snap (canopy.css).
+  // scrolls sideways inside itself, a column per snap (trov.css).
   return `<div class="cnpy-board" style="display:grid;gap:14px;align-items:stretch;margin-top:12px;min-height:calc(100vh - 190px);grid-template-columns:repeat(${Math.max(statuses.length, 1)},minmax(0,1fr))">${cols}</div>`;
 }
 
@@ -1001,7 +1001,7 @@ function relationsRail(p: TicketDetailProps): string {
 const PENCIL_SVG = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.4 2.6a2.1 2.1 0 0 1 3 3L12 15l-4 1 1-4z"></path><path d="M20 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5"></path></svg>`;
 
 /** The title/description editor. Works the same on a mirrored ticket: its title
- *  and body were copied from the GitHub issue at import and are Canopy's now. */
+ *  and body were copied from the GitHub issue at import and are Trov's now. */
 function editBlock(e: { title: string; body: string }): string {
   const canSave = e.title.trim().length > 0;
   return `<div style="display:flex;flex-direction:column;gap:10px;margin:0 0 22px">

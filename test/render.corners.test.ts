@@ -1,14 +1,14 @@
 /**
- * Canopy's corners are tighter than the design file's: ONE block at the end of
- * web/src/canopy.css shrinks every radius by one factor, --corner-scale. It has to
+ * Trov's corners are tighter than the design file's: ONE block at the end of
+ * web/src/trov.css shrinks every radius by one factor, --corner-scale. It has to
  * use !important and key inline radii by value, because nearly every radius in the
  * app is an INLINE style — so a radius nobody gave a rule silently renders square.
  * These tests pin the block's shape and that every radius in use has a rule.
  */
 import { describe, it, expect } from "vitest";
-import css from "../web/src/canopy.css?raw";
+import css from "../web/src/trov.css?raw";
 
-describe("corners — the tightened-radius layer (web/src/canopy.css)", () => {
+describe("corners — the tightened-radius layer (web/src/trov.css)", () => {
   // The block from its header on, comments stripped.
   const block = css.slice(css.indexOf("/* ── corners: tightened")).replace(/\/\*[\s\S]*?\*\//g, "");
   const design = css.slice(0, css.indexOf("/* ── corners: tightened")).replace(/\/\*[\s\S]*?\*\//g, "");
@@ -32,7 +32,7 @@ describe("corners — the tightened-radius layer (web/src/canopy.css)", () => {
     }
   });
 
-  it("has a rule for every class in canopy.css that declares a radius", () => {
+  it("has a rule for every class in trov.css that declares a radius", () => {
     for (const m of design.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
       const radius = m[2].match(/border-radius:\s*([^;]+)/)?.[1].trim();
       if (!radius || radius === "0" || radius === "inherit") continue;

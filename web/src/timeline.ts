@@ -27,7 +27,7 @@
 // Everything is positioned in PERCENT of the track, so the graph fits its card
 // at any width instead of scrolling; the popover is clamped to the track
 // (`left: clamp(…)`) and the lower half of the rows open it upward, so it never
-// runs off the graph's edge. The narrow layout is a container query in canopy.css.
+// runs off the graph's edge. The narrow layout is a container query in trov.css.
 //
 // ── What each date is, and the fallbacks (nothing here is invented) ──────────
 // • END   = `due` (YYYY-MM-DD), inclusive — the bar runs to the end of that day.

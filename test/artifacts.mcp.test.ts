@@ -1,12 +1,12 @@
 // The artifact MCP surface (issue #52 · Track C). Every test drives the REAL
-// registered closures (buildCanopyMcpServer over an in-memory transport), never the
+// registered closures (buildTrovMcpServer over an in-memory transport), never the
 // adapter functions directly — so a missing/renamed registration is a failure.
 
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { buildCanopyMcpServer } from "../src/mcp";
+import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { all, run, nowIso } from "../src/db";
 import { consumeUploadToken, createPage, sha256Hex, mintUploadToken } from "../src/tools/artifacts";
@@ -18,13 +18,13 @@ import { ARTIFACT_INLINE_MAX } from "@shared/artifacts";
 const ME = "arti-author";
 const YOU = "arti-teammate";
 const ADMIN = "admin-user"; // the one ADMIN_LOGINS handle in vitest.config.ts
-const ORIGIN = "https://canopy.test"; // PUBLIC_ORIGIN in vitest.config.ts
+const ORIGIN = "https://trov.test"; // PUBLIC_ORIGIN in vitest.config.ts
 
 type ToolRes = { content: Array<{ type: string; text: string }>; isError?: boolean };
 
 async function withClient<T>(handle: string, fn: (c: Client) => Promise<T>, e: Env = env as unknown as Env, origin?: string): Promise<T> {
   await seedPerson(handle);
-  const server = buildCanopyMcpServer(e, { handle }, { origin });
+  const server = buildTrovMcpServer(e, { handle }, { origin });
   const client = new Client({ name: "test", version: "1.0.0" });
   const [ct, st] = InMemoryTransport.createLinkedPair();
   await server.connect(st);
@@ -192,7 +192,7 @@ describe("artifact_get / query — big text is not inlined", () => {
     expect(g.body.content_omitted).toBe(true);
     expect(g.body.size_bytes).toBe(new TextEncoder().encode(big).length);
     expect(g.body.sha256).toBe(await sha256Hex(new TextEncoder().encode(big)));
-    expect(g.body.download_url).toMatch(/^https:\/\/canopy\.test\/api\/artifacts\/download\//);
+    expect(g.body.download_url).toMatch(/^https:\/\/trov\.test\/api\/artifacts\/download\//);
     expect(g.text.length).toBeLessThan(ARTIFACT_INLINE_MAX);
   });
 
@@ -278,7 +278,7 @@ describe("binary artifacts — the upload_url flow", () => {
     expect(r.isError).toBe(false);
     expect(Object.keys(r.body).sort()).toEqual(["expires_at", "id", "slug", "upload_url", "url", "warnings"]);
     expect(r.body.slug).toBe("threat-model");
-    expect(r.body.upload_url).toMatch(/^https:\/\/canopy\.test\/api\/artifacts\/upload\/[A-Za-z0-9_-]{43}$/);
+    expect(r.body.upload_url).toMatch(/^https:\/\/trov\.test\/api\/artifacts\/upload\/[A-Za-z0-9_-]{43}$/);
     expect(r.body.warnings).toEqual([]);
     const ttl = Date.parse(r.body.expires_at) - Date.now();
     expect(ttl).toBeGreaterThan(4 * 60_000);
@@ -314,7 +314,7 @@ describe("binary artifacts — the upload_url flow", () => {
     const noType = await call(YOU, "artifact_update", { slug: "logo", size_bytes: 13, sha256: "b".repeat(64), summary: "v2" });
     expect(noType.body.code).toBe("bad_request"); // an image needs a type (or a filename to infer it from)
     const r = await call(YOU, "artifact_update", { slug: "logo", size_bytes: 13, sha256: "b".repeat(64), filename: "logo-v2.png", summary: "v2" });
-    expect(r.body.upload_url).toMatch(/^https:\/\/canopy\.test\/api\/artifacts\/upload\//);
+    expect(r.body.upload_url).toMatch(/^https:\/\/trov\.test\/api\/artifacts\/upload\//);
     expect((await call(YOU, "artifact_update", { slug: "logo", content: "x", summary: "s" })).body.code).toBe("bad_request");
     expect((await call(YOU, "artifact_update", { slug: "logo", summary: "s" })).body.code).toBe("bad_request");
   });

@@ -49,7 +49,7 @@ export default defineConfig({
           RAILWAY_TOKEN_STAGING: "",
           RAILWAY_TOKEN_PRODUCTION: "",
           SAPLING_METRICS_TOKEN: "",
-          PUBLIC_ORIGIN: "https://canopy.test",
+          PUBLIC_ORIGIN: "https://trov.test",
         },
       },
     })),
@@ -60,7 +60,7 @@ export default defineConfig({
     // carries its own copy of test/ and must not be discovered from here.
     exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/**", "**/.wrangler/**"],
     // Vitest stubs every CSS import to "" unless it is listed here; the app stylesheet is
-    // listed so a test can read it as text (`canopy.css?raw` — the corners layer is pinned).
-    css: { include: [/web\/src\/canopy\.css/] },
+    // listed so a test can read it as text (`trov.css?raw` — the corners layer is pinned).
+    css: { include: [/web\/src\/trov\.css/] },
   },
 });

@@ -1,7 +1,7 @@
 // ── Landing motion: the DOM half of the landing's choreography ───────────────
 // landing.ts renders every revealable element with `data-rv`, hidden. This
 // module plays each one (`is-play`) as it scrolls into view — the CSS in
-// canopy.css runs the rest — and records its key in the caller's `seen` set,
+// trov.css runs the rest — and records its key in the caller's `seen` set,
 // which landing.ts reads so a rerender renders it settled instead of replaying.
 // Reduced motion: everything settles immediately, nothing is observed.
 

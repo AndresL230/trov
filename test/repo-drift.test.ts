@@ -50,7 +50,7 @@ describe("refreshDrift", () => {
     await refreshDrift(env.DB, { token: "t", repo: "o/r", fetchImpl }, ENVS);
     const snap = await getSnapshot<RepoDrift>(env.DB, "drift");
     expect(snap?.data.groups).toHaveLength(120);
-    // Groups are newest PR number first, and the one PR Canopy knows about
+    // Groups are newest PR number first, and the one PR Trov knows about
     // carries its captured title/author — proof every chunk was queried.
     expect(snap?.data.groups[0]).toMatchObject({ tag: "#219", title: "The hundred-and-twentieth", meta: "meilin · 1 commit" });
     expect(snap?.data.groups[119]).toMatchObject({ tag: "#100", title: "change 100 (#100)" });

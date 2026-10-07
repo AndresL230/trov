@@ -37,7 +37,7 @@ import type { Env } from "../env";
 
 export const DOWNLOAD_PREFIX = "/api/artifacts/download/";
 /** Domain separation: the download key is HMAC(COOKIE_SECRET, PURPOSE), never COOKIE_SECRET itself. */
-const PURPOSE = "canopy/artifact-download/v1";
+const PURPOSE = "trov/artifact-download/v1";
 /** `<claims>.<sig>` — base64url, the signature exactly 32 bytes (43 chars). */
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,512}\.[A-Za-z0-9_-]{43}$/;
 

@@ -1,19 +1,19 @@
 // ── Lightbox: click a screenshot to see it at a size worth reading ───────────
 // Ported from Sapling's companion Lightbox (frontend/src/components/companion/
 // Lightbox.tsx): the same backdrop, panel, contain-never-cover image, caption
-// block, inset close button, keyframe entrance and timed exit. Canopy's deltas:
+// block, inset close button, keyframe entrance and timed exit. Trov's deltas:
 //   • Vanilla DOM on <body>, OUTSIDE the app root: rerender() swaps the app
 //     wholesale, and an overlay inside it would vanish on the next background load.
 //     The root carries the app's own `data-cnpy-theme`, so the palette tokens and
-//     the corners layer (canopy.css) apply to it exactly as to the app — every
+//     the corners layer (trov.css) apply to it exactly as to the app — every
 //     radius renders at --corner-scale, and the round close button becomes the
 //     app's small rounded square.
-//   • Canopy's type (Geist / Archivo Narrow), not the companion serif.
+//   • Trov's type (Geist / Archivo Narrow), not the companion serif.
 // Everything modal is here too: scroll lock on the element that actually scrolls
 // (#cnpy-main, longhands only, so its inline overflow-y round-trips), Escape, focus
 // kept inside, and focus returned to whatever opened it.
 
-/** Exit animation length. MUST match .cnpy-lightbox--closing in canopy.css. */
+/** Exit animation length. MUST match .cnpy-lightbox--closing in trov.css. */
 const EXIT_MS = 180;
 
 export interface LightboxOptions {

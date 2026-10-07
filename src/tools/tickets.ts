@@ -256,7 +256,7 @@ export async function remove_ticket_link(db: DB, id: number, linkId: number): Pr
 /**
  * Edit a ticket's title and/or body — native AND mirrored tickets alike: a
  * mirrored ticket's title and body are seeded from the issue at import and are
- * Canopy's from then on (the mirror never writes them again). A patch that
+ * Trov's from then on (the mirror never writes them again). A patch that
  * changes neither is `bad_request`; a title must survive trimming. No history
  * row — `ticket_events` audits status moves only. The tickets_fts_au trigger
  * re-indexes the new text.

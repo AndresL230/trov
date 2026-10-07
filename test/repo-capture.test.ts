@@ -130,7 +130,7 @@ describe("metricsFromStatus", () => {
   const status = (context: string, description: string, branch = "main") =>
     ({ sha: "abc", context, description, state: "success", updated_at: "2026-09-20T09:30:00Z", branches: [{ name: branch }] });
 
-  it("reads the three canopy contexts as numbers", () => {
+  it("reads the three trov contexts as numbers", () => {
     expect(metricsFromStatus(status("canopy/coverage", "78.4"), ENVS).metrics).toEqual([{ metric: "coverage", env: "", part: "", value: 78.4, at: "2026-09-20T09:30:00Z" }]);
     expect(metricsFromStatus(status("canopy/bundle-kb", "412"), ENVS).metrics[0]).toMatchObject({ metric: "bundle_kb", value: 412 });
     expect(metricsFromStatus(status("canopy/todo", "43"), ENVS).metrics[0]).toMatchObject({ metric: "todo_count", value: 43 });

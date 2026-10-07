@@ -53,7 +53,7 @@ function ver(n: number, over: Partial<ArtifactVersionDTO> = {}): ArtifactVersion
 }
 function summary(slug: string, over: Partial<ArtifactSummaryDTO> = {}): ArtifactSummaryDTO {
   return {
-    id: 1, slug, title: slug.replace(/-/g, " "), kind: "html", area: "ui", repo: "SaplingLearn/canopy", author_id: "AndresL230",
+    id: 1, slug, title: slug.replace(/-/g, " "), kind: "html", area: "ui", repo: "AndresL230/trov", author_id: "AndresL230",
     status: "published", visibility: "org", current_version: 1, updated_at: T0, published_at: T0, size_bytes: 1200, excerpt: null,
     ticket_ids: [], sprint_ids: [], ...over,
   };
@@ -81,7 +81,7 @@ function ui(over: Partial<ArtUi> = {}): ArtUi {
   return { ...initialArtUi(), list: { status: "ok", data: LIST.map((x) => ({ ...x })) }, ...over };
 }
 function props(screen: ArtScreen, route: ArtRoute = ART_ROUTE_NONE, over: Partial<ArtProps> = {}): ArtProps {
-  return { screen, route, ui: ui(), me: "AndresL230", admin: false, persons: [], host: "canopy.test", theme: "dark", tickets: TICKETS, sprints: SPRINTS, ...over };
+  return { screen, route, ui: ui(), me: "AndresL230", admin: false, persons: [], host: "trov.test", theme: "dark", tickets: TICKETS, sprints: SPRINTS, ...over };
 }
 const view = (slug: string, v: number | null = null): ArtRoute => ({ slug, v, diff: null });
 /** Props for the viewer with one detail loaded under the route's key. */
@@ -90,7 +90,7 @@ function viewer(d: ArtifactDetailDTO, v: number | null = null, over: Partial<Art
   p.ui.details[detailKey(d.slug, v)] = { status: "ok", data: d };
   return p;
 }
-const ctx = (p: ArtProps) => ({ screen: p.screen, route: p.route, me: p.me, admin: p.admin, host: "https://canopy.test", sprints: p.sprints });
+const ctx = (p: ArtProps) => ({ screen: p.screen, route: p.route, me: p.me, admin: p.admin, host: "https://trov.test", sprints: p.sprints });
 
 // ── library ──────────────────────────────────────────────────────────────────
 
@@ -252,7 +252,7 @@ describe("artifacts — viewer chrome", () => {
       links: [
         { target_type: "ticket", target_ref: "10", label: null, meta: null },
         { target_type: "sprint", target_ref: "14", label: "Sprint 14", meta: null },
-        { target_type: "pr", target_ref: "SaplingLearn/canopy#212", label: null, meta: null },
+        { target_type: "pr", target_ref: "AndresL230/trov#212", label: null, meta: null },
       ],
     });
     const html = artifactsView(viewer(d));
@@ -260,7 +260,7 @@ describe("artifacts — viewer chrome", () => {
     expect(html).toContain("Google sign-in for staff");
     expect(html).toContain("TICKET #10 · IN PROGRESS");
     expect(html).toContain("SEP 14 – SEP 27 · ACTIVE");
-    expect(html).toContain('href="https://github.com/SaplingLearn/canopy/pull/212"');
+    expect(html).toContain('href="https://github.com/AndresL230/trov/pull/212"');
   });
 
   it("names the artifact in the header crumb, and Compare on a diff", () => {
@@ -512,7 +512,7 @@ describe("artifacts — new artifact", () => {
     expect(parseArtLink("#10")).toMatchObject({ kind: "ticket", target_type: "ticket", target_ref: "10" });
     expect(parseArtLink("Sprint 14", SPRINTS)).toMatchObject({ kind: "sprint", target_type: "sprint", target_ref: "14" });
     expect(parseArtLink("Sprint 99", SPRINTS)).toBeNull();
-    expect(parseArtLink("https://github.com/SaplingLearn/canopy/pull/212")).toMatchObject({ kind: "PR", target_type: "pr", target_ref: "SaplingLearn/canopy#212" });
+    expect(parseArtLink("https://github.com/AndresL230/trov/pull/212")).toMatchObject({ kind: "PR", target_type: "pr", target_ref: "AndresL230/trov#212" });
     expect(parseArtLink("https://github.com/SaplingLearn/sapling/issues/9")).toMatchObject({ kind: "issue", target_ref: "SaplingLearn/sapling#9" });
     expect(parseArtLink("pr 12")).toMatchObject({ target_type: "pr", target_ref: "#12" });
     expect(parseArtLink("hello")).toBeNull();
@@ -579,7 +579,7 @@ describe("artifacts — new artifact", () => {
     expect(artifactsAct(p.ui, ctx(p), "artCSubmit", null, null)).toEqual({
       write: {
         op: "create",
-        fields: { title: "Retro board", kind: "markdown", area: "ui", repo: "SaplingLearn/canopy", visibility: "org", summary: "Uploaded from Canopy" },
+        fields: { title: "Retro board", kind: "markdown", area: "ui", repo: "AndresL230/trov", visibility: "org", summary: "Uploaded from Trov" },
         content: "# Retro", file: null, filename: null, links: [{ target_type: "ticket", target_ref: "10" }],
       },
     });

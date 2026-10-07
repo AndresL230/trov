@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
 import { all, first, type DB } from "../src/db";
-import { pkce } from "../src/auth/crypto";
+import { pkce, sha256Hex } from "../src/auth/crypto";
 import { seedPerson } from "./helpers/persons";
 import {
   oauthOrigin, mcpResource, protectedResourceMetadata, authorizationServerMetadata,
@@ -111,7 +111,7 @@ describe("registerClient / getClient", () => {
   });
 });
 
-const ORIGIN = "https://canopy.test";
+const ORIGIN = "https://trov.test";
 const REDIRECT = "http://localhost:4444/callback";
 
 async function client(): Promise<RegisteredClient> {
@@ -147,7 +147,7 @@ describe("checkAuthorizeRequest", () => {
     const unknown = await checkAuthorizeRequest(env.DB, authQuery({ ...c, client_id: "nope" }, challenge), ORIGIN);
     expect(unknown).toMatchObject({
       ok: false, kind: "page",
-      message: "Canopy doesn't recognise this app's registration. In Claude Code, run /mcp, choose canopy → Clear authentication, then Authenticate again.",
+      message: "Trov doesn't recognise this app's registration. In Claude Code, run /mcp, choose trov → Clear authentication, then Authenticate again.",
     });
     const q = authQuery(c, challenge); q.set("redirect_uri", "https://evil.example/cb");
     expect(await checkAuthorizeRequest(env.DB, q, ORIGIN)).toMatchObject({ ok: false, kind: "page" });
@@ -188,11 +188,21 @@ describe("code exchange", () => {
     const { c, verifier, code } = await authorized();
     const t = await exchangeAuthorizationCode(env.DB, { code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id, resource: null }, ORIGIN, NOW + 1000);
     expect(t).toMatchObject({ token_type: "Bearer", expires_in: 3600, scope: "mcp" });
-    expect(t.access_token.startsWith("canopy_oat_")).toBe(true);
-    expect(t.refresh_token.startsWith("canopy_ort_")).toBe(true);
+    expect(t.access_token.startsWith("trov_oat_")).toBe(true);
+    expect(t.refresh_token.startsWith("trov_ort_")).toBe(true);
     expect(await resolveOAuthAccessToken(env.DB, t.access_token, NOW + 2000)).toEqual({ handle: "real-user" });
     // hashes only
     expect(await first(env.DB, `SELECT 1 AS x FROM oauth_tokens WHERE token_hash IN (?, ?)`, t.access_token, t.refresh_token)).toBeNull();
+  });
+  it("an access token issued before the rename (`canopy_oat_…`) still resolves until it expires", async () => {
+    const { c, verifier, code } = await authorized();
+    await exchangeAuthorizationCode(env.DB, { code, code_verifier: verifier, redirect_uri: REDIRECT, client_id: c.client_id, resource: null }, ORIGIN, NOW + 1000);
+    const grant = (await first<{ id: number }>(env.DB, `SELECT id FROM oauth_grants ORDER BY id DESC LIMIT 1`))!.id;
+    const legacy = "canopy_oat_issued-before-the-rename-0123456789";
+    await env.DB.prepare(`INSERT INTO oauth_tokens (token_hash, grant_id, kind, created_at, expires_at) VALUES (?, ?, 'access', ?, ?)`)
+      .bind(await sha256Hex(legacy), grant, new Date(NOW).toISOString(), new Date(NOW + 3_600_000).toISOString()).run();
+    expect(await resolveOAuthAccessToken(env.DB, legacy, NOW + 2000)).toEqual({ handle: "real-user" });
+    expect(await resolveOAuthAccessToken(env.DB, legacy, NOW + 3_600_001)).toBeNull();
   });
   it("a code works once", async () => {
     const { c, verifier, code } = await authorized();
