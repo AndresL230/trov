@@ -6,7 +6,7 @@ Sync panel shows is derived from this page (`shared/sync.ts` builds them).
 Code: `src/tools/backfill.ts` (`runBackfill` — one batch), `src/repo/cron.ts` (`runReconcileJob` — the closing
 refresh), `src/sync/runs.ts` (the run record, the lock, the two routes' answers), `src/plans/summaries.ts`
 (which summarizer, and its metering), `shared/sync.ts` (the wire shapes and the words), `web/src/sync.ts`
-(the panel). Migration: `0046_sync_runs.sql`. Tests: `test/sync.runs.test.ts`, `test/summaries.cap.test.ts`,
+(the panel and the header control) and `web/src/sync-actions.ts` (the batch loop and the polling). Migration: `0046_sync_runs.sql`. Tests: `test/sync.runs.test.ts`, `test/summaries.cap.test.ts`,
 `test/render.sync.test.ts`.
 
 ## What a sync does

@@ -70,6 +70,61 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Sync GitHub you can see, and AI summaries counted per organization. Built on the plans branch, so it
+  // is numbered one above that entry. Other open branches (the GitHub App, billing) add a release at this
+  // same spot: whichever merges later takes the next free number and sets `date` to its merge day — this
+  // entry's number is its place in THIS branch, not a promise.
+  {
+    version: "0.20",
+    date: "2026-10-07",
+    title: "Sync you can see",
+    headline: "Sync GitHub now says what it will do, shows its progress as it runs, and leaves a result everyone in the organization can read.",
+    highlights: [
+      "Sync GitHub opens a small panel before anything runs. It names the repository, says what a sync reads and updates, shows when the last one ran and who started it, and has one button: Sync now.",
+      "While a sync runs you see what it is doing: reading pull requests, reading issues, saving them, then checking deployments and CI, with how many are done and what has changed so far. You can close the panel or go to another screen; the button keeps showing the progress.",
+      "When it finishes, the result stays until you dismiss it: what changed, how long it took, and anything that could not be read, with what to do about it. If nothing changed it says so.",
+      "Everyone in the organization can see when the last sync ran and who started it, on My Work and on the Repo screen. Only admins can start one, and only one runs at a time.",
+      "AI summaries of pull requests and issues now have a monthly allowance that comes with your plan. Org settings › General shows how many you have used this month, and the panel shows how many a sync will write.",
+    ],
+    headsUp: [
+      "When an organization has used its AI summaries for the month, new pull requests and issues show a short excerpt instead. Nothing fails, and a sync in the next month fills them in.",
+      "A sync writes at most 50 summaries each time you run it. A larger backlog takes more than one sync.",
+      "Closing or reloading the tab that started a sync stops it after the step it is on. Nothing is lost: the panel says it did not finish, and the next sync picks up where it left off.",
+    ],
+    ops: [
+      "Apply migration `0046_sync_runs` (additive: the table `sync_runs` and one index). It is safe on live data and with the previous Worker running. To roll back, deploy the previous Worker and `DROP TABLE sync_runs`.",
+      "AI summaries stay OFF until the platform key is set: `wrangler secret put GEMINI_API_KEY`. One key serves every organization. From then on each summarizer call is counted per organization in `org_usage_daily` and each plan's monthly allowance applies (`ai_summaries` in `shared/plans.ts`: 300 Personal, 3,000 Team, unlimited Enterprise — placeholders; an override per org works like every other limit). `docs/architecture/plans.md` › AI summaries has what counts, the reset, and how to estimate cost.",
+      "No cron trigger change: run records older than 90 days are deleted by the existing daily cron. No plugin change.",
+      "`LOCAL_UPSTREAM` is a local-development value only (a loopback stand-in for GitHub and Gemini during a Sync). Do not set it as a secret; a value that is not `http://127.0.0.1` or `http://localhost` is ignored.",
+    ],
+    patches: {
+      added: [
+        "`shared/sync.ts`: the run and status shapes, the batch and summary bounds, and every sentence the panel shows (built from counts and failure codes, never upstream text)",
+        "Migration `0046_sync_runs` and `src/sync/runs.ts`: each Sync GitHub run is a row (who, when, batch, phase, running counts, failure codes, how it ended); the row is the org's lock",
+        "`GET /api/o/:slug/sync` (any member; alias `/api/sync`): the run in progress, the last one, why a sync cannot start, the summaries allowance, when deployments and CI were last refreshed",
+        "`POST /admin/backfill` takes `start` / `run` and answers with `run` and `summaries` beside its existing fields; 409 `sync_running` with the run in progress",
+        "`src/plans/summaries.ts` `orgSummarizers`: the one place a summarizer is chosen for an org, for the webhook and for Sync; `summaryAllowance`",
+        "The limit `ai_summaries` (per calendar month, UTC) in `shared/plans.ts`, shown in the Plan block and editable in Platform's limit fields",
+        "Summary metering in `org_usage_daily`: `summary:pr|issue` (attempts), `summary_failed:*`, `summary_capped:*`, `summary_chars_in|out`, `summary_tokens_in|out`",
+        "Platform › Usage: AI summaries per org and in total (attempted, succeeded, fell back, the month against the cap)",
+        "`web/src/sync.ts`: the Sync panel and the header control's states; `docs/architecture/sync.md`",
+        "`pruneSyncRuns` on the daily cron; `sync_runs.started_by` in `HANDLE_COLUMNS`",
+      ],
+      changed: [
+        "Sync GitHub's blocking modal and its closing toast are gone: progress and the result are in the panel",
+        "A batch reports its phase and items done as it goes (`runBackfill` `onProgress`), and its result carries what it captured, mirrored and summarized",
+        "A batch that throws answers 502 `{ error: \"sync failed\", run }` instead of a bare 500, and its run is closed as failed",
+        "Platform › Usage's active people and last activity leave out the summary counters (they are the platform's calls, not a person's requests)",
+        "`formatUse` says \"this month\" for a monthly allowance; `overLimits` never lists one",
+      ],
+      fixed: [
+        "A sync with no summarizer no longer loops ten batches rewriting the same excerpt rows: nothing is spent from the batch budget when nothing can be attempted, so it is one batch",
+        "An explicit `summarizer: null` passed to `runBackfill` means no summarizer (it fell through to the environment's)",
+      ],
+      removed: [],
+    },
+    prs: [],
+  },
   // Plans and grants. Another branch (the GitHub App) is also adding the release after 0.18: whichever
   // merges SECOND renumbers its entry to 0.20 and sets `date` to its merge day. This one is meant to be
   // 0.20; it reads 0.19 here only because shipped versions must count down without a gap and main
