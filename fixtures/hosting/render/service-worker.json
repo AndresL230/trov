@@ -1,0 +1,29 @@
+{
+  "id": "srv-d3k9a2m7mgec73b4c5d0",
+  "autoDeploy": "yes",
+  "autoDeployTrigger": "commit",
+  "branch": "main",
+  "createdAt": "2026-08-14T17:10:40.551Z",
+  "dashboardUrl": "https://dashboard.render.com/worker/srv-d3k9a2m7mgec73b4c5d0",
+  "environmentId": "evm-d3k8p4j7mgec73a1aa10",
+  "imagePath": "",
+  "name": "checkout-jobs",
+  "notifyOnFail": "default",
+  "ownerId": "tea-cn1t5h0l5elc73fk0abc",
+  "repo": "https://github.com/acme/checkout",
+  "rootDir": "worker",
+  "serviceDetails": {
+    "buildPlan": "starter",
+    "env": "node",
+    "envSpecificDetails": { "buildCommand": "npm ci", "startCommand": "node worker.js" },
+    "numInstances": 1,
+    "plan": "starter",
+    "region": "oregon",
+    "runtime": "node"
+  },
+  "slug": "checkout-jobs",
+  "suspended": "not_suspended",
+  "suspenders": [],
+  "type": "background_worker",
+  "updatedAt": "2026-10-07T10:02:13.004Z"
+}
