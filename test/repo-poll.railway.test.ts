@@ -272,7 +272,7 @@ describe("pollRailway — outcomes", () => {
   });
 });
 
-describe("REPO_ENVIRONMENTS in wrangler.toml", () => {
+describe("REPO_ENVIRONMENTS, the legacy shape the test pool still carries", () => {
   it("still parses to two environments, each naming its Railway environment and the backend service", () => {
     expect(repoEnvironments(env).map((e) => [e.key, e.railwayEnvironmentId, e.railwayServiceId])).toEqual([
       ["staging", "76bb36e5-cf12-4b1e-b47f-d276a56c3b85", "c67bfc38-32a9-41a7-9440-f033d255af30"],

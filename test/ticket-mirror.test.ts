@@ -12,7 +12,7 @@ import { systemCtx, platformCtx } from "./helpers/tenant";
 // ticket_links, ticket_events, ticket_assignees, events — never a mock call.
 
 const SECRET = "test-webhook-secret"; // matches vitest.config.ts binding
-const REPO = "SaplingLearn/sapling";  // wrangler.toml's GITHUB_REPO, which the pool env carries
+const REPO = "SaplingLearn/sapling";  // the pool env's GITHUB_REPO (vitest.config.ts)
 
 async function sign(body: string): Promise<string> {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
