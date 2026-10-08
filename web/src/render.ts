@@ -785,7 +785,7 @@ function headerCrumb(s: AppState): string {
 function header(s: AppState): string {
   const titles: Record<Screen, string> = {
     mywork: "My Work", feed: "Feed", docs: "Docs", roadmap: "Roadmap", review: "Review",
-    maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Get Started",
+    maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Guide",
     unsubscribe: "Unsubscribe", site: "Trov", welcome: "Guided setup",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
@@ -1705,41 +1705,15 @@ function guideView(s: AppState): string {
   };
   const gPre = (body: string) => `<pre style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:12px 0 0"><code style="font-family:var(--code);font-size:12.5px;line-height:1.6;color:var(--fg-70)">${body}</code></pre>`;
   const body = `<div style="flex:1;min-width:0;max-width:860px">
-    <h1 id="guide-top" class="cnpy-guide-anchor" style="font-size:30px;font-weight:650;letter-spacing:-0.025em;margin:0 0 14px">Get Started</h1>
+    <h1 id="guide-top" class="cnpy-guide-anchor" style="font-size:30px;font-weight:650;letter-spacing:-0.025em;margin:0 0 14px">How Trov works</h1>
     <p style="font-size:16px;line-height:1.8;color:var(--fg-70);margin:0 0 14px">Trov is the team's shared memory: docs, decisions, the roadmap, the ticket queue, and a running record of what shipped, open to people and to their coding agents alike. It has one rule: ${gStrong("agents only ever stage changes, and a person confirms the ones that matter")}. That keeps what Trov says trustworthy no matter how many agents write to it.</p>
-    <p style="${gP}">This page takes you from zero to productive in order: sign in, connect your agent, learn the skills, then the everyday workflows and a tour of every screen. Troubleshooting is at the end.</p>
+    <p style="${gP}">This page is the reference: the skills your agent uses every session, how a change goes from staged to settled, a tour of every screen, how accounts and agent connections work, and troubleshooting.</p>
     ${viewerOrg(s) ? `<div${surface("display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:14px 16px;margin:0 0 6px")} data-guide-setup>
-      <div style="flex:1 1 260px;min-width:0"><div style="font-size:13.5px;font-weight:600">Rather be walked through it?</div><div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:1px">The guided setup takes ${esc(viewerOrg(s)!.name)} one step at a time${viewerIsAdmin(s) ? ": a repository, your coding agent, your team" : ": your coding agent, then where things live"}.</div></div>
+      <div style="flex:1 1 260px;min-width:0"><div style="font-size:13.5px;font-weight:600">Still setting up?</div><div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:1px">The guided setup takes ${esc(viewerOrg(s)!.name)} one step at a time${viewerIsAdmin(s) ? ": a repository, your coding agent, your team" : ": your coding agent, then where things live"}.</div></div>
       <button type="button" data-act="welcomeOpen" data-field="guideWelcomeOpen" class="cnpy-ghostbtn" style="height:32px;padding:0 13px;border-radius:8px;font-size:12.5px;font-weight:500;white-space:nowrap;border:1px solid var(--border);color:var(--fg);background:transparent">Open the guided setup</button>
     </div>` : ""}
 
-    ${sec("Step 1", "Sign in", "Sign in")}
-    <ul style="${gList}">
-      <li>${gStrong("Sign in with GitHub.")} Any GitHub account can. If you aren't in an organization yet, you land on a page that lists your invitations and lets you create a Free organization of your own.</li>
-      <li>${gStrong("Or sign in with Google")}, once an admin of your organization has invited that exact address from ${gStrong("Org settings › Members")}.</li>
-      <li>${gStrong("In more than one organization?")} The switcher at the top of the sidebar shows the one you're in and takes you to the others. Each has its own docs, tickets, roadmap and feed.</li>
-      <li>The first time, you pick a ${gStrong("handle")} and a ${gStrong("color")}. The handle starts as your GitHub login, and you can change it later in Settings.</li>
-      <li>Want both? ${gStrong("Settings › Account")} links the second provider, and then either one signs you in.</li>
-    </ul>
-
-    ${sec("Step 2", "Connect your coding agent", "Connect your agent")}
-    <p style="${gP}">Your agent talks to Trov over the ${gStrong("Model Context Protocol")} (MCP). You connect it by signing in to Trov in your browser, once. It acts as you: it sees what you see, and what it writes is recorded as yours.</p>
-
-    ${sub("Claude Code: install the plugin")}
-    <p style="${gP}">The plugin wires up the MCP server and installs every skill below. Three steps, the same ones ${gStrong("Settings › MCP access")} shows:</p>
-    <ol style="${gList}">
-      <li>In Claude Code, install the plugin:
-        ${gPre(PLUGIN_INSTALL)}</li>
-      <li>Run ${gCode("/mcp")}, pick ${gStrong("trov")} and choose ${gStrong("Authenticate")}.</li>
-      <li>Your browser opens Trov: sign in if asked, then click ${gStrong("Allow")}. The connection is listed in ${gStrong("Settings › MCP access")} under ${gStrong("Connected apps")}, where ${gStrong("Revoke")} disconnects it immediately.</li>
-    </ol>
-    <p style="${gP}">Not using the plugin? Open ${gStrong("Set it up without the plugin")} in ${gStrong("Settings › MCP access")} for the command that adds the server by hand. Run it, then do steps 2 and 3. Don't do both, or you'll have two Trov servers.</p>
-
-    ${sub("Other agents")}
-    <p style="${gP}">Any MCP client that can sign in through the browser (OAuth) connects to the same address, ${gCode(esc(mcpEndpoint()))}, and shows up under ${gStrong("Connected apps")} once you approve it. Trov no longer creates access tokens in Settings; a token you already set up (for Codex or CI) keeps working.</p>
-    ${gFig("settings", `${gEm("Settings")}: profile, sign-in methods, MCP access, appearance, and email digests.`)}
-
-    ${sec("Step 3", "Learn the skills", "Learn the skills")}
+    ${sec("Every session", "Orient, work, record", "The skills")}
     <p style="${gP}">The plugin's skills are how your agent keeps Trov current. Three of them form a loop you'll use every session, ${gStrong("orient → work → record")}:</p>
     <ul style="${gList}">
       <li>${gStrong("trov")}: the overview. It explains the whole system and every tool. Ask about it when you're unsure where something lives.</li>
@@ -1825,10 +1799,35 @@ function guideView(s: AppState): string {
     <p style="${gP}">Every release of Trov, newest first. Open one for its notes, or switch to ${gStrong("Patch notes")} for the full list of changes with links to the pull requests.</p>
     ${gFig("releases", `${gEm("What's new")}: one card per release.`)}
 
+    ${sec("Reference", "Accounts and organizations", "Accounts")}
+    <ul style="${gList}">
+      <li>${gStrong("One account, either sign-in.")} Signing in with GitHub or with Google creates your account the first time. ${gStrong("Settings › Account")} links the other one, and then either signs you in.</li>
+      <li>${gStrong("Handle and color.")} You picked them when you signed up; both can be changed in ${gStrong("Settings › Profile")}. The handle is how work is attributed to you everywhere.</li>
+      <li>${gStrong("Organizations.")} Everything in Trov belongs to one. You join by accepting an invitation, or create a Free one of your own (one at a time). The switcher at the top of the sidebar shows the one you're in and takes you to the others; each has its own docs, tickets, roadmap and feed.</li>
+      <li>${gStrong("A repository needs GitHub.")} Connecting one is approved on GitHub, so an owner or admin who signed up with Google links a GitHub account first (the guided setup offers it).</li>
+    </ul>
+
+    ${sec("Reference", "Connecting a coding agent", "Connect an agent")}
+    <p style="${gP}">Your agent talks to Trov over the ${gStrong("Model Context Protocol")} (MCP). You connect it by signing in to Trov in your browser, once. It acts as you: it sees what you see, and what it writes is recorded as yours.</p>
+
+    ${sub("Claude Code: install the plugin")}
+    <p style="${gP}">The plugin wires up the MCP server and installs every skill below. Three steps, the same ones ${gStrong("Settings › MCP access")} shows:</p>
+    <ol style="${gList}">
+      <li>In Claude Code, install the plugin:
+        ${gPre(PLUGIN_INSTALL)}</li>
+      <li>Run ${gCode("/mcp")}, pick ${gStrong("trov")} and choose ${gStrong("Authenticate")}.</li>
+      <li>Your browser opens Trov: sign in if asked, then click ${gStrong("Allow")}. The connection is listed in ${gStrong("Settings › MCP access")} under ${gStrong("Connected apps")}, where ${gStrong("Revoke")} disconnects it immediately.</li>
+    </ol>
+    <p style="${gP}">Not using the plugin? Open ${gStrong("Set it up without the plugin")} in ${gStrong("Settings › MCP access")} for the command that adds the server by hand. Run it, then do steps 2 and 3. Don't do both, or you'll have two Trov servers.</p>
+
+    ${sub("Other agents")}
+    <p style="${gP}">Any MCP client that can sign in through the browser (OAuth) connects to the same address, ${gCode(esc(mcpEndpoint()))}, and shows up under ${gStrong("Connected apps")} once you approve it. Trov no longer creates access tokens in Settings; a token you already set up (for Codex or CI) keeps working.</p>
+    ${gFig("settings", `${gEm("Settings")}: profile, sign-in methods, MCP access, appearance, and email digests.`)}
+
     ${sec("Troubleshooting", "When something doesn't work", "Troubleshooting")}
     <ul style="${gList}">
       <li>${gStrong("You signed in and see no organization.")} Ask an admin of your team's organization to invite your GitHub login or email from ${gStrong("Org settings › Members")}; the invitation appears the next time you open Trov. Or create a Free organization yourself: one you own at a time.</li>
-      <li>${gStrong("Google sign-in says you're not invited.")} Ask an admin of your organization to invite the exact address you signed in with, or sign in with GitHub.</li>
+      <li>${gStrong("Google sign-in says the address isn't verified.")} Trov signs you in by the address Google confirms. Verify it with Google and sign in again, or sign in with GitHub.</li>
       <li>${gStrong("Trov shows as needing authentication in Claude Code.")} Run ${gCode("/mcp")}, pick ${gStrong("trov")} and choose ${gStrong("Authenticate")}. If the browser says Trov doesn't recognise the app, choose ${gStrong("Clear authentication")} first, then Authenticate again. A connection you revoked in Settings needs the same.</li>
       <li>${gStrong("An agent set up with an older access token (Codex, CI) gets 401 Unauthorized.")} The token is missing, mistyped, or revoked. Check that ${gCode("echo $TROV_MCP_TOKEN")} prints it in the terminal you launch the agent from; if you set it in one shell's profile (say ${gCode("~/.zshrc")}) but run another (say fish), that shell never sees it. Settings no longer creates tokens, so if the agent can sign in through the browser, reconnect it that way instead.</li>
       <li>${gStrong("The Trov server doesn't appear in /mcp.")} Restart Claude Code after installing the plugin. Run ${gCode("/plugin")} to check that ${gCode("trov")} is installed and enabled.</li>

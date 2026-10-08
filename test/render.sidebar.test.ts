@@ -152,7 +152,7 @@ describe("sidebar — open/closed and collapsed are attributes", () => {
     const html = sidebarView(props({ collapsed: true, navOpen: { ...NAV_CLOSED, docs: true } }));
     expect(html).toContain('data-arg="docs:product" class="cnpy-sub-i" tabindex="-1"');
     expect(html).toContain('aria-label="Expand sidebar" aria-expanded="false"');
-    for (const tip of ["My Work", "Tickets", "Roadmap", "Handoffs", "Repo", "Feed", "Docs", "Artifacts", "Prompt Library", "Review", "Unplaced", "Get Started", "What&#39;s new", "Search", "Settings"]) {
+    for (const tip of ["My Work", "Tickets", "Roadmap", "Handoffs", "Repo", "Feed", "Docs", "Artifacts", "Prompt Library", "Review", "Unplaced", "Guide", "What&#39;s new", "Search", "Settings"]) {
       expect(html).toContain(`data-tip="${tip}"`);
     }
   });

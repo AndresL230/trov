@@ -437,12 +437,15 @@ describe("step 3 — invite your team", () => {
 
 // ── the last step ────────────────────────────────────────────────────────────
 describe("the closing step — you're set, and where things live", () => {
-  it("names Feed, Docs, Tickets and Roadmap, each a way in, and the button into the app", () => {
+  it("says how a first session goes (what the setup cannot do for you), points at the Guide, and has the button into the app", () => {
     const html = view("done");
-    for (const [act, title] of [["goFeed", "Feed"], ["goDocs", "Docs"], ["goTickets", "Tickets"], ["goRoadmap", "Roadmap"]]) {
-      expect(html).toMatch(new RegExp(`<button type="button" data-act="${act}"[^>]*aria-label="Open ${title}"`));
-    }
-    expect(html).toContain("Where things live");
+    expect(html).toContain("Your first session");
+    expect((html.match(/class="cnpy-wel-row" style="align-items:flex-start/g) ?? []).length).toBe(3);
+    expect(html).toContain("record this session");
+    expect(html).toMatch(/data-act="goGuide" data-field="welcomeGuide"[^>]*>Read the Guide</);
+    // It does not repeat the sidebar the person sees a moment later.
+    expect(html).not.toContain("Where things live");
+    expect(html).not.toContain('aria-label="Open Roadmap"');
     expect(html).toMatch(/data-act="goMyWork" data-field="welcomeFinish"/);
   });
   it("recaps each step from live data: done, skipped (with the way back), or not known yet", () => {
@@ -462,12 +465,12 @@ describe("the closing step — you're set, and where things live", () => {
     expect(text(html)).toContain("You're set");
     expect(html).not.toContain(">Do it now<");
   });
-  it("a member's closing step: their agent only, the same four places", () => {
+  it("a member's closing step: their agent only, the same first-session primer", () => {
     const html = view("done", { org: org("member") });
     expect(html).toContain('data-welcome-recap="agent"');
     expect(html).not.toContain('data-welcome-recap="github"');
     expect(html).not.toContain('data-welcome-recap="team"');
-    expect(html).toContain('aria-label="Open Roadmap"');
+    expect(html).toContain("data-welcome-first");
     expect(html).toMatch(/data-arg="agent" data-field="welcomeBack"/);
   });
 });
@@ -507,7 +510,6 @@ describe("trov.css — the wizard's rules", () => {
   it("is still under reduced motion, and reflows at phone width", () => {
     expect(rules).toContain("@media (prefers-reduced-motion: reduce) { .cnpy-wel-pulse { animation:none; } .cnpy-wel-stepb { transition:none; } }");
     expect(rules).toMatch(/@media \(max-width: 640px\) \{[^@]*\.cnpy-wel-step:not\(\.is-cur\) \.cnpy-wel-stepl \{ display:none; \}/);
-    expect(rules).toMatch(/@media \(max-width: 640px\) \{[^@]*\.cnpy-wel-places \{ grid-template-columns:minmax\(0,1fr\); \}/);
   });
   it("hand-rolls no switch and no native select", () => {
     expect(src("welcome.ts")).not.toMatch(/<select|window\.confirm|●/);
