@@ -337,21 +337,31 @@ describe("create an organization — the Add organization dialog's rules, minus 
     expect(html).not.toContain("Org admin");
   });
   it("validates as the superadmin's dialog does", () => {
-    expect(createOrgErrors({ name: "", slug: "" })).toEqual({ name: "Enter the organization's name.", slug: "Enter a slug. It becomes the organization's address." });
-    expect(createOrgErrors({ name: "Acme", slug: "A B" }).slug).toContain("lowercase letters, digits or hyphens");
-    expect(createOrgErrors({ name: "Acme", slug: "api" }).slug).toBe("“api” is reserved. Pick another slug.");
+    expect(createOrgErrors({ name: "", slug: "" })).toEqual({ name: "Enter the organization's name.", slug: "Enter a handle. It is the organization's address." });
+    expect(createOrgErrors({ name: "Acme", slug: "A B" }).slug).toContain("lowercase letters, digits and hyphens");
+    expect(createOrgErrors({ name: "Acme", slug: "api" }).slug).toBe("“api” is reserved. Pick another handle.");
     expect(createOrgErrors({ name: "Acme", slug: "acme" })).toEqual({});
+    // The live check already said it is taken: Create says so without asking the server again.
+    expect(createOrgErrors({ name: "Acme", slug: "acme", check: "taken" })).toEqual({ slug: "“acme” is taken. Pick another handle." });
+    expect(createOrgErrors({ name: "Acme", slug: "acme", check: "available" })).toEqual({});
   });
   it("puts a server refusal beside the field it is about", () => {
     const d = { slug: "acme" };
-    expect(createOrgServerError("slug_taken", d)).toEqual({ name: undefined, slug: "“acme” is already in use. Pick another slug.", form: undefined });
+    expect(createOrgServerError("slug_taken", d)).toEqual({ slug: "“acme” is taken. Pick another handle." });
     expect(createOrgServerError("reserved_slug", d).slug).toContain("reserved");
     expect(createOrgServerError("invalid_name", d).name).toContain("1 to 80 characters");
     // The grant behind the dialog went (used in another tab, revoked, expired) while it was open.
     expect(createOrgServerError("no_grant", d)).toEqual({ form: NO_GRANT_SENTENCE });
     expect(NO_GRANT_SENTENCE).toContain("Ask Trov if you need one.");
     expect(createOrgServerError("", d).form).toContain("wasn't created");
-    const html = createOrgModal({ ...blankCreateOrg(), name: "Acme", slug: "acme", errors: { slug: "“acme” is already in use. Pick another slug." } });
+    // The field is the organization's HANDLE, with the live answer beside its label.
+    const fresh = createOrgModal({ ...blankCreateOrg(), name: "Acme", slug: "acme", check: "available" });
+    expect(fresh).toContain('<label for="orgs-create-slug"');
+    expect(fresh).toMatch(/>Handle<\/label>\s*<span data-orgs-handle-check="available"[^>]*>available<\/span>/);
+    expect(fresh).not.toContain(">Address<");
+    expect(createOrgModal({ ...blankCreateOrg(), slug: "acme", check: "checking" })).toContain("checking…");
+    expect(createOrgModal(blankCreateOrg())).toMatch(/data-orgs-handle-check="idle"[^>]*><\/span>/);
+    const html = createOrgModal({ ...blankCreateOrg(), name: "Acme", slug: "acme", check: "taken", errors: { slug: "“acme” is taken. Pick another handle." } });
     expect(html).toMatch(/id="orgs-create-slug"[^>]*aria-invalid="true" aria-describedby="orgs-create-slug-err"/);
     expect(html).toContain('<div id="orgs-create-slug-err" role="alert"');
   });

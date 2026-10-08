@@ -2,7 +2,8 @@
 // image on top), the color swatch picker, and the onboarding screen. Pure
 // functions over state — no fetch, no DOM — so they are unit-testable.
 import { PERSON_COLORS, type PersonColor } from "@shared/rows";
-import { esc, attr, initialsOf, surface } from "./ui";
+import { trovMark } from "@shared/mark";
+import { esc, attr, initialsOf, surface, appBackdrop } from "./ui";
 import type { OnboardPrefill } from "./api";
 
 export const COLOR_NAMES: readonly PersonColor[] = PERSON_COLORS;
@@ -124,26 +125,33 @@ export function onboardView(o: OnboardState): string {
   const field = (label: string, inner: string, help = "") => `<div><label style="display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);margin-bottom:7px">${label}</label>${inner}${help ? `<div style="font-size:12px;color:var(--fg-40);margin-top:7px;line-height:1.5">${help}</div>` : ""}</div>`;
   const row = "display:flex;align-items:center;border:1px solid var(--border-strong);border-radius:9px;background:var(--bg);overflow:hidden";
   const input = "flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--fg);font-size:14px;padding:11px 12px";
-  return `<div class="cnpy-authwrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px"><div style="width:100%;max-width:520px">
-    <div style="margin-bottom:26px">
-      <div style="font-family:var(--label);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">Welcome to Trov · one step</div>
-      <h1 style="font-size:22px;font-weight:600;letter-spacing:-0.02em;margin:0 0 6px">Choose how you'll appear.</h1>
-      <p style="font-size:14px;color:var(--fg-70);margin:0;line-height:1.55">Your handle is how work gets attributed to you, in the feed, in decisions, in My Work. You can change it later in Settings. Your color can too.</p>
-    </div>
-    <div style="display:grid;gap:22px">
-      ${field("Handle", `<div style="${row}"><span style="font-family:var(--sans);font-size:14px;color:var(--fg-40);padding-left:12px">@</span><input data-act="onbHandle" data-field="onbHandle" value="${attr(o.handle)}" autocomplete="off" spellcheck="false" maxlength="24" class="cnpy-input" style="${input};padding-left:4px;font-family:var(--label)" /><span style="font-family:var(--label);font-size:11px;padding:0 12px;white-space:nowrap;color:${st.color}">${esc(st.text)}</span></div>`,
+  // The same card as the org picker that follows it (one banner, the things to fill in, a foot), in
+  // front of the same backdrop, so signing up reads as two steps of one flow.
+  return `<div class="cnpy-onb" style="width:100%;display:flex;justify-content:center">
+    ${appBackdrop()}
+    <div class="cnpy-orgs-col"><div${surface("overflow:hidden", { cls: "cnpy-orgs-card" })}>
+    <header class="cnpy-orgs-banner">
+      <span class="cnpy-orgs-art" aria-hidden="true">${trovMark(230, "currentColor")}</span>
+      <div style="position:relative;display:flex;align-items:center;gap:9px">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span><span class="cnpy-onb-step">Welcome to Trov · one step</span></div>
+      <h1 style="position:relative;margin:20px 0 0;font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:1.2">Choose how you'll appear.</h1>
+      <p class="cnpy-orgs-lede" style="position:relative;margin:8px 0 0;font-size:13.5px;line-height:1.55;max-width:500px">Your handle is how work gets attributed to you, in the feed, in decisions, in My Work. You can change it later in Settings. Your color can too.</p>
+    </header>
+    <div class="cnpy-orgs-body cnpy-onb-body">
+      <div class="cnpy-onb-pair">
+        ${field("Handle", `<div style="${row}"><span style="font-family:var(--sans);font-size:14px;color:var(--fg-40);padding-left:12px">@</span><input data-act="onbHandle" data-field="onbHandle" value="${attr(o.handle)}" autocomplete="off" spellcheck="false" maxlength="24" class="cnpy-input" style="${input};padding-left:4px;font-family:var(--label)" /><span style="font-family:var(--label);font-size:11px;padding:0 12px;white-space:nowrap;color:${st.color}">${esc(st.text)}</span></div>`,
         "2 to 24 characters. Lowercase letters, numbers and hyphens. Starts with a letter.")}
-      ${field("Display name", `<div style="${row}"><input data-act="onbName" data-field="onbName" value="${attr(o.name)}" maxlength="120" class="cnpy-input" style="${input}" /></div>`)}
-      ${field("Your color", swatches("onbColor", o.color))}
+        ${field("Display name", `<div style="${row}"><input data-act="onbName" data-field="onbName" value="${attr(o.name)}" maxlength="120" class="cnpy-input" style="${input}" /></div>`)}
+      </div>
+      ${field("Your color", swatches("onbColor", o.color, true))}
       <div${surface("padding:12px 14px")}>
         <div style="font-family:var(--label);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">How you'll appear in the feed</div>
         ${feedPreviewRow({ name: o.name, handle: o.handle, color: o.color })}
       </div>
-      ${o.error ? `<div style="font-size:12.5px;color:var(--red)">${esc(o.error)}</div>` : ""}
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
-        <div style="font-size:12px;color:var(--fg-40)">${signedAs}</div>
-        <button data-act="onbSubmit" class="cnpy-accentbtn" ${canSubmit ? "" : "disabled "}style="padding:11px 20px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600;${canSubmit ? "" : "opacity:.45;cursor:default"}">${o.submitting ? "Entering…" : "Enter Trov"}</button>
-      </div>
+      ${o.error ? `<div role="alert" style="font-size:12.5px;color:var(--red)">${esc(o.error)}</div>` : ""}
     </div>
-  </div></div>`;
+    <footer class="cnpy-orgs-foot">
+      <div style="font-size:12px;color:var(--fg-40);min-width:0;overflow-wrap:anywhere">${signedAs}</div>
+      <button data-act="onbSubmit" class="cnpy-accentbtn" ${canSubmit ? "" : "disabled "}style="padding:10px 20px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600;${canSubmit ? "" : "opacity:.45;cursor:default"}">${o.submitting ? "Entering…" : "Enter Trov"}</button>
+    </footer>
+  </div></div></div>`;
 }

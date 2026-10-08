@@ -343,6 +343,7 @@ const PLATFORM: Record<string, string> = {
   "GET /oauth/authorize": "reads the session itself; consent names the org (Phase 5a)",
   "POST /oauth/authorize": "reads the session itself",
   "GET /api/orgs": "the caller's own memberships and pending invites",
+  "GET /api/orgs/slug-check": "is an organization handle (slug) free — orgs are global; no org's content, capped per person",
   "POST /api/orgs": "creates an org the caller owns (cap 3 per person)",
   "GET /api/invites": "the caller's own pending invites (matched on their GitHub login / provider-verified email)",
   "POST /api/invites/:id/accept": "an invite that is the caller's — anyone else's id is 404",

@@ -1760,6 +1760,39 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    the window is its frame, so a first run never scrolls; only a long list of organizations does. */
 .cnpy-orgs { min-height:100vh; min-height:100dvh; box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:24px; }
 .cnpy-orgs-col { width:100%; max-width:660px; min-width:0; }
+/* Behind a first-run card: the app's outline, blurred and washed toward the page (ui.ts `appBackdrop`). */
+.cnpy-fr-bg { position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; background:var(--bg); }
+.cnpy-fr-app { position:absolute; inset:-16px; display:flex; filter:blur(4px); }
+.cnpy-fr-bg::after { content:""; position:absolute; inset:0;
+  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, #616acb 22%, transparent) 0%, transparent 72%), color-mix(in srgb, var(--bg) 26%, transparent); }
+.cnpy-fr-side { flex:none; width:248px; box-sizing:border-box; padding:34px 22px; display:flex; flex-direction:column; gap:15px; background:var(--surface); border-right:1px solid var(--border); }
+.cnpy-fr-side > b { display:block; width:92px; height:22px; margin-bottom:14px; background:#616acb; opacity:.85; }
+.cnpy-fr-side > i { display:block; height:10px; width:62%; background:var(--border-strong); }
+.cnpy-fr-side > i:nth-of-type(3n) { width:78%; } .cnpy-fr-side > i:nth-of-type(3n+1) { width:48%; }
+.cnpy-fr-side > u { display:block; height:8px; width:34%; margin-top:14px; background:var(--border); }
+.cnpy-fr-main { flex:1; min-width:0; padding:36px 40px; display:flex; flex-direction:column; gap:26px; }
+.cnpy-fr-top { display:flex; align-items:center; justify-content:space-between; }
+.cnpy-fr-top > i { display:block; width:210px; height:20px; background:var(--border-strong); }
+.cnpy-fr-top > b { display:block; width:112px; height:32px; background:#616acb; opacity:.8; }
+.cnpy-fr-cols { flex:1; display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:20px; align-content:start; }
+.cnpy-fr-col { display:flex; flex-direction:column; gap:12px; }
+.cnpy-fr-col > i { display:block; width:46%; height:10px; margin-bottom:4px; background:var(--border-strong); }
+.cnpy-fr-card { box-sizing:border-box; padding:14px; display:flex; flex-direction:column; gap:9px; background:var(--surface); border:1px solid var(--border); }
+.cnpy-fr-card > i { display:block; height:9px; width:84%; background:var(--border-strong); }
+.cnpy-fr-card > i + i { width:56%; background:var(--border); }
+.cnpy-fr-card > b { display:block; margin-top:auto; width:48px; height:14px; background:#616acb; opacity:.55; }
+/* The backdrop and the card stack inside their own screen, so a dialog opened over it stays on top. */
+.cnpy-orgs, .cnpy-onb { isolation:isolate; }
+.cnpy-orgs-col, .cnpy-onb > .cnpy-orgs-col { position:relative; z-index:1; }
+.cnpy-onb .cnpy-sw.compact { padding:6px 0; }
+.cnpy-onb-step { margin-left:auto; font-family:var(--label); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.78); }
+.cnpy-orgs-body.cnpy-onb-body { display:grid; gap:18px; padding-top:22px; }
+.cnpy-onb-pair { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start; }
+@media (max-width:640px) {
+  .cnpy-fr-side { display:none; }
+  .cnpy-fr-main { padding:22px 16px; } .cnpy-fr-cols { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .cnpy-onb-pair { grid-template-columns:minmax(0, 1fr); }
+}
 .cnpy-orgs-card { box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
 /* The banner is the brand's purple in both themes: it is Trov speaking, not the app's chrome. */
 .cnpy-orgs-banner { position:relative; overflow:hidden; padding:24px 28px 26px; color:#fff;

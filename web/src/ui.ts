@@ -150,3 +150,23 @@ export const WORK_SHELL =
  *  as a centred document on a wide screen instead of hugging the left edge. */
 export const DETAIL_SHELL =
   "width:100%;max-width:1120px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
+
+/** What sits behind a first-run card (onboarding, the org picker): the outline of the app itself,
+ *  blurred and washed toward the page, so the card reads as a step in front of Trov, not a page of its
+ *  own. Decoration only: no text, no data, nothing focusable. */
+export function appBackdrop(): string {
+  const card = (h: number, tag = false) => `<div class="cnpy-fr-card" style="height:${h}px"><i></i><i></i>${tag ? "<b></b>" : ""}</div>`;
+  const col = (cards: string) => `<div class="cnpy-fr-col"><i></i>${cards}</div>`;
+  return `<div class="cnpy-fr-bg" aria-hidden="true"><div class="cnpy-fr-app">
+    <div class="cnpy-fr-side"><b></b><i></i><i></i><i></i><i></i><u></u><i></i><i></i><i></i><u></u><i></i><i></i></div>
+    <div class="cnpy-fr-main">
+      <div class="cnpy-fr-top"><i></i><b></b></div>
+      <div class="cnpy-fr-cols">
+        ${col(card(92, true) + card(74) + card(108, true) + card(74))}
+        ${col(card(74) + card(118, true) + card(86))}
+        ${col(card(104, true) + card(74) + card(92) + card(74, true))}
+        ${col(card(86) + card(74, true))}
+      </div>
+    </div>
+  </div></div>`;
+}

@@ -406,3 +406,32 @@ describe("soleTenantGate still guards the legacy routes", () => {
     expect((await call("GET", "/api/invites", cookie)).status).toBe(200);
   });
 });
+
+describe("GET /api/orgs/slug-check — is an organization handle free", () => {
+  const check = async (slug: string, cookie: string) => call<{ available: boolean; reason?: string }>("GET", `/api/orgs/slug-check?slug=${encodeURIComponent(slug)}`, cookie);
+
+  it("answers for a person in no org: free, taken (any org's, whatever its case), reserved, invalid", async () => {
+    const cookie = await loner("nomad");
+    expect((await check("brand-new-co", cookie)).json).toEqual({ available: true });
+    expect((await check("acme", cookie)).json).toEqual({ available: false, reason: "taken" });
+    expect((await check(" Acme ", cookie)).json).toEqual({ available: false, reason: "taken" });
+    expect((await check(RESERVED_ORG_SLUGS[0], cookie)).json).toEqual({ available: false, reason: "reserved" });
+    expect((await check("-nope", cookie)).json).toEqual({ available: false, reason: "invalid" });
+    expect((await check("", cookie)).json).toEqual({ available: false, reason: "invalid" });
+  });
+
+  it("says what Create then does: a handle it calls free can be created, and is taken afterwards", async () => {
+    const cookie = await loner("hopeful");
+    expect((await check("hopeful-co", cookie)).json.available).toBe(true);
+    expect((await call("POST", "/api/orgs", cookie, { slug: "hopeful-co", name: "Hopeful Co" })).status).toBe(201);
+    expect((await check("hopeful-co", await loner("nomad"))).json).toEqual({ available: false, reason: "taken" });
+  });
+
+  it("needs a session, and is capped per person with the handle-check allowance", async () => {
+    expect((await call("GET", "/api/orgs/slug-check?slug=acme", "")).status).toBe(401);
+    const cookie = await loner("nomad");
+    await exec(`INSERT INTO abuse_counters (subject, action, bucket, count, last_at) VALUES ('nomad', 'handle_check', strftime('%Y-%m-%dT%H', 'now'), 60, 't')`);
+    const r = await check("acme", cookie);
+    expect(r.status).toBe(429);
+  });
+});

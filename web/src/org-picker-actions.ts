@@ -6,8 +6,8 @@
 // another's name.
 
 import type { AppState } from "./render";
-import { ApiError, Unauthorized, createOrg, respondToInvite } from "./api";
-import { acceptLanding, blankCreateOrg, createLanding, createOrgErrors, createOrgServerError } from "./org-picker";
+import { ApiError, Unauthorized, checkOrgSlug, createOrg, respondToInvite } from "./api";
+import { acceptLanding, blankCreateOrg, createLanding, createOrgErrors, createOrgServerError, handleError, handleTaken } from "./org-picker";
 import { slugFromName } from "./platform";
 import { orgHref } from "./org-context";
 import type { MyOrgsResponse } from "@shared/orgs";
@@ -45,6 +45,32 @@ export function createOrgsController(h: OrgsHost) {
     (mount.querySelector<HTMLElement>('[data-orgs-menu] [aria-current="true"]') ?? mount.querySelector<HTMLElement>("[data-orgs-menu] [data-orgs-item]"))?.focus();
     // Invitations may have arrived since the page loaded.
     void h.reloadOrgs();
+  }
+
+  // Is the handle free? Debounced and sequence-guarded like onboarding's handle check: only the answer
+  // to the handle still in the field is shown. A failed or rate-limited check says nothing — the
+  // server decides on Create either way.
+  let slugSeq = 0;
+  let slugTimer: ReturnType<typeof setTimeout> | undefined;
+  function scheduleSlugCheck(): void {
+    const d = ui().create;
+    clearTimeout(slugTimer);
+    const seq = ++slugSeq;
+    if (!d) return;
+    if (handleError(d.slug) !== null) { d.check = "idle"; return; }
+    d.check = "checking";
+    const slug = d.slug;
+    slugTimer = setTimeout(() => {
+      checkOrgSlug(slug)
+        .then((r) => {
+          const now = ui().create;
+          if (seq !== slugSeq || !now || now.slug !== slug) return;
+          now.check = r.available ? "available" : r.reason === "taken" ? "taken" : "idle";
+          if (r.reason === "taken") now.errors.slug = handleTaken(slug);
+          h.rerender();
+        })
+        .catch(() => { const now = ui().create; if (seq === slugSeq && now) { now.check = "idle"; h.rerender(); } });
+    }, 300);
   }
 
   function closeCreate(): void {
@@ -136,12 +162,14 @@ export function createOrgsController(h: OrgsHost) {
         u.create.name = value ?? "";
         if (!u.create.slugTouched) { u.create.slug = slugFromName(u.create.name); delete u.create.errors.slug; }
         delete u.create.errors.name; delete u.create.errors.form;
+        if (!u.create.slugTouched) scheduleSlugCheck();
         break;
       case "orgsCreateSlug":
         if (!u.create) return;
         u.create.slug = (value ?? "").toLowerCase().replace(/\s+/g, "-");
         u.create.slugTouched = u.create.slug !== "";
         delete u.create.errors.slug; delete u.create.errors.form;
+        scheduleSlugCheck();
         break;
       case "orgsCreateSubmit": submitCreate(); return;
       default: return;

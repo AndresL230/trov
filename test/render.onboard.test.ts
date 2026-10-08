@@ -8,7 +8,7 @@ describe("onboardView", () => {
     expect(html).toContain('data-act="onbHandle"');
     expect(html).toContain('value="priya-n"');
     expect((html.match(/class="cnpy-sw/g) ?? []).length).toBe(10);
-    expect(html).toContain('data-arg="plum" class="cnpy-sw is-on"');
+    expect(html).toContain('data-arg="plum" class="cnpy-sw is-on compact"');
     expect(html).toContain("@priya-n");
     expect(html).toContain('data-act="onbSubmit"');
     expect(html).toMatch(/data-act="onbSubmit"[^>]*disabled/);

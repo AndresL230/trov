@@ -89,6 +89,15 @@ export interface CreateOrgInput {
  * (src/plans/grants.ts `createOrgFromGrant`, whose consuming statement rides in `extra`), or a person
  * creating a Free one of their own (src/plans/free.ts `createFreeOrg`, whose guard rides in `extra`).
  */
+/** Can an organization take this handle (its slug, the `/<slug>/` its links start with)? The create
+ *  dialog asks as the person types; `createOrg` re-checks every rule, and the UNIQUE index settles a race. */
+export async function orgSlugAvailable(p: PlatformContext, raw: string): Promise<{ available: boolean; reason?: "invalid" | "reserved" | "taken" }> {
+  const slug = raw.trim().toLowerCase();
+  const problem = orgSlugProblem(slug);
+  if (problem) return { available: false, reason: problem };
+  return (await first(p, `SELECT 1 AS x FROM orgs WHERE slug = ?`, slug)) ? { available: false, reason: "taken" } : { available: true };
+}
+
 export async function createOrg(p: PlatformContext, input: CreateOrgInput): Promise<OrgRow> {
   const slug = typeof input.slug === "string" ? input.slug.trim() : "";
   const problem = orgSlugProblem(slug);

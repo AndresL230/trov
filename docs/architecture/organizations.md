@@ -91,7 +91,8 @@ events and the owner checklist: `billing.md`. Enterprise is never bought: it is 
 ### 1d. …or someone creates a Free one
 
 Anyone signed in (not a superadmin) can create a **Free** organization from the org picker or the switcher's
-menu — no grant, no payment [`POST /api/orgs`, `src/plans/free.ts`]: up to 3 people, 1 repository, 2
+menu (the dialog asks for a name and a **handle** — the slug, checked for availability as it is typed:
+`GET /api/orgs/slug-check`) — no grant, no payment [`POST /api/orgs`, `src/plans/free.ts`]: up to 3 people, 1 repository, 2
 environments. A person can OWN one Free organization at a time (`DEFAULT_ORG_LIMIT = 1`, `shared/orgs.ts`).
 Its owner upgrades it to Pro from Org settings › General (**Upgrade to Pro**, or the button Members shows at
 the seat cap): a Stripe checkout for that organization, starting at one seat per member and pending
