@@ -94,7 +94,8 @@ export const RELEASES: Release[] = [
     ops: [
       "Apply migration `0046_sync_runs` (additive: the table `sync_runs` and one index). It is safe on live data and with the previous Worker running. To roll back, deploy the previous Worker and `DROP TABLE sync_runs`.",
       "AI summaries stay OFF until the platform key is set: `wrangler secret put GEMINI_API_KEY`. One key serves every organization. From then on each summarizer call is counted per organization in `org_usage_daily` and each plan's monthly allowance applies (`ai_summaries` in `shared/plans.ts`: 300 Personal, 3,000 Team, unlimited Enterprise — placeholders; an override per org works like every other limit). `docs/architecture/plans.md` › AI summaries has what counts, the reset, and how to estimate cost.",
-      "No cron trigger change: run records older than 90 days are deleted by the existing daily cron. No plugin change.",
+      "No cron trigger change: run records older than 90 days are deleted by the existing daily cron.",
+      "Trov plugin 0.7.1 connects to `https://trov.dev/mcp` (0.7.0 still pointed at the old canopy.saplinglearn.com address, which now redirects and cannot be signed in to). Update the plugin (`/plugin marketplace update trov`, then reinstall or `/reload-plugins`), then `/mcp` → trov → Authenticate.",
       "`LOCAL_UPSTREAM` is a local-development value only (a loopback stand-in for GitHub and Gemini during a Sync). Do not set it as a secret; a value that is not `http://127.0.0.1` or `http://localhost` is ignored, and so is any value while a live Stripe key is set. It and `STRIPE_TEST_API_BASE` are described together in `.dev.vars.example`.",
     ],
     patches: {
