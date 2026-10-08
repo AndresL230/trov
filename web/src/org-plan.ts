@@ -213,3 +213,32 @@ export function planBlock(s: OrgSlice<OrgPlanView | null>, role: OrgRole, b: Org
       <ul class="cnpy-plan-rows">${LIMIT_KEYS.map((k) => limitRow(v, k)).join("")}</ul>
     </section>`;
 }
+
+/**
+ * The same plan, in PARTS, for a page that lays it out its own way — personal Settings' Plan tile
+ * (settings-plan.ts). Every word and every button is the Plan block's above (`billingPart`, `giftNote`,
+ * the status chips, the closing line), so the two places can never say different things about one
+ * organization; only the arrangement is the caller's. All of it is trusted markup except `line` and
+ * `foot`, which are plain text.
+ */
+export interface PlanParts {
+  /** How the org pays, as `data-org-billing` names it; null when nothing about payment is shown. */
+  state: BillingPart["state"] | null;
+  /** The chips beside the plan's name: its status, and "Cancelled". */
+  chips: string;
+  /** The gift's line ("Free until …"), or "". */
+  gift: string;
+  /** The sentence about payment, or null. */
+  line: string | null;
+  /** The owner's buttons (`orgBilling…` acts), or "". */
+  actions: string;
+  /** Who changes the plan, and how. */
+  foot: string;
+}
+export function planParts(v: OrgPlanView, role: OrgRole, b: OrgBillingUi = initialOrgBillingUi()): PlanParts {
+  const pay = billingPart(v, role, b);
+  const gift = giftNote(v);
+  // The Plan block's own closing line (`planBlock`, above) — keep the two in step.
+  const foot = pay ? pay.foot : role === "owner" ? (gift ? `To keep or change your plan, contact Trov.` : `To change your plan, contact Trov.`) : `An owner of this organization can ask Trov to change the plan.`;
+  return { state: pay?.state ?? null, chips: `${STATUS_CHIP[v.status]}${pay?.chip ?? ""}`, gift, line: pay?.line ?? null, actions: pay?.actions ?? "", foot };
+}
