@@ -1,8 +1,8 @@
 // Which org is on screen (canopy-multitenancy.md §5.1, Phase 6) — pure, so it is unit-tested
-// without a DOM. The app lives at `/o/<slug>/` with the hash route after it (`/o/acme/#tickets/12`);
+// without a DOM. The app lives at `/<slug>/` with the hash route after it (`/acme/#tickets/12`);
 // `/` only decides where to go. main.ts is the one module that reads `location` and calls these.
 
-import { ORG_SLUG_RE, type MyOrg, type OrgRole } from "@shared/orgs";
+import { orgPath, orgSlugOfPath, type MyOrg, type OrgRole } from "@shared/orgs";
 
 /** The browser key that remembers the last org opened here. A plain slug — never a credential:
  *  the membership is checked by the server on every request. */
@@ -11,16 +11,12 @@ export const LAST_ORG_KEY = "trov.org";
 export const RETURN_HASH_KEY = "trov.returnHash";
 export const RETURN_ORG_KEY = "trov.returnOrg";
 
-/** The slug in `/o/<slug>` or `/o/<slug>/…`, or null on any other path. */
-export function orgSlugFromPath(pathname: string): string | null {
-  const m = /^\/o\/([^/]+)(?:\/|$)/.exec(pathname);
-  if (!m) return null;
-  const slug = m[1].toLowerCase();
-  return ORG_SLUG_RE.test(slug) ? slug : null;
-}
+/** The slug in `/<slug>/` (or the old `/o/<slug>/…`), or null on any other path — a reserved first
+ *  segment (`/platform`, `/billing/done`, `/pricing`) is never an org. */
+export const orgSlugFromPath = (pathname: string): string | null => orgSlugOfPath(pathname);
 
 /** An org's home path — what every in-app URL is written under. */
-export const orgBase = (slug: string | null): string => (slug ? `/o/${slug}/` : "/");
+export const orgBase = (slug: string | null): string => (slug ? orgPath(slug) : "/");
 /** An org's URL with a hash route (`#tickets/12`, or "" for its My Work). */
 export const orgHref = (slug: string, hash = ""): string => `${orgBase(slug)}${hash && hash !== "#" ? (hash.startsWith("#") ? hash : `#${hash}`) : ""}`;
 
@@ -39,7 +35,7 @@ export type Landing =
 
 /**
  * Where a signed-in page load lands.
- *  • `/o/<slug>/…` → that org if the person is a member, else the picker (saying so).
+ *  • `/<slug>/` → that org if the person is a member, else the picker (saying so).
  *  • `/` (and old links, `/#tickets/12`): the org they signed in from, else their ONLY org,
  *    else — with several — the last one opened in this browser if they are still in it;
  *    otherwise the picker (several with none remembered, or none at all).

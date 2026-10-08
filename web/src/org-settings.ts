@@ -165,7 +165,7 @@ export function initialOrgUi(): OrgUi {
   };
 }
 
-/** THE current org: the one the page's path names (`state.orgSlug`, from `/o/<slug>/`), with MY role
+/** THE current org: the one the page's path names (`state.orgSlug`, from `/<slug>/`), with MY role
  *  in it. `GET /api/orgs` is the fresher source (a rename, a role change); `/auth/me`'s copy answers
  *  until it lands, so nothing waits on a second request to know who is an admin. */
 export function currentOrg(s: { orgSlug: string | null; myOrgs: { data: MyOrgsResponse | null }; me: { orgs: readonly MyOrg[] } | null }): MyOrg | null {

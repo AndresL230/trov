@@ -42,7 +42,7 @@ Org settings › Repositories › Connect with GitHub          (an <a>, not a fe
   → GET /auth/callback?code=…&installation_id=…&setup_action=install|update&state=…
       (the App has "Request user authorization (OAuth) during installation" on, so GitHub returns to
        the CALLBACK URL with a user authorization code — there is no Setup URL)
-  → 302 /o/<slug>/?github=<outcome>#org/repos               always a redirect, never JSON
+  → 302 /<slug>/?github=<outcome>#org/repos                 always a redirect, never JSON
 ```
 
 The start route is a GET, so it refuses a navigation that did not come from Trov's own page

@@ -16,17 +16,45 @@ export const ORG_NAME_MAX = 80;
 /** The `orgs.slug` CHECK (0042_organizations): 2–39 of [a-z0-9-], starting with a letter or digit. */
 export const ORG_SLUG_RE = /^[a-z0-9][a-z0-9-]{1,38}$/;
 /** Refused in code, not by CHECK, so the list can grow: every first path segment the app or its
- *  hosts answer on, plus the product's own names. */
+ *  hosts answer on, plus the product's own names.
+ *
+ *  AN ORG'S PAGE IS `/<slug>/` (`orgPath`), so this list is also what keeps an org from shadowing a
+ *  route: the Worker serves the app shell for `GET /<slug>/` only when the segment is NOT here
+ *  (src/index.ts). Every route segment the Worker answers at the root, and every top-level static
+ *  page, MUST be listed — test/spa-shell.test.ts walks the app's routes and fails on a missing one. */
 export const RESERVED_ORG_SLUGS: readonly string[] = [
   "api", "o", "orgs", "org", "auth", "oauth", "mcp", "new", "settings", "admin", "platform", "raw", "img",
   "avatar", "u", "webhook", "static", "assets", "www", "app", "trov", "canopy", "invites", "invite", "me",
   "help", "support", "docs", "login", "logout", "signup", "system",
+  // Static pages and files at the root (web/*.html, web/public/).
+  "index", "pricing", "privacy", "terms", "guide", "favicon", "robots", "sitemap", "billing",
+  // Root routes of the Hono app (src/routes.ts and the routers mounted at "/"), and screen names kept
+  // free so a path can never be mistaken for one.
+  "feed", "doc", "adr", "adrs", "roadmap", "search", "tickets", "ticket", "sprints", "sprint", "repo", "repos",
+  "sync", "persons", "people", "proposals", "needs-triage", "identity-tasks", "ingest", "plan", "prompts",
+  "handoffs", "artifacts", "notifications", "integrations", "environments", "members", "usage", "audit",
+  "admins", "grants", "github", "google", "onboard", "callback", "identities", "handle-check", "mcp-token",
+  "mcp-tokens", "oauth-grants", "org-logo", "logo", "policy", "prefs", "outbox", "preview", "fetch",
+  "upload-url", "test-send", "triage", "mywork", "site", "releases", "unsubscribe", "unplaced", "maintenance",
 ];
 
 export type OrgSlugProblem = "invalid" | "reserved";
 export function orgSlugProblem(slug: string): OrgSlugProblem | null {
   if (!ORG_SLUG_RE.test(slug)) return "invalid";
   return RESERVED_ORG_SLUGS.includes(slug) ? "reserved" : null;
+}
+
+/** An org's home path — `/<slug>/`, with the screen in the hash after it (`/acme/#tickets/12`). */
+export const orgPath = (slug: string): string => `/${slug}/`;
+
+/** The org a page path names, or null: `/<slug>` or `/<slug>/` where the segment is a valid slug that
+ *  is not reserved. The old form `/o/<slug>[/…]` is still read (the Worker redirects it; a cached page
+ *  or an old link may still be on it). Nothing deeper is an org page — the route lives in the hash. */
+export function orgSlugOfPath(pathname: string): string | null {
+  const m = /^\/o\/([^/]+)(?:\/|$)/.exec(pathname) ?? /^\/([^/]+)\/?$/.exec(pathname);
+  if (!m) return null;
+  const slug = m[1].toLowerCase();
+  return orgSlugProblem(slug) === null ? slug : null;
 }
 
 /** GitHub's login shape — an invite by login is validated, never looked up (§5.3). */

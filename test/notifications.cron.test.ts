@@ -75,7 +75,7 @@ describe("scheduled() dispatch (local mode)", () => {
     expect(rows[0]).toMatchObject({ cadence: "daily", window_id: "2026-09-11", status: "sent", resend_id: null });
     const [b] = await bodies();
     // The deep link opens the org the digest is about (src/tools/org-links.ts), not whichever org the browser last had.
-    expect(b.html).toContain("https://trov.example/o/saplinglearn/#review");
+    expect(b.html).toContain("https://trov.example/saplinglearn/#review");
     expect(b.html).not.toContain("https://trov.example/#review");
   });
 
