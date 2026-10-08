@@ -115,8 +115,11 @@ export interface OrgBillingView {
   cancel_at_period_end: boolean;
   /** Trov set this org's plan by hand: it no longer follows the subscription's. */
   pinned: boolean;
-  /** The plans the org can START a subscription on — a Free org's upgrade (`POST …/billing/upgrade`). */
+  /** The plans the org can START a subscription on — a Free org's upgrade (`POST …/billing/upgrade`), and
+   *  what a GIFTED org's owner pays for to keep a plan past the gift's end. */
   upgrade_to: PurchasablePlan[];
+  /** The org's plan is a gift from Trov (`OrgPlanView.gift_until`), not a subscription: nothing is paid yet. */
+  gifted?: boolean;
 }
 
 // ── Platform (superadmin) ────────────────────────────────────────────────────

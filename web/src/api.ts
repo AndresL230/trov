@@ -305,7 +305,7 @@ export function removeAvatar(): Promise<{ ok: true; avatar_url: string | null }>
 // never carry a submitted value). Nothing here ever RECEIVES a secret: the API is write-only.
 // Namespace imports under names of their own, so this block never collides with another import of the same types.
 import type * as OrgT from "@shared/orgs";
-import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView, type PlatformGrant, type GrantTarget, type PlanId, type PlanOverrides } from "@shared/plans";
+import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView, type PlatformGrant, type GrantTarget, type PlanId, type PlanOverrides, type GiftLength } from "@shared/plans";
 import type * as IntT from "@shared/integrations";
 import type { BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
 import type * as GhT from "@shared/github-app";
@@ -912,18 +912,28 @@ export function setPlatformOrgSuspended(slug: string, suspended: boolean): Promi
 }
 // Plans and grants (shared/plans.ts; src/plans/routes.ts).
 /** Change an org's plan and its limit overrides. Nothing in the org is removed by it. */
-export function setPlatformOrgPlan(slug: string, body: { plan: PlanId; overrides: PlanOverrides }): Promise<PlatformOrgRow> {
+/** With `gift`: the plan is free until then, and the org moves to Free by itself (0048_plan_gifts). Refusals:
+ *  `invalid_gift`, `billed` (409: the org pays through a live subscription). */
+export function setPlatformOrgPlan(slug: string, body: { plan: PlanId; overrides?: PlanOverrides; gift?: GiftLength }): Promise<PlatformOrgRow> {
   return putJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/plan`, body).then((r) => r.org);
 }
 /** A paid org whose plan was set by hand goes back to the plan its subscription pays for. 409 `not_billed` for a granted org. */
 export function followPlatformOrgSubscription(slug: string): Promise<PlatformOrgRow> {
   return putJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/plan`, { follow_subscription: true }).then((r) => r.org);
 }
+/** Move a gift's end: `{ days }` are added to its current end, `{ until }` sets it. 409 `not_gifted`. */
+export function extendPlatformOrgGift(slug: string, length: GiftLength): Promise<PlatformOrgRow> {
+  return postJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/gift/extend`, length).then((r) => r.org);
+}
+/** End a gift now: the org moves to Free. 409 `not_gifted`. */
+export function endPlatformOrgGift(slug: string): Promise<PlatformOrgRow> {
+  return postJson<{ ok: true; org: PlatformOrgRow }>(`/api/platform/orgs/${encodeURIComponent(slug)}/gift/end`).then((r) => r.org);
+}
 export function listPlatformGrants(): Promise<PlatformGrant[]> {
   return getJson<{ grants: PlatformGrant[] }>("/api/platform/grants").then((r) => r.grants);
 }
 /** Grant a person an organization of their own. Refusals: `invalid_grant`, `no_such_person`. */
-export function createPlatformGrant(body: { to: GrantTarget; plan: PlanId; overrides?: PlanOverrides; note?: string; expires_in_days?: number | null }): Promise<PlatformGrant> {
+export function createPlatformGrant(body: { to: GrantTarget; plan: PlanId; overrides?: PlanOverrides; note?: string; expires_in_days?: number | null; gift_days?: number | null }): Promise<PlatformGrant> {
   return postJson<{ ok: true; grant: PlatformGrant }>("/api/platform/grants", body).then((r) => r.grant);
 }
 /** Revoke an UNUSED grant. 409 `grant_used` once it has become an org; 404 otherwise. */

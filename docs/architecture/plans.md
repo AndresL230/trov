@@ -6,9 +6,9 @@ anything else comes from a **grant** — one a superadmin gave, or one a payment
 live in Trov: the last section is the seam billing uses.
 
 Code: `shared/plans.ts` (the plans, the limits, the one refusal — shared by the Worker, the SPA and the
-landing page), `src/plans/` (`state.ts`, `gate.ts`, `grants.ts`, `free.ts`, `billing.ts`, `routes.ts`).
-Migration: `0044_plans.sql`. Tests: `test/plans.limits.test.ts`, `test/plans.grants.test.ts`,
-`test/render.plans.test.ts`, `test/orgs.routes.test.ts` (Free).
+landing page), `src/plans/` (`state.ts`, `gate.ts`, `grants.ts`, `gifts.ts`, `free.ts`, `billing.ts`, `routes.ts`).
+Migrations: `0044_plans.sql`, `0048_plan_gifts.sql`. Tests: `test/plans.limits.test.ts`, `test/plans.grants.test.ts`,
+`test/plans.gifts.test.ts`, `test/render.plans.test.ts`, `test/render.gifts.test.ts`, `test/orgs.routes.test.ts` (Free).
 
 ## The plans
 
@@ -211,6 +211,61 @@ it on a plan again (AI summaries stop too: new items show an excerpt). Billing n
 an ended subscription moves the org to Free (`moveOrgToFree`); the status remains for an org frozen before
 that, and `cancelOrgPlan` stays in the seam. Nothing sets a status but billing's functions below.
 
+## Gifts: a plan for free until a date
+
+A superadmin can give an organization a plan **for free until a date**; when the date passes the
+organization moves to Free by itself, with nothing deleted. This is the only thing in Trov that ends a
+plan on a date without Stripe: a plan set with Change plan, and a grant without a length, last until
+someone changes them. Code: `src/plans/gifts.ts`; `0048_plan_gifts`; tests `test/plans.gifts.test.ts`,
+`test/render.gifts.test.ts`.
+
+**Data.** `orgs.plan_gift_until` — the instant the plan ends (ISO-8601 UTC, always `toISOString()` so it
+compares as text); NULL = the plan is not a gift. `org_grants.gift_days` — a grant's gift as a LENGTH (below).
+Who gave a gift and when is the audit trail's (`plan.gift`, `plan.gift_end`), not a column.
+
+**A length** (`giftEnd`, `shared/plans.ts`) is `{ days }` — a whole number, 1 to `GIFT_MAX_DAYS` (1,095) — or
+`{ until }`: a `YYYY-MM-DD` day, which runs to the END of that day UTC, or a full instant. The end must be in
+the future and at most three years away. Platform's presets (`GIFT_PRESETS`) are 1 / 2 / 3 / 6 / 12 months as
+30 / 60 / 90 / 180 / 365 days, so a gift on an org and a gift on a grant mean the same thing.
+
+| | Call | What it writes |
+|---|---|---|
+| **Give** (or replace) | `PUT /api/platform/orgs/:slug/plan { plan, overrides?, gift }` → `giftOrgPlan` → `setOrgPlan(…, { gift_until })` | the plan (never Free: 400 `invalid_gift`), its overrides as for Change plan, `plan_source = 'granted'`, the end. Audited `plan.gift` |
+| **Extend** | `POST /api/platform/orgs/:slug/gift/extend { days } \| { until }` → `extendOrgGift` | only the end: `days` are added to the CURRENT end, `until` sets it. Compare-and-set on the end it read. Audited `plan.gift` (`extended_from`). 409 `not_gifted` |
+| **End now** | `POST /api/platform/orgs/:slug/gift/end` → `endOrgGift` | Free at once, as at the gift's end. Audited `plan.gift_end` (`reason: "ended"`). 409 `not_gifted` |
+| **Expire** | `expireGifts(p, now)` — the repo cron's EVERY tick (`src/repo/cron.ts`, beside the handoff expiry; no cron of its own) | every org whose end has passed: Free. Audited `plan.gift_end` by `system` (`reason: "expired"`) |
+
+- **Only an org that does not pay through a live subscription** can be given a gift: 409 `billed` otherwise
+  (a date must not end what Stripe charges for). One whose subscription has ended can.
+- **Any other plan write clears the gift** (`setOrgPlan` without `gift_until`): Change plan on a gifted org
+  makes its plan permanent (the dialog says so; the audit row carries `gift_cleared`), and billing's
+  `setOrgPlan` on fulfilment leaves a paid org with no end date.
+- **Ending is what `moveOrgToFree` writes** for a cancelled subscription — Free, `active`, overrides cleared —
+  with `plan_source = 'granted'` (nobody ever paid: the org is then exactly a self-served Free org), and the
+  over-limit rule is all that applies: nobody is removed, every read works, additions over a Free limit are
+  refused (402, `next: "upgrade"`) until the org is back under or upgrades.
+- **The expiry is one guarded batch per org, by that org's id**: the UPDATE carries `plan_gift_until <= ?`
+  and `plan_source <> 'billing'`, and its audit row is written `WHERE changes() > 0`. So it is idempotent, safe
+  to run twice or late, and a payment, an extension or a plan change that lands between the cron's read and
+  its write wins. An org that pays (`plan_source = 'billing'`) only has the lapsed gift CLEARED
+  (`reason: "paid"`); its plan is left alone. It never throws out of the cron: a failed org is counted and
+  retried on the next tick. Precision is the tick: an org moves within about ten minutes of its end.
+- **A gifted grant** — `POST /api/platform/grants { …, gift_days }` (1–1,095; refused on Free and on a paid
+  grant, 400 `invalid_grant`). The clock starts when the grantee CREATES the organization: the creating batch
+  sets `plan_gift_until = created + gift_days` (`grantGiftStmts`) and audits `plan.gift` with the grant's id.
+  The grant itself still has no end (`expires_at` is only the date by which it must be used). The notice
+  mail, the picker's row and the create dialog say how long it is free and what happens after.
+- **Paying before the end.** A gifted org's owner may start a subscription while the gift runs
+  (`POST /api/o/:slug/billing/upgrade`, which otherwise accepts only Free): `orgBillingView` answers a view
+  with `gifted: true` and `upgrade_to`, fulfilment (`upgradeOrg`) is the usual `setOrgPlan(team, { seats },
+  source: "billing")`, and that clears the gift. **The paid plan takes over at once** — the seats bought become
+  the seat cap, and a gifted Enterprise org moves to Pro's limits — the rest of the gift is not kept.
+- **What the org's people read.** `GET /api/o/:slug/plan` carries `gift_until` (null for a plan that is not
+  a gift). The Plan tile (`giftNote`, `web/src/org-plan.ts`) says "Free until <date>, a gift from Trov. After
+  that this organization moves to Free; nothing is deleted." — the amber note in its last `GIFT_SOON_DAYS` (7).
+  The owner gets "Keep Pro by paying" only where billing is set up and Pro is on sale.
+- **No mail is sent** when a gift is given to an existing org, when it is about to end, or when it ends.
+
 ## Free: an organization of one's own, with no grant
 
 Any signed-in person who is not a superadmin may create a **Free** organization (issue #94;
@@ -244,7 +299,8 @@ themselves (Platform › Access), a person **buys Pro** and is given that same g
 before, is read by nothing; its Platform control and route are gone, and the column is dropped by the cleanup
 migration.
 
-1. **Granted** — `POST /api/platform/grants { to, plan, overrides?, note?, expires_in_days? }`. `to` is
+1. **Granted** — `POST /api/platform/grants { to, plan, overrides?, note?, expires_in_days?, gift_days? }`
+   (`gift_days`: the org it becomes is free for that long and then moves to Free — *Gifts*, above). `to` is
    exactly one of `{ handle }` (an existing person), `{ github_login }`, `{ email }`. The grantee needs no
    account yet. An e-mail grant is mailed a notice (`src/notifications/grant.ts`): it names who granted it
    and the plan, its only link is the site root, and it spends the granter's daily `invite` allowance (a
@@ -263,7 +319,7 @@ migration.
    rewritten.
 
 Every step is in `org_admin_audit`: `grant.create`, `grant.revoke`, `grant.use`, and for an org's plan
-`plan.change`, `plan.overrides`, `plan.status`.
+`plan.change`, `plan.overrides`, `plan.status`, `plan.gift`, `plan.gift_end`.
 
 Both new tables are GLOBAL platform tables (no `org_id` column, like `platform_admins`): a grant is about a
 person before any org exists. `org_grants.used_org` is deliberately not named `org_id`.
@@ -272,14 +328,16 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 
 | Route | Gate | Answers |
 |---|---|---|
-| `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries` = this month's), `over` |
+| `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, `gift_until`, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries` = this month's), `over` |
 | `GET /api/o/:slug/sync` | any member | `SyncStatusView` — its `summaries` is the allowance: status, used, cap, remaining, pending (`sync.md`) |
 | `GET /api/orgs` | signed in | adds `grants: MyGrant[]`, `can_create`, `free: { can_create, owned }` |
 | `POST /api/orgs` | holds a usable grant, or may own a Free org | 201 the org; 403 `no_grant` (a grant that is not theirs, a superadmin); 403 `free_org_limit` |
 | `GET /api/platform/grants` | superadmin | `{ grants: PlatformGrant[] }` |
 | `POST /api/platform/grants` | superadmin | 201 `{ ok, grant }`; 400 `invalid_grant`; 404 `no_such_person` |
 | `POST /api/platform/grants/:id/revoke` | superadmin | `{ ok, grant }`; 404; 409 `grant_used` |
-| `PUT /api/platform/orgs/:slug/plan` | superadmin | `{ ok, org }` (the Platform row, with `plan`); 400 `invalid_plan` / `invalid_overrides` |
+| `PUT /api/platform/orgs/:slug/plan` | superadmin | `{ ok, org }` (the Platform row, with `plan` and `plan.gift`); 400 `invalid_plan` / `invalid_overrides`; with `gift`: 400 `invalid_gift`, 409 `billed` |
+| `POST /api/platform/orgs/:slug/gift/extend` | superadmin | `{ ok, org }`; 400 `invalid_gift`; 409 `not_gifted` |
+| `POST /api/platform/orgs/:slug/gift/end` | superadmin | `{ ok, org }` (now on Free); 409 `not_gifted` |
 | `POST /api/platform/orgs` | superadmin | also takes `plan` (default `team`, Pro) and `overrides` |
 
 ## The pricing page
@@ -322,6 +380,7 @@ handler builds `platform(env, BILLING_ACTOR)` and calls only these:
 | a payment succeeded for plan X by person / e-mail Y, who has no org | `grantOrganization(env, p, { to, plan, overrides?, note?, expires_in_days?, external_ref, origin? })` → a `PlatformGrant` (billing passes `overrides: { seats }`). Idempotent on `external_ref`; mails an e-mail grantee when `origin` is given |
 | the subscription starts, changes (plan or seats) or renews for an org | `setOrgPlan(p, slug, { plan, overrides?, source: "billing", status?, period_end?, customer_id?, subscription_id? })` |
 | a renewal failed | `markOrgPastDue(p, slug)` |
+| a gift's date passed (no payment involved; the cron) | `expireGifts(p, now)` (`./gifts.ts`) — the same end state as the next row, guarded per org |
 | the subscription ended | `moveOrgToFree(p, slug, { period_end? })` — Free, active, still a billing org; overrides cleared; the over-limit rule applies. (`cancelOrgPlan` — readable, working, no additions — remains in the seam, unused by billing.) |
 | read | `orgPlan(p, orgId)`, `getGrant(p, id)` |
 | the buyer changed plan or seats before using the grant | `setPaidGrantPlan(p, external_ref, plan, { seats })` |

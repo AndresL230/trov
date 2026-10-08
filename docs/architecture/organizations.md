@@ -65,6 +65,16 @@ loses access; it cannot add more of that kind until it is back under. Everyone i
 plan in Org settings › General; only you change it. The limits, what counts toward each and the seam for
 billing: `plans.md`.
 
+**Gift a plan** gives the organization a plan for free until a date: pick the plan (Pro or Enterprise),
+optionally its seats, and 1 / 2 / 3 / 6 / 12 months or a date [`PUT …/plan { gift }`]. The confirmation says
+what happens at the end: the organization moves to Free by itself, nothing is deleted, and anything over a
+Free limit waits. The section then reads "Gifted until <date>" with **Extend** [`POST …/gift/extend`] and
+**End now** [`POST …/gift/end`]; **Change plan** on a gifted organization clears the gift (the plan you set
+there has no end). The organization's people see "Free until <date>, a gift from Trov…" on their Plan tile,
+and its owner can start paying before then. It is not offered for an organization on a live subscription.
+In Platform › Access, **Grant an organization** has an optional **Free for**: the organization that grant
+becomes is free for that long from the day it is created. All of it: `plans.md` › Gifts.
+
 ### 1c. …or someone buys Pro
 
 A person presses "Choose Pro" on the pricing page [`GET /billing/start`, `src/billing/routes.ts`], signs in

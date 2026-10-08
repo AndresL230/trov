@@ -353,7 +353,9 @@ const PLATFORM: Record<string, string> = {
   "POST /api/platform/orgs/:slug/admin": "requireSuperadmin", "POST /api/platform/orgs/:slug/suspend": "requireSuperadmin",
   "POST /api/platform/orgs/:slug/unsuspend": "requireSuperadmin",
   // Plans and grants (0044_plans, src/plans/routes.ts): registered on the same app, behind the same gate.
-  "PUT /api/platform/orgs/:slug/plan": "requireSuperadmin", "GET /api/platform/grants": "requireSuperadmin",
+  "PUT /api/platform/orgs/:slug/plan": "requireSuperadmin",
+  // 0048_plan_gifts: a gift's end moved, or the gift ended now (test/plans.gifts.test.ts holds the 404 for anyone else).
+  "POST /api/platform/orgs/:slug/gift/extend": "requireSuperadmin", "POST /api/platform/orgs/:slug/gift/end": "requireSuperadmin", "GET /api/platform/grants": "requireSuperadmin",
   "POST /api/platform/grants": "requireSuperadmin", "POST /api/platform/grants/:id/revoke": "requireSuperadmin",
   "GET /api/platform/admins": "requireSuperadmin", "POST /api/platform/admins": "requireSuperadmin", "DELETE /api/platform/admins/:handle": "requireSuperadmin",
   "GET /api/platform/audit": "requireSuperadmin", "GET /api/platform/usage": "requireSuperadmin",

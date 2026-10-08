@@ -76,6 +76,9 @@ export const ORG_AUDIT_ACTIONS = [
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
   // Plans and grants (0044_plans, src/plans): an org's plan / limits / status changed; a grant made, revoked, used.
   "plan.change", "plan.overrides", "plan.status", "grant.create", "grant.revoke", "grant.use",
+  // A plan given for free until a date (0048_plan_gifts, src/plans/gifts.ts): given or extended; ended —
+  // by the superadmin, by its date (actor `system`), or cleared because the org pays through Stripe.
+  "plan.gift", "plan.gift_end",
   // A person created a Free organization of their own (src/plans/free.ts): the row is also the guard that
   // keeps them to one owned Free org at a time.
   "org.create_free",

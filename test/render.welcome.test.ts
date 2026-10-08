@@ -59,7 +59,7 @@ const gh = (o: Partial<GithubAppStatusDTO> = {}): GithubAppStatusDTO => ({ confi
 const available = (names: string[]): GithubReposDTO => ({ repositories: names.map((n) => ({ full_name: n, private: false, tracked: false, is_primary: false })), total: names.length, truncated: false });
 const bill = (o: Partial<OrgBillingView> = {}): OrgBillingView => ({ available: true, subscribed: false, ended: false, customer: false, interval: null, seats: null, cancel_at_period_end: false, pinned: false, upgrade_to: ["team"], ...o });
 const plan = (id: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView => ({
-  plan: id, name: PLANS[id].name, description: PLANS[id].description, status: "active", source: "granted", period_end: null, entitlements: PLANS[id].entitlements, overridden: [],
+  plan: id, name: PLANS[id].name, description: PLANS[id].description, status: "active", source: "granted", period_end: null, gift_until: null, entitlements: PLANS[id].entitlements, overridden: [],
   seats: { members: 1, pending: 0 }, usage: { seats: 1, repositories: 0, environments: 0, artifact_bytes: 0, agent_connections: 0, ai_summaries: 0 }, over: [], ...o,
 });
 const grant = (slug = "acme", o: Partial<OAuthGrantSummary> = {}): OAuthGrantSummary => ({ id: 3, client_name: "Claude Code", created_at: "2026-10-07T10:00:00.000Z", last_used_at: null, org: { slug, name: slug === "acme" ? "Acme Robotics" : "Other" }, ...o });

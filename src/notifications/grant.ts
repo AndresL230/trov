@@ -12,6 +12,7 @@ import { EMAIL_COLORS as C, EMAIL_FONT, FONTS_HREF, EMAIL_STYLE, EMAIL_WIDTH, EM
 import { platformDeliveryFor } from "./resend";
 import { inviteSignInUrl } from "./invite";
 import { getPerson } from "../auth/persons";
+import { giftLengthWords } from "@shared/plans";
 
 export interface GrantEmailInput {
   /** Who granted it, as a display name; null for a grant nobody made by hand (billing). */
@@ -23,6 +24,8 @@ export interface GrantEmailInput {
   host: string;
   /** The grant is a PURCHASE's (src/billing/fulfil.ts): it says the payment went through, not that something was given. */
   paid?: boolean;
+  /** A GIFT (0048_plan_gifts): the organization is free for this many days from the day it is set up. */
+  giftDays?: number | null;
 }
 
 export function renderGrantEmail(o: GrantEmailInput): { subject: string; html: string; text: string } {
@@ -30,7 +33,7 @@ export function renderGrantEmail(o: GrantEmailInput): { subject: string; html: s
   const lede = o.paid ? "Your organization is ready." : "An organization of your own.";
   const what = o.paid
     ? `Your payment for Trov's ${o.planName} plan went through. Sign in, choose your organization's name and address, and it is yours: you are its owner. Stripe sends the receipt.`
-    : `${o.granterName ? `${o.granterName} has` : "You have been"} given ${o.granterName ? "you " : ""}an organization on Trov's ${o.planName} plan. Sign in with this address, choose its name and address, and it is yours: you are its owner.`;
+    : `${o.granterName ? `${o.granterName} has` : "You have been"} given ${o.granterName ? "you " : ""}an organization on Trov's ${o.planName} plan. Sign in with this address, choose its name and address, and it is yours: you are its owner.${o.giftDays ? ` It is free for ${giftLengthWords(o.giftDays)} from the day you set it up; after that it moves to the Free plan, and nothing is deleted.` : ""}`;
   const plan = `${o.planName}: ${o.planDescription}`;
   const about = "Trov is a team's shared memory: what everyone is working on, the docs and decisions behind it, and what ships next.";
   const forWhom = `This is for ${o.email}. If you weren't expecting it, you can ignore this email.`;
@@ -73,14 +76,14 @@ export interface GrantMailOutcome { status: "sent" | "failed"; at: string; error
  * Send one grant notice and record the outcome on the grant's row. Never throws: the grant is already
  * written, and the person finds it when they sign in whether or not the mail arrived.
  */
-export async function sendGrantNotice(env: Env, p: PlatformContext, o: { grantId: number; email: string; granterHandle: string | null; planName: string; planDescription: string; origin: string; fetchImpl?: typeof fetch; paid?: boolean }): Promise<GrantMailOutcome> {
+export async function sendGrantNotice(env: Env, p: PlatformContext, o: { grantId: number; email: string; granterHandle: string | null; planName: string; planDescription: string; origin: string; fetchImpl?: typeof fetch; paid?: boolean; giftDays?: number | null }): Promise<GrantMailOutcome> {
   const at = nowIso();
   let result: GrantMailOutcome;
   try {
     const granter = o.granterHandle ? await getPerson(p, o.granterHandle) : null;
     const msg = renderGrantEmail({
       granterName: o.granterHandle ? granter?.name ?? o.granterHandle : null, planName: o.planName, planDescription: o.planDescription, email: o.email,
-      signInUrl: inviteSignInUrl(o.origin), host: o.origin.replace(/^https?:\/\//, "") || "trov", paid: o.paid,
+      signInUrl: inviteSignInUrl(o.origin), host: o.origin.replace(/^https?:\/\//, "") || "trov", paid: o.paid, giftDays: o.giftDays,
     });
     await platformDeliveryFor(p, env, { fetchImpl: o.fetchImpl }).send({ idempotencyKey: `grant:${o.grantId}:${at}`, userId: o.email, to: o.email, subject: msg.subject, html: msg.html, text: msg.text });
     result = { status: "sent", at, error: null };

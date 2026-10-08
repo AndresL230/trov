@@ -82,9 +82,14 @@ export const RELEASES: Release[] = [
       "Accept an invitation and you land on a short setup of your own: connect your coding agent, then see where the Feed, Docs, Tickets and Roadmap are.",
       "Signed in with Google? The setup says to link your GitHub account before connecting a repository, takes you there, and brings you back to the same step.",
       "The setup can be reopened at any time, from Help › Get Started, from search, or from Org settings while steps remain. It always shows what is really done.",
+      "Trov can give an organization a plan for free for a set time. Org settings › General says until when, and what happens after: the organization moves to Free and nothing is deleted. Its owner can start paying before then to keep a paid plan.",
     ],
     headsUp: [
       "Creating an organization no longer opens Org settings, and accepting an invitation no longer opens My Work: both open the guided setup. Skip setup takes you straight in.",
+    ],
+    ops: [
+      "Migration `0048_plan_gifts` (additive: `orgs.plan_gift_until`, `org_grants.gift_days`, one partial index) is applied by the merge to `main`. Nothing existing changes: no org or grant has a gift until a superadmin gives one.",
+      "No new cron and no `wrangler triggers deploy`: a gift's end is checked on the repo cron's existing 10-minute tick, so an organization moves to Free within about ten minutes of its gift ending.",
     ],
     patches: {
       added: [
@@ -94,17 +99,22 @@ export const RELEASES: Release[] = [
         "`WELCOME_RETURN_KEY` (sessionStorage): leaving the setup to link a GitHub account or to connect the GitHub App notes it, and `enterOrg` lands that one return (`/#settings`, or `?github=…#org/repos`) on `#welcome` instead (`welcomeReturnHash`) (#121)",
         "`web/src/mcp-connect.ts`: the plugin install commands, the by-hand command and the three sign-in steps (`connectSteps`), shared by Settings › MCP access and the setup (#121)",
         "\"Open the guided setup\" on Org settings' checklist and on Get Started; \"Guided setup\" in quick search (#121)",
+        "A plan as a GIFT (`src/plans/gifts.ts`, `0048_plan_gifts`): Platform › an organization › Plan has **Gift a plan** (plan, optional seats, 1 / 2 / 3 / 6 / 12 months or a date) — `PUT /api/platform/orgs/:slug/plan { plan, overrides?, gift: { days } | { until } }` — then \"Gifted until <date>\" with **Extend** (`POST …/gift/extend`) and **End now** (`POST …/gift/end`). Superadmin only, audited as `plan.gift` / `plan.gift_end`; 409 `billed` for an org on a live subscription (#123)",
+        "`expireGifts` runs on every tick of the repo cron: an org whose `plan_gift_until` has passed moves to Free (Free, active, overrides cleared, nothing deleted) in one guarded statement per org, audited by `system`. Idempotent; an org that pays through Stripe only has the lapsed gift cleared (#123)",
+        "Platform › Access › Grant an organization takes an optional **Free for** (`gift_days` on `POST /api/platform/grants`): the clock starts when the grantee creates the organization, whose `plan_gift_until` it becomes. The grant's notice mail, the picker and the create dialog say so (#123)",
+        "Org settings › General › Plan shows \"Free until <date>, a gift from Trov. After that this organization moves to Free; nothing is deleted.\" (`OrgPlanView.gift_until`), as the amber note in its last 7 days; the owner gets \"Keep Pro by paying\" where billing is set up (#123)",
       ],
       changed: [
         "`createLanding` / `acceptLanding` (`web/src/org-picker.ts`): creating an organization lands on `#welcome` (was `#org`); accepting an invitation lands an owner or admin on `#welcome` and a member on `#welcome/agent` (were `#org` for an owner, My Work for anyone else) (#121)",
         "Members' invite form is `inviteSection` (`web/src/org-settings.ts`), rendered by the Members tab and by the setup's team step, so both obey the same seat gate (#121)",
+        "`POST /api/o/:slug/billing/upgrade` also accepts an org whose plan is a gift (was 409 `not_free` for anything but Free): its owner starts paying before the gift ends, and fulfilment clears the gift. Every `setOrgPlan` without `gift_until` clears a gift, so Change plan on a gifted org makes the plan permanent (#123)",
       ],
       fixed: [
         "Org settings › General lines up with the tab bar and the other tabs: its 640px column (`.cnpy-org-narrow`) is now a bento grid across the tab (`.cnpy-org-gen`: image + name, plan, slug, and the plan's limits as their own tile), folding to one column by container width (#122)",
       ],
       removed: [],
     },
-    prs: [121, 122],
+    prs: [121, 122, 123],
   },
   // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
   {

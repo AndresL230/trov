@@ -16,7 +16,7 @@
 
 import { trovMark } from "@shared/mark";
 import { ORG_NAME_MAX, type MyInvite, type MyOrg, type MyOrgsResponse, type OrgRole } from "@shared/orgs";
-import { PLANS, FREE_PLAN, UPGRADE_PLAN, seatsPhrase, type MyGrant } from "@shared/plans";
+import { PLANS, FREE_PLAN, UPGRADE_PLAN, giftLengthWords, seatsPhrase, type MyGrant } from "@shared/plans";
 import { BILLING_GRANTER } from "@shared/billing";
 import { esc, attr, relTime, surface } from "./ui";
 import { accentBtn, quietBtn, orgBanner, roleChip } from "./org-ui";
@@ -36,7 +36,7 @@ export interface CreateOrgDraft {
   busy: boolean;
   errors: CreateOrgErrors;
   /** The grant this creation uses (its id and what it gives), or null = the person's oldest. */
-  grant: Pick<MyGrant, "id" | "plan_name" | "entitlements"> | null;
+  grant: (Pick<MyGrant, "id" | "plan_name" | "entitlements"> & Partial<Pick<MyGrant, "gift_days">>) | null;
   /** No grant: a Free organization of their own (`grant` is then null). */
   free: boolean;
 }
@@ -219,7 +219,7 @@ export function createOrgModal(d: CreateOrgDraft): string {
         <button type="button" data-act="orgsCreateClose" aria-label="Close" title="Close" class="cnpy-iconbtn"${off} style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${CLOSE}</button>
         <div id="orgs-create-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em">Create an organization</div>
         <p id="orgs-create-d" style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">${d.grant
-          ? `It will be on the <strong style="font-weight:600;color:var(--fg-70)">${esc(d.grant.plan_name)}</strong> plan, ${esc(seatsPhrase(d.grant.entitlements.seats))}. You become its owner${d.grant.entitlements.seats === 1 ? "" : " and invite everyone else"}.`
+          ? `It will be on the <strong style="font-weight:600;color:var(--fg-70)">${esc(d.grant.plan_name)}</strong> plan, ${esc(seatsPhrase(d.grant.entitlements.seats))}. You become its owner${d.grant.entitlements.seats === 1 ? "" : " and invite everyone else"}.${d.grant.gift_days ? ` It is free for ${esc(giftLengthWords(d.grant.gift_days))} from today, a gift from Trov; after that it moves to Free, and nothing is deleted.` : ""}`
           : d.free ? `It will be on the <strong style="font-weight:600;color:var(--fg-70)">${esc(PLANS[FREE_PLAN].name)}</strong> plan, ${esc(seatsPhrase(PLANS[FREE_PLAN].entitlements.seats))}. You become its owner and invite everyone else; upgrade it to ${esc(PLANS[UPGRADE_PLAN].name)} when you need more.`
           : "An organization is your team's own Trov: its docs, tickets, roadmap and feed. You become its owner and invite everyone else."}</p>
         <div style="margin-top:16px">
@@ -315,7 +315,7 @@ export function orgPickerView(p: OrgPickerProps): string {
     const o = { arg: String(g.id), field: `orgsCreateOpen:${g.id}`, label, extra: "height:36px" };
     const expires = g.expires_at ? ` &middot; use it by ${esc(new Date(g.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }))}` : "";
     return optRow(`You can set up an organization &mdash; ${esc(g.plan_name)}`,
-      `${esc(seatsPhrase(g.entitlements.seats, true))}. You choose its name and become its owner. ${g.granted_by === BILLING_GRANTER ? "Paid for" : `Granted by @${esc(g.granted_by)}`} ${esc(relTime(g.created_at))}${expires}.`,
+      `${esc(seatsPhrase(g.entitlements.seats, true))}${g.gift_days ? `, free for ${esc(giftLengthWords(g.gift_days))}` : ""}. You choose its name and become its owner. ${g.granted_by === BILLING_GRANTER ? "Paid for" : `Granted by @${esc(g.granted_by)}`} ${esc(relTime(g.created_at))}${expires}.`,
       orgs.length === 0 && i === 0 ? accentBtn("Set up organization", "orgsCreateOpen", o) : quietBtn("Set up organization", "orgsCreateOpen", { ...o, extra: "height:36px;color:var(--fg)" }),
       ` data-orgs-grant="${g.id}"`);
   };
