@@ -36,9 +36,11 @@ PUBLIC_ORIGIN = "https://trov.dev"
 # configured on this deployment. GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY and GITHUB_APP_WEBHOOK_SECRET are
 # secrets (`wrangler secret put …`) — see docs/architecture/github-app.md › Owner checklist.
 GITHUB_APP_SLUG = "trov-by-trovlabs"
-# Email delivery gate. "local" while this copy runs alongside Canopy, so the team
-# never gets duplicate digests. Flip to "resend" at cutover (needs RESEND_API_KEY).
-NOTIFICATIONS_MODE = "local"
+# Email delivery gate. "resend" = mail is really sent, from hello@trov.dev, with the RESEND_API_KEY
+# secret (absent → every send is a configuration error, never a silent fallback). "local" writes the
+# rendered bodies to a table and sends nothing. A deploy sets this from HERE: a value changed only in
+# the Cloudflare dashboard is put back by the next deploy.
+NOTIFICATIONS_MODE = "resend"
 
 # Billing — Stripe (docs/architecture/billing.md › Owner checklist). The ids of the recurring PRICES the
 # owner created in the Stripe dashboard (`price_…`), not amounts: Trov never holds a price, and the amount
@@ -53,6 +55,38 @@ STRIPE_PRICE_TEAM_YEARLY = ""
 
 [observability]
 enabled = true
+
+# ── Preview deployments (a build of any branch but main) ─────────────────────────────────────────────
+# A Preview is the branch's code on its own URL, deployed by `npm run deploy:preview` (`wrangler preview`).
+# It gets ONLY the bindings in this section — never production's: its own EMPTY database and bucket, so
+# an unreviewed branch (and its migrations) can never read or change real data. It has no sign-in
+# secrets, so nobody can sign in to a Preview; it shows the public pages and proves the branch builds,
+# migrates from nothing and boots. Preview-only secrets: `wrangler preview secret put <NAME>`.
+[previews.vars]
+PUBLIC_ORIGIN = "https://trov.dev"
+GITHUB_APP_SLUG = ""
+NOTIFICATIONS_MODE = "local"
+STRIPE_PRICE_PERSONAL = ""
+STRIPE_PRICE_TEAM = ""
+STRIPE_PRICE_PERSONAL_YEARLY = ""
+STRIPE_PRICE_TEAM_YEARLY = ""
+
+[[previews.d1_databases]]
+binding = "DB"
+database_name = "trov-preview"
+database_id = "b8e88540-be00-4938-9f71-1eac4a8e7232"
+
+[[previews.r2_buckets]]
+binding = "ARTIFACTS_BUCKET"
+bucket_name = "trov-preview-artifacts"
+
+# Only so the preview database can be migrated by name: `wrangler d1 migrations apply trov-preview
+# --remote --env preview`. Nothing is ever DEPLOYED to this environment.
+[env.preview]
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "trov-preview"
+database_id = "b8e88540-be00-4938-9f71-1eac4a8e7232"
 
 # Capture-time PR/issue summaries come from Google Gemini over REST (GEMINI_API_KEY
 # secret), a plain fetch(), not a Cloudflare binding, so no [ai] block is needed.

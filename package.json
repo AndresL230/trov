@@ -7,6 +7,7 @@
     "dev": "npm run build:web && (npm run watch:web & wrangler dev)",
     "watch:web": "vite build --config web/vite.config.ts --watch --emptyOutDir false",
     "deploy": "npm run build:web && wrangler deploy",
+    "deploy:preview": "wrangler d1 migrations apply trov-preview --remote --env preview && wrangler preview",
     "pretest": "mkdir -p web/dist",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.worker.json && tsc -p tsconfig.web.json",
