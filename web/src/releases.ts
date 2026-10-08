@@ -113,7 +113,7 @@ export const RELEASES: Release[] = [
         "`syncSkeletons` (after every paint): each skeleton region keeps its clock across rerenders (`--skel-t`), stays invisible for its first 150 ms so a fast read never shows one, and what replaces it gets one short fade (`.cnpy-settle`). Off under reduced motion (#119)",
       ],
       changed: [
-        "Google sign-up is open: `completeSignIn` sends any unknown Google account with a verified address to onboarding, as it does a GitHub account. The pending-invite gate (`hasPendingEmailInvite`, `OnboardPayload.invite_email`, 403 `invite_revoked` on `POST /auth/onboard`) is gone. An unverified address is still refused, now at `/?denied=unverified` (was `/?denied=invite`) (#PRNUM)",
+        "Google sign-up is open: `completeSignIn` sends any unknown Google account with a verified address to onboarding, as it does a GitHub account. The pending-invite gate (`hasPendingEmailInvite`, `OnboardPayload.invite_email`, 403 `invite_revoked` on `POST /auth/onboard`) is gone. An unverified address is still refused, now at `/?denied=unverified` (was `/?denied=invite`) (#120)",
         "Plan `team` is shown as \"Pro\", with 50 seats; `PURCHASABLE_PLANS` is `[\"team\"]`. Checkout sends quantity = members + pending invitations (at least 1; 1 for a first purchase) with `adjustable_quantity` 1–50 (#117)",
         "`src/billing/sync.ts`: the subscription's quantity is written as the org's `seats` override (`paidSeats`, held to the plan's cap); an unused paid grant carries it in its overrides and `linkPaidOrgStmt` copies them onto the org; an ended subscription moves the org to Free (active, still a billing org) instead of freezing it as `canceled` — a pinned plan too (#117)",
         "`OrgBillingView`: `subscribed`, `ended`, `customer`, `seats`, `upgrade_to` (was `renew_on`); a Free org gets one. The Plan block shows seats, Change seats, and Upgrade to Pro (#117)",
@@ -134,7 +134,7 @@ export const RELEASES: Release[] = [
         "`POST /api/o/:slug/billing/renew` (an ended subscription now leaves the org on Free; Upgrade to Pro is how it pays again); `firstTeamPlan` (#117)",
       ],
     },
-    prs: [117, 119],
+    prs: [117, 119, 120],
   },
   // Sync GitHub as a recorded run, and AI summaries counted per organization (#109).
   {
