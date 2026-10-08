@@ -57,7 +57,8 @@ describe("onboardView — the first of the first-run cards", () => {
     expect(html.indexOf("cnpy-fr-bg")).toBeLessThan(html.indexOf("cnpy-orgs-card"));
     expect(html.indexOf("Choose how you'll appear.")).toBeGreaterThan(html.indexOf("cnpy-orgs-banner"));
     expect(html).toMatch(/<button type="button" data-act="backToLogin" data-field="onbBack"[^>]*>Back<\/button>/);
-    expect(html).toContain("Enter Trov");
+    expect(html).toMatch(/data-act="onbSubmit"[^>]*>Continue<\/button>/);
+    expect(html).not.toContain("Enter Trov");
     expect(onboardView(s)).not.toContain("cnpy-fr-bg");
   });
   it("came back from the welcome card: it edits the account — no way back, and Continue", () => {
