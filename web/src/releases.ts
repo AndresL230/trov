@@ -129,6 +129,7 @@ export const RELEASES: Release[] = [
       "A sync writes at most 50 summaries each time you run it. A larger backlog takes more than one sync.",
       "Closing or reloading the tab that started a sync stops it after the step it is on. Nothing is lost: the panel says it did not finish, and the next sync picks up where it left off.",
       "If GitHub is not connected, the panel says so and takes an admin to the place to connect it: Org settings › Repositories where the Trov App is offered, or Integrations for a token.",
+      "If the Trov App is installed on a GitHub account that does not own your repository, Org settings › Repositories and the Sync panel now say so, naming the account and the repository. Connecting the right account replaces the old connection; you no longer have to disconnect first.",
       "A payment that is past due does not stop AI summaries. When a plan ends they stop, and new items show an excerpt until the plan is renewed.",
     ],
     ops: [
@@ -166,10 +167,12 @@ export const RELEASES: Release[] = [
       fixed: [
         "A sync with no summarizer no longer loops ten batches rewriting the same excerpt rows: nothing is spent from the batch budget when nothing can be attempted, so it is one batch",
         "An explicit `summarizer: null` passed to `runBackfill` means no summarizer (it fell through to the environment's)",
+        "The GitHub App on an account that does not own the primary repository was silent (the repository just read \"manual\"): `GET …/github` carries `mismatch`, Repositories shows a banner with a Connect link, and `GET /sync` carries `wrong_account` so the panel names the account instead of \"GitHub is not connected\" (#110)",
+        "Connecting a different installation replaces the org's current one in one batch (`bindInstallation(ctx, info, replace)`: the old binding ends as `disconnected`, audited with `replaced_by`); the `already_connected` refusal is gone (#110)",
       ],
       removed: [],
     },
-    prs: [109],
+    prs: [109, 110],
   },
   // Billing (#106), with the pricing page (#105), which merged without a release line of its own.
   {

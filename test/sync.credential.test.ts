@@ -19,7 +19,7 @@ import { runSyncBatch, syncStatus, type SyncBatchResult } from "../src/sync/runs
 import { localUpstreamFetch } from "../src/sync/local-upstream";
 import { holdsLiveKey } from "../src/billing/config";
 import { isLiveStripeKey, loopbackOrigin } from "../src/platform/loopback";
-import { all, first } from "./helpers/db";
+import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import { addOrgRepo } from "./helpers/org-config";
 import { fakeGithub } from "./helpers/repo";
@@ -132,6 +132,21 @@ describe("GET /sync — can a sync start, with what, and where an admin connects
     // A member reads the same answer (it is asked as the org's system tenant, never revealed).
     expect(await syncStatus(e, await memberB(), NOW)).toMatchObject({ admin: false, blocked: null, via: "app", connect: "app" });
     expect(seen).toEqual([]);
+  });
+
+  it("the App on an account that does not own the repository: blocked, and it says WHICH account — not 'GitHub is not connected'", async () => {
+    await addOrgRepo(REPO_B, ORG_B);
+    await seedInstallation(ORG_B, INST_B, "someone-else", { by: "bob" });
+    const seen = noNetwork();
+    const st = await statusB();
+    expect(st).toMatchObject({ repo: REPO_B, blocked: "no_token", via: null, connect: "app", wrong_account: "someone-else" });
+    expect(syncBlockText(st.blocked!, null, st.connect, { account: st.wrong_account!, repo: st.repo! })).toEqual({
+      what: `The GitHub App is installed on someone-else, which does not own ${REPO_B}.`, tab: "repos", link: "Connect the account that owns it in Org settings › Repositories",
+    });
+    expect(seen).toEqual([]);
+    // The right account: nothing to say.
+    await run(env.DB, `UPDATE org_github_installations SET account_login = ? WHERE org_id = ?`, REPO_B.split("/")[0], ORG_B);
+    expect(await statusB()).toMatchObject({ blocked: null, via: "app", wrong_account: null });
   });
 
   it("no credential: `no_token`, and `connect` says where THIS Trov connects GitHub — the setup checklist's test (the App configured or not)", async () => {

@@ -265,7 +265,7 @@ describe("GET /auth/callback — GitHub's return after an install", () => {
     expect(await everything()).toBe(before);
   });
 
-  it("an installation already connected to ANOTHER Trov org is refused; so is a second installation for this org", async () => {
+  it("an installation already connected to ANOTHER Trov org is refused; a different one for THIS org replaces its connection", async () => {
     const cookie = await olive();
     const gh = world();
     gh.world.installations[502] = { account: { login: "olive", id: 9001, type: "User" }, repos: [{ full_name: "olive/dotfiles" }] };
@@ -280,17 +280,20 @@ describe("GET /auth/callback — GitHub's return after an install", () => {
     const b = await start(cookie);
     expect(landed(await callback(gh, { code: "abc", installation_id: String(INSTALL), setup_action: "install", state: stateOf(b.res) }, [cookie, b.install]))).toBe(repos("taken"));
     await run(env.DB, `UPDATE orgs SET suspended_at = NULL, suspended_by = NULL WHERE id = ?`, ORG_A);
-    // This org connects another one; a second, different installation is then refused.
+    // This org connects another one; a different installation then takes its place (the admin chose
+    // another GitHub account) — the old binding is ended as `disconnected`, never left beside the new.
     const c = await start(cookie);
     expect(landed(await callback(gh, { code: "abc", installation_id: "502", setup_action: "install", state: stateOf(c.res) }, [cookie, c.install]))).toBe(repos("connected"));
     await run(env.DB, `UPDATE org_github_installations SET removed_at = '2026-10-07T00:00:00Z', removed_reason = 'disconnected' WHERE org_id = ?`, ORG_A);
     const d = await start(cookie);
-    expect(landed(await callback(gh, { code: "abc", installation_id: String(INSTALL), setup_action: "install", state: stateOf(d.res) }, [cookie, d.install]))).toBe(repos("already_connected"));
-    expect((await bindings()).filter((r) => r.removed_at === null)).toEqual([{ org_id: ORG_B, installation_id: 502, account_login: "olive", connected_by: "olive", removed_at: null }]);
-    // The same installation again (an "update" return) refreshes it: still one row, no second audit row.
+    expect(landed(await callback(gh, { code: "abc", installation_id: String(INSTALL), setup_action: "install", state: stateOf(d.res) }, [cookie, d.install]))).toBe(repos("connected"));
+    expect((await bindings()).filter((r) => r.removed_at === null)).toEqual([{ org_id: ORG_B, installation_id: INSTALL, account_login: "acme-gh", connected_by: "olive", removed_at: null }]);
+    expect(await all(env.DB, `SELECT installation_id, removed_reason FROM org_github_installations WHERE org_id = ? AND removed_at IS NOT NULL`, ORG_B)).toEqual([{ installation_id: 502, removed_reason: "disconnected" }]);
+    expect((await all<{ action: string }>(env.DB, `SELECT action FROM org_admin_audit WHERE org_id = ? AND action LIKE 'github.%' ORDER BY id`, ORG_B)).map((r) => r.action)).toEqual(["github.connect", "github.disconnect", "github.connect"]);
+    // The same installation again (an "update" return) refreshes it: still one live row, no further audit row.
     const f = await start(cookie);
-    expect(landed(await callback(gh, { code: "abc", installation_id: "502", setup_action: "update", state: stateOf(f.res) }, [cookie, f.install]))).toBe(repos("connected"));
-    expect(await all(env.DB, `SELECT action FROM org_admin_audit WHERE org_id = ? AND action = 'github.connect'`, ORG_B)).toHaveLength(1);
+    expect(landed(await callback(gh, { code: "abc", installation_id: String(INSTALL), setup_action: "update", state: stateOf(f.res) }, [cookie, f.install]))).toBe(repos("connected"));
+    expect(await all(env.DB, `SELECT action FROM org_admin_audit WHERE org_id = ? AND action = 'github.connect'`, ORG_B)).toHaveLength(2);
   });
 
   it("GitHub not answering, a suspended installation, or App credentials GitHub refuses — nothing is connected", async () => {
