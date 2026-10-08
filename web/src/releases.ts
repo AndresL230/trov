@@ -70,6 +70,40 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // The guided first-run setup: a new owner, admin or member is walked through it instead of landing on a checklist or an empty feed (#121).
+  {
+    version: "0.24",
+    date: "2026-10-08",
+    title: "A guided setup",
+    headline: "Create an organization or accept an invitation, and Trov walks you through what to do first.",
+    highlights: [
+      "A new organization opens on a guided setup: connect the repository your team ships from, connect your coding agent, invite your team. One step at a time, each one skippable, with Back always there.",
+      "Connecting your coding agent is now part of getting started. The setup shows the two commands to run, with a Copy button, and notices by itself when your agent is connected.",
+      "Accept an invitation and you land on a short setup of your own: connect your coding agent, then see where the Feed, Docs, Tickets and Roadmap are.",
+      "Signed in with Google? The setup says to link your GitHub account before connecting a repository, takes you there, and brings you back to the same step.",
+      "The setup can be reopened at any time, from Help › Get Started, from search, or from Org settings while steps remain. It always shows what is really done.",
+    ],
+    headsUp: [
+      "Creating an organization no longer opens Org settings, and accepting an invitation no longer opens My Work: both open the guided setup. Skip setup takes you straight in.",
+    ],
+    patches: {
+      added: [
+        "`#welcome[/<step>]` (`web/src/welcome.ts`, `welcome-actions.ts`): the guided first-run setup, a full page without the sidebar. An owner or admin gets repository → coding agent → team → done; a member gets coding agent → done. No migration and no new route: it is entered by navigation and is stateless (#121)",
+        "Every step's state is derived from reads the SPA already makes (`githubStepState`, `agentStepState`, `teamStepState`): Org settings' slices, `GET /auth/oauth-grants` filtered to the org on screen, and the org's MCP tokens. A read that is out or failed is `unknown`, never done or to-do (#121)",
+        "The agent step re-reads `GET /auth/oauth-grants` every 5 s while it is on screen, not yet connected and the tab is visible, and at once when the tab regains focus (#121)",
+        "`WELCOME_RETURN_KEY` (sessionStorage): leaving the setup to link a GitHub account or to connect the GitHub App notes it, and `enterOrg` lands that one return (`/#settings`, or `?github=…#org/repos`) on `#welcome` instead (`welcomeReturnHash`) (#121)",
+        "`web/src/mcp-connect.ts`: the plugin install commands, the by-hand command and the three sign-in steps (`connectSteps`), shared by Settings › MCP access and the setup (#121)",
+        "\"Open the guided setup\" on Org settings' checklist and on Get Started; \"Guided setup\" in quick search (#121)",
+      ],
+      changed: [
+        "`createLanding` / `acceptLanding` (`web/src/org-picker.ts`): creating an organization lands on `#welcome` (was `#org`); accepting an invitation lands an owner or admin on `#welcome` and a member on `#welcome/agent` (were `#org` for an owner, My Work for anyone else) (#121)",
+        "Members' invite form is `inviteSection` (`web/src/org-settings.ts`), rendered by the Members tab and by the setup's team step, so both obey the same seat gate (#121)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [121],
+  },
   // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
   {
     version: "0.23",

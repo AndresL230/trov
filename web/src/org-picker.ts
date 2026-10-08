@@ -87,9 +87,11 @@ const ROLE_WORD: Record<OrgRole, string> = { owner: "owner", admin: "admin", mem
 /** "an admin" / "a member" — the role an invite grants, in a sentence. */
 const asRole = (r: OrgRole): string => `${r === "member" ? "a" : "an"} ${ROLE_WORD[r]}`;
 /** Who invited the person, to what and as what — the line under an invitation. */
-/** Where accepting an invitation lands: the org's My Work — or, for its new OWNER (a superadmin's owner
- *  invite), Org settings, where the setup checklist is: the same place creating an organization lands. */
-export const acceptLanding = (i: Pick<MyInvite, "org" | "role">): string => orgHref(i.org.slug, i.role === "owner" ? "#org" : "");
+/** Where creating an organization lands (a Free one, a granted or a paid one): its guided setup. */
+export const createLanding = (slug: string): string => orgHref(slug, "#welcome");
+/** Where accepting an invitation lands: the org's guided setup (welcome.ts) — an owner's and an admin's
+ *  starts at connecting a repository, a member's at connecting their coding agent. */
+export const acceptLanding = (i: Pick<MyInvite, "org" | "role">): string => orgHref(i.org.slug, i.role === "member" ? "#welcome/agent" : "#welcome");
 export const inviteSentence = (i: MyInvite): string => `@${i.invited_by} invited you to join as ${asRole(i.role)}`;
 
 function inviteRow(i: MyInvite, ui: Pick<OrgsUi, "inviteBusy">, compact: boolean): string {

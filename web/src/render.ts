@@ -63,7 +63,7 @@ import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsU
 import { billingDonePage, type BillingDoneUi } from "./billing";
 import { isOrgAdmin } from "./org-context";
 import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpEndpoint, mcpStrong, ONE_ORG_NOTE } from "./mcp-connect";
-import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeStep, type WelcomeUi } from "./welcome";
+import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
@@ -93,7 +93,9 @@ export type Screen =
   // Help › What's new: the release grid, and each release's notes / patch notes (releases.ts, static data).
   | "releases"
   // Org settings: one screen, five tabs (`#org[/<tab>]`, web/src/org-settings.ts).
-  | "org";
+  | "org"
+  // The guided first-run setup: a full page, no sidebar (`#welcome[/<step>]`, web/src/welcome.ts).
+  | "welcome";
 
 /** Async data slice: a screen's fetched payload plus its load status. */
 export interface Loadable<T> {
@@ -124,6 +126,8 @@ export interface AppState {
   orgMe: Loadable<OrgMeResponse | null>;
   /** The switcher's menu, the picker and the create-organization dialog (org-picker.ts). */
   orgsUi: OrgsUi;
+  /** The guided first-run setup (welcome.ts): its step, and the by-hand disclosure. */
+  welcome: WelcomeUi;
   /** `/billing/done`: the waiting room a buyer lands in after Stripe Checkout (billing.ts). null everywhere else. */
   billingDone: BillingDoneUi | null;
   mywork: Loadable<DashboardData | null>;
@@ -413,6 +417,7 @@ export function initialState(): AppState {
     orgSlug: null,
     orgMe: { status: "idle", data: null },
     orgsUi: initialOrgsUi(),
+    welcome: initialWelcomeUi(),
     billingDone: null,
     screen: "mywork",
     theme: "light", systemDark: true,
@@ -777,7 +782,7 @@ function header(s: AppState): string {
   const titles: Record<Screen, string> = {
     mywork: "My Work", feed: "Feed", docs: "Docs", roadmap: "Roadmap", review: "Review",
     maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Get Started",
-    unsubscribe: "Unsubscribe", site: "Trov",
+    unsubscribe: "Unsubscribe", site: "Trov", welcome: "Guided setup",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
     repo: "Repo",
@@ -1699,6 +1704,10 @@ function guideView(s: AppState): string {
     <h1 id="guide-top" class="cnpy-guide-anchor" style="font-size:30px;font-weight:650;letter-spacing:-0.025em;margin:0 0 14px">Get Started</h1>
     <p style="font-size:16px;line-height:1.8;color:var(--fg-70);margin:0 0 14px">Trov is the team's shared memory: docs, decisions, the roadmap, the ticket queue, and a running record of what shipped, open to people and to their coding agents alike. It has one rule: ${gStrong("agents only ever stage changes, and a person confirms the ones that matter")}. That keeps what Trov says trustworthy no matter how many agents write to it.</p>
     <p style="${gP}">This page takes you from zero to productive in order: sign in, connect your agent, learn the skills, then the everyday workflows and a tour of every screen. Troubleshooting is at the end.</p>
+    ${viewerOrg(s) ? `<div${surface("display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:14px 16px;margin:0 0 6px")} data-guide-setup>
+      <div style="flex:1 1 260px;min-width:0"><div style="font-size:13.5px;font-weight:600">Rather be walked through it?</div><div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:1px">The guided setup takes ${esc(viewerOrg(s)!.name)} one step at a time${viewerIsAdmin(s) ? ": a repository, your coding agent, your team" : ": your coding agent, then where things live"}.</div></div>
+      <button type="button" data-act="welcomeOpen" data-field="guideWelcomeOpen" class="cnpy-ghostbtn" style="height:32px;padding:0 13px;border-radius:8px;font-size:12.5px;font-weight:500;white-space:nowrap;border:1px solid var(--border);color:var(--fg);background:transparent">Open the guided setup</button>
+    </div>` : ""}
 
     ${sec("Step 1", "Sign in", "Sign in")}
     <ul style="${gList}">
@@ -2411,6 +2420,12 @@ function screenBody(s: AppState): string {
   }
 }
 
+/** Project the app state onto the guided setup's props (welcome.ts): Org settings' reads, and MY
+ *  agent connections — the two reads Settings › MCP access makes. */
+export function welcomeProps(s: AppState): WelcomeProps {
+  return { org: currentOrg(s), step: s.welcome.step, me: s.me, ui: s.org, grants: s.grants, tokens: s.mcpTokens, wel: s.welcome, dd: s.dd };
+}
+
 /** Project the app state onto Org settings' props. The current org is `currentOrg` — one place. */
 function orgProps(s: AppState): OrgSettingsProps {
   const status = s.myOrgs.status === "unauth" ? "error" : s.myOrgs.status;
@@ -2496,7 +2511,7 @@ function toastBlock(msg: string, elapsed: number, ms: number, action: ToastActio
 export function render(s: AppState): string {
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.billingDone ? billingDonePage(s.billingDone) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+    ${s.billingDone ? billingDonePage(s.billingDone) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
@@ -2507,6 +2522,7 @@ export function render(s: AppState): string {
     ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
+    ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}

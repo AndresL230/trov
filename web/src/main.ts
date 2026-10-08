@@ -74,6 +74,9 @@ import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
+import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
+import { effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
+import { currentOrg } from "./org-settings";
 import { createSyncController } from "./sync-actions";
 import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
@@ -117,6 +120,14 @@ const orgCtl = createOrgController({
 const orgsCtl = createOrgsController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
   reloadOrgs: () => loadMyOrgs(), go: (url) => { window.location.assign(url); }, openSettings: () => dispatch("orgGo", null, null),
+});
+
+// The guided first-run setup (web/src/welcome-actions.ts): every `welcome…` act, the agent step's
+// re-check, and the note that brings a return from GitHub back to it.
+const welcomeCtl = createWelcomeController({
+  state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadConnections: () => loadGrantsIfNeeded(),
+  reloadConnections: () => { loadGrants(); loadMcpTokens(); }, listGrants: () => listOAuthGrants(),
+  unauth: (e) => unauth(e), go: (url) => { window.location.href = url; },
 });
 
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
@@ -296,6 +307,7 @@ function rerender(): void {
   syncSkeletons(mount, state.view === "app" ? pageKey(currentRoute()) : state.view);
   orgCtl.afterPaint();
   dropdowns.afterPaint();
+  welcomeCtl.afterPaint();
   syncCtl.afterPaint();
   if (pendingFlash) {
     for (const el of Array.from(mount.querySelectorAll(pendingFlash))) el.classList.add("cnpy-flash");
@@ -360,6 +372,8 @@ window.addEventListener("hashchange", () => {
   // body swaps in place — exactly what clicking the tab does. (Every other screen's loader is
   // already a no-op once its data is in; Platform's reads only what the tab has not got yet.)
   if (r.screen === "org" && cur.screen === "org") { orgCtl.act("orgTab", r.orgTab ?? "integrations", null); return; }
+  // Back / Forward between two steps of the guided setup: its reads are already in.
+  if (r.screen === "welcome" && cur.screen === "welcome") { welcomeCtl.moved(); return; }
   loadForScreen(r.screen);
 });
 
@@ -461,6 +475,8 @@ function currentRoute(): Route {
   if (state.screen === "platform") r.platTab = state.plat.tab;
   if (state.screen === "platformorg" && state.plat.orgSlug) r.platOrg = state.plat.orgSlug;
   if (state.screen === "org") r.orgTab = state.org.tab;
+  // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
+  if (state.screen === "welcome") r.welcomeStep = effectiveWelcomeStep(state.welcome.step, welcomeStepsFor(currentOrg(state)?.role, state.org));
   return r;
 }
 function applyRoute(r: Route): void {
@@ -487,6 +503,7 @@ function applyRoute(r: Route): void {
   if (r.platTab) state.plat.tab = r.platTab;
   if (r.platOrg) state.plat.orgSlug = r.platOrg;
   if (r.orgTab) state.org.tab = r.orgTab;
+  if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
 }
 
 // Kick off the data load for a screen (mirrors the go* dispatch cases).
@@ -515,6 +532,7 @@ function loadForScreen(screen: Screen): void {
       if (state.view === "app") { location.replace(`${PLATFORM_PATH}${hashForRoute(currentRoute())}`); break; }
       platform.load(); break;
     case "org": loadOrgAdminExtras(); orgCtl.load(); break;
+    case "welcome": welcomeCtl.enter(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
     case "newticket": loadSprintsIfNeeded(); rerender(); break;
@@ -706,6 +724,15 @@ function enterOrg(slug: string, hash: string): void {
     const missing = /^[1-9][0-9]{0,5}$/.test(query.get("missing") ?? "") ? Number(query.get("missing")) : undefined;
     state.org.githubNotice = { outcome: github, accounts: (query.get("accounts") ?? "").split(",").filter((a) => GITHUB_LOGIN_RE.test(a)).slice(0, 10), ...(missing ? { missing } : {}) };
   }
+  // A return the guided setup itself sent away — to link a GitHub account, or to connect the GitHub
+  // App — comes back to the setup, not to the screen the server names (welcome-actions.ts). Once.
+  try {
+    const note = parseWelcomeReturn(sessionStorage.getItem(WELCOME_RETURN_KEY));
+    if (note) {
+      sessionStorage.removeItem(WELCOME_RETURN_KEY);
+      hash = welcomeReturnHash(note, { slug, hash, github: isGithubConnectOutcome(github), now: Date.now() }) ?? hash;
+    }
+  } catch { /* no storage: land where the URL says */ }
   state.orgSlug = slug;
   setApiOrg(slug);
   try { localStorage.setItem(LAST_ORG_KEY, slug); } catch { /* ignore */ }
@@ -3504,6 +3531,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
+      if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
       if (act.startsWith("org")) { if (act === "orgGo") loadOrgAdminExtras(); orgCtl.act(act, arg, value); return; }
       // Every Artifacts act goes to the one reducer in artifacts.ts.

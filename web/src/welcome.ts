@@ -23,7 +23,7 @@ import type { MyOrg, OrgRole } from "@shared/orgs";
 import type { McpTokenSummary, OAuthGrantSummary } from "@shared/rows";
 import { isSoloPlan } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
-import { O_HELP, accentBtn, chip, failedNote, goLink, quietBtn, roleAtLeast, roleChip, type OrgSlice } from "./org-ui";
+import { O_HELP, accentBtn, chip, failedNote, goLink, quietBtn, roleAtLeast, roleChip } from "./org-ui";
 import { orgTile } from "./org-logo";
 import { skeleton, skLine, skLines, skBox } from "./skeleton";
 import { dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
@@ -274,7 +274,7 @@ export function teamStep(p: WelcomeProps): string {
       ${roleChip(i.role)}
     </li>`;
   }).join("");
-  const waiting = pending.length ? `<div${surface("padding:6px 20px;margin-top:16px")} data-welcome-pending><ul class="cnpy-wel-list" style="margin-top:0">${rows}</ul></div>` : "";
+  const waiting = pending.length ? `<div${surface("padding:6px 20px;margin-top:16px")} data-welcome-pending><ul class="cnpy-wel-list is-flush">${rows}</ul></div>` : "";
   return `${lead}${inviteSection(org, ui, p.dd ?? initialDropdownUi())}${waiting}
     <div class="cnpy-wel-quiet">${goLink("Roles, resending and revoking are in Org settings › Members", "orgGo", "members")}</div>`;
 }
@@ -312,7 +312,7 @@ export function doneStep(steps: readonly WelcomeStep[], states: Record<WelcomeSt
     const icon = st === "done" ? OK_RING : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="2" ${st === "unknown" ? 'stroke-dasharray="3 3.4" ' : ""}aria-hidden="true" style="flex:none;margin-top:1px"><circle cx="12" cy="12" r="9"></circle></svg>`;
     return `<li class="cnpy-wel-row" data-welcome-recap="${s}" data-state="${st}">${icon}<span style="flex:1 1 200px;min-width:0;font-size:13px;color:${st === "done" ? "var(--fg)" : "var(--fg-70)"}">${RECAP[s][st]}</span>${st === "todo" ? quietBtn("Do it now", "welcomeGo", { arg: s, field: `welcomeRecap:${s}`, label: `${STEP_LABEL[s]}: do it now` }) : ""}</li>`;
   }).join("");
-  return `<div${surface("padding:6px 20px")} data-welcome-recaps><ul class="cnpy-wel-list" style="margin-top:0">${recap}</ul></div>
+  return `<div${surface("padding:6px 20px")} data-welcome-recaps><ul class="cnpy-wel-list is-flush">${recap}</ul></div>
     <h2 style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin:26px 0 9px">Where things live</h2>
     ${placesGrid()}
     <div style="${O_HELP};margin-top:14px">My Work is your own page: what is assigned to you and what is waiting on you. This setup stays in Help &rsaquo; Get Started if you want it again.</div>`;
@@ -389,6 +389,3 @@ export function welcomeOverlays(p: Pick<WelcomeProps, "org" | "step" | "ui" | "d
   if (!p.org || !p.dd?.open || !roleAtLeast(p.org.role, "admin")) return "";
   return dropdownMenu([inviteRoleDropdown(p.ui)], p.dd);
 }
-
-/** Does this slice still owe an answer? (`OrgSlice` and `Loadable` both.) */
-export const pending = (s: OrgSlice<unknown> | WelcomeRead<unknown>): boolean => s.status === "idle" || s.status === "loading";

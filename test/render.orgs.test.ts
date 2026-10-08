@@ -217,11 +217,11 @@ describe("the org picker / first run", () => {
   const picker = (orgs: MyOrgsResponse | null, o: { mine?: MyOrg[]; ui?: Partial<OrgsUi>; hash?: string; status?: "ok" | "loading" | "error"; who?: Me } = {}) =>
     orgPickerView({ me: o.who ?? me(o.mine ?? orgs?.orgs ?? []), mine: o.mine ?? orgs?.orgs ?? [], orgs, status: o.status ?? (orgs ? "ok" : "loading"), ui: ui(o.ui), hash: o.hash ?? "" });
 
-  it("accepting lands a new owner on Org settings (the setup checklist) and anyone else on the org's My Work", () => {
+  it("accepting lands on the org's guided setup: an owner's and admin's first step, a member's own", () => {
     const inv = (role: "owner" | "admin" | "member") => ({ org: { slug: "acme", name: "Acme" }, role });
-    expect(acceptLanding(inv("owner"))).toBe("/acme/#org");
-    expect(acceptLanding(inv("admin"))).toBe("/acme/");
-    expect(acceptLanding(inv("member"))).toBe("/acme/");
+    expect(acceptLanding(inv("owner"))).toBe("/acme/#welcome");
+    expect(acceptLanding(inv("admin"))).toBe("/acme/#welcome");
+    expect(acceptLanding(inv("member"))).toBe("/acme/#welcome/agent");
   });
   it("a superadmin — with no organization at all — is offered the Platform area; nobody else is", () => {
     const none = mine({ orgs: [], invites: [], superadmin: true });
