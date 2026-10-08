@@ -105,7 +105,9 @@ describe("#welcome — a route, so a reload stays on the step", () => {
 describe("the landing target — the wizard, not Org settings or an empty feed", () => {
   it("creating an organization (Free, granted or paid) lands on the guided setup", () => {
     expect(createLanding("acme")).toBe("/acme/#welcome");
-    expect(src("org-picker-actions.ts")).toContain(".then((org) => h.go(createLanding(org.slug)))");
+    // …in place when the page has held no other org's data (a first run), by a page load otherwise.
+    expect(src("org-picker-actions.ts")).toContain(".then((org) => land(org, createLanding(org.slug)))");
+    expect(src("org-picker-actions.ts")).toContain("if (!h.enterNew?.(org, hash)) h.go(url);");
     expect(src("org-picker-actions.ts")).not.toContain('"#org"');
   });
   it("accepting an invitation lands an owner or admin on its first step, a member on theirs", () => {

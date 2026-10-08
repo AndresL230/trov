@@ -184,6 +184,10 @@ export function syncSkeletons(mount: HTMLElement, scope: string, now: number = p
   if (scope !== scopeKey) { scopeKey = scope; seen.clear(); settles = []; }
   const live = new Set<string>();
   for (const el of Array.from(mount.querySelectorAll<HTMLElement>("[data-skel]"))) {
+    // A skeleton inside an `inert` region is a PICTURE of the app (the first-run backdrop, render.ts),
+    // not a read in flight: it has no clock to keep and nothing will replace it. Giving it one made the
+    // backdrop vanish and fade back in on every step of the guided setup (each step is a new scope).
+    if (el.closest("[inert]")) continue;
     const key = el.getAttribute("data-skel") ?? "";
     live.add(key);
     const s = seen.get(key) ?? { at: now, path: [] };

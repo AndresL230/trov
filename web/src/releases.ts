@@ -120,6 +120,8 @@ export const RELEASES: Release[] = [
         "`POST /api/o/:slug/billing/upgrade` also accepts an org whose plan is a gift (was 409 `not_free` for anything but Free): its owner starts paying before the gift ends, and fulfilment clears the gift. Every `setOrgPlan` without `gift_until` clears a gift, so Change plan on a gifted org makes the plan permanent (#123)",
       ],
       fixed: [
+        "Creating or joining an organization from the first-run picker reloaded the page before the guided setup. A page that has held no organization's data now enters the new one in place (`enterNew`), and the card morphs into the setup; from inside another organization it is still a page load (#124)",
+        "Each step of the guided setup made the app behind the card vanish and fade back in: `syncSkeletons` gave the backdrop's skeletons a loading clock, reset on every step. Skeletons inside an `inert` region are a picture and are skipped (#124)",
         "Typing in a first-run form or in Create an organization rebuilt the whole page behind it on every letter (`paint()` swaps any page that does not set `data-morph`). Onboarding, the org picker and the guided setup are now patched in place; the rule is in `docs/architecture/web-ui.md` (#124)",
         "Finishing onboarding left a new person on the handle card: `/#onboard` to `/#guide` is a same-document navigation, so nothing loaded. The page now reloads once the account exists (#122)",
         "Org settings › General lines up with the tab bar and the other tabs: its 640px column (`.cnpy-org-narrow`) is now a bento grid across the tab (`.cnpy-org-gen`: image + name, plan, slug, and the plan's limits as their own tile), folding to one column by container width (#122)",
