@@ -93,8 +93,8 @@ export const RELEASES: Release[] = [
     ],
     patches: {
       added: [
-        "`GET /api/orgs/slug-check?slug=`: is an organization handle free (`{ available, reason?: invalid | reserved | taken }`, `orgSlugAvailable`), capped by the `handle_check` allowance. The create dialog asks as the person types and shows checking / available / taken beside the field (#PRNUM)",
-        "`appBackdrop()` in `web/src/ui.ts`: the blurred outline of the app behind a first-run card (`.cnpy-fr-*`), used by onboarding and the org picker (#PRNUM)",
+        "`GET /api/orgs/slug-check?slug=`: is an organization handle free (`{ available, reason?: invalid | reserved | taken }`, `orgSlugAvailable`), capped by the `handle_check` allowance. The create dialog asks as the person types and shows checking / available / taken beside the field (#124)",
+        "`appBackdrop()` in `web/src/ui.ts`: the blurred outline of the app behind a first-run card (`.cnpy-fr-*`), used by onboarding and the org picker (#124)",
         "`#welcome[/<step>]` (`web/src/welcome.ts`, `welcome-actions.ts`): the guided first-run setup, a full page without the sidebar. An owner or admin gets repository → coding agent → team → done; a member gets coding agent → done. No migration and no new route: it is entered by navigation and is stateless (#121)",
         "Every step's state is derived from reads the SPA already makes (`githubStepState`, `agentStepState`, `teamStepState`): Org settings' slices, `GET /auth/oauth-grants` filtered to the org on screen, and the org's MCP tokens. A read that is out or failed is `unknown`, never done or to-do (#121)",
         "The agent step re-reads `GET /auth/oauth-grants` every 5 s while it is on screen, not yet connected and the tab is visible, and at once when the tab regains focus (#121)",
@@ -107,8 +107,8 @@ export const RELEASES: Release[] = [
         "Org settings › General › Plan shows \"Free until <date>, a gift from Trov. After that this organization moves to Free; nothing is deleted.\" (`OrgPlanView.gift_until`), as the amber note in its last 7 days; the owner gets \"Keep Pro by paying\" where billing is set up (#123)",
       ],
       changed: [
-        "Onboarding (pick a handle and a color) is the same bannered card as the org picker that follows it, with the handle and display name side by side and the colors on one line; it no longer scrolls the page (#PRNUM)",
-        "Create an organization: the Address field is called Handle (it is still the slug, the `/<slug>/` its links start with), and its messages say handle (#PRNUM)",
+        "Onboarding (pick a handle and a color) is the same bannered card as the org picker that follows it, with the handle and display name side by side and the colors on one line; it no longer scrolls the page (#124)",
+        "Create an organization: the Address field is called Handle (it is still the slug, the `/<slug>/` its links start with), and its messages say handle (#124)",
         "The org picker / first run is one card in the middle of the window: a purple Trov banner (the mark, the welcome, what Trov is), the things to do, and who is signed in (`.cnpy-orgs-card`, `-banner`, `-body`, `-foot`). A first run no longer scrolls the page (#122)",
         "Org settings › Notifications: the digests are a grid of tiles, two to a line (`.cnpy-digests`), one to a line at phone width; each tile holds the name, the default cadence beside its org-wide switch, and what it carries (#122)",
         "`createLanding` / `acceptLanding` (`web/src/org-picker.ts`): creating an organization lands on `#welcome` (was `#org`); accepting an invitation lands an owner or admin on `#welcome` and a member on `#welcome/agent` (were `#org` for an owner, My Work for anyone else) (#121)",
@@ -121,7 +121,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [121, 122, 123],
+    prs: [121, 122, 123, 124],
   },
   // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
   {
