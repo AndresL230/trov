@@ -66,7 +66,7 @@ function emptyUi(over: Partial<OrgUi> = {}): OrgUi {
     integrations: ok({ integrations: [integ("github_token"), integ("cloudflare_analytics")], secrets_available: true, key_version: null }),
     // The GitHub App is NOT configured on this deployment (the state every org was in before 0.19):
     // repositories are connected by name. The App's own states are test/render.github-app.test.ts.
-    github: ok({ configured: false, installation: null, lost: null }),
+    github: ok({ configured: false, installation: null, lost: null, mismatch: null }),
     audit: ok([]), ...over,
   };
 }

@@ -112,12 +112,15 @@ its last report — as "did not finish", with Sync now available again. It does 
 | Route | Gate | Answers |
 |---|---|---|
 | `POST /api/o/:slug/admin/backfill` (alias `/admin/backfill`) | admin or owner | One batch. Body `{ batch, of, start?, run? }`: `start: true` begins a new run (409 `{ error: "sync_running", run }` if one is live); `run: <id>` continues it (it must be live and the caller's). A body with neither continues the caller's own live run or starts one. 200: the batch's counts as before (`captured`, `unchanged`, `summarized`, `summaryBudgetExhausted`, …, and `repo` on the batch that reconciled) plus `run: SyncRunView` and `summaries: SyncSummariesView`. 503 `{ error }` when there is no repository or no credential (`githubCredentialSource` — no run is recorded) or GitHub refused a list (`run` is the failed run). 502 if the batch threw. 403 for a member. |
-| `GET /api/o/:slug/sync` (alias `/api/sync`) | any member | `SyncStatusView`: `repo`, `admin`, `blocked` (`no_repo` / `no_token` = no credential of either kind / `running` / null), `via` (`app` / `token` / null — what a sync would read with), `connect` (`app` when the GitHub App is configured on this deployment, else `token`), `running`, `last`, `summaries` (status, used, cap, remaining, pending, per_run), `refreshed_at`. A non-member gets the tenant 404. |
+| `GET /api/o/:slug/sync` (alias `/api/sync`) | any member | `SyncStatusView`: `repo`, `admin`, `blocked` (`no_repo` / `no_token` = no credential of either kind / `running` / null), `via` (`app` / `token` / null — what a sync would read with), `connect` (`app` when the GitHub App is configured on this deployment, else `token`), `wrong_account` (the account the org's App installation is on when it does not own `repo`, else null), `running`, `last`, `summaries` (status, used, cap, remaining, pending, per_run), `refreshed_at`. A non-member gets the tenant 404. |
 
 With no credential the panel sends an admin where **this deployment** connects GitHub — the same test
 Org settings' setup checklist makes (`GithubAppStatusDTO.configured`, `appConfigured(env)`): `connect:
 "app"` → Org settings › Repositories ("Connect with GitHub"); `connect: "token"` → Org settings ›
-Integrations (the token). A stored token keeps working on a deployment that offers the App.
+Integrations (the token). A stored token keeps working on a deployment that offers the App. When the
+block is `no_token` and `wrong_account` is set, the panel says so by name — "The GitHub App is installed
+on X, which does not own owner/repo." — and links Repositories (`github-app.md` › The App on the wrong
+account).
 
 Both mounts run the same handler: `/api/o/:slug/admin/backfill` and the old path `/admin/backfill` (a
 person with one org). A plan refusal anywhere under it would be the app's one 402 (`plans.md`); nothing

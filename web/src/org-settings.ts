@@ -41,7 +41,7 @@ import { integrationsTab, secretFormModal, integrationLabel, SECRET_DELETE_EFFEC
 import { identitySection, type IdentityProps } from "./identity";
 import { notificationsAdminSections, notifDropdowns, type NotifAdminProps } from "./notifications";
 import { orgLogoSection, initialOrgLogoUi, type OrgLogoUi } from "./org-logo";
-import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, repoPicker, suspendedBanner, type GithubNotice } from "./github-app";
+import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner, type GithubNotice } from "./github-app";
 import type { GithubAppStatusDTO, GithubReposDTO } from "@shared/github-app";
 
 // ── state ────────────────────────────────────────────────────────────────────
@@ -387,7 +387,7 @@ export function reposTab(org: MyOrg, ui: OrgUi): string {
         </div>
       </div>`;
   const already = admin && offered && !inst ? `<div style="font-size:12.5px;color:var(--fg-55);margin:-12px 0 20px">Already installed the Trov App on GitHub? ${existingLink(org.slug, "Link the existing installation")}</div>` : "";
-  return `${connectNotice(ui.githubNotice, org.slug, org.name)}${lostBanner(app, admin)}${suspendedBanner(inst)}${lead}${offered ? "" : manual}${already}
+  return `${connectNotice(ui.githubNotice, org.slug, org.name)}${lostBanner(app, admin)}${suspendedBanner(inst)}${mismatchBanner(app, admin, org.slug)}${lead}${offered ? "" : manual}${already}
     ${connected}
     ${picker}
     ${appRow}

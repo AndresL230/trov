@@ -52,8 +52,13 @@ const isUniqueViolation = (e: unknown): boolean => e instanceof Error && /UNIQUE
  * Bind `info`'s installation to `ctx`'s org, by `ctx.userId` — the LAST step of the connect flow, after
  * every check (src/github-app/connect.ts). An org that already holds this installation has its account
  * fields refreshed instead (a reconnect, or an "update" return). Audited `github.connect`.
+ *
+ * `replace` is the live binding the caller read and means to END in the same batch (the admin connected
+ * a DIFFERENT installation — the App on another account): it is ended as `disconnected`, audited, and
+ * its repositories go back to `manual` before the new row is written, so the org never holds two and
+ * never holds none. Without it a second installation is the unique index's conflict, as before.
  */
-export async function bindInstallation(ctx: TenantContext, info: InstallationInfo): Promise<"connected" | "refreshed"> {
+export async function bindInstallation(ctx: TenantContext, info: InstallationInfo, replace: InstallationRow | null = null): Promise<"connected" | "refreshed"> {
   const at = nowIso();
   const live = await liveInstallation(ctx);
   if (live && live.installation_id === info.installation_id) {
@@ -63,8 +68,18 @@ export async function bindInstallation(ctx: TenantContext, info: InstallationInf
       info.account_login, info.account_id, info.account_type, info.repository_selection, info.suspended_at, ctx.orgId, live.id);
     return "refreshed";
   }
+  // The audit row reads `changes()` — written only when the UPDATE just before it ended the binding
+  // (`endInstallation`'s rule). A binding that ended in between costs nothing: the INSERT still stands.
+  const ending: Stmt[] = replace && replace.installation_id !== info.installation_id ? [
+    stmt(ctx, `UPDATE org_github_installations SET removed_at = ?, removed_reason = 'disconnected' WHERE org_id = ? AND id = ? AND removed_at IS NULL`, at, ctx.orgId, replace.id),
+    stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) SELECT ?, ?, ?, ?, ?, ? WHERE changes() > 0`,
+      ctx.orgId, ctx.userId, "github.disconnect", replace.account_login,
+      JSON.stringify({ installation_id: replace.installation_id, reason: "disconnected", replaced_by: info.installation_id }), at),
+    stmt(ctx, `UPDATE org_repos SET connection = 'manual', access_lost_at = NULL WHERE org_id = ? AND connection = 'app'`, ctx.orgId),
+  ] : [];
   try {
     await batch(ctx, [
+      ...ending,
       stmt(ctx,
         `INSERT INTO org_github_installations (org_id, installation_id, account_login, account_id, account_type, repository_selection, connected_by, connected_at, suspended_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,

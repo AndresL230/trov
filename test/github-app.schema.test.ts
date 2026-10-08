@@ -70,6 +70,25 @@ describe("0043_github_app — the rules the database keeps", () => {
 });
 
 describe("0043_github_app — the code that goes with it", () => {
+  it("replacing: a different installation ends the org's binding and takes its place, in one write", async () => {
+    const a = await tenantCtx("AndresL230");
+    await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by, connection) VALUES ('hook_r', ?, 'acme/app', 1, 0, '2026-10-06T00:00:00Z', 'seed', 'app')`, ORG_A);
+    expect(await bindInstallation(a, info(501))).toBe("connected");
+    const old = (await liveInstallation(a))!;
+    expect(await bindInstallation(a, info(502, "other-co"), old)).toBe("connected");
+    expect(await all(env.DB, `SELECT installation_id, account_login, removed_reason, removed_at IS NULL AS live FROM org_github_installations WHERE org_id = ? ORDER BY id`, ORG_A)).toEqual([
+      { installation_id: 501, account_login: old.account_login, removed_reason: "disconnected", live: 0 },
+      { installation_id: 502, account_login: "other-co", removed_reason: null, live: 1 },
+    ]);
+    // The old account's repositories go back to `manual`; both steps are audited, the end naming its successor.
+    expect(await first(env.DB, `SELECT connection FROM org_repos WHERE id = 'hook_r'`)).toEqual({ connection: "manual" });
+    const audit = await all<{ action: string; detail: string }>(env.DB, `SELECT action, detail FROM org_admin_audit WHERE org_id = ? AND action LIKE 'github.%' ORDER BY id`, ORG_A);
+    expect(audit.map((r) => r.action)).toEqual(["github.connect", "github.disconnect", "github.connect"]);
+    expect(JSON.parse(audit[1].detail)).toEqual({ installation_id: 501, reason: "disconnected", replaced_by: 502 });
+    // A stale `replace` (that binding already ended) ends nothing: the org's live one still stands in the way.
+    await expect(bindInstallation(a, info(503, "third-co"), old)).rejects.toBeInstanceOf(InstallationConflictError);
+    expect(await all(env.DB, `SELECT action FROM org_admin_audit WHERE org_id = ? AND action LIKE 'github.%'`, ORG_A)).toHaveLength(3);
+  });
   it("the binding's two writers: a second org, or a second installation, loses with a conflict and writes nothing", async () => {
     const a = await tenantCtx("AndresL230");
     const b = await tenantCtx("bob", "admin", { orgId: ORG_B });

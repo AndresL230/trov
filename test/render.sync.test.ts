@@ -26,7 +26,7 @@ const live = (over: Partial<SyncRunView> = {}): SyncRunView =>
 const summaries = (over: Partial<SyncSummariesView> = {}): SyncSummariesView =>
   ({ status: "on", used: 62, cap: 100, remaining: 38, pending: 12, per_run: SYNC_SUMMARIES_PER_RUN, ...over });
 const status = (over: Partial<SyncStatusView> = {}): SyncStatusView => ({
-  repo: "acme/widgets", admin: true, blocked: null, connect: "token", via: "token", running: null, last: run(), summaries: summaries(), refreshed_at: at(125), ...over,
+  repo: "acme/widgets", admin: true, blocked: null, connect: "token", via: "token", wrong_account: null, running: null, last: run(), summaries: summaries(), refreshed_at: at(125), ...over,
 });
 const ui = (over: Partial<SyncUi> = {}): SyncUi => ({ ...initialSyncUi(), load: "ok", status: status(), ...over });
 const props = (u: Partial<SyncUi> = {}, over: Partial<SyncProps> = {}): SyncProps => ({ ui: ui(u), admin: true, me: "andres", home: true, now: NOW, ...over });
@@ -241,6 +241,7 @@ describe("cannot run", () => {
     expect(text(html)).not.toContain("GitHub token");
     expect(html).not.toContain("syncStart");
     expect(syncBlockText("no_token", null, "app")).toMatchObject({ tab: "repos" });
+    expect(syncBlockText("no_token", null, "app", { account: "olive", repo: "acme/widgets" }).what).toBe("The GitHub App is installed on olive, which does not own acme/widgets.");
     expect(syncBlockText("no_token", null, "token")).toMatchObject({ tab: "integrations" });
     expect(syncBlockText("no_token", null)).toMatchObject({ tab: "integrations" }); // an older answer with no `connect`
     // A member is never offered either link.

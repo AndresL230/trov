@@ -53,7 +53,6 @@ export function connectNoticeCopy(n: GithubNotice, orgName: string): NoticeCopy 
     case "partial_access": return { tone: "red", title: "Nothing was connected.", body: `Your GitHub account cannot read ${n.missing ? `${n.missing} of the ${n.missing === 1 ? "repository" : "repositories"}` : "every repository"} that installation covers. Ask an owner of the GitHub account to connect it, or limit the App to repositories you can read.` };
     case "too_many_repos": return { tone: "red", title: "Nothing was connected.", body: "That installation covers more than 1,000 repositories, which is more than Trov checks before connecting one. On GitHub, open the Trov App's settings for that account, choose Only select repositories, pick the ones Trov should read, then connect again." };
     case "taken": return { tone: "red", title: "Nothing was connected.", body: "That installation is already connected to another Trov organization. It can belong to one at a time: disconnect it there first." };
-    case "already_connected": return { tone: "red", title: "Nothing was connected.", body: `${org} is already connected to another GitHub account. Disconnect that one first: an organization connects one account at a time.` };
     case "suspended": return { tone: "amber", title: "Nothing was connected.", body: "That installation is suspended on GitHub. Unsuspend it there, then connect again." };
     case "none_found": return { tone: "amber", title: "No installation found.", body: "Your GitHub account cannot reach any installation of the Trov App. Choose Connect with GitHub to install it." };
     case "choose": return { tone: "amber", title: "Which GitHub account?", body: "Your GitHub account can reach more than one installation of the Trov App. Choose the one to connect." };
@@ -93,6 +92,19 @@ export function lostBanner(status: GithubAppStatusDTO | null, admin: boolean): s
   const why = lost.reason === "uninstalled" ? `The Trov App was uninstalled from <strong style="font-weight:600">${esc(lost.account_login)}</strong> on GitHub ${esc(relTime(lost.at))}.`
     : `GitHub no longer has the Trov App installed on <strong style="font-weight:600">${esc(lost.account_login)}</strong> (noticed ${esc(relTime(lost.at))}).`;
   return `<div style="margin-bottom:20px" data-org-github-lost>${orgBanner("GitHub is no longer connected", `${why} The repositories below stay connected, and are read with the GitHub token if one is set.${admin ? " Connect again to go back to the App." : ""}`)}</div>`;
+}
+
+/** The App is installed on an account that does not own the primary repository: connected, yet nothing
+ *  is read from that repository through it. Says which account, which repository, and what to do. */
+export function mismatchBanner(status: GithubAppStatusDTO | null, admin: boolean, slug: string): string {
+  const m = status?.mismatch;
+  if (!m || !status?.installation) return "";
+  const owner = m.repo_full_name.split("/")[0] ?? "";
+  const b = (s: string) => `<strong style="font-weight:600">${esc(s)}</strong>`;
+  const fix = admin
+    ? ` Connect ${b(owner)} instead: it takes the place of this connection. If GitHub does not offer ${b(owner)}, either you are not an owner of it there, or this Trov's GitHub App can only be installed on the account that created it (its owner makes it public in the App's settings on GitHub).`
+    : " An admin can connect the account that owns it.";
+  return `<div style="margin-bottom:20px" data-org-github-mismatch>${orgBanner("The GitHub App is on a different account", `The Trov App is installed on ${b(m.account_login)}, which does not own ${b(m.repo_full_name)}, so that repository is not read through it.${fix}${admin && status.configured ? `<div style="margin-top:10px">${connectLink(slug, "Connect another account", "orgGithubReconnect")}</div>` : ""}`)}</div>`;
 }
 
 /** A suspended installation: nothing is read through it until GitHub lifts it. */
