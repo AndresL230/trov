@@ -149,7 +149,7 @@ function hero(): string {
     <div ${rv("hero-mock", "rv-lift")} style="margin:72px auto 0;max-width:1060px;text-align:left;border:1px solid var(--border-strong);border-radius:13px;background:var(--bg);box-shadow:var(--lift-shadow);overflow:hidden;${at(MOCK_IN)}">
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border)">
         ${dot}${dot}${dot}
-        <span style="margin:0 auto;font-family:var(--label);font-size:11px;color:var(--fg-40);border:1px solid var(--border);border-radius:6px;padding:3px 14px">trov.dev/o/acme/#review</span>
+        <span style="margin:0 auto;font-family:var(--label);font-size:11px;color:var(--fg-40);border:1px solid var(--border);border-radius:6px;padding:3px 14px">trov.dev/acme/#review</span>
         <span style="width:44px"></span>
       </div>
       <div style="display:flex;height:568px;overflow:hidden">
