@@ -64,7 +64,7 @@ export function createOrgsController(h: OrgsHost) {
       return;
     }
     d.busy = true; h.rerender();
-    createOrg({ slug: d.slug, name: d.name.trim(), ...(d.grant ? { grant: d.grant.id } : {}) })
+    createOrg({ slug: d.slug, name: d.name.trim(), ...(d.grant ? { grant: d.grant.id } : d.free ? { plan: "free" as const } : {}) })
       // Its admin lands in Org settings, on the setup checklist.
       .then((org) => h.go(orgHref(org.slug, "#org")))
       .catch((e) => {
@@ -73,7 +73,7 @@ export function createOrgsController(h: OrgsHost) {
         if (!cur) return;
         cur.busy = false;
         cur.errors = createOrgServerError(code(e), cur);
-        if (code(e) === "no_grant") void h.reloadOrgs(); // the grant is gone: the card and the menu row go with it
+        if (code(e) === "no_grant" || code(e) === "free_org_limit") void h.reloadOrgs(); // the grant (or the Free slot) is gone: the card and the menu row go with it
         h.rerender();
         focus(cur.errors.slug ? "#orgs-create-slug" : "#orgs-create-name");
       });
@@ -120,11 +120,12 @@ export function createOrgsController(h: OrgsHost) {
         return;
       }
       case "orgsCreateOpen": {
-        // `arg` = the grant to use (a card on the picker); from the switcher's menu, the oldest.
+        // `arg` = the grant to use (a card on the picker), or "free"; from the switcher's menu, the oldest
+        // grant — or, holding none, Free.
         const grants = state.myOrgs.data?.grants ?? [];
-        const grant = grants.find((g) => String(g.id) === arg) ?? grants[0] ?? null;
+        const grant = arg === "free" ? null : grants.find((g) => String(g.id) === arg) ?? grants[0] ?? null;
         u.menu = false;
-        u.create = blankCreateOrg(grant);
+        u.create = blankCreateOrg(grant, grant === null && !!state.myOrgs.data?.free?.can_create);
         h.rerender();
         focus("#orgs-create-name");
         return;

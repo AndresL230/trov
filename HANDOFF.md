@@ -142,6 +142,22 @@ that is past due still summarizes and a canceled one does not (`test/summaries.b
 allowance shows on the pricing page and in the Plan block through `shared/plans.ts`'s one formatter.
 Not verified against the real services: a sync through a real installation token, and a real Gemini call.
 
+### Free, and Pro per seat (release 0.23 — not merged)
+
+`docs/architecture/billing.md` (Seats, the flow, Decisions, the OWNER CHECKLIST) and `plans.md` (the table,
+Free, the refusal's `next`, features) are the whole of it. In short: a new plan `free` (3 seats, 1 repo,
+2 envs, 250 MB, 5 agent connections, 300 summaries) that any signed-in person creates with no grant — one
+OWNED at a time, held in the creating batch (`src/plans/free.ts`; issue #94). `team` is shown as **Pro**,
+50 seats, sold PER SEAT ($10 / seat / month, no minimum): checkout's quantity starts at members + pending
+(adjustable 1–50) and the subscription's quantity is written as the org's `seats` override on every webhook
+— paid seats = allowed seats. Personal is no longer sold (a legacy id). An ended subscription moves the org
+to Free (over-limit rule; nothing deleted) instead of freezing it. At the seat cap the 402 carries `next`
+(`add_seat` → the portal's seat count; `upgrade` → `POST …/billing/upgrade`). `PlanDef.features` and
+`requireFeature` exist; nothing is gated. One additive migration, `0047_billing_seats`. Removed:
+`/billing/change`, `/billing/renew`, `STRIPE_PRICE_PERSONAL*`.
+Owner steps: create the Pro per-unit price and set `STRIPE_PRICE_TEAM`; enable quantity updates in the
+Customer Portal; the pricing page announces Pro at $10, so set the Stripe keys before or with the deploy.
+
 ### Changed for API clients since the pushed commit
 
 | Route / tool | Was | Is |

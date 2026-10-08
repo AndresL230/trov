@@ -15,7 +15,7 @@ describe("GET /api/orgs — reachable with no org, and with several", () => {
   it("a person in no org gets an empty picker, not org_required", async () => {
     const { status, json } = await call<MyOrgsResponse>("GET", "/api/orgs", await loner("nomad"));
     expect(status).toBe(200);
-    expect(json).toEqual({ orgs: [], invites: [], superadmin: false, can_create: false, grants: [] });
+    expect(json).toEqual({ orgs: [], invites: [], superadmin: false, can_create: true, grants: [], free: { can_create: true, owned: null } });
   });
 
   it("lists every membership with its role, and says who is superadmin", async () => {
@@ -23,7 +23,7 @@ describe("GET /api/orgs — reachable with no org, and with several", () => {
     const { status, json } = await call<MyOrgsResponse>("GET", "/api/orgs", await cookieFor(SUPERADMIN));
     expect(status).toBe(200);
     expect(json.orgs).toEqual([{ slug: "acme", name: "Acme", role: "admin", logo_url: null }, { slug: "saplinglearn", name: "SaplingLearn", role: "owner", logo_url: null }]);
-    expect(json).toMatchObject({ superadmin: true, can_create: false, grants: [] }); // a superadmin adds orgs in Platform, not here
+    expect(json).toMatchObject({ superadmin: true, can_create: false, grants: [], free: { can_create: false, owned: null } }); // a superadmin adds orgs in Platform, not here
   });
 
   it("refuses a request carrying an Authorization header", async () => {
@@ -33,13 +33,60 @@ describe("GET /api/orgs — reachable with no org, and with several", () => {
 });
 
 describe("POST /api/orgs", () => {
-  it("by default nobody but a superadmin creates one: a person with no grant is refused and nothing is written", async () => {
+  it("a person with no grant creates ONE Free org of their own (issue #94): its owner, on Free, audited — and not a second while they own it", async () => {
     const cookie = await loner("hopeful");
-    const before = await one(`SELECT COUNT(*) AS n FROM orgs`);
     const r = await call("POST", "/api/orgs", cookie, { slug: "hopeful-co", name: "Hopeful Co" });
-    expect([r.status, r.json.error]).toEqual([403, "no_grant"]);
+    expect(r.status).toBe(201);
+    const id = await orgId("hopeful-co");
+    expect(await one(`SELECT plan, plan_source, plan_status, plan_overrides FROM orgs WHERE id = ?`, id)).toEqual({ plan: "free", plan_source: "granted", plan_status: "active", plan_overrides: "{}" });
+    expect(await roleOf(id, "hopeful")).toBe("owner");
+    expect(await audit(id)).toEqual([
+      { actor: "hopeful", action: "org.create", target: "hopeful-co" },
+      { actor: "hopeful", action: "member.add", target: "hopeful" },
+      { actor: "hopeful", action: "org.create_free", target: "hopeful-co" },
+    ]);
+    expect((await call<MyOrgsResponse>("GET", "/api/orgs", cookie)).json).toMatchObject({ can_create: false, free: { can_create: false, owned: { slug: "hopeful-co", name: "Hopeful Co" } } });
+
+    // The second is refused, and nothing is written.
+    const before = await one(`SELECT COUNT(*) AS n FROM orgs`);
+    const again = await call("POST", "/api/orgs", cookie, { slug: "hopeful-two", name: "Hopeful Two", plan: "free" });
+    expect([again.status, again.json.error]).toEqual([403, "free_org_limit"]);
+    expect(again.json.message).toContain("Hopeful Co");
     expect(await one(`SELECT COUNT(*) AS n FROM orgs`)).toEqual(before);
-    expect(await one(`SELECT COUNT(*) AS n FROM memberships WHERE user_id = 'hopeful'`)).toEqual({ n: 0 });
+
+    // Owning a Free org is what counts: once it is on Pro, another Free one can be made.
+    await exec(`UPDATE orgs SET plan = 'team' WHERE id = ?`, id);
+    expect((await call("POST", "/api/orgs", cookie, { slug: "hopeful-two", name: "Hopeful Two" })).status).toBe(201);
+    expect(await one(`SELECT plan FROM orgs WHERE slug = 'hopeful-two'`)).toEqual({ plan: "free" });
+  });
+
+  it("the one-Free-org rule holds inside the creating batch: two racing requests make one org", async () => {
+    const cookie = await loner("racer");
+    const [a, b] = await Promise.all([
+      call("POST", "/api/orgs", cookie, { slug: "race-one", name: "Race One" }),
+      call("POST", "/api/orgs", cookie, { slug: "race-two", name: "Race Two" }),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([201, 403]);
+    expect([a.json.error, b.json.error].filter(Boolean)).toEqual(["free_org_limit"]);
+    expect(await one(`SELECT COUNT(*) AS n FROM memberships m JOIN orgs o ON o.id = m.org_id WHERE m.user_id = 'racer' AND o.plan = 'free'`)).toEqual({ n: 1 });
+    expect(await one(`SELECT COUNT(*) AS n FROM orgs WHERE slug IN ('race-one', 'race-two')`)).toEqual({ n: 1 });
+  });
+
+  it("the guard itself: a creating batch whose check ran before another Free org landed fails whole", async () => {
+    const { createFreeOrg, freeGuardStmt } = await import("../src/plans/free");
+    const { createOrg } = await import("../src/orgs/repo");
+    const { platform } = await import("../src/data/context");
+    const { env } = await import("cloudflare:test");
+    await loner("sneaky");
+    const p = platform(env as never, "sneaky");
+    await createFreeOrg(p, "sneaky", { slug: "sneaky-one", name: "Sneaky One" });
+    // What a racing request's batch is once the first has landed: the same statements, its check long passed.
+    await expect(createOrg(p, {
+      slug: "sneaky-two", name: "Sneaky Two", owner: "sneaky", plan: { id: "free", overrides: {}, source: "granted" },
+      extra: (orgId, at) => [freeGuardStmt(p, "sneaky", orgId, "sneaky-two", at)],
+    })).rejects.toThrow(/NOT NULL constraint failed: org_admin_audit\.detail/);
+    expect(await one(`SELECT COUNT(*) AS n FROM orgs WHERE slug = 'sneaky-two'`)).toEqual({ n: 0 });
+    expect(await one(`SELECT COUNT(*) AS n FROM memberships WHERE user_id = 'sneaky'`)).toEqual({ n: 1 });
   });
 
   it("creates the org, makes the creator its owner, and seeds every per-org singleton", async () => {
@@ -96,12 +143,15 @@ describe("POST /api/orgs", () => {
     expect(await one(`SELECT status FROM org_grants WHERE person = 'founder'`)).toEqual({ status: "unused" });
   });
 
-  it("one org per grant; persons.org_limit grants nothing any more; a superadmin has no exemption", async () => {
+  it("one org per grant, then one Free org; persons.org_limit grants nothing any more; a superadmin has no exemption", async () => {
     const cookie = await loner("founder");
     await grantOrgs("founder", 3);
     for (const slug of ["one-co", "two-co", "three-co"]) expect((await call("POST", "/api/orgs", cookie, { slug, name: slug })).status).toBe(201);
-    const fourth = await call("POST", "/api/orgs", cookie, { slug: "four-co", name: "Four" });
-    expect([fourth.status, fourth.json.error]).toEqual([403, "no_grant"]);
+    // The grants are spent: what is left is the one Free org.
+    expect((await call<MyOrgsResponse>("GET", "/api/orgs", cookie)).json).toMatchObject({ can_create: true, grants: [], free: { can_create: true } });
+    expect((await call("POST", "/api/orgs", cookie, { slug: "free-co", name: "Free" })).status).toBe(201);
+    const fifth = await call("POST", "/api/orgs", cookie, { slug: "four-co", name: "Four" });
+    expect([fifth.status, fifth.json.error]).toEqual([403, "free_org_limit"]);
     expect((await call<MyOrgsResponse>("GET", "/api/orgs", cookie)).json).toMatchObject({ can_create: false, grants: [] });
 
     // The allowance from before grants is a dead column: setting it opens nothing.
@@ -110,6 +160,10 @@ describe("POST /api/orgs", () => {
     await grantOrgs("founder");
     expect((await call("POST", "/api/orgs", cookie, { slug: "four-co", name: "Four" })).status).toBe(201);
     expect((await call("POST", "/api/orgs", cookie, { slug: "five-co", name: "Five" })).status).toBe(403);
+    // Holding a grant, `plan: "free"` still asks for Free — and leaves the grant unused.
+    await grantOrgs("founder");
+    expect((await call("POST", "/api/orgs", cookie, { slug: "five-co", name: "Five", plan: "free" })).json.error).toBe("free_org_limit");
+    expect(await one(`SELECT COUNT(*) AS n FROM org_grants WHERE person = 'founder' AND status = 'unused'`)).toEqual({ n: 1 });
 
     // A superadmin creates organizations in Platform (which names the admin), not through this route.
     const boss = await cookieFor(SUPERADMIN);

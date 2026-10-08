@@ -1,30 +1,50 @@
 # Plans, limits and grants
 
-Every organization is on a **plan**; a plan is a name over a table of **limits**. A person who is not a
-superadmin comes to create an organization only by using a **grant** — one a superadmin gave, or one a
-payment made (`billing.md`). No prices live in Trov: the last section is the seam billing uses.
+Every organization is on a **plan**; a plan is a name over a table of **limits** (and, later, a list of
+**features**). A signed-in person creates an organization on **Free** with no grant (one they own at a time);
+anything else comes from a **grant** — one a superadmin gave, or one a payment made (`billing.md`). No prices
+live in Trov: the last section is the seam billing uses.
 
 Code: `shared/plans.ts` (the plans, the limits, the one refusal — shared by the Worker, the SPA and the
-landing page), `src/plans/` (`state.ts`, `gate.ts`, `grants.ts`, `billing.ts`, `routes.ts`). Migration:
-`0044_plans.sql`. Tests: `test/plans.limits.test.ts`, `test/plans.grants.test.ts`, `test/render.plans.test.ts`.
+landing page), `src/plans/` (`state.ts`, `gate.ts`, `grants.ts`, `free.ts`, `billing.ts`, `routes.ts`).
+Migration: `0044_plans.sql`. Tests: `test/plans.limits.test.ts`, `test/plans.grants.test.ts`,
+`test/render.plans.test.ts`, `test/orgs.routes.test.ts` (Free).
 
 ## The plans
 
-Every number is a **placeholder for the owner to decide**. They live in ONE place — `PLANS` in
-`shared/plans.ts` — and changing a number there changes it everywhere (enforcement reads the resolved value;
-the screens read the same table). `null` means unlimited.
+The numbers are the owner's. They live in ONE place — `PLANS` in `shared/plans.ts` — and changing a number
+there changes it everywhere (enforcement reads the resolved value; the screens read the same table). `null`
+means unlimited. Plan ids are stored and never renamed: **`team` is the plan users see as "Pro"**.
 
-| Limit (`LimitKey`) | Personal | Team | Enterprise | Counted | Enforced at |
-|---|---|---|---|---|---|
-| `seats` | 1 | 10 | unlimited (set per org) | members + pending invitations, per org | an invitation created (`createInvite`, the legacy `/invites` alias, the superadmin's owner invitation), an invitation accepted (`respondToInvite`, `consumeLegacyInvite`), a person added directly (`assignOrgAdmin`) |
-| `repositories` | 1 | 5 | 10 | `org_repos` rows | `addRepo` (a new repository; promoting one the org has is not an addition) |
-| `environments` | 2 | 5 | 10 | `org_environments` rows | `putEnvironment` (a new key; an edit is not an addition) |
-| `artifact_bytes` | 250 MB | 5 GB | unlimited | `SUM(artifact_versions.size_bytes)` — every stored version, deleted pages included | `writeVersion`, `insertPage`, `mintUploadToken`, `consumeUploadToken` (`src/tools/artifacts.ts`) — so HTTP, the upload link and the MCP artifact tools alike |
-| `agent_connections` | 5 | 10 | unlimited | PER PERSON: that person's live MCP tokens + connected apps into the org | `mintToken`, `issueAuthorization` (the OAuth consent) |
-| `ai_summaries` | 300 | 3,000 | unlimited | PER CALENDAR MONTH (UTC): summarizer calls attempted for the org | `orgSummarizers` (`src/plans/summaries.ts`) — it refuses nothing: past it an item shows its excerpt (below) |
+| Limit (`LimitKey`) | Free (`free`) | Pro (`team`) | Enterprise | Personal (legacy) | Counted | Enforced at |
+|---|---|---|---|---|---|---|
+| `seats` | 3 | **the seats paid for**, up to 50 (50 when granted) | unlimited (set per org) | 1 | members + pending invitations, per org | an invitation created (`createInvite`, the legacy `/invites` alias, the superadmin's owner invitation), an invitation accepted (`respondToInvite`, `consumeLegacyInvite`), a person added directly (`assignOrgAdmin`) |
+| `repositories` | 1 | 5 | 10 | 1 | `org_repos` rows | `addRepo` (a new repository; promoting one the org has is not an addition) |
+| `environments` | 2 | 5 | 10 | 2 | `org_environments` rows | `putEnvironment` (a new key; an edit is not an addition) |
+| `artifact_bytes` | 250 MB | 5 GB | unlimited | 250 MB | `SUM(artifact_versions.size_bytes)` — every stored version, deleted pages included | `writeVersion`, `insertPage`, `mintUploadToken`, `consumeUploadToken` (`src/tools/artifacts.ts`) — so HTTP, the upload link and the MCP artifact tools alike |
+| `agent_connections` | 5 | 10 | unlimited | 5 | PER PERSON: that person's live MCP tokens + connected apps into the org | `mintToken`, `issueAuthorization` (the OAuth consent) |
+| `ai_summaries` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): summarizer calls attempted for the org | `orgSummarizers` (`src/plans/summaries.ts`) — it refuses nothing: past it an item shows its excerpt (below) |
 
-Enterprise's repositories and environments are the platform caps from before plans (the repo cron's
-subrequest budget is shared — `data-layer.md` › Background jobs), so an org that existed before sees no change.
+- **Free** is what anyone signed in creates (below, *Free*), and what a paid org moves to when its
+  subscription ends (`billing.md`).
+- **Pro** is bought **per seat** ($10 / seat / month, no minimum: `billing.md`). A paid Pro org's `seats` is
+  an override written from the subscription's quantity, so the seats paid for are the seats allowed; 50 is
+  the most Pro sells and the cap of a Pro org granted by hand.
+- **Enterprise**'s repositories and environments are the platform caps from before plans (the repo cron's
+  subrequest budget is shared — `data-layer.md` › Background jobs), so an org that existed before sees no
+  change.
+- **Personal** is LEGACY (`PlanDef.offered: false`): no longer sold or shown on the pricing page, hidden from
+  Platform's plan pickers unless it is the org's current plan; an org or grant already on it keeps it. It
+  stays the `FALLBACK_PLAN` (the smallest): an unknown plan id reads as it.
+
+**Features** (`PlanDef.features`, `FEATURE_KEYS`): capabilities a plan includes beyond its limits. NONE is
+gated yet — the list is empty on every plan; the first will be Pro-only automation. To gate one, add its key
+to `FEATURE_KEYS`, list it on each plan that includes it, and call `requireFeature(ctx, key)` (`gate.ts`,
+beside `requirePlan`) on its write path. A plan without it is refused with `PlanFeatureError` — HTTP 402
+`{ error: "plan_feature", feature, plan, status, message, paid?, next? }` through `app.onError`, an MCP tool
+error with `code: "plan_feature"` (`planFeatureRefusal` in `shared/plans.ts`). Features are not overridable
+per org, and a canceled plan includes none. Until one is gated, the pricing page's "a plan is a table of
+limits, never a feature switch" stays true.
 
 **Per-org overrides** (`orgs.plan_overrides`, JSON): a key that is present replaces the plan's value for that
 org, `null` for unlimited; an absent key is the plan's own. This is how the superadmin sizes an Enterprise
@@ -43,17 +63,25 @@ taken through `seatGate(p, orgId, "reserve" | "accept")` (`state.ts`).
 OAuth consent page map it themselves because they do not answer JSON through the app):
 
 ```json
-{ "error": "plan_limit", "limit": "seats", "used": 10, "cap": 10, "plan": "team", "status": "active",
-  "message": "This organization has reached the 10 seats its Team plan includes." }
+{ "error": "plan_limit", "limit": "seats", "used": 4, "cap": 4, "plan": "team", "status": "active",
+  "message": "This organization has reached the 4 seats its Pro plan includes.", "paid": true, "next": "add_seat" }
 ```
+
+`next` is the one thing the org's OWNER can do about it in Trov (`planNext`): **`add_seat`** — a paid Pro
+org (`source: "billing"`) out of seats, below Pro's 50; **`upgrade`** — any refusal on a Free org. Absent
+otherwise (a granted plan: ask Trov; an ended one: renew; Pro at 50 seats).
 
 402 rather than 403: a 403 here means "your role may not" and an owner can fix that; no role in the org can
 fix this one, and nothing else in the app answers 402, so a client branches on the status alone. Over MCP it
 is a tool error with `code: "plan_limit"`. The SPA shows `message` plus who can change the plan
-(`planRefusalSentence` over `PLAN_CHANGE_POINTER`: an owner of a GRANTED org reads "Ask Trov to change your
-plan."; an owner of an org that PAYS — the refusal carries `paid: true` — reads "You can upgrade or manage
+(`planRefusalSentence` over `PLAN_CHANGE_POINTER`): an owner reads the `next` pointer when there is one —
+"Add a seat to invite more people." / "Upgrade to Pro for more."; otherwise an owner of a GRANTED org reads
+"Ask Trov to change your plan.", an owner of an org that PAYS (`paid: true`) "You can upgrade or manage
 billing in Org settings." (ended: "You can renew it in Org settings."); everyone else "Ask one of this
-organization's owners.").
+organization's owners.". At the seat cap the Members tab shows the owner the button for `next` (`inviteGate`,
+`seatCapAction` in `web/src/org-plan.ts`): **Add a seat** opens Stripe's portal at the seat count; **Upgrade
+to Pro** starts a checkout for the org (`billing.md`). The button shows only where it can work (a paid org
+with a customer; a Free org with Pro priced).
 
 ## Seats
 
@@ -66,13 +94,15 @@ seat. Two rules, one per way a seat is taken:
 
 The condition is in the INSERT that takes the seat (`SEAT_FREE`, `MEMBER_SEAT_FREE`), not only in a check
 before it: of two requests racing for the last seat, one writes. Lifting a current member to owner, or
-upgrading a pending invitation to an owner's, takes no seat. A one-person plan refuses an invitation in a
-sentence that names the plan that allows them. The other limits are check-then-write, as the caps they
-replaced were.
+upgrading a pending invitation to an owner's, takes no seat. A one-person PLAN (Personal: `isSoloPlan`)
+refuses an invitation in a sentence that names the plan that allows them, and the Members tab shows no invite
+form; a Pro org that bought ONE seat is not one — it is at its cap and its owner adds a seat. The other
+limits are check-then-write, as the caps they replaced were.
 
 ## Over a limit
 
-An org can end up over a limit — its plan was changed, or an override lowered. Then, and always:
+An org can end up over a limit — its plan was changed (a Pro subscription ended and the org moved to Free),
+its paid seats lowered, or an override lowered. Then, and always:
 
 - **nothing is deleted and nobody is removed**; every read keeps working for every member;
 - **additions of that kind are refused** (402) until the org is back under; everything no limit governs
@@ -144,15 +174,15 @@ the pricing page all go through them — none formats a count itself.
 
 **With billing's plan states** (`billing.md` › What each state does). The summarizer choice reads the
 columns billing writes (`orgs.plan`, `plan_overrides`, `plan_status`, through `planOf` — what `orgPlan`
-returns): `active` and **`past_due` summarize** (past due limits nothing), **`canceled` does not** (new
-items show an excerpt; nothing errors), a renewal turns it back on, a plan switch moves the allowance in
-place, and a superadmin's pinned plan is the one whose allowance applies.
+returns): `active` and **`past_due` summarize** (past due limits nothing); an **ended** subscription moves the
+org to Free, which summarizes on Free's allowance (the month's use carries over); an upgrade moves it to
+Pro's; a superadmin's pinned plan is the one whose allowance applies; a legacy **`canceled`** (frozen) org
+does not summarize (new items show an excerpt; nothing errors).
 `test/summaries.billing.test.ts` drives each transition with Stripe's own events.
 
-**The numbers are placeholders** for the owner: 300 (Personal), 3,000 (Team), unlimited (Enterprise, sized
-per org with an override like every limit; `0` turns summaries off for an org). They are sized against the
-bill, not from measured use: at about ten summaries a working day per person they leave Personal and a
-ten-person Team headroom, and they bound the worst case to a known figure per org per month.
+**The numbers**: 300 (Free, and legacy Personal), 3,000 (Pro), unlimited (Enterprise, sized per org with an
+override like every limit; `0` turns summaries off for an org). They are sized against the bill, not from
+measured use: they bound the worst case to a known figure per org per month.
 
 **Estimating cost.** Platform › Usage's totals, or directly:
 
@@ -163,8 +193,10 @@ SELECT org_id, metric, SUM(count) FROM org_usage_daily
 
 Cost ≈ `tokens_in × input price + tokens_out × output price` for the model in use (`GEMINI_MODEL` in
 `src/tools/summarize.ts`, `gemini-2.5-flash-lite`); where tokens were not recorded, characters ÷ 4 is the
-usual approximation. Input dominates and scales with the pull request's description, which is sent whole —
-that is why sizes are recorded and not just calls. Check the provider's current prices; none is stored here.
+usual approximation. Input dominates and scales with the description, so at most its first **8,000
+characters** are sent (`SUMMARY_BODY_MAX`, `capSummaryBody` — the title always goes whole; a cut never
+splits a surrogate pair); sizes are recorded, not just calls. Check the provider's current prices; none is
+stored here.
 
 **Owner step.** Summaries are **off** until the key is set: `wrangler secret put GEMINI_API_KEY`. From then
 on every org's new pull requests and assigned issues are summarized on capture (webhook) and on Sync, each
@@ -175,15 +207,42 @@ Sync GitHub. Removing the secret turns it all off again; nothing else changes.
 
 `orgs.plan_status`: `active`; `past_due` (changes nothing — the grace period is Stripe's retry schedule, `billing.md`); `canceled`
 — the org stays readable and working, and every addition a limit governs is refused until `setOrgPlan` puts
-it on a plan again (AI summaries stop too: new items show an excerpt). Nothing sets a status but billing's functions below.
+it on a plan again (AI summaries stop too: new items show an excerpt). Billing no longer writes `canceled`:
+an ended subscription moves the org to Free (`moveOrgToFree`); the status remains for an org frozen before
+that, and `cancelOrgPlan` stays in the seam. Nothing sets a status but billing's functions below.
 
-## Grants: an organization of one's own
+## Free: an organization of one's own, with no grant
 
-An organization comes to exist in three ways: a superadmin creates it and names its admin (Platform ›
+Any signed-in person who is not a superadmin may create a **Free** organization (issue #94;
+`src/plans/free.ts`): `POST /api/orgs { slug, name }` with no grant named — `plan: "free"` asks for Free even
+while holding a grant; holding none, Free is what naming nothing makes. They become its owner; it starts on
+`free` with no overrides, `plan_source = 'granted'` (no payment), audited `org.create` + `member.add` +
+`org.create_free`.
+
+**One owned Free org at a time** (`DEFAULT_ORG_LIMIT = 1`, `shared/orgs.ts`): what counts is the Free orgs
+the person is an OWNER of — suspended ones too. One they upgraded to Pro, or one somebody else owns, does not
+count; one whose Pro subscription ended (it moved to Free) does. Past it: **403 `free_org_limit`** ("you
+already own a Free organization (<name>)…"). The rule is held INSIDE the creating batch: `freeGuardStmt`
+writes the `org.create_free` audit row with a NULL `detail` (a NOT NULL column) when, counting the org being
+created, the person owns more than one Free org — so the statement and the whole batch fail, and two racing
+requests make one org (the pattern of the grant's `consumeStmt`). A superadmin gets 403 `no_grant`: Platform
+is where they add organizations.
+
+`GET /api/orgs` answers `free: { can_create, owned }` and `can_create = grants.length > 0 ||
+free.can_create`. The picker shows "Create a Free organization" while `free.can_create` (the page's primary
+action for someone with no organization and no grant); a refused create reads `FREE_TAKEN_SENTENCE`.
+
+What bounds it (`abuse-limits.md`): one owned Free org per account, Free's own limits (3 seats, 1 repository,
+2 environments, 250 MB, 300 summaries a month), and the per-person rate limits on invitations.
+
+## Grants: an organization of one's own, on any plan
+
+An organization comes to exist in four ways: a superadmin creates it and names its admin (Platform ›
 Organizations — `organizations.md` §1), a superadmin **grants** a person the right to create one
-themselves (Platform › Access), or a person **buys a plan** and is given that same grant by billing
-(`billing.md`). `persons.org_limit`, the per-person allowance from before, is read by
-nothing; its Platform control and route are gone, and the column is dropped by the cleanup migration.
+themselves (Platform › Access), a person **buys Pro** and is given that same grant by billing
+(`billing.md`), or a person creates a **Free** one (above). `persons.org_limit`, the per-person allowance from
+before, is read by nothing; its Platform control and route are gone, and the column is dropped by the cleanup
+migration.
 
 1. **Granted** — `POST /api/platform/grants { to, plan, overrides?, note?, expires_in_days? }`. `to` is
    exactly one of `{ handle }` (an existing person), `{ github_login }`, `{ email }`. The grantee needs no
@@ -194,9 +253,9 @@ nothing; its Platform control and route are gone, and the column is dropped by t
    of their provider-VERIFIED e-mails (never the editable `persons.email`) — the invitation rule.
    `GET /api/orgs` lists the usable ones in `grants` (oldest first) and sets `can_create`. A superadmin holds
    none here. The picker shows each as "You can set up an organization — <Plan>".
-3. **Used** — `POST /api/orgs { slug, name, grant? }` creates the org (`grant` = an id; omitted = the oldest)
-   on the grant's plan, overrides and source, makes the caller its owner, and marks the grant used with the
-   org it became — all in ONE batch. The consuming UPDATE writes `used` when the grant is still usable and a
+3. **Used** — `POST /api/orgs { slug, name, grant? }` creates the org (`grant` = an id; omitted = the oldest;
+   holding none = Free, above) on the grant's plan, overrides and source, makes the caller its owner, and
+   marks the grant used with the org it became — all in ONE batch. The consuming UPDATE writes `used` when the grant is still usable and a
    status the table's `org_grant_usable` CHECK refuses when it is not, which aborts the batch: a double
    submit, or a grant revoked or expired while the form was open, creates nothing (403 `no_grant`).
 4. **Revoked / expired** — `POST /api/platform/grants/:id/revoke` for an unused one (409 `grant_used` after).
@@ -215,13 +274,13 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 |---|---|---|
 | `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries` = this month's), `over` |
 | `GET /api/o/:slug/sync` | any member | `SyncStatusView` — its `summaries` is the allowance: status, used, cap, remaining, pending (`sync.md`) |
-| `GET /api/orgs` | signed in | adds `grants: MyGrant[]`, `can_create` |
-| `POST /api/orgs` | holds a usable grant | 201 the org; 403 `no_grant` |
+| `GET /api/orgs` | signed in | adds `grants: MyGrant[]`, `can_create`, `free: { can_create, owned }` |
+| `POST /api/orgs` | holds a usable grant, or may own a Free org | 201 the org; 403 `no_grant` (a grant that is not theirs, a superadmin); 403 `free_org_limit` |
 | `GET /api/platform/grants` | superadmin | `{ grants: PlatformGrant[] }` |
 | `POST /api/platform/grants` | superadmin | 201 `{ ok, grant }`; 400 `invalid_grant`; 404 `no_such_person` |
 | `POST /api/platform/grants/:id/revoke` | superadmin | `{ ok, grant }`; 404; 409 `grant_used` |
 | `PUT /api/platform/orgs/:slug/plan` | superadmin | `{ ok, org }` (the Platform row, with `plan`); 400 `invalid_plan` / `invalid_overrides` |
-| `POST /api/platform/orgs` | superadmin | also takes `plan` (default `team`) and `overrides` |
+| `POST /api/platform/orgs` | superadmin | also takes `plan` (default `team`, Pro) and `overrides` |
 
 ## The pricing page
 
@@ -229,8 +288,13 @@ The public face of the plans is ONE pure render, `pricingSection` (`web/src/pric
 landing page's last section (nav link "Pricing") and as the static page `/pricing` (`web/pricing.html`, booted
 by `web/src/pricing-page.ts`; an extra Vite input served by the assets binding like `/terms`, linked from the
 footer). It restates nothing: names, descriptions and limits come from `PLANS`, prices from `PRICING` in
-`shared/pricing.ts`. Tests: `test/render.pricing.test.ts`.
+`shared/pricing.ts`. It shows the OFFERED plans only — Free, Pro, Enterprise. Tests:
+`test/render.pricing.test.ts`.
 
+- **What ships:** Free `price: 0` (the card says "Free"; its button "Start for free" opens `/`, where a
+  signed-in person creates one — "Open Trov" when signed in); Pro `price: 10, per: "per seat / month"` (the
+  card shows "$10 per seat / month", its seats as "Up to 50", and "Choose Pro" is the purchase link and the
+  page's one accent action); Enterprise `price: null`, not self-serve ("Custom pricing", "Talk to us").
 - **A price is `null` until the owner announces it.** The card then reads "Pricing to be announced" and its
   button is a waitlist e-mail; no number and no purchase link is ever shown for it. To announce one, set
   `price` (and `yearly`, to offer yearly billing) in `PRICING` — the card shows the amount, its button becomes
@@ -238,14 +302,15 @@ footer). It restates nothing: names, descriptions and limits come from `PLANS`, 
 - **A purchase is a plain link**, `purchaseHref(plan, interval)` → `/billing/start?plan=…` (`&interval=year`
   only for yearly). It IS billing's `billingStartHref` (`shared/billing.ts`) — one source for the path the
   billing route seals and returns to. Whether to offer it is decided by `PRICING` alone (`canPurchasePlan`:
-  `selfServe`, a price, and a plan billing sells); the page calls no API. A plan with `selfServe: false`
-  (Enterprise) is always "Talk to us". So the page does not know whether Stripe is set up (`billing.md`):
-  announce a price only once billing is on, or its link answers "Paid plans are not available yet". Every
-  price is `null` today, so the public page has no way into billing — `test/render.pricing.test.ts` holds that.
+  `selfServe`, a price above zero, and a plan billing sells); the page calls no API. A plan with `selfServe:
+  false` (Enterprise) is always "Talk to us". So the page does not know whether Stripe is set up
+  (`billing.md`): with billing off, "Choose Pro" answers "Paid plans are not available yet". The one billing
+  link anywhere public is Pro's — `test/render.pricing.test.ts` holds that.
 - The switch is two native radios and CSS (`:has(:checked)`); `web/src/pricing-dom.ts` only keeps the choice
   across a rerender. `/pricing` cannot know a session, so it is always the signed-out page.
-- Its sentences (what every plan includes, the questions) describe what the product does today. A change to
-  seats, limits or how a plan is changed is a change to that copy.
+- Its sentences (what every plan includes, the questions — among them how Pro's per-seat pricing works and
+  that a cancelled Pro org moves to Free) describe what the product does today. A change to seats, limits or
+  how a plan is changed is a change to that copy.
 
 ## The billing seam
 
@@ -254,18 +319,17 @@ handler builds `platform(env, BILLING_ACTOR)` and calls only these:
 
 | When | Call |
 |---|---|
-| a payment succeeded for plan X by person / e-mail Y, who has no org | `grantOrganization(env, p, { to, plan, overrides?, note?, expires_in_days?, external_ref, origin? })` → a `PlatformGrant`. Idempotent on `external_ref`; mails an e-mail grantee when `origin` is given |
-| the subscription starts, changes or renews for an org | `setOrgPlan(p, slug, { plan, overrides?, source: "billing", status?, period_end?, customer_id?, subscription_id? })` |
+| a payment succeeded for plan X by person / e-mail Y, who has no org | `grantOrganization(env, p, { to, plan, overrides?, note?, expires_in_days?, external_ref, origin? })` → a `PlatformGrant` (billing passes `overrides: { seats }`). Idempotent on `external_ref`; mails an e-mail grantee when `origin` is given |
+| the subscription starts, changes (plan or seats) or renews for an org | `setOrgPlan(p, slug, { plan, overrides?, source: "billing", status?, period_end?, customer_id?, subscription_id? })` |
 | a renewal failed | `markOrgPastDue(p, slug)` |
-| the subscription ended | `cancelOrgPlan(p, slug)` — readable, working, no additions. (To shrink instead: `setOrgPlan(p, slug, { plan: "personal" })`.) |
+| the subscription ended | `moveOrgToFree(p, slug, { period_end? })` — Free, active, still a billing org; overrides cleared; the over-limit rule applies. (`cancelOrgPlan` — readable, working, no additions — remains in the seam, unused by billing.) |
 | read | `orgPlan(p, orgId)`, `getGrant(p, id)` |
-
-| the buyer switched plan before using the grant | `setPaidGrantPlan(p, external_ref, plan)` |
+| the buyer changed plan or seats before using the grant | `setPaidGrantPlan(p, external_ref, plan, { seats })` |
 | the subscription ended before the grant was used | `revokeGrant(p, id)` |
 
 **The seam is in use** (`billing.md`): Stripe's webhook (`src/billing/`) calls exactly these. A paid
 grant's `external_ref` is its Stripe subscription id; `createOrgFromGrant` links the org it becomes to the
 customer and subscription in the creating batch (`linkPaidOrgStmt`), from `billing_subscriptions`
-(0045_billing). `orgs.plan_period_end`, `billing_customer_id` and `billing_subscription_id` are written
+(0045_billing), and takes the grant's overrides (the seats paid for). `orgs.plan_period_end`, `billing_customer_id` and `billing_subscription_id` are written
 only that way and by `setOrgPlan` / `setOrgPlanStatus`. A plan's price is NOT in `PlanDef.billing` (left
 null): it is a Stripe Price id in `wrangler.toml`, so the owner changes one without a release.

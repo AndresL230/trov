@@ -44,13 +44,12 @@ NOTIFICATIONS_MODE = "resend"
 
 # Billing — Stripe (docs/architecture/billing.md › Owner checklist). The ids of the recurring PRICES the
 # owner created in the Stripe dashboard (`price_…`), not amounts: Trov never holds a price, and the amount
-# a buyer sees is Stripe's. EMPTY until the owner decides prices — while a plan's id is empty that plan
-# cannot be bought, and while STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET (secrets: `wrangler secret put …`)
-# are unset every billing route answers 503 `billing_unavailable` and the app is otherwise unchanged.
-# The yearly ids are optional: a plan is offered on the intervals it has a price for.
-STRIPE_PRICE_PERSONAL = ""
+# a buyer sees is Stripe's. Pro (plan id `team`) is the one plan sold, PER SEAT: STRIPE_PRICE_TEAM is the
+# price of ONE seat (a licensed, per-unit recurring price) and a checkout's quantity is the seat count.
+# While it is empty Pro cannot be bought, and while STRIPE_SECRET_KEY /
+# STRIPE_WEBHOOK_SECRET (secrets: `wrangler secret put …`) are unset every billing route answers 503
+# `billing_unavailable` and the app is otherwise unchanged. The yearly id is optional.
 STRIPE_PRICE_TEAM = "price_1UOB9HH7KZijv6AwWF3LPpFr"
-STRIPE_PRICE_PERSONAL_YEARLY = ""
 STRIPE_PRICE_TEAM_YEARLY = ""
 
 [observability]
@@ -66,9 +65,7 @@ enabled = true
 PUBLIC_ORIGIN = "https://trov.dev"
 GITHUB_APP_SLUG = ""
 NOTIFICATIONS_MODE = "local"
-STRIPE_PRICE_PERSONAL = ""
 STRIPE_PRICE_TEAM = ""
-STRIPE_PRICE_PERSONAL_YEARLY = ""
 STRIPE_PRICE_TEAM_YEARLY = ""
 
 [[previews.d1_databases]]

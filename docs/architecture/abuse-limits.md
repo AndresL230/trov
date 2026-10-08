@@ -1,6 +1,6 @@
 # Abuse limits — what a stranger with a GitHub account cannot do
 
-Since Phase 4 anyone with a GitHub account can sign in. Creating an org takes a superadmin, or a grant from one (`plans.md` › Grants; `DEFAULT_ORG_LIMIT = 0`) until self-serve creation is opened (issue tracked on GitHub). This is everything that stands
+Since Phase 4 anyone with a GitHub account can sign in, and (issue #94) anyone signed in can create ONE Free organization they own (`plans.md` › Free; `DEFAULT_ORG_LIMIT = 1`) — anything more takes a superadmin, a grant, or a payment. This is everything that stands
 between that and Trov being used to send mail, fill storage or look people up. Code: `src/platform/limits.ts`
 (every number), `src/notifications/resend.ts` (the From header). Tests: `test/abuse-limits.test.ts`.
 
@@ -17,19 +17,20 @@ racing requests cannot both take the last unit. D1 only: no Durable Object, no Q
 | `email_change` | 5 / person / UTC day | `PUT …/notifications/prefs` and `PUT …/notifications/persons/:handle`, only when the address CHANGES to a non-empty one (the admin route spends the admin's) |
 | `avatar_upload` | 20 / person / UTC day | `POST …/people/me/avatar`, before the body is read |
 | `org_logo_upload` | 20 / person / UTC day | `POST /api/o/:slug/logo` (admin+), before the body is read — across every org the person administers |
-| `checkout` | 10 / person / UTC day | a Stripe Checkout Session started: `GET /billing/start` and `POST /api/o/:slug/billing/renew` (`billing.md`). A refusal creates nothing at Stripe and charges nothing |
+| `checkout` | 10 / person / UTC day | a Stripe Checkout Session started: `GET /billing/start` and `POST /api/o/:slug/billing/upgrade` (`billing.md`). A refusal creates nothing at Stripe and charges nothing |
 | `handle_check` | 60 / caller / UTC hour | `GET /auth/handle-check` — the signed-in person, or `onboard:<provider>:<subject>` while onboarding (a fresh onboard cookie does not reset it) |
 
 - A refusal is **429** `{ "error": "rate_limited", "retry_after": <seconds> }` with a `Retry-After` header, and
   writes nothing. `retry_after` runs to the end of the UTC day / hour.
-- The subject is the PERSON, never the org: creating orgs (already capped at 3 per person,
-  `DEFAULT_ORG_LIMIT`) multiplies nothing. A rename carries the counters (`renamePerson`).
+- The subject is the PERSON, never the org: creating orgs (one owned Free org per person, `DEFAULT_ORG_LIMIT`;
+  more only by grant or payment) multiplies nothing. A rename carries the counters (`renamePerson`).
 - A superadmin (`platform_admins`) is exempt and not counted.
 - The role gate runs first: a refused non-admin spends nothing.
 - The daily cron deletes counters older than `LIMIT_RETENTION_DAYS` (2).
 - Also capped, elsewhere, PER ORG by its plan (`plans.md`): people, repositories, environments, stored
-  artifact bytes, and each person's agent connections. The grant notice e-mail spends the granter's `invite`
-  allowance.
+  artifact bytes, each person's agent connections, and AI summaries per month. A Free org — what open sign-up
+  can make — gets 3 seats, 1 repository, 2 environments, 250 MB and 300 summaries a month. The grant notice
+  e-mail spends the granter's `invite` allowance.
 
 To add a limit: a key in `LIMITS`, `const refused = await rateLimited(c, "<key>"); if (refused) return refused;`
 in the route after its validation and role gate, a row in this table.
@@ -88,6 +89,10 @@ changes. The cost is that an address can be on two people's rows; nothing reads 
    now (0042_organizations), not only SaplingLearn's, so this is live for any org anyone creates. The WELCOME goes only to a
    provider-verified address of the person who just joined, so it cannot be aimed at a third party.
 6. **Shared platform resources.** Summaries for every org's Sync GitHub and webhook use the Worker's one
-   `GEMINI_API_KEY`; the repo cron's 900-subrequest budget is shared by rotation, so many orgs with 10
-   environments each slow everyone's health pings; `/mcp` and the tenant routes are metered
-   (`org_usage_daily`) but not limited; there is no per-org storage quota in D1 or R2.
+   `GEMINI_API_KEY` — capped per org per month by its plan (Free 300) and per call (8,000 characters of a
+   description); the repo cron's 900-subrequest budget is shared by rotation, so many orgs with environments
+   slow everyone's health pings (a Free org has at most 2); `/mcp` and the tenant routes are metered
+   (`org_usage_daily`) but not limited; artifact storage is capped per org by plan, but D1 rows are not.
+7. **Open Free organizations.** One owned Free org per GitHub account; GitHub accounts are free to make, so a
+   determined person can make many — each bounded by Free's limits and by the per-person rate limits above.
+   Risks 1, 3 and 5 apply to every Free org.

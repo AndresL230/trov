@@ -3,13 +3,16 @@
 //
 // A plan is a name over a table of LIMITS. An org holds a plan (`orgs.plan`, 0044_plans) and, optionally,
 // per-org OVERRIDES of any limit (`orgs.plan_overrides`) — how the superadmin sizes an Enterprise org, and
-// how they make an exception on any plan. Every number below is a PLACEHOLDER for the owner to decide:
-// change it here and nothing else needs to change (the enforcement points read the resolved value).
+// how they make an exception on any plan. Every number below is the owner's to decide: change it here
+// and nothing else needs to change (the enforcement points read the resolved value).
 // No prices, here or anywhere in Trov: a plan's price is a Stripe Price id in `wrangler.toml`
 // (src/billing/config.ts, docs/architecture/billing.md) and its amount is shown at Stripe's checkout.
+// Pro (`team`) is bought PER SEAT: a paid org's `seats` override is its subscription's quantity.
 import type { OrgBillingView, PlatformOrgBilling } from "./billing";
 
-export const PLAN_IDS = ["personal", "team", "enterprise"] as const;
+/** `personal` is LEGACY: no longer offered or sold (`PlanDef.offered`), kept so an org or grant on it
+ *  still resolves. `team` is the id of the plan users see as "Pro" — ids are stored, names are not. */
+export const PLAN_IDS = ["free", "personal", "team", "enterprise"] as const;
 export type PlanId = (typeof PLAN_IDS)[number];
 export const isPlanId = (v: unknown): v is PlanId => typeof v === "string" && (PLAN_IDS as readonly string[]).includes(v);
 
@@ -60,12 +63,24 @@ export interface PlanBilling {
   price_id: string;
 }
 
+/** What a plan may include beyond its limits — a capability, gated with `requireFeature`
+ *  (src/plans/gate.ts). NONE is gated yet; the first will be Pro-only automation. To gate one: add its
+ *  key here, list it in `features` on each plan that includes it, and call `requireFeature(ctx, key)`
+ *  on its write path. */
+export const FEATURE_KEYS = [] as const;
+export type FeatureKey = (typeof FEATURE_KEYS)[number];
+
 export interface PlanDef {
   id: PlanId;
   name: string;
   /** One line: who it is for. */
   description: string;
   entitlements: Entitlements;
+  /** The capabilities the plan includes (`FEATURE_KEYS`). Not overridable per org. */
+  features: readonly FeatureKey[];
+  /** Shown on the pricing page and given to new organizations. false: a legacy plan, kept only so the
+   *  orgs and grants already on it resolve (Personal). */
+  offered: boolean;
   /** null: the price id is deployment config (see `PlanBilling`). */
   billing: PlanBilling | null;
 }
@@ -73,32 +88,46 @@ export interface PlanDef {
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
 
-// PLACEHOLDER NUMBERS — the owner decides. `seats` are the owner's own (1 / 10 / set per org); the rest
-// are first guesses. Enterprise's repositories and environments are the platform's caps from before
-// plans (10 each: the repo cron's budget is shared), so an existing org sees no change.
-// `ai_summaries` (per calendar month) is a PLACEHOLDER too: 300 / 3,000 / unlimited — sized so that one
-// org cannot run up the platform's one Gemini bill, not from measured use (plans.md › AI summaries).
+// The owner's numbers (docs/architecture/plans.md). Free is what anyone signed in can create (one they
+// own at a time); Pro is bought per seat — its 50 is the most seats an org can buy, and a paid org's
+// `seats` override holds the seats it pays for. Enterprise's repositories and environments are the
+// platform's caps from before plans (10 each: the repo cron's budget is shared), so an existing org sees
+// no change. `ai_summaries` (per calendar month) are sized so that one org cannot run up the platform's
+// one Gemini bill, not from measured use (plans.md › AI summaries).
 export const PLANS: Record<PlanId, PlanDef> = {
+  free: {
+    id: "free", name: "Free", description: "For a small team trying Trov out.",
+    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300 },
+    features: [], offered: true, billing: null,
+  },
+  // LEGACY: no longer offered or sold. An org or grant already on it keeps these limits.
   personal: {
     id: "personal", name: "Personal", description: "One person's own organization.",
     entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300 },
-    billing: null,
+    features: [], offered: false, billing: null,
   },
   team: {
-    id: "team", name: "Team", description: "A team of up to 10 people.",
-    entitlements: { seats: 10, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000 },
-    billing: null,
+    id: "team", name: "Pro", description: "For a team, paid per seat.",
+    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000 },
+    features: [], offered: true, billing: null,
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", description: "Limits set for the organization by Trov.",
     entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null },
-    billing: null,
+    features: [], offered: true, billing: null,
   },
 };
 
 /** The plan an unknown or missing id resolves to: the smallest (fail closed). */
 export const FALLBACK_PLAN: PlanId = "personal";
 export const planDef = (id: string | null | undefined): PlanDef => (isPlanId(id) ? PLANS[id] : PLANS[FALLBACK_PLAN]);
+/** The plan a signed-in person creates an organization on without a grant, and the one a paid org
+ *  moves to when its subscription ends. */
+export const FREE_PLAN = "free" satisfies PlanId;
+/** The plan a Free org upgrades to — Pro, bought per seat (shared/billing.ts `PURCHASABLE_PLANS`). */
+export const UPGRADE_PLAN = "team" satisfies PlanId;
+/** The plans the pricing page shows and Platform offers first, in order. */
+export const OFFERED_PLAN_IDS: readonly PlanId[] = PLAN_IDS.filter((id) => PLANS[id].offered);
 
 // ── per-org state ────────────────────────────────────────────────────────────
 
@@ -166,10 +195,28 @@ export interface PlanRefusal {
   message: string;
   /** The org pays for its plan through billing: its owner can change it themselves (Org settings). Absent otherwise. */
   paid?: true;
+  /** What its OWNER can do about it in Trov, when there is one thing: `add_seat` — a paid Pro org is out
+   *  of seats, and buys another in Stripe's customer portal; `upgrade` — a Free org moves to Pro. Absent
+   *  otherwise (a granted plan: ask Trov; an ended one: renew). */
+  next?: PlanNext;
 }
+export type PlanNext = "add_seat" | "upgrade";
 
-/** The smallest plan whose own seats allow more than one person — what a Personal org is pointed at. */
-export const firstTeamPlan = (): PlanDef => PLAN_IDS.map((id) => PLANS[id]).find((d) => d.entitlements.seats === null || d.entitlements.seats > 1) ?? PLANS.team;
+/** Is this plan, by its own definition, for one person (Personal)? An org's override does not make it one:
+ *  a Pro org that bought a single seat invites by adding a seat. */
+export const isSoloPlan = (plan: string | null | undefined): boolean => planDef(plan).entitlements.seats === 1;
+
+/** What the owner can do about a refusal of `limit` (see `PlanRefusal.next`). */
+export function planNext(state: OrgPlanState, limit: LimitKey | null): PlanNext | null {
+  if (state.status === "canceled") return null;
+  const def = planDef(state.plan);
+  if (def.id === FREE_PLAN) return "upgrade";
+  // A seat can be added only below the most the plan sells (Pro's 50): at it, more is a conversation with Trov.
+  const seats = resolveEntitlements(state.plan, state.overrides).seats;
+  const most = def.entitlements.seats;
+  if (limit === "seats" && state.source === "billing" && def.id === UPGRADE_PLAN && seats !== null && (most === null || seats < most)) return "add_seat";
+  return null;
+}
 
 export function formatBytes(n: number): string {
   if (n >= GB) return `${+(n / GB).toFixed(1)} GB`;
@@ -212,7 +259,8 @@ function refusalMessage(state: OrgPlanState, limit: LimitKey, cap: number): stri
   const name = planDef(state.plan).name;
   if (state.status === "canceled") return `This organization's ${name} plan has ended, so nothing can be added until it is renewed.`;
   const d = LIMITS[limit];
-  if (limit === "seats" && cap <= 1) return `The ${name} plan is for one person. Invitations start with the ${firstTeamPlan().name} plan.`;
+  // A plan FOR one person (Personal) — not an org that bought one seat of a per-seat plan (that one adds a seat).
+  if (limit === "seats" && cap <= 1 && isSoloPlan(state.plan)) return `The ${name} plan is for one person. Invitations start with the ${PLANS[UPGRADE_PLAN].name} plan.`;
   if (d.unit === "bytes") return `This organization has reached the ${formatBytes(cap)} of ${limitNoun(limit)} its ${name} plan includes.`;
   const what = `${formatCount(cap)} ${cap === 1 ? d.one : d.many}`;
   return d.per === "person"
@@ -229,10 +277,35 @@ function refusalMessage(state: OrgPlanState, limit: LimitKey, cap: number): stri
 export function planRefusal(state: OrgPlanState, limit: LimitKey, used: number, adding = 1): PlanRefusal | null {
   const cap = resolveEntitlements(state.plan, state.overrides)[limit];
   const plan = planDef(state.plan).id;
-  const paid = state.source === "billing" ? { paid: true as const } : {};
-  if (state.status === "canceled") return { error: "plan_limit", limit, used, cap: cap ?? used, plan, status: state.status, message: refusalMessage(state, limit, cap ?? used), ...paid };
+  const next = planNext(state, limit);
+  const extra = { ...(state.source === "billing" ? { paid: true as const } : {}), ...(next ? { next } : {}) };
+  if (state.status === "canceled") return { error: "plan_limit", limit, used, cap: cap ?? used, plan, status: state.status, message: refusalMessage(state, limit, cap ?? used), ...extra };
   if (cap === null || used + adding <= cap) return null;
-  return { error: "plan_limit", limit, used, cap, plan, status: state.status, message: refusalMessage(state, limit, cap), ...paid };
+  return { error: "plan_limit", limit, used, cap, plan, status: state.status, message: refusalMessage(state, limit, cap), ...extra };
+}
+
+/** A plan that does not include a feature (HTTP 402; an MCP tool error with `code: "plan_feature"`). */
+export interface PlanFeatureRefusal {
+  error: "plan_feature";
+  feature: FeatureKey;
+  plan: PlanId;
+  status: PlanStatus;
+  message: string;
+  paid?: true;
+  next?: PlanNext;
+}
+
+/** Does the org's plan include `feature`? null (yes), or the refusal. A canceled plan includes none.
+ *  `plans` is THE table; a test passes its own. */
+export function planFeatureRefusal(state: OrgPlanState, feature: FeatureKey, plans: Record<PlanId, PlanDef> = PLANS): PlanFeatureRefusal | null {
+  const def = plans[planDef(state.plan).id];
+  if (state.status !== "canceled" && def.features.includes(feature)) return null;
+  const next = planNext(state, null);
+  return {
+    error: "plan_feature", feature, plan: def.id, status: state.status,
+    message: state.status === "canceled" ? refusalMessage(state, "seats", 0) : `This organization's ${def.name} plan does not include this.`,
+    ...(state.source === "billing" ? { paid: true as const } : {}), ...(next ? { next } : {}),
+  };
 }
 
 /** Is a parsed JSON body a plan refusal? (The SPA's one check, on a 402.) */
@@ -242,16 +315,20 @@ export function isPlanRefusal(v: unknown): v is PlanRefusal {
 }
 
 /** Who can change a plan, said to the person who hit a limit. An owner of an org that PAYS for its plan
- *  changes it themselves (`paid_owner`, `ended_owner`); an owner of a granted one asks Trov. */
+ *  changes it themselves (`paid_owner`, `ended_owner`, `add_seat`); so does the owner of a Free org
+ *  (`upgrade`); an owner of a granted one asks Trov. */
 export const PLAN_CHANGE_POINTER = {
   owner: "Ask Trov to change your plan.",
   paid_owner: "You can upgrade or manage billing in Org settings.",
   ended_owner: "You can renew it in Org settings.",
+  add_seat: "Add a seat to invite more people.",
+  upgrade: `Upgrade to ${PLANS[UPGRADE_PLAN].name} for more.`,
   other: "Ask one of this organization's owners.",
 } as const;
 /** A refusal as the ONE sentence the SPA shows, with who can change it. */
-export function planRefusalSentence(r: Pick<PlanRefusal, "message"> & Partial<Pick<PlanRefusal, "paid" | "status">>, role: "owner" | "admin" | "member" | null): string {
+export function planRefusalSentence(r: Pick<PlanRefusal, "message"> & Partial<Pick<PlanRefusal, "paid" | "status" | "next">>, role: "owner" | "admin" | "member" | null): string {
   const pointer = role !== "owner" ? PLAN_CHANGE_POINTER.other
+    : r.next ? PLAN_CHANGE_POINTER[r.next]
     : !r.paid ? PLAN_CHANGE_POINTER.owner
     : r.status === "canceled" ? PLAN_CHANGE_POINTER.ended_owner : PLAN_CHANGE_POINTER.paid_owner;
   return `${r.message} ${pointer}`;

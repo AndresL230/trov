@@ -1,14 +1,18 @@
 // Billing's routes (docs/architecture/billing.md › Routes). Two sub-apps, mounted in src/routes.ts:
 //
 //   `billingApp` — person-level, at `/`:
-//     GET  /billing/start?plan=personal|team[&interval=month|year]   PUBLIC, a link: signed out → sign in and
+//     GET  /billing/start?plan=team[&interval=month|year]            PUBLIC, a link: signed out → sign in and
 //                                                                    come back; signed in → Stripe Checkout
 //     GET  /api/billing/config                                       PUBLIC: what can be bought on this deployment
 //     GET  /api/billing/status?session_id=…                          session: the waiting room's poll
 //   `orgBillingApp` — an org's, at `/api/o/:slug` (behind `tenantGate`), cookie only, OWNER only:
 //     POST /billing/portal     the Stripe Customer Portal for this org's customer      → { url }
-//     POST /billing/change     move THIS org's subscription to another plan            → { url } (Stripe confirms it)
-//     POST /billing/renew      a canceled org pays again: a new subscription, same org → { url }
+//                              (`{ seats: true }`: straight to changing the seat count — "Add a seat")
+//     POST /billing/upgrade    a Free org buys Pro: a new subscription, same org       → { url }
+//
+// Pro is sold PER SEAT. A checkout's quantity starts at the seats the org uses now — members plus pending
+// invitations, at least 1 (a buyer with no org yet: 1) — and the buyer can change it on Stripe's page,
+// up to Pro's seat cap. What is paid for becomes the org's seat cap when the webhook lands (./sync.ts).
 //
 // While Stripe is not set up, every one of them answers 503 `billing_unavailable` (the link: a page that
 // says so) and nothing else in the app changes. A payment is never fulfilled here: the browser coming
@@ -28,7 +32,8 @@ import { mailOrigin } from "../orgs/mail";
 import { welcomeRecipient } from "../orgs/repo";
 import { takeLimit } from "../platform/limits";
 import { orgPlan, type OrgPlan } from "../plans/billing";
-import type { PlanId } from "@shared/plans";
+import { seatCounts } from "../plans/state";
+import { FREE_PLAN, PLANS, UPGRADE_PLAN, type PlanId } from "@shared/plans";
 import {
   BILLING_CONTACT, BILLING_DONE_PATH, BILLING_UNAVAILABLE, BILLING_UNAVAILABLE_MESSAGE, PRICING_PATH,
   billingStartHref, isBillingInterval, isPurchasablePlan, orgBillingHref,
@@ -37,10 +42,10 @@ import {
 import { billingConfig, billingOffers, intervalsOf, priceFor, type BillingConfig } from "./config";
 import { StripeError, stripeCall } from "./stripe";
 import {
-  checkoutBySession, createCheckout, dropCheckout, grantOfSubscription, managedOrgs, orgById, orgSubscription, setCheckoutSession, takeCheckoutLook,
+  checkoutBySession, createCheckout, dropCheckout, grantOfSubscription, managedOrgs, orgById, setCheckoutSession, takeCheckoutLook,
   type CheckoutRow,
 } from "./store";
-import { fetchSubscription, fulfilCheckout, readCheckoutSession, sessionPaid } from "./sync";
+import { fulfilCheckout, readCheckoutSession, sessionPaid } from "./sync";
 import { billingSignInPage, enterprisePage, rateLimitedPage, stripeFailedPage, superadminPage, unavailablePage } from "./pages";
 
 /** The waiting room may make Trov look at Stripe for one session at most this often. */
@@ -65,6 +70,15 @@ const redirectable = (cfg: BillingConfig, url: unknown): url is string => {
 const logStripe = (what: string, e: unknown): void =>
   console.error(what, e instanceof StripeError ? `${e.kind} ${e.status} ${e.message}` : e instanceof Error ? e.name : "unknown");
 
+/** The most seats one checkout sells: the plan's own seat cap (Pro's 50). */
+const maxSeats = (plan: PurchasablePlan): number => PLANS[plan].entitlements.seats ?? 9999;
+/** The seats a checkout starts at: what `orgId` uses now — members plus pending invitations — at least 1
+ *  and at most the plan's cap. No org yet (a first purchase): 1. */
+async function seatQuantity(p: PlatformContext, plan: PurchasablePlan, orgId: string | null): Promise<number> {
+  const n = orgId ? await seatCounts(p, orgId) : { members: 0, pending: 0 };
+  return Math.min(maxSeats(plan), Math.max(1, n.members + n.pending));
+}
+
 // ── starting a checkout ──────────────────────────────────────────────────────
 
 class CheckoutRefused extends Error { constructor(readonly why: "rate_limited" | "stripe", readonly retryAfter = 0) { super(why); } }
@@ -80,6 +94,7 @@ async function startCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: { person
   const retryAfter = await takeLimit(p, o.person, "checkout");
   if (retryAfter !== null) throw new CheckoutRefused("rate_limited", retryAfter);
   const ref = randomToken(18);
+  const quantity = await seatQuantity(p, o.plan, o.forOrg?.id ?? null);
   await createCheckout(p, { ref, person: o.person, plan: o.plan, interval: o.interval, forOrg: o.forOrg?.id ?? null });
   const origin = returnOrigin(c.req.url);
   // The receipt goes where Stripe sends it; Trov only ever SUGGESTS the person's provider-verified address.
@@ -88,7 +103,8 @@ async function startCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: { person
   try {
     const session = await stripeCall<{ id?: unknown; url?: unknown }>(cfg, "POST", "/v1/checkout/sessions", {
       mode: "subscription",
-      line_items: [{ price: o.price, quantity: 1 }],
+      // Per seat: the price is one seat's; the buyer can change the count on Stripe's page.
+      line_items: [{ price: o.price, quantity, adjustable_quantity: { enabled: true, minimum: 1, maximum: maxSeats(o.plan) } }],
       client_reference_id: o.person,
       ...(o.forOrg?.customer ? { customer: o.forOrg.customer } : email ? { customer_email: email } : {}),
       success_url: `${origin}${BILLING_DONE_PATH}?session_id={CHECKOUT_SESSION_ID}`,
@@ -213,12 +229,22 @@ async function billedOrg(c: Context<AppEnv>): Promise<{ refused: Response } | { 
   return { cfg, plan, customer: plan.customer_id, returnUrl: `${returnOrigin(c.req.url)}${orgBillingHref(c.req.param("slug") ?? "")}` };
 }
 
-// "Manage billing": card, invoices, cancel — Stripe's own pages, for THIS org's customer.
+// "Manage billing": card, invoices, seats, cancel — Stripe's own pages, for THIS org's customer.
+// `{ seats: true }` ("Add a seat", at the seat cap): straight to the subscription's update page, where the
+// seat count is changed (the portal must allow quantity updates — billing.md › Owner checklist); a plain
+// portal when there is no live subscription to update.
 orgBillingApp.post("/billing/portal", async (c) => {
   const g = await billedOrg(c);
   if ("refused" in g) return g.refused;
+  const seats = (await body(c)).seats === true && g.plan.status !== "canceled" && g.plan.plan !== FREE_PLAN && !!g.plan.subscription_id;
   try {
-    const session = await stripeCall<{ url?: unknown }>(g.cfg, "POST", "/v1/billing_portal/sessions", { customer: g.customer, return_url: g.returnUrl }, { idempotencyKey: portalKey() });
+    const session = await stripeCall<{ url?: unknown }>(g.cfg, "POST", "/v1/billing_portal/sessions", {
+      customer: g.customer, return_url: g.returnUrl,
+      ...(seats ? { flow_data: {
+        type: "subscription_update", subscription_update: { subscription: g.plan.subscription_id },
+        after_completion: { type: "redirect", redirect: { return_url: g.returnUrl } },
+      } } : {}),
+    }, { idempotencyKey: portalKey() });
     if (!redirectable(g.cfg, session.url)) throw new StripeError("shape", 200, null, "stripe POST /v1/billing_portal/sessions: no url");
     return c.json({ url: session.url });
   } catch (e) {
@@ -227,51 +253,24 @@ orgBillingApp.post("/billing/portal", async (c) => {
   }
 });
 
-// "Upgrade to Team" / "Switch to Personal": the portal's confirm screen for THIS subscription — Stripe shows
-// the price and the proration and takes the confirmation; the plan changes here when its webhook lands.
-orgBillingApp.post("/billing/change", async (c) => {
-  const g = await billedOrg(c);
-  if ("refused" in g) return g.refused;
-  const to = (await body(c)).plan;
-  if (!isPurchasablePlan(to)) return c.json({ error: "invalid_plan", message: "plan must be personal or team" }, 400);
-  if (g.plan.status === "canceled" || !g.plan.subscription_id) return c.json({ error: "plan_ended", message: "this plan has ended; renew it instead" }, 409);
-  const held = await orgSubscription(c.var.p, c.var.ctx.orgId);
-  const interval: BillingInterval = held?.interval === "year" ? "year" : "month";
-  const price = priceFor(g.cfg, to, interval);
-  if (!price) return unavailable(c);
-  if (held?.price_id === price) return c.json({ error: "same_plan", message: "this organization is already on that plan" }, 409);
-  try {
-    const sub = await fetchSubscription(g.cfg, g.plan.subscription_id);
-    if (!sub?.itemId) throw new StripeError("shape", 200, null, "stripe GET /v1/subscriptions: no item");
-    const session = await stripeCall<{ url?: unknown }>(g.cfg, "POST", "/v1/billing_portal/sessions", {
-      customer: g.customer, return_url: g.returnUrl,
-      flow_data: {
-        type: "subscription_update_confirm",
-        subscription_update_confirm: { subscription: sub.id, items: [{ id: sub.itemId, price, quantity: 1 }] },
-        after_completion: { type: "redirect", redirect: { return_url: g.returnUrl } },
-      },
-    }, { idempotencyKey: portalKey() });
-    if (!redirectable(g.cfg, session.url)) throw new StripeError("shape", 200, null, "stripe POST /v1/billing_portal/sessions: no url");
-    return c.json({ url: session.url });
-  } catch (e) {
-    logStripe("billing change failed", e);
-    return stripeFailed(c, "Trov could not open the plan change in Stripe. Nothing was changed. Try Manage billing, or try again in a minute.");
-  }
-});
-
-// A canceled org pays again: a new subscription for the SAME org and the same Stripe customer — no grant.
-orgBillingApp.post("/billing/renew", async (c) => {
-  const g = await billedOrg(c);
-  if ("refused" in g) return g.refused;
-  if (g.plan.status !== "canceled") return c.json({ error: "not_ended", message: "this plan has not ended" }, 409);
+// "Upgrade to Pro": a Free org — one that never paid, or one whose subscription ended (it moved to Free) —
+// starts a subscription for the SAME org, with its Stripe customer when it has one: a checkout, no grant.
+// The seats start at what the org uses now. (A legacy `canceled` org pays again the same way.)
+orgBillingApp.post("/billing/upgrade", async (c) => {
+  if (!hasRole(c.var.ctx, "owner")) return forbidden(c);
+  const cfg = billingConfig(c.env);
+  if (!cfg) return unavailable(c);
+  const now = await orgPlan(c.var.p, c.var.ctx.orgId);
+  if (now.plan !== FREE_PLAN && now.status !== "canceled") return c.json({ error: "not_free", message: "this organization is not on Free; use Manage billing" }, 409);
   const b = await body(c);
-  const plan = b.plan === undefined ? (isPurchasablePlan(g.plan.plan) ? g.plan.plan : null) : isPurchasablePlan(b.plan) ? b.plan : null;
-  if (!plan) return c.json({ error: "invalid_plan", message: "plan must be personal or team" }, 400);
-  const interval = b.interval === undefined ? intervalsOf(g.cfg, plan)[0] ?? null : isBillingInterval(b.interval) ? b.interval : null;
-  const price = interval ? priceFor(g.cfg, plan, interval) : null;
+  const plan = b.plan === undefined ? UPGRADE_PLAN : isPurchasablePlan(b.plan) ? b.plan : null;
+  if (!plan) return c.json({ error: "invalid_plan", message: `plan must be ${UPGRADE_PLAN}` }, 400);
+  const interval = b.interval === undefined ? intervalsOf(cfg, plan)[0] ?? null : isBillingInterval(b.interval) ? b.interval : null;
+  const price = interval ? priceFor(cfg, plan, interval) : null;
   if (!interval || !price) return unavailable(c);
+  const customer = now.source === "billing" ? now.customer_id : null;
   try {
-    const url = await startCheckout(c, g.cfg, { person: c.get("principal").handle, plan, interval, price, forOrg: { id: c.var.ctx.orgId, slug: c.req.param("slug") ?? "", customer: g.customer } });
+    const url = await startCheckout(c, cfg, { person: c.get("principal").handle, plan, interval, price, forOrg: { id: c.var.ctx.orgId, slug: c.req.param("slug") ?? "", customer } });
     return c.json({ url });
   } catch (e) {
     if (!(e instanceof CheckoutRefused)) throw e;

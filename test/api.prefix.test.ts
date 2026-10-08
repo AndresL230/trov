@@ -90,11 +90,12 @@ describe("apiUrl — the one prefix", () => {
     await api.getBillingStatus("cs test/1");
     await api.getBillingConfig();
     await api.openBillingPortal("big co");
-    await api.changeBillingPlan("acme", "team");
-    await api.renewBilling("acme", "personal");
+    await api.upgradeBilling("acme", "team");
+    await api.openBillingSeats("acme");
     expect(asked).toEqual([
       { method: "GET", url: "/api/billing/status?session_id=cs%20test%2F1" }, { method: "GET", url: "/api/billing/config" },
-      { method: "POST", url: "/api/o/big%20co/billing/portal" }, { method: "POST", url: "/api/o/acme/billing/change" }, { method: "POST", url: "/api/o/acme/billing/renew" },
+      { method: "POST", url: "/api/o/big%20co/billing/portal" }, { method: "POST", url: "/api/o/acme/billing/upgrade" },
+      { method: "POST", url: "/api/o/acme/billing/portal" },
     ]);
   });
   it("the GitHub App: Connect is a link to the org's own start route — a tenant route — and the callback GitHub returns to is not", () => {

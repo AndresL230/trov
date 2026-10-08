@@ -143,7 +143,7 @@ describe("every billing surface, against a Stripe that echoes the key back", () 
     expect((await postWebhook(completed, { "stripe-signature": await signature(completed, HOOK) }, e)).status).toBe(200);
     expect((await call("POST", "/api/orgs", cookie, { slug: "maya-co", name: "Maya" })).status).toBe(201);
     // A second, unfulfilled checkout for the waiting room's own look at Stripe.
-    await bcall("GET", "/billing/start?plan=personal", cookie, undefined, { env: e });
+    await bcall("GET", "/billing/start?plan=team&interval=year", cookie, undefined, { env: e });
     const pending = stripe.lastSession();
     stripe.pay(pending.id);
 
@@ -153,7 +153,7 @@ describe("every billing surface, against a Stripe that echoes the key back", () 
       ["start (html)", await bcall("GET", "/billing/start?plan=team", cookie, undefined, { env: e, headers: { accept: "text/html" } })],
       ["status", await bcall("GET", `/api/billing/status?session_id=${pending.id}`, cookie, undefined, { env: e })],
       ["portal", await bcall("POST", "/api/o/maya-co/billing/portal", cookie, {}, { env: e })],
-      ["change", await bcall("POST", "/api/o/maya-co/billing/change", cookie, { plan: "personal" }, { env: e })],
+      ["seats", await bcall("POST", "/api/o/maya-co/billing/portal", cookie, { seats: true }, { env: e })],
       ["config", await bcall("GET", "/api/billing/config", cookie, undefined, { env: e })],
       ["plan", await bcall("GET", "/api/o/maya-co/plan", cookie, undefined, { env: e })],
     ];
@@ -164,9 +164,9 @@ describe("every billing surface, against a Stripe that echoes the key back", () 
     }
     const second = JSON.stringify(event("checkout.session.completed", stripe.sessionJson(pending)));
     answers.push(["checkout.session.completed", await postWebhook(second, { "stripe-signature": await signature(second, HOOK) }, e)]);
-    // …and a renewal, once the plan has ended.
-    await exec(`UPDATE orgs SET plan_status = 'canceled' WHERE slug = 'maya-co'`);
-    answers.push(["renew", await bcall("POST", "/api/o/maya-co/billing/renew", cookie, {}, { env: e })]);
+    // …and an upgrade, once the subscription has ended and the org is on Free.
+    await exec(`UPDATE orgs SET plan = 'free' WHERE slug = 'maya-co'`);
+    answers.push(["upgrade", await bcall("POST", "/api/o/maya-co/billing/upgrade", cookie, {}, { env: e })]);
 
     for (const [where, r] of answers) {
       expect(r.status, `${name}: ${where} → ${r.text.slice(0, 200)}`).toBeLessThan(600);

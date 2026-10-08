@@ -224,22 +224,26 @@ export const consumeStmt = (p: PlatformContext, grantId: number, handle: string,
 /**
  * A PAID grant's org (0045_billing; docs/architecture/billing.md): a statement of the SAME batch that
  * creates the org. The grant's `external_ref` is its Stripe subscription; the org takes that
- * subscription's ids and its CURRENT plan, status and period from `billing_subscriptions` — read here,
- * at write time, so a subscription event that landed while the form was open is not lost. Writes nothing
- * for a grant a superadmin gave (no `billing` source, no subscription row).
+ * subscription's ids and its CURRENT plan, status and period from `billing_subscriptions`, and the seats
+ * it pays for from the grant's overrides (kept current by `setPaidGrantPlan`) — read here, at write
+ * time, so a subscription event that landed while the form was open is not lost. Writes nothing for a
+ * grant a superadmin gave (no `billing` source, no subscription row).
  */
 export const linkPaidOrgStmt = (p: PlatformContext, grantId: number, orgId: string): Stmt =>
   stmt(p, `UPDATE orgs SET billing_subscription_id = s.subscription_id, billing_customer_id = s.customer_id,
-                  plan = s.plan, plan_status = s.plan_status, plan_period_end = s.period_end
-             FROM (SELECT b.subscription_id, b.customer_id, b.plan, b.plan_status, b.period_end
+                  plan = s.plan, plan_status = s.plan_status, plan_period_end = s.period_end, plan_overrides = s.overrides
+             FROM (SELECT b.subscription_id, b.customer_id, b.plan, b.plan_status, b.period_end, g.overrides
                      FROM billing_subscriptions b JOIN org_grants g ON g.external_ref = b.subscription_id
                     WHERE g.id = ?1 AND g.source = 'billing') AS s
             WHERE orgs.id = ?2`, grantId, orgId);
 
-/** BILLING: an UNUSED paid grant follows its subscription's plan — the buyer switched plan in Stripe
- *  before naming their organization. A used, revoked or hand-made grant is left alone. */
-export async function setPaidGrantPlan(p: PlatformContext, externalRef: string, plan: PlanId): Promise<boolean> {
-  const res = await batch(p, [stmt(p, `UPDATE org_grants SET plan = ?1 WHERE external_ref = ?2 AND source = 'billing' AND status = 'unused' AND plan <> ?1`, plan, externalRef)]);
+/** BILLING: an UNUSED paid grant follows its subscription — its plan, and the seats it pays for (its
+ *  overrides) — while the buyer has not named their organization yet. A used, revoked or hand-made
+ *  grant is left alone. */
+export async function setPaidGrantPlan(p: PlatformContext, externalRef: string, plan: PlanId, overrides: PlanOverrides = {}): Promise<boolean> {
+  const json = JSON.stringify(overrides);
+  const res = await batch(p, [stmt(p, `UPDATE org_grants SET plan = ?1, overrides = ?3
+    WHERE external_ref = ?2 AND source = 'billing' AND status = 'unused' AND (plan <> ?1 OR overrides <> ?3)`, plan, externalRef, json)]);
   return (res[0].meta.changes ?? 0) > 0;
 }
 

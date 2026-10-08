@@ -83,9 +83,7 @@ export default defineConfig({
           // fake key and a stubbed `fetch`.
           STRIPE_SECRET_KEY: "",
           STRIPE_WEBHOOK_SECRET: "",
-          STRIPE_PRICE_PERSONAL: "",
           STRIPE_PRICE_TEAM: "",
-          STRIPE_PRICE_PERSONAL_YEARLY: "",
           STRIPE_PRICE_TEAM_YEARLY: "",
           STRIPE_TEST_API_BASE: "",
         },

@@ -3,11 +3,11 @@
 // limit — are shared/plans.ts; nothing here restates them. The purchase link is billing's own
 // (shared/billing.ts); nothing else is imported.
 //
-// PRICES ARE THE OWNER'S TO DECIDE. `price: null` means "not announced": the page says so and
-// offers a waitlist e-mail instead of a purchase link. To announce one, set `price` (and
-// `yearly`, if the plan can be paid by the year) below — nothing else changes: the card shows
-// the amount, its button becomes the purchase link, and the Monthly / Yearly switch appears once
-// any plan has both.
+// PRICES ARE THE OWNER'S TO DECIDE. `price: null` means "not announced" (or, for a plan that is not
+// self-serve, "custom"): the page says so. `price: 0` is Free: the card says "Free" and its button
+// starts an organization (sign in, then create it), never a purchase. Any other price is a purchase
+// link — Pro's is PER SEAT (`per`). To offer yearly billing, set `yearly` too; the Monthly / Yearly
+// switch appears once any plan has both. A plan that is not `offered` (shared/plans.ts) is not shown.
 
 import type { PlanId } from "./plans";
 import { billingStartHref, isPurchasablePlan, type BillingInterval, type PurchasablePlan } from "./billing";
@@ -33,13 +33,18 @@ export interface PlanPricing {
 export const PRICE_CURRENCY = "USD";
 
 export const PRICING: Record<PlanId, PlanPricing> = {
-  personal: { price: null, per: "per month", yearly: null, yearlyPer: "per year", badge: null, selfServe: true },
-  team: { price: null, per: "per month", yearly: null, yearlyPer: "per year", badge: "Most teams start here", selfServe: true },
+  free: { price: 0, per: "", yearly: null, yearlyPer: "", badge: null, selfServe: true },
+  // Legacy: no longer sold, and not shown (shared/plans.ts `offered`).
+  personal: { price: null, per: "per month", yearly: null, yearlyPer: "per year", badge: null, selfServe: false },
+  team: { price: 10, per: "per seat / month", yearly: null, yearlyPer: "per seat / year", badge: "Most teams start here", selfServe: true },
   enterprise: { price: null, per: "per month", yearly: null, yearlyPer: "per year", badge: null, selfServe: false },
 };
 
-/** Can this plan be bought on the site right now? The page's ONLY test — it asks no server. */
-export const canPurchase = (p: PlanPricing): boolean => p.selfServe && p.price !== null;
+/** Can this plan be bought on the site right now? The page's ONLY test — it asks no server. Free is
+ *  never bought (`isFreePrice`). */
+export const canPurchase = (p: PlanPricing): boolean => p.selfServe && p.price !== null && p.price > 0;
+/** A self-serve plan that costs nothing: its card starts an organization instead of a purchase. */
+export const isFreePrice = (p: PlanPricing): boolean => p.selfServe && p.price === 0;
 /** The same test for a plan by id, narrowing it to one billing sells: a plan billing's route would turn
  *  away (Enterprise) never gets a purchase link, whatever the table above says. */
 export const canPurchasePlan = (id: PlanId, p: PlanPricing): id is PurchasablePlan => canPurchase(p) && isPurchasablePlan(id);

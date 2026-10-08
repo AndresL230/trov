@@ -10,16 +10,16 @@
 //     (./grants.ts `linkPaidOrgStmt`); from then on, and for a renewal of an org that already exists
 //       → `setOrgPlan(p, slug, { plan, source: "billing", status, period_end, customer_id, subscription_id })`.
 //   A renewal failed            → `markOrgPastDue(p, slug)`     (nothing is enforced differently)
-//   The subscription ended      → `cancelOrgPlan(p, slug)`      (readable and working; no additions)
+//   The subscription ended      → `moveOrgToFree(p, slug)`      (Free; nothing deleted, what is over a limit waits)
 //   It was paid again           → `setOrgPlanStatus(p, slug, "active", { period_end })`
-//   Y switched plan before use  → `setPaidGrantPlan(p, external_ref, plan)`
+//   Y changed plan or seats before use → `setPaidGrantPlan(p, external_ref, plan, { seats })`
 //   It ended before Y used it   → `revokeGrant(p, id)`
 import type { Env } from "../env";
 import type { PlatformContext } from "../data/platform-sql";
 import type { GrantTarget, PlanId, PlanOverrides, PlatformGrant } from "@shared/plans";
 import { createGrant, getGrant, mailGrant } from "./grants";
 
-export { setOrgPlan, setOrgPlanStatus, markOrgPastDue, cancelOrgPlan, orgPlan, type SetOrgPlanInput, type OrgPlan } from "./state";
+export { setOrgPlan, setOrgPlanStatus, markOrgPastDue, cancelOrgPlan, moveOrgToFree, orgPlan, type SetOrgPlanInput, type OrgPlan } from "./state";
 export { getGrant, revokeGrant, setPaidGrantPlan, GrantError } from "./grants";
 
 /** The `p.actor` a billing integration acts as — what `granted_by`, `plan_changed_by` and the audit trail record. */

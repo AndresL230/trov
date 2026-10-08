@@ -8,14 +8,15 @@
 //                   remembered: the same lists, plus what Trov is for someone who has nothing yet.
 //   CREATE        — one dialog (name + a slug derived from it), opened from either. Its rules and
 //                   its server errors are the superadmin's "Add organization" dialog's (platform.ts).
-//                   It is offered only to a person who holds a GRANT (shared/plans.ts): the picker
-//                   shows each one as "You can set up an organization — <Plan>", and creating USES it.
+//                   It is offered to a person who holds a GRANT (shared/plans.ts) — the picker shows
+//                   each one as "You can set up an organization — <Plan>", and creating USES it — and
+//                   to one who may create a FREE organization (they own none on Free: src/plans/free.ts).
 // Purely presentational: props in, markup out. Every act starts with `orgs` and is run by
 // web/src/org-picker-actions.ts.
 
 import { trovMark } from "@shared/mark";
 import { ORG_NAME_MAX, type MyInvite, type MyOrg, type MyOrgsResponse, type OrgRole } from "@shared/orgs";
-import { seatsPhrase, type MyGrant } from "@shared/plans";
+import { PLANS, FREE_PLAN, UPGRADE_PLAN, seatsPhrase, type MyGrant } from "@shared/plans";
 import { BILLING_GRANTER } from "@shared/billing";
 import { esc, attr, relTime, surface } from "./ui";
 import { accentBtn, quietBtn, orgBanner, roleChip } from "./org-ui";
@@ -35,8 +36,10 @@ export interface CreateOrgDraft {
   errors: CreateOrgErrors;
   /** The grant this creation uses (its id and what it gives), or null = the person's oldest. */
   grant: Pick<MyGrant, "id" | "plan_name" | "entitlements"> | null;
+  /** No grant: a Free organization of their own (`grant` is then null). */
+  free: boolean;
 }
-export const blankCreateOrg = (grant: CreateOrgDraft["grant"] = null): CreateOrgDraft => ({ name: "", slug: "", slugTouched: false, busy: false, errors: {}, grant });
+export const blankCreateOrg = (grant: CreateOrgDraft["grant"] = null, free = false): CreateOrgDraft => ({ name: "", slug: "", slugTouched: false, busy: false, errors: {}, grant, free: grant === null && free });
 
 /** What the switcher, the picker and the create dialog keep in AppState (`state.orgsUi`). */
 export interface OrgsUi {
@@ -61,9 +64,12 @@ export function createOrgErrors(d: Pick<CreateOrgDraft, "name" | "slug">): Creat
 }
 /** Why an organization can't be created (any more): the grant behind it was used, withdrawn or has lapsed. */
 export const NO_GRANT_SENTENCE = "You don't have an organization to set up any more: it was already used, or it was withdrawn or has expired. Ask Trov if you need one.";
+/** Why a Free organization can't be created: the person already owns one. */
+export const FREE_TAKEN_SENTENCE = `You already own a ${PLANS[FREE_PLAN].name} organization, and you can own one at a time. Upgrade it to ${PLANS[UPGRADE_PLAN].name} in its Org settings, or ask Trov if you need another.`;
 /** A refused `POST /api/orgs`, as a sentence beside the field it concerns. */
 export function createOrgServerError(code: string, d: Pick<CreateOrgDraft, "slug">): CreateOrgErrors {
   if (code === "no_grant") return { form: NO_GRANT_SENTENCE };
+  if (code === "free_org_limit") return { form: FREE_TAKEN_SENTENCE };
   const e = addOrgServerError(code, { slug: d.slug, adminKind: "handle", adminValue: "" });
   return { name: e.name, slug: e.slug, form: e.form };
 }
@@ -174,7 +180,7 @@ export function orgMenu(p: OrgMenuProps): string {
     </div>` : "";
   const here = orgs.find((o) => o.slug === p.current) ?? null;
   const settings = here ? `<button type="button" data-act="orgsSettings" data-orgs-item class="cnpy-menurow" style="${MENU_ROW}">${GEAR}<span style="flex:1;min-width:0">Org settings</span><span class="cnpy-badge" data-n="${p.logins ?? 0}" title="${p.logins ?? 0} ${p.logins === 1 ? "login" : "logins"} to match">${p.logins ?? 0}</span></button>` : "";
-  // "Create organization" is there only for a person who holds a usable grant (it uses their oldest).
+  // "Create organization" is there only for a person who can: a usable grant (their oldest), else Free.
   const create = !p.orgs ? (p.status === "error" ? `<div role="alert" style="font-size:12px;line-height:1.45;color:var(--fg-55);padding:8px 10px">Couldn't load your invitations. <button type="button" data-act="orgsReload" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--accent)">Try again</button></div>` : "")
     : p.orgs.can_create ? `<button type="button" data-act="orgsCreateOpen" data-orgs-item class="cnpy-menurow" style="${MENU_ROW}">${PLUS}<span style="flex:1;min-width:0">Create organization</span></button>`
     : "";
@@ -211,6 +217,7 @@ export function createOrgModal(d: CreateOrgDraft): string {
         <div id="orgs-create-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em">Create an organization</div>
         <p id="orgs-create-d" style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">${d.grant
           ? `It will be on the <strong style="font-weight:600;color:var(--fg-70)">${esc(d.grant.plan_name)}</strong> plan, ${esc(seatsPhrase(d.grant.entitlements.seats))}. You become its owner${d.grant.entitlements.seats === 1 ? "" : " and invite everyone else"}.`
+          : d.free ? `It will be on the <strong style="font-weight:600;color:var(--fg-70)">${esc(PLANS[FREE_PLAN].name)}</strong> plan, ${esc(seatsPhrase(PLANS[FREE_PLAN].entitlements.seats))}. You become its owner and invite everyone else; upgrade it to ${esc(PLANS[UPGRADE_PLAN].name)} when you need more.`
           : "An organization is your team's own Trov: its docs, tickets, roadmap and feed. You become its owner and invite everyone else."}</p>
         <div style="margin-top:16px">
           <label for="orgs-create-name" style="${FIELD_LABEL}">Name</label>
@@ -259,12 +266,13 @@ export function orgPickerView(p: OrgPickerProps): string {
   const nothing = !loading && orgs.length === 0 && invites.length === 0;
   const first = (p.me?.name ?? "").trim().split(/\s+/)[0] || (p.me ? `@${p.me.handle}` : "");
   const title = orgs.length === 0 ? `Welcome to Trov${first ? `, ${first}` : ""}` : "Choose an organization";
+  const granted = (p.orgs?.grants ?? []).length > 0;
   const lead = orgs.length > 0 ? "Everything in Trov belongs to an organization. Pick the one you want to work in; you can switch at any time from the sidebar."
     : invites.length > 0 ? (p.orgs?.can_create ? "You've been invited. Accept an invitation to join that team's Trov, or set up an organization of your own." : "You've been invited. Accept an invitation to join that team's Trov.")
-    : p.orgs?.can_create ? ((p.orgs.grants ?? []).length > 0 && p.orgs.grants.every((g) => g.granted_by === BILLING_GRANTER)
+    : granted ? (p.orgs!.grants.every((g) => g.granted_by === BILLING_GRANTER)
       ? "Your payment went through. Name your organization, and you are its owner."
       : "You've been given an organization of your own. Name it, and you are its owner.")
-    : "Trov is a team's working memory: what its coding agents did, the docs and decisions that came out of it, and the tickets and roadmap that say what's next. Everything in it belongs to an organization.";
+    : `Trov is a team's working memory: what its coding agents did, the docs and decisions that came out of it, and the tickets and roadmap that say what's next. Everything in it belongs to an organization${p.orgs?.free?.can_create ? ": create one for your team, or join one you're invited to." : "."}`;
   const sectionHead = (text: string, n: number) => `<h2 style="${LABEL};margin:26px 0 8px;display:flex;align-items:center;gap:8px">${esc(text)}<span class="cnpy-badge" data-n="${n}">${n}</span></h2>`;
 
   const orgRows = orgs.map((o) => `<li style="border-bottom:1px solid var(--border);margin-bottom:-1px">
@@ -308,13 +316,24 @@ export function orgPickerView(p: OrgPickerProps): string {
       orgs.length === 0 && i === 0 ? accentBtn("Set up organization", "orgsCreateOpen", o) : quietBtn("Set up organization", "orgsCreateOpen", { ...o, extra: "height:36px;color:var(--fg)" }),
       ` data-orgs-grant="${g.id}"`);
   };
+  // FREE (src/plans/free.ts): an organization of one's own with no grant — one owned at a time.
+  const free = p.orgs?.free?.can_create ? (() => {
+    const def = PLANS[FREE_PLAN];
+    const o = { arg: "free", field: "orgsCreateOpen:free", label: `Create a ${def.name} organization`, extra: "height:36px" };
+    return optRow(`Create a ${esc(def.name)} organization`,
+      `${esc(seatsPhrase(def.entitlements.seats, true))}, free. You choose its name and become its owner. Upgrade to ${esc(PLANS[UPGRADE_PLAN].name)}, paid per seat, when you need more.`,
+      orgs.length === 0 && grants.length === 0 ? accentBtn("Create organization", "orgsCreateOpen", o) : quietBtn("Create organization", "orgsCreateOpen", { ...o, extra: "height:36px;color:var(--fg)" }),
+      " data-orgs-free");
+  })() : "";
   const options = [
     ...grants.map(grantRow),
+    free,
     p.orgs && nothing ? optRow(grants.length ? "Or wait for an invitation" : "Wait for an invitation", `If your team already uses Trov, ask one of its admins to invite ${esc(askFor)}. The invitation appears on this page the next time you open it.`, "") : "",
     p.superadmin ? optRow("Platform", "You are a superadmin: add an organization and name its admin, suspend one, and see usage. No membership needed.",
       `<a href="${PLATFORM_HREF}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;height:36px;padding:0 14px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;font-weight:500;color:var(--fg-70);text-decoration:none;white-space:nowrap;box-sizing:border-box">Open Platform</a>`, " data-orgs-platform") : "",
   ].filter(Boolean).join("");
-  const createBlock = options ? `${sectionHead(grants.length ? (orgs.length || invites.length ? "Set up your own" : "Get started") : orgs.length || invites.length ? "More" : "Get started", grants.length)}<ul${surface("overflow:hidden;list-style:none;margin:0;padding:0")}>${options}</ul>` : "";
+  const own = grants.length + (free ? 1 : 0);
+  const createBlock = options ? `${sectionHead(own ? (orgs.length || invites.length ? "Set up your own" : "Get started") : orgs.length || invites.length ? "More" : "Get started", own)}<ul${surface("overflow:hidden;list-style:none;margin:0;padding:0")}>${options}</ul>` : "";
   const platformBlock = "";
 
   const state = loading ? `<div style="font-size:12.5px;color:var(--fg-40);padding:22px 0 0">Loading your organizations&hellip;</div>`
