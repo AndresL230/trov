@@ -57,6 +57,7 @@ import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFro
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
 import { initialDropdownUi, type DropdownUi } from "./dropdown";
 import { orgSettingsView, orgOverlays, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
+import { settingsPlanTile, settingsLimitsTile, settingsOrgsTile } from "./settings-plan";
 import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 // Organizations as a person meets them (org-picker.ts): the switcher, the picker, the create dialog.
 import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsUi, type OrgsUi } from "./org-picker";
@@ -1924,13 +1925,13 @@ export function profileSection(s: AppState): string {
       <span class="cnpy-avbtn-badge" aria-hidden="true" style="border-radius:50%"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"></path><circle cx="12" cy="13" r="3"></circle></svg></span>
       ${menu}
     </div>`;
-  return `<section class="cnpy-tile cnpy-surface">
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-profile">
     <div style="${SECTION_LABEL}">Profile</div>
     <div style="display:flex;align-items:flex-start;gap:14px">
       ${photo}
       <div style="flex:1;min-width:0">
         <label style="${FIELD_LABEL}">Display name</label>
-        <div style="display:flex;gap:10px">
+        <div class="cnpy-set-name" style="display:flex;gap:10px">
           <input data-act="setDisplayName" data-field="displayName" value="${attr(s.displayName)}" class="cnpy-input" style="flex:1;min-width:0;height:40px;padding:0 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:14px;outline:none" />
           <button data-act="saveProfile" class="cnpy-accentbtn" style="padding:0 16px;height:40px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600">Save</button>
         </div>
@@ -1941,36 +1942,45 @@ export function profileSection(s: AppState): string {
   </section>`;
 }
 
-/** Settings › Account: who you are signed in as (no avatar — Profile, beside it, already
- *  shows it), Sign out, and — pinned to the tile's foot, so a stretched tile reads as
- *  top and bottom rather than a gap under its content — the sign-in methods
- *  (link/unlink per provider — the last identity can't be unlinked).
+/** Settings › Account: the sign-in methods — GitHub and Google, each linked or not, with Link /
+ *  Unlink (the last identity can't be unlinked, and its button says why). Who is signed in, and
+ *  Sign out, are the Session tile's (`sessionSection`).
  *  Pure over AppState — exported for the pure render test. */
 export function accountSection(s: AppState): string {
   const me = s.me;
   const last = (me?.identities.length ?? 0) <= 1;
-  const org = currentOrg(s);
-  const n = me?.orgs.length ?? 0;
-  const memberLine = org ? `${org.role === "member" ? "Member" : org.role === "owner" ? "Owner" : "Admin"} of ${org.name}${n > 1 ? ` · in ${n} organizations` : ""}` : "Signed in";
   const provRow = (p: "github" | "google", label: string) => {
     const id = me?.identities.find((i) => i.provider === p);
     const btn = id
-      ? `<button data-act="unlinkProvider" data-arg="${p}" class="cnpy-ghostbtn" ${last ? "disabled " : ""}style="font-size:12px;color:var(--fg-40);padding:4px 10px;border-radius:6px;border:1px solid var(--border);${last ? "opacity:.45;cursor:default" : ""}">Unlink</button>`
+      ? `<button data-act="unlinkProvider" data-arg="${p}" class="cnpy-ghostbtn" ${last ? `disabled title="Link another sign-in method before unlinking this one" ` : ""}style="font-size:12px;color:var(--fg-40);padding:4px 10px;border-radius:6px;border:1px solid var(--border);${last ? "opacity:.45;cursor:default" : ""}">Unlink</button>`
       : `<button data-act="linkProvider" data-arg="${p}" class="cnpy-ghostbtn" style="font-size:12px;color:var(--fg-70);padding:4px 10px;border-radius:6px;border:1px solid var(--border-strong)">Link ${label}</button>`;
-    return `<div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border)"><div style="line-height:1.25"><b style="font-size:13.5px;font-weight:600;display:block">${label}</b><span style="font-family:var(--label);font-size:11.5px;color:${id ? "var(--fg-55)" : "var(--fg-40)"}">${id ? esc(id.label) : "not linked"}</span></div>${btn}</div>`;
+    return `<div data-provider="${p}" style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--border)"><div style="line-height:1.25;min-width:0"><b style="font-size:13.5px;font-weight:600;display:block">${label}</b><span style="font-family:var(--label);font-size:11.5px;color:${id ? "var(--fg-55)" : "var(--fg-40)"};overflow-wrap:anywhere">${id ? esc(id.label) : "not linked"}</span></div>${btn}</div>`;
   };
-  return `<section class="cnpy-tile cnpy-surface">
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-account">
     <div style="${SECTION_LABEL}">Account</div>
-    <div data-account-who style="display:flex;align-items:center;justify-content:space-between;gap:10px 12px;flex-wrap:wrap">
+    <div style="font-size:13px;font-weight:500;margin-bottom:8px">Sign-in methods <span style="font-weight:400;color:var(--fg-40)">· keep one linked</span></div>
+    ${provRow("github", "GitHub")}${provRow("google", "Google")}
+    <div class="cnpy-tile-foot" style="padding-top:12px;border-top:1px solid var(--border);font-size:11.5px;line-height:1.5;color:var(--fg-40)">${last ? "Your only way in. Link the other one before unlinking it." : "Either one signs you in to the same account."}</div>
+  </section>`;
+}
+
+/** Settings › Session: who is signed in on this browser, and SIGN OUT — a labelled button with its
+ *  icon, in a tile of its own at the top right of the page (last on a phone), never a quiet link.
+ *  Pure over AppState — exported for the pure render test. */
+export function sessionSection(s: AppState): string {
+  const me = s.me;
+  const org = currentOrg(s);
+  // (How many organizations, and each one's plan, is the Organizations tile's to say.)
+  const memberLine = org ? `${org.role === "member" ? "Member" : org.role === "owner" ? "Owner" : "Admin"} of ${org.name}` : "Signed in";
+  const icon = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5"></path><path d="M21 12H9"></path></svg>`;
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-session">
+    <div style="${SECTION_LABEL}">Session</div>
+    <div data-account-who class="cnpy-set-who">
       <div style="flex:1 1 150px;min-width:0">
         <div style="font-size:13.5px;font-weight:500;line-height:1.35;overflow-wrap:anywhere">Signed in as ${me ? handleLink({ handle: me.handle, name: me.name, color: me.color }, me.handle, 13) : ""}</div>
         <div style="display:flex;align-items:baseline;gap:6px;font-size:11.5px;line-height:1.4;color:var(--green);margin-top:4px"><span style="flex:none;width:6px;height:6px;border-radius:50%;background:var(--green);transform:translateY(-1px)"></span><span style="min-width:0;overflow-wrap:anywhere">${esc(memberLine)}</span></div>
       </div>
-      <button data-act="signOut" class="cnpy-signout" style="flex:none;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500">Sign out</button>
-    </div>
-    <div class="cnpy-tile-foot" style="padding-top:18px">
-      <div style="font-size:13px;font-weight:500;margin-bottom:8px">Sign-in methods <span style="font-weight:400;color:var(--fg-40)">· keep one linked</span></div>
-      ${provRow("github", "GitHub")}${provRow("google", "Google")}
+      <button data-act="signOut" class="cnpy-signout" style="flex:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:600;color:var(--fg)">${icon}Sign out</button>
     </div>
   </section>`;
 }
@@ -2115,25 +2125,38 @@ function settingsView(s: AppState): string {
       : k === "dark"
       ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`
       : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg>`;
-    return `<button data-act="setTheme" data-arg="${k}" class="cnpy-themecard" aria-pressed="${sel}" style="${style}">${icon}<span style="font-size:13px;font-weight:500;line-height:18px">${label}</span></button>`;
+    // "System" needs its one line of explanation only when asked: it is the card's tooltip, so the
+    // tile is exactly as tall as its three cards (it sits under Session, beside Profile and Account).
+    return `<button data-act="setTheme" data-arg="${k}" class="cnpy-themecard" aria-pressed="${sel}"${k === "system" ? ` title="Follows your operating system's appearance"` : ""} style="${style}">${icon}<span style="font-size:13px;font-weight:500;line-height:18px">${label}</span></button>`;
   }).join("");
 
-  // ONE bento grid (trov.css), every tile stretched to its grid area so every edge lines
-  // up: Profile | Account | MCP access (spanning two rows), Appearance under the first two,
-  // Email notifications at full width. DOM order is the folded order — Profile, Account,
-  // Appearance, then MCP access — so the narrower layouts need no reordering.
+  // ONE bento grid on twelve columns (trov.css), each tile about as tall as what it holds:
+  //   Profile | Account | Session over Appearance
+  //   Plan | Limits
+  //   Organizations
+  //   MCP access
+  //   Email notifications
+  // DOM order is the folded order — who I am, then the plan, then the rest, Sign out last —
+  // and the wide layout places each tile by name, so the narrower ones need no reordering.
+  const org = viewerOrg(s);
+  const plan = { org, plan: s.org.slug === org?.slug ? s.org.plan : { status: "idle" as const, data: null }, billing: s.org.billing };
   return `<div class="cnpy-set-wrap"><div class="cnpy-set">
     ${profileSection(s)}
 
     ${accountSection(s)}
 
+    ${settingsPlanTile(plan)}
+
+    ${settingsLimitsTile(plan)}
+
+    ${settingsOrgsTile({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], status: s.myOrgs.status, current: s.orgSlug })}
+
+    ${mcpAccessSection(s, org?.name ?? "")}
+
     <section class="cnpy-tile cnpy-surface cnpy-set-appear">
       <div style="${SECTION_LABEL}">Appearance</div>
       <div class="cnpy-set-themes">${themeCards}</div>
-      <div style="font-size:11.5px;color:var(--fg-40);margin-top:10px">System follows your operating system's appearance.</div>
     </section>
-
-    ${mcpAccessSection(s, viewerOrg(s)?.name ?? "")}
 
     ${emailNotificationsSection({
       prefs: s.notifPrefs.data,
@@ -2142,6 +2165,8 @@ function settingsView(s: AppState): string {
       emailEditing: s.emailEditing,
       emailDraft: s.emailDraft,
     })}
+
+    ${sessionSection(s)}
 
   </div></div>`;
 }
@@ -2481,8 +2506,10 @@ const isArtScreen = (screen: Screen): screen is ArtScreen => screen === "artifac
 function appView(s: AppState): string {
   // Org settings and Platform are patched too: their tab bar is the same element across a tab
   // switch (its underline slides, focus stays on the tab), and only the panel under it is replaced.
+  // Personal Settings too: it holds forms (name, handle, digest address), and a page rebuilt per
+  // keystroke restarts everything in it (web-ui.md › A repaint REBUILDS a page).
   const morphKey = isArtScreen(s.screen) ? `${s.screen}:${JSON.stringify(s.screen === "artifact" ? s.artRoute : null)}`
-    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" ? s.screen : "";
+    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" ? s.screen : "";
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
     ${sidebar(s)}
     <main${morphKey ? ` data-morph="${attr(morphKey)}"` : ""} style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">

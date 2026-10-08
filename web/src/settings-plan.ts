@@ -90,6 +90,10 @@ export function settingsPlanTile(p: SettingsPlanProps): string {
   const parts = planParts(v, role, b);
   const price = planPriceWords(v);
   const upsell = upgradePriceWords(v);
+  // A Free org that never paid: the Plan block's sentence points at the limits "below" it, and here
+  // they are in the tile beside this one — so this tile says the same thing without the direction.
+  const pro = PLANS[UPGRADE_PLAN].name;
+  const line = parts.state === "free" ? `${pro} is paid per seat: one for each member or pending invitation. It raises every limit.` : parts.line;
   // Not an owner: no buttons — who changes it (the Plan block's own sentence), and the way there.
   const where = goLink(role === "owner" ? "Plan and limits in Org settings" : "Org settings", "orgGo", "general");
   return `${open} data-set-plan="${v.plan}" data-set-role="${role}"${parts.state ? ` data-set-billing="${parts.state}"` : ""}>
@@ -102,7 +106,7 @@ export function settingsPlanTile(p: SettingsPlanProps): string {
     </div>
     <div style="${NOTE};margin-top:2px">${esc(v.description)}</div>
     ${parts.gift}
-    ${parts.line ? `<p data-plan-billing style="margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-70)">${esc(parts.line)}${upsell ? ` <span data-plan-upsell>${esc(upsell)}</span>` : ""}</p>` : upsell ? `<p data-plan-upsell style="margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-70)">${esc(upsell)}</p>` : ""}
+    ${line ? `<p data-plan-billing style="margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-70)">${esc(line)}${upsell ? ` <span data-plan-upsell>${esc(upsell)}</span>` : ""}</p>` : upsell ? `<p data-plan-upsell style="margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-70)">${esc(upsell)}</p>` : ""}
     ${parts.actions ? `<div class="cnpy-plan-actions" data-plan-actions>${parts.actions}</div>` : ""}
     ${parts.actions && b.error ? `<div role="alert" style="${O_ERR}">${esc(b.error)}</div>` : ""}
     <div class="cnpy-set-planfoot">
@@ -139,12 +143,13 @@ function meterRow(v: OrgPlanView, key: LimitKey): string {
     : `<div class="cnpy-meter" data-meter="${tone}" role="meter" aria-label="${attr(`${d.label}${scope ? `, ${scope}` : ""}`)}" aria-valuemin="0" aria-valuemax="${cap}" aria-valuenow="${used}" aria-valuetext="${attr(`${formatLimit(key, used)} of ${formatLimit(key, cap)}`)}"><span style="width:${pct}%"></span></div>`;
   const note = over ? `<div data-limit-over style="font-size:11.5px;font-weight:500;color:var(--amber);margin-top:4px">Over the limit</div>`
     : spent && d.atCap ? `<div data-limit-spent style="${FINE};margin-top:4px">${esc(d.atCap)}</div>` : "";
-  return `<li class="cnpy-set-limit" data-limit="${key}"${over ? ' data-over="1"' : ""}${used === null ? ' data-unknown="1"' : ""} title="${attr(d.counts)}">
+  return `<li class="cnpy-set-limit" data-limit="${key}"${over ? ' data-over="1"' : ""}${used === null ? ' data-unknown="1"' : ""}>
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
       <span style="min-width:0;font-size:13px;font-weight:500;color:var(--fg)">${esc(d.label)}${scope ? ` <span style="font-weight:400;color:var(--fg-40)">${scope}</span>` : ""}</span>
       <span data-limit-use style="flex:none;font-size:12.5px;font-variant-numeric:tabular-nums;color:var(--fg-70)">${useWords(key, used, cap)}</span>
     </div>
-    ${meter}${note}
+    ${meter}
+    <div data-limit-counts style="${FINE};margin-top:5px">${esc(d.counts)}</div>${note}
   </li>`;
 }
 
@@ -156,7 +161,7 @@ export function settingsLimitsTile(p: SettingsPlanProps): string {
   if (!p.org) return `${open}>${top}<div style="${NOTE}">Open an organization to see its limits.</div></section>`;
   if (!v) {
     // One limit's row: its name and its use on a line, the meter under it — six of them.
-    const row = (i: number) => `<div class="cnpy-set-limit"><div style="display:flex;justify-content:space-between;gap:10px">${skLine(skW(i, [84, 112, 96, 124, 132, 92]), 13, 1.5)}${skLine(56, 12.5, 1.5)}</div>${skBar("100%", 4, "margin-top:7px")}</div>`;
+    const row = (i: number) => `<div class="cnpy-set-limit"><div style="display:flex;justify-content:space-between;gap:10px">${skLine(skW(i, [84, 112, 96, 124, 132, 92]), 13, 1.5)}${skLine(56, 12.5, 1.5)}</div>${skBar("100%", 4, "margin-top:7px")}<div style="margin-top:5px">${skLine(skW(i, ["62%", "48%", "70%"]), 11.5, 1.5)}</div></div>`;
     const body = p.plan.status === "error" ? failed("this organization's limits", "orgPlanReload")
       : skeleton("set-limits", "Loading the limits&hellip;", `<div class="cnpy-set-limits-rows">${skList(LIMIT_KEYS.length, row)}</div>`);
     return `${open}>${top}${body}</section>`;
@@ -182,7 +187,7 @@ export interface SettingsOrgsProps {
   orgs: MyOrgsResponse | null;
   /** The session's own list (`me.orgs`), shown until — or if — the read above lands. */
   mine: readonly MyOrg[];
-  status: OrgSlice<unknown>["status"];
+  status: OrgSlice<unknown>["status"] | "unauth";
   /** The organization on screen. */
   current: string | null;
 }
@@ -201,7 +206,7 @@ function orgRow(o: MyOrg, here: boolean): string {
     ${orgTile(o.name, 30, o.logo_url ?? null, 8)}
     <span style="flex:1;min-width:0">
       <span style="display:block;font-size:13.5px;font-weight:500;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.name)}</span>
-      <span data-org-role style="display:block;${FINE};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ROLE_WORD[o.role]}${here ? " &middot; open now" : ""}${pays ? ` &middot; ${pays}` : ""}</span>
+      <span data-org-role style="display:block;${FINE};overflow-wrap:anywhere">${ROLE_WORD[o.role]}${here ? " &middot; open now" : ""}${pays ? ` &middot; ${pays}` : ""}</span>
     </span>
     ${plan ? `<span data-org-plan="${plan.id}" style="flex:none;display:inline-flex">${chip(plan.name, o.paid ? "var(--accent)" : "var(--fg-55)")}</span>` : ""}
   </a></li>`;

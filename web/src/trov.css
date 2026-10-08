@@ -673,22 +673,34 @@ input, select { font-family: inherit; }
   .cnpy-pdetail-rail { flex:none; max-width:none; }
 }
 .cnpy-set-wrap { container:cnpy-set / inline-size; }
-/* Settings is ONE bento grid with even edges: row 1 is Profile | Account | MCP access (MCP
-   spans rows 1–2, down a slightly wider third column — its install command fits on one
-   line), row 2 is Appearance under the first two, row 3 Email notifications at full width.
-   Every tile STRETCHES to its grid area (the default), so tiles in a row share one top and
-   one bottom and the left block ends where MCP access does. The stretch is kept to a few
-   pixels by balancing content, not by sizing tiles: the by-hand setup is a modal (it never
-   grows the MCP tile) and Connected apps shows at most MCP_LIST_CAP rows. */
-.cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.3fr); gap:14px; }
-.cnpy-set-appear { grid-column:1 / span 2; }
-.cnpy-set-mcp { grid-column:3; grid-row:1 / span 2; }
+/* Settings is ONE bento grid on twelve columns, and a tile is about as tall as what it holds:
+   tiles that share a row are ones whose content is naturally the same height, so the grid's
+   stretch (kept: every edge still lines up) is a few pixels, never a half-empty tile.
+     rows 1-2  Profile (4) | Account (4) | Session (4) over Appearance (4)
+     row 3     Plan (5) | Limits (7) — both grow with what the plan has to say
+     row 4     Organizations (a row of them)
+     row 5     MCP access (its steps beside Connected apps)
+     row 6     Email notifications
+   Each tile is placed by NAME here; DOM order is the folded order (Sign out last). */
+.cnpy-set { max-width:1180px; margin:0 auto; padding:24px 32px 32px; display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:14px; }
+.cnpy-set-profile { grid-column:1 / span 4; grid-row:1 / span 2; }
+.cnpy-set-account { grid-column:5 / span 4; grid-row:1 / span 2; }
+.cnpy-set-session { grid-column:9 / -1; grid-row:1; }
+.cnpy-set-appear { grid-column:9 / -1; grid-row:2; }
+.cnpy-set-plan { grid-column:1 / span 5; grid-row:3; }
+.cnpy-set-limits { grid-column:6 / -1; grid-row:3; }
+.cnpy-set-orgs-tile { grid-column:1 / -1; grid-row:4; }
+.cnpy-set-mcp { grid-column:1 / -1; grid-row:5; }
 /* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this adds its padding, and
-   a column flow so a stretched tile keeps its content at the top — with `.cnpy-tile-foot`
-   (Profile's color swatches, Account's sign-in methods) pinned to the bottom edge. */
+   a column flow so a tile keeps its content at the top — with `.cnpy-tile-foot` (Profile's
+   color swatches, Account's closing line) at the bottom edge. */
 .cnpy-tile { min-width:0; padding:20px 22px; display:flex; flex-direction:column; }
 .cnpy-tile-foot { margin-top:auto; }
-.cnpy-set-email { grid-column:1 / -1; container:cnpy-email / inline-size; }
+/* A field never runs the width of a wide tile (Profile spans the page's half when it folds). */
+.cnpy-set-profile .cnpy-set-name { max-width:420px; }
+/* Session: who is signed in, and Sign out — side by side, the button under the name when narrow. */
+.cnpy-set-who { display:flex; align-items:center; justify-content:space-between; gap:12px 14px; flex-wrap:wrap; }
+.cnpy-set-email { grid-column:1 / -1; grid-row:6; container:cnpy-email / inline-size; }
 .cnpy-set-pairs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:40px; }
 @container cnpy-email (max-width:935px) {
   .cnpy-set-pairs { grid-template-columns:minmax(0,1fr); }
@@ -696,30 +708,62 @@ input, select { font-family: inherit; }
 /* Appearance: Light / Dark / System are ONE row of three equal cards at every width, edge to
    edge of the tile's content box. The row is its own container, so a card's form follows the
    room it actually has (not the viewport): icon beside label, or — once a card is too narrow
-   for that (row < 350px, ~110px a card) — icon stacked over label, still three across. */
+   for that (row < 290px, ~90px a card) — icon stacked over label, still three across. */
 .cnpy-set-themes { container:cnpy-themes / inline-size; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
 .cnpy-themecard { display:flex; align-items:center; justify-content:center; gap:9px; min-width:0; padding:13px 8px; }
 .cnpy-themecard > svg { flex:none; display:block; }
-@container cnpy-themes (max-width:349px) {
+@container cnpy-themes (max-width:289px) {
   .cnpy-themecard { flex-direction:column; gap:6px; padding:12px 6px; }
 }
 .cnpy-set .cnpy-sw.compact { padding:6px 0; }
 /* MCP access: the sign-in steps, then Connected apps — beside them once the tile is wide
-   (it spans the page when the bento folds). The list has no fixed height and no scroller:
-   it shows its first rows and a "Show all N" (render.ts `grantListBody`). */
+   (it runs the width of the page). The list has no fixed height and
+   no scroller: it shows its first rows and a "Show all N" (render.ts `grantListBody`). */
 .cnpy-set-mcp { container:cnpy-mcp / inline-size; }
 .cnpy-mcp-body { display:grid; grid-template-columns:minmax(0,1fr); gap:18px; margin-top:20px; }
 @container cnpy-mcp (min-width:620px) {
   .cnpy-mcp-body { grid-template-columns:repeat(2,minmax(0,1fr)); column-gap:32px; }
 }
-/* Narrower: two columns — Profile | Account in one row (equal heights), Appearance and then
-   MCP access at full width under them; on a phone, one column. */
+/* Plan (settings-plan.ts): the closing line and the way to Org settings sit at the tile's foot. */
+.cnpy-set-planfoot { margin-top:auto; padding-top:14px; display:flex; align-items:baseline; justify-content:space-between; gap:6px 16px; flex-wrap:wrap; }
+.cnpy-set-planfoot > span { flex:1 1 220px; min-width:0; }
+/* Limits: each limit is a name, its use, and a quiet meter under them — three across while the
+   tile has the room (it is its own container), then two, then one. */
+.cnpy-set-limits { container:cnpy-limits / inline-size; }
+.cnpy-set-limits-rows { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px 36px; }
+@container cnpy-limits (max-width:759px) {
+  .cnpy-set-limits-rows { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 28px; }
+}
+@container cnpy-limits (max-width:479px) {
+  .cnpy-set-limits-rows { grid-template-columns:minmax(0,1fr); }
+}
+.cnpy-set-limit { min-width:0; }
+.cnpy-meter { height:4px; margin-top:7px; background:var(--hover); overflow:hidden; }
+.cnpy-meter > span { display:block; height:100%; background:var(--fg-40); }
+.cnpy-meter[data-meter="full"] > span { background:var(--fg-70); }
+.cnpy-meter[data-meter="over"] > span { background:var(--amber); }
+/* Organizations: one card per organization — a link that opens it — as many across as fit, then
+   what I may create. No scroller: more organizations make more rows. */
+.cnpy-set-orgs { list-style:none; margin:0 -8px; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:2px 14px; }
+.cnpy-set-org { display:flex; align-items:center; gap:10px; padding:7px 8px; text-decoration:none; color:inherit; transition:background .12s ease; }
+.cnpy-set-org:hover { background:var(--hover); }
+.cnpy-set-org[aria-current="true"] { background:var(--hover); }
+.cnpy-set-org:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.cnpy-set-orgsfoot { margin-top:auto; padding-top:14px; display:flex; flex-direction:column; gap:10px; }
+.cnpy-set-orgs + .cnpy-set-orgsfoot, .cnpy-skel + .cnpy-set-orgsfoot { border-top:1px solid var(--border); margin-top:14px; }
+/* Narrower: two columns — Profile | Account in one row, then every other tile at full width,
+   in DOM order (Plan, Limits, Organizations, MCP access, Appearance, Email, Session); on a
+   phone, one column. */
 @container cnpy-set (max-width:999px) {
   .cnpy-set { grid-template-columns:repeat(2,minmax(0,1fr)); }
-  .cnpy-set-appear, .cnpy-set-mcp { grid-column:1 / -1; grid-row:auto; }
+  .cnpy-set-profile, .cnpy-set-account { grid-column:auto; grid-row:auto; }
+  .cnpy-set-session, .cnpy-set-appear, .cnpy-set-plan, .cnpy-set-limits, .cnpy-set-mcp, .cnpy-set-orgs-tile, .cnpy-set-email { grid-column:1 / -1; grid-row:auto; }
 }
 @container cnpy-set (max-width:759px) {
   .cnpy-set { padding:24px 16px 64px; grid-template-columns:minmax(0,1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-set-org { transition:none; }
 }
 /* Tickets: the queue's table rows, and the two-column form/detail layouts that
    collapse to one column on a narrow viewport. */
