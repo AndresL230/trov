@@ -73,7 +73,7 @@ export default defineConfig({
           RAILWAY_TOKEN_STAGING: "",
           RAILWAY_TOKEN_PRODUCTION: "",
           SAPLING_METRICS_TOKEN: "",
-          // The hosting integrations' client credentials (0047_hosting_providers): blank, so a local .dev.vars
+          // The hosting integrations' client credentials (0048_hosting_providers): blank, so a local .dev.vars
           // never makes "Connect with Vercel / Netlify" available in a test that did not ask for it.
           VERCEL_INTEGRATION_CLIENT_ID: "",
           VERCEL_INTEGRATION_CLIENT_SECRET: "",
@@ -90,9 +90,7 @@ export default defineConfig({
           // fake key and a stubbed `fetch`.
           STRIPE_SECRET_KEY: "",
           STRIPE_WEBHOOK_SECRET: "",
-          STRIPE_PRICE_PERSONAL: "",
           STRIPE_PRICE_TEAM: "",
-          STRIPE_PRICE_PERSONAL_YEARLY: "",
           STRIPE_PRICE_TEAM_YEARLY: "",
           STRIPE_TEST_API_BASE: "",
         },

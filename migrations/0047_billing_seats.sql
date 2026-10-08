@@ -1,0 +1,16 @@
+-- 0047_billing_seats: Pro is sold PER SEAT (docs/architecture/billing.md › Decisions). Trov mirrors each
+-- Stripe subscription in `billing_subscriptions` (0045_billing); this adds the one field per-seat billing
+-- reads — the subscription item's QUANTITY, the seats paid for.
+--
+-- ADDITIVE only: one nullable column; nothing existing changes, and a Worker from before it keeps working
+-- (it reads none of this). NULL = not known (a row written before this migration, or a subscription Stripe
+-- sent no quantity for) — read as "no seat count", never as zero (src/billing/sync.ts `paidSeats`).
+--
+-- What it is for: the org's seat cap is its `seats` override, written from the quantity whenever a
+-- subscription event lands (src/billing/sync.ts). The mirror keeps the quantity so that a write made
+-- WITHOUT a Stripe event can restore it — the superadmin's "Follow subscription" (src/plans/routes.ts)
+-- puts the org back on the subscription's plan AND its paid seats.
+--
+-- ROLLBACK (by hand): ALTER TABLE billing_subscriptions DROP COLUMN quantity;
+--                     DELETE FROM d1_migrations WHERE name = '0047_billing_seats.sql';
+ALTER TABLE billing_subscriptions ADD COLUMN quantity INTEGER CHECK (quantity IS NULL OR quantity > 0);

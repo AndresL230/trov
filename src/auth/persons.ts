@@ -275,7 +275,7 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["billing_checkouts", "person"], ["billing_subscriptions", "person"],
   // The GitHub App (0043_github_app): who connected the org's installation.
   ["org_github_installations", "connected_by"],
-  // Hosting (0047_hosting_providers). `revoked_by` is a handle, or the reserved `system` when the provider's side
+  // Hosting (0048_hosting_providers). `revoked_by` is a handle, or the reserved `system` when the provider's side
   // ended the connection (an uninstall notice, a 401 at Test connection) — never a provider id.
   ["org_environment_parts", "updated_by"], ["org_hosting_connections", "connected_by"], ["org_hosting_connections", "revoked_by"],
   // Sync GitHub runs (0046_sync_runs): who started one.

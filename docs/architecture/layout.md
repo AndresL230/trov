@@ -121,15 +121,18 @@
   fixed mail sender and what is still open to abuse: `docs/architecture/abuse-limits.md`; the deploy runbook: `HANDOFF.md`.
   How an org is added, set up and run, role by role — and that a ticket's / handoff's `id` on every surface is its
   per-org NUMBER, never the row id: `docs/architecture/organizations.md`, `docs/architecture/data-layer.md`.
-  Plans, per-org limits (402 `plan_limit`), grants and the billing seam (`shared/plans.ts`, `src/plans/`,
-  `0044_plans`): `docs/architecture/plans.md` — a new limit goes in `PLANS` and is enforced with `requirePlan`.
+  Plans, per-org limits (402 `plan_limit`), grants, Free orgs (`src/plans/free.ts`) and the billing seam
+  (`shared/plans.ts`, `src/plans/`, `0044_plans`): `docs/architecture/plans.md` — a new limit goes in `PLANS`
+  and is enforced with `requirePlan`; a feature goes in `FEATURE_KEYS` and is gated with `requireFeature`.
+  Pro per seat through Stripe (`src/billing/`, `0045_billing`, `0047_billing_seats` — the subscription's
+  quantity): `docs/architecture/billing.md`.
   Sync GitHub as a recorded run (`0046_sync_runs`, `src/sync/runs.ts`, `GET /sync`, the panel's every sentence in
   `shared/sync.ts`): `docs/architecture/sync.md` — whether a sync can start is asked of the ONE GitHub credential
   source (`githubCredentialSource`, `src/github-app/credential.ts`), never of the token alone. The summarizer for an org is chosen ONLY by `orgSummarizers`
   (`src/plans/summaries.ts` — one platform key, each call metered per org, the monthly `ai_summaries` allowance).
-  Then `0047_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
+  Then `0048_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
   `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback
-  `scripts/hosting/0047_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
+  `scripts/hosting/0048_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,

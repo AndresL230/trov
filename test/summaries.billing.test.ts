@@ -3,8 +3,9 @@
  * state does to an org). The summarizer choice (`orgSummarizers`) reads the SAME columns billing writes —
  * `orgs.plan`, `plan_overrides`, `plan_status`, through `planOf` — so each transition a subscription makes
  * is driven here by a real Stripe event (the stand-in), never by an UPDATE:
- *   active → summarizes; past due → still summarizes (past due limits nothing); canceled → does not;
- *   renewed → summarizes again; a plan switch and a superadmin's pinned plan move the allowance.
+ *   active → summarizes; past due → still summarizes (past due limits nothing); ended → the org is on Free
+ *   and summarizes on Free's allowance; upgraded again → Pro's; a superadmin's pinned plan moves the
+ *   allowance; a legacy frozen (`canceled`) org does not summarize.
  * Gemini is a stub — never the network.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -13,11 +14,11 @@ import type { OrgPlanView } from "@shared/plans";
 import { PLANS } from "@shared/plans";
 import type { PlatformOrgRow } from "@shared/orgs";
 import { systemTenant, platform } from "../src/data/context";
-import { orgPlan } from "../src/plans/billing";
+import { cancelOrgPlan, orgPlan } from "../src/plans/billing";
 import { orgSummarizers, summaryAllowance } from "../src/plans/summaries";
 import { cookieFor } from "./helpers/persons";
 import { call, one, SUPERADMIN } from "./helpers/orgs";
-import { FakeStripe, PRICES, PERIOD_2, bcall, billingEnv, deliver, event } from "./helpers/billing";
+import { FakeStripe, PERIOD_2, bcall, billingEnv, deliver, event } from "./helpers/billing";
 
 const KEY = "AIzaFAKE_gemini_key_for_tests_0123456789";
 const keyed = (): Env => ({ ...billingEnv(), GEMINI_API_KEY: KEY });
@@ -40,9 +41,9 @@ function gemini(): { fetchImpl: typeof fetch; calls: number } {
 }
 
 /** `handle` buys `plan`, the webhook lands, and they create `slug` — billing.lifecycle.test.ts's own setup. */
-async function paidOrg(handle: string, plan: "personal" | "team", slug: string) {
+async function paidOrg(handle: string, slug: string) {
   const cookie = await cookieFor(handle, { member: false, email: `${handle}@example.com`, verified: true });
-  expect((await bcall("GET", `/billing/start?plan=${plan}`, cookie)).status).toBe(303);
+  expect((await bcall("GET", `/billing/start?plan=team`, cookie)).status).toBe(303);
   const session = stripe.lastSession();
   const sub = stripe.pay(session.id);
   await deliver(event("checkout.session.completed", stripe.sessionJson(session)));
@@ -66,19 +67,23 @@ const planView = async (slug: string, cookie: string) => (await bcall<OrgPlanVie
 
 describe("the summarizer choice reads the plan state billing writes", () => {
   it("it is the same state: what `orgPlan` (billing's read) says is what the allowance is computed from", async () => {
-    const { orgId, sub, updated } = await paidOrg("maya", "team", "maya-co");
+    const { orgId, sub, updated } = await paidOrg("maya", "maya-co");
     for (const status of ["active", "past_due", "active", "canceled"] as const) {
       sub.status = status;
       await updated();
       const state = await orgPlan(platform(keyed(), "billing"), orgId);
-      expect(state.status).toBe(status);
-      expect((await allowance(orgId)).status).toBe(status === "canceled" ? "ended" : "on");
+      // An ended subscription moves the org to Free: active, on Free's allowance.
+      expect([state.plan, state.status]).toEqual(status === "canceled" ? ["free", "active"] : ["team", status]);
+      expect((await allowance(orgId)).status).toBe("on");
       expect((await allowance(orgId)).cap).toBe(PLANS[state.plan].entitlements.ai_summaries);
     }
+    // A legacy org frozen as `canceled` (the seam still has the call): its allowance is ended.
+    await cancelOrgPlan(platform(keyed(), "billing"), "maya-co");
+    expect((await allowance(orgId)).status).toBe("ended");
   });
 
-  it("active: a paid Team org summarizes against Team's allowance, and the Plan block shows the use beside billing", async () => {
-    const { orgId, cookie } = await paidOrg("maya", "team", "maya-co");
+  it("active: a paid Pro org summarizes against Pro's allowance, and the Plan block shows the use beside billing", async () => {
+    const { orgId, cookie } = await paidOrg("maya", "maya-co");
     expect(await allowance(orgId)).toEqual({ status: "on", used: 0, cap: 3000, remaining: 3000 });
     expect(await summarize(orgId)).toEqual({ offered: true, calls: 1, status: "on" });
     expect(await attempts(orgId)).toBe(1);
@@ -89,7 +94,7 @@ describe("the summarizer choice reads the plan state billing writes", () => {
   });
 
   it("PAST DUE still summarizes — a failed payment limits nothing — and paid again changes nothing either", async () => {
-    const { orgId, cookie, sub } = await paidOrg("maya", "team", "maya-co");
+    const { orgId, cookie, sub } = await paidOrg("maya", "maya-co");
     sub.status = "past_due";
     expect((await deliver(event("invoice.payment_failed", { id: "in_2", subscription: sub.id }))).json).toEqual({ ok: true, outcome: "org_past_due" });
     expect((await one<{ plan_status: string }>(`SELECT plan_status FROM orgs WHERE id = ?`, orgId))!.plan_status).toBe("past_due");
@@ -98,7 +103,7 @@ describe("the summarizer choice reads the plan state billing writes", () => {
     expect(await attempts(orgId)).toBe(1);
     expect(await planView("maya-co", cookie)).toMatchObject({ status: "past_due", usage: { ai_summaries: 1 }, over: [] });
     // The allowance itself still applies while past due: it is the plan's, not the payment's.
-    await call("PUT", "/api/platform/orgs/maya-co/plan", await cookieFor(SUPERADMIN), { plan: "team", overrides: { ai_summaries: 1 } });
+    await call("PUT", "/api/platform/orgs/maya-co/plan", await cookieFor(SUPERADMIN), { plan: "team", overrides: { seats: 1, ai_summaries: 1 } });
     expect((await one<{ plan_status: string }>(`SELECT plan_status FROM orgs WHERE id = ?`, orgId))!.plan_status).toBe("past_due");
     expect(await summarize(orgId)).toEqual({ offered: false, calls: 0, status: "capped" });
 
@@ -108,70 +113,69 @@ describe("the summarizer choice reads the plan state billing writes", () => {
     expect((await allowance(orgId)).status).toBe("capped"); // the override stands; the payment changed nothing about it
   });
 
-  it("CANCELED does not summarize: no summarizer is handed out, no call is made — the cancellation, and retries running out", async () => {
+  it("ENDED moves the org to Free, which summarizes on Free's allowance — the cancellation, and retries running out", async () => {
     for (const [handle, slug, end] of [["maya", "maya-co", "canceled"], ["noor", "noor-co", "unpaid"]] as const) {
-      const { orgId, cookie, sub, updated } = await paidOrg(handle, "team", slug);
+      const { orgId, cookie, sub, updated } = await paidOrg(handle, slug);
       expect((await summarize(orgId)).offered).toBe(true);
       sub.status = end;
-      expect((await (end === "canceled" ? deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub))) : updated())).json).toEqual({ ok: true, outcome: "org_canceled" });
-      expect((await allowance(orgId)).status).toBe("ended");
-      expect(await summarize(orgId)).toEqual({ offered: false, calls: 0, status: "ended" });
-      expect(await attempts(orgId)).toBe(1); // only the one made while it was active
-      // Nothing errors, and the org still reads its plan: ended, with the month's use on it.
-      expect(await planView(slug, cookie)).toMatchObject({ status: "canceled", usage: { ai_summaries: 1 }, over: [] });
+      expect((await (end === "canceled" ? deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub))) : updated())).json).toEqual({ ok: true, outcome: "org_free" });
+      // The month's use carries over: one of Free's 300.
+      expect(await allowance(orgId)).toEqual({ status: "on", used: 1, cap: 300, remaining: 299 });
+      expect(await summarize(orgId)).toEqual({ offered: true, calls: 1, status: "on" });
+      expect(await attempts(orgId)).toBe(2);
+      // Nothing errors, and the org reads its plan: Free, with the month's use on it.
+      expect(await planView(slug, cookie)).toMatchObject({ plan: "free", status: "active", usage: { ai_summaries: 2 }, over: [] });
     }
   });
 
-  it("cancelled at the period's end keeps summarizing until Stripe ends it", async () => {
-    const { orgId, sub, updated } = await paidOrg("maya", "team", "maya-co");
+  it("cancelled at the period's end keeps Pro's allowance until Stripe ends it, then Free's", async () => {
+    const { orgId, sub, updated } = await paidOrg("maya", "maya-co");
     sub.cancel_at_period_end = true;
     await updated();
     expect(await summarize(orgId)).toEqual({ offered: true, calls: 1, status: "on" });
+    expect((await allowance(orgId)).cap).toBe(3000);
     sub.status = "canceled";
     await deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub)));
-    expect((await summarize(orgId)).offered).toBe(false);
+    expect((await allowance(orgId)).cap).toBe(300);
   });
 
-  it("RENEWED: a canceled org that pays again summarizes again, on the plan it renewed to", async () => {
-    const { orgId, cookie, sub } = await paidOrg("maya", "team", "maya-co");
+  it("UPGRADED: an org whose subscription ended (on Free) pays again and summarizes on Pro's allowance", async () => {
+    const { orgId, cookie, sub } = await paidOrg("maya", "maya-co");
     sub.status = "canceled";
     await deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub)));
-    expect((await summarize(orgId)).offered).toBe(false);
-    expect((await bcall("POST", "/api/o/maya-co/billing/renew", cookie, { plan: "personal" })).status).toBe(200);
+    expect((await allowance(orgId)).cap).toBe(300);
+    expect((await bcall("POST", "/api/o/maya-co/billing/upgrade", cookie, {})).status).toBe(200);
     const again = stripe.lastSession();
     stripe.pay(again.id);
-    expect((await deliver(event("checkout.session.completed", stripe.sessionJson(again)))).json).toEqual({ ok: true, outcome: "org_renewed" });
-    expect(await allowance(orgId)).toEqual({ status: "on", used: 0, cap: 300, remaining: 300 });
+    expect((await deliver(event("checkout.session.completed", stripe.sessionJson(again)))).json).toEqual({ ok: true, outcome: "org_upgraded" });
+    expect(await allowance(orgId)).toEqual({ status: "on", used: 0, cap: 3000, remaining: 3000 });
     expect(await summarize(orgId)).toEqual({ offered: true, calls: 1, status: "on" });
   });
 
-  it("a plan switch in Stripe moves the allowance in place; a superadmin's PINNED plan is the one that counts", async () => {
-    const { orgId, sub, updated } = await paidOrg("maya", "personal", "maya-co");
-    expect((await allowance(orgId)).cap).toBe(300);
-    sub.price = PRICES.team;
-    expect((await updated()).json).toEqual({ ok: true, outcome: "org_plan" });
+  it("a superadmin's PINNED plan is the one that counts; when the subscription ends, Free's does", async () => {
+    const { orgId, sub, updated } = await paidOrg("maya", "maya-co");
     expect((await allowance(orgId)).cap).toBe(3000);
-    // Pinned to Enterprise by the superadmin: the subscription still pays for Team, and its events move
+    // Pinned to Enterprise by the superadmin: the subscription still pays for Pro, and its events move
     // status and period only — the allowance is the pinned plan's (unlimited), not the paid one's.
     const put = await call<{ org: PlatformOrgRow }>("PUT", "/api/platform/orgs/maya-co/plan", await cookieFor(SUPERADMIN), { plan: "enterprise" });
     expect(put.json.org.plan!.billing).toMatchObject({ plan: "team", pinned: true });
     sub.current_period_end = PERIOD_2;
     await updated();
     expect(await allowance(orgId)).toEqual({ status: "on", used: 0, cap: null, remaining: null });
-    // …and the pinned plan's status still follows Stripe: past due summarizes, ended does not.
+    // …and the pinned plan's status still follows Stripe: past due summarizes; ended moves the org to Free.
     sub.status = "past_due";
     await updated();
     expect((await summarize(orgId)).offered).toBe(true);
     sub.status = "canceled";
     await updated();
-    expect(await summarize(orgId)).toEqual({ offered: false, calls: 0, status: "ended" });
+    expect(await allowance(orgId)).toMatchObject({ status: "on", cap: 300 });
     // Follow the subscription is refused nothing here; a plan set on the ENDED subscription takes the org back as granted — and it summarizes.
     await call("PUT", "/api/platform/orgs/maya-co/plan", await cookieFor(SUPERADMIN), { plan: "team" });
     expect(await allowance(orgId)).toMatchObject({ status: "on", cap: 3000 });
   });
 
   it("with no platform key nothing is summarized or counted, whatever the plan's state", async () => {
-    const { orgId } = await paidOrg("maya", "team", "maya-co");
+    const { orgId } = await paidOrg("maya", "maya-co");
     const g = gemini();
     const sums = await orgSummarizers(billingEnv(), systemTenant(platform(billingEnv(), "system"), orgId, "system"), { actor: "github-webhook", gemini: { fetchImpl: g.fetchImpl } });
     expect(sums.pr()).toBeNull();

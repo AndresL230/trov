@@ -3,11 +3,12 @@
 // the Plan block every member reads. Seats (platform-owned tables) are in ./state.ts.
 //
 // ONE entry point for a write path: `requirePlan(ctx, limit, adding)`. It reads the org's plan and its
-// current use and throws `PlanLimitError` when shared/plans.ts `planRefusal` says no.
+// current use and throws `PlanLimitError` when shared/plans.ts `planRefusal` says no. A CAPABILITY a plan
+// may not include is the other question, `requireFeature(ctx, feature)` — `PlanFeatureError` when no.
 import { type TenantContext, first } from "../data/sql";
-import { LIMIT_KEYS, monthStartDay, overLimits, planDef, resolveEntitlements, type LimitKey, type OrgPlanView } from "@shared/plans";
+import { LIMIT_KEYS, monthStartDay, overLimits, planDef, planFeatureRefusal, resolveEntitlements, type FeatureKey, type LimitKey, type OrgPlanView } from "@shared/plans";
 import { METRIC_SUMMARY } from "../data/meter";
-import { PLAN_COLS, assertWithinPlan, planOf, type OrgPlan, type OrgPlanRow } from "./state";
+import { PLAN_COLS, PlanFeatureError, assertWithinPlan, planOf, type OrgPlan, type OrgPlanRow } from "./state";
 
 /** The limits this file counts (everything but seats). */
 export type TenantLimit = Exclude<LimitKey, "seats">;
@@ -57,6 +58,16 @@ export const limitUse = (ctx: TenantContext, limit: TenantLimit): Promise<number
 export async function requirePlan(ctx: TenantContext, limit: TenantLimit, adding = 1): Promise<void> {
   const [state, used] = await Promise.all([planFor(ctx), limitUse(ctx, limit)]);
   assertWithinPlan(state, limit, used, adding);
+}
+
+/**
+ * THE enforcement call of a feature: does `ctx`'s org's plan include `feature` (shared/plans.ts
+ * `PlanDef.features`)? Throws `PlanFeatureError` (HTTP 402 `plan_feature` / MCP `plan_feature`) when it
+ * does not. Nothing calls it yet: no feature is gated (`FEATURE_KEYS` is empty).
+ */
+export async function requireFeature(ctx: TenantContext, feature: FeatureKey): Promise<void> {
+  const refusal = planFeatureRefusal(await planFor(ctx), feature);
+  if (refusal) throw new PlanFeatureError(refusal);
 }
 
 /** `GET /api/o/:slug/plan` — any member: the plan, what it includes, and the org's use of each limit. */

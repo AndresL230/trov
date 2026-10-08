@@ -335,9 +335,10 @@ const integrationPath = (slug: string, kind: IntT.IntegrationKind, scope: string
 
 /** My orgs, my pending invites and the superadmin flag (`GET /api/orgs`). */
 export function getMyOrgs(): Promise<OrgT.MyOrgsResponse> { return orgSend("GET", "/api/orgs"); }
-/** Create an org by USING a grant (`GET /api/orgs`'s `grants`; `grant` = its id, else the oldest): the
- *  caller becomes its owner. Refusals: `invalid_slug`, `reserved_slug`, `slug_taken`, `invalid_name`, `no_grant`. */
-export function createOrg(body: { slug: string; name: string; grant?: number }): Promise<OrgT.MyOrg> {
+/** Create an org by USING a grant (`GET /api/orgs`'s `grants`; `grant` = its id, else the oldest) or, with
+ *  `plan: "free"` (or holding no grant), on Free: the caller becomes its owner. Refusals: `invalid_slug`,
+ *  `reserved_slug`, `slug_taken`, `invalid_name`, `no_grant`, `free_org_limit` (they own a Free org already). */
+export function createOrg(body: { slug: string; name: string; grant?: number; plan?: "free" }): Promise<OrgT.MyOrg> {
   return orgSend<{ org: OrgT.MyOrg }>("POST", "/api/orgs", body).then((r) => r.org);
 }
 /** Answer one of MY pending invites (`GET /api/orgs`'s `invites`). */
@@ -353,10 +354,10 @@ export function getOrgPlan(slug: string): Promise<OrgPlanView> { return orgSend(
 // own pages — the SPA only ever navigates to it. A refusal keeps the server's sentence (`OrgApiError.detail`).
 /** "Manage billing": the Stripe Customer Portal for this org's customer (owner only). */
 export function openBillingPortal(slug: string): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/portal"), {}); }
-/** Move THIS org's subscription to another plan: Stripe's confirm screen (owner only). */
-export function changeBillingPlan(slug: string, plan: PurchasablePlan): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/change"), { plan }); }
-/** A canceled org pays again: a Stripe Checkout for the SAME org (owner only). */
-export function renewBilling(slug: string, plan: PurchasablePlan): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/renew"), { plan }); }
+/** "Add a seat" / "Change seats": the portal, straight to the subscription's seat count (owner only). */
+export function openBillingSeats(slug: string): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/portal"), { seats: true }); }
+/** "Upgrade to Pro": a Free org starts a subscription — a Stripe Checkout for the SAME org (owner only). */
+export function upgradeBilling(slug: string, plan: PurchasablePlan): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/upgrade"), { plan }); }
 /** The waiting room's poll: a checkout THIS person started (a 404 for anyone else's). */
 export function getBillingStatus(sessionId: string): Promise<BillingStatusResponse> { return orgSend("GET", `/api/billing/status?session_id=${encodeURIComponent(sessionId)}`); }
 /** What can be bought, and the caller's own paid organizations (public: the pricing page asks it signed out too). */

@@ -7,10 +7,11 @@ import type { MyGrant, PlatformOrgPlan } from "./plans";
 export type OrgRole = "owner" | "admin" | "member";
 export type OrgStatus = "active" | "suspended";
 
-/** How many orgs a person may create with NO grant. Zero: an organization comes to exist because a
- *  superadmin adds it in Platform, or because a person USES A GRANT (0044_plans, shared/plans.ts) — never
- *  freely. `persons.org_limit`, the per-person allowance from before grants, is read by nothing. */
-export const DEFAULT_ORG_LIMIT = 0;
+/** How many organizations a person may create with NO grant — on the Free plan, and counted as the Free
+ *  organizations they OWN at a time (src/plans/free.ts): one. Anything else comes from a superadmin
+ *  (Platform) or a grant (0044_plans; a superadmin's, or a payment's). `persons.org_limit`, the per-person
+ *  allowance from before grants, is read by nothing. */
+export const DEFAULT_ORG_LIMIT = 1;
 export const ORG_NAME_MAX = 80;
 
 /** The `orgs.slug` CHECK (0042_organizations): 2–39 of [a-z0-9-], starting with a letter or digit. */
@@ -74,11 +75,14 @@ export const ORG_AUDIT_ACTIONS = [
   "repo.add", "repo.remove", "repo.primary", "environment.set", "environment.delete", "environment.reorder",
   // The GitHub App's installation (0043_github_app, src/github-app/store.ts).
   "github.connect", "github.disconnect", "github.uninstall", "github.suspend", "github.unsuspend", "github.repos", "github.permissions",
-  // Org settings › Hosting (0047_hosting_providers, src/hosting/).
+  // Org settings › Hosting (0048_hosting_providers, src/hosting/).
   "part.set", "part.delete", "hosting.connect", "hosting.disconnect", "hosting.revoked",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
   // Plans and grants (0044_plans, src/plans): an org's plan / limits / status changed; a grant made, revoked, used.
   "plan.change", "plan.overrides", "plan.status", "grant.create", "grant.revoke", "grant.use",
+  // A person created a Free organization of their own (src/plans/free.ts): the row is also the guard that
+  // keeps them to one owned Free org at a time.
+  "org.create_free",
 ] as const;
 export type OrgAuditAction = (typeof ORG_AUDIT_ACTIONS)[number];
 
@@ -136,11 +140,14 @@ export interface MyOrgsResponse {
   orgs: MyOrg[];
   invites: MyInvite[];
   superadmin: boolean;
-  /** The person holds a usable grant (0044_plans) — the only way to create an org here. Never true for a
-   *  superadmin: Platform is where they add one. */
+  /** The person can create an organization here: with a usable grant (0044_plans), or on Free. Never true
+   *  for a superadmin: Platform is where they add one. */
   can_create: boolean;
   /** The grants this person can use, oldest first: each makes ONE organization on its plan. */
   grants: MyGrant[];
+  /** Free (src/plans/free.ts): can this person create a Free organization now — `owned` is the one they
+   *  already own, which is what stops them (`DEFAULT_ORG_LIMIT`). */
+  free: { can_create: boolean; owned: OrgSummary | null };
 }
 
 // ── tenant: /api/o/:slug/… ───────────────────────────────────────────────────

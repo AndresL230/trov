@@ -1,6 +1,6 @@
 # Hosting providers
 
-One interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0047_hosting_providers`).
+One interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0048_hosting_providers`).
 
 The Repo dashboard was built around one stack (a Cloudflare Worker frontend, a Railway backend). It now reads any
 host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free — the SPA imports its vocabularies):
@@ -80,7 +80,7 @@ cookie itself and ALWAYS redirects — never JSON, never a 500: nobody signed in
 the UI adds a Hosting tab), the outcome one of `HOSTING_CONNECT_OUTCOMES` (`shared/hosting.ts`) — never provider text.
 It binds only for that browser's intent, that provider, the same person, still an admin (re-checked live), after the
 code exchange through `hostFetch`; an installation ANOTHER org holds is `taken` (a platform read,
-`connectionsForExternalId` in `src/platform/jobs.ts`, and 0047's partial unique index on the active
+`connectionsForExternalId` in `src/platform/jobs.ts`, and 0048's partial unique index on the active
 `(provider, external_id)` at the write — the row, the credential and the config are ONE batch, so a lost race stores
 nothing). **A DIFFERENT live install / OAuth grant is REPLACED** — the GitHub App's rule since #110
 (`github-app.md` step 6): `bindConnection(…, replaced)` overwrites the row in the same batch and audits the end

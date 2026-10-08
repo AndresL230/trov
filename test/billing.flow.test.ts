@@ -34,19 +34,19 @@ const myOrgs = async (cookie: string) => (await call<MyOrgsResponse>("GET", "/ap
 const status = (cookie: string, sessionId: string) => bcall<BillingStatusResponse>("GET", `/api/billing/status?session_id=${sessionId}`, cookie);
 
 /** `handle` presses "Get <plan>" and pays at Stripe. Nothing is delivered yet. */
-async function buy(handle: string, plan: "personal" | "team" = "team", query = "") {
+async function buy(handle: string, plan: "team" = "team", query = "", seats?: number) {
   const cookie = await buyer(handle);
   const start = await bcall("GET", `/billing/start?plan=${plan}${query}`, cookie);
   expect(start.status, start.text.slice(0, 200)).toBe(303);
   const session = stripe.lastSession();
   expect(start.headers.get("location")).toBe(session.url);
-  const sub = stripe.pay(session.id);
+  const sub = stripe.pay(session.id, seats);
   return { cookie, session, sub, completed: () => event("checkout.session.completed", stripe.sessionJson(session)) };
 }
 const subEvent = (type: string, subId: string) => event(type, stripe.subscriptionJson(stripe.subscriptions.get(subId)!));
 
 describe("GET /billing/start — a signed-in person starts a checkout", () => {
-  it("creates ONE Stripe Checkout Session with the plan's price, in subscription mode, bound to the person, and redirects to it", async () => {
+  it("creates ONE Stripe Checkout Session with Pro's per-seat price × 1 (no org yet), adjustable up to 50, bound to the person, and redirects to it", async () => {
     const cookie = await buyer("maya");
     const r = await bcall("GET", "/billing/start?plan=team", cookie);
     expect(r.status).toBe(303);
@@ -57,6 +57,7 @@ describe("GET /billing/start — a signed-in person starts a checkout", () => {
     expect(row).toMatchObject({ person: "maya", plan: "team", interval: "month", for_org: null, session_id: stripe.lastSession().id });
     expect(Object.fromEntries(c.params)).toEqual({
       mode: "subscription", "line_items[0][price]": PRICES.team, "line_items[0][quantity]": "1",
+      "line_items[0][adjustable_quantity][enabled]": "true", "line_items[0][adjustable_quantity][minimum]": "1", "line_items[0][adjustable_quantity][maximum]": "50",
       client_reference_id: "maya", customer_email: "maya@example.com",
       success_url: "http://localhost/billing/done?session_id={CHECKOUT_SESSION_ID}", cancel_url: "http://localhost/pricing",
       "metadata[trov_ref]": row.ref, "metadata[trov_plan]": "team", "metadata[trov_person]": "maya",
@@ -74,21 +75,21 @@ describe("GET /billing/start — a signed-in person starts a checkout", () => {
 
   it("uses the yearly price when asked, and offers no e-mail it does not know to be the person's", async () => {
     await seedPerson("noaddr", { member: false, email: "typed-by-them@example.com" }); // persons.email is editable: never sent
-    const r = await bcall("GET", "/billing/start?plan=personal&interval=year", await cookieFor("noaddr", { member: false }));
+    const r = await bcall("GET", "/billing/start?plan=team&interval=year", await cookieFor("noaddr", { member: false }));
     expect(r.status).toBe(303);
     const [c] = stripe.callsTo("POST", "/v1/checkout/sessions");
-    expect(c.params.get("line_items[0][price]")).toBe(PRICES.personal_year);
+    expect(c.params.get("line_items[0][price]")).toBe(PRICES.team_year);
     expect(c.params.has("customer_email")).toBe(false);
     expect((await one<{ interval: string }>(`SELECT interval FROM billing_checkouts`))!.interval).toBe("year");
   });
 
-  it("Enterprise is never purchasable: a page that points at Trov, and no Stripe call; an unknown plan goes back to pricing", async () => {
+  it("Enterprise is never purchasable: a page that points at Trov, and no Stripe call; an unknown plan — Personal and Free too — goes back to pricing", async () => {
     const ent = await bcall("GET", "/billing/start?plan=enterprise", await buyer("maya"));
     expect(ent.status).toBe(200);
     expect(ent.text).toContain("Enterprise is arranged with Trov");
     expect(ent.text).toContain('href="mailto:hello@trov.dev"');
     expect(ent.headers.get("content-security-policy")).toContain("default-src 'none'");
-    for (const q of ["?plan=gold", "", "?plan="]) {
+    for (const q of ["?plan=gold", "", "?plan=", "?plan=personal", "?plan=free"]) {
       const r = await bcall("GET", `/billing/start${q}`, await buyer("maya"));
       expect([r.status, r.headers.get("location")], q).toEqual([302, "/pricing"]);
     }
@@ -138,29 +139,32 @@ describe("billing not configured", () => {
     expect(page.status).toBe(503);
     expect(page.text).toContain("Paid plans are not available yet");
     expect((await bcall("GET", "/api/billing/status?session_id=cs_test_1", cookie, undefined, { env: off })).json).toEqual(body);
-    for (const path of ["/billing/portal", "/billing/change", "/billing/renew"]) {
+    for (const path of ["/billing/portal", "/billing/upgrade"]) {
       const r = await bcall("POST", `/api/o/saplinglearn${path}`, await cookieFor(SUPERADMIN), {}, { env: off });
       expect([r.status, r.json], path).toEqual([503, body]);
     }
     const cfg = await bcall<BillingConfigResponse>("GET", "/api/billing/config", "", undefined, { env: off });
     expect(cfg.json).toEqual({
       available: false, mode: null, contact: "mailto:hello@trov.dev", signed_in: false, manage: [],
-      plans: { personal: { purchasable: false, intervals: [], href: null }, team: { purchasable: false, intervals: [], href: null }, enterprise: { purchasable: false, intervals: [], href: null } },
+      plans: { free: { purchasable: false, intervals: [], href: null }, personal: { purchasable: false, intervals: [], href: null }, team: { purchasable: false, intervals: [], href: null }, enterprise: { purchasable: false, intervals: [], href: null } },
     });
     expect((await call("GET", "/api/orgs", cookie)).status).toBe(200);
     expect(stripe.calls).toEqual([]);
   });
 
-  it("a plan with no price id is not purchasable while the other is; a key with no webhook secret sells nothing", async () => {
-    const partial = billingEnv({ STRIPE_PRICE_PERSONAL: "", STRIPE_PRICE_PERSONAL_YEARLY: "", STRIPE_PRICE_TEAM_YEARLY: "" });
+  it("an interval with no price id is not offered while the other is; no price at all sells nothing; a key with no webhook secret sells nothing", async () => {
+    const partial = billingEnv({ STRIPE_PRICE_TEAM_YEARLY: "" });
     const cfg = (await bcall<BillingConfigResponse>("GET", "/api/billing/config", await buyer("maya"), undefined, { env: partial })).json;
     expect(cfg).toMatchObject({ available: true, mode: "test", signed_in: true, manage: [] });
     expect(cfg.plans).toEqual({
+      free: { purchasable: false, intervals: [], href: null },
       personal: { purchasable: false, intervals: [], href: null },
       team: { purchasable: true, intervals: ["month"], href: "/billing/start?plan=team" },
       enterprise: { purchasable: false, intervals: [], href: null },
     });
-    expect((await bcall("GET", "/billing/start?plan=personal", await buyer("maya"), undefined, { env: partial })).status).toBe(503);
+    const none = billingEnv({ STRIPE_PRICE_TEAM: "", STRIPE_PRICE_TEAM_YEARLY: "" });
+    expect((await bcall<BillingConfigResponse>("GET", "/api/billing/config", "", undefined, { env: none })).json.plans.team).toEqual({ purchasable: false, intervals: [], href: null });
+    expect((await bcall("GET", "/billing/start?plan=team", await buyer("maya"), undefined, { env: none })).status).toBe(503);
     expect((await bcall("GET", "/billing/start?plan=team&interval=year", await buyer("maya"), undefined, { env: partial })).status).toBe(503);
     expect((await bcall("GET", "/billing/start?plan=team&interval=weekly", await buyer("maya"), undefined, { env: partial })).status).toBe(503);
     expect((await bcall("GET", "/billing/start?plan=team", await buyer("maya"), undefined, { env: partial })).status).toBe(303);
@@ -170,7 +174,7 @@ describe("billing not configured", () => {
     // The full offer, with both intervals, and the live key's mode.
     const full = (await bcall<BillingConfigResponse>("GET", "/api/billing/config", "", undefined, { env: billingEnv({ STRIPE_SECRET_KEY: "sk_live_x" }) })).json;
     expect(full.mode).toBe("live");
-    expect(full.plans.personal).toEqual({ purchasable: true, intervals: ["month", "year"], href: "/billing/start?plan=personal" });
+    expect(full.plans.team).toEqual({ purchasable: true, intervals: ["month", "year"], href: "/billing/start?plan=team" });
   });
 
   it("the stand-in for Stripe's API is honoured only on loopback, and never with a live key", async () => {
@@ -223,8 +227,8 @@ describe("signed out: sign in, then carry on to payment", () => {
 
   it("the return cookie holds only a purchase path: a forged or foreign one sends nobody anywhere", async () => {
     const { isReturnPath, takeReturnTo, setReturnTo } = await import("../src/auth/return-to");
-    for (const ok of ["/billing/start?plan=personal", "/billing/start?plan=team&interval=month", "/billing/start?plan=team&interval=year"]) expect(isReturnPath(ok), ok).toBe(true);
-    for (const bad of ["https://evil.example/", "//evil.example", "/billing/start?plan=team&next=//evil.example", "/billing/start?plan=enterprise", "/o/acme/", "/billing/start", "/billing/start?plan=team#x"]) expect(isReturnPath(bad), bad).toBe(false);
+    for (const ok of ["/billing/start?plan=team", "/billing/start?plan=team&interval=month", "/billing/start?plan=team&interval=year"]) expect(isReturnPath(ok), ok).toBe(true);
+    for (const bad of ["https://evil.example/", "//evil.example", "/billing/start?plan=team&next=//evil.example", "/billing/start?plan=enterprise", "/billing/start?plan=personal", "/billing/start?plan=free", "/o/acme/", "/billing/start", "/billing/start?plan=team#x"]) expect(isReturnPath(bad), bad).toBe(false);
     const { Hono } = await import("hono");
     const probe = new Hono<{ Bindings: Env }>();
     probe.get("/set", async (c) => { await setReturnTo(c as never, c.req.query("to") ?? ""); return c.text("ok"); });
@@ -239,8 +243,9 @@ describe("signed out: sign in, then carry on to payment", () => {
 });
 
 describe("fulfilment is the webhook's", () => {
-  it("checkout.session.completed → the grant a superadmin would give → the buyer names the org → it is linked to the customer and subscription", async () => {
-    const { cookie, session, sub, completed } = await buy("maya", "team");
+  it("checkout.session.completed → the grant a superadmin would give → the buyer names the org → it is linked to the customer and subscription, with the seats paid for", async () => {
+    // At Stripe's checkout the buyer raised the seats from 1 to 4.
+    const { cookie, session, sub, completed } = await buy("maya", "team", "", 4);
     // The browser coming back proves nothing: no grant yet.
     expect((await myOrgs(cookie)).grants).toEqual([]);
 
@@ -249,7 +254,10 @@ describe("fulfilment is the webhook's", () => {
     expect(await grants()).toEqual([{ id: expect.any(Number), person: "maya", plan: "team", source: "billing", external_ref: sub.id, granted_by: "billing", status: "unused" }]);
     const mine = await myOrgs(cookie);
     expect(mine.can_create).toBe(true);
-    expect(mine.grants).toMatchObject([{ plan: "team", plan_name: "Team", granted_by: "billing", expires_at: null }]);
+    expect(mine.grants).toMatchObject([{ plan: "team", plan_name: "Pro", granted_by: "billing", expires_at: null }]);
+    // The seats paid for travel on the grant: its limits are what the org will have.
+    expect(mine.grants[0].entitlements.seats).toBe(4);
+    expect(await one(`SELECT overrides FROM org_grants`)).toEqual({ overrides: '{"seats":4}' });
     // Trov's own notice went to the provider-verified address, through the platform's (local) delivery.
     expect(await rows(`SELECT to_address, subject FROM platform_outbox_bodies`)).toEqual([{ to_address: "maya@example.com", subject: "Your Trov organization is ready to set up" }]);
     // The waiting room sees it.
@@ -257,12 +265,13 @@ describe("fulfilment is the webhook's", () => {
 
     const created = await call<{ ok: true; org: { slug: string } }>("POST", "/api/orgs", cookie, { slug: "maya-co", name: "Maya & Co" });
     expect(created.status).toBe(201);
-    expect(await one(`SELECT plan, plan_source, plan_status, plan_period_end, billing_customer_id, billing_subscription_id FROM orgs WHERE slug = 'maya-co'`)).toEqual({
-      plan: "team", plan_source: "billing", plan_status: "active", plan_period_end: iso(PERIOD_1), billing_customer_id: sub.customer, billing_subscription_id: sub.id,
+    expect(await one(`SELECT plan, plan_overrides, plan_source, plan_status, plan_period_end, billing_customer_id, billing_subscription_id FROM orgs WHERE slug = 'maya-co'`)).toEqual({
+      plan: "team", plan_overrides: '{"seats":4}', plan_source: "billing", plan_status: "active", plan_period_end: iso(PERIOD_1), billing_customer_id: sub.customer, billing_subscription_id: sub.id,
     });
     const plan = (await call<OrgPlanView>("GET", "/api/o/maya-co/plan", cookie)).json;
-    expect(plan).toMatchObject({ plan: "team", status: "active", source: "billing", period_end: iso(PERIOD_1) });
-    expect(plan.entitlements.seats).toBe(10);
+    expect(plan).toMatchObject({ plan: "team", name: "Pro", status: "active", source: "billing", period_end: iso(PERIOD_1), overridden: ["seats"] });
+    expect(plan.entitlements.seats).toBe(4); // paid seats = allowed seats
+    expect(plan.billing).toMatchObject({ subscribed: true, ended: false, customer: true, seats: 4, interval: "month" });
     expect((await status(cookie, session.id)).json).toEqual({ state: "done", org: { slug: "maya-co", name: "Maya & Co" } });
     expect((await grants())[0].status).toBe("used");
     // The trail: the grant by `billing`, its use by the buyer.
@@ -317,11 +326,12 @@ describe("fulfilment is the webhook's", () => {
     expect(stripe.callsTo("GET", `/v1/checkout/sessions/${a.session.id}`)).toHaveLength(1);
 
     // Webhook first.
-    const b = await buy("omar", "personal");
+    const b = await buy("omar", "team", "", 3);
     expect((await deliver(b.completed())).json).toEqual({ ok: true, outcome: "granted" });
-    expect((await status(b.cookie, b.session.id)).json).toMatchObject({ state: "ready", plan: "personal" });
+    expect((await status(b.cookie, b.session.id)).json).toMatchObject({ state: "ready", plan: "team" });
     expect(stripe.callsTo("GET", `/v1/checkout/sessions/${b.session.id}`)).toHaveLength(0);
-    expect((await grants()).map((g) => [g.person, g.plan])).toEqual([["maya", "team"], ["omar", "personal"]]);
+    expect((await grants()).map((g) => [g.person, g.plan])).toEqual([["maya", "team"], ["omar", "team"]]);
+    expect((await rows<{ overrides: string }>(`SELECT overrides FROM org_grants ORDER BY id`)).map((r) => r.overrides)).toEqual(['{"seats":1}', '{"seats":3}']);
     expect(await count(`SELECT COUNT(*) AS n FROM platform_outbox_bodies`)).toBe(2);
   });
 
@@ -370,8 +380,12 @@ describe("a session id is not a claim", () => {
     // The same 404 as an id nobody has, and as garbage.
     for (const id of ["cs_test_does_not_exist", "", "' OR 1=1 --", "sub_x"]) expect((await status(thief, id)).json, id).toEqual(NOT_FOUND);
     expect((await myOrgs(thief)).grants).toEqual([]);
-    expect((await call("POST", "/api/orgs", thief, { slug: "stolen", name: "Stolen" })).status).toBe(403);
-    expect((await grants()).map((g) => g.person)).toEqual(["maya"]);
+    // Naming maya's grant is refused; what they CAN make is their own Free org, and her grant stays hers.
+    const [mayas] = await grants();
+    expect((await call("POST", "/api/orgs", thief, { slug: "stolen", name: "Stolen", grant: mayas.id })).json).toMatchObject({ error: "no_grant" });
+    expect((await call("POST", "/api/orgs", thief, { slug: "stolen", name: "Stolen" })).status).toBe(201);
+    expect(await one(`SELECT plan, plan_source, billing_subscription_id FROM orgs WHERE slug = 'stolen'`)).toEqual({ plan: "free", plan_source: "granted", billing_subscription_id: null });
+    expect((await grants()).map((g) => [g.person, g.status])).toEqual([["maya", "unused"]]);
     // Signed out: the gate's 401, like any session route.
     expect((await status("", session.id)).status).toBe(401);
   });
@@ -411,39 +425,40 @@ describe("a session id is not a claim", () => {
 
 describe("a second purchase", () => {
   it("an owner who buys again gets a second grant — a second organization — and the pricing page is told about the first", async () => {
-    const a = await buy("maya", "personal");
+    const a = await buy("maya"); // one seat: a person on their own
     await deliver(a.completed());
     await call("POST", "/api/orgs", a.cookie, { slug: "maya-solo", name: "Maya solo" });
     const cfg = (await bcall<BillingConfigResponse>("GET", "/api/billing/config", a.cookie)).json;
     expect(cfg.signed_in).toBe(true);
-    expect(cfg.manage).toEqual([{ slug: "maya-solo", name: "Maya solo", plan: "personal", status: "active", href: "/maya-solo/#org/general" }]);
+    expect(cfg.manage).toEqual([{ slug: "maya-solo", name: "Maya solo", plan: "team", status: "active", href: "/maya-solo/#org/general" }]);
     // Someone who only belongs to it (or owns a granted org) is offered nothing to manage.
     expect((await bcall<BillingConfigResponse>("GET", "/api/billing/config", await cookieFor(SUPERADMIN))).json.manage).toEqual([]);
 
-    const b = await buy("maya", "team");
+    const b = await buy("maya", "team", "", 6);
     await deliver(b.completed());
-    expect((await grants()).map((g) => [g.plan, g.status, g.external_ref])).toEqual([["personal", "used", a.sub.id], ["team", "unused", b.sub.id]]);
+    expect((await grants()).map((g) => [g.plan, g.status, g.external_ref])).toEqual([["team", "used", a.sub.id], ["team", "unused", b.sub.id]]);
     await call("POST", "/api/orgs", b.cookie, { slug: "maya-team", name: "Maya team" });
-    expect(await rows(`SELECT slug, plan, billing_subscription_id FROM orgs WHERE plan_source = 'billing' ORDER BY slug`)).toEqual([
-      { slug: "maya-solo", plan: "personal", billing_subscription_id: a.sub.id }, { slug: "maya-team", plan: "team", billing_subscription_id: b.sub.id },
+    expect(await rows(`SELECT slug, plan, plan_overrides, billing_subscription_id FROM orgs WHERE plan_source = 'billing' ORDER BY slug`)).toEqual([
+      { slug: "maya-solo", plan: "team", plan_overrides: '{"seats":1}', billing_subscription_id: a.sub.id },
+      { slug: "maya-team", plan: "team", plan_overrides: '{"seats":6}', billing_subscription_id: b.sub.id },
     ]);
   });
 });
 
 describe("events in any order", () => {
   it("subscription events before checkout.session.completed are held off, then fulfilment reads the CURRENT state", async () => {
-    const { cookie, sub, completed } = await buy("maya", "personal");
+    const { cookie, sub, completed } = await buy("maya", "team", "", 2);
     // Not Trov's yet (no row): acknowledged, and not worth a Stripe call.
     const calls = stripe.calls.length;
     expect((await deliver(subEvent("customer.subscription.created", sub.id))).json).toEqual({ ok: true, outcome: "unknown_subscription" });
     expect((await deliver(event("invoice.paid", { id: "in_1", subscription: sub.id }))).json).toEqual({ ok: true, outcome: "unknown_subscription" });
     expect(stripe.calls).toHaveLength(calls);
-    // Meanwhile the buyer switched to Team in Stripe.
-    sub.price = PRICES.team;
+    // Meanwhile the buyer added seats in Stripe.
+    sub.quantity = 5;
     await deliver(completed());
     expect((await grants())[0]).toMatchObject({ plan: "team", status: "unused" });
     await call("POST", "/api/orgs", cookie, { slug: "maya-co", name: "Maya" });
-    expect((await one<{ plan: string }>(`SELECT plan FROM orgs WHERE slug = 'maya-co'`))!.plan).toBe("team");
+    expect(await one(`SELECT plan, plan_overrides FROM orgs WHERE slug = 'maya-co'`)).toEqual({ plan: "team", plan_overrides: '{"seats":5}' });
   });
 
   it("a stale event cannot move an org backwards: every handler re-reads the subscription", async () => {
@@ -465,7 +480,7 @@ describe("events in any order", () => {
     expect((await deliver(subEvent("customer.subscription.deleted", sub.id))).json).toEqual({ ok: true, outcome: "unknown_subscription" });
     expect((await deliver(completed())).json).toEqual({ ok: true, outcome: "no_org" });
     expect(await grants()).toEqual([]);
-    expect((await myOrgs(cookie)).can_create).toBe(false);
+    expect((await myOrgs(cookie)).grants).toEqual([]);
     expect((await one<{ stripe_status: string; plan_status: string }>(`SELECT stripe_status, plan_status FROM billing_subscriptions`))).toEqual({ stripe_status: "canceled", plan_status: "canceled" });
     expect((await status(cookie, session.id)).json).toEqual({ state: "pending", paid: true });
   });
@@ -483,9 +498,9 @@ describe("events in any order", () => {
 
 describe("the superadmin still sees a paid grant like any other", () => {
   it("Platform › Access lists it as billing's, with the buyer and the plan", async () => {
-    const { completed } = await buy("maya", "personal");
+    const { completed } = await buy("maya", "team", "", 3);
     await deliver(completed());
     const list = (await call<{ grants: PlatformGrant[] }>("GET", "/api/platform/grants", await cookieFor(SUPERADMIN))).json.grants;
-    expect(list).toMatchObject([{ handle: "maya", plan: "personal", source: "billing", granted_by: "billing", status: "unused", note: "Paid through Stripe", mail_status: "sent" }]);
+    expect(list).toMatchObject([{ handle: "maya", plan: "team", overrides: { seats: 3 }, source: "billing", granted_by: "billing", status: "unused", note: "Paid through Stripe", mail_status: "sent" }]);
   });
 });

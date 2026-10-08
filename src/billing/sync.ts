@@ -4,20 +4,24 @@
 // in the same rows:
 //
 //   • `fulfilCheckout`   a Checkout Session Trov started was paid → the buyer's GRANT (the same grant a
-//                        superadmin gives by hand), or — for a renewal — the org's plan.
-//   • `syncSubscription` anything else about a subscription (renewed, failed, paid again, plan switched,
-//                        cancelled, ended) → the org's plan, status and period; or, while the grant is
-//                        still unused, the grant itself.
+//                        superadmin gives by hand), or — for an upgrade of an org that exists — its plan.
+//   • `syncSubscription` anything else about a subscription (renewed, failed, paid again, seats or plan
+//                        changed, cancelled, ended) → the org's plan, seats, status and period; or, while
+//                        the grant is still unused, the grant itself.
+//
+// Pro is sold PER SEAT: the subscription's quantity is the org's seat cap, written as its `seats`
+// override (`paidSeats`) — so the seats paid for are the seats allowed. A subscription that ENDS moves
+// the org to Free (`moveOrgToFree`): nothing is deleted, and what is over a Free limit waits.
 //
 // An org's plan is only ever changed through the seam (src/plans/billing.ts). Trov computes no amount,
 // tax or proration: it stores ids and a status, and Stripe is the record of everything else.
 import type { Env } from "../env";
 import { platform, type PlatformContext } from "../data/context";
-import { planDef, type PlanId, type PlanStatus } from "@shared/plans";
-import type { BillingInterval } from "@shared/billing";
+import { FREE_PLAN, planDef, type PlanId, type PlanOverrides, type PlanStatus } from "@shared/plans";
+import { paidSeats, type BillingInterval } from "@shared/billing";
 import {
   BILLING_ACTOR, GrantError, grantOrganization, getGrant, revokeGrant, setPaidGrantPlan,
-  setOrgPlan, setOrgPlanStatus, markOrgPastDue, cancelOrgPlan, orgPlan,
+  setOrgPlan, setOrgPlanStatus, markOrgPastDue, moveOrgToFree, orgPlan,
 } from "../plans/billing";
 import { sendGrantNotice } from "../notifications/grant";
 import { welcomeRecipient } from "../orgs/repo";
@@ -57,6 +61,8 @@ export function planStatusOf(stripeStatus: string): PlanStatus {
 export interface SubscriptionState {
   id: string; customer: string; status: string; priceId: string | null; periodEnd: string | null;
   cancelAtPeriodEnd: boolean; livemode: boolean; itemId: string | null;
+  /** The item's quantity: the SEATS a per-seat subscription pays for. Null when Stripe sent none. */
+  quantity: number | null;
 }
 
 export function readSubscription(json: unknown): SubscriptionState | null {
@@ -66,6 +72,7 @@ export function readSubscription(json: unknown): SubscriptionState | null {
   const item = obj((obj(s.items)?.data as unknown[] | undefined)?.[0]);
   return {
     id, customer, status, priceId: idOf(item?.price), itemId: str(item?.id),
+    quantity: typeof item?.quantity === "number" && Number.isInteger(item.quantity) && item.quantity > 0 ? item.quantity : null,
     periodEnd: isoOf(s.current_period_end) ?? isoOf(item?.current_period_end),
     // A cancellation scheduled for a date (`cancel_at`) ends the plan just as surely as the checkbox.
     cancelAtPeriodEnd: s.cancel_at_period_end === true || (typeof s.cancel_at === "number" && status !== "canceled"),
@@ -88,6 +95,7 @@ export function subscriptionIdOfEvent(type: string, object: unknown): string | n
 
 // ── a subscription's state → Trov ────────────────────────────────────────────
 
+
 /**
  * Make Trov match `sub`. `buyer` names the person on first sight (fulfilment); without one, a
  * subscription Trov has no row for is not Trov's and is left alone. Returns one word for the ledger.
@@ -104,6 +112,7 @@ export async function applySubscription(p: PlatformContext, cfg: BillingConfig, 
   await putSubscription(p, {
     subscription_id: sub.id, customer_id: sub.customer, person: buyer, plan, price_id: sub.priceId, interval,
     stripe_status: sub.status, plan_status: status, period_end: sub.periodEnd, cancel_at_period_end: sub.cancelAtPeriodEnd, livemode: sub.livemode,
+    quantity: sub.quantity,
   });
 
   const org = await orgOfSubscription(p, sub.id);
@@ -117,23 +126,33 @@ export async function applySubscription(p: PlatformContext, cfg: BillingConfig, 
     await revokeGrant(p, grant.id).catch((e) => { if (!(e instanceof GrantError)) throw e; });
     return "grant_revoked";
   }
-  return (await setPaidGrantPlan(p, sub.id, plan)) ? "grant_plan" : "grant_waiting";
+  // …its plan and the seats paid for, which the org takes when it is created (src/plans/grants.ts `linkPaidOrgStmt`).
+  return (await setPaidGrantPlan(p, sub.id, plan, paidSeats(plan, sub.quantity))) ? "grant_plan" : "grant_waiting";
 }
 
-/** The org's plan, status and period, through the seam — and only what differs, so a replay writes nothing. */
+/** The org's plan, seats, status and period, through the seam — and only what differs, so a replay writes nothing. */
 async function applyToOrg(p: PlatformContext, org: BilledOrg, sub: SubscriptionState, plan: PlanId, status: PlanStatus, pinned: boolean): Promise<string> {
   // A superadmin took the org back (Change plan on an ended subscription → `granted`): billing no longer moves it.
   if (org.plan_source !== "billing") return "org_not_billing";
   const now = await orgPlan(p, org.id);
-  const want = pinned ? now.plan : plan; // pinned: the superadmin's plan stands; status and period still follow
-  if (now.plan !== want || now.customer_id !== sub.customer) {
-    await setOrgPlan(p, org.slug, { plan: want, source: "billing", status, period_end: sub.periodEnd, customer_id: sub.customer, subscription_id: sub.id });
-    return now.plan !== want ? "org_plan" : "org_linked";
+  // ENDED (cancelled, or retries ran out): the org moves to Free — a pinned plan too, since nothing pays
+  // for it any more. It stays a billing org (its customer, for invoices and an upgrade). Nothing is deleted.
+  if (status === "canceled") {
+    if (now.plan === FREE_PLAN && now.status === "active") return "unchanged";
+    await moveOrgToFree(p, org.slug, { period_end: sub.periodEnd });
+    return "org_free";
+  }
+  const want = pinned ? now.plan : plan; // pinned: the superadmin's plan (and limits) stand; status and period still follow
+  // The seats paid for are the seat cap; the org's other overrides are kept while its plan does not change.
+  const overrides: PlanOverrides = pinned ? now.overrides : { ...(now.plan === want ? now.overrides : {}), ...paidSeats(want, sub.quantity) };
+  const seats = overrides.seats !== now.overrides.seats;
+  if (now.plan !== want || now.customer_id !== sub.customer || seats) {
+    await setOrgPlan(p, org.slug, { plan: want, overrides, source: "billing", status, period_end: sub.periodEnd, customer_id: sub.customer, subscription_id: sub.id });
+    return now.plan !== want ? "org_plan" : seats ? "org_seats" : "org_linked";
   }
   if (now.status !== status || now.period_end !== sub.periodEnd) {
     if (now.period_end !== sub.periodEnd) await setOrgPlanStatus(p, org.slug, status, { period_end: sub.periodEnd });
     else if (status === "past_due") await markOrgPastDue(p, org.slug);
-    else if (status === "canceled") await cancelOrgPlan(p, org.slug);
     else await setOrgPlanStatus(p, org.slug, "active");
     return now.status !== status ? `org_${status}` : "org_period";
   }
@@ -188,7 +207,7 @@ export async function fulfilCheckout(env: Env, cfg: BillingConfig, session: Chec
   const sub = await fetchSubscription(cfg, session.subscription, opts.fetchImpl);
   if (!sub) return "unreadable_subscription";
   await completeCheckout(p, row.ref, sub.id);
-  return row.for_org ? renewOrg(p, cfg, row, sub) : grantBuyer(env, p, cfg, row, sub, opts);
+  return row.for_org ? upgradeOrg(p, cfg, row, sub) : grantBuyer(env, p, cfg, row, sub, opts);
 }
 
 async function grantBuyer(env: Env, p: PlatformContext, cfg: BillingConfig, row: CheckoutRow, sub: SubscriptionState, opts: SyncOpts): Promise<string> {
@@ -197,7 +216,7 @@ async function grantBuyer(env: Env, p: PlatformContext, cfg: BillingConfig, row:
   if (planStatusOf(sub.status) === "canceled") return applySubscription(p, cfg, sub, row.person);
   let grant;
   try {
-    grant = await grantOrganization(env, p, { to: { handle: row.person }, plan, external_ref: sub.id, note: "Paid through Stripe" });
+    grant = await grantOrganization(env, p, { to: { handle: row.person }, plan, overrides: paidSeats(plan, sub.quantity), external_ref: sub.id, note: "Paid through Stripe" });
   } catch (e) {
     // The buyer's account is gone, or has become a superadmin: there is nobody to grant. Stripe keeps the payment; refund by hand.
     if (e instanceof GrantError) { await applySubscription(p, cfg, sub, row.person); return `grant_refused_${e.code}`; }
@@ -216,14 +235,17 @@ async function grantBuyer(env: Env, p: PlatformContext, cfg: BillingConfig, row:
   return grant.status === "unused" ? "granted" : outcome;
 }
 
-/** A canceled org's owner paid again: a NEW subscription for the SAME org — no grant. */
-async function renewOrg(p: PlatformContext, cfg: BillingConfig, row: CheckoutRow, sub: SubscriptionState): Promise<string> {
+/** A Free org's owner paid for Pro — one that never paid, or one whose subscription ended: a NEW
+ *  subscription for the SAME org (and, when it had one, the same Stripe customer) — no grant. */
+async function upgradeOrg(p: PlatformContext, cfg: BillingConfig, row: CheckoutRow, sub: SubscriptionState): Promise<string> {
   const org = row.for_org ? await orgById(p, row.for_org) : null;
   if (!org) return "org_gone";
   const plan = planOfPrice(cfg, sub.priceId)?.plan ?? planDef(row.plan).id;
   const before = await orgPlan(p, org.id);
   const outcome = await applySubscription(p, cfg, sub, row.person); // the mirror row — and, on a replay, the org it already pays for
   if (before.subscription_id === sub.id && before.source === "billing") return outcome;
-  await setOrgPlan(p, org.slug, { plan, source: "billing", status: planStatusOf(sub.status), period_end: sub.periodEnd, customer_id: sub.customer, subscription_id: sub.id });
-  return "org_renewed";
+  // Ended before fulfilment ran (an immediate cancel): the org stays as it is; the mirror row records it.
+  if (planStatusOf(sub.status) === "canceled") return "org_upgrade_ended";
+  await setOrgPlan(p, org.slug, { plan, overrides: paidSeats(plan, sub.quantity), source: "billing", status: planStatusOf(sub.status), period_end: sub.periodEnd, customer_id: sub.customer, subscription_id: sub.id });
+  return "org_upgraded";
 }

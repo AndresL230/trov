@@ -4,7 +4,7 @@
 //   the credential   always an `org_secrets` row (src/data/secrets.ts — write-only, encrypted, audited), under
 //                    the provider's kind (`HOSTING_INTEGRATION_KIND`) and scope ("" — or the environment key for
 //                    Railway's per-environment project token). A pasted token is ONLY that row.
-//   the connection   `org_hosting_connections` (0047): what an install / OAuth grant adds beside the secret —
+//   the connection   `org_hosting_connections` (0048): what an install / OAuth grant adds beside the secret —
 //                    the method, the provider-side installation id (`external_id`, what an uninstall notice
 //                    names), the account it reaches, and how it ended (`revoked_*`).
 //
@@ -15,7 +15,7 @@
 //     is HMAC-sealed (key `hosting-connect:<COOKIE_SECRET>`) in the HttpOnly `trov_hx` cookie, Path `/hosting/`,
 //     10 minutes, spent by the first callback;
 //   - `completeConnect` binds only for that browser, that provider, that person — still an admin of that org,
-//     re-checked live — and only an installation no OTHER org holds (`taken`; 0047's partial unique index
+//     re-checked live — and only an installation no OTHER org holds (`taken`; 0048's partial unique index
 //     enforces it at the write, which is ONE batch with the credential). An org holds ONE install / OAuth
 //     connection per provider: a DIFFERENT one REPLACES it (the GitHub App's rule, src/github-app/connect.ts
 //     step 6) in the same batch — no Disconnect first — and the replaced grant is then removed on the
@@ -360,7 +360,7 @@ export function connectReturnUrl(slug: string | null, outcome: HostingConnectOut
  *   1. our sealed intent is in this browser, for this provider, unexpired, and the provider handed back ITS state;
  *   2. the person signed in now is the person who started, and is still an admin of that org;
  *   3. the provider exchanges the code for a usable credential;
- *   4. the installation is no OTHER org's (`taken` — 0047's unique index says so again at the write).
+ *   4. the installation is no OTHER org's (`taken` — 0048's unique index says so again at the write).
  * A DIFFERENT live install / OAuth grant of this org is REPLACED, not refused (the GitHub App's rule): ended in
  * the same batch the new one is written in (`bindConnection`'s `replaced`), then removed on the provider's side
  * with its OWN credential, read before the write — best effort, as Disconnect does (`dropReplaced`).
@@ -501,7 +501,7 @@ async function dropReplaced(
 }
 
 /** The binding lost a race: the installation went to another org between the callback's check and its write
- *  (0047's unique index on the active installation ids). */
+ *  (0048's unique index on the active installation ids). */
 export class ConnectionConflictError extends Error {
   constructor() { super("the installation is already connected to another org"); this.name = "ConnectionConflictError"; }
 }
@@ -509,7 +509,7 @@ const isInstallationConflict = (e: unknown): boolean =>
   e instanceof Error && /UNIQUE constraint failed:\s*org_hosting_connections\b/i.test(e.message);
 
 /**
- * Bind a grant to `ctx`'s org: the connection row (which CLAIMS the installation — 0047's partial unique index),
+ * Bind a grant to `ctx`'s org: the connection row (which CLAIMS the installation — 0048's partial unique index),
  * the credential (stored, or replacing a pasted token or an earlier grant) and the grant's config, audited —
  * ONE batch, so a lost race for the installation stores nothing at all (`ConnectionConflictError`).
  *

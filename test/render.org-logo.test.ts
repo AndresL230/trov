@@ -25,7 +25,7 @@ const plain = (): MyOrg => ({ slug: "birch", name: "Birch Labs", role: "member",
 const invite = (logo_url: string | null): MyInvite => ({
   id: 7, org: { slug: "globex", name: "Globex", logo_url }, role: "admin", invited_by: "hank", created_at: "2026-10-05T09:00:00.000Z", github_login: "ines-vidal", email: null,
 });
-const mine = (o: Partial<MyOrgsResponse> = {}): MyOrgsResponse => ({ orgs: [acme(), plain()], invites: [], superadmin: false, can_create: false, grants: [], ...o });
+const mine = (o: Partial<MyOrgsResponse> = {}): MyOrgsResponse => ({ orgs: [acme(), plain()], invites: [], superadmin: false, can_create: false, grants: [], free: { can_create: false, owned: null }, ...o });
 
 describe("orgTile", () => {
   it("with no image is the square initial, as before — decorative, no <img>", () => {

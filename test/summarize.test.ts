@@ -17,6 +17,8 @@ import {
   ISSUE_SUMMARIZER_SYSTEM_PROMPT,
   geminiPrSummarizer,
   geminiIssueSummarizer,
+  capSummaryBody,
+  SUMMARY_BODY_MAX,
 } from "../src/tools/summarize";
 import type { Summarizer } from "../src/tools/summarize";
 import { handleGithubWebhook } from "./helpers/org-config";
@@ -283,6 +285,38 @@ describe("ISSUE_SUMMARIZER_SYSTEM_PROMPT", () => {
 // missing candidate, prose instead of JSON, or a thrown fetch — a mismatch here
 // silently produces model:'excerpt' forever, exactly the bug this suite exists to
 // catch. Every case injects a stubbed fetchImpl; the network is never touched.
+describe("the description sent is capped at 8,000 characters (one platform key pays for every org)", () => {
+  it("a short description goes whole; a long one is cut to its first 8,000 characters, never mid surrogate pair", () => {
+    expect(SUMMARY_BODY_MAX).toBe(8000);
+    expect(capSummaryBody("short")).toBe("short");
+    const exact = "x".repeat(8000);
+    expect(capSummaryBody(exact)).toBe(exact);
+    expect(capSummaryBody("y".repeat(20000))).toBe("y".repeat(8000));
+    // An emoji (two UTF-16 units) straddling the cut is dropped whole, not split.
+    const straddle = "a".repeat(7999) + "😀" + "tail";
+    expect(capSummaryBody(straddle)).toBe("a".repeat(7999));
+  });
+
+  it("both summarizers send at most 8,000 characters of the body, the title whole, and record what they sent", async () => {
+    const sent: string[] = [];
+    const sizes: number[] = [];
+    const fetchImpl = (async (_url: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { contents: { parts: { text: string }[] }[] };
+      sent.push(body.contents[0].parts[0].text);
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "not json" }] } }] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const title = "T".repeat(300);
+    const body = "B".repeat(8000) + "OVERFLOW".repeat(2000);
+    await geminiPrSummarizer("k", { fetchImpl, onCall: (s) => sizes.push(s.inputChars) }).summarize({ title, body });
+    await geminiIssueSummarizer("k", { fetchImpl, onCall: (s) => sizes.push(s.inputChars) }).summarize({ title, body });
+    for (const text of sent) {
+      expect(text).toBe(`Title: ${title}\n\nBody: ${"B".repeat(8000)}`);
+      expect(text).not.toContain("OVERFLOW");
+    }
+    expect(sizes).toEqual([SUMMARIZER_SYSTEM_PROMPT.length + sent[0].length, ISSUE_SUMMARIZER_SYSTEM_PROMPT.length + sent[1].length]);
+  });
+});
+
 describe("geminiPrSummarizer — Gemini response handling", () => {
   const PR_JSON = '{"title": "T", "what": "W", "why": null, "impact": null}';
   const geminiResponse = (text: string) => ({ candidates: [{ content: { parts: [{ text }] } }] });

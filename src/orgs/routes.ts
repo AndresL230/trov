@@ -17,6 +17,7 @@ import { PeopleError } from "../tools/people";
 import { getOrgLogo, removeOrgLogo, setOrgLogo } from "./logo";
 import { rateLimited } from "../platform/limits";
 import { usableGrants, createOrgFromGrant } from "../plans/grants";
+import { createFreeOrg, freeOrgState } from "../plans/free";
 import { orgPlanView } from "../plans/gate";
 import { orgBillingView } from "../billing/view";
 import type { MyOrgsResponse } from "@shared/orgs";
@@ -56,19 +57,25 @@ const me = (c: Context<AppEnv>): string => c.get("principal").handle;
 export const orgsApp = new Hono<AppEnv>();
 orgsApp.use("*", cookieOnly);
 
-// `grants` are what the person may still create an org WITH (0044_plans): one org per grant.
+// `grants` are what the person may still create an org WITH (0044_plans): one org per grant. `free` is the
+// other way: a Free org of their own, one owned at a time (src/plans/free.ts).
 orgsApp.get("/", async (c) => {
-  const [mine, grants] = await Promise.all([myOrgs(c.var.p, me(c)), usableGrants(c.var.p, me(c))]);
-  return c.json({ ...mine, grants, can_create: grants.length > 0 } satisfies MyOrgsResponse);
+  const [mine, grants, free] = await Promise.all([myOrgs(c.var.p, me(c)), usableGrants(c.var.p, me(c)), freeOrgState(c.var.p, me(c))]);
+  return c.json({ ...mine, grants, can_create: grants.length > 0 || free.can_create, free } satisfies MyOrgsResponse);
 });
 
+// `{ slug, name, grant?, plan? }`: `grant` (an id) uses that grant; `plan: "free"` makes a Free org; neither
+// uses the oldest grant, or — holding none — makes a Free org.
 orgsApp.post("/", async (c) => {
   const b = await body(c);
   if (!b) return invalid(c);
   try {
     const firstJoin = await neverJoined(c.var.p, me(c));
-    // Uses one of the caller's grants — `grant` (its id), else the oldest — and consumes it with the org.
-    const org = await createOrgFromGrant(c.var.p, me(c), { slug: b.slug as string, name: b.name as string, grant: b.grant });
+    const input = { slug: b.slug as string, name: b.name as string };
+    const wantsGrant = b.grant !== undefined && b.grant !== null;
+    const free = !wantsGrant && (b.plan === "free" || (await usableGrants(c.var.p, me(c))).length === 0);
+    // A grant is consumed with the org it makes; Free takes none, and keeps to one owned at a time.
+    const org = free ? await createFreeOrg(c.var.p, me(c), input) : await createOrgFromGrant(c.var.p, me(c), { ...input, grant: b.grant });
     await welcomeFirstJoin(c.env, c.var.p, org.id, me(c), firstJoin, mailOrigin(c.env, c.req.url));
     return c.json({ ok: true, org: { slug: org.slug, name: org.name, role: "owner" as const, logo_url: null } }, 201);
   } catch (e) { return orgFail(c, e); }

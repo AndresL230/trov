@@ -96,7 +96,7 @@ fire time's UTC minute/hour, each job in its own `safely` arm:
   issue number of every array-ref sprint); `:20` `reconcileRepo` alone (19 + 2N worst case, below — **19 + 4N with the tick's own
   pings: 27 today, N ≤ 7 under the 50**; logs `failed` when non-empty); `:30` `pruneRepoCapture` (D1 only). `:10` and `:20` need `GITHUB_SERVICE_TOKEN`
   + `GITHUB_REPO`; `:30` and the pings run regardless.
-- **`:40`, every hour** — the `hosting` job (0047; `hosting-providers.md`): one unit per (org, environment, STORED
+- **`:40`, every hour** — the `hosting` job (0048; `hosting-providers.md`): one unit per (org, environment, STORED
   part) from `listPartUnits`, each costing its provider's `pollCost` (≤ 6), served by rotation like the others; health
   keeps half the budget on this tick only when some org has a stored part. Legacy Cloudflare / Railway parts stay on
   the `:00` usage job.

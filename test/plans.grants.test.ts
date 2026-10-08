@@ -1,7 +1,9 @@
 /**
  * Grants (0044_plans `org_grants`, src/plans/grants.ts): the superadmin grants a person an organization of
- * their own; that person creates it with `POST /api/orgs`, which consumes the grant — exactly once. Also the
- * notice e-mail, the audit trail, the billing seam (src/plans/billing.ts) and the migration's backfill.
+ * their own; that person creates it with `POST /api/orgs`, which consumes the grant — exactly once. Holding
+ * none, the same route makes a Free org instead (src/plans/free.ts; test/orgs.routes.test.ts), so a refused
+ * grant is tested by naming it. Also the notice e-mail, the audit trail, the billing seam
+ * (src/plans/billing.ts) and the migration's backfill.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { env, applyD1Migrations } from "cloudflare:test";
@@ -14,7 +16,7 @@ import { PLANS, type MyGrant, type OrgPlanView, type PlatformGrant } from "@shar
 import { renderGrantEmail } from "../src/notifications/grant";
 import { createGrant, mailGrant, usableGrants, createOrgFromGrant, consumeStmt } from "../src/plans/grants";
 import { createOrg } from "../src/orgs/repo";
-import { grantOrganization, setOrgPlan, cancelOrgPlan, BILLING_ACTOR } from "../src/plans/billing";
+import { grantOrganization, setOrgPlan, cancelOrgPlan, moveOrgToFree, setPaidGrantPlan, BILLING_ACTOR } from "../src/plans/billing";
 import { LIMITS } from "../src/platform/limits";
 
 const boss = () => cookieFor(SUPERADMIN);
@@ -22,6 +24,8 @@ const loner = (handle: string, o: Parameters<typeof cookieFor>[1] = {}) => cooki
 const grant = async (body: Record<string, unknown>) => call<{ ok: true; grant: PlatformGrant }>("POST", "/api/platform/grants", await boss(), body);
 const mine = async (cookie: string) => (await call<MyOrgsResponse>("GET", "/api/orgs", cookie)).json;
 const count = async (sql: string, ...p: unknown[]) => (await one<{ n: number }>(sql, ...p))!.n;
+/** What `GET /api/orgs` says to a person holding no usable grant and owning no Free org: only Free is open. */
+const ONLY_FREE = { can_create: true, grants: [], free: { can_create: true, owned: null } };
 interface Mail { to_address: string; subject: string; html: string; text: string }
 const mails = () => rows<Mail>(`SELECT to_address, subject, html, text FROM platform_outbox_bodies ORDER BY id`);
 /** Every href and bare URL in a message (the font stylesheet aside). */
@@ -100,22 +104,31 @@ describe("the grantee — who a grant is for", () => {
     const other = await loner("someone-else");
     const seen = await mine(late);
     expect(seen.can_create).toBe(true);
-    expect(seen.grants).toEqual([{ id: g.id, plan: "team", plan_name: "Team", entitlements: PLANS.team.entitlements, granted_by: SUPERADMIN, created_at: g.created_at, expires_at: null } satisfies MyGrant]);
-    // …and it is invisible to, and unusable by, anyone else — even naming its id.
-    expect(await mine(other)).toMatchObject({ can_create: false, grants: [] });
+    expect(seen.grants).toEqual([{ id: g.id, plan: "team", plan_name: "Pro", entitlements: PLANS.team.entitlements, granted_by: SUPERADMIN, created_at: g.created_at, expires_at: null } satisfies MyGrant]);
+    // …and it is invisible to, and unusable by, anyone else — even naming its id. (They may still make a Free org.)
+    expect(await mine(other)).toMatchObject(ONLY_FREE);
     const stolen = await call("POST", "/api/orgs", other, { slug: "stolen", name: "Stolen", grant: g.id });
     expect([stolen.status, stolen.json.error]).toEqual([403, "no_grant"]);
     expect(await one(`SELECT 1 AS x FROM orgs WHERE slug = 'stolen'`)).toBeNull();
     expect(await one(`SELECT status FROM org_grants WHERE id = ?`, g.id)).toEqual({ status: "unused" });
+    // Naming none, they get a Free org of their own — never the grant's plan.
+    expect((await call("POST", "/api/orgs", other, { slug: "not-stolen", name: "Not Stolen" })).status).toBe(201);
+    expect(await one(`SELECT plan, plan_source FROM orgs WHERE slug = 'not-stolen'`)).toEqual({ plan: "free", plan_source: "granted" });
+    expect(await one(`SELECT status FROM org_grants WHERE id = ?`, g.id)).toEqual({ status: "unused" });
   });
 
   it("an e-mail grant matches a provider-VERIFIED address, never the editable notification address", async () => {
-    await grant({ to: { email: "cto@startup.io" }, plan: "team" });
+    const g = (await grant({ to: { email: "cto@startup.io" }, plan: "team" })).json.grant;
     const typed = await loner("typed-it", { email: "cto@startup.io" });               // persons.email only
     const verified = await loner("really-cto", { email: "CTO@startup.io", verified: true });
     expect((await mine(typed)).grants).toEqual([]);
     expect((await mine(verified)).grants).toHaveLength(1);
-    expect((await call("POST", "/api/orgs", typed, { slug: "typed", name: "Typed" })).status).toBe(403);
+    const refused = await call("POST", "/api/orgs", typed, { slug: "typed", name: "Typed", grant: g.id });
+    expect([refused.status, refused.json.error]).toEqual([403, "no_grant"]);
+    // Naming none, the typed address gets them a Free org — and the grant waits for its real owner.
+    expect((await call("POST", "/api/orgs", typed, { slug: "typed", name: "Typed" })).status).toBe(201);
+    expect(await one(`SELECT plan FROM orgs WHERE slug = 'typed'`)).toEqual({ plan: "free" });
+    expect(await one(`SELECT status FROM org_grants WHERE id = ?`, g.id)).toEqual({ status: "unused" });
   });
 
   it("a handle grant follows the person", async () => {
@@ -127,9 +140,13 @@ describe("the grantee — who a grant is for", () => {
 
   it("a superadmin cannot use one: Platform is where they add an organization", async () => {
     await grant({ to: { github_login: SUPERADMIN }, plan: "team" }); // by login: the handle form is refused outright
-    expect(await mine(await boss())).toMatchObject({ superadmin: true, can_create: false, grants: [] });
+    expect(await mine(await boss())).toMatchObject({ superadmin: true, can_create: false, grants: [], free: { can_create: false, owned: null } });
     const r = await call("POST", "/api/orgs", await boss(), { slug: "mine-too", name: "Mine Too" });
     expect([r.status, r.json.error]).toEqual([403, "no_grant"]);
+    // Nor a Free one.
+    const free = await call("POST", "/api/orgs", await boss(), { slug: "mine-free", name: "Mine Free", plan: "free" });
+    expect([free.status, free.json.error]).toEqual([403, "no_grant"]);
+    expect(await one(`SELECT 1 AS x FROM orgs WHERE slug IN ('mine-too', 'mine-free')`)).toBeNull();
   });
 });
 
@@ -154,10 +171,14 @@ describe("POST /api/orgs — using a grant", () => {
     expect(listed.used_at).toMatch(/^\d{4}-\d\d-\d\dT/);
     expect((await rows<{ action: string; target: string }>(`SELECT action, target FROM org_admin_audit WHERE org_id = ? ORDER BY id`, org.id)).map((a) => `${a.action} ${a.target}`))
       .toEqual(["org.create orchard", "member.add founder", `grant.use grant:${g.id}`]);
-    // One grant, one org.
-    expect(await mine(cookie)).toMatchObject({ can_create: false, grants: [] });
-    const again = await call("POST", "/api/orgs", cookie, { slug: "orchard-2", name: "Second" });
+    // One grant, one org: the spent grant is refused by name, and what is left is a Free org of their own.
+    expect(await mine(cookie)).toMatchObject(ONLY_FREE);
+    const again = await call("POST", "/api/orgs", cookie, { slug: "orchard-2", name: "Second", grant: g.id });
     expect([again.status, again.json.error]).toEqual([403, "no_grant"]);
+    expect(await one(`SELECT 1 AS x FROM orgs WHERE slug = 'orchard-2'`)).toBeNull();
+    expect((await call("POST", "/api/orgs", cookie, { slug: "orchard-2", name: "Second" })).status).toBe(201);
+    expect(await one(`SELECT plan, plan_source FROM orgs WHERE slug = 'orchard-2'`)).toEqual({ plan: "free", plan_source: "granted" });
+    expect(await count(`SELECT COUNT(*) AS n FROM org_admin_audit WHERE action = 'grant.use'`)).toBe(1);
   });
 
   it("with several grants the oldest is used unless one is named", async () => {
@@ -173,17 +194,20 @@ describe("POST /api/orgs — using a grant", () => {
   });
 
   it("a double submit creates ONE org: the second request finds the grant spent and changes nothing", async () => {
-    await grantOrgs("eager");
+    const [g] = await grantOrgs("eager");
     const cookie = await loner("eager");
     const before = await count(`SELECT COUNT(*) AS n FROM orgs`);
+    // The grant named, as the picker's card sends it: a request naming NONE that reads after the first one
+    // landed holds no grant, and is a request for a Free org (src/orgs/routes.ts), not a double submit.
     const [a, b] = await Promise.all([
-      call("POST", "/api/orgs", cookie, { slug: "eager-one", name: "Eager" }),
-      call("POST", "/api/orgs", cookie, { slug: "eager-two", name: "Eager" }),
+      call("POST", "/api/orgs", cookie, { slug: "eager-one", name: "Eager", grant: g }),
+      call("POST", "/api/orgs", cookie, { slug: "eager-two", name: "Eager", grant: g }),
     ]);
     expect([a.status, b.status].sort()).toEqual([201, 403]);
     expect((a.status === 403 ? a : b).json.error).toBe("no_grant");
     expect(await count(`SELECT COUNT(*) AS n FROM orgs`)).toBe(before + 1);
     expect(await count(`SELECT COUNT(*) AS n FROM memberships WHERE user_id = 'eager'`)).toBe(1);
+    expect(await one(`SELECT status FROM org_grants WHERE id = ?`, g)).toEqual({ status: "used" });
     // The same form sent twice (the same slug): still one org.
     await grantOrgs("eager2");
     const c2 = await loner("eager2");
@@ -219,15 +243,26 @@ describe("POST /api/orgs — using a grant", () => {
     expect(await one(`SELECT status, used_by FROM org_grants WHERE id = ?`, fine)).toEqual({ status: "used", used_by: "slow" });
   });
 
-  it("lands the grantee on a working org: they can invite up to the plan's seats", async () => {
+  it("lands the grantee on a working org: they can invite up to the plan's seats (Pro: fifty)", async () => {
     await grantOrgs("teamlead", 1, "team");
     const cookie = await loner("teamlead");
-    await call("POST", "/api/orgs", cookie, { slug: "squad", name: "Squad" });
-    for (let n = 1; n <= 9; n++) expect((await call("POST", "/api/o/squad/invites", cookie, { github_login: `squad-${n}` })).status).toBe(201);
-    expect((await call("POST", "/api/o/squad/invites", cookie, { github_login: "squad-10" })).status).toBe(402);
-    // The superadmin raises it: Enterprise with 20 seats, and the invitation goes through.
-    await call("PUT", "/api/platform/orgs/squad/plan", await boss(), { plan: "enterprise", overrides: { seats: 20 } });
-    expect((await call("POST", "/api/o/squad/invites", cookie, { github_login: "squad-10" })).status).toBe(201);
+    expect((await call("POST", "/api/orgs", cookie, { slug: "squad", name: "Squad" })).status).toBe(201);
+    const id = (await one<{ id: string }>(`SELECT id FROM orgs WHERE slug = 'squad'`))!.id;
+    // 45 invitations already out (written directly: fifty through the route would spend the owner's daily
+    // invite allowance), then the last seats through the route.
+    for (let n = 1; n <= 45; n++) {
+      await exec(`INSERT INTO org_invites (org_id, github_login, role, invited_by, status, created_at) VALUES (?, ?, 'member', 'teamlead', 'pending', '2026-10-06T00:00:00Z')`, id, `squad-${n}`);
+    }
+    for (let n = 46; n <= 49; n++) expect((await call("POST", "/api/o/squad/invites", cookie, { github_login: `squad-${n}` })).status, `invite ${n}`).toBe(201);
+    const full = await call("POST", "/api/o/squad/invites", cookie, { github_login: "squad-50" });
+    // A granted Pro org: no `paid`, no `next` — its owner asks Trov.
+    expect([full.status, full.json]).toEqual([402, {
+      error: "plan_limit", limit: "seats", used: 50, cap: 50, plan: "team", status: "active",
+      message: "This organization has reached the 50 seats its Pro plan includes.",
+    }]);
+    // The superadmin raises it: Enterprise with 60 seats, and the invitation goes through.
+    await call("PUT", "/api/platform/orgs/squad/plan", await boss(), { plan: "enterprise", overrides: { seats: 60 } });
+    expect((await call("POST", "/api/o/squad/invites", cookie, { github_login: "squad-50" })).status).toBe(201);
   });
 });
 
@@ -238,8 +273,10 @@ describe("revoking and expiry", () => {
     const root = await boss();
     const revoked = await call<{ ok: true; grant: PlatformGrant }>("POST", `/api/platform/grants/${g.id}/revoke`, root, {});
     expect(revoked.json.grant).toMatchObject({ status: "revoked", revoked_by: SUPERADMIN });
-    expect(await mine(cookie)).toMatchObject({ can_create: false, grants: [] });
-    expect((await call("POST", "/api/orgs", cookie, { slug: "too-late", name: "Too Late", grant: g.id })).status).toBe(403);
+    expect(await mine(cookie)).toMatchObject(ONLY_FREE);
+    const late = await call("POST", "/api/orgs", cookie, { slug: "too-late", name: "Too Late", grant: g.id });
+    expect([late.status, late.json.error]).toEqual([403, "no_grant"]);
+    expect(await one(`SELECT 1 AS x FROM orgs WHERE slug = 'too-late'`)).toBeNull();
     expect((await call("POST", `/api/platform/grants/${g.id}/revoke`, root, {})).status).toBe(404); // already revoked
     expect((await call("POST", "/api/platform/grants/99999/revoke", root, {})).status).toBe(404);
     expect((await call("POST", "/api/platform/grants/abc/revoke", root, {})).status).toBe(404);
@@ -257,8 +294,10 @@ describe("revoking and expiry", () => {
     const cookie = await loner("sleepy");
     expect((await mine(cookie)).grants).toHaveLength(1);
     await exec(`UPDATE org_grants SET expires_at = '2020-01-01T00:00:00.000Z' WHERE id = ?`, g.id);
-    expect(await mine(cookie)).toMatchObject({ can_create: false, grants: [] });
-    expect((await call("POST", "/api/orgs", cookie, { slug: "sleepy-co", name: "Sleepy", grant: g.id })).status).toBe(403);
+    expect(await mine(cookie)).toMatchObject(ONLY_FREE);
+    const r = await call("POST", "/api/orgs", cookie, { slug: "sleepy-co", name: "Sleepy", grant: g.id });
+    expect([r.status, r.json.error]).toEqual([403, "no_grant"]);
+    expect(await one(`SELECT 1 AS x FROM orgs WHERE slug = 'sleepy-co'`)).toBeNull();
     expect((await call<{ grants: PlatformGrant[] }>("GET", "/api/platform/grants", await boss())).json.grants[0]).toMatchObject({ id: g.id, status: "expired" });
     expect(await one(`SELECT status FROM org_grants WHERE id = ?`, g.id)).toEqual({ status: "unused" }); // expiry is derived, the row is not rewritten
   });
@@ -266,18 +305,18 @@ describe("revoking and expiry", () => {
 
 describe("the notice e-mail (an e-mail grant only)", () => {
   it("renders who granted it and the plan; its only link is the site root; markup in a name is escaped", () => {
-    const m = renderGrantEmail({ granterName: "Andres", planName: "Team", planDescription: "A team of up to 10 people.", email: "cto@startup.io", signInUrl: "https://trov.test/", host: "trov.test" });
+    const m = renderGrantEmail({ granterName: "Andres", planName: PLANS.team.name, planDescription: PLANS.team.description, email: "cto@startup.io", signInUrl: "https://trov.test/", host: "trov.test" });
     expect(m.subject).toBe("You can set up an organization on Trov");
     expect(m.html).toContain("Andres has given you an organization on Trov");
-    expect(m.text).toContain("Andres has given you an organization on Trov's Team plan.");
-    expect(m.text).toContain("Team: A team of up to 10 people.");
+    expect(m.text).toContain("Andres has given you an organization on Trov's Pro plan.");
+    expect(m.text).toContain("Pro: For a team, paid per seat.");
     expect(new Set(links(m))).toEqual(new Set(["https://trov.test/"]));
     expect(m.html).toContain('data-mark="trov"');
-    const evil = renderGrantEmail({ granterName: `<img src=x onerror=1>`, planName: "Team", planDescription: "d", email: "a@b.io", signInUrl: "https://trov.test/", host: "trov.test" });
+    const evil = renderGrantEmail({ granterName: `<img src=x onerror=1>`, planName: "Pro", planDescription: "d", email: "a@b.io", signInUrl: "https://trov.test/", host: "trov.test" });
     expect(evil.html).not.toContain("<img src=x");
     // A grant nobody made by hand (billing) names no person.
-    expect(renderGrantEmail({ granterName: null, planName: "Team", planDescription: "d", email: "a@b.io", signInUrl: "https://trov.test/", host: "trov.test" }).text)
-      .toContain("You have been given an organization on Trov's Team plan.");
+    expect(renderGrantEmail({ granterName: null, planName: "Pro", planDescription: "d", email: "a@b.io", signInUrl: "https://trov.test/", host: "trov.test" }).text)
+      .toContain("You have been given an organization on Trov's Pro plan.");
   });
 
   it("is sent to the granted address with no token and no grant id in any link, and recorded on the grant; a login or handle grant sends none", async () => {
@@ -292,7 +331,8 @@ describe("the notice e-mail (an e-mail grant only)", () => {
     const sent = await mails();
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ to_address: "cto@startup.io", subject: "You can set up an organization on Trov" });
-    expect(sent[0].text).toContain("Andres has given you an organization on Trov's Team plan.");
+    expect(sent[0].text).toContain("Andres has given you an organization on Trov's Pro plan.");
+    expect(sent[0].text).toContain("Pro: For a team, paid per seat.");
     for (const href of links(sent[0])) {
       expect(href).toMatch(/^https?:\/\/[^/?#]+\/$/); // the site root, nothing after it
       expect(href).not.toContain(String(g.id));
@@ -355,7 +395,7 @@ describe("the billing seam — src/plans/billing.ts", () => {
     expect(await count(`SELECT COUNT(*) AS n FROM org_grants`)).toBe(1);
     const sent = await mails();
     expect(sent.map((m) => m.to_address)).toEqual(["buyer@shop.io"]);
-    expect(sent[0].text).toContain("You have been given an organization on Trov's Team plan."); // no person granted it
+    expect(sent[0].text).toContain("You have been given an organization on Trov's Pro plan."); // no person granted it
     expect(await rows(`SELECT actor, action FROM org_admin_audit WHERE action = 'grant.create'`)).toEqual([{ actor: "billing", action: "grant.create" }]);
 
     // The buyer signs in with that (verified) address and sets up their org.
@@ -366,9 +406,51 @@ describe("the billing seam — src/plans/billing.ts", () => {
     expect(await setOrgPlan(p, "shop", { plan: "team", source: "billing", period_end: "2026-11-07T00:00:00.000Z", customer_id: "cus_9", subscription_id: "sub_9" }))
       .toMatchObject({ customer_id: "cus_9", subscription_id: "sub_9", status: "active" });
     expect((await cancelOrgPlan(p, "shop")).status).toBe("canceled");
-    expect((await call("POST", "/api/o/shop/invites", buyer, { github_login: "x" })).status).toBe(402);
+    const frozen = await call("POST", "/api/o/shop/invites", buyer, { github_login: "x" });
+    expect([frozen.status, frozen.json]).toMatchObject([402, { error: "plan_limit", status: "canceled", plan: "team", paid: true }]);
+    expect(frozen.json).not.toHaveProperty("next"); // ended: renew, not upgrade
     const row = (await call<{ orgs: PlatformOrgRow[] }>("GET", "/api/platform/orgs", await boss())).json.orgs.find((o) => o.slug === "shop")!;
     expect(row.plan).toMatchObject({ plan: "team", source: "billing", status: "canceled" });
+    // What billing does now when a subscription ends: the org moves to Free — active, still billing's, its ids kept.
+    expect(await moveOrgToFree(p, "shop")).toMatchObject({ plan: "free", overrides: {}, status: "active", source: "billing", customer_id: "cus_9", subscription_id: "sub_9" });
+    expect((await call("POST", "/api/o/shop/invites", buyer, { github_login: "x" })).status).toBe(201); // 2 of Free's 3 seats
+    const moved = (await call<{ orgs: PlatformOrgRow[] }>("GET", "/api/platform/orgs", await boss())).json.orgs.find((o) => o.slug === "shop")!;
+    expect(moved.plan).toMatchObject({ plan: "free", source: "billing", status: "active", entitlements: PLANS.free.entitlements, seats_used: 2 });
+    expect(await rows(`SELECT actor, action FROM org_admin_audit WHERE target = 'shop' AND action LIKE 'plan.%' ORDER BY id`))
+      .toEqual([{ actor: "billing", action: "plan.overrides" }, { actor: "billing", action: "plan.status" }, { actor: "billing", action: "plan.change" }]);
+  });
+
+  it("setPaidGrantPlan: an UNUSED paid grant follows its subscription's plan and the seats it pays for; the org it becomes takes both", async () => {
+    const p = platformCtx(BILLING_ACTOR);
+    // What fulfilment mirrored from Stripe: the subscription the grant's `external_ref` names.
+    await exec(`INSERT INTO billing_subscriptions (subscription_id, customer_id, plan, stripe_status, plan_status, period_end, created_at, updated_at)
+                VALUES ('sub_seats', 'cus_seats', 'team', 'active', 'active', '2026-11-07T00:00:00.000Z', '2026-10-07T00:00:00.000Z', '2026-10-07T00:00:00.000Z')`);
+    const g = await grantOrganization(env as unknown as Env, p, { to: { email: "seats@shop.io" }, plan: "team", external_ref: "sub_seats" });
+    expect(g).toMatchObject({ plan: "team", overrides: {}, source: "billing", status: "unused" });
+
+    // The buyer changes the quantity at Stripe before naming their org: the grant follows; the same again is a no-op.
+    expect(await setPaidGrantPlan(p, "sub_seats", "team", { seats: 7 })).toBe(true);
+    expect(await setPaidGrantPlan(p, "sub_seats", "team", { seats: 7 })).toBe(false);
+    expect(await one(`SELECT plan, overrides FROM org_grants WHERE id = ?`, g.id)).toEqual({ plan: "team", overrides: `{"seats":7}` });
+    expect(await setPaidGrantPlan(p, "sub_nobody", "team", { seats: 3 })).toBe(false); // no grant has that subscription
+    // A grant a superadmin made is never moved, even under the same reference.
+    const [byHand] = await grantOrgs("handmade", 1, "team");
+    await exec(`UPDATE org_grants SET external_ref = 'sub_hand' WHERE id = ?`, byHand);
+    expect(await setPaidGrantPlan(p, "sub_hand", "team", { seats: 2 })).toBe(false);
+    expect(await one(`SELECT overrides FROM org_grants WHERE id = ?`, byHand)).toEqual({ overrides: "{}" });
+
+    const buyer = await loner("seat-buyer", { email: "seats@shop.io", verified: true });
+    expect((await mine(buyer)).grants).toEqual([expect.objectContaining({ id: g.id, plan: "team", plan_name: "Pro", entitlements: { ...PLANS.team.entitlements, seats: 7 } })]);
+    expect((await call("POST", "/api/orgs", buyer, { slug: "seven", name: "Seven", grant: g.id })).status).toBe(201);
+    // The creating batch copied the subscription's ids, plan, status and period — and the grant's paid seats.
+    expect(await one(`SELECT plan, plan_overrides, plan_source, plan_status, plan_period_end, billing_customer_id, billing_subscription_id FROM orgs WHERE slug = 'seven'`)).toEqual({
+      plan: "team", plan_overrides: `{"seats":7}`, plan_source: "billing", plan_status: "active", plan_period_end: "2026-11-07T00:00:00.000Z",
+      billing_customer_id: "cus_seats", billing_subscription_id: "sub_seats",
+    });
+    expect((await call<OrgPlanView>("GET", "/api/o/seven/plan", buyer)).json).toMatchObject({ plan: "team", name: "Pro", source: "billing", entitlements: { seats: 7 }, overridden: ["seats"] });
+    // A used grant is left alone: from here on the org's own plan is what billing moves.
+    expect(await setPaidGrantPlan(p, "sub_seats", "team", { seats: 9 })).toBe(false);
+    expect(await one(`SELECT overrides FROM org_grants WHERE id = ?`, g.id)).toEqual({ overrides: `{"seats":7}` });
   });
 
   it("refuses a bad payment input like any grant, and mails nothing without an origin", async () => {

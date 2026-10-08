@@ -85,7 +85,7 @@ export const RELEASES: Release[] = [
       "Behind the scenes only for now: the Org settings › Hosting tab and the dashboard's Hosting panel are being designed next.",
     ],
     ops: [
-      "Apply `migrations/0047_hosting_providers.sql` (merging to main applies it). It adds the hosting tables and REBUILDS `org_secrets` only to widen its kind CHECK; rollback: `scripts/hosting/0047_hosting_providers.down.sql`, run before 0042's.",
+      "Apply `migrations/0048_hosting_providers.sql` (merging to main applies it). It adds the hosting tables and REBUILDS `org_secrets` only to widen its kind CHECK; rollback: `scripts/hosting/0048_hosting_providers.down.sql`, run before 0042's.",
       "No trigger change: the hosting job rides the existing `*/10` repo trigger at `:40`, so no `wrangler triggers deploy` is needed.",
       "Optional, for Connect with Vercel: create a Vercel Integration (Projects: Read, Deployments: Read; Redirect URL `<origin>/hosting/vercel/callback`; Webhook URL `<origin>/webhook/hosting/vercel`) and set `VERCEL_INTEGRATION_CLIENT_ID`, `VERCEL_INTEGRATION_CLIENT_SECRET` (secrets) and `VERCEL_INTEGRATION_SLUG`. Without them, Vercel falls back to a pasted token.",
       "Optional, for Connect with Netlify: register a Netlify OAuth application (Redirect URI `<origin>/hosting/netlify/callback`) and set `NETLIFY_OAUTH_CLIENT_ID` / `NETLIFY_OAUTH_CLIENT_SECRET`. Without them, Netlify falls back to a personal access token.",
@@ -95,7 +95,7 @@ export const RELEASES: Release[] = [
       added: [
         "Hosting providers behind one interface, issue #97: `shared/hosting.ts` (the contract — providers, parts, roles, connection methods, the `hx_<metric>` vocabulary, deploy states, setup and dashboard DTOs) and `src/hosting/` (`types.ts`, `http.ts` — the fixed-host fetch with scrubbed errors and the shared poll window —, `registry.ts`, `parts.ts`, `part-writes.ts`, `connections.ts`, `setup.ts`, `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`).",
         "Providers (issues #98–#102): Vercel — install or token —, Render — API key —, Netlify — OAuth or token —, Fly.io — a read-only token; AWS described as `later`; Cloudflare and Railway as the first two, LEGACY parts read from the environment's own columns.",
-        "`0047_hosting_providers`: `org_environment_parts`, `org_hosting_connections`, `hosting_deploys`, `hosting_poll_state`; `org_secrets.kind` admits `vercel` / `render` / `netlify` / `fly` / `aws`.",
+        "`0048_hosting_providers`: `org_environment_parts`, `org_hosting_connections`, `hosting_deploys`, `hosting_poll_state`; `org_secrets.kind` admits `vercel` / `render` / `netlify` / `fly` / `aws`.",
         "Routes under `/api/o/:slug`: `GET /hosting`, `GET /hosting/providers`, `PUT|DELETE /environments/:key/parts/:part`, `POST /hosting/:provider/connect|disconnect|test`; the root `GET /hosting/:provider/callback` and the provider-side uninstall notice `POST /webhook/hosting/:provider`.",
         "The `hosting` job on the repo cron's `:40` tick (one unit per stored part, budgeted by the provider's `pollCost`), a `hosting` arm in Poll now, and the Repo dashboard's provider-neutral `providers` section (also in MCP `get_repo_dashboard`).",
         "Data stubs for the UI: `web/src/hosting-sample.ts` (every Hosting setup state), the `providers` section of `web/src/repo-sample.ts`, recorded-shape API fixtures under `fixtures/hosting/<provider>/`; the design brief `docs/design/hosting-providers-claude-design-prompt.md`.",
@@ -111,6 +111,65 @@ export const RELEASES: Release[] = [
       fixed: [],
       removed: [],
     },
+  },
+  // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
+  {
+    version: "0.23",
+    date: "2026-10-08",
+    title: "Free, and Pro per seat",
+    headline: "Anyone can start a Free organization, and Pro is paid per seat: as few as one.",
+    highlights: [
+      "Sign in and create a Free organization for your team: up to 3 people, one repository, two environments and 300 AI summaries a month. You can own one Free organization at a time.",
+      "Team is now called Pro, and it is paid per seat: $10 a month for each one, with no minimum, so a person on their own can buy a single seat. Pro holds up to 50 people.",
+      "Upgrade a Free organization to Pro from Org settings › General. The checkout starts with one seat for each member and pending invitation, and you can change the number before you pay.",
+      "When every seat is taken, Members says so and gives the owner one button: Add a seat on Pro, or Upgrade to Pro on Free.",
+      "The pricing page shows Free, Pro and Enterprise, with what each one includes and how per-seat pricing works.",
+    ],
+    headsUp: [
+      "The seats an organization pays for are the seats it has. Removing a seat in Stripe leaves everyone in place; new invitations wait until the organization is back under.",
+      "If a Pro subscription is cancelled, the organization moves to Free when the paid period ends. Nothing is deleted and everyone keeps reading; adding more of anything over a Free limit is refused until the organization is back under or upgrades again.",
+      "Personal is no longer offered. An organization already on it keeps its plan.",
+      "AI summaries read at most the first 8,000 characters of a pull request's or issue's description.",
+    ],
+    ops: [
+      "Apply migration `0047_billing_seats` (additive: the nullable column `billing_subscriptions.quantity`). Safe on live data and with the previous Worker running; rollback is in its header.",
+      "Stripe: create ONE product, Trov Pro, with a recurring PER-UNIT price of $10 per month (and optionally a yearly one). Put its id in `wrangler.toml` `[vars]` as `STRIPE_PRICE_TEAM` (and `STRIPE_PRICE_TEAM_YEARLY`). `STRIPE_PRICE_PERSONAL` and `STRIPE_PRICE_PERSONAL_YEARLY` are gone: delete them from any dashboard config. `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are unchanged secrets.",
+      "In Stripe's Customer Portal settings, allow customers to update subscription QUANTITIES for the Pro price (minimum 1, maximum 50) — \"Add a seat\" opens that page. The webhook's event list is unchanged.",
+      "The pricing page now announces Pro at $10 per seat and links \"Choose Pro\" to checkout. Set the Stripe keys and the price before (or with) this deploy, or that link answers \"Paid plans are not available yet\".",
+      "Self-serve organization creation is ON (issue #94): any signed-in person may create one Free organization they own. `docs/architecture/abuse-limits.md` lists what bounds it.",
+    ],
+    patches: {
+      added: [
+        "Plan `free` in `shared/plans.ts` (3 seats, 1 repository, 2 environments, 250 MB, 5 agent connections per person, 300 summaries a month); `FREE_PLAN`, `UPGRADE_PLAN`, `OFFERED_PLAN_IDS`, `isSoloPlan` (#117)",
+        "`PlanDef.features` and `FEATURE_KEYS` (empty: nothing is gated yet), `planFeatureRefusal`, and `requireFeature(ctx, feature)` beside `requirePlan` in `src/plans/gate.ts` — 402 `plan_feature` through `app.onError`, MCP code `plan_feature` (#117)",
+        "`PlanRefusal.next`: `add_seat` (a paid Pro org's seat cap, below 50) or `upgrade` (any Free refusal); `planRefusalSentence` points an owner at it (#117)",
+        "`src/plans/free.ts`: `POST /api/orgs` with no grant (or `plan: \"free\"`) creates a Free org; one OWNED Free org per person, held inside the creating batch by the `org.create_free` audit row; 403 `free_org_limit`. `GET /api/orgs` answers `free: { can_create, owned }` (#117)",
+        "`POST /api/o/:slug/billing/upgrade`: a Free org (never paid, or its subscription ended) starts a Pro checkout for the same org, with its Stripe customer when it has one; 409 `not_free` (#117)",
+        "`POST /api/o/:slug/billing/portal { seats: true }`: the portal's `subscription_update` flow for the org's subscription (\"Add a seat\", \"Change seats\") (#117)",
+        "Migration `0047_billing_seats`: `billing_subscriptions.quantity`, so Platform's Follow subscription restores the paid seats; `PlatformOrgBilling.ended` and `seats` (#117)",
+        "`moveOrgToFree` in the billing seam (`src/plans/billing.ts`) (#117)",
+        "`capSummaryBody` / `SUMMARY_BODY_MAX` (8,000) in `src/tools/summarize.ts` (#117)",
+      ],
+      changed: [
+        "Plan `team` is shown as \"Pro\", with 50 seats; `PURCHASABLE_PLANS` is `[\"team\"]`. Checkout sends quantity = members + pending invitations (at least 1; 1 for a first purchase) with `adjustable_quantity` 1–50 (#117)",
+        "`src/billing/sync.ts`: the subscription's quantity is written as the org's `seats` override (`paidSeats`, held to the plan's cap); an unused paid grant carries it in its overrides and `linkPaidOrgStmt` copies them onto the org; an ended subscription moves the org to Free (active, still a billing org) instead of freezing it as `canceled` — a pinned plan too (#117)",
+        "`OrgBillingView`: `subscribed`, `ended`, `customer`, `seats`, `upgrade_to` (was `renew_on`); a Free org gets one. The Plan block shows seats, Change seats, and Upgrade to Pro (#117)",
+        "Platform's Change plan treats an ended subscription by its mirror (`ended`), not by the org's status; Follow subscription restores the paid seats. Platform's plan pickers hide Personal unless it is the current plan (#117)",
+        "`shared/pricing.ts`: Free `price: 0`, Pro $10 per seat / month, Enterprise custom, Personal not self-serve; the pricing page shows offered plans only, a Free card that opens Trov, \"Up to 50\" seats on Pro, and per-seat answers in the questions (#117)",
+        "The picker offers \"Create a Free organization\"; the landing's sign-in line and Get Started guide mention creating one again (issue #94) (#117)",
+        "`DEFAULT_ORG_LIMIT` is 1: the Free organizations a person may own (#117)",
+        "The return-to allowlist (`src/auth/return-to.ts`) is built from `PURCHASABLE_PLANS` (#117)",
+      ],
+      fixed: [
+        "A one-seat paid Pro org is not a one-person plan: Members keeps the invite section with \"Add a seat\", and the setup checklist keeps \"Invite your team\" (#117)",
+      ],
+      removed: [
+        "`STRIPE_PRICE_PERSONAL`, `STRIPE_PRICE_PERSONAL_YEARLY`; Personal can no longer be bought (#117)",
+        "`POST /api/o/:slug/billing/change`, `OrgBillingView.switch_to` and the switch-to-a-smaller-plan confirmation: with one plan sold there is nothing to switch to (#117)",
+        "`POST /api/o/:slug/billing/renew` (an ended subscription now leaves the org on Free; Upgrade to Pro is how it pays again); `firstTeamPlan` (#117)",
+      ],
+    },
+    prs: [117],
   },
   // Sync GitHub as a recorded run, and AI summaries counted per organization (#109).
   {

@@ -264,7 +264,7 @@ export async function reorderEnvironments(ctx: TenantContext, order: unknown): P
 }
 
 /** Delete an environment, its `railway` / `metrics_endpoint` secrets and close the gap in the order —
- *  one batch (admin+, §8.7.3). Its STORED hosting parts (0047_hosting_providers) go in the same batch, with
+ *  one batch (admin+, §8.7.3). Its STORED hosting parts (0048_hosting_providers) go in the same batch, with
  *  each one's last-poll row and deploy history: they describe a deployable of an environment that no longer
  *  exists (its legacy parts are its own columns, so they go with the row). Returns the audit targets of the
  *  secrets removed with it. */

@@ -40,7 +40,7 @@ export function listRepoUnits(p: PlatformContext): Promise<RepoUnit[]> {
 
 export interface PartUnit { org_id: string; env_key: string; part_key: string; provider: string }
 
-/** One row per STORED part (`org_environment_parts`, 0047_hosting_providers) of every active org — the
+/** One row per STORED part (`org_environment_parts`, 0048_hosting_providers) of every active org — the
  *  units of the `hosting` job — in org, environment `position`, part `position` order, so the rotation
  *  is stable from tick to tick. A legacy Cloudflare / Railway part has no row here (it is the
  *  environment's own columns, polled by `usage`), so an org without a stored part contributes nothing.
@@ -89,13 +89,13 @@ export function installationOrg(p: PlatformContext, installationId: number): Pro
       WHERE i.installation_id = ? AND i.removed_at IS NULL`, installationId);
 }
 
-// ── hosting installations: which org holds one (0047_hosting_providers) ──────
+// ── hosting installations: which org holds one (0048_hosting_providers) ──────
 
 /**
  * The orgs whose ACTIVE connection for hosting `provider` is the provider-side installation `externalId`,
  * with its scope — before any org is known: the provider's uninstall notice names only the installation
  * (src/hosting/webhook.ts), and the connect callback must see that an installation is already another org's
- * (`taken`, src/hosting/connections.ts — 0047's unique index says so again at the write). A SUSPENDED org's
+ * (`taken`, src/hosting/connections.ts — 0048's unique index says so again at the write). A SUSPENDED org's
  * row is returned too: its installation is still taken, and an uninstall must still end it. Org ids and a
  * scope only; the connection itself is then read as that org's tenant.
  */

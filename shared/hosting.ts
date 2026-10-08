@@ -157,7 +157,7 @@ export interface HostingProviderDTO {
 export type ConnectionStatus = "connected" | "not_connected" | "error" | "revoked";
 
 /**
- * Why an install / OAuth connection ended — `org_hosting_connections.revoked_reason` (0047 CHECKs it). The row
+ * Why an install / OAuth connection ended — `org_hosting_connections.revoked_reason` (0048 CHECKs it). The row
  * stores the CODE only; the sentence a person reads is derived from it (`hostingRevokedReasonText`):
  *   disconnected  an admin disconnected it in Trov (Disconnect, or deleting the credential on Integrations)
  *   uninstalled   the provider said it was removed on its side (the verified uninstall notice)

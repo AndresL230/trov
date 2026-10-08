@@ -5,7 +5,8 @@
 // Billing is CONFIGURED when both secrets are set: the key (to start a checkout) and the webhook secret
 // (to hear that it was paid — without it a payment could be taken and never fulfilled, so a deployment
 // with only a key sells nothing). A plan is PURCHASABLE on the intervals it has a price id for. No amount
-// is known here: a price is an opaque id the owner pastes into wrangler.toml.
+// is known here: a price is an opaque id the owner pastes into wrangler.toml. Pro (`team`) is the one
+// plan sold, PER SEAT: its price is the price of one seat, and a checkout's quantity is the seat count.
 import type { Env } from "../env";
 import {
   BILLING_INTERVALS, PURCHASABLE_PLANS, NO_BILLING_OFFERS, billingStartHref,
@@ -50,7 +51,6 @@ export function billingConfig(env: Env): BillingConfig | null {
     // The stand-in (`STRIPE_TEST_API_BASE`): a loopback http origin, and never with a live key (src/platform/loopback.ts).
     apiBase: (mode === "test" ? loopbackOrigin(env.STRIPE_TEST_API_BASE) : null) ?? STRIPE_API,
     prices: {
-      personal: price(env.STRIPE_PRICE_PERSONAL, env.STRIPE_PRICE_PERSONAL_YEARLY),
       team: price(env.STRIPE_PRICE_TEAM, env.STRIPE_PRICE_TEAM_YEARLY),
     },
   };

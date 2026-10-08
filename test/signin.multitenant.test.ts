@@ -89,7 +89,7 @@ describe("an existing SaplingLearn member", () => {
 });
 
 describe("a new GitHub account", () => {
-  it("with no invite: onboards (no GitHub org is asked about), joins NO org, reaches nothing tenant-scoped, cannot create an org without an allowance", async () => {
+  it("with no invite: onboards (no GitHub org is asked about), joins NO org, reaches nothing tenant-scoped, and may create ONE Free org of their own", async () => {
     const session = await onboard(await github("stranger", VERIFIED("stranger@example.com")), "stranger");
     expect(await memberships("stranger")).toEqual([]);
     expect(await first(env.DB, `SELECT verified_email FROM identities WHERE subject = 'stranger'`)).toEqual({ verified_email: "stranger@example.com" });
@@ -105,15 +105,18 @@ describe("a new GitHub account", () => {
     // No welcome mail: mail goes out as an org, and they are in none.
     expect(await first(env.DB, `SELECT 1 AS x FROM notification_outbox_bodies`)).toBeNull();
 
-    // They cannot make themselves an org either: creation is the superadmin's until self-serve opens.
-    expect((await json("POST", "/api/orgs", session, { slug: "stranger-co", name: "Stranger Co" })).status).toBe(403);
-    // With a grant from the superadmin (0044_plans `org_grants`) they can, and see only its content.
-    await env.DB.prepare(`INSERT INTO org_grants (person, plan, granted_by, created_at) VALUES ('stranger', 'team', 'AndresL230', '2026-10-06T00:00:00.000Z')`).run();
+    // They can make themselves ONE Free org (src/plans/free.ts) — and see only its content.
     expect((await json("POST", "/api/orgs", session, { slug: "stranger-co", name: "Stranger Co" })).status).toBe(201);
+    expect(await first(env.DB, `SELECT plan FROM orgs WHERE slug = 'stranger-co'`)).toEqual({ plan: "free" });
     expect((await json("GET", "/auth/me", session)).json).toMatchObject({ org: "Stranger Co", admin: true, orgs: [{ slug: "stranger-co", name: "Stranger Co", role: "owner" }] });
     expect((await json("GET", "/docs", session)).json).toEqual({ docs: [] });
     expect((await json("GET", "/persons", session)).json).toEqual({ persons: [expect.objectContaining({ handle: "stranger" })] });
     expect((await json("GET", "/api/o/saplinglearn/docs", session)).status).toBe(404);
+    // …not a second one; a grant from the superadmin (0044_plans `org_grants`) is how they get more.
+    expect((await json("POST", "/api/orgs", session, { slug: "stranger-two", name: "Stranger Two" })).json).toMatchObject({ error: "free_org_limit" });
+    await env.DB.prepare(`INSERT INTO org_grants (person, plan, granted_by, created_at) VALUES ('stranger', 'team', 'AndresL230', '2026-10-06T00:00:00.000Z')`).run();
+    expect((await json("POST", "/api/orgs", session, { slug: "stranger-two", name: "Stranger Two" })).status).toBe(201);
+    expect(await first(env.DB, `SELECT plan FROM orgs WHERE slug = 'stranger-two'`)).toEqual({ plan: "team" });
   });
 
   it("reserved and taken handles still apply at onboarding", async () => {
