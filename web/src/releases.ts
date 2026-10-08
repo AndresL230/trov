@@ -88,6 +88,7 @@ export const RELEASES: Release[] = [
       "A sync writes at most 50 summaries each time you run it. A larger backlog takes more than one sync.",
       "Closing or reloading the tab that started a sync stops it after the step it is on. Nothing is lost: the panel says it did not finish, and the next sync picks up where it left off.",
       "If GitHub is not connected, the panel says so and takes an admin to the place to connect it: Org settings › Repositories where the Trov App is offered, or Integrations for a token.",
+      "Trov's emails are in the brand's purple: the digest, invitations and the welcome message, in light and in dark mail clients.",
       "An organization's address is shorter: trov.dev/your-org/ instead of trov.dev/o/your-org/. Old links and bookmarks still work and take you to the new address.",
       "If the Trov App is installed on a GitHub account that does not own your repository, Org settings › Repositories and the Sync panel now say so, naming the account and the repository. Connecting the right account replaces the old connection; you no longer have to disconnect first.",
       "A payment that is past due does not stop AI summaries. When a plan ends they stop, and new items show an excerpt until the plan is renewed.",
