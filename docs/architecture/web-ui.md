@@ -2,6 +2,28 @@
 
 <!-- Moved verbatim out of CLAUDE.md (2026-10-07). This is the detailed reference; CLAUDE.md keeps only what applies to every change. Keep it current when you change the area. A reference to another section ("see Core invariant", "the Repo dashboard section below") now means another file in this folder — see the table at the bottom of CLAUDE.md. -->
 
+## A repaint REBUILDS a page unless the page opts out — the root cause of "it reloads when I type"
+
+`rerender()` runs on every state change, **including every keystroke in a field**, and `paint()` (`web/src/morph.ts`)
+replaces the page's DOM wholesale (`innerHTML`) unless it is one of: the `<aside>`, a root-level `data-overlay`
+(a dialog), or a page that names itself with **`data-morph="<key>"`** — which is patched in place while the key
+stays the same. A rebuilt page restarts every entrance animation, skeleton fade, `<img>` and iframe in it, and
+anything decorative behind a form visibly "reloads" per letter. Focus and caret are restored, so the field
+itself looks fine and the bug is easy to miss.
+
+**Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
+`data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: Org settings,
+Platform, the Artifacts screens, and the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+the guided setup `welcome`). Inside a morphed page, a part that must be REPLACED when it becomes a different
+thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
+animations off in the affected region — that hides one symptom and leaves the rebuild.
+
+**First-run flow** (`people.ts` `onboardView` → `org-picker.ts` `orgPickerView` → `welcome.ts` `welcomeView`):
+one card (`.cnpy-orgs-card`: banner, body, foot) in front of `firstRunBackdrop()` (`render.ts`: the real app
+shell rendered from `initialState()`, so every region is its own skeleton; `inert`, `aria-hidden`). A step
+gives way to the next through `morphStep` (`web/src/transition.ts`, View Transitions; the card carries one
+`view-transition-name`, so cards of different heights grow into each other). Off under reduced motion.
+
 ## Sidebar & motion — the `<aside>` outlives rerenders
 
 `rerender()` swaps the app wholesale, which is fatal for a transition: a width, a rotating chevron or an

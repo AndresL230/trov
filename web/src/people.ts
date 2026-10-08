@@ -3,7 +3,7 @@
 // functions over state — no fetch, no DOM — so they are unit-testable.
 import { PERSON_COLORS, type PersonColor } from "@shared/rows";
 import { trovMark } from "@shared/mark";
-import { esc, attr, initialsOf, surface, appBackdrop } from "./ui";
+import { esc, attr, initialsOf, surface } from "./ui";
 import type { OnboardPrefill } from "./api";
 
 export const COLOR_NAMES: readonly PersonColor[] = PERSON_COLORS;
@@ -13,6 +13,8 @@ export interface OnboardState {
   handle: string; name: string; color: PersonColor;
   check: "idle" | "checking" | "available" | "invalid" | "reserved" | "taken";
   submitting: boolean; error: string | null;
+  /** Came BACK from the welcome card: the account exists, so this edits it (`current` = the handle it has now). */
+  edit?: { current: string } | null;
 }
 export function initialOnboard(): OnboardState {
   return { prefill: null, handle: "", name: "", color: "moss", check: "idle", submitting: false, error: null };
@@ -118,7 +120,7 @@ const STATUS: Record<OnboardState["check"], { text: string; color: string }> = {
   reserved: { text: "reserved", color: "var(--red)" }, taken: { text: "taken", color: "var(--red)" },
 };
 
-export function onboardView(o: OnboardState): string {
+export function onboardView(o: OnboardState, backdrop = ""): string {
   const st = STATUS[o.check];
   const canSubmit = o.check === "available" && !o.submitting;
   const signedAs = o.prefill ? `Signed in with ${o.prefill.provider === "google" ? "Google" : "GitHub"} as <span style="font-family:var(--label);color:var(--fg-55)">${esc(o.prefill.label)}</span>` : "";
@@ -128,11 +130,11 @@ export function onboardView(o: OnboardState): string {
   // The same card as the org picker that follows it (one banner, the things to fill in, a foot), in
   // front of the same backdrop, so signing up reads as two steps of one flow.
   return `<div class="cnpy-onb" style="width:100%;display:flex;justify-content:center">
-    ${appBackdrop()}
+    ${backdrop}
     <div class="cnpy-orgs-col"><div${surface("overflow:hidden", { cls: "cnpy-orgs-card" })}>
     <header class="cnpy-orgs-banner">
       <span class="cnpy-orgs-art" aria-hidden="true">${trovMark(230, "currentColor")}</span>
-      <div style="position:relative;display:flex;align-items:center;gap:9px">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span><span class="cnpy-onb-step">Welcome to Trov · one step</span></div>
+      <div style="position:relative;display:flex;align-items:center;gap:9px">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span><span class="cnpy-onb-step">${o.edit ? "Step 1 of 2" : "Welcome to Trov · one step"}</span></div>
       <h1 style="position:relative;margin:20px 0 0;font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:1.2">Choose how you'll appear.</h1>
       <p class="cnpy-orgs-lede" style="position:relative;margin:8px 0 0;font-size:13.5px;line-height:1.55;max-width:500px">Your handle is how work gets attributed to you, in the feed, in decisions, in My Work. You can change it later in Settings. Your color can too.</p>
     </header>
@@ -150,8 +152,11 @@ export function onboardView(o: OnboardState): string {
       ${o.error ? `<div role="alert" style="font-size:12.5px;color:var(--red)">${esc(o.error)}</div>` : ""}
     </div>
     <footer class="cnpy-orgs-foot">
-      <div style="font-size:12px;color:var(--fg-40);min-width:0;overflow-wrap:anywhere">${signedAs}</div>
-      <button data-act="onbSubmit" class="cnpy-accentbtn" ${canSubmit ? "" : "disabled "}style="padding:10px 20px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600;${canSubmit ? "" : "opacity:.45;cursor:default"}">${o.submitting ? "Entering…" : "Enter Trov"}</button>
+      <div style="display:flex;align-items:center;gap:12px;min-width:0;flex-wrap:wrap">
+        ${o.edit ? "" : `<button type="button" data-act="backToLogin" data-field="onbBack" class="cnpy-outlinebtn" style="height:38px;padding:0 14px;border:1px solid var(--border-strong);border-radius:9px;font-size:13px;font-weight:500;color:var(--fg-70)"${o.submitting ? " disabled" : ""}>Back</button>`}
+        <div style="font-size:12px;color:var(--fg-40);min-width:0;overflow-wrap:anywhere">${signedAs}</div>
+      </div>
+      <button data-act="onbSubmit" class="cnpy-accentbtn" ${canSubmit ? "" : "disabled "}style="padding:10px 20px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600;${canSubmit ? "" : "opacity:.45;cursor:default"}">${o.edit ? (o.submitting ? "Saving…" : "Continue") : o.submitting ? "Entering…" : "Enter Trov"}</button>
     </footer>
   </div></div></div>`;
 }

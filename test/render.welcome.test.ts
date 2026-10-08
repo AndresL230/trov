@@ -199,9 +199,10 @@ describe("the page — one step at a time, Back, skippable", () => {
   it("is a full page: no sidebar, the picker's frame, the org's name, the step indicator with the current step marked", () => {
     const app: AppState = { ...initialState(), view: "app", screen: "welcome", orgSlug: "acme", me: { handle: "ines", name: "Ines Vidal", avatar_url: null, color: "fern", identities: [{ provider: "github", label: "ines-vidal", linked_at: "t" }], orgs: [org()], superadmin: false, pending_invites: 0 } as Me };
     const html = render(app);
-    expect(html).not.toContain("<aside");
-    expect(html).not.toContain('class="cnpy-shell"');
-    expect(html).toContain('class="cnpy-orgs cnpy-org cnpy-wel"');
+    // The only app shell on the page is the inert backdrop behind the card: no live sidebar.
+    expect((html.match(/class="cnpy-shell"/g) ?? []).length).toBe(1);
+    expect(html).toMatch(/<div class="cnpy-fr-bg" aria-hidden="true" inert><div class="cnpy-shell"/);
+    expect(html).toContain('class="cnpy-orgs cnpy-org cnpy-wel" data-morph="welcome"');
     expect(html).toContain('data-welcome="admin" data-welcome-step="github"');
     expect(html).toContain("Acme Robotics");
     expect(html).toMatch(/data-arg="github" data-field="welcomeGo:github" aria-current="step"/);

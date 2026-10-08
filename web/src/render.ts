@@ -666,11 +666,13 @@ function notice(text: string): string {
 function authView(s: AppState): string {
   // Signed out → the landing page; its Sign in opens the provider dialog.
   if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, seen: s.landingSeen });
-  return `<div class="cnpy-authwrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
+  // Onboarding is a form: `data-morph` patches it in place per keystroke (morph.ts `paint`) instead of
+  // rebuilding the card and the backdrop behind it. The other auth cards have nothing to type in.
+  return `<div class="cnpy-authwrap"${s.authStep === "onboard" ? ' data-morph="onboard"' : ""} style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
     ${s.authStep === "nonmember" ? nonmemberCard() : ""}
     ${s.authStep === "unverified" ? unverifiedCard(s.deniedEmail) : ""}
     ${s.authStep === "verifying" ? verifyingCard() : ""}
-    ${s.authStep === "onboard" ? onboardView(s.onboard) : ""}
+    ${s.authStep === "onboard" ? onboardView(s.onboard, firstRunBackdrop()) : ""}
   </div>`;
 }
 
@@ -2424,7 +2426,7 @@ function screenBody(s: AppState): string {
 /** Project the app state onto the guided setup's props (welcome.ts): Org settings' reads, and MY
  *  agent connections — the two reads Settings › MCP access makes. */
 export function welcomeProps(s: AppState): WelcomeProps {
-  return { org: currentOrg(s), step: s.welcome.step, me: s.me, ui: s.org, grants: s.grants, tokens: s.mcpTokens, wel: s.welcome, dd: s.dd };
+  return { org: currentOrg(s), step: s.welcome.step, me: s.me, ui: s.org, grants: s.grants, tokens: s.mcpTokens, wel: s.welcome, dd: s.dd, backdrop: firstRunBackdrop() };
 }
 
 /** Project the app state onto Org settings' props. The current org is `currentOrg` — one place. */
@@ -2491,6 +2493,15 @@ function appView(s: AppState): string {
   </div>`;
 }
 
+/** Behind a first-run card (onboarding, the org picker): the app itself — its real sidebar, header and
+ *  My Work — in the state it is in before anything has loaded, so every region is its own skeleton.
+ *  It is what the person is about to enter, held still: `inert`, hidden from assistive tech, and
+ *  softened by `.cnpy-fr-bg`. Nothing in it is theirs yet, so nothing in it is data. */
+function firstRunBackdrop(): string {
+  const ghost: AppState = { ...initialState(), view: "app", screen: "mywork" };
+  return `<div class="cnpy-fr-bg" aria-hidden="true" inert>${appView(ghost)}</div>`;
+}
+
 // The toast pops in, then fades out over its last 400ms. Both delays are offset by the time
 // already elapsed (negative = joined mid-way), so a rerender while it is up never replays the pop.
 // Centered with auto margins, not translateX(-50%): cnpy-pop animates `transform` to none.
@@ -2512,7 +2523,7 @@ function toastBlock(msg: string, elapsed: number, ms: number, action: ToastActio
 export function render(s: AppState): string {
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.billingDone ? billingDonePage(s.billingDone) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+    ${s.billingDone ? billingDonePage(s.billingDone) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}

@@ -18,7 +18,7 @@ import { trovMark } from "@shared/mark";
 import { ORG_NAME_MAX, orgSlugProblem, type MyInvite, type MyOrg, type MyOrgsResponse, type OrgRole } from "@shared/orgs";
 import { PLANS, FREE_PLAN, UPGRADE_PLAN, giftLengthWords, seatsPhrase, type MyGrant } from "@shared/plans";
 import { BILLING_GRANTER } from "@shared/billing";
-import { esc, attr, relTime, surface, appBackdrop } from "./ui";
+import { esc, attr, relTime, surface } from "./ui";
 import { accentBtn, quietBtn, orgBanner, roleChip } from "./org-ui";
 import { nameError, addOrgServerError } from "./platform";
 import { orgHref } from "./org-context";
@@ -273,6 +273,8 @@ export interface OrgPickerProps {
   hash: string;
   /** The viewer is a platform superadmin: the page links to the Platform area, which needs no membership. */
   superadmin?: boolean;
+  /** What sits behind the card: the app itself, loading (render.ts `firstRunBackdrop`). */
+  backdrop?: string;
 }
 
 /** Why the org in the URL did not open — one plain sentence; it may be any of three things, and
@@ -363,8 +365,10 @@ export function orgPickerView(p: OrgPickerProps): string {
 
   // One card, sized to sit in the window without scrolling the page: the brand banner (the mark,
   // who is being welcomed, what Trov is), the things to do, and who is signed in.
-  return `<div class="cnpy-orgs" data-screen-label="Organizations">
-    ${appBackdrop()}
+  // `data-morph`: patched in place while it stays this page (morph.ts `paint`), so typing in the create
+  // dialog over it, or an invitation arriving, never rebuilds the card or the backdrop behind it.
+  return `<div class="cnpy-orgs" data-morph="orgs" data-screen-label="Organizations">
+    ${p.backdrop ?? ""}
     <div class="cnpy-orgs-col">
       <div${surface("overflow:hidden", { cls: "cnpy-orgs-card" })}>
         <header class="cnpy-orgs-banner">
@@ -379,7 +383,7 @@ export function orgPickerView(p: OrgPickerProps): string {
         </div>
         <footer class="cnpy-orgs-foot">
           <span style="min-width:0;overflow-wrap:anywhere">Signed in as <span style="font-weight:500;color:var(--fg-70)">@${esc(p.me?.handle ?? "")}</span></span>
-          <span style="display:flex;gap:8px;flex:none">${quietBtn("Sign out", "signOut")}</span>
+          <span style="display:flex;gap:8px;flex:none">${orgs.length === 0 && p.me ? quietBtn("Back", "onbBack", { label: "Back: change how you appear" }) : ""}${quietBtn("Sign out", "signOut")}</span>
         </footer>
       </div>
     </div>

@@ -94,7 +94,9 @@ export const RELEASES: Release[] = [
     patches: {
       added: [
         "`GET /api/orgs/slug-check?slug=`: is an organization handle free (`{ available, reason?: invalid | reserved | taken }`, `orgSlugAvailable`), capped by the `handle_check` allowance. The create dialog asks as the person types and shows checking / available / taken beside the field (#124)",
-        "`appBackdrop()` in `web/src/ui.ts`: the blurred outline of the app behind a first-run card (`.cnpy-fr-*`), used by onboarding and the org picker (#124)",
+        "`firstRunBackdrop()` in `web/src/render.ts`: behind a first-run card, the real app shell in its loading (skeleton) state, inert and softened (`.cnpy-fr-bg`). Used by onboarding, the org picker and the guided setup (#124)",
+        "`morphStep` (`web/src/transition.ts`): one step of a flow morphs into the next through a View Transition; the first-run card keeps one `view-transition-name`, so cards of different heights grow into each other. Off under reduced motion (#124)",
+        "Back in the sign-up flow: from \"how you'll appear\" to sign-in, and from the welcome card back to \"how you'll appear\", which then edits the account (`updateMe`, `renameHandle`) (#124)",
         "`#welcome[/<step>]` (`web/src/welcome.ts`, `welcome-actions.ts`): the guided first-run setup, a full page without the sidebar. An owner or admin gets repository → coding agent → team → done; a member gets coding agent → done. No migration and no new route: it is entered by navigation and is stateless (#121)",
         "Every step's state is derived from reads the SPA already makes (`githubStepState`, `agentStepState`, `teamStepState`): Org settings' slices, `GET /auth/oauth-grants` filtered to the org on screen, and the org's MCP tokens. A read that is out or failed is `unknown`, never done or to-do (#121)",
         "The agent step re-reads `GET /auth/oauth-grants` every 5 s while it is on screen, not yet connected and the tab is visible, and at once when the tab regains focus (#121)",
@@ -107,6 +109,7 @@ export const RELEASES: Release[] = [
         "Org settings › General › Plan shows \"Free until <date>, a gift from Trov. After that this organization moves to Free; nothing is deleted.\" (`OrgPlanView.gift_until`), as the amber note in its last 7 days; the owner gets \"Keep Pro by paying\" where billing is set up (#123)",
       ],
       changed: [
+        "The guided setup is the same bannered card as onboarding and the org picker, in front of the same backdrop; finishing onboarding goes on to the welcome card without a page load (#124)",
         "Onboarding (pick a handle and a color) is the same bannered card as the org picker that follows it, with the handle and display name side by side and the colors on one line; it no longer scrolls the page (#124)",
         "Create an organization: the Address field is called Handle (it is still the slug, the `/<slug>/` its links start with), and its messages say handle (#124)",
         "The org picker / first run is one card in the middle of the window: a purple Trov banner (the mark, the welcome, what Trov is), the things to do, and who is signed in (`.cnpy-orgs-card`, `-banner`, `-body`, `-foot`). A first run no longer scrolls the page (#122)",
@@ -116,6 +119,7 @@ export const RELEASES: Release[] = [
         "`POST /api/o/:slug/billing/upgrade` also accepts an org whose plan is a gift (was 409 `not_free` for anything but Free): its owner starts paying before the gift ends, and fulfilment clears the gift. Every `setOrgPlan` without `gift_until` clears a gift, so Change plan on a gifted org makes the plan permanent (#123)",
       ],
       fixed: [
+        "Typing in a first-run form or in Create an organization rebuilt the whole page behind it on every letter (`paint()` swaps any page that does not set `data-morph`). Onboarding, the org picker and the guided setup are now patched in place; the rule is in `docs/architecture/web-ui.md` (#124)",
         "Finishing onboarding left a new person on the handle card: `/#onboard` to `/#guide` is a same-document navigation, so nothing loaded. The page now reloads once the account exists (#122)",
         "Org settings › General lines up with the tab bar and the other tabs: its 640px column (`.cnpy-org-narrow`) is now a bento grid across the tab (`.cnpy-org-gen`: image + name, plan, slug, and the plan's limits as their own tile), folding to one column by container width (#122)",
       ],

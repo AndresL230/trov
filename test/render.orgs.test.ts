@@ -300,8 +300,9 @@ describe("the org picker / first run", () => {
   it("render(): view `orgs` is the picker alone — no app shell, no sidebar", () => {
     const html = render({ ...initialState(), view: "orgs", me: me([]), myOrgs: { status: "ok", data: mine({ orgs: [] }) } });
     expect(html).toContain('data-screen-label="Organizations"');
-    expect(html).not.toContain("cnpy-shell");
-    expect(html).not.toContain("cnpy-aside");
+    // The only app shell on the page is the inert backdrop behind the card: no live sidebar.
+    expect((html.match(/class="cnpy-shell"/g) ?? []).length).toBe(1);
+    expect(html).toMatch(/<div class="cnpy-fr-bg" aria-hidden="true" inert><div class="cnpy-shell"/);
     // The create dialog opens over it.
     expect(render({ ...initialState(), view: "orgs", me: me([]), orgsUi: ui({ create: blankCreateOrg() }) })).toContain('data-overlay="orgs-create"');
   });
@@ -320,6 +321,13 @@ describe("the org picker / first run", () => {
     expect(html.slice(banner, body)).toContain("Welcome to Trov");
     expect(html.slice(banner, body)).toContain("<svg");
     expect(html.slice(foot)).toContain('data-act="signOut"');
+    // A first run can step back to "how you'll appear"; someone choosing among their orgs has no such step.
+    expect(html.slice(foot)).toMatch(/data-act="onbBack"[^>]*>Back</);
+    expect(render({ ...initialState(), view: "orgs", me: me([{ slug: "acme", name: "Acme", role: "member", logo_url: null }]) })).not.toContain('data-act="onbBack"');
+    // Behind the card: the app itself, inert and hidden from assistive tech.
+    expect(html).toMatch(/<div class="cnpy-fr-bg" aria-hidden="true" inert><div class="cnpy-shell"/);
+    // Patched in place while it stays this page (morph.ts): a keystroke in the dialog over it rebuilds nothing.
+    expect(html).toMatch(/<div class="cnpy-orgs" data-morph="orgs"/);
     // The window is the card's frame, so a first run does not scroll the page.
     expect(rules).toMatch(/\.cnpy-orgs \{ min-height:100vh; min-height:100dvh; box-sizing:border-box; display:flex; align-items:center; justify-content:center;/);
   });

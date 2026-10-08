@@ -10,6 +10,7 @@
 //     drops a note in sessionStorage (`WELCOME_RETURN_KEY`); main.ts's `enterOrg` reads it once
 //     and lands that one return on the wizard instead (`welcomeReturnHash`, pure).
 
+import { morphStep } from "./transition";
 import type { AppState } from "./render";
 import type { OAuthGrantSummary } from "@shared/rows";
 import { agentStepState, effectiveWelcomeStep, isWelcomeStep, welcomeStepsFor, type WelcomeStep } from "./welcome";
@@ -129,9 +130,8 @@ export function createWelcomeController(h: WelcomeHost): WelcomeController {
   }, true);
 
   function show(to: WelcomeStep): void {
-    state.welcome.step = to;
-    state.welcome.byHand = false;
-    h.rerender();
+    // One step into the next as a morph (transition.ts), not a snap.
+    morphStep(() => { state.welcome.step = to; state.welcome.byHand = false; h.rerender(); });
     window.scrollTo(0, 0);
     // The step's heading takes focus: a keyboard or screen-reader user is at the top of the new step.
     mount.querySelector<HTMLElement>("#wel-t")?.focus({ preventScroll: true });

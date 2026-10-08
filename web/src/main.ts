@@ -82,6 +82,7 @@ import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
+import { morphStep } from "./transition";
 import { BILLING_DONE_PATH } from "@shared/billing";
 import { getBillingStatus } from "./api";
 import { setPrimaryRepo } from "./github";
@@ -1958,6 +1959,8 @@ function scheduleHandleCheck(): void {
   const seq = ++handleCheckSeq;
   const h = state.onboard.handle;
   if (!h) return;
+  // Editing an account that exists: the handle it already has is its own, not "taken".
+  if (state.onboard.edit && h === state.onboard.edit.current) { state.onboard.check = "available"; return; }
   handleCheckTimer = window.setTimeout(() => {
     checkHandle(h)
       .then((r) => { if (seq !== handleCheckSeq) return; state.onboard.check = r.available ? "available" : (r.reason ?? "invalid"); rerender(); })
@@ -2020,10 +2023,41 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     case "onbName": state.onboard.name = value ?? ""; rerender(); return;
     case "onbColor": if (arg && (PERSON_COLORS as readonly string[]).includes(arg)) state.onboard.color = arg as PersonColor; break;
+    // Back from the welcome card to "how you'll appear": the account exists, so the card edits it.
+    case "onbBack": {
+      const me = state.me;
+      if (!me) return;
+      const id = me.identities[0];
+      morphStep(() => {
+        state.onboard = { ...initialOnboard(), prefill: id ? { provider: id.provider, label: id.label, email: null, name: me.name, avatar_url: null, suggested_handle: me.handle } : null,
+          handle: me.handle, name: me.name ?? "", color: me.color, check: "available", edit: { current: me.handle } };
+        state.view = "auth"; state.authStep = "onboard";
+        rerender();
+      });
+      return;
+    }
     case "onbSubmit": {
       const o = state.onboard;
       if (o.check !== "available" || o.submitting) return;
       o.submitting = true; o.error = null; rerender();
+      if (o.edit) {
+        // Save what changed (the same writes Settings › Profile makes), then on to the welcome card.
+        const me = state.me;
+        const name = o.name.trim() || null;
+        const profile = me && (name !== me.name || o.color !== me.color) ? updateMe({ name, color: o.color }) : Promise.resolve(null);
+        profile
+          .then(() => (o.handle !== o.edit!.current ? renameHandle(o.handle) : null))
+          .then(() => getMe())
+          .then((fresh) => { state.me = fresh; state.displayName = fresh.name ?? fresh.handle; morphStep(() => showPicker(null)); })
+          .catch((e) => {
+            o.submitting = false;
+            if (e instanceof ApiError && e.message === "handle_taken") o.check = "taken";
+            else if (e instanceof Unauthorized) o.error = "This sign-in expired. Start again.";
+            else o.error = isRateLimited(e) ? rateLimitText(e) : "Couldn't save that. Try again.";
+            rerender();
+          });
+        return;
+      }
       submitOnboard({ handle: o.handle, name: o.name.trim() || null, color: o.color })
         // A brand-new person lands on Get Started, not My Work: the projection is
         // empty on day one, and this is the one moment they are guaranteed to be
@@ -2031,12 +2065,18 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         // it takes. Every later sign-in goes wherever their hash points.
         // Signed up from an MCP client's authorize link → back to the consent screen
         // (a same-origin path the Worker built); otherwise Get Started, as before.
-        // The page is at `/#onboard`, so `/#guide` is a same-document navigation: the hash changes and
-        // nothing loads. Reload, so the boot path runs with the session this request just set.
         .then((r) => {
           if (r.redirect?.startsWith("/oauth/authorize?")) { window.location.href = r.redirect; return; }
-          window.location.hash = "#guide";
-          window.location.reload();
+          // No reload: read who we now are and morph this card into the next one (the org picker —
+          // a new person is in no org). Anything unexpected falls back to a fresh page.
+          getMe().then((me) => {
+            if (me.orgs.length > 0 || me.superadmin === true) throw new Error("not a first run");
+            state.me = me;
+            state.displayName = me.name ?? me.handle;
+            state.plat.superadmin = false;
+            history.replaceState(null, "", "/");
+            morphStep(() => showPicker(null));
+          }).catch(() => { window.location.hash = "#guide"; window.location.reload(); });
         })
         .catch((e) => {
           o.submitting = false;

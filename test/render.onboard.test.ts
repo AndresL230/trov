@@ -48,3 +48,23 @@ describe("swatches / personChip / feedPreviewRow", () => {
     expect(feedPreviewRow({ name: "Priya", handle: "priya", color: "rose" })).toContain("var(--p-rose)");
   });
 });
+
+describe("onboardView — the first of the first-run cards", () => {
+  const s = { ...initialOnboard(), handle: "priya-n", name: "Priya", check: "available" as const, prefill: { provider: "google" as const, label: "p@x.io", email: "p@x.io", name: "Priya", avatar_url: null, suggested_handle: "priya-n" } };
+  it("is the bannered card, with a way back to sign-in and the backdrop it is handed behind it", () => {
+    const html = onboardView(s, '<div class="cnpy-fr-bg"></div>');
+    expect(html).toContain("cnpy-orgs-card");
+    expect(html.indexOf("cnpy-fr-bg")).toBeLessThan(html.indexOf("cnpy-orgs-card"));
+    expect(html.indexOf("Choose how you'll appear.")).toBeGreaterThan(html.indexOf("cnpy-orgs-banner"));
+    expect(html).toMatch(/<button type="button" data-act="backToLogin" data-field="onbBack"[^>]*>Back<\/button>/);
+    expect(html).toContain("Enter Trov");
+    expect(onboardView(s)).not.toContain("cnpy-fr-bg");
+  });
+  it("came back from the welcome card: it edits the account — no way back, and Continue", () => {
+    const html = onboardView({ ...s, edit: { current: "priya-n" } });
+    expect(html).toContain("Step 1 of 2");
+    expect(html).not.toContain('data-act="backToLogin"');
+    expect(html).toMatch(/data-act="onbSubmit"[^>]*>Continue<\/button>/);
+    expect(onboardView({ ...s, edit: { current: "priya-n" }, submitting: true })).toContain("Saving…");
+  });
+});

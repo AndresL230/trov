@@ -1760,27 +1760,20 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    the window is its frame, so a first run never scrolls; only a long list of organizations does. */
 .cnpy-orgs { min-height:100vh; min-height:100dvh; box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:24px; }
 .cnpy-orgs-col { width:100%; max-width:660px; min-width:0; }
-/* Behind a first-run card: the app's outline, blurred and washed toward the page (ui.ts `appBackdrop`). */
-.cnpy-fr-bg { position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; background:var(--bg); }
-.cnpy-fr-app { position:absolute; inset:-16px; display:flex; filter:blur(4px); }
+/* Behind a first-run card: the app itself, loading (render.ts `firstRunBackdrop`), softened and washed
+   toward the page so the card in front of it is the one thing to read. */
+.cnpy-fr-bg { position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; user-select:none; background:var(--bg); }
+.cnpy-fr-bg > .cnpy-shell { filter:blur(2.5px); }
+/* The very first card (how you'll appear) is the one with a form to fill in: the app sits further back. */
+.cnpy-onb .cnpy-fr-bg > .cnpy-shell { filter:blur(6px); }
 .cnpy-fr-bg::after { content:""; position:absolute; inset:0;
-  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, #616acb 22%, transparent) 0%, transparent 72%), color-mix(in srgb, var(--bg) 26%, transparent); }
-.cnpy-fr-side { flex:none; width:248px; box-sizing:border-box; padding:34px 22px; display:flex; flex-direction:column; gap:15px; background:var(--surface); border-right:1px solid var(--border); }
-.cnpy-fr-side > b { display:block; width:92px; height:22px; margin-bottom:14px; background:#616acb; opacity:.85; }
-.cnpy-fr-side > i { display:block; height:10px; width:62%; background:var(--border-strong); }
-.cnpy-fr-side > i:nth-of-type(3n) { width:78%; } .cnpy-fr-side > i:nth-of-type(3n+1) { width:48%; }
-.cnpy-fr-side > u { display:block; height:8px; width:34%; margin-top:14px; background:var(--border); }
-.cnpy-fr-main { flex:1; min-width:0; padding:36px 40px; display:flex; flex-direction:column; gap:26px; }
-.cnpy-fr-top { display:flex; align-items:center; justify-content:space-between; }
-.cnpy-fr-top > i { display:block; width:210px; height:20px; background:var(--border-strong); }
-.cnpy-fr-top > b { display:block; width:112px; height:32px; background:#616acb; opacity:.8; }
-.cnpy-fr-cols { flex:1; display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:20px; align-content:start; }
-.cnpy-fr-col { display:flex; flex-direction:column; gap:12px; }
-.cnpy-fr-col > i { display:block; width:46%; height:10px; margin-bottom:4px; background:var(--border-strong); }
-.cnpy-fr-card { box-sizing:border-box; padding:14px; display:flex; flex-direction:column; gap:9px; background:var(--surface); border:1px solid var(--border); }
-.cnpy-fr-card > i { display:block; height:9px; width:84%; background:var(--border-strong); }
-.cnpy-fr-card > i + i { width:56%; background:var(--border); }
-.cnpy-fr-card > b { display:block; margin-top:auto; width:48px; height:14px; background:#616acb; opacity:.55; }
+  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, #616acb 20%, transparent) 0%, transparent 72%), color-mix(in srgb, var(--bg) 34%, transparent); }
+/* One step of a flow morphing into the next (transition.ts): the card keeps its name across both. */
+.cnpy-orgs-card { view-transition-name:first-run-card; }
+::view-transition-group(first-run-card) { animation-duration:.42s; animation-timing-function:cubic-bezier(.22,.9,.24,1); }
+/* The old and new faces keep their own size and are clipped by the moving box, so text never stretches. */
+::view-transition-old(first-run-card), ::view-transition-new(first-run-card) { height:100%; width:100%; object-fit:none; object-position:top center; overflow:clip; animation-duration:.3s; }
+::view-transition-group(first-run-card) { overflow:clip; }
 /* The backdrop and the card stack inside their own screen, so a dialog opened over it stays on top. */
 .cnpy-orgs, .cnpy-onb { isolation:isolate; }
 .cnpy-orgs-col, .cnpy-onb > .cnpy-orgs-col { position:relative; z-index:1; }
@@ -1789,8 +1782,6 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-orgs-body.cnpy-onb-body { display:grid; gap:18px; padding-top:22px; }
 .cnpy-onb-pair { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start; }
 @media (max-width:640px) {
-  .cnpy-fr-side { display:none; }
-  .cnpy-fr-main { padding:22px 16px; } .cnpy-fr-cols { grid-template-columns:repeat(2, minmax(0, 1fr)); }
   .cnpy-onb-pair { grid-template-columns:minmax(0, 1fr); }
 }
 .cnpy-orgs-card { box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
@@ -1835,9 +1826,12 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* THE GUIDED SETUP (welcome.ts, `#welcome`): the picker's page frame with a wider column — a step
    indicator, ONE step's body, and Back / forward under it. Every radius here is inline (the corners
    block scales it by value); the mark is a small rounded square like every dot in the app. */
-.cnpy-wel-col { max-width:680px; }
-.cnpy-wel-top { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; }
-.cnpy-wel-steps { display:flex; align-items:center; gap:6px; list-style:none; margin:30px 0 34px; padding:0; }
+.cnpy-wel-col { max-width:700px; }
+.cnpy-wel-top { position:relative; display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; }
+.cnpy-orgs-banner .cnpy-mutelink { color:rgba(255,255,255,.82) !important; }
+.cnpy-orgs-banner .cnpy-mutelink:hover { color:#fff !important; }
+.cnpy-orgs-body.cnpy-wel-body { padding-top:4px; }
+.cnpy-wel-steps { display:flex; align-items:center; gap:6px; list-style:none; margin:14px 0 22px; padding:0; }
 .cnpy-wel-step { display:flex; align-items:center; gap:6px; flex:1 1 0; min-width:0; }
 .cnpy-wel-step:first-child { flex:0 0 auto; }
 .cnpy-wel-step + .cnpy-wel-step::before { content:""; flex:1 1 12px; min-width:10px; height:1px; background:var(--border-strong); }
@@ -1858,10 +1852,10 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-wel-pulse { flex:none; width:8px; height:8px; margin:6px 5px 0; background:var(--fg-40); animation:cnpy-blink 1.4s ease-in-out infinite; }
 .cnpy-wel-places { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
 .cnpy-wel-place { display:flex; align-items:flex-start; gap:11px; width:100%; height:100%; box-sizing:border-box; padding:14px 16px; text-align:left; }
-.cnpy-wel-nav { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:28px; padding-top:18px; border-top:1px solid var(--border); }
+.cnpy-wel-nav { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .cnpy-wel .cnpy-sechead:first-child { margin-top:0; }
 @media (max-width: 640px) {
-  .cnpy-wel-steps { margin:22px 0 26px; }
+  .cnpy-wel-steps { margin:12px 0 18px; }
   /* Only the step on screen keeps its name; the others are their marks. */
   .cnpy-wel-step:not(.is-cur) .cnpy-wel-stepl { display:none; }
   .cnpy-wel-step:not(.is-cur) .cnpy-wel-stepb { padding:0 6px; }
