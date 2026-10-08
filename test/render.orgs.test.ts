@@ -305,10 +305,23 @@ describe("the org picker / first run", () => {
     // The create dialog opens over it.
     expect(render({ ...initialState(), view: "orgs", me: me([]), orgsUi: ui({ create: blankCreateOrg() }) })).toContain('data-overlay="orgs-create"');
   });
-  it("fits a phone: one column, the page padded 16px, an invitation's buttons on their own full-width row", () => {
-    expect(rules).toMatch(/@media \(max-width: 640px\) \{ \.cnpy-orgs \{ padding:max\(28px, env\(safe-area-inset-top\)\) 16px/);
+  it("fits a phone: one column, the card from the top of the page, an invitation's buttons on their own full-width row", () => {
+    expect(rules).toMatch(/@media \(max-width: 640px\) \{ \.cnpy-orgs \{ align-items:flex-start; padding:max\(16px, env\(safe-area-inset-top\)\) 12px/);
     expect(rules).toContain(".cnpy-orgs-inv > div:last-child { width:100%; }");
-    expect(rules).toContain(".cnpy-orgs-col { width:100%; max-width:620px; min-width:0; }");
+    expect(rules).toContain(".cnpy-orgs-col { width:100%; max-width:660px; min-width:0; }");
+  });
+  it("is one card in the middle of the window: the brand banner, what to do, who is signed in", () => {
+    const html = render({ ...initialState(), view: "orgs", me: me([]), myOrgs: { status: "ok", data: mine({ orgs: [] }) } });
+    const [banner, body, foot] = ["cnpy-orgs-banner", "cnpy-orgs-body", "cnpy-orgs-foot"].map((c) => html.indexOf(`class="${c}"`));
+    expect(banner).toBeGreaterThan(html.indexOf("cnpy-orgs-card"));
+    expect(body).toBeGreaterThan(banner);
+    expect(foot).toBeGreaterThan(body);
+    // The welcome and the mark are IN the banner; the sign-out is in the foot.
+    expect(html.slice(banner, body)).toContain("Welcome to Trov");
+    expect(html.slice(banner, body)).toContain("<svg");
+    expect(html.slice(foot)).toContain('data-act="signOut"');
+    // The window is the card's frame, so a first run does not scroll the page.
+    expect(rules).toMatch(/\.cnpy-orgs \{ min-height:100vh; min-height:100dvh; box-sizing:border-box; display:flex; align-items:center; justify-content:center;/);
   });
 });
 
