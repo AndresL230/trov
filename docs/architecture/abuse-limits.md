@@ -1,6 +1,6 @@
-# Abuse limits — what a stranger with a GitHub account cannot do
+# Abuse limits — what a stranger with a GitHub or Google account cannot do
 
-Since Phase 4 anyone with a GitHub account can sign in, and (issue #94) anyone signed in can create ONE Free organization they own (`plans.md` › Free; `DEFAULT_ORG_LIMIT = 1`) — anything more takes a superadmin, a grant, or a payment. This is everything that stands
+Since Phase 4 anyone with a GitHub account can sign in — and since open sign-up, anyone with a Google account whose address is verified — and (issue #94) anyone signed in can create ONE Free organization they own (`plans.md` › Free; `DEFAULT_ORG_LIMIT = 1`) — anything more takes a superadmin, a grant, or a payment. This is everything that stands
 between that and Trov being used to send mail, fill storage or look people up. Code: `src/platform/limits.ts`
 (every number), `src/notifications/resend.ts` (the From header). Tests: `test/abuse-limits.test.ts`.
 

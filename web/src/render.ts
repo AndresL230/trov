@@ -108,8 +108,8 @@ export interface AppState {
   /** `orgs` = signed in, but no org is open: the org picker (`/`, with no org or several). */
   /** `platform` = the superadmin's Platform area at `/platform/`, outside any org (platform.ts `platformPage`). */
   view: "auth" | "app" | "orgs" | "platform";
-  /** `nonmember` = a GitHub sign-in that was refused; `notinvited` = a Google account nobody invited. */
-  authStep: "login" | "verifying" | "nonmember" | "notinvited" | "onboard";
+  /** `nonmember` = a GitHub sign-in that was refused; `unverified` = a Google account whose address Google has not verified. */
+  authStep: "login" | "verifying" | "nonmember" | "unverified" | "onboard";
   /** The landing page's sign-in dialog (authStep "login" only). */
   signInOpen: boolean;
   /** Landing reveal keys that already played (landing-motion.ts records them). */
@@ -668,7 +668,7 @@ function authView(s: AppState): string {
   if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, seen: s.landingSeen });
   return `<div class="cnpy-authwrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
     ${s.authStep === "nonmember" ? nonmemberCard() : ""}
-    ${s.authStep === "notinvited" ? notInvitedCard(s.deniedEmail) : ""}
+    ${s.authStep === "unverified" ? unverifiedCard(s.deniedEmail) : ""}
     ${s.authStep === "verifying" ? verifyingCard() : ""}
     ${s.authStep === "onboard" ? onboardView(s.onboard) : ""}
   </div>`;
@@ -694,14 +694,15 @@ function nonmemberCard(): string {
   </div>`;
 }
 
-/** A Google account nobody invited. Google needs an invitation; a GitHub account never does. */
-function notInvitedCard(email: string | null): string {
+/** A Google account whose address Google has not verified — the one Google sign-in Trov refuses:
+ *  a sign-in is matched to a person by that address, so an unverified one is never trusted. */
+function unverifiedCard(email: string | null): string {
   return `<div style="width:400px;max-width:100%">
     <div${surface("padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center", { cls: "cnpy-authcard" })}>
       ${DENIED_SEAL}
       <div>
-        <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">This Google account hasn't been invited yet.</div>
-        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Signing in with Google needs an invitation. Ask an admin of your organization to invite <span style="font-family:var(--label);font-size:12.5px;overflow-wrap:anywhere">${esc(email ?? "your address")}</span>, then sign in again. A GitHub account can always sign in, and can create an organization.</div>
+        <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">Google hasn't verified this address yet.</div>
+        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Trov signs you in by the address Google confirms, and Google reports <span style="font-family:var(--label);font-size:12.5px;overflow-wrap:anywhere">${esc(email ?? "this address")}</span> as not verified. Verify it with Google and sign in again, or use another account.</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;padding:9px 14px 9px 9px;border:1px solid var(--border);border-radius:999px;max-width:100%">
         <div class="cnpy-av cnpy-av-anon" style="width:26px;height:26px;flex:none;border-radius:50%;${AVATAR};font-size:10px;font-weight:600;color:var(--fg-70)">${esc(initialsOf(email ?? "?"))}</div>

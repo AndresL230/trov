@@ -196,7 +196,7 @@ describe("signed out: sign in, then carry on to payment", () => {
     expect(start.text).toContain("Sign in to continue");
     expect(start.text).toContain('href="/auth/login"');
     // Honest about Google: it does not create an account.
-    expect(start.text).toContain("Sign in with GitHub: it creates your account. Google works only for an account that already exists.");
+    expect(start.text).toContain("Signing in with either one creates your account.");
     expect(stripe.calls).toEqual([]);
     const setCookie = start.headers.get("set-cookie") ?? "";
     expect(setCookie).toMatch(new RegExp(`^${RETURN_TO_COOKIE}=[^;]+; Max-Age=600; Path=/; HttpOnly; Secure; SameSite=Lax`));

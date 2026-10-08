@@ -185,8 +185,8 @@ Org settings › Members › **Invite someone** [`POST /api/o/:slug/invites`, `s
 
 - **By e-mail** (optionally with the person's name): Trov sends the invitation — it names the organization,
   the inviter and the role — and the pending row shows **Email sent** / **Email not sent** with the time and,
-  on a failure, the provider's reason. **Resend email** sends it again. A Google account can only sign in
-  once it is invited.
+  on a failure, the provider's reason. **Resend email** sends it again. The person signs in with GitHub or Google;
+  the invitation is matched to the address that provider verified.
 - **By GitHub login**: no e-mail; the person sees the invitation the next time they sign in with that
   account.
 
