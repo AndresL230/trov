@@ -255,6 +255,10 @@ export function setupChecklist(org: MyOrg, ui: OrgUi): string {
 
 // ── GENERAL ──────────────────────────────────────────────────────────────────
 
+/** General is a bento inside the tab's width (trov.css `.cnpy-org-gen`, the Settings bento's tiles):
+ *  image + name | slug | plan on the first row, the plan's limits across the page under them. It
+ *  folds by the room the tab has (a container query): two columns, then one. DOM order is the
+ *  folded order. */
 export function generalTab(org: MyOrg, ui: OrgUi): string {
   const s = ui.settings;
   if (!s.data) return sliceNote(s, "the org's settings", false, { form: true });
@@ -267,18 +271,18 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
        <div style="display:flex;gap:8px;margin-top:14px">${accentBtn(ui.nameSaving ? "Saving…" : "Save name", "orgNameSave", { disabled: !changed || ui.nameSaving, busy: ui.nameSaving })}${ui.nameDraft !== null && !ui.nameSaving ? quietBtn("Cancel", "orgNameCancel") : ""}</div>`
     : `<div style="${O_LABEL}">Name</div><div style="font-size:14px;margin-top:7px;overflow-wrap:anywhere">${esc(stored)}</div>`;
   return `${tabLead(`Created ${esc(relTime(s.data.org.created_at))} by <strong>${esc(s.data.org.created_by)}</strong> &middot; you are ${org.role === "member" ? "a" : "an"} ${roleChip(org.role)} here${canEdit ? "" : ". Only an admin or an owner can rename the org."}`)}
-    <div class="cnpy-org-general">
-    <section${surface("padding:18px 20px")}>
+    <div class="cnpy-org-gen-wrap"><div class="cnpy-org-gen${canEdit ? "" : " cnpy-org-gen--read"}">
+    <section${surface("", { cls: "cnpy-tile cnpy-org-gen-id" })} aria-label="Image and name">
       ${orgLogoSection({ name: stored, logo: s.data.org.logo, canEdit, ui: ui.logo, repo: ui.repos.data.find((r) => r.is_primary)?.repo_full_name ?? null })}
       ${nameRow}
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-        <div style="${O_LABEL}">Slug</div>
-        <div style="margin-top:7px"><code style="font-family:var(--code);font-size:12.5px;color:var(--fg);overflow-wrap:anywhere">${esc(s.data.org.slug)}</code></div>
-        <div style="${O_HELP}">The org's permanent address in links and in the API. It cannot be changed.</div>
-      </div>
+    </section>
+    <section${surface("", { cls: "cnpy-tile cnpy-org-gen-slug" })} aria-label="Slug">
+      <div style="${O_LABEL}">Slug</div>
+      <div style="margin-top:7px"><code style="font-family:var(--code);font-size:12.5px;color:var(--fg);overflow-wrap:anywhere">${esc(s.data.org.slug)}</code></div>
+      <div class="cnpy-tile-foot" style="${O_HELP};margin-top:auto;padding-top:12px">The org's permanent address in links and in the API. It cannot be changed.</div>
     </section>
     ${planBlock(ui.plan, org.role, ui.billing)}
-  </div>`;
+  </div></div>`;
 }
 
 // ── REPOSITORIES ─────────────────────────────────────────────────────────────

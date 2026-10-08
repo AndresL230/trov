@@ -99,10 +99,12 @@ export const RELEASES: Release[] = [
         "`createLanding` / `acceptLanding` (`web/src/org-picker.ts`): creating an organization lands on `#welcome` (was `#org`); accepting an invitation lands an owner or admin on `#welcome` and a member on `#welcome/agent` (were `#org` for an owner, My Work for anyone else) (#121)",
         "Members' invite form is `inviteSection` (`web/src/org-settings.ts`), rendered by the Members tab and by the setup's team step, so both obey the same seat gate (#121)",
       ],
-      fixed: [],
+      fixed: [
+        "Org settings › General lines up with the tab bar and the other tabs: its 640px column (`.cnpy-org-narrow`) is now a bento grid across the tab (`.cnpy-org-gen`: image + name, plan, slug, and the plan's limits as their own tile), folding to one column by container width (#122)",
+      ],
       removed: [],
     },
-    prs: [121],
+    prs: [121, 122],
   },
   // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
   {

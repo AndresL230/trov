@@ -174,6 +174,12 @@ describe("Org settings › General — the Plan block", () => {
     expect(planBlock({ status: "ok", data: view("team", { status: "past_due" }) }, "owner")).toContain(">Payment past due<");
   });
   it("loading and failed; and it is part of the General tab", () => {
+    // Two tiles of General's bento: Plan (name, billing, who changes it), then Limits (the rows).
+    const two = planBlock({ status: "ok", data: view() }, "owner");
+    expect([...two.matchAll(/<section class="cnpy-surface cnpy-tile (cnpy-org-gen-[a-z]+)"/g)].map((m) => m[1])).toEqual(["cnpy-org-gen-plan", "cnpy-org-gen-limits"]);
+    expect(two.indexOf('id="org-plan-t"')).toBeLessThan(two.indexOf("cnpy-org-gen-limits"));
+    expect(two.indexOf('id="org-limits-t"')).toBeLessThan(two.indexOf('class="cnpy-plan-rows"'));
+    expect(two.slice(0, two.indexOf("cnpy-org-gen-limits"))).not.toContain("cnpy-plan-row");
     expect(planBlock({ status: "loading", data: null }, "owner")).toContain("Loading the plan");
     expect(planBlock({ status: "error", data: null }, "owner")).toContain("Couldn't load the plan");
     const ui = orgUi(view(), { settings: { status: "ok", data: { org: { slug: "acme", name: "Acme", created_at: "2026-10-01T00:00:00.000Z", created_by: "ines" }, can_edit: true } } });

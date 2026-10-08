@@ -19,7 +19,7 @@ import {
 import { billingDate, isPast, type PurchasablePlan } from "@shared/billing";
 import type { OrgRole } from "@shared/orgs";
 import { esc, surface } from "./ui";
-import { O_ERR, O_HELP, chip, orgHead, quietBtn, sliceNote, type OrgSlice } from "./org-ui";
+import { O_ERR, O_HELP, O_LABEL, chip, quietBtn, sliceNote, type OrgSlice } from "./org-ui";
 
 /** The plan as the state `planRefusal` reads: its resolved limits stand in for plan + overrides. */
 const stateOf = (v: OrgPlanView) => ({ plan: v.plan, overrides: v.entitlements, status: v.status, source: v.source });
@@ -72,7 +72,7 @@ function limitRow(v: OrgPlanView, key: LimitKey): string {
   // A monthly allowance that is used up (AI summaries) is not "over": the row says what happens instead.
   const spent = d.period && d.atCap && cap !== null && v.usage[key] >= cap ? `<div data-limit-spent style="font-size:12px;line-height:1.45;color:var(--fg-70);margin-top:3px">${esc(d.atCap)}</div>` : "";
   return `<li class="cnpy-plan-row" data-limit="${key}"${over ? ' data-over="1"' : ""}>
-    <div style="flex:1 1 200px;min-width:0">
+    <div class="cnpy-plan-what">
       <div style="font-size:13px;font-weight:500;color:var(--fg)">${esc(d.label)}${d.per === "person" ? ` <span style="font-weight:400;color:var(--fg-40)">per person</span>` : ""}</div>
       <div style="font-size:12px;line-height:1.45;color:var(--fg-40);margin-top:1px">${esc(d.counts)}</div>${spent}
     </div>
@@ -134,13 +134,14 @@ function billingPart(v: OrgPlanView, role: OrgRole, b: OrgBillingUi): BillingPar
 }
 
 /**
- * Org settings › General › Plan. The plan's name and what it is for; for a paid org how it pays and
- * (its owner) the ways to change that; each limit with the org's use of it; what being over a limit
- * means (nothing is removed — additions wait); and who changes the plan.
+ * Org settings › General › Plan, as TWO tiles of General's bento (org-settings.ts `generalTab`).
+ * The Plan tile: the plan's name and what it is for; for a paid org how it pays and (its owner) the
+ * ways to change that; who changes the plan. The Limits tile: each limit with the org's use of it,
+ * and what being over a limit means (nothing is removed — additions wait).
  */
 export function planBlock(s: OrgSlice<OrgPlanView | null>, role: OrgRole, b: OrgBillingUi = initialOrgBillingUi()): string {
-  const head = orgHead("Plan", "", null, "org-plan-t");
-  if (!s.data) return `<section aria-labelledby="org-plan-t" style="margin-top:22px">${head}${sliceNote(s, "the plan", false)}</section>`;
+  const eyebrow = (title: string, id: string): string => `<h2 id="${id}" style="${O_LABEL};margin:0 0 12px">${title}</h2>`;
+  if (!s.data) return `<section${surface("", { cls: "cnpy-tile cnpy-org-gen-limits" })} aria-labelledby="org-plan-t">${eyebrow("Plan", "org-plan-t")}${sliceNote(s, "the plan", false)}</section>`;
   const v = s.data;
   const overNames = v.over.map(limitNoun);
   const over = v.status === "canceled"
@@ -150,17 +151,18 @@ export function planBlock(s: OrgSlice<OrgPlanView | null>, role: OrgRole, b: Org
       : "";
   const pay = billingPart(v, role, b);
   const foot = pay ? pay.foot : role === "owner" ? `To change your plan, contact Trov.` : `An owner of this organization can ask Trov to change the plan.`;
-  return `<section aria-labelledby="org-plan-t" data-org-plan="${v.plan}"${pay ? ` data-org-billing="${pay.state}"` : ""} style="margin-top:22px">
-    ${head}
-    <div${surface("padding:18px 20px")}>
+  return `<section${surface("", { cls: "cnpy-tile cnpy-org-gen-plan" })} aria-labelledby="org-plan-t" data-org-plan="${v.plan}"${pay ? ` data-org-billing="${pay.state}"` : ""}>
+      ${eyebrow("Plan", "org-plan-t")}
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-size:15px;font-weight:600;letter-spacing:-0.005em">${esc(v.name)}</span>${STATUS_CHIP[v.status]}${pay?.chip ?? ""}</div>
       <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:2px">${esc(v.description)}</div>
       ${pay ? `<p data-plan-billing style="margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--fg-70)">${esc(pay.line)}</p>` : ""}
       ${pay?.actions ? `<div class="cnpy-plan-actions">${pay.actions}</div>` : ""}
       ${pay && b.error ? `<div role="alert" style="${O_ERR}">${esc(b.error)}</div>` : ""}
+      <div class="cnpy-tile-foot" style="${O_HELP};margin-top:auto;padding-top:14px">${esc(foot)}</div>
+    </section>
+    <section${surface("", { cls: "cnpy-tile cnpy-org-gen-limits" })} aria-labelledby="org-limits-t">
+      ${eyebrow("Limits", "org-limits-t")}
       ${over}
       <ul class="cnpy-plan-rows">${LIMIT_KEYS.map((k) => limitRow(v, k)).join("")}</ul>
-      <div style="${O_HELP};margin-top:14px">${esc(foot)}</div>
-    </div>
-  </section>`;
+    </section>`;
 }

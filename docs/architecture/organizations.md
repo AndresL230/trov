@@ -238,6 +238,8 @@ One place: **Org settings**, opened from the switcher at the top of the sidebar 
 | Notifications | the e-mail digests: which exist and their default cadence, send hour, timezone and sender name, preview, test send, the outbox [`web/src/notifications.ts`] | admin, owner |
 | General | the image; the name; the slug, read-only; the **Plan** — what it includes and the org's use of each limit [`web/src/org-plan.ts`] | everyone (read), admin+ (image, rename); nobody changes the plan here |
 
+General is a **bento** inside the tab's width (`.cnpy-org-gen` in `trov.css`, Settings' `.cnpy-tile`s on 12 columns; `generalTab` and `planBlock`), so its outer edges are the tab bar's and every other tab's: image + name is the tall tile on the left, Plan (name, billing, who changes it) and Slug the two short ones beside it, and the plan's **Limits** a tile across the page under them, three to a line. A read-only member has no field to make the first tile tall, so the three sit in one row (`.cnpy-org-gen--read`). It folds by the room the TAB has (a container query, as Settings does): under 900px the limits go two to a line, under 760px image + name takes a row and Slug | Plan the next, under 520px one column in DOM order. No tab narrows its own blocks (`test/render.org-settings.test.ts` walks them); a control inside a tile keeps its own measure.
+
 A person's own digest preferences stay in their Settings. The daily queue of things an agent could not
 place is not administration: it is **Triage › Unplaced** in the sidebar (`#unplaced`). Old links —
 `#maintenance`, `#maintenance/identity`, `#maintenance/people` — still open the right place

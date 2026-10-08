@@ -857,12 +857,35 @@ describe("the hierarchy every tab keeps (org-ui.ts)", () => {
       const html = page(tab, role);
       const top = children(html, html.indexOf(">", html.indexOf('role="tabpanel"')) + 1);
       expect(top.length, `${role} ${tab}`).toBeGreaterThan(0);
-      for (const el of top) {
-        expect(narrow(el.tag), `${role} ${tab}: ${el.tag.slice(0, 80)}`).toBeNull();
-        // A wrapper with no surface of its own (General's): its blocks are the tab's blocks.
-        if (/^<div class="cnpy-org-[\w-]+">$/.test(el.tag)) for (const inner of children(html, el.at)) expect(narrow(inner.tag), `${role} ${tab}: ${inner.tag.slice(0, 80)}`).toBeNull();
-      }
+      // A wrapper with no surface of its own (General's container and its grid): its blocks are the tab's.
+      const check = (els: { tag: string; at: number }[]): void => {
+        for (const el of els) {
+          expect(narrow(el.tag), `${role} ${tab}: ${el.tag.slice(0, 80)}`).toBeNull();
+          if (/^<div class="cnpy-org-[\w -]+">$/.test(el.tag)) check(children(html, el.at));
+        }
+      };
+      check(top);
     }
+  });
+  it("General is a bento inside that width: four tiles on one grid that folds to one column", () => {
+    const tiles = (html: string): string[] => [...panel(html).matchAll(/<section class="cnpy-surface cnpy-tile (cnpy-org-gen-[a-z]+)"/g)].map((m) => m[1]);
+    // DOM order is the folded (one-column) order. (This fixture's plan has not been read: its tile is the
+    // full-width one, holding the skeleton. The Plan and Limits tiles are in render.plans.test.ts.)
+    expect(tiles(page("general"))).toEqual(["cnpy-org-gen-id", "cnpy-org-gen-slug", "cnpy-org-gen-limits"]);
+    expect(tiles(page("general", "member"))).toEqual(["cnpy-org-gen-id", "cnpy-org-gen-slug", "cnpy-org-gen-limits"]);
+    expect(page("general")).toContain('<div class="cnpy-org-gen-wrap"><div class="cnpy-org-gen">');
+    // Read-only has no field or button to make the first tile tall: its own arrangement.
+    const readOnly = fullUi({ settings: ok({ org: { slug: "acme", name: "Acme Robotics", created_at: "2026-10-01T10:00:00.000Z", created_by: "andres" }, can_edit: false }) });
+    expect(tabView(readOnly, "general", "member")).toContain('<div class="cnpy-org-gen-wrap"><div class="cnpy-org-gen cnpy-org-gen--read">');
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ");
+    // It folds by the room the TAB has (a container query), like Settings' bento.
+    expect(rules).toContain(".cnpy-org-gen-wrap { container:cnpy-org-gen / inline-size; }");
+    expect(rules).toMatch(/\.cnpy-org-gen \{ display:grid; grid-template-columns:repeat\(12,minmax\(0,1fr\)\);/);
+    expect(rules).toContain(".cnpy-org-gen-limits { grid-column:1 / -1; }");
+    expect(rules).toMatch(/@container cnpy-org-gen \(max-width:759px\) \{ \.cnpy-org-gen-id \{ grid-column:1 \/ -1; grid-row:auto; \}/);
+    expect(rules).toMatch(/@container cnpy-org-gen \(max-width:519px\) \{ \.cnpy-org-gen \.cnpy-org-gen-slug, \.cnpy-org-gen \.cnpy-org-gen-plan \{ grid-column:1 \/ -1; \}/);
+    // An input never stretches across a wide tile.
+    expect(rules).toContain(".cnpy-org-gen .cnpy-org-field { max-width:600px; }");
   });
   it("the styles: a lead, an eyebrow row and an opening row, with the phone layout", () => {
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ");
