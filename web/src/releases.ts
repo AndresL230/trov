@@ -96,6 +96,7 @@ export const RELEASES: Release[] = [
         "\"Open the guided setup\" on Org settings' checklist and on Get Started; \"Guided setup\" in quick search (#121)",
       ],
       changed: [
+        "Org settings › Notifications: the digests are a grid of tiles, two to a line (`.cnpy-digests`), one to a line at phone width; each tile holds the name, its org-wide switch, what it carries and the default cadence (#122)",
         "`createLanding` / `acceptLanding` (`web/src/org-picker.ts`): creating an organization lands on `#welcome` (was `#org`); accepting an invitation lands an owner or admin on `#welcome` and a member on `#welcome/agent` (were `#org` for an owner, My Work for anyone else) (#121)",
         "Members' invite form is `inviteSection` (`web/src/org-settings.ts`), rendered by the Members tab and by the setup's team step, so both obey the same seat gate (#121)",
       ],

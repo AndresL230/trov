@@ -198,14 +198,16 @@ export function notifDropdowns(p: Pick<NotifAdminProps, "policy" | "settings">):
   return [...p.policy.map(cadenceDropdown), sched.hour, sched.tz];
 }
 
+/** One digest as a tile of the Digests grid: the name and its org-wide switch on top, what it
+ *  carries, and the default cadence pinned to the tile's foot so a row of tiles lines up. */
 function policyRow(k: PolicyKindView, dd: DropdownUi): string {
-  return `<div class="cnpy-org-row" style="align-items:center;gap:10px 16px">
-    ${switchBtn("policyToggle", k.id, k.enabled).replace("<button ", `<button aria-label="${attr(`${k.label}: send org-wide`)}" `)}
-    <div style="flex:1 1 220px;min-width:0">
-      <div style="font-size:13.5px;font-weight:600;color:${k.enabled ? "var(--fg)" : "var(--fg-55)"}">${esc(k.label)}</div>
-      <div style="font-size:12px;color:var(--fg-40);margin-top:1px">${esc(k.description)}</div>
+  return `<div${surface("padding:16px;display:flex;flex-direction:column;gap:6px;min-width:0", { cls: "cnpy-digest" })} data-digest="${attr(k.id)}">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="flex:1;min-width:0;font-size:13.5px;font-weight:600;overflow-wrap:anywhere;color:${k.enabled ? "var(--fg)" : "var(--fg-55)"}">${esc(k.label)}</div>
+      ${switchBtn("policyToggle", k.id, k.enabled).replace("<button ", `<button aria-label="${attr(`${k.label}: send org-wide`)}" `)}
     </div>
-    ${dropdown(cadenceDropdown(k), dd)}
+    <div style="font-size:12px;line-height:1.5;color:var(--fg-40)">${esc(k.description)}</div>
+    <div style="margin-top:auto;padding-top:10px">${dropdown(cadenceDropdown(k), dd)}</div>
   </div>`;
 }
 
@@ -253,7 +255,7 @@ export function notificationsAdminSections(p: NotifAdminProps): string {
   const lead = tabLead(`${p.policy.length ? `<strong>${enabled} of ${p.policy.length}</strong> digests on` : "Loading the digests…"}${s ? ` &middot; sent at <strong>${String(s.send_hour).padStart(2, "0")}:00</strong> ${esc(s.timezone)} as <strong>${esc(senderNamePart(s.from_address))}</strong>` : ""}${failed ? ` &middot; <span data-outbox-failed style="color:var(--red);font-weight:500">${failed} recent ${failed === 1 ? "send" : "sends"} failed</span>` : ""}. Each person picks their own cadence in Settings.`);
 
   const policy = p.policy.length
-    ? `<div${surface("overflow:hidden")}>${p.policy.map((k) => policyRow(k, dd)).join("")}</div>`
+    ? `<div class="cnpy-digests">${p.policy.map((k) => policyRow(k, dd)).join("")}</div>`
     : skRows("notif-policy", "Loading policy…", 4, { trail: 150 });
 
   const sched = scheduleDropdowns(s);
