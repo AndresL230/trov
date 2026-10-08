@@ -11,11 +11,13 @@ export const FAST_METRICS = ["health_up", "health_ms"];
 export const FAST_KINDS = ["check"];
 export const FAST_RETENTION_DAYS = 45;
 /** Hourly usage series — Cloudflare analytics (`cf_*`), and the Railway
- *  (`rw_*`) and active-user (`active_users_*`) gauges later tasks add. The Usage
- *  tab reads 30 days at most, so 100 days is ample; unbounded, two environments
- *  add ~35,000 rows a year. GLOB, not LIKE: in LIKE `_` is itself a wildcard
- *  (`cf_%` would also match `cfx…`), and GLOB is case-sensitive like the names. */
-const USAGE_METRIC_GLOBS = ["cf_*", "rw_*", "active_users_*"];
+ *  (`rw_*`) and active-user (`active_users_*`) gauges later tasks add, and the
+ *  hosting providers' normalised points (`hx_*`, shared/hosting.ts — one per
+ *  part per metric per complete hour). The Usage tab reads 30 days at most, so
+ *  100 days is ample; unbounded, two environments add ~35,000 rows a year. GLOB,
+ *  not LIKE: in LIKE `_` is itself a wildcard (`cf_%` would also match `cfx…`),
+ *  and GLOB is case-sensitive like the names. */
+const USAGE_METRIC_GLOBS = ["cf_*", "rw_*", "active_users_*", "hx_*"];
 export const USAGE_RETENTION_DAYS = 100;
 /** Sapling's product metrics (`sap_c_*` / `sap_t_*`, src/repo/poll.ts) are the
  *  widest hourly series by far — up to 168 metrics per environment — and the
@@ -42,6 +44,11 @@ export const PRODUCT_GLOB_SQL = `metric GLOB ${globLiteral(PRODUCT_METRIC_GLOB)}
 export const PRODUCT_HOURLY_RETENTION_DAYS = 7;
 export const PRODUCT_DAILY_RETENTION_DAYS = 100;
 export const MIDNIGHT_TAIL = "T00:00:00.000Z";
+/** `hosting_deploys` rows (0048_hosting_providers) older than this — by the provider's own creation
+ *  instant — are pruned. The dashboard reads 90 days of them (`hostingReads`); the rest is margin for the
+ *  setup screen and for an agent asking what shipped last quarter. A deploy row is an UPSERT, not a point:
+ *  a provider moves its state, so it is never first-write-wins and never in `repo_metrics`. */
+export const HOSTING_DEPLOY_RETENTION_DAYS = 180;
 /** A bound on `productReadings`' midnight list — it is one bound parameter each. */
 const MAX_MIDNIGHTS = 62;
 /** One D1 batch holds at most this many statements — see `putMetrics`. */
@@ -275,4 +282,93 @@ export async function latestHealth(ctx: TenantContext): Promise<Map<string, { at
          FROM repo_metrics WHERE org_id = ? AND metric IN ('health_up', 'health_ms')
      ) WHERE rn = 1`, ctx.orgId);
   return new Map(rows.map((r) => [`${r.metric}:${r.env}:${r.part}`, { at: r.at, value: r.value }]));
+}
+
+// ── hosting providers (0048_hosting_providers) ───────────────────────────────
+
+/** One `hosting_poll_state` row, as the dashboard reads it. `covered_*` is the contiguous interval the
+ *  part's polls have looked at; `unavailable` is the JSON list the last successful poll reported. */
+export interface HostingPollStateRow {
+  env: string; part: string; provider: string;
+  polled_at: string; status: "ok" | "failed" | "skipped"; detail: string | null; last_ok_at: string | null;
+  covered_from: string | null; covered_to: string | null; unavailable: string;
+}
+/** One `hosting_deploys` row, as the dashboard reads it (`by` is the `actor` column, `at` its `created_at`). */
+export interface HostingDeployRow {
+  env: string; part: string; provider: string;
+  id: string; state: string; target: string | null; sha: string | null; branch: string | null; message: string | null;
+  by: string | null; at: string; ready_at: string | null; url: string | null; inspect_url: string | null;
+}
+export interface HostingReads {
+  states: HostingPollStateRow[];
+  /** Per (env, part, provider) the newest `perPart`, NEWEST FIRST. */
+  deploys: HostingDeployRow[];
+  /** The org-wide (`scope = ''`) `org_integration_config` of every kind, by kind — NOT a secret (the
+   *  secrets are `org_secrets`, which this never names): a provider's console link is built from it. */
+  config: Map<string, Record<string, string>>;
+}
+
+const jsonRecord = (text: string | null): Record<string, unknown> => {
+  try {
+    const v = JSON.parse(text ?? "") as unknown;
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  } catch { return {}; }
+};
+const strOrNull = (v: unknown): string | null => (typeof v === "string" ? v : null);
+
+/**
+ * Everything the Repo dashboard's `providers` section reads besides metric points — ONE statement, three
+ * `UNION ALL` arms keyed by `src`, each row's payload packed into one JSON column so the arms share a shape:
+ *   state   every part's last poll (`hosting_poll_state` — one row per part, so a few rows);
+ *   deploy  the newest `perPart` deploys of each (env, part, provider) created at or after `sinceIso`
+ *           (`hosting_deploys`, a window over `idx_hosting_deploys_part`);
+ *   config  the org-wide provider settings (`org_integration_config`, scope '') — what a console link is
+ *           built from. Read HERE, by a tenant statement, rather than through src/data/secrets.ts's
+ *           `getIntegrationConfig`: the projection is reachable from src/mcp.ts, and nothing reachable from
+ *           there may import the decrypt path (test/secrets.mcp.test.ts). It is configuration, not a secret.
+ * The metric points themselves ride `metricsSince` (the Usage read) — so the whole section costs the render
+ * this one statement beyond the parts list. An unparseable bound reads no deploys rather than all of them.
+ */
+export async function hostingReads(ctx: TenantContext, sinceIso: string, perPart: number): Promise<HostingReads> {
+  const since = normaliseAt(sinceIso) ?? "9999";
+  const rows = await all<{ src: string; a: string; b: string; c: string; j: string | null }>(ctx,
+    `SELECT 'state' AS src, env AS a, part AS b, provider AS c,
+            json_object('polled_at', polled_at, 'status', status, 'detail', detail, 'last_ok_at', last_ok_at,
+                        'covered_from', covered_from, 'covered_to', covered_to, 'unavailable', unavailable) AS j
+       FROM hosting_poll_state WHERE org_id = ?
+     UNION ALL
+     SELECT 'deploy', env, part, provider, j FROM (
+       SELECT env, part, provider,
+              json_object('id', deploy_id, 'state', state, 'target', target, 'sha', sha, 'branch', branch, 'message', message,
+                          'by', actor, 'at', created_at, 'ready_at', ready_at, 'url', url, 'inspect_url', inspect_url) AS j,
+              ROW_NUMBER() OVER (PARTITION BY env, part, provider ORDER BY created_at DESC, id DESC) AS rn
+         FROM hosting_deploys WHERE org_id = ? AND created_at >= ?
+     ) WHERE rn <= ?
+     UNION ALL
+     SELECT 'config', kind, scope, '', config FROM org_integration_config WHERE org_id = ? AND scope = ''`,
+    ctx.orgId, ctx.orgId, since, perPart, ctx.orgId);
+  const out: HostingReads = { states: [], deploys: [], config: new Map() };
+  for (const r of rows) {
+    const j = jsonRecord(r.j);
+    if (r.src === "state") {
+      const status = j.status === "ok" || j.status === "failed" || j.status === "skipped" ? j.status : null;
+      if (!status || typeof j.polled_at !== "string") continue;
+      out.states.push({
+        env: r.a, part: r.b, provider: r.c, polled_at: j.polled_at, status, detail: strOrNull(j.detail), last_ok_at: strOrNull(j.last_ok_at),
+        covered_from: strOrNull(j.covered_from), covered_to: strOrNull(j.covered_to), unavailable: strOrNull(j.unavailable) ?? "[]",
+      });
+    } else if (r.src === "deploy") {
+      if (typeof j.id !== "string" || typeof j.state !== "string" || typeof j.at !== "string") continue;
+      out.deploys.push({
+        env: r.a, part: r.b, provider: r.c, id: j.id, state: j.state, target: strOrNull(j.target), sha: strOrNull(j.sha),
+        branch: strOrNull(j.branch), message: strOrNull(j.message), by: strOrNull(j.by), at: j.at, ready_at: strOrNull(j.ready_at),
+        url: strOrNull(j.url), inspect_url: strOrNull(j.inspect_url),
+      });
+    } else if (r.src === "config") {
+      out.config.set(r.a, Object.fromEntries(Object.entries(j).filter((e): e is [string, string] => typeof e[1] === "string")));
+    }
+  }
+  // The arms come back in no promised order: newest first within each part, the order the DTO carries.
+  out.deploys.sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
+  return out;
 }

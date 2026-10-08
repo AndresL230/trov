@@ -62,7 +62,7 @@ interface Allow { file: string; fn: string; tables?: string[]; why: string }
 const PLATFORM_ALLOW: Allow[] = [
   // The cross-org retention sweeps (§4.4): write-only, bounded by age, run by the cron for every org.
   { file: "src/auth/oauth.ts", fn: "pruneOAuth", tables: ["oauth_grants", "oauth_codes"], why: "retention sweep, cross-org and write-only" },
-  { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics"], why: "retention sweep, cross-org and write-only" },
+  { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics", "hosting_deploys"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "expireDueHandoffs", tables: ["handoffs"], why: "retention sweep, cross-org and write-only (§4.4)" },
   { file: "src/platform/sweeps.ts", fn: "pruneSyncRuns", tables: ["sync_runs"], why: "retention sweep, cross-org and write-only: Sync GitHub run records past 90 days" },
   // Bearer credentials are looked up by HASH before any org is known: the row is what names the
@@ -90,9 +90,13 @@ const PLATFORM_ALLOW: Allow[] = [
   // Background work is per org (§8.3, §8.5): the cron's dispatcher lists its units — (org, environment)
   // and org-with-a-primary-repo — and a webhook delivery finds its org by hook id, BEFORE any org is
   // known. Ids, an environment key and a repo name only; everything after runs as that org's tenant.
-  { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments", "org_github_installations"], why: "the cron's unit lists, the webhook's hook lookup and the GitHub App's installation → org lookup — ids and a repo name, no content, no secret" },
+  { file: "src/platform/jobs.ts", fn: "*", tables: ["org_repos", "org_environments", "org_github_installations", "org_hosting_connections"], why: "the cron's unit lists, the webhook's hook lookup, and the installation → org lookups of the GitHub App and of the hosting providers (the uninstall notice; the connect callback's one-org-per-installation check) — ids, a scope and a repo name, no content, no secret" },
   // The superadmin's org list says which GitHub account each org's App installation is on (0043_github_app): a name.
   { file: "src/platform/repo.ts", fn: "listPlatformOrgs", tables: ["org_github_installations"], why: "the superadmin's org list: the GitHub account an org is connected through — a name, no token exists in the table" },
+  // The `hosting` job's units (src/repo/cron.ts, :40): one per (org, environment, STORED part), with the
+  // part's provider id — what the unit's subrequest cost is looked up by. Keys and a provider id only;
+  // the part's settings are read again by the unit, as that org's system tenant.
+  { file: "src/platform/jobs.ts", fn: "listPartUnits", tables: ["org_environment_parts"], why: "the hosting job's unit list — env / part keys and a provider id, no settings, no secret" },
   // Removing a member revokes that person's tokens for the org in the same batch as the membership row.
   { file: "src/orgs/repo.ts", fn: "removeMember", tables: ["mcp_tokens", "oauth_grants"], why: "member removal revokes the person's credentials for that org, atomically" },
 ];

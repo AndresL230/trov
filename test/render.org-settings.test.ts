@@ -27,7 +27,8 @@ const HOOK = "hook_0123456789abcdef0123456789abcdef01234567";
 const org = (role: OrgRole = "owner"): MyOrg => ({ slug: "acme", name: "Acme Robotics", role });
 function integ(kind: IntegrationKind, o: Partial<IntegrationDTO> = {}): IntegrationDTO {
   const scope_type = kind === "github_webhook" ? "repo" : kind === "railway" || kind === "metrics_endpoint" ? "environment" : "org";
-  const label = { github_token: "GitHub token", github_webhook: "GitHub webhook secret", cloudflare_analytics: "Cloudflare analytics", railway: "Railway project token", metrics_endpoint: "App metrics endpoint" }[kind];
+  const label = { github_token: "GitHub token", github_webhook: "GitHub webhook secret", cloudflare_analytics: "Cloudflare analytics", railway: "Railway project token", metrics_endpoint: "App metrics endpoint",
+    vercel: "Vercel connection", render: "Render API key", netlify: "Netlify connection", fly: "Fly.io token", aws: "AWS role" }[kind];
   return {
     kind, scope: scope_type === "org" ? "" : scope_type === "repo" ? HOOK : "staging", scope_type,
     scope_label: scope_type === "org" ? null : scope_type === "repo" ? "acme/web" : "Staging",

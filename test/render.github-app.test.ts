@@ -30,7 +30,8 @@ const repo = (name: string, o: Partial<OrgRepoDTO> = {}): OrgRepoDTO => ({
 });
 function integ(kind: IntegrationKind, o: Partial<IntegrationDTO> = {}): IntegrationDTO {
   const scope_type = kind === "github_webhook" ? "repo" : kind === "railway" || kind === "metrics_endpoint" ? "environment" : "org";
-  const label = { github_token: "GitHub token", github_webhook: "GitHub webhook secret", cloudflare_analytics: "Cloudflare analytics", railway: "Railway project token", metrics_endpoint: "App metrics endpoint" }[kind];
+  const label = { github_token: "GitHub token", github_webhook: "GitHub webhook secret", cloudflare_analytics: "Cloudflare analytics", railway: "Railway project token", metrics_endpoint: "App metrics endpoint",
+    vercel: "Vercel connection", render: "Render API key", netlify: "Netlify connection", fly: "Fly.io token", aws: "AWS role" }[kind];
   return {
     kind, scope: scope_type === "repo" ? HOOK : "", scope_type, scope_label: scope_type === "repo" ? "acme-gh/web" : null, label, description: `What ${label} is used for.`, how_to: "How.",
     configured: false, legacy_fallback: false, expected: true, hint_last4: "", created_by: null, created_at: null, rotated_at: null, last_used_at: null, last_error: null, config: {}, config_fields: [],

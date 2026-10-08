@@ -277,8 +277,9 @@ const parseObject = (json: string): Record<string, unknown> => {
 /**
  * The org's recent audit rows, newest first: this module's secret trail (`org_audit`) merged with the
  * repository / environment changes src/integrations/settings.ts records in `org_admin_audit` — and the
- * GitHub App's (`github.*`, src/github-app/store.ts) — (0042_organizations —
- * `org_audit.action` has a CHECK that admits only the five secret actions). One list, the way
+ * GitHub App's (`github.*`, src/github-app/store.ts) and the hosting changes src/hosting/ records there
+ * (`part.*`, `hosting.*` — 0048_hosting_providers) — (0042_organizations — `org_audit.action` has a CHECK
+ * that admits only the five secret actions). One list, the way
  * `GET /api/platform/audit` merges the same two tables; ids are `s<n>` / `a<n>`. Rows of one batch share
  * their `at`: there the secret rows come first (a removed environment's secret deletions, then the
  * removal), each trail in its own id order.
@@ -289,7 +290,7 @@ export async function listOrgAudit(ctx: TenantContext, limit = 50): Promise<OrgA
        SELECT 's' || s.id AS id, s.actor, s.action, s.target, s.detail, s.at, s.id AS n, 1 AS secret FROM org_audit s WHERE s.org_id = ?
        UNION ALL
        SELECT 'a' || a.id AS id, a.actor, a.action, a.target, a.detail, a.at, a.id AS n, 0 AS secret FROM org_admin_audit a
-        WHERE a.org_id = ? AND (a.action LIKE 'repo.%' OR a.action LIKE 'environment.%' OR a.action LIKE 'github.%')
+        WHERE a.org_id = ? AND (a.action LIKE 'repo.%' OR a.action LIKE 'environment.%' OR a.action LIKE 'github.%' OR a.action LIKE 'part.%' OR a.action LIKE 'hosting.%')
      ) ORDER BY at DESC, secret DESC, n DESC LIMIT ?`, ctx.orgId, ctx.orgId, limit);
   return rows.map(({ n: _n, secret: _secret, ...r }) => ({ ...r, detail: parseObject(r.detail) }));
 }
@@ -378,6 +379,34 @@ export async function rotateSecret(ctx: TenantContext, kind: IntegrationKind, sc
 }
 
 /**
+ * The statements that STORE `value` as the org's secret for (kind, scope) — a set when none is stored, a
+ * rotate otherwise (one upsert either way, so a set that raced another lands as the rotate it is) — with
+ * its `secret.set` / `secret.rotate` audit row and, when given, the integration's `config` (+ its audit row),
+ * for a caller that must write them in ITS OWN batch beside another row: a hosting install binds its
+ * connection row and its credential atomically (src/hosting/connections.ts), so a lost race for the
+ * installation (a UNIQUE violation on that row) stores nothing. Admin+, the value checked like `setSecret`'s.
+ */
+export async function secretPutStmts(
+  ctx: TenantContext, kind: IntegrationKind, scope: string, value: string, config?: IntegrationConfig, at: string = nowIso()
+): Promise<Stmt[]> {
+  requireRole(ctx, "admin");
+  const problem = secretValueProblem(kind, value);
+  if (problem) throw new SecretValueError(problem);
+  const existed = (await getSecretMeta(ctx, kind, scope)) !== null;
+  const dek = await activeDek(ctx);
+  const sealed = await seal(dek.key, secretAad(ctx.orgId, kind, scope), value);
+  const hint = hintOf(value);
+  return [
+    stmt(ctx, `INSERT INTO org_secrets (org_id, kind, scope, ciphertext, iv, key_version, hint_last4, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(org_id, kind, scope) DO UPDATE SET ciphertext = excluded.ciphertext, iv = excluded.iv, key_version = excluded.key_version,
+                 hint_last4 = excluded.hint_last4, rotated_at = excluded.created_at, last_error = NULL`,
+      ctx.orgId, kind, scope, sealed.ciphertext, sealed.iv, dek.version, hint, ctx.userId, at),
+    auditStmt(ctx, existed ? "secret.rotate" : "secret.set", targetOf(kind, scope), { hint_last4: hint, key_version: dek.version }, at),
+    ...(config ? configStmts(ctx, kind, scope, config, at) : []),
+  ];
+}
+
+/**
  * The statements that delete each of `targets` that is actually stored, each with its `secret.delete`
  * audit row — for a caller that removes secrets inside its OWN batch (deleting an environment or a
  * repo deletes its secrets with it, §8.7.3). Empty when none is stored.
@@ -396,6 +425,26 @@ export async function secretDeleteStmts(
     );
   }
   return out;
+}
+
+/**
+ * `secretDeleteStmts` for ONE target, for the provider-side revocation path ONLY (src/hosting/webhook.ts):
+ * a hosting provider's VERIFIED "uninstalled" notice deletes the credential that installation granted, as the
+ * org's SYSTEM tenant — there is no person behind it, so the admin gate above cannot pass, and it is not
+ * weakened for this. This function asserts the opposite instead: a system context and nothing else (a
+ * person's session — whatever its role — and a bearer are refused). Same statements, same `secret.delete`
+ * audit shape (`actor` = the system tenant's actor). Empty when nothing is stored.
+ */
+export async function systemRevocationDeleteStmts(
+  ctx: TenantContext, kind: IntegrationKind, scope: string, reason: string, at: string = nowIso()
+): Promise<Stmt[]> {
+  if (ctx.role !== "system" || ctx.via !== "system") throw new SecretAccessError();
+  const meta = await getSecretMeta(ctx, kind, scope);
+  if (!meta) return [];
+  return [
+    stmt(ctx, `DELETE FROM org_secrets WHERE org_id = ? AND kind = ? AND scope = ?`, ctx.orgId, kind, scope),
+    auditStmt(ctx, "secret.delete", targetOf(kind, scope), { hint_last4: meta.hint_last4, reason }, at),
+  ];
 }
 
 /** Delete a secret (admin+). None stored → `SecretNotFoundError`. */
@@ -523,6 +572,8 @@ async function legacyEnvValue(ctx: TenantContext, env: Env, kind: IntegrationKin
       const repo = await first<{ legacy_hook: number }>(ctx, `SELECT legacy_hook FROM org_repos WHERE org_id = ? AND id = ?`, ctx.orgId, scope);
       return repo?.legacy_hook === 1 ? pick(env.GITHUB_WEBHOOK_SECRET) : null;
     }
+    // The hosting providers (0048_hosting_providers) arrived with per-org secrets: no Worker secret ever answered for them.
+    case "vercel": case "render": case "netlify": case "fly": case "aws": return null;
   }
 }
 

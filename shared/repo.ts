@@ -8,6 +8,10 @@
 // is `not_connected`, never guessed.
 
 import type { PersonColor } from "./rows";
+// TYPES only, in both directions: shared/hosting.ts imports `RepoRange` / `RepoSection` / `RepoTone` from
+// here, and this file its section and Poll-now shapes from there. A type-only cycle is erased at compile
+// time, so neither module loads the other.
+import type { HostingPollOutcome, RepoProvidersSection } from "./hosting";
 
 export const REPO_TABS = [
   ["overview", "Overview"],
@@ -243,6 +247,10 @@ export interface RepoDashboard {
   usage: RepoSection<Record<RepoRange, RepoUsageEnv[]>>;
   cloudflare: RepoSection<Record<RepoRange, RepoCfRow[]>>;
   hosting: RepoSection<RepoHosting[]>;
+  /** Every part of every environment (shared/hosting.ts): the provider-neutral view of deploys, traffic
+   *  and resources — the legacy Cloudflare frontend and Railway backend included, mapped in from their
+   *  own captures. `not_connected` = the org has no part at all. */
+  providers: RepoProvidersSection;
   product: RepoSection<RepoProduct>;
 
   sprint: RepoSection<RepoSprint>;
@@ -265,7 +273,7 @@ export const REPO_TAB_SECTIONS = {
   overview: ["environments", "drift", "stats", "health"],
   code: ["codeStats", "bars", "prs", "branches"],
   ci: ["deploys", "ciFailures", "coverage", "bundle", "activity"],
-  usage: ["usage", "cloudflare", "hosting", "product"],
+  usage: ["usage", "cloudflare", "hosting", "providers", "product"],
   planning: ["sprint", "contributors", "labels", "todos"],
 } as const satisfies Record<RepoTab, readonly RepoSectionName[]>;
 
@@ -303,5 +311,9 @@ export interface RepoRefreshGithub { written: number; unchanged: number; failed:
  *  `GITHUB_SERVICE_TOKEN` + `GITHUB_REPO`. */
 export interface RepoRefreshResult extends UsagePollResult {
   health: UsagePollSource;
+  /** The hosting providers' polls (src/hosting/poll.ts), one outcome per STORED part, in part order —
+   *  present ONLY when the org has a stored part (a legacy Cloudflare / Railway part is the usage
+   *  sources' above). Every part reads `skipped` with the budget phrase when the refresh would not fit. */
+  hosting?: HostingPollOutcome[] | "not_configured";
   github: RepoRefreshGithub | "not_configured";
 }

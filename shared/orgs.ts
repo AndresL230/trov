@@ -37,6 +37,8 @@ export const RESERVED_ORG_SLUGS: readonly string[] = [
   "admins", "grants", "github", "google", "onboard", "callback", "identities", "handle-check", "mcp-token",
   "mcp-tokens", "oauth-grants", "org-logo", "logo", "policy", "prefs", "outbox", "preview", "fetch",
   "upload-url", "test-send", "triage", "mywork", "site", "releases", "unsubscribe", "unplaced", "maintenance",
+  // A hosting provider's install / OAuth callback, `/hosting/<provider>/callback` (src/hosting/routes.ts).
+  "hosting",
 ];
 
 export type OrgSlugProblem = "invalid" | "reserved";
@@ -73,6 +75,8 @@ export const ORG_AUDIT_ACTIONS = [
   "repo.add", "repo.remove", "repo.primary", "environment.set", "environment.delete", "environment.reorder",
   // The GitHub App's installation (0043_github_app, src/github-app/store.ts).
   "github.connect", "github.disconnect", "github.uninstall", "github.suspend", "github.unsuspend", "github.repos", "github.permissions",
+  // Org settings › Hosting (0048_hosting_providers, src/hosting/).
+  "part.set", "part.delete", "hosting.connect", "hosting.disconnect", "hosting.revoked",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
   // Plans and grants (0044_plans, src/plans): an org's plan / limits / status changed; a grant made, revoked, used.
   "plan.change", "plan.overrides", "plan.status", "grant.create", "grant.revoke", "grant.use",

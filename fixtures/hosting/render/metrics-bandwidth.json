@@ -1,0 +1,12 @@
+[
+  {
+    "labels": [{ "field": "resource", "value": "srv-d3k8q1j7mgec73a1b2c0" }],
+    "unit": "MB",
+    "values": [
+      { "timestamp": "2026-10-07T09:00:00Z", "value": 12.5 },
+      { "timestamp": "2026-10-07T10:00:00Z", "value": 20 },
+      { "timestamp": "2026-10-07T11:00:00Z", "value": 8.25 },
+      { "timestamp": "2026-10-07T12:00:00Z", "value": 30 }
+    ]
+  }
+]

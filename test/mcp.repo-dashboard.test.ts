@@ -247,7 +247,7 @@ describe("MCP get_repo_dashboard — tab, range, include_trends", () => {
       expect(v.tab).toBe(tab);
       expect(Object.keys(v.sections)).toEqual([...REPO_TAB_SECTIONS[tab]]);
     }
-    expect(Object.keys((await view({ tab: "usage" })).sections)).toEqual(["usage", "cloudflare", "hosting", "product"]);
+    expect(Object.keys((await view({ tab: "usage" })).sections)).toEqual(["usage", "cloudflare", "hosting", "providers", "product"]);
   });
 
   it("range picks that range's view", async () => {
@@ -410,6 +410,24 @@ function richDashboard(): RepoDashboard {
     usage: ok(byRange(() => [usageEnv("staging"), usageEnv("production")])),
     cloudflare: ok(byRange(() => Array.from({ length: 6 }, (_, i) => ({ env: "staging", label: `Cloudflare row ${i}`, value: "12,345" })))),
     hosting: ok([{ env: "staging", cpu: "0.4 vCPU", memory: "512 MB" }, { env: "production", cpu: "1.1 vCPU", memory: "900 MB" }]),
+    // A web and a service part per environment, each with its full ten deploys and every figure known.
+    providers: ok(["staging", "production"].flatMap((envKey) => (["web", "service"] as const).map((role) => ({
+      env: envKey, env_label: envKey, part: role === "web" ? "web" : "api", label: role === "web" ? "Web" : "API", role,
+      provider: role === "web" ? "vercel" as const : "render" as const, provider_label: role === "web" ? "Vercel" : "Render",
+      console_url: `https://vercel.com/acme/${envKey}`,
+      deploys: Array.from({ length: 10 }, (_, i) => ({
+        id: `dpl_${envKey}_${role}_${i}`, state: "ready" as const, target: "production" as const, sha: "abc1234def5678abc1234def5678abc1234def56",
+        branch: "main", message: `A commit message of ordinary length, number ${i}`, by: "jose-a", at, ready_at: at,
+        url: `https://app-${i}.vercel.app`, inspect_url: `https://vercel.com/acme/app/${i}`,
+      })),
+      traffic: role === "web" ? byRange((r) => ({
+        requests: 120_000, errors: 42, error_rate: 0.04, latency_p95_ms: 180, bandwidth_bytes: 9_000_000_000,
+        trend: Array.from({ length: r === "24h" ? 24 : r === "7d" ? 7 : 30 }, (_, i) => ({ at, requests: 1000 + i, errors: i })),
+      })) : null,
+      resources: role === "service" ? { cpu: 0.4, mem_mb: 512, at, trend: Array.from({ length: 24 }, () => ({ at, cpu: 0.4, mem_mb: 512 })) } : null,
+      seen: { traffic: role === "web", resources: role === "service", deploys: true },
+      unavailable: [], status: "ok" as const, tone: "good" as const, last_poll: { at, status: "ok" as const, detail: "4 new points, 1 new or changed deploy" },
+    })))),
     product: ok([productEnv("staging"), productEnv("production")]),
     sprint: ok({ id: 3, label: "Sprint 12", due: "2026-09-30", closed: 8, total: 14, pct: 57 }),
     contributors: ok(Array.from({ length: 8 }, (_, i) => ({ person: person(`person-${i}`), pushes: 9, merged: 3, reviews: null }))),

@@ -54,6 +54,16 @@ export interface Env {
   // stored credentials. TROV_KEK_PREVIOUS is set only during a KEK rotation: the old key, picked by fingerprint.
   TROV_KEK?: string;
   TROV_KEK_PREVIOUS?: string;
+  // Hosting providers' install / OAuth apps (src/hosting/connections.ts; each provider's `install.clientIdVar` /
+  // `clientSecretVar` and its method's `requires` name them). Absent → that provider's install / OAuth method is
+  // listed unavailable and the screen offers a pasted token instead. The CLIENT SECRETS are secrets (they verify
+  // the provider's uninstall notice too — src/hosting/webhook.ts) and are never sent to the browser or logged;
+  // the ids and the slug are not secret. Each app's redirect URL is `<PUBLIC_ORIGIN>/hosting/<provider>/callback`.
+  VERCEL_INTEGRATION_CLIENT_ID?: string;
+  VERCEL_INTEGRATION_CLIENT_SECRET?: string;
+  VERCEL_INTEGRATION_SLUG?: string; // the integration's URL slug: https://vercel.com/integrations/<slug>/new
+  NETLIFY_OAUTH_CLIENT_ID?: string;
+  NETLIFY_OAUTH_CLIENT_SECRET?: string;
   // BILLING — Stripe (docs/architecture/billing.md; src/billing/config.ts is the only reader). Two SECRETS and the
   // price ids as VARS (wrangler.toml). Absent the key or the webhook secret → billing is off: every billing route
   // answers 503 `billing_unavailable`, the purchase buttons say so, and nothing else in the app changes. A plan

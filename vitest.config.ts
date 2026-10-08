@@ -73,6 +73,13 @@ export default defineConfig({
           RAILWAY_TOKEN_STAGING: "",
           RAILWAY_TOKEN_PRODUCTION: "",
           SAPLING_METRICS_TOKEN: "",
+          // The hosting integrations' client credentials (0048_hosting_providers): blank, so a local .dev.vars
+          // never makes "Connect with Vercel / Netlify" available in a test that did not ask for it.
+          VERCEL_INTEGRATION_CLIENT_ID: "",
+          VERCEL_INTEGRATION_CLIENT_SECRET: "",
+          VERCEL_INTEGRATION_SLUG: "",
+          NETLIFY_OAUTH_CLIENT_ID: "",
+          NETLIFY_OAUTH_CLIENT_SECRET: "",
           PUBLIC_ORIGIN: "https://trov.test",
           // A FIXED key-encryption key (32 bytes, base64) for per-org secrets (src/data/secrets.ts), so the
           // suite never depends on a developer's `.dev.vars`; TROV_KEK_PREVIOUS is blanked for the same reason.

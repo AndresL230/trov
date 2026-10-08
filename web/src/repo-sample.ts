@@ -10,6 +10,9 @@ import type {
   RepoActivityKind, RepoPrState, RepoProductEnv, RepoProductGroup,
 } from "@shared/repo";
 import type { PersonColor } from "@shared/rows";
+import type {
+  DeployState, HostingMetric, HostingProviderId, PartRole, ProviderDeployDTO, ProviderResources, ProviderTrafficRange, RepoProviderPart,
+} from "@shared/hosting";
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 
@@ -161,6 +164,181 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
     return { name, groups, totals };
   };
 
+  // ── hosting providers: every part of every environment, provider-neutral ──
+  // A DATA STUB the Usage tab's providers block is designed against (no block draws it yet). It holds every
+  // state the projection (src/tools/repo.ts `projectProviders`) can produce: the legacy Cloudflare frontend
+  // (traffic) and Railway backend (resources) mapped in from their own captures; Vercel and Netlify web
+  // parts with deploys and NO traffic (`traffic: null`, `unavailable` saying why — neither has a public
+  // usage API); Render, a service (CPU / memory with a 24-hour trend) and a web part (requests, errors,
+  // latency and bandwidth in every range); Fly.io, a service whose releases carry no sha and a web part;
+  // one part whose last poll FAILED and one that is `empty` (polled, nothing to show). Every total is the
+  // sum of its trend, every error rate errors ÷ requests — the numbers agree the way the Worker's do.
+  const hour0 = Math.floor(now / HOUR) * HOUR;               // the current hour's start; the last complete hour ends here
+  const isoAt = (t: number) => new Date(t).toISOString();
+  /** `n` values summing EXACTLY to `total`, shaped by `shape(i)` (deterministic, never random). */
+  const spread = (total: number, n: number, shape: (i: number) => number): number[] => {
+    const w = Array.from({ length: n }, (_, i) => Math.max(0.05, shape(i)));
+    const sum = w.reduce((a, b) => a + b, 0);
+    const out = w.map((x) => Math.floor((x / sum) * total));
+    out[n - 1] += total - out.reduce((a, b) => a + b, 0);
+    return out;
+  };
+  /** A day's traffic: low overnight (UTC), a peak mid-afternoon, a little wobble. */
+  const diurnal = (i: number) => 0.55 + 0.45 * Math.sin(((i - 9) / 24) * 2 * Math.PI) + ((i * 7) % 5) * 0.03;
+  const weekly = (i: number) => 1 + ((i * 3) % 7) * 0.04 - (i % 7 === 5 || i % 7 === 6 ? 0.18 : 0);
+  type Totals = { requests: number; errors: number; latency?: number; bandwidth?: number };
+  /** One web part's traffic in all three ranges, from each range's totals. Buckets end at the last complete
+   *  hour: hourly for 24h, daily for 7d / 30d. Bandwidth / latency are null where the provider has none. */
+  const traffic = (t: Record<RepoRange, Totals>): Record<RepoRange, ProviderTrafficRange> => {
+    const one = (range: RepoRange): ProviderTrafficRange => {
+      const n = range === "24h" ? 24 : range === "7d" ? 7 : 30;
+      const step = range === "24h" ? HOUR : DAY;
+      const shape = range === "24h" ? diurnal : weekly;
+      const req = spread(t[range].requests, n, shape);
+      const err = spread(t[range].errors, n, (i) => shape(i) * (i === n - 3 ? 3 : 1)); // one bad bucket
+      const start = hour0 - n * step;
+      return {
+        requests: t[range].requests, errors: t[range].errors,
+        error_rate: Math.round((t[range].errors / t[range].requests) * 10_000) / 100,
+        latency_p95_ms: t[range].latency ?? null, bandwidth_bytes: t[range].bandwidth ?? null,
+        trend: req.map((v, i) => ({ at: isoAt(start + i * step), requests: v, errors: err[i] })),
+      };
+    };
+    return { "24h": one("24h"), "7d": one("7d"), "30d": one("30d") };
+  };
+  /** A service part's last 24 hourly readings, never zero-filled — one hour missing (a poll that did not land). */
+  const resources = (cpu: number, mem: number, missing = 9): ProviderResources => {
+    const trend = Array.from({ length: 24 }, (_, i) => i).filter((i) => i !== missing).map((i) => ({
+      at: isoAt(hour0 - (24 - i) * HOUR),
+      cpu: Math.round(cpu * (0.7 + 0.3 * diurnal(i)) * 100) / 100,
+      mem_mb: Math.round(mem * (0.92 + 0.08 * diurnal(i)) * 10) / 10,
+    }));
+    trend[trend.length - 1] = { ...trend[trend.length - 1], cpu, mem_mb: mem };
+    return { cpu, mem_mb: mem, at: trend[trend.length - 1].at, trend };
+  };
+  type Dep = [id: string, state: DeployState, ms: number, sha: string | null, msg: string | null, by: string | null];
+  const SHA = (seed: string) => (seed.repeat(8) + "0123456789abcdef".repeat(3)).slice(0, 40);
+  const hostDeploys = (rows: Dep[], o: { branch: string | null; target: ProviderDeployDTO["target"]; url?: (id: string) => string; inspect: (id: string) => string }): ProviderDeployDTO[] =>
+    rows.map(([id, state, ms, sha, message, by]) => ({
+      id, state, target: o.target, sha, branch: o.branch, message, by, at: at(ms),
+      ready_at: state === "ready" || state === "error" ? at(ms - 2 * MIN) : null,
+      url: o.url && state === "ready" ? o.url(id) : null, inspect_url: o.inspect(id),
+    }));
+  /** The legacy halves read their deploys off the same GitHub-captured strips as the deploy dots above. */
+  const legacyDeploys = (envKey: "staging" | "production", half: RepoPartName, branch: string | null): ProviderDeployDTO[] =>
+    [...strips[envKey][half]].reverse().map(([sha, ms, by, result]) => ({
+      id: `github:${sha}@${at(ms)}`, state: ({ ok: "ready", fail: "error", cancel: "canceled" } as const)[result], target: null, sha, branch,
+      message: null, by, at: at(ms), ready_at: result === "cancel" ? null : at(ms), url: null, inspect_url: null,
+    }));
+  const unavailableWeb = (reason: string): { metric: HostingMetric; reason: string }[] =>
+    (["requests", "errors", "latency_p50_ms", "latency_p95_ms", "bandwidth_bytes"] as const).map((metric) => ({ metric, reason }));
+  const LABELS: Record<HostingProviderId, string> = {
+    cloudflare: "Cloudflare Workers", railway: "Railway", vercel: "Vercel", render: "Render", netlify: "Netlify", fly: "Fly.io", aws: "AWS",
+  };
+  const polledOk = (ms: number, detail: string): RepoProviderPart["last_poll"] => ({ at: at(ms), status: "ok", detail });
+  const part = (envKey: "staging" | "production", key: string, label: string, role: PartRole, provider: HostingProviderId,
+    o: Partial<RepoProviderPart> & Pick<RepoProviderPart, "deploys" | "tone" | "status">): RepoProviderPart => ({
+    env: envKey, env_label: envKey, part: key, label, role, provider, provider_label: LABELS[provider], console_url: null,
+    traffic: null, resources: null, unavailable: [], last_poll: null,
+    seen: { traffic: role === "web" && !!o.traffic, resources: role === "service" && !!o.resources, deploys: o.deploys.length > 0 },
+    ...o,
+  });
+  const providers: RepoProviderPart[] = [
+    // ── staging ──
+    part("staging", "frontend", "Frontend", "web", "cloudflare", {
+      console_url: "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/frontend-staging/production",
+      deploys: legacyDeploys("staging", "frontend", "main"), status: "ok", tone: "warn", // 2.41% errors in the last 24 h
+      traffic: traffic({ "24h": { requests: 12_400, errors: 299 }, "7d": { requests: 86_200, errors: 2_100 }, "30d": { requests: 402_000, errors: 4_500 } }),
+    }),
+    part("staging", "backend", "Backend", "service", "railway", {
+      deploys: legacyDeploys("staging", "backend", null), status: "ok", tone: "good", resources: resources(0.12, 410),
+    }),
+    part("staging", "web", "Marketing site", "web", "vercel", {
+      console_url: "https://vercel.com/acme/marketing", status: "ok", tone: "neutral", // the newest deploy is still building
+      deploys: hostDeploys([
+        ["dpl_8Fq2kLm", "building", 4 * MIN, SHA("c91d2ae"), "rollup: batch D1 reads per window", "dev-raj"],
+        ["dpl_7Hn1jKp", "ready", 2 * HOUR, SHA("9b04e7f"), "sse: re-send bearer on reconnect", "jose-a"],
+        ["dpl_6Gm0hJo", "error", 5 * HOUR, SHA("7f92b45"), "docs: note D1 batch limits", "kenji-m"],
+        ["dpl_5Fl9gIn", "ready", DAY, SHA("6e15a3c"), "chore: bump wrangler 4.86 lockfile", "tom-h"],
+        ["dpl_4Ek8fHm", "canceled", DAY + 3 * HOUR, SHA("5d0c821"), "test: fix flaky keyset spec", "priya-k"],
+        ["dpl_3Dj7eGl", "ready", 2 * DAY, SHA("2f19c3a"), "hotfix: clamp digest window to 24h", "kenji-m"],
+      ], { branch: "main", target: "preview", url: (id) => `https://marketing-${id.slice(4, 10).toLowerCase()}-acme.vercel.app`, inspect: (id) => `https://vercel.com/acme/marketing/${id.slice(4)}` }),
+      unavailable: unavailableWeb("Vercel has no public usage API — traffic needs Observability Plus"),
+      last_poll: polledOk(18 * MIN, "0 new points, 2 new or changed deploys"),
+    }),
+    part("staging", "api", "API", "service", "render", {
+      console_url: "https://dashboard.render.com/web/srv-cq1a2b3c4d5e6f7g8h9i", status: "ok", tone: "good",
+      deploys: hostDeploys([
+        ["dep-cs1k9e2", "ready", 26 * MIN, SHA("a3f82c1"), "wire usage endpoint to rollup", null],
+        ["dep-cs0j8d1", "ready", 21 * HOUR, SHA("d94ea08"), "retry: idempotent digest send", null],
+        ["dep-cr9i7c0", "error", 22 * HOUR, SHA("c58f1d3"), "migration 0027: quiet_hours", null],
+      ], { branch: "main", target: null, inspect: (id) => `https://dashboard.render.com/web/srv-cq1a2b3c4d5e6f7g8h9i/deploys/${id}` }),
+      resources: resources(0.31, 742),
+      last_poll: polledOk(18 * MIN, "3 new points, 1 new or changed deploy"),
+    }),
+    part("staging", "edge", "Edge cache", "web", "fly", {
+      console_url: "https://fly.io/apps/acme-edge-staging", status: "ok", tone: "good",
+      deploys: hostDeploys([
+        ["01J9ZB6Q4X", "ready", 3 * HOUR, null, null, "kenji@acme.example"],
+        ["01J9Y2M7R1", "ready", 3 * DAY, null, null, "kenji@acme.example"],
+      ], { branch: null, target: "production", inspect: () => "https://fly.io/apps/acme-edge-staging/monitoring" }),
+      traffic: traffic({
+        "24h": { requests: 8_900, errors: 6, latency: 41, bandwidth: 1_840_000_000 },
+        "7d": { requests: 61_300, errors: 52, latency: 41, bandwidth: 12_600_000_000 },
+        "30d": { requests: 248_000, errors: 260, latency: 41, bandwidth: 51_200_000_000 },
+      }),
+      unavailable: [{ metric: "latency_p50_ms", reason: "Fly's edge histogram is read for p95 only" }],
+      last_poll: polledOk(18 * MIN, "6 new points, 0 new or changed deploys"),
+    }),
+    // ── production ──
+    part("production", "frontend", "Frontend", "web", "cloudflare", {
+      console_url: "https://dash.cloudflare.com/0123456789abcdef0123456789abcdef/workers/services/view/frontend/production",
+      deploys: legacyDeploys("production", "frontend", "production"), status: "ok", tone: "good",
+      traffic: traffic({ "24h": { requests: 168_000, errors: 302 }, "7d": { requests: 1_240_000, errors: 2_600 }, "30d": { requests: 5_100_000, errors: 12_200 } }),
+    }),
+    part("production", "backend", "Backend", "service", "railway", {
+      deploys: legacyDeploys("production", "backend", null), status: "ok", tone: "good", resources: resources(0.48, 1229),
+    }),
+    part("production", "web", "Marketing site", "web", "netlify", {
+      console_url: "https://app.netlify.com/sites/acme-marketing", status: "ok", tone: "warn", // the last poll failed
+      deploys: hostDeploys([
+        ["66f0c1a2b3c4d5e6f7a8b9c0", "ready", 2 * DAY, SHA("9d417be"), "Release 0.14.2", "meilin"],
+        ["66ee71d0e1f2a3b4c5d6e7f8", "ready", 6 * DAY, SHA("a1c38e6"), "Pricing page copy", "ana-r"],
+        ["66ec2bf9a8b7c6d5e4f3a2b1", "error", 6 * DAY + 2 * HOUR, SHA("90ab7c5"), "Pricing page copy", "ana-r"],
+      ], { branch: "production", target: "production", url: () => "https://www.example.com", inspect: (id) => `https://app.netlify.com/sites/acme-marketing/deploys/${id}` }),
+      unavailable: unavailableWeb("Netlify has no documented usage API"),
+      last_poll: { at: at(18 * MIN), status: "failed", detail: "netlify deploys 401: Unauthorized — the credential is not valid" },
+    }),
+    part("production", "site", "Docs site", "web", "render", {
+      console_url: "https://dashboard.render.com/static/srv-d0k1l2m3n4o5p6q7r8s9", status: "ok", tone: "good",
+      deploys: hostDeploys([
+        ["dep-ct4n2h5", "ready", 2 * DAY, SHA("c3841da"), "docs: environments and parts", null],
+        ["dep-ct3m1g4", "ready", 9 * DAY, SHA("7e5b9d0"), "docs: Poll now", null],
+      ], { branch: "production", target: null, inspect: (id) => `https://dashboard.render.com/static/srv-d0k1l2m3n4o5p6q7r8s9/deploys/${id}` }),
+      traffic: traffic({
+        "24h": { requests: 41_200, errors: 37, latency: 212, bandwidth: 3_900_000_000 },
+        "7d": { requests: 296_000, errors: 310, latency: 198, bandwidth: 27_800_000_000 },
+        "30d": { requests: 1_210_000, errors: 1_420, latency: 205, bandwidth: 113_000_000_000 },
+      }),
+      last_poll: polledOk(18 * MIN, "4 new points, 0 new or changed deploys"),
+    }),
+    part("production", "worker", "Queue worker", "service", "fly", {
+      console_url: "https://fly.io/apps/acme-worker", status: "ok", tone: "bad", // the newest release failed
+      deploys: hostDeploys([
+        ["01JA0C2D3E", "error", 50 * MIN, null, null, "jose@acme.example"],
+        ["01J9X8Y7Z6", "ready", 2 * DAY, null, null, "jose@acme.example"],
+        ["01J9V5W4X3", "ready", 8 * DAY, null, null, "meilin@acme.example"],
+      ], { branch: null, target: "production", inspect: () => "https://fly.io/apps/acme-worker/monitoring" }),
+      resources: resources(0.9, 1830, 4),
+      last_poll: polledOk(18 * MIN, "2 new points, 1 new or changed deploy"),
+    }),
+    part("production", "docs", "Status page", "web", "netlify", {
+      console_url: "https://app.netlify.com/sites/acme-status", status: "empty", tone: "neutral", deploys: [], // polled: nothing in 90 days
+      unavailable: unavailableWeb("Netlify has no documented usage API"),
+      last_poll: polledOk(18 * MIN, "0 new points, 0 new or changed deploys"),
+    }),
+  ];
+
   const cbVals = [3, 5, 2, 7, 4, 6, 1, 6, 7, 5, 8, 4, 7, 5];
   const commits = (rows: [string, string, number][]) => rows.map(([sha, msg, ms]) => ({ sha, msg, at: at(ms) }));
 
@@ -235,6 +413,7 @@ export function repoSample(now: number = Date.now()): RepoDashboard {
       { env: "staging", cpu: "0.12 vCPU", memory: "410 MB" },
       { env: "production", cpu: "0.48 vCPU", memory: "1229 MB" },
     ] },
+    providers: { status: "ok", data: providers },
     product: { status: "ok", data: [productEnv("staging", 12), productEnv("production", 1)] },
 
     sprint: { status: "ok", data: { id: 0, label: "M6 — Notifications GA", due: new Date(now + 12 * DAY).toISOString().slice(0, 10), closed: 21, total: 34, pct: 62 } },

@@ -38,6 +38,7 @@ plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no secti
 | `cloudflare` | metrics `cf_*` + snapshot `cf_polled` | cron `:00` — `pollCloudflare` |
 | `hosting` | metrics `rw_cpu` / `rw_mem_mb` | cron `:00` — `pollRailway` |
 | `product` (Usage) | metrics `sap_c_<key>_<24h\|7d\|30d>` / `sap_t_<key>` — whatever keys the app reports | cron `:00` — `pollSaplingMetrics` (the same response as active users) |
+| `providers` (Usage) | every part of every environment, provider-neutral: stored parts' `hx_*` metrics, `hosting_deploys`, `hosting_poll_state`; legacy parts' `cf_*` (+ `cf_polled`) / `rw_*` and their GitHub deploy strips | cron `:40` — `pollPart` per stored part; the legacy parts' own captures |
 | `sprint`, `labels`, `contributors` (Planning) | live D1: the sprint a person marked `active` (the Roadmap's `sprintProgress`); open-issue snapshots; webhook pushes · merged PRs · `review` rows this week | none / webhook `issues` / `push`, `pull_request`, `pull_request_review`; reconcile `reviews` arm |
 
 "Reconcile" is `reconcileRepo` (`src/repo/github.ts`), run by an admin's Sync GitHub and by the cron's
@@ -95,7 +96,11 @@ fire time's UTC minute/hour, each job in its own `safely` arm:
   issue number of every array-ref sprint); `:20` `reconcileRepo` alone (19 + 2N worst case, below — **19 + 4N with the tick's own
   pings: 27 today, N ≤ 7 under the 50**; logs `failed` when non-empty); `:30` `pruneRepoCapture` (D1 only). `:10` and `:20` need `GITHUB_SERVICE_TOKEN`
   + `GITHUB_REPO`; `:30` and the pings run regardless.
-- `:40` / `:50`, and `:10`–`:30` of any other hour, ping health and nothing else.
+- **`:40`, every hour** — the `hosting` job (0048; `hosting-providers.md`): one unit per (org, environment, STORED
+  part) from `listPartUnits`, each costing its provider's `pollCost` (≤ 6), served by rotation like the others; health
+  keeps half the budget on this tick only when some org has a stored part. Legacy Cloudflare / Railway parts stay on
+  the `:00` usage job.
+- `:50`, and `:10`–`:30` of any other hour, ping health and nothing else.
 `src/index.ts` dispatches by EXACT string equality on `controller.cron`, so `REPO_CRON` and the expression
 in `wrangler.toml` must stay identical (pinned by a test).
 

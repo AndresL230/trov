@@ -41,6 +41,13 @@ is absent — its section then stays `not_connected` — and none of these value
   same one — a stated limitation of the contract doc). Absent or empty → `pollSaplingMetrics` is not called
   and the Usage tab's Active users stays "not connected". Never sent to a non-https URL or across a redirect.
 
+The hosting providers' install / OAuth methods (optional — absent, that method reads unavailable and the provider's
+token method is offered; never logged): `VERCEL_INTEGRATION_CLIENT_ID` + `VERCEL_INTEGRATION_CLIENT_SECRET` (secrets;
+the secret also verifies the uninstall webhook) + `VERCEL_INTEGRATION_SLUG` (the Integration's install URL is
+`vercel.com/integrations/<slug>/new`; its Redirect URL `<origin>/hosting/vercel/callback`, Webhook URL
+`<origin>/webhook/hosting/vercel`), and `NETLIFY_OAUTH_CLIENT_ID` + `NETLIFY_OAUTH_CLIENT_SECRET` (Redirect URI
+`<origin>/hosting/netlify/callback`). Every provider CREDENTIAL is per org (Org settings), never a Worker secret.
+
 **Preview deployments** (`[previews.*]` in `wrangler.toml`; `npm run deploy:preview`). A Workers Builds
 build of any branch but `main` deploys a Preview: the branch's code on its own URL, with ONLY the bindings
 of the `[previews]` section — the empty D1 `trov-preview` and the R2 bucket `trov-preview-artifacts`,

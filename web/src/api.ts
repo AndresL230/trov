@@ -445,6 +445,44 @@ export function testOrgIntegration(slug: string, kind: IntT.IntegrationKind, sco
 export function rotateOrgKey(slug: string): Promise<{ rotated: boolean; key_version: number | null; secrets: number }> { return orgSend("POST", orgPath(slug, "/integrations/rotate-key")); }
 export function listOrgAudit(slug: string, limit = 50): Promise<IntT.OrgAuditDTO[]> { return orgSend<{ audit: IntT.OrgAuditDTO[] }>("GET", orgPath(slug, `/integrations/audit?limit=${limit}`)).then((r) => r.audit); }
 
+// ── Org settings › Hosting (/api/o/:slug/hosting…, …/environments/:key/parts/:part — src/hosting/routes.ts) ──
+// Admin+ except the provider catalogue. A token is pasted through the Integrations calls above (the provider's
+// kind is `HOSTING_INTEGRATION_KIND[provider]`); an install / OAuth connection is `startHostingConnect` + a
+// full-page navigation to its `url` — the provider sends the browser back to `/hosting/<provider>/callback`,
+// which always redirects: to `/<slug>/?hosting=<outcome>&provider=<id>#org` (`HOSTING_CONNECT_OUTCOMES`,
+// shared/hosting.ts — read `?hosting=` once at boot, like `?github=`), `/?hosting=<outcome>` when its intent
+// could not be read, or `/` when nobody was signed in.
+import type * as HostT from "@shared/hosting";
+/** Everything Org settings › Hosting shows, in one read: providers, environments + parts, connections, checklist. */
+export function getHostingSetup(slug: string): Promise<HostT.HostingSetupDTO> { return orgSend("GET", orgPath(slug, "/hosting")); }
+/** The provider catalogue alone (any member). */
+export function listHostingProviders(slug: string): Promise<HostT.HostingProviderDTO[]> {
+  return orgSend<{ providers: HostT.HostingProviderDTO[] }>("GET", orgPath(slug, "/hosting/providers")).then((r) => r.providers);
+}
+/** Create or replace a part. Cloudflare / Railway are the environment's `frontend` / `backend` (their own columns).
+ *  Refusals: `invalid` (+ `field`), `not_found`, `too_many_parts`, `part_conflict`. */
+export function putEnvironmentPart(slug: string, env: string, part: string, body: HostT.PartWrite): Promise<{ part: HostT.EnvironmentPartDTO; created: boolean }> {
+  return orgSend("PUT", orgPath(slug, `/environments/${encodeURIComponent(env)}/parts/${encodeURIComponent(part)}`), body);
+}
+export function deleteEnvironmentPart(slug: string, env: string, part: string): Promise<{ ok: true; removed: { env: string; part: string; provider: HostT.HostingProviderId; legacy: boolean } }> {
+  return orgSend("DELETE", orgPath(slug, `/environments/${encodeURIComponent(env)}/parts/${encodeURIComponent(part)}`));
+}
+/** Begin an install / OAuth connection; then `location.assign(result.url)`. The call also sets the sealed-intent
+ *  cookie the callback checks, so it must be made from the browser that will follow the URL. An org already
+ *  connected is not refused: the new grant replaces it at the callback. Refusals (409): `not_available`,
+ *  `not_installable`, `not_configured` — offer the token method instead. */
+export function startHostingConnect(slug: string, provider: HostT.HostingProviderId): Promise<HostT.ConnectStartDTO> {
+  return orgSend("POST", orgPath(slug, `/hosting/${provider}/connect`));
+}
+/** Disconnect from Trov's side: an installed integration is removed on the provider's side too (best effort). */
+export function disconnectHosting(slug: string, provider: HostT.HostingProviderId, scope = ""): Promise<{ connection: HostT.HostingConnectionDTO; upstream: "revoked" | "failed" | "none" }> {
+  return orgSend("POST", orgPath(slug, `/hosting/${provider}/disconnect`), scope ? { scope } : {});
+}
+/** Test connection — the credential alone, or against one part (`{ env, part }`). `scope` for Railway's per-environment token. */
+export function testHosting(slug: string, provider: HostT.HostingProviderId, target: { scope?: string; env?: string; part?: string } = {}): Promise<HostT.HostingTestDTO> {
+  return orgSend("POST", orgPath(slug, `/hosting/${provider}/test`), target);
+}
+
 // ADMIN action: trigger the server-side GitHub backfill (admin-only route). The
 // worker holds the service token and fetches GitHub directly — no webhook secret.
 // `batch` (1-based) / `of` (the client's own cap) let the server run the

@@ -11,6 +11,7 @@ import { notificationsApp } from "./notifications/routes";
 import { artifactsApp } from "./artifacts/routes";
 import { orgSettingsApp } from "./integrations/routes";
 import { githubAppRoutes } from "./github-app/routes";
+import { hostingApp, hostingCallbackApp } from "./hosting/routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runSyncBatch, syncStatus } from "./sync/runs";
@@ -174,6 +175,10 @@ app.route("/", oauthApp);
 app.route("/api/orgs", orgsApp);
 app.route("/api/invites", myInvitesApp);
 app.route("/api/platform", platformApp);
+// A hosting provider's install / OAuth callback (src/hosting/routes.ts): at the ROOT, because a provider's
+// redirect URI is fixed — the org rides in the sealed `state`, and the callback checks the person's admin
+// membership of it itself (src/data/gate.ts lets `/hosting/*` past the one-org alias).
+app.route("/hosting", hostingCallbackApp);
 // Billing (docs/architecture/billing.md): the purchase link, what the pricing page asks, the waiting room's poll.
 app.route("/", billingApp);
 
@@ -1137,6 +1142,7 @@ tenantRoot.post("/sprints/:id/complete", async (c) => {
 app.route("/api/o/:slug", orgTenantApp);
 app.route("/api/o/:slug", orgSettingsApp);
 app.route("/api/o/:slug", githubAppRoutes); // the GitHub App's connection (src/github-app/routes.ts)
+app.route("/api/o/:slug", hostingApp); // Org settings › Hosting: parts, connections, the setup read (src/hosting/routes.ts)
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of

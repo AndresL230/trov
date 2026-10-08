@@ -5,6 +5,7 @@ import { STRIPE_WEBHOOK_PATH, handleStripeWebhook } from "./billing/webhook";
 import { pruneEvents } from "./billing/store";
 import { BILLING_DONE_PATH } from "@shared/billing";
 import { APP_WEBHOOK_PATH, handleGithubAppWebhook } from "./github-app/webhook";
+import { handleHostingWebhook, hostingWebhookPath } from "./hosting/webhook";
 import { resolveBearerTenant } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
 import { pruneSyncRuns } from "./platform/sweeps";
@@ -61,6 +62,11 @@ export default {
     if (request.method === "POST" && url.pathname === APP_WEBHOOK_PATH) return handleGithubAppWebhook(request, env, { waitUntil: (p) => ctx.waitUntil(p) });
     const hook = request.method === "POST" ? webhookPath(url.pathname) : null;
     if (hook) return handleGithubWebhook(request, env, { hookId: hook.hookId, waitUntil: (p) => ctx.waitUntil(p) });
+    // A hosting provider's "uninstalled" notice (src/hosting/webhook.ts): its signature over the raw body,
+    // keyed with the integration's client secret, is the auth. Revokes that installation's credential in the
+    // org(s) that hold it. Never touches sessionGate; an unverified delivery is a bare 401 that writes nothing.
+    const hostingHook = request.method === "POST" ? hostingWebhookPath(url.pathname) : null;
+    if (hostingHook) return handleHostingWebhook(request, env, hostingHook.provider);
     // Signed one-click unsubscribe (canopy-email.md §7): the single token
     // exception. POST (what List-Unsubscribe-Post mail clients send) verifies the
     // HMAC and can ONLY set email_unsubscribed = 1 for the login it names. A
