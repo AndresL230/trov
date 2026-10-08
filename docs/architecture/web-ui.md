@@ -23,6 +23,9 @@ one card (`.cnpy-orgs-card`: banner, body, foot) in front of `firstRunBackdrop()
 shell rendered from `initialState()`, so every region is its own skeleton; `inert`, `aria-hidden`). A step
 gives way to the next through `morphStep` (`web/src/transition.ts`, View Transitions; the card carries one
 `view-transition-name`, so cards of different heights grow into each other). Off under reduced motion.
+The backdrop's skeletons are a picture, not reads in flight: `syncSkeletons` skips anything inside an `inert`
+region. From the picker, an org just created or joined is entered IN PLACE (`enterNew` in `main.ts`) when the
+page has held no other org's data; opening an org from anywhere else stays a page load.
 
 ## Sidebar & motion — the `<aside>` outlives rerenders
 

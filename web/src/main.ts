@@ -121,6 +121,15 @@ const orgCtl = createOrgController({
 const orgsCtl = createOrgsController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
   reloadOrgs: () => loadMyOrgs(), go: (url) => { window.location.assign(url); }, openSettings: () => dispatch("orgGo", null, null),
+  // A first run: the picker has held no org's data, so the org just created or joined is entered in
+  // place and the card morphs into the guided setup — no page load, no flash of a blank page.
+  enterNew: (org, hash) => {
+    if (state.view !== "orgs" || enteredAnOrg || !state.me) return false;
+    if (!state.me.orgs.some((o) => o.slug === org.slug)) state.me.orgs = [...state.me.orgs, org];
+    if (state.myOrgs.data && !state.myOrgs.data.orgs.some((o) => o.slug === org.slug)) state.myOrgs.data = { ...state.myOrgs.data, orgs: [...state.myOrgs.data.orgs, org] };
+    morphStep(() => { state.orgsUi = initialOrgsUi(); enterOrg(org.slug, hash); rerender(); });
+    return true;
+  },
 });
 
 // The guided first-run setup (web/src/welcome-actions.ts): every `welcome…` act, the agent step's
@@ -715,7 +724,10 @@ function enterPlatform(hash: string): void {
 
 /** Open an org: every request from here on is its (`/api/o/<slug>/…`), the address bar says
  *  `/<slug>/` with the hash route after it, and this browser remembers it as last used. */
+/** This page has entered an org (so it holds that org's data): a second one is opened by a page load. */
+let enteredAnOrg = false;
 function enterOrg(slug: string, hash: string): void {
+  enteredAnOrg = true;
   const query = new URLSearchParams(location.search);
   const link = query.get("link");
   // The return from GitHub after connecting the App (src/github-app/connect.ts): `/<slug>/?github=<outcome>#org/repos`.
@@ -2073,6 +2085,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
             if (me.orgs.length > 0 || me.superadmin === true) throw new Error("not a first run");
             // The guided setup that follows an organization is step 3 of this flow (welcome.ts).
             try { sessionStorage.setItem(FIRST_RUN_KEY, "1"); } catch { /* the count is simply not shown */ }
+            state.welcome.firstRun = true;
             state.me = me;
             state.displayName = me.name ?? me.handle;
             state.plat.superadmin = false;
