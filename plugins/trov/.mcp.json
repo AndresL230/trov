@@ -2,7 +2,7 @@
   "mcpServers": {
     "trov": {
       "type": "http",
-      "url": "https://canopy.saplinglearn.com/mcp"
+      "url": "https://trov.dev/mcp"
     }
   }
 }
