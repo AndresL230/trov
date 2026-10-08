@@ -13,9 +13,10 @@ export const esc = (s: string): string =>
 const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`
   + `<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;650&family=Archivo+Narrow:wght@400;500;600&display=swap" rel="stylesheet">`;
 
+// Trov's brand, as the app's light theme has it (web/src/trov.css): the mark's purple on white. ONE
+// palette, no dark variant — the app opens light by default, and its dark theme is not the brand's purple.
 const CSS = `
-:root{--bg:#faf8f3;--card:#fffdf8;--fg:#1a1814;--fg-70:rgba(26,24,20,.72);--fg-55:rgba(26,24,20,.55);--fg-40:rgba(26,24,20,.40);--border:rgba(42,39,31,.10);--border-strong:rgba(42,39,31,.18);--hover:rgba(42,39,31,.05);--accent:#8a9a5b;--mark:#616ACB;--accent-fg:#fff;--accent-soft:rgba(138,154,91,.12);--red:#a83a3a;--red-soft:rgba(168,58,58,.08);--shadow:0 32px 64px -24px rgba(42,39,31,.18),0 4px 12px -4px rgba(42,39,31,.08);--label:'Archivo Narrow',system-ui,sans-serif;--code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-@media (prefers-color-scheme:dark){:root{--bg:#1c1a16;--card:#211f1a;--fg:#ede9e2;--fg-70:rgba(237,233,226,.72);--fg-55:rgba(237,233,226,.55);--fg-40:rgba(237,233,226,.40);--border:rgba(237,233,226,.11);--border-strong:rgba(237,233,226,.20);--hover:rgba(237,233,226,.06);--accent:#9aab65;--mark:#9aab65;--accent-fg:#131a07;--accent-soft:rgba(154,171,101,.14);--red:#cc6262;--red-soft:rgba(204,98,98,.10);--shadow:0 32px 64px -24px rgba(0,0,0,.55),0 4px 12px -4px rgba(0,0,0,.3)}}
+:root{color-scheme:light;--bg:#f6f6f7;--card:#ffffff;--fg:#16161a;--fg-70:#4f4f58;--fg-55:#6e6e78;--fg-40:#8e8e98;--border:rgba(20,20,30,.08);--border-strong:rgba(20,20,30,.15);--hover:rgba(20,20,30,.04);--accent:#5e6ad2;--mark:#616ACB;--accent-fg:#fff;--accent-soft:rgba(94,106,210,.12);--red:#c53030;--red-soft:rgba(197,48,48,.08);--shadow:0 32px 64px -24px rgba(20,20,30,.18),0 4px 12px -4px rgba(20,20,30,.08);--label:'Archivo Narrow',system-ui,sans-serif;--code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--bg);color:var(--fg);font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
 .card{width:min(400px,100%);border:1px solid var(--border-strong);border-radius:5.6px;padding:32px 30px 26px;background:var(--card);box-shadow:var(--shadow)}
