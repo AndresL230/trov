@@ -249,10 +249,10 @@ describe("suspend / unsuspend", () => {
 });
 
 describe("superadmins, audit", () => {
-  it("the per-person org limit is gone: its route no longer exists, and a grant is what opens creation (test/plans.grants.test.ts)", async () => {
+  it("the per-person org limit is gone: its route no longer exists; a grant, or one owned Free org, is what opens creation (test/plans.grants.test.ts)", async () => {
     const cookie = await boss();
     expect((await call("PUT", "/api/platform/persons/meilin/org-limit", cookie, { limit: 10 })).status).toBe(404);
-    expect((await call<MyOrgsResponse>("GET", "/api/orgs", await cookieFor("meilin"))).json).toMatchObject({ can_create: false, grants: [] });
+    expect((await call<MyOrgsResponse>("GET", "/api/orgs", await cookieFor("meilin"))).json).toMatchObject({ can_create: true, grants: [], free: { can_create: true, owned: null } });
   });
 
   it("grants and revokes superadmin; the last one cannot be removed", async () => {

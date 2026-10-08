@@ -63,9 +63,11 @@ export async function takeCheckoutLook(p: PlatformContext, ref: string, everyMs:
 export interface SubscriptionRow {
   subscription_id: string; customer_id: string; person: string | null; plan: string; price_id: string | null; interval: string | null;
   stripe_status: string; plan_status: string; period_end: string | null; cancel_at_period_end: number; livemode: number; plan_pinned: number;
+  /** The seats paid for (0047_billing_seats); null = not known. */
+  quantity: number | null;
   created_at: string; updated_at: string;
 }
-const SUB_COLS = `subscription_id, customer_id, person, plan, price_id, interval, stripe_status, plan_status, period_end, cancel_at_period_end, livemode, plan_pinned, created_at, updated_at`;
+const SUB_COLS = `subscription_id, customer_id, person, plan, price_id, interval, stripe_status, plan_status, period_end, cancel_at_period_end, livemode, plan_pinned, quantity, created_at, updated_at`;
 
 export const getSubscription = (p: PlatformContext, id: string): Promise<SubscriptionRow | null> =>
   first<SubscriptionRow>(p, `SELECT ${SUB_COLS} FROM billing_subscriptions WHERE subscription_id = ?`, id);
@@ -73,18 +75,19 @@ export const getSubscription = (p: PlatformContext, id: string): Promise<Subscri
 export interface SubscriptionWrite {
   subscription_id: string; customer_id: string; person: string | null; plan: PlanId; price_id: string | null; interval: BillingInterval | null;
   stripe_status: string; plan_status: PlanStatus; period_end: string | null; cancel_at_period_end: boolean; livemode: boolean;
+  quantity: number | null;
 }
 /** Write Stripe's current state of one subscription. The buyer, once known, and the pin are kept. */
 export async function putSubscription(p: PlatformContext, s: SubscriptionWrite): Promise<void> {
   const at = nowIso();
   await run(p,
-    `INSERT INTO billing_subscriptions (subscription_id, customer_id, person, plan, price_id, interval, stripe_status, plan_status, period_end, cancel_at_period_end, livemode, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
+    `INSERT INTO billing_subscriptions (subscription_id, customer_id, person, plan, price_id, interval, stripe_status, plan_status, period_end, cancel_at_period_end, livemode, quantity, created_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?13, ?12, ?12)
      ON CONFLICT(subscription_id) DO UPDATE SET customer_id = excluded.customer_id, person = COALESCE(billing_subscriptions.person, excluded.person),
        plan = excluded.plan, price_id = excluded.price_id, interval = excluded.interval, stripe_status = excluded.stripe_status,
        plan_status = excluded.plan_status, period_end = excluded.period_end, cancel_at_period_end = excluded.cancel_at_period_end,
-       livemode = excluded.livemode, updated_at = excluded.updated_at`,
-    s.subscription_id, s.customer_id, s.person, s.plan, s.price_id, s.interval, s.stripe_status, s.plan_status, s.period_end, s.cancel_at_period_end ? 1 : 0, s.livemode ? 1 : 0, at);
+       livemode = excluded.livemode, quantity = excluded.quantity, updated_at = excluded.updated_at`,
+    s.subscription_id, s.customer_id, s.person, s.plan, s.price_id, s.interval, s.stripe_status, s.plan_status, s.period_end, s.cancel_at_period_end ? 1 : 0, s.livemode ? 1 : 0, at, s.quantity);
 }
 export async function setPlanPinned(p: PlatformContext, subscriptionId: string, pinned: boolean): Promise<void> {
   await run(p, `UPDATE billing_subscriptions SET plan_pinned = ?, updated_at = ? WHERE subscription_id = ?`, pinned ? 1 : 0, nowIso(), subscriptionId);
@@ -113,7 +116,7 @@ export async function orgSubscription(p: PlatformContext, orgId: string): Promis
 }
 
 const platformBilling = (s: SubscriptionRow): PlatformOrgBilling => ({
-  customer_id: s.customer_id, subscription_id: s.subscription_id, stripe_status: s.stripe_status, plan: planDef(s.plan).id,
+  customer_id: s.customer_id, subscription_id: s.subscription_id, stripe_status: s.stripe_status, plan: planDef(s.plan).id, ended: s.plan_status === "canceled", seats: s.quantity,
   interval: isBillingInterval(s.interval) ? s.interval : null, period_end: s.period_end, cancel_at_period_end: s.cancel_at_period_end === 1,
   pinned: s.plan_pinned === 1, livemode: s.livemode === 1, dashboard_url: stripeCustomerUrl(s.customer_id, s.livemode === 1),
 });

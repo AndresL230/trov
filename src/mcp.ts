@@ -29,7 +29,7 @@ import { ingestFeedEntry, ingestDocProposal, recordBatch } from "./consumer";
 import { feedEntryFromMcpArgs } from "./mcp-args";
 import { FEED_BRIEF_MAX, IngestPayload, QueryType } from "@shared/contract";
 import { ArtifactError } from "./tools/artifacts";
-import { PlanLimitError } from "./plans/state";
+import { PlanFeatureError, PlanLimitError } from "./plans/state";
 import {
   agentUploadAsset, agentArtifactUpdate, agentArtifactGet, agentArtifactList, artifactsForTicket, artifactOrigin,
 } from "./tools/artifacts-agent";
@@ -66,7 +66,7 @@ async function runTool(fn: () => Promise<unknown>) {
     // missing slug, a private page and a version-0 page all read exactly
     // { error: "not_found", code: "not_found" } — the check is never an existence oracle.
     // A plan refusal (0044_plans, e.g. the org's artifact storage is full) reads `code: "plan_limit"`: no retry helps.
-    const code = err instanceof TicketError || err instanceof PersonError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError || err instanceof PromptError || err instanceof PlanLimitError ? err.code : undefined;
+    const code = err instanceof TicketError || err instanceof PersonError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError || err instanceof PromptError || err instanceof PlanLimitError || err instanceof PlanFeatureError ? err.code : undefined;
     return {
       content: [{ type: "text" as const, text: JSON.stringify(code ? { error: message, code } : { error: message }) }],
       isError: true as const,

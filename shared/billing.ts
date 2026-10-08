@@ -1,13 +1,25 @@
 // Billing on the wire (docs/architecture/billing.md): what the Worker, the SPA and the pricing page agree
 // on. Zod-free and dependency-free, like shared/plans.ts. NO PRICES live here or anywhere in Trov: an
 // amount is Stripe's, shown at Stripe's checkout — Trov knows a price only as an id in `wrangler.toml`.
-import type { PlanId, PlanStatus } from "./plans";
+import { PLANS, type PlanId, type PlanOverrides, type PlanStatus } from "./plans";
 import { PLATFORM_FROM_ADDRESS } from "./sender";
 
-/** The plans a person can buy themselves. Enterprise is arranged with Trov, never bought here. */
-export const PURCHASABLE_PLANS = ["personal", "team"] as const;
+/** The plans a person can buy themselves: Pro (id `team`), PER SEAT. Free costs nothing and is never
+ *  bought; Enterprise is arranged with Trov; Personal is no longer sold (shared/plans.ts). */
+export const PURCHASABLE_PLANS = ["team"] as const;
 export type PurchasablePlan = (typeof PURCHASABLE_PLANS)[number];
 export const isPurchasablePlan = (v: unknown): v is PurchasablePlan => typeof v === "string" && (PURCHASABLE_PLANS as readonly string[]).includes(v);
+
+/**
+ * Pro is bought PER SEAT: the seats a subscription pays for ARE the org's seat cap — its `seats` override —
+ * up to the plan's own cap (shared/plans.ts: Pro's 50, which is also checkout's maximum). A plan not sold
+ * here, or a quantity Stripe did not send, overrides nothing.
+ */
+export function paidSeats(plan: PlanId, quantity: number | null): PlanOverrides {
+  if (!isPurchasablePlan(plan) || quantity === null) return {};
+  const cap = PLANS[plan].entitlements.seats;
+  return { seats: Math.max(1, cap === null ? quantity : Math.min(quantity, cap)) };
+}
 
 export const BILLING_INTERVALS = ["month", "year"] as const;
 export type BillingInterval = (typeof BILLING_INTERVALS)[number];
@@ -66,7 +78,7 @@ export interface BillingConfigResponse {
 
 /** No plan purchasable: what a page shows before it has asked, and what the route answers when unset. */
 const NONE: BillingPlanOffer = { purchasable: false, intervals: [], href: null };
-export const NO_BILLING_OFFERS: Record<PlanId, BillingPlanOffer> = { personal: NONE, team: NONE, enterprise: NONE };
+export const NO_BILLING_OFFERS: Record<PlanId, BillingPlanOffer> = { free: NONE, personal: NONE, team: NONE, enterprise: NONE };
 
 // ── GET /api/billing/status?session_id=… (the waiting room's poll) ───────────
 
@@ -84,19 +96,27 @@ export type BillingStatusResponse =
 
 // ── an org's billing, as its members read it (on OrgPlanView) ────────────────
 
-/** Present only for an org that pays through Stripe; a granted org has none and shows nothing about payment. */
+/** Present for an org that pays (or paid) through Stripe, and for every org on Free (it can upgrade); a
+ *  granted org on another plan has none and shows nothing about payment. */
 export interface OrgBillingView {
   /** Stripe is set up on this deployment (the buttons work). */
   available: boolean;
+  /** The org pays through a LIVE subscription (active, past due, or cancelling). False: a Free org that never
+   *  paid, or whose subscription ended (`ended`). */
+  subscribed: boolean;
+  /** The org's subscription ended, so it moved to Free (billing.md › What each state does). */
+  ended: boolean;
+  /** The org has a Stripe customer: "Manage billing" opens its card and invoices (also once it ended). */
+  customer: boolean;
   interval: BillingInterval | null;
-  /** The owner cancelled: the plan runs to `period_end` and then ends. */
+  /** The seats the live subscription pays for — Pro is per seat, and this is the org's seat cap. Null otherwise. */
+  seats: number | null;
+  /** The owner cancelled: the plan runs to `period_end` and then the org moves to Free. */
   cancel_at_period_end: boolean;
   /** Trov set this org's plan by hand: it no longer follows the subscription's. */
   pinned: boolean;
-  /** The plans the owner can move THIS subscription to (each has a price on this interval). */
-  switch_to: PurchasablePlan[];
-  /** The plans a CANCELED org can be renewed on (a new subscription for this org). */
-  renew_on: PurchasablePlan[];
+  /** The plans the org can START a subscription on — a Free org's upgrade (`POST …/billing/upgrade`). */
+  upgrade_to: PurchasablePlan[];
 }
 
 // ── Platform (superadmin) ────────────────────────────────────────────────────
@@ -108,6 +128,10 @@ export interface PlatformOrgBilling {
   stripe_status: string;
   /** The plan the SUBSCRIPTION pays for (the org's own plan differs when `pinned`). */
   plan: PlanId;
+  /** The subscription has ended (Stripe's status is a final one): the org moved to Free. */
+  ended: boolean;
+  /** The seats the subscription pays for (its quantity); null when not known. */
+  seats: number | null;
   interval: BillingInterval | null;
   period_end: string | null;
   cancel_at_period_end: boolean;

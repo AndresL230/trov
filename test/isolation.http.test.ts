@@ -296,8 +296,8 @@ const TENANT: Record<string, Row> = {
   // src/billing/routes.ts — an OWNER's billing for the org in the path (0045_billing). Billing is off in the pool,
   // so B's own owner gets the documented 503 `billing_unavailable` (and B's member the 403): no Stripe call is
   // ever made here, and the customer a session would be for is read from the PATH's org row, never from a body.
-  "POST /billing/portal": { body: {}, allow: [503] }, "POST /billing/change": { body: { plan: "team" }, allow: [503] },
-  "POST /billing/renew": { body: { plan: "team" }, allow: [503] },
+  "POST /billing/portal": { body: {}, allow: [503] },
+  "POST /billing/upgrade": { body: { plan: "team" }, allow: [503] },
 };
 
 /** The org surface (src/orgs, src/integrations) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under

@@ -20,8 +20,8 @@
 //
 // "The current org" is ONE function, `currentOrg`: the org the page's path names.
 
-import { planBlock, planSwitchCopy, inviteGate, seatsLead, initialOrgBillingUi, type OrgBillingUi } from "./org-plan";
-import type { OrgPlanView } from "@shared/plans";
+import { planBlock, inviteGate, seatCapAction, seatsLead, initialOrgBillingUi, type OrgBillingUi } from "./org-plan";
+import { isSoloPlan, type OrgPlanView } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, YOU, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, loadingNote, failedNote,
@@ -212,8 +212,9 @@ export const githubOf = (ui: Pick<OrgUi, "github" | "integrations">): GithubAppS
 export function setupSteps(ui: OrgUi): SetupStep[] | null {
   if (ui.repos.status !== "ok" || ui.envs.status !== "ok" || ui.members.status !== "ok" || ui.invites.status !== "ok" || ui.integrations.status !== "ok" || !ui.integrations.data) return null;
   const token = ui.integrations.data.integrations.find((i) => i.kind === "github_token");
-  // A one-person plan has no team to invite: the step would never be done, so it is not asked.
-  const solo = ui.plan.data?.entitlements.seats === 1;
+  // A one-person plan has no team to invite: the step would never be done, so it is not asked. (A Pro
+  // org that bought one seat is not one: it invites by adding a seat.)
+  const solo = ui.plan.data?.entitlements.seats === 1 && isSoloPlan(ui.plan.data.plan);
   // GitHub is connected by the App's installation or, by hand, by a token: either satisfies the step.
   const app = githubOf(ui);
   const offered = app?.configured === true;
@@ -605,14 +606,16 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
   const owners = members.filter((m) => m.role === "owner").length;
   const canSend = inviteDraftOk(ui.inviteBy, ui.inviteDraft) && !ui.inviteBusy;
   // The plan's seats (org-plan.ts): a one-person plan offers no invitation at all; with every
-  // seat in use the form gives way to the sentence the server would answer with.
+  // seat in use the form gives way to the sentence the server would answer with — and, for the
+  // owner, the one thing that fixes it: "Add a seat" (paid Pro) or "Upgrade to Pro" (Free).
   const gate = inviteGate(ui.plan.data, org.role);
+  const fix = gate.kind === "full" ? seatCapAction(gate.next, ui.billing, ui.plan.data?.billing?.available ?? false) : "";
   // Inviting is this tab's primary action (its one accent button): one line of controls in
   // one surface, with what happens next said once, under them.
   const invite = !admin || gate.kind === "solo" ? ""
     : gate.kind !== "open" ? `<section aria-labelledby="org-invite-t" data-invite-gate="${gate.kind}">
       ${orgHead("Invite someone", "", null, "org-invite-t")}
-      <div${surface("padding:14px 16px")}><p role="status" style="margin:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${esc(gate.sentence)}${gate.kind === "full" ? " Removing a member or revoking a pending invite frees a seat." : ""}</p></div>
+      <div${surface("padding:14px 16px")}><p role="status" style="margin:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${esc(gate.sentence)}${gate.kind === "full" ? " Removing a member or revoking a pending invite frees a seat." : ""}</p>${fix ? `<div class="cnpy-plan-actions" data-seat-fix="${gate.next ?? ""}">${fix}</div>` : ""}${fix && ui.billing.error ? `<div role="alert" style="${O_ERR}">${esc(ui.billing.error)}</div>` : ""}</div>
     </section>`
     : `<section aria-labelledby="org-invite-t">
       ${orgHead("Invite someone", "", null, "org-invite-t")}
@@ -773,11 +776,6 @@ export function orgOverlays(p: OrgSettingsProps): string {
   if (!p.org) return "";
   const ui = p.ui;
   const menu = p.dd?.open ? dropdownMenu(orgDropdowns(p), p.dd) : "";
-  // A switch to a smaller plan, said before the owner leaves for Stripe (org-plan.ts `planSwitchCopy`).
-  if (ui.billing.confirm && ui.plan.data && p.org.role === "owner") {
-    return menu + confirmModal({ id: "org-billing-confirm", ...planSwitchCopy(ui.plan.data, p.org.name, ui.billing.confirm), tone: "neutral",
-      confirmAct: "orgBillingConfirmGo", cancelAct: "orgBillingConfirmCancel", busy: ui.billing.busy !== null });
-  }
   if (ui.confirm) {
     const copy = orgConfirmCopy(ui.confirm, p.org, ui);
     if (copy) return menu + confirmModal({ id: "org-confirm", ...copy, confirmAct: "orgConfirmGo", cancelAct: "orgConfirmCancel", busy: ui.confirm.busy });

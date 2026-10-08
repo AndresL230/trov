@@ -50,7 +50,7 @@ import { orgsApp, myInvitesApp, orgTenantApp, cookieOnly } from "./orgs/routes";
 import { hasRole } from "./data/context";
 import { platformApp } from "./platform/routes";
 import { billingApp, orgBillingApp } from "./billing/routes";
-import { PlanLimitError, PLAN_LIMIT_STATUS } from "./plans/state";
+import { PlanFeatureError, PlanLimitError, PLAN_LIMIT_STATUS } from "./plans/state";
 import { listLegacyInvites, getLegacyInvite, createLegacyInvite, revokeLegacyInvite, pendingInviteId, LegacyInviteError } from "./orgs/legacy-invites";
 import { mailInvite, mailOrigin } from "./orgs/mail";
 import { listPersons, PersonError } from "./auth/persons";
@@ -64,10 +64,11 @@ import { rateLimited } from "./platform/limits";
 export const app = new Hono<AppEnv>();
 
 // A plan refused an addition (0044_plans, docs/architecture/plans.md): ONE status and ONE body for every
-// route — 402 `{ error: "plan_limit", limit, used, cap, plan, status, message }`. A repository throws
-// `PlanLimitError`; no route maps it itself. Anything else is rethrown (Hono's 500).
+// route — 402 `{ error: "plan_limit", limit, used, cap, plan, status, message }` (a plan without a feature:
+// the same 402, `{ error: "plan_feature", feature, … }`). A repository throws `PlanLimitError` /
+// `PlanFeatureError`; no route maps it itself. Anything else is rethrown (Hono's 500).
 app.onError((err, c) => {
-  if (err instanceof PlanLimitError) return c.json(err.refusal, PLAN_LIMIT_STATUS);
+  if (err instanceof PlanLimitError || err instanceof PlanFeatureError) return c.json(err.refusal, PLAN_LIMIT_STATUS);
   throw err;
 });
 

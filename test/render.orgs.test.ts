@@ -40,9 +40,10 @@ const invite = (o: Partial<MyInvite> = {}): MyInvite => ({
   id: 7, org: { slug: "globex", name: "Globex" }, role: "admin", invited_by: "hank", created_at: "2026-10-05T09:00:00.000Z", github_login: "ines-vidal", email: null, ...o,
 });
 /** A grant (shared/plans.ts): what lets a person create an organization. `mine()` holds one by default. */
-const teamGrant = (o: Partial<MyGrant> = {}): MyGrant => ({ id: 4, plan: "team", plan_name: "Team", entitlements: PLANS.team.entitlements, granted_by: "andres", created_at: "2026-10-05T09:00:00.000Z", expires_at: null, ...o });
-const mine = (o: Partial<MyOrgsResponse> = {}): MyOrgsResponse => ({ orgs: [acme(), sapling()], invites: [], superadmin: false, can_create: true, grants: [teamGrant()], ...o });
-const noGrant = { can_create: false, grants: [] };
+const teamGrant = (o: Partial<MyGrant> = {}): MyGrant => ({ id: 4, plan: "team", plan_name: "Pro", entitlements: PLANS.team.entitlements, granted_by: "andres", created_at: "2026-10-05T09:00:00.000Z", expires_at: null, ...o });
+const mine = (o: Partial<MyOrgsResponse> = {}): MyOrgsResponse => ({ orgs: [acme(), sapling()], invites: [], superadmin: false, can_create: true, grants: [teamGrant()], free: { can_create: false, owned: null }, ...o });
+/** Nothing to create with: no grant, and a Free org owned already (src/plans/free.ts). */
+const noGrant = { can_create: false, grants: [], free: { can_create: false, owned: { slug: "acme", name: "Acme" } } };
 const me = (orgs: MyOrg[], o: Partial<Me> = {}): Me => ({
   handle: "ines", name: "Ines Vidal", avatar_url: null, color: "fern", identities: [{ provider: "github", label: "ines-vidal", linked_at: "t" }],
   orgs, superadmin: false, pending_invites: 0, ...o,

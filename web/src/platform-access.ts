@@ -11,7 +11,7 @@
 // it — nothing here touches a platform.ts value at module load.)
 
 import {
-  PLANS, PLAN_IDS, LIMIT_KEYS, LIMITS, GRANT_EXPIRY_DAYS, GRANT_NOTE_MAX, formatBytes, formatLimit, formatUse, limitNoun, resolveEntitlements, seatsPhrase,
+  PLANS, PLAN_IDS, FREE_PLAN, LIMIT_KEYS, LIMITS, GRANT_EXPIRY_DAYS, GRANT_NOTE_MAX, formatBytes, formatLimit, formatUse, limitNoun, resolveEntitlements, seatsPhrase,
   type GrantTarget, type LimitKey, type PlanId, type PlanOverrides, type PlatformGrant, type PlatformOrgPlan,
 } from "@shared/plans";
 import { billingDate, isPast } from "@shared/billing";
@@ -114,9 +114,10 @@ const goBtn = (label: string, on: boolean, act: string, focus = false): string =
   `<button type="button" data-act="${attr(act)}"${focus ? " data-plat-focus" : ""}${on ? ` class="cnpy-accentbtn"` : " disabled"} style="${BTN};${on ? "border:1px solid transparent;background:var(--accent);color:var(--accent-fg);cursor:pointer" : "border:1px solid var(--border);background:transparent;color:var(--fg-40);cursor:default"}">${esc(label)}</button>`;
 
 /** A plan as a dropdown's option: its name, and what it is in one line. */
-const planOption = (id: PlanId) => ({ value: id, label: PLANS[id].name, hint: PLANS[id].description });
+const planOption = (id: PlanId) => ({ value: id, label: PLANS[id].name, hint: PLANS[id].offered ? PLANS[id].description : `${PLANS[id].description} No longer offered.` });
+/** The plans on offer — and a legacy one (Personal) only while it is the value already chosen. */
 export const planDropdown = (id: string, act: string, value: PlanId, disabled = false): DropdownProps =>
-  ({ id, act, value, options: PLAN_IDS.map(planOption), labelledBy: `${id}-l`, fill: true, disabled });
+  ({ id, act, value, options: PLAN_IDS.filter((p) => PLANS[p].offered || p === value).map(planOption), labelledBy: `${id}-l`, fill: true, disabled });
 const EXPIRY_LABEL = (v: ExpiryChoice): string => (v === "never" ? "Never" : `In ${v} days`);
 export const expiryDropdown = (value: ExpiryChoice, disabled = false): DropdownProps => ({
   id: "plat-grant-expiry", act: "platGrantExpiry", value, labelledBy: "plat-grant-expiry-l", fill: true, disabled,
@@ -264,10 +265,12 @@ export function grantModal(d: GrantDraft, dd: DropdownUi = initialDropdownUi()):
 /** "7 of 10" / "7" — the Organizations list's Seats cell. */
 export const seatsCell = (p: PlatformOrgPlan): string => formatUse("seats", p.seats_used, p.entitlements.seats);
 
-/** "paid" / "granted" (and what Stripe says of a paid one) — the list's word beside the seats. */
+/** "paid" / "granted" / "free" (and what Stripe says of a paid one) — the list's word beside the seats. A
+ *  paid org whose subscription ended is on Free: "paid, ended". */
 export function planSourceWord(p: PlatformOrgPlan): string {
-  if (!p.billing) return p.source === "billing" ? "paid" : "granted";
-  return p.status === "canceled" ? "paid, ended" : p.status === "past_due" ? "paid, past due" : p.billing.cancel_at_period_end ? "paid, cancelling" : "paid";
+  const ended = p.status === "canceled" || p.plan === FREE_PLAN || !!p.billing?.ended;
+  if (!p.billing) return p.source === "billing" ? (ended ? "paid, ended" : "paid") : p.plan === FREE_PLAN ? "free" : "granted";
+  return ended ? "paid, ended" : p.status === "past_due" ? "paid, past due" : p.billing.cancel_at_period_end ? "paid, cancelling" : "paid";
 }
 
 /** A paid org's subscription, on its page: Stripe's status, the period, the customer in the Stripe dashboard —
@@ -276,13 +279,16 @@ function billingLine(p: PlatformOrgPlan): string {
   const b = p.billing;
   if (!b) return `<div data-plat-billing="granted" style="font-size:12.5px;color:var(--fg-55);margin-top:8px;line-height:1.5">Granted by Trov: nobody pays for this plan through Stripe.</div>`;
   const date = billingDate(b.period_end);
-  const when = !date ? "" : p.status === "canceled" ? (isPast(b.period_end) ? ` &middot; ended ${esc(date)}` : "") : b.cancel_at_period_end ? ` &middot; ends ${esc(date)}` : ` &middot; renews ${esc(date)}`;
+  const ended = b.ended || p.status === "canceled";
+  const when = !date ? "" : ended ? (isPast(b.period_end) ? ` &middot; ended ${esc(date)}` : "") : b.cancel_at_period_end ? ` &middot; ends ${esc(date)}` : ` &middot; renews ${esc(date)}`;
   const every = b.interval === "year" ? "yearly" : b.interval === "month" ? "monthly" : "";
+  // Pro is per seat: the seats the subscription pays for, while it is live.
+  const seats = !ended && b.seats !== null ? ` &middot; ${b.seats} ${b.seats === 1 ? "seat" : "seats"}` : "";
   const pinned = b.pinned
     ? `<div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-size:12.5px;line-height:1.5;color:var(--fg-70)">You set this plan by hand. The subscription pays for ${esc(PLANS[b.plan].name)}, and its events do not change the plan while it is pinned.</span><button type="button" data-act="platPlanFollow" data-field="platPlanFollow" class="cnpy-outlinebtn" style="${OUTLINE};height:30px">Follow subscription</button></div>`
     : "";
   return `<div data-plat-billing="${b.pinned ? "pinned" : "paid"}" style="margin-top:8px">
-    <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55)">Paid through Stripe${every ? `, ${every}` : ""} &middot; Stripe says <strong style="font-weight:500;color:var(--fg-70)">${esc(b.stripe_status.replace(/_/g, " "))}</strong>${when}${b.livemode ? "" : " &middot; test mode"} &middot; <a href="${attr(b.dashboard_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--fg-70)">Open the customer in Stripe</a></div>
+    <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55)">${ended ? "Paid through Stripe until its subscription ended: now on Free" : `Paid through Stripe${every ? `, ${every}` : ""}${seats}`} &middot; Stripe says <strong style="font-weight:500;color:var(--fg-70)">${esc(b.stripe_status.replace(/_/g, " "))}</strong>${when}${b.livemode ? "" : " &middot; test mode"} &middot; <a href="${attr(b.dashboard_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--fg-70)">Open the customer in Stripe</a></div>
     ${pinned}
   </div>`;
 }
@@ -334,7 +340,7 @@ export function planChangeCopy(d: Pick<PlanDraft, "name" | "current" | "plan" | 
 /** What Change plan does to an org that PAYS (docs/architecture/billing.md › The superadmin and a paid org). */
 export function planModalBillingNote(p: PlatformOrgPlan): string {
   if (!p.billing) return "";
-  const text = p.status === "canceled"
+  const text = p.status === "canceled" || p.billing.ended
     ? "Its subscription has ended. A plan you set here takes the organization back as a granted one: active, and no longer tied to Stripe."
     : `It pays for ${PLANS[p.billing.plan].name} through Stripe. A different plan set here is pinned: the subscription keeps charging what it charges, its status and renewals still apply, and its events stop changing the plan until you choose Follow subscription.`;
   return `<p data-plat-plan-billing role="note" class="cnpy-plan-note" style="border-radius:9px;margin:10px 0 0">${esc(text)}</p>`;

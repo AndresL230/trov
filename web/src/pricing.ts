@@ -1,4 +1,4 @@
-// ── Pricing: the three plans, as the public site shows them ──────────────────
+// ── Pricing: the plans on offer, as the public site shows them ───────────────
 // ONE render (`pricingSection`) in two places: the last section of the landing page
 // (web/src/landing.ts, nav link "Pricing") and the standalone `/pricing` page
 // (`pricingView` — web/pricing.html, booted by web/src/pricing-page.ts; a static page
@@ -6,9 +6,11 @@
 //
 // PURE, and it restates nothing: names, descriptions and every limit come from
 // shared/plans.ts, every price from shared/pricing.ts — change a number there and this
-// page follows. A plan with no announced price says so and offers a waitlist e-mail;
-// it never shows a number, and never a purchase link. A purchase is a plain link to
-// `purchaseHref` (the billing route owns sign-in and payment); this page calls no API.
+// page follows. Only the plans on offer are shown (a legacy plan — Personal — is not).
+// Free says "Free" and its button opens Trov, where a signed-in person creates one; Pro
+// is priced per seat. A plan with no announced price says so and offers a waitlist
+// e-mail; it never shows a number, and never a purchase link. A purchase is a plain link
+// to `purchaseHref` (the billing route owns sign-in and payment); this page calls no API.
 //
 // The Monthly / Yearly switch is two native radios and CSS (`:has(:checked)` in
 // trov.css shows the `.is-month` or `.is-year` price and link), so it works with no
@@ -18,7 +20,7 @@
 // organizations.md). No refunds, trials, discounts or compliance claims: none exist.
 
 import { LIMIT_KEYS, LIMITS, PLAN_IDS, PLANS, formatLimit, limitNoun, limitPhrase, type PlanDef, type PlanId } from "@shared/plans";
-import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, purchaseHref, type PlanPricing } from "@shared/pricing";
+import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, isFreePrice, purchaseHref, type PlanPricing } from "@shared/pricing";
 import { esc, attr } from "./ui";
 import { SITE_CONTACT, TROV_REPO, siteFooter, siteMark } from "./site-chrome";
 
@@ -44,11 +46,13 @@ export function mailHref(subject: string): string {
 export const waitlistHref = (plan: PlanDef) => mailHref(`Trov ${plan.name} plan: waitlist`);
 export const talkHref = (plan: PlanDef) => mailHref(`Trov ${plan.name} plan`);
 export const earlyAccessHref = () => mailHref("Early access to Trov");
+/** Where a Free card points: Trov itself — sign in, then create the organization from the picker. */
+export const FREE_START_HREF = "/";
 
 /** The plan whose button is the page's one accent action: the purchasable plan that carries
  *  a badge, else the largest purchasable one. null while no price is announced. */
-function accentPlan(pricing: Record<PlanId, PlanPricing>): PlanId | null {
-  const buyable = PLAN_IDS.filter((id) => canPurchase(pricing[id]));
+function accentPlan(pricing: Record<PlanId, PlanPricing>, ids: readonly PlanId[]): PlanId | null {
+  const buyable = ids.filter((id) => canPurchase(pricing[id]));
   return buyable.find((id) => pricing[id].badge) ?? buyable[buyable.length - 1] ?? null;
 }
 
@@ -68,6 +72,12 @@ function planCta(def: PlanDef, price: PlanPricing, accent: boolean, signedIn: bo
   const outline = `class="site-btn site-btn-outline site-plan-cta" style="${BTN}"`;
   if (!price.selfServe) return `<a href="${attr(talkHref(def))}" ${outline}>Talk to us<span class="site-vh"> about the ${esc(def.name)} plan</span></a>`;
   const id = def.id;
+  // Free is never bought: its button opens Trov, where a signed-in person creates one (one they own at a time).
+  if (isFreePrice(price)) {
+    return signedIn
+      ? `<button type="button" data-act="siteBack" ${outline}>Open Trov</button>`
+      : `<a href="${FREE_START_HREF}" ${outline}>Start for free<span class="site-vh"> on the ${esc(def.name)} plan</span></a>`;
+  }
   if (!canPurchasePlan(id, price)) {
     return signedIn
       ? `<button type="button" data-act="siteBack" ${outline}>Open Trov</button>`
@@ -78,11 +88,16 @@ function planCta(def: PlanDef, price: PlanPricing, accent: boolean, signedIn: bo
   return hasYearly(price) ? link("month", " is-month") + link("year", " is-year") : link("month");
 }
 
+/** A plan sold per seat shows its seat cap as the most it can buy: "Up to 50". */
+const perSeat = (def: PlanDef, price: PlanPricing): boolean => canPurchasePlan(def.id, price);
+const limitValue = (def: PlanDef, price: PlanPricing, k: (typeof LIMIT_KEYS)[number], value: string): string =>
+  k === "seats" && perSeat(def, price) && def.entitlements.seats !== null ? `Up to ${value}` : value;
+
 function planCard(def: PlanDef, price: PlanPricing, i: number, accent: boolean, signedIn: boolean, h: number): string {
   const limits = LIMIT_KEYS.map((k) => {
-    // The value, then what it counts: "10" + "seats", "5 GB" + "artifact storage", "3,000" + "AI summaries per month".
+    // The value, then what it counts: "3" + "seats", "5 GB" + "artifact storage", "3,000" + "AI summaries per month".
     const [value, what] = limitPhrase(k, def.entitlements[k]);
-    return `<li><b>${esc(value)}</b> ${esc(what)}</li>`;
+    return `<li><b>${esc(limitValue(def, price, k, value))}</b> ${esc(what)}</li>`;
   }).join("");
   return `<article class="site-st site-plan${accent ? " is-accent" : ""}" style="border-radius:12px;${at(i * 110)}" aria-labelledby="site-plan-${def.id}">
       <div class="site-plan-head">
@@ -100,7 +115,7 @@ function planCard(def: PlanDef, price: PlanPricing, i: number, accent: boolean, 
 function notAnnounced(signedIn: boolean): string {
   const text = signedIn
     ? `To move your organization to another plan, write to <a href="${attr(mailHref("Changing our Trov plan"))}">${SITE_CONTACT}</a>.`
-    : "Until they are, organizations are set up by invitation. Write to us and say which plan fits.";
+    : "Until they are, start with a Free organization, or write to us and say which plan fits.";
   return `<div class="site-price-note" style="border-radius:12px">
       <p><b>Prices are not announced yet.</b> ${text}</p>
       ${signedIn ? "" : `<a href="${attr(earlyAccessHref())}" class="site-btn site-btn-accent" style="border-radius:9px">Get early access</a>`}
@@ -119,7 +134,7 @@ function intervalSwitch(): string {
 function comparison(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>, h: number): string {
   const rows = LIMIT_KEYS.map((k) => {
     const d = LIMITS[k];
-    const cells = defs.map((def) => `<td role="cell" data-plan="${attr(def.name)}">${esc(formatLimit(k, def.entitlements[k]))}</td>`).join("");
+    const cells = defs.map((def) => `<td role="cell" data-plan="${attr(def.name)}">${esc(limitValue(def, pricing[def.id], k, formatLimit(k, def.entitlements[k])))}</td>`).join("");
     return `<tr role="row"><th role="rowheader" scope="row"><span class="site-cmp-label">${esc(d.label)}${d.per === "person" ? ", per person" : ""}${d.period ? `, per ${d.period}` : ""}</span><span class="site-cmp-counts">${esc(d.counts)}</span></th>${cells}</tr>`;
   }).join("");
   const sized = defs.filter((def) => !pricing[def.id].selfServe).map((def) => def.name);
@@ -152,17 +167,29 @@ function everyPlan(h: number): string {
 // ── questions ────────────────────────────────────────────────────────────────
 export interface PricingQuestion { q: string; /** Authored HTML (this file's own text). */ a: string }
 
-export function pricingQuestions(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>): PricingQuestion[] {
+export function pricingQuestions(all: PlanDef[], pricing: Record<PlanId, PlanPricing>): PricingQuestion[] {
+  const defs = all.filter((def) => def.offered); // a legacy plan is never asked about
   const byTalk = defs.find((def) => !pricing[def.id].selfServe);
+  const free = defs.find((def) => isFreePrice(pricing[def.id]));
+  const paid = defs.find((def) => canPurchasePlan(def.id, pricing[def.id]));
   const limitNames = LIMIT_KEYS.map(limitNoun);
   const list = `${limitNames.slice(0, -1).join(", ")} and ${limitNames[limitNames.length - 1]}`;
+  const seatCap = paid?.entitlements.seats ?? null;
   const qs: PricingQuestion[] = [
     { q: "What counts as a seat?", a: "A member of the organization, or an invitation that has not been answered yet. A pending invitation holds its seat, so an organization can never accept more people than it has seats." },
+  ];
+  if (paid) {
+    const p = pricing[paid.id];
+    qs.push({ q: `How does ${esc(paid.name)} pricing work?`, a: `${esc(paid.name)} is bought per seat, at ${esc(formatPrice(p.price as number))} ${esc(p.per)}. There is no minimum, so a person on their own can buy a single seat. You choose how many at checkout, and add more from Org settings › General when you invite more people${seatCap === null ? "" : `, up to ${seatCap}`}. The seats you pay for are the seats the organization has.` });
+  }
+  qs.push(
     { q: "What happens if we go over a limit?", a: "Nothing is deleted and nobody is removed. Everyone can still read everything. Adding more of that one thing is refused until the organization is back under the limit, and the rest of Trov carries on." },
-    { q: "Can we change plans?", a: `Yes. An owner manages a paid plan from Org settings › General in Trov. Until paid plans are available, a plan is changed by us: write to <a href="${attr(mailHref("Changing our Trov plan"))}">${SITE_CONTACT}</a>. If the new plan is smaller than what the organization uses, the answer above applies.` },
+    paid
+      ? { q: "Can we change plans?", a: `Yes.${free ? ` Anyone signed in can create a ${esc(free.name)} organization (one they own at a time), and its owner upgrades it to ${esc(paid.name)} from Org settings › General.` : ""} An owner manages seats, the card and invoices there too. If ${esc(paid.name)} is cancelled, the organization moves to ${free ? esc(free.name) : "a smaller plan"} when the paid period ends, and the answer above applies.` }
+      : { q: "Can we change plans?", a: `Yes. Until paid plans are available, a plan is changed by us: write to <a href="${attr(mailHref("Changing our Trov plan"))}">${SITE_CONTACT}</a>. If the new plan is smaller than what the organization uses, the answer above applies.` },
     { q: "Is our data separate from other organizations?", a: "Yes. Everything in Trov belongs to one organization, and only its members and the agents they connect can read it." },
     { q: "Can we read the source?", a: `Yes. Trov's source is <a href="${TROV_REPO}" target="_blank" rel="noopener">published on GitHub</a> under AGPL-3.0. The plans on this page are for the hosted service.` },
-  ];
+  );
   if (byTalk) qs.push({ q: `How does ${byTalk.name} work?`, a: `<a href="${attr(talkHref(byTalk))}">Talk to us about ${esc(byTalk.name)}</a>. Its ${list} are each set for your organization, and can be changed later.` });
   return qs;
 }
@@ -182,9 +209,10 @@ export function pricingSection(p: PricingProps = {}): string {
   const rv = p.rv ?? settled;
   const signedIn = p.signedIn ?? false;
   const level = p.level ?? 2;
-  const defs = PLAN_IDS.map((id) => plans[id]);
-  const accent = accentPlan(pricing);
-  const yearly = PLAN_IDS.some((id) => hasYearly(pricing[id]));
+  const ids = PLAN_IDS.filter((id) => plans[id].offered);
+  const defs = ids.map((id) => plans[id]);
+  const accent = accentPlan(pricing, ids);
+  const yearly = ids.some((id) => hasYearly(pricing[id]));
   const title = level === 1
     ? `<div class="site-price-eyebrow">Pricing</div><h1 class="site-price-title is-page">${PRICING_TITLE}</h1>`
     : `<h2 class="site-price-title">${PRICING_TITLE}</h2>`;

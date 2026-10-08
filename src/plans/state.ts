@@ -8,8 +8,8 @@
 // (src/routes.ts `app.onError`), an MCP tool error with `code: "plan_limit"`.
 import { type PlatformContext, type Stmt, first, stmt, batch, nowIso } from "../data/platform-sql";
 import {
-  planRefusal, resolveEntitlements, storedOverrides, parseOverrides, planDef, isPlanId, PLAN_STATUSES, PLAN_SOURCES,
-  type OrgPlanState, type PlanRefusal, type PlanId, type PlanOverrides, type PlanSource, type PlanStatus, type PlatformOrgPlan,
+  planRefusal, resolveEntitlements, storedOverrides, parseOverrides, planDef, isPlanId, PLAN_STATUSES, PLAN_SOURCES, FREE_PLAN,
+  type OrgPlanState, type PlanFeatureRefusal, type PlanRefusal, type PlanId, type PlanOverrides, type PlanSource, type PlanStatus, type PlatformOrgPlan,
 } from "@shared/plans";
 import type { OrgAuditAction } from "@shared/orgs";
 
@@ -25,6 +25,16 @@ export class PlanLimitError extends Error {
  *  an owner can fix that; this one no role in the org can — the plan has to change. Nothing else in the
  *  app answers 402, so a client can branch on the status alone. */
 export const PLAN_LIMIT_STATUS = 402;
+
+/** A plan does not include a feature (shared/plans.ts `planFeatureRefusal`). The same 402 as a limit, its
+ *  own body; thrown by `requireFeature` (./gate.ts). */
+export class PlanFeatureError extends Error {
+  readonly code = "plan_feature" as const;
+  constructor(readonly refusal: PlanFeatureRefusal) {
+    super(refusal.message);
+    this.name = "PlanFeatureError";
+  }
+}
 
 /** Throw when `state` refuses `adding` more of `limit` at `used`. */
 export function assertWithinPlan(state: OrgPlanState, limit: Parameters<typeof planRefusal>[1], used: number, adding = 1): void {
@@ -120,7 +130,7 @@ export class PlanError extends Error {
 
 /** A plan id from input, or `invalid_plan`. */
 export function cleanPlan(v: unknown): PlanId {
-  if (!isPlanId(v)) throw new PlanError("invalid_plan", "plan must be personal, team or enterprise");
+  if (!isPlanId(v)) throw new PlanError("invalid_plan", "plan must be free, personal, team or enterprise");
   return v;
 }
 /** Overrides from input, or `invalid_overrides`. */
@@ -195,8 +205,8 @@ export async function setOrgPlan(p: PlatformContext, slug: string, input: SetOrg
  *   • `canceled` — the subscription ended. The org stays READABLE and WORKING — every member keeps
  *     access, tickets, docs, the feed and agents carry on — but every ADDITION a limit governs (a
  *     seat, a repository, an environment, an artifact version, an agent connection) is refused until
- *     `setOrgPlan` puts it on a plan again. Nothing is deleted. (To shrink instead of freeze, call
- *     `setOrgPlan(p, slug, { plan: "personal" })`.)
+ *     `setOrgPlan` puts it on a plan again. Nothing is deleted. (Billing shrinks instead of freezing:
+ *     an ended subscription is `moveOrgToFree`.)
  *   • `active` — back to normal.
  * Audited as `plan.status`. Idempotent.
  */
@@ -215,8 +225,17 @@ export async function setOrgPlanStatus(p: PlatformContext, slug: string, status:
 }
 /** BILLING: a payment failed (see `setOrgPlanStatus`). */
 export const markOrgPastDue = (p: PlatformContext, slug: string): Promise<OrgPlan> => setOrgPlanStatus(p, slug, "past_due");
-/** BILLING: the subscription ended — readable, working, no additions (see `setOrgPlanStatus`). */
+/** BILLING: the subscription ended — readable, working, no additions (see `setOrgPlanStatus`). Billing
+ *  itself no longer calls it: an ended subscription moves the org to Free (`moveOrgToFree`). */
 export const cancelOrgPlan = (p: PlatformContext, slug: string): Promise<OrgPlan> => setOrgPlanStatus(p, slug, "canceled");
+/**
+ * BILLING: the subscription ended → the org is on Free, `active`, and still a billing org (its Stripe
+ * customer is kept, for its invoices and for an upgrade). The over-limit rule is all that applies:
+ * nothing is deleted, nobody is removed, everyone reads, and an addition over a Free limit is refused
+ * until the org is back under it or on Pro again. Overrides (the paid seats) are cleared.
+ */
+export const moveOrgToFree = (p: PlatformContext, slug: string, opts: { period_end?: string | null } = {}): Promise<OrgPlan> =>
+  setOrgPlan(p, slug, { plan: FREE_PLAN, overrides: {}, source: "billing", status: "active", ...opts });
 
 /** An org's plan as Platform lists it (the list, the org page). */
 export async function platformOrgPlan(p: PlatformContext, orgId: string): Promise<PlatformOrgPlan> {

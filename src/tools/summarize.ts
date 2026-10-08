@@ -42,6 +42,18 @@ const GEMINI_MODEL = "gemini-2.5-flash-lite";
 // instead of stalling; 10s is comfortably above a healthy Flash-Lite latency.
 export const GEMINI_TIMEOUT_MS = 10000;
 
+// The description is the one unbounded part of a call, and input is most of its cost (one platform key
+// pays for every org — docs/architecture/plans.md › AI summaries). At most this many characters of it
+// are sent; the title always goes whole. A summary of a longer description reads its opening.
+export const SUMMARY_BODY_MAX = 8000;
+
+/** The description as sent: at most `SUMMARY_BODY_MAX` characters, never ending in half a surrogate pair. */
+export function capSummaryBody(body: string): string {
+  if (body.length <= SUMMARY_BODY_MAX) return body;
+  const cut = /[\uD800-\uDBFF]/.test(body[SUMMARY_BODY_MAX - 1]) ? SUMMARY_BODY_MAX - 1 : SUMMARY_BODY_MAX;
+  return body.slice(0, cut);
+}
+
 export const SUMMARIZER_SYSTEM_PROMPT =
   "Summarize this pull request for a team activity feed — what shipped. " +
   "Respond with a SINGLE JSON object and nothing else — no code fences, no preamble: " +
@@ -171,7 +183,7 @@ function makeGeminiSummarizer<T>(
     async summarize({ title, body }) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const userText = `Title: ${title}\n\nBody: ${body}`;
+      const userText = `Title: ${title}\n\nBody: ${capSummaryBody(body)}`;
       const size: SummaryCallSize = { inputChars: systemPrompt.length + userText.length, outputChars: 0, inputTokens: null, outputTokens: null };
       try {
         const res = await doFetch(

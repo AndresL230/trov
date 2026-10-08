@@ -9,7 +9,7 @@ each step is named in brackets; the rules those modules obey are in `data-layer.
 | | Scope | Becomes one by |
 |---|---|---|
 | **Superadmin** | the platform: the list of organizations, who owns each, suspension, usage, the audit trail | a row in `platform_admins` (0042_organizations seeds andres); another superadmin adds more in Platform › Admins & limits |
-| **Owner** | one organization, everything in it | creating the organization with a grant (§1b), accepting a superadmin's owner invitation, or being made one by another owner |
+| **Owner** | one organization, everything in it | creating a Free organization (§1d) or one with a grant (§1b), accepting a superadmin's owner invitation, or being made one by another owner |
 | **Admin** | one organization, everything but owners and the encryption key | an invitation "as admin", or a role change by an admin or owner |
 | **Member** | one organization: reads and the everyday writes | an invitation "as member" |
 
@@ -23,12 +23,12 @@ Platform › Organizations › **Add organization** [`web/src/platform.ts`, `POS
 organization — so a superadmin who belongs to none still reaches it; the org switcher's menu and the org
 picker link to it.
 
-An organization comes to exist in one of three ways: the superadmin creates it for someone (this section),
-grants someone the right to create their own (§1b), or someone buys a plan and sets theirs up with nobody
-at Trov involved (§1c). Nobody else can create one.
+An organization comes to exist in one of four ways: the superadmin creates it for someone (this section),
+grants someone the right to create their own (§1b), someone buys Pro and sets theirs up with nobody at Trov
+involved (§1c), or someone signed in creates a Free one of their own (§1d).
 
 Give the organization a name, a slug (its address: `/<slug>/`, not editable later; a name the app itself answers on — `api`, `feed`, `pricing`, … `RESERVED_ORG_SLUGS` — is refused), the **plan** it starts
-on (Personal, Team or Enterprise — `plans.md`; Team unless you pick another) and its first owner:
+on (Free, Pro or Enterprise — `plans.md`; Pro unless you pick another) and its first owner:
 
 - **An existing person** (their Trov handle): they are the owner at once. If it is their first organization
   they get the welcome e-mail.
@@ -53,8 +53,8 @@ and slug and become its owner, on that plan, and land on the setup checklist [`P
 makes one organization; until it is used you can **Revoke** it, and afterwards the Access tab shows which
 organization it became.
 
-That is the only way anyone but a superadmin creates an organization (`DEFAULT_ORG_LIMIT = 0`,
-`shared/orgs.ts`). The per-person allowance that used to be set in Platform is gone.
+A grant is the way anyone but a superadmin gets an organization on any plan but Free; a Free one needs no
+grant (§1d). The per-person allowance that used to be set in Platform is gone.
 
 ### The organization's plan
 
@@ -65,15 +65,28 @@ loses access; it cannot add more of that kind until it is back under. Everyone i
 plan in Org settings › General; only you change it. The limits, what counts toward each and the seam for
 billing: `plans.md`.
 
-### 1c. …or someone buys a plan
+### 1c. …or someone buys Pro
 
-A person presses a plan on the pricing page [`GET /billing/start`, `src/billing/routes.ts`], signs in if
-they have not, pays on Stripe's page, and comes back to a waiting room. Stripe's webhook gives them the
-same grant as §1b, made by `billing` instead of a superadmin; they name the organization and own it. It
-appears in Platform › Organizations as **paid**, with Stripe's status and a link to the customer in the
-Stripe dashboard, and its owner manages payment in Org settings › General (Manage billing, a plan switch,
-a renewal). You can still change its plan by hand — what that does is in `billing.md` › Decisions. The whole
-flow, the events and the owner checklist: `billing.md`. Enterprise is never bought: it is §1 or §1b.
+A person presses "Choose Pro" on the pricing page [`GET /billing/start`, `src/billing/routes.ts`], signs in
+if they have not, chooses how many seats and pays on Stripe's page ($10 per seat per month; one seat is
+fine), and comes back to a waiting room. Stripe's webhook gives them the same grant as §1b, made by `billing`
+instead of a superadmin and carrying the seats paid for; they name the organization and own it. It appears
+in Platform › Organizations as **paid**, with Stripe's status, its seats and a link to the customer in the
+Stripe dashboard, and its owner manages payment in Org settings › General (Manage billing, Change seats).
+The seats paid for are the seats it has; at the cap, Members offers its owner **Add a seat**. If the
+subscription is cancelled, the organization moves to Free when the paid period ends — nothing is deleted.
+You can still change its plan by hand — what that does is in `billing.md` › Decisions. The whole flow, the
+events and the owner checklist: `billing.md`. Enterprise is never bought: it is §1 or §1b.
+
+### 1d. …or someone creates a Free one
+
+Anyone signed in (not a superadmin) can create a **Free** organization from the org picker or the switcher's
+menu — no grant, no payment [`POST /api/orgs`, `src/plans/free.ts`]: up to 3 people, 1 repository, 2
+environments. A person can OWN one Free organization at a time (`DEFAULT_ORG_LIMIT = 1`, `shared/orgs.ts`).
+Its owner upgrades it to Pro from Org settings › General (**Upgrade to Pro**, or the button Members shows at
+the seat cap): a Stripe checkout for that organization, starting at one seat per member and pending
+invitation. It appears in Platform as **free**; you can change its plan like any granted org's. What bounds
+open creation: `abuse-limits.md`.
 
 ## 2. The owner signs in, accepts, and lands on the setup checklist
 
@@ -129,8 +142,9 @@ Org settings › Members › **Invite someone** [`POST /api/o/:slug/invites`, `s
 - **By GitHub login**: no e-mail; the person sees the invitation the next time they sign in with that
   account.
 
-An invitation takes a **seat** (a seat is a member or a pending invitation): Members shows "7 of 10 seats
-used", and when none is free the form gives way to a sentence saying so. A Personal organization has no
+An invitation takes a **seat** (a seat is a member or a pending invitation): Members shows "2 of 3 seats
+used", and when none is free the form gives way to a sentence saying so — with, for the owner, **Add a seat**
+(a paid Pro organization) or **Upgrade to Pro** (a Free one). A legacy Personal organization has no
 invitations at all [`plans.md` › Seats].
 
 An invitation is as **member** or **admin**; only the superadmin's invitation makes an owner. Pending

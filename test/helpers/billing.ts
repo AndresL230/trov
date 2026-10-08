@@ -8,14 +8,13 @@ import { app } from "../../src/routes";
 
 export const STRIPE_KEY = "sk_test_51TrovFakeKeyForTests0000000000000000000000000000000000000000";
 export const WEBHOOK_SECRET = "whsec_test_0123456789abcdef0123456789abcdef";
-export const PRICES = { personal: "price_personal_m", team: "price_team_m", personal_year: "price_personal_y", team_year: "price_team_y" } as const;
+export const PRICES = { team: "price_team_m", team_year: "price_team_y" } as const;
 
 /** The pool's env with billing switched ON (the pool default is off — vitest.config.ts). */
 export const billingEnv = (over: Partial<Env> = {}): Env => ({
   ...(env as unknown as Env),
   STRIPE_SECRET_KEY: STRIPE_KEY, STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
-  STRIPE_PRICE_PERSONAL: PRICES.personal, STRIPE_PRICE_TEAM: PRICES.team,
-  STRIPE_PRICE_PERSONAL_YEARLY: PRICES.personal_year, STRIPE_PRICE_TEAM_YEARLY: PRICES.team_year,
+  STRIPE_PRICE_TEAM: PRICES.team, STRIPE_PRICE_TEAM_YEARLY: PRICES.team_year,
   ...over,
 });
 
@@ -23,10 +22,14 @@ export interface FakeSession {
   id: string; url: string; status: "open" | "complete" | "expired"; payment_status: "unpaid" | "paid" | "no_payment_required"; mode: string;
   subscription: string | null; customer: string | null; customer_email: string | null; client_reference_id: string | null;
   metadata: Record<string, string>; price: string; success_url: string; cancel_url: string;
+  /** The line item's quantity — the seats a per-seat checkout starts at (the buyer may change it on Stripe's page). */
+  quantity: number;
 }
 export interface FakeSubscription {
   id: string; customer: string; status: string; cancel_at_period_end: boolean; cancel_at: number | null; current_period_end: number;
   livemode: boolean; price: string; item: string; metadata: Record<string, string>;
+  /** The item's quantity: the seats paid for. */
+  quantity: number;
 }
 export interface StripeCall { method: string; path: string; params: URLSearchParams; headers: Headers }
 
@@ -71,6 +74,7 @@ export class FakeStripe {
         id, url: `https://checkout.stripe.com/c/pay/${id}`, status: "open", payment_status: "unpaid", mode: c.params.get("mode") ?? "",
         subscription: null, customer: c.params.get("customer"), customer_email: c.params.get("customer_email"), client_reference_id: c.params.get("client_reference_id"),
         metadata, price: c.params.get("line_items[0][price]") ?? "", success_url: c.params.get("success_url") ?? "", cancel_url: c.params.get("cancel_url") ?? "",
+        quantity: Number(c.params.get("line_items[0][quantity]") ?? "1"),
       };
       this.sessions.set(id, s);
       return Response.json(this.sessionJson(s));
@@ -93,16 +97,17 @@ export class FakeStripe {
   }
   subscriptionJson(s: FakeSubscription): Record<string, unknown> {
     return { id: s.id, object: "subscription", customer: s.customer, status: s.status, cancel_at_period_end: s.cancel_at_period_end, cancel_at: s.cancel_at,
-      current_period_end: s.current_period_end, livemode: s.livemode, metadata: s.metadata, items: { object: "list", data: [{ id: s.item, object: "subscription_item", price: { id: s.price, object: "price" }, quantity: 1 }] } };
+      current_period_end: s.current_period_end, livemode: s.livemode, metadata: s.metadata, items: { object: "list", data: [{ id: s.item, object: "subscription_item", price: { id: s.price, object: "price" }, quantity: s.quantity }] } };
   }
 
-  /** The buyer pays at Stripe's checkout: the session completes, and its subscription and customer exist. */
-  pay(sessionId: string): FakeSubscription {
+  /** The buyer pays at Stripe's checkout: the session completes, and its subscription and customer exist.
+   *  `seats` = the quantity they settled on there (default: the one the checkout started at). */
+  pay(sessionId: string, seats?: number): FakeSubscription {
     const s = this.sessions.get(sessionId);
     if (!s) throw new Error(`no session ${sessionId}`);
     const sub: FakeSubscription = {
       id: `sub_test_${++this.n}`, customer: s.customer ?? `cus_test_${this.n}`, status: "active", cancel_at_period_end: false, cancel_at: null,
-      current_period_end: PERIOD_1, livemode: false, price: s.price, item: `si_test_${this.n}`, metadata: {},
+      current_period_end: PERIOD_1, livemode: false, price: s.price, item: `si_test_${this.n}`, metadata: {}, quantity: seats ?? s.quantity,
     };
     this.subscriptions.set(sub.id, sub);
     Object.assign(s, { status: "complete", payment_status: "paid", subscription: sub.id, customer: sub.customer });

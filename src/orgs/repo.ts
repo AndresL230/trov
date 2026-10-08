@@ -21,11 +21,11 @@ import {
 
 export type OrgErrorCode =
   | "invalid_slug" | "reserved_slug" | "invalid_name" | "invalid_invite" | "invalid_member"
-  | "slug_taken" | "no_grant" | "not_found" | "last_owner" | "invite_exists" | "already_member" | "no_address";
+  | "slug_taken" | "no_grant" | "free_org_limit" | "not_found" | "last_owner" | "invite_exists" | "already_member" | "no_address";
 
 export const ORG_ERROR_STATUS: Record<OrgErrorCode, 400 | 403 | 404 | 409> = {
   invalid_slug: 400, reserved_slug: 400, invalid_name: 400, invalid_invite: 400, invalid_member: 400,
-  slug_taken: 409, no_grant: 403, not_found: 404, last_owner: 409, invite_exists: 409, already_member: 409, no_address: 409,
+  slug_taken: 409, no_grant: 403, free_org_limit: 403, not_found: 404, last_owner: 409, invite_exists: 409, already_member: 409, no_address: 409,
 };
 
 export class OrgError extends Error {
@@ -85,8 +85,9 @@ export interface CreateOrgInput {
  * working org reads — what 0042_organizations seeded for SaplingLearn: the `plan` row, `notification_settings`,
  * one `notification_policy` row per registry kind, and both `org_counters` — in ONE batch, on the plan
  * `input.plan` names. `p.actor` is recorded as `created_by`. WHO may create one is the caller's to
- * enforce: a superadmin (src/platform `createOrgWithAdmin`), or a person using a grant
- * (src/plans/grants.ts `createOrgFromGrant`, whose consuming statement rides in `extra`).
+ * enforce: a superadmin (src/platform `createOrgWithAdmin`), a person using a grant
+ * (src/plans/grants.ts `createOrgFromGrant`, whose consuming statement rides in `extra`), or a person
+ * creating a Free one of their own (src/plans/free.ts `createFreeOrg`, whose guard rides in `extra`).
  */
 export async function createOrg(p: PlatformContext, input: CreateOrgInput): Promise<OrgRow> {
   const slug = typeof input.slug === "string" ? input.slug.trim() : "";
@@ -162,9 +163,9 @@ export async function listMyInvites(p: PlatformContext, handle: string): Promise
   }));
 }
 
-/** The caller's orgs and invitations. `grants` / `can_create` are the route's to add (src/plans/grants.ts
- *  `usableGrants`): a grant is what lets a person create an org. */
-export async function myOrgs(p: PlatformContext, handle: string): Promise<Omit<MyOrgsResponse, "grants" | "can_create">> {
+/** The caller's orgs and invitations. `grants` / `can_create` / `free` are the route's to add
+ *  (src/plans/grants.ts `usableGrants`, src/plans/free.ts `freeOrgState`): what lets a person create an org. */
+export async function myOrgs(p: PlatformContext, handle: string): Promise<Omit<MyOrgsResponse, "grants" | "can_create" | "free">> {
   const [orgs, invites, superadmin] = await Promise.all([listMyOrgs(p, handle), listMyInvites(p, handle), isSuperadmin(p, handle)]);
   return { orgs, invites, superadmin };
 }
