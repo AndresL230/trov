@@ -46,10 +46,10 @@ NOTIFICATIONS_MODE = "resend"
 # owner created in the Stripe dashboard (`price_…`), not amounts: Trov never holds a price, and the amount
 # a buyer sees is Stripe's. Pro (plan id `team`) is the one plan sold, PER SEAT: STRIPE_PRICE_TEAM is the
 # price of ONE seat (a licensed, per-unit recurring price) and a checkout's quantity is the seat count.
-# EMPTY until the owner sets it — while it is empty Pro cannot be bought, and while STRIPE_SECRET_KEY /
+# While it is empty Pro cannot be bought, and while STRIPE_SECRET_KEY /
 # STRIPE_WEBHOOK_SECRET (secrets: `wrangler secret put …`) are unset every billing route answers 503
 # `billing_unavailable` and the app is otherwise unchanged. The yearly id is optional.
-STRIPE_PRICE_TEAM = ""
+STRIPE_PRICE_TEAM = "price_1UOB9HH7KZijv6AwWF3LPpFr"
 STRIPE_PRICE_TEAM_YEARLY = ""
 
 [observability]
