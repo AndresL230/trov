@@ -110,7 +110,7 @@ export function feedPreviewRow(p: { name: string; handle: string; color: PersonC
   return `<div style="display:flex;align-items:flex-start;gap:11px">
     ${personChip({ handle: p.handle, name: p.name, color: p.color }, 30, p.handle || "?")}
     <div><div style="font-size:12.5px;color:var(--fg-55)"><b style="color:var(--fg);font-weight:600">${esc(p.name || "Your name")}</b> · ${handleTag({ handle: p.handle || "…", color: p.color }, p.handle || "…")} · 2 min ago</div>
-    <div style="font-size:13.5px;margin-top:3px;color:var(--fg-70)">Drafted the fall enrollment email sequence; needs a review before Monday.</div></div>
+    <div style="font-size:13.5px;margin-top:3px;color:var(--fg-70)">Fixed the flaky deploy check; the pull request is ready for review.</div></div>
   </div>`;
 }
 
