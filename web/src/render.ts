@@ -9,8 +9,8 @@ import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow
 import type { QueryResult, QueryPrimary, QueryPointer, Authority, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
-import { queueView, newTicketView, ticketDetailView, ticketDeleteModal, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
-import { sprintCard, newSprintPanel, sprintScreen, nextSprintId } from "./sprints";
+import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
+import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
 import { roadmapTimeline } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
@@ -33,8 +33,9 @@ import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
+import { skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
-import { maintenanceView, type MaintenanceProps, type AssignKind } from "./maintenance";
+import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
 import type { IdentityProps } from "./identity";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
@@ -883,6 +884,21 @@ function wrapFeed(s: AppState, inner: string): string {
     <div style="text-align:center;padding:18px 0;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">&mdash; start of recorded history &mdash;</div>`, feedAside(s));
 }
 
+/** An aside box's rows while its read is out: a title line and a meta line per row,
+ *  in the box's own row padding (so the rows land where the bars were). */
+function asideRowsSkeleton(key: string, label: string, n: number): string {
+  return skeleton(key, label, skList(n, (i) => `<div style="padding:9px 18px;border-top:1px solid var(--border)">${skLine(skW(i), 13, 1.45)}<div style="margin-top:3px">${skLine(skW(i + 1, ["44%", "52%", "38%"]), 12, 1.5)}</div></div>`));
+}
+
+/** The Feed's cards while its first read is out: avatar, title, a two-line brief, the byline. */
+function feedSkeleton(): string {
+  const card = (i: number) => skCard(`<div style="display:flex;align-items:flex-start;gap:12px">
+      ${skBox(30, 30, "margin-top:1px")}
+      <div style="flex:1;min-width:0">${skLine(skW(i), 14, 1.5)}<div style="margin-top:5px">${skLines(["100%", skW(i + 1, ["64%", "82%", "46%"])], 13.5, 1.6)}</div><div style="margin-top:12px">${skLine(170, 12, 1.5)}</div></div>
+    </div>`, "padding:16px 18px;margin-bottom:12px");
+  return skeleton("feed", "Loading feed&hellip;", skList(5, card));
+}
+
 function feedAside(s: AppState): string {
   return `${feedWeekBox(s)}${feedReviewBox(s)}`;
 }
@@ -915,7 +931,11 @@ function feedWeekBox(s: AppState): string {
   const sub = `<div style="font-size:12.5px;color:var(--fg-40);padding:0 18px 10px;margin-top:-4px">Whole team, last 7 days</div>`;
   const wrap = (body: string) => `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Feed · This week">${head}${sub}${body}</section>`;
   if (!d) {
-    return wrap(asideNote(st.status === "error" ? "Couldn't load this week's numbers." : "Loading&hellip;"));
+    if (st.status === "error") return wrap(asideNote("Couldn't load this week's numbers."));
+    // The figure, the seven day bars and one chip group — the box's own blocks.
+    return wrap(skeleton("feed-week", "Loading&hellip;", `<div style="display:flex;align-items:center;gap:8px;padding:0 18px 12px">${skBox(34, 24)}${skBar(120, 9)}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;padding:0 18px 14px">${skList(7, () => `<span style="display:flex;flex-direction:column;align-items:center;gap:5px">${skBox("100%", 36)}${skBar(8, 10)}</span>`)}</div>
+      <div style="padding:10px 18px 12px;border-top:1px solid var(--border)">${skBar(60, 8, "margin:4px 0 11px")}<div style="display:flex;gap:6px">${skBox(74, 24)}${skBox(58, 24)}${skBox(86, 24)}</div></div>`));
   }
   if (d.total === 0) return wrap(asideNote("Nothing recorded in the last 7 days."));
 
@@ -967,7 +987,7 @@ function feedReviewBox(s: AppState): string {
   const head = asideHead("Waiting on review", { act: "goReview", label: "Review" });
   const wrap = (body: string) => `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Feed · Waiting on review">${head}${body}</section>`;
   if (load === "error") return wrap(asideNote("Couldn't load the review queue."));
-  if (load === "pending") return wrap(asideNote("Loading&hellip;"));
+  if (load === "pending") return wrap(asideRowsSkeleton("feed-review", "Loading&hellip;", 2));
   if (items.length === 0) return wrap(asideNote("Nothing waiting on review."));
 
   const proposals = items.filter((i) => i.kind === "proposal").length;
@@ -1056,7 +1076,7 @@ function feedAuthorTag(s: AppState, author: string): string {
 }
 
 function feedView(s: AppState): string {
-  if (s.feed.status === "loading" && s.feed.data.length === 0) return wrapFeed(s, notice("Loading feed&hellip;"));
+  if ((s.feed.status === "loading" || s.feed.status === "idle") && s.feed.data.length === 0) return wrapFeed(s, feedSkeleton());
   if (s.feed.status === "error") return wrapFeed(s, notice("Couldn't load the feed."));
 
   const cards = feedRows(s).map((e) => {
@@ -1135,8 +1155,10 @@ function docTreeRow(s: AppState, doc: DocRow): string {
 function docsView(s: AppState): string {
   // ── tree (left pane) ────────────────────────────────────────────────────────
   let treeHtml: string;
-  if (s.docsList.status === "loading" && s.docsList.data.length === 0) {
-    treeHtml = notice("Loading…");
+  if (slicePending(s.docsList)) {
+    // Two section groups of page rows, in the tree's own row box.
+    const row = (i: number) => `<div class="cnpy-tree"><span class="cnpy-treechev is-empty"></span>${skLine(skW(i, ["64%", "82%", "52%", "74%", "58%"]), 13, 1.5, "flex:1")}</div>`;
+    treeHtml = skeleton("docs-tree", "Loading…", skList(2, (g) => `<div style="margin-bottom:16px"><div class="cnpy-treesec">${skLine(g ? 96 : 72, 10.5, 1.5)}</div><div style="display:flex;flex-direction:column;gap:1px">${skList(g ? 3 : 5, (i) => row(i + g))}</div></div>`));
   } else if (s.docsList.status === "error") {
     treeHtml = notice("Couldn't load docs.");
   } else {
@@ -1174,14 +1196,28 @@ function docsView(s: AppState): string {
   </div>`;
 }
 
+/** The doc page while its read is out: the breadcrumb, title and byline rule, then
+ *  prose — in the reader's own page frame. */
+function docReaderSkeleton(): string {
+  return skeleton("doc", "Loading…", `<div style="margin-bottom:11px">${skLine(150, 11, 1.5)}</div>
+    ${skLine("48%", 29, 1.16)}
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:15px;padding-bottom:17px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:9px">${skBox(24, 24)}${skBar(190, 9)}</div>${skBox(96, 30)}
+    </div>
+    <div style="margin-top:28px">${skLine("34%", 20, 1.4)}<div style="margin-top:12px">${skProse(3)}</div></div>`,
+    "max-width:1080px;margin:0 auto;padding:34px 52px 120px");
+}
+
 /** The reader pane's inner HTML. Extracted so main.ts can load a doc into the
  *  pane in place (updating only #cnpy-reader) without rerendering the tree —
  *  a tree rerender swaps in fresh outline elements and kills their transition. */
 export function docReaderHtml(s: AppState): string {
   const dd = s.docDetail;
 
-  if (dd.status === "loading" || (dd.status === "idle" && s.docSlug !== null)) {
-    return notice("Loading…");
+  // The list's first read being out counts too: its landing opens the first doc, so
+  // "Select a doc" in between would only be a flash.
+  if (dd.status === "loading" || (dd.status === "idle" && (s.docSlug !== null || slicePending(s.docsList)))) {
+    return docReaderSkeleton();
   } else if (dd.status === "error") {
     return notice("Couldn't load this doc.");
   } else if (dd.data === null) {
@@ -1336,9 +1372,30 @@ function roadmapTimelineTab(s: AppState): string {
   </div>`;
 }
 
+/** The Roadmap while the plan's first read is out — in the page frame, under the real tab
+ *  bar, of whichever tab is open: the narrative card and sprint cards beside the aside's
+ *  two boxes, or the Timeline's rows. */
+function roadmapSkeleton(s: AppState): string {
+  const label = "Loading roadmap&hellip;";
+  if (s.roadmapTab !== "narrative") {
+    const row = (i: number) => `<div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:16px;align-items:center;height:44px;padding:0 18px${i ? ";border-top:1px solid var(--border)" : ""}">${skBar(skW(i, [120, 150, 96, 136]), 10)}<span style="display:block;padding-left:${[6, 22, 38, 14, 46, 30][i % 6]}%">${skBox(skW(i, ["34%", "26%", "42%", "30%"]), 16)}</span></div>`;
+    return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
+    ${roadmapTabBar(s)}<div${tabPanelAttrs("roadmap-tab", s.roadmapTab)} style="padding-top:20px">${roadmapNewSprint(s)}${skeleton("roadmap-timeline", label, skCard(`<div style="height:38px;border-bottom:1px solid var(--border)"></div>${skList(6, row)}`, "overflow:hidden"))}</div>
+  </div>`;
+  }
+  const sprint = (i: number) => skCard(`<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">${skLine(skW(i, ["46%", "58%", "38%"]), 15, 1.4)}${skBox(64, 20)}</div>
+      <div style="margin-top:6px">${skLines(["92%", skW(i, ["54%", "70%"])], 13, 1.55)}</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:11px">${skBar("100%", 5, "flex:1")}${skBar(46, 8)}</div>`, "padding:16px 18px;margin-bottom:10px");
+  const main = `${roadmapNewSprint(s)}${skeleton("roadmap", label, `${skCard(`${skLine(104, 12, 1.5)}<div style="margin-top:8px">${skLines(["100%", "94%", "62%"], 14.5, 1.7)}</div>`, `${RM_CARD};padding:18px 20px`)}
+      <div style="display:flex;align-items:center;gap:9px;margin:28px 0 12px">${skBox(7, 7)}${skLine(84, 11, 1.5)}</div>${skList(2, sprint)}
+      <div style="display:flex;align-items:center;gap:9px;margin:28px 0 12px">${skBox(7, 7)}${skLine(70, 11, 1.5)}</div>${skList(2, (i) => sprint(i + 2))}`)}`;
+  const aside = `<section${surface(`${RM_CARD};padding:16px 18px`, { cls: "cnpy-rise" })} data-screen-label="Roadmap · Now">${skeleton("roadmap-now", label, `${skLine(40, 11.5, 1.5)}<div style="margin-top:6px">${skLine("62%", 15, 1.4)}</div><div style="margin-top:2px">${skLine("44%", 12.5, 1.5)}</div>${skBar("100%", 4, "margin-top:12px")}`)}</section>${roadmapHappenings(s)}`;
+  return asideColumns(main, aside, { bar: roadmapTabBar(s), panel: tabPanelAttrs("roadmap-tab", s.roadmapTab) });
+}
+
 function roadmapView(s: AppState): string {
-  if (s.roadmap.status === "loading" && s.roadmap.data.sprints.length === 0) {
-    return `<div class="cnpy-scroll" style="max-width:820px;margin:0 auto;padding:32px 40px 100px">${notice("Loading roadmap&hellip;")}</div>`;
+  if ((s.roadmap.status === "loading" || s.roadmap.status === "idle") && s.roadmap.data.sprints.length === 0 && !s.roadmap.data.narrative) {
+    return roadmapSkeleton(s);
   }
   if (s.roadmap.status === "error") {
     return `<div class="cnpy-scroll" style="max-width:820px;margin:0 auto;padding:32px 40px 100px">${notice("Couldn't load the roadmap.")}</div>`;
@@ -1440,9 +1497,13 @@ function roadmapAside(s: AppState): string {
     </section>`;
   })() : `<section${surface(`${RM_CARD};padding:16px 18px`, { cls: "cnpy-rise" })} data-screen-label="Roadmap · Now">${nowLabel}<div style="font-size:13px;color:var(--fg-40);margin-top:6px">No sprint in progress.</div></section>`;
 
-  // ── Recent happenings (the live feed, with GitHub chips) ──
-  // Its OWN unfiltered read (s.roadmapFeed), so a Feed-screen author/tag filter
-  // never narrows it, and a failed read says so instead of "no activity".
+  return `${now}${roadmapHappenings(s)}`;
+}
+
+/** The Narrative aside's second box, "Recent happenings" (the live feed, with GitHub chips).
+ *  Its OWN unfiltered read (s.roadmapFeed), so a Feed-screen author/tag filter never narrows
+ *  it, and a failed read says so instead of "no activity". */
+function roadmapHappenings(s: AppState): string {
   const feed = s.roadmapFeed;
   const entries = feed.data.slice(0, HAPPENINGS_LIMIT);
   const rows = entries.map((e) => {
@@ -1464,10 +1525,9 @@ function roadmapAside(s: AppState): string {
     ${feed.status === "error" ? asideNote("Couldn't load recent activity.")
       : entries.length > 0 ? rows
       : feed.status === "ok" ? asideNote("No recent activity yet.")
-      : asideNote("Loading&hellip;")}
+      : skeleton("roadmap-happenings", "Loading&hellip;", skList(HAPPENINGS_LIMIT, (i) => `<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:9px 18px;border-top:1px solid var(--border)">${skLine(26, 12, 1.6)}<span style="display:block;min-width:0">${skLines(["100%", skW(i, ["58%", "74%", "40%", "66%"])], 13, 1.5)}</span></div>`))}
   </section>`;
-
-  return `${now}${happenings}`;
+  return happenings;
 }
 
 // ── search ───────────────────────────────────────────────────────────────────
@@ -1559,8 +1619,10 @@ function searchView(s: AppState): string {
   }).join("");
 
   let body: string;
-  if (s.searchResults.status === "loading") {
-    body = notice("Searching&hellip;");
+  // A re-query (every keystroke is one) keeps the results on screen until the new ones
+  // land; only a search with nothing to show yet gets the skeleton.
+  if (s.searchResults.status === "loading" && primary.length === 0 && pointers.length === 0) {
+    body = skeleton("search", "Searching&hellip;", skList(4, (i) => skCard(`<div style="display:flex;align-items:center;gap:8px">${skBox(46, 18)}${skLine(skW(i, ["52%", "38%", "64%", "46%"]), 14.5, 1.5, "flex:1")}</div><div style="margin-top:8px">${skLines(["100%", skW(i + 1)], 13, 1.6)}</div>`, "padding:16px 18px;margin-bottom:12px")));
   } else if (s.searchResults.status === "ok" && primary.length === 0 && pointers.length === 0) {
     body = notice("No results for that query.");
   } else {
@@ -1923,6 +1985,10 @@ export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & P
   const count = n ? `<span style="flex:none;font-family:var(--label);font-size:11px;line-height:17px;color:var(--fg-55);background:var(--hover);border-radius:999px;padding:0 7px">${n}</span>` : "";
   const head = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:13px;font-weight:600">Connected apps</span>${count}</div>`;
   const wrap = (inner: string) => `<div class="cnpy-mcp-list" data-list="grants">${head}${inner}</div>`;
+  if (!n && g.status !== "ok" && g.status !== "error") {
+    // One app's row (name over its last-used line, the Revoke button) — the usual list.
+    return wrap(skeleton("grants", "Loading connected apps&hellip;", `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)"><span class="cnpy-skcol">${skLine("46%", 13, 1.35)}${skLine("62%", 12, 1.35)}</span>${skBox(62, 26)}</div>`));
+  }
   if (!n) {
     const note = g.status === "error" ? `Couldn't load connected apps${g.error ? ` &mdash; ${esc(g.error)}` : ""}.`
       : g.status !== "ok" ? "Loading connected apps&hellip;"
@@ -2229,7 +2295,7 @@ function slicePending(l: Loadable<unknown[]>): boolean {
 
 /** Review screen with slice-level loading/error states around the pure view. */
 function reviewScreen(s: AppState): string {
-  if (slicePending(s.proposals) && slicePending(s.draftAdrs)) return notice("Loading review queue&hellip;");
+  if (slicePending(s.proposals) && slicePending(s.draftAdrs)) return reviewView({ ...reviewProps(s), loading: true });
   if (s.proposals.status === "error" && s.draftAdrs.status === "error") return notice("Couldn't load the review queue.");
   const hint = s.proposals.status === "error" ? mwDegradedHint("Couldn't load doc/decision proposals.")
     : s.draftAdrs.status === "error" ? mwDegradedHint("Couldn't load draft ADRs.")
@@ -2239,7 +2305,7 @@ function reviewScreen(s: AppState): string {
 
 /** The Unplaced queue (the `maintenance` screen) with its slice's loading/error states around the pure view. */
 function maintenanceScreen(s: AppState): string {
-  if (slicePending(s.needsTriage)) return notice("Loading the queue&hellip;");
+  if (slicePending(s.needsTriage)) return maintenanceSkeleton();
   if (s.needsTriage.status === "error" && s.needsTriage.data.length === 0) return notice("Couldn't load the Unplaced queue.");
   return maintenanceView(maintenanceProps(s), s.needsTriage.status === "error" ? mwDegradedHint("Couldn't load the triage queue.") : "");
 }
@@ -2247,7 +2313,6 @@ function maintenanceScreen(s: AppState): string {
 // ── tickets ──────────────────────────────────────────────────────────────────
 /** The queue screen with slice-level loading/error states around the pure view. */
 function ticketsScreen(s: AppState): string {
-  if (slicePending(s.tickets)) return notice("Loading the queue&hellip;");
   if (s.tickets.status === "error") return notice("Couldn't load the ticket queue.");
   // The sprints slice is a SEPARATE fetch: when it fails the queue still renders
   // (every ticket falls into BACKLOG — `queueGroups` never drops one), but say so
@@ -2269,6 +2334,8 @@ function ticketsScreen(s: AppState): string {
     filterOpen: s.qFilterOpen,
     filterCat: s.qFilterCat,
     fmOpening: s.fmOpening,
+    // The first read is out: the toolbar is real, the columns / rows are skeletons.
+    loading: slicePending(s.tickets),
   });
 }
 
@@ -2289,7 +2356,7 @@ function newTicketScreen(s: AppState): string {
 
 function ticketDetailScreen(s: AppState): string {
   const slice = s.ticketDetail;
-  if (slice.status === "loading" && !slice.data) return notice("Loading the ticket&hellip;");
+  if ((slice.status === "loading" || slice.status === "idle") && !slice.data) return ticketDetailSkeleton();
   if (slice.status === "error") return notice("Couldn't load this ticket.");
   if (!slice.data) return notice("That ticket doesn't exist.");
   return ticketDetailView({
@@ -2316,7 +2383,7 @@ function ticketDetailScreen(s: AppState): string {
 /** The sprint screen with slice-level loading/error states around the pure view. */
 function sprintScreenBody(s: AppState): string {
   const slice = s.sprintDetail;
-  if ((slice.status === "loading" || slice.status === "idle") && !slice.data) return notice("Loading the sprint&hellip;");
+  if ((slice.status === "loading" || slice.status === "idle") && !slice.data) return sprintSkeleton();
   if (slice.status === "error") return notice("Couldn't load this sprint.");
   if (!slice.data) return notice("That sprint doesn't exist.");
   return sprintScreen({ detail: slice.data, persons: s.persons.data, resourceDraft: s.linkDraft, deleteArmed: s.sprintDeleteArmed });

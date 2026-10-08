@@ -23,6 +23,7 @@ import { accentBtn, quietBtn, orgBanner, roleChip } from "./org-ui";
 import { nameError, slugError, addOrgServerError } from "./platform";
 import { orgHref } from "./org-context";
 import { orgTile } from "./org-logo";
+import { skeleton, skLine } from "./skeleton";
 export { orgTile };
 
 // ── state ────────────────────────────────────────────────────────────────────
@@ -336,7 +337,7 @@ export function orgPickerView(p: OrgPickerProps): string {
   const createBlock = options ? `${sectionHead(own ? (orgs.length || invites.length ? "Set up your own" : "Get started") : orgs.length || invites.length ? "More" : "Get started", own)}<ul${surface("overflow:hidden;list-style:none;margin:0;padding:0")}>${options}</ul>` : "";
   const platformBlock = "";
 
-  const state = loading ? `<div style="font-size:12.5px;color:var(--fg-40);padding:22px 0 0">Loading your organizations&hellip;</div>`
+  const state = loading ? skeleton("orgs", "Loading your organizations&hellip;", skLine(210, 12.5, 1.5), "padding:22px 0 0")
     : p.status === "error" && !p.orgs ? `<div role="alert" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--fg-55);padding:22px 0 0">Couldn't load your invitations. Check your connection, then ${quietBtn("Try again", "orgsReload")}</div>` : "";
 
   return `<div class="cnpy-orgs" data-screen-label="Organizations">

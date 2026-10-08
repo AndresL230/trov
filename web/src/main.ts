@@ -58,6 +58,7 @@ import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX
 import { PERSON_COLORS, type PersonColor } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
+import { syncSkeletons } from "./skeleton";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { createPlatform } from "./platform-actions";
@@ -165,9 +166,9 @@ if (window.matchMedia) {
 
 // ── render with focus/caret + main-pane scroll preservation ──────────────────
 // ── screen-enter motion ──────────────────────────────────────────────────────
-// A screen's entrance (trov.css `[data-enter]`) plays when WHAT IS ON SCREEN
-// changes — a new route, or its data arriving — never on the other rerenders (a
-// keystroke, a hover, a badge landing), which would replay it endlessly.
+// A screen's entrance (trov.css `[data-enter]`) plays when the ROUTE changes —
+// never on the other rerenders (a keystroke, a hover, a badge or a read landing),
+// which would replay it endlessly.
 // rerender() swaps <main> wholesale, so a rerender DURING an entrance would cut
 // it short; instead the clock keeps running and the fresh DOM joins the animation
 // where the old one left off, via a negative animation-delay (`--enter-t`).
@@ -176,57 +177,20 @@ let enterKey = "";
 let enterAt = 0;
 let enterTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Whether the screen's main read has landed — its arrival is an entrance too. */
-function screenSettled(): boolean {
-  const ok = (l: { status: string }) => l.status === "ok" || l.status === "error";
-  switch (state.screen) {
-    case "mywork": return ok(state.mywork);
-    case "feed": return ok(state.feed);
-    case "docs": return ok(state.docsList);
-    case "roadmap": return ok(state.roadmap);
-    case "tickets": return ok(state.tickets);
-    case "ticketdetail": return ok(state.ticketDetail);
-    case "sprint": return ok(state.sprintDetail);
-    case "repo": return state.repo.data !== null || state.repo.status === "error";
-    // A background refresh (after a write) keeps its data, so it never replays the entrance.
-    case "artifacts": return state.art.list.data !== null || ok(state.art.list);
-    case "artifactnew": return true;
-    case "artifact": {
-      const r = state.artRoute;
-      const d = r.slug ? state.art.details[detailKey(r.slug, r.diff ? null : r.v)] : undefined;
-      return !!d && (d.data !== null || d.status === "ok" || d.status === "error" || d.status === "missing");
-    }
-    // These four refetch on every visit and paint what they already hold meanwhile,
-    // so "landed" means "has something to show" (like the Repo dashboard) — else the
-    // cached paint plays the entrance and the refresh landing plays it a second time.
-    case "handoffs": return ok(state.handoffs) || state.handoffs.data.length > 0;
-    case "handoff": return ok(state.handoffDetail) || state.handoffDetail.data !== null;
-    case "prompts": return ok(state.promptList) || state.promptList.data.length > 0;
-    case "prompt": return ok(state.promptDetail) || state.promptDetail.data !== null;
-    default: return true; // search re-queries per keystroke; the rest load nothing
-  }
-}
-
 function markEnter(): void {
   const root = mount.firstElementChild as HTMLElement | null;
   if (!root || state.view !== "app") return;
-  const settled = screenSettled();
   // An in-page view switch (the header's segmented switch — Roadmap Narrative/Timeline, a
   // release's Release/Patch notes — or a page's tab bar: Roadmap's, Repo's, Org settings'
   // and Platform's tabs) is not a new page: key the entrance on the route WITHOUT it (hash.ts
   // `pageKey`), so flipping the switch swaps the content in place instead of replaying the
   // screen (and the tab bar's underline slides unbroken).
-  const key = `${pageKey(currentRoute())}|${state.repoSample ? "s" : ""}|${settled ? 1 : 0}`;
+  // The entrance belongs to the ROUTE, never to a read: it plays once, when the page opens —
+  // over the loading skeleton if the data is still out — and a read landing later fills the
+  // skeleton's boxes with one short fade (skeleton.ts `syncSkeletons`), not a second
+  // staggered entrance. A read that lands inside the entrance simply joins it (`--enter-t`).
+  const key = `${pageKey(currentRoute())}|${state.repoSample ? "s" : ""}`;
   const now = performance.now();
-  // A still-loading paint does not enter: the entrance plays ONCE, when the screen's
-  // read lands. Playing it for the loading paint too made every first visit (and every
-  // visit to an empty list) enter twice — the "double click" flash.
-  if (!settled) {
-    enterKey = key;
-    enterAt = now - ENTER_MS;
-    root.removeAttribute("data-enter");
-    return;
-  }
   if (key !== enterKey) { enterKey = key; enterAt = now; }
   const elapsed = now - enterAt;
   if (elapsed >= ENTER_MS) return;
@@ -328,6 +292,8 @@ function rerender(): void {
   syncFavicon(resolvedTheme(), mount.querySelector("[data-cnpy-theme]"));
   restoreScroll(mount, scroll, state.screen);
   markEnter();
+  // Loading skeletons: keep each region's clock across this swap, and fade in what replaced one.
+  syncSkeletons(mount, state.view === "app" ? pageKey(currentRoute()) : state.view);
   orgCtl.afterPaint();
   dropdowns.afterPaint();
   syncCtl.afterPaint();

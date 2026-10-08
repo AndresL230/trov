@@ -170,7 +170,7 @@ export function repoPicker(slice: OrgSlice<GithubReposDTO | null>, account: stri
   const head = (n: number | null, hint = "") => orgHead(`On ${account}`, hint, n, "org-gh-avail");
   if (!slice.data) {
     if (slice.status === "error") return `${head(null)}${failedNote("the repositories on GitHub", "orgGithubReposReload")}`;
-    return `${head(null)}${loadingNote("the repositories the App can see")}`;
+    return `${head(null)}${loadingNote("the repositories the App can see", { rows: 3, trail: 0 })}`;
   }
   const all = slice.data.repositories.filter((r) => !r.tracked);
   const q = o.filter.trim().toLowerCase();

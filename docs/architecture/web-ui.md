@@ -43,11 +43,47 @@ switch's indicator box by its stable `id` and plays the slide old → new (FLIP)
 does not slide in. Sizes `md` (header) / `sm` / `xs`, plus `cnpy-seg--bar` (a 34px toolbar row) and
 `cnpy-seg--wrap`. Two-state colored toggles (an artifact's visibility) and chip pickers are other idioms.
 
-Screen entrances are `[data-enter]` (set by `markEnter()` in `main.ts` only when the route changed or the
-screen's main read landed — never on a keystroke). `--enter-t` is a NEGATIVE animation-delay, so a rerender
+Screen entrances are `[data-enter]` (set by `markEnter()` in `main.ts` only when the ROUTE changed — never
+on a keystroke, and never because a read landed: see Loading skeletons below). `--enter-t` is a NEGATIVE animation-delay, so a rerender
 mid-entrance joins the animation where the old DOM left off. Hooks: `.cnpy-rise` + `--i`, `.cnpy-stagger`
 (lists), `.repo-bar` / `.repo-fill` / `.repo-spark`, `data-count` (count-up). In-place changes use the
 one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
+
+## Loading skeletons — the shape of what is coming (`web/src/skeleton.ts`)
+
+A screen that waits on a read never paints a bare "Loading…" line and never paints its empty state early: it
+paints a **skeleton** — the content's own containers, paddings and line boxes with muted bars where the text
+will be — so nothing moves when the read lands. The rules:
+
+- **ONE helper.** Every skeleton is composed from `web/src/skeleton.ts`: `skBar` / `skBox` (a bar, a block),
+  `skLine(width, fontSize, lineHeight)` (reserves the REAL line box, so pass the real text's size), `skLines`,
+  `skRow`, `skList`, `skCard`, and the composites `skRows` (a settings list), `skForm`, `skTable`, `skProse`,
+  `skDetail` (one item's page). Never hand-roll skeleton markup in a screen module, and never give a bar an
+  inline radius or colour — `.cnpy-sk` owns both (its radius has its line in the corners block).
+- **`skeleton(key, label, inner, style?)` is the wrapper**: `aria-busy="true"` on the region, the bars inside an
+  `aria-hidden` box, and `label` — the loading sentence the screen used to show ("Loading feed…") — kept as an
+  `.cnpy-sr` `role="status"` line. `key` names the region and must be UNIQUE on the screen (the Repo dashboard
+  numbers its sections per paint).
+- **In the real frame.** A skeleton sits inside the screen's actual wrappers and beside its real chrome (the
+  queue's toolbar and board columns, Review's header and filter, the Roadmap's and Repo's tab bars, a My Work
+  tile's header, an aside box's title row). A view that owns its chrome takes a `loading` prop (`queueView`,
+  `reviewView`) rather than being replaced by a stand-in page.
+- **One region per read.** Where a screen has several reads (My Work's tiles, the Feed's and Roadmap's aside
+  boxes, Repo's sections, Org settings' lists), each region has its own skeleton and fills on its own.
+- **Only for "not loaded yet".** Loaded-and-empty keeps its empty state, a failed read keeps its error, and a
+  refetch keeps the content already on screen (Search keeps its results while a new query is out).
+- **Motion** (trov.css `.cnpy-skel`): the bars stay invisible for the first 150 ms (`SKEL_DELAY_MS` — a fast read
+  never shows a skeleton), then fade in and pulse. `syncSkeletons(mount, scope)` runs after every paint: it keeps
+  each region's clock by `key` and hands it to the fresh DOM as a negative delay (`--skel-t`, as `--enter-t` does
+  for the entrance), and when a region's skeleton is gone it gives what stands in its place ONE short opacity fade
+  (`.cnpy-settle`, 240 ms) — only if the skeleton had actually been visible. A change of page forgets every clock.
+  All of it is off under `prefers-reduced-motion`.
+- **The entrance belongs to the route.** `markEnter` plays the staggered entrance once, when a page opens — over
+  the skeleton if the data is still out. A read landing inside it joins it (`--enter-t`); one landing later gets
+  the settle fade, never a second entrance.
+- Left as text on purpose: the Sync panel's "Checking the last sync…" (a popover's status line), the quick-search
+  dropdown's "Searching…" (it has its own pause rule), and the artifact attach dialog's "Loading tickets…".
+- Tests: `test/render.skeleton.test.ts`.
 
 ## Corners — tighter than the design file
 

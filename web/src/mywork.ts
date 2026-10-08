@@ -14,6 +14,7 @@ import { TICKET_STATUS_LABEL } from "@shared/tickets-core";
 import type { HandoffView } from "@shared/handoffs";
 import type { ReviewHead } from "./triage-map";
 import { segmented } from "./segmented";
+import { skeleton, skBar, skBox, skLine, skList, skW } from "./skeleton";
 import { esc, attr, relTime, surface } from "./ui";
 
 export type MwRepoTab = "prs" | "ci" | "deploys";
@@ -63,6 +64,17 @@ function tileHead(title: string, link: { act: string; label: string; arg?: strin
 const tileSub = (html: string): string => `<div style="font-size:13px;color:var(--fg-55);padding:2px 16px 10px">${html}</div>`;
 /** A tile's body when it has no rows to show (loading, failed, empty). */
 const tileNote = (text: string): string => `<div style="padding:12px 16px 14px;border-top:1px solid var(--border);font-size:13px;color:var(--fg-40);line-height:1.5">${text}</div>`;
+/** A tile's rows while its read is out: `n` rows in the tile's own row box (a lead
+ *  label, a title line over a meta line, a trailing stamp) — so the rows that land sit
+ *  where the bars were. `key` names the tile. */
+function tileSkeleton(key: string, n: number, o: { lead?: number; trail?: number; pad?: string; top?: number } = {}): string {
+  const row = (i: number) => `<div style="display:flex;align-items:flex-start;gap:12px;padding:${o.pad ?? "10px 16px"};border-top:1px solid var(--border)">
+      ${o.lead ? skBar(o.lead, 9, "margin-top:6px") : ""}
+      <span class="cnpy-skcol">${skLine(skW(i), 14, 1.4)}<span style="display:block;margin-top:3px">${skLine(skW(i + 1, ["42%", "34%", "50%"]), 12.5, 1.5)}</span></span>
+      ${o.trail ? skBar(o.trail, 9, "margin-top:6px") : ""}
+    </div>`;
+  return skeleton(`mw-${key}`, "Loading&hellip;", skList(n, row), o.top ? `padding-top:${o.top}px` : "");
+}
 const tile = (area: string, span: number, label: string, inner: string, extra = ""): string =>
   `<section${surface(`${TILE};--span:${span}${extra}`, { cls: "mw-tile cnpy-rise" })} data-mw="${area}" data-screen-label="My Work · ${attr(label)}">${inner}</section>`;
 
@@ -128,7 +140,7 @@ export function ticketsTile(sl: MwListSlice<MyWorkTicket>, degraded: boolean, sp
     ? tileSub(`${total} open${soon ? ` · <span style="color:var(--amber)">${soon} due this week</span>` : ""}${late ? ` · <span style="color:var(--red)">${late} overdue</span>` : ""}`)
     : "";
   const body = degraded ? tileNote("Couldn't load your assigned tickets right now.")
-    : sl.load === "pending" ? tileNote("Loading&hellip;")
+    : sl.load === "pending" ? tileSkeleton("tickets", MW_ROWS, { lead: 32 })
     : sl.rows.length === 0 ? tileNote("No tickets assigned to you. The queue has what's waiting.")
     : capped(sl, "tickets", (t) => mwTicketRow(t, dueOf(t)), { act: "mwAllTickets", label: (n) => `${n} more in the queue` });
   return tile("tickets", span, "Tickets for you", `${tileHead("Tickets for you", { act: "goTickets", label: "Queue" })}${sub}${body}`);
@@ -138,7 +150,8 @@ export function ticketsTile(sl: MwListSlice<MyWorkTicket>, degraded: boolean, sp
  *  same reviewAccept / reviewReject acts the Review screen dispatches). */
 export function reviewTile(items: ReviewHead[], load: MwLoad, span: number): string {
   const head = tileHead(`<span style="display:inline-flex;align-items:center;gap:7px">${dot("var(--accent)")}Needs your review</span>`, { act: "goReview", label: "View all" });
-  if (load !== "ok") return tile("review", span, "Needs your review", `${head}${tileNote(load === "pending" ? "Loading&hellip;" : "Couldn't load the review queue.")}`);
+  if (load === "pending") return tile("review", span, "Needs your review", `${head}${tileSkeleton("review", 2, { trail: 96, top: 12 })}`);
+  if (load !== "ok") return tile("review", span, "Needs your review", `${head}${tileNote("Couldn't load the review queue.")}`);
   if (items.length === 0) {
     // Clear: the tile keeps its place (and its header) and says so in its body.
     return tile("review", span, "Needs your review", `${head}<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:22px 16px 26px;margin-top:12px;border-top:1px solid var(--border);text-align:center">
@@ -189,7 +202,7 @@ export function sessionsTile(sessions: MwSession[], feedLoad: MwLoad, handoffs: 
       <span style="font-size:12.5px;color:var(--fg-40);white-space:nowrap;padding-top:2px">${relTime(x.at)}</span>
       ${x.brief ? `<span style="font-size:12.5px;line-height:1.5;color:var(--fg-40);grid-column:span 2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.brief)}</span>` : ""}
     </button>`).join("");
-  const body = feedLoad === "pending" && sessions.length === 0 ? tileNote("Loading&hellip;")
+  const body = feedLoad === "pending" && sessions.length === 0 ? tileSkeleton("sessions", 2, { trail: 40 })
     : feedLoad === "error" && sessions.length === 0 ? tileNote("Couldn't load your recent sessions.")
     : sessions.length === 0 ? tileNote("Nothing recorded yet. Run record-session at the end of a session and it lands here.")
     : rows;
@@ -269,7 +282,12 @@ export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTa
     id: "mw-repo", ariaLabel: "Repo view", value: tab, act: "mwRepoTab", size: "xs", inertOn: true,
     options: [{ value: "prs", label: "PRs" }, { value: "ci", label: "CI" }, { value: "deploys", label: "Deploys" }],
   })}</div>`;
-  if (!repo) return tile("repo", span, "Repo monitor", `${head}${tabs}${tileNote(load === "error" ? "Couldn't load the Repo dashboard." : "Loading&hellip;")}`);
+  if (!repo && load !== "error") {
+    // The summary line, then three rows (a dot, a title, a stamp) — the panel's own boxes.
+    const row = (i: number) => `<div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 16px;border-top:1px solid var(--border)">${skBox(7, 7)}${skLine(skW(i), 14, 1.45)}${skBar(34, 9)}</div>`;
+    return tile("repo", span, "Repo monitor", `${head}${tabs}${skeleton("mw-repo", "Loading&hellip;", `<div style="padding:10px 16px;border-top:1px solid var(--border)">${skLine("46%", 13.5, 1.5)}</div>${skList(3, row)}`)}`);
+  }
+  if (!repo) return tile("repo", span, "Repo monitor", `${head}${tabs}${tileNote("Couldn't load the Repo dashboard.")}`);
   const p = repoPanel(repo, tab);
   const inner = p.note
     ? tileNote(p.note)
@@ -300,17 +318,20 @@ export function libraryStrip(lib: MwLibrary, span: number): string {
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:2px 10px"><span style="font-size:14px;font-weight:500;white-space:nowrap">${title}</span><button data-act="${link.act}" class="mw-more" style="display:inline-flex;align-items:center;gap:4px;font-size:12.5px;color:var(--fg-40);white-space:nowrap;padding:0">${esc(link.label)}${ARROW}</button></div>${body}</div>`;
   const line = (html: string) => `<div style="font-size:13px;color:var(--fg-55)">${html}</div>`;
   const quiet = (html: string) => `<div style="font-size:12.5px;color:var(--fg-40);text-wrap:pretty">${html}</div>`;
-  const pending = (l: MwLoad) => (l === "pending" ? line("Loading&hellip;") : line("Couldn't load."));
+  // A cell's two lines (the count, then the quiet detail) while its read is out.
+  const pending = (l: MwLoad, key: string) => (l === "pending"
+    ? skeleton(`mw-lib-${key}`, "Loading&hellip;", `${skLine("38%", 13, 1.5)}<span style="display:block;margin-top:6px">${skLine("64%", 12.5, 1.5)}</span>`)
+    : line("Couldn't load."));
 
   const d = lib.docs;
-  const docs = d.load !== "ok" ? pending(d.load)
+  const docs = d.load !== "ok" ? pending(d.load, "docs")
     : d.total === 0 ? `${line("No docs yet")}${quiet("Docs you promote or edit show here.")}`
     : `${line(`${d.total} doc${d.total === 1 ? "" : "s"}${d.stale.length ? ` · <span style="color:var(--amber)">${d.stale.length} not updated in 30 days</span>` : ""}`)}${d.stale.length ? quiet(esc(d.stale.slice(0, 3).join(", "))) : quiet("Everything touched in the last month.")}`;
   const a = lib.artifacts;
-  const arts = a.load !== "ok" ? pending(a.load)
+  const arts = a.load !== "ok" ? pending(a.load, "arts")
     : `${line(`${a.publishedThisWeek} published this week`)}${a.latest ? `<button data-act="artOpen" data-arg="${attr(a.latest.slug)}" class="mw-more" style="text-align:left;padding:0;font-size:12.5px;color:var(--fg-40)">Latest: ${esc(a.latest.title)} · ${relTime(a.latest.at)}</button>` : quiet("No artifacts yet.")}`;
   const h = lib.handoffs;
-  const handoffs = h.load !== "ok" ? pending(h.load)
+  const handoffs = h.load !== "ok" ? pending(h.load, "handoffs")
     : h.newest
       ? `${line(`${h.count} for you`)}<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap"><button data-act="openHandoff" data-arg="${h.newest.id}" class="mw-more" style="min-width:0;flex:1;display:flex;flex-direction:column;text-align:left;padding:0"><span style="font-size:13px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(h.newest.title)}</span><span style="font-size:12.5px;color:var(--fg-40)">Newest · ${relTime(h.newest.at)}</span></button><button data-act="mwHandoffCopy" data-arg="${h.newest.id}" title="Copy as prompt — paste it into a fresh session" class="cnpy-accentbtn" style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:500;white-space:nowrap;flex:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>Copy</button></div>`
       : quiet("No handoffs queued.")

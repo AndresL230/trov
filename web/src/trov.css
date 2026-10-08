@@ -1214,7 +1214,6 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 @keyframes cnpy-grow-x { from { transform:scaleX(0); } to { transform:none; } }
 @keyframes cnpy-wipe { from { clip-path:inset(0 100% 0 0); } to { clip-path:inset(0 0 0 0); } }
 @keyframes cnpy-dot { from { opacity:0; transform:scale(.2); } to { opacity:1; transform:none; } }
-@keyframes cnpy-shimmer { 0% { opacity:.45; } 50% { opacity:.95; } 100% { opacity:.45; } }
 @keyframes cnpy-pulse { 0% { box-shadow:0 0 0 0 color-mix(in srgb,var(--c) 45%,transparent); } 100% { box-shadow:0 0 0 7px color-mix(in srgb,var(--c) 0%,transparent); } }
 
 [data-enter] #cnpy-main > * { animation:cnpy-screen .32s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--enter-t, 0ms); }
@@ -1234,6 +1233,30 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* chrome that is swapped with <main> still eases its hover/press */
 .cnpy-iconbtn, .cnpy-outlinebtn { transition:background .15s ease, color .15s ease, border-color .15s ease, transform .15s ease; }
 .cnpy-iconbtn:active, .cnpy-outlinebtn:active, .cnpy-accentbtn:active { transform:scale(.96); }
+/* ── loading skeletons (web/src/skeleton.ts) ─────────────────────────────────
+   The shape of the content that is coming, in the content's own boxes, so nothing
+   moves when the read lands. `.cnpy-sk` is one muted bar; `.cnpy-skl` reserves a
+   text line's box around it. The bars stay INVISIBLE for the first 150ms (a fast
+   read never shows a skeleton), then fade in and pulse. `--skel-t` is a negative
+   delay kept per region by skeleton.ts `syncSkeletons`, so a rerender while a read
+   is out neither restarts the delay nor resets the pulse. `.cnpy-settle` is the one
+   short fade given to the content that replaces a skeleton — never the staggered
+   screen entrance again. All of it is off under reduced motion (the bars are then
+   simply there). */
+@keyframes cnpy-skel-in { from { opacity:0; } to { opacity:1; } }
+@keyframes cnpy-skel-pulse { 0%, 100% { opacity:1; } 50% { opacity:.5; } }
+@keyframes cnpy-settle { from { opacity:.3; } to { opacity:1; } }
+.cnpy-skel { display:block; min-width:0; }
+.cnpy-skel-in { display:block; animation:cnpy-skel-in .18s ease both; animation-delay:calc(150ms + var(--skel-t, 0ms)); }
+.cnpy-sk { display:block; flex:none; max-width:100%; border-radius:4px; background:var(--border); animation:cnpy-skel-pulse 1.5s ease-in-out infinite; animation-delay:var(--skel-t, 0ms); }
+.cnpy-skl { display:flex; align-items:center; width:100%; min-width:0; }
+.cnpy-skrow { display:flex; min-width:0; }
+.cnpy-skcol { display:block; flex:1; min-width:0; }
+.cnpy-settle { animation:cnpy-settle .24s ease-out !important; animation-delay:var(--settle-t, 0ms) !important; }
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-skel-in, .cnpy-sk, .cnpy-settle { animation:none !important; }
+}
+
 
 /* ── Repo dashboard (web/src/repo.ts) ────────────────────────────────────────── */
 .repo-row { transition:background .14s ease; }
@@ -1246,7 +1269,6 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .repo-quiet { color:inherit; transition:color .12s ease; }
 .repo-quiet:hover { color:var(--fg); }
 .repo-textbtn:hover { text-decoration:underline; text-underline-offset:3px; }
-.repo-shimmer { animation:cnpy-shimmer 1.4s ease infinite; }
 .repo-pulse { animation:cnpy-pulse 1.8s ease-out infinite; }
 
 .repo-drift { display:grid; grid-template-rows:0fr; }
@@ -1329,7 +1351,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 
 @media (prefers-reduced-motion: reduce) {
   .cnpy-aside, .cnpy-aside *, .cnpy-aside *::before, .cnpy-aside *::after { transition:none !important; }
-  [data-enter] *, .cnpy-flash, .cnpy-flash *, .repo-shimmer, .repo-pulse, .repo-pollbtn svg { animation:none !important; }
+  [data-enter] *, .cnpy-flash, .cnpy-flash *, .repo-pulse, .repo-pollbtn svg { animation:none !important; }
   .repo-tip, .repo-dot, .repo-row, .repo-chev, .repo-rank-l { transition:none !important; }
   .cnpy-statusbtn, .cnpy-statusbtn svg { transition:none !important; }
   .cnpy-avbtn-veil, .cnpy-avbtn-veil svg { transition:none !important; animation:none !important; }
@@ -1824,7 +1846,8 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* trov.css classes, by the radius each declares above. */
 [data-cnpy-theme] .cnpy-kbd,
 [data-cnpy-theme] .cnpy-qs-kbd,
-[data-cnpy-theme] .cnpy-treechev { border-radius:calc(4px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-treechev,
+[data-cnpy-theme] .cnpy-sk { border-radius:calc(4px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-platpage-home { border-radius:calc(6px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs-hl { border-radius:calc(3px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs-row { border-radius:calc(7px * var(--corner-scale)) !important; }

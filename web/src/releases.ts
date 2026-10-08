@@ -82,6 +82,7 @@ export const RELEASES: Release[] = [
       "Upgrade a Free organization to Pro from Org settings › General. The checkout starts with one seat for each member and pending invitation, and you can change the number before you pay.",
       "When every seat is taken, Members says so and gives the owner one button: Add a seat on Pro, or Upgrade to Pro on Free.",
       "The pricing page shows Free, Pro and Enterprise, with what each one includes and how per-seat pricing works.",
+      "Pages no longer jump when they load. While a screen waits for its data it shows the outline of what is coming, in the same place and at the same size, and the content then fills in where the outline was.",
     ],
     headsUp: [
       "The seats an organization pays for are the seats it has. Removing a seat in Stripe leaves everyone in place; new invitations wait until the organization is back under.",
@@ -107,6 +108,8 @@ export const RELEASES: Release[] = [
         "Migration `0047_billing_seats`: `billing_subscriptions.quantity`, so Platform's Follow subscription restores the paid seats; `PlatformOrgBilling.ended` and `seats` (#117)",
         "`moveOrgToFree` in the billing seam (`src/plans/billing.ts`) (#117)",
         "`capSummaryBody` / `SUMMARY_BODY_MAX` (8,000) in `src/tools/summarize.ts` (#117)",
+        "`web/src/skeleton.ts`: the one loading-skeleton helper (`skeleton`, `skBar`, `skLine`, `skRow`, `skList`, `skCard`, `skRows`, `skForm`, `skTable`, `skDetail`). Every screen that waits on a read composes its loading state from it, in the screen's own frame: My Work's tiles, Feed and its aside boxes, Docs (tree and page), Roadmap (both tabs), the ticket board and table, a ticket, a sprint, Review, Unplaced, Search, Handoffs, the Prompt Library, Artifacts (library, viewer, comparison), every Repo section, Settings, Org settings, Platform and the org picker (#119)",
+        "`syncSkeletons` (after every paint): each skeleton region keeps its clock across rerenders (`--skel-t`), stays invisible for its first 150 ms so a fast read never shows one, and what replaces it gets one short fade (`.cnpy-settle`). Off under reduced motion (#119)",
       ],
       changed: [
         "Plan `team` is shown as \"Pro\", with 50 seats; `PURCHASABLE_PLANS` is `[\"team\"]`. Checkout sends quantity = members + pending invitations (at least 1; 1 for a first purchase) with `adjustable_quantity` 1–50 (#117)",
@@ -117,6 +120,8 @@ export const RELEASES: Release[] = [
         "The picker offers \"Create a Free organization\"; the landing's sign-in line and Get Started guide mention creating one again (issue #94) (#117)",
         "`DEFAULT_ORG_LIMIT` is 1: the Free organizations a person may own (#117)",
         "The return-to allowlist (`src/auth/return-to.ts`) is built from `PURCHASABLE_PLANS` (#117)",
+        "The screen entrance (`[data-enter]`) belongs to the route: it plays once when a page opens and is no longer replayed when the page's read lands (`screenSettled` is gone from `main.ts`) (#119)",
+        "Search keeps the results on screen while a new query is out instead of swapping them for \"Searching…\"; the ticket queue, Review and Unplaced keep their toolbar and frame while loading; `loadingNote` (`org-ui.ts`) and Platform's `loadingLine` render skeleton rows and keep \"Loading <what>…\" for screen readers (#119)",
       ],
       fixed: [
         "A one-seat paid Pro org is not a one-person plan: Members keeps the invite section with \"Add a seat\", and the setup checklist keeps \"Invite your team\" (#117)",
@@ -127,7 +132,7 @@ export const RELEASES: Release[] = [
         "`POST /api/o/:slug/billing/renew` (an ended subscription now leaves the org on Free; Upgrade to Pro is how it pays again); `firstTeamPlan` (#117)",
       ],
     },
-    prs: [117],
+    prs: [117, 119],
   },
   // Sync GitHub as a recorded run, and AI summaries counted per organization (#109).
   {

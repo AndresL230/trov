@@ -27,6 +27,7 @@ import { segmented } from "./segmented";
 import { confirmModal } from "./confirm";
 import { usageView, orgUsageBlock, type UsageWindow } from "./platform-usage";
 import { tabLead, leadFlag, dangerLink } from "./org-ui";
+import { skRows, skKey } from "./skeleton";
 // Plans and grants (shared/plans.ts): the Access tab, an org's Plan section, their dialogs.
 import { PLANS, type PlanId } from "@shared/plans";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
@@ -211,7 +212,9 @@ const sectionHead = (title: string, aside = "", first = false, count: number | n
   `<div class="cnpy-sechead${first ? " is-first" : ""}"><h2 style="${LABEL};margin:0">${esc(title)}</h2>${count === null ? "" : `<span class="cnpy-badge" data-n="${count}">${count}</span>`}${aside ? `<span class="cnpy-sechead-a">${aside}</span>` : ""}</div>`;
 const emptyCard = (title: string, sub: string): string =>
   `<div style="border:1px dashed var(--border-strong);border-radius:11px;padding:22px 24px;text-align:center"><div style="font-size:13.5px;font-weight:600;color:var(--fg-70)">${esc(title)}</div><div style="font-size:12.5px;color:var(--fg-40);margin-top:4px;line-height:1.5">${esc(sub)}</div></div>`;
-const loadingLine = (what: string): string => `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0">Loading ${esc(what)}…</div>`;
+/** A tab's rows while its read is out (skeleton.ts); "Loading <what>…" stays for a screen reader. */
+const loadingLine = (what: string, rows = 4, avatar = 0): string =>
+  skRows(`plat-${skKey(what)}`, `Loading ${esc(what)}…`, rows, { avatar: avatar || undefined, trail: 72 });
 const errorLine = (what: string): string =>
   `<div role="alert" style="font-size:13px;color:var(--fg-70);padding:10px 0">Couldn't load ${esc(what)}. <button type="button" data-act="platReload" class="cnpy-mutelink" style="padding:0;font-size:13px;font-weight:500;color:var(--accent)">Try again</button></div>`;
 const fieldError = (id: string, msg: string | undefined | null): string =>
@@ -275,7 +278,7 @@ const ADD_ORG = `<button type="button" data-act="platAddOpen" data-plat-add-trig
 
 export function orgsTab(p: Pick<PlatState, "orgs">): string {
   if (p.orgs.status === "error" && !p.orgs.data.length) return errorLine("organizations");
-  if (p.orgs.status !== "ok" && !p.orgs.data.length) return loadingLine("organizations");
+  if (p.orgs.status !== "ok" && !p.orgs.data.length) return loadingLine("organizations", 5, 28);
   if (!p.orgs.data.length) {
     return `${tabLead("No organizations yet. Add the first one and name its admin; they take it from there.", ADD_ORG)}${emptyCard("No organizations yet", "An organization is a team's own Trov: its docs, tickets, roadmap and feed.")}`;
   }
@@ -421,7 +424,8 @@ export function auditTab(p: Pick<PlatState, "audit" | "auditOrg" | "orgs">): str
 /** Why the area can't render: still checking, or not a superadmin (main.ts then leaves). */
 function gateNotice(p: Pick<PlatState, "superadmin">): string {
   if (p.superadmin === true) return "";
-  return `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">${p.superadmin === null ? "Loading…" : "This page isn't available to your account."}</div>`;
+  if (p.superadmin === null) return skRows("plat-gate", "Loading…", 5, { avatar: 28, trail: 72, pad: "14px 0" });
+  return `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">This page isn't available to your account.</div>`;
 }
 
 export function platformTabBar(tab: PlatTab): string {
