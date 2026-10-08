@@ -13,7 +13,7 @@ import { systemCtx } from "./helpers/tenant";
 
 const PAYLOAD: OnboardPayload = {
   provider: "github", subject: "priya-gh", label: "priya-gh", email: "priya.n@gmail.com",
-  name: "Priya Natarajan", avatar_url: null, suggested_handle: "priya-gh", invite_email: null,
+  name: "Priya Natarajan", avatar_url: null, suggested_handle: "priya-gh",
 };
 const cookie = async (p: OnboardPayload = PAYLOAD) => `${ONBOARD_COOKIE}=${await sealOnboard(p, "test-cookie-secret")}`;
 const post = (path: string, c: string, body: unknown) =>

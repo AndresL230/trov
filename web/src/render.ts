@@ -62,6 +62,8 @@ import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsUi, type OrgsUi } from "./org-picker";
 import { billingDonePage, type BillingDoneUi } from "./billing";
 import { isOrgAdmin } from "./org-context";
+import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpEndpoint, mcpStrong, ONE_ORG_NOTE } from "./mcp-connect";
+import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
@@ -91,7 +93,9 @@ export type Screen =
   // Help › What's new: the release grid, and each release's notes / patch notes (releases.ts, static data).
   | "releases"
   // Org settings: one screen, five tabs (`#org[/<tab>]`, web/src/org-settings.ts).
-  | "org";
+  | "org"
+  // The guided first-run setup: a full page, no sidebar (`#welcome[/<step>]`, web/src/welcome.ts).
+  | "welcome";
 
 /** Async data slice: a screen's fetched payload plus its load status. */
 export interface Loadable<T> {
@@ -104,8 +108,8 @@ export interface AppState {
   /** `orgs` = signed in, but no org is open: the org picker (`/`, with no org or several). */
   /** `platform` = the superadmin's Platform area at `/platform/`, outside any org (platform.ts `platformPage`). */
   view: "auth" | "app" | "orgs" | "platform";
-  /** `nonmember` = a GitHub sign-in that was refused; `notinvited` = a Google account nobody invited. */
-  authStep: "login" | "verifying" | "nonmember" | "notinvited" | "onboard";
+  /** `nonmember` = a GitHub sign-in that was refused; `unverified` = a Google account whose address Google has not verified. */
+  authStep: "login" | "verifying" | "nonmember" | "unverified" | "onboard";
   /** The landing page's sign-in dialog (authStep "login" only). */
   signInOpen: boolean;
   /** Landing reveal keys that already played (landing-motion.ts records them). */
@@ -122,6 +126,8 @@ export interface AppState {
   orgMe: Loadable<OrgMeResponse | null>;
   /** The switcher's menu, the picker and the create-organization dialog (org-picker.ts). */
   orgsUi: OrgsUi;
+  /** The guided first-run setup (welcome.ts): its step, and the by-hand disclosure. */
+  welcome: WelcomeUi;
   /** `/billing/done`: the waiting room a buyer lands in after Stripe Checkout (billing.ts). null everywhere else. */
   billingDone: BillingDoneUi | null;
   mywork: Loadable<DashboardData | null>;
@@ -411,6 +417,7 @@ export function initialState(): AppState {
     orgSlug: null,
     orgMe: { status: "idle", data: null },
     orgsUi: initialOrgsUi(),
+    welcome: initialWelcomeUi(),
     billingDone: null,
     screen: "mywork",
     theme: "light", systemDark: true,
@@ -661,7 +668,7 @@ function authView(s: AppState): string {
   if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, seen: s.landingSeen });
   return `<div class="cnpy-authwrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
     ${s.authStep === "nonmember" ? nonmemberCard() : ""}
-    ${s.authStep === "notinvited" ? notInvitedCard(s.deniedEmail) : ""}
+    ${s.authStep === "unverified" ? unverifiedCard(s.deniedEmail) : ""}
     ${s.authStep === "verifying" ? verifyingCard() : ""}
     ${s.authStep === "onboard" ? onboardView(s.onboard) : ""}
   </div>`;
@@ -687,14 +694,15 @@ function nonmemberCard(): string {
   </div>`;
 }
 
-/** A Google account nobody invited. Google needs an invitation; a GitHub account never does. */
-function notInvitedCard(email: string | null): string {
+/** A Google account whose address Google has not verified — the one Google sign-in Trov refuses:
+ *  a sign-in is matched to a person by that address, so an unverified one is never trusted. */
+function unverifiedCard(email: string | null): string {
   return `<div style="width:400px;max-width:100%">
     <div${surface("padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center", { cls: "cnpy-authcard" })}>
       ${DENIED_SEAL}
       <div>
-        <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">This Google account hasn't been invited yet.</div>
-        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Signing in with Google needs an invitation. Ask an admin of your organization to invite <span style="font-family:var(--label);font-size:12.5px;overflow-wrap:anywhere">${esc(email ?? "your address")}</span>, then sign in again. A GitHub account can always sign in, and can create an organization.</div>
+        <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">Google hasn't verified this address yet.</div>
+        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">Trov signs you in by the address Google confirms, and Google reports <span style="font-family:var(--label);font-size:12.5px;overflow-wrap:anywhere">${esc(email ?? "this address")}</span> as not verified. Verify it with Google and sign in again, or use another account.</div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;padding:9px 14px 9px 9px;border:1px solid var(--border);border-radius:999px;max-width:100%">
         <div class="cnpy-av cnpy-av-anon" style="width:26px;height:26px;flex:none;border-radius:50%;${AVATAR};font-size:10px;font-weight:600;color:var(--fg-70)">${esc(initialsOf(email ?? "?"))}</div>
@@ -775,7 +783,7 @@ function header(s: AppState): string {
   const titles: Record<Screen, string> = {
     mywork: "My Work", feed: "Feed", docs: "Docs", roadmap: "Roadmap", review: "Review",
     maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Get Started",
-    unsubscribe: "Unsubscribe", site: "Trov",
+    unsubscribe: "Unsubscribe", site: "Trov", welcome: "Guided setup",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
     repo: "Repo",
@@ -1697,6 +1705,10 @@ function guideView(s: AppState): string {
     <h1 id="guide-top" class="cnpy-guide-anchor" style="font-size:30px;font-weight:650;letter-spacing:-0.025em;margin:0 0 14px">Get Started</h1>
     <p style="font-size:16px;line-height:1.8;color:var(--fg-70);margin:0 0 14px">Trov is the team's shared memory: docs, decisions, the roadmap, the ticket queue, and a running record of what shipped, open to people and to their coding agents alike. It has one rule: ${gStrong("agents only ever stage changes, and a person confirms the ones that matter")}. That keeps what Trov says trustworthy no matter how many agents write to it.</p>
     <p style="${gP}">This page takes you from zero to productive in order: sign in, connect your agent, learn the skills, then the everyday workflows and a tour of every screen. Troubleshooting is at the end.</p>
+    ${viewerOrg(s) ? `<div${surface("display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:14px 16px;margin:0 0 6px")} data-guide-setup>
+      <div style="flex:1 1 260px;min-width:0"><div style="font-size:13.5px;font-weight:600">Rather be walked through it?</div><div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:1px">The guided setup takes ${esc(viewerOrg(s)!.name)} one step at a time${viewerIsAdmin(s) ? ": a repository, your coding agent, your team" : ": your coding agent, then where things live"}.</div></div>
+      <button type="button" data-act="welcomeOpen" data-field="guideWelcomeOpen" class="cnpy-ghostbtn" style="height:32px;padding:0 13px;border-radius:8px;font-size:12.5px;font-weight:500;white-space:nowrap;border:1px solid var(--border);color:var(--fg);background:transparent">Open the guided setup</button>
+    </div>` : ""}
 
     ${sec("Step 1", "Sign in", "Sign in")}
     <ul style="${gList}">
@@ -1961,15 +1973,8 @@ export function accountSection(s: AppState): string {
   </section>`;
 }
 
-/** This Trov's own MCP endpoint — the origin the SPA is served from, so a local
- *  `wrangler dev` hands out a local URL and prod hands out prod's. */
-const mcpEndpoint = (): string =>
-  `${typeof location !== "undefined" && location.origin ? location.origin : "https://trov.dev"}/mcp`;
-
-/** The two Claude Code commands that install the Trov plugin — Settings › MCP access
- *  and the Get Started guide both show exactly this. */
-export const PLUGIN_INSTALL = `/plugin marketplace add AndresL230/trov
-/plugin install trov@trov`;
+// The commands and the three sign-in steps live in mcp-connect.ts (the wizard shows them too).
+export { PLUGIN_INSTALL, browserConnectCommand };
 
 /** How many Connected apps rows Settings › MCP access shows before its "Show all N". */
 export const MCP_LIST_CAP = 3;
@@ -2045,23 +2050,6 @@ export function tokenListBody(s: Pick<AppState, "mcpTokens" | "tokenRevokeArm">,
   </div>`;
 }
 
-/** The by-hand setup: the server with no header — Claude Code then signs in through the
- *  browser on `/mcp` → Authenticate, exactly as the plugin does. Mints nothing. */
-export function browserConnectCommand(url: string = mcpEndpoint()): string {
-  return `claude mcp add --transport http --scope user trov ${url}`;
-}
-
-const mcpCode = (t: string) => `<code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${t}</code>`;
-const mcpStrong = (t: string) => `<strong style="font-weight:600;color:var(--fg)">${t}</strong>`;
-/** A command with a small Copy icon in its corner, so the text keeps the box's full width —
- *  the MCP tile's install commands and the by-hand setup modal's `claude mcp add`. */
-function copyBox(text: string, act: string, label: string): string {
-  return `<div style="position:relative;margin-top:7px;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:7px 36px 7px 11px">
-        <pre style="margin:0;font-family:var(--code);font-size:11.5px;line-height:1.6;color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere">${esc(text)}</pre>
-        <button data-act="${act}" class="cnpy-copybtn" title="Copy" aria-label="${label}" style="position:absolute;top:5px;right:5px;display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg);color:var(--fg-55)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button>
-      </div>`;
-}
-
 /**
  * Settings › MCP access — OAuth only: Trov no longer mints tokens here (the token routes
  * stay, so a token already in use keeps working). Beside the heading, a quiet link to the
@@ -2072,8 +2060,6 @@ function copyBox(text: string, act: string, label: string): string {
  * Pure over AppState — exported for the pure render test.
  */
 export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll"> & Partial<Pick<AppState, "mcpTokens" | "tokenRevokeArm" | "orgSlug">>, orgName = ""): string {
-  // The steps read in order on their own — no number badges (the owner's call, 2026-09-27).
-  const step = (body: string) => `<li style="min-width:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${body}</li>`;
   return `<section class="cnpy-tile cnpy-surface cnpy-set-mcp">
     <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;column-gap:12px;row-gap:2px;margin-bottom:14px">
       <div style="${SECTION_LABEL};margin-bottom:0">MCP access</div>
@@ -2082,12 +2068,8 @@ export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" |
     <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you, in one organization.</div>
     <div class="cnpy-mcp-body">
       <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
-      <ol aria-label="Connect Claude Code" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0">
-        ${step(`Install the Trov plugin in Claude Code:${copyBox(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
-        ${step(`Run ${mcpCode("/mcp")}, choose ${mcpStrong("trov")}, then ${mcpStrong("Authenticate")}.`)}
-        ${step(`Your browser opens Trov. ${orgName ? `Pick the organization to connect (you're in ${mcpStrong(esc(orgName))} now)` : "Pick the organization to connect"}, then click ${mcpStrong("Allow")} &mdash; it shows up under Connected apps.`)}
-      </ol>
-      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">A connection reaches one organization: the one you pick when you allow it. To use Trov with another organization, connect again and pick that one.</div>
+      ${connectSteps(orgName)}
+      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">${ONE_ORG_NOTE}</div>
       </div>
       <div style="min-width:0">
       ${grantListBody(s)}
@@ -2439,6 +2421,12 @@ function screenBody(s: AppState): string {
   }
 }
 
+/** Project the app state onto the guided setup's props (welcome.ts): Org settings' reads, and MY
+ *  agent connections — the two reads Settings › MCP access makes. */
+export function welcomeProps(s: AppState): WelcomeProps {
+  return { org: currentOrg(s), step: s.welcome.step, me: s.me, ui: s.org, grants: s.grants, tokens: s.mcpTokens, wel: s.welcome, dd: s.dd };
+}
+
 /** Project the app state onto Org settings' props. The current org is `currentOrg` — one place. */
 function orgProps(s: AppState): OrgSettingsProps {
   const status = s.myOrgs.status === "unauth" ? "error" : s.myOrgs.status;
@@ -2524,7 +2512,7 @@ function toastBlock(msg: string, elapsed: number, ms: number, action: ToastActio
 export function render(s: AppState): string {
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.billingDone ? billingDonePage(s.billingDone) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+    ${s.billingDone ? billingDonePage(s.billingDone) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
@@ -2535,6 +2523,7 @@ export function render(s: AppState): string {
     ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
+    ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}

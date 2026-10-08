@@ -7,7 +7,7 @@
 
 import type { AppState } from "./render";
 import { ApiError, Unauthorized, createOrg, respondToInvite } from "./api";
-import { acceptLanding, blankCreateOrg, createOrgErrors, createOrgServerError } from "./org-picker";
+import { acceptLanding, blankCreateOrg, createLanding, createOrgErrors, createOrgServerError } from "./org-picker";
 import { slugFromName } from "./platform";
 import { orgHref } from "./org-context";
 import type { MyOrgsResponse } from "@shared/orgs";
@@ -65,8 +65,8 @@ export function createOrgsController(h: OrgsHost) {
     }
     d.busy = true; h.rerender();
     createOrg({ slug: d.slug, name: d.name.trim(), ...(d.grant ? { grant: d.grant.id } : d.free ? { plan: "free" as const } : {}) })
-      // Its admin lands in Org settings, on the setup checklist.
-      .then((org) => h.go(orgHref(org.slug, "#org")))
+      // Its owner lands on the guided setup (welcome.ts) — Free, granted or paid alike.
+      .then((org) => h.go(createLanding(org.slug)))
       .catch((e) => {
         if (e instanceof Unauthorized) { h.unauth(e); return; }
         const cur = ui().create;
@@ -87,8 +87,8 @@ export function createOrgsController(h: OrgsHost) {
     h.rerender();
     respondToInvite(id, accept)
       .then(() => {
-        // Accepted: straight into the org — its new OWNER (a superadmin's owner invite) onto Org settings,
-        // where the setup checklist is, exactly as creating an org does. Declined: the list again, without it.
+        // Accepted: straight into the org, on its guided setup (welcome.ts) — the owner's and admin's
+        // four steps or the member's two; the page itself picks by role. Declined: the list again, without it.
         if (accept) { h.go(acceptLanding(invite)); return; }
         return h.reloadOrgs().then(() => { ui().inviteBusy = null; h.flash(`Declined the invitation to ${invite.org.name}`); });
       })

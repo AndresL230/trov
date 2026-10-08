@@ -49,6 +49,18 @@ mid-entrance joins the animation where the old DOM left off. Hooks: `.cnpy-rise`
 (lists), `.repo-bar` / `.repo-fill` / `.repo-spark`, `data-count` (count-up). In-place changes use the
 one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
+## Full pages without the sidebar
+
+Three views render outside `.cnpy-shell`, on the picker's frame (`.cnpy-orgs` / `.cnpy-orgs-col`: one calm
+column, the window scrolls): the org picker, the Platform page, and the **guided setup** (`#welcome`,
+`web/src/welcome.ts` — an in-org SCREEN, so its hash route, overlays and `[data-enter]` entrance work as on
+any other). The setup's step indicator is its own small pattern (`welcomeStepper`): an `<ol>` of buttons,
+the step on screen `aria-current="step"`, a check only on a step whose done-state was READ (a step whose
+read is out keeps its number and says "not known yet"), and at phone width only the current step keeps its
+label. It is not a tab bar and not a segmented switch: a step is a page of the flow, and each has its own
+route. Its rules declare no radius (every one is inline), and its one moving part — the waiting dot — is
+still under `prefers-reduced-motion`. Tests: `test/render.welcome.test.ts`.
+
 ## Loading skeletons — the shape of what is coming (`web/src/skeleton.ts`)
 
 A screen that waits on a read never paints a bare "Loading…" line and never paints its empty state early: it

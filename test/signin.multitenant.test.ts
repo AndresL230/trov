@@ -179,22 +179,30 @@ describe("a new GitHub account", () => {
 });
 
 describe("a new Google account", () => {
-  it("with no invite for its verified email: denied — no onboarding, nothing written", async () => {
+  it("with no invite for its verified email: onboards — sign-up is open — into NO org, and can create one", async () => {
     const res = await google();
-    expect(res.headers.get("location")).toBe("/?denied=invite&email=priya.n%40gmail.com");
-    expect(cookieOf(res, "onboard")).toBeNull();
-    expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
+    expect(res.headers.get("location")).toBe("/#onboard");
+    expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull(); // nothing written yet
+    const session = await onboard(res, "priya");
+    expect(await memberships("priya")).toEqual([]);
+    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ handle: "priya", orgs: [], pending_invites: 0 });
   });
 
-  it("an invite for a DIFFERENT address, an invite by GitHub login, or one from a suspended org does not open the door", async () => {
+  it("someone else's invites give a new Google account nothing; an unverified address is refused even with its own", async () => {
     await orgInvite({ email: "someone.else@gmail.com" });
     await orgInvite({ github_login: "priya-n" });
     await run(env.DB, `INSERT INTO orgs (id, slug, name, created_at, created_by, suspended_at) VALUES ('org_c', 'cedar', 'Cedar', 't', 'test', 't')`);
     await orgInvite({ org: "org_c", email: "priya.n@gmail.com" });
-    expect((await google()).headers.get("location")).toMatch(/^\/\?denied=invite/);
-    // …and an unverified claim is refused even with a matching invite.
+    // An unverified claim never gets as far as onboarding, even with a matching invite.
     await orgInvite({ email: "priya.n@gmail.com" });
-    expect((await google({ email_verified: false })).headers.get("location")).toMatch(/^\/\?denied=invite/);
+    const refused = await google({ email_verified: false });
+    expect(refused.headers.get("location")).toBe("/?denied=unverified&email=priya.n%40gmail.com");
+    expect(cookieOf(refused, "onboard")).toBeNull();
+    await run(env.DB, `UPDATE org_invites SET status = 'revoked' WHERE org_id = ? AND email = 'priya.n@gmail.com'`, ORG_B);
+    // Verified: an account, a member of nothing — the other address's, the login's and the suspended org's invites are not theirs.
+    const session = await onboard(await google(), "priya");
+    expect(await memberships("priya")).toEqual([]);
+    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ orgs: [], pending_invites: 0 });
   });
 
   it("with an org invite for its verified email: onboards into NO org, then accepts", async () => {
@@ -214,14 +222,15 @@ describe("a new Google account", () => {
     expect(await memberships("priya")).toEqual([{ org_id: ORG_A, role: "member" }]);
   });
 
-  it("the invite is re-checked when onboarding is submitted: revoked in between → 403, no person", async () => {
+  it("an invite revoked while onboarding is open: the account is still created, in no org", async () => {
     const id = await orgInvite({ email: "priya.n@gmail.com" });
     const callback = await google();
     expect(callback.headers.get("location")).toBe("/#onboard");
     await run(env.DB, `UPDATE org_invites SET status = 'revoked' WHERE id = ?`, id);
     const r = await json("POST", "/auth/onboard", cookieOf(callback, "onboard")!, { handle: "priya", name: null, color: "sky" });
-    expect([r.status, r.json]).toEqual([403, { error: "invite_revoked" }]);
-    expect(await first(env.DB, `SELECT 1 AS x FROM persons WHERE handle = 'priya'`)).toBeNull();
+    expect(r.status).toBe(200);
+    expect(await memberships("priya")).toEqual([]);
+    expect((await json("POST", `/api/invites/${id}/accept`, cookieOf(r.res, "session")!)).status).not.toBe(200);
   });
 });
 
@@ -253,9 +262,12 @@ describe("an editable address is never a way into someone else's account", () =>
     expect(await first(env.DB, `SELECT email FROM persons WHERE handle = 'victim'`)).toEqual({ email: "victim@example.com" });
 
     // And if `persons.email` DID say so (written directly here), a Google sign-in with that address still
-    // links nothing: only an address a provider verified for the person does.
+    // links nothing and opens no session as victim: only an address a provider verified for the person
+    // does. It is offered a NEW account of its own.
     await run(env.DB, `UPDATE persons SET email = 'priya.n@gmail.com' WHERE handle = 'victim'`);
-    expect((await google()).headers.get("location")).toMatch(/^\/\?denied=invite/);
+    const stranger = await google();
+    expect(stranger.headers.get("location")).toBe("/#onboard");
+    expect(cookieOf(stranger, "session")).toBeNull();
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
   });
 

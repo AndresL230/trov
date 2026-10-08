@@ -217,11 +217,11 @@ describe("the org picker / first run", () => {
   const picker = (orgs: MyOrgsResponse | null, o: { mine?: MyOrg[]; ui?: Partial<OrgsUi>; hash?: string; status?: "ok" | "loading" | "error"; who?: Me } = {}) =>
     orgPickerView({ me: o.who ?? me(o.mine ?? orgs?.orgs ?? []), mine: o.mine ?? orgs?.orgs ?? [], orgs, status: o.status ?? (orgs ? "ok" : "loading"), ui: ui(o.ui), hash: o.hash ?? "" });
 
-  it("accepting lands a new owner on Org settings (the setup checklist) and anyone else on the org's My Work", () => {
+  it("accepting lands on the org's guided setup: an owner's and admin's first step, a member's own", () => {
     const inv = (role: "owner" | "admin" | "member") => ({ org: { slug: "acme", name: "Acme" }, role });
-    expect(acceptLanding(inv("owner"))).toBe("/acme/#org");
-    expect(acceptLanding(inv("admin"))).toBe("/acme/");
-    expect(acceptLanding(inv("member"))).toBe("/acme/");
+    expect(acceptLanding(inv("owner"))).toBe("/acme/#welcome");
+    expect(acceptLanding(inv("admin"))).toBe("/acme/#welcome");
+    expect(acceptLanding(inv("member"))).toBe("/acme/#welcome/agent");
   });
   it("a superadmin — with no organization at all — is offered the Platform area; nobody else is", () => {
     const none = mine({ orgs: [], invites: [], superadmin: true });
@@ -540,14 +540,15 @@ describe("no copy names one organization", () => {
       }
     }
   });
-  it("the sign-in copy states the new rules: any GitHub account; Google by invitation", () => {
+  it("the sign-in copy states the rules: either provider creates an account", () => {
     const landing = render({ ...initialState(), view: "auth", authStep: "login", signInOpen: true });
-    expect(landing).toContain("Any GitHub account can sign in. A Google account needs an invitation from an organization's admin first.");
+    expect(landing).toContain("New to Trov? Either one creates your account.");
+    expect(landing).not.toContain("needs an invitation");
     expect(landing).not.toContain("previewNonMember");
-    const google = render({ ...initialState(), view: "auth", authStep: "notinvited", deniedEmail: "sam@x.io" });
-    expect(google).toContain("This Google account hasn&#39;t been invited yet.".replace("&#39;", "'"));
-    expect(google).toContain("Signing in with Google needs an invitation.");
-    expect(google).toContain("A GitHub account can always sign in, and can create an organization.");
+    const google = render({ ...initialState(), view: "auth", authStep: "unverified", deniedEmail: "sam@x.io" });
+    expect(google).toContain("Google hasn't verified this address yet.");
+    expect(google).toContain("sam@x.io");
+    expect(google).not.toContain("invit");
     expect(google).toContain('data-act="signIn"');
     const github = render({ ...initialState(), view: "auth", authStep: "nonmember" });
     expect(github).toContain("That GitHub account couldn't sign in.");

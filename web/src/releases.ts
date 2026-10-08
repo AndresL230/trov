@@ -70,6 +70,40 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // The guided first-run setup: a new owner, admin or member is walked through it instead of landing on a checklist or an empty feed (#121).
+  {
+    version: "0.24",
+    date: "2026-10-08",
+    title: "A guided setup",
+    headline: "Create an organization or accept an invitation, and Trov walks you through what to do first.",
+    highlights: [
+      "A new organization opens on a guided setup: connect the repository your team ships from, connect your coding agent, invite your team. One step at a time, each one skippable, with Back always there.",
+      "Connecting your coding agent is now part of getting started. The setup shows the two commands to run, with a Copy button, and notices by itself when your agent is connected.",
+      "Accept an invitation and you land on a short setup of your own: connect your coding agent, then see where the Feed, Docs, Tickets and Roadmap are.",
+      "Signed in with Google? The setup says to link your GitHub account before connecting a repository, takes you there, and brings you back to the same step.",
+      "The setup can be reopened at any time, from Help › Get Started, from search, or from Org settings while steps remain. It always shows what is really done.",
+    ],
+    headsUp: [
+      "Creating an organization no longer opens Org settings, and accepting an invitation no longer opens My Work: both open the guided setup. Skip setup takes you straight in.",
+    ],
+    patches: {
+      added: [
+        "`#welcome[/<step>]` (`web/src/welcome.ts`, `welcome-actions.ts`): the guided first-run setup, a full page without the sidebar. An owner or admin gets repository → coding agent → team → done; a member gets coding agent → done. No migration and no new route: it is entered by navigation and is stateless (#121)",
+        "Every step's state is derived from reads the SPA already makes (`githubStepState`, `agentStepState`, `teamStepState`): Org settings' slices, `GET /auth/oauth-grants` filtered to the org on screen, and the org's MCP tokens. A read that is out or failed is `unknown`, never done or to-do (#121)",
+        "The agent step re-reads `GET /auth/oauth-grants` every 5 s while it is on screen, not yet connected and the tab is visible, and at once when the tab regains focus (#121)",
+        "`WELCOME_RETURN_KEY` (sessionStorage): leaving the setup to link a GitHub account or to connect the GitHub App notes it, and `enterOrg` lands that one return (`/#settings`, or `?github=…#org/repos`) on `#welcome` instead (`welcomeReturnHash`) (#121)",
+        "`web/src/mcp-connect.ts`: the plugin install commands, the by-hand command and the three sign-in steps (`connectSteps`), shared by Settings › MCP access and the setup (#121)",
+        "\"Open the guided setup\" on Org settings' checklist and on Get Started; \"Guided setup\" in quick search (#121)",
+      ],
+      changed: [
+        "`createLanding` / `acceptLanding` (`web/src/org-picker.ts`): creating an organization lands on `#welcome` (was `#org`); accepting an invitation lands an owner or admin on `#welcome` and a member on `#welcome/agent` (were `#org` for an owner, My Work for anyone else) (#121)",
+        "Members' invite form is `inviteSection` (`web/src/org-settings.ts`), rendered by the Members tab and by the setup's team step, so both obey the same seat gate (#121)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [121],
+  },
   // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
   {
     version: "0.23",
@@ -77,7 +111,7 @@ export const RELEASES: Release[] = [
     title: "Free, and Pro per seat",
     headline: "Anyone can start a Free organization, and Pro is paid per seat: as few as one.",
     highlights: [
-      "Sign in and create a Free organization for your team: up to 3 people, one repository, two environments and 300 AI summaries a month. You can own one Free organization at a time.",
+      "Sign in with GitHub or Google (either one creates your account, no invitation needed) and create a Free organization for your team: up to 3 people, one repository, two environments and 300 AI summaries a month. You can own one Free organization at a time.",
       "Team is now called Pro, and it is paid per seat: $10 a month for each one, with no minimum, so a person on their own can buy a single seat. Pro holds up to 50 people.",
       "Upgrade a Free organization to Pro from Org settings › General. The checkout starts with one seat for each member and pending invitation, and you can change the number before you pay.",
       "When every seat is taken, Members says so and gives the owner one button: Add a seat on Pro, or Upgrade to Pro on Free.",
@@ -91,6 +125,7 @@ export const RELEASES: Release[] = [
       "AI summaries read at most the first 8,000 characters of a pull request's or issue's description.",
     ],
     ops: [
+      "Google sign-in needs its OAuth client on the Worker: `wrangler secret put GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, with `https://<host>/auth/google/callback` as an authorized redirect URI in Google Cloud. Without them `/auth/google/login` answers 503.",
       "Apply migration `0047_billing_seats` (additive: the nullable column `billing_subscriptions.quantity`). Safe on live data and with the previous Worker running; rollback is in its header.",
       "Stripe: create ONE product, Trov Pro, with a recurring PER-UNIT price of $10 per month (and optionally a yearly one). Put its id in `wrangler.toml` `[vars]` as `STRIPE_PRICE_TEAM` (and `STRIPE_PRICE_TEAM_YEARLY`). `STRIPE_PRICE_PERSONAL` and `STRIPE_PRICE_PERSONAL_YEARLY` are gone: delete them from any dashboard config. `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are unchanged secrets.",
       "In Stripe's Customer Portal settings, allow customers to update subscription QUANTITIES for the Pro price (minimum 1, maximum 50) — \"Add a seat\" opens that page. The webhook's event list is unchanged.",
@@ -112,6 +147,7 @@ export const RELEASES: Release[] = [
         "`syncSkeletons` (after every paint): each skeleton region keeps its clock across rerenders (`--skel-t`), stays invisible for its first 150 ms so a fast read never shows one, and what replaces it gets one short fade (`.cnpy-settle`). Off under reduced motion (#119)",
       ],
       changed: [
+        "Google sign-up is open: `completeSignIn` sends any unknown Google account with a verified address to onboarding, as it does a GitHub account. The pending-invite gate (`hasPendingEmailInvite`, `OnboardPayload.invite_email`, 403 `invite_revoked` on `POST /auth/onboard`) is gone. An unverified address is still refused, now at `/?denied=unverified` (was `/?denied=invite`) (#120)",
         "Plan `team` is shown as \"Pro\", with 50 seats; `PURCHASABLE_PLANS` is `[\"team\"]`. Checkout sends quantity = members + pending invitations (at least 1; 1 for a first purchase) with `adjustable_quantity` 1–50 (#117)",
         "`src/billing/sync.ts`: the subscription's quantity is written as the org's `seats` override (`paidSeats`, held to the plan's cap); an unused paid grant carries it in its overrides and `linkPaidOrgStmt` copies them onto the org; an ended subscription moves the org to Free (active, still a billing org) instead of freezing it as `canceled` — a pinned plan too (#117)",
         "`OrgBillingView`: `subscribed`, `ended`, `customer`, `seats`, `upgrade_to` (was `renew_on`); a Free org gets one. The Plan block shows seats, Change seats, and Upgrade to Pro (#117)",
@@ -132,7 +168,7 @@ export const RELEASES: Release[] = [
         "`POST /api/o/:slug/billing/renew` (an ended subscription now leaves the org on Free; Upgrade to Pro is how it pays again); `firstTeamPlan` (#117)",
       ],
     },
-    prs: [117, 119],
+    prs: [117, 119, 120],
   },
   // Sync GitHub as a recorded run, and AI summaries counted per organization (#109).
   {

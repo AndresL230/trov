@@ -33,42 +33,43 @@ describe("completeSignIn — the fork", () => {
   });
   // Phase 4 (§5.1): with sign-in open to anyone, the link matches what a PROVIDER verified — never
   // `persons.email`, which the person (or their org's admin) can type anything into.
-  it("2b. an address that is only on persons.email is NOT a match: no link, no session", async () => {
+  it("2b. an address that is only on persons.email is NOT a match: no link, no session as that person", async () => {
     await seedPerson("priya", { email: "priya.n@gmail.com" });
-    expect(await completeSignIn(platformCtx(), google())).toEqual({ kind: "denied" });
+    expect((await completeSignIn(platformCtx(), google())).kind).toBe("onboard"); // a NEW account, never priya's
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
   });
-  it("3a. unknown Google identity with a live invite → onboard payload (nothing written)", async () => {
+  it("3a. unknown Google identity with a live legacy invite → onboard payload seeded with its name (nothing written)", async () => {
     await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: "Priya", invitedBy: "AndresL230" });
-    const r = await completeSignIn(platformCtx(), google());
+    const r = await completeSignIn(platformCtx(), google({ name: null }));
     expect(r.kind).toBe("onboard");
     if (r.kind !== "onboard") throw new Error();
     expect(r.payload.suggested_handle).toBe("priya-n");
-    expect(r.payload.invite_email).toBe("priya.n@gmail.com");
+    expect(r.payload.name).toBe("Priya"); // the provider gave none: the name the admin typed
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
     expect(await first(env.DB, `SELECT 1 AS x FROM persons WHERE handle = 'priya-n'`)).toBeNull();
   });
-  it("3b. unknown GitHub identity (ANY GitHub account — §5.1) → onboard with the login as suggested handle, no invite needed", async () => {
+  it("3b. unknown GitHub identity (ANY GitHub account — §5.1) → onboard with the login as suggested handle", async () => {
     const r = await completeSignIn(platformCtx(), github());
     expect(r.kind).toBe("onboard");
     if (r.kind !== "onboard") throw new Error();
     expect(r.payload.suggested_handle).toBe("newdev");
-    expect(r.payload.invite_email).toBeNull();
   });
-  it("4. unknown Google identity, no match, no invite (or revoked) → denied", async () => {
-    expect(await completeSignIn(platformCtx(), google())).toEqual({ kind: "denied" });
+  it("4. unknown Google identity, no match, no invite (or a revoked one) → onboard: sign-up is open (nothing written)", async () => {
+    expect((await completeSignIn(platformCtx(), google())).kind).toBe("onboard");
     await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
     await env.DB.prepare(`UPDATE invites SET revoked_at = 't' WHERE email = 'priya.n@gmail.com'`).run();
-    expect(await completeSignIn(platformCtx(), google())).toEqual({ kind: "denied" });
+    expect((await completeSignIn(platformCtx(), google())).kind).toBe("onboard");
+    expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
   });
   it("a null email never auto-links", async () => {
     await seedPerson("priya", { email: null });
-    expect(await completeSignIn(platformCtx(), google({ email: null }))).toEqual({ kind: "denied" });
+    expect((await completeSignIn(platformCtx(), google({ email: null }))).kind).toBe("onboard");
+    expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE person = 'priya' AND provider = 'google'`)).toBeNull();
   });
-  it("5. two persons already share an email (ambiguous) → denied, never auto-linked to either", async () => {
+  it("5. two persons already share an email (ambiguous) → a new account, never auto-linked to either", async () => {
     await seedPerson("priya", { email: "priya.n@gmail.com", verified: true });
     await seedPerson("priyb", { email: "priya.n@gmail.com", verified: true });
-    expect(await completeSignIn(platformCtx(), google())).toEqual({ kind: "denied" });
+    expect((await completeSignIn(platformCtx(), google())).kind).toBe("onboard");
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
   });
 });

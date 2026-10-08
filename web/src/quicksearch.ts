@@ -72,6 +72,7 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "Settings › Appearance", hint: "Light, dark or system theme", keys: "theme dark light mode", steps: [["goSettings", null]] },
   { label: "Settings › Email notifications", hint: "Daily and weekly digests", keys: "digest email unsubscribe", steps: [["goSettings", null]] },
   { label: "Get Started", hint: "The guide to Trov", keys: "guide help onboarding tour", steps: [["goGuide", null]] },
+  { label: "Guided setup", hint: "Repository, coding agent and team, one step at a time", keys: "welcome wizard onboarding setup first run connect agent invite", steps: [["welcomeOpen", null]] },
   { label: "Release notes", hint: "What's new in Trov", keys: "whats new changelog releases updates patches", steps: [["goReleases", null]] },
   { label: "Search", hint: "Full results across the store", keys: "find all results", steps: [["goSearch", null]] },
 ];

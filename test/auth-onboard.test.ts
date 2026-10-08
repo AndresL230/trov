@@ -7,7 +7,7 @@ import { createInvite } from "../src/auth/invites";
 import type { PersonRow, IdentityRow, InviteRow } from "@shared/rows";
 
 import { platformCtx } from "./helpers/tenant";
-const PAYLOAD: OnboardPayload = { provider: "google", subject: "g-123", label: "priya.n@gmail.com", email: "priya.n@gmail.com", name: "Priya Natarajan", avatar_url: null, suggested_handle: "priya-n", invite_email: "priya.n@gmail.com" };
+const PAYLOAD: OnboardPayload = { provider: "google", subject: "g-123", label: "priya.n@gmail.com", email: "priya.n@gmail.com", name: "Priya Natarajan", avatar_url: null, suggested_handle: "priya-n" };
 const cookie = async (p = PAYLOAD) => `${ONBOARD_COOKIE}=${await sealOnboard(p, "test-cookie-secret")}`;
 const post = (path: string, c: string, body: unknown) => app.request(path, { method: "POST", headers: { cookie: c, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
 
@@ -60,19 +60,20 @@ describe("POST /auth/onboard", () => {
     expect(await taken.json()).toEqual({ error: "handle_taken" });
     expect(taken.headers.get("set-cookie") ?? "").not.toContain("onboard=;");
   });
-  it("refuses when the invite was revoked after the cookie was issued", async () => {
+  it("a Google account needs no invite: a revoked one creates the person, in no org", async () => {
     await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
     await env.DB.prepare(`UPDATE invites SET revoked_at = 't' WHERE email = 'priya.n@gmail.com'`).run();
     const res = await post("/auth/onboard", await cookie(), { handle: "priya", name: "x", color: "plum" });
-    expect(res.status).toBe(403);
-    expect(await first(env.DB, `SELECT 1 AS x FROM persons WHERE handle = 'priya'`)).toBeNull();
+    expect(res.status).toBe(200);
+    expect(await first(env.DB, `SELECT 1 AS x FROM persons WHERE handle = 'priya'`)).not.toBeNull();
+    expect(await first(env.DB, `SELECT 1 AS x FROM memberships WHERE user_id = 'priya'`)).toBeNull();
   });
-  it("a GitHub payload (invite_email null) onboards without any invite", async () => {
-    const res = await post("/auth/onboard", await cookie({ ...PAYLOAD, provider: "github", subject: "newdev", label: "newdev", invite_email: null }), { handle: "newdev", name: "New", color: "sky" });
+  it("a GitHub payload onboards without any invite", async () => {
+    const res = await post("/auth/onboard", await cookie({ ...PAYLOAD, provider: "github", subject: "newdev", label: "newdev" }), { handle: "newdev", name: "New", color: "sky" });
     expect(res.status).toBe(200);
   });
   it("replaying a GitHub onboard cookie after success is refused; no orphan persons row", async () => {
-    const ghCookie = await cookie({ ...PAYLOAD, provider: "github", subject: "replay-dev", label: "replay-dev", invite_email: null });
+    const ghCookie = await cookie({ ...PAYLOAD, provider: "github", subject: "replay-dev", label: "replay-dev" });
     const first1 = await post("/auth/onboard", ghCookie, { handle: "replaydev", name: "Replay", color: "sky" });
     expect(first1.status).toBe(200);
     const replay = await post("/auth/onboard", ghCookie, { handle: "replaydev2", name: "Replay2", color: "sky" });
