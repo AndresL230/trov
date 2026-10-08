@@ -29,6 +29,7 @@ import { mentionCandidates, mentionPickerTop, COMMENT_BOX } from "./mentions";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
 import { dangerTrigger, confirmModal } from "./confirm";
+import { skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
 
 // ── shared atoms ─────────────────────────────────────────────────────────────
 
@@ -203,6 +204,9 @@ export interface QueueProps {
   filterOpen?: boolean;
   filterCat?: QueueFilterCat;
   fmOpening?: string | null;
+  /** The queue's first read is still out: the toolbar is real, and the board's columns
+   *  (or the table's rows) hold a skeleton instead of "Nothing here". */
+  loading?: boolean;
 }
 
 export const QUEUE_FILTER_CATS = ["assignee", "category", "priority", "sprint"] as const;
@@ -305,7 +309,8 @@ function filterRow(p: QueueProps, shown: number): string {
 
   // "N shown · M unassigned" — M is the org-wide unassigned+open count (the same
   // number as the sidebar badge), NOT the filtered page's.
-  const count = `${shown} shown · ${p.unassignedCount} unassigned`;
+  // Nothing is claimed while the first read is out ("0 shown" would be a guess).
+  const count = p.loading ? "" : `${shown} shown · ${p.unassignedCount} unassigned`;
 
   return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 4px">
     ${search}
@@ -389,6 +394,16 @@ function groupHeader(g: QueueGroup): string {
   </div>`;
 }
 
+/** The table while the queue's first read is out: one sprint group's header and rows,
+ *  on the table's own column template. */
+function tableSkeleton(): string {
+  const row = (i: number) => `<div class="cnpy-trow" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;align-items:center;padding:11px 20px">
+    ${skLine(skW(i), 13.5, 1.5)}${skLine("70%", 12.5, 1.6)}${skLine("60%", 12.5, 1.6)}${skLine("50%", 12.5, 1.6)}${skLine("64%", 12.5, 1.6)}${skLine("72%", 12.5, 1.6)}${skLine("60%", 11.5, 1.6, "justify-content:flex-end")}
+  </div>`;
+  return skeleton("tickets-table", "Loading the queue&hellip;",
+    `<div class="cnpy-tgrp" style="display:flex;align-items:center;gap:9px;padding:18px 20px 6px">${skBox(7, 7)}${skLine(140, 10.5, 1.5)}</div>${skList(8, row)}`);
+}
+
 function tableView(p: QueueProps): string {
   const head = `<div class="cnpy-thead" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;padding:14px 20px 10px;border-bottom:1px solid var(--border);font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40)">
     <div>TITLE</div><div>OPENED BY</div><div>CATEGORY</div><div>PRIORITY</div><div>STATUS</div><div>ASSIGNEE</div><div style="text-align:right">AGE</div>
@@ -397,7 +412,8 @@ function tableView(p: QueueProps): string {
   const groups = queueGroups(p.tickets, p.sprints)
     .map((g) => `<div class="cnpy-stagger cnpy-tgroup">${groupHeader(g)}${g.rows.map((t) => tableRow(t, p.persons)).join("")}</div>`)
     .join("");
-  const empty = p.tickets.length === 0
+  const empty = p.loading ? tableSkeleton()
+    : p.tickets.length === 0
     ? `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">Nothing in this view.</div>`
     : "";
   // The table is ONE surface with 20px sides; rows carry no dividers (a hairline
@@ -443,6 +459,17 @@ function sourceMark(t: TicketListItem): string {
   return `<span title="${attr(label)}" aria-label="${attr(label)}" style="display:inline-flex;color:var(--fg-40)"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.87-1.37-3.87-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"></path></svg></span>`;
 }
 
+/** A board column while the queue's first read is out: cards in the real card's box
+ *  (a title of one or two lines, then the #number · assignee row). */
+function boardColumnSkeleton(st: TicketStatus): string {
+  const n = st === "submitted" ? 3 : st === "in_progress" ? 2 : 1;
+  const card = (i: number) => `<div class="${SURFACE}" style="padding:11px 12px;margin-bottom:8px">
+    ${skLines(i % 2 ? [skW(i)] : ["94%", skW(i + 1, ["48%", "62%"])], 13.5, 1.4)}
+    <div style="display:flex;align-items:center;gap:6px;margin-top:9px;min-height:18px">${skBar(30, 8)}<span style="margin-left:auto;display:flex">${skBox(18, 18)}</span></div>
+  </div>`;
+  return skeleton(`tickets-col-${st}`, "Loading the queue&hellip;", skList(n, card));
+}
+
 function boardView(p: QueueProps, rows: TicketListItem[]): string {
   const statuses = SEG_STATUSES[p.seg];
   const cols = statuses.map((st) => {
@@ -450,16 +477,17 @@ function boardView(p: QueueProps, rows: TicketListItem[]): string {
     // `move_ticket` places into), not the table's newest-first.
     const cards = rows.filter((t) => t.status === st).sort(boardOrder);
     const headColor = st === "in_progress" ? "color:var(--accent)" : st === "submitted" ? "color:var(--blue)" : st === "testing" ? "color:var(--amber)" : "color:var(--fg-40)";
-    const empty = cards.length === 0
+    const empty = p.loading ? ""
+      : cards.length === 0
       ? `<div class="cnpy-tdrop-empty" style="border:1px dashed var(--border);border-radius:10px;padding:16px;text-align:center;font-size:12px;color:var(--fg-40)">Nothing here</div>`
       : "";
     // The whole column (down to the grid's floor) is the drop target.
     return `<div data-tdrop="${st}" class="cnpy-tcol" style="min-width:0;display:flex;flex-direction:column;border-radius:12px;padding:0 6px 6px;margin:0 -6px">
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding-bottom:9px;border-bottom:1px solid var(--border-strong);margin-bottom:10px">
         <span style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;white-space:nowrap;${headColor}">${esc(TICKET_STATUS_LABEL[st].toUpperCase())}</span>
-        <span style="font-size:12px;color:var(--fg-40);white-space:nowrap;flex:none">${cards.length}</span>
+        <span style="font-size:12px;color:var(--fg-40);white-space:nowrap;flex:none">${p.loading ? "" : cards.length}</span>
       </div>
-      <div class="cnpy-stagger">${cards.map((t) => boardCard(t, p.persons)).join("")}</div>
+      <div class="cnpy-stagger">${p.loading ? boardColumnSkeleton(st) : cards.map((t) => boardCard(t, p.persons)).join("")}</div>
       ${empty}
       <div style="flex:1;min-height:40px"></div>
     </div>`;
@@ -1062,6 +1090,25 @@ export function ticketDetailView(p: TicketDetailProps): string {
       </div>
     </div>
   </div>`;
+}
+
+/** The ticket page while its read is out: the title and body on the left, the rail's
+ *  property rows on the right — the same grid, so the ticket lands in place. */
+export function ticketDetailSkeleton(): string {
+  const prop = (w: number | string) => `<div style="${PROP_ROW}">${skBar(48, 8)}${skBar(w, 10)}</div>`;
+  return skeleton("ticket", "Loading the ticket&hellip;", `<div class="cnpy-td-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 258px;gap:34px;min-height:${CARD_MIN_H}">
+      <div style="min-width:0">
+        <div style="margin:0 0 22px">${skLine("58%", 22, 1.3)}</div>
+        ${skProse(2)}
+        <div style="margin-top:34px">${skLine(110, 10.5, 1.6)}</div>
+        ${skList(2, (i) => `<div style="display:flex;gap:10px;margin-top:14px">${skBox(24, 24)}<span class="cnpy-skcol">${skLines([skW(i, ["30%", "24%"]), skW(i)], 13, 1.55)}</span></div>`)}
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:26px;display:flex;flex-direction:column;gap:26px">
+        <div><div style="${RAIL_SECTION_HEAD}">${skBar(70, 8)}</div>${prop(84)}${prop(56)}${prop(50)}${prop(96)}${prop(64)}</div>
+        <div><div style="${RAIL_SECTION_HEAD}">${skBar(64, 8)}</div><div style="display:flex;align-items:center;gap:8px;height:30px">${skBox(20, 20)}${skBar(90, 10)}</div></div>
+        <div><div style="${RAIL_SECTION_HEAD}">${skBar(46, 8)}</div><div style="display:flex;align-items:center;height:30px">${skBar(120, 10)}</div></div>
+      </div>
+    </div>`, DETAIL_SHELL);
 }
 
 /** The ticket's delete confirmation modal. Only a native ticket gets one — a

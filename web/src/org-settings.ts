@@ -257,7 +257,7 @@ export function setupChecklist(org: MyOrg, ui: OrgUi): string {
 
 export function generalTab(org: MyOrg, ui: OrgUi): string {
   const s = ui.settings;
-  if (!s.data) return sliceNote(s, "the org's settings", false);
+  if (!s.data) return sliceNote(s, "the org's settings", false, { form: true });
   const canEdit = s.data.can_edit;
   const stored = s.data.org.name;
   const draft = ui.nameDraft ?? stored;
@@ -309,7 +309,7 @@ export function reposTab(org: MyOrg, ui: OrgUi): string {
   const repos = ui.repos.data;
   const app = githubOf(ui);
   const appKnown = app !== null || ui.github.status === "error";
-  const note = sliceNote(ui.repos, "repositories", repos.length > 0 || ui.repos.status === "ok");
+  const note = sliceNote(ui.repos, "repositories", repos.length > 0 || ui.repos.status === "ok", { rows: 2 });
   if (note) return note;
   // Whether the App is offered decides the tab's primary action: wait for it rather than flash the wrong one.
   if (!appKnown) return loadingNote("repositories");
@@ -472,7 +472,7 @@ const moveBtn = (up: boolean, e: OrgEnvironmentDTO, off: boolean): string =>
 export function environmentsTab(org: MyOrg, ui: OrgUi): string {
   const admin = roleAtLeast(org.role, "admin");
   const envs = ui.envs.data;
-  const note = sliceNote(ui.envs, "environments", envs.length > 0 || ui.envs.status === "ok");
+  const note = sliceNote(ui.envs, "environments", envs.length > 0 || ui.envs.status === "ok", { rows: 2 });
   if (note) return note;
   const stored = (kind: IntegrationKind, key: string): boolean =>
     !!ui.integrations.data?.integrations.some((i) => i.kind === kind && i.scope === key && i.configured);
@@ -601,7 +601,7 @@ export function unmatchedLogins(admin: boolean, identity: IdentityProps | null |
 export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: IdentityProps | null = null, dd: DropdownUi = initialDropdownUi()): string {
   const admin = roleAtLeast(org.role, "admin");
   const members = ui.members.data;
-  const note = sliceNote(ui.members, "members", members.length > 0);
+  const note = sliceNote(ui.members, "members", members.length > 0, { rows: 4, avatar: 28, trail: 84 });
   if (note) return note;
   const owners = members.filter((m) => m.role === "owner").length;
   const canSend = inviteDraftOk(ui.inviteBy, ui.inviteDraft) && !ui.inviteBusy;
@@ -671,7 +671,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
   const invitesBlock = !admin ? ""
     : pending.length ? `${orgHead("Pending invites", "", pending.length)}<ul${surface(LIST)}>${inviteRows}</ul>`
     : ui.invites.status === "error" ? `${orgHead("Pending invites")}${failedNote("invites")}`
-    : ui.invites.status !== "ok" ? `${orgHead("Pending invites")}${loadingNote("invites")}`
+    : ui.invites.status !== "ok" ? `${orgHead("Pending invites")}${loadingNote("invites", { rows: 2 })}`
     : "";
 
   const waiting = admin ? identity?.groups.length ?? 0 : 0;
@@ -815,7 +815,7 @@ export function orgSettingsView(p: OrgSettingsProps): string {
   if (!p.org) {
     if (p.orgsStatus === "error") return shell(failedNote("your orgs"));
     if (p.orgsStatus === "ok") return shell(orgEmpty("This organization isn't open", "Pick an organization from the switcher at the top of the sidebar."));
-    return shell(loadingNote("your org"));
+    return shell(loadingNote("your org", { form: true }));
   }
   const tab = effectiveOrgTab(p.ui.tab, p.org.role);
   const body = tab === "integrations" ? integrationsTab(p.org, p.ui)

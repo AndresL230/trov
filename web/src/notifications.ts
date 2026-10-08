@@ -10,6 +10,7 @@ import { esc, attr, surface } from "./ui";
 import { tenantHref } from "./api";
 import { O_LABEL, O_HELP, orgHead, orgEmpty, tabLead, quietBtn, chip } from "./org-ui";
 import { segmented } from "./segmented";
+import { skeleton, skBox, skLine, skList, skW, skRows } from "./skeleton";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { PLATFORM_FROM_ADDRESS, PLATFORM_SENDER_NAME, SENDER_NAME_MAX, senderNamePart } from "@shared/sender";
 
@@ -94,6 +95,11 @@ function kindRow(k: PrefsView["kinds"][number]): string {
 
 export function emailNotificationsSection(p: NotifSettingsProps): string {
   const head = `<div style="${SECTION_LABEL}">Email notifications</div>`;
+  if (!p.prefs && p.loading) {
+    // The tile's own rows: the address, the all-off switch, then the digests.
+    const row = (i: number) => `<div style="${TILE_ROW};display:flex;align-items:flex-start;justify-content:space-between;gap:16px"><span class="cnpy-skcol">${skLine(skW(i, ["34%", "46%", "28%", "40%"]), 13.5, 1.4)}<span style="display:block;margin-top:3px">${skLine(skW(i + 1, ["72%", "58%", "66%"]), 12, 1.5)}</span></span>${skBox(i < 2 ? 38 : 150, i < 2 ? 22 : 28)}</div>`;
+    return `<section class="cnpy-tile cnpy-surface cnpy-set-email">${head}${skeleton("email-prefs", "Loading email settings&hellip;", `<div class="cnpy-set-pairs">${skList(4, row)}</div>`)}</section>`;
+  }
   if (!p.prefs) {
     const body = p.loading
       ? `Loading email settings&hellip;`
@@ -248,7 +254,7 @@ export function notificationsAdminSections(p: NotifAdminProps): string {
 
   const policy = p.policy.length
     ? `<div${surface("overflow:hidden")}>${p.policy.map((k) => policyRow(k, dd)).join("")}</div>`
-    : `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0">Loading policy…</div>`;
+    : skRows("notif-policy", "Loading policy…", 4, { trail: 150 });
 
   const sched = scheduleDropdowns(s);
   const schedule = `<div${surface("padding:16px")}>

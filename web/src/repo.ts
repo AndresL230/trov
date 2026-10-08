@@ -26,6 +26,7 @@ import { personChip, personLink, personNameLink } from "./people";
 import type { PersonSummary } from "./api";
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
+import { skeleton, skBar, skList, skW } from "./skeleton";
 
 export interface RepoProps {
   tab: RepoTab;
@@ -120,11 +121,13 @@ type Phase = "loading" | "error" | "ready";
 const phaseOf = (p: RepoProps): Phase =>
   p.repo.data ? "ready" : p.repo.status === "error" ? "error" : "loading";
 
-const skeleton = (lines = 3): string => {
-  const widths = [68, 92, 54, 80, 61];
-  return `<div style="display:flex;flex-direction:column;gap:10px;justify-content:center;padding:12px 0">${Array.from({ length: lines }, (_, i) =>
-    `<div class="repo-shimmer" style="height:12px;border-radius:6px;background:var(--hover);width:${widths[i % widths.length]}%;animation-delay:${(i * 0.2).toFixed(1)}s"></div>`).join("")}</div>`;
-};
+/** A section while the dashboard's first read is out: bars in the section's own box
+ *  (the shared skeleton — skeleton.ts). Every section renders its chrome and grid cell
+ *  in every state, so the figures land where the bars were. `sectionNo` numbers the
+ *  sections of one paint (reset by `repoView`) — a skeleton region's key must be unique. */
+let sectionNo = 0;
+const sectionSkeleton = (lines = 3): string =>
+  skeleton(`repo-${sectionNo++}`, "Loading&hellip;", `<div style="display:flex;flex-direction:column;gap:10px;justify-content:center;padding:12px 0">${skList(lines, (i) => skBar(skW(i, ["68%", "92%", "54%", "80%", "61%"]), 12))}</div>`);
 
 const emptyBlock = (sub: string): string =>
   `<div style="display:flex;align-items:center;justify-content:center;padding:14px 0"><div style="border:1px dashed var(--border-strong);border-radius:11px;padding:18px 24px;text-align:center;width:100%">
@@ -158,7 +161,7 @@ const NC_GENERIC = "Nothing has been captured for this section yet.";
 /** Render one section in whichever of its states applies. */
 function sec<T>(p: RepoProps, pick: (d: RepoDashboard) => RepoSection<T>, copy: SectionCopy, live: (data: T) => string): string {
   const phase = phaseOf(p);
-  if (phase === "loading") return skeleton(copy.lines);
+  if (phase === "loading") return sectionSkeleton(copy.lines);
   if (phase === "error" || !p.repo.data) return errorBlock();
   const s = pick(p.repo.data);
   if (s.status === "not_connected") return notConnected(copy.nc ?? NC_GENERIC);
@@ -1047,6 +1050,7 @@ export function repoTabBar(tab: RepoTab): string {
  *  line and underline never move; the sample / degraded banner, the "Poll now" strip and the
  *  "not connected" footer all sit under the line, in the labelled panel. */
 export function repoView(p: RepoProps): string {
+  sectionNo = 0;
   const body = p.tab === "overview" ? overviewTab(p) : p.tab === "code" ? codeTab(p) : p.tab === "ci" ? ciTab(p)
     : p.tab === "usage" ? usageTab(p) : planningTab(p);
 

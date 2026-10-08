@@ -10,6 +10,7 @@ import { esc, attr, relTime, surface, WORK_SHELL, hitArea, HITBOX } from "./ui";
 import { personChip, personLink, personNameLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
+import { skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
 
 // ── atoms ────────────────────────────────────────────────────────────────────
 const CHIP_BASE = "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;border-radius:5px;padding:2px 6px;white-space:nowrap;flex:none";
@@ -97,10 +98,20 @@ const table = (rows: string): string =>
 
 const notice = (text: string): string => `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">${esc(text)}</div>`;
 
+/** The inbox while its first read is out: the two section heads and their row tables,
+ *  on the inbox row's own column template. */
+function handoffsSkeleton(): string {
+  const row = (i: number) => `<div class="cnpy-hrow" style="display:grid;grid-template-columns:minmax(0,2.6fr) minmax(0,1.1fr) minmax(0,1.3fr) auto 64px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">
+      ${skLine(skW(i), 13.5, 1.5)}<span style="display:flex;align-items:center;gap:7px">${skBox(20, 20)}${skBar("60%", 9)}</span>${skLine("70%", 11.5, 2.4)}${skBox(60, 20)}${skLine(34, 11.5, 1.5, "justify-content:flex-end")}
+    </div>`;
+  const block = (n: number, top: boolean, off: number) => `<div style="${top ? "" : "margin-top:36px;"}padding:0 2px">${skLine(top ? 170 : 70, 11, 1.5)}</div><div${surface("overflow:hidden;margin-top:10px")}><div style="margin-bottom:-1px">${skList(n, (i) => row(i + off))}</div></div>`;
+  return skeleton("handoffs", "Loading handoffs…", `${block(2, true, 0)}${block(4, false, 2)}`);
+}
+
 export function handoffsView(p: HandoffsListProps): string {
   const intro = `<div style="font-size:12.5px;color:var(--fg-55);margin:0 0 22px">Handoffs you sent or that were left for you. A pending handoff waits until a session claims it.</div>`;
   let body: string;
-  if ((p.status === "idle" || p.status === "loading") && p.handoffs.length === 0) body = notice("Loading handoffs…");
+  if ((p.status === "idle" || p.status === "loading") && p.handoffs.length === 0) body = handoffsSkeleton();
   else if (p.status === "error" && p.handoffs.length === 0) body = notice("Couldn't load handoffs.");
   else {
     const pend = p.handoffs.filter((h) => h.status === "pending");
@@ -136,7 +147,7 @@ export function handoffDetailView(p: HandoffDetailProps): string {
   const shell = (inner: string) => `<div data-screen-label="Handoff detail" style="width:100%;max-width:1180px;margin:0 auto;padding:36px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box;position:relative">${inner}</div>`;
   const h = p.handoff;
   if (!h) {
-    if (p.status === "idle" || p.status === "loading") return shell(notice("Loading…"));
+    if (p.status === "idle" || p.status === "loading") return shell(skeleton("handoff", "Loading…", skDetail({ paras: 2 })));
     return shell(notice(p.status === "error" ? "Couldn't load this handoff." : "Handoff not found."));
   }
   const c = h.context;

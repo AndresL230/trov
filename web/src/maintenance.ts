@@ -16,6 +16,7 @@
 import { esc, attr, primaryBtn, surface } from "./ui";
 import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
+import { skeleton, skBar, skBox, skLine, skLines, skList, skW } from "./skeleton";
 
 // ── prop shapes ──────────────────────────────────────────────────────────────
 export interface UnplacedItem {
@@ -166,6 +167,23 @@ function unplacedTab(p: MaintenanceProps): string {
 export const UNPLACED_INTRO = "Things an agent produced but couldn't place. Read one, then file it or throw it away.";
 
 /** The page: the intro, a degraded `hint`, and the queue. No tab bar — it is one queue. */
+/** The Unplaced screen while its queue's first read is out: the page frame and intro are
+ *  real; the two-pane card holds a skeleton (never "All clear" before it is known). */
+export function maintenanceSkeleton(): string {
+  const row = (i: number) => `<div style="padding:13px 16px;border-bottom:1px solid var(--border)">${skLines(["94%", skW(i, ["58%", "40%", "72%"])], 13, 1.5)}<div style="display:flex;align-items:center;gap:6px;margin-top:7px">${skBox(16, 16)}${skLine(130, 11.5, 1.5)}</div></div>`;
+  return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
+    <div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">${esc(UNPLACED_INTRO)}</div>
+    ${skeleton("unplaced", "Loading the queue&hellip;", `<div${surface("display:flex;flex-wrap:wrap;overflow:hidden;min-height:440px")}>
+      <div style="flex:1 1 260px;min-width:0;max-width:100%;box-shadow:1px 0 0 var(--border)">${skList(4, row)}</div>
+      <div style="flex:2 1 380px;min-width:0;padding:24px 28px;box-shadow:0 -1px 0 var(--border)">
+        <div style="display:flex;align-items:center;gap:8px">${skBox(74, 18)}${skBox(18, 18)}${skBar(110, 9)}</div>
+        <div style="margin-top:16px">${skLines(["92%", "66%"], 18, 1.5)}</div>
+        <div style="margin-top:10px">${skLines(["100%", "88%", "52%"], 13.5, 1.6)}</div>
+      </div>
+    </div>`)}
+  </div>`;
+}
+
 export function maintenanceView(p: MaintenanceProps, hint = ""): string {
   return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
     ${hint}<div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">${esc(UNPLACED_INTRO)}</div>

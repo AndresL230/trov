@@ -17,6 +17,7 @@ import { primaryStyle } from "./handoffs";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
 import { segmented } from "./segmented";
 import { dangerTrigger, confirmModal } from "./confirm";
+import { skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
 
 const personOf = (persons: PersonSummary[], h: string): PersonSummary | null =>
   persons.find((p) => p.handle.toLowerCase() === h.toLowerCase()) ?? null;
@@ -109,6 +110,19 @@ function promptCard(x: PromptSummary, persons: PersonSummary[]): string {
   </div>`;
 }
 
+/** The library while its first read is out: cards on the library's own grid, each in
+ *  the prompt card's box (title + badge, slug, excerpt, tags, the byline rule). */
+function promptLibrarySkeleton(): string {
+  const card = (i: number) => `<div class="cnpy-surface" style="display:flex;flex-direction:column;min-width:0;padding:16px 18px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">${skLine(skW(i), 14, 1.5)}${skBox(58, 18)}</div>
+    <div style="margin-top:3px">${skLine("34%", 11, 1.5)}</div>
+    <div style="margin-top:9px">${skLine("92%", 12.5, 1.5)}</div>
+    <div style="display:flex;gap:6px;margin-top:12px">${skBox(54, 20)}${skBox(70, 20)}</div>
+    <div style="display:flex;align-items:center;gap:7px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border)">${skBox(18, 18)}${skBar(74, 9)}${skBar(40, 9, "margin-left:auto")}</div>
+  </div>`;
+  return skeleton("prompts", "Loading prompts…", `<div class="cnpy-mw-grid is-3">${skList(6, card)}</div>`);
+}
+
 export function promptLibraryView(p: PromptLibraryProps): string {
   const shown = filterPrompts(p.prompts, p.q, p.tag, p.sort);
   const menu = promptFilterMenu(p);
@@ -116,7 +130,7 @@ export function promptLibraryView(p: PromptLibraryProps): string {
   const loading = (p.status === "idle" || p.status === "loading") && p.prompts.length === 0;
 
   let body: string;
-  if (loading) body = notice("Loading prompts…");
+  if (loading) body = promptLibrarySkeleton();
   else if (p.status === "error" && p.prompts.length === 0) body = notice("Couldn't load the prompt library.");
   else if (shown.length === 0) body = `<div style="display:flex;justify-content:center;padding:48px 0">
       <div style="border:1px dashed var(--border-strong);border-radius:13px;padding:36px 44px;text-align:center;max-width:380px">
@@ -192,7 +206,7 @@ export function promptDetailView(p: PromptDetailProps): string {
   const shell = (inner: string) => `<div data-screen-label="Prompt detail" class="cnpy-pdetail-page" style="width:100%;max-width:1260px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 28px">${inner}</div>`;
   const x = p.prompt;
   if (!x) {
-    if (p.status === "idle" || p.status === "loading") return shell(notice("Loading…"));
+    if (p.status === "idle" || p.status === "loading") return shell(skeleton("prompt", "Loading…", skDetail({ rail: 258, paras: 3 })));
     return shell(notice(p.status === "error" ? "Couldn't load this prompt." : "Prompt not found."));
   }
   const au = personOf(p.persons, x.author);
@@ -324,7 +338,7 @@ const FIELD = "border:1px solid var(--border-strong);border-radius:9px;backgroun
 export function promptEditorView(p: PromptEditorProps): string {
   const ed = p.draft;
   const shell = (inner: string) => `<div data-screen-label="Prompt editor" style="${WORK_SHELL}">${inner}</div>`;
-  if (!ed) return shell(notice("Loading…"));
+  if (!ed) return shell(skeleton("prompt-edit", "Loading…", skDetail({ paras: 3, actions: 2 })));
   const vars = detectVars(ed.body);
   const s = slugState(ed, p.takenSlugs);
   const slugStatus = !ed.slug ? "" : s.taken ? "taken" : !s.ok ? "invalid" : ed.slugTouched ? "available" : "auto";

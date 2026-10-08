@@ -11,6 +11,7 @@ import type { OrgUsage, PlatformUsageResponse, UsageActivity, UsageCreated, Usag
 import { esc, attr, relTime, statusBadge, surface } from "./ui";
 import { segmented } from "./segmented";
 import { tabLead } from "./org-ui";
+import { skeleton, skBar, skBox, skLine, skList, skCard, skRows } from "./skeleton";
 import { orgTile } from "./org-logo";
 
 export const USAGE_WINDOWS = [7, 30, 90] as const;
@@ -210,7 +211,8 @@ export function usageView(p: UsageProps): string {
   if (!u) {
     return head + (p.status === "error"
       ? `<div role="alert" style="font-size:13px;color:var(--fg-70)">Couldn't load usage. <button type="button" data-act="platReload" class="cnpy-mutelink" style="padding:0;font-size:13px;font-weight:500;color:var(--accent)">Try again</button></div>`
-      : `<div style="font-size:12.5px;color:var(--fg-40);padding:10px 0">Loading usage…</div>`);
+      // The totals' tiles, then the per-organization rows.
+      : `${skeleton("plat-usage", "Loading usage…", skCard(`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:18px;padding:18px 20px">${skList(5, () => `<span style="display:block">${skBar(64, 8)}<span style="display:block;margin-top:10px">${skBox(56, 24)}</span><span style="display:block;margin-top:8px">${skLine("70%", 12, 1.5)}</span></span>`)}</div>`, "overflow:hidden"))}${skRows("plat-usage-orgs", "Loading usage…", 4, { avatar: 28, trail: 120, pad: "14px 0" })}`);
   }
   const t = u.totals, a = t.activity;
   const top = tiles([
