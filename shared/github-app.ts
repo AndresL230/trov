@@ -60,7 +60,7 @@ export const GITHUB_REPO_LIST_MAX = 500;
 
 /**
  * What `/auth/callback` says after an install return — the `github` query value on the page it redirects
- * to (`/o/<slug>/?github=<code>#org/repos`). The SPA turns each into one sentence (web/src/github-app.ts).
+ * to (`/<slug>/?github=<code>#org/repos`). The SPA turns each into one sentence (web/src/github-app.ts).
  */
 export const GITHUB_CONNECT_OUTCOMES = [
   "connected",          // bound; the Repositories tab now lists the installation's repositories

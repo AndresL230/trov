@@ -20,7 +20,7 @@ export function orgSlugOf(ctx: TenantContext): Promise<string | null> {
 /** `<origin>/o/<slug>` — what a hash route (`/#tickets/12`) is appended to. With no slug (an org that is
  *  gone, a read that failed) it is the bare origin, whose `/` still routes a signed-in person somewhere. */
 export const appBase = (origin: string, slug: string | null | undefined): string =>
-  `${origin.replace(/\/+$/, "")}${slug ? `/o/${slug}` : ""}`;
+  `${origin.replace(/\/+$/, "")}${slug ? `/${slug}` : ""}`;
 /** `<origin>/api/o/<slug>` — what a tenant route's suffix (`/raw/a/<slug>@v1`) is appended to. */
 export const apiBase = (origin: string, slug: string | null | undefined): string =>
   `${origin.replace(/\/+$/, "")}${slug ? `/api/o/${slug}` : ""}`;

@@ -92,7 +92,7 @@ const nowOf = (deps: ConnectDeps): number => (deps.now ? deps.now() : Date.now()
 
 /** Org settings › Repositories of `slug`, with what happened as the `github` query value. */
 const back = (c: C, slug: string, outcome: GithubConnectOutcome, extra = ""): Response =>
-  c.redirect(`/o/${slug}/?github=${outcome}${extra}#org/repos`, 302);
+  c.redirect(`/${slug}/?github=${outcome}${extra}#org/repos`, 302);
 
 /** The signed-in person on a path the session gate lets through unauthenticated (`/auth/callback`). */
 async function currentPerson(c: C): Promise<Principal | null> {
@@ -104,7 +104,7 @@ async function currentPerson(c: C): Promise<Principal | null> {
  *  first org they administer, with the sentence; with none, the app's root. */
 async function homeFor(c: C, handle: string, outcome: GithubConnectOutcome): Promise<string> {
   const org = (await listMyOrgs(c.var.p, handle)).find((o) => o.role === "owner" || o.role === "admin");
-  return org ? `/o/${org.slug}/?github=${outcome}#org/repos` : "/";
+  return org ? `/${org.slug}/?github=${outcome}#org/repos` : "/";
 }
 
 // ── start ────────────────────────────────────────────────────────────────────

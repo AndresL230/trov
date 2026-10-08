@@ -416,7 +416,7 @@ describe("a second purchase", () => {
     await call("POST", "/api/orgs", a.cookie, { slug: "maya-solo", name: "Maya solo" });
     const cfg = (await bcall<BillingConfigResponse>("GET", "/api/billing/config", a.cookie)).json;
     expect(cfg.signed_in).toBe(true);
-    expect(cfg.manage).toEqual([{ slug: "maya-solo", name: "Maya solo", plan: "personal", status: "active", href: "/o/maya-solo/#org/general" }]);
+    expect(cfg.manage).toEqual([{ slug: "maya-solo", name: "Maya solo", plan: "personal", status: "active", href: "/maya-solo/#org/general" }]);
     // Someone who only belongs to it (or owns a granted org) is offered nothing to manage.
     expect((await bcall<BillingConfigResponse>("GET", "/api/billing/config", await cookieFor(SUPERADMIN))).json.manage).toEqual([]);
 

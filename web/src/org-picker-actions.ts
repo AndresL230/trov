@@ -1,7 +1,7 @@
 // Organizations — the controller behind the switcher, the picker and the create dialog
 // (web/src/org-picker.ts holds the views). Every `orgs…` act main.ts dispatches lands here.
 //
-// Opening an org is a PAGE LOAD (`/o/<slug>/…`), never an in-place swap: everything the app holds
+// Opening an org is a PAGE LOAD (`/<slug>/`), never an in-place swap: everything the app holds
 // in memory belongs to the org it was read for, and a fresh page cannot show one org's data under
 // another's name.
 

@@ -77,7 +77,7 @@ export class NotFound extends Error {}
 // Every tenant route lives at `/api/o/<slug>/<suffix>` (canopy-multitenancy.md §6.3). The functions
 // below still name a route by its SUFFIX (`/feed`, `/api/handoffs`); `apiUrl` is the one place that
 // turns it into the current org's URL, and every request in the SPA is sent through `call`. main.ts
-// sets the slug once at boot from the page's path (`/o/<slug>/`); switching org is a page load.
+// sets the slug once at boot from the page's path (`/<slug>/`); switching org is a page load.
 let apiOrg: string | null = null;
 export function setApiOrg(slug: string | null): void { apiOrg = slug; }
 export const apiOrgSlug = (): string | null => apiOrg;

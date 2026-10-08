@@ -309,7 +309,7 @@ describe("the waiting room — /billing/done", () => {
 
   it("done, unpaid, cancelled, not yours, signed out: each says what is true and where to go", () => {
     const done = billingDonePage(room({ phase: "done", org: { slug: "maya-co", name: "Maya & Co" } }));
-    expect(done).toMatch(/<a href="\/o\/maya-co\/"[^>]*>Open Maya &amp; Co<\/a>/);
+    expect(done).toMatch(/<a href="\/maya-co\/"[^>]*>Open Maya &amp; Co<\/a>/);
     expect(done).toContain("<strong style=\"color:var(--fg);font-weight:600\">Maya &amp; Co</strong> is on its plan.");
     const unpaid = text(billingDonePage(room({ phase: "unpaid" })));
     expect(unpaid).toContain("This checkout was not completed Stripe did not take a payment for it, so nothing was charged.");

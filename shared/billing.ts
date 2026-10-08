@@ -26,7 +26,7 @@ export const BILLING_DONE_PATH = "/billing/done";
  *  page (web/pricing.html, a Vite input; test/render.pricing.test.ts holds the two together). */
 export const PRICING_PATH = "/pricing";
 /** An organization's Plan block (Org settings › General) — where its owner manages billing. */
-export const orgBillingHref = (slug: string): string => `/o/${encodeURIComponent(slug)}/#org/general`;
+export const orgBillingHref = (slug: string): string => `/${encodeURIComponent(slug)}/#org/general`;
 /** Enterprise, and anything billing cannot do: write to Trov. */
 export const BILLING_CONTACT = `mailto:${PLATFORM_FROM_ADDRESS}`;
 
