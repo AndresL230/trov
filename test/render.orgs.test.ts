@@ -540,14 +540,15 @@ describe("no copy names one organization", () => {
       }
     }
   });
-  it("the sign-in copy states the new rules: any GitHub account; Google by invitation", () => {
+  it("the sign-in copy states the rules: either provider creates an account", () => {
     const landing = render({ ...initialState(), view: "auth", authStep: "login", signInOpen: true });
-    expect(landing).toContain("Any GitHub account can sign in. A Google account needs an invitation from an organization's admin first.");
+    expect(landing).toContain("New to Trov? Either one creates your account.");
+    expect(landing).not.toContain("needs an invitation");
     expect(landing).not.toContain("previewNonMember");
-    const google = render({ ...initialState(), view: "auth", authStep: "notinvited", deniedEmail: "sam@x.io" });
-    expect(google).toContain("This Google account hasn&#39;t been invited yet.".replace("&#39;", "'"));
-    expect(google).toContain("Signing in with Google needs an invitation.");
-    expect(google).toContain("A GitHub account can always sign in, and can create an organization.");
+    const google = render({ ...initialState(), view: "auth", authStep: "unverified", deniedEmail: "sam@x.io" });
+    expect(google).toContain("Google hasn't verified this address yet.");
+    expect(google).toContain("sam@x.io");
+    expect(google).not.toContain("invit");
     expect(google).toContain('data-act="signIn"');
     const github = render({ ...initialState(), view: "auth", authStep: "nonmember" });
     expect(github).toContain("That GitHub account couldn't sign in.");

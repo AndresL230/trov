@@ -77,7 +77,7 @@ export const RELEASES: Release[] = [
     title: "Free, and Pro per seat",
     headline: "Anyone can start a Free organization, and Pro is paid per seat: as few as one.",
     highlights: [
-      "Sign in and create a Free organization for your team: up to 3 people, one repository, two environments and 300 AI summaries a month. You can own one Free organization at a time.",
+      "Sign in with GitHub or Google (either one creates your account, no invitation needed) and create a Free organization for your team: up to 3 people, one repository, two environments and 300 AI summaries a month. You can own one Free organization at a time.",
       "Team is now called Pro, and it is paid per seat: $10 a month for each one, with no minimum, so a person on their own can buy a single seat. Pro holds up to 50 people.",
       "Upgrade a Free organization to Pro from Org settings › General. The checkout starts with one seat for each member and pending invitation, and you can change the number before you pay.",
       "When every seat is taken, Members says so and gives the owner one button: Add a seat on Pro, or Upgrade to Pro on Free.",
@@ -91,6 +91,7 @@ export const RELEASES: Release[] = [
       "AI summaries read at most the first 8,000 characters of a pull request's or issue's description.",
     ],
     ops: [
+      "Google sign-in needs its OAuth client on the Worker: `wrangler secret put GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, with `https://<host>/auth/google/callback` as an authorized redirect URI in Google Cloud. Without them `/auth/google/login` answers 503.",
       "Apply migration `0047_billing_seats` (additive: the nullable column `billing_subscriptions.quantity`). Safe on live data and with the previous Worker running; rollback is in its header.",
       "Stripe: create ONE product, Trov Pro, with a recurring PER-UNIT price of $10 per month (and optionally a yearly one). Put its id in `wrangler.toml` `[vars]` as `STRIPE_PRICE_TEAM` (and `STRIPE_PRICE_TEAM_YEARLY`). `STRIPE_PRICE_PERSONAL` and `STRIPE_PRICE_PERSONAL_YEARLY` are gone: delete them from any dashboard config. `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are unchanged secrets.",
       "In Stripe's Customer Portal settings, allow customers to update subscription QUANTITIES for the Pro price (minimum 1, maximum 50) — \"Add a seat\" opens that page. The webhook's event list is unchanged.",
@@ -112,6 +113,7 @@ export const RELEASES: Release[] = [
         "`syncSkeletons` (after every paint): each skeleton region keeps its clock across rerenders (`--skel-t`), stays invisible for its first 150 ms so a fast read never shows one, and what replaces it gets one short fade (`.cnpy-settle`). Off under reduced motion (#119)",
       ],
       changed: [
+        "Google sign-up is open: `completeSignIn` sends any unknown Google account with a verified address to onboarding, as it does a GitHub account. The pending-invite gate (`hasPendingEmailInvite`, `OnboardPayload.invite_email`, 403 `invite_revoked` on `POST /auth/onboard`) is gone. An unverified address is still refused, now at `/?denied=unverified` (was `/?denied=invite`) (#PRNUM)",
         "Plan `team` is shown as \"Pro\", with 50 seats; `PURCHASABLE_PLANS` is `[\"team\"]`. Checkout sends quantity = members + pending invitations (at least 1; 1 for a first purchase) with `adjustable_quantity` 1–50 (#117)",
         "`src/billing/sync.ts`: the subscription's quantity is written as the org's `seats` override (`paidSeats`, held to the plan's cap); an unused paid grant carries it in its overrides and `linkPaidOrgStmt` copies them onto the org; an ended subscription moves the org to Free (active, still a billing org) instead of freezing it as `canceled` — a pinned plan too (#117)",
         "`OrgBillingView`: `subscribed`, `ended`, `customer`, `seats`, `upgrade_to` (was `renew_on`); a Free org gets one. The Plan block shows seats, Change seats, and Upgrade to Pro (#117)",

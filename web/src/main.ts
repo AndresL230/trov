@@ -2008,7 +2008,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .catch((e) => {
           o.submitting = false;
           if (e instanceof ApiError && e.message === "handle_taken") { o.check = "taken"; }
-          else if (e instanceof ApiError && e.message === "invite_revoked") { o.error = "This invite was revoked. Ask an admin to invite you again."; }
           else if (e instanceof Unauthorized) { o.error = "This sign-in expired. Start again."; }
           else { o.error = "Couldn't finish sign-up. Try again."; }
           rerender();
@@ -4203,10 +4202,10 @@ if (params.get("denied") === "1") {
   state.view = "auth";
   state.authStep = "nonmember";
   rerender();
-} else if (params.get("denied") === "invite") {
-  // Google account not invited (or unverified email): /auth/google/callback redirected here
+} else if (params.get("denied") === "unverified") {
+  // A Google account whose address Google has not verified: /auth/google/callback redirected here
   state.view = "auth";
-  state.authStep = "notinvited";
+  state.authStep = "unverified";
   state.deniedEmail = params.get("email");
   rerender();
 } else if (location.pathname === BILLING_DONE_PATH) {

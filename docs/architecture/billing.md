@@ -71,8 +71,8 @@ Pro is sold per seat. A seat is a member or a pending invitation (`plans.md` ›
 1. **Start** — `GET /billing/start?plan=team[&interval=month|year]`, a plain link.
    Signed out → a sealed 10-minute `return_to` cookie holding that exact path (an allowlisted shape built from
    `PURCHASABLE_PLANS`, never a visitor's URL) and a sign-in page; the sign-in tail (`takeOAuthPending` →
-   `takeReturnTo`) comes back here, through onboarding too. The page says it plainly: *any GitHub account can
-   sign in and that creates the account; Google only opens an account that already exists.*
+   `takeReturnTo`) comes back here, through onboarding too. The page says it plainly: *signing in with either
+   GitHub or Google creates the account.*
    Signed in → one unit of the `checkout` limit (10 / person / day), a `billing_checkouts` row binding a
    random `ref` to **the person signed in**, then `POST /v1/checkout/sessions` (mode `subscription`, the
    per-seat price × the starting quantity with `adjustable_quantity`, `client_reference_id` = the handle,
