@@ -157,7 +157,7 @@ Not verified against the real services: a sync through a real installation token
 | MCP `send_handoff` `url`; artifact tools' `url`, `raw_url` | `<origin>/#handoffs/<id>`, `<origin>/#artifacts/<slug>`, `<origin>/raw/a/…` | `<origin>/o/<slug>/#…`, `<origin>/api/o/<slug>/raw/a/…` |
 | a ticket link / sprint resource given as a bare `#214` in an org with no primary repo | resolved against `SaplingLearn/sapling` | 400 naming Org settings › Repositories |
 | `POST …/sprints`, MCP `create_sprint` / `update_plan` with a `lead` who is not a member of the org | stored | 400, nothing written |
-| `GET /platform`, `/platform/*` | 401 (session gate) | the SPA shell (like `GET /o/*`) |
+| `GET /platform`, `/platform/*` | 401 (session gate) | the SPA shell (like `GET /<slug>/`) |
 
 The earlier table (Sync / Poll `not_configured`, the webhook 401, `email_in_use`, `from_address`, the 429s) still
 holds; the SPA now handles each.

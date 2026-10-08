@@ -452,7 +452,7 @@ export function platformCrumb(p: Pick<PlatState, "detail" | "orgSlug">): string 
   return p.detail.data && p.detail.data.org.slug === p.orgSlug ? p.detail.data.org.name : p.orgSlug ?? "";
 }
 
-/** The standalone page's address — outside `/o/<slug>/`, so it needs no membership. */
+/** The standalone page's address — outside `/<slug>/`, so it needs no membership. */
 export const PLATFORM_PATH = "/platform/";
 export const isPlatformPath = (pathname: string): boolean => pathname === "/platform" || pathname.startsWith("/platform/");
 

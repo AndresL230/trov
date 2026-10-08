@@ -59,7 +59,7 @@ async function callback(gh: { fetchImpl: typeof fetch }, query: Record<string, s
   return buildAuthApp({ fetchImpl: gh.fetchImpl, now: () => now }).request(`/callback?${qs}`, { headers: { cookie: cookies.filter(Boolean).join("; ") } }, envOver);
 }
 const landed = (res: Response): string => { expect(res.status).toBe(302); return res.headers.get("location")!; };
-const repos = (outcome: string, slug = "acme"): string => `/o/${slug}/?github=${outcome}#org/repos`;
+const repos = (outcome: string, slug = "acme"): string => `/${slug}/?github=${outcome}#org/repos`;
 
 /** Every table's row count, and the rows a connection could touch: a refusal must leave it identical. */
 async function everything(): Promise<string> {
@@ -674,7 +674,7 @@ describe("linking an installation that already exists (?existing=1)", () => {
     const gh = world();
     gh.world.installations[502] = { account: { login: "olive", id: 9001, type: "User" }, repos: [{ full_name: "olive/dotfiles" }] };
     gh.world.reachable = [INSTALL, 502];
-    expect(landed(await link(cookie, gh))).toBe(`/o/acme/?github=choose&accounts=acme-gh,olive#org/repos`);
+    expect(landed(await link(cookie, gh))).toBe(`/acme/?github=choose&accounts=acme-gh,olive#org/repos`);
     expect(await bindings()).toEqual([]);
     expect(landed(await link(cookie, gh, "&account=nobody"))).toBe(repos("none_found"));
     // One of the two belongs to another org: the free one is the only candidate.
