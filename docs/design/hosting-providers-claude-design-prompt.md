@@ -177,8 +177,11 @@ back.
   confirmation — what the provider's screen will ask (`grants[]`, e.g. "Projects: read, Deployments: read on the
   projects you pick"), and `how_to` (e.g. Netlify: "Netlify OAuth has no scopes: approve with an account that
   belongs only to the team you want Trov to see"). Then `POST /api/o/:slug/hosting/:provider/connect` →
-  `{ url, method, expires_at }` and the browser navigates to `url` (a full navigation — it leaves Trov). A 409
-  `already_connected` means the org already has one: say "Disconnect it first" instead of navigating.
+  `{ url, method, expires_at }` and the browser navigates to `url` (a full navigation — it leaves Trov). An org
+  that is ALREADY connected is not refused: like the GitHub App since #110, connecting again REPLACES the current
+  connection (no Disconnect first — the old grant is ended and removed on the provider's side). So a connected
+  row keeps a quiet "Connect a different account" action; its confirmation says the current account (`account`)
+  will be replaced.
   **The return** mirrors GitHub's exactly (`connectNotice` / `connectNoticeCopy` in `web/src/github-app.ts`): the
   provider sends the admin back to `/o/<org-slug>/?hosting=<outcome>&provider=<id>#org…`; the SPA reads
   `?hosting=` ONCE on entering the org, shows a dismissible NOTICE at the top of the Hosting tab (tone ok / amber /
@@ -188,8 +191,7 @@ back.
   took too long, or was not started here." start again), `wrong_person` (red — the person signed in when the
   provider returned is not the one who started), `not_admin` (red — only an admin or owner can connect a host),
   `denied` (amber — "You cancelled on Vercel — nothing was connected"), `taken` (red — that installation is
-  already connected to another Trov organization; disconnect it there first), `already_connected` (red — this
-  organization is already connected to Vercel; disconnect it first), `not_configured` (amber — this Trov can't
+  already connected to another Trov organization; disconnect it there first), `not_configured` (amber — this Trov can't
   connect Vercel yet; paste a token instead), `exchange_failed` (red — Vercel refused the connection; try again or
   paste a token), `secrets_unavailable` (red — credentials can't be saved right now), `unknown_provider` /
   `failed` (red — something went wrong; try again). Nothing about the provider's own error text ever reaches the
@@ -362,7 +364,7 @@ interface HostingPollOutcome { env; part; provider: HostingProviderId; status: "
 | `GET /api/o/:slug/hosting/providers` (any member) | → `{ providers: HostingProviderDTO[] }` |
 | `PUT /api/o/:slug/environments/:env/parts/:part` | `{ provider, role?, label?, settings }` → `{ part, created }` (201 new) |
 | `DELETE /api/o/:slug/environments/:env/parts/:part` | → `{ ok, removed: { env, part, provider, legacy } }` |
-| `POST /api/o/:slug/hosting/:provider/connect` | → `{ url, method, expires_at }` — then navigate to `url`; 409 `already_connected` while an install / OAuth connection is live (Disconnect first) |
+| `POST /api/o/:slug/hosting/:provider/connect` | → `{ url, method, expires_at }` — then navigate to `url`; an org already connected is replaced at the callback (no 409) |
 | `GET /hosting/:provider/callback` (the provider redirects here) | → 302 to `/o/<slug>/?hosting=<outcome>&provider=<id>#org` (`HOSTING_CONNECT_OUTCOMES`); `/?hosting=<outcome>` when the intent can't be read; `/` when signed out |
 | `POST /api/o/:slug/hosting/:provider/test` | `{ scope?, env?, part? }` → `{ ok, detail, connection }` |
 | `POST /api/o/:slug/hosting/:provider/disconnect` | `{ scope? }` → `{ connection, upstream: "revoked" \| "failed" \| "none" }` |

@@ -467,9 +467,9 @@ export function deleteEnvironmentPart(slug: string, env: string, part: string): 
   return orgSend("DELETE", orgPath(slug, `/environments/${encodeURIComponent(env)}/parts/${encodeURIComponent(part)}`));
 }
 /** Begin an install / OAuth connection; then `location.assign(result.url)`. The call also sets the sealed-intent
- *  cookie the callback checks, so it must be made from the browser that will follow the URL. Refusals (409):
- *  `already_connected` — disconnect first; `not_available`, `not_installable`, `not_configured` — offer the token
- *  method instead. */
+ *  cookie the callback checks, so it must be made from the browser that will follow the URL. An org already
+ *  connected is not refused: the new grant replaces it at the callback. Refusals (409): `not_available`,
+ *  `not_installable`, `not_configured` — offer the token method instead. */
 export function startHostingConnect(slug: string, provider: HostT.HostingProviderId): Promise<HostT.ConnectStartDTO> {
   return orgSend("POST", orgPath(slug, `/hosting/${provider}/connect`));
 }

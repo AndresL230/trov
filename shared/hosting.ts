@@ -192,13 +192,12 @@ export function hostingRevokedReasonText(reason: HostingRevokedReason, providerL
  *   exchange_failed      no code, or the provider would not exchange it for a usable credential
  *   secrets_unavailable  the platform key is missing: no credential can be stored right now
  *   taken                that installation is already connected to ANOTHER Trov org
- *   already_connected    this org got another install / OAuth connection meanwhile — disconnect it first
  *   unknown_provider     the return named a provider Trov does not know (or one with no install)
  *   failed               anything else
  */
 export const HOSTING_CONNECT_OUTCOMES = [
   "connected", "expired", "wrong_person", "not_admin", "denied", "not_configured", "exchange_failed", "secrets_unavailable",
-  "taken", "already_connected", "unknown_provider", "failed",
+  "taken", "unknown_provider", "failed",
 ] as const;
 export type HostingConnectOutcome = (typeof HOSTING_CONNECT_OUTCOMES)[number];
 export const isHostingConnectOutcome = (v: unknown): v is HostingConnectOutcome =>

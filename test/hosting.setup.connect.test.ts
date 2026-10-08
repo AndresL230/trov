@@ -207,7 +207,7 @@ describe("connect: start", () => {
     expect((await post("vercel", installEnv(), me, { authorization: "Bearer x" })).status).toBe(403);
   });
 
-  it("already connected: 409 `already_connected` while an install / OAuth grant is live — a pasted token or an ended install does not block", async () => {
+  it("an org already connected is not refused — a pasted token, an ended install, a LIVE install all start (the callback replaces it, as the GitHub App does)", async () => {
     await seedOrgSettings();
     const web = hostingTestApp(fakeProviders().providers);
     const me = await ownerCookie();
@@ -218,9 +218,8 @@ describe("connect: start", () => {
     expect((await send(web, "POST", `${A}/hosting/vercel/connect`, me)).status).toBe(200);
     await run(env.DB, `UPDATE org_hosting_connections SET status = 'active', revoked_at = NULL, revoked_by = NULL, revoked_reason = NULL WHERE org_id = ?`, ORG_A);
     const r = await send(web, "POST", `${A}/hosting/vercel/connect`, me);
-    expect([r.status, r.json?.error]).toEqual([409, "already_connected"]);
-    expect(String(r.json?.message)).toMatch(/disconnect it first/);
-    expect(r.headers.get("set-cookie")).toBeNull();
+    expect(r.status).toBe(200);
+    expect(r.headers.get("set-cookie")).toMatch(/trov_hx=/);
   });
 });
 
@@ -448,21 +447,64 @@ describe("connect: one org per installation, one install per org", () => {
     expect((await rows())[0]).toMatchObject({ external_id: "icfg_free", status: "active" });
   });
 
-  it("another install appeared since the start: `already_connected`, the NEW installation handed back, the live one untouched", async () => {
+  it("a DIFFERENT live install is REPLACED in one write — audited with `replaced_by` — and the OLD grant is removed on the provider's side with its own credential", async () => {
     await seedOrgSettings();
     const fakes = fakeProviders();
     const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
     const me = await ownerCookie();
-    const s = await start(web, me);
-    // Meanwhile (another tab): a different installation was connected.
-    await setSecret(await tenantCtx("AndresL230"), "vercel", "", PASTED);
+    const ctx = await tenantCtx("AndresL230");
+    // The org is connected through another installation (the App on another account, in GitHub's words).
+    await setSecret(ctx, "vercel", "", PASTED);
     await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, account_id, account_label, status, connected_by, connected_at)
       VALUES (?, 'vercel', '', 'install', 'icfg_other', 'team_other', 'Other', 'active', 'AndresL230', '2026-10-07T00:00:00Z')`, ORG_A);
-    const before = await writable();
-    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("already_connected"));
-    expect(fakes.calls.revoke.map((r) => ({ externalId: r.externalId, token: r.secret.reveal() }))).toEqual([{ externalId: "icfg_one", token: LONG_TOKEN }]);
-    expect(await writable()).toBe(before);
-    expect((await getSecret(await tenantCtx("AndresL230"), "vercel", ""))!.reveal()).toBe(PASTED);
+    const s = await start(web, me);
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("connected"));
+    // Upstream: the OLD installation, with the OLD credential — never the new token or the new installation.
+    expect(fakes.calls.revoke.map((r) => ({ externalId: r.externalId, token: r.secret.reveal() }))).toEqual([{ externalId: "icfg_other", token: PASTED }]);
+    expect(await rows()).toEqual([expect.objectContaining({ external_id: "icfg_one", account_id: "team_acme", status: "active", revoked_reason: null })]);
+    expect((await getSecret(ctx, "vercel", ""))!.reveal()).toBe(LONG_TOKEN);
+    const ended = await adminAudit("hosting.disconnect");
+    expect(ended).toHaveLength(1);
+    expect(JSON.parse(ended[0].detail)).toEqual({ provider: "vercel", method: "install", reason: "superseded", replaced: "icfg_other", replaced_by: "icfg_one" });
+    expect(await adminAudit("hosting.connect")).toHaveLength(1);
+    expect(leakedFragments(await everything(), PASTED)).toEqual([]);
+    expect(leakedFragments(await everything(), LONG_TOKEN)).toEqual([]);
+  });
+
+  it("removing the replaced grant upstream is best effort — a failure is one scrubbed log line and the new connection stands; an old grant with no installation id loses only its credential", async () => {
+    await seedOrgSettings();
+    const fakes = fakeProviders({ revoke: async (a) => { throw new HostingError(`fakecel revoke 500: ${a.secret.reveal()}`); } });
+    const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
+    const me = await ownerCookie();
+    const ctx = await tenantCtx("AndresL230");
+    await setSecret(ctx, "vercel", "", PASTED);
+    // An OAuth-style row: no installation id, another account.
+    await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, account_id, account_label, status, connected_by, connected_at)
+      VALUES (?, 'vercel', '', 'oauth', NULL, 'team_other', 'Other', 'active', 'AndresL230', '2026-10-07T00:00:00Z')`, ORG_A);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const s = await start(web, me);
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("connected"));
+    expect(fakes.calls.revoke.map((r) => ({ externalId: r.externalId, token: r.secret.reveal() }))).toEqual([{ externalId: null, token: PASTED }]);
+    expect(await rows()).toEqual([expect.objectContaining({ external_id: "icfg_one", method: "install", status: "active" })]);
+    expect((await getSecret(ctx, "vercel", ""))!.reveal()).toBe(LONG_TOKEN);
+    const logged = errors.mock.calls.map((c) => c.map(String).join(" ")).join("\n");
+    expect(logged).toMatch(/removing the replaced grant failed/);
+    expect(leakedFragments(logged, PASTED)).toEqual([]);
+    expect(leakedFragments(logged, LONG_TOKEN)).toEqual([]);
+  });
+
+  it("a replaced grant whose credential IS the new token is not removed upstream (it is the new connection)", async () => {
+    await seedOrgSettings();
+    const fakes = fakeProviders();
+    const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
+    const me = await ownerCookie();
+    await setSecret(await tenantCtx("AndresL230"), "vercel", "", LONG_TOKEN);
+    await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, account_id, account_label, status, connected_by, connected_at)
+      VALUES (?, 'vercel', '', 'install', 'icfg_other', 'team_other', 'Other', 'active', 'AndresL230', '2026-10-07T00:00:00Z')`, ORG_A);
+    const s = await start(web, me);
+    expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("connected"));
+    expect(fakes.calls.revoke).toEqual([]);
+    expect((await rows())[0]).toMatchObject({ external_id: "icfg_one", status: "active" });
   });
 
   it("the SAME installation again (a re-authorization) refreshes the connection — nothing is handed back", async () => {

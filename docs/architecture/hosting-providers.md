@@ -67,8 +67,8 @@ connections — each with `manage_url`, where the grant is managed on the provid
 checklist generated from what the parts use), `GET /hosting/providers` (any member), `PUT|DELETE
 /environments/:key/parts/:part` (audited `part.set` / `part.delete` in `org_admin_audit`; deleting an environment
 deletes its stored parts, poll state and deploys in the same batch), `POST /hosting/:provider/connect` (→ `{ url }`;
-409 `already_connected` while an install / OAuth grant is live — Disconnect first; a pasted token does not block, an
-install supersedes it), `POST /hosting/:provider/disconnect` (best-effort provider-side revoke; always succeeds
+an org already connected — a pasted token, or another install / OAuth grant — is not refused: the callback replaces
+it), `POST /hosting/:provider/disconnect` (best-effort provider-side revoke; always succeeds
 locally), `POST /hosting/:provider/test` (the integrations `testConnection`, optionally against one part). **An
 installed connection has the GitHub App binding's guarantees** (`src/hosting/connections.ts`): the provider is handed
 only a RANDOM `state`; what it answers for — `{ o, s, p, h, state, exp }`, HMAC-sealed with `hosting-connect:<COOKIE_SECRET>`
@@ -82,7 +82,11 @@ It binds only for that browser's intent, that provider, the same person, still a
 code exchange through `hostFetch`; an installation ANOTHER org holds is `taken` (a platform read,
 `connectionsForExternalId` in `src/platform/jobs.ts`, and 0047's partial unique index on the active
 `(provider, external_id)` at the write — the row, the credential and the config are ONE batch, so a lost race stores
-nothing), and a different install that appeared meanwhile is `already_connected`; a refused grant is handed back to
+nothing). **A DIFFERENT live install / OAuth grant is REPLACED** — the GitHub App's rule since #110
+(`github-app.md` step 6): `bindConnection(…, replaced)` overwrites the row in the same batch and audits the end
+(`hosting.disconnect`, `reason: "superseded"`, `replaced_by`) only while that row is still the one read; then
+`dropReplaced` removes the old grant on the provider's side with its OWN credential, read before the write — best
+effort, as Disconnect does, never the new token or the new installation. A refused grant is handed back to
 the provider (`install.revoke`, best effort — with `externalId: null` for `taken`, so another org's installation is
 never removed). An installation id comes from the provider's own answer, never the callback URL (Vercel confirms a
 callback `configurationId` with ONE `GET /v1/integrations/configuration/{id}` on the new token, else stores null).

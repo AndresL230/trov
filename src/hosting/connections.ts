@@ -4,7 +4,7 @@
 //   the credential   always an `org_secrets` row (src/data/secrets.ts — write-only, encrypted, audited), under
 //                    the provider's kind (`HOSTING_INTEGRATION_KIND`) and scope ("" — or the environment key for
 //                    Railway's per-environment project token). A pasted token is ONLY that row.
-//   the connection   `org_hosting_connections` (0044): what an install / OAuth grant adds beside the secret —
+//   the connection   `org_hosting_connections` (0047): what an install / OAuth grant adds beside the secret —
 //                    the method, the provider-side installation id (`external_id`, what an uninstall notice
 //                    names), the account it reaches, and how it ended (`revoked_*`).
 //
@@ -16,8 +16,10 @@
 //     10 minutes, spent by the first callback;
 //   - `completeConnect` binds only for that browser, that provider, that person — still an admin of that org,
 //     re-checked live — and only an installation no OTHER org holds (`taken`; 0047's partial unique index
-//     enforces it at the write, which is ONE batch with the credential) into an org not already connected by
-//     another install / OAuth grant (`already_connected` — Disconnect first; a pasted token is superseded);
+//     enforces it at the write, which is ONE batch with the credential). An org holds ONE install / OAuth
+//     connection per provider: a DIFFERENT one REPLACES it (the GitHub App's rule, src/github-app/connect.ts
+//     step 6) in the same batch — no Disconnect first — and the replaced grant is then removed on the
+//     provider's side, best effort, as Disconnect would have; a pasted token is superseded the same way;
 //   - the installation id comes from the provider's own answer, never from the callback URL (./providers/*);
 //   - a grant it refuses is handed back to the provider, best effort — never an installation another org holds;
 //   - every outcome is a redirect with a FIXED code (`HOSTING_CONNECT_OUTCOMES`) — never the provider's own
@@ -299,10 +301,10 @@ export interface ConnectStart {
 
 /**
  * Begin an install / OAuth connection (admin+). Refusals (409, fixed text): a provider not supported yet, one
- * with no install / OAuth method (paste a token instead), a credential kept per environment, an org that is
- * ALREADY connected by an install / OAuth grant (`already_connected` — disconnect it first; a pasted token does
- * not count: an install supersedes it), or a deployment that has not configured the provider's integration.
- * Returns where to send the browser and the sealed intent the route sets in the `trov_hx` cookie.
+ * with no install / OAuth method (paste a token instead), a credential kept per environment, or a deployment
+ * that has not configured the provider's integration. An org that is already connected — by a pasted token or
+ * by another install / OAuth grant — is NOT refused: the new grant replaces it at the callback. Returns where to
+ * send the browser and the sealed intent the route sets in the `trov_hx` cookie.
  */
 export async function startConnect(
   ctx: TenantContext, env: Env, providerId: string, origin: string, orgSlug: string | null, now: number = Date.now(), providers: ProviderMap = PROVIDERS,
@@ -314,9 +316,6 @@ export async function startConnect(
     throw new SettingsError("not_installable", 409, `${p.label} has no install or OAuth connection — paste a token instead`);
   }
   if (p.credentialScope !== "org") throw new SettingsError("not_installable", 409, `${p.label} is connected per environment — paste a token instead`);
-  if (isLiveInstall(await connectionRow(ctx, p.id, ""))) {
-    throw new SettingsError("already_connected", 409, `${p.label} is already connected — disconnect it first`);
-  }
   const choice = installChoice(p, env);
   if (!choice) throw new SettingsError("not_configured", 409, `this Trov deployment has no ${p.label} integration configured — paste a token instead`);
   const state = randomToken(16);
@@ -361,8 +360,10 @@ export function connectReturnUrl(slug: string | null, outcome: HostingConnectOut
  *   1. our sealed intent is in this browser, for this provider, unexpired, and the provider handed back ITS state;
  *   2. the person signed in now is the person who started, and is still an admin of that org;
  *   3. the provider exchanges the code for a usable credential;
- *   4. the installation is no OTHER org's (`taken` — 0047's unique index says so again at the write), and this
- *      org has not been connected by ANOTHER install / OAuth grant meanwhile (`already_connected`).
+ *   4. the installation is no OTHER org's (`taken` — 0047's unique index says so again at the write).
+ * A DIFFERENT live install / OAuth grant of this org is REPLACED, not refused (the GitHub App's rule): ended in
+ * the same batch the new one is written in (`bindConnection`'s `replaced`), then removed on the provider's side
+ * with its OWN credential, read before the write — best effort, as Disconnect does (`dropReplaced`).
  * A grant refused at 4 (or lost to an error after the exchange) is handed back to the provider, best effort
  * (`dropGrant`) — but an installation another org holds is never removed: only the new credential is.
  */
@@ -427,24 +428,27 @@ export async function completeConnect(env: Env, cb: ConnectCallback): Promise<Co
         return to("taken");
       }
     }
-    // …and one install / OAuth connection per org: another one appeared since the start.
+    // …and one install / OAuth connection per org: a DIFFERENT live one is replaced. Its credential and config
+    // are read NOW, before the write deletes them, for the provider-side removal after it.
     const row = await connectionRow(ctx, p.id, "");
     const same = isLiveInstall(row) && sameGrant(row, externalId, accountId);
-    if (isLiveInstall(row) && !same) {
-      await dropGrant(p, hf, grant, externalId, intent.o, "already_connected");
-      return to("already_connected");
-    }
+    const replaced = isLiveInstall(row) && !same ? row : null;
+    const kind = HOSTING_INTEGRATION_KIND[p.id];
+    const old = replaced && install.revoke
+      ? { secret: await getSecret(ctx, kind, ""), config: await getIntegrationConfig(ctx, kind, "") }
+      : null;
     if (!same) removable = externalId;
 
     try {
       // The same installation again keeps the id it was bound by when this grant did not carry one.
-      await bindConnection(ctx, p, choice.spec.method, { ...grant, externalId: externalId ?? (same ? row!.external_id : null), accountId });
+      await bindConnection(ctx, p, choice.spec.method, { ...grant, externalId: externalId ?? (same ? row!.external_id : null), accountId }, nowIso(), replaced);
     } catch (e) {
       if (!(e instanceof ConnectionConflictError)) throw e;
       // Lost the race for the installation: another org bound it between the check above and the write.
       await dropGrant(p, hf, grant, null, intent.o, "taken");
       return to("taken");
     }
+    if (replaced && old?.secret) await dropReplaced(p, hf, replaced, old.secret, old.config, grant, externalId, intent.o);
     // OWNER CHECK: Vercel's callback also carries `next`, and an install may need the browser sent there to be
     // finalised (UNCONFIRMED, research doc › Vercel) — it is deliberately NOT followed; the whole query still
     // reached `exchange` above.
@@ -476,6 +480,26 @@ async function dropGrant(p: HostingProvider, hf: HostFetch, grant: InstallGrant,
   }
 }
 
+/**
+ * Remove a REPLACED install / OAuth grant on the provider's side, with its own credential — what Disconnect would
+ * have done before the new grant was connected. Best effort: a failure is one scrubbed log line and never changes
+ * the outcome (the new connection stands). Never anything the NEW grant is: skipped when the old credential IS
+ * the new token, and the installation id is passed only when it differs from the new one's (`null` removes only
+ * the old credential).
+ */
+async function dropReplaced(
+  p: HostingProvider, hf: HostFetch, replaced: ConnectionRow, secret: { reveal(): string }, config: Readonly<Record<string, string>>,
+  grant: InstallGrant, newExternalId: string | null, orgId: string,
+): Promise<void> {
+  if (!p.install?.revoke || secret.reveal() === grant.accessToken) return;
+  const externalId = replaced.external_id && replaced.external_id !== newExternalId ? replaced.external_id : null;
+  try {
+    await p.install.revoke({ fetch: hf, secret, externalId, config });
+  } catch (e) {
+    console.error("hosting connect: removing the replaced grant failed", p.id, `org=${orgId}`, scrub(asHostingError(`${p.id} revoke`, e).message, [secret, grant.accessToken]).slice(0, 300));
+  }
+}
+
 /** The binding lost a race: the installation went to another org between the callback's check and its write
  *  (0047's unique index on the active installation ids). */
 export class ConnectionConflictError extends Error {
@@ -488,14 +512,27 @@ const isInstallationConflict = (e: unknown): boolean =>
  * Bind a grant to `ctx`'s org: the connection row (which CLAIMS the installation — 0047's partial unique index),
  * the credential (stored, or replacing a pasted token or an earlier grant) and the grant's config, audited —
  * ONE batch, so a lost race for the installation stores nothing at all (`ConnectionConflictError`).
+ *
+ * `replaced` is the org's live install / OAuth connection the caller read and means to END (a DIFFERENT grant —
+ * the GitHub App's replace rule): the row is overwritten by the new grant in the same batch, and the end is audited
+ * `hosting.disconnect` with `replaced_by` — written only while that row is still the one the caller read.
  */
 export async function bindConnection(
   ctx: TenantContext, p: HostingProvider, method: "install" | "oauth", grant: InstallGrant, at: string = nowIso(),
+  replaced: ConnectionRow | null = null,
 ): Promise<void> {
   const kind = HOSTING_INTEGRATION_KIND[p.id];
   const config = await mergedGrantConfig(ctx, p, kind, grant.config);
   const accountLabel = cleanText(grant.accountLabel);
   const stmts: Stmt[] = [
+    // Before the upsert, which overwrites the row it checks.
+    ...(replaced ? [stmt(ctx,
+      `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at)
+       SELECT ?, ?, 'hosting.disconnect', ?, ?, ? WHERE EXISTS (SELECT 1 FROM org_hosting_connections
+         WHERE org_id = ? AND provider = ? AND scope = '' AND status = 'active' AND connected_at = ?)`,
+      ctx.orgId, ctx.userId, p.id,
+      JSON.stringify({ provider: p.id, method: replaced.method, reason: "superseded", replaced: replaced.external_id ?? replaced.account_label ?? null, replaced_by: cleanText(grant.externalId) ?? accountLabel }),
+      at, ctx.orgId, p.id, replaced.connected_at)] : []),
     stmt(ctx, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, external_id, account_id, account_label, status, connected_by, connected_at)
                VALUES (?, ?, '', ?, ?, ?, ?, 'active', ?, ?)
                ON CONFLICT(org_id, provider, scope) DO UPDATE SET method = excluded.method, external_id = excluded.external_id,

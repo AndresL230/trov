@@ -8,7 +8,7 @@
 //   PUT    /environments/:key/parts/:part        admin+   { part: EnvironmentPartDTO, created }   (201 when created)
 //   DELETE /environments/:key/parts/:part        admin+   { ok: true, removed: { env, part, provider, legacy } }
 //   POST   /hosting/:provider/connect            admin+   ConnectStartDTO, + the `trov_hx` sealed-intent cookie;
-//                                                         409 `already_connected` while an install / OAuth grant is live
+//                                                         an org already connected is replaced at the callback
 //   POST   /hosting/:provider/disconnect         admin+   { connection: HostingConnectionDTO, upstream }   body { scope? }
 //   POST   /hosting/:provider/test               admin+   HostingTestDTO   body { scope?, env?, part? }
 //
