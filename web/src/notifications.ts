@@ -198,16 +198,18 @@ export function notifDropdowns(p: Pick<NotifAdminProps, "policy" | "settings">):
   return [...p.policy.map(cadenceDropdown), sched.hour, sched.tz];
 }
 
-/** One digest as a tile of the Digests grid: the name and its org-wide switch on top, what it
- *  carries, and the default cadence pinned to the tile's foot so a row of tiles lines up. */
+/** One digest as a tile of the Digests grid: the name on the left, its default cadence and its
+ *  org-wide switch together on the right, and what it carries underneath. */
 function policyRow(k: PolicyKindView, dd: DropdownUi): string {
   return `<div${surface("padding:16px;display:flex;flex-direction:column;gap:6px;min-width:0", { cls: "cnpy-digest" })} data-digest="${attr(k.id)}">
-    <div style="display:flex;align-items:center;gap:12px">
-      <div style="flex:1;min-width:0;font-size:13.5px;font-weight:600;overflow-wrap:anywhere;color:${k.enabled ? "var(--fg)" : "var(--fg-55)"}">${esc(k.label)}</div>
-      ${switchBtn("policyToggle", k.id, k.enabled).replace("<button ", `<button aria-label="${attr(`${k.label}: send org-wide`)}" `)}
+    <div style="display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap">
+      <div style="flex:1 1 120px;min-width:0;font-size:13.5px;font-weight:600;overflow-wrap:anywhere;color:${k.enabled ? "var(--fg)" : "var(--fg-55)"}">${esc(k.label)}</div>
+      <div style="display:flex;align-items:center;gap:12px;flex:none">
+        ${dropdown(cadenceDropdown(k), dd)}
+        ${switchBtn("policyToggle", k.id, k.enabled).replace("<button ", `<button aria-label="${attr(`${k.label}: send org-wide`)}" `)}
+      </div>
     </div>
     <div style="font-size:12px;line-height:1.5;color:var(--fg-40)">${esc(k.description)}</div>
-    <div style="margin-top:auto;padding-top:10px">${dropdown(cadenceDropdown(k), dd)}</div>
   </div>`;
 }
 
