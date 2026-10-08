@@ -115,7 +115,7 @@ export const RELEASES: Release[] = [
         "`src/platform/loopback.ts` and `holdsLiveKey` (`src/billing/config.ts`): the one test both local stand-ins (`LOCAL_UPSTREAM`, `STRIPE_TEST_API_BASE`) pass — a loopback http origin, and no live Stripe key",
       ],
       changed: [
-        "An org's page is `/<slug>/` (was `/o/<slug>/`): `orgPath` / `orgSlugOfPath` in `shared/orgs.ts` are the one definition; `src/index.ts` serves the shell for `GET /<slug>[/]` when the segment is a valid slug not in `RESERVED_ORG_SLUGS`, and answers `GET /o/<slug>/…` with a 301 (query kept). `RESERVED_ORG_SLUGS` now lists every root route and static page; `test/spa-shell.test.ts` walks the app's routes and fails on a missing one. The API stays at `/api/o/:slug` (#PRN)",
+        "An org's page is `/<slug>/` (was `/o/<slug>/`): `orgPath` / `orgSlugOfPath` in `shared/orgs.ts` are the one definition; `src/index.ts` serves the shell for `GET /<slug>[/]` when the segment is a valid slug not in `RESERVED_ORG_SLUGS`, and answers `GET /o/<slug>/…` with a 301 (query kept). `RESERVED_ORG_SLUGS` now lists every root route and static page; `test/spa-shell.test.ts` walks the app's routes and fails on a missing one. The API stays at `/api/o/:slug` (#111)",
         "Sync GitHub's blocking modal and its closing toast are gone: progress and the result are in the panel",
         "A batch reports its phase and items done as it goes (`runBackfill` `onProgress`), and its result carries what it captured, mirrored and summarized",
         "A batch that throws answers 502 `{ error: \"sync failed\", run }` instead of a bare 500, and its run is closed as failed",
@@ -133,7 +133,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [109, 110],
+    prs: [109, 110, 111],
   },
   // Billing (#106), with the pricing page (#105), which merged without a release line of its own.
   {
