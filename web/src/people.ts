@@ -156,7 +156,7 @@ export function onboardView(o: OnboardState, backdrop = ""): string {
         ${o.edit ? "" : `<button type="button" data-act="backToLogin" data-field="onbBack" class="cnpy-outlinebtn" style="height:38px;padding:0 14px;border:1px solid var(--border-strong);border-radius:9px;font-size:13px;font-weight:500;color:var(--fg-70)"${o.submitting ? " disabled" : ""}>Back</button>`}
         <div style="font-size:12px;color:var(--fg-40);min-width:0;overflow-wrap:anywhere">${signedAs}</div>
       </div>
-      <button data-act="onbSubmit" class="cnpy-accentbtn" ${canSubmit ? "" : "disabled "}style="padding:10px 20px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600;${canSubmit ? "" : "opacity:.45;cursor:default"}">${o.edit ? (o.submitting ? "Saving…" : "Continue") : o.submitting ? "Entering…" : "Enter Trov"}</button>
+      <button data-act="onbSubmit" class="cnpy-accentbtn" ${canSubmit ? "" : "disabled "}style="padding:10px 20px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600;${canSubmit ? "" : "opacity:.45;cursor:default"}">${o.submitting ? "Saving…" : "Continue"}</button>
     </footer>
   </div></div></div>`;
 }

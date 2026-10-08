@@ -1770,6 +1770,9 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-fr-bg > .cnpy-shell { filter:blur(2.5px); }
 /* The very first card (how you'll appear) is the one with a form to fill in: the app sits further back. */
 .cnpy-onb .cnpy-fr-bg > .cnpy-shell { filter:blur(6px); }
+/* Its skeletons are a still picture of the app, not reads in flight (skeleton.ts skips them): shown at
+   once, no fade, no pulse. */
+.cnpy-fr-bg .cnpy-skel-in { animation:none; }
 .cnpy-fr-bg::after { content:""; position:absolute; inset:0;
   background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, #616acb 20%, transparent) 0%, transparent 72%), color-mix(in srgb, var(--bg) 34%, transparent); }
 /* One step of a flow morphing into the next (transition.ts): the card keeps its name across both. */
