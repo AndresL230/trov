@@ -162,7 +162,7 @@ input, select { font-family: inherit; }
    One easing, one duration, so the pieces move as a single gesture. Labels fade
    FAST on the way out (they would otherwise be seen squeezed) and LATE on the way
    in (they arrive once there is room for them). */
-.cnpy-aside { --side-t:.24s; --side-e:cubic-bezier(.4,0,.2,1); width:244px; flex:none; display:flex; flex-direction:column; border-right:1px solid var(--border); background:var(--bg); transition:width var(--side-t) var(--side-e); position:relative; z-index:2; }
+.cnpy-aside { --side-t:.24s; --side-e:cubic-bezier(.4,0,.2,1); width:228px; flex:none; display:flex; flex-direction:column; border-right:1px solid var(--border); background:var(--bg); transition:width var(--side-t) var(--side-e); position:relative; z-index:2; }
 [data-collapsed="1"] .cnpy-aside { width:64px; }
 .cnpy-aside button:focus-visible, .cnpy-search:focus-within { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
 
@@ -1740,10 +1740,14 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    rail is collapsed — and above the phone drawer it was opened from. Radii are inline (the
    corners layer keys them by value). */
 .cnpy-orgslot { flex:none; padding:0 10px 8px; transition:padding var(--side-t) var(--side-e); }
-.cnpy-orgsw-b { display:flex; align-items:center; gap:9px; width:100%; min-width:0; height:38px; box-sizing:border-box; padding:0 9px 0 6.5px; border:1px solid var(--border); background:var(--surface); color:var(--fg); text-align:left; overflow:hidden; transition:background .15s ease, border-color .15s ease, padding var(--side-t) var(--side-e); }
+/* The button HUGS its content (tile, name, count, chevron) and stays left-aligned with the nav rows:
+   a short name gives a short button, a longer one grows it up to the slot's width, and past that the
+   name truncates. `max-width:100%` is also what folds it to the tile in the collapsed rail (its content
+   is always wider than the 44px slot), so the fold rides the rail's own width transition. */
+.cnpy-orgsw-b { display:flex; align-items:center; gap:9px; width:fit-content; max-width:100%; min-width:0; height:38px; box-sizing:border-box; padding:0 9px 0 6.5px; border:1px solid var(--border); background:var(--surface); color:var(--fg); text-align:left; overflow:hidden; transition:background .15s ease, border-color .15s ease, padding var(--side-t) var(--side-e); }
 .cnpy-orgsw-b:hover, .cnpy-orgsw-b.is-open, .cnpy-orgslot.is-active .cnpy-orgsw-b { border-color:var(--border-strong); }
 [data-cnpy-theme="dark"] .cnpy-orgsw-b:hover, [data-cnpy-theme="dark"] .cnpy-orgsw-b.is-open { background:var(--hover); }
-.cnpy-orgsw-n { flex:1; min-width:0; font-family:'Geist',system-ui,sans-serif; font-size:13px; font-weight:600; letter-spacing:-0.005em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-orgsw-n { flex:0 1 auto; min-width:0; font-family:'Geist',system-ui,sans-serif; font-size:13px; font-weight:600; letter-spacing:-0.005em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .cnpy-orgsw-b .cnpy-dot { display:none; }
 [data-collapsed="1"] .cnpy-orgsw-b { padding:0 0 0 9px; border-color:transparent; background:transparent; }
 [data-collapsed="1"] .cnpy-orgsw-b:hover, [data-collapsed="1"] .cnpy-orgsw-b.is-open { background:var(--hover); }

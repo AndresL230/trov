@@ -41,6 +41,20 @@ and Repo's tabs head their page body), and a stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
+**Widths.** The rail is **228px** expanded and 64px collapsed (`.cnpy-aside` in `trov.css`; the phone drawer has
+its own, `min(292px, 100vw - 48px)`). 228 was measured, not chosen by eye (2026-10-08, was 244): the row that
+runs out first is `Prompt Library` with its count, which truncates under 223px with a one-digit count and under
+227px with a two-digit one, so 228 keeps every label, badge, the search box's shortcut hint and the account chip
+whole. Nothing else stores the number: `<main>` is the flex remainder, the collapsed tooltip and the org menu are
+placed from the rail's left edge, and the quick-search dropdown is anchored to the search box. Before narrowing
+it again, shorten that row or re-measure.
+
+**The org switcher hugs its content.** `.cnpy-orgsw-b` is `width:fit-content; max-width:100%` and its name
+`flex:0 1 auto`: the button is as wide as its tile, name, count and chevron, left-aligned with the nav rows;
+a longer name widens it up to the rail's inner width and then truncates with an ellipsis. The collapsed rail
+sets no width for it: the same `max-width` folds it to the tile as the rail narrows, so the fold rides the
+rail's own transition. Its menu stays anchored to the rail's left edge (the button's left edge), not its width.
+
 **A pick-one with no room for a switch is `dropdown()`** (`web/src/dropdown.ts`), never a native `<select>`:
 the trigger where the control sits, its menu a root-level overlay (`dropdownMenu`, the same props) that opens
 and closes with an animation — Org settings' role and Notifications pickers.

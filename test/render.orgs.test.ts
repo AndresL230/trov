@@ -148,6 +148,27 @@ describe("the org switcher — the sidebar's header", () => {
     expect(rules).toContain("@media (max-height: 850px)");
     expect(rules).toMatch(/\.cnpy-orgmenu \.cnpy-menurow:focus-visible[^{]*\{ outline:2px solid/);
   });
+  it("CSS: the button hugs its content up to the rail's inner width, then the name truncates", () => {
+    const rule = (sel: string) => rules.match(new RegExp(`(?:^|\\} )${sel.replace(/[.[\]"=]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+    const btn = rule(".cnpy-orgsw-b");
+    expect(btn).toContain("width:fit-content;");   // as wide as the tile, name, count and chevron
+    expect(btn).toContain("max-width:100%;");      // never wider than the slot; also what folds it in the collapsed rail
+    expect(btn).not.toContain(" width:100%;");
+    expect(btn).toContain("overflow:hidden;");
+    const name = rule(".cnpy-orgsw-n");
+    expect(name).toContain("flex:0 1 auto;");      // shrinks, never stretches the button
+    expect(name).toContain("min-width:0;");
+    expect(name).toContain("white-space:nowrap; overflow:hidden; text-overflow:ellipsis;");
+    // The collapsed rail sets no width of its own: the hug is capped by the 64px rail, so it animates with it.
+    const folded = rule('[data-collapsed="1"] .cnpy-orgsw-b');
+    expect(folded).toContain("padding:0 0 0 9px;");
+    expect(folded).not.toContain("width:");
+  });
+  it("CSS: the rail is 228px expanded and 64px collapsed; the phone drawer keeps its own width", () => {
+    expect(rules).toMatch(/\.cnpy-aside \{ --side-t:\.24s; [^}]*\bwidth:228px; [^}]*transition:width var\(--side-t\) var\(--side-e\);/);
+    expect(rules).toContain('[data-collapsed="1"] .cnpy-aside { width:64px; }');
+    expect(rules).toMatch(/\[data-phone="1"\] \.cnpy-aside \{[^}]*width:min\(292px, calc\(100vw - 48px\)\);/);
+  });
 });
 
 describe("the switcher's menu", () => {
