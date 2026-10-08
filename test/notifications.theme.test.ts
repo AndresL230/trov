@@ -13,12 +13,18 @@ const msg = () =>
   assembleMessage({ sections: sampleSections(), window, timeZone: "America/New_York", origin: "https://trov.example", login: "andres", unsubscribeUrl: "https://trov.example/u/x.y" });
 
 describe("email shell — site theming", () => {
-  it("paints the light palette: cream ground, cream card, olive accent, warm ink", () => {
+  it("paints the brand palette: cool ground, near-white card, the mark's purple, cool ink — and none of the old olive", () => {
     const { html } = msg();
-    expect(html).toContain("#f3f0e9"); // page ground
-    expect(html).toContain("#faf8f3"); // card = site --bg (light)
-    expect(html).toContain("#8a9a5b"); // site --accent (light)
-    expect(html).toContain("#1a1814"); // site --fg (light)
+    expect(html).toContain("#f1f1f5"); // page ground
+    expect(html).toContain("#fbfbfd"); // the card
+    expect(html).toContain("#616acb"); // the mark's purple (web/src/trov.css --mark, light)
+    expect(html).toContain("#16161a"); // site --fg (light)
+    for (const old of ["#8a9a5b", "#9aab65", "#5c6a3a", "#faf8f3", "#f3f0e9", "#eceedd", "#cfd8b4"]) expect(html, old).not.toContain(old);
+    // No token is pure white: #ffffff is the literal ink on the band and on buttons, which the dark swap must not touch.
+    expect(Object.values(THEME).map((v) => v.light)).not.toContain("#ffffff");
+    // The dark swap keys on the light hex, so every light value is distinct.
+    const lights = Object.values(THEME).map((v) => v.light);
+    expect(new Set(lights).size).toBe(lights.length);
   });
 
   it("drops the mockup's Helvetica / bright-green / grey look entirely", () => {
@@ -40,7 +46,7 @@ describe("email shell — site theming", () => {
   it("declares both color schemes and carries a dark swap the mail client can apply", () => {
     const { html } = msg();
     expect(html).toContain('<meta name="color-scheme" content="light dark">');
-    expect(html).toMatch(/@media \(prefers-color-scheme: dark\)[\s\S]*#1c1a16[\s\S]*#ede9e2[\s\S]*#9aab65/);
+    expect(html).toMatch(/@media \(prefers-color-scheme: dark\)[\s\S]*#17171b[\s\S]*#ededf0[\s\S]*#5e6ad2/);
   });
 
   it("keeps every section, its deep link and the unsubscribe link", () => {
@@ -106,8 +112,8 @@ describe("dark swap selectors", () => {
     const { html } = msg();
     const css = html.match(/<style>([\s\S]*?)<\/style>/)![1];
     expect(css).not.toMatch(/\[style\*="color:#/); // a bare substring match would also hit "background-color:#…"
-    expect(css).toMatch(/\[style\*=";color:#1a1814"\]/);
-    expect(css).toMatch(/\[style\^="color:#1a1814"\]/);
+    expect(css).toMatch(/\[style\*=";color:#16161a"\]/);
+    expect(css).toMatch(/\[style\^="color:#16161a"\]/);
   });
 });
 
@@ -156,8 +162,8 @@ describe("email shell — width", () => {
 
 describe("email banner — the brand band", () => {
   it("paints the banner cell with the accent token, so the dark swap carries it", () => {
-    expect(emailBanner()).toMatch(/<td[^>]*background-color:#8a9a5b[^>]*>/);
-    expect(msg().html).toMatch(/<td[^>]*background-color:#8a9a5b[^>]*>/);
+    expect(emailBanner()).toMatch(/<td[^>]*background-color:#616acb[^>]*>/);
+    expect(msg().html).toMatch(/<td[^>]*background-color:#616acb[^>]*>/);
   });
 
   it("rounds the band into the top of the card rather than squaring off the shell", () => {
@@ -169,11 +175,11 @@ describe("email banner — the brand band", () => {
   });
 
   it("drops the accent-coloured bar: it would vanish against an accent band", () => {
-    expect(emailBanner()).not.toMatch(/data-cell="on"[^>]*background-color:#8a9a5b/);
+    expect(emailBanner()).not.toMatch(/data-cell="on"[^>]*background-color:#616acb/);
     expect((emailBanner().match(/data-cell="on"/g) ?? []).length).toBe(5);
   });
 
-  it("uses literal whites on the band, never theme tokens the dark swap would flip into the olive", () => {
+  it("uses literal whites on the band, never theme tokens the dark swap would flip into the purple", () => {
     const banner = emailBanner("Daily digest");
     const textColors = [...banner.matchAll(/(?:^|;|")color:(#[0-9a-f]{6})/g)].map((m) => m[1]);
     const tokens = Object.values(THEME).map((t) => t.light);
