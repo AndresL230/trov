@@ -2,7 +2,7 @@
 
 Shared context store. One Cloudflare Worker on one origin serves the HTTP API,
 a stateless MCP endpoint at `/mcp`, and a full single-page app (TypeScript + Vite,
-served via the ASSETS binding). Live at `canopy.saplinglearn.com`.
+served via the ASSETS binding). Live at `trov.dev`.
 
 - `shared/` — Zod contract, vocabulary, D1 row types (imported by `src/` and `web/`)
 - `src/` — Worker: `index.ts` (router), `routes.ts` (Hono HTTP), `mcp.ts` (MCP tools),
@@ -106,7 +106,7 @@ The plugin connects by **browser sign-in** — no token to export. In Claude Cod
 That auto-wires the `trov` MCP server (`query` / `get_doc` / `record_session` …) and loads the
 `trov`, `load-context`, and `record-session` skills — no manual `claude mcp add`, no copying skill
 folders. (Not using the plugin, or connecting a headless client like Codex or CI? The pasted-token
-path still works: `claude mcp add --transport http trov https://canopy.saplinglearn.com/mcp --header "Authorization: Bearer canopy_mcp_..."`.)
+path still works: `claude mcp add --transport http trov https://trov.dev/mcp --header "Authorization: Bearer canopy_mcp_..."`.)
 
 > **Maintainers:** the plugin is at `plugins/trov/`; the marketplace manifest at
 > `.claude-plugin/marketplace.json`. Validate either with `claude plugin validate <path>`. The real

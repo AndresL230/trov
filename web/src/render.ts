@@ -115,7 +115,7 @@ export interface AppState {
   onboard: OnboardState;
   persons: Loadable<PersonSummary[]>;
   me: Me | null;
-  /** The org on screen: the slug in the page's path (`/o/<slug>/`). null on the picker. */
+  /** The org on screen: the slug in the page's path (`/<slug>/`). null on the picker. */
   orgSlug: string | null;
   /** `GET /api/o/<slug>/me`: my role and title there, and the org's connected repositories. */
   orgMe: Loadable<OrgMeResponse | null>;
@@ -2408,7 +2408,7 @@ function artProps(s: AppState, screen: ArtScreen): ArtProps {
   return {
     screen, route: s.artRoute, ui: s.art, me: s.me?.handle ?? "", admin: viewerIsAdmin(s), fmOpening: s.fmOpening,
     orgName: viewerOrg(s)?.name ?? "", repos: s.orgMe.data?.repos.all ?? [],
-    persons: s.persons.data, host: `${typeof location !== "undefined" ? location.host : "trov"}${s.orgSlug ? `/o/${s.orgSlug}` : ""}`,
+    persons: s.persons.data, host: `${typeof location !== "undefined" ? location.host : "trov"}${s.orgSlug ? `/${s.orgSlug}` : ""}`,
     theme: resolved(s),
     // Every ticket (the attach dialog's own read); the queue's filtered list until it lands.
     tickets: s.art.attachTickets.data ?? s.tickets.data.map((t) => ({ id: t.id, title: t.title, status: t.status })),

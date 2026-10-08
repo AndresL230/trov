@@ -83,7 +83,7 @@ const callback = (web: ReturnType<typeof hostingTestApp>, session: string | null
   web.request(`/hosting/${provider}/callback?${new URLSearchParams(q)}`, { headers: { cookie: [session, intent === null ? null : `trov_hx=${intent}`].filter(Boolean).join("; ") } }, e as unknown as Record<string, unknown>);
 
 /** Where a return about SaplingLearn lands. */
-const back = (outcome: string, provider: string | null = "vercel") => `/o/saplinglearn/?hosting=${outcome}${provider ? `&provider=${provider}` : ""}#org`;
+const back = (outcome: string, provider: string | null = "vercel") => `/saplinglearn/?hosting=${outcome}${provider ? `&provider=${provider}` : ""}#org`;
 const loc = async (r: Response | Promise<Response>): Promise<string> => {
   const res = await r;
   expect(res.status).toBe(302);
@@ -536,8 +536,8 @@ describe("connect: one org per installation, one install per org", () => {
   });
 
   it("the return URL: the outcome in the QUERY, Org settings' canonical hash; no intent → the root", () => {
-    expect(connectReturnUrl("acme", "taken", "vercel")).toBe("/o/acme/?hosting=taken&provider=vercel#org");
-    expect(connectReturnUrl("acme", "unknown_provider", null)).toBe("/o/acme/?hosting=unknown_provider#org");
+    expect(connectReturnUrl("acme", "taken", "vercel")).toBe("/acme/?hosting=taken&provider=vercel#org");
+    expect(connectReturnUrl("acme", "unknown_provider", null)).toBe("/acme/?hosting=unknown_provider#org");
     expect(connectReturnUrl(null, "expired", "vercel")).toBe("/?hosting=expired");
   });
 });

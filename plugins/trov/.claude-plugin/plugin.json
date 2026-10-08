@@ -1,12 +1,12 @@
 {
   "name": "trov",
   "description": "Trov — the team's shared context store. Bundles the orient→work→record skills (trov, load-context, record-session), the personal my-work view, the ticket-queue skill (tickets), the admin plan skills (read-plan, update-plan), session handoffs (handoff), the Prompt Library (prompts) and artifact pages — find, download, spin up, publish (artifacts) — and auto-wires the Trov MCP server. Connects by browser sign-in: run /mcp and choose Authenticate.",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "author": {
     "name": "SaplingLearn",
     "url": "https://github.com/SaplingLearn"
   },
-  "homepage": "https://canopy.saplinglearn.com",
+  "homepage": "https://trov.dev",
   "repository": "https://github.com/AndresL230/trov",
   "license": "AGPL-3.0-only",
   "keywords": ["trov", "context", "mcp", "skills", "team-memory", "tickets", "handoffs", "prompts", "artifacts"]

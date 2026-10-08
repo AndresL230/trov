@@ -30,10 +30,10 @@ describe("renderWelcomeEmail", () => {
     expect(m.html + m.text).not.toMatch(/sapling/i);
     expect(m.html).toContain("Hi Priya Natarajan,");
     expect(m.html).toContain("@priya");
-    expect(m.html).toContain('href="https://trov.test/o/acme/#guide"');
-    expect(m.text).toContain("https://trov.test/o/acme/#guide");
+    expect(m.html).toContain('href="https://trov.test/acme/#guide"');
+    expect(m.text).toContain("https://trov.test/acme/#guide");
     // Settings is where the handle/colour and the digest cadence live.
-    expect(m.html).toContain("https://trov.test/o/acme/#settings");
+    expect(m.html).toContain("https://trov.test/acme/#settings");
   });
 
   it("is transactional — no unsubscribe, and the digests' banner", () => {
@@ -50,7 +50,7 @@ describe("renderWelcomeEmail", () => {
   });
 
   it("welcomeUrl is the Get Started hash route the app lands a new person on", () => {
-    expect(welcomeUrl("https://trov.test", "acme")).toBe("https://trov.test/o/acme/#guide");
+    expect(welcomeUrl("https://trov.test", "acme")).toBe("https://trov.test/acme/#guide");
   });
 });
 

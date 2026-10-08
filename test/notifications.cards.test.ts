@@ -113,7 +113,7 @@ describe("Review queue rows", () => {
 });
 
 describe("Roadmap plan chips", () => {
-  it("labels are coloured chips: ADDED green, DONE olive, CHANGED blue", async () => {
+  it("labels are coloured chips: ADDED green, DONE purple, CHANGED blue", async () => {
     const r = await write_plan(systemCtx(), { narrative: "n", sprints: [
       { label: "Ship it", due: "2026-10-01", status: "in_progress" },
       { label: "Old name", due: "2026-10-15", status: "upcoming" },

@@ -183,7 +183,7 @@ back.
   row keeps a quiet "Connect a different account" action; its confirmation says the current account (`account`)
   will be replaced.
   **The return** mirrors GitHub's exactly (`connectNotice` / `connectNoticeCopy` in `web/src/github-app.ts`): the
-  provider sends the admin back to `/o/<org-slug>/?hosting=<outcome>&provider=<id>#org…`; the SPA reads
+  provider sends the admin back to `/<org-slug>/?hosting=<outcome>&provider=<id>#org…`; the SPA reads
   `?hosting=` ONCE on entering the org, shows a dismissible NOTICE at the top of the Hosting tab (tone ok / amber /
   red with its icon, `role="alert"` for red and `"status"` otherwise, a Dismiss ×), then strips the query from the
   address bar. One title + one body per outcome (the vocabulary is `HOSTING_CONNECT_OUTCOMES` in
@@ -365,7 +365,7 @@ interface HostingPollOutcome { env; part; provider: HostingProviderId; status: "
 | `PUT /api/o/:slug/environments/:env/parts/:part` | `{ provider, role?, label?, settings }` → `{ part, created }` (201 new) |
 | `DELETE /api/o/:slug/environments/:env/parts/:part` | → `{ ok, removed: { env, part, provider, legacy } }` |
 | `POST /api/o/:slug/hosting/:provider/connect` | → `{ url, method, expires_at }` — then navigate to `url`; an org already connected is replaced at the callback (no 409) |
-| `GET /hosting/:provider/callback` (the provider redirects here) | → 302 to `/o/<slug>/?hosting=<outcome>&provider=<id>#org` (`HOSTING_CONNECT_OUTCOMES`); `/?hosting=<outcome>` when the intent can't be read; `/` when signed out |
+| `GET /hosting/:provider/callback` (the provider redirects here) | → 302 to `/<slug>/?hosting=<outcome>&provider=<id>#org` (`HOSTING_CONNECT_OUTCOMES`); `/?hosting=<outcome>` when the intent can't be read; `/` when signed out |
 | `POST /api/o/:slug/hosting/:provider/test` | `{ scope?, env?, part? }` → `{ ok, detail, connection }` |
 | `POST /api/o/:slug/hosting/:provider/disconnect` | `{ scope? }` → `{ connection, upstream: "revoked" \| "failed" \| "none" }` |
 | `PUT /api/o/:slug/integrations/:kind[/:scope]` | `{ secret, config? }` — paste a token (existing API) |

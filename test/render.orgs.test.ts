@@ -55,23 +55,28 @@ afterEach(() => { setPrimaryRepo(null); });
 
 // ── where a page load lands ──────────────────────────────────────────────────
 describe("the org in the URL", () => {
-  it("reads the slug from /o/<slug>/…, and from nothing else", () => {
+  it("reads the slug from /<slug>/ (and the old /o/<slug>/…), never from a reserved or deeper path", () => {
+    expect(orgSlugFromPath("/acme/")).toBe("acme");
+    expect(orgSlugFromPath("/acme")).toBe("acme");
+    expect(orgSlugFromPath("/Acme/")).toBe("acme");
+    for (const p of ["/platform", "/platform/", "/billing/done", "/pricing", "/feed", "/api", "/o", "/o/", "/acme/anything", "/doc/some-slug"]) expect(orgSlugFromPath(p), p).toBeNull();
+    // The address before the prefix was dropped: still read, for a page or link that is on it.
     expect(orgSlugFromPath("/o/acme/")).toBe("acme");
     expect(orgSlugFromPath("/o/acme")).toBe("acme");
     expect(orgSlugFromPath("/o/Acme/anything")).toBe("acme");
     for (const p of ["/", "/terms", "/o/", "/o", "/orgs/acme/", "/o/-bad/", "/o/a/", "/api/o/acme/me"]) expect(orgSlugFromPath(p), p).toBeNull();
   });
   it("writes every in-app URL under the org, with the hash route after it", () => {
-    expect(orgBase("acme")).toBe("/o/acme/");
+    expect(orgBase("acme")).toBe("/acme/");
     expect(orgBase(null)).toBe("/");
-    expect(orgHref("acme")).toBe("/o/acme/");
-    expect(orgHref("acme", "#tickets/12")).toBe("/o/acme/#tickets/12");
-    expect(orgHref("acme", "org")).toBe("/o/acme/#org");
-    expect(orgHref("acme", "#")).toBe("/o/acme/");
+    expect(orgHref("acme")).toBe("/acme/");
+    expect(orgHref("acme", "#tickets/12")).toBe("/acme/#tickets/12");
+    expect(orgHref("acme", "org")).toBe("/acme/#org");
+    expect(orgHref("acme", "#")).toBe("/acme/");
   });
 });
 
-describe("resolveLanding — /, /o/<slug>/, old deep links", () => {
+describe("resolveLanding — /, /<slug>/, old deep links", () => {
   it("one org: `/` (and an old `/#tickets/12`) opens it, to be rewritten under its path", () => {
     expect(resolveLanding({ pathSlug: null, orgs: [sapling()] })).toEqual({ kind: "org", slug: "saplinglearn", rewrite: true });
     // A stale last-used slug changes nothing for a one-org person.
@@ -86,7 +91,7 @@ describe("resolveLanding — /, /o/<slug>/, old deep links", () => {
   it("no org: the picker", () => {
     expect(resolveLanding({ pathSlug: null, orgs: [], lastUsed: "acme" })).toEqual({ kind: "picker", lost: null });
   });
-  it("/o/<slug>/: that org when it is theirs (nothing to rewrite); not theirs → the picker, naming it", () => {
+  it("/<slug>/: that org when it is theirs (nothing to rewrite); not theirs → the picker, naming it", () => {
     expect(resolveLanding({ pathSlug: "acme", orgs: [acme(), sapling()], lastUsed: "saplinglearn" })).toEqual({ kind: "org", slug: "acme", rewrite: false });
     expect(resolveLanding({ pathSlug: "globex", orgs: [acme()] })).toEqual({ kind: "picker", lost: "globex" });
     expect(resolveLanding({ pathSlug: "globex", orgs: [] })).toEqual({ kind: "picker", lost: "globex" });
@@ -158,8 +163,8 @@ describe("the switcher's menu", () => {
   it("lists my orgs with MY role in each; each row is a real link to that org, the current one marked", () => {
     const html = menu(mine());
     expect(html).toContain('role="dialog" aria-label="Organizations"');
-    expect(html).toMatch(/<a href="\/o\/acme\/" data-act="orgsSwitch" data-arg="acme" data-orgs-item class="cnpy-menurow is-active" aria-current="true"/);
-    expect(html).toMatch(/<a href="\/o\/saplinglearn\/" data-act="orgsSwitch" data-arg="saplinglearn" data-orgs-item class="cnpy-menurow"/);
+    expect(html).toMatch(/<a href="\/acme\/" data-act="orgsSwitch" data-arg="acme" data-orgs-item class="cnpy-menurow is-active" aria-current="true"/);
+    expect(html).toMatch(/<a href="\/saplinglearn\/" data-act="orgsSwitch" data-arg="saplinglearn" data-orgs-item class="cnpy-menurow"/);
     expect(html).toContain(">Owner<");
     expect(html).toContain(">Member<");
     expect(html.match(/aria-current="true"/g)).toHaveLength(1);
@@ -213,9 +218,9 @@ describe("the org picker / first run", () => {
 
   it("accepting lands a new owner on Org settings (the setup checklist) and anyone else on the org's My Work", () => {
     const inv = (role: "owner" | "admin" | "member") => ({ org: { slug: "acme", name: "Acme" }, role });
-    expect(acceptLanding(inv("owner"))).toBe("/o/acme/#org");
-    expect(acceptLanding(inv("admin"))).toBe("/o/acme/");
-    expect(acceptLanding(inv("member"))).toBe("/o/acme/");
+    expect(acceptLanding(inv("owner"))).toBe("/acme/#org");
+    expect(acceptLanding(inv("admin"))).toBe("/acme/");
+    expect(acceptLanding(inv("member"))).toBe("/acme/");
   });
   it("a superadmin — with no organization at all — is offered the Platform area; nobody else is", () => {
     const none = mine({ orgs: [], invites: [], superadmin: true });
@@ -245,9 +250,9 @@ describe("the org picker / first run", () => {
     const html = picker(mine(), { hash: "#tickets/12" });
     expect(html).toContain("Choose an organization");
     expect(html).toContain("Your organizations");
-    expect(html).toMatch(/<a href="\/o\/acme\/#tickets\/12" data-act="orgsSwitch" data-arg="acme" class="cnpy-orgs-row" aria-label="Open Acme Robotics"/);
-    expect(html).toContain('href="/o/saplinglearn/#tickets/12"');
-    expect(html).toContain("/o/acme/");
+    expect(html).toMatch(/<a href="\/acme\/#tickets\/12" data-act="orgsSwitch" data-arg="acme" class="cnpy-orgs-row" aria-label="Open Acme Robotics"/);
+    expect(html).toContain('href="/saplinglearn/#tickets/12"');
+    expect(html).toContain("/acme/");
     expect(html).toContain(">Owner<");
     expect(html).not.toContain("Or wait for an invitation");
     expect(html).not.toContain("Welcome to Trov");
@@ -257,7 +262,7 @@ describe("the org picker / first run", () => {
     expect(html).toContain("That organization didn&#39;t open");
     expect(html).toContain(lostOrgSentence("globex").replace(/'/g, "&#39;"));
     expect(lostOrgSentence("globex")).toBe("You don't have access to “globex”. It may have been suspended, you may have been removed from it, or the link may be wrong.");
-    expect(html).toContain('href="/o/saplinglearn/"');
+    expect(html).toContain('href="/saplinglearn/"');
     expect(html.match(/class="cnpy-orgs-row"/g)).toHaveLength(1);
   });
   it("INVITATIONS: who invited me, to what and as what, with Accept and Decline — also for a person with no org yet", () => {
@@ -312,7 +317,7 @@ describe("create an organization — the Add organization dialog's rules, minus 
     expect(html).toContain('role="dialog" aria-modal="true" aria-labelledby="orgs-create-t" aria-describedby="orgs-create-d"');
     expect(html).toContain('<label for="orgs-create-name"');
     expect(html).toContain('<label for="orgs-create-slug"');
-    expect(html).toContain("/o/acme-robotics/");
+    expect(html).toContain("/acme-robotics/");
     expect(html).toContain("You become its owner");
     expect(html).toMatch(/<button type="button" data-act="orgsCreateSubmit" class="cnpy-accentbtn"[^>]*>Create organization<\/button>/);
     expect(html).not.toContain("Org admin");
@@ -490,7 +495,7 @@ describe("the repository comes from the org", () => {
   });
 
   const artProps = (over: Partial<ArtProps> = {}): ArtProps => ({
-    screen: "artifactnew", route: ART_ROUTE_NONE, ui: initialArtUi(), me: "ines", admin: false, persons: [], host: "trov.dev/o/acme", theme: "light", tickets: [], sprints: [], ...over,
+    screen: "artifactnew", route: ART_ROUTE_NONE, ui: initialArtUi(), me: "ines", admin: false, persons: [], host: "trov.dev/acme", theme: "light", tickets: [], sprints: [], ...over,
   });
   it("a new artifact's Repo list is the org's connected repositories, primary first", () => {
     expect(artifactRepoOptions(["acme/web", "acme/api"], "")).toEqual(["acme/web", "acme/api"]);
@@ -503,7 +508,7 @@ describe("the repository comes from the org", () => {
     expect(html).toContain('<option value="acme/web" selected>acme/web</option>');
     expect(html).toContain('<option value="acme/api">acme/api</option>');
     expect(html).toContain("Everyone in Acme Robotics can open it once it's uploaded.");
-    expect(html).toContain("trov.dev/o/acme/#artifacts/");
+    expect(html).toContain("trov.dev/acme/#artifacts/");
   });
   it("with no repository connected the Repo field is an empty state that links to Org settings › Repositories", () => {
     const html = artifactsView(artProps({ repos: [] }));

@@ -77,7 +77,7 @@ export class NotFound extends Error {}
 // Every tenant route lives at `/api/o/<slug>/<suffix>` (canopy-multitenancy.md §6.3). The functions
 // below still name a route by its SUFFIX (`/feed`, `/api/handoffs`); `apiUrl` is the one place that
 // turns it into the current org's URL, and every request in the SPA is sent through `call`. main.ts
-// sets the slug once at boot from the page's path (`/o/<slug>/`); switching org is a page load.
+// sets the slug once at boot from the page's path (`/<slug>/`); switching org is a page load.
 let apiOrg: string | null = null;
 export function setApiOrg(slug: string | null): void { apiOrg = slug; }
 export const apiOrgSlug = (): string | null => apiOrg;
@@ -448,7 +448,7 @@ export function listOrgAudit(slug: string, limit = 50): Promise<IntT.OrgAuditDTO
 // Admin+ except the provider catalogue. A token is pasted through the Integrations calls above (the provider's
 // kind is `HOSTING_INTEGRATION_KIND[provider]`); an install / OAuth connection is `startHostingConnect` + a
 // full-page navigation to its `url` — the provider sends the browser back to `/hosting/<provider>/callback`,
-// which always redirects: to `/o/<slug>/?hosting=<outcome>&provider=<id>#org` (`HOSTING_CONNECT_OUTCOMES`,
+// which always redirects: to `/<slug>/?hosting=<outcome>&provider=<id>#org` (`HOSTING_CONNECT_OUTCOMES`,
 // shared/hosting.ts — read `?hosting=` once at boot, like `?github=`), `/?hosting=<outcome>` when its intent
 // could not be read, or `/` when nobody was signed in.
 import type * as HostT from "@shared/hosting";

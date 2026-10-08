@@ -220,7 +220,7 @@ export function createOrgModal(d: CreateOrgDraft): string {
         <div style="margin-top:14px">
           <label for="orgs-create-slug" style="${FIELD_LABEL}">Address</label>
           ${input("orgs-create-slug", "orgsCreateSlug", d.slug, e.slug, `maxlength="39" autocapitalize="off" placeholder="acme-robotics"`, ";font-family:var(--code);font-size:13px")}
-          ${e.slug ? "" : `<div id="orgs-create-slug-h" style="font-size:11.5px;color:var(--fg-40);margin-top:6px;line-height:1.45;overflow-wrap:anywhere">Its links start with <span style="font-family:var(--code);font-size:11.5px;color:var(--fg-55)">/o/${esc(d.slug || "acme-robotics")}/</span>. Lowercase letters, digits and hyphens. It can't be changed later.</div>`}
+          ${e.slug ? "" : `<div id="orgs-create-slug-h" style="font-size:11.5px;color:var(--fg-40);margin-top:6px;line-height:1.45;overflow-wrap:anywhere">Its links start with <span style="font-family:var(--code);font-size:11.5px;color:var(--fg-55)">/${esc(d.slug || "acme-robotics")}/</span>. Lowercase letters, digits and hyphens. It can't be changed later.</div>`}
         </div>
         ${e.form ? `<div role="alert" style="font-size:12.5px;line-height:1.5;color:var(--red);margin-top:14px">${esc(e.form)}</div>` : ""}
         <div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px">
@@ -272,7 +272,7 @@ export function orgPickerView(p: OrgPickerProps): string {
         ${orgTile(o.name, 32, o.logo_url)}
         <span style="flex:1;min-width:0;line-height:1.35">
           <span style="display:block;font-size:14px;font-weight:600;overflow-wrap:anywhere">${esc(o.name)}</span>
-          <span style="display:block;font-family:var(--code);font-size:11.5px;color:var(--fg-40);overflow-wrap:anywhere">/o/${esc(o.slug)}/</span>
+          <span style="display:block;font-family:var(--code);font-size:11.5px;color:var(--fg-40);overflow-wrap:anywhere">/${esc(o.slug)}/</span>
         </span>
         ${roleChip(o.role)}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;color:var(--fg-40)"><path d="M9 6l6 6-6 6"></path></svg>

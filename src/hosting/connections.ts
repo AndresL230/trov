@@ -344,13 +344,13 @@ export interface ConnectOutcome { location: string; outcome: HostingConnectOutco
 
 /**
  * The page a return lands on: Org settings of the org the intent named, with the outcome in the QUERY (the
- * hash is the SPA's route) — `/o/<slug>/?hosting=<outcome>&provider=<id>#org`; `/?hosting=<outcome>` when no
+ * hash is the SPA's route) — `/<slug>/?hosting=<outcome>&provider=<id>#org` (an org's address, `orgPath`); `/?hosting=<outcome>` when no
  * intent could be read. `#org` is Org settings' canonical hash (Integrations): there is no Hosting tab yet —
  * the UI that adds one can point this at it.
  */
 export function connectReturnUrl(slug: string | null, outcome: HostingConnectOutcome, provider: HostingProviderId | null): string {
   if (!slug) return `/?hosting=${outcome}`;
-  return `/o/${encodeURIComponent(slug)}/?hosting=${outcome}${provider ? `&provider=${provider}` : ""}#org`;
+  return `/${encodeURIComponent(slug)}/?hosting=${outcome}${provider ? `&provider=${provider}` : ""}#org`;
 }
 
 /**

@@ -17,7 +17,7 @@
 // a person coming back from a provider): it resolves the signed-in person from the session cookie itself, and
 // src/data/gate.ts lets exactly `/hosting/<provider>/callback` past the one-org alias gate:
 //
-//   GET    /hosting/:provider/callback           public   302 → `/o/<slug>/?hosting=<outcome>&provider=<p>#org`
+//   GET    /hosting/:provider/callback           public   302 → `/<slug>/?hosting=<outcome>&provider=<p>#org`
 //                                                         | `/?hosting=<outcome>` (no intent) | `/` (nobody signed in)
 //
 // Cookie only, never a token: a request to the org routes that carries an `Authorization` header is refused

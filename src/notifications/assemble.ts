@@ -31,17 +31,21 @@ function mix(fg: string, bg: string, t: number): string {
 
 /** Site tokens (web/src/trov.css), light → dark. Every colour in the email comes from here. */
 const BASE = {
-  ground: { light: "#f3f0e9", dark: "#141311" }, // page behind the card (one step past --bg)
-  bg: { light: "#faf8f3", dark: "#1c1a16" }, // --bg → card
-  fg: { light: "#1a1814", dark: "#ede9e2" }, // --fg
-  fg70: { light: "#595752", dark: "#b2afa9" }, // --fg-70 flattened over --bg
-  fg55: { light: "#7f7d78", dark: "#8f8c86" }, // --fg-55
-  fg40: { light: "#a09e9a", dark: "#706d68" }, // --fg-40
-  border: { light: "#e5e3de", dark: "#33312c" }, // --border
-  borderStrong: { light: "#d5d2cd", dark: "#46433f" }, // --border-strong
-  hover: { light: "#f0eee8", dark: "#2c2a25" }, // --hover (code spans)
-  accent: { light: "#8a9a5b", dark: "#9aab65" }, // --accent (mark, fills)
-  accentText: { light: "#5c6a3a", dark: "#9aab65" }, // accent as small TEXT: the light --accent is ~2.9:1 on --bg, this olive is ~5.6:1
+  // Trov's brand: the purple of the mark (`--mark` #616ACB) on the light theme's cool neutrals. The dark
+  // column is the same purple family on near-black — mail is the brand's, not the app's olive dark theme.
+  // The card is a hair off white on purpose: #ffffff is the literal ink on the band and on buttons, and
+  // the dark swap rewrites every inline colour that equals a token.
+  ground: { light: "#f1f1f5", dark: "#0f0f12" }, // page behind the card (one step past --bg)
+  bg: { light: "#fbfbfd", dark: "#17171b" }, // the card
+  fg: { light: "#16161a", dark: "#ededf0" }, // --fg
+  fg70: { light: "#4f4f58", dark: "#b3b3b9" }, // --fg-70
+  fg55: { light: "#6e6e78", dark: "#8b8b93" }, // --fg-55
+  fg40: { light: "#8e8e98", dark: "#6c6c74" }, // --fg-40
+  border: { light: "#e6e6ea", dark: "#2b2b31" }, // --border
+  borderStrong: { light: "#d6d6dc", dark: "#3d3d45" }, // --border-strong
+  hover: { light: "#f0f0f4", dark: "#25252b" }, // --hover (code spans)
+  accent: { light: "#616acb", dark: "#5e6ad2" }, // the mark's purple (the band, button fills): white ink on it is ≥ 4.5:1 in both
+  accentText: { light: "#4a54b8", dark: "#a4abf2" }, // the purple as small TEXT: ~6.3:1 on the light card, lightened for the dark one
   green: { light: "#1b6c42", dark: "#5ab86c" }, // --green (MERGED / ADDED)
   blue: { light: "#3e6f8a", dark: "#6aa8c4" }, // --blue (CHANGED)
   amber: { light: "#b4562c", dark: "#d98a52" }, // --amber (priority / LOW CONFIDENCE)
@@ -200,10 +204,10 @@ function dateRange(window: Window, timeZone: string): string {
 /**
  * On-band ink. Deliberately literal, never THEME tokens: `darkCss()` rewrites
  * any inline colour matching a token, which would flip these to dark ink and
- * sink them into the olive in a dark client. The band itself IS tokenised, so
+ * sink them into the purple in a dark client. The band itself IS tokenised, so
  * it still swaps accent light -> dark.
  */
-const BAND = { ink: "#ffffff", subline: "#eceedd", dot: "#cfd8b4" } as const;
+const BAND = { ink: "#ffffff", subline: "#e6e8f9", dot: "#bcc1ef" } as const;
 
 /** The mark, `side` px square: one table, a filled cell per block of the mark. */
 function emailMark(side: number): string {

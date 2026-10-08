@@ -192,9 +192,9 @@ describe("the owner's billing routes", () => {
     const { cookie, sub } = await paidOrg("maya", "team", "maya-co");
     const r = await bcall<{ url: string }>("POST", "/api/o/maya-co/billing/portal", cookie, {});
     expect([r.status, r.json]).toEqual([200, { url: expect.stringMatching(/^https:\/\/billing\.stripe\.com\/p\/session\//) }]);
-    expect(stripe.portals).toEqual([{ customer: sub.customer, return_url: "http://localhost/o/maya-co/#org/general", flow: expect.anything() }]);
+    expect(stripe.portals).toEqual([{ customer: sub.customer, return_url: "http://localhost/maya-co/#org/general", flow: expect.anything() }]);
     const [c] = stripe.callsTo("POST", "/v1/billing_portal/sessions");
-    expect(Object.fromEntries(c.params)).toEqual({ customer: sub.customer, return_url: "http://localhost/o/maya-co/#org/general" });
+    expect(Object.fromEntries(c.params)).toEqual({ customer: sub.customer, return_url: "http://localhost/maya-co/#org/general" });
     expect(c.headers.get("idempotency-key")).toMatch(/^trov-portal-/);
   });
 
@@ -236,14 +236,14 @@ describe("the owner's billing routes", () => {
     expect(r.status).toBe(200);
     const c = stripe.callsTo("POST", "/v1/billing_portal/sessions").at(-1)!;
     expect(Object.fromEntries(c.params)).toEqual({
-      customer: sub.customer, return_url: "http://localhost/o/maya-co/#org/general",
+      customer: sub.customer, return_url: "http://localhost/maya-co/#org/general",
       "flow_data[type]": "subscription_update_confirm",
       "flow_data[subscription_update_confirm][subscription]": sub.id,
       "flow_data[subscription_update_confirm][items][0][id]": sub.item,
       "flow_data[subscription_update_confirm][items][0][price]": PRICES.team,
       "flow_data[subscription_update_confirm][items][0][quantity]": "1",
       "flow_data[after_completion][type]": "redirect",
-      "flow_data[after_completion][redirect][return_url]": "http://localhost/o/maya-co/#org/general",
+      "flow_data[after_completion][redirect][return_url]": "http://localhost/maya-co/#org/general",
     });
     expect(stripe.callsTo("POST", "/v1/checkout/sessions")).toHaveLength(1); // the original purchase only
     // Nothing changed here yet: the plan moves when Stripe says the subscription did.
@@ -279,7 +279,7 @@ describe("the owner's billing routes", () => {
     const again = stripe.lastSession();
     expect(again.id).not.toBe(session.id);
     expect(r.json.url).toBe(again.url);
-    expect(again).toMatchObject({ customer: sub.customer, customer_email: null, price: PRICES.personal, cancel_url: "http://localhost/o/maya-co/#org/general" });
+    expect(again).toMatchObject({ customer: sub.customer, customer_email: null, price: PRICES.personal, cancel_url: "http://localhost/maya-co/#org/general" });
     expect(again.metadata).toMatchObject({ trov_plan: "personal", trov_person: "maya", trov_org: "maya-co" });
     const newSub = stripe.pay(again.id);
     expect(newSub.customer).toBe(sub.customer);

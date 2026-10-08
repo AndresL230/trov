@@ -76,7 +76,7 @@ only a RANDOM `state`; what it answers for — `{ o, s, p, h, state, exp }`, HMA
 whatever the outcome). At the ROOT, `GET /hosting/:provider/callback` is a PUBLIC path (`HOSTING_CALLBACK_PATH` in
 `src/auth/principal.ts`; `src/data/gate.ts` lets exactly that shape past the one-org alias) that reads the session
 cookie itself and ALWAYS redirects — never JSON, never a 500: nobody signed in → `/`; otherwise
-`/o/<slug>/?hosting=<outcome>&provider=<id>#org` (`/?hosting=<outcome>` when the intent cannot be read; `#org` until
+`/<slug>/?hosting=<outcome>&provider=<id>#org` (`/?hosting=<outcome>` when the intent cannot be read; `#org` until
 the UI adds a Hosting tab), the outcome one of `HOSTING_CONNECT_OUTCOMES` (`shared/hosting.ts`) — never provider text.
 It binds only for that browser's intent, that provider, the same person, still an admin (re-checked live), after the
 code exchange through `hostFetch`; an installation ANOTHER org holds is `taken` (a platform read,

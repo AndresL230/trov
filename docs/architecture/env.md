@@ -48,8 +48,18 @@ the secret also verifies the uninstall webhook) + `VERCEL_INTEGRATION_SLUG` (the
 `<origin>/webhook/hosting/vercel`), and `NETLIFY_OAUTH_CLIENT_ID` + `NETLIFY_OAUTH_CLIENT_SECRET` (Redirect URI
 `<origin>/hosting/netlify/callback`). Every provider CREDENTIAL is per org (Org settings), never a Worker secret.
 
+**Preview deployments** (`[previews.*]` in `wrangler.toml`; `npm run deploy:preview`). A Workers Builds
+build of any branch but `main` deploys a Preview: the branch's code on its own URL, with ONLY the bindings
+of the `[previews]` section — the empty D1 `trov-preview` and the R2 bucket `trov-preview-artifacts`,
+`NOTIFICATIONS_MODE = "local"`, no GitHub App slug. It never gets production's database or bucket, so a
+branch's migrations run against `trov-preview` only (`[env.preview]` exists solely so that database can be
+migrated by name; nothing is deployed to it). **The non-production deploy command in the Cloudflare
+dashboard must be `npm run deploy:preview` — never the production command**: Cloudflare refuses `wrangler
+deploy` from a branch build, but it does NOT refuse `wrangler d1 migrations apply trov --remote`, which
+would apply an unreviewed branch's migration to production. Build command for both: `npm run build:web`.
+
 Vars (`[vars]` in `wrangler.toml`): `PUBLIC_ORIGIN` (absolute origin for links inside email),
-`NOTIFICATIONS_MODE` (`local` default / `resend`), `GITHUB_APP_SLUG` (the App's URL name; empty = not
+`NOTIFICATIONS_MODE` (`resend` in production since 2026-10-07; `local` writes bodies to a table and sends nothing — a deploy sets it from `wrangler.toml`, so a dashboard-only change is undone by the next deploy), `GITHUB_APP_SLUG` (the App's URL name; empty = not
 configured), and two LEGACY ones nothing reads any more (`0042_organizations` copied them
 into SaplingLearn's `org_repos` / `org_environments` rows; Phase 7 deletes them): `GITHUB_REPO` and
 `REPO_ENVIRONMENTS` — a JSON list in the shape `repoEnvironments()` (`src/repo/config.ts`) parses: per environment

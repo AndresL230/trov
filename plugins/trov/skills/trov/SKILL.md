@@ -240,7 +240,7 @@ If you leave or are removed from an organization, its connections and tokens sto
 **Manual fallback** — wire the MCP server and copy the skills yourself:
 
 ```bash
-claude mcp add --transport http trov https://canopy.saplinglearn.com/mcp \
+claude mcp add --transport http trov https://trov.dev/mcp \
   --header "Authorization: Bearer trov_mcp_…"
 # then copy the skill folders into another repo / your home dir:
 cp -r .claude/skills/{trov,load-context,record-session,my-work,tickets,read-plan,update-plan,handoff,prompts,artifacts} ~/.claude/skills/

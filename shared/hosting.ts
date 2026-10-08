@@ -181,7 +181,7 @@ export function hostingRevokedReasonText(reason: HostingRevokedReason, providerL
 
 /**
  * How an install / OAuth return ended — `GET /hosting/:provider/callback` always redirects, to
- * `/o/<slug>/?hosting=<outcome>&provider=<id>#org` (or `/?hosting=<outcome>` when the sealed intent could not be
+ * `/<slug>/?hosting=<outcome>&provider=<id>#org` (or `/?hosting=<outcome>` when the sealed intent could not be
  * read). ONE vocabulary; the SPA words each code, and nothing from the provider ever rides along:
  *   connected            stored and bound to the org
  *   expired              no intent of ours, a state that does not match it, another provider's, or too late

@@ -19,6 +19,7 @@ import { run } from "./data/platform-sql";
 import { handleArtifactUpload, isUploadRequest } from "./artifacts/upload";
 import { handleArtifactDownload, isDownloadRequest } from "./artifacts/download";
 import type { Env } from "./env";
+import { orgPath, orgSlugOfPath, orgSlugProblem } from "@shared/orgs";
 
 /** `index.html` from the assets binding. Its html handling may answer `/index.html` with a redirect to
  *  `/`; that one hop is followed here, so the browser's URL never changes. */
@@ -87,15 +88,21 @@ export default {
     // page is re-checked for the token's principal at download time
     // (src/artifacts/download.ts).
     if (isDownloadRequest(url.pathname)) return handleArtifactDownload(request, env);
-    // The SPA lives at `/o/<slug>/` (hash routing after it): any GET under `/o/` is the app shell, asked of
-    // the assets binding by name — no reliance on its SPA mode. The shell is public (it signs the visitor in);
-    // the org's data is behind `/api/o/:slug` and its membership gate.
+    // The SPA lives at `/<slug>/` (hash routing after it): a GET for `/<slug>` or `/<slug>/`, where the
+    // segment is a valid org slug that is NOT reserved (shared/orgs.ts `orgSlugOfPath` — every route and
+    // static page at the root is reserved, so an org can never shadow one), is the app shell, asked of the
+    // assets binding by name — no reliance on its SPA mode. The shell is public (it signs the visitor in);
+    // the org's data is behind `/api/o/:slug` and its membership gate. The address used to be
+    // `/o/<slug>/…`: that is redirected for good, query kept (the browser carries the hash across).
     // `/platform` is the superadmin's area OUTSIDE any org (a superadmin may belong to none): the same
     // shell; what it shows comes from `/api/platform/*`, which 404s everyone who is not a superadmin.
     // `/billing/done` is the waiting room Stripe sends a buyer back to (web/src/billing.ts): the same shell,
     // outside any org — the buyer has none yet. What it shows comes from `/api/billing/status`.
-    const isShellPath = url.pathname.startsWith("/o/") || url.pathname === "/platform" || url.pathname.startsWith("/platform/") || url.pathname === BILLING_DONE_PATH;
-    if ((request.method === "GET" || request.method === "HEAD") && isShellPath) return spaShell(request, env, url);
+    const readOnly = request.method === "GET" || request.method === "HEAD";
+    const old = readOnly ? /^\/o\/([^/]+)(?:\/.*)?$/.exec(url.pathname) : null;
+    if (old && orgSlugProblem(old[1].toLowerCase()) === null) return Response.redirect(new URL(`${orgPath(old[1].toLowerCase())}${url.search}`, url).toString(), 301);
+    const isShellPath = (orgSlugOfPath(url.pathname) !== null && !url.pathname.startsWith("/o/")) || url.pathname === "/platform" || url.pathname.startsWith("/platform/") || url.pathname === BILLING_DONE_PATH;
+    if (readOnly && isShellPath) return spaShell(request, env, url);
     return app.fetch(request, env, ctx);
   },
 

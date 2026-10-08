@@ -729,11 +729,11 @@ function enterPlatform(hash: string): void {
 }
 
 /** Open an org: every request from here on is its (`/api/o/<slug>/…`), the address bar says
- *  `/o/<slug>/` with the hash route after it, and this browser remembers it as last used. */
+ *  `/<slug>/` with the hash route after it, and this browser remembers it as last used. */
 function enterOrg(slug: string, hash: string): void {
   const query = new URLSearchParams(location.search);
   const link = query.get("link");
-  // The return from GitHub after connecting the App (src/github-app/connect.ts): `/o/<slug>/?github=<outcome>#org/repos`.
+  // The return from GitHub after connecting the App (src/github-app/connect.ts): `/<slug>/?github=<outcome>#org/repos`.
   // Read once, here — the address bar is rewritten below, so a reload does not say it again.
   const github = query.get("github");
   if (isGithubConnectOutcome(github)) {
@@ -2001,7 +2001,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // Return-to: the hash never reaches the server, so stash it for the boot
       // after /auth/callback lands on "/" (an email deep link survives sign-in).
       // Not #site: that IS the landing page, and returning to it strands them outside the app.
-      // The org they were on (`/o/<slug>/`) is stashed the same way: the callback lands on "/".
+      // The org they were on (`/<slug>/`) is stashed the same way: the callback lands on "/".
       try {
         if (location.hash && location.hash !== "#site") sessionStorage.setItem(RETURN_HASH_KEY, location.hash);
         const from = orgSlugFromPath(location.pathname);

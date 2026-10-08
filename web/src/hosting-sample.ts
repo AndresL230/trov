@@ -2081,7 +2081,7 @@ export const HOSTING_SAMPLE_POLL: HostingPollOutcome[] = [
   { env: "production", part: "docs", provider: "netlify", status: "skipped", written: 0, detail: "not connected" },
 ];
 
-/** The return from a provider lands on `/o/<slug>/?hosting=<outcome>&provider=<id>#org` (src/hosting/connections.ts
+/** The return from a provider lands on `/<slug>/?hosting=<outcome>&provider=<id>#org` (src/hosting/connections.ts
  *  `connectReturnUrl`). The vocabulary is ONE list, `HOSTING_CONNECT_OUTCOMES` (shared/hosting.ts); these are its
  *  refusals — every outcome but `connected` — each of which the UI words as a sentence. */
 export const HOSTING_CONNECT_ERROR_CODES: readonly Exclude<HostingConnectOutcome, "connected">[] =

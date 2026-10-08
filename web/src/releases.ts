@@ -104,6 +104,7 @@ export const RELEASES: Release[] = [
       changed: [
         "`hx_*` metrics are pruned with the hourly usage metrics (100 days); `hosting_deploys` after 180 days.",
         "Deleting an environment also deletes its stored parts, their poll state and deploy history, in the same batch.",
+        "`hosting` is a reserved org slug (`RESERVED_ORG_SLUGS`): the provider callback answers at the root, `/hosting/<provider>/callback`, and lands back on the org's own address, `/<slug>/?hosting=<outcome>`.",
         "Org settings › Integrations lists a hosting provider's credential once a part uses it; pasting a token over an installed connection supersedes the install.",
         "Connect with Vercel / Netlify holds the GitHub App's guarantees: one org per installation (a partial unique index; a second org gets `taken`), one live install per org — connecting a different one REPLACES it, no Disconnect first (the GitHub App's rule since #110; the replaced grant is removed on the provider's side, best effort), the installation id only from the provider's own answer, a random `state` with the sealed intent in the `trov_hx` cookie, a public callback that never answers JSON, the outcome as `?hosting=<outcome>` (`HOSTING_CONNECT_OUTCOMES`), the row, credential and config written in ONE batch, a provider-side 401 at Test connection ending the binding, `revoked_by = 'system'` and a CHECKed `revoked_reason`, and `manage_url` on every connection.",
       ],
@@ -129,13 +130,19 @@ export const RELEASES: Release[] = [
       "A sync writes at most 50 summaries each time you run it. A larger backlog takes more than one sync.",
       "Closing or reloading the tab that started a sync stops it after the step it is on. Nothing is lost: the panel says it did not finish, and the next sync picks up where it left off.",
       "If GitHub is not connected, the panel says so and takes an admin to the place to connect it: Org settings › Repositories where the Trov App is offered, or Integrations for a token.",
+      "The page where you approve an app (Connect an app), and its sign-in and error pages, are in the brand's purple on white.",
+      "Trov's emails are in the brand's purple: the digest, invitations and the welcome message, in light and in dark mail clients.",
+      "An organization's address is shorter: trov.dev/your-org/ instead of trov.dev/o/your-org/. Old links and bookmarks still work and take you to the new address.",
       "If the Trov App is installed on a GitHub account that does not own your repository, Org settings › Repositories and the Sync panel now say so, naming the account and the repository. Connecting the right account replaces the old connection; you no longer have to disconnect first.",
       "A payment that is past due does not stop AI summaries. When a plan ends they stop, and new items show an excerpt until the plan is renewed.",
     ],
     ops: [
       "Apply migration `0046_sync_runs` (additive: the table `sync_runs` and one index). It is safe on live data and with the previous Worker running. To roll back, deploy the previous Worker and `DROP TABLE sync_runs`.",
       "AI summaries stay OFF until the platform key is set: `wrangler secret put GEMINI_API_KEY`. One key serves every organization. From then on each summarizer call is counted per organization in `org_usage_daily` and each plan's monthly allowance applies (`ai_summaries` in `shared/plans.ts`: 300 Personal, 3,000 Team, unlimited Enterprise — placeholders; an override per org works like every other limit). `docs/architecture/plans.md` › AI summaries has what counts, the reset, and how to estimate cost.",
-      "No cron trigger change: run records older than 90 days are deleted by the existing daily cron. No plugin change.",
+      "Outgoing mail is ON: `NOTIFICATIONS_MODE = \"resend\"` in `wrangler.toml` (it had been set in the Cloudflare dashboard, and the next deploy put it back to `local`). Needs the `RESEND_API_KEY` secret, which is set.",
+      "Branch builds deploy a Preview against their own empty database (`[previews]` in `wrangler.toml`: D1 `trov-preview`, R2 `trov-preview-artifacts`). In the Cloudflare dashboard, Builds › non-production branches must use build command `npm run build:web` and deploy command `npm run deploy:preview` — never the production deploy command, which applies migrations to the production database.",
+      "No cron trigger change: run records older than 90 days are deleted by the existing daily cron.",
+      "Trov plugin 0.7.1 connects to `https://trov.dev/mcp` (0.7.0 still pointed at the old canopy.saplinglearn.com address, which now redirects and cannot be signed in to). Update the plugin (`/plugin marketplace update trov`, then reinstall or `/reload-plugins`), then `/mcp` → trov → Authenticate.",
       "`LOCAL_UPSTREAM` is a local-development value only (a loopback stand-in for GitHub and Gemini during a Sync). Do not set it as a secret; a value that is not `http://127.0.0.1` or `http://localhost` is ignored, and so is any value while a live Stripe key is set. It and `STRIPE_TEST_API_BASE` are described together in `.dev.vars.example`.",
     ],
     patches: {
@@ -155,6 +162,7 @@ export const RELEASES: Release[] = [
         "`src/platform/loopback.ts` and `holdsLiveKey` (`src/billing/config.ts`): the one test both local stand-ins (`LOCAL_UPSTREAM`, `STRIPE_TEST_API_BASE`) pass — a loopback http origin, and no live Stripe key",
       ],
       changed: [
+        "An org's page is `/<slug>/` (was `/o/<slug>/`): `orgPath` / `orgSlugOfPath` in `shared/orgs.ts` are the one definition; `src/index.ts` serves the shell for `GET /<slug>[/]` when the segment is a valid slug not in `RESERVED_ORG_SLUGS`, and answers `GET /o/<slug>/…` with a 301 (query kept). `RESERVED_ORG_SLUGS` now lists every root route and static page; `test/spa-shell.test.ts` walks the app's routes and fails on a missing one. The API stays at `/api/o/:slug` (#111)",
         "Sync GitHub's blocking modal and its closing toast are gone: progress and the result are in the panel",
         "A batch reports its phase and items done as it goes (`runBackfill` `onProgress`), and its result carries what it captured, mirrored and summarized",
         "A batch that throws answers 502 `{ error: \"sync failed\", run }` instead of a bare 500, and its run is closed as failed",
@@ -172,7 +180,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [109, 110],
+    prs: [109, 110, 111],
   },
   // Billing (#106), with the pricing page (#105), which merged without a release line of its own.
   {

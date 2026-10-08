@@ -74,7 +74,7 @@ function copyOf(s: BillingDoneUi): Copy {
       return {
         icon: seal(CHECK, "accent"), title: "Your organization is ready",
         body: s.org ? `<strong style="color:var(--fg);font-weight:600">${esc(s.org.name)}</strong> is on its plan.` : "It is on its plan.",
-        actions: s.org ? accentLink(`/o/${encodeURIComponent(s.org.slug)}/`, `Open ${s.org.name}`) : home,
+        actions: s.org ? accentLink(`/${encodeURIComponent(s.org.slug)}/`, `Open ${s.org.name}`) : home,
       };
     case "unpaid":
       return {

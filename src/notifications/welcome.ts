@@ -17,7 +17,7 @@ import { loadSettings } from "./cron";
 /** Get Started — the screen a fresh sign-in already lands on, so the mail and the
  *  app agree on where a new person begins. */
 export function welcomeUrl(origin: string, orgSlug: string): string {
-  return `${origin}/o/${orgSlug}/#guide`;
+  return `${origin}/${orgSlug}/#guide`;
 }
 
 export function renderWelcomeEmail(o: { name: string | null; handle: string; orgName: string; orgSlug: string; origin: string; host: string }): { subject: string; html: string; text: string } {
@@ -28,7 +28,7 @@ export function renderWelcomeEmail(o: { name: string | null; handle: string; org
   const lede = "You're in.";
   const joined = `You have joined ${o.orgName}.`;
   const about = "Trov is a team's shared memory: what everyone is working on, the docs and decisions behind it, and what ships next.";
-  const settings = `${o.origin}/o/${o.orgSlug}/#settings`;
+  const settings = `${o.origin}/${o.orgSlug}/#settings`;
   const start = welcomeUrl(o.origin, o.orgSlug);
   const button = `display:inline-block;${EMAIL_FONT.sans}font-size:14px;line-height:20px;font-weight:600;color:#ffffff;background-color:${C.accent};text-decoration:none;padding:10px 18px;border-radius:9px;`;
   const handleStyle = `${EMAIL_FONT.sans}font-weight:500;color:${C.fg};`;

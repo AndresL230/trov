@@ -27,7 +27,7 @@ An organization comes to exist in one of three ways: the superadmin creates it f
 grants someone the right to create their own (§1b), or someone buys a plan and sets theirs up with nobody
 at Trov involved (§1c). Nobody else can create one.
 
-Give the organization a name, a slug (its address: `/o/<slug>/`, not editable later), the **plan** it starts
+Give the organization a name, a slug (its address: `/<slug>/`, not editable later; a name the app itself answers on — `api`, `feed`, `pricing`, … `RESERVED_ORG_SLUGS` — is refused), the **plan** it starts
 on (Personal, Team or Enterprise — `plans.md`; Team unless you pick another) and its first owner:
 
 - **An existing person** (their Trov handle): they are the owner at once. If it is their first organization
