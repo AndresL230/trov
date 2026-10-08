@@ -587,9 +587,20 @@ describe("no copy names one organization", () => {
     expect(github).not.toContain("octo-stranger");
     expect(render({ ...initialState(), view: "auth", authStep: "verifying" })).toContain("Signing you in");
   });
-  it("the Get Started guide names Org settings › Members and the switcher", () => {
+  it("the Guide is a reference, not a second onboarding: accounts as facts, Org settings › Members, the switcher", () => {
     const html = render(app({ screen: "guide" }));
-    expect(html).toContain("Any GitHub account can.");
+    expect(html).toContain("How Trov works");
+    // Nothing is a numbered step a signed-in reader has already done, and no sign-in rule is out of date.
+    expect(html).not.toMatch(/>Step [123]</);
+    expect(html).not.toContain("once an admin of your organization has invited that exact address");
+    expect(html).toContain("Signing in with GitHub or with Google creates your account the first time.");
+    // The skills come first; accounts and connecting an agent are reference sections after the tour.
+    const at = (t: string) => html.indexOf(t);
+    expect(at("Orient, work, record")).toBeGreaterThan(-1);
+    expect(at("Orient, work, record")).toBeLessThan(at("Read, propose, confirm"));
+    expect(at("Read, propose, confirm")).toBeLessThan(at("Accounts and organizations"));
+    expect(at("Accounts and organizations")).toBeLessThan(at("Connecting a coding agent"));
+    expect(at("Connecting a coding agent")).toBeLessThan(at("When something doesn"));
     expect(html).toContain("Org settings › Members");
     expect(html).toContain("The switcher at the top of the sidebar");
     expect(html).toContain("You signed in and see no organization.");

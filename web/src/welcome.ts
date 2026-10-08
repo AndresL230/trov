@@ -4,7 +4,7 @@
 //   an OWNER or ADMIN:  connect a repository → connect your coding agent → invite your team → done
 //   a MEMBER:           connect your coding agent → done
 // It is a ROUTE, not server state: a reload stays on the step, and Org settings' checklist and
-// Help › Get Started link back to it. Nothing here is stored.
+// Help › Guide link back to it. Nothing here is stored.
 //
 // Every step's done-state is DERIVED from reads the SPA already makes — Org settings' slices
 // (`OrgUi`: repositories, the GitHub App's connection, members, invitations, the plan) and the
@@ -292,21 +292,18 @@ export function teamStep(p: WelcomeProps): string {
 
 // ── the last step ────────────────────────────────────────────────────────────
 
-const PLACES: readonly { act: string; title: string; what: string; icon: string }[] = [
-  { act: "goFeed", title: "Feed", what: "What your team and its agents did, newest first.", icon: `<path d="M4 6h16M4 12h16M4 18h10"></path>` },
-  { act: "goDocs", title: "Docs", what: "How things work and why. Agents propose changes; a person confirms them.", icon: `<path d="M6 3h9l4 4v14H6z"></path><path d="M14 3v5h5"></path>` },
-  { act: "goTickets", title: "Tickets", what: "The queue: what is open, who has it, what is next.", icon: `<rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M8 10h8M8 14h5"></path>` },
-  { act: "goRoadmap", title: "Roadmap", what: "The plan and its sprints, against what actually happened.", icon: `<path d="M4 7h9M4 12h14M4 17h6"></path><circle cx="17" cy="7" r="1.6"></circle>` },
+/** The one thing the setup cannot do for a person: say how a session with Trov goes. Three lines —
+ *  the loop the Guide spells out (orient → work → record) — and nothing the sidebar already shows. */
+const FIRST_SESSION: readonly { title: string; what: string }[] = [
+  { title: "Start as you always do", what: "Before your agent touches an area the team already knows, it reads what Trov has on it. It does this by itself." },
+  { title: "Work", what: "Ask \u201cwhat\u2019s on my plate?\u201d for your tickets. Your agent can update the ones assigned to you." },
+  { title: "Say \u201crecord this session\u201d when you\u2019re done", what: "It stages what shipped: a feed entry, doc changes, decisions. They wait in Review for a person to confirm." },
 ];
-
-/** Where things live — the closing step of both wizards. */
-export function placesGrid(): string {
-  return `<ul class="cnpy-wel-places">${PLACES.map((x) => `<li>
-      <button type="button" data-act="${x.act}" data-field="${attr(`welcomePlace:${x.act}`)}"${surface("", { hover: true, cls: "cnpy-wel-place" })} aria-label="${attr(`Open ${x.title}`)}">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;margin-top:1px">${x.icon}</svg>
-        <span style="min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:var(--fg)">${x.title}</span><span style="display:block;font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:1px">${x.what}</span></span>
-      </button>
-    </li>`).join("")}</ul>`;
+export function firstSession(): string {
+  return `<ol${surface("padding:4px 18px;list-style:none;margin:0", { cls: "cnpy-wel-first" })} data-welcome-first>${FIRST_SESSION.map((x, i) => `<li class="cnpy-wel-row" style="align-items:flex-start;flex-wrap:nowrap">
+      <span class="cnpy-wel-mark" aria-hidden="true" style="margin-top:1px">${i + 1}</span>
+      <span style="min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:var(--fg)">${x.title}</span><span style="display:block;font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:1px">${x.what}</span></span>
+    </li>`).join("")}</ol>`;
 }
 
 const RECAP: Record<Exclude<WelcomeStep, "done">, Record<StepState, string>> = {
@@ -316,7 +313,7 @@ const RECAP: Record<Exclude<WelcomeStep, "done">, Record<StepState, string>> = {
 };
 
 /** "You're set": what was done and what was skipped (each read off live data, with the way back
- *  to a skipped one), where things live, and the button into the app. */
+ *  to a skipped one), how a first session goes, and the button into the app. */
 export function doneStep(steps: readonly WelcomeStep[], states: Record<WelcomeStep, StepState>): string {
   const recap = steps.filter((s): s is Exclude<WelcomeStep, "done"> => s !== "done").map((s) => {
     const st = states[s];
@@ -324,9 +321,12 @@ export function doneStep(steps: readonly WelcomeStep[], states: Record<WelcomeSt
     return `<li class="cnpy-wel-row" data-welcome-recap="${s}" data-state="${st}">${icon}<span style="flex:1 1 200px;min-width:0;font-size:13px;color:${st === "done" ? "var(--fg)" : "var(--fg-70)"}">${RECAP[s][st]}</span>${st === "todo" ? quietBtn("Do it now", "welcomeGo", { arg: s, field: `welcomeRecap:${s}`, label: `${STEP_LABEL[s]}: do it now` }) : ""}</li>`;
   }).join("");
   return `<div${surface("padding:6px 20px")} data-welcome-recaps><ul class="cnpy-wel-list is-flush">${recap}</ul></div>
-    <h2 style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin:26px 0 9px">Where things live</h2>
-    ${placesGrid()}
-    <div style="${O_HELP};margin-top:14px">My Work is your own page: what is assigned to you and what is waiting on you. This setup stays in Help &rsaquo; Get Started if you want it again.</div>`;
+    <h2 style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin:24px 0 9px">Your first session</h2>
+    ${firstSession()}
+    <div class="cnpy-wel-acts" style="margin-top:14px;align-items:baseline">
+      <span style="${O_HELP};flex:1 1 260px;min-width:0">My Work is your own page: what is assigned to you and what is waiting on you. The Guide explains the rest: review, every screen, troubleshooting.</span>
+      ${quietBtn("Read the Guide", "goGuide", { field: "welcomeGuide" })}
+    </div>`;
 }
 
 // ── the page ─────────────────────────────────────────────────────────────────
@@ -339,9 +339,9 @@ function stepCopy(step: WelcomeStep, org: MyOrg, admin: boolean, states: Record<
     case "team": return { title: "Invite your team", lead: "Each person gets their own sign-in and connects their own agent. They join when they accept." };
     case "done": return {
       title: states.done === "done" ? "You're set" : "You're in",
-      lead: states.done === "done" ? `${org.name} is ready. Here is where things live.`
-        : admin ? `Here is where things live in ${org.name}. What you skipped is still here, and in Org settings, whenever you want it.`
-        : `Here is where things live in ${org.name}. You can connect your agent any time, in Settings.`,
+      lead: states.done === "done" ? `${org.name} is ready. Here is how a session with it goes.`
+        : admin ? `Here is how a session with ${org.name} goes. What you skipped is still here, and in Org settings, whenever you want it.`
+        : `Here is how a session with ${org.name} goes. You can connect your agent any time, in Settings.`,
     };
   }
 }

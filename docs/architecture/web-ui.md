@@ -23,6 +23,14 @@ one card (`.cnpy-orgs-card`: banner, body, foot) in front of `firstRunBackdrop()
 shell rendered from `initialState()`, so every region is its own skeleton; `inert`, `aria-hidden`). A step
 gives way to the next through `morphStep` (`web/src/transition.ts`, View Transitions; the card carries one
 `view-transition-name`, so cards of different heights grow into each other). Off under reduced motion.
+**Who says what, once** (so the flow, the app and the Guide do not repeat each other): the three cards get a
+person an account, an organization and a connected agent; the setup's closing step says how a first session
+goes (`firstSession()`, three lines) and links the Guide; **Help › Guide** (`guideView`, `#guide`, titled "How
+Trov works") is the REFERENCE — the skills, how a change is staged and confirmed, the tour of every screen,
+accounts, connecting an agent, troubleshooting. It has no numbered "Step 1 / 2 / 3": a reader is already
+signed in. The welcome e-mail links the guided setup, not the Guide. A new rule about signing in or
+connecting goes in ONE of these and is linked from the others.
+
 The backdrop's skeletons are a picture, not reads in flight: `syncSkeletons` skips anything inside an `inert`
 region. From the picker, an org just created or joined is entered IN PLACE (`enterNew` in `main.ts`) when the
 page has held no other org's data; opening an org from anywhere else stays a page load.

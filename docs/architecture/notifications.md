@@ -44,7 +44,7 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   `deliveryFor`; not a kind — no cadence, prefs, or window. Outcome lands on `invites.email_*`. No
   `List-Unsubscribe` headers (they are optional on `OutboundMessage` now, omitted for invites).
 - **Welcome email** (`src/notifications/welcome.ts`): the second transactional message — sent from
-  `POST /auth/onboard` once the person row and session exist, linking Get Started (`/#guide`, where a
+  `POST /auth/onboard` once the person row and session exist, linking the guided setup (`/<org>/#welcome`; it was Get Started, `/#guide`, where a
   fresh sign-in lands). Also not a kind. It fires THERE and not when someone joins the GitHub org
   because the address comes from the person's OWN OAuth token (`getPrimaryEmail`), which does not
   exist until they sign in — nothing Trov holds can reach a new org member before that. No outcome

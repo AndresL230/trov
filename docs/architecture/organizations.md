@@ -120,7 +120,7 @@ skippable, with Back, a step indicator and *Skip setup*.
 
 - **It is a route, not server state.** `#welcome` is the first step; `#welcome/agent`, `/team` and `/done`
   the others, so a reload stays put. Nothing records that a person has seen it, and there is no migration.
-  It is reopened from Org settings' checklist (*Open the guided setup*), from Help › Get Started and from
+  It is reopened from Org settings' checklist (*Open the guided setup*), from Help › Guide and from
   quick search.
 - **Every step's state is derived, never stored and never guessed** — from the reads Org settings already
   makes (repositories, the GitHub App's connection, members, invitations, the plan) and from the person's
