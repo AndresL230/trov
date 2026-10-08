@@ -24,7 +24,6 @@ import type { McpTokenSummary, OAuthGrantSummary } from "@shared/rows";
 import { isSoloPlan } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
 import { O_HELP, accentBtn, chip, failedNote, goLink, quietBtn, roleAtLeast, roleChip } from "./org-ui";
-import { orgTile } from "./org-logo";
 import { skeleton, skLine, skLines, skBox } from "./skeleton";
 import { dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
 import { githubOf, inviteMailNote, inviteRoleDropdown, inviteSection, type OrgUi } from "./org-settings";
@@ -40,8 +39,18 @@ export const isWelcomeStep = (v: unknown): v is WelcomeStep => typeof v === "str
 
 /** What the wizard keeps in AppState (`state.welcome`): the step on screen (the route), and the
  *  agent step's by-hand disclosure. */
-export interface WelcomeUi { step: WelcomeStep; byHand: boolean }
-export const initialWelcomeUi = (): WelcomeUi => ({ step: "github", byHand: false });
+/** Signing up is three steps: how you'll appear, an organization (create or join), and this guided setup.
+ *  The count sits in the top right of each step's card. */
+export const FIRST_RUN_STEPS = 3;
+export const firstRunStepLabel = (n: 1 | 2 | 3): string => `Step ${n} of ${FIRST_RUN_STEPS}`;
+/** Set (per browser tab) when an account is created here, so the guided setup knows it is step 3 of
+ *  that flow and not a later visit from Org settings or Help. */
+export const FIRST_RUN_KEY = "trov:first-run";
+function inFirstRun(): boolean {
+  try { return typeof sessionStorage !== "undefined" && sessionStorage.getItem(FIRST_RUN_KEY) === "1"; } catch { return false; }
+}
+export interface WelcomeUi { step: WelcomeStep; byHand: boolean; /** This visit is the end of signing up. */ firstRun: boolean }
+export const initialWelcomeUi = (): WelcomeUi => ({ step: "github", byHand: false, firstRun: inFirstRun() });
 
 /** A step, read off live data: done, still to do — or not known yet (its read is out, or failed). */
 export type StepState = "done" | "todo" | "unknown";
@@ -363,7 +372,9 @@ export function welcomeView(p: WelcomeProps): string {
     : states[step] === "done" && step !== "team" ? accentBtn("Continue", "welcomeGo", { arg: next, field: "welcomeNext", extra: "height:36px;padding:0 18px" })
     : quietBtn(states[step] === "done" ? "Continue" : "Skip for now", "welcomeGo", { arg: next, field: "welcomeNext", extra: "height:36px;padding:0 16px;color:var(--fg)" });
   const first = (p.me?.name ?? "").trim().split(/\s+/)[0];
-  const eyebrow = step === "done" ? `Welcome to ${org.name}` : at === 0 ? `Welcome${first ? `, ${first}` : ""} · step 1 of ${steps.length}` : `Step ${at + 1} of ${steps.length}`;
+  // The flow's own count (step 3 of 3) is in the top right; the setup's parts are the stepper below.
+  // So the eyebrow names the organization, and never a second "step n of m".
+  const eyebrow = step === "done" ? `Welcome to ${org.name}` : at === 0 && first ? `Welcome, ${first} · setting up ${org.name}` : `Setting up ${org.name}`;
   // The same card as onboarding and the org picker before it — banner, body, foot — in front of the same
   // backdrop: three steps of one flow. The card carries one view-transition name, so a step of a
   // different height grows or shrinks into the next (transition.ts).
@@ -374,8 +385,9 @@ export function welcomeView(p: WelcomeProps): string {
         <span class="cnpy-orgs-art" aria-hidden="true">${trovMark(230, "currentColor")}</span>
         <div class="cnpy-wel-top">
           ${brand}
-          <div style="display:flex;align-items:center;gap:8px;min-width:0;margin-left:auto">${orgTile(org.name, 22, org.logo_url)}<span style="font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(org.name)}</span></div>
+          <span style="margin-left:auto"></span>
           ${next === null ? "" : `<button type="button" data-act="goMyWork" data-field="welcomeExit" class="cnpy-mutelink" style="flex:none;padding:0;font-size:12.5px;font-weight:500">Skip setup &rarr;</button>`}
+          ${p.wel.firstRun ? `<span class="cnpy-onb-step" data-flow-step="3" style="margin-left:0">${firstRunStepLabel(3)}</span>` : ""}
         </div>
         <div data-welcome-eyebrow style="position:relative;margin-top:20px;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.78)">${esc(eyebrow)}</div>
         <h1 id="wel-t" tabindex="-1" style="position:relative;margin:6px 0 0;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.25;overflow-wrap:anywhere;outline:none">${esc(copy.title)}</h1>

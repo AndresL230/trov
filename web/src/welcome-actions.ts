@@ -147,7 +147,7 @@ export function createWelcomeController(h: WelcomeHost): WelcomeController {
     switch (name) {
       case "welcomeOpen":
         state.screen = "welcome"; state.personCard = null;
-        state.welcome = { step: isWelcomeStep(arg) ? arg : "github", byHand: false };
+        state.welcome = { step: isWelcomeStep(arg) ? arg : "github", byHand: false, firstRun: state.welcome.firstRun };
         enter();
         window.scrollTo(0, 0);
         return;

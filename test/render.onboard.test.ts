@@ -62,7 +62,7 @@ describe("onboardView — the first of the first-run cards", () => {
   });
   it("came back from the welcome card: it edits the account — no way back, and Continue", () => {
     const html = onboardView({ ...s, edit: { current: "priya-n" } });
-    expect(html).toContain("Step 1 of 2");
+    expect(html).toContain("Step 1 of 3");
     expect(html).not.toContain('data-act="backToLogin"');
     expect(html).toMatch(/data-act="onbSubmit"[^>]*>Continue<\/button>/);
     expect(onboardView({ ...s, edit: { current: "priya-n" }, submitting: true })).toContain("Saving…");

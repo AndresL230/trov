@@ -134,7 +134,7 @@ export function onboardView(o: OnboardState, backdrop = ""): string {
     <div class="cnpy-orgs-col"><div${surface("overflow:hidden", { cls: "cnpy-orgs-card" })}>
     <header class="cnpy-orgs-banner">
       <span class="cnpy-orgs-art" aria-hidden="true">${trovMark(230, "currentColor")}</span>
-      <div style="position:relative;display:flex;align-items:center;gap:9px">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span><span class="cnpy-onb-step">${o.edit ? "Step 1 of 2" : "Welcome to Trov · one step"}</span></div>
+      <div style="position:relative;display:flex;align-items:center;gap:9px">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span><span class="cnpy-onb-step" data-flow-step="1">Step 1 of 3</span></div>
       <h1 style="position:relative;margin:20px 0 0;font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:1.2">Choose how you'll appear.</h1>
       <p class="cnpy-orgs-lede" style="position:relative;margin:8px 0 0;font-size:13.5px;line-height:1.55;max-width:500px">Your handle is how work gets attributed to you, in the feed, in decisions, in My Work. You can change it later in Settings. Your color can too.</p>
     </header>

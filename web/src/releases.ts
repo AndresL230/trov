@@ -109,6 +109,7 @@ export const RELEASES: Release[] = [
         "Org settings › General › Plan shows \"Free until <date>, a gift from Trov. After that this organization moves to Free; nothing is deleted.\" (`OrgPlanView.gift_until`), as the amber note in its last 7 days; the owner gets \"Keep Pro by paying\" where billing is set up (#123)",
       ],
       changed: [
+        "Signing up counts its steps in the top right of each card: Step 1 of 3 (how you'll appear), 2 of 3 (an organization), 3 of 3 (the guided setup, only when it ends a sign-up: `FIRST_RUN_KEY` in sessionStorage). The setup's eyebrow names the organization and no longer carries a second count (#124)",
         "The guided setup is the same bannered card as onboarding and the org picker, in front of the same backdrop; finishing onboarding goes on to the welcome card without a page load (#124)",
         "Onboarding (pick a handle and a color) is the same bannered card as the org picker that follows it, with the handle and display name side by side and the colors on one line; it no longer scrolls the page (#124)",
         "Create an organization: the Address field is called Handle (it is still the slug, the `/<slug>/` its links start with), and its messages say handle (#124)",

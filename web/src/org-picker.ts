@@ -373,7 +373,7 @@ export function orgPickerView(p: OrgPickerProps): string {
       <div${surface("overflow:hidden", { cls: "cnpy-orgs-card" })}>
         <header class="cnpy-orgs-banner">
           <span class="cnpy-orgs-art" aria-hidden="true">${trovMark(230, "currentColor")}</span>
-          <div style="position:relative;display:flex;align-items:center;gap:9px">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span></div>
+          <div style="position:relative;display:flex;align-items:center;gap:9px">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span>${orgs.length === 0 ? `<span class="cnpy-onb-step" data-flow-step="2">Step 2 of 3</span>` : ""}</div>
           <h1 style="position:relative;margin:22px 0 0;font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:1.2;overflow-wrap:anywhere">${esc(title)}</h1>
           <p class="cnpy-orgs-lede" style="position:relative;margin:8px 0 0;font-size:13.5px;line-height:1.55;max-width:500px">${esc(lead)}</p>
         </header>

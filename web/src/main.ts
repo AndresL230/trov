@@ -75,7 +75,7 @@ import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
-import { effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
+import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
 import { currentOrg } from "./org-settings";
 import { createSyncController } from "./sync-actions";
 import { createDropdowns } from "./dropdown";
@@ -2071,6 +2071,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           // a new person is in no org). Anything unexpected falls back to a fresh page.
           getMe().then((me) => {
             if (me.orgs.length > 0 || me.superadmin === true) throw new Error("not a first run");
+            // The guided setup that follows an organization is step 3 of this flow (welcome.ts).
+            try { sessionStorage.setItem(FIRST_RUN_KEY, "1"); } catch { /* the count is simply not shown */ }
             state.me = me;
             state.displayName = me.name ?? me.handle;
             state.plat.superadmin = false;

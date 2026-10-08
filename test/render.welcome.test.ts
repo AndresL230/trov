@@ -18,6 +18,7 @@ import css from "../web/src/trov.css?raw";
 import {
   welcomeView, welcomeStepper, welcomeStepsFor, effectiveWelcomeStep, welcomeStates, githubStepState, agentStepState, teamStepState, agentStatus,
   welcomeOverlays, initialWelcomeUi, isWelcomeStep, type WelcomeProps, type WelcomeStep,
+  firstRunStepLabel, FIRST_RUN_STEPS,
 } from "../web/src/welcome";
 import { welcomeReturnHash, parseWelcomeReturn, WELCOME_RETURN_TTL_MS, type WelcomeReturn } from "../web/src/welcome-actions";
 import { initialOrgUi, membersTab, setupChecklist, type OrgUi } from "../web/src/org-settings";
@@ -361,7 +362,7 @@ describe("step 2 — connect your coding agent (both versions)", () => {
     const shut = view("agent");
     expect(shut).toMatch(/data-act="welcomeByHand" data-field="welcomeByHand" aria-expanded="false" aria-controls="wel-byhand"/);
     expect(shut).toMatch(/<div id="wel-byhand" hidden/);
-    const open = view("agent", { wel: { step: "agent", byHand: true } });
+    const open = view("agent", { wel: { step: "agent", byHand: true, firstRun: false } });
     expect(open).toMatch(/aria-expanded="true" aria-controls="wel-byhand"/);
     expect(open).not.toMatch(/<div id="wel-byhand" hidden/);
     expect(open).toContain(browserConnectCommand().replace(/&/g, "&amp;"));
@@ -508,5 +509,20 @@ describe("trov.css — the wizard's rules", () => {
   });
   it("hand-rolls no switch and no native select", () => {
     expect(src("welcome.ts")).not.toMatch(/<select|window\.confirm|●/);
+  });
+});
+
+describe("the sign-up flow's own count — top right of each card", () => {
+  it("names three steps, and the guided setup is the third only when it ends a sign-up", () => {
+    expect(firstRunStepLabel(1)).toBe("Step 1 of 3");
+    expect(firstRunStepLabel(3)).toBe(`Step 3 of ${FIRST_RUN_STEPS}`);
+    const app = (firstRun: boolean): AppState => ({ ...initialState(), view: "app", screen: "welcome", orgSlug: "acme", me: { handle: "ines", name: "Ines Vidal", avatar_url: null, color: "fern", identities: [{ provider: "github", label: "ines" }], orgs: [{ slug: "acme", name: "Acme Robotics", role: "owner", logo_url: null }] } as AppState["me"], welcome: { step: "github", byHand: false, firstRun } });
+    const first = render(app(true));
+    expect(first).toMatch(/<span class="cnpy-onb-step" data-flow-step="3"[^>]*>Step 3 of 3<\/span>/);
+    // The organization is named in the eyebrow, and there is no second "step n of m" beside the stepper.
+    expect(first).toContain("setting up Acme Robotics");
+    expect(/data-welcome-eyebrow[^>]*>([^<]*)</.exec(first)?.[1]).toBe("Welcome, Ines · setting up Acme Robotics");
+    // Reopened later from Org settings or Help: it is not a step of signing up.
+    expect(render(app(false))).not.toContain('data-flow-step="3"');
   });
 });
