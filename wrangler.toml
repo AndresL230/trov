@@ -49,7 +49,7 @@ NOTIFICATIONS_MODE = "resend"
 # are unset every billing route answers 503 `billing_unavailable` and the app is otherwise unchanged.
 # The yearly ids are optional: a plan is offered on the intervals it has a price for.
 STRIPE_PRICE_PERSONAL = ""
-STRIPE_PRICE_TEAM = ""
+STRIPE_PRICE_TEAM = "price_1UOB9HH7KZijv6AwWF3LPpFr"
 STRIPE_PRICE_PERSONAL_YEARLY = ""
 STRIPE_PRICE_TEAM_YEARLY = ""
 
