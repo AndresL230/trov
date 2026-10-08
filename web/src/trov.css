@@ -1121,6 +1121,9 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 }
 @media (prefers-reduced-motion: reduce) { .cnpy-xrow-c { transition:none; } }
 .cnpy-org-field { min-width:0; }
+/* Org settings › Notifications › Digests: a tile per digest, two to a line (2 x 2 for the four there are). */
+.cnpy-digests { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+@media (max-width:640px) { .cnpy-digests { grid-template-columns:minmax(0, 1fr); } }
 .cnpy-org-row { display:flex; align-items:flex-start; gap:10px 14px; flex-wrap:wrap; padding:13px 16px; border-bottom:1px solid var(--border); margin-bottom:-1px; }
 .cnpy-org-actions { display:flex; align-items:flex-start; gap:8px; flex-wrap:wrap; flex:none; max-width:100%; margin-left:auto; }
 .cnpy-org-step { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:11px 0; }
@@ -1753,8 +1756,22 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 [data-orgs-create] .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
 .cnpy-orgs-inv { display:flex; align-items:center; gap:10px 12px; flex-wrap:wrap; }
 /* THE PICKER: one calm column, the app's surfaces. */
-.cnpy-orgs { min-height:100vh; box-sizing:border-box; display:flex; justify-content:center; padding:64px 24px 80px; }
-.cnpy-orgs-col { width:100%; max-width:620px; min-width:0; }
+/* The org picker / first run: one card in the middle of the window. It is as tall as its content and
+   the window is its frame, so a first run never scrolls; only a long list of organizations does. */
+.cnpy-orgs { min-height:100vh; min-height:100dvh; box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:24px; }
+.cnpy-orgs-col { width:100%; max-width:660px; min-width:0; }
+.cnpy-orgs-card { box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
+/* The banner is the brand's purple in both themes: it is Trov speaking, not the app's chrome. */
+.cnpy-orgs-banner { position:relative; overflow:hidden; padding:24px 28px 26px; color:#fff;
+  background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #6c75d8 0%, #5a64cc 48%, #454fb2 100%); }
+.cnpy-orgs-banner::after { content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
+  background-image:radial-gradient(rgba(255,255,255,.22) 1px, transparent 1.2px); background-size:16px 16px;
+  -webkit-mask-image:linear-gradient(90deg, transparent 35%, #000 100%); mask-image:linear-gradient(90deg, transparent 35%, #000 100%); }
+.cnpy-orgs-art { position:absolute; right:-34px; top:-46px; display:block; color:#fff; opacity:.13; transform:rotate(-8deg); pointer-events:none; }
+.cnpy-orgs-lede { color:rgba(255,255,255,.84); }
+.cnpy-orgs-body { padding:6px 28px 24px; }
+.cnpy-orgs-body > h2:first-child { margin-top:16px !important; }
+.cnpy-orgs-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:12px 28px; border-top:1px solid var(--border); font-size:12.5px; color:var(--fg-55); background:color-mix(in srgb, var(--hover) 55%, transparent); }
 .cnpy-orgs-row { display:flex; align-items:center; gap:12px; padding:13px 16px; transition:background .12s ease; }
 .cnpy-orgs-opt { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; padding:14px 16px; border-bottom:1px solid var(--border); margin-bottom:-1px; }
 /* THE PLATFORM PAGE (`/platform/`, platform.ts `platformPage`): the superadmin's screens outside any
@@ -1773,7 +1790,10 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 }
 .cnpy-orgs-row:hover { background:var(--hover); }
 @media (max-width: 640px) {
-  .cnpy-orgs { padding:max(28px, env(safe-area-inset-top)) 16px max(40px, env(safe-area-inset-bottom)); }
+  .cnpy-orgs { align-items:flex-start; padding:max(16px, env(safe-area-inset-top)) 12px max(24px, env(safe-area-inset-bottom)); }
+  .cnpy-orgs-banner { padding:20px 20px 22px; }
+  .cnpy-orgs-body { padding:4px 20px 20px; }
+  .cnpy-orgs-foot { padding:12px 20px; }
   .cnpy-orgs-inv > div:last-child { width:100%; }
   .cnpy-orgs-inv > div:last-child > button { flex:1; min-height:38px; }
   .cnpy-orgmenu { width:auto; right:10px; max-width:none; }

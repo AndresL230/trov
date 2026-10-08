@@ -276,7 +276,7 @@ export function orgPickerView(p: OrgPickerProps): string {
       ? "Your payment went through. Name your organization, and you are its owner."
       : "You've been given an organization of your own. Name it, and you are its owner.")
     : `Trov is a team's working memory: what its coding agents did, the docs and decisions that came out of it, and the tickets and roadmap that say what's next. Everything in it belongs to an organization${p.orgs?.free?.can_create ? ": create one for your team, or join one you're invited to." : "."}`;
-  const sectionHead = (text: string, n: number) => `<h2 style="${LABEL};margin:26px 0 8px;display:flex;align-items:center;gap:8px">${esc(text)}<span class="cnpy-badge" data-n="${n}">${n}</span></h2>`;
+  const sectionHead = (text: string, n: number) => `<h2 style="${LABEL};margin:22px 0 8px;display:flex;align-items:center;gap:8px">${esc(text)}<span class="cnpy-badge" data-n="${n}">${n}</span></h2>`;
 
   const orgRows = orgs.map((o) => `<li style="border-bottom:1px solid var(--border);margin-bottom:-1px">
       <a href="${attr(orgHref(o.slug, p.hash))}" data-act="orgsSwitch" data-arg="${attr(o.slug)}" class="cnpy-orgs-row" aria-label="Open ${attr(o.name)}" style="text-decoration:none;color:inherit">
@@ -339,19 +339,28 @@ export function orgPickerView(p: OrgPickerProps): string {
   const createBlock = options ? `${sectionHead(own ? (orgs.length || invites.length ? "Set up your own" : "Get started") : orgs.length || invites.length ? "More" : "Get started", own)}<ul${surface("overflow:hidden;list-style:none;margin:0;padding:0")}>${options}</ul>` : "";
   const platformBlock = "";
 
-  const state = loading ? skeleton("orgs", "Loading your organizations&hellip;", skLine(210, 12.5, 1.5), "padding:22px 0 0")
-    : p.status === "error" && !p.orgs ? `<div role="alert" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--fg-55);padding:22px 0 0">Couldn't load your invitations. Check your connection, then ${quietBtn("Try again", "orgsReload")}</div>` : "";
+  const state = loading ? skeleton("orgs", "Loading your organizations&hellip;", skLine(210, 12.5, 1.5), "padding:4px 0 0")
+    : p.status === "error" && !p.orgs ? `<div role="alert" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--fg-55);padding:4px 0 0">Couldn't load your invitations. Check your connection, then ${quietBtn("Try again", "orgsReload")}</div>` : "";
 
+  // One card, sized to sit in the window without scrolling the page: the brand banner (the mark,
+  // who is being welcomed, what Trov is), the things to do, and who is signed in.
   return `<div class="cnpy-orgs" data-screen-label="Organizations">
     <div class="cnpy-orgs-col">
-      <div style="display:flex;align-items:center;gap:10px">${trovMark(24)}<span style="font-size:18px;font-weight:600;letter-spacing:-0.02em">Trov</span></div>
-      <h1 style="margin:34px 0 0;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.25;overflow-wrap:anywhere">${esc(title)}</h1>
-      <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:var(--fg-55);max-width:560px">${esc(lead)}</p>
-      ${p.ui.lost ? `<div style="margin-top:20px">${orgBanner("That organization didn't open", esc(lostOrgSentence(p.ui.lost)))}</div>` : ""}
-      ${orgsBlock}${invitesBlock}${state}${createBlock}${platformBlock}
-      <div style="margin-top:34px;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--fg-55)">
-        <span style="min-width:0;overflow-wrap:anywhere">Signed in as <span style="font-weight:500;color:var(--fg-70)">@${esc(p.me?.handle ?? "")}</span></span>
-        <span style="display:flex;gap:8px;flex:none">${quietBtn("Sign out", "signOut")}</span>
+      <div${surface("overflow:hidden", { cls: "cnpy-orgs-card" })}>
+        <header class="cnpy-orgs-banner">
+          <span class="cnpy-orgs-art" aria-hidden="true">${trovMark(230, "currentColor")}</span>
+          <div style="position:relative;display:flex;align-items:center;gap:9px">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span></div>
+          <h1 style="position:relative;margin:22px 0 0;font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:1.2;overflow-wrap:anywhere">${esc(title)}</h1>
+          <p class="cnpy-orgs-lede" style="position:relative;margin:8px 0 0;font-size:13.5px;line-height:1.55;max-width:500px">${esc(lead)}</p>
+        </header>
+        <div class="cnpy-orgs-body">
+          ${p.ui.lost ? `<div style="margin-bottom:18px">${orgBanner("That organization didn't open", esc(lostOrgSentence(p.ui.lost)))}</div>` : ""}
+          ${orgsBlock}${invitesBlock}${state}${createBlock}${platformBlock}
+        </div>
+        <footer class="cnpy-orgs-foot">
+          <span style="min-width:0;overflow-wrap:anywhere">Signed in as <span style="font-weight:500;color:var(--fg-70)">@${esc(p.me?.handle ?? "")}</span></span>
+          <span style="display:flex;gap:8px;flex:none">${quietBtn("Sign out", "signOut")}</span>
+        </footer>
       </div>
     </div>
   </div>`;

@@ -105,11 +105,14 @@ export const RELEASES: Release[] = [
         "Org settings › General › Plan shows \"Free until <date>, a gift from Trov. After that this organization moves to Free; nothing is deleted.\" (`OrgPlanView.gift_until`), as the amber note in its last 7 days; the owner gets \"Keep Pro by paying\" where billing is set up (#123)",
       ],
       changed: [
+        "The org picker / first run is one card in the middle of the window: a purple Trov banner (the mark, the welcome, what Trov is), the things to do, and who is signed in (`.cnpy-orgs-card`, `-banner`, `-body`, `-foot`). A first run no longer scrolls the page (#122)",
+        "Org settings › Notifications: the digests are a grid of tiles, two to a line (`.cnpy-digests`), one to a line at phone width; each tile holds the name, the default cadence beside its org-wide switch, and what it carries (#122)",
         "`createLanding` / `acceptLanding` (`web/src/org-picker.ts`): creating an organization lands on `#welcome` (was `#org`); accepting an invitation lands an owner or admin on `#welcome` and a member on `#welcome/agent` (were `#org` for an owner, My Work for anyone else) (#121)",
         "Members' invite form is `inviteSection` (`web/src/org-settings.ts`), rendered by the Members tab and by the setup's team step, so both obey the same seat gate (#121)",
         "`POST /api/o/:slug/billing/upgrade` also accepts an org whose plan is a gift (was 409 `not_free` for anything but Free): its owner starts paying before the gift ends, and fulfilment clears the gift. Every `setOrgPlan` without `gift_until` clears a gift, so Change plan on a gifted org makes the plan permanent (#123)",
       ],
       fixed: [
+        "Finishing onboarding left a new person on the handle card: `/#onboard` to `/#guide` is a same-document navigation, so nothing loaded. The page now reloads once the account exists (#122)",
         "Org settings › General lines up with the tab bar and the other tabs: its 640px column (`.cnpy-org-narrow`) is now a bento grid across the tab (`.cnpy-org-gen`: image + name, plan, slug, and the plan's limits as their own tile), folding to one column by container width (#122)",
       ],
       removed: [],

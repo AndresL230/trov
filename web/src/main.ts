@@ -2031,7 +2031,13 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         // it takes. Every later sign-in goes wherever their hash points.
         // Signed up from an MCP client's authorize link → back to the consent screen
         // (a same-origin path the Worker built); otherwise Get Started, as before.
-        .then((r) => { window.location.href = r.redirect?.startsWith("/oauth/authorize?") ? r.redirect : "/#guide"; })
+        // The page is at `/#onboard`, so `/#guide` is a same-document navigation: the hash changes and
+        // nothing loads. Reload, so the boot path runs with the session this request just set.
+        .then((r) => {
+          if (r.redirect?.startsWith("/oauth/authorize?")) { window.location.href = r.redirect; return; }
+          window.location.hash = "#guide";
+          window.location.reload();
+        })
         .catch((e) => {
           o.submitting = false;
           if (e instanceof ApiError && e.message === "handle_taken") { o.check = "taken"; }
