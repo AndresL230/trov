@@ -70,7 +70,7 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free.
+  // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
   {
     version: "0.23",
     date: "2026-10-08",
@@ -98,35 +98,36 @@ export const RELEASES: Release[] = [
     ],
     patches: {
       added: [
-        "Plan `free` in `shared/plans.ts` (3 seats, 1 repository, 2 environments, 250 MB, 5 agent connections per person, 300 summaries a month); `FREE_PLAN`, `UPGRADE_PLAN`, `OFFERED_PLAN_IDS`, `isSoloPlan`",
-        "`PlanDef.features` and `FEATURE_KEYS` (empty: nothing is gated yet), `planFeatureRefusal`, and `requireFeature(ctx, feature)` beside `requirePlan` in `src/plans/gate.ts` — 402 `plan_feature` through `app.onError`, MCP code `plan_feature`",
-        "`PlanRefusal.next`: `add_seat` (a paid Pro org's seat cap, below 50) or `upgrade` (any Free refusal); `planRefusalSentence` points an owner at it",
-        "`src/plans/free.ts`: `POST /api/orgs` with no grant (or `plan: \"free\"`) creates a Free org; one OWNED Free org per person, held inside the creating batch by the `org.create_free` audit row; 403 `free_org_limit`. `GET /api/orgs` answers `free: { can_create, owned }`",
-        "`POST /api/o/:slug/billing/upgrade`: a Free org (never paid, or its subscription ended) starts a Pro checkout for the same org, with its Stripe customer when it has one; 409 `not_free`",
-        "`POST /api/o/:slug/billing/portal { seats: true }`: the portal's `subscription_update` flow for the org's subscription (\"Add a seat\", \"Change seats\")",
-        "Migration `0047_billing_seats`: `billing_subscriptions.quantity`, so Platform's Follow subscription restores the paid seats; `PlatformOrgBilling.ended` and `seats`",
-        "`moveOrgToFree` in the billing seam (`src/plans/billing.ts`)",
-        "`capSummaryBody` / `SUMMARY_BODY_MAX` (8,000) in `src/tools/summarize.ts`",
+        "Plan `free` in `shared/plans.ts` (3 seats, 1 repository, 2 environments, 250 MB, 5 agent connections per person, 300 summaries a month); `FREE_PLAN`, `UPGRADE_PLAN`, `OFFERED_PLAN_IDS`, `isSoloPlan` (#117)",
+        "`PlanDef.features` and `FEATURE_KEYS` (empty: nothing is gated yet), `planFeatureRefusal`, and `requireFeature(ctx, feature)` beside `requirePlan` in `src/plans/gate.ts` — 402 `plan_feature` through `app.onError`, MCP code `plan_feature` (#117)",
+        "`PlanRefusal.next`: `add_seat` (a paid Pro org's seat cap, below 50) or `upgrade` (any Free refusal); `planRefusalSentence` points an owner at it (#117)",
+        "`src/plans/free.ts`: `POST /api/orgs` with no grant (or `plan: \"free\"`) creates a Free org; one OWNED Free org per person, held inside the creating batch by the `org.create_free` audit row; 403 `free_org_limit`. `GET /api/orgs` answers `free: { can_create, owned }` (#117)",
+        "`POST /api/o/:slug/billing/upgrade`: a Free org (never paid, or its subscription ended) starts a Pro checkout for the same org, with its Stripe customer when it has one; 409 `not_free` (#117)",
+        "`POST /api/o/:slug/billing/portal { seats: true }`: the portal's `subscription_update` flow for the org's subscription (\"Add a seat\", \"Change seats\") (#117)",
+        "Migration `0047_billing_seats`: `billing_subscriptions.quantity`, so Platform's Follow subscription restores the paid seats; `PlatformOrgBilling.ended` and `seats` (#117)",
+        "`moveOrgToFree` in the billing seam (`src/plans/billing.ts`) (#117)",
+        "`capSummaryBody` / `SUMMARY_BODY_MAX` (8,000) in `src/tools/summarize.ts` (#117)",
       ],
       changed: [
-        "Plan `team` is shown as \"Pro\", with 50 seats; `PURCHASABLE_PLANS` is `[\"team\"]`. Checkout sends quantity = members + pending invitations (at least 1; 1 for a first purchase) with `adjustable_quantity` 1–50",
-        "`src/billing/sync.ts`: the subscription's quantity is written as the org's `seats` override (`paidSeats`, held to the plan's cap); an unused paid grant carries it in its overrides and `linkPaidOrgStmt` copies them onto the org; an ended subscription moves the org to Free (active, still a billing org) instead of freezing it as `canceled` — a pinned plan too",
-        "`OrgBillingView`: `subscribed`, `ended`, `customer`, `seats`, `upgrade_to` (was `renew_on`); a Free org gets one. The Plan block shows seats, Change seats, and Upgrade to Pro",
-        "Platform's Change plan treats an ended subscription by its mirror (`ended`), not by the org's status; Follow subscription restores the paid seats. Platform's plan pickers hide Personal unless it is the current plan",
-        "`shared/pricing.ts`: Free `price: 0`, Pro $10 per seat / month, Enterprise custom, Personal not self-serve; the pricing page shows offered plans only, a Free card that opens Trov, \"Up to 50\" seats on Pro, and per-seat answers in the questions",
-        "The picker offers \"Create a Free organization\"; the landing's sign-in line and Get Started guide mention creating one again (issue #94)",
-        "`DEFAULT_ORG_LIMIT` is 1: the Free organizations a person may own",
-        "The return-to allowlist (`src/auth/return-to.ts`) is built from `PURCHASABLE_PLANS`",
+        "Plan `team` is shown as \"Pro\", with 50 seats; `PURCHASABLE_PLANS` is `[\"team\"]`. Checkout sends quantity = members + pending invitations (at least 1; 1 for a first purchase) with `adjustable_quantity` 1–50 (#117)",
+        "`src/billing/sync.ts`: the subscription's quantity is written as the org's `seats` override (`paidSeats`, held to the plan's cap); an unused paid grant carries it in its overrides and `linkPaidOrgStmt` copies them onto the org; an ended subscription moves the org to Free (active, still a billing org) instead of freezing it as `canceled` — a pinned plan too (#117)",
+        "`OrgBillingView`: `subscribed`, `ended`, `customer`, `seats`, `upgrade_to` (was `renew_on`); a Free org gets one. The Plan block shows seats, Change seats, and Upgrade to Pro (#117)",
+        "Platform's Change plan treats an ended subscription by its mirror (`ended`), not by the org's status; Follow subscription restores the paid seats. Platform's plan pickers hide Personal unless it is the current plan (#117)",
+        "`shared/pricing.ts`: Free `price: 0`, Pro $10 per seat / month, Enterprise custom, Personal not self-serve; the pricing page shows offered plans only, a Free card that opens Trov, \"Up to 50\" seats on Pro, and per-seat answers in the questions (#117)",
+        "The picker offers \"Create a Free organization\"; the landing's sign-in line and Get Started guide mention creating one again (issue #94) (#117)",
+        "`DEFAULT_ORG_LIMIT` is 1: the Free organizations a person may own (#117)",
+        "The return-to allowlist (`src/auth/return-to.ts`) is built from `PURCHASABLE_PLANS` (#117)",
       ],
       fixed: [
-        "A one-seat paid Pro org is not a one-person plan: Members keeps the invite section with \"Add a seat\", and the setup checklist keeps \"Invite your team\"",
+        "A one-seat paid Pro org is not a one-person plan: Members keeps the invite section with \"Add a seat\", and the setup checklist keeps \"Invite your team\" (#117)",
       ],
       removed: [
-        "`STRIPE_PRICE_PERSONAL`, `STRIPE_PRICE_PERSONAL_YEARLY`; Personal can no longer be bought",
-        "`POST /api/o/:slug/billing/change`, `OrgBillingView.switch_to` and the switch-to-a-smaller-plan confirmation: with one plan sold there is nothing to switch to",
-        "`POST /api/o/:slug/billing/renew` (an ended subscription now leaves the org on Free; Upgrade to Pro is how it pays again); `firstTeamPlan`",
+        "`STRIPE_PRICE_PERSONAL`, `STRIPE_PRICE_PERSONAL_YEARLY`; Personal can no longer be bought (#117)",
+        "`POST /api/o/:slug/billing/change`, `OrgBillingView.switch_to` and the switch-to-a-smaller-plan confirmation: with one plan sold there is nothing to switch to (#117)",
+        "`POST /api/o/:slug/billing/renew` (an ended subscription now leaves the org on Free; Upgrade to Pro is how it pays again); `firstTeamPlan` (#117)",
       ],
     },
+    prs: [117],
   },
   // Sync GitHub as a recorded run, and AI summaries counted per organization (#109).
   {
