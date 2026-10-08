@@ -247,7 +247,7 @@ export function setupChecklist(org: MyOrg, ui: OrgUi): string {
   return `<section${surface("", { cls: "cnpy-setup" })} data-org-setup aria-labelledby="org-setup-t">
     <div style="min-width:0">
       <h2 id="org-setup-t" style="margin:0;font-size:13.5px;font-weight:600;letter-spacing:-0.005em;overflow-wrap:anywhere">Finish setting up ${esc(org.name)}</h2>
-      <div style="font-size:12px;color:var(--fg-55);margin-top:1px">${done} of ${steps.length} done</div>
+      <div style="font-size:12px;color:var(--fg-55);margin-top:1px">${done} of ${steps.length} done &middot; <button type="button" data-act="welcomeOpen" data-field="welcomeOpen" data-org-setup-guided class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--accent)">Open the guided setup</button></div>
     </div>
     <ol class="cnpy-setup-steps">${items}</ol>
   </section>`;
@@ -598,21 +598,20 @@ export function unmatchedLogins(admin: boolean, identity: IdentityProps | null |
     </section>`;
 }
 
-export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: IdentityProps | null = null, dd: DropdownUi = initialDropdownUi()): string {
+/**
+ * "Invite someone" — Members' primary action, and the first-run wizard's third step (welcome.ts):
+ * ONE form, so both obey the same gate. The plan's seats (org-plan.ts): a one-person plan offers
+ * no invitation at all (""); with every seat in use the form gives way to the sentence the server
+ * would answer with — and, for the owner, the one thing that fixes it: "Add a seat" (paid Pro) or
+ * "Upgrade to Pro" (Free). One line of controls in one surface, with what happens next said once,
+ * under them. Admins only.
+ */
+export function inviteSection(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDropdownUi()): string {
   const admin = roleAtLeast(org.role, "admin");
-  const members = ui.members.data;
-  const note = sliceNote(ui.members, "members", members.length > 0, { rows: 4, avatar: 28, trail: 84 });
-  if (note) return note;
-  const owners = members.filter((m) => m.role === "owner").length;
   const canSend = inviteDraftOk(ui.inviteBy, ui.inviteDraft) && !ui.inviteBusy;
-  // The plan's seats (org-plan.ts): a one-person plan offers no invitation at all; with every
-  // seat in use the form gives way to the sentence the server would answer with — and, for the
-  // owner, the one thing that fixes it: "Add a seat" (paid Pro) or "Upgrade to Pro" (Free).
   const gate = inviteGate(ui.plan.data, org.role);
   const fix = gate.kind === "full" ? seatCapAction(gate.next, ui.billing, ui.plan.data?.billing?.available ?? false) : "";
-  // Inviting is this tab's primary action (its one accent button): one line of controls in
-  // one surface, with what happens next said once, under them.
-  const invite = !admin || gate.kind === "solo" ? ""
+  return !admin || gate.kind === "solo" ? ""
     : gate.kind !== "open" ? `<section aria-labelledby="org-invite-t" data-invite-gate="${gate.kind}">
       ${orgHead("Invite someone", "", null, "org-invite-t")}
       <div${surface("padding:14px 16px")}><p role="status" style="margin:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${esc(gate.sentence)}${gate.kind === "full" ? " Removing a member or revoking a pending invite frees a seat." : ""}</p>${fix ? `<div class="cnpy-plan-actions" data-seat-fix="${gate.next ?? ""}">${fix}</div>` : ""}${fix && ui.billing.error ? `<div role="alert" style="${O_ERR}">${esc(ui.billing.error)}</div>` : ""}</div>
@@ -633,6 +632,17 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
           : "They see the invitation the next time they sign in with that GitHub account, and join when they accept. No email is sent: tell them it is waiting."}</div>
       </div>
     </section>`;
+}
+
+export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: IdentityProps | null = null, dd: DropdownUi = initialDropdownUi()): string {
+  const admin = roleAtLeast(org.role, "admin");
+  const members = ui.members.data;
+  const note = sliceNote(ui.members, "members", members.length > 0, { rows: 4, avatar: 28, trail: 84 });
+  if (note) return note;
+  const owners = members.filter((m) => m.role === "owner").length;
+  const gate = inviteGate(ui.plan.data, org.role);
+  // Inviting is this tab's primary action (its one accent button).
+  const invite = inviteSection(org, ui, dd);
 
   const rows = members.map((m) => {
     const d = admin && ui.memberEdit && sameHandle(ui.memberEdit.handle, m.handle) ? ui.memberEdit : null;

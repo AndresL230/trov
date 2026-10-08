@@ -62,6 +62,8 @@ import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsUi, type OrgsUi } from "./org-picker";
 import { billingDonePage, type BillingDoneUi } from "./billing";
 import { isOrgAdmin } from "./org-context";
+import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpEndpoint, mcpStrong, ONE_ORG_NOTE } from "./mcp-connect";
+import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeStep, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
@@ -1961,15 +1963,8 @@ export function accountSection(s: AppState): string {
   </section>`;
 }
 
-/** This Trov's own MCP endpoint — the origin the SPA is served from, so a local
- *  `wrangler dev` hands out a local URL and prod hands out prod's. */
-const mcpEndpoint = (): string =>
-  `${typeof location !== "undefined" && location.origin ? location.origin : "https://trov.dev"}/mcp`;
-
-/** The two Claude Code commands that install the Trov plugin — Settings › MCP access
- *  and the Get Started guide both show exactly this. */
-export const PLUGIN_INSTALL = `/plugin marketplace add AndresL230/trov
-/plugin install trov@trov`;
+// The commands and the three sign-in steps live in mcp-connect.ts (the wizard shows them too).
+export { PLUGIN_INSTALL, browserConnectCommand };
 
 /** How many Connected apps rows Settings › MCP access shows before its "Show all N". */
 export const MCP_LIST_CAP = 3;
@@ -2045,23 +2040,6 @@ export function tokenListBody(s: Pick<AppState, "mcpTokens" | "tokenRevokeArm">,
   </div>`;
 }
 
-/** The by-hand setup: the server with no header — Claude Code then signs in through the
- *  browser on `/mcp` → Authenticate, exactly as the plugin does. Mints nothing. */
-export function browserConnectCommand(url: string = mcpEndpoint()): string {
-  return `claude mcp add --transport http --scope user trov ${url}`;
-}
-
-const mcpCode = (t: string) => `<code style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${t}</code>`;
-const mcpStrong = (t: string) => `<strong style="font-weight:600;color:var(--fg)">${t}</strong>`;
-/** A command with a small Copy icon in its corner, so the text keeps the box's full width —
- *  the MCP tile's install commands and the by-hand setup modal's `claude mcp add`. */
-function copyBox(text: string, act: string, label: string): string {
-  return `<div style="position:relative;margin-top:7px;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:7px 36px 7px 11px">
-        <pre style="margin:0;font-family:var(--code);font-size:11.5px;line-height:1.6;color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere">${esc(text)}</pre>
-        <button data-act="${act}" class="cnpy-copybtn" title="Copy" aria-label="${label}" style="position:absolute;top:5px;right:5px;display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg);color:var(--fg-55)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button>
-      </div>`;
-}
-
 /**
  * Settings › MCP access — OAuth only: Trov no longer mints tokens here (the token routes
  * stay, so a token already in use keeps working). Beside the heading, a quiet link to the
@@ -2072,8 +2050,6 @@ function copyBox(text: string, act: string, label: string): string {
  * Pure over AppState — exported for the pure render test.
  */
 export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll"> & Partial<Pick<AppState, "mcpTokens" | "tokenRevokeArm" | "orgSlug">>, orgName = ""): string {
-  // The steps read in order on their own — no number badges (the owner's call, 2026-09-27).
-  const step = (body: string) => `<li style="min-width:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${body}</li>`;
   return `<section class="cnpy-tile cnpy-surface cnpy-set-mcp">
     <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;column-gap:12px;row-gap:2px;margin-bottom:14px">
       <div style="${SECTION_LABEL};margin-bottom:0">MCP access</div>
@@ -2082,12 +2058,8 @@ export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" |
     <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you, in one organization.</div>
     <div class="cnpy-mcp-body">
       <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
-      <ol aria-label="Connect Claude Code" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0">
-        ${step(`Install the Trov plugin in Claude Code:${copyBox(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
-        ${step(`Run ${mcpCode("/mcp")}, choose ${mcpStrong("trov")}, then ${mcpStrong("Authenticate")}.`)}
-        ${step(`Your browser opens Trov. ${orgName ? `Pick the organization to connect (you're in ${mcpStrong(esc(orgName))} now)` : "Pick the organization to connect"}, then click ${mcpStrong("Allow")} &mdash; it shows up under Connected apps.`)}
-      </ol>
-      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">A connection reaches one organization: the one you pick when you allow it. To use Trov with another organization, connect again and pick that one.</div>
+      ${connectSteps(orgName)}
+      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">${ONE_ORG_NOTE}</div>
       </div>
       <div style="min-width:0">
       ${grantListBody(s)}
