@@ -25,7 +25,10 @@ export interface SupportEmailInput {
   kind: SupportKind;
   subject: string;
   message: string;
-  reporter: { handle: string; name: string | null; email: string | null };
+  /** The signed-in sender (with their provider-VERIFIED address), or null for a report sent signed out. */
+  reporter: { handle: string; name: string | null; email: string | null } | null;
+  /** Signed out only: the address typed. UNVERIFIED — and attacker-controlled text, like everything else typed. */
+  contactEmail?: string | null;
   org: { slug: string; name: string | null } | null;
   route: string | null;
   appVersion: string | null;
@@ -36,21 +39,30 @@ export interface SupportEmailInput {
 
 export function renderSupportEmail(o: SupportEmailInput): { subject: string; html: string; text: string } {
   const subject = supportMailSubject(o.kind, o.subject);
-  const who = `${o.reporter.name ?? o.reporter.handle} (@${o.reporter.handle})`;
-  const org = o.org ? `${o.org.name ?? o.org.slug} (${o.org.slug})` : "None: sent from outside an organization";
-  const rows: [label: string, value: string][] = [
-    ["From", o.reporter.email ? `${who} · ${o.reporter.email}` : `${who} · no verified email on file`],
-    ["Organization", org],
-    ["Screen", o.route ?? "Not given"],
-    ["Version", o.appVersion ?? "Not given"],
-    ["Browser", o.userAgent ?? "Not given"],
-  ];
+  const anon = o.reporter === null;
+  const replyTo = anon ? o.contactEmail ?? null : o.reporter!.email;
+  const who = anon ? "Signed out" : `${o.reporter!.name ?? o.reporter!.handle} (@${o.reporter!.handle})`;
+  const whoShort = anon ? "the sender" : o.reporter!.name ?? `@${o.reporter!.handle}`;
+  const org = o.org ? `${o.org.name ?? o.org.slug} (${o.org.slug})` : anon ? "None: sent from the public site" : "None: sent from outside an organization";
+  const rows: [label: string, value: string][] = anon
+    ? [
+      ["From", `Signed out · ${replyTo ?? "no address"} (unverified, as typed)`],
+      ["Page", o.route ?? "Not given"],
+      ["Browser", o.userAgent ?? "Not given"],
+    ]
+    : [
+      ["From", replyTo ? `${who} · ${replyTo}` : `${who} · no verified email on file`],
+      ["Organization", org],
+      ["Screen", o.route ?? "Not given"],
+      ["Version", o.appVersion ?? "Not given"],
+      ["Browser", o.userAgent ?? "Not given"],
+    ];
   const label = `${EMAIL_FONT.label}font-size:10.5px;line-height:16px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:${C.fg40};white-space:nowrap;padding:0 14px 8px 0;vertical-align:top;`;
   const value = `${EMAIL_FONT.sans}font-size:13px;line-height:20px;color:${C.fg70};padding:0 0 8px 0;vertical-align:top;word-break:break-word;`;
   const button = `display:inline-block;${EMAIL_FONT.sans}font-size:14px;line-height:20px;font-weight:600;color:#ffffff;background-color:${C.accent};text-decoration:none;padding:10px 18px;border-radius:9px;`;
-  const reply = o.reporter.email
-    ? `Reply to this email to answer ${escapeHtml(o.reporter.name ?? `@${o.reporter.handle}`)} at <span style="${EMAIL_FONT.sans}font-weight:500;color:${C.fg70};">${escapeHtml(o.reporter.email)}</span>.`
-    : `No provider-verified address is on file for @${escapeHtml(o.reporter.handle)}, so a reply to this email reaches nobody.`;
+  const reply = replyTo
+    ? `Reply to this email to answer ${escapeHtml(whoShort)} at <span style="${EMAIL_FONT.sans}font-weight:500;color:${C.fg70};">${escapeHtml(replyTo)}</span>${anon ? " — an address typed into the public form, which nobody verified" : ""}.`
+    : `No provider-verified address is on file for ${escapeHtml(whoShort)}, so a reply to this email reaches nobody.`;
   const html =
     `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(subject)}</title><link href="${FONTS_HREF}" rel="stylesheet"><style>${EMAIL_MOBILE_CSS}</style></head>` +
     `<body style="margin:0;padding:0;background-color:${C.ground};">` +
@@ -72,7 +84,7 @@ export function renderSupportEmail(o: SupportEmailInput): { subject: string; htm
     ...rows.map(([l, v]) => `${l}: ${v}`), "",
     "Open in Platform:", "",
     `  ${o.reportUrl}`, "",
-    o.reporter.email ? `Reply to this email to answer ${o.reporter.email}.` : `No verified address is on file for @${o.reporter.handle}.`,
+    replyTo ? `Reply to this email to answer ${replyTo}${anon ? " (unverified, as typed)" : ""}.` : `No verified address is on file for ${whoShort}.`,
     `Sent by Trov — ${o.host}`, "",
   ].join("\n");
   return { subject, html, text };
@@ -102,7 +114,8 @@ export async function sendSupportNotice(env: Env, p: PlatformContext, o: SendSup
       const msg = renderSupportEmail({ ...report, reportUrl: supportReportUrl(origin, o.id), host: origin.replace(/^https?:\/\//, "") || "trov" });
       await platformDeliveryFor(p, env, { fetchImpl }).send({
         idempotencyKey: `support:${o.id}:${at}`, userId: to, to, subject: msg.subject, html: msg.html, text: msg.text,
-        ...(o.reporter.email ? { replyTo: o.reporter.email } : {}),
+        // Reply-To is the ONLY place a typed address is ever used: Trov itself sends nothing to it.
+        ...((o.reporter ? o.reporter.email : o.contactEmail) ? { replyTo: (o.reporter ? o.reporter.email : o.contactEmail)! } : {}),
       });
       result = { status: "sent", at, error: null };
     } catch (e) {

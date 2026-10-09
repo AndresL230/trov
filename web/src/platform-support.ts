@@ -1,5 +1,6 @@
-// Platform › Support (superadmin) — the bug reports and messages people send from Help › Report a
-// bug / Contact support (docs/architecture/support.md), over /api/platform/support.
+// Platform › Support (superadmin) — the bug reports and messages people send, signed in (the header's
+// bug button, Settings › Contact support) or signed out (the site's Contact form) —
+// docs/architecture/support.md — over /api/platform/support.
 //
 //   THE LIST    a count of open reports (also on the tab), a status switch and a kind dropdown, and
 //               a table — kind, subject, who, organization, when, status — newest first, paged.
@@ -80,9 +81,16 @@ export const supportKindDropdown = (value: SupportKindFilter): DropdownProps => 
   options: [{ value: "all", label: "All kinds" }, ...SUPPORT_KINDS.map((k) => ({ value: k, label: SUPPORT_KIND_LABEL[k] }))],
 });
 
+/** Where a reply goes: a signed-in reporter's VERIFIED address, or — signed out — the address typed. */
+export const supportReplyAddress = (r: Pick<SupportReport, "reporter" | "contact_email">): string | null => (r.reporter ? r.reporter.email : r.contact_email);
+/** A report sent from the public site: no account behind it, and an address nobody verified. */
+export const SIGNED_OUT = "Signed out";
+export const UNVERIFIED = "unverified, as typed";
+const anonChip = (): string => statusBadge("SIGNED OUT", "var(--fg-55)");
+
 /** `mailto:` the reporter with the subject prefilled — the same subject the notice was mailed under. */
-export function supportReplyHref(r: Pick<SupportReport, "kind" | "subject" | "reporter">): string | null {
-  const to = r.reporter.email;
+export function supportReplyHref(r: Pick<SupportReport, "kind" | "subject" | "reporter" | "contact_email">): string | null {
+  const to = supportReplyAddress(r);
   if (!to || !/^[^\s@<>"]+@[^\s@<>"]+$/.test(to)) return null;
   return `mailto:${encodeURIComponent(to).replace(/%40/g, "@")}?subject=${encodeURIComponent(`Re: ${supportMailSubject(r.kind, r.subject)}`)}`;
 }
@@ -91,10 +99,12 @@ const GRID = "plat-support-grid";
 function reportRow(r: SupportReport): string {
   const cell = (label: string, inner: string, cls = "") => `<div class="plat-c${cls ? ` ${cls}` : ""}" style="min-width:0"><span class="plat-cl">${label}</span>${inner}</div>`;
   const done = r.status === "resolved";
-  return `<button type="button" data-act="platSupportOpen" data-arg="${r.id}" data-field="platSupportRow:${r.id}" class="plat-row ${GRID}" aria-label="${attr(`${SUPPORT_KIND_LABEL[r.kind]}: ${r.subject}, from @${r.reporter.handle}, ${done ? "resolved" : "open"} — open`)}" style="width:100%;text-align:left;padding:12px 20px;border-bottom:1px solid var(--border);margin-bottom:-1px">
+  return `<button type="button" data-act="platSupportOpen" data-arg="${r.id}" data-field="platSupportRow:${r.id}" class="plat-row ${GRID}" aria-label="${attr(`${SUPPORT_KIND_LABEL[r.kind]}: ${r.subject}, from ${r.reporter ? `@${r.reporter.handle}` : "a signed-out visitor"}, ${done ? "resolved" : "open"} — open`)}" style="width:100%;text-align:left;padding:12px 20px;border-bottom:1px solid var(--border);margin-bottom:-1px">
     ${cell("Kind", kindChip(r.kind))}
     <div class="plat-c plat-c-name" style="min-width:0"><span style="display:block;font-size:13.5px;font-weight:600;color:${done ? "var(--fg-55)" : "var(--fg)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.subject)}</span></div>
-    ${cell("From", `<span style="display:block;font-size:12.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.reporter.name ?? r.reporter.handle)} <span style="color:var(--fg-40)">@${esc(r.reporter.handle)}</span></span>`, "plat-c-wide")}
+    ${cell("From", r.reporter
+      ? `<span style="display:block;font-size:12.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.reporter.name ?? r.reporter.handle)} <span style="color:var(--fg-40)">@${esc(r.reporter.handle)}</span></span>`
+      : `<span data-support-anon style="display:flex;align-items:center;gap:7px;min-width:0">${anonChip()}<span style="font-size:12px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.contact_email ?? "")}</span></span>`, "plat-c-wide")}
     ${cell("Organization", r.org ? `<span style="display:block;font-family:var(--code);font-size:12px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.org.slug)}</span>` : `<span style="font-size:12.5px;color:var(--fg-40)">&mdash;</span>`, "plat-c-wide")}
     ${cell("When", `<span style="font-size:12px;color:var(--fg-40);white-space:nowrap"${dateTitle(r.created_at)}>${esc(relTime(r.created_at))}</span>`)}
     ${cell("Status", statusChip(r.status))}
@@ -103,7 +113,7 @@ function reportRow(r: SupportReport): string {
 
 function lead(s: SupportTabState, dd: DropdownUi): string {
   const n = s.open;
-  const sentence = `${n === null ? "" : n === 0 ? "No open reports. " : `<strong>${n}</strong> open ${n === 1 ? "report" : "reports"}. `}Bug reports and messages people send from Help. Each one is mailed to you; replying answers the person who wrote it.`;
+  const sentence = `${n === null ? "" : n === 0 ? "No open reports. " : `<strong>${n}</strong> open ${n === 1 ? "report" : "reports"}. `}Bug reports and messages people send from the app and from the site's Contact form. Each one is mailed to you; replying answers the person who wrote it.`;
   const filters = `${segmented({ id: "plat-support-status", ariaLabel: "Status", act: "platSupportStatus", value: s.status, size: "sm", inertOn: true, options: SUPPORT_STATUS_FILTERS.map((v) => ({ value: v, label: STATUS_LABEL[v] })) })}${dropdown(supportKindDropdown(s.kind), dd)}`;
   return tabLead(sentence, filters);
 }
@@ -120,7 +130,7 @@ function listView(s: SupportTabState, dd: DropdownUi): string {
     const filtered = s.kind !== "all" ? ` ${SUPPORT_KIND_LABEL[s.kind as SupportKind].toLowerCase()}` : "";
     body = s.status === "open" ? dashed(`No open${filtered} reports`, "Nothing is waiting for you. A new report appears here and is mailed to you.")
       : s.status === "resolved" ? dashed(`No resolved${filtered} reports`, "A report moves here when you resolve it.")
-      : dashed(`No${filtered} reports yet`, "When someone uses Help › Report a bug or Contact support, it appears here.");
+      : dashed(`No${filtered} reports yet`, "When someone reports a bug or contacts support, signed in or from the site, it appears here.");
   } else {
     const more = s.next === null ? ""
       : `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px"><button type="button" data-act="platSupportMore" data-field="platSupportMore"${s.more === "loading" ? ' disabled aria-busy="true"' : ""} class="cnpy-outlinebtn" style="${BTN};border:1px solid var(--border-strong);font-weight:500;color:var(--fg-70)">${s.more === "loading" ? "Loading…" : "Show older reports"}</button>${s.more === "error" ? `<span role="alert" style="font-size:12.5px;color:var(--red)">Couldn't load more. Try again.</span>` : ""}</div>`;
@@ -162,11 +172,14 @@ function detailView(s: SupportTabState): string {
     : "";
   const row = (label: string, value: string, mono = false) =>
     `<div class="cnpy-support-ctx-r"><dt>${label}</dt><dd${mono ? ` style="font-family:var(--code);font-size:12px"` : ""}>${value}</dd></div>`;
-  const who = `${esc(r.reporter.name ?? r.reporter.handle)} <span style="color:var(--fg-40)">@${esc(r.reporter.handle)}</span>`;
+  const who = r.reporter ? `${esc(r.reporter.name ?? r.reporter.handle)} <span style="color:var(--fg-40)">@${esc(r.reporter.handle)}</span>` : SIGNED_OUT;
+  const from = r.reporter
+    ? `${who}${r.reporter.email ? ` &middot; ${esc(r.reporter.email)}` : ` &middot; <span style="color:var(--amber)">no verified email on file, so there is nowhere to reply</span>`}`
+    : `${SIGNED_OUT}: sent from the public site, with no account &middot; ${esc(r.contact_email ?? "no address")} <span data-support-unverified style="color:var(--amber)">(${UNVERIFIED})</span>`;
   return wrap(`<div${surface("padding:18px 20px")}>
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap">
         <div style="min-width:0;flex:1 1 320px">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${kindChip(r.kind)}${statusChip(r.status)}<span style="${QUIET}">Report #${r.id}</span></div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${kindChip(r.kind)}${statusChip(r.status)}${r.reporter ? "" : anonChip()}<span style="${QUIET}">Report #${r.id}</span></div>
           <h2 style="margin:8px 0 0;font-size:19px;font-weight:600;letter-spacing:-0.01em;line-height:1.3;overflow-wrap:anywhere">${esc(r.subject)}</h2>
           <div style="margin-top:4px;font-size:12.5px;color:var(--fg-55);line-height:1.5;overflow-wrap:anywhere">${who} &middot; <span${dateTitle(r.created_at)}>${esc(relTime(r.created_at))}</span>${done && r.resolved_by ? ` &middot; resolved by @${esc(r.resolved_by)}${r.resolved_at ? ` <span${dateTitle(r.resolved_at)}>${esc(relTime(r.resolved_at))}</span>` : ""}` : ""}</div>
         </div>
@@ -178,13 +191,13 @@ function detailView(s: SupportTabState): string {
     <div class="cnpy-sechead"><h2 style="${LABEL};margin:0">Sent with the message</h2></div>
     <div${surface("padding:14px 20px", { cls: "cnpy-support-ctx" })} data-support-context>
       <dl>
-        ${row("From", `${who}${r.reporter.email ? ` &middot; ${esc(r.reporter.email)}` : ` &middot; <span style="color:var(--amber)">no verified email on file, so there is nowhere to reply</span>`}`)}
-        ${row("Organization", r.org ? `${r.org.name ? `${esc(r.org.name)} ` : ""}<span style="font-family:var(--code);font-size:12px;color:var(--fg-55)">${esc(r.org.slug)}</span>` : "None: sent from outside an organization")}
-        ${row("Screen", r.route ? esc(r.route) : "Not given", !!r.route)}
-        ${row("Version", r.app_version ? esc(r.app_version) : "Not given")}
+        ${row("From", from)}
+        ${r.reporter ? row("Organization", r.org ? `${r.org.name ? `${esc(r.org.name)} ` : ""}<span style="font-family:var(--code);font-size:12px;color:var(--fg-55)">${esc(r.org.slug)}</span>` : "None: sent from outside an organization") : ""}
+        ${row(r.reporter ? "Screen" : "Page", r.route ? esc(r.route) : "Not given", !!r.route)}
+        ${r.reporter ? row("Version", r.app_version ? esc(r.app_version) : "Not given") : ""}
         ${row("Browser", r.user_agent ? esc(r.user_agent) : "Not given")}
       </dl>
-      <div style="${QUIET};line-height:1.5;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)" data-support-mail="${r.mail.status ?? "none"}">${esc(supportMailLine(r.mail))} This is everything the report holds: what they wrote, and the five lines above. Nothing was read from their organization.</div>
+      <div style="${QUIET};line-height:1.5;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)" data-support-mail="${r.mail.status ?? "none"}">${esc(supportMailLine(r.mail))} ${r.reporter ? "This is everything the report holds: what they wrote, and the five lines above. Nothing was read from their organization." : "This is everything the report holds: what they wrote, and the three lines above. The address was typed into the public form and nobody verified it; Trov has sent nothing to it."}</div>
     </div>`);
 }
 

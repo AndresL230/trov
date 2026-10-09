@@ -19,7 +19,7 @@ import { cookieFor } from "./helpers/persons";
 import { ensureMember, platformCtx, ORG_A, ORG_B } from "./helpers/tenant";
 import { call, one, rows, exec, SUPERADMIN } from "./helpers/orgs";
 import {
-  SUPPORT_MESSAGE_MAX, SUPPORT_SUBJECT_MAX, SUPPORT_USER_AGENT_MAX, supportSubjectFrom,
+  SUPPORT_MESSAGE_MAX, SUPPORT_SUBJECT_MAX, SUPPORT_USER_AGENT_MAX, SUPPORT_ROUTE_MAX, SUPPORT_MIN_FORM_MS, SUPPORT_FALLBACK_EMAIL, supportSubjectFrom, isSupportEmail,
   type SupportListResponse, type SupportReport, type SupportSubmitResponse,
 } from "@shared/support";
 
@@ -29,7 +29,7 @@ const boss = () => cookieFor(SUPERADMIN);
 const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/141.0 Safari/537.36";
 const BODY = { kind: "bug", subject: "Board drag drops the card", message: "Dragging a ticket to Testing snaps it back.\nSecond line.", route: "#tickets", org: "saplinglearn", app_version: "0.25", user_agent: UA };
 interface Stored {
-  id: number; kind: string; subject: string; message: string; reporter: string; from_org: string | null; from_org_slug: string | null;
+  id: number; kind: string; subject: string; message: string; reporter: string | null; contact_email: string | null; from_org: string | null; from_org_slug: string | null;
   route: string | null; app_version: string | null; user_agent: string | null; status: string; resolved_by: string | null; resolved_at: string | null;
   created_at: string; mail_status: string | null; mail_at: string | null; mail_error: string | null;
 }
@@ -295,7 +295,7 @@ describe("/api/platform/support — the superadmin's side", () => {
     expect(all.json).toMatchObject({ open: 3, next_before: null });
     expect(all.json.reports[2]).toEqual({
       id: a, kind: "bug", subject: "A", message: BODY.message,
-      reporter: { handle: "meilin", name: "Meilin Zhao", email: "meilin@saplinglearn.org" },
+      reporter: { handle: "meilin", name: "Meilin Zhao", email: "meilin@saplinglearn.org" }, contact_email: null,
       org: { slug: "saplinglearn", name: "SaplingLearn" },
       route: "#tickets", app_version: "0.25", user_agent: UA,
       status: "open", resolved_by: null, resolved_at: null, created_at: expect.stringMatching(/^\d{4}-/),
@@ -365,9 +365,211 @@ describe("/api/platform/support — the superadmin's side", () => {
     await exec(`INSERT INTO platform_admins (person, granted_at, granted_by) VALUES ('root-admin', '2026-10-08T00:00:00.000Z', 'seed')`);
     const got = await call<{ report: SupportReport }>("GET", `/api/platform/support/${id}`, cookie);
     expect(got.status).toBe(200);
-    expect(Object.keys(got.json.report).sort()).toEqual(["app_version", "created_at", "id", "kind", "mail", "message", "org", "reporter", "resolved_at", "resolved_by", "route", "status", "subject", "user_agent"]);
+    expect(Object.keys(got.json.report).sort()).toEqual(["app_version", "contact_email", "created_at", "id", "kind", "mail", "message", "org", "reporter", "resolved_at", "resolved_by", "route", "status", "subject", "user_agent"]);
     expect(JSON.stringify((await call("GET", "/api/platform/support", cookie)).json)).not.toContain("CANARY");
     expect((await call("GET", "/api/o/saplinglearn/feed", cookie)).status).toBe(404);
+  });
+});
+
+describe("POST /api/support/public — the signed-out form", () => {
+  const PUB = { email: "visitor@example.test", kind: "question", subject: "Do you have SSO?", message: "We are 40 people.\nIs SAML on the roadmap?", page: "/pricing", website: "", elapsed_ms: 9000 };
+  interface Out { status: number; json: { ok?: true; reply_to?: string | null; error?: string; retry_after?: number; contact?: string; id?: number }; headers: Headers }
+  async function pub(body: unknown, o: { ip?: string; cookie?: string; ua?: string; env?: Record<string, unknown>; type?: string | null; raw?: string } = {}): Promise<Out> {
+    const headers: Record<string, string> = { "cf-connecting-ip": o.ip ?? "203.0.113.7", "user-agent": o.ua ?? UA };
+    if (o.type !== null) headers["content-type"] = o.type ?? "application/json";
+    if (o.cookie) headers.cookie = o.cookie;
+    const res = await app.request("/api/support/public", { method: "POST", headers, body: o.raw ?? JSON.stringify(body) }, { ...env, ...o.env });
+    return { status: res.status, json: (await res.json().catch(() => ({}))) as Out["json"], headers: res.headers };
+  }
+  const anonCounters = () => rows<{ subject: string; action: string; count: number }>(`SELECT subject, action, count FROM abuse_counters WHERE action LIKE 'support%' ORDER BY action, subject`);
+
+  it("needs no session: stores the report with NO reporter, the typed address as contact_email, the page and the request's own User-Agent", async () => {
+    const r = await pub(PUB);
+    expect(r.status).toBe(201);
+    expect(r.json).toEqual({ ok: true, reply_to: "visitor@example.test" }); // no id: a stranger is not told how many reports exist
+    expect(await stored()).toEqual([expect.objectContaining({
+      kind: "question", subject: "Do you have SSO?", message: PUB.message, reporter: null, contact_email: "visitor@example.test",
+      from_org: null, from_org_slug: null, route: "/pricing", app_version: null, user_agent: UA, status: "open", mail_status: "skipped",
+    })]);
+    // The address is written NOWHERE else: no person, no identity.
+    expect(await one(`SELECT (SELECT COUNT(*) FROM persons WHERE email = 'visitor@example.test') + (SELECT COUNT(*) FROM identities WHERE verified_email = 'visitor@example.test' OR label = 'visitor@example.test') AS n`)).toEqual({ n: 0 });
+  });
+
+  it("a bearer-shaped caller is refused, like every support route", async () => {
+    const res = await app.request("/api/support/public", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer canopy_mcp_x" }, body: JSON.stringify(PUB) }, env);
+    expect(res.status).toBe(403);
+    expect(await stored()).toEqual([]);
+  });
+
+  it("validation: a body that is not JSON, a bad or missing address, a missing message, text past its cap — 400, nothing stored, nothing counted", async () => {
+    expect((await pub(PUB, { type: "application/x-www-form-urlencoded", raw: "email=a%40b.co&message=hi&kind=bug" })).status).toBe(400);
+    expect((await pub(PUB, { type: "text/plain" })).status).toBe(400);
+    expect((await pub(PUB, { type: null })).status).toBe(400);
+    expect((await pub(PUB, { raw: "{not json" })).status).toBe(400);
+    for (const bad of [
+      null, [], {}, { ...PUB, email: undefined }, { ...PUB, email: "" }, { ...PUB, email: "not-an-address" }, { ...PUB, email: "a@b" },
+      { ...PUB, email: "a@b.co, victim@x.io" }, { ...PUB, email: "a@b.co\r\nBcc: victim@x.io" }, { ...PUB, email: "Name <a@b.co>" }, { ...PUB, email: "a@b.co;c@d.io" },
+      { ...PUB, email: `${"a".repeat(250)}@b.co` }, { ...PUB, email: 7 },
+      { ...PUB, message: "" }, { ...PUB, message: "x".repeat(SUPPORT_MESSAGE_MAX + 1) }, { ...PUB, subject: "s".repeat(SUPPORT_SUBJECT_MAX + 1) },
+      { ...PUB, kind: "praise" }, { ...PUB, elapsed_ms: "9000" }, { ...PUB, website: 7 },
+    ]) {
+      const r = await pub(bad);
+      expect([r.status, r.json.error], JSON.stringify(bad)?.slice(0, 70)).toEqual([400, "invalid payload"]);
+    }
+    expect(await stored()).toEqual([]);
+    expect(await anonCounters()).toEqual([]);
+    expect(isSupportEmail("a@b.co")).toBe(true);
+    expect(isSupportEmail("a@b.co\n")).toBe(false);
+  });
+
+  it("the honeypot: a body that fills it is answered exactly like a success — and nothing is stored, counted or mailed", async () => {
+    let called = 0;
+    vi.stubGlobal("fetch", (async () => { called++; return new Response("{}", { status: 200 }); }) as typeof fetch);
+    const real = await pub(PUB, { ip: "198.51.100.1" });
+    const bot = await pub({ ...PUB, website: "http://spam.example" }, { ip: "198.51.100.2", env: { SUPPORT_NOTIFY_EMAIL: "owner@trov.test", NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "re_test" } });
+    expect([bot.status, bot.json]).toEqual([real.status, real.json]);
+    expect([...bot.headers.keys()].sort()).toEqual([...real.headers.keys()].sort());
+    expect(await stored()).toHaveLength(1);
+    expect(called).toBe(0);
+    expect(await platformBodies()).toEqual([]);
+    expect((await anonCounters()).map((c) => [c.action, c.count])).toEqual([["support_anon_all", 1], ["support_anon_ip", 1]]); // only the real one
+  });
+
+  it(`a form sent sooner than ${SUPPORT_MIN_FORM_MS} ms after it opened (or with no timing at all) is refused, and spends nothing`, async () => {
+    for (const elapsed_ms of [0, 200, SUPPORT_MIN_FORM_MS - 1, -5, undefined]) {
+      const r = await pub({ ...PUB, elapsed_ms });
+      expect([r.status, r.json.error], String(elapsed_ms)).toEqual([400, "too_fast"]);
+    }
+    expect((await pub({ ...PUB, elapsed_ms: SUPPORT_MIN_FORM_MS })).status).toBe(201);
+    expect(await stored()).toHaveLength(1);
+  });
+
+  it(`per client address: ${LIMITS.support_anon_ip.max} a day, then 429 with Retry-After; another address is unaffected; the raw IP is never stored`, async () => {
+    for (let i = 0; i < LIMITS.support_anon_ip.max; i++) expect((await pub({ ...PUB, email: `v${i}@example.test` })).status).toBe(201);
+    const r = await pub(PUB);
+    expect([r.status, r.json.error]).toEqual([429, "rate_limited"]);
+    expect(r.json.retry_after).toBeGreaterThan(0);
+    expect(r.headers.get("retry-after")).toBe(String(r.json.retry_after));
+    expect(await stored()).toHaveLength(LIMITS.support_anon_ip.max);
+    // Changing the address typed does not help: the limit is the client's, not the email's.
+    expect((await pub({ ...PUB, email: "someone-else@example.test" })).status).toBe(429);
+    expect((await pub(PUB, { ip: "203.0.113.99" })).status).toBe(201);
+    // What the limiter and the table hold: a keyed hash, never the address.
+    const everything = JSON.stringify([await rows(`SELECT * FROM abuse_counters`), await stored()]);
+    expect(everything).not.toContain("203.0.113");
+    const subjects = (await anonCounters()).filter((c) => c.action === "support_anon_ip").map((c) => c.subject);
+    expect(subjects).toHaveLength(2);
+    for (const s of subjects) expect(s).toMatch(/^ip:[A-Za-z0-9_-]{40,}$/);
+    // …keyed by the deployment's secret: the same IP under another secret is another subject.
+    await exec(`DELETE FROM abuse_counters`);
+    await pub(PUB, { ip: "203.0.113.7", env: { COOKIE_SECRET: "another-secret" } });
+    expect((await anonCounters()).find((c) => c.action === "support_anon_ip")!.subject).not.toBe(subjects[0]);
+  });
+
+  it(`the global cap: past ${LIMITS.support_anon_all.max} signed-out reports a day, every address is told to write to the contact address — and nothing more is stored or mailed`, async () => {
+    const bucket = new Date().toISOString().slice(0, 10);
+    await exec(`INSERT INTO abuse_counters (subject, action, bucket, count, last_at) VALUES ('anonymous', 'support_anon_all', ?, ?, ?)`, bucket, LIMITS.support_anon_all.max - 1, new Date().toISOString());
+    expect((await pub(PUB, { ip: "192.0.2.1" })).status).toBe(201); // the last one of the day
+    let called = 0;
+    vi.stubGlobal("fetch", (async () => { called++; return new Response("{}", { status: 200 }); }) as typeof fetch);
+    for (const ip of ["192.0.2.2", "192.0.2.3"]) {
+      const r = await pub(PUB, { ip, env: { SUPPORT_NOTIFY_EMAIL: "owner@trov.test", NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "re_test" } });
+      expect([r.status, r.json.error, r.json.contact]).toEqual([429, "support_closed", SUPPORT_FALLBACK_EMAIL]);
+      expect(r.headers.get("retry-after")).toBe(String(r.json.retry_after));
+    }
+    expect(await stored()).toHaveLength(1);
+    expect(called).toBe(0);
+    // Signed-in people are not behind that cap: theirs is the per-person limit.
+    expect((await submit(await cookieFor("meilin"))).status).toBe(201);
+  });
+
+  it("header-derived and attached values are cut before they are stored, and flattened to one line", async () => {
+    const r = await pub({ ...PUB, page: `/pricing?x=${"y".repeat(SUPPORT_ROUTE_MAX)}\n#frag`, user_agent: "body-supplied UA is ignored" }, { ua: `Evil\tUA ${"z".repeat(SUPPORT_USER_AGENT_MAX)}` });
+    expect(r.status).toBe(201);
+    const [row] = await stored();
+    expect(row.route).toHaveLength(SUPPORT_ROUTE_MAX);
+    expect(row.user_agent).toHaveLength(SUPPORT_USER_AGENT_MAX);
+    expect(row.user_agent!.startsWith("Evil UA zzz")).toBe(true);
+    expect(`${row.route}${row.user_agent}`).not.toMatch(/[\r\n\t]/);
+    expect(row.app_version).toBeNull();
+  });
+
+  it("NO mail is ever sent to the address typed: one message, to the operator, with the typed address only as Reply-To", async () => {
+    const out: { url: string; body: { from: string; to: string[]; cc?: unknown; bcc?: unknown; subject: string; reply_to?: string; html: string; text: string } }[] = [];
+    vi.stubGlobal("fetch", (async (input: RequestInfo | URL, init?: RequestInit) => { out.push({ url: String(input), body: JSON.parse(String(init?.body)) }); return new Response(JSON.stringify({ id: "em_9" }), { status: 200 }); }) as typeof fetch);
+    const r = await pub({ ...PUB, email: "victim@example.test" }, { env: { SUPPORT_NOTIFY_EMAIL: "owner@trov.test", NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "re_test" } });
+    expect(r.status).toBe(201);
+    expect(out).toHaveLength(1);
+    expect(out[0].url).toBe("https://api.resend.com/emails");
+    expect(out[0].body.to).toEqual(["owner@trov.test"]);
+    expect(out[0].body.cc).toBeUndefined();
+    expect(out[0].body.bcc).toBeUndefined();
+    expect(out[0].body.from).toBe("Trov <hello@trov.dev>");
+    expect(out[0].body.reply_to).toBe("victim@example.test");
+    expect(out[0].body.subject).toBe("[Trov question] Do you have SSO?");
+    expect(out[0].body.text).toContain("Signed out · victim@example.test (unverified, as typed)");
+    expect(out[0].body.text).toContain("Page: /pricing");
+    expect((await stored())[0]).toMatchObject({ mail_status: "sent", contact_email: "victim@example.test" });
+    // In local mode too, the only body written is addressed to the operator.
+    await pub({ ...PUB, email: "victim2@example.test" }, { ip: "192.0.2.50", env: { SUPPORT_NOTIFY_EMAIL: "owner@trov.test" } });
+    expect((await platformBodies()).map((b) => b.to_address)).toEqual(["owner@trov.test"]);
+  });
+
+  it("the notice escapes everything typed — it is a stranger's text rendered as HTML — and its subject is one cut line", async () => {
+    const out: { subject: string; html: string; reply_to?: string }[] = [];
+    vi.stubGlobal("fetch", (async (_i: RequestInfo | URL, init?: RequestInit) => { out.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify({ id: "em_x" }), { status: 200 }); }) as typeof fetch);
+    const r = await pub({
+      ...PUB, email: "a&b=c@example.test", subject: `<img src=x onerror=alert(1)>\r\nBcc: victim@x.io`,
+      message: `<script>alert("x")</script><a href="https://phish.example">click</a>`, page: `/"><script>alert(2)</script>`,
+    }, { ua: `UA"><svg onload=alert(3)>`, env: { SUPPORT_NOTIFY_EMAIL: "owner@trov.test", NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "re_test" } });
+    expect(r.status).toBe(201);
+    const m = out[0];
+    expect(m.subject).toBe("[Trov question] <img src=x onerror=alert(1)> Bcc: victim@x.io");
+    expect(m.subject).not.toMatch(/[\r\n]/);
+    expect(m.subject.length).toBeLessThanOrEqual(SUPPORT_SUBJECT_MAX + 20);
+    for (const raw of ["<script>", "<img src=x", `<a href="https://phish.example">`, "<svg onload", "a&b=c@"]) expect(m.html, raw).not.toContain(raw);
+    expect(m.html).toContain("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;");
+    expect(m.html).toContain("a&amp;b=c@example.test");
+    // The address field itself refuses what could break out of an attribute or a header.
+    for (const email of ["x'onmouseover=alert(1)//@example.test", `"x"@example.test`, "<x>@example.test", "a:b@example.test"]) expect((await pub({ ...PUB, email }, { ip: "192.0.2.200" })).status, email).toBe(400);
+    // The only links in the mail are Trov's own: the report in Platform, and the font stylesheet.
+    const hrefs = [...m.html.matchAll(/href="([^"]+)"/g)].map((x) => x[1]);
+    expect(hrefs.every((h) => h.startsWith("https://trov.test/platform/#platform/support/") || h.startsWith("https://fonts.googleapis.com/"))).toBe(true);
+    // A direct render, with a subject at the cap.
+    const long = renderSupportEmail({ id: 1, kind: "bug", subject: "s".repeat(SUPPORT_SUBJECT_MAX), message: "m", reporter: null, contactEmail: "a@b.co", org: null, route: null, appVersion: null, userAgent: null, reportUrl: "https://trov.test/x", host: "trov.test" });
+    expect(long.subject).toHaveLength("[Trov bug] ".length + SUPPORT_SUBJECT_MAX);
+    expect(long.html).toContain("an address typed into the public form, which nobody verified");
+  });
+
+  it("a session cookie present: the PRINCIPAL is the reporter and the typed address is ignored — the signed-in path, its limit and all", async () => {
+    const out: { reply_to?: string; text: string }[] = [];
+    vi.stubGlobal("fetch", (async (_i: RequestInfo | URL, init?: RequestInit) => { out.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify({ id: "em_s" }), { status: 200 }); }) as typeof fetch);
+    const cookie = await cookieFor("meilin");
+    // Even with the honeypot filled and no timing: those are the anonymous form's checks.
+    const r = await pub({ ...PUB, email: "attacker@evil.test", website: "x", elapsed_ms: 0 }, { cookie, env: { SUPPORT_NOTIFY_EMAIL: "owner@trov.test", NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "re_test" } });
+    expect(r.status).toBe(201);
+    expect(r.json).toEqual({ ok: true, reply_to: "meilin@saplinglearn.org" });
+    expect(await stored()).toEqual([expect.objectContaining({ reporter: "meilin", contact_email: null, route: "/pricing", from_org: null })]);
+    expect(out[0].reply_to).toBe("meilin@saplinglearn.org");
+    expect(JSON.stringify(out) + JSON.stringify(await stored())).not.toContain("attacker@evil.test");
+    expect((await anonCounters()).map((c) => [c.subject, c.action, c.count])).toEqual([["meilin", "support", 1]]);
+    await exec(`UPDATE abuse_counters SET count = ? WHERE subject = 'meilin' AND action = 'support'`, LIMITS.support.max);
+    expect((await pub(PUB, { cookie })).status).toBe(429);
+    // A cookie that is not a session is nobody: the anonymous path.
+    expect((await pub(PUB, { cookie: "session=forged.signature", ip: "192.0.2.77" })).status).toBe(201);
+    expect((await stored())[1]).toMatchObject({ reporter: null, contact_email: "visitor@example.test" });
+  });
+
+  it("Platform shows it as signed out, with the typed address labelled by the API's shape; resolve and reopen work on it", async () => {
+    await pub(PUB);
+    const cookie = await boss();
+    const list = await call<SupportListResponse>("GET", "/api/platform/support", cookie);
+    const [r] = list.json.reports;
+    expect(r).toMatchObject({ reporter: null, contact_email: "visitor@example.test", org: null, route: "/pricing", app_version: null });
+    expect((await call<{ report: SupportReport }>("POST", `/api/platform/support/${r.id}/resolve`, cookie)).json.report).toMatchObject({ status: "resolved", resolved_by: SUPERADMIN, reporter: null });
+    // A row is one or the other, never both and never neither (the table's CHECK).
+    await expect(exec(`INSERT INTO support_reports (kind, subject, message, created_at) VALUES ('bug', 's', 'm', '2026-10-09T00:00:00.000Z')`)).rejects.toThrow();
+    await expect(exec(`INSERT INTO support_reports (kind, subject, message, reporter, contact_email, created_at) VALUES ('bug', 's', 'm', 'meilin', 'a@b.co', '2026-10-09T00:00:00.000Z')`)).rejects.toThrow();
   });
 });
 
@@ -390,6 +592,6 @@ describe("a handle rename", () => {
     expect(await one(`SELECT subject FROM abuse_counters WHERE action = 'support' AND subject IN ('old-me', 'new-me')`)).toEqual({ subject: "new-me" });
     // …and Platform shows the report under the new handle.
     const got = await call<{ report: SupportReport }>("GET", `/api/platform/support/${mine}`, await boss());
-    expect(got.json.report.reporter.handle).toBe("new-me");
+    expect(got.json.report.reporter?.handle).toBe("new-me");
   });
 });

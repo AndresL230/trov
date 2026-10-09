@@ -1,6 +1,7 @@
 -- 0049_support_reports: bug reports and support messages (docs/architecture/support.md). A signed-in
--- person sends one from Help › Report a bug / Contact support (`POST /api/support`); the platform's
--- operator reads them in Platform › Support and is mailed each one (`SUPPORT_NOTIFY_EMAIL`).
+-- person sends one from the app — the header's bug button, Settings › Contact support (`POST /api/support`), and a signed-out
+-- visitor from the site's Contact form (`POST /api/support/public`); the platform's operator reads
+-- them in Platform › Support and is mailed each one (`SUPPORT_NOTIFY_EMAIL`).
 --
 -- ADDITIVE ONLY — one new table and two indexes. Nothing existing changes, no row is rewritten, and a
 -- Worker from before it keeps working (it reads and writes none of this).
@@ -16,7 +17,13 @@
 -- read from the organization, and the reporter's e-mail is not copied here: the reader joins the
 -- provider-verified address on `identities` when it needs one.
 --
---   reporter      a person HANDLE (HANDLE_COLUMNS: a rename rewrites it). Always the session's person.
+--   reporter      a person HANDLE (HANDLE_COLUMNS: a rename rewrites it). Always the session's person;
+--                 NULL for a report sent signed out.
+--   contact_email the address a SIGNED-OUT visitor typed so they can be answered — UNVERIFIED, as typed.
+--                 Set only when `reporter` is NULL (a row has exactly one of the two). It is never
+--                 copied to `persons` or `identities`, and no mail is ever sent TO it by Trov itself:
+--                 it is only the Reply-To of the notice the operator gets. Nothing else about a
+--                 signed-out sender is kept — no IP address (the rate limiter holds a keyed hash).
 --   resolved_by   a person HANDLE (HANDLE_COLUMNS), the superadmin who resolved it; NULL while open.
 --   mail_status   what became of the mail to the operator: 'sent', 'failed' (mail_error says why,
 --                 scrubbed of the provider key), 'skipped' (no SUPPORT_NOTIFY_EMAIL), NULL = not tried yet.
@@ -32,7 +39,8 @@ CREATE TABLE IF NOT EXISTS support_reports (
   kind          TEXT NOT NULL CHECK (kind IN ('bug', 'question', 'feedback')),
   subject       TEXT NOT NULL,
   message       TEXT NOT NULL,
-  reporter      TEXT NOT NULL COLLATE NOCASE,          -- a handle (HANDLE_COLUMNS)
+  reporter      TEXT COLLATE NOCASE,                   -- a handle (HANDLE_COLUMNS); NULL = sent signed out
+  contact_email TEXT,                                  -- signed out only: the address typed, UNVERIFIED
   from_org      TEXT,                                  -- orgs.id it was sent from (not named `org_id`: this is not an org's row)
   from_org_slug TEXT,                                  -- that org's slug, as the form showed it
   route         TEXT,
@@ -44,7 +52,8 @@ CREATE TABLE IF NOT EXISTS support_reports (
   created_at    TEXT NOT NULL,
   mail_status   TEXT CHECK (mail_status IS NULL OR mail_status IN ('sent', 'failed', 'skipped')),
   mail_at       TEXT,
-  mail_error    TEXT
+  mail_error    TEXT,
+  CHECK ((reporter IS NOT NULL) + (contact_email IS NOT NULL) = 1)
 );
 -- The list: newest first, filtered by status (and the tab's count of open reports).
 CREATE INDEX IF NOT EXISTS idx_support_reports_status ON support_reports(status, id);

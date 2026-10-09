@@ -968,11 +968,17 @@ export function getPlatformUsage(days: number): Promise<PlatformUsageResponse> {
 // ── support reports (0049_support_reports; docs/architecture/support.md) ─────
 // Sending one is a PERSON's (`/api/support`, never an org's route — it works with no org at all);
 // reading them is the superadmin's (`/api/platform/support…`, 404 for anyone else).
-import type { SupportSubmitBody, SupportSubmitResponse, SupportReport, SupportListResponse, SupportStatusFilter, SupportKindFilter } from "@shared/support-core";
+import type { SupportPublicBody, SupportPublicResponse, SupportSubmitBody, SupportSubmitResponse, SupportReport, SupportListResponse, SupportStatusFilter, SupportKindFilter } from "@shared/support-core";
 
 /** A 429 carries `retry_after` (`rateLimitText`); any other refusal keeps the person's text in the dialog. */
 export function submitSupport(body: SupportSubmitBody): Promise<SupportSubmitResponse> {
   return postJson<SupportSubmitResponse>("/api/support", body);
+}
+/** The site's Contact form, signed out (`POST /api/support/public`). A refusal carries its code as the
+ *  error's message: `rate_limited` (this address's day is spent), `support_closed` (the day's cap on
+ *  signed-out reports: write to the contact address instead), `too_fast`. Never a 401. */
+export function submitSupportPublic(body: SupportPublicBody): Promise<SupportPublicResponse> {
+  return postJson<SupportPublicResponse>("/api/support/public", body);
 }
 export function listPlatformSupport(q: { status?: SupportStatusFilter; kind?: SupportKindFilter; before?: number | null } = {}): Promise<SupportListResponse> {
   const p = new URLSearchParams();

@@ -857,7 +857,7 @@ export function landingView(p: LandingProps): string {
     ${agents()}
     ${security()}
     ${pricingSection({ signedIn: p.signedIn ?? false, rv })}
-    ${siteFooter()}
+    ${siteFooter("dialog")}
   </div>
   ${p.signInOpen ? signInDialog(p.signInMode ?? "signin", p.signInPlan ?? "free") : ""}
   ${p.feature ? featureDialog(p.feature) : ""}`;

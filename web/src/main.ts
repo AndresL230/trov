@@ -145,12 +145,17 @@ const welcomeCtl = createWelcomeController({
   unauth: (e) => unauth(e), go: (url) => { window.location.href = url; },
 });
 
-// Help › Report a bug / Contact support (web/src/support-actions.ts): every `support…` act. What it
-// attaches is read when the dialog opens — the route on screen, the org the person is in (none on the
-// picker or the Platform page), the newest release and the browser — and nothing else.
+// The support form (web/src/support-actions.ts): every `support…` act. Signed in — the header's bug
+// button, Settings › Contact support, the picker's link — what it attaches is read when the dialog
+// opens: the route on screen, the org the person is in (none on the picker or the Platform page), the
+// newest release and the browser, and nothing else. Signed out (the site's Contact) it is the same
+// dialog in its anonymous setting: the page's path, the browser, and the address they type.
 const supportCtl = createSupport({
   state, mount, rerender: () => rerender(), unauth: (e) => unauth(e),
-  context: () => ({ route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: RELEASES[0]?.version ?? "", userAgent: navigator.userAgent }),
+  signedIn: () => state.view !== "auth",
+  context: () => (state.view === "auth"
+    ? { route: `${location.pathname}${location.hash}`, org: null, version: "", userAgent: navigator.userAgent }
+    : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: RELEASES[0]?.version ?? "", userAgent: navigator.userAgent }),
 });
 
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
@@ -3662,9 +3667,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     default:
       // Every Platform (superadmin) act goes to its controller, platform-actions.ts.
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
-      // Help › Report a bug / Contact support: its controller repaints the dialog alone (support-actions.ts).
-      // Signed out there is no form (a public one is a spam and mail-abuse surface): the site keeps its `mailto:`.
-      if (act.startsWith("support")) { if (state.view !== "auth") supportCtl.act(act, arg, value); return; }
+      // The support form, signed in or out: its controller repaints the dialog alone (support-actions.ts).
+      if (act.startsWith("support")) { supportCtl.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
       if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
@@ -4429,6 +4433,13 @@ if (params.get("denied") === "1") {
       // the picker — with the hash kept, so opening an org still lands on what the link was for.
       // `/platform/`: the superadmin's area, whatever orgs they are in (or none). Anyone else falls through to the picker.
       // So does a `#platform…` link opened at `/` by a superadmin with no org to open it in.
+      // `/?contact=1` (the static pages' Contact link) for someone who IS signed in: the same form, as
+      // that person, over wherever boot lands them — when it lands in place (opening an org by a page
+      // load simply drops the parameter).
+      if (params.get("contact") === "1" && location.pathname === "/") {
+        history.replaceState(null, "", `/${location.hash}`);
+        setTimeout(() => { if (state.view !== "auth" && !state.support.open) supportCtl.open("question"); }, 0);
+      }
       if (me.superadmin === true && (isPlatformPath(location.pathname) || (me.orgs.length === 0 && /^#platform(?:\/|$)/.test(hash)))) { void loadMyOrgs(); enterPlatform(hash); return; }
       // Sent on from the waiting room (billing.ts `setupHref`): the picker — whatever orgs they are already
       // in — where the organization they just paid for is one of the things to do ("You can set up an
@@ -4457,5 +4468,11 @@ if (params.get("denied") === "1") {
         history.replaceState(null, "", `/${location.hash}`);
       }
       rerender();
+      // Sent here by Contact in the footer of a static page (pricing, terms, privacy — site-chrome.ts
+      // `CONTACT_HREF`): the Contact form opens over the landing page. Read once; it leaves the address bar.
+      if (params.get("contact") === "1") {
+        history.replaceState(null, "", `/${location.hash}`);
+        supportCtl.open("question");
+      }
     });
 }

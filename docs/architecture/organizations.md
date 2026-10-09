@@ -315,9 +315,11 @@ stored artifacts, agent connections per person — is its plan's (`plans.md`).
 ## 6b. Support reports
 
 Platform › **Support** [`web/src/platform-support.ts`, `GET /api/platform/support`]: the bug reports and
-messages people send from Help › Report a bug / Contact support, with a count of the open ones on the tab.
+messages people send — signed in, from the bug button in the app header and Settings › Contact support;
+signed out, from the site's Contact form — with a count of the open ones on the tab.
 Each is also mailed to `SUPPORT_NOTIFY_EMAIL`; replying to that mail, or **Reply by email** on the report,
-answers the person at their verified address. **Resolve** takes it off the open list; **Reopen** puts it
+answers the person at their verified address (signed out: at the address they typed, which nobody
+verified and which is labelled so). **Resolve** takes it off the open list; **Reopen** puts it
 back. A report holds what its reporter wrote plus the screen, the organization's slug, the app version and
 the browser — nothing read from the organization. All of it: `support.md`.
 

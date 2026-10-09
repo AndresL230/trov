@@ -2,7 +2,8 @@
  * Render tests — the support form and where it is read (docs/architecture/support.md):
  *   • web/src/support.ts: the dialog (one, with a kind switch), what it says is attached, its sending /
  *     failed / sent states, and that its structure is stable while the form is up;
- *   • the ways in: Help's two rows in the sidebar and the org picker's link — and none signed out;
+ *   • the ways in, signed in: the header's bug button, Settings › Contact support, the org picker's
+ *     link — and nothing in the sidebar; signed out: the site footer's Contact and the anonymous form;
  *   • web/src/platform-support.ts: the Support tab (count on the tab, filters, table, skeleton, error,
  *     empty) and one report (message, attached context, mail outcome, Resolve / Reopen, Reply by email);
  *   • the route `#platform/support/<id>`.
@@ -16,18 +17,20 @@ import {
 } from "../web/src/support";
 import { supportFailure } from "../web/src/support-actions";
 import {
-  initialSupportTab, supportTab, supportTabBadge, supportReplyHref, supportMailLine, supportKindDropdown, SUPPORT_STATUS_FILTERS,
+  initialSupportTab, supportTab, supportTabBadge, supportReplyHref, supportMailLine, supportKindDropdown, SUPPORT_STATUS_FILTERS, UNVERIFIED,
   type SupportTabState,
 } from "../web/src/platform-support";
 import { initialPlat, platformView, platformPage, platformDialogs, platformTabBar, PLAT_TABS, type PlatState } from "../web/src/platform";
 import { sidebarView, NAV_CLOSED } from "../web/src/sidebar";
 import { orgPickerView, initialOrgsUi } from "../web/src/org-picker";
-import { render, initialState, type AppState } from "../web/src/render";
+import { render, initialState, helpSection, type AppState } from "../web/src/render";
+import { siteFooter, CONTACT_HREF, SITE_CONTACT } from "../web/src/site-chrome";
+import { legalView, TERMS, PRIVACY } from "../web/src/legal";
 import { landingView } from "../web/src/landing";
 import { parseHash, hashForRoute, sameRoute, pageKey } from "../web/src/hash";
 import { ApiError, isGlobalPath } from "../web/src/api";
 import { RELEASES } from "../web/src/releases";
-import { SUPPORT_KINDS, SUPPORT_MESSAGE_MAX, SUPPORT_SUBJECT_MAX, type SupportReport } from "@shared/support-core";
+import { SUPPORT_KINDS, SUPPORT_MESSAGE_MAX, SUPPORT_SUBJECT_MAX, SUPPORT_HONEYPOT, SUPPORT_FALLBACK_EMAIL, type SupportReport } from "@shared/support-core";
 import coreSource from "../shared/support-core.ts?raw";
 
 const UA = "Mozilla/5.0 (X11; Linux x86_64) Chrome/141.0";
@@ -36,7 +39,7 @@ const draft = (over: Partial<SupportDraft> = {}): SupportDraft => ({
 });
 const report = (over: Partial<SupportReport> = {}): SupportReport => ({
   id: 7, kind: "bug", subject: "Board drag drops the card", message: "Dragging a ticket to Testing snaps it back.\nSecond line.",
-  reporter: { handle: "maya", name: "Maya Ortiz", email: "maya@acme.test" }, org: { slug: "acme", name: "Acme" },
+  reporter: { handle: "maya", name: "Maya Ortiz", email: "maya@acme.test" }, contact_email: null, org: { slug: "acme", name: "Acme" },
   route: "#tickets", app_version: "0.25", user_agent: UA, status: "open", resolved_by: null, resolved_at: null,
   created_at: "2026-10-09T10:00:00.000Z", mail: { status: "sent", at: "2026-10-09T10:00:01.000Z", error: null }, ...over,
 });
@@ -66,7 +69,7 @@ describe("the support dialog", () => {
       expect(html).toContain(SUPPORT_COPY[kind].send);
       expect(html).not.toContain("<select");
     }
-    // Help's two entries are the same dialog on a different kind.
+    // The two signed-in entries are the same dialog on a different kind.
     expect(SUPPORT_ENTRIES.map((e) => [e.label, SUPPORT_COPY[e.kind].title])).toEqual([["Report a bug", "Report a bug"], ["Contact support", "Contact support"]]);
   });
 
@@ -179,57 +182,196 @@ describe("the support dialog", () => {
   });
 });
 
-describe("the ways in", () => {
-  const side = (over: Record<string, unknown> = {}) => sidebarView({
-    screen: "feed", collapsed: false, navOpen: NAV_CLOSED, qView: "board", roadmapTab: "narrative", docSpace: "", docSpaces: [],
-    counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: { handle: "maya", name: "Maya", color: "moss" }, displayName: "Maya", logo: "", ...over,
-  } as Parameters<typeof sidebarView>[0]);
+describe("the ways in — signed in", () => {
+  const ME = { handle: "maya", name: "Maya", color: "moss", avatar_url: null, role: null, identities: [], org: "Acme", admin: false, orgs: [], superadmin: false, pending_invites: 0 } as unknown as AppState["me"];
+  const app = (over: Partial<AppState> = {}): AppState => ({ ...initialState(), view: "app", screen: "feed", me: ME, ...over });
+  const header = (html: string) => html.slice(html.indexOf('<header class="cnpy-hdr"'), html.indexOf("</header>"));
 
-  it("Help has Report a bug and Contact support, after What's new, each opening the dialog on its kind", () => {
-    const html = side();
-    const order = [">Help<", "goGuide", "goReleases", `data-act="supportOpen" data-arg="bug"`, `data-act="supportOpen" data-arg="question"`, "toggleCollapse"].map((s) => html.indexOf(s));
-    expect(order.every((i) => i >= 0)).toBe(true);
-    expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(html).toContain(`aria-label="Report a bug" aria-haspopup="dialog"`);
-    expect(html).toContain(`aria-label="Contact support" aria-haspopup="dialog"`);
-    expect(html).toContain(`data-support-trigger="bug"`);
-    // They are actions, never the current page.
-    expect(html).not.toMatch(/n-(bug|support) is-active/);
+  it("Report a bug is an icon button in the header, beside the theme toggle and its twin, on every screen the header shows on", () => {
+    for (const screen of ["mywork", "feed", "tickets", "roadmap", "docs", "repo", "review", "settings", "guide", "releases", "handoffs", "prompts", "artifacts", "org", "search"] as const) {
+      const h = header(render(app({ screen })));
+      expect(h.match(/data-act="supportOpen"/g), screen).toHaveLength(1);
+      const bug = h.match(/<button data-act="supportOpen" data-arg="bug"[^>]*>/)?.[0] ?? "";
+      const theme = h.match(/<button data-act="cycleTheme"[^>]*>/)?.[0] ?? "";
+      expect(bug, screen).toContain(`title="Report a bug" aria-label="Report a bug" aria-haspopup="dialog"`);
+      expect(bug).toContain(`data-support-trigger="bug"`);
+      // The same icon button: class and box, to the letter.
+      expect(bug.match(/class="[^"]*" style="[^"]*"/)?.[0]).toBe(theme.match(/class="[^"]*" style="[^"]*"/)?.[0]);
+      // Directly before the theme toggle, last but one in the right-hand cluster.
+      expect(h.slice(h.indexOf(bug) + bug.length)).toMatch(/^\s*<svg[^>]*aria-hidden="true">[\s\S]*?<\/svg>\s*<\/button><button data-act="cycleTheme"/);
+      // An icon only: no words in the button, and no button inside it.
+      const inner = h.slice(h.indexOf(bug) + bug.length, h.indexOf("</button>", h.indexOf(bug)));
+      expect(inner.replace(/<svg[\s\S]*<\/svg>/, "").trim()).toBe("");
+      expect(inner).not.toContain("<button");
+    }
+    // At phone width it is one of the header's 40px icon buttons (a direct child of the cluster).
+    expect(css).toContain(`[data-phone="1"] .cnpy-hdr-r > .cnpy-iconbtn`);
+    expect(header(render(app()))).toMatch(/<div class="cnpy-hdr-r"[^>]*>[\s\S]*<button data-act="supportOpen" data-arg="bug"/);
   });
 
-  it("the two rows are emitted in every state of the rail (its structure is stable)", () => {
-    expect(skeletonOf(side({ collapsed: true, screen: "tickets" }))).toBe(skeletonOf(side()));
+  it("Contact support is a tile in personal Settings, with a button that opens the dialog on Question", () => {
+    const tile = helpSection();
+    expect(tile).toMatch(/^<section class="cnpy-tile cnpy-surface cnpy-set-help">/);
+    expect(tile).toContain(">Help</div>");
+    expect(tile).toMatch(/<button data-act="supportOpen" data-arg="question" data-support-trigger="question"[^>]*aria-haspopup="dialog"[^>]*>Contact support<\/button>/);
+    const html = render(app({ screen: "settings" }));
+    expect(html).toContain(`cnpy-tile cnpy-surface cnpy-set-help"`);
+    expect(html.match(/data-act="supportOpen" data-arg="question"/g)).toHaveLength(1);
+    expect(html).toMatch(/<main data-morph="settings"/);
+    expect(css).toContain(".cnpy-set-help { grid-column:1 / -1; }");
   });
 
-  it("the app renders the dialog over any screen, and over the picker — for a person with no organization", () => {
-    const s: AppState = { ...initialState(), view: "app", screen: "feed", me: { handle: "maya", name: "Maya", color: "moss", avatar_url: null, role: null, identities: [], org: "Acme", admin: false, orgs: [], superadmin: false, pending_invites: 0 } as AppState["me"] };
+  it("the sidebar has neither: its Help section is Guide and What's new, as before", () => {
+    const html = sidebarView({
+      screen: "feed", collapsed: false, navOpen: NAV_CLOSED, qView: "board", roadmapTab: "narrative", docSpace: "", docSpaces: [],
+      counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: { handle: "maya", name: "Maya", color: "moss" }, displayName: "Maya", logo: "",
+    } as Parameters<typeof sidebarView>[0]);
+    expect(html).not.toContain("supportOpen");
+    expect(html).not.toContain("Report a bug");
+    expect(html).not.toContain("Contact support");
+    expect(html.match(/class="cnpy-navrow /g)).toHaveLength(13);
+    // …and the rail's short-window steps are the ones it had.
+    expect(css).not.toContain("@media (max-height: 1000px)");
+    expect(css).toContain(`[data-phone="0"][data-collapsed="0"] .cnpy-sec { height:25px; padding-top:6px; }`);
+    expect(css).toContain(`[data-phone="0"] .cnpy-foot { padding:6px 10px; }`);
+  });
+
+  it("the org picker keeps its link: a person with no organization has no header and no Settings", () => {
+    const picker = orgPickerView({ me: { handle: "maya", name: "Maya", identities: [] }, mine: [], orgs: null, status: "ok", ui: initialOrgsUi(), hash: "" });
+    expect(picker).toMatch(/data-act="supportOpen" data-arg="question" data-support-trigger="question"[^>]*>Contact support<\/button>/);
+    expect(picker).not.toContain("goSettings");
+  });
+
+  it("the dialog is a root-level overlay over any screen and over the picker, in the app's modal", () => {
+    const s = app();
     expect(render(s)).not.toContain(`data-overlay="support"`);
     s.support = draft();
     for (const screen of ["feed", "tickets", "settings", "guide"] as const) {
       const html = render({ ...s, screen });
       expect(html.match(/data-overlay="support"/g), screen).toHaveLength(1);
+      expect(html).toContain(`data-support-layer class="cnpy-cmodal"`);
+      expect(html).not.toContain("support-email");
     }
     const picker = render({ ...s, view: "orgs" });
     expect(picker).toContain(`data-overlay="support"`);
     expect(picker).toContain(`data-morph="orgs"`);
-    const link = orgPickerView({ me: { handle: "maya", name: "Maya", identities: [] }, mine: [], orgs: null, status: "ok", ui: initialOrgsUi(), hash: "" });
-    expect(link).toMatch(/data-act="supportOpen" data-arg="question" data-support-trigger="question"[^>]*>Contact support<\/button>/);
   });
 
-  it("signed out there is no form: the auth view never renders it, and the landing page keeps its mailto", () => {
-    const s: AppState = { ...initialState(), view: "auth", support: draft() };
-    const html = render(s);
-    expect(html).not.toContain(`data-overlay="support"`);
-    expect(html).not.toContain("supportOpen");
-    const landing = landingView({ dark: false, signInOpen: false, signedIn: false, seen: new Set<string>(), feature: null });
-    expect(landing).not.toContain("supportOpen");
-    expect(landing).toContain("mailto:hello@trov.dev");
-  });
-
-  it("the request is person-level: never prefixed with an organization", () => {
+  it("the requests are person-level: never prefixed with an organization", () => {
     expect(isGlobalPath("/api/support")).toBe(true);
+    expect(isGlobalPath("/api/support/public")).toBe(true);
     expect(isGlobalPath("/api/platform/support/7/resolve")).toBe(true);
     expect(isGlobalPath("/api/supportx")).toBe(false);
+  });
+});
+
+describe("the ways in — signed out (the site's Contact form)", () => {
+  const anon = (over: Partial<SupportDraft> = {}): SupportDraft => draft({ anonymous: true, kind: "question", email: "", context: { route: "/pricing", org: null, version: "", userAgent: UA }, ...over });
+
+  it("Contact is in the site footer: a button that opens the dialog on the landing page, a link to /?contact=1 on the static pages", () => {
+    const here = siteFooter("dialog");
+    expect(here).toMatch(/<button type="button" data-act="supportOpen" data-arg="question" data-support-trigger="question"[^>]*aria-haspopup="dialog"[^>]*>Contact<\/button>/);
+    expect(here).not.toContain(CONTACT_HREF);
+    const there = siteFooter();
+    expect(CONTACT_HREF).toBe("/?contact=1");
+    expect(there).toContain(`<a href="/?contact=1">Contact</a>`);
+    expect(there).not.toContain("data-act");
+    const landing = landingView({ dark: false, signInOpen: false, signedIn: false, seen: new Set<string>(), feature: null });
+    expect(landing).toMatch(/data-act="supportOpen" data-arg="question"[^>]*>Contact<\/button>/);
+    expect(landing).toContain(`data-morph="landing"`);
+    // The static pages (pricing, terms, privacy) carry the link.
+    expect(legalView(TERMS, false)).toContain(`<a href="/?contact=1">Contact</a>`);
+    expect(legalView(PRIVACY, false)).toContain(`<a href="/?contact=1">Contact</a>`);
+  });
+
+  it("signed out the same dialog renders over the landing page, as a root-level overlay beside the morphed page, in the sign-in card", () => {
+    const s: AppState = { ...initialState(), view: "auth", authStep: "login", support: anon() };
+    const html = render(s);
+    expect(html.match(/data-overlay="support"/g)).toHaveLength(1);
+    expect(html).toContain(`data-morph="landing"`);
+    expect(html.indexOf(`data-overlay="support"`)).toBeGreaterThan(html.indexOf(`data-morph="landing"`));
+    const dlg = supportDialog(anon());
+    expect(dlg.trim().startsWith(`<div data-overlay="support" data-support-layer data-support-anon>`)).toBe(true);
+    expect(dlg).toContain(`class="site-signin-back"`);
+    expect(dlg).toContain(`class="site-signin-wrap"`);
+    expect(dlg).toMatch(/role="dialog" aria-modal="true" aria-labelledby="support-t"[^>]*class="site-signin-card site-contact-card/);
+    expect(dlg).not.toContain("cnpy-cmodal-box");
+    // Its motion is the sign-in card's, and so is its reduced-motion rule.
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.site-signin-back, \.site-signin-card/);
+    expect(css).toContain(".site-contact-card {");
+  });
+
+  it("fields: a required email first, the same kind switch (Question by default), an optional subject, the message", () => {
+    const dlg = supportDialog(anon());
+    expect(dlg).toMatch(/<input id="support-email" type="email"[^>]*data-act="supportEmail" data-field="supportEmail"[^>]*maxlength="254"[^>]*autocomplete="email"[^>]*required/);
+    expect(dlg.indexOf("support-email")).toBeLessThan(dlg.indexOf(`data-seg="support-kind"`));
+    expect(dlg).toMatch(/class="cnpy-seg-btn is-on"[^>]*>Question</);
+    expect(dlg).toContain(`id="support-subject"`);
+    expect(dlg).toContain(`id="support-message"`);
+    expect(dlg).toContain(">Contact support</div>");
+    // The signed-in form has no email field: the session says who is writing.
+    expect(supportDialog(draft())).not.toContain("support-email");
+  });
+
+  it("says plainly what is sent — what was typed, the page, the browser — and links the Privacy Policy; nothing about an organization or a version", () => {
+    const html = supportAttached({ route: "/pricing", org: null, version: "", userAgent: UA }, true);
+    expect(html.match(/<dt>/g)).toHaveLength(2);
+    expect(html).toContain("<dt>Page</dt>");
+    expect(html).toContain(">/pricing</dd>");
+    expect(html).toContain("<dt>Browser</dt>");
+    expect(html).toContain("We receive what you typed above, the page you were on and your browser. Nothing else. Your email address is used only to reply to you.");
+    expect(html).toMatch(/<a href="\/privacy" target="_blank" rel="noopener">Privacy Policy<\/a>/);
+    expect(html).not.toMatch(/Organization|Version/);
+  });
+
+  it("the honeypot: off screen, out of the tab order, hidden from assistive technology, autocomplete off — and not display:none", () => {
+    const dlg = supportDialog(anon());
+    expect(dlg).toMatch(/<div class="cnpy-support-hp" aria-hidden="true"><label for="support-website">Website<\/label><input id="support-website" name="website" type="text" tabindex="-1" autocomplete="off" value="" \/><\/div>/);
+    expect(SUPPORT_HONEYPOT).toBe("website");
+    const rule = css.match(/\.cnpy-support-hp \{[^}]*\}/)?.[0] ?? "";
+    expect(rule).toContain("position:absolute");
+    expect(rule).toContain("left:-10000px");
+    expect(rule).not.toContain("display:none");
+    expect(supportDialog(draft())).not.toContain("cnpy-support-hp");
+  });
+
+  it("Send needs an address and a message; the address is checked for shape before it is sent", () => {
+    expect(supportDialog(anon({ message: "Hi" }))).toMatch(/data-support-send disabled/);
+    expect(supportDialog(anon({ email: "a@b.co" }))).toMatch(/data-support-send disabled/);
+    expect(supportDialog(anon({ email: "a@b.co", message: "Hi" }))).toMatch(/data-support-send class="cnpy-accentbtn"/);
+    expect(supportProblem({ anonymous: true, email: "", subject: "", message: "Hi" })).toBe("Enter your email address, so we can reply.");
+    for (const email of ["nope", "a@b", "a@b.co, c@d.io", "Name <a@b.co>"]) expect(supportProblem({ anonymous: true, email, subject: "", message: "Hi" }), email).toBe("Enter an email address, like name@example.com.");
+    expect(supportProblem({ anonymous: true, email: " a@b.co ", subject: "", message: "Hi" })).toBeNull();
+  });
+
+  it("after sending: \"Sent. We'll reply to <email>.\"; a failure keeps the text; a 429 says when to try again; the global cap sends them to the address", () => {
+    expect(supportSentSentence("visitor@example.test", true)).toBe("Sent. We'll reply to visitor@example.test.");
+    const sent = supportDialog(anon({ sent: { replyTo: "visitor@example.test" } }));
+    expect(sent).toContain("Sent. We&#39;ll reply to visitor@example.test.");
+    expect(sent).not.toContain("<textarea");
+    const failed = supportDialog(anon({ email: "a@b.co", subject: "Kept", message: "Kept message", error: supportFailure(new Error("offline"), true) }));
+    expect(failed).toContain(`value="a@b.co"`);
+    expect(failed).toContain(`value="Kept"`);
+    expect(failed).toContain(">Kept message</textarea>");
+    expect(failed).toContain("What you wrote is still here.");
+    const limited = new ApiError(429, "rate_limited");
+    limited.retryAfter = 3600;
+    expect(supportFailure(limited, true)).toMatch(/^You've hit today's limit for messages from this form; try again after .+\. Or email hello@trov\.dev\.$/);
+    const closed = new ApiError(429, "support_closed");
+    closed.retryAfter = 3600;
+    expect(supportFailure(closed, true)).toBe("We can't take messages through this form right now. Email hello@trov.dev instead. What you wrote is still here to copy.");
+    expect(SUPPORT_FALLBACK_EMAIL).toBe(SITE_CONTACT);
+    expect(supportFailure(new ApiError(400, "too_fast"), true)).toContain("Give it a moment");
+    expect(supportFailure(new ApiError(400, "invalid payload"), true)).toContain("Check the email address");
+  });
+
+  it("its structure is stable while the form is up, and it loads no third-party script", () => {
+    const states = [anon(), anon({ email: "a@b.co", message: "x" }), anon({ email: "a@b.co", message: "x", busy: true }), anon({ message: "x", error: "Nope." })];
+    expect(new Set(states.map((s) => skeletonOf(supportDialog(s)))).size).toBe(1);
+    expect(supportDialog(anon())).toContain(`data-morph-key="support:anon:form"`);
+    const dlg = supportDialog(anon()) + supportDialog(anon({ sent: { replyTo: "a@b.co" } }));
+    expect(dlg).not.toMatch(/<script|<iframe|turnstile|recaptcha|hcaptcha/i);
+    for (const r of new Set([...dlg.matchAll(/border-radius:(\d+)px/g)].map((m) => m[1]))) expect(css, `border-radius:${r}px`).toContain(`[style*="border-radius:${r}px"]`);
   });
 });
 
@@ -364,7 +506,7 @@ describe("Platform › Support — one report", () => {
     const href = supportReplyHref(report({ subject: "x&cc=evil@x.io\nBcc: y@x.io" }))!;
     expect(href.split("?")[1]).toBe(`subject=${encodeURIComponent("Re: [Trov bug] x&cc=evil@x.io\nBcc: y@x.io")}`);
     expect(href).not.toMatch(/[&\n]/);
-    for (const email of [null, "", "not an address", "a@b.c, evil@x.io", "a@b.c?cc=evil@x.io"]) {
+    for (const email of [null, "", "not an address", "a@b.c, evil@x.io", "a@b.c?cc=evil@x.io"] as (string | null)[]) {
       expect(supportReplyHref(report({ reporter: { handle: "sam", name: null, email } })), String(email)).toBeNull();
     }
     const none = open({ reporter: { handle: "sam", name: null, email: null } });
@@ -397,6 +539,42 @@ describe("Platform › Support — one report", () => {
   it("the list and a report are different things in the panel: each is replaced, not patched into the other", () => {
     expect(supportTab(tab())).toMatch(/^<div data-morph-key="plat-support:list">/);
     expect(supportTab(tab({ reportId: 7 }))).toMatch(/^<div data-morph-key="plat-support:report:7">/);
+  });
+});
+
+describe("Platform › Support — a report sent signed out", () => {
+  const anonReport = (over: Partial<SupportReport> = {}) => report({ id: 9, kind: "question", subject: "Do you have SSO?", reporter: null, contact_email: "visitor@example.test", org: null, route: "/pricing", app_version: null, ...over });
+
+  it("the list tells it apart: a SIGNED OUT badge and the typed address where the person would be", () => {
+    const html = supportTab(tab({ list: { status: "ok", data: [anonReport(), report()] }, open: 2 }));
+    expect(html.match(/data-support-anon/g)).toHaveLength(1);
+    expect(html).toMatch(/data-support-anon[^>]*>.*?>SIGNED OUT<\/span>.*?visitor@example\.test/s);
+    expect(html).toContain(`from a signed-out visitor, open — open`);
+    expect(html).toContain("@maya"); // the signed-in row is as it was
+  });
+
+  it("the report says Signed out, shows the address labelled unverified, and Reply by email uses it", () => {
+    const r = anonReport();
+    const html = supportTab(tab({ reportId: 9, detail: { status: "ok", data: r } }));
+    expect(html).toContain(">SIGNED OUT<");
+    expect(html).toContain("Signed out: sent from the public site, with no account");
+    expect(html).toMatch(/visitor@example\.test <span data-support-unverified[^>]*>\(unverified, as typed\)<\/span>/);
+    expect(UNVERIFIED).toBe("unverified, as typed");
+    expect(supportReplyHref(r)).toBe("mailto:visitor@example.test?subject=Re%3A%20%5BTrov%20question%5D%20Do%20you%20have%20SSO%3F");
+    expect(html).toMatch(/<a href="mailto:visitor@example\.test\?subject=[^"]*" data-support-reply/);
+    expect(html).toContain("<dt>Page</dt>");
+    expect(html).not.toContain("<dt>Organization</dt>");
+    expect(html).not.toContain("<dt>Version</dt>");
+    expect(html).toContain("nobody verified it; Trov has sent nothing to it.");
+    expect(html).not.toContain("@null");
+  });
+
+  it("a typed address is a stranger's text: escaped, and never a mailto unless it is one plain address", () => {
+    const html = supportTab(tab({ reportId: 9, detail: { status: "ok", data: anonReport({ contact_email: `<img src=x>@x.io` }) } }));
+    expect(html).not.toContain("<img src=x>");
+    expect(html).toContain("&lt;img src=x&gt;@x.io");
+    expect(html).not.toContain("data-support-reply");
+    expect(supportReplyHref(anonReport({ contact_email: "a@b.co?cc=evil@x.io" }))).toBeNull();
   });
 });
 

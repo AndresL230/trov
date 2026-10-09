@@ -129,7 +129,7 @@
   Bug reports and support messages (`0049_support_reports` — a GLOBAL table; `shared/support-core.ts`,
   `src/platform/support.ts` + `support-routes.ts`, the operator's mail in `src/notifications/support.ts`, the
   dialog in `web/src/support.ts` + `support-actions.ts`, Platform › Support in `web/src/platform-support*.ts`;
-  `POST /api/support` for any signed-in person, `/api/platform/support…` for a superadmin): `docs/architecture/support.md`.
+  `POST /api/support` for any signed-in person, the public `POST /api/support/public` for the site's Contact form, `/api/platform/support…` for a superadmin): `docs/architecture/support.md`.
   Sync GitHub as a recorded run (`0046_sync_runs`, `src/sync/runs.ts`, `GET /sync`, the panel's every sentence in
   `shared/sync.ts`): `docs/architecture/sync.md` — whether a sync can start is asked of the ONE GitHub credential
   source (`githubCredentialSource`, `src/github-app/credential.ts`), never of the token alone. The summarizer for an org is chosen ONLY by `orgSummarizers`
