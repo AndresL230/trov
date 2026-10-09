@@ -21,13 +21,13 @@ import type { OrgBillingView } from "@shared/billing";
 
 const sources = import.meta.glob(["../web/src/org-plan.ts", "../web/src/platform-access.ts", "../web/src/platform-access-actions.ts"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
-const grant = (o: Partial<MyGrant> = {}): MyGrant => ({ id: 4, plan: "team", plan_name: "Pro", entitlements: PLANS.team.entitlements, granted_by: "andres", created_at: "2026-10-05T09:00:00.000Z", expires_at: null, ...o });
+const grant = (o: Partial<MyGrant> = {}): MyGrant => ({ id: 4, plan: "team", plan_name: "Pro", entitlements: PLANS.team.entitlements, granted_by: "andres", created_at: "2026-10-05T09:00:00.000Z", expires_at: null, gift_days: null, ...o });
 const mine = (o: Partial<MyOrgsResponse> = {}): MyOrgsResponse => ({ orgs: [], invites: [], superadmin: false, can_create: true, grants: [grant()], free: { can_create: false, owned: null }, ...o });
 const me = { handle: "ines", name: "Ines Vidal", identities: [{ provider: "github" as const, label: "ines-vidal" }] };
 const picker = (orgs: MyOrgsResponse) => orgPickerView({ me, mine: orgs.orgs, orgs, status: "ok", ui: initialOrgsUi(), hash: "" });
 
 const view = (plan: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView => ({
-  plan, name: PLANS[plan].name, description: PLANS[plan].description, status: "active", source: "granted", period_end: null,
+  plan, name: PLANS[plan].name, description: PLANS[plan].description, status: "active", source: "granted", period_end: null, gift_until: null,
   entitlements: PLANS[plan].entitlements, overridden: [], seats: { members: 5, pending: 2 },
   usage: { seats: 7, repositories: 1, environments: 2, artifact_bytes: 1024 ** 3, agent_connections: 1, ai_summaries: 0 }, over: [], ...o,
 });
@@ -293,7 +293,7 @@ describe("Org settings › Members — seats", () => {
 
 // ── Platform ─────────────────────────────────────────────────────────────────
 const pg = (o: Partial<PlatformGrant> = {}): PlatformGrant => ({
-  id: 9, handle: null, github_login: "nova-dev", email: null, plan: "team", overrides: {}, note: null, source: "granted", granted_by: "andres",
+  id: 9, handle: null, github_login: "nova-dev", email: null, plan: "team", overrides: {}, note: null, source: "granted", granted_by: "andres", gift_days: null,
   created_at: "2026-10-06T09:00:00.000Z", expires_at: null, status: "unused", used_at: null, used_by: null, org: null, revoked_at: null, revoked_by: null,
   mail_status: null, mail_at: null, mail_error: null, ...o,
 });

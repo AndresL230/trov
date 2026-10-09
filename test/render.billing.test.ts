@@ -27,7 +27,7 @@ const bill = (o: Partial<OrgBillingView> = {}): OrgBillingView => ({
 });
 const freeBill = (o: Partial<OrgBillingView> = {}): OrgBillingView => bill({ subscribed: false, customer: false, interval: null, seats: null, upgrade_to: ["team"], ...o });
 const view = (plan: PlanId = "team", o: Partial<OrgPlanView> = {}): OrgPlanView => ({
-  plan, name: PLANS[plan].name, description: PLANS[plan].description, status: "active", source: "billing", period_end: PERIOD,
+  plan, name: PLANS[plan].name, description: PLANS[plan].description, status: "active", source: "billing", period_end: PERIOD, gift_until: null,
   entitlements: plan === "team" ? { ...PLANS.team.entitlements, seats: 5 } : PLANS[plan].entitlements, overridden: plan === "team" ? ["seats"] : [], seats: { members: 3, pending: 0 },
   usage: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 1024 ** 2, agent_connections: 1, ai_summaries: 1212 }, over: [], billing: plan === "free" ? freeBill() : bill(), ...o,
 });
@@ -395,7 +395,7 @@ describe("the waiting room — /billing/done", () => {
 
 describe("the picker — a grant that was paid for", () => {
   const me = { handle: "maya", name: "Maya Ortiz", identities: [{ provider: "github" as const, label: "maya" }] };
-  const grant = (o: Partial<MyGrant> = {}): MyGrant => ({ id: 9, plan: "team", plan_name: "Pro", entitlements: { ...PLANS.team.entitlements, seats: 4 }, granted_by: "billing", created_at: new Date().toISOString(), expires_at: null, ...o });
+  const grant = (o: Partial<MyGrant> = {}): MyGrant => ({ id: 9, plan: "team", plan_name: "Pro", entitlements: { ...PLANS.team.entitlements, seats: 4 }, granted_by: "billing", created_at: new Date().toISOString(), expires_at: null, gift_days: null, ...o });
   const picker = (grants: MyGrant[]) => { const orgs: MyOrgsResponse = { orgs: [], invites: [], superadmin: false, can_create: true, grants, free: { can_create: true, owned: null } }; return orgPickerView({ me, mine: [], orgs, status: "ok", ui: initialOrgsUi(), hash: "" }); };
   it("says it was paid for — never 'Granted by @billing' — and the page opens on the payment", () => {
     const html = picker([grant()]);

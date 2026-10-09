@@ -343,6 +343,7 @@ const PLATFORM: Record<string, string> = {
   "GET /oauth/authorize": "reads the session itself; consent names the org (Phase 5a)",
   "POST /oauth/authorize": "reads the session itself",
   "GET /api/orgs": "the caller's own memberships and pending invites",
+  "GET /api/orgs/slug-check": "is an organization handle (slug) free — orgs are global; no org's content, capped per person",
   "POST /api/orgs": "creates an org the caller owns (cap 3 per person)",
   "GET /api/invites": "the caller's own pending invites (matched on their GitHub login / provider-verified email)",
   "POST /api/invites/:id/accept": "an invite that is the caller's — anyone else's id is 404",
@@ -353,7 +354,9 @@ const PLATFORM: Record<string, string> = {
   "POST /api/platform/orgs/:slug/admin": "requireSuperadmin", "POST /api/platform/orgs/:slug/suspend": "requireSuperadmin",
   "POST /api/platform/orgs/:slug/unsuspend": "requireSuperadmin",
   // Plans and grants (0044_plans, src/plans/routes.ts): registered on the same app, behind the same gate.
-  "PUT /api/platform/orgs/:slug/plan": "requireSuperadmin", "GET /api/platform/grants": "requireSuperadmin",
+  "PUT /api/platform/orgs/:slug/plan": "requireSuperadmin",
+  // 0048_plan_gifts: a gift's end moved, or the gift ended now (test/plans.gifts.test.ts holds the 404 for anyone else).
+  "POST /api/platform/orgs/:slug/gift/extend": "requireSuperadmin", "POST /api/platform/orgs/:slug/gift/end": "requireSuperadmin", "GET /api/platform/grants": "requireSuperadmin",
   "POST /api/platform/grants": "requireSuperadmin", "POST /api/platform/grants/:id/revoke": "requireSuperadmin",
   "GET /api/platform/admins": "requireSuperadmin", "POST /api/platform/admins": "requireSuperadmin", "DELETE /api/platform/admins/:handle": "requireSuperadmin",
   "GET /api/platform/audit": "requireSuperadmin", "GET /api/platform/usage": "requireSuperadmin",

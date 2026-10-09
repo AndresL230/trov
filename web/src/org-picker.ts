@@ -15,12 +15,12 @@
 // web/src/org-picker-actions.ts.
 
 import { trovMark } from "@shared/mark";
-import { ORG_NAME_MAX, type MyInvite, type MyOrg, type MyOrgsResponse, type OrgRole } from "@shared/orgs";
-import { PLANS, FREE_PLAN, UPGRADE_PLAN, seatsPhrase, type MyGrant } from "@shared/plans";
+import { ORG_NAME_MAX, orgSlugProblem, type MyInvite, type MyOrg, type MyOrgsResponse, type OrgRole } from "@shared/orgs";
+import { PLANS, FREE_PLAN, UPGRADE_PLAN, giftLengthWords, seatsPhrase, type MyGrant } from "@shared/plans";
 import { BILLING_GRANTER } from "@shared/billing";
 import { esc, attr, relTime, surface } from "./ui";
 import { accentBtn, quietBtn, orgBanner, roleChip } from "./org-ui";
-import { nameError, slugError, addOrgServerError } from "./platform";
+import { nameError, addOrgServerError } from "./platform";
 import { orgHref } from "./org-context";
 import { orgTile } from "./org-logo";
 import { skeleton, skLine } from "./skeleton";
@@ -35,12 +35,14 @@ export interface CreateOrgDraft {
   slugTouched: boolean;
   busy: boolean;
   errors: CreateOrgErrors;
+  /** The live answer to "is this handle free" (`GET /api/orgs/slug-check`); `idle` = not asked, or not answered. */
+  check: "idle" | "checking" | "available" | "taken";
   /** The grant this creation uses (its id and what it gives), or null = the person's oldest. */
-  grant: Pick<MyGrant, "id" | "plan_name" | "entitlements"> | null;
+  grant: (Pick<MyGrant, "id" | "plan_name" | "entitlements"> & Partial<Pick<MyGrant, "gift_days">>) | null;
   /** No grant: a Free organization of their own (`grant` is then null). */
   free: boolean;
 }
-export const blankCreateOrg = (grant: CreateOrgDraft["grant"] = null, free = false): CreateOrgDraft => ({ name: "", slug: "", slugTouched: false, busy: false, errors: {}, grant, free: grant === null && free });
+export const blankCreateOrg = (grant: CreateOrgDraft["grant"] = null, free = false): CreateOrgDraft => ({ name: "", slug: "", slugTouched: false, busy: false, errors: {}, check: "idle", grant, free: grant === null && free });
 
 /** What the switcher, the picker and the create dialog keep in AppState (`state.orgsUi`). */
 export interface OrgsUi {
@@ -56,9 +58,20 @@ export interface OrgsUi {
 export const initialOrgsUi = (): OrgsUi => ({ menu: false, create: null, inviteBusy: null, inviteError: null, lost: null });
 
 // ── the create rules (pure; the server re-checks every one) ──────────────────
-export function createOrgErrors(d: Pick<CreateOrgDraft, "name" | "slug">): CreateOrgErrors {
+/** An organization's HANDLE is its slug: the address its links start with, unique across Trov. */
+export const HANDLE_RULE = "A handle is 2 to 39 characters: lowercase letters, digits and hyphens, not starting with a hyphen.";
+export const handleTaken = (slug: string): string => `“${slug}” is taken. Pick another handle.`;
+/** Why this handle can't be used, from its shape alone (taken is the server's to say), or null. */
+export function handleError(slug: string): string | null {
+  if (!slug) return "Enter a handle. It is the organization's address.";
+  const problem = orgSlugProblem(slug);
+  if (problem === "invalid") return HANDLE_RULE;
+  if (problem === "reserved") return `“${slug}” is reserved. Pick another handle.`;
+  return null;
+}
+export function createOrgErrors(d: Pick<CreateOrgDraft, "name" | "slug"> & Partial<Pick<CreateOrgDraft, "check">>): CreateOrgErrors {
   const e: CreateOrgErrors = {};
-  const n = nameError(d.name), s = slugError(d.slug);
+  const n = nameError(d.name), s = handleError(d.slug) ?? (d.check === "taken" ? handleTaken(d.slug) : null);
   if (n) e.name = n;
   if (s) e.slug = s;
   return e;
@@ -71,6 +84,9 @@ export const FREE_TAKEN_SENTENCE = `You already own a ${PLANS[FREE_PLAN].name} o
 export function createOrgServerError(code: string, d: Pick<CreateOrgDraft, "slug">): CreateOrgErrors {
   if (code === "no_grant") return { form: NO_GRANT_SENTENCE };
   if (code === "free_org_limit") return { form: FREE_TAKEN_SENTENCE };
+  if (code === "slug_taken") return { slug: handleTaken(d.slug) };
+  if (code === "invalid_slug") return { slug: HANDLE_RULE };
+  if (code === "reserved_slug") return { slug: `“${d.slug}” is reserved. Pick another handle.` };
   const e = addOrgServerError(code, { slug: d.slug, adminKind: "handle", adminValue: "" });
   return { name: e.name, slug: e.slug, form: e.form };
 }
@@ -205,7 +221,7 @@ const FIELD = "display:block;width:100%;box-sizing:border-box;height:38px;paddin
 const FIELD_LABEL = "display:block;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:7px";
 const BTN = "height:38px;padding:0 16px;border-radius:8px;font-size:12.5px;font-weight:600;white-space:nowrap";
 
-/** "Create an organization": a name and its address. The person who creates it is its owner. */
+/** "Create an organization": a name and its handle (the address). The person who creates it is its owner. */
 export function createOrgModal(d: CreateOrgDraft): string {
   const e = d.errors;
   const off = d.busy ? " disabled" : "";
@@ -219,7 +235,7 @@ export function createOrgModal(d: CreateOrgDraft): string {
         <button type="button" data-act="orgsCreateClose" aria-label="Close" title="Close" class="cnpy-iconbtn"${off} style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${CLOSE}</button>
         <div id="orgs-create-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em">Create an organization</div>
         <p id="orgs-create-d" style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">${d.grant
-          ? `It will be on the <strong style="font-weight:600;color:var(--fg-70)">${esc(d.grant.plan_name)}</strong> plan, ${esc(seatsPhrase(d.grant.entitlements.seats))}. You become its owner${d.grant.entitlements.seats === 1 ? "" : " and invite everyone else"}.`
+          ? `It will be on the <strong style="font-weight:600;color:var(--fg-70)">${esc(d.grant.plan_name)}</strong> plan, ${esc(seatsPhrase(d.grant.entitlements.seats))}. You become its owner${d.grant.entitlements.seats === 1 ? "" : " and invite everyone else"}.${d.grant.gift_days ? ` It is free for ${esc(giftLengthWords(d.grant.gift_days))} from today, a gift from Trov; after that it moves to Free, and nothing is deleted.` : ""}`
           : d.free ? `It will be on the <strong style="font-weight:600;color:var(--fg-70)">${esc(PLANS[FREE_PLAN].name)}</strong> plan, ${esc(seatsPhrase(PLANS[FREE_PLAN].entitlements.seats))}. You become its owner and invite everyone else; upgrade it to ${esc(PLANS[UPGRADE_PLAN].name)} when you need more.`
           : "An organization is your team's own Trov: its docs, tickets, roadmap and feed. You become its owner and invite everyone else."}</p>
         <div style="margin-top:16px">
@@ -228,9 +244,12 @@ export function createOrgModal(d: CreateOrgDraft): string {
           ${e.name ? "" : `<div id="orgs-create-name-h" style="font-size:11.5px;color:var(--fg-40);margin-top:6px;line-height:1.45">Your team or company. You can rename it later.</div>`}
         </div>
         <div style="margin-top:14px">
-          <label for="orgs-create-slug" style="${FIELD_LABEL}">Address</label>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+            <label for="orgs-create-slug" style="${FIELD_LABEL}">Handle</label>
+            <span data-orgs-handle-check="${d.check}" aria-live="polite" style="font-size:11.5px;color:${d.check === "available" ? "var(--green)" : d.check === "taken" ? "var(--red)" : "var(--fg-40)"}">${d.check === "checking" ? "checking…" : d.check === "idle" ? "" : d.check}</span>
+          </div>
           ${input("orgs-create-slug", "orgsCreateSlug", d.slug, e.slug, `maxlength="39" autocapitalize="off" placeholder="acme-robotics"`, ";font-family:var(--code);font-size:13px")}
-          ${e.slug ? "" : `<div id="orgs-create-slug-h" style="font-size:11.5px;color:var(--fg-40);margin-top:6px;line-height:1.45;overflow-wrap:anywhere">Its links start with <span style="font-family:var(--code);font-size:11.5px;color:var(--fg-55)">/${esc(d.slug || "acme-robotics")}/</span>. Lowercase letters, digits and hyphens. It can't be changed later.</div>`}
+          ${e.slug ? "" : `<div id="orgs-create-slug-h" style="font-size:11.5px;color:var(--fg-40);margin-top:6px;line-height:1.45;overflow-wrap:anywhere">Unique across Trov: its links start with <span style="font-family:var(--code);font-size:11.5px;color:var(--fg-55)">/${esc(d.slug || "acme-robotics")}/</span>. Lowercase letters, digits and hyphens. It can't be changed later.</div>`}
         </div>
         ${e.form ? `<div role="alert" style="font-size:12.5px;line-height:1.5;color:var(--red);margin-top:14px">${esc(e.form)}</div>` : ""}
         <div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px">
@@ -254,6 +273,8 @@ export interface OrgPickerProps {
   hash: string;
   /** The viewer is a platform superadmin: the page links to the Platform area, which needs no membership. */
   superadmin?: boolean;
+  /** What sits behind the card: the app itself, loading (render.ts `firstRunBackdrop`). */
+  backdrop?: string;
 }
 
 /** Why the org in the URL did not open — one plain sentence; it may be any of three things, and
@@ -315,7 +336,7 @@ export function orgPickerView(p: OrgPickerProps): string {
     const o = { arg: String(g.id), field: `orgsCreateOpen:${g.id}`, label, extra: "height:36px" };
     const expires = g.expires_at ? ` &middot; use it by ${esc(new Date(g.expires_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }))}` : "";
     return optRow(`You can set up an organization &mdash; ${esc(g.plan_name)}`,
-      `${esc(seatsPhrase(g.entitlements.seats, true))}. You choose its name and become its owner. ${g.granted_by === BILLING_GRANTER ? "Paid for" : `Granted by @${esc(g.granted_by)}`} ${esc(relTime(g.created_at))}${expires}.`,
+      `${esc(seatsPhrase(g.entitlements.seats, true))}${g.gift_days ? `, free for ${esc(giftLengthWords(g.gift_days))}` : ""}. You choose its name and become its owner. ${g.granted_by === BILLING_GRANTER ? "Paid for" : `Granted by @${esc(g.granted_by)}`} ${esc(relTime(g.created_at))}${expires}.`,
       orgs.length === 0 && i === 0 ? accentBtn("Set up organization", "orgsCreateOpen", o) : quietBtn("Set up organization", "orgsCreateOpen", { ...o, extra: "height:36px;color:var(--fg)" }),
       ` data-orgs-grant="${g.id}"`);
   };
@@ -344,12 +365,15 @@ export function orgPickerView(p: OrgPickerProps): string {
 
   // One card, sized to sit in the window without scrolling the page: the brand banner (the mark,
   // who is being welcomed, what Trov is), the things to do, and who is signed in.
-  return `<div class="cnpy-orgs" data-screen-label="Organizations">
+  // `data-morph`: patched in place while it stays this page (morph.ts `paint`), so typing in the create
+  // dialog over it, or an invitation arriving, never rebuilds the card or the backdrop behind it.
+  return `<div class="cnpy-orgs" data-morph="orgs" data-screen-label="Organizations">
+    ${p.backdrop ?? ""}
     <div class="cnpy-orgs-col">
       <div${surface("overflow:hidden", { cls: "cnpy-orgs-card" })}>
         <header class="cnpy-orgs-banner">
           <span class="cnpy-orgs-art" aria-hidden="true">${trovMark(230, "currentColor")}</span>
-          <div style="position:relative;display:flex;align-items:center;gap:9px">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span></div>
+          <div style="position:relative;display:flex;align-items:center;gap:9px">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span>${orgs.length === 0 ? `<span class="cnpy-onb-step" data-flow-step="2">Step 2 of 3</span>` : ""}</div>
           <h1 style="position:relative;margin:22px 0 0;font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:1.2;overflow-wrap:anywhere">${esc(title)}</h1>
           <p class="cnpy-orgs-lede" style="position:relative;margin:8px 0 0;font-size:13.5px;line-height:1.55;max-width:500px">${esc(lead)}</p>
         </header>
@@ -359,7 +383,7 @@ export function orgPickerView(p: OrgPickerProps): string {
         </div>
         <footer class="cnpy-orgs-foot">
           <span style="min-width:0;overflow-wrap:anywhere">Signed in as <span style="font-weight:500;color:var(--fg-70)">@${esc(p.me?.handle ?? "")}</span></span>
-          <span style="display:flex;gap:8px;flex:none">${quietBtn("Sign out", "signOut")}</span>
+          <span style="display:flex;gap:8px;flex:none">${orgs.length === 0 && p.me ? quietBtn("Back", "onbBack", { label: "Back: change how you appear" }) : ""}${quietBtn("Sign out", "signOut")}</span>
         </footer>
       </div>
     </div>

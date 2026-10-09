@@ -65,6 +65,16 @@ loses access; it cannot add more of that kind until it is back under. Everyone i
 plan in Org settings › General; only you change it. The limits, what counts toward each and the seam for
 billing: `plans.md`.
 
+**Gift a plan** gives the organization a plan for free until a date: pick the plan (Pro or Enterprise),
+optionally its seats, and 1 / 2 / 3 / 6 / 12 months or a date [`PUT …/plan { gift }`]. The confirmation says
+what happens at the end: the organization moves to Free by itself, nothing is deleted, and anything over a
+Free limit waits. The section then reads "Gifted until <date>" with **Extend** [`POST …/gift/extend`] and
+**End now** [`POST …/gift/end`]; **Change plan** on a gifted organization clears the gift (the plan you set
+there has no end). The organization's people see "Free until <date>, a gift from Trov…" on their Plan tile,
+and its owner can start paying before then. It is not offered for an organization on a live subscription.
+In Platform › Access, **Grant an organization** has an optional **Free for**: the organization that grant
+becomes is free for that long from the day it is created. All of it: `plans.md` › Gifts.
+
 ### 1c. …or someone buys Pro
 
 A person presses "Choose Pro" on the pricing page [`GET /billing/start`, `src/billing/routes.ts`], signs in
@@ -81,7 +91,8 @@ events and the owner checklist: `billing.md`. Enterprise is never bought: it is 
 ### 1d. …or someone creates a Free one
 
 Anyone signed in (not a superadmin) can create a **Free** organization from the org picker or the switcher's
-menu — no grant, no payment [`POST /api/orgs`, `src/plans/free.ts`]: up to 3 people, 1 repository, 2
+menu (the dialog asks for a name and a **handle** — the slug, checked for availability as it is typed:
+`GET /api/orgs/slug-check`) — no grant, no payment [`POST /api/orgs`, `src/plans/free.ts`]: up to 3 people, 1 repository, 2
 environments. A person can OWN one Free organization at a time (`DEFAULT_ORG_LIMIT = 1`, `shared/orgs.ts`).
 Its owner upgrades it to Pro from Org settings › General (**Upgrade to Pro**, or the button Members shows at
 the seat cap): a Stripe checkout for that organization, starting at one seat per member and pending
@@ -109,7 +120,7 @@ skippable, with Back, a step indicator and *Skip setup*.
 
 - **It is a route, not server state.** `#welcome` is the first step; `#welcome/agent`, `/team` and `/done`
   the others, so a reload stays put. Nothing records that a person has seen it, and there is no migration.
-  It is reopened from Org settings' checklist (*Open the guided setup*), from Help › Get Started and from
+  It is reopened from Org settings' checklist (*Open the guided setup*), from Help › Guide and from
   quick search.
 - **Every step's state is derived, never stored and never guessed** — from the reads Org settings already
   makes (repositories, the GitHub App's connection, members, invitations, the plan) and from the person's

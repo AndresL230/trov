@@ -14,17 +14,17 @@ import { EMAIL_COLORS as C, EMAIL_FONT, FONTS_HREF, EMAIL_STYLE, EMAIL_WIDTH, EM
 import { deliveryFor } from "./resend";
 import { loadSettings } from "./cron";
 
-/** Get Started — the screen a fresh sign-in already lands on, so the mail and the
- *  app agree on where a new person begins. */
+/** The guided setup — the screen a person lands on when they create or join an organization, so the
+ *  mail and the app agree on where a new person begins (an owner's four steps or a member's two; the
+ *  page picks by role). The Guide (`#guide`) is the reference it links on to. */
 export function welcomeUrl(origin: string, orgSlug: string): string {
-  return `${origin}/${orgSlug}/#guide`;
+  return `${origin}/${orgSlug}/#welcome`;
 }
 
 export function renderWelcomeEmail(o: { name: string | null; handle: string; orgName: string; orgSlug: string; origin: string; host: string }): { subject: string; html: string; text: string } {
   const subject = `Welcome to ${o.orgName} on Trov`;
   const hi = o.name ? `Hi ${escapeHtml(o.name)},` : "Hi,";
   const p = `${EMAIL_FONT.sans}font-size:14px;line-height:20px;color:${C.fg70};padding:0 0 12px 0;`;
-  const headline = `${EMAIL_FONT.sans}font-size:26px;line-height:32px;font-weight:600;letter-spacing:-0.02em;color:${C.fg};padding:0 0 ${SP.m}px 0;`;
   const lede = "You're in.";
   const joined = `You have joined ${o.orgName}.`;
   const about = "Trov is a team's shared memory: what everyone is working on, the docs and decisions behind it, and what ships next.";
@@ -37,12 +37,12 @@ export function renderWelcomeEmail(o: { name: string | null; handle: string; org
     `<body style="margin:0;padding:0;background-color:${C.ground};">` +
     `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" style="padding:36px 16px;">` +
     `<table role="presentation" width="${EMAIL_WIDTH}" cellpadding="0" cellspacing="0" border="0" style="width:${EMAIL_WIDTH}px;max-width:100%;background-color:${C.bg};border:1px solid ${C.border};border-radius:13px;">` +
-    emailBanner() +
-    `<tr><td style="padding:${SP.xl}px 28px 0 28px;"><div style="${headline}">${lede}</div>` +
+    emailBanner({ eyebrow: "Welcome", title: lede }) +
+    `<tr><td style="padding:${SP.xl}px 28px 0 28px;">` +
     `<div style="${p}color:${C.fg};">${hi}</div>` +
     `<div style="${p}">${escapeHtml(joined)} Your handle is <span style="${handleStyle}">@${escapeHtml(o.handle)}</span> — that is how the team sees you on tickets, docs and decisions.</div>` +
     `<div style="${EMAIL_FONT.sans}font-size:13px;line-height:20px;color:${C.fg55};padding:0 0 ${SP.l}px 0;">${about}</div>` +
-    `<div style="text-align:center;padding:0 0 ${SP.l}px 0;"><a href="${escapeHtml(start)}" style="${button}">Open Get Started</a></div>` +
+    `<div style="text-align:center;padding:0 0 ${SP.l}px 0;"><a href="${escapeHtml(start)}" style="${button}">Open the guided setup</a></div>` +
     `<div style="${EMAIL_FONT.sans}font-size:12.5px;line-height:20px;color:${C.fg55};padding-bottom:24px;">Your handle, name and colour are yours to change, and email digests are off until you pick a cadence — both live in <a href="${escapeHtml(settings)}" style="color:${C.fg70};">Settings</a>.</div></td></tr>` +
     `<tr><td style="padding:16px 28px;border-top:1px solid ${C.border};${EMAIL_FONT.sans}font-size:12px;line-height:20px;color:${C.fg40};">Sent by Trov &middot; ${escapeHtml(o.host)}</td></tr>` +
     `</table></td></tr></table></body></html>`;
@@ -52,7 +52,7 @@ export function renderWelcomeEmail(o: { name: string | null; handle: string; org
     o.name ? `Hi ${o.name},` : "Hi,", "",
     `${joined} Your handle is @${o.handle} — that is how the team sees you on tickets, docs and decisions.`, "",
     about, "",
-    "Open Get Started:", "",
+    "Open the guided setup:", "",
     `  ${start}`, "",
     `Your handle, name and colour are yours to change, and email digests are off until you pick a cadence — both live in Settings: ${settings}`,
     `Sent by Trov — ${o.host}`, "",

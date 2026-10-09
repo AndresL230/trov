@@ -22,7 +22,7 @@ import { orgPlanView } from "../plans/gate";
 import { orgBillingView } from "../billing/view";
 import type { MyOrgsResponse } from "@shared/orgs";
 import {
-  OrgError, ORG_ERROR_STATUS, myOrgs, listMyInvites, respondToInvite,
+  OrgError, ORG_ERROR_STATUS, myOrgs, orgSlugAvailable, listMyInvites, respondToInvite,
   orgMe, getOrgSettings, updateOrgSettings, listMembers, updateMember, removeMember,
   listOrgInvites, createInvite, revokeInvite, resendableInvite, getOrgInvite, neverJoined,
 } from "./repo";
@@ -62,6 +62,14 @@ orgsApp.use("*", cookieOnly);
 orgsApp.get("/", async (c) => {
   const [mine, grants, free] = await Promise.all([myOrgs(c.var.p, me(c)), usableGrants(c.var.p, me(c)), freeOrgState(c.var.p, me(c))]);
   return c.json({ ...mine, grants, can_create: grants.length > 0 || free.can_create, free } satisfies MyOrgsResponse);
+});
+
+// Is this handle (slug) free? Orgs are global, so this answers "is there an org called X" — capped per
+// person by the same allowance as the person-handle check.
+orgsApp.get("/slug-check", async (c) => {
+  const refused = await rateLimited(c, "handle_check");
+  if (refused) return refused;
+  return c.json(await orgSlugAvailable(c.var.p, c.req.query("slug") ?? ""));
 });
 
 // `{ slug, name, grant?, plan? }`: `grant` (an id) uses that grant; `plan: "free"` makes a Free org; neither

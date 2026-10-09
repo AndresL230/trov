@@ -145,6 +145,74 @@ export interface OrgPlanState {
   source?: PlanSource | null;
 }
 
+// ── gifts: a plan given for free until a date (0048_plan_gifts) ───────────────
+// A superadmin puts an org on a plan with an END (`orgs.plan_gift_until`); when it passes the org moves
+// to Free by itself, nothing deleted (src/plans/gifts.ts). A grant carries the same thing as a LENGTH in
+// days (`org_grants.gift_days`): the clock starts when the grantee creates the organization.
+
+const DAY_MS = 86_400_000;
+/** The longest a gift may run, from now: three years. */
+export const GIFT_MAX_DAYS = 1095;
+/** The lengths Platform offers. A "month" is 30 days and a year 365, so a gift and a grant say the same thing. */
+export const GIFT_PRESETS = [
+  { days: 30, label: "1 month" }, { days: 60, label: "2 months" }, { days: 90, label: "3 months" },
+  { days: 180, label: "6 months" }, { days: 365, label: "12 months" },
+] as const;
+/** A gift in its last days is said prominently (the Plan tile, Platform). */
+export const GIFT_SOON_DAYS = 7;
+
+/** A gift on an org, as Platform reads it. */
+export interface PlanGift {
+  /** The instant the plan ends and the org moves to Free (ISO-8601, UTC). Who gave it is in the audit trail. */
+  until: string;
+}
+
+/** How long a gift is: `{ days }` (a whole number, counted from now — or, extending, from the current
+ *  end) or `{ until }` (a `YYYY-MM-DD` day, which runs to the END of that day UTC, or a full instant). */
+export type GiftLength = { days: number } | { until: string };
+
+/** A whole number of gift days, or null. */
+export const giftDays = (v: unknown): number | null =>
+  typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= GIFT_MAX_DAYS ? v : null;
+
+/**
+ * The instant a gift ends, from a request's `{ days }` or `{ until }` — or null when it names neither,
+ * both, a past instant, or one more than `GIFT_MAX_DAYS` away. `from` is where `days` are counted from:
+ * now for a new gift, the current end when one is extended.
+ */
+export function giftEnd(input: unknown, now: number, from: number = now): string | null {
+  const g = (input && typeof input === "object" && !Array.isArray(input) ? input : {}) as { days?: unknown; until?: unknown };
+  const hasDays = g.days !== undefined && g.days !== null, hasUntil = g.until !== undefined && g.until !== null;
+  if (hasDays === hasUntil) return null;
+  let end: number;
+  if (hasDays) {
+    const days = giftDays(g.days);
+    if (days === null) return null;
+    end = Math.max(from, now) + days * DAY_MS;
+  } else {
+    if (typeof g.until !== "string") return null;
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(g.until);
+    end = Date.parse(day ? `${g.until}T23:59:59.999Z` : g.until);
+    // A day that does not exist (2027-02-31) must not roll over into the next month.
+    if (day && Number.isFinite(end) && new Date(end).toISOString().slice(0, 10) !== g.until) return null;
+  }
+  if (!Number.isFinite(end) || end <= now || end > now + GIFT_MAX_DAYS * DAY_MS) return null;
+  return new Date(end).toISOString();
+}
+
+/** Whole days until a gift ends, rounded up (0 = it has ended); null for no gift or an unreadable date. */
+export function giftDaysLeft(until: string | null | undefined, now: number = Date.now()): number | null {
+  const t = until ? Date.parse(until) : NaN;
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.ceil((t - now) / DAY_MS));
+}
+
+/** "1 month", "12 months", "45 days" — a gift's length in words (a preset by its name, anything else in days). */
+export function giftLengthWords(days: number): string {
+  const preset = GIFT_PRESETS.find((p) => p.days === days);
+  return preset ? preset.label : `${days} ${days === 1 ? "day" : "days"}`;
+}
+
 const OVERRIDE_MAX = Number.MAX_SAFE_INTEGER;
 
 /** Validate overrides from a request or a stored JSON value. Unknown keys and bad values are refused
@@ -344,6 +412,9 @@ export interface OrgPlanView {
   source: PlanSource | null;
   /** The paid period's end (`orgs.plan_period_end`): the renewal date, or when a cancelled plan ends. Null for a granted org. */
   period_end: string | null;
+  /** The plan is a GIFT from Trov that ends at this instant (0048_plan_gifts): the org then moves to Free,
+   *  nothing deleted. Null = the plan is not a gift (it has no end of its own). */
+  gift_until: string | null;
   /** How the org pays (shared/billing.ts) — only for an org on a Stripe subscription; null / absent = nothing about payment is shown. */
   billing?: OrgBillingView | null;
   entitlements: Entitlements;
@@ -387,6 +458,8 @@ export interface MyGrant {
   granted_by: string;
   created_at: string;
   expires_at: string | null;
+  /** The organization is free for this many days from the day it is created (a gift); null = no end. */
+  gift_days: number | null;
 }
 
 /** A grant as the superadmin sees it (GET /api/platform/grants). */
@@ -402,6 +475,8 @@ export interface PlatformGrant {
   granted_by: string;
   created_at: string;
   expires_at: string | null;
+  /** The org it becomes is free for this many days from its creation, then moves to Free; null = no end. */
+  gift_days: number | null;
   status: OrgGrantStatus;
   used_at: string | null;
   used_by: string | null;
@@ -424,6 +499,8 @@ export interface PlatformOrgPlan {
   entitlements: Entitlements;
   /** Members + pending invitations. */
   seats_used: number;
+  /** The plan is a gift that ends by itself (0048_plan_gifts); null / absent = it is not. */
+  gift?: PlanGift | null;
   /** The Stripe subscription behind a paid org (shared/billing.ts); null / absent for a granted one. */
   billing?: PlatformOrgBilling | null;
 }
