@@ -710,6 +710,13 @@ function showPicker(lost: string | null): void {
   rerender();
   window.scrollTo(0, 0);
 }
+/** One first-run card giving way to the picker (transition.ts). The picker's list is read FIRST: morphing
+ *  into a picker that is still loading lands on its short "Loading…" card, which then snaps to full height
+ *  when the list arrives — the card is squeezed and then stretched. Loaded first, it morphs once, to its
+ *  real size. (`loadMyOrgs` never rejects; on an error the picker says so itself.) */
+function morphToPicker(before?: () => void): Promise<void> {
+  return loadMyOrgs().then(() => { morphStep(() => { before?.(); showPicker(null); }); });
+}
 // A tenant request answered 404 and the membership gate confirmed it (api.ts): same place.
 setOrgLostHandler((slug) => { if (state.view === "app" && state.orgSlug === slug) showPicker(slug); });
 
@@ -2076,7 +2083,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         profile
           .then(() => (o.handle !== o.edit!.current ? renameHandle(o.handle) : null))
           .then(() => getMe())
-          .then((fresh) => { state.me = fresh; state.displayName = fresh.name ?? fresh.handle; morphStep(() => showPicker(null)); })
+          .then((fresh) => { state.me = fresh; state.displayName = fresh.name ?? fresh.handle; return morphToPicker(); })
           .catch((e) => {
             o.submitting = false;
             if (e instanceof ApiError && e.message === "handle_taken") o.check = "taken";
@@ -2106,7 +2113,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
             state.displayName = me.name ?? me.handle;
             state.plat.superadmin = false;
             history.replaceState(null, "", "/");
-            morphStep(() => showPicker(null));
+            return morphToPicker();
           }).catch(() => { window.location.hash = "#guide"; window.location.reload(); });
         })
         .catch((e) => {
@@ -2141,7 +2148,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         state.displayName = me.name ?? me.handle;
         state.plat.superadmin = me.superadmin === true;
         history.replaceState(null, "", "/");
-        morphStep(() => { state.billingDone = null; showPicker(null); });
+        return morphToPicker(() => { state.billingDone = null; });
       }).catch(() => { location.assign(fallback); });
       return;
     }

@@ -119,6 +119,7 @@ export const RELEASES: Release[] = [
         "Dark theme: the sign-in and feature scrims dim with the page's warm black, and the dialog and hero-mockup shadows are neutral (were blue-black) (#134)",
       ],
       fixed: [
+        "A first-run card morphing into the organization picker landed on the picker's short \"Loading…\" card and then snapped to full height when the list arrived (squeezed, then stretched) — after the handle step and after payment alike. The list is read first (`morphToPicker`, `web/src/main.ts`), so the card morphs once, to its real size (#134)",
         "Opening the sign-in dialog rebuilt the whole landing page, restarting the terminal carets and cutting any reveal in flight (#134)",
       ],
       removed: [],
