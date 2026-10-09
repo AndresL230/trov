@@ -55,7 +55,9 @@ STRIPE_PRICE_TEAM_YEARLY = ""
 # tax only where the account holds a tax registration, so with none the total is the price alone. Turn it on
 # only AFTER Stripe Tax is set up in the dashboard (an origin address, a product tax category, the price's
 # tax behaviour set to exclusive): with it on and Stripe Tax not set up, Stripe refuses the checkout.
-STRIPE_TAX = ""
+# On since 2026-10-09: set up in Stripe TEST mode (price exclusive, origin address, SaaS business-use category,
+# no registrations). LIVE mode needs the same three before the live keys go in.
+STRIPE_TAX = "on"
 
 [observability]
 enabled = true

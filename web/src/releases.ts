@@ -88,7 +88,7 @@ export const RELEASES: Release[] = [
       "The Terms of Service and Privacy Policy changed on October 9, 2026. They now cover paid plans: how Pro is billed, changing seats, cancelling, refunds, what happens when a plan ends, and Stripe as the company that takes payment.",
     ],
     ops: [
-      "Tax is OFF until `STRIPE_TAX = \"on\"` in `wrangler.toml` `[vars]`. Before turning it on, set up Stripe Tax in the dashboard (origin address, the product's tax category, the Price's tax behaviour as exclusive); with the var on and Stripe Tax not set up, Stripe refuses every checkout. No migration.",
+      "`STRIPE_TAX = \"on\"` in `wrangler.toml` `[vars]`: checkout asks Stripe Tax for the tax. Stripe TEST mode is set up for it (the Pro price is tax-exclusive, an origin address, the SaaS business-use category, no registrations). BEFORE the live keys go in, do the same three in LIVE mode, or Stripe refuses every live checkout. No migration.",
     ],
     patches: {
       added: [
