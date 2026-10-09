@@ -13,7 +13,7 @@ itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
-Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, and the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), and the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`). Inside a morphed page, a part that must be REPLACED when it becomes a different
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
 animations off in the affected region — that hides one symptom and leaves the rebuild.
@@ -198,7 +198,7 @@ the trigger where the control sits, its menu a root-level overlay (`dropdownMenu
 and closes with an animation — Org settings' role and Notifications pickers.
 
 **Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, the queue's
-Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, form segments. Never
+Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, Review's filter (with counts) and its diff mode, form segments. Never
 hand-roll a segment group. It picks a VALUE or a view; moving between a page's own SECTIONS is the **underline
 tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Org settings' and Platform's tabs, patched in place so a switch replaces
 only the panel (`web/src/morph.ts` `data-morph` / `data-morph-key`); the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
@@ -222,6 +222,63 @@ on a keystroke, and never because a read landed: see Loading skeletons below). `
 mid-entrance joins the animation where the old DOM left off. Hooks: `.cnpy-rise` + `--i`, `.cnpy-stagger`
 (lists), `.repo-bar` / `.repo-fill` / `.repo-spark`, `data-count` (count-up). In-place changes use the
 one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
+
+## A row leaving a list — the one exit pattern (Review's queue)
+
+When a person acts on a row and the row should go (a verdict in Review today; the next screen that
+removes a row reuses this, it does not invent another), the row **confirms, collapses, and the rows
+under it move up as the same elements**. Four parts, each in one place:
+
+1. **A keyed list** (`web/src/morph.ts`). The screen is `data-morph`ed, the list's container carries
+   **`data-morph-list`** and every child a **`data-morph-key`**. `morph()` then pairs that container's
+   children by key, not by index: a child still in the list is patched (never moved unless the order
+   really changed, since a moved element drops its running transition), a new one is inserted where
+   it belongs, a gone one is removed. Without it a row removed from the middle turns every row after
+   it into its neighbour and nothing can animate. Children are joined with no whitespace between
+   them; a row's own structure is the same in every state (the selection bar and the verdict label
+   are always emitted, shown by `aria-current` / `data-verdict`).
+2. **State, not DOM, says a row is leaving.** `state.reviewLeaving[id] = { verdict, gone }`. While
+   `gone` is false the view still renders the row, with `data-verdict` and `inert`; the selection
+   and every count already leave it out (`reviewView`'s `waiting`, `triageCounts`). After
+   `REVIEW_EXIT_MS` the entry flips to `gone` and the row is no longer rendered. The entry only
+   HIDES rows of the reads, so it is never a second source of truth: the refetch replaces the reads
+   and the entry is dropped (`settleReview`, `pruneReviewLeaving` in `main.ts`).
+3. **CSS does the motion** (`trov.css` `.cnpy-rv-row`). The row is a one-track grid around its card:
+   `grid-template-rows:1fr` to `0fr` collapses it with no measuring, the inner box clips
+   (`min-height:0`, `overflow:hidden` only while leaving, so a card's hover shadow is never cut).
+   The verdict shows for .13s (the card tinted with the verdict's tone, its content dimmed, the word
+   over it), then height and opacity go over `--fx-fast` on `--fx-ease`: .31s in all, under the
+   350ms budget. The transition sits on the base rule with no delay, so a row that comes back opens
+   at once. `--fx-ease` / `--fx-fast` / `--fx-base` / `--fx-slow` are on `:root`, so they are the
+   app's clock as well as the site's; use them, never a literal curve.
+4. **The write is optimistic and exactly restorable.** The request goes out on the click and the
+   next action is never blocked: the selection has already moved to the next row, so several
+   verdicts in a row just work (a verdict button that had focus hands it to the next item's,
+   `syncReviewDetail`). On failure the entry is deleted, so the row, the counts and the selection
+   it had are back, with the usual error toast. The refetch is held until no row is still
+   collapsing, so a read landing mid-exit never pulls a row out from under its own animation.
+
+Also part of the pattern: the **last** row leaving already has the screen's empty layout under it
+(`emptyLayout`, a keyed child of the same list), which rises as the row collapses, so there is no
+jump; and **reduced motion** means no movement at all: `main.ts` marks the row `gone` at once and
+the CSS has `transition:none`. Away from the screen that shows the list (My Work's review tile
+uses the same acts) the row is `gone` at once too. Check it with `getAnimations()` on the row (two
+transitions, 180ms each, 130ms delay), by sampling the row's height per frame, and by clicking
+several verdicts 90ms apart. Tests: `test/render.review.test.ts` (the keyed list, the verdict
+markup, the CSS and its reduced-motion rule, `REVIEW_EXIT_MS` against `--fx-fast`).
+
+**Review's page** is named once, by the app header (as every screen is: `org-ui.ts` rule 1); the
+list pane starts with one line (`REVIEW_INTRO`) and the filter. All / Proposals / Decisions is a
+`segmented()` switch (one list, three views of it; not a tab bar, since nothing below changes
+section) whose options carry how many are waiting (`.cnpy-seg-n` in an option's `trail`; left out
+while the queue is still being read). Unified / Side by side / Rendered is a second one; the diff
+body under it is keyed by mode (`diff:<mode>`) and the detail body by item (`rvd:<id>`), so a
+switch replaces only that part. **Rendered** (`web/src/review-rendered.ts`) is the Docs reader's
+rendering, never a second renderer: the proposal's two bodies go through `renderMarkdown` in
+`.cnpy-md`; an edit is cut into marked's top-level blocks (`md-blocks.ts`), compared, and each
+changed block sits in an `<ins>` / `<del>`; a table is compared row by row and a list item by item;
+a new doc is rendered whole, unmarked, under one note. Body text reaches the page only through
+`renderMarkdown` (`test/render.review-rendered.test.ts`). Unified and Side by side show source.
 
 ## Personal Settings — a bento whose tiles are as tall as what they hold
 
