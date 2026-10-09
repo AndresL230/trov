@@ -36,7 +36,7 @@ import { seatCounts } from "../plans/state";
 import { FREE_PLAN, PLANS, UPGRADE_PLAN, type PlanId } from "@shared/plans";
 import {
   BILLING_CONTACT, BILLING_DONE_PATH, BILLING_UNAVAILABLE, BILLING_UNAVAILABLE_MESSAGE, PRICING_PATH,
-  billingStartHref, isBillingInterval, isPurchasablePlan, orgBillingHref,
+  billingAskHref, billingStartHref, isBillingInterval, isPurchasablePlan, orgBillingHref,
   type BillingConfigResponse, type BillingInterval, type BillingStatusResponse, type PurchasablePlan,
 } from "@shared/billing";
 import { billingConfig, billingOffers, intervalsOf, priceFor, type BillingConfig } from "./config";
@@ -46,7 +46,7 @@ import {
   type CheckoutRow,
 } from "./store";
 import { fulfilCheckout, readCheckoutSession, sessionPaid } from "./sync";
-import { billingSignInPage, enterprisePage, rateLimitedPage, stripeFailedPage, superadminPage, unavailablePage } from "./pages";
+import { enterprisePage, rateLimitedPage, stripeFailedPage, superadminPage, unavailablePage } from "./pages";
 
 /** The waiting room may make Trov look at Stripe for one session at most this often. */
 const STATUS_LOOK_MS = 5_000;
@@ -144,7 +144,10 @@ billingApp.get("/billing/start", async (c) => {
     const via = c.req.query("via");
     if (via === "github") return c.redirect("/auth/login", 302);
     if (via === "google") return c.redirect("/auth/google/login", 302);
-    return page(c, billingSignInPage(plan), 200);
+    // No provider picked yet (the pricing page's "Choose Pro", a pasted link): the app's own Get started
+    // dialog asks, opened on this plan (`billingAskHref`; web/src/main.ts reads it). There is no separate
+    // "sign in to continue" page any more — it was a second screen asking what the dialog already asks.
+    return c.redirect(billingAskHref(plan, interval), 302);
   }
   if (await isSuperadmin(c.var.p, me.handle)) return page(c, superadminPage(), 403);
   try {

@@ -1,25 +1,12 @@
-// The pages `GET /billing/start` answers with when it cannot go straight to Stripe — rendered by the
+// The NOTICES `GET /billing/start` answers with when it cannot go on (a signed-out buyer is not one of them:
+// they are sent to the app's Get started dialog, or straight to the provider they picked) — rendered by the
 // Worker (not the SPA), on the OAuth pages' shell (src/auth/oauth-pages.ts: the Trov mark, Geist, the
 // same card and tokens). Pure string templates; every dynamic value is escaped. No script, no price.
-import { PLANS, type PlanId } from "@shared/plans";
 import { BILLING_CONTACT, PRICING_PATH } from "@shared/billing";
 import { PLATFORM_FROM_ADDRESS } from "@shared/sender";
-import { esc, shell, head, GITHUB, GOOGLE } from "../auth/oauth-pages";
+import { esc, shell, head } from "../auth/oauth-pages";
 
 const back = `<a class="btn" href="${PRICING_PATH}">Back to the plans</a>`;
-
-/** Signed out: sign in, then the purchase carries on (src/auth/return-to.ts). Any GitHub or Google
- *  account can sign in, and a first sign-in creates the account. */
-export function billingSignInPage(plan: PlanId): string {
-  return shell("Sign in", head("Sign in to continue")
-    + `<p class="lede">to get Trov <strong>${esc(PLANS[plan].name)}</strong></p>`
-    + `<div class="stack">`
-    + `<a class="btn primary" href="/auth/login">${GITHUB}Sign in with GitHub</a>`
-    + `<div class="or"><span></span>or<span></span></div>`
-    + `<a class="btn" href="/auth/google/login">${GOOGLE}Continue with Google</a>`
-    + `</div>`
-    + `<div class="foot">New to Trov? Signing in with either one creates your account. After you sign in, you go on to payment.</div>`);
-}
 
 export function billingNoticePage(o: { title: string; lede: string; foot?: string; action?: { href: string; label: string }; error?: boolean }): string {
   return shell(o.title, head(o.title)
