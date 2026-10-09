@@ -362,7 +362,11 @@ describe("pricing — questions say only what is true today", () => {
     expect(html).toMatch(/<summary><h\d>[^<]+<\/h\d><svg class="site-faq-chev"[\s\S]*?<\/summary><p>/);
     // It spans the page's blocks (no cap of its own), and BOTH opening and closing animate, off under reduced motion.
     const css = trovCssRaw.replace(/\s+/g, " ");
-    expect(css).toMatch(/\.site-faq \{ margin-top:20px; border-bottom:1px solid var\(--border\); interpolate-size:allow-keywords; \}/);
+    expect(css).toMatch(/\.site-faq \{ border-bottom:1px solid var\(--border\); interpolate-size:allow-keywords; \}/);
+    // Two columns: the heading (and a way to ask something else) left, the accordion right; one column when narrow.
+    expect(html).toMatch(/<div class="site-faq-wrap">\s*<div class="site-faq-side">\s*<h\d class="site-price-h">Questions<\/h\d>[\s\S]*?<a href="mailto:[^"]+">Ask us<\/a>[\s\S]*?<\/div>\s*<div class="site-faq">/);
+    expect(css).toContain(".site-faq-wrap { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 2fr); gap:24px 64px; align-items:start; }");
+    expect(css).toMatch(/@media \(max-width:860px\) \{ \.site-faq-wrap \{ grid-template-columns:minmax\(0, 1fr\); \}/);
     expect(css).toMatch(/\.site-faq > details::details-content \{ block-size:0; opacity:0; overflow:clip; transition:block-size var\(--faq-t\) var\(--faq-e\), opacity [^;]+, content-visibility var\(--faq-t\) allow-discrete; \}/);
     // One clock for the box that opens, the box that closes and the chevrons: no stutter between them.
     expect(css).toContain(".site-faq { --faq-t:.38s; --faq-e:cubic-bezier(.4, 0, .2, 1); }");

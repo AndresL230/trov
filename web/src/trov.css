@@ -1561,14 +1561,20 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-plans-foot { margin:14px 0 0; font-size:12.5px; line-height:1.55; color:var(--fg-55); }
 .site-price-all { list-style:none; margin:14px 0 0; padding:0; max-width:900px; display:grid; grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap:0 40px; }
 .site-price-all li { display:flex; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); font-size:14.5px; line-height:1.55; color:var(--fg-70); }
-/* Questions: an accordion (native <details>, one open at a time; the first starts open). One column the
-   full width of the page's other blocks (the plans above it), so opening an answer never reflows a
-   neighbour and its edges line up with everything else.
+/* Questions: the heading on the left, the accordion on the right (`.site-faq-wrap`), together the full
+   width of the page's other blocks. The accordion is native <details>, one open at a time, the first
+   open; it is one column, so opening an answer never reflows a neighbour.
    Opening AND closing are animated without script: the answer is the `::details-content` box, whose
    height runs between 0 and `auto` (`interpolate-size` lets a transition reach a keyword), and
    `content-visibility` is transitioned discretely so the box is still there to shrink on the way shut.
    A browser without these opens and closes at once. */
-.site-faq { margin-top:20px; border-bottom:1px solid var(--border); interpolate-size:allow-keywords; }
+.site-faq-wrap { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 2fr); gap:24px 64px; align-items:start; }
+.site-faq-side { position:sticky; top:96px; }
+.site-faq-side p { margin:10px 0 0; max-width:30ch; font-size:13.5px; line-height:1.6; color:var(--fg-55); }
+.site-faq-side a { color:var(--fg); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
+.site-faq-side a:hover { text-decoration-color:currentColor; }
+@media (max-width:860px) { .site-faq-wrap { grid-template-columns:minmax(0, 1fr); } .site-faq-side { position:static; } }
+.site-faq { border-bottom:1px solid var(--border); interpolate-size:allow-keywords; }
 .site-faq > details { border-top:1px solid var(--border); }
 /* ONE duration and ONE curve for everything that moves (`--faq-t`, `--faq-e`): when a question opens, the
    one that was open closes in the same instant, and two heights changing on different clocks is what
