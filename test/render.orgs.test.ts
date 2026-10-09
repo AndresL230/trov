@@ -347,7 +347,7 @@ describe("the org picker / first run", () => {
     // inside it; none may play there (each step of the guided setup re-arms the entrance on the root).
     expect(rules).toContain(".cnpy-fr-bg, .cnpy-fr-bg *, .cnpy-fr-bg *::before, .cnpy-fr-bg *::after { animation:none !important; transition:none !important; }");
     // The morphing box wears the card's own shadow, so the shadow resizes with it and never pops in after.
-    const shadow = /\.cnpy-orgs-card \{ box-shadow:([^;]+); \}/.exec(rules)?.[1];
+    const shadow = /(?<!\] )\.cnpy-orgs-card \{ box-shadow:([^;]+); \}/.exec(rules)?.[1]; // the light rule, not the dark override
     expect(shadow).toBeDefined();
     expect(rules).toContain(`::view-transition-group(first-run-card) { overflow:clip; box-shadow:${shadow}; }`);
     // Patched in place while it stays this page (morph.ts): a keystroke in the dialog over it rebuilds nothing.
