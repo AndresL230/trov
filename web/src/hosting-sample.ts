@@ -990,6 +990,7 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       }
     }
   ],
+  "detected": [],
   "secrets_available": true
 };
 
@@ -1009,6 +1010,7 @@ export const HOSTING_SAMPLE_FRESH: HostingSetupDTO = {
       }
     }
   ],
+  "detected": [],
   "secrets_available": true
 };
 
@@ -1059,6 +1061,14 @@ export const HOSTING_SAMPLE_NO_PARTS: HostingSetupDTO = {
         "kind": "add_part",
         "env": "production"
       }
+    }
+  ],
+  "detected": [
+    {
+      "provider": "vercel",
+      "evidence": "GitHub check runs posted by the Vercel app",
+      "last_seen": "2026-10-07T11:52:40.000Z",
+      "in_use": false
     }
   ],
   "secrets_available": true
@@ -1553,6 +1563,7 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       }
     }
   ],
+  "detected": [],
   "secrets_available": true
 };
 
@@ -2043,6 +2054,7 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       }
     }
   ],
+  "detected": [],
   "secrets_available": false
 };
 
@@ -2081,7 +2093,7 @@ export const HOSTING_SAMPLE_POLL: HostingPollOutcome[] = [
   { env: "production", part: "docs", provider: "netlify", status: "skipped", written: 0, detail: "not connected" },
 ];
 
-/** The return from a provider lands on `/<slug>/?hosting=<outcome>&provider=<id>#org` (src/hosting/connections.ts
+/** The return from a provider lands on `/<slug>/?hosting=<outcome>&provider=<id>#org/hosting` (src/hosting/connections.ts
  *  `connectReturnUrl`). The vocabulary is ONE list, `HOSTING_CONNECT_OUTCOMES` (shared/hosting.ts); these are its
  *  refusals — every outcome but `connected` — each of which the UI words as a sentence. */
 export const HOSTING_CONNECT_ERROR_CODES: readonly Exclude<HostingConnectOutcome, "connected">[] =

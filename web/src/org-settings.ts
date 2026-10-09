@@ -1,8 +1,10 @@
 // Org settings — the ONE place an org is administered from (canopy-multitenancy.md §5.3,
-// §8.7): six tabs under one screen, `#org[/<tab>]`.
+// §8.7): seven tabs under one screen, `#org[/<tab>]`.
 //   INTEGRATIONS  — the org's credentials (web/src/integrations.ts). Admin+ only.
 //   REPOSITORIES  — connected repos, one primary.
 //   ENVIRONMENTS  — the environments the Repo dashboard reports on, in drift order.
+//   HOSTING       — which host runs each part of each environment, and the org's connection to
+//                   each host (web/src/hosting.ts). Admin+ only.
 //   MEMBERS       — the people directory: org roles, titles, removal, invites by GitHub login
 //                   or email, and (admins) the unmatched logins to map to a person
 //                   (web/src/identity.ts — Maintenance › Identity until 2026-10-06).
@@ -10,7 +12,7 @@
 //                   timezone and sender name, preview and test send, the outbox
 //                   (web/src/notifications.ts — under Maintenance › People until then). Admin+ only.
 //   GENERAL       — the org's name; its slug, read-only.
-// A member who is not an admin sees what the API lets them read: no Integrations and no
+// A member who is not an admin sees what the API lets them read: no Integrations, no Hosting and no
 // Notifications tab, and the other four read-only. Above the tabs an admin of a new org gets a setup checklist,
 // each item derived from live data, gone once all four are done.
 //
@@ -43,15 +45,16 @@ import { notificationsAdminSections, notifDropdowns, type NotifAdminProps } from
 import { orgLogoSection, initialOrgLogoUi, type OrgLogoUi } from "./org-logo";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner, type GithubNotice } from "./github-app";
 import type { GithubAppStatusDTO, GithubReposDTO } from "@shared/github-app";
+import { disconnectConfirmCopy, hostingData, hostingDropdowns, hostingOverlay, hostingTab, hostingTodo, initialHostingUi, partConfirmCopy, type HostingUi } from "./hosting";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
-export type OrgTab = "integrations" | "repos" | "environments" | "members" | "notifications" | "general";
-export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "members", "notifications", "general"];
+export type OrgTab = "integrations" | "repos" | "environments" | "hosting" | "members" | "notifications" | "general";
+export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "hosting", "members", "notifications", "general"];
 export const isOrgTab = (v: unknown): v is OrgTab => typeof v === "string" && (ORG_TABS as readonly string[]).includes(v);
-const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", members: "Members", notifications: "Notifications", general: "General" };
+const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", hosting: "Hosting", members: "Members", notifications: "Notifications", general: "General" };
 /** The tabs only an admin or an owner may open (their APIs are admin+). */
-const ADMIN_TABS: readonly OrgTab[] = ["integrations", "notifications"];
+const ADMIN_TABS: readonly OrgTab[] = ["integrations", "hosting", "notifications"];
 
 const idle = <T>(data: T): OrgSlice<T> => ({ status: "idle", data });
 
@@ -89,8 +92,9 @@ export interface MemberDraft {
 }
 
 /** What the open confirmation modal is about. `arg` = a repo id, an environment key,
- *  `<kind>:<scope>`, a member's handle, or "" for the key. */
-export interface OrgConfirm { what: "repo" | "env" | "secret" | "member" | "key" | "github"; arg: string; busy: boolean }
+ *  `<kind>:<scope>`, a member's handle, "" for the key — or, on Hosting, a part (`<env>/<part>`) to
+ *  remove and a provider connection (`<provider>:<scope>`) to disconnect. */
+export interface OrgConfirm { what: "repo" | "env" | "secret" | "member" | "key" | "github" | "part" | "hosting"; arg: string; busy: boolean }
 
 /** Everything Org settings keeps in AppState (`state.org`). It NEVER holds a secret's value:
  *  a credential being typed lives only in the input and in org-actions.ts's private draft. */
@@ -150,6 +154,8 @@ export interface OrgUi {
   confirm: OrgConfirm | null;
   /** General › Plan's billing actions (org-plan.ts, org-billing-actions.ts). */
   billing: OrgBillingUi;
+  /** The Hosting tab (hosting.ts, hosting-actions.ts): its one read, the open dialog, tests in flight. */
+  hosting: HostingUi;
 }
 
 export function initialOrgUi(): OrgUi {
@@ -162,6 +168,7 @@ export function initialOrgUi(): OrgUi {
     github: idle(null), githubRepos: idle(null), githubNotice: null, githubFilter: "", githubBusy: null,
     envEdit: null, envBusy: false,
     secretForm: null, tests: {}, auditOpen: false, openRows: [], confirm: null, billing: initialOrgBillingUi(),
+    hosting: initialHostingUi(),
   };
 }
 
@@ -172,7 +179,7 @@ export function currentOrg(s: { orgSlug: string | null; myOrgs: { data: MyOrgsRe
   if (!s.orgSlug) return null;
   return s.myOrgs.data?.orgs.find((o) => o.slug === s.orgSlug) ?? s.me?.orgs.find((o) => o.slug === s.orgSlug) ?? null;
 }
-/** The tabs a role may open: Integrations and Notifications are admin+ (their APIs are). */
+/** The tabs a role may open: Integrations, Hosting and Notifications are admin+ (their APIs are). */
 export const orgTabsFor = (role: OrgRole | null): OrgTab[] => ORG_TABS.filter((t) => !ADMIN_TABS.includes(t) || roleAtLeast(role, "admin"));
 /** The tab on screen: the picked one, or — when the role may not open it — the first it may. */
 export function effectiveOrgTab(tab: OrgTab, role: OrgRole | null): OrgTab {
@@ -457,7 +464,7 @@ export function envForm(d: EnvDraft, current: OrgEnvironmentDTO | null, metricsS
     ${warn}
     <button type="button" data-act="orgEnvAdvanced" data-field="orgEnvAdvanced" aria-expanded="${open}" aria-controls="org-env-adv" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;margin-top:18px;padding:4px 0;font-size:12.5px;font-weight:500;color:var(--fg-55);text-align:left"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="transform:${open ? "rotate(90deg)" : "none"};transition:transform .15s ease"><path d="M9 6l6 6-6 6"></path></svg>Advanced: GitHub, Cloudflare and Railway names</button>
     <div id="org-env-adv"${open ? "" : " hidden"}>
-      <div style="${O_HELP};margin:4px 0 12px">Only needed for the dashboard cards that read these services. Leave any of them empty to skip that card.</div>
+      <div style="${O_HELP};margin:4px 0 12px">Only needed for the dashboard cards that read these services. Leave any of them empty to skip that card. <span data-org-env-hosting>The Cloudflare and Railway names are this environment's frontend and backend parts; parts on other hosts are set in ${goLink("Hosting", "orgTab", "hosting")}</span></div>
       <div class="cnpy-org-grid">${ENV_ADVANCED.map(f).join("")}</div>
     </div>
     ${general ? `<div role="alert" style="${O_ERR};margin-top:14px">${esc(d.error ?? "")}</div>` : ""}
@@ -724,6 +731,7 @@ export function orgDropdowns(p: OrgSettingsProps): DropdownProps[] {
   if (!p.org || !roleAtLeast(p.org.role, "admin")) return [];
   const tab = effectiveOrgTab(p.ui.tab, p.org.role);
   if (tab === "notifications") return p.notif ? notifDropdowns(p.notif) : [];
+  if (tab === "hosting") return hostingDropdowns(p.ui.hosting);
   if (tab !== "members" || !p.ui.members.data.length) return [];
   const d = p.ui.memberEdit;
   const m = d ? p.ui.members.data.find((x) => sameHandle(x.handle, d.handle)) : undefined;
@@ -737,6 +745,10 @@ const quote = (s: string) => `“${s}”`;
 /** The words of the open confirmation: what is removed, and what stops working. Pure — exported for the tests. */
 export function orgConfirmCopy(c: OrgConfirm, org: MyOrg, ui: OrgUi): { title: string; body: string; confirmLabel: string; busyLabel: string } | null {
   const list = ui.integrations.data?.integrations ?? [];
+  if (c.what === "part" || c.what === "hosting") {
+    const d = hostingData(ui.hosting);
+    return d ? (c.what === "part" ? partConfirmCopy(d, c.arg) : disconnectConfirmCopy(d, c.arg, org.name)) : null;
+  }
   if (c.what === "repo") {
     const r = ui.repos.data.find((x) => x.id === c.arg);
     if (!r) return null;
@@ -807,13 +819,15 @@ export function orgOverlays(p: OrgSettingsProps): string {
     const i = ui.integrations.data?.integrations.find((x) => x.kind === f.kind && x.scope === f.scope);
     if (i) return menu + secretFormModal(i, f);
   }
+  if (roleAtLeast(p.org.role, "admin") && effectiveOrgTab(ui.tab, p.org.role) === "hosting") return menu + hostingOverlay(ui.hosting, p.dd);
   return menu;
 }
 
 // ── the screen ───────────────────────────────────────────────────────────────
 
-/** The tab bar. Two tabs carry a count of what needs an admin there: integrations with an error,
- *  and (Members) logins waiting to be matched — `logins` is 0 for anyone who is not an admin. */
+/** The tab bar. Three tabs carry a count of what needs an admin there: integrations with an error,
+ *  (Hosting) connections with an error or ended on the provider's side, and (Members) logins
+ *  waiting to be matched — `logins` is 0 for anyone who is not an admin. */
 export function orgTabBar(tab: OrgTab, role: OrgRole | null, ui: OrgUi, logins = 0): string {
   // An org on the App does not need its token / webhook-secret rows: an old error on one is not a to-do.
   const inst = githubOf(ui)?.installation ?? null;
@@ -825,7 +839,9 @@ export function orgTabBar(tab: OrgTab, role: OrgRole | null, ui: OrgUi, logins =
     id: "org-tab", ariaLabel: "Org settings sections", act: "orgTab", value: tab,
     tabs: orgTabsFor(role).map((t) => ({
       value: t, label: TAB_LABEL[t],
-      trail: t === "integrations" ? badge(todo, `${todo} with an error`) : t === "members" ? badge(logins, `${logins} ${logins === 1 ? "login" : "logins"} to match`) : "",
+      trail: t === "integrations" ? badge(todo, `${todo} with an error`)
+        : t === "hosting" ? ((n) => badge(n, `${n} ${n === 1 ? "connection needs" : "connections need"} attention`))(hostingTodo(ui.hosting))
+        : t === "members" ? badge(logins, `${logins} ${logins === 1 ? "login" : "logins"} to match`) : "",
     })),
   });
 }
@@ -843,6 +859,7 @@ export function orgSettingsView(p: OrgSettingsProps): string {
   const body = tab === "integrations" ? integrationsTab(p.org, p.ui)
     : tab === "repos" ? reposTab(p.org, p.ui)
     : tab === "environments" ? environmentsTab(p.org, p.ui)
+    : tab === "hosting" ? hostingTab(p.org, p.ui)
     : tab === "members" ? membersTab(p.org, p.ui, p.me, p.identity ?? null, p.dd)
     : tab === "notifications" ? notificationsTab(p.org, p.notif, p.dd)
     : generalTab(p.org, p.ui);

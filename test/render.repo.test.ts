@@ -6,7 +6,7 @@
  * forms, nothing captured is trusted as markup, and the sample set is labelled.
  */
 import { describe, it, expect } from "vitest";
-import { repoView, repoControls, repoCrumb, repoPollFor, repoUpdatedLabel, sparkPoints, ago, errorShare, formatCount, parseCompact, type RepoProps } from "../web/src/repo";
+import { repoView, repoControls, repoCrumb, repoPollFor, repoUpdatedLabel, sparkPoints, ago, formatCount, type RepoProps } from "../web/src/repo";
 import { repoSample } from "../web/src/repo-sample";
 import { productKeyInfo } from "../src/repo/product";
 import { render, initialState } from "../web/src/render";
@@ -66,7 +66,9 @@ describe("repoView — section states", () => {
 
   it("shows 'Source not connected' for a section nothing has been captured for, with no dead button", () => {
     const html = repoView(props({ tab: "usage" }));
-    expect((html.match(/Source not connected/g) ?? []).length).toBe(4); // usage, Cloudflare, hosting, product
+    expect((html.match(/Source not connected/g) ?? []).length).toBe(2); // usage, product
+    // Hosting says it in its own quiet line (repo-hosting.ts) — the old Cloudflare / Railway blocks are gone.
+    expect(html).toContain('data-hosting="not_connected"');
     expect(html).not.toContain("Connect Cloudflare");
     expect(html).toContain('data-act="repoSampleOn"');
   });
@@ -86,8 +88,7 @@ describe("repoView — section states", () => {
     expect(ci).toContain("posts a canopy/coverage commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.");
     expect(ci).toContain("posts a canopy/bundle-kb commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.");
     expect(usage).toContain("Both need an environment in Org settings › Environments and their credential in Org settings › Integrations.");
-    expect(usage).toContain("once Cloudflare analytics is set in Org settings › Integrations");
-    expect(usage).toContain("once an environment's Railway project token is set in Org settings › Integrations".replace("'", "&#39;"));
+    expect(usage).toContain("No hosting provider is connected. An admin adds your environments' parts in Org settings &rsaquo; Hosting.");
     // No Worker variable or secret is named any more: an org's admin cannot set one.
     for (const html of [overview, code, ci, usage, planning]) {
       for (const name of ["REPO_ENVIRONMENTS", "GITHUB_SERVICE_TOKEN", "CF_ANALYTICS", "RAILWAY_TOKEN", "SAPLING_METRICS_TOKEN", "GITHUB_REPO"]) expect(html, name).not.toContain(name);
@@ -323,38 +324,6 @@ describe("repoView — live content", () => {
     const html = repoView(props({ tab: "usage", repo: { status: "ok", data: live({ usage: EMPTY }) } }));
     expect(html).toContain("No current usage reading — the hourly polls have gone quiet.");
     expect(html).not.toContain("No usage recorded in the last 30 days.");
-  });
-
-  // Task 17: the hosting block's three states.
-  it("hosting renders its rows when live, and says the reading is stale — not absent — when empty", () => {
-    const rows = [{ env: "staging", cpu: "0.12 vCPU", memory: "410 MB" }, { env: "production", cpu: "—", memory: "2048 MB" }];
-    const okHtml = repoView(props({ tab: "usage", repo: { status: "ok", data: live({ hosting: { status: "ok", data: rows } }) } }));
-    expect(okHtml).toContain("Hosting — Railway backend");
-    // Figure over label per environment; the unit is the same string, split at the space.
-    const prod = okHtml.slice(okHtml.indexOf('data-hostenv="production"'));
-    expect(okHtml.slice(okHtml.indexOf('data-hostenv="staging"'), okHtml.indexOf('data-hostenv="production"'))).toMatch(/>0\.12<span[^>]*>vCPU<\/span>[\s\S]*>CPU<[\s\S]*>410<span[^>]*>MB<\/span>[\s\S]*>Memory</);
-    expect(prod).toMatch(/>2048<span[^>]*>MB<\/span>/);
-    // A stale cell stays an em dash — muted, never a guessed figure.
-    expect(prod).toMatch(/color:var\(--fg-40\)">—</);
-    expect(okHtml).not.toContain("<table");
-    const stale = repoView(props({ tab: "usage", repo: { status: "ok", data: live({ hosting: EMPTY }) } }));
-    expect(stale).toContain("No fresh hosting reading — the last Railway sample is over 3 hours old.");
-    const never = repoView(props({ tab: "usage", repo: { status: "ok", data: live() } }));
-    expect(never).not.toContain("No fresh hosting reading");
-  });
-
-  // Task 16: the Cloudflare panel is `ok` once the WIDEST range has rows, so a
-  // narrower range can legitimately be empty — say so, never a blank panel.
-  it("a Cloudflare range with no rows says so instead of rendering a blank panel", () => {
-    const rows = [{ env: "staging", label: "Workers requests", value: "2.50M" }];
-    const data = live({ cloudflare: { status: "ok", data: { "24h": [], "7d": rows, "30d": rows } } });
-    const quiet = repoView(props({ tab: "usage", range: "24h", repo: { status: "ok", data } }));
-    // Not "No requests": that claims zero traffic for a range a poll may never have covered.
-    expect(quiet).toContain("Nothing recorded in this range.");
-    expect(quiet).not.toContain("No requests in this range.");
-    const week = repoView(props({ tab: "usage", range: "7d", repo: { status: "ok", data } }));
-    expect(week).toContain("2.50M");
-    expect(week).not.toContain("Nothing recorded in this range.");
   });
 
   it("M11: renders a null reviews count as an em dash, excluded from the bar width", () => {
@@ -655,7 +624,7 @@ describe("repoView — product metrics", () => {
     const ends = stops.map((s) => html.indexOf(s, i + marker.length)).filter((n) => n > -1);
     return html.slice(i, ends.length ? Math.min(...ends) : undefined);
   };
-  const blockOf = (html: string, id: string) => cut(html, `data-pblock="${id}"`, ['data-pblock="', 'data-pkpi="', "Cloudflare — frontend"]);
+  const blockOf = (html: string, id: string) => cut(html, `data-pblock="${id}"`, ['data-pblock="', 'data-pkpi="', "data-usage-hosting"]);
   const rowOf = (html: string, key: string, block?: string) =>
     cut(block ? blockOf(html, block) : html.slice(html.indexOf("repo-pgrid")), `data-prow="${key}"`, ['data-prow="', 'data-pblock="', "data-pzero", "data-pstale", "repo-pnotes", 'class="cnpy-rise']);
   const tileOf = (html: string, key: string) => cut(html, `data-pkpi="${key}"`, ['data-pkpi="', "repo-pgrid"]);
@@ -993,13 +962,18 @@ describe("repoView — product metrics", () => {
     expect(tileOf(html, "signups")).toContain("&lt;img src=x");
   });
 
-  it("the infrastructure blocks escape their environment names, labels and values too", () => {
+  it("the Hosting section escapes everything a provider or an admin wrote", () => {
     const hostile = `"><img src=x onerror=1>`;
-    const rows = [{ env: hostile, label: "Workers requests", value: hostile }, { env: hostile, label: hostile, value: hostile }];
-    const html = repoView(props({ tab: "usage", repo: { status: "ok", data: live({
-      cloudflare: { status: "ok", data: { "24h": rows, "7d": rows, "30d": rows } },
-      hosting: { status: "ok", data: [{ env: hostile, cpu: hostile, memory: `1 ${hostile}` }] },
-    }) } }));
+    const sample = repoSample();
+    const first = (sample.providers as { data: import("@shared/hosting").RepoProviderPart[] }).data[2];
+    const part = {
+      ...first, env: hostile, env_label: hostile, part: hostile, label: hostile, provider_label: hostile,
+      deploys: [{ ...first.deploys[0], id: hostile, sha: hostile, branch: hostile, message: hostile, by: hostile }, { ...first.deploys[1], message: hostile, by: hostile, sha: null }],
+      unavailable: [{ metric: "requests" as const, reason: hostile }],
+      last_poll: { at: new Date().toISOString(), status: "failed" as const, detail: hostile },
+    };
+    const html = repoView(props({ tab: "usage", repo: { status: "ok", data: live({ providers: { status: "ok", data: [part] } }) } }));
+    expect(html).toContain('data-hosting="ok"');
     expect(html).not.toContain("<img src=x");
     expect(html).not.toMatch(/"><(script|img)/);
     expect(html).toContain("&lt;img src=x");
@@ -1024,19 +998,24 @@ describe("repoView — product metrics", () => {
     expect(repoView(props({ tab: "usage", repo: { status: "error", data: null } }))).toContain("Couldn't load this section");
   });
 
-  it("the providers section has no block yet, so the footer says what it waits on — and only on the Usage tab", () => {
+  it("providers not connected: Hosting says so in its own line, and the footer keeps the way to the sample — only on the Usage tab", () => {
     const others = { ...repoSample(), sample: undefined } as RepoDashboard;
     const html = repoView(props({ tab: "usage", repo: { status: "ok", data: { ...others, providers: NC } } }));
-    expect(html).toContain('data-nc-section="providers"');
-    expect(html).toContain("Hosting providers — connect one in Org settings › Hosting.");
+    expect(html).toContain('data-hosting="not_connected"');
+    expect(html).toContain("No hosting provider is connected.");
     // Nothing on the tab is MARKED not connected, so the footer does not claim one is.
     expect(html).not.toContain("Sections marked");
+    expect(html).toContain('data-nc-quiet="providers"');
     expect(html).toContain("repoSampleOn");
-    const both = repoView(props({ tab: "usage", repo: { status: "ok", data: { ...others, providers: NC, hosting: NC } } }));
+    const both = repoView(props({ tab: "usage", repo: { status: "ok", data: { ...others, providers: NC, usage: NC } } }));
     expect(both).toContain("Sections marked");
-    expect(both).toContain("Hosting providers — connect one in Org settings › Hosting.");
-    expect(repoView(props({ tab: "usage", repo: { status: "ok", data: others } }))).not.toContain("data-nc-section");
-    expect(repoView(props({ tab: "code", repo: { status: "ok", data: { ...others, providers: NC } } }))).not.toContain("data-nc-section");
+    expect(both).not.toContain("data-nc-quiet");
+    // The sections no block draws any more cannot put the footer up on their own.
+    const superseded = repoView(props({ tab: "usage", repo: { status: "ok", data: { ...others, cloudflare: NC, hosting: NC } } }));
+    expect(superseded).not.toContain("Sections marked");
+    expect(superseded).not.toContain("repoSampleOn");
+    expect(repoView(props({ tab: "usage", repo: { status: "ok", data: others } }))).not.toContain("data-nc-quiet");
+    expect(repoView(props({ tab: "code", repo: { status: "ok", data: { ...others, providers: NC } } }))).not.toContain("data-nc-quiet");
   });
 
   it("the sample's providers stub carries every state a designer needs", () => {
@@ -1114,62 +1093,13 @@ describe("repoView — product metrics", () => {
   // ── motion ─────────────────────────────────────────────────────────────────
   it("entrances use the existing hooks only, and the body is what a range or environment switch cross-fades", () => {
     const html = view();
-    const product = html.slice(html.indexOf(">Product<"), html.indexOf("Cloudflare — frontend"));
+    const product = html.slice(html.indexOf(">Product<"), html.lastIndexOf('<div class="cnpy-rise"', html.indexOf("data-usage-hosting")));
     expect(product).toMatch(/class="repo-swap repo-pswap" data-penv="staging"/);
     expect([...product.matchAll(/class="cnpy-rise" style="--i:(\d+);/g)].map((m) => m[1])).toEqual(["2", "3", "4"]); // strip, tiles, blocks
     expect(html).toMatch(/class="cnpy-rise" style="--i:2;"><div[^>]*><span[^>]*>Product</); // the header enters with the strip
     expect(product).toContain("data-count=");
     expect(product).toContain('class="repo-spark"');
     expect(product).not.toMatch(/animation|transition|@keyframes/);
-  });
-});
-
-// ── Usage › infrastructure (Cloudflare + Railway) ────────────────────────────
-describe("repoView — usage infrastructure", () => {
-  const cfView = (rows: { env: string; label: string; value: string }[], over: Partial<RepoDashboard> = {}) =>
-    repoView(props({ tab: "usage", repo: { status: "ok", data: live({ cloudflare: { status: "ok", data: { "24h": rows, "7d": rows, "30d": rows } }, ...over }) } }));
-  const envOf = (html: string, env: string) => { const i = html.indexOf(`data-cfenv="${env}"`); const j = html.indexOf("data-cfenv=", i + 1); return html.slice(i, j > -1 ? j : html.indexOf("Hosting — Railway")); };
-  const pair = (env: string, req: string, err: string) => [{ env, label: "Workers requests", value: req }, { env, label: "Workers errors", value: err }];
-
-  it("Cloudflare is a block per environment — requests as the figure, errors beside it, an error-share bar under them", () => {
-    const html = cfView([...pair("staging", "12.4K", "310"), ...pair("production", "1.24M", "2.6K")]);
-    expect(html).toContain("Cloudflare — frontend Workers");
-    const staging = envOf(html, "staging");
-    expect(staging).toMatch(/font-size:21px[^>]*>12\.4K</);
-    expect(staging).toMatch(/font-size:17px[^>]*>310</);
-    expect(staging).toContain(">Workers requests<");
-    expect(staging).toMatch(/class="repo-fill"[^>]*width:2\.5%/); // 310 ÷ 12,400
-    expect(envOf(html, "production")).toMatch(/class="repo-fill"[^>]*width:0\.2%/);
-    expect(html.slice(html.indexOf("Cloudflare — frontend"))).not.toContain("<table");
-  });
-
-  it("the share bar is drawn only from the two figures shown: hidden when requests is 0, or either is missing or unreadable", () => {
-    expect(envOf(cfView(pair("staging", "0", "0")), "staging")).not.toContain("repo-fill");
-    expect(envOf(cfView([{ env: "staging", label: "Workers requests", value: "2.50M" }]), "staging")).not.toContain("repo-fill");
-    expect(envOf(cfView([{ env: "staging", label: "Workers errors", value: "12" }]), "staging")).not.toContain("repo-fill");
-    expect(envOf(cfView(pair("staging", "lots", "12")), "staging")).not.toContain("repo-fill");
-    expect(envOf(cfView(pair("staging", "12", "—")), "staging")).not.toContain("repo-fill");
-    // …and the figures themselves are still there.
-    expect(envOf(cfView(pair("staging", "0", "0")), "staging")).toContain(">Workers errors<");
-    // Zero errors of real traffic IS a bar — an empty one.
-    expect(envOf(cfView(pair("staging", "500", "0")), "staging")).toMatch(/class="repo-fill"[^>]*min-width:0px[^>]*width:0%/);
-  });
-
-  it("the bar takes the error rate's own tone from the usage block, and stays neutral without one", () => {
-    const usageEnv = (tone: "good" | "warn") => ({ name: "staging", host: "h", requests: { value: "12.4K", trend: [], tone: "neutral" as const }, errorRate: { value: "2.50%", trend: [], tone }, users: null, seen: { requests: true, users: false } });
-    const usage = (tone: "good" | "warn") => ({ usage: { status: "ok" as const, data: { "24h": [usageEnv(tone)], "7d": [usageEnv(tone)], "30d": [usageEnv(tone)] } } });
-    expect(envOf(cfView(pair("staging", "12.4K", "310"), usage("warn")), "staging")).toMatch(/class="repo-fill"[^>]*background:var\(--amber\)/);
-    expect(envOf(cfView(pair("staging", "12.4K", "310"), usage("good")), "staging")).toMatch(/class="repo-fill"[^>]*background:var\(--fg-40\)/);
-    expect(envOf(cfView(pair("staging", "12.4K", "310")), "staging")).toMatch(/class="repo-fill"[^>]*background:var\(--fg-40\)/);
-  });
-
-  it("parseCompact reads the Worker's compact figures and nothing else", () => {
-    expect([parseCompact("302"), parseCompact("12.4K"), parseCompact("1.24M"), parseCompact("2.50B"), parseCompact("1.00T")]).toEqual([302, 12_400, 1_240_000, 2_500_000_000, 1e12]);
-    for (const bad of ["", "—", "1e3", "-5", "12 K", "1.2.3K", "K", undefined]) expect(parseCompact(bad), String(bad)).toBeNull();
-    expect(errorShare("1000", "25")).toBe(2.5);
-    expect(errorShare("10", "50")).toBe(100); // never wider than its track
-    expect(errorShare("0", "0")).toBeNull();
-    expect(errorShare(undefined, "3")).toBeNull();
   });
 });
 

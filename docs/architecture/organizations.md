@@ -243,6 +243,7 @@ One place: **Org settings**, opened from the switcher at the top of the sidebar 
 | Tab | What it holds | Who sees it |
 |---|---|---|
 | Integrations | the GitHub App's connection (or, by hand, the token and webhook secrets); the other credentials; the encryption key and the history of changes | admin, owner |
+| Hosting | which host runs each part of each environment; each provider's connection (connect, test, rotate, disconnect) — `hosting-providers.md` › The screens | admin, owner |
 | Repositories | Connect with GitHub; connected repositories, one primary; what the App can see to track; a by-hand repository's webhook URL | everyone (read), admin+ (write) |
 | Environments | the environments the Repo dashboard reports on, in drift order | everyone (read), admin+ (write) |
 | Members | the people directory; for admins also invitations, roles and titles, removal, and **Unmatched logins** — GitHub logins in captured activity to map to a person or discard [`web/src/identity.ts`] | everyone (read), admin+ (write) |

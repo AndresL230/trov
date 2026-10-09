@@ -1,6 +1,6 @@
 # Hosting providers
 
-One interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0049_hosting_providers`).
+One interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0050_hosting_providers`).
 
 The Repo dashboard was built around one stack (a Cloudflare Worker frontend, a Railway backend). It now reads any
 host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free — the SPA imports its vocabularies):
@@ -63,8 +63,8 @@ section (`not_connected`, `degraded: true`). MCP `get_repo_dashboard` collapses 
 
 **Setup API** (`src/hosting/routes.ts`, cookie only — an `Authorization` header is a 403; admin unless noted), under
 `/api/o/:slug` with NO old-path alias: `GET /hosting` (`HostingSetupDTO`: providers, environments with their parts,
-connections — each with `manage_url`, where the grant is managed on the provider (`HostingProvider.manageUrl`) — and a
-checklist generated from what the parts use), `GET /hosting/providers` (any member), `PUT|DELETE
+connections — each with `manage_url`, where the grant is managed on the provider (`HostingProvider.manageUrl`) —, a
+checklist generated from what the parts use, and `detected`, below), `GET /hosting/providers` (any member), `PUT|DELETE
 /environments/:key/parts/:part` (audited `part.set` / `part.delete` in `org_admin_audit`; deleting an environment
 deletes its stored parts, poll state and deploys in the same batch), `POST /hosting/:provider/connect` (→ `{ url }`;
 an org already connected — a pasted token, or another install / OAuth grant — is not refused: the callback replaces
@@ -76,11 +76,10 @@ only a RANDOM `state`; what it answers for — `{ o, s, p, h, state, exp }`, HMA
 whatever the outcome). At the ROOT, `GET /hosting/:provider/callback` is a PUBLIC path (`HOSTING_CALLBACK_PATH` in
 `src/auth/principal.ts`; `src/data/gate.ts` lets exactly that shape past the one-org alias) that reads the session
 cookie itself and ALWAYS redirects — never JSON, never a 500: nobody signed in → `/`; otherwise
-`/<slug>/?hosting=<outcome>&provider=<id>#org` (`/?hosting=<outcome>` when the intent cannot be read; `#org` until
-the UI adds a Hosting tab), the outcome one of `HOSTING_CONNECT_OUTCOMES` (`shared/hosting.ts`) — never provider text.
+`/<slug>/?hosting=<outcome>&provider=<id>#org/hosting` (`/?hosting=<outcome>` when the intent cannot be read), the outcome one of `HOSTING_CONNECT_OUTCOMES` (`shared/hosting.ts`) — never provider text.
 It binds only for that browser's intent, that provider, the same person, still an admin (re-checked live), after the
 code exchange through `hostFetch`; an installation ANOTHER org holds is `taken` (a platform read,
-`connectionsForExternalId` in `src/platform/jobs.ts`, and 0049's partial unique index on the active
+`connectionsForExternalId` in `src/platform/jobs.ts`, and 0050's partial unique index on the active
 `(provider, external_id)` at the write — the row, the credential and the config are ONE batch, so a lost race stores
 nothing). **A DIFFERENT live install / OAuth grant is REPLACED** — the GitHub App's rule since #110
 (`github-app.md` step 6): `bindConnection(…, replaced)` overwrites the row in the same batch and audits the end
@@ -100,10 +99,109 @@ may have been removed; Test connection to confirm" in `last_error`. `revoked_rea
 / `uninstalled` / `superseded` / `refused`); the DTO derives its sentence (`hostingRevokedReasonText`).
 Org settings › Integrations lists a hosting kind only once a stored part uses it (the five original slots are unchanged).
 
-**There is no UI yet**: the screens are designed from `docs/design/hosting-providers-claude-design-prompt.md` against
-the data stubs `web/src/hosting-sample.ts` (every setup state; its provider catalogue is pinned to the registry by
-`test/hosting.sample.test.ts`) and the `providers` section of `web/src/repo-sample.ts`. The SPA's typed client calls
-are in `web/src/api.ts`.
+**Deployment and project events, and the Configuration URL** (Vercel). The same `POST /webhook/hosting/vercel`
+that takes the uninstall notice takes `deployment.created` / `succeeded` / `error` / `canceled` / `promoted` /
+`rollback` and `project.removed` / `project.renamed` (`VERCEL_REFRESH_EVENTS`; the provider's
+`install.webhook.changedProject`). A verified one is a NUDGE, never a record: the active org(s) whose install /
+OAuth connection is on that provider-side account (`connectionsForAccount`, a platform read) have their stored
+parts on that project — matched by id or name against the part's FIRST setting — polled again now (`pollPart`, as
+each org's system tenant, at most `HOSTING_WEBHOOK_MAX_REFRESH` = 6 parts a delivery, after the response through
+`waitUntil`). Nothing from the delivery is stored: a removed project then reads as a failed poll with Vercel's own
+404, a renamed one still answers to its id (a part that names it by its OLD name fails its next poll and says so).
+An unknown event type is `200 { ok: true, revoked: 0 }` and ignored; an unverified delivery is the same bare 401
+and polls nothing. `GET /hosting/<provider>/configure?configurationId=<installation>` is the provider's
+"Configuration URL" (a public path like the callback — `HOSTING_CALLBACK_PATH`): for a signed-in admin of the org
+that holds that installation it redirects to `/<slug>/#org/hosting` (`adminOrgForInstallation`, ONE platform
+statement); nobody signed in, an unknown or malformed id, another org's installation, a member who is not an admin,
+a suspended org and an unknown provider are ALL the same redirect to `/` — it never says whether an installation
+exists, and never answers JSON or a 500. In Vercel's Integration console set Configuration URL to
+`<origin>/hosting/vercel/configure`.
+
+## Detection ("Detected: Vercel")
+
+`HostingSetupDTO.detected` (`src/hosting/detect.ts`): the providers the org's repository ALREADY shows signs of,
+read from what the GitHub capture stored — ONE tenant statement over `repo_events` (the last 90 days, grouped), no
+call to GitHub or to a provider (invariant 7), and a failed read is simply no suggestion. Two kinds of sign, each
+matched narrowly (a false "Detected" is worse than none):
+
+- **check runs** — every check run is captured (`fromCheckRun`) with its name, its details URL and, in `raw.app`,
+  the slug of the GitHub App that posted it: `vercel`, `netlify`, `cloudflare-workers-and-pages` (also a details
+  link to the host, or a name only that host uses — `netlify/…`, `Workers Builds: …`, `Vercel …`);
+- **deployments** — captured ONLY for an environment whose "GitHub deployment environment" is already configured,
+  with the creator's login (`railway-app[bot]`, `render[bot]`, `vercel[bot]`) and log link.
+
+So it is exactly as good as that capture: Vercel, Netlify and Cloudflare Workers Builds are seen as soon as GitHub
+is connected and a check run arrives; Render, Railway and Fly.io report to GitHub through deployments (or not at
+all), which are dropped unless their environment is already configured — they are NOT detected. Closing that gap
+needs NEW capture, none of it built: (a) keep `deployment_status` deliveries whose environment is not configured
+(creator login + environment name, no env key); (b) keep commit `status` contexts other than `canopy/*` (`Vercel`,
+`netlify/…`, `Render`); (c) a root-file probe in the reconcile (`vercel.json`, `netlify.toml`, `fly.toml`,
+`render.yaml`, `wrangler.toml` — one contents read each, in the cron, never on a render path). The screen shows a
+suggestion only for an `available` provider no part uses yet (`shownDetections`); it preselects the provider in
+the part editor and connects nothing — the credential is still the admin's to give. A dismissal is per browser
+(`localStorage` `trov.hosting.dismissed.<slug>`).
+
+## The screens
+
+**Org settings › Hosting** (`#org/hosting`, admins only — `ADMIN_TABS`; `web/src/hosting.ts` pure views,
+`web/src/hosting-actions.ts` the controller, every act `orgHx…` handed over by `org-actions.ts`). One read into
+`state.org.hosting.setup`, drawn in Org settings' one idiom (`org-ui.ts`), top to bottom: the return notice
+(`?hosting=<outcome>&provider=<id>`, read ONCE in `main.ts` `enterOrg`, which also opens the tab — a non-admin gets
+a toast instead; one title + body per outcome in `hostingNoticeCopy`, tone ok / amber / red); the lost banner
+(a connection ended on the PROVIDER's side — `lostOnProvider` compares `revoked_reason` with
+`hostingRevokedReasonText("uninstalled" | "refused")`; an admin's own Disconnect reads "Not connected", never a
+banner); the "credentials can't be saved" banner (`secrets_available: false` — connect / rotate / paste are
+disabled with the reason; parts stay editable, since a part is not a credential); the LEAD, whose one accent action
+is the checklist's next step; the checklist the server generated (steps to do listed, done ones folded); "Detected";
+**Environments** — a tile per environment side by side (`.cnpy-hx-envs`), its parts as `openRow`s (glyph, label,
+role chip, a status dot + word; host · identifying setting as metadata; Edit as the one action; a failed last poll
+and a test's answer always visible; key, settings, last poll, the provider's "not available" reasons, Open in
+<provider>, Test this part and Remove behind the row); **Providers** — Vercel, Render, Netlify, Fly.io, one row per
+connection (or one not-connected row), **Legacy** — Cloudflare and Railway (Railway's token is per environment, so
+with no Railway part there is nothing to connect), **Later** — AWS, described and disabled. A connected row's one
+action is Test connection; behind it: what it is, what it can do (`grants`), "Sent only to <api_hosts>", Manage on
+<provider>, Rotate / Edit settings, Connect a different account, and Disconnect as quiet text. An install / OAuth
+connection folds its paste-a-token form under a quiet "Manual connection" row (the GitHub App's pattern).
+
+Three dialogs, each a root-level `data-overlay` (so a keystroke patches it — Org settings is `data-morph`), one at
+a time, Escape closes, Tab stays inside, focus returns to the control that opened it:
+- **the part editor** (`partEditorModal`) — host (`dropdown()`, with the provider's summary, capability chips and
+  plan note under it; AWS is not an option), role (`segmented()` only where the provider serves both), key + label
+  (fixed for a legacy provider), and a form generated from `part_settings` — a setting whose pattern is a short
+  list of words (`^(?:production|preview)$`, `fieldOptions`) is a `segmented()`, anything else a text field checked
+  against its pattern (`partDraftProblems`, the server's own rules; the server's refusal lands beside its field).
+  Not connected yet → "Save and connect". Save is `PUT …/environments/:env/parts/:part`.
+- **connect** (`connectModal`) — for the provider's best AVAILABLE method when that is an install / OAuth: what the
+  provider will ask (`grants`), its `how_to`, "This replaces …" when something is connected, then
+  `POST …/hosting/:provider/connect` and a full navigation to its `url`.
+- **the token form** (`tokenModal`) — `set` / `rotate` / `config`: where to get it, WHAT IT CAN DO in the
+  provider's own words, the org config fields, "Sent only to …". The password input has NO `value` in any state;
+  the draft lives in a private variable of `hosting-actions.ts` (the rule of `integrations.ts`). It writes through
+  the Integrations API (`PUT /integrations/<kind>[/<scope>]`, `…/rotate`, `…/config`); a `set` that meets
+  `already_configured` falls back to the same rotate. Then focus goes to Test connection.
+Disconnect and Remove go through the shared `confirmModal` (`OrgConfirm` `hosting` / `part`; `orgConfirmCopy`).
+After Disconnect the toast says what is left to do upstream (`upstream`: `failed` / `none`).
+
+"Preview with sample data" (the tab's footer) loads `web/src/hosting-sample.ts` by dynamic import — never in the
+main bundle — and shows any of its five states (mid-setup, no parts, new org, removed, locked) with a switch; while
+it is on NOTHING is sent (a save, a connect, a test and a disconnect each answer from the sample and say so). The
+sample's provider catalogue is pinned to the registry by `test/hosting.sample.test.ts`.
+
+**Repo dashboard › Usage › Hosting** (`web/src/repo-hosting.ts`, called from `repo.ts` `usageTab`): ONE section
+from `providers`, replacing the "Cloudflare — frontend Workers" and "Hosting — Railway backend" blocks (their
+`cloudflare` / `hosting` sections stay in the payload for MCP; `SUPERSEDED` keeps them out of the footer).
+Environments side by side on the `.repo-cells` lattice, parts stacked: a tone dot, the label, the provider's glyph
+and name, the role, Open in <provider>; the last deploy (state pill — in flight pulses —, short sha when there is
+one, branch, the message's first line, who, when, "ready in 1m 42s", Open / Log) and a strip of the last ≤ 10 as
+dots (newest right; green landed, red failed, hollow canceled); then traffic for a web part — requests, error rate
+(amber ≥ 1 %, red ≥ 5 %), p95 latency, bandwidth and a requests sparkline with a red tick per bucket that had
+errors, following the range switch (`repo-swap`) — or resources for a service (CPU, memory, a 24-hour line each
+whose missing hours are GAPS, `gapPath`). **A figure the payload does not carry is "—" with one of three calm
+reasons, never 0** (`absentHint`): "not available from <provider>: <its reason>" (`unavailable[]`), "no recent
+reading" (`seen`), "not connected"; a web part whose provider reads no usage at all (`traffic: null`) is ONE line
+with the reason instead of an empty grid. `not_connected` is a quiet line with the way to Org settings › Hosting
+for an admin (the footer keeps "Preview with sample data"); `empty` says the parts are waiting. Links out are https
+only. Render tests: `test/render.hosting.test.ts`, `test/render.repo-hosting.test.ts`.
 
 ## The repo cron's `:40` tick
 

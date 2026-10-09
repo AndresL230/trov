@@ -5,7 +5,8 @@
 //                personal account or one team and picks the projects it may see; Vercel sends the browser
 //                back with a single-use `code` that `install.exchange` trades for a long-lived access token,
 //                and an uninstall on Vercel's side reaches `POST /webhook/hosting/vercel` as
-//                `integration-configuration.removed`. FALLBACK: a pasted access token — narrowest is a
+//                `integration-configuration.removed`. The same endpoint takes `deployment.*` and
+//                `project.removed` / `project.renamed` as a nudge to poll that project's parts now. FALLBACK: a pasted access token — narrowest is a
 //                PROJECT-scoped one (2026), else one team; Vercel has NO read-only token either way.
 //   requests     `api.vercel.com` only, `Authorization: Bearer <token>`, and `teamId=<team_id>` on EVERY call
 //                when the org's config names a team (without it Vercel looks in the personal account and a
@@ -54,6 +55,11 @@ const PROJECT_ID = /^prj_[A-Za-z0-9]{1,64}$/;
  *  away and the read would land on another endpoint. */
 const PROJECT = /^(?!\.{1,2}$)(?:prj_[A-Za-z0-9]{1,64}|[a-z0-9._-]{1,100})$/;
 const TARGET = /^(?:production|preview)$/;
+/** The webhook events that mean "this project's deploys changed": every other type is acknowledged and ignored. */
+export const VERCEL_REFRESH_EVENTS: readonly string[] = [
+  "deployment.created", "deployment.succeeded", "deployment.error", "deployment.canceled", "deployment.promoted", "deployment.rollback",
+  "project.removed", "project.renamed",
+];
 /** A git branch name, conservatively: no spaces, no `..`-style tricks matter here (it is only compared). */
 const BRANCH = /^[A-Za-z0-9][A-Za-z0-9._\/+-]{0,199}$/;
 /** The integration's slug in vercel.com/integrations/<slug> (a Worker var, never a secret). */
@@ -479,6 +485,26 @@ export const vercel: HostingProvider = {
         const inner = record(p.payload);
         const id = str(record(inner.configuration).id) ?? str(inner.configurationId);
         return id && VERCEL_ID.test(id) ? id : null;
+      },
+
+      // `{ type: "deployment.succeeded", payload: { team: { id }, user: { id }, project: { id }, deployment: {
+      // id, name, url, meta }, target } }` and `{ type: "project.removed" | "project.renamed", payload: { team,
+      // project: { id, name } } }` — the documented shapes (UNCONFIRMED on a live delivery, like the rest of
+      // this hook; `payload.name` is the project name an older deployment format carried). The delivery is
+      // only a NUDGE: nothing in it is stored — the parts on that project are polled again through the API,
+      // which is the record. A removed project then reads as a failed poll with Vercel's own 404; a renamed
+      // one still answers to its id (a part that names it by its OLD name fails its next poll and says so).
+      changedProject(payload) {
+        const p = record(payload);
+        const type = str(p.type);
+        if (!type || !VERCEL_REFRESH_EVENTS.includes(type)) return null;
+        const inner = record(p.payload);
+        const accountId = str(record(inner.team).id) ?? str(record(inner.user).id);
+        if (!accountId || !VERCEL_ID.test(accountId)) return null;
+        const project = record(inner.project);
+        const names = [str(project.id), str(project.name), str(record(inner.deployment).name), str(inner.name)]
+          .filter((n): n is string => typeof n === "string" && PROJECT.test(n));
+        return names.length ? { accountId, names: [...new Set(names)] } : null;
       },
     },
   },

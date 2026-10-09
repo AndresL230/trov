@@ -14,7 +14,9 @@ itself looks fine and the bug is easy to miss.
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
 Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, and the three first-run pages (onboarding `onboard`, the org picker `orgs`,
-the guided setup `welcome`). Inside a morphed page, a part that must be REPLACED when it becomes a different
+the guided setup `welcome`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
+confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
+it. Inside a morphed page, a part that must be REPLACED when it becomes a different
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
 animations off in the affected region — that hides one symptom and leaves the rebuild.
 

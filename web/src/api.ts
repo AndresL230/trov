@@ -455,7 +455,7 @@ export function listOrgAudit(slug: string, limit = 50): Promise<IntT.OrgAuditDTO
 // Admin+ except the provider catalogue. A token is pasted through the Integrations calls above (the provider's
 // kind is `HOSTING_INTEGRATION_KIND[provider]`); an install / OAuth connection is `startHostingConnect` + a
 // full-page navigation to its `url` — the provider sends the browser back to `/hosting/<provider>/callback`,
-// which always redirects: to `/<slug>/?hosting=<outcome>&provider=<id>#org` (`HOSTING_CONNECT_OUTCOMES`,
+// which always redirects: to `/<slug>/?hosting=<outcome>&provider=<id>#org/hosting` (`HOSTING_CONNECT_OUTCOMES`,
 // shared/hosting.ts — read `?hosting=` once at boot, like `?github=`), `/?hosting=<outcome>` when its intent
 // could not be read, or `/` when nobody was signed in.
 import type * as HostT from "@shared/hosting";

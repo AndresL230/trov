@@ -1,4 +1,4 @@
-// Org settings › Hosting — the HTTP surface (#97). No screen yet: these are the routes the screen will call.
+// Org settings › Hosting — the HTTP surface (#97): the routes the screen (web/src/hosting.ts) calls.
 //
 // Mounted at `/api/o/:slug` beside the Integrations routes (src/routes.ts), behind the app's `tenantGate`
 // (404 for an unknown org and for a non-member alike), with NO old-path alias — like the rest of the org surface:
@@ -17,8 +17,10 @@
 // a person coming back from a provider): it resolves the signed-in person from the session cookie itself, and
 // src/data/gate.ts lets exactly `/hosting/<provider>/callback` past the one-org alias gate:
 //
-//   GET    /hosting/:provider/callback           public   302 → `/<slug>/?hosting=<outcome>&provider=<p>#org`
+//   GET    /hosting/:provider/callback           public   302 → `/<slug>/?hosting=<outcome>&provider=<p>#org/hosting`
 //                                                         | `/?hosting=<outcome>` (no intent) | `/` (nobody signed in)
+//   GET    /hosting/:provider/configure          public   302 → `/<slug>/#org/hosting` for a signed-in admin of the org
+//          ?configurationId=<installation>                that holds that installation | `/` for everything else
 //
 // Cookie only, never a token: a request to the org routes that carries an `Authorization` header is refused
 // outright (403), as on the Integrations routes; the callback reads the session COOKIE alone, so a bearer can
@@ -29,7 +31,8 @@ import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, isHostingProvider, type HostingTestDTO } from "@shared/hosting";
 import { resolveSessionPrincipal, type AppEnv, type Principal } from "../auth/principal";
-import { RoleError, requireRole } from "../data/context";
+import { RoleError, platform, requireRole } from "../data/context";
+import { adminOrgForInstallation } from "../platform/jobs";
 import {
   SecretAccessError, SecretConflictError, SecretDecryptError, SecretNotFoundError, SecretValueError, SecretsUnavailableError,
 } from "../data/secrets";
@@ -192,6 +195,31 @@ export function makeHostingCallbackApp(o: HostingRouteOptions = {}): Hono<AppEnv
     deleteCookie(c, CONNECT_COOKIE, { path: CONNECT_COOKIE_PATH, secure: true, httpOnly: true, sameSite: "Lax" });
     c.header("cache-control", "no-store");
     c.header("referrer-policy", "no-referrer"); // the callback URL carried a code
+    return c.redirect(location, 302);
+  });
+
+  // The provider's "Configuration URL": where its own dashboard sends an admin who presses Configure on the
+  // installed integration — `?configurationId=<the installation>` (Vercel). It opens Org settings › Hosting of
+  // the org that holds that installation, for a signed-in admin of it. EVERYTHING else — nobody signed in, an
+  // unknown provider or installation, an installation another org holds, a member who is not an admin — is the
+  // SAME redirect to `/` (sign-in, or the person's own landing / the org picker): never an error page, and
+  // nothing that tells a stranger whether an installation is connected. Reads only; never a 500.
+  r.get("/:provider/configure", async (c) => {
+    let location = "/";
+    try {
+      const me = await currentPerson(c);
+      const id = c.req.param("provider");
+      const externalId = c.req.query("configurationId") ?? "";
+      const p = isHostingProvider(id) ? (o.providers ?? PROVIDERS)[id] : null;
+      if (me && p?.install && /^[A-Za-z0-9_-]{1,128}$/.test(externalId)) {
+        const slug = await adminOrgForInstallation(platform(c.env, me.handle), p.id, externalId, me.handle);
+        if (slug) location = `/${encodeURIComponent(slug)}/#org/hosting`;
+      }
+    } catch (e) {
+      console.error("hosting configure failed", e instanceof Error ? e.name : "error");
+    }
+    c.header("cache-control", "no-store");
+    c.header("referrer-policy", "no-referrer");
     return c.redirect(location, 302);
   });
   return r;

@@ -79,7 +79,7 @@ import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
-import { currentOrg } from "./org-settings";
+import { currentOrg, roleAtLeast } from "./org-settings";
 import { createSyncController } from "./sync-actions";
 import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
@@ -91,6 +91,7 @@ import { getBillingStatus } from "./api";
 import { setPrimaryRepo } from "./github";
 import { GITHUB_LOGIN_RE, type MyOrgsResponse } from "@shared/orgs";
 import { isGithubConnectOutcome } from "@shared/github-app";
+import { isHostingConnectOutcome, isHostingProvider } from "@shared/hosting";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
@@ -752,6 +753,17 @@ function enterOrg(slug: string, hash: string): void {
     const missing = /^[1-9][0-9]{0,5}$/.test(query.get("missing") ?? "") ? Number(query.get("missing")) : undefined;
     state.org.githubNotice = { outcome: github, accounts: (query.get("accounts") ?? "").split(",").filter((a) => GITHUB_LOGIN_RE.test(a)).slice(0, 10), ...(missing ? { missing } : {}) };
   }
+  // The return from a hosting provider after Connect with Vercel / Netlify (src/hosting/connections.ts):
+  // `/<slug>/?hosting=<outcome>&provider=<id>#org/hosting`, or `/?hosting=<outcome>` when the intent could
+  // not be read (then the org this page lands in is where it says so). Read once, like `?github=`; the
+  // notice belongs to Org settings › Hosting, so that is where the page opens.
+  const hostingOutcome = query.get("hosting");
+  const hostingReturn = isHostingConnectOutcome(hostingOutcome);
+  if (hostingReturn) {
+    const provider = query.get("provider");
+    state.org.hosting.notice = { outcome: hostingOutcome, provider: isHostingProvider(provider) ? provider : null };
+    hash = "#org/hosting";
+  }
   // A return the guided setup itself sent away — to link a GitHub account, or to connect the GitHub
   // App — comes back to the setup, not to the screen the server names (welcome-actions.ts). Once.
   try {
@@ -770,6 +782,11 @@ function enterOrg(slug: string, hash: string): void {
   // Restore the route from the URL hash (reload stays put, including
   // #tickets/<id> and #sprints/<id>) instead of always My Work.
   applyRoute(parseHash(hash));
+  // Hosting is an admin's tab: anyone else is told here, once, instead of on a tab they cannot open.
+  if (hostingReturn && !roleAtLeast(currentOrg(state)?.role, "admin")) {
+    state.org.hosting.notice = null;
+    flash("Nothing was connected: only an admin or an owner of this organization can connect a host.", 7000);
+  }
   loadOrgMe();
   void loadMyOrgs();
   syncCtl.load(); // a sync in progress shows in the header on every screen, also after a reload

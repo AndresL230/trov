@@ -3,7 +3,8 @@
 // its last poll), the org's connections, and a setup CHECKLIST generated from what the parts actually use —
 // so an org on Vercel alone is never asked to connect Railway.
 //
-// Reads only: the parts (./parts.ts), the connections (./connections.ts), the last-poll rows the hosting poll
+// Reads only: the parts (./parts.ts), the connections (./connections.ts), what the GitHub capture already shows of a
+// host (./detect.ts — a suggestion, from stored rows alone), the last-poll rows the hosting poll
 // job writes (`hosting_poll_state` — a legacy part has none: the usage job keeps no per-part state), and the
 // org's non-secret provider config (Cloudflare's account id falls back to SaplingLearn's legacy var, as the
 // poller's does). Nothing here reveals a credential.
@@ -20,6 +21,7 @@ import { listEnvironments } from "../integrations/settings";
 import { credentialScopeOf, listConnections, loadConnectionState, type ConnectionState } from "./connections";
 import type { PartRow } from "./parts";
 import type { ProviderMap } from "./part-writes";
+import { readDetections } from "./detect";
 import { PROVIDERS, providerDTO } from "./registry";
 import type { HostingProvider } from "./types";
 
@@ -213,6 +215,10 @@ export async function getHostingSetup(ctx: TenantContext, env: Env, providers: P
     environments,
     connections: x.connections,
     checklist: buildChecklist(envs, s.parts, x.connections, providers, x.config),
+    detected: await readDetections(
+      ctx, Object.fromEntries(HOSTING_PROVIDERS.map((id) => [id, providers[id].label])) as Record<HostingProviderId, string>,
+      new Set(s.parts.map((p) => p.provider)),
+    ),
     secrets_available: await secretsAvailable(env),
   };
 }

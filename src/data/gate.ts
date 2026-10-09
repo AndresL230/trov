@@ -30,7 +30,7 @@ export const tenantGate: MiddlewareHandler<AppEnv> = async (c, next) => {
 /** Session routes that are NOT the cut-over alias's: the person-level surface, reachable with no org at
  *  all (/auth, /avatar, /org-logo, the org picker and invites, the superadmin surface), the routes that name
  *  their org in the path (`/api/o/:slug/*` — `tenantGate`'s), and EXACTLY a hosting provider's install / OAuth
- *  callback (`/hosting/<provider>/callback`, src/hosting/routes.ts — nothing else under `/hosting/`): its
+ *  callback and Configuration URL (`/hosting/<provider>/callback`, `…/configure`, src/hosting/routes.ts — nothing else under `/hosting/`): its
  *  redirect URI is fixed per provider, so the org it is for travels in the sealed intent, and the callback
  *  checks that membership itself. */
 const isPlatformPath = (path: string): boolean =>

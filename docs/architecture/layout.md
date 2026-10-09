@@ -132,13 +132,16 @@
   `shared/sync.ts`): `docs/architecture/sync.md` — whether a sync can start is asked of the ONE GitHub credential
   source (`githubCredentialSource`, `src/github-app/credential.ts`), never of the token alone. The summarizer for an org is chosen ONLY by `orgSummarizers`
   (`src/plans/summaries.ts` — one platform key, each call metered per org, the monthly `ai_summaries` allowance).
-  Then `0049_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
+  Then `0050_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
   `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback
-  `scripts/hosting/0049_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
+  `scripts/hosting/0050_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,
-  `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`.
+  `routes.ts`, `webhook.ts`, `probe.ts`, `poll.ts`, `detect.ts` (the "Detected" suggestion, from captured GitHub
+  activity alone). Its screens: `web/src/hosting.ts` + `web/src/hosting-actions.ts` (Org settings › Hosting),
+  `web/src/repo-hosting.ts` (Repo dashboard › Usage › Hosting), `web/src/hosting-sample.ts` (the sample states — a
+  dynamic import, never in the main bundle).
 - `web/` — full TypeScript/Vite single-page app (My Work, Feed, Docs, Roadmap, Triage, Search,
   Settings, Get Started, the four tickets screens — Tickets queue / ticket detail / new ticket / sprint —
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;

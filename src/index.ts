@@ -62,11 +62,11 @@ export default {
     if (request.method === "POST" && url.pathname === APP_WEBHOOK_PATH) return handleGithubAppWebhook(request, env, { waitUntil: (p) => ctx.waitUntil(p) });
     const hook = request.method === "POST" ? webhookPath(url.pathname) : null;
     if (hook) return handleGithubWebhook(request, env, { hookId: hook.hookId, waitUntil: (p) => ctx.waitUntil(p) });
-    // A hosting provider's "uninstalled" notice (src/hosting/webhook.ts): its signature over the raw body,
-    // keyed with the integration's client secret, is the auth. Revokes that installation's credential in the
-    // org(s) that hold it. Never touches sessionGate; an unverified delivery is a bare 401 that writes nothing.
+    // A hosting provider's notices (src/hosting/webhook.ts): the signature over the raw body, keyed with the
+    // integration's client secret, is the auth. "Uninstalled" revokes that installation's credential in the
+    // org(s) that hold it; a deployment / project event polls that project's parts again, after the response. Never touches sessionGate; an unverified delivery is a bare 401 that writes nothing.
     const hostingHook = request.method === "POST" ? hostingWebhookPath(url.pathname) : null;
-    if (hostingHook) return handleHostingWebhook(request, env, hostingHook.provider);
+    if (hostingHook) return handleHostingWebhook(request, env, hostingHook.provider, { waitUntil: (p) => ctx.waitUntil(p) });
     // Signed one-click unsubscribe (canopy-email.md §7): the single token
     // exception. POST (what List-Unsubscribe-Post mail clients send) verifies the
     // HMAC and can ONLY set email_unsubscribed = 1 for the login it names. A

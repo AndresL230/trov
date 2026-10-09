@@ -28,6 +28,7 @@ import type { PersonSummary } from "./api";
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { skeleton, skBar, skList, skW } from "./skeleton";
+import { hostingNotConnected, hostingParts } from "./repo-hosting";
 
 export interface RepoProps {
   tab: RepoTab;
@@ -889,19 +890,6 @@ function pollStrip(poll: RepoPollState | null): string {
     </div>`;
 }
 
-const CF_REQUESTS = "Workers requests", CF_ERRORS = "Workers errors";
-/** A figure as the Worker compacts it ("302", "12.4K", "1.24M") back to a number; null for anything else. */
-export function parseCompact(s: string | undefined): number | null {
-  const m = /^(\d+(?:\.\d+)?)([KMBT])?$/.exec((s ?? "").trim());
-  return m ? Number(m[1]) * ({ K: 1e3, M: 1e6, B: 1e9, T: 1e12 }[m[2] ?? ""] ?? 1) : null;
-}
-/** errors ÷ requests as a bar width in percent — null (no bar) unless both are readable and requests > 0. */
-export function errorShare(requests: string | undefined, errors: string | undefined): number | null {
-  const req = parseCompact(requests), err = parseCompact(errors);
-  if (req === null || err === null || req <= 0) return null;
-  return Math.min(100, Math.round((err / req) * 1000) / 10);
-}
-
 function usageTab(p: RepoProps): string {
   const usageLive = okData(p, (d) => d.usage) !== null;
   const ranges = segmented({
@@ -911,45 +899,20 @@ function usageTab(p: RepoProps): string {
 
   const usage = sec(p, (d) => d.usage, { nc: "No usage captured yet. Requests and error rate come from the hourly Cloudflare analytics poll; active users come from the app's own metrics endpoint. Both need an environment in Org settings › Environments and their credential in Org settings › Integrations.", empty: "No current usage reading — the hourly polls have gone quiet.", lines: 4 }, (u) =>
     `<div class="repo-swap" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${u[p.range].map(usageEnv).join("")}</div>`);
-  // Infrastructure — two blocks, a column per environment in each, in the same
-  // stat shape as the Product blocks above (figure over label), not two tables.
-  // `ok` is gated on the WIDEST range (30d), so a narrower one can legitimately
-  // hold no rows — say so, rather than render a titled panel with nothing in it.
-  // "Nothing RECORDED", not "no requests": an empty range may be one no poll
-  // ever covered, and zero traffic is a claim the capture cannot support.
-  const envCols = (cols: string[]): string =>
-    `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:18px 28px;margin-top:4px">${cols.join("")}</div>`;
-  const envName = (name: string): string =>
-    `<div style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-70);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div>`;
-  // "0.48 vCPU" → the figure at size, its unit quiet beside it (the same string, split at the space).
-  const stat = (value: string, label: string, size = 21): string => {
-    const [, fig, unit] = /^(\S+)\s+(.+)$/.exec(value) ?? [null, value, ""];
-    return `<div style="min-width:0"><div style="${NUM};font-size:${size}px;letter-spacing:-0.02em;${value === "—" ? "color:var(--fg-40)" : ""}">${esc(fig ?? value)}${unit ? `<span style="font-size:11.5px;font-weight:500;letter-spacing:0;color:var(--fg-55);margin-left:5px">${esc(unit)}</span>` : ""}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px;overflow:hidden;text-overflow:ellipsis">${esc(label)}</div></div>`;
-  };
-  const usageNow = okData(p, (d) => d.usage)?.[p.range] ?? [];
-  const cf = sec(p, (d) => d.cloudflare, { nc: "No Cloudflare analytics captured yet. The hourly poll runs once Cloudflare analytics is set in Org settings › Integrations and each environment names its Worker in Org settings › Environments; it also feeds the requests and error rate above.", empty: "No Cloudflare metrics in the last 30 days." }, (c) => {
-    const rows = c[p.range];
-    if (!rows.length) return `<div class="repo-swap" style="padding:6px 0;font-size:12.5px;color:var(--fg-40)">Nothing recorded in this range.</div>`;
-    const names = [...new Set(rows.map((r) => r.env))];
-    return `<div class="repo-swap">${envCols(names.map((name, n) => {
-      const mine = rows.filter((r) => r.env === name);
-      const req = mine.find((r) => r.label === CF_REQUESTS), err = mine.find((r) => r.label === CF_ERRORS);
-      // The share is the two figures this block itself shows, errors ÷ requests —
-      // drawn only when both are there and there is a request to take a share of.
-      const share = errorShare(req?.value, err?.value);
-      const tone = usageNow.find((u) => u.name === name)?.errorRate?.tone;
-      const fill = tone === "warn" || tone === "bad" ? TONE[tone] : "var(--fg-40)";
-      return `<div data-cfenv="${attr(name)}" style="min-width:0">${envName(name)}
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;align-items:end">${mine.map((r) => stat(r.value, r.label, r === req ? 21 : 17)).join("")}</div>
-        ${share === null ? "" : `<div title="${attr(`${CF_ERRORS} as a share of ${CF_REQUESTS}`)}" style="height:4px;border-radius:999px;background:var(--hover);overflow:hidden;margin-top:12px"><div class="repo-fill" style="--i:${n};height:100%;min-width:${share > 0 ? 2 : 0}px;border-radius:999px;background:${fill};width:${share}%"></div></div>
-        <div style="font-size:11px;color:var(--fg-40);margin-top:6px">errors as a share of requests</div>`}
-      </div>`;
-    }))}</div>`;
-  });
-  const hosting = sec(p, (d) => d.hosting, { nc: "No Railway reading captured yet. The hourly poll runs once an environment's Railway project token is set in Org settings › Integrations and the environment carries its Railway environment and service IDs.", empty: "No fresh hosting reading — the last Railway sample is over 3 hours old." }, (rows) =>
-    envCols(rows.map((h) => `<div data-hostenv="${attr(h.env)}" style="min-width:0">${envName(h.env)}
-      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px">${stat(h.cpu, "CPU")}${stat(h.memory, "Memory")}</div>
-    </div>`)));
+  // Hosting — ONE provider-neutral section (repo-hosting.ts), built from `providers`: every part of every
+  // environment, whoever hosts it. It replaces the two blocks that only understood Cloudflare and Railway —
+  // their frontend and backend are parts here like any other (the `cloudflare` / `hosting` sections stay in
+  // the payload for the MCP tool; nothing on this screen draws them).
+  const tools = { range: p.range, now: Date.now(), ago, sparkPoints: (v: number[]) => sparkPoints(v) };
+  const phase = phaseOf(p);
+  // `?? not_connected`: a payload from before the section existed lacks its key.
+  const providers = p.repo.data ? (p.repo.data.providers as RepoDashboard["providers"] | undefined) ?? { status: "not_connected" as const } : null;
+  const hostingBody = phase === "loading" ? `<div style="padding:6px 20px 12px">${sectionSkeleton(4)}</div>`
+    : phase === "error" || !providers ? `<div style="padding:6px 20px 12px">${errorBlock()}</div>`
+    : providers.status === "not_connected" ? hostingNotConnected(p.admin && !p.sample)
+    : providers.status === "empty" ? `<div style="padding:6px 20px 12px">${emptyBlock("Parts are set up, but no provider has reported yet.")}</div>`
+    : hostingParts(providers.data, tools);
+  const partCount = providers?.status === "ok" ? providers.data.length : null;
 
   // "Poll now" used to live in this header; it is in the Repo top bar now, on every tab.
   return `<div ${rise(0, `display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;padding:14px 20px;border-bottom:1px solid var(--border)`)}>
@@ -957,16 +920,13 @@ function usageTab(p: RepoProps): string {
     </div>
     <div ${rise(1)}>${usageLive ? usage : `<div style="padding:6px 20px">${usage}</div>`}</div>
     ${productSection(p, 2)}
-    <div ${rise(5, `${TOP};flex:1`, "repo-cells")}><div style="grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">
-      <div style="padding:18px 20px 20px;display:flex;flex-direction:column">
-        <div style="${LABEL};white-space:normal;line-height:1.5;margin-bottom:12px">Cloudflare — frontend Workers</div>
-        ${cf}
+    <div ${rise(5, `${TOP};flex:1`)} data-usage-hosting>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 12px;padding:14px 20px 12px">
+        <span style="${LABEL}">Hosting</span>
+        <span style="font-size:11.5px;color:var(--fg-40)">${partCount === null ? "every part, whoever hosts it" : `${partCount} ${partCount === 1 ? "part" : "parts"} &middot; polled every hour`}</span>
       </div>
-      <div style="padding:18px 20px 20px;display:flex;flex-direction:column">
-        <div style="${LABEL};white-space:normal;line-height:1.5;margin-bottom:12px">Hosting — Railway backend</div>
-        ${hosting}
-      </div>
-    </div></div>`;
+      ${hostingBody}
+    </div>`;
 }
 
 // ── Team & Planning ──────────────────────────────────────────────────────────
@@ -1052,22 +1012,23 @@ function planningTab(p: RepoProps): string {
 // ── the screen ───────────────────────────────────────────────────────────────
 const SCREEN_LABEL: Record<RepoTab, string> = { overview: "Overview", code: "Code", ci: "CI and Deploys", usage: "Usage", planning: "Planning" };
 
-/** Sections the payload carries but no block on this screen draws YET — the hosting providers' section is
- *  designed from its DTO separately. Nothing on the tab can say what such a section waits on, so its
- *  not-connected line lives here and the footer says it. */
-const UNDRAWN_NC: Partial<Record<RepoSectionName, string>> = {
-  providers: "Hosting providers — connect one in Org settings › Hosting.",
-};
+/** Sections in the payload that NO block on this screen draws, on purpose: Usage › Hosting reads the
+ *  provider-neutral `providers` section, which holds the Cloudflare frontend and the Railway backend as parts.
+ *  They cannot be "marked not connected" by a block, so the footer does not speak for them. */
+const SUPERSEDED: readonly RepoSectionName[] = ["cloudflare", "hosting"];
+/** Sections whose block says "nothing yet" in its own quiet words (one line and the way to set it up) rather
+ *  than the dashed "Source not connected" box — Usage › Hosting (repo-hosting.ts `hostingNotConnected`). */
+const QUIET_NC: readonly RepoSectionName[] = ["providers"];
 
-/** The tab in view's sections nothing has been captured for yet: the ones a block on the tab draws (and
- *  marks "not connected" itself), and the undrawn ones, by name. */
-function uncaptured(p: RepoProps): { drawn: boolean; undrawn: RepoSectionName[] } {
+/** The tab in view's sections nothing has been captured for yet: the ones a block marks "Source not
+ *  connected" (`drawn`), and the ones whose block says so quietly, by name (`quiet`). */
+function uncaptured(p: RepoProps): { drawn: boolean; quiet: RepoSectionName[] } {
   const d = p.repo.data;
-  if (!d) return { drawn: false, undrawn: [] };
+  if (!d) return { drawn: false, quiet: [] };
   // The ONE section→tab mapping (shared with the MCP `get_repo_dashboard` tool).
   // `?? not_connected`: a payload from before a section existed lacks its key.
-  const nc = REPO_TAB_SECTIONS[p.tab].filter((k) => ((d[k] as RepoSection<unknown> | undefined)?.status ?? "not_connected") === "not_connected");
-  return { drawn: nc.some((k) => !UNDRAWN_NC[k]), undrawn: nc.filter((k) => UNDRAWN_NC[k]) };
+  const nc = REPO_TAB_SECTIONS[p.tab].filter((k) => !SUPERSEDED.includes(k) && ((d[k] as RepoSection<unknown> | undefined)?.status ?? "not_connected") === "not_connected");
+  return { drawn: nc.some((k) => !QUIET_NC.includes(k)), quiet: nc.filter((k) => QUIET_NC.includes(k)) };
 }
 
 /** The page's tab bar: every tab is in the one dashboard payload, so a switch
@@ -1098,12 +1059,13 @@ export function repoView(p: RepoProps): string {
       ? `<div class="cnpy-rise" style="display:flex;align-items:center;gap:9px;margin-bottom:16px;font-size:12.5px;color:var(--fg-55)">${info}Some reads failed, so this view may be incomplete.</div>`
       : "";
   const nc = uncaptured(p);
-  const footer = !p.sample && (nc.drawn || nc.undrawn.length)
+  // The footer is also where "Preview with sample data" lives, so it shows whenever ANY section of the tab
+  // has nothing yet — with the sentence about the dashed boxes only when there is one.
+  const footer = !p.sample && (nc.drawn || nc.quiet.length)
     ? `<div class="cnpy-rise" style="--i:6;display:flex;align-items:center;gap:9px;margin-top:14px;font-size:12px;color:var(--fg-40)">${info}
-        <span>${[
-          ...(nc.drawn ? [`Sections marked <span style="color:var(--fg-55)">not connected</span> have had nothing captured yet — each says what it is waiting on.`] : []),
-          ...nc.undrawn.map((k) => `<span data-nc-section="${attr(k)}">${esc(UNDRAWN_NC[k] ?? "")}</span>`),
-        ].join(" ")}</span>
+        <span>${nc.drawn
+          ? `Sections marked <span style="color:var(--fg-55)">not connected</span> have had nothing captured yet — each says what it is waiting on.`
+          : `<span data-nc-quiet="${attr(nc.quiet.join(" "))}">Hosting has nothing to read yet: it says above where to set it up.</span>`}</span>
         <button data-act="repoSampleOn" class="repo-textbtn" style="font-size:12px;font-weight:500;color:var(--accent);padding:0;white-space:nowrap">Preview with sample data</button>
       </div>`
     : "";

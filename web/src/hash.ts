@@ -27,7 +27,7 @@
 //                       its patch notes. The legacy #releases/patches opens the newest release's.
 //   #platform         → Platform (superadmin) › Organizations; #platform/usage, /admins, /audit
 //                       its other tabs; #platform/orgs/<slug> one organization
-//   #org              → Org settings › Integrations; #org/repos, #org/environments,
+//   #org              → Org settings › Integrations; #org/repos, #org/environments, #org/hosting,
 //                       #org/members, #org/notifications and #org/general its other tabs
 //   #welcome          → the guided first-run setup, at its first step; #welcome/agent,
 //                       #welcome/team and #welcome/done its others (welcome.ts)

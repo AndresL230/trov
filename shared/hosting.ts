@@ -157,7 +157,7 @@ export interface HostingProviderDTO {
 export type ConnectionStatus = "connected" | "not_connected" | "error" | "revoked";
 
 /**
- * Why an install / OAuth connection ended — `org_hosting_connections.revoked_reason` (0049 CHECKs it). The row
+ * Why an install / OAuth connection ended — `org_hosting_connections.revoked_reason` (0050 CHECKs it). The row
  * stores the CODE only; the sentence a person reads is derived from it (`hostingRevokedReasonText`):
  *   disconnected  an admin disconnected it in Trov (Disconnect, or deleting the credential on Integrations)
  *   uninstalled   the provider said it was removed on its side (the verified uninstall notice)
@@ -181,7 +181,7 @@ export function hostingRevokedReasonText(reason: HostingRevokedReason, providerL
 
 /**
  * How an install / OAuth return ended — `GET /hosting/:provider/callback` always redirects, to
- * `/<slug>/?hosting=<outcome>&provider=<id>#org` (or `/?hosting=<outcome>` when the sealed intent could not be
+ * `/<slug>/?hosting=<outcome>&provider=<id>#org/hosting` (or `/?hosting=<outcome>` when the sealed intent could not be
  * read). ONE vocabulary; the SPA words each code, and nothing from the provider ever rides along:
  *   connected            stored and bound to the org
  *   expired              no intent of ours, a state that does not match it, another provider's, or too late
@@ -290,12 +290,29 @@ export interface HostingChecklistItem {
     | { kind: "none" };
 }
 
+/**
+ * A provider the org's repository already shows signs of — read from the GitHub activity Trov has CAPTURED
+ * (check runs, deployments; src/hosting/detect.ts), never by calling GitHub or the provider. A suggestion for
+ * the picker ("Detected: Vercel"): it preselects the provider, and connects nothing.
+ */
+export interface HostingDetectionDTO {
+  provider: HostingProviderId;
+  /** What was seen, as words: "GitHub check runs posted by the Vercel app". Carries text from GitHub — escape it. */
+  evidence: string;
+  /** When the newest such sign was captured. */
+  last_seen: string;
+  /** A part already uses this provider: nothing to suggest. */
+  in_use: boolean;
+}
+
 /** `GET /api/o/:slug/hosting` — the whole Hosting setup in one read (admin). */
 export interface HostingSetupDTO {
   providers: HostingProviderDTO[];
   environments: HostingEnvironmentDTO[];
   connections: HostingConnectionDTO[];
   checklist: HostingChecklistItem[];
+  /** Providers seen in captured GitHub activity, in picker order (empty when none, or when nothing is captured). */
+  detected: HostingDetectionDTO[];
   /** false: TROV_KEK is unusable, so no credential can be saved (every write answers 503). */
   secrets_available: boolean;
 }

@@ -149,6 +149,13 @@ export interface InstallSpec {
     verify(args: { rawBody: string; headers: Headers; clientSecret: string }): Promise<boolean>;
     /** The installation id a VERIFIED delivery says was removed, or null when it is about something else. */
     removedExternalId(payload: unknown): string | null;
+    /** The project a VERIFIED delivery says CHANGED — a deploy was created, finished, promoted or rolled back,
+     *  or the project itself was removed or renamed — so the parts on it are read again now instead of at the
+     *  next hourly poll. `accountId` is the provider-side account the delivery is about (what the connection
+     *  row holds as `account_id`); `names` every way a part may name that project (its id, its name) — matched
+     *  against a part's FIRST setting. null: about something else, which is acknowledged and ignored. Optional:
+     *  a provider without it only sends the uninstall notice. */
+    changedProject?(payload: unknown): { accountId: string; names: string[] } | null;
   };
 }
 
