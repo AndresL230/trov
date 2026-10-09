@@ -24,12 +24,16 @@ describe("landing — the facts it states", () => {
     for (const gone of ["restricted to your org", "needs an invitation", "invite-only", "by invitation"]) expect(html).not.toContain(gone);
   });
 
-  it("the help page is the Guide, never Get Started", () => {
+  it("the help page is the Guide: nothing calls it Get Started; \"Get started\" is the sign-up button's label only", () => {
     for (const html of [out(), out(false, true)]) {
-      expect(html).not.toMatch(/Get started|Get Started/);
+      expect(html).not.toContain("Get Started"); // the help page's old name
       expect(html).toContain("How Trov works, in the Guide");
     }
-    // Signed out, the hero's first button opens Sign in; reopened from the app, it opens the Guide.
+    // Signed out, "Get started" is exactly the two buttons that open the dialog's plan choice (nav, hero);
+    // reopened from the app there is none, and the hero opens the Guide.
+    expect(out().match(/Get started/g)).toHaveLength(2);
+    expect(out().match(/data-act="openSignIn" data-arg="signup"[^>]*>Get started</g)).toHaveLength(2);
+    expect(out(false, true)).not.toContain("Get started");
     expect(out()).toContain('<button data-act="openSignIn" data-arg="signup" class="site-btn site-btn-onb">Get started</button>');
     expect(out(false, true)).toContain('<button data-act="siteGuide" class="site-btn site-btn-onb">Open the Guide</button>');
   });
