@@ -2232,6 +2232,34 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-billdone-acts { display:flex; flex-wrap:wrap; gap:8px; }
 /* Its actions are buttons the size of their label, not bars the width of the card. */
 .cnpy-billdone-acts > a, .cnpy-billdone-acts > button { flex:0 1 auto; width:auto !important; padding-left:20px !important; padding-right:20px !important; }
+/* The payment page (billing-checkout.ts `billingCheckoutPage`, embedded checkout): the same first-run card,
+   WIDER — Stripe's form needs about 380px and lays its summary beside its fields when it has the room — and
+   set at the TOP of the window: the form's height is Stripe's and changes as it is filled in, so the card
+   grows with it and the page scrolls. Nothing in the card scrolls (no height, no overflow on the stage), so
+   there is never a scrollbar inside a scrollbar. Reached by a page load, so no morph crosses the two widths. */
+.cnpy-billco { align-items:flex-start; padding-top:clamp(20px, 7vh, 72px); padding-bottom:40px; }
+.cnpy-billco > .cnpy-orgs-col { max-width:940px; }
+.cnpy-billco [hidden] { display:none !important; }
+/* The stage is Stripe's: its iframe paints its own background (the account's Branding settings), so it sits
+   edge to edge in the card rather than as a panel inside a padded body. */
+.cnpy-orgs-body.cnpy-billco-body { padding:0; }
+.cnpy-billco-stage { position:relative; padding:14px 14px 16px; }
+.cnpy-billco-mount { display:block; width:100%; min-width:0; }
+[data-billco-phase="loading"] .cnpy-billco-mount { display:none; }
+/* Mounted: the skeleton is gone and the node holds its place until Stripe's iframe has its own height. */
+[data-billco-phase="form"] .cnpy-billco-mount { min-height:420px; }
+[data-billco-phase="form"] .cnpy-billco-skel { display:none; }
+.cnpy-billco-skel { display:grid; grid-template-columns:minmax(0, 5fr) minmax(0, 6fr); gap:36px; padding:22px 18px 10px; }
+.cnpy-billco-skel-sum { display:grid; gap:12px; align-content:start; }
+.cnpy-billco-skel-form { display:grid; gap:16px; align-content:start; }
+.cnpy-billco-wait { display:flex; align-items:center; gap:10px; padding:14px 18px 4px; font-size:12.5px; color:var(--fg-55); }
+.cnpy-billco-note { display:grid; gap:16px; padding:22px 28px 24px; max-width:64ch; }
+@media (max-width:720px) {
+  .cnpy-billco { padding-top:max(16px, env(safe-area-inset-top)); }
+  .cnpy-billco-stage { padding:6px 0 8px; }
+  .cnpy-billco-skel { grid-template-columns:minmax(0, 1fr); gap:24px; padding:16px 14px 8px; }
+  .cnpy-billco-note { padding:18px 20px 20px; }
+}
 .cnpy-onb-step { margin-left:auto; font-family:var(--label); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.78); }
 .cnpy-orgs-body.cnpy-onb-body { display:grid; gap:18px; padding-top:22px; }
 .cnpy-onb-pair { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start; }

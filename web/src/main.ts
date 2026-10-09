@@ -90,8 +90,10 @@ import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
 import { morphStep } from "./transition";
-import { BILLING_DONE_PATH } from "@shared/billing";
-import { getBillingStatus } from "./api";
+import { BILLING_CHECKOUT_PATH, BILLING_DONE_PATH, PRICING_PATH } from "@shared/billing";
+import { askBillingCheckout, getBillingStatus } from "./api";
+import { BILLING_MOUNT_ID, billingCheckoutHosted, initialBillingCheckout, startBillingCheckout, type BillingCheckoutHost } from "./billing-checkout";
+import { loadStripeEmbedder } from "./stripe-js";
 import { setPrimaryRepo } from "./github";
 import { GITHUB_LOGIN_RE, type MyOrgsResponse } from "@shared/orgs";
 import { isGithubConnectOutcome } from "@shared/github-app";
@@ -2246,6 +2248,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       }).catch(() => { location.assign(fallback); });
       return;
     }
+    // The payment page's fallback (billing-checkout.ts): Stripe's hosted checkout, when its form would not open here.
+    case "billingHosted": void billingCheckoutHosted(billingCheckoutHost); return;
     case "closeSignIn": state.signInOpen = false; break;
     // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
     case "openFeature": if (arg) featureCtl.open(arg); return;
@@ -4489,6 +4493,19 @@ document.addEventListener("keydown", (e) => {
   rerender();
 });
 
+// The payment page (`/billing/checkout`, embedded checkout). Stripe.js is loaded from here and nowhere
+// else, and only when that page asks for it (stripe-js.ts).
+const billingCheckoutHost: BillingCheckoutHost = {
+  get: () => state.billingCheckout,
+  rerender: () => rerender(),
+  ask: (s, req) => askBillingCheckout(s.org, req),
+  stripe: (publishableKey) => loadStripeEmbedder(publishableKey),
+  mountNode: () => document.getElementById(BILLING_MOUNT_ID),
+  go: (href) => { location.replace(href); },
+  setUrl: (href) => { history.replaceState(null, "", href); },
+  preview: () => state.preview !== null,
+};
+
 // ── boot: detect session via /auth/me ────────────────────────────────────────
 const params = new URLSearchParams(location.search);
 if (params.get("denied") === "1") {
@@ -4502,6 +4519,12 @@ if (params.get("denied") === "1") {
   state.authStep = "unverified";
   state.deniedEmail = params.get("email");
   rerender();
+} else if (location.pathname === BILLING_CHECKOUT_PATH) {
+  // Embedded checkout (billing-checkout.ts): Stripe's form in Trov's own card. The page asks the Worker for
+  // its session, which answers the signed-in buyer only; a URL that names no plan Trov sells is the plans.
+  state.billingCheckout = initialBillingCheckout(params);
+  if (!state.billingCheckout) location.replace(PRICING_PATH);
+  else { rerender(); void startBillingCheckout(billingCheckoutHost); }
 } else if (location.pathname === BILLING_DONE_PATH) {
   // Back from Stripe Checkout (billing.ts): the waiting room polls until the webhook has made the
   // buyer's grant, then sends them on to `/?setup=<grant>` — the picker, with that organization's form open.

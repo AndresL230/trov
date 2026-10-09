@@ -44,6 +44,13 @@ export const billingAskHref = (plan: PurchasablePlan, interval: BillingInterval 
   `/?${START_PARAM}=${plan}${interval === "month" ? "" : `&${START_INTERVAL_PARAM}=${interval}`}`;
 /** Where Stripe sends the buyer back: the waiting room (`?session_id=…`). */
 export const BILLING_DONE_PATH = "/billing/done";
+/** The payment page INSIDE Trov (embedded Checkout — web/src/billing-checkout.ts): Stripe's form mounted in
+ *  the first-run card. Only useful while embedded checkout is on (src/billing/config.ts `embedded`);
+ *  `org` = the organization being upgraded, `session` = the Checkout Session the page is showing (so a
+ *  reload, or Back from the confirmation, asks about THAT session instead of starting another). */
+export const BILLING_CHECKOUT_PATH = "/billing/checkout";
+export const billingCheckoutHref = (plan: PurchasablePlan, interval: BillingInterval = "month", o: { org?: string | null; session?: string | null } = {}): string =>
+  `${BILLING_CHECKOUT_PATH}?plan=${plan}${interval === "month" ? "" : `&interval=${interval}`}${o.org ? `&org=${encodeURIComponent(o.org)}` : ""}${o.session ? `&session=${encodeURIComponent(o.session)}` : ""}`;
 /** Where a person who backs out of checkout lands, and where "see the plans" points: the public pricing
  *  page (web/pricing.html, a Vite input; test/render.pricing.test.ts holds the two together). */
 export const PRICING_PATH = "/pricing";
@@ -77,6 +84,9 @@ export interface BillingConfigResponse {
   available: boolean;
   /** Which Stripe mode the deployment's key is in; null when not set up. */
   mode: "test" | "live" | null;
+  /** Present (`true`) only while a purchase is paid on Trov's own page (Stripe's embedded form) rather than
+   *  on Stripe's. A flag — never the publishable key, which only the payment page's own call is answered. */
+  embedded?: true;
   plans: Record<PlanId, BillingPlanOffer>;
   /** Where "Contact us" points (Enterprise). */
   contact: string;
@@ -89,6 +99,28 @@ export interface BillingConfigResponse {
 /** No plan purchasable: what a page shows before it has asked, and what the route answers when unset. */
 const NONE: BillingPlanOffer = { purchasable: false, intervals: [], href: null };
 export const NO_BILLING_OFFERS: Record<PlanId, BillingPlanOffer> = { free: NONE, personal: NONE, team: NONE, enterprise: NONE };
+
+// ── the payment page's own call (POST /api/billing/checkout, POST /api/o/:slug/billing/upgrade) ──
+
+/** What the payment page sends. `ui: "embedded"` = "I am the page: a client secret if embedded checkout is
+ *  on"; `ui: "hosted"` = Stripe's own page whatever the deployment's setting (the page's fallback when
+ *  Stripe.js would not load). `session_id` = the session the page already showed. */
+export interface BillingCheckoutRequest {
+  plan?: PurchasablePlan;
+  interval?: BillingInterval;
+  ui: "embedded" | "hosted";
+  session_id?: string;
+}
+export type BillingCheckoutResponse =
+  /** Mount Stripe's form. `client_secret` is the Checkout Session's own — for THIS buyer's browser only;
+   *  `publishable_key` is Stripe's public key (`pk_…`), public by design. */
+  | { ui: "embedded"; client_secret: string; publishable_key: string; session_id: string }
+  /** Go to Stripe's own page (embedded checkout is off, or the page asked for it). */
+  | { ui: "hosted"; url: string }
+  /** The session the page named was already paid: the waiting room is where it goes on. */
+  | { ui: "complete"; session_id: string }
+  /** The session the page named expired unpaid. */
+  | { ui: "expired" };
 
 // ── GET /api/billing/status?session_id=… (the waiting room's poll) ───────────
 

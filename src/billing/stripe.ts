@@ -45,9 +45,14 @@ export function formEncode(params: Record<string, FormValue>): string {
   return out.join("&");
 }
 
+/** A Checkout Session's client secret (embedded checkout), wherever an upstream message quotes one: it is
+ *  the buyer's browser's alone, so it is cut out of anything that could be logged — by SHAPE, since Trov
+ *  never keeps one to compare against. */
+const CLIENT_SECRET = /\b[a-z]{2,8}_(?:test_|live_)?[A-Za-z0-9]+_secret_[A-Za-z0-9_%+/=-]+/g;
+
 /** Scrubbed FIRST, then one line, then cut — a cut first could leave half a key behind. */
 const clean = (cfg: BillingConfig, text: string): string =>
-  scrub(text, [cfg.secretKey, cfg.webhookSecret]).replace(/\s+/g, " ").trim().slice(0, MESSAGE_CHARS);
+  scrub(text, [cfg.secretKey, cfg.webhookSecret]).replace(CLIENT_SECRET, "[client secret]").replace(/\s+/g, " ").trim().slice(0, MESSAGE_CHARS);
 
 async function boundedText(res: Response): Promise<string> {
   const reader = res.body?.getReader();

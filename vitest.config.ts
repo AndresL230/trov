@@ -87,6 +87,7 @@ export default defineConfig({
           STRIPE_PRICE_TEAM: "",
           STRIPE_PRICE_TEAM_YEARLY: "",
           STRIPE_TAX: "",
+          STRIPE_PUBLISHABLE_KEY: "",
           STRIPE_TEST_API_BASE: "",
         },
       },
