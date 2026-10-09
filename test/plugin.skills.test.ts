@@ -13,7 +13,7 @@ const allowed = (text: string): string[] => (/^allowed-tools: (.*)$/m.exec(text)
 describe("the Trov plugin's skills and the organization a call acts in", () => {
   it("ships the ten skills, at the version the release notes name", () => {
     expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "load-context", "my-work", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
-    expect(plugin.version).toBe("0.8.0");
+    expect(plugin.version).toBe("0.8.1");
   });
 
   it("every skill that calls Trov derives `repo` from the git remote, passes it on every call, and may ask where it is", () => {

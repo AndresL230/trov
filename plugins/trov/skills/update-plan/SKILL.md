@@ -29,8 +29,8 @@ skill does so itself, in step 1) so you never write blind.
   bar moves, not an `update_plan` call.
 - **Never auto-fire.** Reading the plan, discussing it, or noticing drift is not license to write it —
   that's `read-plan`'s job. Only an explicit ask reaches this skill.
-- Never infer `status: 'done'` from issue/PR activity — `done` is only ever admin-said-so, here or via
-  the web Confirm-done button. Nothing else agent- or worker-reachable can set it.
+- Never infer `status: 'done'` from issue/PR activity — `done` is only ever a person's say-so: here
+  (admin), or `complete_sprint` / the web Confirm-done button (any member). No worker, webhook or cron sets it.
 
 ## Which organization — pass `repo` on every call
 
@@ -126,16 +126,16 @@ The sprint vocabulary (the DTO's words, not the column names):
 - On an update, a field you **omit** is left unchanged (`label`, `due` and `status` are required, so
   they always overwrite); passing an explicit `null` is how you **clear** one. Sprint fields also come
   from the Roadmap's New sprint panel, so never re-send a field blank just to fill the shape.
-- **You never write progress.** A sprint's `closed/total/pct` is computed at read time as
-  **the tickets in the sprint plus the GitHub issues behind `github_ref`** — `total` = tickets +
-  cached issues, `closed` = tickets a person marked `done`/`declined` + cached closed issues. A
-  sprint with neither reads `0/0`. Editing `github_ref` changes the issue half (the webhook and the
-  cron backstop keep its cache current); the ticket half moves only when someone files, resolves or
-  re-homes a ticket in the Tickets UI.
+- **You never write progress.** A sprint's `closed/total/pct` is computed at read time from **the
+  tickets in the sprint, and nothing else** — `total` = its tickets, `closed` = those a person marked
+  `done`/`declined`. A sprint with no tickets reads `0/0`, and the bar moves only when someone files,
+  resolves or re-homes a ticket. The GitHub issues behind `github_ref` are a separate figure (a sprint's
+  `issues`, kept current in a cache by the webhook and the cron backstop) and are never added to
+  `progress`; editing `github_ref` changes that figure only.
 - Sprints you don't list are left exactly as they are — you don't need to round-trip every
   sprint, only the ones changing.
-- `status: 'done'` is legal here (this is the one agent-reachable path allowed to set it) — only set
-  it when the admin explicitly confirmed the sprint is done, never inferred from closed issues or from
+- `status: 'done'` is legal here (`complete_sprint` is the other agent-reachable path, open to every
+  member) — only set it when the admin explicitly confirmed the sprint is done, never inferred from closed issues or from
   every ticket in the sprint being resolved.
 - Report back the new plan `version` the tool returns. If the call comes back with
   `narrative is N characters; the cap is 800`, nothing was written: shorten the narrative, re-confirm
@@ -152,7 +152,8 @@ The sprint vocabulary (the DTO's words, not the column names):
 - **Explicit only.** Never fire without a direct admin ask.
 - **Read before write, every time** — step 1 is not optional, even for a small edit.
 - **Confirm the diff before writing** — no silent writes.
-- **`done` is admin-said-so only** — set here or via the web Confirm-done button, never inferred from
+- **`done` is a person's say-so only** — set here by an admin, or by any member with `complete_sprint` /
+  the web Confirm-done button — never inferred from
   GitHub activity, issue closure percentage, or `get_events`.
 - **Narrative ≤ 800 characters** (after trimming) — server-enforced; over it, the whole call is
   refused and nothing is written.
