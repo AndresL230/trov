@@ -1779,7 +1779,12 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 ::view-transition-group(first-run-card) { animation-duration:.42s; animation-timing-function:cubic-bezier(.22,.9,.24,1); }
 /* The old and new faces keep their own size and are clipped by the moving box, so text never stretches. */
 ::view-transition-old(first-run-card), ::view-transition-new(first-run-card) { height:100%; width:100%; object-fit:none; object-position:top center; overflow:clip; animation-duration:.3s; }
-::view-transition-group(first-run-card) { overflow:clip; }
+/* The moving box clips its two faces, which would also clip the card's own shadow: it would vanish for the
+   length of the morph and pop back when the real card returned. So the moving box WEARS the card's shadow
+   (a box's own shadow is painted outside its clip): the shadow travels and resizes with it.
+   Keep it in step with `.cnpy-orgs-card`. (No radius here: the pseudo-element lives outside the theme root, so
+   the corners block cannot scale one, and a 4px corner is not seen on a box in motion.) */
+::view-transition-group(first-run-card) { overflow:clip; box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
 /* The backdrop and the card stack inside their own screen, so a dialog opened over it stays on top. */
 .cnpy-orgs, .cnpy-onb { isolation:isolate; }
 .cnpy-orgs-col, .cnpy-onb > .cnpy-orgs-col { position:relative; z-index:1; }
