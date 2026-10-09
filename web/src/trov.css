@@ -2120,7 +2120,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-billdone > .cnpy-orgs-col { max-width:520px; }
 .cnpy-orgs-body.cnpy-billdone-body { display:grid; gap:16px; padding-top:22px; }
 .cnpy-billdone-acts { display:flex; flex-wrap:wrap; gap:8px; }
-.cnpy-billdone-acts > a { flex:1 1 200px; width:auto !important; }
+/* Its actions are buttons the size of their label, not bars the width of the card. */
+.cnpy-billdone-acts > a, .cnpy-billdone-acts > button { flex:0 1 auto; width:auto !important; padding-left:20px !important; padding-right:20px !important; }
 .cnpy-onb-step { margin-left:auto; font-family:var(--label); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.78); }
 .cnpy-orgs-body.cnpy-onb-body { display:grid; gap:18px; padding-top:22px; }
 .cnpy-onb-pair { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start; }

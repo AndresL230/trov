@@ -316,7 +316,8 @@ describe("the waiting room — /billing/done", () => {
   it("ready: sends the buyer to name their organization — a real link, the page's one accent action", () => {
     const html = billingDonePage(room({ phase: "ready", plan: "team", grant: 12 }));
     expect(text(html)).toContain("Payment received Thank you. Your Pro organization is paid for and ready to set up: next you choose its name and its handle, and it is yours.");
-    expect(html).toMatch(/<a href="\/\?setup=12" data-billing-go class="cnpy-accentbtn"[^>]*>Set up your organization<\/a>/);
+    // A button that goes on in place (main.ts `billingSetup`); the page it would otherwise load is its argument.
+    expect(html).toMatch(/<button type="button" data-act="billingSetup" data-arg="\/\?setup=12" data-field="billingSetup" data-billing-go class="cnpy-accentbtn"[^>]*>Set up your organization<\/button>/);
     expect(html.match(/cnpy-accentbtn/g)).toHaveLength(1);
     expect(setupHref(12)).toBe("/?setup=12");
   });

@@ -2132,6 +2132,19 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "signInPlan": state.signInPlan = arg === "team" ? "team" : "free"; break;
+    // After payment, "Set up your organization": on to the welcome card IN PLACE (the card morphs into
+    // it), not by loading `/?setup=…`. Anything unexpected falls back to that page load.
+    case "billingSetup": {
+      const fallback = arg && arg.startsWith("/?") ? arg : "/";
+      getMe().then((me) => {
+        state.me = me;
+        state.displayName = me.name ?? me.handle;
+        state.plat.superadmin = me.superadmin === true;
+        history.replaceState(null, "", "/");
+        morphStep(() => { state.billingDone = null; showPicker(null); });
+      }).catch(() => { location.assign(fallback); });
+      return;
+    }
     case "closeSignIn": state.signInOpen = false; break;
     // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
     case "openFeature": if (arg) featureCtl.open(arg); return;

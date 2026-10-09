@@ -62,7 +62,9 @@ function copyOf(s: BillingDoneUi): Copy {
       return {
         title: "Payment received",
         body: `Thank you. Your ${esc(plan)}organization is paid for and ready to set up: next you choose its name and its handle, and it is yours.`,
-        actions: accentLink(setupHref(s.grant ?? 0), "Set up your organization"),
+        // A button, not a link: main.ts (`billingSetup`) goes on IN PLACE — this card morphs into the
+        // welcome card — where a link to `setupHref` would reload the page. `data-href` is its fallback.
+        actions: `<button type="button" data-act="billingSetup" data-arg="${attr(setupHref(s.grant ?? 0))}" data-field="billingSetup" data-billing-go class="cnpy-accentbtn" style="${BTN};background:var(--accent);color:var(--accent-fg);font-weight:600;border:0">Set up your organization</button>`,
       };
     }
     case "done":
