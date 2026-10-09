@@ -93,6 +93,9 @@ export const RELEASES: Release[] = [
     ],
     patches: {
       added: [
+        "Personal Settings shows the PLAN of the organization on screen (`web/src/settings-plan.ts`): a Plan tile (whose plan, its name, the price it is actually charged from `shared/pricing.ts`, the gift / renewal / past-due sentence, and for an owner the Plan block's own `orgBilling…` buttons: Upgrade to Pro, Change seats, Manage billing, Keep Pro by paying; anyone else reads who can change it and a link to Org settings › General) and a Limits tile (every limit as used of limit with a meter; an unread number is a dash, never 0). Same read as Org settings (`GET /api/o/:slug/plan`), same words (`planParts` in `org-plan.ts`) (#126)",
+        "Settings › Organizations: every organization you belong to with your role and its plan, each a link that opens it; who pays is said only for an org on a live subscription; Create organization when you may, else the sentence saying why not. `GET /api/orgs` and `/auth/me` now carry `plan` and `paid` on each org (`listMyOrgs`) (#126)",
+        "Settings › Session: who is signed in and a labelled Sign out button with its icon, in a tile of its own at the top right (last on a phone) (#126)",
         "`GET /api/orgs/slug-check?slug=`: is an organization handle free (`{ available, reason?: invalid | reserved | taken }`, `orgSlugAvailable`), capped by the `handle_check` allowance. The create dialog asks as the person types and shows checking / available / taken beside the field (#124)",
         "`firstRunBackdrop()` in `web/src/render.ts`: behind a first-run card, the real app shell in its loading (skeleton) state, inert and softened (`.cnpy-fr-bg`). Used by onboarding, the org picker and the guided setup (#124)",
         "`morphStep` (`web/src/transition.ts`): one step of a flow morphs into the next through a View Transition; the first-run card keeps one `view-transition-name`, so cards of different heights grow into each other. Off under reduced motion (#124)",
@@ -109,9 +112,16 @@ export const RELEASES: Release[] = [
         "Org settings › General › Plan shows \"Free until <date>, a gift from Trov. After that this organization moves to Free; nothing is deleted.\" (`OrgPlanView.gift_until`), as the amber note in its last 7 days; the owner gets \"Keep Pro by paying\" where billing is set up (#123)",
       ],
       changed: [
+        "Personal Settings is a twelve-column bento whose tiles are as tall as what they hold: Profile | Account | Session over Appearance, then Plan | Limits, Organizations, MCP access, Email. Profile and Account no longer stretch to the MCP tile's height (they were 55px and 30px taller than their content at 1440px); Account is the sign-in methods only, and says why the last one can't be unlinked; Appearance drops its hint line (it is the System card's tooltip) (#126)",
+        "Personal Settings is patched in place (`data-morph=\"settings\"`): typing in the name, handle or digest-address field no longer rebuilds the page (#126)",
+        "Opening Settings reads the org's plan alone (`orgCtl.loadPlan`, act `orgPlanReload`) and re-reads `GET /api/orgs`, not Org settings' other slices (#126)",
+        "Every email's banner takes the shape of the app's first-run card (`emailBanner` in `src/notifications/assemble.ts`): the brand top left, a label top right, and the mail's headline reversed out of the purple band, over a gradient and a large faint mark. The invitation, welcome and grant mails move their headline into it; a digest keeps its \"Daily digest · date\" line there. Each layer degrades alone (solid band without gradients, no faint mark without `rgba`) (#127)",
+        "Org settings › Members: the members are a table (`.cnpy-mem-row`: member, handle, title, joined, role, Edit), one grid for the head and every row; the invite bar spans its surface instead of stopping at 820px; the email invite's help line no longer says a Google account must be invited first (#128)",
         "Help › Get Started is now Help › Guide, titled How Trov works: a reference, not a second onboarding. The numbered Sign in / Connect your agent / Learn the skills steps are gone; the skills come first, then how review works and the tour, then Accounts and organizations and Connecting a coding agent as reference sections. Its sign-in facts match open Google sign-up (#124)",
         "The guided setup closes with Your first session (three lines: start as usual, work, say record this session) and a link to the Guide, in place of the four Where things live cards, which repeated the sidebar (#124)",
         "The welcome e-mail opens the guided setup (`/<org>/#welcome`), where a new person now begins, not the Guide (#124)",
+        "The sidebar is 228px wide expanded (was 244px; `.cnpy-aside` in `trov.css`), the narrowest width at which no label, count, search hint or account chip truncates. The collapsed rail (64px) and the phone drawer are unchanged (#125)",
+        "The menu the org switcher opens is 248px wide (was 316px; `.cnpy-orgmenu`). The switcher itself still fills the sidebar's row whatever the name (#125)",
         "Signing up counts its steps in the top right of each card: Step 1 of 3 (how you'll appear), 2 of 3 (an organization), 3 of 3 (the guided setup, only when it ends a sign-up: `FIRST_RUN_KEY` in sessionStorage). The setup's eyebrow names the organization and no longer carries a second count (#124)",
         "The guided setup is the same bannered card as onboarding and the org picker, in front of the same backdrop; finishing onboarding goes on to the welcome card without a page load (#124)",
         "Onboarding (pick a handle and a color) is the same bannered card as the org picker that follows it, with the handle and display name side by side and the colors on one line; it no longer scrolls the page (#124)",
@@ -134,7 +144,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [121, 122, 123, 124],
+    prs: [121, 122, 123, 124, 125, 126, 127, 128],
   },
   // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
   {

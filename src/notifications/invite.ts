@@ -49,15 +49,14 @@ export function renderInviteEmail(o: InviteEmailInput): { subject: string; html:
   const about = "Trov is a team's shared memory: what everyone is working on, the docs and decisions behind it, and what ships next.";
   const forWhom = `This invitation is for ${o.email}. If you weren't expecting it, you can ignore this email.`;
   const p = `${EMAIL_FONT.sans}font-size:14px;line-height:20px;color:${C.fg70};padding:0 0 12px 0;`;
-  const headline = `${EMAIL_FONT.sans}font-size:26px;line-height:32px;font-weight:600;letter-spacing:-0.02em;color:${C.fg};padding:0 0 ${SP.m}px 0;`;
   const button = `display:inline-block;${EMAIL_FONT.sans}font-size:14px;line-height:20px;font-weight:600;color:#ffffff;background-color:${C.accent};text-decoration:none;padding:10px 18px;border-radius:9px;`;
   const html =
     `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(subject)}</title><link href="${FONTS_HREF}" rel="stylesheet"></head>` +
     `<body style="margin:0;padding:0;background-color:${C.ground};">` +
     `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" style="padding:36px 16px;">` +
     `<table role="presentation" width="${EMAIL_WIDTH}" cellpadding="0" cellspacing="0" border="0" style="width:${EMAIL_WIDTH}px;max-width:100%;background-color:${C.bg};border:1px solid ${C.border};border-radius:13px;">` +
-    emailBanner() +
-    `<tr><td style="padding:${SP.xl}px 28px 0 28px;"><div style="${headline}">${escapeHtml(lede)}</div>` +
+    emailBanner({ eyebrow: owner ? "Your organization" : "Invitation", title: escapeHtml(lede) }) +
+    `<tr><td style="padding:${SP.xl}px 28px 0 28px;">` +
     `<div style="${p}color:${C.fg};">${escapeHtml(greeting)}</div>` +
     `<div style="${p}">${escapeHtml(what)}</div>` +
     `<div style="${EMAIL_FONT.sans}font-size:13px;line-height:20px;color:${C.fg55};padding:0 0 ${SP.l}px 0;">${about}</div>` +

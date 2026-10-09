@@ -6,7 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { handleTag, handleLink, personLink, personNameLink } from "../web/src/people";
-import { accountSection, initialState } from "../web/src/render";
+import { sessionSection, initialState } from "../web/src/render";
 
 const P = { handle: "priya", name: "Priya Natarajan", color: "plum" as const, avatar_url: null };
 
@@ -28,10 +28,10 @@ describe("people.ts — the link helpers", () => {
   });
 });
 
-describe("Settings › Account", () => {
+describe("Settings › Session", () => {
   it("'Signed in as' is your own handle, opening your own card", () => {
     const s = initialState();
     s.me = { handle: "AndresL230", name: "Andres", avatar_url: null, color: "moss", identities: [{ provider: "github", label: "AndresL230", linked_at: "t" }], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 };
-    expect(accountSection(s)).toMatch(/Signed in as <button data-act="openPerson" data-arg="AndresL230" class="cnpy-personlink"/);
+    expect(sessionSection(s)).toMatch(/Signed in as <button data-act="openPerson" data-arg="AndresL230" class="cnpy-personlink"/);
   });
 });

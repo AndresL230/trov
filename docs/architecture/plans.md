@@ -203,6 +203,40 @@ on every org's new pull requests and assigned issues are summarized on capture (
 call is counted, and each org's plan allowance applies. Existing excerpt rows fill in at each org's next
 Sync GitHub. Removing the secret turns it all off again; nothing else changes.
 
+## Where the plan shows
+
+A plan belongs to an ORGANIZATION and its owner pays for every seat; everyone in the org may read it
+(`GET /api/o/:slug/plan`). It is shown in two places, from ONE read (`state.org.plan`) and ONE set of words
+(`web/src/org-plan.ts`):
+
+- **Org settings › General** — `planBlock`: the Plan and Limits tiles (above, and `billing.md`).
+- **Personal Settings** (`#settings`, `web/src/settings-plan.ts`) — for the organization on screen:
+  - **Plan** (`settingsPlanTile`): whose plan it is and my role in it; the plan's name; **the price it is
+    actually charged** (`planPriceWords`: a live subscription on an interval `PRICING` has a price for —
+    "$10 per seat / month"; a granted, gifted, pinned or yearly-without-a-yearly-price plan says nothing, and
+    Enterprise says the pricing page's "Custom pricing"; a Free org also reads "Pro is $10 per seat / month.");
+    the status chips, the gift line and the payment sentence; and **the Plan block's own buttons** for an
+    owner — Upgrade to Pro, Change seats, Manage billing, Keep Pro by paying — the same `orgBilling…` acts and
+    `state.org.billing`. Anyone else gets no button: the Plan block's sentence naming who can change it, and a
+    link to Org settings › General. "Compare plans" opens `/pricing`. All of it comes through `planParts`
+    (`org-plan.ts`), which returns the Plan block's chips / gift / sentence / buttons / closing line in parts;
+    the one sentence this tile words itself is a never-paid Free org's (the Plan block's says the limits are
+    "below", and here they are beside it).
+  - **Limits** (`settingsLimitsTile`): every `LIMIT_KEYS` row as "used of limit" with a quiet meter
+    (`role="meter"`), what it counts, "yours" on the per-person one and "this month" on the allowance; "Over
+    the limit" in amber and the spent-allowance sentence as in Org settings. A use that is not a number is
+    **"—" with an empty meter, never 0** (the route always sends numbers today; the tile does not assume it).
+  - **Organizations** (`settingsOrgsTile`): every org I belong to — my role, its plan's chip, a link that
+    opens it — from `GET /api/orgs`, whose rows carry `plan` and `paid` (`listMyOrgs`, `src/orgs/repo.ts`:
+    `paid` = `plan_source = 'billing'` with a subscription, not Free, not `canceled`; so also on `/auth/me`).
+    Who pays is said only when `paid`: "you manage its billing" to an owner, "paid for by its owners" to
+    anyone else — never "you pay", since an org may have several owners and nothing here says whose card it
+    is. Then Create organization (the picker's `orgsCreateOpen`) when `can_create`, else `FREE_TAKEN_SENTENCE`
+    (already owns a Free one) or, for a superadmin, a pointer to Platform; pending invitations are counted.
+  - Opening Settings loads the plan ALONE (`orgCtl.loadPlan()`, retry act `orgPlanReload`) and re-reads
+    `GET /api/orgs`. Not read yet is a skeleton in each tile; a failed read is a sentence and Try again.
+  - Tests: `test/render.settings-plan.test.ts`, `test/orgs.routes.test.ts` (`plan` / `paid`).
+
 ## Plan status
 
 `orgs.plan_status`: `active`; `past_due` (changes nothing — the grace period is Stripe's retry schedule, `billing.md`); `canceled`
@@ -330,7 +364,7 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 |---|---|---|
 | `GET /api/o/:slug/plan` | any member | `OrgPlanView`: plan, name, status, `gift_until`, entitlements, `usage` (seats = members + pending; `agent_connections` = the caller's own; `ai_summaries` = this month's), `over` |
 | `GET /api/o/:slug/sync` | any member | `SyncStatusView` — its `summaries` is the allowance: status, used, cap, remaining, pending (`sync.md`) |
-| `GET /api/orgs` | signed in | adds `grants: MyGrant[]`, `can_create`, `free: { can_create, owned }` |
+| `GET /api/orgs` | signed in | each org with its `plan` and `paid`; adds `grants: MyGrant[]`, `can_create`, `free: { can_create, owned }` |
 | `POST /api/orgs` | holds a usable grant, or may own a Free org | 201 the org; 403 `no_grant` (a grant that is not theirs, a superadmin); 403 `free_org_limit` |
 | `GET /api/platform/grants` | superadmin | `{ grants: PlatformGrant[] }` |
 | `POST /api/platform/grants` | superadmin | 201 `{ ok, grant }`; 400 `invalid_grant`; 404 `no_such_person` |

@@ -25,7 +25,6 @@ export function renderWelcomeEmail(o: { name: string | null; handle: string; org
   const subject = `Welcome to ${o.orgName} on Trov`;
   const hi = o.name ? `Hi ${escapeHtml(o.name)},` : "Hi,";
   const p = `${EMAIL_FONT.sans}font-size:14px;line-height:20px;color:${C.fg70};padding:0 0 12px 0;`;
-  const headline = `${EMAIL_FONT.sans}font-size:26px;line-height:32px;font-weight:600;letter-spacing:-0.02em;color:${C.fg};padding:0 0 ${SP.m}px 0;`;
   const lede = "You're in.";
   const joined = `You have joined ${o.orgName}.`;
   const about = "Trov is a team's shared memory: what everyone is working on, the docs and decisions behind it, and what ships next.";
@@ -38,8 +37,8 @@ export function renderWelcomeEmail(o: { name: string | null; handle: string; org
     `<body style="margin:0;padding:0;background-color:${C.ground};">` +
     `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" style="padding:36px 16px;">` +
     `<table role="presentation" width="${EMAIL_WIDTH}" cellpadding="0" cellspacing="0" border="0" style="width:${EMAIL_WIDTH}px;max-width:100%;background-color:${C.bg};border:1px solid ${C.border};border-radius:13px;">` +
-    emailBanner() +
-    `<tr><td style="padding:${SP.xl}px 28px 0 28px;"><div style="${headline}">${lede}</div>` +
+    emailBanner({ eyebrow: "Welcome", title: lede }) +
+    `<tr><td style="padding:${SP.xl}px 28px 0 28px;">` +
     `<div style="${p}color:${C.fg};">${hi}</div>` +
     `<div style="${p}">${escapeHtml(joined)} Your handle is <span style="${handleStyle}">@${escapeHtml(o.handle)}</span> — that is how the team sees you on tickets, docs and decisions.</div>` +
     `<div style="${EMAIL_FONT.sans}font-size:13px;line-height:20px;color:${C.fg55};padding:0 0 ${SP.l}px 0;">${about}</div>` +

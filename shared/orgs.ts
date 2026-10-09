@@ -2,7 +2,7 @@
 // contract the Worker and the SPA share. Zod-free: the SPA imports the slug rule and these types as-is.
 import type { PersonColor } from "./rows";
 import { AVATAR_MAX_BYTES, AVATAR_TYPES } from "./people";
-import type { MyGrant, PlatformOrgPlan } from "./plans";
+import type { MyGrant, PlanId, PlatformOrgPlan } from "./plans";
 
 export type OrgRole = "owner" | "admin" | "member";
 export type OrgStatus = "active" | "suspended";
@@ -121,7 +121,14 @@ export function orgLogoOf(r: { logo_sha: string | null; logo_source: OrgLogoSour
 
 /** `logo_url` (0042_organizations) is on every org the Worker sends — here, an invitation's `org`, `OrgSummary`, the
  *  Platform rows. It is typed optional so that an answer cached from before it existed reads as "no image". */
-export interface MyOrg { slug: string; name: string; role: OrgRole; logo_url?: string | null }
+export interface MyOrg {
+  slug: string; name: string; role: OrgRole; logo_url?: string | null;
+  /** The org's plan (shared/plans.ts), for the chip beside it in personal Settings. Optional: an org just
+   *  created, or an answer cached from before the field existed, carries none — and then none is shown. */
+  plan?: PlanId;
+  /** The org pays for that plan through a live subscription (not Free, not granted, not a gift, not ended). */
+  paid?: boolean;
+}
 
 /** A pending invite that is the caller's (§5.3). `role` is what accepting grants — `owner` for a
  *  superadmin's owner invite. Exactly one of `github_login` / `email` is set: what it matched on. */

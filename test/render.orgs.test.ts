@@ -148,6 +148,23 @@ describe("the org switcher — the sidebar's header", () => {
     expect(rules).toContain("@media (max-height: 850px)");
     expect(rules).toMatch(/\.cnpy-orgmenu \.cnpy-menurow:focus-visible[^{]*\{ outline:2px solid/);
   });
+  it("CSS: the button fills the rail's row whatever the name, and the name truncates; its menu is a narrow panel", () => {
+    const rule = (sel: string) => rules.match(new RegExp(`(?:^|\\} )${sel.replace(/[.[\]"=]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+    const btn = rule(".cnpy-orgsw-b");
+    expect(btn).toContain(" width:100%;");          // the owner's ruling: the chip is NOT sized to the name
+    expect(btn).not.toContain("fit-content");
+    expect(btn).toContain("overflow:hidden;");
+    const name = rule(".cnpy-orgsw-n");
+    expect(name).toContain("flex:1;");
+    expect(name).toContain("white-space:nowrap; overflow:hidden; text-overflow:ellipsis;");
+    // The menu the chip opens is 248px (was 316px): a little wider than the chip, not a wide sheet.
+    expect(rule(".cnpy-orgmenu")).toContain(" width:248px; max-width:calc(100vw - 20px);");
+  });
+  it("CSS: the rail is 228px expanded and 64px collapsed; the phone drawer keeps its own width", () => {
+    expect(rules).toMatch(/\.cnpy-aside \{ --side-t:\.24s; [^}]*\bwidth:228px; [^}]*transition:width var\(--side-t\) var\(--side-e\);/);
+    expect(rules).toContain('[data-collapsed="1"] .cnpy-aside { width:64px; }');
+    expect(rules).toMatch(/\[data-phone="1"\] \.cnpy-aside \{[^}]*width:min\(292px, calc\(100vw - 48px\)\);/);
+  });
 });
 
 describe("the switcher's menu", () => {
@@ -444,9 +461,10 @@ describe("admin = admin or owner of the org on screen", () => {
     for (const gone of ["testSend", "sched-hour", "policyToggle", "outboxToggle"]) expect(memberMail, gone).not.toContain(gone);
     expect(memberMail).toMatch(/id="org-tab-repos" class="cnpy-tab is-on"/);
   });
-  it("Settings › Account says the role held in the org on screen", () => {
+  it("Settings › Session says the role held in the org on screen (how many orgs is the Organizations tile's to say)", () => {
     const html = render(two("admin", { screen: "settings" }));
-    expect(html).toContain("Admin of Acme Robotics · in 2 organizations");
+    expect(html).toContain("Admin of Acme Robotics");
+    expect(html).not.toContain("in 2 organizations");
     expect(render(app({ screen: "settings" }))).toContain("Member of Acme Robotics");
   });
 });
@@ -462,6 +480,26 @@ describe("Org settings › Members holds what Maintenance › People used to", (
       { id: 10, github_login: null, email: "kai@acme.dev", role: "member", status: "pending", invited_by: "ines", created_at: "2026-10-05T10:00:00.000Z", responded_at: null, responded_by: null, name: null, mail_status: "failed", mail_at: "2026-10-05T10:00:01.000Z", mail_error: "resend 403: domain not verified" },
     ] },
   };
+  it("members are a table: one grid for the head and every row — member, handle, title, joined, role — and the invite bar spans its surface", () => {
+    const html = membersTab(acme("owner"), members, "ines");
+    expect(html).toMatch(/<div class="cnpy-mem-row cnpy-mem-head" aria-hidden="true"><span>Member<\/span><span>Handle<\/span><span>Title<\/span><span class="cnpy-mem-joined">Joined<\/span><span>Role<\/span><span><\/span><\/div>/);
+    const row = /<div class="cnpy-mem-row" data-member="[^"]+">([\s\S]*?)<\/div>\s*(?:<div|<\/li>)/.exec(html)?.[1] ?? "";
+    const order = ["cnpy-mem-who", "cnpy-mem-handle", "cnpy-mem-title", "cnpy-mem-joined", "cnpy-mem-role", "cnpy-mem-act"].map((c) => row.indexOf(c));
+    expect(order.every((n) => n >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // "YOU" sits beside your own name, in the Member column — not over in Role.
+    const mine = /<div class="cnpy-mem-row" data-member="ines">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+    expect(mine.slice(mine.indexOf("cnpy-mem-who"), mine.indexOf("cnpy-mem-handle"))).toContain(">YOU<");
+    expect(mine.slice(mine.indexOf("cnpy-mem-role"))).not.toContain(">YOU<");
+    // A member (no Edit) gets the same table without the last column.
+    const ro = membersTab(acme("member"), members, "ines");
+    expect(ro).toContain('class="cnpy-mem-row cnpy-mem-head is-ro"');
+    expect(ro).not.toContain("cnpy-mem-act");
+    // The invite bar is no longer capped to the left of a wide page, and its copy matches open sign-up.
+    expect(rules).toContain(".cnpy-org-invite { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }");
+    expect(rules).not.toMatch(/\.cnpy-org-invite \{[^}]*max-width/);
+    expect(membersTab(acme("owner"), { ...members, inviteBy: "email" }, "ines")).not.toContain("can only sign in once it is invited");
+  });
   it("an email invite can be mailed again from any org (the org route), whatever the admin's org count; a GitHub one never is", () => {
     const html = membersTab(acme("owner"), members, "ines");
     expect(html).toMatch(/data-act="orgInviteMail" data-arg="8"[^>]*aria-label="Email the invitation to sam@acme.dev again"[^>]*>Resend email<\/button>/);
