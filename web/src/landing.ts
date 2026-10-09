@@ -14,11 +14,19 @@
 //   • Sign in lives ONLY in the nav (top right); the hero keeps the canvas's CTAs.
 //   • Pricing (not in the canvas): the last section is web/src/pricing.ts, the same
 //     render the standalone /pricing page uses.
+//   • The banner (not in the canvas; 2026-10): the first-run card's purple banner
+//     (`.site-banner` in trov.css, one definition with `.cnpy-orgs-banner`) is carried
+//     through the page — the hero stands the Review mockup on it, "Agents propose,
+//     people decide" is the same card on its side, the sign-in dialog is the card
+//     itself, and every tour mockup stands on a field of its dots.
+//   • The page is `data-morph="landing"` and the dialog a `data-overlay`, so opening
+//     or closing Sign in patches the page in place: nothing in it is rebuilt or replays.
 //   • Motion (not in the canvas): the mockups act out the product. Elements carry
 //     `data-rv` and render hidden; landing-motion.ts plays them as they scroll in
 //     and the CSS in trov.css runs the choreography, each step timed by `--d`.
 
 import { esc } from "./ui";
+import { trovMark } from "@shared/mark";
 import { TROV_REPO, siteFooter, siteMark as mark } from "./site-chrome";
 import { pricingSection } from "./pricing";
 
@@ -54,7 +62,9 @@ const MONO_EYEBROW = "font-family:var(--label);font-size:11px;font-weight:600;le
 const H2 = "margin:0;font-size:clamp(28px, 3.4vw, 38px);font-weight:650;letter-spacing:-0.025em";
 const LEDE = "margin:14px 0 0;max-width:560px;font-size:15.5px;line-height:1.6;color:var(--fg-70);text-wrap:pretty";
 const section = (top = 150) => `max-width:1120px;margin:0 auto;padding:${top}px 24px 0`;
-const MOCK = "flex:1.3 1 400px;min-width:0;border:1px solid var(--border);border-radius:12px;box-shadow:var(--lift-shadow);overflow:hidden";
+const MOCK = "border:1px solid var(--border);border-radius:12px;box-shadow:var(--lift-shadow);overflow:hidden";
+/** The Trov mark, large, faint and tilted behind a banner's text (the first-run card's `.cnpy-orgs-art`). */
+const BANNER_ART = `<span class="site-banner-art" aria-hidden="true">${trovMark(100, "currentColor")}</span>`;
 
 /** A label-face status pill; `c` is a color var name (green / amber / blue / red). */
 function pill(text: string, c: string, size = "8.5px", pad = "1.5px 5px"): string {
@@ -82,7 +92,7 @@ function tourRow(key: string, eyebrow: string, title: string, body: string, mock
       <h3 style="margin:10px 0 0;font-size:23px;font-weight:650;letter-spacing:-0.015em">${title}</h3>
       <p style="margin:12px 0 0;max-width:420px;font-size:14.5px;line-height:1.65;color:var(--fg-70);text-wrap:pretty">${body}</p>
     </div>
-    <div ${rv(`${key}-mock`, `${flip ? "rv-l" : "rv-r"} site-lift`)} style="${mockStyle};${at(120)}">${mockInner}</div>
+    <div ${rv(`${key}-mock`, `${flip ? "rv-l is-flip" : "rv-r"} site-stage`)} style="flex:1.3 1 400px;min-width:0;${at(120)}"><div class="site-lift" style="${mockStyle}">${mockInner}</div></div>
   </div>`;
 }
 
@@ -112,7 +122,7 @@ function nav(dark: boolean, signedIn: boolean): string {
 // lifts into place, then acts out the product — an agent's proposed lines type
 // into the diff, the Promote button draws the eye, a PERSON promotes it, and the
 // queue badge and a toast confirm it went live. It plays once and rests there.
-function hero(): string {
+function hero(signedIn: boolean): string {
   const HEADLINE = "Shared memory for your team and its coding agents.";
   const words = HEADLINE.split(" ").map((w, i) => `<span class="site-st st-word" style="${at(80 + i * 55)}">${w}</span>`).join(" ");
 
@@ -136,17 +146,26 @@ function hero(): string {
   const diffTab = (label: string, on: boolean) => `<span style="padding:3px 9px;border-radius:6px;font-size:10.5px;font-weight:500;${on ? "border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft)" : "border:1px solid var(--border);color:var(--fg-55)"}">${label}</span>`;
   const dot = `<span style="width:10px;height:10px;border-radius:50%;background:var(--border-strong);flex:none"></span>`;
 
-  return `<header id="site-top" style="max-width:1120px;margin:0 auto;padding:96px 24px 0;text-align:center">
-    <div ${rv("hero-copy", "rv-static")}>
-      <h1 style="margin:0 auto;max-width:820px;font-size:clamp(38px, 5.4vw, 62px);line-height:1.06;font-weight:650;letter-spacing:-0.032em;text-wrap:balance">${words}</h1>
-      <p class="site-st" style="margin:22px auto 0;max-width:620px;font-size:17.5px;line-height:1.6;color:var(--fg-70);text-wrap:pretty;${at(520)}">Agents load what your team already decided, record what actually shipped, and wait for a person to approve anything that becomes official.</p>
-      <div class="site-st" style="margin-top:34px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap;${at(640)}">
-        <button data-act="siteGuide" class="site-btn site-btn-solid">Get started</button>
-        <a href="${TROV_REPO}" target="_blank" rel="noopener" class="site-btn site-btn-outline">${GH_MARK(15)}Read the code</a>
+  // Signed out, the first button opens Sign in (which is also sign-up: either provider creates the
+  // account, no invitation needed). Reopened from inside the app, it goes to the Guide instead.
+  const primary = signedIn
+    ? `<button data-act="siteGuide" class="site-btn site-btn-onb" style="border-radius:9px">Open the Guide</button>`
+    : `<button data-act="openSignIn" class="site-btn site-btn-onb" style="border-radius:9px">Sign up free</button>`;
+  return `<header id="site-top" class="site-hero">
+    <div class="site-banner site-hero-band" style="border-radius:16px">
+      ${BANNER_ART}
+      <div ${rv("hero-copy", "rv-static site-hero-in")}>
+        <h1 class="site-hero-h">${words}</h1>
+        <p class="site-st site-hero-lede" style="${at(520)}">Agents load what your team already decided, record what actually shipped, and wait for a person to approve anything that becomes official.</p>
+        <div class="site-st site-hero-cta" style="${at(640)}">
+          ${primary}
+          <a href="${TROV_REPO}" target="_blank" rel="noopener" class="site-btn site-btn-onb-line" style="border-radius:9px">${GH_MARK(15)}Read the code</a>
+        </div>
+        <p class="site-st site-hero-note" style="${at(740)}">Sign up with GitHub or Google. No invitation needed, and the Free plan stays free. <a href="/pricing">See pricing</a></p>
       </div>
     </div>
 
-    <div ${rv("hero-mock", "rv-lift")} style="margin:72px auto 0;max-width:1060px;text-align:left;border:1px solid var(--border-strong);border-radius:13px;background:var(--bg);box-shadow:var(--lift-shadow);overflow:hidden;${at(MOCK_IN)}">
+    <div class="site-hero-stage"><div ${rv("hero-mock", "rv-lift site-hero-mock")} style="border-radius:13px;${at(MOCK_IN)}">
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border)">
         ${dot}${dot}${dot}
         <span style="margin:0 auto;font-family:var(--label);font-size:11px;color:var(--fg-40);border:1px solid var(--border);border-radius:6px;padding:3px 14px">trov.dev/acme/#review</span>
@@ -227,7 +246,7 @@ function hero(): string {
           </div>
         </div>
       </div>
-    </div>
+    </div></div>
   </header>`;
 }
 
@@ -311,22 +330,21 @@ function loop(): string {
 // ── 4 · agents propose, people decide ────────────────────────────────────────
 function authority(): string {
   return `<section style="max-width:1120px;margin:0 auto;padding:140px 24px 0">
-    <div style="display:flex;gap:56px;align-items:center;flex-wrap:wrap">
-      <div ${rv("authority-copy", "rv-l")} style="flex:1 1 380px;min-width:0">
-        <h2 style="${H2};text-wrap:balance">Agents propose, people decide.</h2>
-        <p style="margin:16px 0 0;max-width:480px;font-size:15.5px;line-height:1.65;color:var(--fg-70);text-wrap:pretty">No agent tool can approve, promote, or reject anything. Those actions only exist in the signed-in web app. Rejected proposals and old versions are kept, never deleted.</p>
+    <div ${rv("authority", "site-split")} style="border-radius:14px">
+      <div class="site-banner site-split-banner">
+        ${BANNER_ART}
+        <h2>Agents propose, people decide.</h2>
+        <p>No agent tool can approve, promote, or reject anything. Those actions only exist in the signed-in web app. Rejected proposals and old versions are kept, never deleted.</p>
       </div>
-      <div ${rv("authority-card", "rv-r")} style="flex:1 1 380px;min-width:0;${at(120)}">
-        <div class="site-lift" style="border:1px solid var(--border);border-radius:13px;padding:34px 36px;box-shadow:var(--lift-shadow)">
-          <div style="display:flex;align-items:center;gap:12px">
-            <span style="font-size:17px;font-weight:650">Deploy process</span>
-            ${pill("staged", "amber", "10px", "2px 7px")}
-          </div>
-          <div style="margin-top:8px;font-size:12.5px;color:var(--fg-55)">Waiting for a verdict since Tue · only a signed-in person sees these buttons</div>
-          <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
-            <span class="site-st" style="border:1px solid var(--border-strong);color:var(--fg-70);font-size:14.5px;font-weight:600;padding:11px 26px;border-radius:10px;${at(450)}">Reject</span>
-            <span class="site-st site-ring" style="background:var(--accent);color:var(--accent-fg);font-size:14.5px;font-weight:600;padding:11px 30px;border-radius:10px;${at(560)}--ring:1100ms">Promote</span>
-          </div>
+      <div class="site-split-body">
+        <div class="site-st" style="display:flex;align-items:center;gap:12px;${at(260)}">
+          <span style="font-size:17px;font-weight:650">Deploy process</span>
+          ${pill("staged", "amber", "10px", "2px 7px")}
+        </div>
+        <div class="site-st" style="margin-top:8px;font-size:12.5px;line-height:1.5;color:var(--fg-55);${at(340)}">Waiting for a verdict since Tuesday. Only a signed-in person sees these buttons.</div>
+        <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
+          <span class="site-st" style="border:1px solid var(--border-strong);color:var(--fg-70);font-size:14.5px;font-weight:600;padding:11px 26px;border-radius:10px;${at(450)}">Reject</span>
+          <span class="site-st site-ring" style="background:var(--accent);color:var(--accent-fg);font-size:14.5px;font-weight:600;padding:11px 30px;border-radius:10px;${at(560)}--ring:1100ms">Promote</span>
         </div>
       </div>
     </div>
@@ -598,7 +616,7 @@ function security(): string {
   return `<section id="site-security" style="${section()}">
     ${heading("security-head", "Security, in plain terms")}
     <div ${rv("security", "rv-static")} style="margin-top:44px;display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:14px 40px;max-width:900px">
-      ${row(0, "Sign-in with GitHub or Google, restricted to your org.")}
+      ${row(0, "Anyone can sign up with GitHub or Google. An organization's content is open only to its members.")}
       ${row(1, "Agents connect by browser sign-in; only hashes of their tokens are stored.")}
       ${row(2, "Agents write as their person and can't claim another author.")}
       ${row(3, "Agents can only change tickets assigned to their person.")}
@@ -610,31 +628,34 @@ function security(): string {
   </section>`;
 }
 
-// ── sign-in dialog (the old login card, now opened from the landing) ────────
+// ── sign-in dialog (opened from the landing) ─────────────────────────────────
+// The first-run card, bannered: banner (who is speaking), body (the two providers), foot (the one
+// thing a newcomer needs to know). ONE root-level `data-overlay`, so morph.ts adds and removes it
+// beside the page instead of rebuilding the page under it.
+const GH_24 = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.37.5 0 5.78 0 12.29c0 5.2 3.44 9.6 8.21 11.16.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.72-4.04-1.61-4.04-1.61-.55-1.38-1.34-1.75-1.34-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.81 1.3 3.49.99.11-.77.42-1.3.76-1.6-2.67-.3-5.47-1.32-5.47-5.87 0-1.3.47-2.36 1.23-3.19-.12-.3-.53-1.51.12-3.15 0 0 1.01-.32 3.3 1.22a11.5 11.5 0 0 1 6 0c2.29-1.54 3.3-1.22 3.3-1.22.65 1.64.24 2.85.12 3.15.77.83 1.23 1.89 1.23 3.19 0 4.56-2.81 5.57-5.49 5.86.43.37.81 1.1.81 2.22 0 1.6-.01 2.89-.01 3.29 0 .32.22.7.83.58A12.01 12.01 0 0 0 24 12.29C24 5.78 18.63.5 12 .5z"></path></svg>`;
+const GOOGLE_24 = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5c-.3 1.5-1.1 2.7-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.7z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.2v3.1C3.2 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.3 14.3c-.5-1.5-.5-3.1 0-4.6V6.6H1.2c-1.6 3.3-1.6 7.3 0 10.6l4.1-2.9z"/><path fill="#EA4335" d="M12 4.7c1.7 0 3.3.6 4.5 1.7l3.4-3.4C17.9 1.1 15.1 0 12 0 7.3 0 3.2 2.7 1.2 6.6l4.1 3.1c.9-2.9 3.6-5 6.7-5z"/></svg>`;
 function signInDialog(): string {
-  return `<div data-act="closeSignIn" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);animation:cnpy-fade .14s ease"></div>
-  <div style="position:fixed;inset:0;z-index:61;display:grid;place-items:center;padding:16px;pointer-events:none">
-    <div role="dialog" aria-modal="true" aria-labelledby="signin-title" style="pointer-events:auto;position:relative;width:min(400px, 100%);border:1px solid var(--border-strong);border-radius:14px;padding:32px 30px 26px;background:var(--bg);box-shadow:var(--lift-shadow);animation:cnpy-pop .16s ease">
-      <button data-act="closeSignIn" title="Close" aria-label="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--fg-40)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"></path></svg>
-      </button>
-      <div style="display:flex;align-items:center;justify-content:center;gap:10px">
-        ${mark(26)}
-        <span id="signin-title" style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Sign in to Trov</span>
+  return `<div data-overlay="signin">
+    <div data-act="closeSignIn" class="site-signin-back"></div>
+    <div class="site-signin-wrap">
+      <div role="dialog" aria-modal="true" aria-labelledby="signin-title" class="site-signin-card" style="border-radius:14px">
+        <div class="site-banner site-signin-banner">
+          ${BANNER_ART}
+          <button data-act="closeSignIn" title="Close" aria-label="Close" class="site-signin-x" style="border-radius:8px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+          </button>
+          <div style="display:flex;align-items:center;gap:10px">
+            ${trovMark(22, "#fff")}
+            <h2 id="signin-title" style="margin:0;font-size:22px;font-weight:650;letter-spacing:-0.02em">Sign in to Trov</h2>
+          </div>
+          <p style="margin:10px 0 0;max-width:300px;font-size:14px;line-height:1.55;color:rgba(255,255,255,.86)">Open your organization, or create a free one for your team.</p>
+        </div>
+        <div class="site-signin-body">
+          <button data-act="signIn" class="site-signin-btn site-btn-solid" style="border-radius:9px">${GH_24}Continue with GitHub</button>
+          <button data-act="signInGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px">${GOOGLE_24}Continue with Google</button>
+        </div>
+        <div class="site-signin-foot">New to Trov? Either one creates your account. No invitation needed.</div>
       </div>
-      <div style="margin-top:12px;font-size:14px;color:var(--fg-70);text-align:center;line-height:1.55">Sign in to open your organization, or to create a free one for your team.</div>
-      <div style="margin-top:24px;display:flex;flex-direction:column;gap:18px">
-        <button data-act="signIn" class="cnpy-accentbtn" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px 16px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600">
-          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.37.5 0 5.78 0 12.29c0 5.2 3.44 9.6 8.21 11.16.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.72-4.04-1.61-4.04-1.61-.55-1.38-1.34-1.75-1.34-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.81 1.3 3.49.99.11-.77.42-1.3.76-1.6-2.67-.3-5.47-1.32-5.47-5.87 0-1.3.47-2.36 1.23-3.19-.12-.3-.53-1.51.12-3.15 0 0 1.01-.32 3.3 1.22a11.5 11.5 0 0 1 6 0c2.29-1.54 3.3-1.22 3.3-1.22.65 1.64.24 2.85.12 3.15.77.83 1.23 1.89 1.23 3.19 0 4.56-2.81 5.57-5.49 5.86.43.37.81 1.1.81 2.22 0 1.6-.01 2.89-.01 3.29 0 .32.22.7.83.58A12.01 12.01 0 0 0 24 12.29C24 5.78 18.63.5 12 .5z"></path></svg>
-          Sign in with GitHub
-        </button>
-        <div style="display:flex;align-items:center;gap:12px;font-family:var(--label);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-40)"><span style="flex:1;height:1px;background:var(--border)"></span>or<span style="flex:1;height:1px;background:var(--border)"></span></div>
-        <button data-act="signInGoogle" class="cnpy-outlinebtn" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:14px;font-weight:600;color:var(--fg)">
-          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5c-.3 1.5-1.1 2.7-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.7z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.2v3.1C3.2 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.3 14.3c-.5-1.5-.5-3.1 0-4.6V6.6H1.2c-1.6 3.3-1.6 7.3 0 10.6l4.1-2.9z"/><path fill="#EA4335" d="M12 4.7c1.7 0 3.3.6 4.5 1.7l3.4-3.4C17.9 1.1 15.1 0 12 0 7.3 0 3.2 2.7 1.2 6.6l4.1 3.1c.9-2.9 3.6-5 6.7-5z"/></svg>
-          Continue with Google
-        </button>
-      </div>
-      <div style="text-align:center;margin-top:20px;font-size:12.5px;color:var(--fg-40);line-height:1.5">New to Trov? Either one creates your account.</div>
     </div>
   </div>`;
 }
@@ -651,9 +672,9 @@ export interface LandingProps {
 
 export function landingView(p: LandingProps): string {
   seen = p.seen;
-  return `<div class="cnpy-site">
+  return `<div class="cnpy-site" data-morph="landing">
     ${nav(p.dark, p.signedIn ?? false)}
-    ${hero()}
+    ${hero(p.signedIn ?? false)}
     ${problem()}
     ${loop()}
     ${authority()}

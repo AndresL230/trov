@@ -1667,6 +1667,83 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .is-play .site-toast { animation:site-toast 4.6s var(--ease-out) var(--d, 0ms) both; }
 @keyframes site-toast { 0% { opacity:0; translate:0 14px; } 8%, 86% { opacity:1; translate:none; } 100% { opacity:0; translate:0 6px; } }
 
+/* ── the banner, carried through the page ─────────────────────────────────────
+   One idea: the brand's purple banner is Trov speaking (`.site-banner`, defined with `.cnpy-orgs-banner`),
+   and the product is the card in front of it. The hero is the banner with the Review mockup standing on
+   its lower edge; "Agents propose, people decide" is the same card laid on its side; the sign-in dialog is
+   the card itself; and each tour mockup stands on a field of the banner's dots, in the page's own accent.
+   Everything here is static paint: no filter, no backdrop-filter, nothing that repaints on scroll. */
+/* On the dark page the site's banners sit a step deeper, so a slab this size does not glare; same hue. */
+[data-cnpy-theme="dark"] .site-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.13) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #626bcd 0%, #4f59ba 48%, #3b449e 100%); }
+.site-banner > * { position:relative; z-index:1; }
+.site-banner > .site-banner-art { position:absolute; z-index:0; display:block; color:#fff; opacity:.11; transform:rotate(-8deg); pointer-events:none; }
+.site-banner-art svg { display:block; width:100%; height:100%; }
+.site-banner ::selection { background:#fff; color:#3a4399; }
+.site-banner a:focus-visible, .site-banner button:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+
+/* hero */
+.site-hero { max-width:1240px; margin:0 auto; padding:14px 24px 0; }
+.site-hero-band { padding:clamp(52px, 6.4vw, 84px) clamp(22px, 5vw, 66px) clamp(170px, 21vw, 268px); }
+.site-hero-band > .site-banner-art { width:clamp(280px, 44vw, 600px); aspect-ratio:1; right:clamp(-90px, -5vw, -40px); top:clamp(-110px, -7vw, -60px); }
+.site-hero-in { max-width:1060px; margin:0 auto; }
+.site-hero-h { margin:0; max-width:780px; font-size:clamp(36px, 5.4vw, 62px); line-height:1.06; font-weight:650; letter-spacing:-0.032em; text-wrap:balance; }
+.site-hero-lede { margin:22px 0 0; max-width:600px; font-size:17.5px; line-height:1.6; color:rgba(255,255,255,.86); text-wrap:pretty; }
+.site-hero-cta { margin-top:32px; display:flex; gap:12px; flex-wrap:wrap; }
+.site-hero-note { margin:18px 0 0; font-size:13.5px; line-height:1.55; color:rgba(255,255,255,.74); }
+.site-hero-note a { color:#fff; text-decoration:underline; text-decoration-color:rgba(255,255,255,.45); text-underline-offset:3px; }
+.site-hero-note a:hover { color:#fff; text-decoration-color:#fff; }
+.site-btn-onb { background:#fff; color:#333c8f; }
+.site-btn-onb:hover { color:#333c8f; filter:brightness(.96); }
+.site-btn-onb-line { border:1px solid rgba(255,255,255,.4); color:#fff; }
+.site-btn-onb-line:hover { color:#fff; background:rgba(255,255,255,.12); }
+/* The mockup stands on the banner's lower edge, the banner's glow carrying on under it (the first run's
+   `.cnpy-fr-bg::after`, as a plain gradient). */
+.site-hero-stage { position:relative; max-width:1060px; margin:calc(-1 * clamp(120px, 16vw, 200px)) auto 0; }
+.site-hero-stage::before { content:""; position:absolute; z-index:0; inset:34% -9% -9% -9%; pointer-events:none;
+  background:radial-gradient(50% 50% at 50% 50%, color-mix(in srgb, #616acb 20%, transparent) 0%, transparent 72%); }
+.site-hero-mock { position:relative; z-index:1; text-align:left; border:1px solid var(--border-strong); background:var(--bg); overflow:hidden;
+  box-shadow:0 1px 2px rgba(20,22,60,.05), 0 30px 70px -28px rgba(20,22,60,.42), 0 10px 26px -14px rgba(20,22,60,.2); }
+@media (max-width:640px) {
+  .site-hero { padding:8px 16px 0; }
+  .site-hero-lede { font-size:16px; }
+  .site-hero-stage { margin-left:8px; margin-right:8px; }
+}
+
+/* the card on its side: banner | body */
+.site-split { display:grid; grid-template-columns:minmax(0, 1.12fr) minmax(0, 1fr); border:1px solid var(--border); background:var(--surface); overflow:hidden;
+  box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
+.site-split-banner { padding:clamp(30px, 4.6vw, 56px) clamp(24px, 4.4vw, 52px); display:flex; flex-direction:column; justify-content:center; }
+.site-split-banner > .site-banner-art { width:clamp(220px, 26vw, 330px); aspect-ratio:1; right:-56px; top:-70px; }
+.site-split-banner h2 { margin:0; font-size:clamp(28px, 3.4vw, 38px); line-height:1.12; font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
+.site-split-banner p { margin:16px 0 0; max-width:480px; font-size:15.5px; line-height:1.65; color:rgba(255,255,255,.86); text-wrap:pretty; }
+.site-split-body { display:flex; flex-direction:column; justify-content:center; padding:clamp(26px, 4vw, 44px) clamp(22px, 4vw, 44px); }
+@media (max-width:860px) { .site-split { grid-template-columns:minmax(0, 1fr); } }
+
+/* a tour mockup on its field of dots: the banner's grid in the page's accent, fading toward the copy */
+.site-stage { position:relative; }
+.site-stage::before { content:""; position:absolute; z-index:0; inset:-30px -60px -30px 34%; pointer-events:none;
+  background-image:radial-gradient(color-mix(in srgb, var(--accent) 46%, transparent) 1px, transparent 1.2px); background-size:16px 16px;
+  -webkit-mask-image:linear-gradient(90deg, transparent 0%, #000 78%); mask-image:linear-gradient(90deg, transparent 0%, #000 78%); }
+.site-stage.is-flip::before { inset:-30px 34% -30px -60px; -webkit-mask-image:linear-gradient(270deg, transparent 0%, #000 78%); mask-image:linear-gradient(270deg, transparent 0%, #000 78%); }
+.site-stage > * { position:relative; z-index:1; background:var(--bg); }
+
+/* the sign-in dialog: the first-run card, bannered (a root-level `data-overlay`, so the page under it is patched, not rebuilt) */
+.site-signin-back { position:fixed; inset:0; z-index:60; animation:site-fade .16s ease both;
+  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, #616acb 30%, transparent) 0%, transparent 72%), rgba(14,14,26,.52); }
+.site-signin-wrap { position:fixed; inset:0; z-index:61; display:grid; place-items:center; padding:16px; pointer-events:none; overflow-y:auto; }
+.site-signin-card { pointer-events:auto; position:relative; width:min(448px, 100%); border:1px solid var(--border-strong); background:var(--surface); overflow:hidden;
+  box-shadow:0 1px 2px rgba(20,22,60,.06), 0 30px 70px -24px rgba(10,12,40,.5); animation:cnpy-pop .18s ease both; }
+.site-signin-banner { padding:26px 28px 26px; }
+.site-signin-banner > .site-banner-art { width:190px; aspect-ratio:1; right:-34px; top:-46px; }
+.site-signin-x { position:absolute !important; top:10px; right:10px; width:30px; height:30px; display:grid; place-items:center; color:rgba(255,255,255,.8); transition:background .12s ease, color .12s ease; }
+.site-signin-x:hover { color:#fff; background:rgba(255,255,255,.14); }
+.site-signin-body { padding:24px 28px 22px; display:flex; flex-direction:column; gap:12px; }
+.site-signin-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:12px 16px; font-size:14px; font-weight:600; transition:filter .12s ease, background .12s ease; }
+.site-signin-btn:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-signin-foot { padding:13px 28px; border-top:1px solid var(--border); font-size:12.5px; line-height:1.5; color:var(--fg-55); background:color-mix(in srgb, var(--hover) 55%, transparent); }
+@keyframes site-fade { from { opacity:0; } to { opacity:1; } }
+@media (prefers-reduced-motion: reduce) { .site-signin-back, .site-signin-card, .site-signin-x, .site-signin-btn { animation:none !important; transition:none !important; } }
+
 /* nav: a hairline and soft shadow once the page scrolls under it */
 .site-nav { border-bottom:1px solid transparent; transition:border-color .3s ease, box-shadow .3s ease; }
 .site-nav[data-scrolled] { border-bottom-color:var(--border); box-shadow:0 12px 32px -24px rgba(0,0,0,.4); }
@@ -1872,9 +1949,12 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 }
 .cnpy-orgs-card { box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
 /* The banner is the brand's purple in both themes: it is Trov speaking, not the app's chrome. */
-.cnpy-orgs-banner { position:relative; overflow:hidden; padding:24px 28px 26px; color:#fff;
+/* `.site-banner` is the same banner on the signed-out site (landing.ts: the hero, "Agents propose, people
+   decide" and the sign-in dialog). ONE definition, so the site and the first run never drift apart. */
+.cnpy-orgs-banner { padding:24px 28px 26px; }
+.cnpy-orgs-banner, .site-banner { position:relative; overflow:hidden; color:#fff;
   background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #6c75d8 0%, #5a64cc 48%, #454fb2 100%); }
-.cnpy-orgs-banner::after { content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
+.cnpy-orgs-banner::after, .site-banner::after { content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
   background-image:radial-gradient(rgba(255,255,255,.22) 1px, transparent 1.2px); background-size:16px 16px;
   -webkit-mask-image:linear-gradient(90deg, transparent 35%, #000 100%); mask-image:linear-gradient(90deg, transparent 35%, #000 100%); }
 .cnpy-orgs-art { position:absolute; right:-34px; top:-46px; display:block; color:#fff; opacity:.13; transform:rotate(-8deg); pointer-events:none; }
