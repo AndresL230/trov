@@ -196,7 +196,10 @@ export function pricingQuestions(all: PlanDef[], pricing: Record<PlanId, PlanPri
 
 function questions(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>, h: number): string {
   return `<h${h} class="site-price-h">Questions</h${h}>
-    <div class="site-faq">${pricingQuestions(defs, pricing).map((x) => `<div><h${h + 1}>${esc(x.q)}</h${h + 1}><p>${x.a}</p></div>`).join("")}</div>`;
+    <div class="site-faq">${pricingQuestions(defs, pricing).map((x, i) =>
+      // An accordion with no script: `<details>` opens and closes by itself, the shared `name` makes the
+      // group exclusive (opening one closes the open one), and the first starts open.
+      `<details name="pricing-faq"${i === 0 ? " open" : ""}><summary><h${h + 1}>${esc(x.q)}</h${h + 1}><svg class="site-faq-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></summary><p>${x.a}</p></details>`).join("")}</div>`;
 }
 
 // ── the section ──────────────────────────────────────────────────────────────

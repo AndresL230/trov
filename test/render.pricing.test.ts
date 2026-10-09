@@ -368,6 +368,15 @@ describe("pricing — the comparison", () => {
 describe("pricing — questions say only what is true today", () => {
   const defs = OFFERED_PLAN_IDS.map((id) => PLANS[id]);
   const qs = pricingQuestions(defs, PRICING);
+  it("the questions are an accordion: native details, one group, the first open", () => {
+    const html = pricingView(false);
+    const items = html.match(/<details name="pricing-faq"( open)?><summary>/g) ?? [];
+    expect(items).toHaveLength(qs.length);
+    expect(items[0]).toContain(" open");
+    expect(items.slice(1).every((x) => !x.includes(" open"))).toBe(true);
+    // Each question is still a heading (inside its summary), and its answer is in the same item.
+    expect(html).toMatch(/<summary><h\d>[^<]+<\/h\d><svg class="site-faq-chev"[\s\S]*?<\/summary><p>/);
+  });
   const all = text(pricingSection() + pricingSection({ pricing: priced({ team: { yearly: 400 } }) }) + pricingSection({ pricing: unpriced() }));
 
   it("answers seats, Pro's per-seat price, going over, changing plans, isolation, the source and Enterprise", () => {
