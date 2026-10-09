@@ -111,7 +111,7 @@ function feedMock(): string {
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);display:flex;gap:6px;flex-wrap:wrap">${refs}</div>
       </div>
     </div>`;
-  const asideHead = (t: string, link: string) => `<div style="display:flex;align-items:baseline;padding:11px 13px 0"><span style="font-size:12.5px;font-weight:600">${t}</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--fg-40);white-space:nowrap">${link} ${ARROW}</span></div>`;
+  const asideHead = (t: string, link: string) => `<div style="display:flex;align-items:baseline;gap:10px;padding:11px 13px 0"><span style="font-size:12.5px;font-weight:600;white-space:nowrap">${t}</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-size:10.5px;color:var(--fg-40);white-space:nowrap">${link} ${ARROW}</span></div>`;
   const waiting = (title: string, kind: string, c: string, who: string, when: string) => `<div style="padding:8px 13px;border-top:1px solid var(--border)"><div style="font-size:11.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</div><div style="margin-top:3px;display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--fg-55)">${DOT(c, 6)}${kind}${SEP}${who}${SEP}${when}</div></div>`;
   const body = `<div style="display:flex;gap:12px;padding:14px;height:100%;box-sizing:border-box">
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:10px">
@@ -119,7 +119,7 @@ function feedMock(): string {
         ${entry("SO", "@sam", "amber", "Tickets move freely on the board", "Drag a ticket to any column. The order you leave it in is saved for everyone.", "3d ago", false, `${ref("PR", "#139")}${ref("commit", "b81e04d")}`)}
         ${entry("MC", "@maya", "accent", "Email digests de-duplicate on Mondays", "The Monday digest no longer repeats Friday's entries.", "5d ago", true, `${ref("PR", "#137")}${ref("issue", "#218")}`)}
       </div>
-      <div class="fxm-wide" style="width:190px;flex:none;display:flex;flex-direction:column;gap:10px">
+      <div class="fxm-wide" style="width:244px;flex:none;display:flex;flex-direction:column;gap:10px">
         <div style="${SURF};overflow:hidden">${asideHead("This week", "Everything this week")}
           <div style="padding:3px 13px 10px;font-size:10.5px;color:var(--fg-55)">Whole team, last 7 days</div>
           <div style="display:flex;align-items:baseline;gap:6px;padding:0 13px 9px"><span style="font-size:19px;font-weight:500;line-height:1">6</span><span style="font-size:11px;color:var(--fg-55)">entries · 3 people</span></div>
@@ -234,7 +234,7 @@ function myworkMock(): string {
   const review = (title: string, badge: string, c: string, kind: string, when: string, accept: string) => `<div style="display:flex;align-items:center;gap:8px;padding:8px 13px;border-top:1px solid var(--border)"><span style="flex:1;min-width:0"><span style="display:block;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span><span style="margin-top:3px;display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--fg-55)">${DOT(c, 6)}<span style="${LBL};font-size:9.5px;letter-spacing:.04em">${badge}</span>${SEP}${kind}${SEP}${when}</span></span><span style="height:22px;padding:0 8px;border:1px solid var(--border);border-radius:6px;font-size:10.5px;font-weight:500;color:var(--fg-70);display:inline-flex;align-items:center">Reject</span><span style="height:22px;padding:0 8px;border-radius:6px;background:var(--accent);color:var(--accent-fg);font-size:10.5px;font-weight:500;display:inline-flex;align-items:center">${accept}</span></div>`;
   const session = (title: string, when: string) => `<div style="display:flex;align-items:baseline;gap:10px;padding:8px 13px;border-top:1px solid var(--border)"><span style="flex:1;min-width:0;font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span><span style="font-size:10.5px;color:var(--fg-40);white-space:nowrap">${when}</span></div>`;
   const pr = (title: string, ref: string, when: string, c: string) => `<div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 13px;border-top:1px solid var(--border)">${DOT(c, 6)}<span style="min-width:0;display:flex;align-items:baseline;gap:7px"><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span><span style="font-family:var(--label);font-size:10.5px;color:var(--fg-40);flex:none">${ref}</span></span><span style="font-size:10.5px;color:var(--fg-40);white-space:nowrap">${when}</span></div>`;
-  const body = `<div style="padding:16px 16px 14px">
+  const body = `<div class="fxm-mywork" style="padding:16px 16px 14px">
       <div style="font-size:19px;font-weight:650;letter-spacing:-0.015em">Good morning, Maya</div>
       <div style="margin-top:3px;font-size:11.5px;color:var(--fg-55)">Thursday, October 9 · 2 tickets open, 2 to review, 1 handoff waiting</div>
       <div class="fxm-tiles" style="margin-top:14px">
@@ -304,6 +304,26 @@ function artifactsMock(): string {
   const bars = (ws: number[]) => ws.map((w) => `<span style="display:block;height:6px;width:${w}%;border-radius:3px;background:var(--border-strong);margin-top:7px"></span>`).join("");
   const status = ARTIFACT_STATUSES.map((s) => `<span style="padding:3px 9px;border-radius:5px;white-space:nowrap;text-transform:capitalize;${s === "ratified" ? "background:var(--accent-soft);color:var(--accent);display:inline-flex;align-items:center;gap:4px" : "color:var(--fg-55)"}">${s === "ratified" ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z"></path><path d="m9 12 2 2 4-4"></path></svg>` : ""}${s}</span>`).join("");
   const ver = (n: number, summary: string, when: string, on = false) => `<div style="display:flex;align-items:center;gap:9px;padding:6px 12px"><span style="font-family:var(--label);font-size:11.5px;font-weight:600;min-width:20px">v${n}</span><span style="flex:1;min-width:0"><span style="display:block;font-size:11.5px;font-weight:500;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${summary}</span><span style="display:block;margin-top:1px;font-size:10px;color:var(--fg-40)">@leo · ${when}</span></span>${on ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="flex:none"><path d="M20 6 9 17l-5-5"></path></svg>` : ""}</div>`;
+  // The artifact ITSELF: somebody's own page, shown in a sandboxed frame. So it is drawn in its own colours
+  // and type (fixed values, not the app's theme tokens) — it must read as a document inside Trov, not as
+  // more of Trov. Here: an HTML design for the 429 response, the response on the left, the budget on the right.
+  // (`.fxm-art*` in trov.css: the colours live there, since nothing drawn here carries a literal colour.)
+  const hdr = (k: string, v: string) => `<div><span class="fxm-art-k">${k}</span><span class="fxm-art-dim">:</span> <span class="fxm-art-v">${v}</span></div>`;
+  const page = `<div class="fxm-art">
+          <div class="fxm-art-eyebrow">Design · public API</div>
+          <div class="fxm-art-title">What a caller sees over budget</div>
+          <div class="fxm-art-cols">
+            <div class="fxm-art-code" style="border-radius:6px">
+              <div><span class="fxm-art-dim">HTTP/1.1</span> <span class="fxm-art-err">429</span> Too Many Requests</div>
+              ${hdr("Retry-After", "30")}${hdr("X-RateLimit-Remaining", "0")}${hdr("X-RateLimit-Reset", "1760003400")}
+            </div>
+            <div class="fxm-wide fxm-art-side">
+              <div class="fxm-art-num"><b>600</b><span>requests / minute, per organization</span></div>
+              <div class="fxm-art-meter" style="border-radius:5px"><span></span></div>
+              <div class="fxm-art-note">Over the line, the answer says when to come back, in seconds.</div>
+            </div>
+          </div>
+        </div>`;
   const body = `<div style="padding:14px 16px 14px">
       <div style="display:flex;align-items:center;gap:10px"><span style="font-size:19px;font-weight:650;letter-spacing:-0.02em;min-width:0">Rate limit headers: design</span>
         <span style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;border:1px solid color-mix(in srgb, var(--green) 45%, transparent);background:color-mix(in srgb, var(--green) 9%, transparent);color:var(--green);border-radius:7px;padding:3px 8px;font-size:11px;font-weight:600;flex:none">Org<span style="width:22px;height:12px;border-radius:6px;background:var(--green);position:relative"><span style="position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:4px;background:var(--surface)"></span></span></span></div>
@@ -314,13 +334,7 @@ function artifactsMock(): string {
           <span style="margin-left:auto;display:inline-flex;border:1px solid var(--border);border-radius:7px;padding:2px;gap:2px;font-size:11px;font-weight:500">${status}</span>
           <span class="fxm-wide" style="font-size:11px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:6px;padding:3px 8px;white-space:nowrap">+ New version</span>
         </div>
-        <div style="padding:18px 20px 20px;background:var(--hover)">
-          <div style="font-size:14px;font-weight:650">Rate limit headers</div>
-          <div style="margin-top:3px;font-size:11px;color:var(--fg-55)">What a caller sees when it goes over its budget</div>
-          <div style="margin-top:12px;display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:10px">
-            ${["Retry-After", "X-RateLimit-Remaining", "X-RateLimit-Reset"].map((h, i) => `<div style="border:1px solid var(--border);background:var(--surface);border-radius:7px;padding:10px 11px;min-width:0"><div style="font-family:var(--code);font-size:10px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${h}</div>${bars(i === 0 ? [80, 55] : i === 1 ? [65, 85] : [70, 40])}</div>`).join("")}
-          </div>
-        </div>
+        ${page}
       </div>
       <div style="margin-top:9px;font-size:11px;color:var(--fg-55)">Ratified v3 by Maya · 2d ago</div>
       <div class="fxm-tiles" style="margin-top:12px">

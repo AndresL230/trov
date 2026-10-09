@@ -21,6 +21,7 @@
 
 import { LIMIT_KEYS, LIMITS, PLAN_IDS, PLANS, formatLimit, limitNoun, limitPhrase, type PlanDef, type PlanId } from "@shared/plans";
 import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, isFreePrice, purchaseHref, type PlanPricing } from "@shared/pricing";
+import { trovMark } from "@shared/mark";
 import { esc, attr } from "./ui";
 import { SITE_CONTACT, TROV_REPO, siteFooter, siteMark } from "./site-chrome";
 
@@ -93,13 +94,19 @@ const perSeat = (def: PlanDef, price: PlanPricing): boolean => canPurchasePlan(d
 const limitValue = (def: PlanDef, price: PlanPricing, k: (typeof LIMIT_KEYS)[number], value: string): string =>
   k === "seats" && perSeat(def, price) && def.entitlements.seats !== null ? `Up to ${value}` : value;
 
-function planCard(def: PlanDef, price: PlanPricing, i: number, accent: boolean, signedIn: boolean, h: number): string {
+/** The faint tilted mark the site's banners carry (`.site-banner-art`, trov.css). */
+const BANNER_ART = `<span class="site-banner-art" aria-hidden="true">${trovMark(100, "currentColor")}</span>`;
+
+/** `top`: the plan above the ones with a price — it wears the site's banner (`.site-banner`), so the row
+ *  climbs from a plain card (Free) through the accented one (the plan most teams buy) to the banner. */
+function planCard(def: PlanDef, price: PlanPricing, i: number, accent: boolean, signedIn: boolean, h: number, top = false): string {
   const limits = LIMIT_KEYS.map((k) => {
     // The value, then what it counts: "3" + "seats", "5 GB" + "artifact storage", "3,000" + "AI summaries per month".
     const [value, what] = limitPhrase(k, def.entitlements[k]);
     return `<li><b>${esc(limitValue(def, price, k, value))}</b> ${esc(what)}</li>`;
   }).join("");
-  return `<article class="site-st site-plan${accent ? " is-accent" : ""}" style="border-radius:12px;${at(i * 110)}" aria-labelledby="site-plan-${def.id}">
+  return `<article class="site-st site-plan${accent ? " is-accent" : ""}${top ? " is-top site-banner" : ""}" style="border-radius:12px;${at(i * 110)}" aria-labelledby="site-plan-${def.id}">
+      ${top ? BANNER_ART : ""}
       <div class="site-plan-head">
         <h${h} id="site-plan-${def.id}" class="site-plan-name">${esc(def.name)}</h${h}>
         ${price.badge ? `<span class="site-plan-badge" style="border-radius:4px">${esc(price.badge)}</span>` : ""}
@@ -225,7 +232,7 @@ export function pricingSection(p: PricingProps = {}): string {
       ${yearly ? intervalSwitch() : ""}
     </div>
     <div ${rv("pricing-plans", "rv-static site-plans")}>
-      ${defs.map((def, i) => planCard(def, pricing[def.id], i, def.id === accent, signedIn, level + 1)).join("")}
+      ${defs.map((def, i) => planCard(def, pricing[def.id], i, def.id === accent, signedIn, level + 1, i === defs.length - 1 && defs.length > 1 && !pricing[def.id].selfServe)).join("")}
     </div>
     ${sizedNote(defs, pricing)}
     ${accent === null ? `<div ${rv("pricing-note")}>${notAnnounced(signedIn)}</div>` : ""}

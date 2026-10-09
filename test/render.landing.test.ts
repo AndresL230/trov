@@ -75,7 +75,9 @@ describe("landing — the banner carried through the page", () => {
   it("the hero and the authority card are the same banner, each with the mark behind its text; the sign-in dialog has none", () => {
     const html = out(true);
     expect(html.match(/class="site-banner /g)?.length).toBe(2);
-    expect(html.match(/class="site-banner-art" aria-hidden="true"/g)?.length).toBe(2);
+    // …and a third mark on the pricing section's top plan card, which wears the banner too.
+    expect(html.match(/class="site-banner-art" aria-hidden="true"/g)?.length).toBe(3);
+    expect(html).toMatch(/class="site-st site-plan is-top site-banner"[^>]*aria-labelledby="site-plan-enterprise"/);
     expect(html).toContain('class="site-banner site-hero-band"');
     expect(html).toContain('class="site-banner site-split-banner"');
     // The dialog opens over the hero, which IS the banner: a plain card, not the same slab twice.
