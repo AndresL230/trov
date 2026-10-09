@@ -198,10 +198,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [121, 122, 123, 124, 125, 126, 127, 128, 130],
-    prs: [121, 122, 123, 124, 125, 126, 127, 128, 131],
-    prs: [121, 122, 123, 124, 125, 126, 127, 128, 130, 132],
-    prs: [121, 122, 123, 124, 125, 126, 127, 128, 130, 133],
+    prs: [121, 122, 123, 124, 125, 126, 127, 128, 130, 131, 132, 133],
   },
   // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
   {

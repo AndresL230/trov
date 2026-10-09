@@ -48,7 +48,6 @@ import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash"
 import { mountLandingMotion, unmountLandingMotion, noteJump } from "./landing-motion";
 import { createFeatureCtl } from "./site-feature";
 import { TOUR_KEYS } from "./landing";
-import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
 import { initFaqAccordion } from "./site-faq";
 import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
