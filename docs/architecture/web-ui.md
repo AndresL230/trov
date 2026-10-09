@@ -13,10 +13,22 @@ itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
-Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, and the three first-run pages (onboarding `onboard`, the org picker `orgs`,
-the guided setup `welcome`). Inside a morphed page, a part that must be REPLACED when it becomes a different
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Inside a morphed page, a part that must be REPLACED when it becomes a different
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
 animations off in the affected region — that hides one symptom and leaves the rebuild.
+
+**A third party's widget lives in a `data-keep` node of a morphed page.** `morph()` returns at once on an
+element with `data-keep`: neither its attributes nor its children are touched. The payment page
+(`web/src/billing-checkout.ts`, `data-morph="billing-checkout"`) mounts Stripe's embedded checkout — an iframe
+Stripe creates and resizes — into `<div id="billing-checkout-mount" data-keep>`; a rebuilt iframe would reload
+the form and lose what the buyer typed. Three things make that hold: (1) the node is emitted in EVERY state,
+byte-identical, as the FIRST child of its container, so index pairing can never land something else on it;
+(2) since morph will not sync its attributes, whether it shows is decided on an ancestor
+(`[data-billco-phase="loading"] .cnpy-billco-mount { display:none }`), never on the node itself; (3) the
+script mounts only AFTER the rerender that makes the node visible. The card around it has no height and no
+`overflow:auto` — the widget sets its own height, the card grows, and the page scrolls
+(`test/render.billing-checkout.test.ts`).
 
 **A dialog that opens over ANY screen repaints itself alone.** Most screens are not `data-morph`ed, so a dialog
 whose host page can be any of them cannot rely on the page's opt-in: a `rerender()` per keystroke would rebuild

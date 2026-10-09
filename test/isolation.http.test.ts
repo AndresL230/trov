@@ -370,6 +370,7 @@ const PLATFORM: Record<string, string> = {
   "GET /billing/start": "public: reads the session itself — signed out, a sign-in page; signed in, a Stripe Checkout Session bound to the CALLER (their handle on the row, their own verified e-mail), rate-limited per person; touches no org",
   "GET /api/billing/config": "public: which plans can be bought (config only) and, signed in, the caller's OWN paid orgs (owner memberships)",
   "GET /api/billing/status": "session: a checkout the CALLER started — anyone else's session id is the same 404 as an unknown one (test/billing.flow.test.ts)",
+  "POST /api/billing/checkout": "session, cookie only: the payment page's call (embedded checkout) — a Checkout Session bound to the CALLER, whose client secret is answered to the caller alone; a `session_id` is honoured only when it is the caller's own row for the same purchase (anyone else's is ignored and they get a session of their own); touches no org (test/billing.embedded.test.ts)",
 };
 
 // ── the registry ─────────────────────────────────────────────────────────────

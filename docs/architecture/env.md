@@ -55,7 +55,12 @@ Vars (`[vars]` in `wrangler.toml`): `PUBLIC_ORIGIN` (absolute origin for links i
 `NOTIFICATIONS_MODE` (`resend` in production since 2026-10-07; `local` writes bodies to a table and sends nothing — a deploy sets it from `wrangler.toml`, so a dashboard-only change is undone by the next deploy), `GITHUB_APP_SLUG` (the App's URL name; empty = not
 configured), `SUPPORT_NOTIFY_EMAIL` (where each bug report / support message is mailed — the operator's inbox;
 not a secret; empty or absent = the report is stored and shown in Platform › Support but NOT mailed, its mail
-outcome `skipped`; also in `[previews.vars]`, empty — `support.md`), and two LEGACY ones nothing reads any more (`0042_organizations` copied them
+outcome `skipped`; also in `[previews.vars]`, empty — `support.md`), the billing vars `STRIPE_PRICE_TEAM` /
+`STRIPE_PRICE_TEAM_YEARLY` / `STRIPE_TAX` and `STRIPE_PUBLISHABLE_KEY` (Stripe's PUBLIC key, `pk_test_…` /
+`pk_live_…`: the one Stripe value that is a var and not a secret, because it is sent to the buyer's browser.
+Set, in the secret key's own mode → checkout is embedded in Trov's `/billing/checkout`; empty → Stripe's
+hosted page. Never put `sk_…` here: a value that is not a `pk_` key is ignored. Also in `[previews.vars]`,
+empty — `billing.md` › Configuration, › Embedded checkout), and two LEGACY ones nothing reads any more (`0042_organizations` copied them
 into SaplingLearn's `org_repos` / `org_environments` rows; Phase 7 deletes them): `GITHUB_REPO` and
 `REPO_ENVIRONMENTS` — a JSON list in the shape `repoEnvironments()` (`src/repo/config.ts`) parses: per environment
 `key`, `label`, `note`, `branch`, `railwayEnv` (the GitHub deployment environment name), `worker` +

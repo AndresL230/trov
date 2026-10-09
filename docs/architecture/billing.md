@@ -9,10 +9,11 @@ have* — a grant, an org's plan, its `seats` override, its status — through t
 
 Code: `shared/billing.ts` (the wire, shared with the SPA and the pricing page; `paidSeats`), `src/billing/`
 (`config.ts`, `stripe.ts`, `signature.ts`, `store.ts`, `sync.ts`, `webhook.ts`, `routes.ts`, `view.ts`,
-`pages.ts`), `src/auth/return-to.ts`, `web/src/billing.ts` (the waiting room), `web/src/org-plan.ts` +
+`pages.ts`), `src/auth/return-to.ts`, `web/src/billing.ts` (the waiting room), `web/src/billing-checkout.ts` +
+`stripe-js.ts` (the payment page of embedded checkout), `web/src/org-plan.ts` +
 `org-billing-actions.ts` (the Plan block, and the Members tab's "Add a seat" / "Upgrade to Pro").
 Migrations: `0045_billing.sql`, `0047_billing_seats.sql`. Tests: `test/billing.*.test.ts`,
-`test/render.billing.test.ts`.
+`test/render.billing.test.ts`, `test/render.billing-checkout.test.ts`.
 
 **Money correctness:** Trov computes no amount, tax or proration and holds no price, card or address. A
 price is an opaque Stripe Price id in `wrangler.toml`; the amount a buyer sees is on Stripe's page. Trov
@@ -27,6 +28,7 @@ stores ids, a status and a seat count.
 | `STRIPE_PRICE_TEAM` | var (`wrangler.toml`), the monthly Price id of ONE SEAT of Pro (a licensed, per-unit recurring price) | Pro cannot be bought monthly |
 | `STRIPE_PRICE_TEAM_YEARLY` | var, optional, the yearly per-seat Price id | Pro is not offered yearly |
 | `STRIPE_TAX` | var; `on` → a checkout sends `automatic_tax[enabled]`, `tax_id_collection[enabled]` and, for a customer Stripe already knows, `customer_update[address|name]=auto` | no tax lines; checkout asks for no address |
+| `STRIPE_PUBLISHABLE_KEY` | var (`wrangler.toml`), Stripe's PUBLIC key (`pk_test_…` / `pk_live_…`) — public by design, sent to the buyer's browser | checkout is HOSTED (Stripe's own page), exactly as before it existed. Set, in the secret key's own mode, against the real Stripe API → checkout is EMBEDDED (below) |
 | `STRIPE_TEST_API_BASE` | local / test only | — honoured only for a loopback `http://` origin and never with a live key (`src/platform/loopback.ts` — the rule Sync's `LOCAL_UPSTREAM` follows too; both are described in `.dev.vars.example`) |
 
 `STRIPE_PRICE_PERSONAL` / `STRIPE_PRICE_PERSONAL_YEARLY` are gone with Personal: a Personal price is not read.
@@ -44,6 +46,69 @@ webhook answers its bare 401, `GET /api/billing/config` says `available: false`,
 are disabled with a sentence — and nothing else in the app changes (Free orgs are still created). Test or
 live mode is whichever key is set (`sk_test_…` / `sk_live_…`); an event from the other mode is acknowledged
 and ignored.
+
+## Embedded checkout — paying inside Trov
+
+With `STRIPE_PUBLISHABLE_KEY` set, a buyer never leaves Trov to pay: `/billing/checkout` is a Trov page —
+the same bannered first-run card, over the same backdrop, as the confirmation step — with **Stripe's own
+form, in Stripe's own iframe**, mounted in the card's body (`web/src/billing-checkout.ts`). Trov still sees
+no card, no amount and no address: only where the buyer is while paying has changed. Everything after the
+payment is the hosted flow's, unchanged — Stripe sends the browser to `/billing/done?session_id=…`, and the
+webhook is still the only thing that fulfils. **The browser arriving anywhere proves nothing.**
+
+- **One switch.** `BillingConfig.embedded` (`src/billing/config.ts`) is the single decision, read by
+  `startCheckout`, `/billing/start` and the org upgrade. It is ON only when the var holds a publishable key
+  (`pk_test_…` / `pk_live_…` — anything else, a secret key above all, is ignored and never sent anywhere),
+  the key is the SAME mode as `STRIPE_SECRET_KEY` (a test `pk_` beside a live `sk_` cannot mount the
+  session), and the API is the real Stripe — never the loopback stand-in (`STRIPE_TEST_API_BASE`), which has
+  no Stripe.js to serve. Otherwise everything is the hosted redirect, byte for byte.
+- **The entry points decide where, the page asks for the session.** With the switch on, `GET /billing/start`
+  (signed in) answers 303 → `/billing/checkout?plan=team[&interval=year]` and the org's
+  `POST …/billing/upgrade` answers `{ url: "/billing/checkout?plan=team&org=<slug>" }` — neither creates
+  anything. The page then calls `POST /api/billing/checkout` (a new purchase) or `POST
+  /api/o/:slug/billing/upgrade` with `{ ui: "embedded" }` (an upgrade): THAT is where the limit unit, the
+  `billing_checkouts` row and the Stripe session are made.
+- **The session** differs from a hosted one in exactly two parameters: `ui_mode: "embedded"` and
+  `return_url: <origin>/billing/done?session_id={CHECKOUT_SESSION_ID}` in place of `success_url` /
+  `cancel_url` (Stripe refuses those in embedded mode; backing out is the page's own **Back** link, to
+  `/pricing` or the org's Plan block). The per-seat adjustable quantity, the metadata, the tax parameters
+  (`STRIPE_TAX`), the customer, the idempotency key and the pre-written row are the same code path.
+  The pinned `Stripe-Version` (`2024-06-20`, `src/billing/stripe.ts`) supports this: `ui_mode: "embedded"`
+  is that version's name for it (newer API versions call the same thing `embedded_page`), so the version
+  was not moved.
+- **The client secret** in Stripe's answer goes to the page that asked — the signed-in buyer, cookie only,
+  `cache-control: no-store` — and nowhere else: no log line (the Stripe client also cuts anything shaped
+  like one out of an upstream error before it is logged), no D1 column. In the browser it is handed to
+  Stripe.js from a local variable: it is never in the page's state, markup, URL or storage
+  (`test/billing.leak.test.ts`, `test/render.billing-checkout.test.ts`).
+- **The session id is in the page's URL** (`&session=cs_…`, by `history.replaceState`), so a reload — or
+  Back from the confirmation — asks about THAT session instead of starting another: still open → the same
+  session's secret again (no new Stripe object, no unit of the `checkout` limit); **paid → `{ ui:
+  "complete" }` and the page goes to `/billing/done`** (it never offers a second payment for the same
+  purchase); expired → `{ ui: "expired" }` and the page says so, with **Start again**. Only the caller's
+  own session for the same purchase is looked at; anyone else's id is ignored and they simply get a
+  session of their own. If Stripe cannot say what became of the session, the page is refused (502) rather
+  than handed a second one.
+- **Stripe.js** is loaded from `https://js.stripe.com/v3/` (Stripe's rule: never bundled, never self-hosted),
+  by `web/src/stripe-js.ts`, injected by the payment page's boot and nothing else — never on the landing,
+  the app or a static page (a test holds this). No npm dependency. The Privacy Policy names it
+  (`web/src/legal.ts`): it runs on the payment page only and sets Stripe's own cookies there.
+- **When Stripe.js will not load or mount** (a content blocker, the network, a 15 s timeout): the card says
+  so and offers **Continue on Stripe's page** — the same route with `{ ui: "hosted" }`, which makes a hosted
+  session for the same purchase whatever the switch says — and **Try again** (the same session).
+- **Signed out** on the page: the API's 401 sends the browser to `/billing/start?plan=…` (which seals the
+  return and signs them in) or, for an upgrade, to the organization. A superadmin, a daily limit, billing
+  off, not the owner: a sentence in the card ("Nothing was charged"), never "payment failed".
+- **Headers.** The page is the SPA shell (`src/index.ts`, like `/billing/done`), which the Worker serves
+  with NO Content-Security-Policy and no frame header — so nothing had to be loosened for Stripe's script
+  and iframes. If the shell ever gets a CSP, this page needs Stripe's published directives: `script-src`
+  and `frame-src` for `https://js.stripe.com` and `https://*.js.stripe.com`, `frame-src https://hooks.stripe.com`
+  (3-D Secure and redirect methods), `connect-src https://api.stripe.com`, `img-src https://*.stripe.com`,
+  and Link's `https://*.link.com` in `frame-src` / `connect-src` / `img-src`. The Worker's notice pages
+  (`PAGE_CSP`, `default-src 'none'`) load no Stripe and are unchanged.
+- **What differs for the buyer** from the hosted flow: they stay on trov.dev; the form's look is the Stripe
+  account's Branding settings inside Trov's card; there is no Stripe "back" arrow (the card's Back link);
+  and the purchase link creates the session when the page opens rather than on the redirect.
 
 **Trying it locally with no Stripe account:** `node scripts/dev/stripe-standin.mjs` is a stand-in for Stripe on
 `http://127.0.0.1:8842` — the API calls `src/billing/` makes, a plain checkout page, a plain portal (change
@@ -91,9 +156,11 @@ Pro is sold per seat. A seat is a member or a pending invitation (`plans.md` ›
    per-seat price × the starting quantity with `adjustable_quantity`, `client_reference_id` = the handle,
    `customer_email` = the person's provider-VERIFIED address when there is one, `metadata.trov_ref`, success →
    `/billing/done?session_id={CHECKOUT_SESSION_ID}`, cancel → `/pricing`, `Idempotency-Key:
-   trov-checkout-<ref>`) and a 303 to Stripe. `plan=enterprise` → a page pointing at Trov; any other plan
+   trov-checkout-<ref>`) and a 303 to Stripe — or, with embedded checkout on, a 303 to Trov's own payment
+   page, which makes the same session with `ui_mode: "embedded"` (› Embedded checkout). `plan=enterprise` → a page pointing at Trov; any other plan
    (`free`, `personal`) → 302 `/pricing`; a superadmin → a page pointing at Platform.
-2. **Pay** — on Stripe's page. Trov is not involved.
+2. **Pay** — on Stripe's page, or in Stripe's form on `/billing/checkout` (embedded). Trov is not involved
+   in the payment either way.
 3. **Fulfil — the webhook** (`POST /webhook/stripe`, below). `checkout.session.completed` →
    `grantOrganization(env, platform(env, "billing"), { to: { handle }, plan, overrides: { seats }, external_ref:
    <subscription id> })` — the SAME grant a superadmin gives by hand, carrying the seats paid for. `to` is the
@@ -214,11 +281,13 @@ its own, so there is one clock and it is the one the customer's e-mails from Str
 
 | Route | Gate | Answers |
 |---|---|---|
-| `GET /billing/start?plan=team&interval=` | public (reads the session itself) | 303 → Stripe; 200 a sign-in / Enterprise page; 302 `/pricing` (any other plan); 403 page (superadmin); 429 page; 502 page; 503 |
-| `GET /api/billing/config` | public | `BillingConfigResponse`: `available`, `mode`, `plans[id] = { purchasable, intervals, href }`, `contact`, `signed_in`, `manage[]` (the caller's own paid orgs, ended ones too) |
+| `GET /billing/start?plan=team&interval=` | public (reads the session itself) | 303 → Stripe (embedded checkout on: 303 → `/billing/checkout?…`, nothing created); 200 a sign-in / Enterprise page; 302 `/pricing` (any other plan); 403 page (superadmin); 429 page; 502 page; 503 |
+| `GET /billing/checkout?plan=team[&interval=][&org=][&session=]` | public shell (the SPA; `src/index.ts`) | the payment page of embedded checkout. Holds nothing of the buyer's: what it mounts comes from the next route |
+| `POST /api/billing/checkout { plan, interval?, ui: "embedded" \| "hosted", session_id? }` | session, cookie only | `BillingCheckoutResponse`, `no-store`: `{ ui: "embedded", client_secret, publishable_key, session_id }` \| `{ ui: "hosted", url }` (embedded off, or `ui: "hosted"` — the page's fallback) \| `{ ui: "complete", session_id }` \| `{ ui: "expired" }`; 400 `invalid_plan`; 401; 403 `superadmin` / `forbidden` (a bearer); 429; 502; 503 |
+| `GET /api/billing/config` | public | `BillingConfigResponse`: `available`, `mode`, `embedded: true` while embedded checkout is on (a flag — never the key), `plans[id] = { purchasable, intervals, href }`, `contact`, `signed_in`, `manage[]` (the caller's own paid orgs, ended ones too) |
 | `GET /api/billing/status?session_id=` | session; the caller's own checkout (else 404) | `{ state: "pending", paid }` \| `{ state: "ready", plan, grant }` \| `{ state: "done", org }` \| `{ state: "unpaid" }` \| `{ state: "ended" }` |
 | `POST /api/o/:slug/billing/portal { seats? }` | owner, cookie only, an org with a Stripe customer | `{ url }` (`seats: true` and a live subscription: the subscription-update flow); 403 `forbidden`; 409 `not_billed`; 502 `billing_failed` |
-| `POST /api/o/:slug/billing/upgrade { plan?, interval? }` | owner, cookie only, an org on Free (or a legacy `canceled` one, or one whose plan is a gift) | `{ url }` (a checkout for this org); 400 `invalid_plan`; 409 `not_free`; 429; 502; 503 |
+| `POST /api/o/:slug/billing/upgrade { plan?, interval? }` | owner, cookie only, an org on Free (or a legacy `canceled` one, or one whose plan is a gift) | the button (no `ui`): `{ url }` — Stripe's page, or with embedded checkout on `/billing/checkout?…&org=<slug>` (nothing created). The payment page (`ui`, `session_id?`): `BillingCheckoutResponse`, as above, for this org. 400 `invalid_plan`; 409 `not_free`; 429; 502; 503 |
 | `GET /api/o/:slug/plan` | any member | adds `billing: OrgBillingView \| null` (no id of Stripe's): `subscribed`, `ended`, `customer`, `interval`, `seats`, `cancel_at_period_end`, `pinned`, `upgrade_to`. Present for a billing org and for every Free org |
 | `GET /api/platform/orgs[/:slug]` | superadmin | `plan.billing` for a paid org: ids, Stripe's status, `ended`, `seats`, `pinned`, `dashboard_url` (test or live) |
 | `PUT /api/platform/orgs/:slug/plan` | superadmin | also `{ follow_subscription: true }`; 409 `not_billed` |
@@ -231,6 +300,9 @@ its own, so there is one clock and it is the one the customer's e-mails from Str
   scrubbed of both secrets before it is cut; a 2xx that echoes the key is refused whole. Canary tests:
   `test/billing.leak.test.ts`. Nothing reachable from `src/mcp.ts` imports `src/billing/`
   (`test/secrets.mcp.test.ts`).
+- The publishable key (`STRIPE_PUBLISHABLE_KEY`) is the one Stripe value that reaches a browser, and only
+  a value shaped `pk_test_…` / `pk_live_…` is ever sent. A Checkout Session's client secret reaches the
+  buyer who started it and nothing else (› Embedded checkout).
 - A person opens the portal only for an org they OWN; the customer is read from that org's row.
 - A session id claims nothing: status is the caller's own checkouts only, and fulfilment grants the person
   on Trov's row. Isolation: `test/isolation.http.test.ts`.
@@ -274,6 +346,25 @@ Stripe: `test/helpers/billing.ts` is an in-memory stand-in.
 9. Switch to live: create the same Product and Price in live mode, paste the live Price id, put the live
    `sk_live_…` and a live endpoint's `whsec_…`, and repeat steps 6–7 in live mode (portal settings are per
    mode).
+
+**Embedded checkout (`STRIPE_PUBLISHABLE_KEY`) — turning it on, and off.**
+
+1. In the Stripe dashboard, in the mode you are selling in (test first): **Developers › API keys ›
+   Publishable key** — it starts `pk_test_…` (or `pk_live_…`). It is public: it is meant to be in a browser.
+   Never paste the secret key (`sk_…`) here; a value that is not a `pk_` key is ignored.
+2. Paste it into `wrangler.toml` `[vars]` as `STRIPE_PUBLISHABLE_KEY` and merge to `main` (a var ships with
+   the deploy; no migration, no secret, no trigger). It must be the same mode as `STRIPE_SECRET_KEY`: with a
+   test `pk_` beside a live `sk_` (or the reverse) checkout stays hosted.
+3. Check: `GET /api/billing/config` answers `"embedded": true` (the field is absent while it is off); "Choose Pro" lands on `/billing/checkout`
+   with Stripe's form in the card; pay with `4242…`; you arrive on `/billing/done` as before.
+4. **Domains.** Stripe's embedded form itself needs no domain allowlist. Wallets and Link in it (Apple Pay,
+   Google Pay, Link) appear only on a registered domain: Settings › Payments › **Payment method domains** →
+   add `trov.dev` (per mode). Without it the card form still works. If Stripe's console reports a refused
+   domain when the form mounts, that page is where it is allowed.
+5. **Look.** The form's colours, font and logo are the account's (Settings › Branding › Checkout), not
+   Trov's theme: set a background that sits well in both of Trov's themes.
+6. **Off again:** set `STRIPE_PUBLISHABLE_KEY = ""` and merge. Every purchase is Stripe's hosted page again
+   at once; a buyer with the payment page still open is sent to the hosted page when it next asks.
 
 **Tax (`STRIPE_TAX`).** Trov computes no tax: with the var `on`, Stripe Tax works it out at checkout, and the
 subscription keeps `automatic_tax`, so renewals and seat changes are taxed by the same rule. Stripe charges

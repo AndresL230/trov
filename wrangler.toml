@@ -63,6 +63,12 @@ STRIPE_PRICE_TEAM_YEARLY = ""
 # On since 2026-10-09: set up in Stripe TEST mode (price exclusive, origin address, SaaS business-use category,
 # no registrations). LIVE mode needs the same three before the live keys go in.
 STRIPE_TAX = "on"
+# Embedded checkout: Stripe's PUBLISHABLE key (`pk_test_…` / `pk_live_…` — public by design, it is sent to
+# the buyer's browser; never the secret key). Set → a purchase is paid inside Trov's own page
+# (`/billing/checkout`, Stripe's embedded form); empty → Stripe's hosted page, as before. It must be the
+# same mode (test / live) as STRIPE_SECRET_KEY, or it is ignored and checkout stays hosted.
+# docs/architecture/billing.md › Embedded checkout.
+STRIPE_PUBLISHABLE_KEY = ""
 
 [observability]
 enabled = true
@@ -81,6 +87,7 @@ SUPPORT_NOTIFY_EMAIL = ""
 STRIPE_PRICE_TEAM = ""
 STRIPE_PRICE_TEAM_YEARLY = ""
 STRIPE_TAX = ""
+STRIPE_PUBLISHABLE_KEY = ""
 
 [[previews.d1_databases]]
 binding = "DB"
