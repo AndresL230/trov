@@ -67,7 +67,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
    (plan, tickets, sprints, handoffs, prompts, artifacts, people) and computed writes (progress, summaries,
    repo metrics/snapshots, the GitHub issue mirror) are direct "promote-class" writers in `src/tools/`.
 2. **Agents stage; humans confirm.** Promote / reject / ratify / triage assign & discard, artifact ratify,
-   prompt publish, every delete, which orgs a connection may use — session-cookie routes, NEVER MCP tools.
+   prompt publish, every delete but a sprint's, which orgs a connection may use — cookie routes, NEVER MCP.
 3. **The author is always the authenticated principal**, passed in by the caller; client-supplied authors
    are ignored. An MCP write is recorded as the token's person (no separate provenance).
 4. **Every tenant statement binds `ctx.orgId`.** D1 is reached only through a context, inside `src/data/`
@@ -86,7 +86,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
    degrade (`degraded: true`, 503 `{ error }`) — never a 500. Nothing on a render path calls GitHub or any
    other external service; external reads happen in the webhook, reconcile, Sync or cron.
 8. **Three auth classes, don't add a fourth:** session cookie (GitHub + Google feeding one sign-in fork),
-   bearer on `/mcp` (pasted `canopy_mcp_` or OAuth `canopy_oat_`, same person + org), HMAC on the webhooks.
+   bearer on `/mcp` (pasted `trov_mcp_` or OAuth `trov_oat_`; each names a person), HMAC on the webhooks.
    The Hono app is cookie-only. Signed-token exceptions (`/u/`, artifact upload/download) sit in
    `src/index.ts` before the session gate.
 9. **Admin is the ORG role** (`hasRole(ctx, "admin")`) — there is no handle allowlist. Superadmin is a
@@ -127,8 +127,8 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
   words, `ops` deploy steps, and patch lines ending `(#N)`. The merging PR cuts "Unreleased" into the next
   `0.N` (the file's header says how).
 - **Deferred seams — do NOT activate:** Cloudflare Queue, Vectorize (`// SEAM:` comments only).
-- The product was renamed Canopy → Trov, but stored identifiers keep the old name on purpose: the
-  `canopy_mcp_` / `canopy_oat_` token prefixes and the `canopy/*` commit-status contexts. Don't rename them.
+- The product was renamed Canopy → Trov, but stored identifiers keep the old name on purpose: issued
+  `canopy_mcp_` / `canopy_oat_` tokens (new: `trov_…`) and the `canopy/*` status contexts. Don't rename them.
 - `REPO_CRON` in `src/repo/cron.ts` must equal the expression in `wrangler.toml` (pinned by a test);
   Cloudflare cron weekdays are 1–7 or SUN–SAT, never 0.
 

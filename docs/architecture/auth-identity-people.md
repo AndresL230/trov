@@ -17,28 +17,32 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   session; anyone else → onboarding (a sealed 10-minute `onboard` cookie; the person row is created only on
   `POST /auth/onboard` with handle + color). Link mode (`?link=1` with a session) attaches a second provider in
   Settings; the last identity can't be unlinked.
-- **Bearer token** (agents, `/mcp`): either a pasted per-person `canopy_mcp_` token (stored hashed) or an
-  OAuth access token (`canopy_oat_`) obtained through Trov's own OAuth server — both resolve to a
+- **Bearer token** (agents, `/mcp`): either a pasted per-person `trov_mcp_` token (stored hashed) or an
+  OAuth access token (`trov_oat_`) obtained through Trov's own OAuth server (the prefixes minted before the
+  rename, `canopy_mcp_` / `canopy_oat_`, still resolve) — both resolve to a
   connection in `resolveBearerConnection` (`src/data/bearer.ts`), so OAuth is how a bearer is OBTAINED, not a
   fourth class. **Each call acts in ONE org, chosen only among the person's live memberships**: a token's one
   org; a `manual` connection's current org (of the set its person allowed); or, for a connection that
   `follows the repository`, the org that has the call's `repo` connected — else nothing is read or written.
   Removed member, suspended org → that org drops out at once; nowhere left → 401 (the full rule:
   `docs/architecture/data-layer.md` § Bearer).
-  **The Settings UI is OAuth-only** (the owner's call, 2026-09-27): nothing in the SPA mints, lists or revokes a
-  `canopy_mcp_` token any more — the Get connection command modal, the token list and their web client calls are
-  gone. The token routes REMAIN, so a token already in use keeps working: `POST /auth/mcp-token` still mints,
-  `GET /auth/mcp-tokens` lists the caller's live tokens by `token_hint` (the first 4 characters of the random
-  part), and `POST /auth/mcp-tokens/:id/revoke` soft-revokes the caller's OWN token — someone else's id is the
-  same 404 as an unknown one. All three are session-cookie routes, never MCP tools, with no screen in front of
-  them. Settings › MCP access (`mcpAccessSection` in `web/src/render.ts`) has, beside its heading, a quiet
+  **Connecting is browser sign-in only** (the owner's call, 2026-09-27): nothing in the SPA MINTS a pasted
+  token any more — the Get connection command modal is gone. The token routes REMAIN, per org, so a token
+  already in use keeps working: `POST /api/o/:slug/mcp-tokens` still mints (no screen calls it),
+  `GET /api/o/:slug/mcp-tokens` lists the caller's live tokens for that org by `token_hint` (the first 4
+  characters of the random part), and `POST …/mcp-tokens/:id/revoke` soft-revokes the caller's OWN token —
+  someone else's id is the same 404 as an unknown one (`src/auth/token-routes.ts`; `/auth/mcp-token…` is the
+  cut-over alias for a person with exactly one org). All three are session-cookie routes, never MCP tools.
+  Settings › MCP access shows the list-and-revoke half only: "Access tokens for <org>" (`tokenListBody`), drawn
+  when the person still has a live token there, with a two-click Revoke and a line saying Trov no longer
+  creates tokens. Settings › MCP access (`mcpAccessSection` in `web/src/render.ts`) has, beside its heading, a quiet
   "Set it up without the plugin" link that opens a MODAL (`mcpSetupModal`, `state.mcpSetup`: the confirmation
   modal's `.cnpy-cmodal` shell as a root-level `data-overlay`, focus in on open and back to the link on close,
   the backdrop / × / Escape close it, a bottom sheet on a phone) holding the by-hand
   `claude mcp add --transport http --scope user trov <origin>/mcp` (`browserConnectCommand`, no header) with a
   Copy button and the `/mcp` → Authenticate follow-up — so using it never changes the tile's height. The tile
   then reads top to bottom: one line of what it is; the browser sign-in as three steps — install the
-  plugin (`PLUGIN_INSTALL`, the same two commands the Get Started guide shows), `/mcp` → trov → Authenticate,
+  plugin (`PLUGIN_INSTALL`, the same two commands the Guide shows), `/mcp` → trov → Authenticate,
   click Allow in the browser; then **Connected apps** (the OAuth grants — below the steps, or beside them once
   the tile is ≥ 620px, the `cnpy-mcp` container — with a count, its own empty state, a two-click Revoke per row
   and its first `MCP_LIST_CAP` (3) rows until "Show all N"; no fixed height, no inner scroller).
