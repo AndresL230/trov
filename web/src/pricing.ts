@@ -190,10 +190,11 @@ function questions(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>, h: num
       <h${h} class="site-price-h">Questions</h${h}>
       <p>Something this doesn't answer? <a href="${attr(mailHref("A question about Trov pricing"))}">Ask us</a>.</p>
     </div>
-    <div class="site-faq">${pricingQuestions(defs, pricing).map((x, i) =>
-      // An accordion with no script: `<details>` opens and closes by itself, the shared `name` makes the
-      // group exclusive (opening one closes the open one), and the first starts open.
-      `<details name="pricing-faq"${i === 0 ? " open" : ""}><summary><h${h + 1}>${esc(x.q)}</h${h + 1}><svg class="site-faq-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></summary><p>${x.a}</p></details>`).join("")}</div>
+    <div class="site-faq" data-keep>${pricingQuestions(defs, pricing).map((x, i) =>
+      // An accordion: each question is a native `<details>` (it works with no script); site-faq.ts takes
+      // the click over to animate the answer's box open and shut and to keep one open at a time. The
+      // first starts open. `data-keep`: which one is open is the visitor's, so a repaint leaves it alone.
+      `<details${i === 0 ? ' open data-open="1"' : ' data-open="0"'}><summary><h${h + 1}>${esc(x.q)}</h${h + 1}><svg class="site-faq-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></summary><div class="site-faq-a"><p>${x.a}</p></div></details>`).join("")}</div>
   </div>`;
 }
 

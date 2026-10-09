@@ -13,6 +13,9 @@ import { BILLING_INTERVALS, BILLING_START_PATH, PRICING_PATH, PURCHASABLE_PLANS,
 import pricingHtml from "../web/pricing.html?raw";
 import viteConfig from "../web/vite.config.ts?raw";
 import trovCssRaw from "../web/src/trov.css?raw";
+import faqSrc from "../web/src/site-faq.ts?raw";
+import pricingPageSrc from "../web/src/pricing-page.ts?raw";
+import mainSrc from "../web/src/main.ts?raw";
 import { EVERY_PLAN, FREE_START_HREF, PRICING_TITLE, earlyAccessHref, pricingQuestions, pricingSection, pricingView, talkHref, waitlistHref } from "../web/src/pricing";
 import { landingView } from "../web/src/landing";
 import { siteFooter, SITE_CONTACT } from "../web/src/site-chrome";
@@ -352,27 +355,30 @@ describe("pricing — the limits are said once, on the cards", () => {
 describe("pricing — questions say only what is true today", () => {
   const defs = OFFERED_PLAN_IDS.map((id) => PLANS[id]);
   const qs = pricingQuestions(defs, PRICING);
-  it("the questions are an accordion: native details, one group, the first open", () => {
+  it("the questions are an accordion: native details, the first open, the answer in a box script can animate", () => {
     const html = pricingView(false);
-    const items = html.match(/<details name="pricing-faq"( open)?><summary>/g) ?? [];
+    const items = html.match(/<details( open)? data-open="[01]"><summary>/g) ?? [];
     expect(items).toHaveLength(qs.length);
-    expect(items[0]).toContain(" open");
-    expect(items.slice(1).every((x) => !x.includes(" open"))).toBe(true);
-    // Each question is still a heading (inside its summary), and its answer is in the same item.
-    expect(html).toMatch(/<summary><h\d>[^<]+<\/h\d><svg class="site-faq-chev"[\s\S]*?<\/summary><p>/);
-    // It spans the page's blocks (no cap of its own), and BOTH opening and closing animate, off under reduced motion.
-    const css = trovCssRaw.replace(/\s+/g, " ");
-    expect(css).toMatch(/\.site-faq \{ border-bottom:1px solid var\(--border\); interpolate-size:allow-keywords; \}/);
+    expect(items[0]).toBe('<details open data-open="1"><summary>');
+    expect(items.slice(1).every((x) => x === '<details data-open="0"><summary>')).toBe(true);
+    // Each question is still a heading (inside its summary); its answer sits in `.site-faq-a`, the box that moves.
+    expect(html).toMatch(/<summary><h\d>[^<]+<\/h\d><svg class="site-faq-chev"[\s\S]*?<\/summary><div class="site-faq-a"><p>/);
+    // Which one is open is the visitor's: a repaint of the page (morph.ts) leaves the accordion alone.
+    expect(html).toContain('<div class="site-faq" data-keep>');
     // Two columns: the heading (and a way to ask something else) left, the accordion right; one column when narrow.
-    expect(html).toMatch(/<div class="site-faq-wrap">\s*<div class="site-faq-side">\s*<h\d class="site-price-h">Questions<\/h\d>[\s\S]*?<a href="mailto:[^"]+">Ask us<\/a>[\s\S]*?<\/div>\s*<div class="site-faq">/);
+    const css = trovCssRaw.replace(/\s+/g, " ");
+    expect(html).toMatch(/<div class="site-faq-wrap">\s*<div class="site-faq-side">\s*<h\d class="site-price-h">Questions<\/h\d>[\s\S]*?<a href="mailto:[^"]+">Ask us<\/a>[\s\S]*?<\/div>\s*<div class="site-faq" data-keep>/);
     expect(css).toContain(".site-faq-wrap { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 2fr); gap:24px 64px; align-items:start; }");
     expect(css).toMatch(/@media \(max-width:860px\) \{ \.site-faq-wrap \{ grid-template-columns:minmax\(0, 1fr\); \}/);
-    expect(css).toMatch(/\.site-faq > details::details-content \{ block-size:0; opacity:0; overflow:clip; transition:block-size var\(--faq-t\) var\(--faq-e\), opacity [^;]+, content-visibility var\(--faq-t\) allow-discrete; \}/);
-    // One clock for the box that opens, the box that closes and the chevrons: no stutter between them.
-    expect(css).toContain(".site-faq { --faq-t:.38s; --faq-e:cubic-bezier(.4, 0, .2, 1); }");
-    expect(css).toMatch(/\.site-faq-chev \{[^}]*transition:transform var\(--faq-t\) var\(--faq-e\)/);
-    expect(css).toMatch(/\.site-faq > details\[open\]::details-content \{ block-size:auto; opacity:1; transition:block-size var\(--faq-t\) var\(--faq-e\),/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.site-faq > details::details-content,[^}]*transition:none; \}/);
+    // The motion is site-faq.ts's (CSS cannot animate a <details> in most browsers): the chevron turns when
+    // the move starts (`data-open`), and both entry points install the one listener.
+    expect(css).toContain('.site-faq > details[data-open="1"] .site-faq-chev { transform:rotate(180deg); }');
+    expect(css).toContain(".site-faq-a { overflow:hidden; }");
+    expect(css).not.toContain("::details-content");
+    expect(faqSrc).toContain('const EASING = "cubic-bezier(.4, 0, .2, 1)";');
+    expect(faqSrc).toContain("matchMedia(\"(prefers-reduced-motion: reduce)\")");
+    expect(pricingPageSrc).toContain("initFaqAccordion();");
+    expect(mainSrc).toContain("initFaqAccordion();");
   });
   const all = text(pricingSection() + pricingSection({ pricing: priced({ team: { yearly: 400 } }) }) + pricingSection({ pricing: unpriced() }));
 
