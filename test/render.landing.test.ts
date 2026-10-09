@@ -99,6 +99,8 @@ describe("landing — the banner carried through the page", () => {
     expect(pro).toMatch(/<a href="\/billing\/start\?plan=team&via=github" data-field="signInProGithub"[^>]*>[\s\S]*?Continue with GitHub<\/a>/);
     expect(pro).toMatch(/<a href="\/billing\/start\?plan=team&via=google" data-field="signInProGoogle"[^>]*>[\s\S]*?Continue with Google<\/a>/);
     expect(pro).not.toContain("Continue with Pro");
+    // A signed-out buyer the billing route sends back (`/?start=team`) lands on this same dialog, on Pro.
+    expect(mainSrc).toContain('if (params.get("start") === "team") {');
     expect(pro).not.toContain('data-act="signIn"'); // not the plain sign-in: that would lose the purchase
     expect(html).not.toContain("site-signin-plans");   // signing in: nothing to choose
     expect(signup).not.toContain(">Sign in to Trov<");

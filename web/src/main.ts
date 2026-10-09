@@ -4408,6 +4408,13 @@ if (params.get("denied") === "1") {
       // Unauthorized or any error → show login
       state.view = "auth";
       state.authStep = "login";
+      // Sent here by the billing route (`/?start=team`: a signed-out buyer who has not picked a provider —
+      // the pricing page's "Choose Pro"): Get started opens on that plan, so the two provider buttons
+      // carry on to payment. The parameter is read once and leaves the address bar.
+      if (params.get("start") === "team") {
+        state.signInOpen = true; state.signInMode = "signup"; state.signInPlan = "team";
+        history.replaceState(null, "", `/${location.hash}`);
+      }
       rerender();
     });
 }
