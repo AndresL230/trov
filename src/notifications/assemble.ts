@@ -220,6 +220,22 @@ function emailMark(side: number, ink: string = BAND.ink, cell = "on"): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="${side}" style="border-collapse:collapse;">${rows}</table>`;
 }
 
+/**
+ * The mail's card. FLUID up to `EMAIL_WIDTH`: `width="100%"` with a `max-width`, never a fixed pixel
+ * width — a `width="680"` table cannot shrink (a table is at least as wide as its `width`), so on a
+ * phone the whole mail came out 680px wide and the client either scaled it down to unreadable or
+ * scrolled it sideways. Outlook's Word engine ignores `max-width`, so it alone gets a fixed-width
+ * wrapper through a conditional comment.
+ */
+export function emailCardOpen(): string {
+  return `<!--[if mso]><table role="presentation" width="${EMAIL_WIDTH}" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:${EMAIL_WIDTH}px;margin:0 auto;background-color:${C.bg};border:1px solid ${C.border};border-radius:13px;">`;
+}
+export const EMAIL_CARD_CLOSE = `</table><!--[if mso]></td></tr></table><![endif]-->`;
+/** At phone width the banner's faint mark gives its room to the headline, and the page's gutter tightens.
+ *  Clients that drop `<style>` keep the mark, at a size (56px) that still leaves the text its room. */
+export const EMAIL_MOBILE_CSS = `@media (max-width:520px){.tm-art{display:none !important;}.tm-pad{padding:20px 10px !important;}.tm-title{font-size:22px !important;line-height:28px !important;}}`;
+
 /** What the banner says under the brand. Every part is optional; all are already-escaped HTML. */
 export interface EmailBannerText {
   /** A small uppercase label, top right: what kind of mail this is ("Invitation"). */
@@ -250,10 +266,10 @@ export function emailBanner(text?: string | EmailBannerText): string {
       `<td style="vertical-align:middle;${SANS}font-size:16px;font-weight:600;letter-spacing:-0.01em;line-height:1;color:${BAND.ink};">Trov</td>` +
       eyebrow +
       `</tr></table>` +
-      (t.title ? `<div data-banner-title style="${SANS}font-size:25px;line-height:31px;font-weight:600;letter-spacing:-0.02em;color:${BAND.ink};padding-top:20px;">${t.title}</div>` : "") +
+      (t.title ? `<div data-banner-title class="tm-title" style="${SANS}font-size:25px;line-height:31px;font-weight:600;letter-spacing:-0.02em;color:${BAND.ink};padding-top:20px;">${t.title}</div>` : "") +
       (t.lede ? `<div style="${SANS}font-size:13px;line-height:20px;color:${BAND.subline};padding-top:${t.title ? 6 : SP.s}px;">${t.lede}</div>` : "") +
     `</td>` +
-    `<td data-banner-art width="92" align="right" style="vertical-align:top;padding-left:16px;">` + emailMark(76, "rgba(255,255,255,.15)", "art") + `</td>` +
+    `<td data-banner-art class="tm-art" width="68" align="right" style="vertical-align:top;padding-left:12px;">` + emailMark(56, "rgba(255,255,255,.15)", "art") + `</td>` +
     `</tr></table>` +
     `</td></tr>`
   );
@@ -301,17 +317,17 @@ export function assembleMessage(opts: {
     `<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">` +
     `<title>${escapeHtml(subject)}</title>` +
     `<link href="${FONTS_HREF}" rel="stylesheet">` +
-    `<style>:root{color-scheme:light dark;}${darkCss()}</style></head>` +
+    `<style>:root{color-scheme:light dark;}${darkCss()}${EMAIL_MOBILE_CSS}</style></head>` +
     `<body style="margin:0;padding:0;background-color:${C.ground};">` +
     (preheader ? `<div style="display:none;max-height:0px;overflow:hidden;">${escapeHtml(preheader)}.</div>` : "") +
-    `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" style="padding:36px 16px;">` +
-    `<table role="presentation" width="${EMAIL_WIDTH}" cellpadding="0" cellspacing="0" border="0" style="width:${EMAIL_WIDTH}px;max-width:100%;background-color:${C.bg};border:1px solid ${C.border};border-radius:13px;">` +
+    `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" class="tm-pad" style="padding:36px 16px;">` +
+    emailCardOpen() +
     header(window.cadence, range) +
     blocks.join("") +
     `<tr><td style="padding:${SP.l}px 28px ${SP.l}px 28px;border-top:1px solid ${C.border};${SANS}font-size:12px;line-height:20px;color:${C.fg40};">` +
     `You're getting the ${window.cadence} Trov digest for ${escapeHtml(login)}. <a href="${escapeHtml(unsubscribeUrl)}" style="color:${C.fg40};text-decoration:underline;text-underline-offset:2px;">Unsubscribe</a><br>` +
     `Sent by Trov &middot; ${escapeHtml(host)}</td></tr>` +
-    `</table></td></tr></table></body></html>`;
+    EMAIL_CARD_CLOSE + `</td></tr></table></body></html>`;
 
   const title = `TROV ${window.cadence.toUpperCase()} — ${range.toUpperCase()}`;
   const text = [

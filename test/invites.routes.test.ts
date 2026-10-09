@@ -35,7 +35,7 @@ describe("renderInviteEmail", () => {
     const m = renderInviteEmail({ orgName: "Acme Robotics", role: "member", inviteeName: "Priya", inviterName: "Andres", email: "priya.n@gmail.com", signInUrl: "https://trov.test/x", host: "trov.test" });
     expect(m.html).toContain("You&#39;re invited to Acme Robotics on Trov.");
     // The headline is IN the band, reversed out of it, under an "Invitation" label — the first-run card's shape.
-    expect(m.html).toMatch(/<div data-banner-title style="[^"]*font-size:25px[^"]*color:#ffffff[^"]*">You&#39;re invited to Acme Robotics on Trov\.<\/div>/);
+    expect(m.html).toMatch(/<div data-banner-title class="tm-title" style="[^"]*font-size:25px[^"]*color:#ffffff[^"]*">You&#39;re invited to Acme Robotics on Trov\.<\/div>/);
     expect(m.html).toMatch(/text-transform:uppercase[^>]*>Invitation<\/td>/);
     expect(m.html.match(/re invited to Acme/g)).toHaveLength(1);
     expect(m.html.indexOf("re invited to Acme")).toBeLessThan(m.html.indexOf("Hi Priya,"));

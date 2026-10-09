@@ -10,7 +10,7 @@
 import type { Env } from "../env";
 import { type TenantContext, nowIso } from "../data/sql";
 import { escapeHtml } from "./html";
-import { EMAIL_COLORS as C, EMAIL_FONT, FONTS_HREF, EMAIL_STYLE, EMAIL_WIDTH, EMAIL_SPACE as SP, emailBanner } from "./assemble";
+import { EMAIL_COLORS as C, EMAIL_FONT, FONTS_HREF, EMAIL_STYLE, EMAIL_SPACE as SP, emailBanner, emailCardOpen, EMAIL_CARD_CLOSE, EMAIL_MOBILE_CSS } from "./assemble";
 import { deliveryFor } from "./resend";
 import { loadSettings } from "./cron";
 
@@ -33,10 +33,10 @@ export function renderWelcomeEmail(o: { name: string | null; handle: string; org
   const button = `display:inline-block;${EMAIL_FONT.sans}font-size:14px;line-height:20px;font-weight:600;color:#ffffff;background-color:${C.accent};text-decoration:none;padding:10px 18px;border-radius:9px;`;
   const handleStyle = `${EMAIL_FONT.sans}font-weight:500;color:${C.fg};`;
   const html =
-    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(subject)}</title><link href="${FONTS_HREF}" rel="stylesheet"></head>` +
+    `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(subject)}</title><link href="${FONTS_HREF}" rel="stylesheet"><style>${EMAIL_MOBILE_CSS}</style></head>` +
     `<body style="margin:0;padding:0;background-color:${C.ground};">` +
-    `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" style="padding:36px 16px;">` +
-    `<table role="presentation" width="${EMAIL_WIDTH}" cellpadding="0" cellspacing="0" border="0" style="width:${EMAIL_WIDTH}px;max-width:100%;background-color:${C.bg};border:1px solid ${C.border};border-radius:13px;">` +
+    `<table ${EMAIL_STYLE.table} style="background-color:${C.ground};"><tr><td align="center" class="tm-pad" style="padding:36px 16px;">` +
+    emailCardOpen() +
     emailBanner({ eyebrow: "Welcome", title: lede }) +
     `<tr><td style="padding:${SP.xl}px 28px 0 28px;">` +
     `<div style="${p}color:${C.fg};">${hi}</div>` +
@@ -45,7 +45,7 @@ export function renderWelcomeEmail(o: { name: string | null; handle: string; org
     `<div style="text-align:center;padding:0 0 ${SP.l}px 0;"><a href="${escapeHtml(start)}" style="${button}">Open the guided setup</a></div>` +
     `<div style="${EMAIL_FONT.sans}font-size:12.5px;line-height:20px;color:${C.fg55};padding-bottom:24px;">Your handle, name and colour are yours to change, and email digests are off until you pick a cadence — both live in <a href="${escapeHtml(settings)}" style="color:${C.fg70};">Settings</a>.</div></td></tr>` +
     `<tr><td style="padding:16px 28px;border-top:1px solid ${C.border};${EMAIL_FONT.sans}font-size:12px;line-height:20px;color:${C.fg40};">Sent by Trov &middot; ${escapeHtml(o.host)}</td></tr>` +
-    `</table></td></tr></table></body></html>`;
+    EMAIL_CARD_CLOSE + `</td></tr></table></body></html>`;
   const text = [
     subject, "=".repeat(subject.length), "",
     lede, "",
