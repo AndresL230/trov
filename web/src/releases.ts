@@ -160,7 +160,7 @@ export const RELEASES: Release[] = [
     headline: "Rendered shows a proposed doc the way it will read, and a card you decide on leaves the list in one clear move.",
     highlights: [
       "Rendered now shows the document, not its source. A proposed doc reads the way it will in Docs once promoted: headings, tables, lists, code and images, where before you saw the raw text with its # and | marks.",
-      "For a change to an existing doc, Rendered marks what the proposal adds in green and shows what it removes struck through, a paragraph, a list item or a table row at a time. A brand-new doc is shown plain, with one line saying nothing is live yet.",
+      "For a change to an existing doc, Rendered marks what the proposal adds in green and shows what it removes struck through, inside the text where a sentence, a list item or a table cell was edited, and a whole paragraph, item or row at a time where one was added, removed or rewritten. A brand-new doc is shown plain, with one line saying nothing is live yet.",
       "When you promote, ratify or reject, the card shows the verdict, folds away, and the next one is already open on the right. The counts drop with it, and you can decide several in a row without waiting. If a decision could not be saved, the card comes back and a message says why.",
       "The queue's filter and the way a change is shown are now switches like the rest of Trov. All, Proposals and Decisions each say how many are waiting.",
       "The list keeps its place. Picking a card far down a long queue no longer jumps the list back to the top.",
@@ -168,6 +168,7 @@ export const RELEASES: Release[] = [
     ],
     patches: {
       added: [
+        "`web/src/html-words.ts`: two renderings of one block merged word by word (`mergeInline`), so Rendered marks an edit INSIDE a paragraph, heading, list item or table cell (`<ins class=\"cnpy-rv-w\">` / `<del class=\"cnpy-rv-w\">`, `data-chg=\"mix\"`, `tr.cnpy-rv-row-chg`) instead of showing the old block and then the new one. A tag is one token with its quoted attribute values, only text tokens are wrapped, no old tag is kept, and anything the tokenizer cannot account for refuses the merge; an edited table row pairs with the added row it still shares a cell with (#138)",
         "`web/src/review-rendered.ts` + `web/src/md-blocks.ts`: Review's Rendered view renders the two BODIES through `renderMarkdown` (the Docs reader's pipeline: marked, DOMPurify, the code / table / doc-image pass) in `.cnpy-md`. An edit is cut into top-level blocks with marked's lexer, compared with `diffSeq`, and each changed block sits in an `<ins>` / `<del>` (`.cnpy-rv-blk`); a table whose header stayed is ONE table with its changed rows classed (`cnpy-rv-row-add` / `-del`), a list is compared item by item. A new doc (`isNew`: nothing live) is one call, unmarked, under one note (#138)",
         "`morph.ts` `data-morph-list`: a keyed child list. Children pair by `data-morph-key` instead of by index, so a row taken out of the middle leaves every other row the element it was. `docs/architecture/web-ui.md` › A row leaving a list is the pattern to reuse (#138)",
         "Review's list exit: `state.reviewLeaving` (`{ verdict, gone }` by item id), `reviewVerdict` / `settleReview` / `pruneReviewLeaving` in `main.ts`, `.cnpy-rv-row[data-verdict]` in `trov.css` (the verdict held .13s, then `grid-template-rows:1fr → 0fr` and opacity over `--fx-fast`; `REVIEW_EXIT_MS` 310). The refetch is held until no card is still collapsing; a failed write deletes the entry and restores the selection (#138)",
@@ -180,6 +181,7 @@ export const RELEASES: Release[] = [
         "`ReviewItem` carries `liveBody`, `proposedBody` and `isNew`; `diffViewer(item, view)` replaces `diffViewer(entries, view, liveLabel)`; `lineDiff` is built on the new `diffSeq` (#138)",
       ],
       fixed: [
+        "Review › Rendered: removed text inside a table row or block was struck twice where it held inline code or bold (the strike was set on the cell and again on the child); it is set once, on the removed box (#138)",
         "Review › Rendered showed raw markdown: it printed the line-cut diff one escaped line at a time, so no table, list or code fence could ever form, and unchanged runs were collapsed away (#138)",
         "Review said its name twice (the header's title and an in-page heading); the in-page `<h1>` is gone and the one-line description stays (#138)",
         "Selecting a card rebuilt the whole screen and reset the list's scroll to the top (#138)",

@@ -12,14 +12,19 @@
 //     blocks are compared (diff.ts `diffSeq`), and each block is rendered on its own inside an
 //     `<ins>` (added) or `<del>` (removed) when it changed. A table whose header stayed is compared
 //     row by row and rendered as ONE table with its changed rows marked; a list item by item.
+//     And where a block was EDITED rather than replaced — a paragraph or heading reworded, a table
+//     row with one cell changed, a list item touched — the two renderings are merged word by word
+//     (html-words.ts): one block, the new words marked and the dropped ones struck inside it.
 //
 // Trust boundary: a doc body is agent-proposed. Nothing here interpolates body text into the page
 // — the only strings this module writes around `renderMarkdown`'s output are its own constant
-// tags, and the one edit it makes to that output (a class on a table row) inserts a constant.
+// tags, and the edits it makes to that output insert constants only: a class on a table row, and
+// html-words.ts's two word wrappers, which re-order sanitized tokens and never keep an old tag.
 
 import { renderMarkdown } from "./markdown";
 import { markdownBlocks, type MdBlock } from "./md-blocks";
 import { diffSeq } from "./diff";
+import { innersOf, mapInners, mergeInline, replaced, soleElement } from "./html-words";
 import { surface } from "./ui";
 
 type Change = "add" | "del";
@@ -27,10 +32,36 @@ type Change = "add" | "del";
 export const RENDERED_NEW_NOTE = "New document. Nothing is live under this name yet: this is how it reads once promoted.";
 export const RENDERED_SAME_NOTE = "Nothing changes in how this document reads: the edit is whitespace or formatting in the source only.";
 
-/** A changed block: `<ins>` / `<del>` are block boxes here (trov.css `.cnpy-rv-blk`). */
-function mark(html: string, change: Change): string {
-  const tag = change === "add" ? "ins" : "del";
+/** A changed block: `<ins>` / `<del>` are block boxes here (trov.css `.cnpy-rv-blk`). `mix` is a
+ *  block EDITED in place: a plain box with a rule in its margin, the words inside carry the marks. */
+function mark(html: string, change: Change | "mix"): string {
+  const tag = change === "add" ? "ins" : change === "del" ? "del" : "div";
   return `<${tag} class="cnpy-rv-blk" data-chg="${change}">${html}</${tag}>`;
+}
+
+/** A paragraph (or heading) reworded: ONE block, the edit marked word by word. null when the two
+ *  are not the same kind of block, or share too little to be one text edited. */
+function mergedBlock(o: MdBlock, n: MdBlock, oDefs: string, nDefs: string, seen: Set<Change>): string | null {
+  const a = soleElement(md(o.raw, oDefs), /^(p|h[1-6])$/), b = soleElement(md(n.raw, nDefs), /^(p|h[1-6])$/);
+  if (!a || !b || a.name !== b.name) return null;
+  const inner = mergeInline(a.inner, b.inner);
+  if (inner === null) return null;
+  seen.add("add"); seen.add("del");
+  return mark(`${b.before}${b.open}${inner}${b.close}${b.after}`, "mix");
+}
+
+/** Two renderings of a table row (`<td>…</td>…</tr>`), as the new row with each cell's edit marked. */
+function mergedRow(oldPart: string, newPart: string): string | null {
+  const was = innersOf(oldPart, "td"), now = innersOf(newPart, "td");
+  if (!was || !now || was.length === 0 || was.length !== now.length) return null;
+  let ok = true;
+  const out = mapInners(newPart, "td", (inner, k) => {
+    if (was[k] === inner) return inner;
+    const cell = mergeInline(was[k], inner) ?? replaced(was[k], inner);
+    if (cell === null) ok = false;
+    return cell ?? inner;
+  });
+  return ok ? out : null;
 }
 
 /** One block (or a few source lines of one) through the reader's renderer. */
@@ -51,11 +82,52 @@ function mergedTable(o: MdBlock, n: MdBlock, defs: string, seen: Set<Change>): s
   const parts = html.slice(at).split("<tr>");
   if (parts.length - 1 !== rows.length) return null;
   for (const r of rows) if (r.t !== "ctx") seen.add(r.t);
+  // Removed rows followed by added ones in the same place: a removed row and an added row that still
+  // share a cell are ONE row, edited — shown once, its changed cells marked inside. (Rows that share
+  // nothing stay a row removed and a row added; with as many of each, they pair off in order.)
+  const edited = new Map<number, string>(), gone = new Set<number>();
+  const cellsAt = (r: number) => innersOf(parts[r + 1], "td");
+  for (let i = 0; i < rows.length;) {
+    if (rows[i].t !== "del") { i++; continue; }
+    let d = i; while (d < rows.length && rows[d].t === "del") d++;
+    let e = d; while (e < rows.length && rows[e].t === "add") e++;
+    for (let x = i; x < d; x++) {
+      const was = cellsAt(x);
+      let best = -1, score = 0;
+      for (let y = d; y < e; y++) {
+        if (edited.has(y)) continue;
+        const now = cellsAt(y);
+        const same = was && now && was.length === now.length ? was.filter((c, k) => c === now[k]).length : 0;
+        if (same > score) { best = y; score = same; }
+      }
+      if (best < 0 && e - d === d - i && !edited.has(d + (x - i))) best = d + (x - i);
+      const row = best < 0 ? null : mergedRow(parts[x + 1], parts[best + 1]);
+      if (row !== null) { gone.add(x); edited.set(best, row); }
+    }
+    i = e;
+  }
   return html.slice(0, at) + parts.map((p, i) => {
     if (i === 0) return p;
+    if (gone.has(i - 1)) return "";
+    const row = edited.get(i - 1);
+    if (row !== undefined) return `<tr class="cnpy-rv-row-chg">${row}`;
     const t = rows[i - 1].t;
     return `${t === "ctx" ? "<tr>" : `<tr class="cnpy-rv-row-${t}">`}${p}`;
   }).join("");
+}
+
+/** A run of removed items and the run of as many added ones after it, as ONE run with each item's
+ *  edit marked. null when an item has a list inside it, or any pair is not one text edited. */
+function mergedItems(oldHtml: string, newHtml: string, count: number): string | null {
+  const was = innersOf(oldHtml, "li"), now = innersOf(newHtml, "li");   // null for a nested list
+  if (!was || !now || was.length !== count || now.length !== count) return null;
+  let ok = true;
+  const out = mapInners(newHtml, "li", (inner, k) => {
+    const merged = mergeInline(was[k], inner);
+    if (merged === null) ok = false;
+    return merged ?? inner;
+  });
+  return ok ? out : null;
 }
 
 /** Two versions of a list, item by item: each run of unchanged / added / removed items is its own
@@ -73,15 +145,24 @@ function mergedList(o: MdBlock, n: MdBlock, defs: string, seen: Set<Change>): st
     if (op.t !== "del") num++;
   }
   const sep = n.list.loose ? "\n\n" : "\n";
-  const out = runs.map((run) => {
+  const html = runs.map((run) => {
     const items = [...run.items];
     // An ordered run that is in the proposed doc starts at its number there.
     if (n.list!.ordered && run.t !== "del") items[0] = items[0].replace(/^(\s*)\d+([.)])/, `$1${run.at}$2`);
-    const html = md(items.join(sep), defs);
-    if (run.t === "ctx") return html;
+    return md(items.join(sep), defs);
+  });
+  let out = "";
+  for (let i = 0; i < runs.length; i++) {
+    const run = runs[i], after = runs[i + 1];
+    if (run.t === "ctx") { out += html[i]; continue; }
     seen.add(run.t);
-    return mark(html, run.t);
-  }).join("");
+    // Removed items followed by as many added ones: those items edited, marked inside each.
+    if (run.t === "del" && after?.t === "add" && after.items.length === run.items.length) {
+      const merged = mergedItems(html[i], html[i + 1], run.items.length);
+      if (merged !== null) { seen.add("add"); out += mark(merged, "mix"); i++; continue; }
+    }
+    out += mark(html[i], run.t);
+  }
   return `<div class="cnpy-rv-list">${out}</div>`;
 }
 
@@ -103,13 +184,16 @@ function editBlocks(live: string, proposed: string, seen: Set<Change>): string {
     }
     // A removed table and an added one (a list and a list) in the same hunk are the same thing, edited.
     const was = new Map<MdBlock, MdBlock>();
-    for (const type of ["table", "list"]) {
+    // So are a removed paragraph (heading) and an added one, when they read as one text reworded.
+    for (const type of ["table", "list", "paragraph", "heading"]) {
       const d = dels.filter((b) => b.type === type), a = adds.filter((b) => b.type === type);
       for (let k = 0; k < Math.min(d.length, a.length); k++) was.set(a[k], d[k]);
     }
     const merged = new Map<MdBlock, string>();
     for (const [a, d] of was) {
-      const html = a.type === "table" ? mergedTable(d, a, n.defs, seen) : mergedList(d, a, n.defs, seen);
+      const html = a.type === "table" ? mergedTable(d, a, n.defs, seen)
+        : a.type === "list" ? mergedList(d, a, n.defs, seen)
+        : mergedBlock(d, a, o.defs, n.defs, seen);
       if (html !== null) merged.set(a, html);
     }
     // Reading order: a merged table / list stands where it does in BOTH docs, so what was removed
@@ -153,6 +237,7 @@ export function renderedDoc(live: string, proposed: string, isNew: boolean): str
     const items = [
       seen.has("add") ? `<span><span class="cnpy-rv-sw" style="${SWATCH};background:var(--green)"></span>added in this proposal</span>` : "",
       seen.has("del") ? `<span><span class="cnpy-rv-sw" style="${SWATCH};background:var(--red)"></span>removed (struck)</span>` : "",
+      body.includes('data-chg="mix"') || body.includes("cnpy-rv-row-chg") ? `<span><span class="cnpy-rv-sw" style="${SWATCH};background:var(--amber)"></span>edited in place</span>` : "",
     ].join("");
     foot = `<div class="cnpy-rv-legend" style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:22px;padding-top:14px;border-top:1px solid var(--border);${NOTE}">${items || `<span>${RENDERED_SAME_NOTE}</span>`}</div>`;
   }

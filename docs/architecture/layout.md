@@ -144,7 +144,7 @@
   the five-tab Repo dashboard, plus the `#unsubscribe` confirmation screen) served via the ASSETS binding;
   `web/src/markdown.ts` renders PR summaries, the roadmap narrative and a sprint description as styled HTML;
   `web/src/review.ts` is the Review screen (the queue, the detail, the source diff views), `web/src/review-rendered.ts`
-  its Rendered view (the proposed doc through that same renderer, changed blocks marked) over `web/src/md-blocks.ts`
+  its Rendered view (the proposed doc through that same renderer, changed blocks marked, edits marked word by word by `web/src/html-words.ts`) over `web/src/md-blocks.ts`
   (a body cut into marked's top-level blocks) and `web/src/diff.ts` (`diffSeq`, the line diff);
   `web/src/notifications.ts` holds the Settings › Email notifications and Org settings › Notifications views;
   `web/src/tickets.ts` + `web/src/sprints.ts` are the (purely presentational) tickets/sprint components, and
