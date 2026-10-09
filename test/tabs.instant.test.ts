@@ -219,7 +219,8 @@ describe("the page is patched in place, and only the panel is replaced", () => {
     expect(app("org")).toMatch(/<main data-morph="org"/);
     expect(app("platform")).toMatch(/<main data-morph="platform"/);
     expect(app("platformorg")).toMatch(/<main data-morph="platformorg"/);
-    expect(app("review")).not.toMatch(/<main data-morph=/);
+    expect(app("review")).toMatch(/<main data-morph="review"/);   // its list is keyed (web-ui.md › A row leaving a list)
+    expect(app("feed")).not.toMatch(/<main data-morph=/);
   });
   it("the standalone Platform page does too", () => {
     const s = initialState();

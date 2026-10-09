@@ -7,8 +7,9 @@
 // Interactions dispatch via data-act / data-arg handled in main.ts. No fetching,
 // no inline data.
 
-import { esc, attr, statusBadge, selectChip, MONO_LABEL, surface, SURFACE } from "./ui";
-import { tenantHref } from "./api";
+import { esc, attr, statusBadge, MONO_LABEL, surface, SURFACE } from "./ui";
+import { segmented } from "./segmented";
+import { renderedDoc } from "./review-rendered";
 import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
 import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
@@ -17,6 +18,13 @@ import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skLines, skLi
 export type ReviewKind = "proposal" | "decision";
 export type ReviewFilter = "all" | ReviewKind;
 export type DiffViewMode = "unified" | "split" | "rendered";
+/** What a person just decided about an item — the word its card wears while it leaves the queue. */
+export type ReviewVerdict = "promoted" | "ratified" | "rejected";
+export const VERDICT_LABEL: Record<ReviewVerdict, string> = { promoted: "Promoted", ratified: "Ratified", rejected: "Rejected" };
+/** How long a card takes to leave the list: its verdict held for .13s, then the collapse over
+ *  `--fx-fast` (.18s). trov.css `.cnpy-rv-row[data-verdict]` is the other half — keep the two in
+ *  step (test/render.review.test.ts reads both). */
+export const REVIEW_EXIT_MS = 310;
 
 /** One line of a proposal's diff: ctx / add / del, `h` = heading context, `gap` = hunk separator. */
 export type DiffEntryKind = "ctx" | "add" | "del" | "gap" | "h" | "ellipsis";
@@ -48,6 +56,11 @@ export interface ReviewItem {
   staleNote?: string;
   liveVersion?: string; // split-view left header, e.g. "LIVE (v8)"
   diff?: DiffEntry[]; // proposals
+  /** A proposal's two bodies, whole — what Rendered renders (the diff above is line-cut source). */
+  liveBody?: string;
+  proposedBody?: string;
+  /** Nothing is live under this slug yet: the proposal is the doc's first version. */
+  isNew?: boolean;
   adr?: AdrSection[]; // decisions
 }
 
@@ -58,28 +71,43 @@ export interface ReviewProps {
   /** null → default to the first visible item. */
   selectedId: string | null;
   diffView: DiffViewMode;
+  /** Items a verdict was just given to, still on screen: each card wears its verdict and
+   *  collapses (web-ui.md › A row leaving a list). They are out of the counts, never selected. */
+  leaving?: Record<string, ReviewVerdict>;
   /** The queue's first read is still out: the frame and filter are real, the list and
    *  the detail pane hold skeletons (never "Queue is clear" before it is known). */
   loading?: boolean;
 }
 
 // ── list pane ────────────────────────────────────────────────────────────────
-export function reviewFilterChips(filter: ReviewFilter): string {
-  const chips: [ReviewFilter, string][] = [["all", "All"], ["proposal", "Proposals"], ["decision", "Decisions"]];
-  return `<div style="display:flex;gap:6px;margin:14px 0 12px">${chips
-    .map(([key, label]) => selectChip(label, filter === key, "reviewFilter", key))
-    .join("")}</div>`;
+/** All / Proposals / Decisions: ONE list, three views of it — a pick-one, so `segmented()`
+ *  (not a tab bar: the page below does not change section, the list narrows). Each option
+ *  carries how many are waiting; a zero stays, so the switch never changes width. */
+export function reviewFilterSwitch(filter: ReviewFilter, counts: Record<ReviewFilter, number> | null): string {
+  const n = (k: ReviewFilter) => (counts ? `<span class="cnpy-seg-n">${counts[k]}</span>` : "");
+  return `<div style="margin:12px 0 12px">${segmented({
+    id: "review-filter", ariaLabel: "Show", act: "reviewFilter", value: filter, size: "sm", inertOn: true,
+    options: [
+      { value: "all", label: "All", trail: n("all") },
+      { value: "proposal", label: "Proposals", trail: n("proposal") },
+      { value: "decision", label: "Decisions", trail: n("decision") },
+    ],
+  })}</div>`;
 }
 
 /** One review queue row — mirrors the detail header: title first, status badge
  *  up-right on the title row, 2-line summary, then a byline that folds the
  *  record type · identifier (label-face) into the author · date. */
-export function reviewCard(it: ReviewItem, selected: boolean): string {
+export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVerdict | null = null): string {
   const { type, id } = splitEyebrow(it.eyebrow);
   const dot = `<span style="color:var(--fg-40)">·</span>`;
-  return `<button data-act="reviewSelect" data-arg="${attr(it.id)}" class="cnpy-titem ${SURFACE} cnpy-card">
-    ${selected ? `<span class="cnpy-selbar"></span>` : ""}
-    <div style="position:relative">
+  // The row is the list's KEYED child (`data-morph-key`): a repaint patches it in place, so a card
+  // that leaves can collapse and the cards under it glide up as the same elements. Its structure is
+  // the same in every state — the selection bar and the verdict label are always emitted and shown
+  // by attribute. A row with a verdict is `inert`: it is on its way out.
+  return `<div class="cnpy-rv-row" data-morph-key="rv:${attr(it.id)}"${verdict ? ` data-verdict="${verdict}" inert` : ""}><div class="cnpy-rv-row-in"><button data-act="reviewSelect" data-arg="${attr(it.id)}" class="cnpy-titem ${SURFACE} cnpy-card"${selected ? ` aria-current="true"` : ""}>
+    <span class="cnpy-selbar"></span>
+    <div class="cnpy-rv-card-in" style="position:relative">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(it.title)}</div>
         <div style="display:flex;align-items:center;gap:6px;flex:none">${statusBadge(it.badge, it.badgeColor)}${it.flagged ? statusBadge("FLAGGED", "var(--amber)") : ""}</div>
@@ -92,8 +120,11 @@ export function reviewCard(it: ReviewItem, selected: boolean): string {
         ${dot}<span style="color:var(--fg-40)">${esc(it.time)}</span>
       </div>
     </div>
-  </button>`;
+    <span class="cnpy-rv-verdict" aria-hidden="true">${verdict ? `${verdict === "rejected" ? X_ICON : CHECK_ICON}${VERDICT_LABEL[verdict]}` : ""}</span>
+  </button></div></div>`;
 }
+const CHECK_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>`;
+const X_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
 
 /** The agent byline piece: a colored chip + handleTag when mapped to a person,
  *  else a bare muted handleTag (personChip falls back to initials). */
@@ -201,64 +232,22 @@ export function splitDiff(entries: DiffEntry[], liveLabel: string): string {
   </div>`;
 }
 
-/** `![alt](/img/<sha256>)` — an uploaded doc image in a markdown line. */
-const IMG_MD = /!\[([^\]]*)\]\(\s*<?\/img\/([0-9a-f]{64})>?\s*\)/g;
-
-/** A line's doc images as the pictures themselves, outlined by what the proposal does
- *  to them (added / removed), each opening the lightbox. Empty when the line has none. */
-function lineImages(text: string, t: DiffEntry["t"]): string {
-  const imgs = [...text.matchAll(IMG_MD)];
-  if (!imgs.length) return "";
-  const edge = t === "add" ? "var(--green)" : t === "del" ? "var(--red)" : "var(--border)";
-  return imgs.map((m) => `<figure style="margin:4px 0 14px">
-      <button type="button" class="cnpy-md-img" data-act="docImgZoom" data-arg="${m[2]}" aria-label="Expand image${m[1] ? `: ${esc(m[1])}` : ""}" style="border-color:${edge}${t === "del" ? ";opacity:.55" : ""}"><img src="${attr(tenantHref(`/img/${m[2]}`))}" alt="${esc(m[1])}" loading="lazy" decoding="async" /></button>
-      ${m[1] ? `<figcaption style="font-size:12px;color:var(--fg-40);margin-top:6px${t === "del" ? ";text-decoration:line-through" : ""}">${esc(m[1])}</figcaption>` : ""}
-    </figure>`).join("");
-}
-
-export function renderedPreview(entries: DiffEntry[]): string {
-  const blocks = entries.filter((e) => e.t !== "gap").map((e) => {
-    const raw = e.s ?? "";
-    const pics = e.t === "ellipsis" ? "" : lineImages(raw, e.t);
-    const text = pics ? raw.replace(IMG_MD, "").trim() : raw;
-    if (pics && !text) return pics;
-    const line = renderedLine(e, text);
-    return pics ? line + pics : line;
-  }).join("");
-  return renderedFrame(blocks);
-}
-
-function renderedLine(e: DiffEntry, text: string): string {
-  if (e.t === "ellipsis") return `<div style="border-top:1px dashed var(--border);margin:16px 0"></div>`;
-  if (e.t === "h") return `<div style="font-size:18px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);margin:18px 0 10px">${esc(text.replace(/^#+\s*/, ""))}</div>`;
-  const base = "font-size:15px;line-height:1.72;margin:0 0 10px";
-  if (e.t === "del") return `<div style="${base};text-decoration:line-through;color:color-mix(in srgb,var(--red) 75%,transparent);background:color-mix(in srgb,var(--red) 6%,transparent);border-radius:4px;padding:2px 6px">${esc(text)}</div>`;
-  if (e.t === "add") return `<div style="${base};color:var(--fg);background:color-mix(in srgb,var(--green) 9%,transparent);border-radius:4px;padding:2px 6px">${esc(text)}</div>`;
-  return `<div style="${base};color:var(--fg-70)">${esc(text)}</div>`;
-}
-
-function renderedFrame(blocks: string): string {
-  return `<div${surface("padding:22px 28px 26px")}>
-    ${blocks}
-    <div style="display:flex;gap:16px;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)">
-      <div style="font-size:11px;color:var(--fg-40)"><span style="color:var(--green)">■</span> added in this proposal</div>
-      <div style="font-size:11px;color:var(--fg-40)"><span style="color:var(--red)">■</span> removed (struck)</div>
-    </div>
-  </div>`;
-}
-
-/** "WHAT CHANGED" header + Unified / Side by side / Rendered toggle + the active mode. */
-export function diffViewer(entries: DiffEntry[], view: DiffViewMode, liveLabel: string): string {
-  const chips: [DiffViewMode, string][] = [["unified", "Unified"], ["split", "Side by side"], ["rendered", "Rendered"]];
-  const toggle = chips.map(([key, label]) => selectChip(label, view === key, "reviewDiffView", key, true)).join("");
-  const body = view === "split" ? splitDiff(entries, liveLabel)
-    : view === "rendered" ? renderedPreview(entries)
+/** "WHAT CHANGED", the Unified / Side by side / Rendered switch, and the picked mode's body.
+ *  Unified and Side by side show the SOURCE, cut by line; Rendered shows the document as the Docs
+ *  reader will (review-rendered.ts). The body is a keyed part: changing the mode replaces it alone. */
+export function diffViewer(it: Pick<ReviewItem, "diff" | "liveVersion" | "liveBody" | "proposedBody" | "isNew">, view: DiffViewMode): string {
+  const entries = it.diff ?? [];
+  const body = view === "split" ? splitDiff(entries, it.liveVersion ?? "LIVE")
+    : view === "rendered" ? renderedDoc(it.liveBody ?? "", it.proposedBody ?? "", it.isNew === true)
     : unifiedDiff(entries);
-  return `<div style="display:flex;align-items:center;justify-content:space-between;margin:22px 0 10px">
+  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:22px 0 10px">
     <div style="${MONO_LABEL}">WHAT CHANGED</div>
-    <div style="display:flex;gap:5px">${toggle}</div>
+    ${segmented({
+      id: "review-diff", ariaLabel: "How to show the change", act: "reviewDiffView", value: view, size: "sm", inertOn: true,
+      options: [{ value: "unified", label: "Unified" }, { value: "split", label: "Side by side" }, { value: "rendered", label: "Rendered" }],
+    })}
   </div>
-  ${body}`;
+  <div class="cnpy-rv-diff" data-morph-key="diff:${view}">${body}</div>`;
 }
 
 /** Drafted decision: the proposed ADR record (Context / Decision / Consequences). */
@@ -294,11 +283,12 @@ export function reviewDetail(it: ReviewItem, diffView: DiffViewMode): string {
   const acceptLabel = it.kind === "decision" ? "Ratify" : "Promote";
   const content = it.kind === "decision"
     ? adrRecord(it.adr ?? [])
-    : diffViewer(it.diff ?? [], diffView, it.liveVersion ?? "LIVE");
+    : diffViewer(it, diffView);
   const { type, id } = splitEyebrow(it.eyebrow);
   // Byline: record type · identifier (label-face, reads as a reference) · author · date.
   const dot = `<span style="color:var(--fg-40)">·</span>`;
-  return `<div class="cnpy-rv-body" style="max-width:920px;padding:24px 32px 100px">
+  // Keyed by the item: another item REPLACES the body (never patched into it), a repaint of the same one patches.
+  return `<div class="cnpy-rv-body" data-morph-key="rvd:${attr(it.id)}" style="max-width:920px;padding:24px 32px 100px">
     <div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
       <div style="min-width:0">
         <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">${esc(it.title)}</h2>
@@ -354,28 +344,41 @@ export function reviewQueueClear(): string {
 
 // ── composed surface ─────────────────────────────────────────────────────────
 const BACK_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>`;
-export function reviewView(p: ReviewProps): string {
-  const visible = p.items.filter((it) => p.filter === "all" || it.kind === p.filter);
-  // Selection survives a filter that hides it (the detail keeps showing it);
-  // with nothing explicitly selected, default to the first visible item.
-  const sel = (p.selectedId !== null ? p.items.find((it) => it.id === p.selectedId) : undefined) ?? visible[0] ?? null;
+/** The one line under the header's title: what the queue is. The screen's name is the app
+ *  header's — nothing in the page repeats it (org-ui.ts rule 1; Unplaced does the same). */
+export const REVIEW_INTRO = "Agent-produced changes waiting for a verdict.";
 
-  const list = p.loading ? reviewListSkeleton()
-    : visible.length > 0
-    ? visible.map((it) => reviewCard(it, sel !== null && it.id === sel.id)).join("")
-    : reviewListEmpty(p.filter === "all");
+export function reviewView(p: ReviewProps): string {
+  const leaving = p.leaving ?? {};
+  const waiting = p.items.filter((it) => !leaving[it.id]);
+  const inFilter = (it: ReviewItem) => p.filter === "all" || it.kind === p.filter;
+  const visible = p.items.filter(inFilter);            // the rows on screen, the leaving ones among them
+  const visibleWaiting = waiting.filter(inFilter);
+  // Selection survives a filter that hides it (the detail keeps showing it);
+  // with nothing explicitly selected, default to the first visible item still waiting.
+  const sel = (p.selectedId !== null ? waiting.find((it) => it.id === p.selectedId) : undefined) ?? visibleWaiting[0] ?? null;
+  const counts: Record<ReviewFilter, number> | null = p.loading ? null : {
+    all: waiting.length,
+    proposal: waiting.filter((it) => it.kind === "proposal").length,
+    decision: waiting.filter((it) => it.kind === "decision").length,
+  };
+
+  // The list is KEYED (`data-morph-list`): rows pair by `data-morph-key`, so a filter or a verdict
+  // inserts and removes rows and leaves every other row the element it was. When the last row is
+  // leaving, the empty layout is already under it and rises as the row collapses — no jump.
+  const list = p.loading ? `<div data-morph-key="rv-skel">${reviewListSkeleton()}</div>`
+    : `${visible.map((it) => reviewCard(it, sel !== null && it.id === sel.id, leaving[it.id] ?? null)).join("")}${visibleWaiting.length === 0 ? `<div data-morph-key="rv-empty">${reviewListEmpty(p.filter === "all")}</div>` : ""}`;
 
   // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or —
   // once an item is picked by hand — its detail, with a back button to the list.
   const pane = p.selectedId !== null && sel ? "detail" : "list";
   return `<div class="cnpy-rv" data-pane="${pane}" style="display:flex;height:100%;min-width:0">
     <div class="cnpy-rv-list" style="width:376px;flex:none;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
-      <div style="padding:22px 20px 0">
-        <h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Review</h1>
-        <div style="font-size:12.5px;color:var(--fg-55);margin-top:3px">Agent-produced changes waiting for a verdict.</div>
-        ${reviewFilterChips(p.filter)}
+      <div style="padding:16px 20px 0">
+        <div style="font-size:12.5px;color:var(--fg-55)">${esc(REVIEW_INTRO)}</div>
+        ${reviewFilterSwitch(p.filter, counts)}
       </div>
-      <div class="cnpy-scroll cnpy-stagger" style="flex:1;overflow-y:auto;padding:2px 14px 80px">${list}</div>
+      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px">${list}</div>
     </div>
     <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
       <button data-act="reviewBack" class="cnpy-rv-back">${BACK_ICON}All items</button>

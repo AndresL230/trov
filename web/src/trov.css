@@ -347,8 +347,63 @@ input, select { font-family: inherit; }
 /* A Review queue card: a surface (class="cnpy-titem cnpy-surface cnpy-card") — this only lays it out. */
 .cnpy-titem { display:block; width:100%; text-align:left; padding:13px 15px; margin-bottom:8px; position:relative; transition:all .12s ease; cursor:pointer; }
 .cnpy-selbar { position:absolute; inset:0; border-radius:inherit; border:1px solid var(--border-strong); background:var(--hover); box-shadow:inset 2px 0 0 var(--accent); pointer-events:none; }
-/* Review list cards: selected state keeps the border + fill, no left accent bar. */
-.cnpy-titem .cnpy-selbar { box-shadow:none; }
+/* Review list cards: selected state keeps the border + fill, no left accent bar. The bar is
+   always in the card (the list is patched in place, so a card's structure never changes) and is
+   shown by `aria-current`. */
+.cnpy-titem .cnpy-selbar { box-shadow:none; opacity:0; }
+.cnpy-titem[aria-current="true"] .cnpy-selbar { opacity:1; }
+/* ── a row leaving a list (docs/architecture/web-ui.md › A row leaving a list) ───────────────
+   Review's queue. A row is a one-track grid around its card, so its height can go to nothing
+   with no measuring: `1fr` → `0fr`, the card clipped as it goes, and the rows under it move up
+   because the row above them is getting shorter (they are the same elements — the list is keyed,
+   morph.ts `data-morph-list`). A row that was given a verdict wears it first (the card tinted,
+   its content dimmed, the word over it) for .13s, then collapses and fades over `--fx-fast`:
+   .31s in all — `REVIEW_EXIT_MS` in review.ts, after which the row is taken out of the list.
+   The base rule carries the transition with no delay, so a row whose write FAILED opens again
+   at once. The app's one clock (`--fx-ease`, `--fx-fast`, on `:root`). */
+.cnpy-rv-row { display:grid; grid-template-rows:1fr; transition:grid-template-rows var(--fx-fast) var(--fx-ease), opacity var(--fx-fast) var(--fx-ease); }
+.cnpy-rv-row-in { min-height:0; }
+.cnpy-rv-row[data-verdict] { grid-template-rows:0fr; opacity:0; transition-delay:.13s; pointer-events:none; }
+.cnpy-rv-row[data-verdict] > .cnpy-rv-row-in { overflow:hidden; }
+.cnpy-rv-row[data-verdict="promoted"], .cnpy-rv-row[data-verdict="ratified"] { --rv-tone:var(--green); }
+.cnpy-rv-row[data-verdict="rejected"] { --rv-tone:var(--red); }
+.cnpy-rv-row[data-verdict] .cnpy-titem { border-color:color-mix(in srgb, var(--rv-tone) 55%, transparent); background:color-mix(in srgb, var(--rv-tone) 9%, var(--surface)); }
+.cnpy-rv-card-in { transition:opacity .1s ease; }
+.cnpy-rv-row[data-verdict] .cnpy-rv-card-in { opacity:.14; }
+.cnpy-rv-verdict { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; gap:7px; font-size:13px; font-weight:600; color:var(--rv-tone, var(--fg)); opacity:0; pointer-events:none; transition:opacity .1s ease; }
+.cnpy-rv-row[data-verdict] .cnpy-rv-verdict { opacity:1; }
+/* Reduced motion: no movement — main.ts takes the row out at once, and nothing here eases. */
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-rv-row, .cnpy-rv-row .cnpy-titem, .cnpy-rv-card-in, .cnpy-rv-verdict { transition:none !important; }
+}
+/* How many are waiting, on a switch's option (Review's All / Proposals / Decisions). */
+.cnpy-seg-n { font-family:var(--label); font-size:11px; font-weight:600; color:var(--fg-40); font-variant-numeric:tabular-nums; }
+.cnpy-seg-btn.is-on > .cnpy-seg-n { color:var(--fg-55); }
+/* ── Review › Rendered (web/src/review-rendered.ts) ─────────────────────────────────────────
+   The proposed doc in the reader's own `.cnpy-md`; these rules only MARK what the proposal
+   changes. A changed block sits in an `<ins>` / `<del>` (block boxes here): a tint that bleeds
+   6px past the block and a 2px rule in the margin — square, like a diff line. A removed block
+   is struck and muted. A table edited in place marks its rows; a list its runs of items. */
+.cnpy-rv-md .cnpy-rv-blk { display:block; position:relative; text-decoration:none; --rv-chg:var(--green); background:color-mix(in srgb, var(--rv-chg) 9%, transparent); box-shadow:0 0 0 6px color-mix(in srgb, var(--rv-chg) 9%, transparent); }
+.cnpy-rv-md .cnpy-rv-blk[data-chg="del"] { --rv-chg:var(--red); }
+.cnpy-rv-md .cnpy-rv-blk::before { content:""; position:absolute; left:-12px; top:-6px; bottom:-6px; width:2px; background:var(--rv-chg); }
+.cnpy-rv-md .cnpy-rv-blk[data-chg="del"], .cnpy-rv-md .cnpy-rv-blk[data-chg="del"] :is(h1,h2,h3,h4,h5,h6,p,li,td,th,strong,code,a,blockquote) { color:var(--fg-55); text-decoration:line-through; text-decoration-color:color-mix(in srgb, var(--red) 70%, transparent); }
+.cnpy-rv-md .cnpy-rv-blk[data-chg="del"] img { opacity:.55; }
+/* The reader trims the first and last block's outer margin; a marked first / last block needs the same. */
+.cnpy-rv-md > .cnpy-rv-blk:first-child > :first-child, .cnpy-rv-md > .cnpy-rv-list:first-child > :first-child > :first-child { margin-top:0; }
+.cnpy-rv-md > .cnpy-rv-blk:last-child > :last-child { margin-bottom:0; }
+.cnpy-rv-md .cnpy-rv-blk > :is(p,ul,ol,pre,blockquote,.cnpy-code,.cnpy-md-tablewrap):last-child { margin-bottom:0; }
+.cnpy-rv-md .cnpy-rv-blk:has(> :is(p,ul,ol,pre,blockquote,.cnpy-code,.cnpy-md-tablewrap):last-child) { margin-bottom:18px; }
+.cnpy-rv-md .cnpy-rv-list { margin:0 0 15px; }
+.cnpy-rv-md .cnpy-rv-list :is(ul,ol) { margin-bottom:0; }
+.cnpy-rv-md .cnpy-rv-list .cnpy-rv-blk { margin-bottom:0; box-shadow:0 0 0 3px color-mix(in srgb, var(--rv-chg) 9%, transparent); }
+.cnpy-rv-md .cnpy-rv-list .cnpy-rv-blk::before { top:-3px; bottom:-3px; }
+.cnpy-md.cnpy-rv-md :is(th,td):first-child { padding-left:10px; }
+.cnpy-rv-md tr.cnpy-rv-row-add > td { background:color-mix(in srgb, var(--green) 9%, transparent); }
+.cnpy-rv-md tr.cnpy-rv-row-add > td:first-child { box-shadow:inset 2px 0 0 var(--green); }
+.cnpy-rv-md tr.cnpy-rv-row-del > td { background:color-mix(in srgb, var(--red) 9%, transparent); }
+.cnpy-rv-md tr.cnpy-rv-row-del > td:first-child { box-shadow:inset 2px 0 0 var(--red); }
+.cnpy-rv-md tr.cnpy-rv-row-del > td, .cnpy-rv-md tr.cnpy-rv-row-del > td :is(strong,code,a) { color:var(--fg-55); text-decoration:line-through; text-decoration-color:color-mix(in srgb, var(--red) 70%, transparent); }
 /* Review under a tablet's width: the list and the detail take turns (review.ts
    `data-pane`), and the detail's header lets its buttons drop under the title. */
 .cnpy-rv-back { display:none; }
