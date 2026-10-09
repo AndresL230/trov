@@ -256,12 +256,15 @@ orgBillingApp.post("/billing/portal", async (c) => {
 // "Upgrade to Pro": a Free org — one that never paid, or one whose subscription ended (it moved to Free) —
 // starts a subscription for the SAME org, with its Stripe customer when it has one: a checkout, no grant.
 // The seats start at what the org uses now. (A legacy `canceled` org pays again the same way.)
+// An org whose plan is a GIFT (0048_plan_gifts) may start paying the same way before the gift ends, so there
+// is no lapse: fulfilment (`upgradeOrg` → `setOrgPlan`, source billing) clears the gift.
 orgBillingApp.post("/billing/upgrade", async (c) => {
   if (!hasRole(c.var.ctx, "owner")) return forbidden(c);
   const cfg = billingConfig(c.env);
   if (!cfg) return unavailable(c);
   const now = await orgPlan(c.var.p, c.var.ctx.orgId);
-  if (now.plan !== FREE_PLAN && now.status !== "canceled") return c.json({ error: "not_free", message: "this organization is not on Free; use Manage billing" }, 409);
+  const gifted = now.source !== "billing" && now.gift_until !== null;
+  if (now.plan !== FREE_PLAN && now.status !== "canceled" && !gifted) return c.json({ error: "not_free", message: "this organization is not on Free; use Manage billing" }, 409);
   const b = await body(c);
   const plan = b.plan === undefined ? UPGRADE_PLAN : isPurchasablePlan(b.plan) ? b.plan : null;
   if (!plan) return c.json({ error: "invalid_plan", message: `plan must be ${UPGRADE_PLAN}` }, 400);

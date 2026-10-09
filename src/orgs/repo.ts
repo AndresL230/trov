@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS } from "../notifications/cron";
 import { avatarSrc, ROLE_MAX, RESPONSIBILITIES_MAX } from "@shared/people";
 import type { PersonColor } from "@shared/rows";
 import { seatGate, SEAT_FREE, MEMBER_SEAT_FREE } from "../plans/state";
-import type { PlanId, PlanOverrides, PlanSource } from "@shared/plans";
+import { FREE_PLAN, planDef, type PlanId, type PlanOverrides, type PlanSource } from "@shared/plans";
 import {
   ORG_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, orgSlugProblem,
   type OrgRole, type OrgAuditAction, type MyOrg, type MyInvite, type MyOrgsResponse, type OrgSettings,
@@ -89,6 +89,15 @@ export interface CreateOrgInput {
  * (src/plans/grants.ts `createOrgFromGrant`, whose consuming statement rides in `extra`), or a person
  * creating a Free one of their own (src/plans/free.ts `createFreeOrg`, whose guard rides in `extra`).
  */
+/** Can an organization take this handle (its slug, the `/<slug>/` its links start with)? The create
+ *  dialog asks as the person types; `createOrg` re-checks every rule, and the UNIQUE index settles a race. */
+export async function orgSlugAvailable(p: PlatformContext, raw: string): Promise<{ available: boolean; reason?: "invalid" | "reserved" | "taken" }> {
+  const slug = raw.trim().toLowerCase();
+  const problem = orgSlugProblem(slug);
+  if (problem) return { available: false, reason: problem };
+  return (await first(p, `SELECT 1 AS x FROM orgs WHERE slug = ?`, slug)) ? { available: false, reason: "taken" } : { available: true };
+}
+
 export async function createOrg(p: PlatformContext, input: CreateOrgInput): Promise<OrgRow> {
   const slug = typeof input.slug === "string" ? input.slug.trim() : "";
   const problem = orgSlugProblem(slug);
@@ -131,11 +140,15 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
 
 // ── the caller's orgs and invites ────────────────────────────────────────────
 
+/** The caller's organizations. `plan` and `paid` are what personal Settings says beside each (the plan's
+ *  chip, and whether the org pays for it through a live subscription) — Trov's own columns, no Stripe call. */
 export async function listMyOrgs(p: PlatformContext, handle: string): Promise<MyOrg[]> {
-  const rows = await all<{ slug: string; name: string; role: OrgRole; logo_sha: string | null }>(p,
-    `SELECT o.slug, o.name, m.role, o.logo_sha FROM memberships m JOIN orgs o ON o.id = m.org_id
+  const rows = await all<{ slug: string; name: string; role: OrgRole; logo_sha: string | null; plan: string | null; paid: number | null }>(p,
+    `SELECT o.slug, o.name, m.role, o.logo_sha, o.plan,
+            (o.plan_source = 'billing' AND o.billing_subscription_id IS NOT NULL AND o.plan <> '${FREE_PLAN}' AND o.plan_status <> 'canceled') AS paid
+       FROM memberships m JOIN orgs o ON o.id = m.org_id
       WHERE m.user_id = ? COLLATE NOCASE AND o.suspended_at IS NULL ORDER BY o.name COLLATE NOCASE ASC`, handle);
-  return rows.map((r) => ({ slug: r.slug, name: r.name, role: r.role, logo_url: orgLogoSrc(r) }));
+  return rows.map((r) => ({ slug: r.slug, name: r.name, role: r.role, logo_url: orgLogoSrc(r), plan: planDef(r.plan).id, paid: r.paid === 1 }));
 }
 
 interface InviteJoinRow {

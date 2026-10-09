@@ -124,6 +124,8 @@
   and is enforced with `requirePlan`; a feature goes in `FEATURE_KEYS` and is gated with `requireFeature`.
   Pro per seat through Stripe (`src/billing/`, `0045_billing`, `0047_billing_seats` — the subscription's
   quantity): `docs/architecture/billing.md`.
+  A plan given for free until a date (`src/plans/gifts.ts`, `0048_plan_gifts` — `orgs.plan_gift_until`,
+  `org_grants.gift_days`; expired by the repo cron's every tick): `docs/architecture/plans.md` › Gifts.
   Sync GitHub as a recorded run (`0046_sync_runs`, `src/sync/runs.ts`, `GET /sync`, the panel's every sentence in
   `shared/sync.ts`): `docs/architecture/sync.md` — whether a sync can start is asked of the ONE GitHub credential
   source (`githubCredentialSource`, `src/github-app/credential.ts`), never of the token alone. The summarizer for an org is chosen ONLY by `orgSummarizers`

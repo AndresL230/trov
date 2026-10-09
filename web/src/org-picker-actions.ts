@@ -6,11 +6,11 @@
 // another's name.
 
 import type { AppState } from "./render";
-import { ApiError, Unauthorized, createOrg, respondToInvite } from "./api";
-import { acceptLanding, blankCreateOrg, createLanding, createOrgErrors, createOrgServerError } from "./org-picker";
+import { ApiError, Unauthorized, checkOrgSlug, createOrg, respondToInvite } from "./api";
+import { acceptLanding, blankCreateOrg, createLanding, createOrgErrors, createOrgServerError, handleError, handleTaken } from "./org-picker";
 import { slugFromName } from "./platform";
 import { orgHref } from "./org-context";
-import type { MyOrgsResponse } from "@shared/orgs";
+import type { MyOrg, MyOrgsResponse } from "@shared/orgs";
 
 export interface OrgsHost {
   state: AppState;
@@ -22,6 +22,9 @@ export interface OrgsHost {
   reloadOrgs(): Promise<MyOrgsResponse | null>;
   /** Leave for another org's page. */
   go(url: string): void;
+  /** Enter an org this person just created or joined WITHOUT a page load, when this page has held no
+   *  other org's data (a first run, from the picker). False = it could not; `go` there instead. */
+  enterNew?(org: MyOrg, hash: string): boolean;
   /** Open Org settings in the current org. */
   openSettings(): void;
 }
@@ -47,6 +50,39 @@ export function createOrgsController(h: OrgsHost) {
     void h.reloadOrgs();
   }
 
+  // Is the handle free? Debounced and sequence-guarded like onboarding's handle check: only the answer
+  // to the handle still in the field is shown. A failed or rate-limited check says nothing — the
+  // server decides on Create either way.
+  let slugSeq = 0;
+  let slugTimer: ReturnType<typeof setTimeout> | undefined;
+  function scheduleSlugCheck(): void {
+    const d = ui().create;
+    clearTimeout(slugTimer);
+    const seq = ++slugSeq;
+    if (!d) return;
+    if (handleError(d.slug) !== null) { d.check = "idle"; return; }
+    d.check = "checking";
+    const slug = d.slug;
+    slugTimer = setTimeout(() => {
+      checkOrgSlug(slug)
+        .then((r) => {
+          const now = ui().create;
+          if (seq !== slugSeq || !now || now.slug !== slug) return;
+          now.check = r.available ? "available" : r.reason === "taken" ? "taken" : "idle";
+          if (r.reason === "taken") now.errors.slug = handleTaken(slug);
+          h.rerender();
+        })
+        .catch(() => { const now = ui().create; if (seq === slugSeq && now) { now.check = "idle"; h.rerender(); } });
+    }, 300);
+  }
+
+  /** Into the org just created or joined: in place when the page allows it (no reload, the card morphs
+   *  into the guided setup), otherwise a page load, as opening any org is. */
+  function land(org: MyOrg, url: string): void {
+    const hash = url.includes("#") ? url.slice(url.indexOf("#")) : "";
+    if (!h.enterNew?.(org, hash)) h.go(url);
+  }
+
   function closeCreate(): void {
     const d = ui().create;
     if (!d || d.busy) return;
@@ -66,7 +102,7 @@ export function createOrgsController(h: OrgsHost) {
     d.busy = true; h.rerender();
     createOrg({ slug: d.slug, name: d.name.trim(), ...(d.grant ? { grant: d.grant.id } : d.free ? { plan: "free" as const } : {}) })
       // Its owner lands on the guided setup (welcome.ts) — Free, granted or paid alike.
-      .then((org) => h.go(createLanding(org.slug)))
+      .then((org) => land(org, createLanding(org.slug)))
       .catch((e) => {
         if (e instanceof Unauthorized) { h.unauth(e); return; }
         const cur = ui().create;
@@ -89,7 +125,7 @@ export function createOrgsController(h: OrgsHost) {
       .then(() => {
         // Accepted: straight into the org, on its guided setup (welcome.ts) — the owner's and admin's
         // four steps or the member's two; the page itself picks by role. Declined: the list again, without it.
-        if (accept) { h.go(acceptLanding(invite)); return; }
+        if (accept) { land({ slug: invite.org.slug, name: invite.org.name, role: invite.role, logo_url: invite.org.logo_url ?? null }, acceptLanding(invite)); return; }
         return h.reloadOrgs().then(() => { ui().inviteBusy = null; h.flash(`Declined the invitation to ${invite.org.name}`); });
       })
       .catch((e) => {
@@ -136,12 +172,14 @@ export function createOrgsController(h: OrgsHost) {
         u.create.name = value ?? "";
         if (!u.create.slugTouched) { u.create.slug = slugFromName(u.create.name); delete u.create.errors.slug; }
         delete u.create.errors.name; delete u.create.errors.form;
+        if (!u.create.slugTouched) scheduleSlugCheck();
         break;
       case "orgsCreateSlug":
         if (!u.create) return;
         u.create.slug = (value ?? "").toLowerCase().replace(/\s+/g, "-");
         u.create.slugTouched = u.create.slug !== "";
         delete u.create.errors.slug; delete u.create.errors.form;
+        scheduleSlugCheck();
         break;
       case "orgsCreateSubmit": submitCreate(); return;
       default: return;

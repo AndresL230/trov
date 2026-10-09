@@ -65,6 +65,16 @@ loses access; it cannot add more of that kind until it is back under. Everyone i
 plan in Org settings › General; only you change it. The limits, what counts toward each and the seam for
 billing: `plans.md`.
 
+**Gift a plan** gives the organization a plan for free until a date: pick the plan (Pro or Enterprise),
+optionally its seats, and 1 / 2 / 3 / 6 / 12 months or a date [`PUT …/plan { gift }`]. The confirmation says
+what happens at the end: the organization moves to Free by itself, nothing is deleted, and anything over a
+Free limit waits. The section then reads "Gifted until <date>" with **Extend** [`POST …/gift/extend`] and
+**End now** [`POST …/gift/end`]; **Change plan** on a gifted organization clears the gift (the plan you set
+there has no end). The organization's people see "Free until <date>, a gift from Trov…" on their Plan tile,
+and its owner can start paying before then. It is not offered for an organization on a live subscription.
+In Platform › Access, **Grant an organization** has an optional **Free for**: the organization that grant
+becomes is free for that long from the day it is created. All of it: `plans.md` › Gifts.
+
 ### 1c. …or someone buys Pro
 
 A person presses "Choose Pro" on the pricing page [`GET /billing/start`, `src/billing/routes.ts`], signs in
@@ -81,7 +91,8 @@ events and the owner checklist: `billing.md`. Enterprise is never bought: it is 
 ### 1d. …or someone creates a Free one
 
 Anyone signed in (not a superadmin) can create a **Free** organization from the org picker or the switcher's
-menu — no grant, no payment [`POST /api/orgs`, `src/plans/free.ts`]: up to 3 people, 1 repository, 2
+menu (the dialog asks for a name and a **handle** — the slug, checked for availability as it is typed:
+`GET /api/orgs/slug-check`) — no grant, no payment [`POST /api/orgs`, `src/plans/free.ts`]: up to 3 people, 1 repository, 2
 environments. A person can OWN one Free organization at a time (`DEFAULT_ORG_LIMIT = 1`, `shared/orgs.ts`).
 Its owner upgrades it to Pro from Org settings › General (**Upgrade to Pro**, or the button Members shows at
 the seat cap): a Stripe checkout for that organization, starting at one seat per member and pending
@@ -109,7 +120,7 @@ skippable, with Back, a step indicator and *Skip setup*.
 
 - **It is a route, not server state.** `#welcome` is the first step; `#welcome/agent`, `/team` and `/done`
   the others, so a reload stays put. Nothing records that a person has seen it, and there is no migration.
-  It is reopened from Org settings' checklist (*Open the guided setup*), from Help › Get Started and from
+  It is reopened from Org settings' checklist (*Open the guided setup*), from Help › Guide and from
   quick search.
 - **Every step's state is derived, never stored and never guessed** — from the reads Org settings already
   makes (repositories, the GitHub App's connection, members, invitations, the plan) and from the person's
@@ -237,6 +248,8 @@ One place: **Org settings**, opened from the switcher at the top of the sidebar 
 | Members | the people directory; for admins also invitations, roles and titles, removal, and **Unmatched logins** — GitHub logins in captured activity to map to a person or discard [`web/src/identity.ts`] | everyone (read), admin+ (write) |
 | Notifications | the e-mail digests: which exist and their default cadence, send hour, timezone and sender name, preview, test send, the outbox [`web/src/notifications.ts`] | admin, owner |
 | General | the image; the name; the slug, read-only; the **Plan** — what it includes and the org's use of each limit [`web/src/org-plan.ts`] | everyone (read), admin+ (image, rename); nobody changes the plan here |
+
+General is a **bento** inside the tab's width (`.cnpy-org-gen` in `trov.css`, Settings' `.cnpy-tile`s on 12 columns; `generalTab` and `planBlock`), so its outer edges are the tab bar's and every other tab's: image + name is the tall tile on the left, Plan (name, billing, who changes it) and Slug the two short ones beside it, and the plan's **Limits** a tile across the page under them, three to a line. A read-only member has no field to make the first tile tall, so the three sit in one row (`.cnpy-org-gen--read`). It folds by the room the TAB has (a container query, as Settings does): under 900px the limits go two to a line, under 760px image + name takes a row and Slug | Plan the next, under 520px one column in DOM order. No tab narrows its own blocks (`test/render.org-settings.test.ts` walks them); a control inside a tile keeps its own measure.
 
 A person's own digest preferences stay in their Settings. The daily queue of things an agent could not
 place is not administration: it is **Triage › Unplaced** in the sidebar (`#unplaced`). Old links —

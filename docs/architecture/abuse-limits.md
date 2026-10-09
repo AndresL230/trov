@@ -18,7 +18,7 @@ racing requests cannot both take the last unit. D1 only: no Durable Object, no Q
 | `avatar_upload` | 20 / person / UTC day | `POST …/people/me/avatar`, before the body is read |
 | `org_logo_upload` | 20 / person / UTC day | `POST /api/o/:slug/logo` (admin+), before the body is read — across every org the person administers |
 | `checkout` | 10 / person / UTC day | a Stripe Checkout Session started: `GET /billing/start` and `POST /api/o/:slug/billing/upgrade` (`billing.md`). A refusal creates nothing at Stripe and charges nothing |
-| `handle_check` | 60 / caller / UTC hour | `GET /auth/handle-check` — the signed-in person, or `onboard:<provider>:<subject>` while onboarding (a fresh onboard cookie does not reset it) |
+| `handle_check` | 60 / caller / UTC hour | `GET /api/orgs/slug-check` (is an organization's handle free; the signed-in person) and `GET /auth/handle-check` — the signed-in person, or `onboard:<provider>:<subject>` while onboarding (a fresh onboard cookie does not reset it) |
 
 - A refusal is **429** `{ "error": "rate_limited", "retry_after": <seconds> }` with a `Retry-After` header, and
   writes nothing. `retry_after` runs to the end of the UTC day / hour.
