@@ -1887,6 +1887,9 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 @media (max-width:640px) { .site-signin-body > * { max-width:none; } }
 .site-signin-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:12px 16px; font-size:14px; font-weight:600; transition:filter .12s ease, background .12s ease; }
 .site-signin-btn:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-nav-signin { padding:7px 10px; font-size:13.5px; font-weight:500; color:var(--fg-70); white-space:nowrap; transition:color .12s ease, background .12s ease; }
+.site-nav-signin:hover { color:var(--fg); background:var(--hover); }
+.site-nav-signin:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
 /* The foot is a clearly grey strip under the white card (it was 2% black: barely there). */
 .site-signin-foot { padding:13px 28px; text-align:center; border-top:1px solid var(--border); font-size:12.5px; line-height:1.5; color:var(--fg-55); background:color-mix(in srgb, var(--fg) 6%, var(--surface)); }
 .site-signin-switch { padding:0; font:inherit; font-weight:600; color:var(--fg); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }

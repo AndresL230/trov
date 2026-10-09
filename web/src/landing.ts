@@ -127,7 +127,12 @@ function nav(dark: boolean, signedIn: boolean): string {
       <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
         <a href="${TROV_REPO}" target="_blank" rel="noopener" title="GitHub" class="site-iconbtn">${GH_MARK(17)}</a>
         <button data-act="cycleTheme" title="Toggle theme" class="site-iconbtn" style="border:1px solid var(--border)">${dark ? MOON : SUN}</button>
-        <button data-act="${signedIn ? "siteBack" : "openSignIn"}" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">${signedIn ? "Back to the app" : "Sign in"}</button>
+        ${signedIn
+          ? `<button data-act="siteBack" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Back to the app</button>`
+          // Two ways in, said apart: a quiet Sign in for someone with an account, and the page's one accent
+          // button for someone without — the same label as the hero's, opening the same dialog in its mode.
+          : `<button data-act="openSignIn" data-field="navSignIn" class="site-nav-signin" style="border-radius:8px">Sign in</button>
+        <button data-act="openSignIn" data-arg="signup" data-field="navStart" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Start for free</button>`}
       </div>
     </div>
   </nav>`;
