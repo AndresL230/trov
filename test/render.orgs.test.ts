@@ -148,6 +148,23 @@ describe("the org switcher — the sidebar's header", () => {
     expect(rules).toContain("@media (max-height: 850px)");
     expect(rules).toMatch(/\.cnpy-orgmenu \.cnpy-menurow:focus-visible[^{]*\{ outline:2px solid/);
   });
+  it("CSS: the button fills the rail's row whatever the name, and the name truncates; its menu is a narrow panel", () => {
+    const rule = (sel: string) => rules.match(new RegExp(`(?:^|\\} )${sel.replace(/[.[\]"=]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+    const btn = rule(".cnpy-orgsw-b");
+    expect(btn).toContain(" width:100%;");          // the owner's ruling: the chip is NOT sized to the name
+    expect(btn).not.toContain("fit-content");
+    expect(btn).toContain("overflow:hidden;");
+    const name = rule(".cnpy-orgsw-n");
+    expect(name).toContain("flex:1;");
+    expect(name).toContain("white-space:nowrap; overflow:hidden; text-overflow:ellipsis;");
+    // The menu the chip opens is 248px (was 316px): a little wider than the chip, not a wide sheet.
+    expect(rule(".cnpy-orgmenu")).toContain(" width:248px; max-width:calc(100vw - 20px);");
+  });
+  it("CSS: the rail is 228px expanded and 64px collapsed; the phone drawer keeps its own width", () => {
+    expect(rules).toMatch(/\.cnpy-aside \{ --side-t:\.24s; [^}]*\bwidth:228px; [^}]*transition:width var\(--side-t\) var\(--side-e\);/);
+    expect(rules).toContain('[data-collapsed="1"] .cnpy-aside { width:64px; }');
+    expect(rules).toMatch(/\[data-phone="1"\] \.cnpy-aside \{[^}]*width:min\(292px, calc\(100vw - 48px\)\);/);
+  });
 });
 
 describe("the switcher's menu", () => {
