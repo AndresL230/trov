@@ -20,7 +20,7 @@ animations off in the affected region — that hides one symptom and leaves the 
 
 **A dialog that opens over ANY screen repaints itself alone.** Most screens are not `data-morph`ed, so a dialog
 whose host page can be any of them cannot rely on the page's opt-in: a `rerender()` per keystroke would rebuild
-whatever is behind it. The support dialog (`web/src/support.ts`, Help › Report a bug / Contact support) is the
+whatever is behind it. The support dialog (`web/src/support.ts`: the header's bug button, Settings › Contact support, the site's Contact) is the
 pattern: opening and closing are a `rerender()`; everything inside the open dialog goes through
 `support-actions.ts` `repaint()`, which renders the dialog again and `morph()`s the live `data-overlay` element
 in place — the page is not touched (check: `document.querySelector("main")` is the same element before and after
@@ -171,13 +171,13 @@ and Repo's tabs head their page body), and a stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
-**Help's last two rows are ACTIONS, not screens**: Report a bug and Contact support (`action()` in
-`sidebar.ts`) open the support dialog over the screen on show. They are emitted in every state with a nav
-row's own structure (the hidden badge and dot included), are never `is-active`, and carry
-`data-support-trigger` so focus returns to them. **Rail height** is measured, like its width: with 15 rows the
-rail needs 994px of window at full size, 849px in the `max-height: 990px` step and 774px in the `850px` step
-(2026-10-09; measure with transitions off — the rows' padding animates, so a reading taken right after a step
-is stale). From 1000px down the tagline steps aside to cover the gap. Adding a row means measuring again.
+**Report a bug is the app header's icon button**, beside the theme toggle and its twin (`bugBtn` in
+`render.ts` `appHeader`: the same `cnpy-iconbtn`, 32px, 40px at phone width with the rest of the cluster),
+on every screen the header shows on. **Contact support is a tile of personal Settings** (`helpSection`,
+`.cnpy-set-help`: a slim tile on a row of its own after Email notifications, before Session in DOM order so
+Sign out stays last when it folds). Neither is in the sidebar, whose Help section is Guide and What's new;
+the rail's rows and its short-window steps are unchanged. Both carry `data-support-trigger`, so focus
+returns to them when the dialog closes (`support.md`).
 
 **Widths.** The rail is **228px** expanded and 64px collapsed (`.cnpy-aside` in `trov.css`; the phone drawer has
 its own, `min(292px, 100vw - 48px)`). 228 was measured, not chosen by eye (2026-10-08, was 244): the row that

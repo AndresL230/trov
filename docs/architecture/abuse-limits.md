@@ -3,6 +3,7 @@
 Since Phase 4 anyone with a GitHub account can sign in — and since open sign-up, anyone with a Google account whose address is verified — and (issue #94) anyone signed in can create ONE Free organization they own (`plans.md` › Free; `DEFAULT_ORG_LIMIT = 1`) — anything more takes a superadmin, a grant, or a payment. This is everything that stands
 between that and Trov being used to send mail, fill storage or look people up. Code: `src/platform/limits.ts`
 (every number), `src/notifications/resend.ts` (the From header). Tests: `test/abuse-limits.test.ts`.
+The one thing a visitor with NO account can write — the site's Contact form — has its own section below.
 
 ## Per-person rate limits
 
@@ -19,6 +20,8 @@ racing requests cannot both take the last unit. D1 only: no Durable Object, no Q
 | `org_logo_upload` | 20 / person / UTC day | `POST /api/o/:slug/logo` (admin+), before the body is read — across every org the person administers |
 | `checkout` | 10 / person / UTC day | a Stripe Checkout Session started: `GET /billing/start` and `POST /api/o/:slug/billing/upgrade` (`billing.md`). A refusal creates nothing at Stripe and charges nothing |
 | `support` | 10 / person / UTC day | `POST /api/support` — a bug report or support message (`support.md`): one stored row and one mail to the operator's fixed address. Taken after validation, so a refused body spends nothing. The recipient is never the caller's choice, so it cannot be aimed at a third party |
+| `support_anon_ip` | 3 / client address / UTC day | `POST /api/support/public`, signed out. The subject is `ip:<HMAC-SHA256 of the address under COOKIE_SECRET>` — a keyed hash, never the address itself |
+| `support_anon_all` | 50 / UTC day, everyone | the same route: ONE subject (`anonymous`) for every signed-out report, so a flood from many addresses cannot fill the table or the operator's inbox. Past it: 429 `support_closed`, and the form says to write to the contact address |
 | `handle_check` | 60 / caller / UTC hour | `GET /api/orgs/slug-check` (is an organization's handle free; the signed-in person) and `GET /auth/handle-check` — the signed-in person, or `onboard:<provider>:<subject>` while onboarding (a fresh onboard cookie does not reset it) |
 
 - A refusal is **429** `{ "error": "rate_limited", "retry_after": <seconds> }` with a `Retry-After` header, and
@@ -51,6 +54,42 @@ One Resend account and one verified domain send every org's mail, and any org ad
 - **`PUT …/notifications/settings`** takes `from_address` as `Name` or `Name <hello@trov.dev>` and stores
   `Name <hello@trov.dev>`. Any other address, or a name that fails the rule, is 400 `invalid payload`.
 - Every subject is flattened to one line (`oneLine`) — an inviter's display name is part of the invite's.
+
+## The signed-out contact form — what a stranger with NO account can do
+
+`POST /api/support/public` (`support.md`) is the one write a visitor can make without signing in: it stores
+a row in `support_reports` and mails the operator. It is an unauthenticated public route, admitted like the
+other public paths (`PUBLIC_PATHS`), not a new kind of credential. Everything that bounds it:
+
+- **It cannot be used to send mail to a third party.** Trov sends NOTHING to the address typed — no
+  confirmation, no copy, no auto-reply. The only message is the notice to the operator's fixed address
+  (`SUPPORT_NOTIFY_EMAIL`), and the typed address is that notice's `Reply-To`: it is used when, and only
+  when, the operator chooses to answer by hand. (`test/support.routes.test.ts` asserts the one recipient.)
+- **Per client address:** `support_anon_ip`, 3 a UTC day. The limiter never sees the IP: the subject is a
+  keyed hash of `CF-Connecting-IP` under `COOKIE_SECRET`, so a counter row cannot be turned back into an
+  address, and no IP is stored on the report either.
+- **A global cap:** `support_anon_all`, 50 signed-out reports a UTC day in total. A distributed flood stops
+  there; the form then tells people to write to `hello@trov.dev`. Signed-in reports are not behind this
+  cap (theirs is `support`, per person).
+- **A honeypot and a minimum time on the form.** A filled honeypot is answered 201 like a success and
+  dropped (nothing stored, counted or mailed); a form sent under 3 seconds after it opened is refused.
+  Neither stops a determined script — the two limits do — but they keep the cheap ones out of the table.
+- **Strict shape:** JSON only; every field capped (`SupportPublicSubmit`); the address must be ONE plain
+  address, so it cannot carry a second recipient or a header; the User-Agent header and the page are cut to
+  their caps and flattened to one line before they are stored.
+- **The notice treats what was typed as hostile:** every value is HTML-escaped, the subject is one line of
+  bounded length, and the mail's only links are Trov's own.
+- **The address is unverified and stays that way:** `support_reports.contact_email`, shown labelled
+  "unverified, as typed"; never written to `persons` or `identities`, so it cannot become an identity,
+  match an invitation or receive a digest.
+- **With a session cookie** the route is the signed-in path: the principal is the reporter and the typed
+  address is ignored.
+- **No third-party script.** If spam shows up despite the above, Cloudflare Turnstile on this form is the
+  next step (it was left out on purpose: no visitor's browser talks to a third party to send a message).
+
+Residual: an operator's inbox can still receive up to 50 unwanted notices a day, each with attacker-chosen
+(escaped) text and an attacker-chosen Reply-To — so a reply written without looking at the address goes
+where the sender chose. The notice and Platform both label the address unverified for that reason.
 
 ## The notification address is not an oracle
 

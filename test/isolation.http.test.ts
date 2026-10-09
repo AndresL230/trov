@@ -363,6 +363,7 @@ const PLATFORM: Record<string, string> = {
   // Support reports (0049_support_reports, src/platform/support-routes.ts): a GLOBAL table. Sending one is person-level;
   // reading them is the superadmin's, and a row holds what its reporter typed plus a slug and a route — nothing of an org's.
   "POST /api/support": "the caller's own report to the platform's operator: the reporter is the session's person, the org is kept only if they are a member of it, rate-limited per person (test/support.routes.test.ts)",
+  "POST /api/support/public": "public: the site's Contact form — no session; stores a report with no reporter and the typed (unverified) address, mails only the operator, bounded per client address and by a global daily cap; with a session cookie it is the signed-in path and the principal wins (test/support.routes.test.ts)",
   "GET /api/platform/support": "requireSuperadmin", "GET /api/platform/support/:id": "requireSuperadmin",
   "POST /api/platform/support/:id/resolve": "requireSuperadmin", "POST /api/platform/support/:id/reopen": "requireSuperadmin",
   // Billing (0045_billing, src/billing/routes.ts) — person-level: a purchase is made before the buyer has any org.

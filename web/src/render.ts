@@ -856,6 +856,12 @@ function header(s: AppState): string {
         ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`
         : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"></path></svg>`}
     </button>`;
+  // Report a bug: the theme toggle's twin, beside it on every screen the header shows on. It opens the
+  // support dialog on Bug (support.ts) over the screen on show; at phone width it takes the header's
+  // 40px icon-button size with the rest (`.cnpy-hdr-r > .cnpy-iconbtn`).
+  const bugBtn = `<button data-act="supportOpen" data-arg="bug" data-support-trigger="bug" title="Report a bug" aria-label="Report a bug" aria-haspopup="dialog" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="7" width="8" height="12" rx="4"></rect><path d="M12 12v7"></path><path d="M9.5 7.5a2.5 2.5 0 0 1 5 0"></path><path d="M4 13h4M16 13h4M5 7l3.2 2.6M19 7l-3.2 2.6M5 20l3.2-2.8M19 20l-3.2-2.8"></path></svg>
+    </button>`;
 
   // Breadcrumb (the design's titleBtnSt / crumbSt): on a CHILD screen the title
   // becomes a back button to its parent and a "›" crumb names the child.
@@ -892,7 +898,7 @@ function header(s: AppState): string {
       ${art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedViewSwitch}${themeBtn}
+      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedViewSwitch}${bugBtn}${themeBtn}
     </div>
   </header>`;
 }
@@ -1973,6 +1979,21 @@ export function accountSection(s: AppState): string {
   </section>`;
 }
 
+/** Settings › Help: Contact support — the way to write to the people who run Trov (support.ts opens on
+ *  Question). A slim tile on a row of its own; its button is the dialog's opener, so focus returns to it. */
+export function helpSection(): string {
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-help">
+    <div style="${SECTION_LABEL}">Help</div>
+    <div class="cnpy-set-who">
+      <div style="flex:1 1 260px;min-width:0">
+        <div style="font-size:13.5px;font-weight:500;line-height:1.35">Contact support</div>
+        <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:3px">A question about your account, your organization or how Trov works, or feedback for us. We read every message and reply by email. To report something broken, use the bug button at the top right of any screen.</div>
+      </div>
+      <button data-act="supportOpen" data-arg="question" data-support-trigger="question" data-field="supportOpen:question" aria-haspopup="dialog" class="cnpy-ghostbtn" style="flex:none;display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:600;color:var(--fg)">Contact support</button>
+    </div>
+  </section>`;
+}
+
 /** Settings › Session: who is signed in on this browser, and SIGN OUT — a labelled button with its
  *  icon, in a tile of its own at the top right of the page (last on a phone), never a quiet link.
  *  Pure over AppState — exported for the pure render test. */
@@ -2174,6 +2195,8 @@ function settingsView(s: AppState): string {
       emailEditing: s.emailEditing,
       emailDraft: s.emailDraft,
     })}
+
+    ${helpSection()}
 
     ${sessionSection(s)}
 
@@ -2573,7 +2596,7 @@ export function render(s: AppState): string {
     ${s.view === "app" || s.view === "platform" ? platformDialogs(s.plat, s.screen, s.dd) : ""}
     ${s.view === "app" ? orgMenu({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], current: s.orgSlug, status: s.myOrgs.status, ui: s.orgsUi, superadmin: s.plat.superadmin === true, logins: identityCount(s) }) : ""}
     ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
-    ${s.view !== "auth" ? supportDialog(s.support) : ""}
+    ${supportDialog(s.support)}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}

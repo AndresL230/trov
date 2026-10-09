@@ -691,6 +691,8 @@ input, select { font-family: inherit; }
 .cnpy-set-limits { grid-column:6 / -1; grid-row:3; }
 .cnpy-set-orgs-tile { grid-column:1 / -1; grid-row:4; }
 .cnpy-set-mcp { grid-column:1 / -1; grid-row:5; }
+/* Help (Contact support): a slim tile on a row of its own, after Email notifications. */
+.cnpy-set-help { grid-column:1 / -1; }
 /* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this adds its padding, and
    a column flow so a tile keeps its content at the top — with `.cnpy-tile-foot` (Profile's
    color swatches, Account's closing line) at the bottom edge. */
@@ -2293,23 +2295,20 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .cnpy-wel-status > button { flex:1 1 100%; min-height:36px; }
 }
 @media (prefers-reduced-motion: reduce) { .cnpy-wel-pulse { animation:none; } .cnpy-wel-stepb { transition:none; } }
-/* A short window: the rail tightens rather than scroll its last rows out of sight. The rail is 15
-   rows (13 screens and Help's two actions, Report a bug / Contact support) and Collapse. MEASURED
-   (2026-10-09, with transitions off — the rows' padding is animated, so a reading taken right after
-   a step is stale): at full size it needs 994px of window, so from 1000px down the tagline steps
-   aside; below 990px the rows and section labels lose a few pixels each (needs 849px); below 850px
-   (a laptop at 800) they lose a few more (needs 774px) — every entry stays on screen, none scrolls.
-   Adding a row means measuring again. Never on a phone, whose drawer has its own (larger) touch rows. */
-@media (max-height: 1000px) { [data-phone="0"] .cnpy-ghost { display:none; } }
+/* A short window: the rail tightens rather than scroll its last rows out of sight. At full size
+   a superadmin's rail (13 entries, Platform, Collapse) needs about 980px; so below that the
+   rows and section labels lose a few pixels each and the tagline steps aside, and below 850px
+   (a laptop at 800) they lose a few more — every entry stays on screen, none scrolls. Never on
+   a phone, whose drawer has its own (larger) touch rows. */
 @media (max-height: 990px) {
   [data-phone="0"] .cnpy-nav-i { padding-top:6px; padding-bottom:6px; }
   [data-phone="0"][data-collapsed="1"] .cnpy-nav-i { padding-top:7px; padding-bottom:7px; }
   [data-phone="0"] .cnpy-navlist { gap:2px; }
-  [data-phone="0"][data-collapsed="0"] .cnpy-sec { height:24px; padding-top:6px; }
-  [data-phone="0"][data-collapsed="0"] .cnpy-sec.is-first { height:25px; padding-top:7px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec { height:25px; padding-top:6px; }
+  [data-phone="0"][data-collapsed="0"] .cnpy-sec.is-first { height:26px; padding-top:7px; }
   [data-phone="0"] .cnpy-ghost { display:none; }
   [data-phone="0"] .cnpy-collapse { padding-bottom:4px; }
-  [data-phone="0"] .cnpy-foot { padding:5px 10px; }
+  [data-phone="0"] .cnpy-foot { padding:6px 10px; }
 }
 @media (max-height: 850px) {
   [data-phone="0"] .cnpy-nav-i { padding-top:5px; padding-bottom:5px; }
@@ -2344,6 +2343,13 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-support-ctx-r { display:grid; grid-template-columns:104px minmax(0,1fr); gap:12px; align-items:baseline; font-size:12.5px; line-height:1.5; }
 .cnpy-support-ctx-r dt { color:var(--fg-40); }
 .cnpy-support-ctx-r dd { margin:0; min-width:0; color:var(--fg-70); overflow-wrap:anywhere; }
+/* The signed-out Contact form (support.ts, anonymous): the same form in the sign-in dialog's plain card,
+   wider, scrolling inside itself on a short window. Its entrance and its reduced-motion rule are the
+   sign-in card's own (`.site-signin-back`, `.site-signin-card`). */
+.site-contact-card { width:min(480px, 100%) !important; max-height:calc(100vh - 32px); overflow-y:auto !important; padding:22px 24px 20px; box-sizing:border-box; }
+/* The honeypot: off screen for everyone — never `display:none`, which a script can test for. */
+.cnpy-support-hp { position:absolute !important; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden; }
+[data-support-dialog] a { color:var(--fg-70); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
 [data-support-dialog] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
 @media (max-width: 520px) { .cnpy-support-ctx-r { grid-template-columns:minmax(0,1fr); gap:0; } }
 .plat-cl { display:none; font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); margin-bottom:3px; }

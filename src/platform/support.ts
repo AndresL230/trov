@@ -9,7 +9,11 @@ import {
   type SupportStatus, type SupportStatusFilter,
 } from "@shared/support";
 
+/** Who a report is from: the session's person, or — signed out — the address typed (unverified). Exactly one. */
+export type ReportSender = { handle: string } | { contactEmail: string };
+
 export interface NewReport {
+  from: ReportSender;
   kind: SupportKind;
   subject: string;
   message: string;
@@ -20,13 +24,15 @@ export interface NewReport {
   userAgent: string | null;
 }
 
-/** File one report. The reporter is `p.actor` — the authenticated principal — and nothing else. */
+/** File one report. `from` is decided by the ROUTE — the authenticated principal, or for a request with
+ *  no session the address it typed — never read from a body field that names an author. */
 export async function createReport(p: PlatformContext, r: NewReport): Promise<{ id: number; created_at: string }> {
   const at = nowIso();
   const res = await run(p,
-    `INSERT INTO support_reports (kind, subject, message, reporter, from_org, from_org_slug, route, app_version, user_agent, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
-    r.kind, r.subject, r.message, p.actor, r.org?.id ?? null, r.org?.slug ?? null, r.route, r.appVersion, r.userAgent, at);
+    `INSERT INTO support_reports (kind, subject, message, reporter, contact_email, from_org, from_org_slug, route, app_version, user_agent, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)`,
+    r.kind, r.subject, r.message, "handle" in r.from ? r.from.handle : null, "contactEmail" in r.from ? r.from.contactEmail : null,
+    r.org?.id ?? null, r.org?.slug ?? null, r.route, r.appVersion, r.userAgent, at);
   return { id: res.meta.last_row_id, created_at: at };
 }
 
@@ -36,7 +42,7 @@ export async function recordReportMail(p: PlatformContext, id: number, o: { stat
 }
 
 interface Row {
-  id: number; kind: SupportKind; subject: string; message: string; reporter: string; reporter_name: string | null; reporter_email: string | null;
+  id: number; kind: SupportKind; subject: string; message: string; reporter: string | null; contact_email: string | null; reporter_name: string | null; reporter_email: string | null;
   from_org_slug: string | null; org_name: string | null; route: string | null; app_version: string | null; user_agent: string | null;
   status: SupportStatus; resolved_by: string | null; resolved_at: string | null; created_at: string;
   mail_status: SupportMailStatus | null; mail_at: string | null; mail_error: string | null;
@@ -44,7 +50,7 @@ interface Row {
 
 // The reporter's name and newest provider-VERIFIED address (never the editable notification address —
 // abuse-limits.md), and the name of the org it was sent from: all three are global rows.
-const SELECT = `SELECT s.id, s.kind, s.subject, s.message, s.reporter, pe.name AS reporter_name,
+const SELECT = `SELECT s.id, s.kind, s.subject, s.message, s.reporter, s.contact_email, pe.name AS reporter_name,
     (SELECT d.verified_email FROM identities d WHERE d.person = s.reporter COLLATE NOCASE AND d.verified_email IS NOT NULL ORDER BY d.linked_at DESC LIMIT 1) AS reporter_email,
     s.from_org_slug, o.name AS org_name, s.route, s.app_version, s.user_agent, s.status, s.resolved_by, s.resolved_at, s.created_at,
     s.mail_status, s.mail_at, s.mail_error
@@ -54,7 +60,8 @@ const SELECT = `SELECT s.id, s.kind, s.subject, s.message, s.reporter, pe.name A
 
 const view = (r: Row): SupportReport => ({
   id: r.id, kind: r.kind, subject: r.subject, message: r.message,
-  reporter: { handle: r.reporter, name: r.reporter_name, email: r.reporter_email },
+  reporter: r.reporter === null ? null : { handle: r.reporter, name: r.reporter_name, email: r.reporter_email },
+  contact_email: r.reporter === null ? r.contact_email : null,
   org: r.from_org_slug ? { slug: r.from_org_slug, name: r.org_name } : null,
   route: r.route, app_version: r.app_version, user_agent: r.user_agent,
   status: r.status, resolved_by: r.resolved_by, resolved_at: r.resolved_at, created_at: r.created_at,

@@ -58,7 +58,7 @@ export function createPlatform(h: PlatformHost) {
     },
   });
 
-  // Platform › Support (platform-support-actions.ts): the reports people send from Help.
+  // Platform › Support (platform-support-actions.ts): the reports people send from the app and the site.
   const support = createSupportTab({ state: h.state, mount: h.mount, rerender: h.rerender, flash: h.flash, unauth: h.unauth });
 
   // Every read here is a REFRESH once its slice holds an answer: what is on screen stays (status

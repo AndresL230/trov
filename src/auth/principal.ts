@@ -18,6 +18,10 @@ const PUBLIC_PATHS = new Set([
   // Billing (src/billing/routes.ts): the pricing page's link — it reads the session itself, to show a
   // sign-in page instead of a bare 401 — and what that page asks before it draws its buttons.
   "/billing/start", "/api/billing/config",
+  // The site's Contact form (src/platform/support-routes.ts): a signed-out visitor's message to the operator.
+  // Unauthenticated like the two above, and bounded by its own limits (docs/architecture/abuse-limits.md);
+  // it reads the session itself, so a signed-in sender is filed as that person.
+  "/api/support/public",
 ]);
 
 /** The OAuth endpoints take no session cookie (/oauth/authorize checks the session

@@ -210,7 +210,7 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
 | Path | Gate | Tenant |
 |---|---|---|
 | `/api/o/:slug/*` — the tenant routes, the org surface (`src/orgs`, `src/integrations`) and a member's own MCP tokens (`src/auth/token-routes.ts`) | `tenantGate` | the org the path names, if the caller is a member — else 404 `{ error: "not_found" }` (unknown slug, non-member, suspended: all alike) |
-| `/auth/*`, `/avatar/*`, `/org-logo/*`, `/api/orgs`, `/api/invites`, `/api/support`, `/api/platform/*` | none (person-level) | none: these read and write the caller's own person, or are `requireSuperadmin`. `/auth/callback` is also where GitHub returns after the App is installed: it binds an installation only for the org and person a sealed cookie names (`github-app.md`) |
+| `/auth/*`, `/avatar/*`, `/org-logo/*`, `/api/orgs`, `/api/invites`, `/api/support` (and the PUBLIC `/api/support/public`, `support.md`), `/api/platform/*` | none (person-level) | none: these read and write the caller's own person, or are `requireSuperadmin`. `/auth/callback` is also where GitHub returns after the App is installed: it binds an installation only for the org and person a sealed cookie names (`github-app.md`) |
 | every OTHER path | `soleTenantGate` (the cut-over alias) | the caller's ONE org — 409 `{ error: "org_required" }` with none or several, 404 if it is suspended |
 
 `soleTenantGate` is the DEFAULT, so a route added without thought is tenant-gated, never open.

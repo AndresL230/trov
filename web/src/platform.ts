@@ -6,7 +6,7 @@
 //   ACCESS        — platform-access.ts: who has been GRANTED an organization of their own (the
 //                   one way anyone but a superadmin creates one), and an org's plan.
 //   USAGE         — platform-usage.ts.
-//   SUPPORT       — platform-support.ts: the bug reports and messages people send from Help, with a
+//   SUPPORT       — platform-support.ts: the bug reports and messages people send (app and site), with a
 //                   count of the open ones on the tab; one report at `#platform/support/<id>`.
 //   ADMINS        — the superadmins (grant / remove).
 //   AUDIT         — recent administration entries, filterable by org.
