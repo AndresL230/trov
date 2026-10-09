@@ -661,11 +661,11 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
     const name = m.name ?? m.handle;
     return `<li style="border-bottom:1px solid var(--border);margin-bottom:-1px${d ? ";background:var(--hover)" : ""}">
       <div class="cnpy-mem-row${admin ? "" : " is-ro"}" data-member="${attr(m.handle)}">
-        <button type="button" data-act="openPerson" data-arg="${attr(m.handle)}" class="cnpy-maint-person cnpy-mem-who" aria-label="Open ${attr(name)}'s card" style="min-width:0;display:flex;align-items:center;gap:12px;text-align:left;padding:0">${personChip(m, 28, m.handle)}<span style="flex:1;min-width:0;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</span></button>
+        <button type="button" data-act="openPerson" data-arg="${attr(m.handle)}" class="cnpy-maint-person cnpy-mem-who" aria-label="Open ${attr(name)}'s card" style="min-width:0;display:flex;align-items:center;gap:12px;text-align:left;padding:0">${personChip(m, 28, m.handle)}<span style="flex:0 1 auto;min-width:0;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</span>${sameHandle(m.handle, me) ? YOU : ""}</button>
         <span class="cnpy-mem-handle">${handleTag(m, m.handle, 12)}</span>
         <span class="cnpy-mem-title"${m.title ? "" : ' data-empty="1"'}>${m.title ? esc(m.title) : "&mdash;"}</span>
         <span class="cnpy-mem-joined">${joined(m.joined_at)}</span>
-        <span class="cnpy-mem-role">${roleChip(m.role)}${sameHandle(m.handle, me) ? YOU : ""}</span>
+        <span class="cnpy-mem-role">${roleChip(m.role)}</span>
         ${admin ? `<span class="cnpy-mem-act">${quietBtn(d ? "Close" : "Edit", d ? "orgMemberCancel" : "orgMemberEdit", { arg: m.handle, label: `${d ? "Close the editor for" : "Edit"} ${name}`, field: `orgMemberEdit:${m.handle}` })}</span>` : ""}
       </div>
       ${d ? memberEditor(m, d, org.role, m.role === "owner" && owners <= 1, dd) : ""}

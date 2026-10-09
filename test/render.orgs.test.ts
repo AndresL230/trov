@@ -487,6 +487,10 @@ describe("Org settings › Members holds what Maintenance › People used to", (
     const order = ["cnpy-mem-who", "cnpy-mem-handle", "cnpy-mem-title", "cnpy-mem-joined", "cnpy-mem-role", "cnpy-mem-act"].map((c) => row.indexOf(c));
     expect(order.every((n) => n >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // "YOU" sits beside your own name, in the Member column — not over in Role.
+    const mine = /<div class="cnpy-mem-row" data-member="ines">([\s\S]*?)<\/li>/.exec(html)?.[1] ?? "";
+    expect(mine.slice(mine.indexOf("cnpy-mem-who"), mine.indexOf("cnpy-mem-handle"))).toContain(">YOU<");
+    expect(mine.slice(mine.indexOf("cnpy-mem-role"))).not.toContain(">YOU<");
     // A member (no Edit) gets the same table without the last column.
     const ro = membersTab(acme("member"), members, "ines");
     expect(ro).toContain('class="cnpy-mem-row cnpy-mem-head is-ro"');
