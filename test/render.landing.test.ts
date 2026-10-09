@@ -30,7 +30,7 @@ describe("landing — the facts it states", () => {
       expect(html).toContain("How Trov works, in the Guide");
     }
     // Signed out, the hero's first button opens Sign in; reopened from the app, it opens the Guide.
-    expect(out()).toContain('<button data-act="openSignIn" class="site-btn site-btn-onb">Start for free</button>');
+    expect(out()).toContain('<button data-act="openSignIn" data-arg="signup" class="site-btn site-btn-onb">Start for free</button>');
     expect(out(false, true)).toContain('<button data-act="siteGuide" class="site-btn site-btn-onb">Open the Guide</button>');
   });
 
@@ -120,7 +120,7 @@ describe("landing — a rerender replays nothing", () => {
     const open = render({ ...initialState(), view: "auth", authStep: "login", signInOpen: true });
     expect(closed).toContain('<div class="cnpy-site" data-morph="landing">');
     expect(closed).not.toContain('data-overlay="signin"');
-    expect(open).toContain('<div data-overlay="signin">');
+    expect(open).toContain('<div data-overlay="signin" data-signin-mode="signin">');
     // The page is the same markup whether the dialog is open or not: morph patches nothing in it.
     const page = (html: string) => html.slice(html.indexOf('<div class="cnpy-site"'), html.indexOf("</footer>"));
     expect(page(open)).toBe(page(closed));
