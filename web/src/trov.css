@@ -1877,7 +1877,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .site-signin-back { position:fixed; inset:0; z-index:60; animation:site-fade .16s ease both;
   background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 30%, transparent) 0%, transparent 72%), rgba(14,14,26,.52); }
 .site-signin-wrap { position:fixed; inset:0; z-index:61; display:grid; place-items:center; padding:16px; pointer-events:none; overflow-y:auto; }
-.site-signin-card { pointer-events:auto; position:relative; width:min(364px, 100%); border:0; background:var(--surface); overflow:hidden;
+.site-signin-card { pointer-events:auto; position:relative; width:min(380px, 100%); border:0; background:var(--surface); overflow:hidden;
   box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.06), 0 30px 70px -24px rgba(10,12,40,.5); animation:cnpy-pop .18s ease both; }
 /* No banner here: the dialog opens over the hero, which IS the banner — a second one in front of it was
    the same slab twice. A plain card: the mark, the title, the two ways in. */
@@ -1891,11 +1891,15 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .site-signin-or { display:flex; align-items:center; gap:12px; font-family:var(--label); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--fg-40); }
 .site-signin-or > span { flex:1; height:1px; background:var(--border); }
 @media (max-width:640px) { .site-signin-body > * { max-width:none; } }
-.site-signin-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:12px 16px; font-size:14px; font-weight:600; transition:filter .12s ease, background .12s ease; }
+.site-signin-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; box-sizing:border-box; padding:12px 16px; font-family:inherit; font-size:14px; line-height:20px; font-weight:600; transition:filter .12s ease, background .12s ease; }
 .site-signin-btn:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
 /* Get started: the plan choice above the way in (landing.ts `planChoice`). */
 .site-signin-plans { display:flex; flex-direction:column; gap:10px; }
-.site-signin-plan-what { margin:0; min-height:3.1em; font-size:12.5px; line-height:1.55; color:var(--fg-55); text-align:center; text-wrap:balance; }
+/* ONE line for either plan, so picking Free or Pro never changes the dialog's height. The block takes the
+   body's full width (the buttons under it stay the narrow pair). */
+.site-signin-body > .site-signin-plans { max-width:none; }
+.site-signin-body > .site-signin-plans > .cnpy-seg { max-width:280px; align-self:center; width:100%; }
+.site-signin-plan-what { margin:0; font-size:12.5px; line-height:1.55; color:var(--fg-55); text-align:center; white-space:nowrap; }
 .site-signin-plan-what b { color:var(--fg); font-weight:600; }
 .site-signin-plan-what a, .site-signin-note a { color:var(--fg-70); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); white-space:nowrap; }
 .site-signin-note { margin:0; font-size:12px; line-height:1.5; color:var(--fg-40); text-align:center; text-wrap:balance; }

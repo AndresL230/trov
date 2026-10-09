@@ -315,7 +315,7 @@ describe("the waiting room — /billing/done", () => {
 
   it("ready: sends the buyer to name their organization — a real link, the page's one accent action", () => {
     const html = billingDonePage(room({ phase: "ready", plan: "team", grant: 12 }));
-    expect(text(html)).toContain("Payment received Your Pro organization is ready to set up. Next you choose its name and its address, and it is yours.");
+    expect(text(html)).toContain("Payment received Thank you. Your Pro organization is paid for and ready to set up: next you choose its name and its handle, and it is yours.");
     expect(html).toMatch(/<a href="\/\?setup=12" data-billing-go class="cnpy-accentbtn"[^>]*>Set up your organization<\/a>/);
     expect(html.match(/cnpy-accentbtn/g)).toHaveLength(1);
     expect(setupHref(12)).toBe("/?setup=12");
@@ -364,7 +364,7 @@ describe("the waiting room — /billing/done", () => {
     expect(s.phase).toBe("received");
   });
 
-  it("the poll: waits through pending answers and blips, turns 'slow', and goes to set-up the moment the grant exists", async () => {
+  it("the poll: waits through pending answers and blips, turns 'slow', and STOPS on the confirmation when the grant exists — it does not jump on", async () => {
     const answers: (BillingStatusResponse | Error)[] = [{ state: "pending", paid: false }, new TypeError("network"), Object.assign(new Error("503"), { status: 503 }), { state: "pending", paid: true }, { state: "ready", plan: "team", grant: 5 }];
     let ui: BillingDoneUi = room();
     let clock = 0;
@@ -375,7 +375,7 @@ describe("the waiting room — /billing/done", () => {
       ask: async () => { const a = answers.shift()!; if (a instanceof Error) throw a; return a; },
       go: (href) => went.push(href), now: () => clock, wait: async (ms) => { clock += ms * 4; },
     });
-    expect(went).toEqual(["/?setup=5"]);
+    expect(went).toEqual([]); // the card is the confirmation: its button is how the buyer goes on
     expect(ui).toMatchObject({ phase: "ready", grant: 5, plan: "team" });
     expect(seen).toEqual(["confirming", "confirming", "confirming", "received+slow", "ready+slow"]);
     expect(BILLING_POLL.slowMs).toBeGreaterThanOrEqual(15_000);

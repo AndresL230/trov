@@ -4392,13 +4392,14 @@ if (params.get("denied") === "1") {
       // `/platform/`: the superadmin's area, whatever orgs they are in (or none). Anyone else falls through to the picker.
       // So does a `#platform…` link opened at `/` by a superadmin with no org to open it in.
       if (me.superadmin === true && (isPlatformPath(location.pathname) || (me.orgs.length === 0 && /^#platform(?:\/|$)/.test(hash)))) { void loadMyOrgs(); enterPlatform(hash); return; }
-      // Sent on from the waiting room (billing.ts `setupHref`): the picker — whatever orgs they are already in —
-      // with the form for the organization they just paid for open. A stale or foreign id opens their oldest grant, or nothing.
+      // Sent on from the waiting room (billing.ts `setupHref`): the picker — whatever orgs they are already
+      // in — where the organization they just paid for is one of the things to do ("You can set up an
+      // organization — Pro. Paid for just now."). Its form is NOT opened for them: it is their next step
+      // to take, on a card that says the payment went through, not a dialog thrown over it.
       const setup = params.get(SETUP_PARAM);
       if (setup !== null && location.pathname === "/") {
         history.replaceState(null, "", "/");
         showPicker(null);
-        void loadMyOrgs().then((mine) => { if (mine?.can_create) orgsCtl.act("orgsCreateOpen", setup, null); });
         return;
       }
       const land = resolveLanding({ pathSlug: orgSlugFromPath(location.pathname), orgs: me.orgs, lastUsed: last, returnOrg: backOrg });

@@ -61,7 +61,7 @@ function copyOf(s: BillingDoneUi): Copy {
       const plan = s.plan ? `${PLANS[s.plan].name} ` : "";
       return {
         title: "Payment received",
-        body: `Your ${esc(plan)}organization is ready to set up. Next you choose its name and its address, and it is yours.`,
+        body: `Thank you. Your ${esc(plan)}organization is paid for and ready to set up: next you choose its name and its handle, and it is yours.`,
         actions: accentLink(setupHref(s.grant ?? 0), "Set up your organization"),
       };
     }
@@ -173,7 +173,7 @@ export function applyBillingStatus(s: BillingDoneUi, r: BillingStatusResponse): 
   return true;
 }
 
-/** Poll until the purchase is settled, then send the buyer on. Resolves when it stops. */
+/** Poll until the purchase is settled. Resolves when it stops; the settled card is where the buyer goes on from. */
 export async function startBillingDone(h: BillingDoneHost): Promise<void> {
   const now = h.now ?? Date.now, wait = h.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const started = now();
@@ -182,8 +182,10 @@ export async function startBillingDone(h: BillingDoneHost): Promise<void> {
     if (!s || !s.sessionId || s.phase === "missing") return;
     try {
       if (applyBillingStatus(s, await h.ask(s.sessionId))) {
+        // The card STAYS on "Payment received" with its one button: it is the confirmation that the payment
+        // went through, and the buyer reads it and goes on when they choose. (It used to jump straight on,
+        // so nobody ever saw it.)
         h.rerender();
-        if (s.phase === "ready" && s.grant !== null) h.go(setupHref(s.grant));
         return;
       }
     } catch (e) {

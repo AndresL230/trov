@@ -779,11 +779,11 @@ function planChoice(plan: SignUpPlan): string {
   const line = (id: SignUpPlan): string => {
     const def = PLANS[id], price = PRICING[id];
     const amount = price.price === 0 ? "Free" : `${formatPrice(price.price ?? 0)} ${price.per}`;
-    return `<b>${esc(amount)}</b> &middot; ${esc(seatsPhrase(def.entitlements.seats))}.`;
+    return `<b>${esc(amount)}</b> &middot; ${esc(seatsPhrase(def.entitlements.seats))}`;
   };
   return `<div class="site-signin-plans" data-signin-plan="${plan}">
       ${segmented({ id: "signin-plan", ariaLabel: "Plan", act: "signInPlan", value: plan, size: "sm", fill: true, inertOn: true, options: [{ value: "free", label: PLANS.free.name }, { value: "team", label: PLANS.team.name }] })}
-      <p class="site-signin-plan-what">${line(plan)} <a href="/pricing">Compare plans</a></p>
+      <p class="site-signin-plan-what">${line(plan)} &middot; <a href="/pricing">Compare plans</a></p>
     </div>`;
 }
 
@@ -801,8 +801,7 @@ function signInDialog(mode: SignInMode = "signin", plan: SignUpPlan = "free"): s
   const proHref = (via: "github" | "google"): string => `${purchaseHref("team")}&via=${via}`;
   const checkout = sellPro ? `<a href="${proHref("github")}" data-field="signInProGithub" class="site-signin-btn site-btn-solid" style="border-radius:9px;text-decoration:none">${GH_24}Continue with GitHub</a>
           <div class="site-signin-or" aria-hidden="true"><span></span>or<span></span></div>
-          <a href="${proHref("google")}" data-field="signInProGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px;text-decoration:none">${GOOGLE_24}Continue with Google</a>
-          <p class="site-signin-note">After you sign in, you pay on Stripe. Seats can be changed at any time.</p>` : "";
+          <a href="${proHref("google")}" data-field="signInProGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px;text-decoration:none">${GOOGLE_24}Continue with Google</a>` : "";
   return `<div data-overlay="signin" data-signin-mode="${mode}"${choosing ? ` data-signin-plan="${plan}"` : ""}>
     <div data-act="closeSignIn" class="site-signin-back"></div>
     <div class="site-signin-wrap">
