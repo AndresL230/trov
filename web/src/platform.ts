@@ -29,7 +29,7 @@ import { segmented } from "./segmented";
 import { confirmModal } from "./confirm";
 import { usageView, orgUsageBlock, type UsageWindow } from "./platform-usage";
 import { tabLead, leadFlag, dangerLink } from "./org-ui";
-import { skRows, skKey } from "./skeleton";
+import { emptyLayout, skRows, skRowsShape, skKey } from "./skeleton";
 // Plans and grants (shared/plans.ts): the Access tab, an org's Plan section, their dialogs.
 import { PLANS, type PlanId } from "@shared/plans";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
@@ -217,8 +217,10 @@ function goBtn(label: string, on: boolean, act: string, extra = ""): string {
  *  it, and a quiet aside (markup: a phrase, or a small action) at the right. */
 const sectionHead = (title: string, aside = "", first = false, count: number | null = null): string =>
   `<div class="cnpy-sechead${first ? " is-first" : ""}"><h2 style="${LABEL};margin:0">${esc(title)}</h2>${count === null ? "" : `<span class="cnpy-badge" data-n="${count}">${count}</span>`}${aside ? `<span class="cnpy-sechead-a">${aside}</span>` : ""}</div>`;
-const emptyCard = (title: string, sub: string): string =>
-  `<div style="border:1px dashed var(--border-strong);border-radius:11px;padding:22px 24px;text-align:center"><div style="font-size:13.5px;font-weight:600;color:var(--fg-70)">${esc(title)}</div><div style="font-size:12.5px;color:var(--fg-40);margin-top:4px;line-height:1.5">${esc(sub)}</div></div>`;
+/** A list with nothing in it: its heading and one sentence, then the rows it will hold, drawn
+ *  empty (skeleton.ts `emptyLayout`). The action that adds the first one is the tab's lead button. */
+const emptyCard = (title: string, sub: string, avatar = 0): string =>
+  emptyLayout(`plat-${skKey(title)}`, { title, text: sub, sayStyle: "margin-bottom:4px", shapes: skRowsShape(2, { avatar: avatar || undefined, trail: 72 }) });
 /** A tab's rows while its read is out (skeleton.ts); "Loading <what>…" stays for a screen reader. */
 const loadingLine = (what: string, rows = 4, avatar = 0): string =>
   skRows(`plat-${skKey(what)}`, `Loading ${esc(what)}…`, rows, { avatar: avatar || undefined, trail: 72 });

@@ -318,15 +318,19 @@ describe("reviewView — flagged marker (low-confidence scrutiny signal)", () =>
 });
 
 describe("reviewView — empty states", () => {
-  it("renders the list 'All clear' card and the detail 'Queue is clear' card with no items", () => {
+  it("with no items the list says so and both panes draw their shape empty", () => {
     const html = reviewView(makeReviewProps({ items: [] }));
-    expect(html).toContain("All clear");
-    expect(html).toContain("Queue is clear");
+    expect(html).toContain('data-empty="review-list"');
+    expect(html).toContain("Nothing is waiting for review.");
+    // The detail pane is a picture only: the list carries the one sentence.
+    expect(html.split("cnpy-empty-text").length - 1).toBe(1);
+    expect(html.split("cnpy-empty-shapes").length - 1).toBe(2);
+    expect(html).not.toContain("data-skel=");
   });
 
   it("renders the list empty state when the filter hides everything, keeping the selected detail", () => {
     const html = reviewView(makeReviewProps({ filter: "decision", selectedId: "p1" }));
-    expect(html).toContain("All clear");
+    expect(html).toContain("Nothing of this kind is waiting for review.");
     // Selection survives the filter — the detail still shows the proposal
     expect(html).toContain("WHAT CHANGED");
   });
@@ -571,8 +575,10 @@ describe("maintenanceView — surface cards", () => {
 describe("maintenanceView — empty state", () => {
   it("an empty queue has its own card", () => {
     const u = maintenanceView(makeMaintProps({ unplaced: [] }));
-    expect(u).toContain("All clear");
-    expect(u).toContain("Everything an agent produced found its place on its own.");
+    expect(u).toContain('data-empty="unplaced"');
+    expect(u).toContain("Nothing is unplaced, which is this queue");
+    // It never claims an agent produced anything: a new organization's queue is empty too.
+    expect(u).not.toContain("found its place");
   });
 });
 

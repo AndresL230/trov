@@ -283,8 +283,9 @@ will be — so nothing moves when the read lands. The rules:
   `reviewView`) rather than being replaced by a stand-in page.
 - **One region per read.** Where a screen has several reads (My Work's tiles, the Feed's and Roadmap's aside
   boxes, Repo's sections, Org settings' lists), each region has its own skeleton and fills on its own.
-- **Only for "not loaded yet".** Loaded-and-empty keeps its empty state, a failed read keeps its error, and a
-  refetch keeps the content already on screen (Search keeps its results while a new query is out).
+- **Only for "not loaded yet".** Loaded-and-empty is an EMPTY LAYOUT (below), a failed read keeps its error, and a
+  refetch keeps the content already on screen (Search keeps its results while a new query is out). A view that
+  takes only a slice's `data` cannot tell the two apart — pass it the status (`outboxLoading`, `loading`).
 - **Motion** (trov.css `.cnpy-skel`): the bars stay invisible for the first 150 ms (`SKEL_DELAY_MS` — a fast read
   never shows a skeleton), then fade in and pulse. `syncSkeletons(mount, scope)` runs after every paint: it keeps
   each region's clock by `key` and hands it to the fresh DOM as a negative delay (`--skel-t`, as `--enter-t` does
@@ -297,6 +298,79 @@ will be — so nothing moves when the read lands. The rules:
 - Left as text on purpose: the Sync panel's "Checking the last sync…" (a popover's status line), the quick-search
   dropdown's "Searching…" (it has its own pause rule), and the artifact attach dialog's "Loading tickets…".
 - Tests: `test/render.skeleton.test.ts`.
+
+## Empty layouts — the screen's own shape, drawn empty (`emptyLayout` in `web/src/skeleton.ts`)
+
+A screen that has LOADED and holds nothing never collapses to one centred line: it keeps its real chrome
+(header controls, toolbar, columns, tile grid, tab bar, section headings) and draws its content's shape
+empty, so a brand-new organization can see what the screen is for. The rules:
+
+- **Skeleton vs empty layout — which one.** A read that is OUT is a skeleton (`skeleton()`: `aria-busy`,
+  `data-skel`). A read that ANSWERED with nothing is an empty layout (`emptyLayout()`: `data-empty`, no
+  `aria-busy`). A filter or search that hides everything is neither: it says "nothing matches" (the queue's
+  `queueNarrowed`; the Feed's author / tag; the Prompt Library's and Artifacts' "No … match"). A failed read
+  keeps its error. Never paint an empty layout before the read lands (see "Only for not loaded yet" above).
+- **ONE helper.** `emptyLayout(key, { text, action, shapes })`, with `emptySay` / `emptyShapes` for a screen
+  whose sentence and shapes sit in different containers (the board's columns, Review's two panes). Never
+  hand-roll a dashed "nothing here" card in a screen module. Org settings' `orgEmpty` and Platform's
+  `emptyCard` are thin wrappers over it.
+- **One sentence, one action, per region.** `text` says what appears here and how it gets there, in the
+  Guide's words where the Guide says it (`guideView` in `render.ts`); the sentences are exported constants
+  beside their screen (`QUEUE_EMPTY`, `FEED_EMPTY`, `ROADMAP_EMPTY`, `MW_EMPTY`, `HANDOFFS_EMPTY`,
+  `PROMPTS_EMPTY`, `ARTIFACTS_EMPTY`, `REVIEW_EMPTY`, `UNPLACED_EMPTY`, `REPO_EMPTY`, `TIMELINE_EMPTY`).
+  It claims only what the read proved: "Tickets show here…", never "your team has no tickets" under an
+  Open / Closed switch. `action` is the one act that makes the first item, offered exactly as the screen's
+  own button is (New sprint, Submit a ticket, New doc, New artifact, New handoff, New prompt); a screen an
+  agent writes (the Feed) offers `CONNECT_AGENT` (the guided setup's agent step); Review and Unplaced offer
+  nothing — empty is their normal state. A region is one read: My Work has four, the Feed three. The one
+  exception to "one action" is the Repo dashboard, which keeps Preview with sample data for everyone and
+  adds Open Org settings › Repositories for an admin (`actionHtml`).
+- **Shapes are the skeleton's builders.** Each screen has ONE shape builder (`tableShapes`,
+  `boardCardShapes`, `feedCardShape`, `sprintCardShape`, `timelineShapes`, `handoffRowsShape`,
+  `promptCardShape`, `libraryCardShape`, `reviewCardShape`, `unplacedShapes`, `skRowsShape`, …) used by its
+  loading skeleton AND its empty layout, so the two have the same columns and row heights and cannot drift.
+- **Never data (CLAUDE.md invariant 7).** A shape is a box: no name, title, number, date, avatar, control or
+  status colour. Inside `.cnpy-empty-shapes` (`aria-hidden`, `pointer-events:none`) trov.css draws `.cnpy-sk`
+  hollow (a 1px `--border-strong` outline, no fill) and `.cnpy-surface` as a dashed outline with no fill or
+  shadow; nothing animates. A skeleton is a FILLED bar that pulses. That difference — hollow and still vs
+  filled and moving, plus a sentence — is how a person tells empty from loading at a glance, in either theme
+  and under reduced motion. `test/render.empty.test.ts` walks every screen's shapes and fails on any text,
+  control or colour token in them.
+- **Radii**: `.cnpy-empty-say` and `.cnpy-empty-act` have their lines in the corners block.
+- Left as they were: the My Work library strip's three cells (two real lines each), the Roadmap's "No sprint
+  in progress.", Search's "No results for that query." (a query's answer), the Timeline's "No sprint has a
+  due date yet" card, and a board column with nothing in it while other columns hold tickets ("Nothing here",
+  the drop target).
+
+### The state preview — `?preview=empty` / `?preview=loading` (`web/src/preview.ts`)
+
+An owner of a busy organization never meets either state, so any app address takes a query flag:
+`/<org>/?preview=empty#tickets`, `/<org>/?preview=loading#feed`, and the same on `/platform/`. Every screen
+then paints its empty layout or its loading skeleton, whatever the organization holds.
+
+- **A projection at render time.** `shownState(s)` (`render.ts`) maps the real state through `previewState`
+  — every `{ status, data }` slice becomes "still out" or "answered with nothing", found by its shape in
+  `initialState()` — and `render()` paints that. The real state is never written, the reads keep running
+  underneath, and closing the banner paints the real screen at once. Anything main.ts renders directly must
+  go through `shownState` too (`docReaderHtml` does). A NEW slice is covered automatically if it is a
+  `{ status, data }` on `AppState`, `OrgUi`, `PlatState` or `ArtUi.list`; one whose empty value is not its
+  initial value (a DTO that is `null` until read, like `mywork` or `feedStats`) needs a line in `previewState`.
+- **Who is looking stays real**: the person, their organizations and role, the org's name, plan and
+  settings — a new organization has those too, and they decide which actions show. In `empty` the org has
+  one member (the viewer) and no repository; a page that opens ONE existing thing (a ticket, a sprint, a
+  handoff, a prompt, an artifact) keeps the real item, because nothing can be opened in an empty
+  organization. In `loading` those pages show their skeleton too.
+- **It never sends a write.** `applyPreview` (`main.ts`, the only place the flag is set) calls api.ts
+  `setWriteBlock`: while it is on, `call` — the one sender — throws `PreviewBlocked` for every request that
+  is not a GET or HEAD before `fetch` runs, and a toast says "This is a preview: nothing is changed."
+- **It cannot be mistaken for data.** `.cnpy-preview` (the amber banner at the app's lower right, a
+  root-level sibling of the toast, never in the header) stays up on every screen: which state, "nothing is
+  changed, and what you see is not your data", a switch to the other state, and Close (which removes the
+  flag from the address bar). The flag is kept in the address bar across navigation (`withPreview` in
+  `enterOrg` / `enterPlatform`) and is dropped by a page load to another organization.
+- The Repo dashboard's own "Preview with sample data" still works under it.
+- Tests: `test/render.empty.test.ts` (no string of the organization's data on any screen in either mode,
+  the state object untouched, writes refused before `fetch`).
 
 ## Corners — tighter than the design file
 

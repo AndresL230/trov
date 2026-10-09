@@ -10,7 +10,7 @@ import { esc, attr, relTime, surface, WORK_SHELL, hitArea, HITBOX } from "./ui";
 import { personChip, personLink, personNameLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
-import { skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
+import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
 
 // ── atoms ────────────────────────────────────────────────────────────────────
 const CHIP_BASE = "font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;border-radius:5px;padding:2px 6px;white-space:nowrap;flex:none";
@@ -100,13 +100,20 @@ const notice = (text: string): string => `<div style="text-align:center;padding:
 
 /** The inbox while its first read is out: the two section heads and their row tables,
  *  on the inbox row's own column template. */
-function handoffsSkeleton(): string {
+/** `n` inbox rows in their table as shapes, on the row's own column template — the inbox's
+ *  loading skeleton and its empty layout. */
+function handoffRowsShape(n: number, off = 0): string {
   const row = (i: number) => `<div class="cnpy-hrow" style="display:grid;grid-template-columns:minmax(0,2.6fr) minmax(0,1.1fr) minmax(0,1.3fr) auto 64px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">
       ${skLine(skW(i), 13.5, 1.5)}<span style="display:flex;align-items:center;gap:7px">${skBox(20, 20)}${skBar("60%", 9)}</span>${skLine("70%", 11.5, 2.4)}${skBox(60, 20)}${skLine(34, 11.5, 1.5, "justify-content:flex-end")}
     </div>`;
-  const block = (n: number, top: boolean, off: number) => `<div style="${top ? "" : "margin-top:36px;"}padding:0 2px">${skLine(top ? 170 : 70, 11, 1.5)}</div><div${surface("overflow:hidden;margin-top:10px")}><div style="margin-bottom:-1px">${skList(n, (i) => row(i + off))}</div></div>`;
+  return `<div${surface("overflow:hidden;margin-top:10px")}><div style="margin-bottom:-1px">${skList(n, (i) => row(i + off))}</div></div>`;
+}
+function handoffsSkeleton(): string {
+  const block = (n: number, top: boolean, off: number) => `<div style="${top ? "" : "margin-top:36px;"}padding:0 2px">${skLine(top ? 170 : 70, 11, 1.5)}</div>${handoffRowsShape(n, off)}`;
   return skeleton("handoffs", "Loading handoffs…", `${block(2, true, 0)}${block(4, false, 2)}`);
 }
+/** The inbox's empty sentence: what a handoff is here for, and who leaves one (the Guide › Handoffs). */
+export const HANDOFFS_EMPTY = "Nothing is waiting. When a session ends mid-task, its handoff shows here until the next session picks it up; your agent leaves one with the handoff skill.";
 
 export function handoffsView(p: HandoffsListProps): string {
   const intro = `<div style="font-size:12.5px;color:var(--fg-55);margin:0 0 22px">Handoffs you sent or that were left for you. A pending handoff waits until a session claims it.</div>`;
@@ -117,11 +124,15 @@ export function handoffsView(p: HandoffsListProps): string {
     const pend = p.handoffs.filter((h) => h.status === "pending");
     const hist = p.handoffs.filter((h) => h.status !== "pending")
       .sort((a, b) => ((a.claimed_at ?? a.created_at) < (b.claimed_at ?? b.created_at) ? 1 : -1));
+    // Nothing at all (a new organization): both sections keep their heading and draw their rows
+    // empty. With history on hand, only the waiting section is empty and it says so in one card.
+    const none = p.handoffs.length === 0;
     const pendingBlock = pend.length
       ? table(pend.map((h) => listRow(h, p)).join(""))
-      : `<div style="border:1px dashed var(--border-strong);border-radius:11px;padding:22px 20px;text-align:center;margin-top:12px"><div style="font-size:13.5px;font-weight:500;color:var(--fg-70)">Nothing waiting</div><div style="font-size:12.5px;color:var(--fg-40);margin-top:4px">When a session ends mid-task, its handoff shows here until the next session picks it up.</div></div>`;
+      : emptyLayout("handoffs", { text: HANDOFFS_EMPTY, action: { label: "New handoff", act: "newHandoff" }, style: "margin-top:12px", shapes: none ? handoffRowsShape(2) : "" });
     const historyBlock = hist.length
       ? table(hist.map((h) => listRow(h, p)).join(""))
+      : none ? emptyShapes(handoffRowsShape(3, 2))
       : `<div style="text-align:center;padding:28px;color:var(--fg-40);font-size:12.5px">No claimed or expired handoffs yet.</div>`;
     body = `${sectionHead("WAITING TO BE CLAIMED", pend.length, true)}${pendingBlock}${sectionHead("HISTORY", hist.length)}${historyBlock}`;
   }
