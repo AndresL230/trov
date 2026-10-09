@@ -70,6 +70,15 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;back
 .org input{flex:none;margin:0;accent-color:var(--accent)}
 .org-name{min-width:0;font-weight:600;overflow-wrap:anywhere}
 .org-slug{margin-left:auto;flex:none;font-family:var(--label);font-size:12px;color:var(--fg-55)}
+.who{margin-top:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--accent);border-radius:4px;background:var(--accent-soft)}
+.who-text{flex:1 1 180px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.who-label{font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-55)}
+.who-name{font-size:15px;font-weight:600;overflow-wrap:anywhere}
+.who-handle{font-weight:500;color:var(--fg-70)}
+.who-sub{font-size:12px;color:var(--fg-55)}
+.who-form{flex:none;margin:0}
+.who-out{font:inherit;font-size:12.5px;font-weight:600;color:var(--accent);background:transparent;border:0;padding:4px 0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.who-out:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .org.mode{align-items:flex-start}
 .org.mode input{margin-top:3px}
 .mode-text{min-width:0;display:flex;flex-direction:column;gap:3px}
@@ -162,7 +171,7 @@ export function defaultConsentChoice(orgs: { slug: string }[]): ConsentChoice {
  * `choice` is what to preselect (the defaults, or what the person sent when the page comes back with `error`).
  */
 export function consentPage(p: {
-  clientName: string; redirectHost: string; handle: string; orgs: { slug: string; name: string }[];
+  clientName: string; redirectHost: string; handle: string; name?: string | null; orgs: { slug: string; name: string }[];
   hidden: Record<string, string>; csrf: string; choice?: ConsentChoice; error?: string;
 }): string {
   const one = p.orgs.length === 1 ? p.orgs[0] : null;
@@ -187,7 +196,15 @@ export function consentPage(p: {
     + `<p class="pick-note">Tick at least one. You can add or remove organizations later in Settings › MCP access.</p>`
     + `</fieldset>`;
   return shell("Connect an app", head("Connect an app")
-    + `<p class="lede sm">It will act as <strong>@${esc(p.handle)}</strong></p>`
+    // WHO is approving, first and plainly: the browser an app opens may be signed in to another
+    // account than the one the person expects, and the connection then lands under that one. "Not
+    // you?" is a form of its own (a POST: signing out is never a link) that signs this browser out and
+    // comes back to the same request, which then asks for a sign-in.
+    + `<div class="who"><div class="who-text"><span class="who-label">Signed in as</span>`
+    + `<span class="who-name">${p.name && p.name.trim() && p.name.trim().toLowerCase() !== p.handle.toLowerCase() ? `${esc(p.name.trim())} <span class="who-handle">(@${esc(p.handle)})</span>` : `@${esc(p.handle)}`}</span>`
+    + `<span class="who-sub">The app will act as this account.</span></div>`
+    + `<form method="post" action="/oauth/switch-account" class="who-form">${Object.entries({ ...p.hidden, csrf: p.csrf }).map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("")}`
+    + `<button class="who-out" type="submit">Not you? Sign out</button></form></div>`
     + `<div class="app"><div class="app-ic">${APP}</div><div style="min-width:0">`
     + `<div class="app-name">${esc(p.clientName)}</div>`
     + `<div class="app-sub">Returns you to <span class="host">${esc(p.redirectHost)}</span></div>`

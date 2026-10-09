@@ -12,7 +12,8 @@ import {
   validateRegistration, registerClient, exchangeAuthorizationCode, refreshAccessToken, revokeOAuthToken,
   AUTHORIZE_KEYS, canonicalAuthorizeQuery, checkAuthorizeRequest, issueAuthorization, issueRepoAuthorization, type AuthorizeCheck,
 } from "./oauth";
-import { readSessionCookie, getSessionUser } from "./session";
+import { readSessionCookie, getSessionUser, deleteSession, clearSessionCookie } from "./session";
+import { getPerson } from "./persons";
 import { hmacSeal, hmacUnseal, b64uEncode, b64uDecode } from "./crypto";
 import { errorPage, signInPage, consentPage, noOrgPage, defaultConsentChoice, type ConsentChoice } from "./oauth-pages";
 import { platformContext } from "../data/gate";
@@ -216,7 +217,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
     for (const k of AUTHORIZE_KEYS) { const v = q.get(k); if (v) hidden[k] = v; }
     const target = new URL(check.params.redirect_uri);
     return page(c, consentPage({
-      clientName: check.client.client_name, redirectHost: target.hostname, handle: s.handle,
+      clientName: check.client.client_name, redirectHost: target.hostname, handle: s.handle, name: (await getPerson(c.var.p, s.handle))?.name ?? null,
       orgs: orgs.map((o) => ({ slug: o.slug, name: o.name })),
       hidden, csrf: await consentCsrf(c.env.COOKIE_SECRET, s.id, q),
       choice: again?.choice, error: again?.error,
@@ -239,6 +240,31 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
       const orgs = await listMyOrgs(c.var.p, s.handle);
       if (orgs.length === 0) return page(c, noOrgPage(check.client.client_name, s.handle), 409);
       return consent(c, check, s, q, orgs, 200);
+    } catch (e) {
+      return unavailable(c, e);
+    }
+  });
+
+  // "Not you? Sign out" on the consent page: end THIS browser's session and come back to the same
+  // authorize request, which now asks for a sign-in (and remembers the request across it, exactly as a
+  // first visit does). A POST carrying the consent page's own CSRF value — a link, or another site's
+  // form, cannot sign anyone out. Nothing is granted here.
+  o.post("/oauth/switch-account", async (c) => {
+    try {
+      const body = await c.req.parseBody();
+      const q = new URLSearchParams();
+      for (const k of AUTHORIZE_KEYS) { const v = body[k]; if (typeof v === "string" && v) q.set(k, v); }
+      const check = await checkAuthorizeRequest(c.var.p, q, oauthOrigin(c.req.url));
+      if (!check.ok) return refuse(c, check);
+      const s = await consentSession(c);
+      const csrf = typeof body.csrf === "string" ? body.csrf : "";
+      if (!s || !constantTimeEqual(csrf, await consentCsrf(c.env.COOKIE_SECRET, s.id, q))) {
+        return page(c, errorPage("This form expired or didn't come from your session. Start the connection again from the app."), 403);
+      }
+      const id = await readSessionCookie(c, c.env.COOKIE_SECRET);
+      if (id) await deleteSession(c.var.p, id);
+      clearSessionCookie(c);
+      return c.redirect(`/oauth/authorize?${canonicalAuthorizeQuery(q)}`, 303);
     } catch (e) {
       return unavailable(c, e);
     }

@@ -654,7 +654,7 @@ describe("OAuth consent — the org picker", () => {
     const cookie = await cookieFor("bob", { member: false });
     const { qs } = await registered();
     const html = await (await consentPageFor(qs, cookie)).text();
-    expect(html).toContain("@bob</strong>");
+    expect(html).toContain(`<span class="who-label">Signed in as</span><span class="who-name">@bob</span>`);
     expect(html).toContain("Works in <strong>Acme</strong>");
     expect(html).toContain(`<input type="hidden" name="org" value="acme">`);
     expect(html).toContain(`<input type="hidden" name="current" value="acme">`);
