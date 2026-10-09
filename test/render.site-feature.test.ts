@@ -8,7 +8,15 @@ import { landingView, TOUR_KEYS, TOUR_FACTS, type TourKey } from "../web/src/lan
 import { initialState, render } from "../web/src/render";
 import { fxMode, stepKey, trapIndex, FX_EXIT_MS, FX_MOVE_MS, type FeatureState } from "../web/src/site-feature";
 import { PLUGIN_INSTALL, ONE_ORG_NOTE } from "../web/src/mcp-connect";
+import { MOCK_KEYS, featureMock, mockText } from "../web/src/landing-mocks";
+import { TICKET_STATUSES, TICKET_STATUS_LABEL } from "../shared/tickets-core";
+import { ARTIFACT_STATUSES } from "../shared/artifacts-core";
 import css from "../web/src/trov.css?raw";
+import ticketsSrc from "../web/src/tickets.ts?raw";
+import timelineSrc from "../web/src/timeline.ts?raw";
+import myworkSrc from "../web/src/mywork.ts?raw";
+import handoffsSrc from "../web/src/handoffs.ts?raw";
+import artifactsSrc from "../web/src/artifacts.ts?raw";
 import landingSrc from "../web/src/landing.ts?raw";
 import renderSrc from "../web/src/render.ts?raw";
 
@@ -62,11 +70,9 @@ describe("the feature dialog", () => {
       expect(d).toContain(`data-morph-key="${key}"`);
       expect(d).toContain(`aria-label="How ${NAMES[key]} works"`);
       for (const f of TOUR_FACTS[key]) expect(d).toContain(f.replace(/'/g, "&#39;"));
-      // The mockup is the page's own markup, not a second drawing.
-      const mock = d.slice(d.indexOf('<div class="site-fx-mock"'), d.indexOf('<ul class="site-fx-facts"'));
-      const inner = mock.slice(mock.indexOf(">") + 1, mock.lastIndexOf("</div></div>"));
-      expect(inner.length).toBeGreaterThan(400);
-      expect(whole).toContain(inner);
+      // The dialog draws the screen itself (landing-mocks.ts), fuller than the row's teaser, and with no image.
+      expect(d).toContain(`<div class="site-fx-mock" aria-hidden="true">${featureMock(key)}</div>`);
+      expect(whole).not.toContain(featureMock(key));
       expect(d).not.toMatch(/<img\b/);
       expect(d).not.toMatch(/<h2 id="site-fx-title">[^<]*<\/h2>\s*<p>/);
     }
@@ -94,7 +100,7 @@ describe("the feature dialog", () => {
       .replace(/\$\{g(?:Strong|Code|Em)\("([^"]*)"\)\}/g, "$1").replace(/&amp;/g, "&");
     // For each fact, a phrase of it that must still stand in the Guide.
     const anchors: Record<TourKey, string[]> = {
-      docs: ["split into Technical and Product spaces, each grouped into sections like Architecture and Decisions", "Version history keeps every earlier version", "The live doc stays untouched until a person promotes", "an edit written against an out-of-date version is flagged"],
+      docs: ["split into Technical and Product spaces, each grouped into sections like Architecture and Decisions", "Version history keeps every earlier version", "The live doc stays untouched until a person promotes", "New doc lets you propose one yourself"],
       feed: ["A timeline of everything that shipped, from people and agents alike", "a short brief in plain words", "says whether an agent wrote it", "Filter by author, tag, or time"],
       tickets: ["Anyone can file a bug, request, question, or access ask", "Drag a card to change its status or its place in a column", "the same tickets grouped by sprint", "only a person closes a ticket: a merged PR never does"],
       roadmap: ["Narrative reads the plan and its sprint cards", "each bar runs from a sprint's start to its due date", "tickets closed", "always a person's call"],
@@ -108,6 +114,90 @@ describe("the feature dialog", () => {
       expect(anchors[key].length).toBe(TOUR_FACTS[key].length);
       for (const a of anchors[key]) expect(guide, `${key}: ${a}`).toContain(a);
     }
+  });
+});
+
+describe("the dialog's mockups — each screen drawn from the real one (landing-mocks.ts)", () => {
+  it("there is one for each of the seven features", () => {
+    expect([...MOCK_KEYS]).toEqual([...TOUR_KEYS]);
+    for (const key of MOCK_KEYS) expect(featureMock(key).length, key).toBeGreaterThan(2500);
+    expect(new Set(MOCK_KEYS.map((k) => featureMock(k))).size).toBe(7);
+  });
+
+  it("is inert: nothing focusable, nothing that acts, hidden from a screen reader", () => {
+    for (const key of MOCK_KEYS) {
+      const html = featureMock(key);
+      expect(html, key).not.toMatch(/<(?:button|a|input|select|textarea|img|iframe)\b/);
+      expect(html, key).not.toMatch(/\b(?:data-act|tabindex|href|onclick|contenteditable)=/);
+      expect(dialog(open(key))).toContain('<div class="site-fx-mock" aria-hidden="true">');
+    }
+  });
+
+  it("draws with the theme's tokens only, and never scales", () => {
+    for (const key of MOCK_KEYS) {
+      const html = featureMock(key);
+      expect(html, key).not.toMatch(/style="[^"]*(?:#[0-9a-fA-F]{3,8}\b|rgba?\()/);
+      expect(html, key).not.toMatch(/transform\s*:\s*scale|zoom\s*:/);
+    }
+    expect(rules).not.toMatch(/\.site-fx-mock[^{]*\{[^}]*(?:zoom|scale)/);
+  });
+
+  it("Tickets: a column per real status, in the product's order, and the table's own groups and chips", () => {
+    const text = mockText("tickets").toLowerCase();
+    let at = -1;
+    for (const s of TICKET_STATUSES) {
+      const next = text.indexOf(TICKET_STATUS_LABEL[s].toLowerCase(), at + 1);
+      expect(next, TICKET_STATUS_LABEL[s]).toBeGreaterThan(at);
+      at = next;
+    }
+    expect(featureMock("tickets").match(/min-width:0;display:flex;flex-direction:column;gap:6px/g)?.length).toBe(TICKET_STATUSES.length);
+    expect(renderSrc).toContain("Submit a ticket");
+    expect(text).toContain("submit a ticket");
+    for (const real of ["Unassigned", "sub-ticket", "Backlog", "GitHub #", "TITLE", "PRIORITY", "STATUS", "ASSIGNEE"]) {
+      expect(ticketsSrc, real).toContain(real);
+      expect(text, real).toContain(real.toLowerCase());
+    }
+    // The page's teaser uses the product's words too: no invented priorities or counts.
+    expect(page()).not.toMatch(/\bP[0-3]\b|\d+ comments/);
+  });
+
+  it("Artifacts: the three real statuses in order, the version menu and Linked work", () => {
+    const text = mockText("artifacts").toLowerCase();
+    let at = -1;
+    for (const s of ARTIFACT_STATUSES) { const next = text.indexOf(s, at + 1); expect(next, s).toBeGreaterThan(at); at = next; }
+    for (const real of ["LATEST", "New version", "Linked work", "Attach ticket", "VERSIONS", "Compare v", "Ratified v", "Org"]) {
+      expect(artifactsSrc, real).toContain(real);
+      expect(text, real).toContain(real.toLowerCase());
+    }
+  });
+
+  it("every other mock says what its real screen says", () => {
+    const guide = renderSrc;
+    const pairs: [Parameters<typeof mockText>[0], string, string[]][] = [
+      ["docs", guide, ["You're viewing the", "promoted", "Review proposal", "Version history", "New doc", "Updated by"]],
+      ["feed", guide, ["For reading", "For agents", "This week", "Whole team, last 7 days", "Everything this week", "Top tags", "Waiting on review"]],
+      ["roadmap", timelineSrc, ["Sprints on the calendar", "In progress", "Upcoming", "Overdue", "Ready", "all tickets closed", "Today", "Done", "Next due", "starts in"]],
+      ["roadmap", guide, ["Narrative", "Timeline", "New sprint"]],
+      ["mywork", myworkSrc, ["Tickets for you", "Needs your review", "Your sessions", "Queue", "View all", "to promote", "to ratify", "Promote", "Ratify", "Reject", "Dashboard", "PRs", "Deploys", "due this week", "overdue"]],
+      ["handoffs", handoffsSrc, ["WAITING TO BE CLAIMED", "HISTORY", "PENDING", "CLAIMED", "EXPIRED", "Where it stands", "Claim", "Anyone", "Handoffs you sent or that were left for you. A pending handoff waits until a session claims it."]],
+    ];
+    for (const [key, src, words] of pairs) {
+      const text = mockText(key).toLowerCase();
+      for (const w of words) {
+        expect(src.toLowerCase(), `${key}: the product no longer says "${w}"`).toContain(w.toLowerCase());
+        expect(text, `${key}: "${w}"`).toContain(w.toLowerCase());
+      }
+    }
+  });
+
+  it("uses one fictional team throughout", () => {
+    const all = MOCK_KEYS.map((k) => mockText(k)).join(" ");
+    for (const ours of ["Maya", "Leo", "Sam", "#212", "#142", "ADR-0012", "Hardening the public API", "acme/api"]) expect(all).toContain(ours);
+  });
+
+  it("has ONE box at the dialog's size; a phone drops the secondary panes instead of shrinking them", () => {
+    expect(rules).toContain(".site-fx-mock { position:relative; width:100%; height:100%; min-width:0; min-height:0; }");
+    expect(rules).toMatch(/@media \(max-width:640px\) \{[^@]*\.fxm-wide \{ display:none !important; \}/);
   });
 });
 

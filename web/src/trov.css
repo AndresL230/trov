@@ -1778,12 +1778,24 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-fx-facts { grid-area:facts; list-style:none; margin:24px 36px 0 34px; padding:22px 0 28px; overflow-y:auto; display:flex; flex-direction:column; gap:14px; border-top:1px solid var(--border); }
 .site-fx-facts li { display:flex; gap:11px; align-items:flex-start; font-size:14.5px; line-height:1.55; color:var(--fg-70); text-wrap:pretty; }
 /* The mockup, big, on the banner's dots (the tour's `.site-stage`, as the whole panel side). */
-.site-fx-stage { grid-area:stage; position:relative; min-width:0; min-height:0; display:grid; place-items:center; padding:28px; overflow:hidden; border-right:1px solid var(--border);
+.site-fx-stage { grid-area:stage; position:relative; min-width:0; min-height:0; display:grid; padding:24px; overflow:hidden; border-right:1px solid var(--border);
   background:color-mix(in srgb, var(--accent) 5%, var(--bg)); }
 .site-fx-stage::before { content:""; position:absolute; inset:0; pointer-events:none;
   background-image:radial-gradient(color-mix(in srgb, var(--accent) 40%, transparent) 1px, transparent 1.2px); background-size:16px 16px;
   -webkit-mask-image:linear-gradient(135deg, transparent 20%, #000 100%); mask-image:linear-gradient(135deg, transparent 20%, #000 100%); }
-.site-fx-mock { position:relative; width:100%; zoom:1.15; background:var(--bg); }
+/* The screen, drawn at the stage's size (landing-mocks.ts): ONE box, the same for all seven, so a step
+   changes what is in it and never its size. No zoom and no scale: real type at the app's own sizes. */
+.site-fx-mock { position:relative; width:100%; height:100%; min-width:0; min-height:0; }
+.fxm { display:flex; flex-direction:column; flex:1; min-width:0; min-height:0; width:100%; border:1px solid var(--border-strong); background:var(--bg); overflow:hidden; text-align:left;
+  box-shadow:0 1px 2px rgba(20,22,60,.05), 0 18px 44px -22px rgba(20,22,60,.34); }
+.site-fx-mock > .fxm { height:100%; }
+.fxm-head { flex:none; display:flex; align-items:center; gap:10px; min-height:42px; padding:0 14px; border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; }
+.fxm-body { flex:1; min-height:0; overflow:hidden; }
+.fxm-stack { display:flex; flex-direction:column; gap:12px; height:100%; }
+.fxm-board { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:9px; padding:12px; align-items:start; }
+.fxm-lanes { --lab:160px; }
+.fxm-tiles { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; align-items:start; }
+[data-cnpy-theme="dark"] .fxm { box-shadow:0 1px 2px rgba(0,0,0,.3), 0 18px 44px -20px rgba(0,0,0,.6); }
 .site-fx-foot { flex:none; display:flex; align-items:center; gap:12px; padding:12px 16px; border-top:1px solid var(--border); background:color-mix(in srgb, var(--hover) 55%, transparent); }
 .site-fx-nav { display:inline-flex; align-items:center; gap:8px; min-height:38px; padding:0 14px 0 10px; border:1px solid var(--border-strong); background:var(--surface); font-size:13.5px; font-weight:600; color:var(--fg); }
 .site-fx-nav.is-next { padding:0 10px 0 14px; }
@@ -1830,7 +1842,9 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .site-fx-titles { padding:22px 60px 0 20px; }
   .site-fx-titles h2 { font-size:22px; }
   .site-fx-stage { margin-top:20px; padding:20px 16px; border-right:0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
-  .site-fx-mock { zoom:1; }
+  /* stacked: the stage is as tall as the screen drawn in it (the whole column scrolls) */
+  .site-fx-mock, .site-fx-mock > .fxm, .fxm-stack { height:auto; }
+  .fxm-body { overflow:visible; }
   .site-fx-facts { margin:0; padding:20px 20px 24px; border-top:0; overflow:visible; }
 }
 @media (max-width:640px) {
@@ -1838,6 +1852,15 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .site-fx-panel { height:100dvh; }
   .site-fx-nav { min-height:44px; }
   .site-fx-nav span { max-width:92px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* a phone keeps each screen's most telling pane: the secondary ones (`.fxm-wide`) are dropped, not shrunk */
+  .fxm-wide { display:none !important; }
+  .fxm-lanes { --lab:0px; }
+  /* the sprint's name moves above its bar: beside it there is no room */
+  .fxm-sprint { margin-top:22px !important; }
+  .fxm-lab { left:0 !important; right:auto !important; top:-16px !important; bottom:auto !important; font-size:10.5px !important; }
+  .fxm-board { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+  .fxm-tiles { grid-template-columns:minmax(0, 1fr); }
+  .site-fx-stage { padding:16px 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .site-fx, .site-fx *, .site-fx *::before, .site-fx *::after { animation:none !important; transition:none !important; }

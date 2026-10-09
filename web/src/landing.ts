@@ -37,6 +37,7 @@ import { TROV_REPO, siteFooter, siteMark as mark } from "./site-chrome";
 import { pricingSection } from "./pricing";
 import { ONE_ORG_NOTE, connectSteps } from "./mcp-connect";
 import type { FeatureState } from "./site-feature-core";
+import { AGENT_TAG, featureMock, initials, pill } from "./landing-mocks";
 
 
 // Who says what, ONCE (the 2026-10 redundancy pass — keep it that way):
@@ -71,7 +72,6 @@ const SUN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke=
 const MOON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`;
 /** The accent check, drawn on (stroke) when its section plays. */
 const check = (size: number, start: number, extra = "") => `<svg class="site-check" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="flex:none;${at(start)}${extra}"><path d="M20 6 9 17l-5-5"></path></svg>`;
-const AGENT_TAG = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 5px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="11" rx="2"></rect><path d="M12 8V4M8 13h.01M16 13h.01"></path></svg>agent</span>`;
 
 // ── shared pieces of the canvas's repeated markup ────────────────────────────
 const MONO_EYEBROW = "font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--accent)";
@@ -83,13 +83,6 @@ const MOCK = "border:1px solid var(--border);border-radius:12px;box-shadow:var(-
 /** The Trov mark, large, faint and tilted behind a banner's text (the first-run card's `.cnpy-orgs-art`). */
 const BANNER_ART = `<span class="site-banner-art" aria-hidden="true">${trovMark(100, "currentColor")}</span>`;
 
-/** A label-face status pill; `c` is a color var name (green / amber / blue / red). */
-function pill(text: string, c: string, size = "8.5px", pad = "1.5px 5px"): string {
-  return `<span style="font-family:var(--label);font-size:${size};font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--${c});border:1px solid color-mix(in srgb, var(--${c}) 45%, transparent);background:color-mix(in srgb, var(--${c}) 11%, transparent);border-radius:4px;padding:${pad};flex:none">${text}</span>`;
-}
-function initials(text: string, size = 26, font = "10px"): string {
-  return `<span style="width:${size}px;height:${size}px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:${font};font-weight:600;display:grid;place-items:center;flex:none">${text}</span>`;
-}
 function segTab(text: string, on: boolean, divider = false): string {
   return `<span style="padding:3px 10px;${on ? "background:var(--hover);color:var(--fg)" : "color:var(--fg-55)"}${divider ? ";border-left:1px solid var(--border)" : ""}">${text}</span>`;
 }
@@ -386,7 +379,7 @@ export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
     "The library is split into Technical and Product spaces, each grouped into sections like Architecture and Decisions.",
     "Opening a doc expands its heading outline in the tree, and Version history keeps every earlier version.",
     "An agent's change is a staged version. The live doc stays untouched until a person promotes it.",
-    "Each proposal is labelled new, edit, or rewrite, and an edit written against an out-of-date version is flagged.",
+    "New doc lets you propose one yourself.",
   ],
   feed: [
     "A timeline of everything that shipped, from people and agents alike.",
@@ -484,7 +477,7 @@ function tourItems(): TourItem[] {
         </div>
       </div>`;
 
-  const prio = (p: string, c: string) => `<span style="font-family:var(--label);font-size:8.5px;font-weight:600;text-transform:uppercase;color:var(--${c});border:1px solid ${c === "fg-55" ? "var(--border-strong)" : `color-mix(in srgb, var(--${c}) 45%, transparent)`};border-radius:4px;padding:1px 4px;flex:none">${p}</span>`;
+  const prio = (p: "High" | "Low") => `<span style="font-weight:${p === "High" ? "600;color:var(--fg)" : "500"}">${p}</span>`;
   const nobody = `<span style="width:18px;height:18px;border-radius:50%;border:1px dashed var(--border-strong);display:grid;place-items:center;font-size:8px;font-weight:600;color:var(--fg-40);flex:none">–</span>`;
   const card = (i: number, title: string, meta: string, who: string) => `<div class="site-st st-pop" style="border:1px solid var(--border);border-radius:8px;padding:8px 9px;background:var(--bg);${at(S + 250 + i * 110)}">
       <div style="font-size:11px;font-weight:600;line-height:1.35">${title}</div>
@@ -500,9 +493,9 @@ function tourItems(): TourItem[] {
         <span style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:10.5px;font-weight:500">${segTab("Board", true)}${segTab("Table", false, true)}</span>
       </div>
       <div style="padding:14px 16px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(110px,100%),1fr));gap:10px;align-items:start">
-        ${column("Triage", "blue", [card(0, "Email digest lands twice on Mondays", `#218 · ${prio("P2", "fg-55")}`, nobody), card(3, "Onboarding checklist is stale", "↗ GitHub #230", initials("SO", 18, "7.5px"))])}
-        ${column("In progress", "accent", [card(1, "Rate limiting on the public API", `#212 · ${prio("P0", "red")}`, initials("LP", 18, "7.5px"))])}
-        ${column("Testing", "amber", [card(2, "Retry-After on 429 responses", "#213 · 3 comments", initials("MC", 18, "7.5px"))])}
+        ${column("Triage", "blue", [card(0, "Email digest lands twice on Mondays", "#218", nobody), card(3, "Onboarding checklist is stale", `#230 · ${prio("Low")}`, initials("SO", 18, "7.5px"))])}
+        ${column("In progress", "accent", [card(1, "Rate limiting on the public API", `#212 · ${prio("High")}`, initials("LP", 18, "7.5px"))])}
+        ${column("Testing", "amber", [card(2, "Retry-After on 429 responses", "#213", initials("MC", 18, "7.5px"))])}
         ${column("Done", "green", [card(4, "SSO step in the checklist", "#209", initials("SO", 18, "7.5px"))], true)}
       </div>`;
 
@@ -613,8 +606,9 @@ function tour(): string {
 }
 
 // ── a feature, opened: the tour's dialog ─────────────────────────────────────
-// The card grown large: the feature's name and promise, the SAME mockup drawn big (settled — `is-done`
-// — so nothing in it has to play), what the Guide says about it, and previous / next through all seven
+// The card grown large: the feature's name and promise, the screen itself drawn at the dialog's size
+// (landing-mocks.ts `featureMock` — fuller than the row's teaser, built from the real screen, inert and
+// static, so it is painted before it slides in), what the Guide says about it, and previous / next through all seven
 // without closing. ONE root-level `data-overlay`, patched in place by morph.ts; only `.site-fx-main`
 // (keyed by the feature) is replaced on a step, which is what plays the step's slide. `data-in` says how
 // it was opened (site-feature.ts): "vt" = a View Transition grew the card into it, "css" = the keyframe
@@ -641,7 +635,7 @@ function featureDialog(f: FeatureState): string {
             <div style="${MONO_EYEBROW}">${it.name}</div>
             <h2 id="site-fx-title">${it.title}</h2>
           </div>
-          <div class="site-fx-stage"><div class="site-fx-mock" style="${it.mockStyle}">${it.mock}</div></div>
+          <div class="site-fx-stage"><div class="site-fx-mock" aria-hidden="true">${featureMock(it.key)}</div></div>
           <ul class="site-fx-facts" aria-label="How ${it.name} works">${TOUR_FACTS[it.key].map(fact).join("")}</ul>
         </div>
         <div class="site-fx-foot">

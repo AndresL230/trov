@@ -95,8 +95,9 @@ a fourth banner or a second texture (the tour's dialog has none: its stage is th
 
 ### The tour, explorable (`featureDialog` in `landing.ts`, `web/src/site-feature.ts`)
 
-Each tour row's mockup opens its feature in a large dialog: name and promise, the SAME mockup markup drawn big
-(`tourItems()` feeds the row and the dialog; no image), three or four statements from Help › Guide
+Each tour row's mockup opens its feature in a large dialog: name and promise, the screen itself drawn at the
+dialog's size (`featureMock` in `web/src/landing-mocks.ts`; the row keeps its small teaser), three or four
+statements from Help › Guide
 (`TOUR_FACTS` — change them with the Guide; a test pins a phrase of each to `guideView`), and Previous / Next
 through all seven (wrapping), with the position as text and dots.
 
@@ -119,6 +120,18 @@ through all seven (wrapping), with the position as text and dots.
   button inside a button and no duplicate tab stop. The window's scroll is locked while it is open, with the
   scrollbar's width handed back as padding so the page does not shift.
 - **Phone:** the app's modal sheet at full height; Previous / Next are 44px, at the bottom edge.
+- **The dialog's mockups** (`landing-mocks.ts`) are drawn from the real screens, and that is their contract:
+  a mock shows NOTHING the product does not have. The file's header names the renderer each one copies
+  (`docsView`, `feedView`, `boardCard` / `tableView`, `timelineView`, the My Work tiles, `handoffsView` /
+  `handoffDetail`, the artifact viewer); ticket and artifact statuses are imported from `shared/`, and
+  `test/render.site-feature.test.ts` asserts every other label still stands in the module that renders it —
+  so renaming a label in the app fails the test until the mock follows. They are inert (`aria-hidden`, no
+  button, link or `data-act`), use theme tokens only (dark shows the dark app), and are never zoomed or
+  scaled: real type at the app's sizes. Layout is `.fxm*` in `trov.css`: ONE box (`.site-fx-mock`, the
+  stage's size, the same for all seven, so a step never changes the frame); stacked under 860px it is as
+  tall as its content; under 640px the secondary panes (`.fxm-wide`) are dropped, not shrunk. Sample data
+  is one fictional team across the page (Maya Chen, Leo Park, Sam Ortiz; tickets #205–#230; PR #142;
+  ADR-0012; `acme/api`). When a real screen changes, change its mock and the page's teaser with it.
 
 ### For agents
 
