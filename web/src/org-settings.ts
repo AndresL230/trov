@@ -247,7 +247,7 @@ export function setupChecklist(org: MyOrg, ui: OrgUi): string {
   return `<section${surface("", { cls: "cnpy-setup" })} data-org-setup aria-labelledby="org-setup-t">
     <div style="min-width:0">
       <h2 id="org-setup-t" style="margin:0;font-size:13.5px;font-weight:600;letter-spacing:-0.005em;overflow-wrap:anywhere">Finish setting up ${esc(org.name)}</h2>
-      <div style="font-size:12px;color:var(--fg-55);margin-top:1px">${done} of ${steps.length} done</div>
+      <div style="font-size:12px;color:var(--fg-55);margin-top:1px">${done} of ${steps.length} done &middot; <button type="button" data-act="welcomeOpen" data-field="welcomeOpen" data-org-setup-guided class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--accent)">Open the guided setup</button></div>
     </div>
     <ol class="cnpy-setup-steps">${items}</ol>
   </section>`;
@@ -255,6 +255,10 @@ export function setupChecklist(org: MyOrg, ui: OrgUi): string {
 
 // ── GENERAL ──────────────────────────────────────────────────────────────────
 
+/** General is a bento inside the tab's width (trov.css `.cnpy-org-gen`, the Settings bento's tiles):
+ *  image + name | slug | plan on the first row, the plan's limits across the page under them. It
+ *  folds by the room the tab has (a container query): two columns, then one. DOM order is the
+ *  folded order. */
 export function generalTab(org: MyOrg, ui: OrgUi): string {
   const s = ui.settings;
   if (!s.data) return sliceNote(s, "the org's settings", false, { form: true });
@@ -267,18 +271,18 @@ export function generalTab(org: MyOrg, ui: OrgUi): string {
        <div style="display:flex;gap:8px;margin-top:14px">${accentBtn(ui.nameSaving ? "Saving…" : "Save name", "orgNameSave", { disabled: !changed || ui.nameSaving, busy: ui.nameSaving })}${ui.nameDraft !== null && !ui.nameSaving ? quietBtn("Cancel", "orgNameCancel") : ""}</div>`
     : `<div style="${O_LABEL}">Name</div><div style="font-size:14px;margin-top:7px;overflow-wrap:anywhere">${esc(stored)}</div>`;
   return `${tabLead(`Created ${esc(relTime(s.data.org.created_at))} by <strong>${esc(s.data.org.created_by)}</strong> &middot; you are ${org.role === "member" ? "a" : "an"} ${roleChip(org.role)} here${canEdit ? "" : ". Only an admin or an owner can rename the org."}`)}
-    <div class="cnpy-org-narrow">
-    <section${surface("padding:18px 20px")}>
+    <div class="cnpy-org-gen-wrap"><div class="cnpy-org-gen${canEdit ? "" : " cnpy-org-gen--read"}">
+    <section${surface("", { cls: "cnpy-tile cnpy-org-gen-id" })} aria-label="Image and name">
       ${orgLogoSection({ name: stored, logo: s.data.org.logo, canEdit, ui: ui.logo, repo: ui.repos.data.find((r) => r.is_primary)?.repo_full_name ?? null })}
       ${nameRow}
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-        <div style="${O_LABEL}">Slug</div>
-        <div style="margin-top:7px"><code style="font-family:var(--code);font-size:12.5px;color:var(--fg);overflow-wrap:anywhere">${esc(s.data.org.slug)}</code></div>
-        <div style="${O_HELP}">The org's permanent address in links and in the API. It cannot be changed.</div>
-      </div>
+    </section>
+    <section${surface("", { cls: "cnpy-tile cnpy-org-gen-slug" })} aria-label="Slug">
+      <div style="${O_LABEL}">Slug</div>
+      <div style="margin-top:7px"><code style="font-family:var(--code);font-size:12.5px;color:var(--fg);overflow-wrap:anywhere">${esc(s.data.org.slug)}</code></div>
+      <div class="cnpy-tile-foot" style="${O_HELP};margin-top:auto;padding-top:12px">The org's permanent address in links and in the API. It cannot be changed.</div>
     </section>
     ${planBlock(ui.plan, org.role, ui.billing)}
-  </div>`;
+  </div></div>`;
 }
 
 // ── REPOSITORIES ─────────────────────────────────────────────────────────────
@@ -598,21 +602,20 @@ export function unmatchedLogins(admin: boolean, identity: IdentityProps | null |
     </section>`;
 }
 
-export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: IdentityProps | null = null, dd: DropdownUi = initialDropdownUi()): string {
+/**
+ * "Invite someone" — Members' primary action, and the first-run wizard's third step (welcome.ts):
+ * ONE form, so both obey the same gate. The plan's seats (org-plan.ts): a one-person plan offers
+ * no invitation at all (""); with every seat in use the form gives way to the sentence the server
+ * would answer with — and, for the owner, the one thing that fixes it: "Add a seat" (paid Pro) or
+ * "Upgrade to Pro" (Free). One line of controls in one surface, with what happens next said once,
+ * under them. Admins only.
+ */
+export function inviteSection(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDropdownUi()): string {
   const admin = roleAtLeast(org.role, "admin");
-  const members = ui.members.data;
-  const note = sliceNote(ui.members, "members", members.length > 0, { rows: 4, avatar: 28, trail: 84 });
-  if (note) return note;
-  const owners = members.filter((m) => m.role === "owner").length;
   const canSend = inviteDraftOk(ui.inviteBy, ui.inviteDraft) && !ui.inviteBusy;
-  // The plan's seats (org-plan.ts): a one-person plan offers no invitation at all; with every
-  // seat in use the form gives way to the sentence the server would answer with — and, for the
-  // owner, the one thing that fixes it: "Add a seat" (paid Pro) or "Upgrade to Pro" (Free).
   const gate = inviteGate(ui.plan.data, org.role);
   const fix = gate.kind === "full" ? seatCapAction(gate.next, ui.billing, ui.plan.data?.billing?.available ?? false) : "";
-  // Inviting is this tab's primary action (its one accent button): one line of controls in
-  // one surface, with what happens next said once, under them.
-  const invite = !admin || gate.kind === "solo" ? ""
+  return !admin || gate.kind === "solo" ? ""
     : gate.kind !== "open" ? `<section aria-labelledby="org-invite-t" data-invite-gate="${gate.kind}">
       ${orgHead("Invite someone", "", null, "org-invite-t")}
       <div${surface("padding:14px 16px")}><p role="status" style="margin:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${esc(gate.sentence)}${gate.kind === "full" ? " Removing a member or revoking a pending invite frees a seat." : ""}</p>${fix ? `<div class="cnpy-plan-actions" data-seat-fix="${gate.next ?? ""}">${fix}</div>` : ""}${fix && ui.billing.error ? `<div role="alert" style="${O_ERR}">${esc(ui.billing.error)}</div>` : ""}</div>
@@ -629,22 +632,41 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
         </div>
         ${ui.inviteError ? `<div id="org-invite-e" role="alert" style="${O_ERR}">${esc(ui.inviteError)}</div>` : ""}
         <div id="org-invite-h" style="${O_HELP};margin-top:9px">${ui.inviteBy === "email"
-          ? "Trov emails them the invitation. They join when they sign in with that address and accept. A Google account can only sign in once it is invited."
+          ? "Trov emails them the invitation. They join when they sign in with that address, with Google or GitHub, and accept."
           : "They see the invitation the next time they sign in with that GitHub account, and join when they accept. No email is sent: tell them it is waiting."}</div>
       </div>
     </section>`;
+}
 
+export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: IdentityProps | null = null, dd: DropdownUi = initialDropdownUi()): string {
+  const admin = roleAtLeast(org.role, "admin");
+  const members = ui.members.data;
+  const note = sliceNote(ui.members, "members", members.length > 0, { rows: 4, avatar: 28, trail: 84 });
+  if (note) return note;
+  const owners = members.filter((m) => m.role === "owner").length;
+  const gate = inviteGate(ui.plan.data, org.role);
+  // Inviting is this tab's primary action (its one accent button).
+  const invite = inviteSection(org, ui, dd);
+
+  // The members are a TABLE: each fact in its own column, in the same place on every row — who, their
+  // handle, their title, when they joined, their role — so the list is scanned down a column instead of
+  // read across a run-on line. (A list in the DOM; the columns are one grid shared by head and rows.)
+  const joined = (iso: string): string => {
+    const t = new Date(iso);
+    return Number.isNaN(t.getTime()) ? "&mdash;" : esc(t.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }));
+  };
+  const head = `<div class="cnpy-mem-row cnpy-mem-head${admin ? "" : " is-ro"}" aria-hidden="true"><span>Member</span><span>Handle</span><span>Title</span><span class="cnpy-mem-joined">Joined</span><span>Role</span>${admin ? "<span></span>" : ""}</div>`;
   const rows = members.map((m) => {
     const d = admin && ui.memberEdit && sameHandle(ui.memberEdit.handle, m.handle) ? ui.memberEdit : null;
     const name = m.name ?? m.handle;
     return `<li style="border-bottom:1px solid var(--border);margin-bottom:-1px${d ? ";background:var(--hover)" : ""}">
-      <div class="cnpy-org-row" style="border-bottom:0;margin-bottom:0;align-items:center;padding-top:10px;padding-bottom:10px">
-        <button type="button" data-act="openPerson" data-arg="${attr(m.handle)}" class="cnpy-maint-person" aria-label="Open ${attr(name)}'s card" style="flex:1 1 150px;min-width:0;display:flex;align-items:center;gap:12px;text-align:left;padding:0">${personChip(m, 28, m.handle)}<span style="flex:1;min-width:0;line-height:1.3"><span style="display:block;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</span><span style="display:flex;align-items:center;gap:8px;min-width:0">${handleTag(m, m.handle, 11.5)}${m.title ? `<span style="font-size:12px;color:var(--fg-40);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">&middot; ${esc(m.title)}</span>` : ""}</span></span></button>
-        <div class="cnpy-org-actions is-inline" style="align-items:center;flex-wrap:nowrap">
-          ${sameHandle(m.handle, me) ? YOU : ""}
-          ${roleChip(m.role)}
-          ${admin ? quietBtn(d ? "Close" : "Edit", d ? "orgMemberCancel" : "orgMemberEdit", { arg: m.handle, label: `${d ? "Close the editor for" : "Edit"} ${name}`, field: `orgMemberEdit:${m.handle}` }) : ""}
-        </div>
+      <div class="cnpy-mem-row${admin ? "" : " is-ro"}" data-member="${attr(m.handle)}">
+        <button type="button" data-act="openPerson" data-arg="${attr(m.handle)}" class="cnpy-maint-person cnpy-mem-who" aria-label="Open ${attr(name)}'s card" style="min-width:0;display:flex;align-items:center;gap:12px;text-align:left;padding:0">${personChip(m, 28, m.handle)}<span style="flex:0 1 auto;min-width:0;font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</span>${sameHandle(m.handle, me) ? YOU : ""}</button>
+        <span class="cnpy-mem-handle">${handleTag(m, m.handle, 12)}</span>
+        <span class="cnpy-mem-title"${m.title ? "" : ' data-empty="1"'}>${m.title ? esc(m.title) : "&mdash;"}</span>
+        <span class="cnpy-mem-joined">${joined(m.joined_at)}</span>
+        <span class="cnpy-mem-role">${roleChip(m.role)}</span>
+        ${admin ? `<span class="cnpy-mem-act">${quietBtn(d ? "Close" : "Edit", d ? "orgMemberCancel" : "orgMemberEdit", { arg: m.handle, label: `${d ? "Close the editor for" : "Edit"} ${name}`, field: `orgMemberEdit:${m.handle}` })}</span>` : ""}
       </div>
       ${d ? memberEditor(m, d, org.role, m.role === "owner" && owners <= 1, dd) : ""}
     </li>`;
@@ -682,7 +704,7 @@ export function membersTab(org: MyOrg, ui: OrgUi, me: string, identity: Identity
   const logins = unmatchedLogins(admin, identity);
   return `${lead}${waiting ? logins : ""}${invite}
     ${orgHead("Members", admin ? "Owners manage owners and the encryption key; admins everything else here" : "", members.length)}
-    <ul${surface(LIST)}>${rows}</ul>
+    <div${surface("overflow:hidden")} data-members-table>${head}<ul style="list-style:none;margin:0;padding:0">${rows}</ul></div>
     ${invitesBlock}
     ${waiting ? "" : logins ? `<div style="margin-top:18px">${logins}</div>` : ""}`;
 }

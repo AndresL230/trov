@@ -143,14 +143,14 @@ export function createPlatform(h: PlatformHost) {
     h.state.screen = "platform";
     p.tab = tab; p.orgSlug = null;
     p.suspendArm = null; p.revokeArm = null;
-    p.access.revokeArm = null; p.access.plan = null;
+    p.access.revokeArm = null; p.access.plan = null; p.access.gift = null; p.access.giftEnd = null;
     load();
   }
   function openOrg(slug: string): void {
     const p = s();
     p.add = null;
     h.state.screen = "platformorg";
-    p.orgSlug = slug; p.suspendArm = null; p.ownerOpen = false; p.access.grant = null; p.access.plan = null;
+    p.orgSlug = slug; p.suspendArm = null; p.ownerOpen = false; p.access.grant = null; p.access.plan = null; p.access.gift = null; p.access.giftEnd = null;
     load();
     h.mount.querySelector<HTMLElement>("#cnpy-main")?.scrollTo(0, 0);
     if (h.state.view === "platform") window.scrollTo(0, 0); // the standalone page scrolls the window

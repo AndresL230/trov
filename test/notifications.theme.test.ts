@@ -76,9 +76,13 @@ describe("email header — Trov branding", () => {
     expect(html).toMatch(/data-mark="trov"[\s\S]*?Trov<\/(span|strong|td)>/);
   });
 
-  it("centres the header block: the mark table is align=center inside a text-align:center cell", () => {
+  it("lays the banner out like the app's first-run card: brand top left, a faint large mark at the right", () => {
     const { html } = msg();
-    expect(html).toMatch(/<td[^>]*text-align:center[^>]*>[\s\S]*?<table[^>]*align="center"[^>]*>[\s\S]*?data-mark="trov"/);
+    expect(html).toMatch(/<td data-banner style="[^"]*text-align:left;">[\s\S]*?data-mark="trov"/);
+    // Each layer degrades alone: a gradient over the solid band, and the faint mark in rgba cells.
+    expect(emailBanner()).toMatch(/background-color:#616acb;background-image:linear-gradient\(135deg,/);
+    expect(emailBanner()).toMatch(/<td data-banner-art[^>]*>[\s\S]*?data-cell="art"[^>]*background-color:rgba\(255,255,255,\.15\)/);
+    expect(emailBanner({ eyebrow: "Welcome", title: "You&#39;re in." })).toMatch(/Welcome<\/td>[\s\S]*data-banner-title[^>]*>You&#39;re in\.<\/div>/);
   });
 
   it("names the cadence under the wordmark: 'Daily digest · Sep 13'", () => {

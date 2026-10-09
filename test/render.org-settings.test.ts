@@ -820,6 +820,73 @@ describe("the hierarchy every tab keeps (org-ui.ts)", () => {
       expect(body, tab).not.toContain("cnpy-accentbtn");
     }
   });
+  it("every tab's blocks span the page, as the tab bar does: none is capped narrower", () => {
+    // The tab bar and the panel are both full-width children of the page, so a tab lines up with the
+    // bar exactly when none of its top-level blocks (or a bare wrapper's blocks) narrows itself — by an
+    // inline width or by a class with a width rule. A control INSIDE a block may keep its own measure.
+    const VOID = new Set(["input", "br", "hr", "img", "path", "circle", "rect", "line", "polyline"]);
+    /** The opening tags of the children of the element whose opening tag ends at `from`. */
+    const children = (html: string, from: number): { tag: string; at: number }[] => {
+      const out: { tag: string; at: number }[] = [];
+      let depth = 0;
+      const re = /<(\/?)([a-zA-Z][\w-]*)((?:"[^"]*"|[^>"])*)>/g;
+      re.lastIndex = from;
+      for (let m = re.exec(html); m; m = re.exec(html)) {
+        if (m[1]) { if (--depth < 0) break; continue; }
+        if (depth === 0) out.push({ tag: m[0], at: re.lastIndex });
+        if (!VOID.has(m[2].toLowerCase()) && !m[3].trimEnd().endsWith("/")) depth++;
+      }
+      return out;
+    };
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    /** The classes a rule gives a width or a max-width other than 100% (the subject of its selector). */
+    const sized = new Set<string>();
+    for (const m of rules.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (!/(?:^|[;\s])(?:max-)?width:(?!\s*100%)/.test(m[2])) continue;
+      for (const sel of m[1].split(",")) for (const c of (sel.trim().split(/[\s>+~]+/).pop() ?? "").matchAll(/\.([\w-]+)/g)) sized.add(c[1]);
+    }
+    expect(sized.has("cnpy-org-addbar")).toBe(true); // the scan does see width rules
+    const narrow = (tag: string): string | null => {
+      const style = /style="([^"]*)"/.exec(tag)?.[1] ?? "";
+      if (/(?:^|;)\s*(?:max-)?width:(?!\s*100%)/.test(style)) return `inline ${style}`;
+      const cls = (/class="([^"]*)"/.exec(tag)?.[1] ?? "").split(/\s+/).find((c) => sized.has(c));
+      return cls ? `.${cls}` : null;
+    };
+    for (const role of ["owner", "member"] as const) for (const tab of TABS) {
+      if (role === "member" && (tab === "integrations" || tab === "notifications")) continue; // admin-only tabs
+      const html = page(tab, role);
+      const top = children(html, html.indexOf(">", html.indexOf('role="tabpanel"')) + 1);
+      expect(top.length, `${role} ${tab}`).toBeGreaterThan(0);
+      // A wrapper with no surface of its own (General's container and its grid): its blocks are the tab's.
+      const check = (els: { tag: string; at: number }[]): void => {
+        for (const el of els) {
+          expect(narrow(el.tag), `${role} ${tab}: ${el.tag.slice(0, 80)}`).toBeNull();
+          if (/^<div class="cnpy-org-[\w -]+">$/.test(el.tag)) check(children(html, el.at));
+        }
+      };
+      check(top);
+    }
+  });
+  it("General is a bento inside that width: four tiles on one grid that folds to one column", () => {
+    const tiles = (html: string): string[] => [...panel(html).matchAll(/<section class="cnpy-surface cnpy-tile (cnpy-org-gen-[a-z]+)"/g)].map((m) => m[1]);
+    // DOM order is the folded (one-column) order. (This fixture's plan has not been read: its tile is the
+    // full-width one, holding the skeleton. The Plan and Limits tiles are in render.plans.test.ts.)
+    expect(tiles(page("general"))).toEqual(["cnpy-org-gen-id", "cnpy-org-gen-slug", "cnpy-org-gen-limits"]);
+    expect(tiles(page("general", "member"))).toEqual(["cnpy-org-gen-id", "cnpy-org-gen-slug", "cnpy-org-gen-limits"]);
+    expect(page("general")).toContain('<div class="cnpy-org-gen-wrap"><div class="cnpy-org-gen">');
+    // Read-only has no field or button to make the first tile tall: its own arrangement.
+    const readOnly = fullUi({ settings: ok({ org: { slug: "acme", name: "Acme Robotics", created_at: "2026-10-01T10:00:00.000Z", created_by: "andres" }, can_edit: false }) });
+    expect(tabView(readOnly, "general", "member")).toContain('<div class="cnpy-org-gen-wrap"><div class="cnpy-org-gen cnpy-org-gen--read">');
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ");
+    // It folds by the room the TAB has (a container query), like Settings' bento.
+    expect(rules).toContain(".cnpy-org-gen-wrap { container:cnpy-org-gen / inline-size; }");
+    expect(rules).toMatch(/\.cnpy-org-gen \{ display:grid; grid-template-columns:repeat\(12,minmax\(0,1fr\)\);/);
+    expect(rules).toContain(".cnpy-org-gen-limits { grid-column:1 / -1; }");
+    expect(rules).toMatch(/@container cnpy-org-gen \(max-width:759px\) \{ \.cnpy-org-gen-id \{ grid-column:1 \/ -1; grid-row:auto; \}/);
+    expect(rules).toMatch(/@container cnpy-org-gen \(max-width:519px\) \{ \.cnpy-org-gen \.cnpy-org-gen-slug, \.cnpy-org-gen \.cnpy-org-gen-plan \{ grid-column:1 \/ -1; \}/);
+    // An input never stretches across a wide tile.
+    expect(rules).toContain(".cnpy-org-gen .cnpy-org-field { max-width:600px; }");
+  });
   it("the styles: a lead, an eyebrow row and an opening row, with the phone layout", () => {
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\s+/g, " ");
     for (const cls of [".cnpy-lead {", ".cnpy-lead-t {", ".cnpy-sechead {", ".cnpy-xrow {", ".cnpy-xrow-t {", ".cnpy-xrow-b[hidden] { display:none; }", ".cnpy-org-danger:hover, .cnpy-org-danger:focus-visible { color:var(--red) !important; }"]) expect(rules).toContain(cls);

@@ -133,12 +133,17 @@ export async function assignOrgAdmin(p: PlatformContext, slug: string, target: u
 
 // ── the org list and one org ─────────────────────────────────────────────────
 
-type ListedOrg = OrgRow & { plan: string; plan_overrides: string; plan_source: string | null; plan_status: string };
+type ListedOrg = OrgRow & {
+  plan: string; plan_overrides: string; plan_source: string | null; plan_status: string; plan_gift_until: string | null;
+};
 const oneOf = <T extends string>(list: readonly T[], v: unknown): T | null => (typeof v === "string" && (list as readonly string[]).includes(v) ? (v as T) : null);
 /** The org's plan beside its row (0044_plans): what it is on, its limits, and the seats it uses. */
 const planOfRow = (o: ListedOrg, members: number, invites: number): PlatformOrgPlan => {
   const plan = planDef(o.plan).id, overrides = storedOverrides(o.plan_overrides);
-  return { plan, overrides, status: oneOf(PLAN_STATUSES, o.plan_status) ?? "active", source: oneOf(PLAN_SOURCES, o.plan_source), entitlements: resolveEntitlements(plan, overrides), seats_used: members + invites };
+  return { plan, overrides, status: oneOf(PLAN_STATUSES, o.plan_status) ?? "active", source: oneOf(PLAN_SOURCES, o.plan_source), entitlements: resolveEntitlements(plan, overrides), seats_used: members + invites,
+    // A gift (0048_plan_gifts): the plan ends by itself at `until` and the org moves to Free.
+    gift: o.plan_gift_until ? { until: o.plan_gift_until } : null,
+  };
 };
 
 const toRow = (o: ListedOrg, x: { owners: PlatformOrgOwner[]; members: number; invites: number; last: string | null; github: string | null }): PlatformOrgRow => ({
@@ -151,7 +156,7 @@ const toRow = (o: ListedOrg, x: { owners: PlatformOrgOwner[]; members: number; i
 /** Every org, suspended ones included, newest first. `slug` narrows to one. */
 export async function listPlatformOrgs(p: PlatformContext, slug?: string): Promise<(PlatformOrgRow & { id: string })[]> {
   const [orgs, owners, members, invites, last, github] = await Promise.all([
-    all<ListedOrg>(p, `SELECT id, slug, name, created_at, created_by, suspended_at, suspended_by, logo_sha, plan, plan_overrides, plan_source, plan_status FROM orgs
+    all<ListedOrg>(p, `SELECT id, slug, name, created_at, created_by, suspended_at, suspended_by, logo_sha, plan, plan_overrides, plan_source, plan_status, plan_gift_until FROM orgs
                      ${slug === undefined ? "" : "WHERE slug = ?"} ORDER BY created_at DESC, slug ASC`, ...(slug === undefined ? [] : [slug])),
     all<{ org_id: string; handle: string; name: string | null }>(p,
       `SELECT m.org_id, pe.handle, pe.name FROM memberships m JOIN persons pe ON pe.handle = m.user_id COLLATE NOCASE

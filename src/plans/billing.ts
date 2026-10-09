@@ -21,6 +21,9 @@ import { createGrant, getGrant, mailGrant } from "./grants";
 
 export { setOrgPlan, setOrgPlanStatus, markOrgPastDue, cancelOrgPlan, moveOrgToFree, orgPlan, type SetOrgPlanInput, type OrgPlan } from "./state";
 export { getGrant, revokeGrant, setPaidGrantPlan, GrantError } from "./grants";
+// A plan given for free until a date ends through here too (./gifts.ts): `expireGifts` moves a lapsed
+// gift to Free exactly as `moveOrgToFree` does a cancelled subscription, and any `setOrgPlan` from billing
+// clears a gift — an org that starts paying is no longer ended by a date.
 
 /** The `p.actor` a billing integration acts as — what `granted_by`, `plan_changed_by` and the audit trail record. */
 export const BILLING_ACTOR = "billing";
