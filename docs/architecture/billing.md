@@ -26,6 +26,7 @@ stores ids, a status and a seat count.
 | `STRIPE_WEBHOOK_SECRET` | secret | billing is OFF (a key alone could take a payment nobody hears about) |
 | `STRIPE_PRICE_TEAM` | var (`wrangler.toml`), the monthly Price id of ONE SEAT of Pro (a licensed, per-unit recurring price) | Pro cannot be bought monthly |
 | `STRIPE_PRICE_TEAM_YEARLY` | var, optional, the yearly per-seat Price id | Pro is not offered yearly |
+| `STRIPE_TAX` | var; `on` → a checkout sends `automatic_tax[enabled]`, `tax_id_collection[enabled]` and, for a customer Stripe already knows, `customer_update[address|name]=auto` | no tax lines; checkout asks for no address |
 | `STRIPE_TEST_API_BASE` | local / test only | — honoured only for a loopback `http://` origin and never with a live key (`src/platform/loopback.ts` — the rule Sync's `LOCAL_UPSTREAM` follows too; both are described in `.dev.vars.example`) |
 
 `STRIPE_PRICE_PERSONAL` / `STRIPE_PRICE_PERSONAL_YEARLY` are gone with Personal: a Personal price is not read.
@@ -274,9 +275,18 @@ Stripe: `test/helpers/billing.ts` is an in-memory stand-in.
    `sk_live_…` and a live endpoint's `whsec_…`, and repeat steps 6–7 in live mode (portal settings are per
    mode).
 
+**Tax (`STRIPE_TAX`).** Trov computes no tax: with the var `on`, Stripe Tax works it out at checkout, and the
+subscription keeps `automatic_tax`, so renewals and seat changes are taxed by the same rule. Stripe charges
+tax only where the account holds a registration (Tax › Registrations); with none, every invoice is the price
+alone, and adding a registration later needs no code change. Before turning it on, in Stripe: activate Tax
+and give it an origin address, set the product's tax category (Software as a service — business use), and
+make sure the Price's tax behaviour is **exclusive** (it cannot be changed once set). With the var on and
+Stripe Tax not set up, Stripe refuses the session and the buyer gets the "couldn't start checkout" answer.
+A subscription created while it was off stays untaxed until `automatic_tax` is enabled on it in Stripe.
+
 **Yours to decide:** a yearly price or not; a free trial or not (a trial needs
 `subscription_data[trial_period_days]` in `startCheckout` — one line — and reads as `active` here); tax
-(Stripe Tax on or off; on needs `automatic_tax[enabled]=true` and an address at checkout); promotion codes;
+(Stripe Tax on or off: the `STRIPE_TAX` var, above); promotion codes;
 the refund policy (refunds are made in the Stripe dashboard — Trov has no refund code; Terms section 3 in
 `web/src/legal.ts` currently says no refund for a period already started, except where the law requires or
 for a mistake — change the text if you decide otherwise, and the same for its 30 days' notice of a price

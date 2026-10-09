@@ -11,7 +11,7 @@ import type { OrgPlanView, PlanRefusal } from "@shared/plans";
 import { planRefusalSentence } from "@shared/plans";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { call, one, rows, exec, SUPERADMIN } from "./helpers/orgs";
-import { FakeStripe, PRICES, PERIOD_1, PERIOD_2, bcall, deliver, event, iso } from "./helpers/billing";
+import { FakeStripe, PRICES, PERIOD_1, PERIOD_2, bcall, billingEnv, deliver, event, iso } from "./helpers/billing";
 
 let stripe: FakeStripe;
 beforeEach(() => { stripe = new FakeStripe(); vi.stubGlobal("fetch", stripe.fetch); });
@@ -337,8 +337,12 @@ describe("the owner's billing routes", () => {
     await deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub)));
     expect((await invite("maya-co", cookie, "pending@example.com")).status).toBe(201); // 3 of Free's 3 seats
 
-    const r = await bcall<{ url: string }>("POST", "/api/o/maya-co/billing/upgrade", cookie, {});
+    // With tax on, a customer Stripe already knows must be allowed to save the address and name it asks for.
+    const r = await bcall<{ url: string }>("POST", "/api/o/maya-co/billing/upgrade", cookie, {}, { env: billingEnv({ STRIPE_TAX: "on" }) });
     expect(r.status).toBe(200);
+    expect(Object.fromEntries(stripe.callsTo("POST", "/v1/checkout/sessions").at(-1)!.params)).toMatchObject({
+      "automatic_tax[enabled]": "true", "tax_id_collection[enabled]": "true", "customer_update[address]": "auto", "customer_update[name]": "auto",
+    });
     const again = stripe.lastSession();
     expect(again.id).not.toBe(session.id);
     expect(r.json.url).toBe(again.url);

@@ -111,6 +111,15 @@ async function startCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: { person
       cancel_url: o.forOrg ? `${origin}${orgBillingHref(o.forOrg.slug)}` : `${origin}${PRICING_PATH}`,
       metadata,
       subscription_data: { metadata },
+      // Tax is Stripe's to work out (`STRIPE_TAX`): the subscription keeps `automatic_tax`, so every later
+      // invoice — a renewal, a seat change — is taxed by the same rule with nothing more from Trov. Stripe
+      // asks for the billing address it needs; a customer it already knows must be allowed to save the one
+      // entered (and the name a tax id goes with), or Stripe refuses the session.
+      ...(cfg.tax ? {
+        automatic_tax: { enabled: true },
+        tax_id_collection: { enabled: true },
+        ...(o.forOrg?.customer ? { customer_update: { address: "auto", name: "auto" } } : {}),
+      } : {}),
     }, { idempotencyKey: `trov-checkout-${ref}` });
     if (typeof session.id !== "string" || !redirectable(cfg, session.url)) throw new StripeError("shape", 200, null, "stripe POST /v1/checkout/sessions: no session url");
     await setCheckoutSession(p, ref, session.id);

@@ -85,6 +85,7 @@ export default defineConfig({
           STRIPE_WEBHOOK_SECRET: "",
           STRIPE_PRICE_TEAM: "",
           STRIPE_PRICE_TEAM_YEARLY: "",
+          STRIPE_TAX: "",
           STRIPE_TEST_API_BASE: "",
         },
       },

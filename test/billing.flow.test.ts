@@ -73,6 +73,21 @@ describe("GET /billing/start — a signed-in person starts a checkout", () => {
     expect(await grants()).toEqual([]);
   });
 
+  it("asks Stripe Tax for the tax only when STRIPE_TAX is on, and computes none itself", async () => {
+    const { billingConfig } = await import("../src/billing/config");
+    expect(billingConfig(billingEnv())!.tax).toBe(false);
+    for (const v of ["", "off", "true", "1"]) expect(billingConfig(billingEnv({ STRIPE_TAX: v }))!.tax, v).toBe(false);
+    expect(billingConfig(billingEnv({ STRIPE_TAX: " On " }))!.tax).toBe(true);
+    const r = await bcall("GET", "/billing/start?plan=team", await buyer("maya"), undefined, { env: billingEnv({ STRIPE_TAX: "on" }) });
+    expect(r.status).toBe(303);
+    const [c] = stripe.callsTo("POST", "/v1/checkout/sessions");
+    expect(c.params.get("automatic_tax[enabled]")).toBe("true");
+    expect(c.params.get("tax_id_collection[enabled]")).toBe("true");
+    // A new buyer has no Stripe customer yet: there is nothing to update, and Stripe refuses the field.
+    expect([...c.params.keys()].some((k) => k.startsWith("customer_update"))).toBe(false);
+    // Off (the first test's exact parameter list) sends none of it.
+  });
+
   it("uses the yearly price when asked, and offers no e-mail it does not know to be the person's", async () => {
     await seedPerson("noaddr", { member: false, email: "typed-by-them@example.com" }); // persons.email is editable: never sent
     const r = await bcall("GET", "/billing/start?plan=team&interval=year", await cookieFor("noaddr", { member: false }));

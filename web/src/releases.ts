@@ -87,8 +87,12 @@ export const RELEASES: Release[] = [
     headsUp: [
       "The Terms of Service and Privacy Policy changed on October 9, 2026. They now cover paid plans: how Pro is billed, changing seats, cancelling, refunds, what happens when a plan ends, and Stripe as the company that takes payment.",
     ],
+    ops: [
+      "Tax is OFF until `STRIPE_TAX = \"on\"` in `wrangler.toml` `[vars]`. Before turning it on, set up Stripe Tax in the dashboard (origin address, the product's tax category, the Price's tax behaviour as exclusive); with the var on and Stripe Tax not set up, Stripe refuses every checkout. No migration.",
+    ],
     patches: {
       added: [
+        "`STRIPE_TAX` (var): `on` makes a checkout send `automatic_tax[enabled]`, `tax_id_collection[enabled]` and, for an existing Stripe customer, `customer_update[address|name]=auto`. Stripe charges tax only where the account holds a registration; Trov computes none (`src/billing/config.ts` `tax`, `startCheckout`) (#134)",
         "`.site-banner` (`web/src/trov.css`): the first-run card's banner as ONE definition with `.cnpy-orgs-banner` (gradient, dot grid, the faint tilted mark as `.site-banner-art`), used by the landing's hero, the authority card (`.site-split`) and the sign-in dialog; a step deeper on the dark theme (#134)",
         "`.site-stage`: every tour mockup stands on a field of the banner's dots in the page accent, mirrored on flipped rows. Static paint only: no `filter`, no `backdrop-filter` (#134)",
         "`test/render.landing.test.ts`: open sign-up wording, the Guide (never Get Started), the three banners, `data-morph` / `data-overlay`, and both reduced-motion rules (#134)",
