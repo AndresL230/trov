@@ -239,8 +239,10 @@ export interface AppState {
   grants: Loadable<OAuthGrantSummary[]>;
   /** The connection whose Revoke was clicked once — the second click is the one that revokes. */
   grantRevokeArm: number | null;
-  /** Settings › MCP access: the connection whose scope (mode, organizations) is open for change. */
+  /** Settings › MCP access: the connection whose scope (mode, organizations) is open in the dialog. */
   grantScope: number | null;
+  /** How the dialog's last change went (saving / saved / refused). */
+  grantScopeNote: GrantScopeNote | null;
   /** Connected apps opened past its first MCP_LIST_CAP rows by "Show all". */
   grantsAll: boolean;
   /** Settings › MCP access: MY personal access tokens for the org on screen (older setups; revoke only). */
@@ -484,6 +486,7 @@ export function initialState(): AppState {
     grants: { status: "idle", data: [] },
     grantRevokeArm: null,
     grantScope: null,
+    grantScopeNote: null,
     mcpSetup: false,
     grantsAll: false,
     mcpTokens: { status: "idle", data: [] },
@@ -2110,32 +2113,82 @@ export function grantCurrentDropdown(gr: OAuthGrantSummary): DropdownProps {
     ariaLabel: "Working in", options: gr.orgs.map((o) => ({ value: o.slug, label: o.name, hint: o.slug })),
   };
 }
-/** Settings' dropdowns: the one of the connection whose scope is open, when it is a manual one. */
+/** Settings' dropdowns: the one in the open scope dialog, when its connection is a manual one. */
 export function grantDropdowns(s: Pick<AppState, "grants" | "grantScope">): DropdownProps[] {
   const gr = s.grants.data.find((x) => x.id === s.grantScope);
   return gr && gr.mode === "manual" ? [grantCurrentDropdown(gr)] : [];
 }
 
-/** A connection's scope, opened under its row: the mode (a switch), and for a manual one the
- *  organization it is working in (a dropdown) and a toggle per organization of mine it may use. */
-export function grantScopeEditor(gr: OAuthGrantSummary, mine: readonly MyOrg[], dd: DropdownUi): string {
+/** What the dialog says under its switch: what the chosen mode does, in one sentence. */
+export const GRANT_MODE_SENTENCE: Record<OAuthGrantSummary["mode"], string> = {
+  repo: "It works in whichever of your organizations has the repository the agent is in connected. Anywhere else it reads and writes nothing.",
+  manual: "It works in the organizations you turn on, one at a time. The agent can switch among them on its own; only you can add one.",
+};
+
+/** How the last change in the dialog went: saving, saved, or refused — `org` pins a refusal to that
+ *  organization's row (a plan limit is that organization's), otherwise it is said at the foot. */
+export interface GrantScopeNote { kind: "saving" | "saved" | "error"; text: string; org?: string }
+
+/**
+ * Settings › MCP access: ONE connection's scope, as a dialog (a root-level `data-overlay` in the
+ * confirmation modal's shell — a centered card, a bottom sheet at phone width) opened by the row's
+ * "Change organization…". It holds the mode switch with what the chosen mode does; for Manual, the
+ * organization it is working in (a dropdown, whose menu is its own overlay above this one) and a switch
+ * per organization of mine; for Follow the repository, my organizations and the rule that picks one.
+ * Every change saves as it is made — there is no Save — and `note` says how the last one went, here.
+ * "" when no connection is open (or the open one is gone). Exported for the pure render test.
+ */
+export function grantScopeDialog(s: Pick<AppState, "grants" | "grantScope"> & Partial<Pick<AppState, "grantScopeNote" | "myOrgs" | "me" | "dd">>): string {
+  const gr = s.grants.data.find((x) => x.id === s.grantScope);
+  if (!gr) return "";
+  const mine = myOrgsOf(s);
+  const dd = s.dd ?? initialDropdownUi();
+  const n = s.grantScopeNote ?? null;
+  const busy = n?.kind === "saving";
+  const small = "font-size:12.5px;line-height:1.55;color:var(--fg-55)";
+  const label = "font-size:12.5px;font-weight:600;color:var(--fg-70)";
   const mode = segmented({
-    id: `grant-mode-${gr.id}`, ariaLabel: "How this connection picks an organization", value: gr.mode, act: "grantMode", size: "sm", inertOn: true,
+    id: `grant-mode-${gr.id}`, ariaLabel: "How this connection picks an organization", value: gr.mode, act: "grantMode", size: "sm", inertOn: true, fill: true,
     options: [{ value: "repo", label: "Follow the repository", arg: `${gr.id}:repo` }, { value: "manual", label: "Manual", arg: `${gr.id}:manual` }],
   });
-  const note = "font-size:12px;line-height:1.55;color:var(--fg-55)";
   const body = gr.mode === "repo"
-    ? `<div data-grant-follow style="${note}">It works in whichever of your organizations has the repository the agent is in connected. Anywhere else it reads and writes nothing.${gr.orgs.length ? ` Used so far in ${gr.orgs.map((o) => esc(o.name)).join(", ")}.` : ""}</div>`
-    : `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span id="grant-current-l-${gr.id}" style="font-size:12.5px;color:var(--fg-70)">Working in</span>${gr.orgs.length ? dropdown(grantCurrentDropdown(gr), dd) : ""}${gr.org ? "" : `<span style="font-size:12px;color:var(--red)">Its organization is no longer available: pick one.</span>`}</div>
-       <div style="display:flex;flex-direction:column;gap:6px">
-         <span style="font-size:12.5px;color:var(--fg-70)">It may use</span>
+    ? `<div data-grant-follow style="display:flex;flex-direction:column;gap:6px">
+         <span style="${label}">Your organizations</span>
+         ${mine.length
+           ? `<ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px">${mine.map((o) => `<li data-grant-reach="${attr(o.slug)}" style="font-size:13px;color:var(--fg);overflow-wrap:anywhere">${esc(o.name)}</li>`).join("")}</ul>`
+           : `<span style="${small}">You are not in an organization yet.</span>`}
+         <span style="${small}">Each call uses the one that has the repository the agent is in connected (Org settings &rsaquo; Repositories).${gr.orgs.length ? ` Used so far in ${gr.orgs.map((o) => esc(o.name)).join(", ")}.` : ""}</span>
+       </div>`
+    : `<div style="display:flex;flex-direction:column;gap:6px">
+         <span id="grant-current-l-${gr.id}" style="${label}">Working in</span>
+         ${gr.orgs.length ? dropdown({ ...grantCurrentDropdown(gr), fill: true, disabled: busy }, dd) : ""}
+         ${gr.org ? "" : `<span data-grant-noorg role="alert" style="font-size:12.5px;line-height:1.5;color:var(--red)">The organization it was working in is no longer available to you, so it reads and writes nothing. Pick one.</span>`}
+       </div>
+       <div style="display:flex;flex-direction:column;gap:8px">
+         <span style="${label}">It may use</span>
          ${mine.map((o) => {
            const on = gr.orgs.some((x) => x.slug === o.slug);
-           return `<div data-grant-allow="${attr(o.slug)}" style="display:flex;align-items:center;gap:10px;min-width:0">${switchBtn("grantOrgToggle", `${gr.id}:${o.slug}:${on ? "off" : "on"}`, on).replace("<button ", `<button aria-label="${attr(`${o.name}: this connection may use it`)}" `)}<span style="min-width:0;font-size:12.5px;color:var(--fg);overflow-wrap:anywhere">${esc(o.name)}</span>${gr.org?.slug === o.slug ? `<span style="flex:none;font-size:11px;color:var(--fg-40)">working here</span>` : ""}</div>`;
+           const refused = n?.kind === "error" && n.org === o.slug ? `<div data-grant-refused="${attr(o.slug)}" role="alert" style="margin:2px 0 0 46px;font-size:12px;line-height:1.5;color:var(--red)">${esc(n.text)}</div>` : "";
+           return `<div data-grant-allow="${attr(o.slug)}"><div style="display:flex;align-items:center;gap:10px;min-width:0">${switchBtn("grantOrgToggle", `${gr.id}:${o.slug}:${on ? "off" : "on"}`, on).replace("<button ", `<button aria-label="${attr(`${o.name}: this connection may use it`)}"${busy ? " disabled" : ""} `)}<span style="min-width:0;font-size:13px;color:var(--fg);overflow-wrap:anywhere">${esc(o.name)}</span>${gr.org?.slug === o.slug ? `<span style="flex:none;font-size:11px;color:var(--fg-40)">working here</span>` : ""}</div>${refused}</div>`;
          }).join("")}
-         <div style="${note}">The agent can switch among these on its own; only you can add one.</div>
        </div>`;
-  return `<div data-grant-scope="${gr.id}" style="display:flex;flex-direction:column;gap:10px;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:8px">${mode}${body}</div>`;
+  const tone = n?.kind === "error" ? "var(--red)" : n?.kind === "saved" ? "var(--green)" : "var(--fg-55)";
+  const status = `<div data-grant-status="${n?.kind ?? "idle"}" role="status" aria-live="polite" style="flex:1;min-width:0;font-size:12.5px;line-height:1.5;color:${tone}">${n && !(n.kind === "error" && n.org) ? esc(n.text) : n?.kind === "error" ? "That change was not saved." : "Changes save as you make them."}</div>`;
+  const close = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
+  return `<div data-overlay="grant-scope" class="cnpy-cmodal">
+    <div data-act="grantScopeClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
+    <div class="cnpy-cmodal-wrap">
+      <div id="grant-scope" role="dialog" aria-modal="true" aria-labelledby="grant-scope-t" aria-describedby="grant-scope-d" tabindex="-1" data-grant-scope="${gr.id}"${busy ? ` aria-busy="true"` : ""} class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(460px, 100%);max-height:calc(100vh - 32px);overflow-y:auto">
+        <button type="button" data-act="grantScopeClose" aria-label="Close" title="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${close}</button>
+        <div id="grant-scope-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em;overflow-wrap:anywhere">${esc(gr.client_name)} &middot; how it picks an organization</div>
+        <div style="display:flex;flex-direction:column;gap:16px;margin-top:14px">
+          <div style="display:flex;flex-direction:column;gap:8px">${mode}<p id="grant-scope-d" data-grant-mode-says="${gr.mode}" style="margin:0;${small}">${GRANT_MODE_SENTENCE[gr.mode]}</p></div>
+          ${body}
+        </div>
+        <div class="cnpy-cmodal-btns" style="display:flex;align-items:center;gap:12px;margin-top:18px">${status}<button type="button" data-act="grantScopeClose" data-grant-done class="cnpy-confirm-go" style="flex:none;padding:8px 18px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13px;font-weight:600">Done</button></div>
+      </div>
+    </div>
+  </div>`;
 }
 
 /** Settings › MCP access › Connected apps: a heading with its count, then one hairline row
@@ -2143,7 +2196,7 @@ export function grantScopeEditor(gr: OAuthGrantSummary, mine: readonly MyOrg[], 
  *  used, and a two-click Revoke — the first MCP_LIST_CAP until "Show all"; or one quiet
  *  line while it loads, when it is empty and when the read failed. No fixed height and no
  *  inner scroller: the list is as tall as what it shows, and "Show all" is how it grows. */
-export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & Partial<Pick<AppState, "grantsAll" | "orgSlug" | "grantScope" | "myOrgs" | "me" | "dd">>): string {
+export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & Partial<Pick<AppState, "grantsAll" | "orgSlug">>): string {
   const g = s.grants;
   const n = g.status === "error" ? 0 : g.data.length;
   const count = n ? `<span style="flex:none;font-family:var(--label);font-size:11px;line-height:17px;color:var(--fg-55);background:var(--hover);border-radius:999px;padding:0 7px">${n}</span>` : "";
@@ -2156,29 +2209,26 @@ export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & P
   if (!n) {
     const note = g.status === "error" ? `Couldn't load connected apps${g.error ? ` &mdash; ${esc(g.error)}` : ""}.`
       : g.status !== "ok" ? "Loading connected apps&hellip;"
-      : "No apps connected yet. Once you approve Claude Code in the browser, it shows up here with the organization it is connected to.";
+      : "No apps connected yet. Once you approve Claude Code in the browser, it shows up here with how it picks an organization. If you approved one and it isn't here, check which account the Allow page was signed in as.";
     return wrap(`<div style="padding:10px 0;border-top:1px solid var(--border);font-size:12.5px;line-height:1.5;color:var(--fg-40)">${note}</div>`);
   }
   const btn = "flex:none;padding:4px 10px;border-radius:6px;font-size:12px";
   const all = !!s.grantsAll;
-  const mine = myOrgsOf(s);
   const rows = (all ? g.data : g.data.slice(0, MCP_LIST_CAP)).map((gr) => {
     const armed = s.grantRevokeArm === gr.id;
-    const open = s.grantScope === gr.id;
     const actions = armed
       ? `<button data-act="revokeGrant" data-arg="${gr.id}" class="cnpy-revoke" style="${btn};font-weight:600;color:var(--red);border:1px solid var(--red)">Disconnect</button>
          <button data-act="revokeGrantCancel" class="cnpy-ghostbtn" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Keep</button>`
-      : `<button data-act="grantScopeToggle" data-arg="${gr.id}" aria-expanded="${open}" class="cnpy-ghostbtn" style="${btn};color:var(--fg-55);border:1px solid var(--border)">${open ? "Done" : "Change"}</button>
+      : `<button data-act="grantScopeOpen" data-arg="${gr.id}" data-grant-change="${gr.id}" aria-haspopup="dialog" class="cnpy-ghostbtn" style="${btn};color:var(--fg-70);border:1px solid var(--border-strong)">Change organization&hellip;</button>
          <button data-act="revokeGrantArm" data-arg="${gr.id}" class="cnpy-revoke" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Revoke</button>`;
     return `<div data-grant="${gr.id}" style="padding:8px 0;border-top:1px solid var(--border)">
-      <div style="display:flex;align-items:center;gap:10px">
-      <div style="flex:1;min-width:0;line-height:1.35">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <div style="flex:1 1 180px;min-width:0;line-height:1.35">
         <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-size:13px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(gr.client_name)}</span>${grantScopeChip(gr, s.orgSlug ?? null)}</span>
         <span style="display:block;font-size:11.5px;color:var(--fg-40)">${armed ? "The app is signed out the moment you disconnect it." : `Connected ${esc(relTime(gr.created_at))} &middot; ${gr.last_used_at ? `last used ${esc(relTime(gr.last_used_at))}` : "never used"}`}</span>
       </div>
       ${actions}
       </div>
-      ${open ? grantScopeEditor(gr, mine, s.dd ?? initialDropdownUi()) : ""}
     </div>`;
   }).join("");
   const more = n > MCP_LIST_CAP
@@ -2230,7 +2280,7 @@ export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" |
       <div style="${SECTION_LABEL};margin-bottom:0">MCP access</div>
       <button data-act="mcpSetupOpen" data-mcp-setup-trigger aria-haspopup="dialog" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--fg-55)">Set it up without the plugin &rarr;</button>
     </div>
-    <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you, in one of your organizations at a time.</div>
+    <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you, in one of your organizations at a time.${s.me?.handle ? ` <span data-mcp-account>Connections you approve as <strong style="font-weight:600;color:var(--fg-70)">@${esc(s.me.handle)}</strong> show up here.</span>` : ""}</div>
     <div class="cnpy-mcp-body">
       <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
       ${connectSteps(orgName)}
@@ -2728,6 +2778,7 @@ export function render(real: AppState): string {
     ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
     ${supportDialog(s.support)}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
+    ${s.view === "app" && s.screen === "settings" ? grantScopeDialog(s) : ""}
     ${s.view === "app" && s.screen === "settings" && s.dd.open ? dropdownMenu(grantDropdowns(s), s.dd) : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}

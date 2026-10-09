@@ -345,6 +345,7 @@ const PLATFORM: Record<string, string> = {
   "POST /oauth/revoke": "public: token revocation by the token itself",
   "GET /oauth/authorize": "reads the session itself; consent names the org (Phase 5a)",
   "POST /oauth/authorize": "reads the session itself",
+  "POST /oauth/switch-account": "the consent page's Not you? Sign out: ends the caller's OWN session (the consent CSRF value is required) and returns to the same authorize request",
   "GET /api/orgs": "the caller's own memberships and pending invites",
   "GET /api/orgs/slug-check": "is an organization handle (slug) free — orgs are global; no org's content, capped per person",
   "POST /api/orgs": "creates an org the caller owns (cap 3 per person)",
