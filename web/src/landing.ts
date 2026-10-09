@@ -756,16 +756,13 @@ function signInDialog(): string {
     <div data-act="closeSignIn" class="site-signin-back"></div>
     <div class="site-signin-wrap">
       <div role="dialog" aria-modal="true" aria-labelledby="signin-title" class="site-signin-card" style="border-radius:14px">
-        <div class="site-banner site-signin-banner">
-          ${BANNER_ART}
+        <div class="site-signin-head">
           <button data-act="closeSignIn" title="Close" aria-label="Close" class="site-signin-x" style="border-radius:8px">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"></path></svg>
           </button>
-          <div style="display:flex;align-items:center;gap:10px">
-            ${trovMark(22, "#fff")}
-            <h2 id="signin-title" style="margin:0;font-size:22px;font-weight:650;letter-spacing:-0.02em">Sign in to Trov</h2>
-          </div>
-          <p style="margin:10px 0 0;max-width:300px;font-size:14px;line-height:1.55;color:rgba(255,255,255,.86)">Open your organization, or create one for your team.</p>
+          ${trovMark(30)}
+          <h2 id="signin-title" style="margin:14px 0 0;font-size:21px;font-weight:650;letter-spacing:-0.02em">Sign in to Trov</h2>
+          <p style="margin:6px 0 0;font-size:13.5px;line-height:1.55;color:var(--fg-55)">Open your organization, or create one for your team.</p>
         </div>
         <div class="site-signin-body">
           <button data-act="signIn" class="site-signin-btn site-btn-solid" style="border-radius:9px">${GH_24}Continue with GitHub</button>

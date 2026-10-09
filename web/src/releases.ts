@@ -96,6 +96,7 @@ export const RELEASES: Release[] = [
         "One motion clock on `:root`: `--fx-ease` (`cubic-bezier(0.4, 0, 0.2, 1)`), `--fx-fast` .18s, `--fx-base` .24s, `--fx-slow` .3s. The dialog, the tour cards, the scroll reveals and the mockups' checks, bars and swaps all read it; only transform and opacity move in the dialog, and `will-change` is set only while it moves (`data-moving`) (#129)",
       ],
       changed: [
+        "Sign-in dialog: a plain card with the mark, the title and the two providers as a narrow centred pair with an \"or\" rule between them — no banner of its own, since it opens over the hero's. Bannered cards (the first run's, the \"Agents propose\" card) have no border, so no pale frame shows round the banner; their edge is a ring in the shadow (#129)",
         "Dark theme: the banner is a deep olive of the dark accent (the green mark), not purple, on the landing page and the first-run cards alike (one rule); the glows behind the cards take `--mark` from the theme (#129)",
         "The landing is `data-morph=\"landing\"` and the sign-in dialog one root-level `data-overlay=\"signin\"`, so `paint()` patches the page in place when the dialog opens or closes instead of rebuilding it (#129)",
         "Hero: left-aligned on the banner; the first button is Start for free (`openSignIn`) signed out and Open the Guide (`siteGuide`) when reopened from the app; a line under it states open sign-up and links `/pricing` (#129)",

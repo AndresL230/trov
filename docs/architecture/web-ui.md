@@ -48,13 +48,17 @@ page has held no other org's data; opening an org from anywhere else stays a pag
 The landing page has ONE idea: the first-run card's purple banner is Trov speaking, and the product is the
 card in front of it. `.site-banner` is defined WITH `.cnpy-orgs-banner` in `trov.css` (one rule: the gradient,
 the radial highlight, the dot grid `::after`), so the site and the first run cannot drift; `.site-banner-art`
-is the mark, large, faint and tilted behind the text. It appears exactly three times, at three scales:
+is the mark, large, faint and tilted behind the text. It appears exactly twice, at two scales:
 
 | Where | How |
 |---|---|
 | Hero (`.site-hero-band`) | the banner as an inset panel; the Review mockup (`.site-hero-mock`) stands on its lower edge, inset by the same `--hero-pad` as the headline so their left edges align |
 | "Agents propose, people decide" (`.site-split`) | the card on its side: banner left, body right; stacked under 860px |
-| Sign-in dialog (`.site-signin-card`) | the card itself: banner, body (the two providers), foot |
+
+The sign-in dialog (`.site-signin-card`) has NO banner: it opens over the hero, which is the banner, and a
+second slab in front of the first read as the same thing twice. It is a plain card — the mark, the title, the
+two providers as a narrow centred pair with an "or" rule between them, a foot. A bannered card has no border
+(a border sits outside the banner and showed as a pale frame round it); its edge is a ring in the shadow.
 
 Everywhere else the page stays quiet. The one echo is `.site-stage`: each tour mockup stands on a field of the
 banner's dots in the page's own accent (purple on light, green on dark), mirrored on a flipped row. Do not add

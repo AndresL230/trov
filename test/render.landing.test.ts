@@ -68,13 +68,15 @@ describe("landing — the facts it states", () => {
 });
 
 describe("landing — the banner carried through the page", () => {
-  it("the hero, the authority card and the sign-in dialog are the same banner, each with the mark behind its text", () => {
+  it("the hero and the authority card are the same banner, each with the mark behind its text; the sign-in dialog has none", () => {
     const html = out(true);
-    expect(html.match(/class="site-banner /g)?.length).toBe(3);
-    expect(html.match(/class="site-banner-art" aria-hidden="true"/g)?.length).toBe(3);
+    expect(html.match(/class="site-banner /g)?.length).toBe(2);
+    expect(html.match(/class="site-banner-art" aria-hidden="true"/g)?.length).toBe(2);
     expect(html).toContain('class="site-banner site-hero-band"');
     expect(html).toContain('class="site-banner site-split-banner"');
-    expect(html).toContain('class="site-banner site-signin-banner"');
+    // The dialog opens over the hero, which IS the banner: a plain card, not the same slab twice.
+    expect(html).not.toContain("site-signin-banner");
+    expect(html).toMatch(/<div class="site-signin-head">[\s\S]*?<h2 id="signin-title"[^>]*>Sign in to Trov<\/h2>/);
     expect(out().match(/class="site-banner /g)?.length).toBe(2);
   });
 
