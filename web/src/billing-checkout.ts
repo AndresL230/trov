@@ -173,12 +173,24 @@ export interface BillingCheckoutHost {
   go(href: string): void;
   /** Put the session in the address bar without loading anything (`history.replaceState`). */
   setUrl(href: string): void;
+  /** The state preview is on (web/src/preview.ts): it sends no write, so there is nothing to pay here. */
+  preview?(): boolean;
 }
+
+/** What the page says under the state preview (`?preview=empty|loading`): plainly, that nothing can be paid.
+ *  No session is asked for and Stripe.js is not loaded. */
+export const BILLING_PREVIEW_REFUSAL: BillingCheckoutRefusal = {
+  title: "Nothing can be paid in a preview",
+  body: "You are looking at a preview, which sends nothing: no checkout was started and nothing was charged. Close the preview to pay.",
+  retry: false,
+};
 
 /** What a refused call means for the buyer: somewhere to go, or a sentence. Never "payment failed" — nothing was paid. */
 export function billingCheckoutRefusal(s: BillingCheckoutUi, e: unknown): { go: string } | BillingCheckoutRefusal {
   const status = (e as { status?: number } | null)?.status;
   const code = e instanceof Error ? e.message : "";
+  // api.ts `PreviewBlocked`: the state preview refused the request before it left the browser.
+  if (e instanceof Error && e.name === "PreviewBlocked") return BILLING_PREVIEW_REFUSAL;
   // api.ts: a 401 is its `Unauthorized` (no status). Signed out → the purchase link, which signs them in
   // and brings them back; an upgrade → the organization, which does the same.
   if (code === "unauthorized" && status === undefined) return { go: s.org ? `/${encodeURIComponent(s.org)}/` : billingStartHref(s.plan, s.interval) };
@@ -207,6 +219,7 @@ function refuse(h: BillingCheckoutHost, s: BillingCheckoutUi, e: unknown): void 
 export async function startBillingCheckout(h: BillingCheckoutHost): Promise<void> {
   const s = h.get();
   if (!s) return;
+  if (h.preview?.()) { s.phase = "refused"; s.refusal = BILLING_PREVIEW_REFUSAL; h.rerender(); return; }
   let r: BillingCheckoutResponse;
   try {
     r = await h.ask(s, { plan: s.plan, interval: s.interval, ui: "embedded", ...(s.sessionId ? { session_id: s.sessionId } : {}) });

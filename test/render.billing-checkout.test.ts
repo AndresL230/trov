@@ -6,12 +6,12 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  BILLING_MOUNT_ID, billingCheckoutBackHref, billingCheckoutHosted, billingCheckoutPage, billingCheckoutRefusal, initialBillingCheckout, startBillingCheckout,
+  BILLING_MOUNT_ID, BILLING_PREVIEW_REFUSAL, billingCheckoutBackHref, billingCheckoutHosted, billingCheckoutPage, billingCheckoutRefusal, initialBillingCheckout, startBillingCheckout,
   type BillingCheckoutHost, type BillingCheckoutPhase, type BillingCheckoutUi,
 } from "../web/src/billing-checkout";
 import { billingDonePage, initialBillingDone, BILLING_FOOT } from "../web/src/billing";
 import { STRIPE_JS_URL, loadStripeEmbedder } from "../web/src/stripe-js";
-import { ApiError, OrgApiError, Unauthorized, askBillingCheckout } from "../web/src/api";
+import { ApiError, OrgApiError, PreviewBlocked, Unauthorized, askBillingCheckout, setWriteBlock } from "../web/src/api";
 import { initialState, render } from "../web/src/render";
 import { landingView } from "../web/src/landing";
 import { PRIVACY } from "../web/src/legal";
@@ -253,6 +253,35 @@ describe("startBillingCheckout — ask for the session, load Stripe.js, mount", 
       expect(`${s.refusal!.title} ${s.refusal!.body}`.toLowerCase(), title).not.toMatch(/payment failed|declined/);
     }
     expect(billingCheckoutRefusal(ui(), new ApiError(500, "500"))).toMatchObject({ retry: true });
+  });
+});
+
+describe("under the state preview (web/src/preview.ts) — nothing can be paid", () => {
+  it("the page says so plainly and asks nothing: no session, no Stripe.js, no navigation", async () => {
+    const s = ui("plan=team&session=cs_test_9");
+    const { h, log } = host(s, [embedded]);
+    h.preview = () => true;
+    await startBillingCheckout(h);
+    expect(s).toMatchObject({ phase: "refused", refusal: BILLING_PREVIEW_REFUSAL });
+    expect([log.asked, log.keys, log.mounted, log.went, log.urls]).toEqual([[], [], [], [], []]);
+    expect(log.paints.at(-1)).toContain(">Nothing can be paid in a preview</h1>");
+    expect(log.paints.at(-1)).toContain("nothing was charged");
+    expect(log.paints.at(-1)).not.toContain(">Try again</a>");
+    // The app draws that card, not a projected screen, while a preview is on.
+    const app = initialState();
+    app.preview = "empty";
+    app.billingCheckout = s;
+    expect(render(app)).toContain(">Nothing can be paid in a preview</h1>");
+  });
+
+  it("a write the preview refuses in api.ts (the fallback pressed, say) is the same sentence, never 'could not reach Stripe'", async () => {
+    setWriteBlock(() => undefined);
+    try {
+      const blocked = await askBillingCheckout(null, { plan: "team", ui: "embedded" }).catch((e: unknown) => e);
+      expect(blocked).toBeInstanceOf(PreviewBlocked);
+      expect(billingCheckoutRefusal(ui(), blocked)).toBe(BILLING_PREVIEW_REFUSAL);
+    } finally { setWriteBlock(null); }
+    expect(sources["../web/src/main.ts"]).toMatch(/preview: \(\) => state\.preview !== null/);
   });
 });
 

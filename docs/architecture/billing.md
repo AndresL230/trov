@@ -106,6 +106,19 @@ webhook is still the only thing that fulfils. **The browser arriving anywhere pr
   (3-D Secure and redirect methods), `connect-src https://api.stripe.com`, `img-src https://*.stripe.com`,
   and Link's `https://*.link.com` in `frame-src` / `connect-src` / `img-src`. The Worker's notice pages
   (`PAGE_CSP`, `default-src 'none'`) load no Stripe and are unchanged.
+- **The state preview** (`?preview=empty|loading`, `web/src/preview.ts`) sends no write, so nothing can be
+  paid in one: the page shows "Nothing can be paid in a preview" and asks the Worker for nothing — no
+  session, no Stripe.js. A write `api.ts` refuses under a preview (`PreviewBlocked`) is the same sentence.
+- **What Stripe's reference says, at the pinned version** (<https://docs.stripe.com/api/checkout/sessions/create?api-version=2024-06-20>):
+  `ui_mode` is `embedded` or `hosted` (default `hosted`); `success_url` and `cancel_url` are each "not
+  allowed if ui_mode is `embedded`"; `return_url` is "required if ui_mode is `embedded` and redirect-based
+  payment methods are enabled" (Trov always sends it); `redirect_on_completion` defaults to `always`, which
+  is why the buyer lands on `/billing/done`. `customer_update` "can only be provided when `customer` is
+  provided" — the rule `startCheckout` already follows. `line_items.adjustable_quantity`, `automatic_tax`
+  and `tax_id_collection` carry NO `ui_mode` restriction there, and Stripe's own embedded sample uses
+  `adjustable_quantity` (<https://docs.stripe.com/payments/checkout/adjustable-quantity?payment-ui=embedded-page>).
+  Not stated anywhere, so still to be seen in a real test: that today's Stripe.js mounts a session made at
+  this older API version.
 - **What differs for the buyer** from the hosted flow: they stay on trov.dev; the form's look is the Stripe
   account's Branding settings inside Trov's card; there is no Stripe "back" arrow (the card's Back link);
   and the purchase link creates the session when the page opens rather than on the redirect.
@@ -357,14 +370,52 @@ Stripe: `test/helpers/billing.ts` is an in-memory stand-in.
    test `pk_` beside a live `sk_` (or the reverse) checkout stays hosted.
 3. Check: `GET /api/billing/config` answers `"embedded": true` (the field is absent while it is off); "Choose Pro" lands on `/billing/checkout`
    with Stripe's form in the card; pay with `4242…`; you arrive on `/billing/done` as before.
-4. **Domains.** Stripe's embedded form itself needs no domain allowlist. Wallets and Link in it (Apple Pay,
-   Google Pay, Link) appear only on a registered domain: Settings › Payments › **Payment method domains** →
-   add `trov.dev` (per mode). Without it the card form still works. If Stripe's console reports a refused
-   domain when the form mounts, that page is where it is allowed.
+4. **Domains.** Stripe's docs ask for the site's domain to be registered only "for certain payment
+   methods" shown in the embedded form — Apple Pay (required), Google Pay, Link, PayPal, Amazon Pay, Klarna
+   (<https://docs.stripe.com/payments/payment-methods/pmd-registration>): Settings › Payments › **Payment
+   method domains** → add `trov.dev`. A domain registered in live mode is registered in sandboxes too. They
+   state no registration for the card form itself; that the card form mounts on an unregistered domain is
+   what the first real test (below) confirms.
 5. **Look.** The form's colours, font and logo are the account's (Settings › Branding › Checkout), not
    Trov's theme: set a background that sits well in both of Trov's themes.
 6. **Off again:** set `STRIPE_PUBLISHABLE_KEY = ""` and merge. Every purchase is Stripe's hosted page again
    at once; a buyer with the payment page still open is sent to the hosted page when it next asks.
+
+**First real test — the embedded form, in Stripe TEST mode, on your own machine.** Nothing here was run by
+whoever built it: it needs your keys, and only you handle them. Never a live key in `.dev.vars`.
+
+1. In `.dev.vars` put YOUR two test values — `STRIPE_SECRET_KEY=sk_test_…` and
+   `STRIPE_PUBLISHABLE_KEY=pk_test_…` (Developers › API keys, test mode) — with `STRIPE_PRICE_TEAM` set to
+   your test Price id, and **remove `STRIPE_TEST_API_BASE`** (with it set the stand-in is used and checkout
+   is never embedded). `STRIPE_TAX=on` only if Stripe Tax is set up in test mode.
+2. The webhook has to reach your machine: `stripe listen --forward-to localhost:8787/webhook/stripe`
+   (Stripe CLI), and put the `whsec_…` it prints in `.dev.vars` as `STRIPE_WEBHOOK_SECRET`. Keep it running.
+3. `npm run dev`, sign in as a person who is NOT the superadmin, and check `GET /api/billing/config` says
+   `"embedded": true` (absent → the key is missing, the wrong mode, or the stand-in base is still set).
+4. **The mount.** Open `/pricing` › Choose Pro. You should land on `/billing/checkout?plan=team&session=cs_test_…`:
+   a skeleton for a moment, then Stripe's form inside the card. Console: no error from `js.stripe.com`.
+   (If the form never appears and the card says "The payment form did not open", note the console error —
+   that is the "does today's Stripe.js mount this session" question, answered no.)
+5. **The fit.** Look at the card at full width (does Stripe lay the summary beside the fields in ~910px?),
+   in dark theme (the form's background is your Stripe Branding, not Trov's theme — is the panel
+   acceptable in the dark card?), and at phone width (DevTools device mode, ~390px: no sideways scroll, no
+   scrollbar inside the card, the page scrolls). Change the seat count in the form; turn on a field that
+   makes the form taller (a billing address) and see the card grow with it.
+6. **A reload mid-payment.** Type a card number, reload: the SAME `session=` id is in the address bar and
+   the Stripe dashboard shows no second Checkout Session.
+7. **Pay.** `4242 4242 4242 4242`, any future date, any CVC. You should arrive on
+   `/billing/done?session_id=…` showing "Payment received", then name the organization. `stripe listen`
+   shows `checkout.session.completed` answered 200. Press the browser's Back: you are sent to
+   `/billing/done` again, never to a second form.
+8. **3-D Secure.** Start again and pay with `4000 0025 0000 3155`: Stripe's challenge opens over the form;
+   complete it and you return to "Payment received". Fail it and the form stays, with Stripe's own error.
+9. **The fallback.** In DevTools › Network, block the request domain `js.stripe.com` and open
+   `/billing/checkout?plan=team`: within 15 s the card says "The payment form did not open"; **Continue on
+   Stripe's page** opens Stripe's hosted checkout for the same purchase and paying there returns to
+   "Payment received". Unblock afterwards.
+10. **An upgrade.** From a Free organization you own, Org settings › General › Upgrade to Pro: the same card,
+    titled "Upgrade to Pro", seats starting at members + pending invitations; Back returns to the Plan block.
+11. **Off again.** Empty `STRIPE_PUBLISHABLE_KEY`, restart: Choose Pro goes to Stripe's hosted page.
 
 **Tax (`STRIPE_TAX`).** Trov computes no tax: with the var `on`, Stripe Tax works it out at checkout, and the
 subscription keeps `automatic_tax`, so renewals and seat changes are taxed by the same rule. Stripe charges

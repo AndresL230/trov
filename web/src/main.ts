@@ -4503,6 +4503,7 @@ const billingCheckoutHost: BillingCheckoutHost = {
   mountNode: () => document.getElementById(BILLING_MOUNT_ID),
   go: (href) => { location.replace(href); },
   setUrl: (href) => { history.replaceState(null, "", href); },
+  preview: () => state.preview !== null,
 };
 
 // ── boot: detect session via /auth/me ────────────────────────────────────────
