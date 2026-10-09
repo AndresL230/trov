@@ -145,22 +145,34 @@ describe("email spacing — 8pt grid with a 4pt sub-grid", () => {
 describe("email shell — width", () => {
   const invite = () => renderInviteEmail({ orgName: "Acme Robotics", role: "member", inviteeName: "Priya", inviterName: "Andres", email: "p@example.com", signInUrl: "https://trov.example/x", host: "trov.example" }).html;
 
-  it("gives the card more room than the stock 600px, on both the attribute and the style", () => {
+  // The card is FLUID up to EMAIL_WIDTH. A table with `width="680"` cannot shrink below 680px, so on a
+  // phone the whole mail was 680px wide whatever its `max-width` said — the bug this pins.
+  const CARD = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:${EMAIL_WIDTH}px;margin:0 auto;`;
+  const MSO = `<!--[if mso]><table role="presentation" width="${EMAIL_WIDTH}" align="center"`;
+  it("gives the card more room than the stock 600px, as a cap and never a fixed width", () => {
     expect(EMAIL_WIDTH).toBeGreaterThan(600);
     const { html } = msg();
-    expect(html).toContain(`width="${EMAIL_WIDTH}"`);
-    expect(html).toContain(`width:${EMAIL_WIDTH}px;max-width:100%`);
+    expect(html).toContain(CARD);
+    expect(html).not.toContain(`style="width:${EMAIL_WIDTH}px`);
     expect(html).not.toContain('width="600"');
+    // Outlook ignores max-width: it alone gets the fixed width, through a conditional comment.
+    expect(html).toContain(MSO);
+    expect(html.match(new RegExp(`width="${EMAIL_WIDTH}"`, "g"))).toHaveLength(1);
   });
 
-  it("uses that one width for the invite too, so every Trov email is the same shell", () => {
-    expect(invite()).toContain(`width="${EMAIL_WIDTH}"`);
-    expect(invite()).toContain(`width:${EMAIL_WIDTH}px;max-width:100%`);
+  it("uses that one shell for the invite too, so every Trov email is the same card", () => {
+    expect(invite()).toContain(CARD);
+    expect(invite()).toContain(MSO);
+    expect(invite().match(new RegExp(`width="${EMAIL_WIDTH}"`, "g"))).toHaveLength(1);
   });
 
-  it("still collapses to the viewport on a phone", () => {
-    expect(msg().html).toContain("max-width:100%");
-    expect(invite()).toContain("max-width:100%");
+  it("adapts at phone width: the gutter tightens, the banner's faint mark makes room, the headline steps down", () => {
+    for (const html of [msg().html, invite()]) {
+      expect(html).toContain("@media (max-width:520px){.tm-art{display:none !important;}.tm-pad{padding:20px 10px !important;}.tm-title{font-size:22px !important;line-height:28px !important;}}");
+      expect(html).toMatch(/<td align="center" class="tm-pad" style="padding:36px 16px;">/);
+      expect(html).toMatch(/<td data-banner-art class="tm-art" width="68"/);
+    }
+    expect(invite()).toMatch(/<div data-banner-title class="tm-title"/);
   });
 });
 

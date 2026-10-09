@@ -63,3 +63,11 @@ left, an optional label top right (`eyebrow`), the mail's headline (`title`) and
 `background-image` gradient, and at the right a large faint mark built from `rgba()` table cells — a client
 without gradients keeps the solid band, one without `rgba` paints no faint mark. On-band ink stays literal
 (`BAND`), never a THEME token, so the dark swap cannot sink it into the purple.
+
+## The card is fluid
+
+`emailCardOpen()` / `EMAIL_CARD_CLOSE` (`assemble.ts`) wrap every mail: `width="100%"` with `max-width:680px`, never a
+fixed pixel width (a `width="680"` table cannot shrink, so a phone showed the mail 680px wide). Outlook ignores
+`max-width` and gets a fixed-width wrapper through a conditional comment. `EMAIL_MOBILE_CSS` (in each mail's
+`<style>`) tightens the gutter, hides the banner's faint mark and steps the headline down under 520px; a client
+that drops `<style>` still gets a card that fits.
