@@ -380,8 +380,11 @@ describe("pricing — questions say only what is true today", () => {
     // It spans the page's blocks (no cap of its own), and BOTH opening and closing animate, off under reduced motion.
     const css = trovCssRaw.replace(/\s+/g, " ");
     expect(css).toMatch(/\.site-faq \{ margin-top:20px; border-bottom:1px solid var\(--border\); interpolate-size:allow-keywords; \}/);
-    expect(css).toMatch(/\.site-faq > details::details-content \{ block-size:0; opacity:0; overflow:clip; transition:block-size [^;]+, opacity [^;]+, content-visibility \.3s allow-discrete; \}/);
-    expect(css).toContain(".site-faq > details[open]::details-content { block-size:auto; opacity:1; }");
+    expect(css).toMatch(/\.site-faq > details::details-content \{ block-size:0; opacity:0; overflow:clip; transition:block-size var\(--faq-t\) var\(--faq-e\), opacity [^;]+, content-visibility var\(--faq-t\) allow-discrete; \}/);
+    // One clock for the box that opens, the box that closes and the chevrons: no stutter between them.
+    expect(css).toContain(".site-faq { --faq-t:.38s; --faq-e:cubic-bezier(.4, 0, .2, 1); }");
+    expect(css).toMatch(/\.site-faq-chev \{[^}]*transition:transform var\(--faq-t\) var\(--faq-e\)/);
+    expect(css).toMatch(/\.site-faq > details\[open\]::details-content \{ block-size:auto; opacity:1; transition:block-size var\(--faq-t\) var\(--faq-e\),/);
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.site-faq > details::details-content,[^}]*transition:none; \}/);
   });
   const all = text(pricingSection() + pricingSection({ pricing: priced({ team: { yearly: 400 } }) }) + pricingSection({ pricing: unpriced() }));

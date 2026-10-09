@@ -1577,18 +1577,24 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    A browser without these opens and closes at once. */
 .site-faq { margin-top:20px; border-bottom:1px solid var(--border); interpolate-size:allow-keywords; }
 .site-faq > details { border-top:1px solid var(--border); }
+/* ONE duration and ONE curve for everything that moves (`--faq-t`, `--faq-e`): when a question opens, the
+   one that was open closes in the same instant, and two heights changing on different clocks is what
+   reads as a stutter. The curve eases at both ends (no fast snap at the start). The answer's text fades
+   in a beat after its box starts to grow, and is gone before the box finishes closing. */
+.site-faq { --faq-t:.38s; --faq-e:cubic-bezier(.4, 0, .2, 1); }
 .site-faq > details::details-content { block-size:0; opacity:0; overflow:clip;
-  transition:block-size .3s cubic-bezier(.22,.9,.24,1), opacity .22s ease, content-visibility .3s allow-discrete; }
-.site-faq > details[open]::details-content { block-size:auto; opacity:1; }
+  transition:block-size var(--faq-t) var(--faq-e), opacity calc(var(--faq-t) * .55) ease-out, content-visibility var(--faq-t) allow-discrete; }
+.site-faq > details[open]::details-content { block-size:auto; opacity:1;
+  transition:block-size var(--faq-t) var(--faq-e), opacity calc(var(--faq-t) * .7) ease-in calc(var(--faq-t) * .25), content-visibility var(--faq-t) allow-discrete; }
 .site-faq summary { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 0; cursor:pointer; list-style:none; }
 .site-faq summary::-webkit-details-marker { display:none; }
 .site-faq summary:hover h3, .site-faq summary:hover h4 { color:var(--accent); }
 .site-faq summary:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:4px; }
 .site-faq h3, .site-faq h4 { margin:0; font-size:14.5px; font-weight:600; transition:color .15s ease; }
-.site-faq-chev { flex:none; color:var(--fg-40); transition:transform .3s cubic-bezier(.22,.9,.24,1), color .15s ease; }
+.site-faq-chev { flex:none; color:var(--fg-40); transition:transform var(--faq-t) var(--faq-e), color .15s ease; }
 .site-faq summary:hover .site-faq-chev { color:var(--fg-70); }
 .site-faq > details[open] .site-faq-chev { transform:rotate(180deg); }
-.site-faq p { margin:-4px 0 0; padding:0 48px 20px 0; max-width:76ch; font-size:13.5px; line-height:1.65; color:var(--fg-70); text-wrap:pretty; }
+.site-faq p { margin:0; padding:0 48px 20px 0; max-width:76ch; font-size:13.5px; line-height:1.65; color:var(--fg-70); text-wrap:pretty; }
 @media (prefers-reduced-motion: reduce) { .site-faq > details::details-content, .site-faq-chev, .site-faq h3, .site-faq h4 { transition:none; } }
 @media (max-width:960px) { .site-plans { grid-template-columns:minmax(0, 1fr); } }
 /* tablet: one card per row, its limits beside its price instead of under it */
