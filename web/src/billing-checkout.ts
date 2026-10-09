@@ -152,7 +152,7 @@ export function billingCheckoutPage(s: BillingCheckoutUi, backdrop = ""): string
             <p role="status" style="margin:0;font-size:12.5px;line-height:1.5;color:var(--red)"${s.hostedError ? "" : " hidden"}>${esc(s.hostedError ?? "")}</p>
           </div>
         </div>
-        <footer class="cnpy-orgs-foot"><span>${BILLING_FOOT}</span><a class="cnpy-mutelink" data-billing-back href="${attr(billingCheckoutBackHref(s))}" style="font-size:12.5px;text-decoration:none">Back</a></footer>
+        <footer class="cnpy-orgs-foot"><span>${BILLING_FOOT}</span><a class="cnpy-mutelink" data-billing-back href="${attr(billingCheckoutBackHref(s))}" style="font-size:12.5px;font-weight:500;text-decoration:none;color:var(--fg-55)">Back</a></footer>
       </main>
     </div>
   </div>`;

@@ -2224,7 +2224,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-billco-note { display:grid; gap:16px; padding:22px 28px 24px; max-width:64ch; }
 @media (max-width:720px) {
   .cnpy-billco { padding-top:max(16px, env(safe-area-inset-top)); }
-  .cnpy-billco-stage { padding:8px 6px 10px; }
+  .cnpy-billco-stage { padding:6px 0 8px; }
   .cnpy-billco-skel { grid-template-columns:minmax(0, 1fr); gap:24px; padding:16px 14px 8px; }
   .cnpy-billco-note { padding:18px 20px 20px; }
 }
