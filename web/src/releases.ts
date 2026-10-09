@@ -159,6 +159,8 @@ export const RELEASES: Release[] = [
         "Org settings › General › Plan shows \"Free until <date>, a gift from Trov. After that this organization moves to Free; nothing is deleted.\" (`OrgPlanView.gift_until`), as the amber note in its last 7 days; the owner gets \"Keep Pro by paying\" where billing is set up (#123)",
       ],
       changed: [
+        "Pricing: the \"Limits, side by side\" table. Each plan card already lists every limit; its one footnote (which plans' limits can be set per organization) sits under the cards (#131)",
+        "Pricing › Questions is an accordion: each question a native `<details>`, the first open, one open at a time; the heading sits in a left column and the accordion in the right (`.site-faq-wrap`). `web/src/site-faq.ts` animates the answer's box open and shut with the Web Animations API (CSS cannot animate a `<details>` in most browsers): one duration and curve for the box that opens and the one that closes, a mid-flight click reverses from where the box is, off under reduced motion (#131)",
         "Personal Settings is a twelve-column bento whose tiles are as tall as what they hold: Profile | Account | Session over Appearance, then Plan | Limits, Organizations, MCP access, Email. Profile and Account no longer stretch to the MCP tile's height (they were 55px and 30px taller than their content at 1440px); Account is the sign-in methods only, and says why the last one can't be unlinked; Appearance drops its hint line (it is the System card's tooltip) (#126)",
         "Personal Settings is patched in place (`data-morph=\"settings\"`): typing in the name, handle or digest-address field no longer rebuilds the page (#126)",
         "Opening Settings reads the org's plan alone (`orgCtl.loadPlan`, act `orgPlanReload`) and re-reads `GET /api/orgs`, not Org settings' other slices (#126)",
@@ -193,6 +195,7 @@ export const RELEASES: Release[] = [
       removed: [],
     },
     prs: [121, 122, 123, 124, 125, 126, 127, 128, 130],
+    prs: [121, 122, 123, 124, 125, 126, 127, 128, 131],
   },
   // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
   {

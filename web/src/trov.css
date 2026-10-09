@@ -1558,20 +1558,32 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-price-note b { color:var(--fg); font-weight:600; }
 .site-price-block { margin-top:88px; }
 .site-price-h { margin:0; font-size:23px; font-weight:650; letter-spacing:-0.015em; }
-.site-cmp { width:100%; margin-top:20px; border-collapse:collapse; table-layout:fixed; font-size:14px; }
-.site-cmp th, .site-cmp td { padding:14px 16px 14px 0; text-align:left; vertical-align:top; border-bottom:1px solid var(--border); font-weight:400; }
-.site-cmp thead th { padding-bottom:10px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--fg-55); }
-.site-cmp thead th:first-child { width:46%; }
-.site-cmp-label { display:block; font-weight:600; color:var(--fg); }
-.site-cmp-counts { display:block; margin-top:3px; font-size:12.5px; line-height:1.5; color:var(--fg-55); }
-.site-cmp td { color:var(--fg); font-variant-numeric:tabular-nums; }
-.site-cmp-foot { margin:14px 0 0; font-size:12.5px; line-height:1.55; color:var(--fg-55); }
+.site-plans-foot { margin:14px 0 0; font-size:12.5px; line-height:1.55; color:var(--fg-55); }
 .site-price-all { list-style:none; margin:14px 0 0; padding:0; max-width:900px; display:grid; grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap:0 40px; }
 .site-price-all li { display:flex; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); font-size:14.5px; line-height:1.55; color:var(--fg-70); }
-.site-faq { margin-top:20px; display:grid; grid-template-columns:repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap:0 56px; }
-.site-faq > div { padding:20px 0; border-top:1px solid var(--border); }
-.site-faq h3, .site-faq h4 { margin:0; font-size:14.5px; font-weight:600; }
-.site-faq p { margin:6px 0 0; max-width:60ch; font-size:13.5px; line-height:1.65; color:var(--fg-70); text-wrap:pretty; }
+/* Questions: the heading on the left, the accordion on the right (`.site-faq-wrap`), together the full
+   width of the page's other blocks. Each question is a native <details>; site-faq.ts animates the
+   answer's box (`.site-faq-a`) open and shut — CSS alone cannot animate a <details> in most browsers —
+   so the only motion here is the chevron, on the same clock (`data-open` flips when the move STARTS). */
+.site-faq-wrap { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 2fr); gap:24px 64px; align-items:start; }
+.site-faq-side { position:sticky; top:96px; }
+.site-faq-side p { margin:10px 0 0; max-width:30ch; font-size:13.5px; line-height:1.6; color:var(--fg-55); }
+.site-faq-side a { color:var(--fg); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
+.site-faq-side a:hover { text-decoration-color:currentColor; }
+@media (max-width:860px) { .site-faq-wrap { grid-template-columns:minmax(0, 1fr); } .site-faq-side { position:static; } }
+.site-faq { border-bottom:1px solid var(--border); }
+.site-faq-a { overflow:hidden; }
+.site-faq > details { border-top:1px solid var(--border); }
+.site-faq summary { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 0; cursor:pointer; list-style:none; }
+.site-faq summary::-webkit-details-marker { display:none; }
+.site-faq summary:hover h3, .site-faq summary:hover h4 { color:var(--accent); }
+.site-faq summary:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:4px; }
+.site-faq h3, .site-faq h4 { margin:0; font-size:14.5px; font-weight:600; transition:color .15s ease; }
+.site-faq-chev { flex:none; color:var(--fg-40); transition:transform .38s cubic-bezier(.4, 0, .2, 1), color .15s ease; }
+.site-faq summary:hover .site-faq-chev { color:var(--fg-70); }
+.site-faq > details[data-open="1"] .site-faq-chev { transform:rotate(180deg); }
+.site-faq p { margin:0; padding:0 48px 20px 0; max-width:76ch; font-size:13.5px; line-height:1.65; color:var(--fg-70); text-wrap:pretty; }
+@media (prefers-reduced-motion: reduce) { .site-faq-chev, .site-faq h3, .site-faq h4 { transition:none; } }
 @media (max-width:960px) { .site-plans { grid-template-columns:minmax(0, 1fr); } }
 /* tablet: one card per row, its limits beside its price instead of under it */
 @media (min-width:600px) and (max-width:960px) {
@@ -1581,12 +1593,6 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 }
 /* phone: four columns do not fit, so each limit is a block — its name, then the three plans' values */
 @media (max-width:720px) {
-  .site-cmp, .site-cmp tbody { display:block; }
-  .site-cmp thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
-  .site-cmp tbody tr { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; padding:16px 0; border-bottom:1px solid var(--border); }
-  .site-cmp tbody th, .site-cmp tbody td { display:block; padding:0; border:0; }
-  .site-cmp tbody th { grid-column:1 / -1; }
-  .site-cmp td::before { content:attr(data-plan); display:block; margin-bottom:2px; font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
 }
 
 /* ── landing motion ───────────────────────────────────────────────────────────

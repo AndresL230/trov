@@ -48,6 +48,8 @@ import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash"
 import { mountLandingMotion, unmountLandingMotion, noteJump } from "./landing-motion";
 import { createFeatureCtl } from "./site-feature";
 import { TOUR_KEYS } from "./landing";
+import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
+import { initFaqAccordion } from "./site-faq";
 import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
   type TicketCategory, type TicketPriority, type TicketStatus,
@@ -148,6 +150,7 @@ const dropdowns = createDropdowns({ state, mount, rerender: () => rerender(), di
 
 // ── persisted client prefs (theme + sidebar only; not backend state) ─────────
 migrateBrowserStorage(); // canopy.* → trov.* (the rename) before the first read
+initFaqAccordion();      // the Questions accordion on the landing page (site-faq.ts): one delegated listener
 try {
   const t = localStorage.getItem("trov.theme");
   if (t === "dark" || t === "light" || t === "system") state.theme = t;

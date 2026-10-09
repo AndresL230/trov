@@ -160,7 +160,7 @@ this month") with, at the cap, "New pull requests and issues show an excerpt unt
 never "over the limit" (`overLimits` skips a monthly allowance) — so billing's "switch to a smaller plan"
 confirmation never counts it among what the org would be over; when the month's use is already at the
 smaller plan's allowance it says that, in the allowance's own sentence. The pricing page lists it on each
-card ("3,000 AI summaries per month"; an unlimited one names no period) and in the comparison table.
+card ("3,000 AI summaries per month"; an unlimited one names no period) (the side-by-side comparison table is gone: the cards say every limit once).
 Platform › Usage shows, per org and in total, attempted / succeeded / fell back for the window and the
 month's use against the cap; an organization's own Platform page has the same line. The Sync panel shows
 what a run will attempt and what is left. With **no key at all** nothing is counted or capped, and the
