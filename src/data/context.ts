@@ -72,6 +72,37 @@ export async function resolveTenantById(env: Env, userId: string, orgId: string,
   return row ? tenant(env, orgId, userId, row.role, via) : null;
 }
 
+/** A tenant a bearer connection can act in, with the org's slug and name (what a refusal, the
+ *  `get_connection` tool and a link name it by). */
+export interface OrgTenant { ctx: TenantContext; slug: string; name: string }
+
+/** What narrows `liveTenants` — never anything but the person's own live memberships. */
+export type TenantFilter =
+  | { kind: "all" }
+  /** The organizations an OAuth grant may use (`oauth_grant_orgs`, 0051). */
+  | { kind: "grant"; grantId: number }
+  /** The organizations that have this repository connected (`org_repos`: typed by hand or seen through
+   *  the org's GitHub App installation — and not one the installation has since lost sight of). */
+  | { kind: "repo"; repo: string };
+
+/**
+ * A bearer connection's reach (./bearer.ts, 0051): the organizations `userId` is a LIVE member of and
+ * that are not suspended, narrowed by `filter`. The membership JOIN is the statement's spine — no
+ * filter can add an organization the person is not in today — and each context carries the role held
+ * there now. Ordered by slug, so a list an agent is shown is stable.
+ */
+export async function liveTenants(env: Env, userId: string, filter: TenantFilter): Promise<OrgTenant[]> {
+  const base = `SELECT o.id, o.slug, o.name, m.role FROM memberships m JOIN orgs o ON o.id = m.org_id
+      WHERE m.user_id = ?1 COLLATE NOCASE AND o.suspended_at IS NULL`;
+  const q = filter.kind === "grant"
+    ? env.DB.prepare(`${base} AND EXISTS (SELECT 1 FROM oauth_grant_orgs a WHERE a.org_id = o.id AND a.grant_id = ?2) ORDER BY o.slug`).bind(userId, filter.grantId)
+    : filter.kind === "repo"
+      ? env.DB.prepare(`${base} AND EXISTS (SELECT 1 FROM org_repos r WHERE r.org_id = o.id AND r.repo_full_name = ?2 AND r.access_lost_at IS NULL) ORDER BY o.slug`).bind(userId, filter.repo)
+      : env.DB.prepare(`${base} ORDER BY o.slug`).bind(userId);
+  const { results } = await q.all<{ id: string; slug: string; name: string; role: OrgRole }>();
+  return results.map((r) => ({ ctx: tenant(env, r.id, userId, r.role, "bearer"), slug: r.slug, name: r.name }));
+}
+
 export type SoleTenant =
   | { ok: true; ctx: TenantContext }
   | { ok: false; reason: "no_membership" | "org_required" | "suspended" };

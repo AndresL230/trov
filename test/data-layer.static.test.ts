@@ -72,12 +72,23 @@ const PLATFORM_ALLOW: Allow[] = [
   { file: "src/auth/tokens.ts", fn: "resolveToken", tables: ["mcp_tokens"], why: "token lookup by hash (+ the last_used_at bump, by the id just read)" },
   { file: "src/auth/oauth.ts", fn: "resolveOAuthAccessToken", tables: ["oauth_grants"], why: "access-token lookup by hash → its grant's (person, org) (+ the last_used_at bump)" },
   { file: "src/auth/oauth.ts", fn: "exchangeAuthorizationCode", tables: ["oauth_codes", "oauth_grants"], why: "code lookup by hash at the public token endpoint; its grant read by the id on the code" },
+  // A grant's standing (0051): whether its person is still a member of ANY organization the grant can
+  // reach — its `oauth_grant_orgs` rows — read in the same statement that finds the grant by hash.
+  { file: "src/auth/oauth.ts", fn: "GRANT_STANDING", tables: ["oauth_grant_orgs"], why: "the standing of the ONE grant just found by hash: is its person still a member of an org it may use — a yes/no, no org's content" },
+  // A connection that FOLLOWS THE REPOSITORY belongs to its person and to no organization (0051): its
+  // grant and code carry org_id '' — there is no org to bind, so there is no tenant context to write through.
+  { file: "src/auth/oauth.ts", fn: "issueRepoAuthorization", tables: ["oauth_grants", "oauth_codes"], why: "a follow-the-repository grant is the person's and no org's: written with org_id '' (never an org's id)" },
   { file: "src/auth/oauth.ts", fn: "refreshAccessToken", tables: ["oauth_grants"], why: "refresh-token lookup by hash → its grant; a reused token revokes that grant" },
   { file: "src/auth/oauth.ts", fn: "revokeOAuthToken", tables: ["oauth_grants"], why: "RFC 7009: a presented refresh token, found by hash, revokes its own grant" },
   { file: "src/auth/oauth.ts", fn: "grantRefusal", tables: ["oauth_grants"], why: "revokes the ONE grant just found by hash, when its person has left the grant's org" },
   // Settings › Connected apps is USER-level (§6.3): a person's own connections across every org they
   // made one into, each row naming its org — keyed by the person, never by an org.
-  { file: "src/auth/oauth.ts", fn: "listGrants", tables: ["oauth_grants"], why: "a person's own connections across their orgs; each row names its org" },
+  { file: "src/auth/oauth.ts", fn: "listGrants", tables: ["oauth_grants", "oauth_grant_orgs"], why: "a person's own connections across their orgs; each row names the orgs it can use — only ones the person is a member of now" },
+  // Changing one's OWN connection (0051, session-cookie routes): the grant is found by id AND person, and
+  // a mode change rewrites that one grant's own rows. Adding an org to it is NOT here — that runs on the
+  // tenant surface, through the live membership the route resolved (`setGrantOrg`, `setGrantCurrent`).
+  { file: "src/auth/oauth.ts", fn: "ownGrant", tables: ["oauth_grants", "oauth_grant_orgs"], why: "one of the person's OWN grants, by id AND person, with how many orgs hold a row for it" },
+  { file: "src/auth/oauth.ts", fn: "setGrantMode", tables: ["oauth_grants", "oauth_grant_orgs"], why: "a person changes their OWN connection's mode — by id AND person: its org rows are dropped, or reduced to the one org whose membership the route just resolved" },
   { file: "src/auth/oauth.ts", fn: "revokeGrant", tables: ["oauth_grants"], why: "a person revokes their OWN connection — by id AND person — whichever org it is into" },
   // The upload PUT has no session: its single-use token is looked up by hash to learn its org, and
   // everything after runs as that org's system tenant.
@@ -94,7 +105,7 @@ const PLATFORM_ALLOW: Allow[] = [
   // The superadmin's org list says which GitHub account each org's App installation is on (0043_github_app): a name.
   { file: "src/platform/repo.ts", fn: "listPlatformOrgs", tables: ["org_github_installations"], why: "the superadmin's org list: the GitHub account an org is connected through — a name, no token exists in the table" },
   // Removing a member revokes that person's tokens for the org in the same batch as the membership row.
-  { file: "src/orgs/repo.ts", fn: "removeMember", tables: ["mcp_tokens", "oauth_grants"], why: "member removal revokes the person's credentials for that org, atomically" },
+  { file: "src/orgs/repo.ts", fn: "removeMember", tables: ["mcp_tokens", "oauth_grants", "oauth_grant_orgs"], why: "member removal ends the person's credentials' reach into that org, atomically: tokens revoked, each connection's row for the org dropped, a connection left with no org revoked" },
 ];
 
 /**

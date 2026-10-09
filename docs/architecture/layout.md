@@ -126,6 +126,10 @@
   quantity): `docs/architecture/billing.md`.
   A plan given for free until a date (`src/plans/gifts.ts`, `0048_plan_gifts` — `orgs.plan_gift_until`,
   `org_grants.gift_days`; expired by the repo cron's every tick): `docs/architecture/plans.md` › Gifts.
+  Which organization an MCP call acts in (`0051_mcp_connection_orgs` — `oauth_grants.mode`, the tenant table
+  `oauth_grant_orgs`; `src/data/bearer.ts` holds the rule, `shared/repo-ref.ts` the one spelling of a
+  repository, `src/mcp.ts` `buildConnectionMcpServer` the per-call resolution; Settings › MCP access in
+  `web/src/render.ts`): `docs/architecture/data-layer.md` § Bearer.
   Bug reports and support messages (`0049_support_reports` — a GLOBAL table; `shared/support-core.ts`,
   `src/platform/support.ts` + `support-routes.ts`, the operator's mail in `src/notifications/support.ts`, the
   dialog in `web/src/support.ts` + `support-actions.ts`, Platform › Support in `web/src/platform-support*.ts`;

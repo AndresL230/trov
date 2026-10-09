@@ -656,20 +656,63 @@ describe("no copy names one organization", () => {
 
 // ── Settings › MCP access ────────────────────────────────────────────────────
 describe("Settings › MCP access — a connection is for one organization", () => {
-  const grant = (id: number, org: { slug: string; name: string }) => ({ id, client_name: "Claude Code", created_at: "2026-10-01T10:00:00.000Z", last_used_at: null, org });
+  const grant = (id: number, org: { slug: string; name: string }) => ({ id, client_name: "Claude Code", created_at: "2026-10-01T10:00:00.000Z", last_used_at: null, mode: "manual" as const, org, orgs: [org] });
   it("says so in the steps, naming the org on screen", () => {
     const html = mcpAccessSection({ grants: { status: "ok", data: [] }, grantRevokeArm: null, grantsAll: false }, "Acme Robotics");
-    expect(html).toContain("it acts as you, in one organization.");
-    expect(html).toContain("Pick the organization to connect (you&#39;re in <strong".replace("&#39;", "'"));
+    expect(html).toContain("it acts as you, in one of your organizations at a time.");
+    expect(html).toContain("Choose how the connection picks an organization (you&#39;re in <strong".replace("&#39;", "'"));
     expect(html).toContain("Acme Robotics");
-    expect(html).toContain("A connection reaches one organization: the one you pick when you allow it.");
+    expect(html).toContain("One connection covers all your organizations.");
+    expect(html).toContain("follow the repository you are working in, or the organizations you tick, one at a time");
     expect([...html.matchAll(/<li /g)]).toHaveLength(3);
   });
-  it("each connected app shows the org it is connected to", () => {
+  it("each connected app shows how it is scoped: its organization, or that it follows the repository", () => {
     const html = grantListBody({ grants: { status: "ok", data: [grant(1, { slug: "acme", name: "Acme Robotics" }), grant(2, { slug: "saplinglearn", name: "SaplingLearn" })] }, grantRevokeArm: null, orgSlug: "acme" });
     expect(html).toContain('data-grant-org="acme" title="This connection reaches Acme Robotics only"');
     expect(html).toContain('data-grant-org="saplinglearn"');
     expect(html).toContain(">SaplingLearn</span>");
+    const acme = { slug: "acme", name: "Acme Robotics" }, sap = { slug: "saplinglearn", name: "SaplingLearn" };
+    const scoped = grantListBody({
+      grants: { status: "ok", data: [
+        { ...grant(1, acme), orgs: [acme, sap] },                                  // manual, two orgs, working in Acme
+        { ...grant(2, sap), mode: "repo" as const, org: null, orgs: [] },           // follows the repository
+        { ...grant(3, sap), org: null },                                            // manual, its current org gone
+      ] }, grantRevokeArm: null, orgSlug: "acme",
+    });
+    expect(scoped).toContain('data-grant-mode="manual" data-grant-org="acme" title="This connection is working in Acme Robotics, and may use 1 more"');
+    expect(scoped).toContain(">Acme Robotics +1</span>");
+    expect(scoped).toMatch(/data-grant-mode="repo"[^>]*>Follows the repository<\/span>/);
+    expect(scoped).toMatch(/data-grant-org=""[^>]*>No organization<\/span>/);
+    expect(scoped).not.toContain("data-grant-scope="); // nothing is open for change until asked
+  });
+
+  it("a connection opened for change: the mode switch; Manual shows the dropdown and a toggle per organization of mine", () => {
+    const acme = { slug: "acme", name: "Acme Robotics" }, sap = { slug: "saplinglearn", name: "SaplingLearn" }, third = { slug: "third", name: "Third <Co>" };
+    const mine = [acme, sap, third].map((o) => ({ ...o, role: "member" as const }));
+    const me = { orgs: mine } as unknown as AppState["me"];
+    const data = [{ ...grant(1, acme), orgs: [acme, sap] }, { ...grant(2, sap), mode: "repo" as const, org: null, orgs: [sap] }];
+    const manual = grantListBody({ grants: { status: "ok", data }, grantRevokeArm: null, orgSlug: "acme", grantScope: 1, me });
+    expect(manual).toContain('data-grant-scope="1"');
+    expect(manual).not.toContain('data-grant-scope="2"');
+    expect(manual).toContain('data-seg="grant-mode-1"');
+    expect(manual).toContain('data-act="grantMode" data-arg="1:repo"');
+    expect(manual).not.toContain('data-arg="1:manual"'); // the picked option is inert
+    expect(manual).toContain('data-dd="grant-current-1"');
+    expect(manual).not.toContain("<select");
+    expect([...manual.matchAll(/data-act="grantOrgToggle" data-arg="1:([a-z]+):(on|off)" role="switch" aria-checked="(true|false)"/g)].map((m) => [m[1], m[2], m[3]]))
+      .toEqual([["acme", "off", "true"], ["saplinglearn", "off", "true"], ["third", "on", "false"]]);
+    expect(manual).toContain("Third &lt;Co&gt;");
+    expect(manual).toContain("working here");
+    expect(manual).toContain("only you can add one");
+    expect(manual).toContain('aria-expanded="true"');
+
+    const repo = grantListBody({ grants: { status: "ok", data }, grantRevokeArm: null, orgSlug: "acme", grantScope: 2, me });
+    expect(repo).toContain("data-grant-follow");
+    expect(repo).toContain("Anywhere else it reads and writes nothing.");
+    expect(repo).toContain("Used so far in SaplingLearn.");
+    expect(repo).toContain('data-act="grantMode" data-arg="2:manual"');
+    expect(repo).not.toContain("grantOrgToggle");
+    expect(repo).not.toContain('data-dd="grant-current-2"');
   });
   it("access tokens are the CURRENT org's and say so; revoke only — and nothing at all when there are none", () => {
     const tokens = { status: "ok" as const, data: [{ id: 4, hint: "ab12", created_at: "2026-09-01T10:00:00.000Z", last_used_at: null }] };

@@ -41,8 +41,8 @@ export function connectSteps(orgName = "", lands = "it shows up under Connected 
   return `<ol aria-label="Connect Claude Code" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0">
         ${step(`Install the Trov plugin in Claude Code:${copyBox(PLUGIN_INSTALL, "copyPluginInstall", "Copy the install commands")}`)}
         ${step(`Run ${mcpCode("/mcp")}, choose ${mcpStrong("trov")}, then ${mcpStrong("Authenticate")}.`)}
-        ${step(`Your browser opens Trov. ${orgName ? `Pick the organization to connect (you're in ${mcpStrong(esc(orgName))} now)` : "Pick the organization to connect"}, then click ${mcpStrong("Allow")} &mdash; ${lands}.`)}
+        ${step(`Your browser opens Trov. ${orgName ? `Choose how the connection picks an organization (you're in ${mcpStrong(esc(orgName))} now)` : "Choose how the connection picks an organization"}, then click ${mcpStrong("Allow")} &mdash; ${lands}.`)}
       </ol>`;
 }
 /** What a connection reaches — said under the steps wherever they are shown. */
-export const ONE_ORG_NOTE = "A connection reaches one organization: the one you pick when you allow it. To use Trov with another organization, connect again and pick that one.";
+export const CONNECTION_NOTE = "One connection covers all your organizations. When you allow it you choose how it picks one: follow the repository you are working in, or the organizations you tick, one at a time. You can change that later in Settings.";
