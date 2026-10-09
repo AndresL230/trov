@@ -26,6 +26,9 @@ export interface BillingConfig {
   /** `STRIPE_API`, or — never with a live key — the loopback stand-in a test names. */
   apiBase: string;
   prices: Record<PurchasablePlan, Partial<Record<BillingInterval, string>>>;
+  /** `STRIPE_TAX = "on"`: a checkout asks Stripe Tax for the tax. Stripe charges it only where the account
+   *  holds a tax registration, so with none every invoice is the price alone — Trov computes no tax itself. */
+  tax: boolean;
 }
 
 const set = (v: string | undefined): string | null => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
@@ -53,6 +56,7 @@ export function billingConfig(env: Env): BillingConfig | null {
     prices: {
       team: price(env.STRIPE_PRICE_TEAM, env.STRIPE_PRICE_TEAM_YEARLY),
     },
+    tax: set(env.STRIPE_TAX)?.toLowerCase() === "on",
   };
 }
 

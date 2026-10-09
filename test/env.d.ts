@@ -31,6 +31,7 @@ declare global {
       RESEND_API_KEY?: string;
       PUBLIC_ORIGIN?: string;
       NOTIFICATIONS_MODE?: "local" | "resend";
+      SUPPORT_NOTIFY_EMAIL?: string;
       REPO_ENVIRONMENTS?: string;
       CF_ANALYTICS_TOKEN?: string;
       CF_ANALYTICS_ACCOUNT_ID?: string;

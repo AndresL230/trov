@@ -27,6 +27,10 @@ const ROUTES: [method: string, path: string, body?: unknown][] = [
   ["DELETE", "/api/platform/admins/AndresL230"],
   ["GET", "/api/platform/audit"],
   ["GET", "/api/platform/usage"],
+  ["GET", "/api/platform/support"],
+  ["GET", "/api/platform/support/1"],
+  ["POST", "/api/platform/support/1/resolve"],
+  ["POST", "/api/platform/support/1/reopen"],
   ["GET", "/api/platform/no-such-route"],
 ];
 

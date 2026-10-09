@@ -73,6 +73,21 @@ describe("GET /billing/start — a signed-in person starts a checkout", () => {
     expect(await grants()).toEqual([]);
   });
 
+  it("asks Stripe Tax for the tax only when STRIPE_TAX is on, and computes none itself", async () => {
+    const { billingConfig } = await import("../src/billing/config");
+    expect(billingConfig(billingEnv())!.tax).toBe(false);
+    for (const v of ["", "off", "true", "1"]) expect(billingConfig(billingEnv({ STRIPE_TAX: v }))!.tax, v).toBe(false);
+    expect(billingConfig(billingEnv({ STRIPE_TAX: " On " }))!.tax).toBe(true);
+    const r = await bcall("GET", "/billing/start?plan=team", await buyer("maya"), undefined, { env: billingEnv({ STRIPE_TAX: "on" }) });
+    expect(r.status).toBe(303);
+    const [c] = stripe.callsTo("POST", "/v1/checkout/sessions");
+    expect(c.params.get("automatic_tax[enabled]")).toBe("true");
+    expect(c.params.get("tax_id_collection[enabled]")).toBe("true");
+    // A new buyer has no Stripe customer yet: there is nothing to update, and Stripe refuses the field.
+    expect([...c.params.keys()].some((k) => k.startsWith("customer_update"))).toBe(false);
+    // Off (the first test's exact parameter list) sends none of it.
+  });
+
   it("uses the yearly price when asked, and offers no e-mail it does not know to be the person's", async () => {
     await seedPerson("noaddr", { member: false, email: "typed-by-them@example.com" }); // persons.email is editable: never sent
     const r = await bcall("GET", "/billing/start?plan=team&interval=year", await cookieFor("noaddr", { member: false }));
@@ -190,13 +205,25 @@ describe("billing not configured", () => {
 });
 
 describe("signed out: sign in, then carry on to payment", () => {
-  it("shows the sign-in page, remembers the purchase in a sealed cookie, and the sign-in callback returns to it", async () => {
+  it("with `via`, a signed-out buyer goes straight to the provider they already picked — the same sealed return, no second sign-in page", async () => {
+    for (const [via, to] of [["github", "/auth/login"], ["google", "/auth/google/login"]] as const) {
+      const start = await bcall("GET", `/billing/start?plan=team&via=${via}`, "");
+      expect([start.status, start.headers.get("location")]).toEqual([302, to]);
+      const setCookie = start.headers.get("set-cookie") ?? "";
+      expect(setCookie).toMatch(new RegExp(`^${RETURN_TO_COOKIE}=[^;]+; Max-Age=600; Path=/; HttpOnly; Secure; SameSite=Lax`));
+      // (What the cookie returns to is the allowlisted purchase path, sealed by `setReturnTo` — the test
+      // below follows it through the sign-in callback; `via` is never part of it.)
+    }
+    // Anything else is "no provider picked": the app's Get started dialog asks.
+    const other = await bcall("GET", "/billing/start?plan=team&via=facebook", "");
+    expect([other.status, other.headers.get("location")]).toEqual([302, "/?start=team"]);
+    expect(stripe.calls).toEqual([]);
+  });
+
+  it("sends a signed-out buyer to the app's Get started dialog, remembers the purchase in a sealed cookie, and the sign-in callback returns to it", async () => {
     const start = await bcall("GET", "/billing/start?plan=team&interval=year", "");
-    expect(start.status).toBe(200);
-    expect(start.text).toContain("Sign in to continue");
-    expect(start.text).toContain('href="/auth/login"');
-    // Honest about Google: it does not create an account.
-    expect(start.text).toContain("Signing in with either one creates your account.");
+    // No page of its own any more: the app's Get started dialog asks, opened on this plan and interval.
+    expect([start.status, start.headers.get("location")]).toEqual([302, "/?start=team&interval=year"]);
     expect(stripe.calls).toEqual([]);
     const setCookie = start.headers.get("set-cookie") ?? "";
     expect(setCookie).toMatch(new RegExp(`^${RETURN_TO_COOKIE}=[^;]+; Max-Age=600; Path=/; HttpOnly; Secure; SameSite=Lax`));

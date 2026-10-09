@@ -124,7 +124,7 @@ skippable, with Back, a step indicator and *Skip setup*.
   quick search.
 - **Every step's state is derived, never stored and never guessed** — from the reads Org settings already
   makes (repositories, the GitHub App's connection, members, invitations, the plan) and from the person's
-  own agent connections (`GET /auth/oauth-grants` filtered to this organization, plus their MCP tokens for
+  own agent connections (`GET /auth/oauth-grants` — the ones that may use this organization or follow the repository — plus their MCP tokens for
   it: the two reads Settings › MCP access makes). A read that is out, or failed, is *not known yet*: the
   indicator keeps the step's number, and the closing step says so rather than "done" or "skipped". Nothing
   on the page calls GitHub; the repository list is Org settings' own read.
@@ -227,9 +227,12 @@ when the limit turns over [`abuse-limits.md`].
 | Delete another person's prompt or artifact; rename the organization | | ✓ | ✓ |
 | Make or unmake an owner; rotate the organization's encryption key | | | ✓ |
 
-The last owner can neither leave nor be demoted. Removing a member revokes their tokens and connected apps
-for that organization at once; what they wrote stays. An agent acts as the person whose token it holds, in
-the one organization that token was made for, and may only write to tickets assigned to that person
+The last owner can neither leave nor be demoted. Removing a member ends their agents' reach into that
+organization at once — their tokens for it are revoked, and every connected app of theirs stops being able to
+act there (one that could act nowhere else is revoked) — and what they wrote stays. An agent acts as the
+person whose connection it holds, in ONE of that person's organizations per call (`data-layer.md` § Bearer:
+the connection's current organization, or the one that has the repository it is working in connected), and
+may only write to tickets assigned to that person
 [`src/tools/tickets-agent.ts`].
 
 Tickets and handoffs are numbered **per organization**: a new organization's first ticket is `#1`. That
@@ -312,6 +315,17 @@ artifact bytes, tokens and connected apps). Platform › an organization shows t
 Requests are metered, not limited. What IS limited per organization — people, repositories, environments,
 stored artifacts, agent connections per person — is its plan's (`plans.md`).
 
+## 6b. Support reports
+
+Platform › **Support** [`web/src/platform-support.ts`, `GET /api/platform/support`]: the bug reports and
+messages people send — signed in, from the bug button in the app header and Settings › Contact support;
+signed out, from the site's Contact form — with a count of the open ones on the tab.
+Each is also mailed to `SUPPORT_NOTIFY_EMAIL`; replying to that mail, or **Reply by email** on the report,
+answers the person at their verified address (signed out: at the address they typed, which nobody
+verified and which is labelled so). **Resolve** takes it off the open list; **Reopen** puts it
+back. A report holds what its reporter wrote plus the screen, the organization's slug, the app version and
+the browser — nothing read from the organization. All of it: `support.md`.
+
 ## 7. What the superadmin can and cannot see
 
 **Can:** every organization's name, slug, status, creation date and creator; the GitHub account its App
@@ -319,7 +333,8 @@ installation is on, if any; its owners; its members'
 handles, names, roles and titles; its pending invitations (the address or login, and whether the e-mail
 went out); the usage **counts and sizes** above; and the audit trail — who created the organization, added
 or removed whom, changed a role, set or rotated which integration (never a value: at most a credential's
-last four characters and key version).
+last four characters and key version); and the support reports people sent (§6b): their own words and
+where they were when they wrote them.
 
 **Cannot:** open an organization, or read any of its content — docs, tickets, feed, handoffs, prompts,
 artifacts, the Repo dashboard, e-mail bodies — or any stored credential. The Platform routes read no tenant

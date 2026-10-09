@@ -691,6 +691,8 @@ input, select { font-family: inherit; }
 .cnpy-set-limits { grid-column:6 / -1; grid-row:3; }
 .cnpy-set-orgs-tile { grid-column:1 / -1; grid-row:4; }
 .cnpy-set-mcp { grid-column:1 / -1; grid-row:5; }
+/* Help (Contact support): a slim tile on a row of its own, after Email notifications. */
+.cnpy-set-help { grid-column:1 / -1; }
 /* A Settings tile is a surface (class="cnpy-tile cnpy-surface"); this adds its padding, and
    a column flow so a tile keeps its content at the top — with `.cnpy-tile-foot` (Profile's
    color swatches, Account's closing line) at the bottom edge. */
@@ -1368,6 +1370,38 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 @media (prefers-reduced-motion: reduce) {
   .cnpy-skel-in, .cnpy-sk, .cnpy-settle { animation:none !important; }
 }
+/* ── empty layouts (web/src/skeleton.ts `emptyLayout`) ───────────────────────
+   A screen that has loaded and holds nothing keeps its shape: the same builders as
+   the loading skeleton, drawn HOLLOW and STILL. Loading is a filled bar that pulses;
+   empty is a hairline outline that does not move, a card is a dashed outline with no
+   fill, and the first slot is a sentence (and one action). So the two are told apart
+   at a glance, in either theme, with or without motion. Theme tokens only. */
+.cnpy-empty { display:block; min-width:0; }
+.cnpy-empty-say { box-sizing:border-box; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:12px; min-width:0; padding:16px 18px; border:1px dashed var(--border-strong); border-radius:10px; }
+.cnpy-empty-say.is-plain { border:0; padding:0; }
+.cnpy-empty-text { margin:0; max-width:64ch; font-size:13.5px; line-height:1.55; color:var(--fg-70); text-wrap:pretty; }
+.cnpy-empty-say.is-plain .cnpy-empty-text { font-size:13px; color:var(--fg-55); }
+.cnpy-empty-words { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.cnpy-empty-title { margin:0; font-size:13.5px; font-weight:600; line-height:1.45; color:var(--fg); }
+.cnpy-empty-words > .cnpy-empty-text { font-size:12.5px; color:var(--fg-55); }
+.cnpy-empty-acts { display:flex; flex-wrap:wrap; gap:8px; }
+.cnpy-empty-act { display:inline-flex; align-items:center; height:30px; padding:0 13px; border:1px solid var(--border-strong); border-radius:8px; font-size:12.5px; font-weight:500; color:var(--fg); white-space:nowrap; transition:background .12s ease, border-color .12s ease; }
+.cnpy-empty-act:hover { background:var(--hover); border-color:var(--fg-40); }
+.cnpy-empty-shapes { display:block; min-width:0; pointer-events:none; user-select:none; }
+.cnpy-empty-shapes.is-contents { display:contents; }
+.cnpy-empty-shapes .cnpy-sk { background:transparent; box-shadow:inset 0 0 0 1px var(--border-strong); animation:none; }
+.cnpy-empty-shapes .cnpy-surface { background:transparent; border-style:dashed; border-color:var(--border-strong); box-shadow:none; }
+@media (prefers-reduced-motion: reduce) { .cnpy-empty-act { transition:none; } }
+/* The state preview's banner (web/src/preview.ts): fixed at the app's lower right, over every
+   screen, for as long as `?preview=` is on. Amber, the app's "this is not live data" tone
+   (the Repo dashboard's sample tag). It does not move. */
+.cnpy-preview { position:fixed; right:16px; bottom:16px; z-index:60; display:flex; align-items:center; gap:10px; max-width:min(560px, calc(100vw - 32px)); padding:9px 10px 9px 13px; border:1px solid color-mix(in srgb,var(--amber) 55%,transparent); border-radius:10px; background:var(--surface); box-shadow:0 8px 30px rgba(0,0,0,.22); font-size:12.5px; line-height:1.45; color:var(--fg-70); }
+.cnpy-preview-dot { flex:none; width:8px; height:8px; border-radius:50%; background:var(--amber); }
+.cnpy-preview-t { min-width:0; }
+.cnpy-preview-t > strong { font-weight:600; color:var(--fg); }
+.cnpy-preview-b { flex:none; height:26px; padding:0 10px; border:1px solid var(--border-strong); border-radius:7px; font-size:12px; font-weight:500; color:var(--fg); white-space:nowrap; }
+.cnpy-preview-b:hover { background:var(--hover); }
+@media (max-width:640px) { .cnpy-preview { left:12px; right:12px; bottom:12px; flex-wrap:wrap; } }
 
 
 /* ── Repo dashboard (web/src/repo.ts) ────────────────────────────────────────── */
@@ -1491,20 +1525,51 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-btn-outline { border:1px solid var(--border-strong); color:var(--fg); }
 .site-btn-outline:hover { background:var(--hover); color:var(--fg); }
 @media (max-width:900px) { .site-hide-sm { display:none !important; } }
-/* The legal pages (/terms, /privacy — web/src/legal.ts): a long single-column text, the
-   landing's type scale. Section anchors clear the 60px sticky nav. */
-.site-legal-lede { margin:28px 0 0; font-size:16.5px; line-height:1.65; color:var(--fg-70); text-wrap:pretty; }
-.site-legal-toc { margin:36px 0 0; padding:18px 22px; border:1px solid var(--border); background:var(--surface); }
+/* The legal pages (/terms, /privacy — web/src/legal.ts). The site's own page: the brand banner carries the
+   title (the landing hero's `.site-banner`), then the text with its contents riding beside it. Under 900px
+   the contents sit above the text as a box. Section anchors clear the 60px sticky nav. */
+.site-legal-band { padding:clamp(34px, 4.6vw, 58px) var(--hero-pad) clamp(36px, 4.8vw, 60px); }
+.site-legal-band > .site-banner-art { width:clamp(220px, 30vw, 400px); aspect-ratio:1; right:clamp(-70px, -4vw, -30px); top:clamp(-90px, -6vw, -50px); }
+.site-legal-band-in { max-width:1060px; margin:0 auto; }
+.site-legal-tabs { display:inline-flex; gap:2px; padding:3px; border-radius:11px; background:rgba(255,255,255,.14); }
+.site-legal-tab { padding:6px 13px; font-size:13px; font-weight:600; color:rgba(255,255,255,.82); text-decoration:none; transition:background .12s ease, color .12s ease; }
+a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-decoration:none; }
+.site-legal-tab[aria-current] { background:#fff; color:#333c8f; }
+[data-cnpy-theme="dark"] .site-legal-tab[aria-current] { color:#3a4620; }
+.site-legal-h { margin:22px 0 0; font-size:clamp(32px, 4.4vw, 50px); line-height:1.08; font-weight:650; letter-spacing:-0.03em; }
+.site-legal-lede { margin:16px 0 0; max-width:680px; font-size:16.5px; line-height:1.62; color:rgba(255,255,255,.86); text-wrap:pretty; }
+.site-legal-date { margin-top:20px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:rgba(255,255,255,.7); }
+.site-legal { max-width:1060px; margin:0 auto; padding:52px 24px 0; display:grid; grid-template-columns:232px minmax(0, 1fr); gap:56px; align-items:start; }
+.site-legal-side { position:sticky; top:84px; max-height:calc(100vh - 108px); overflow:auto; }
+.site-legal-text { max-width:700px; }
 .site-legal-toc-h { font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--fg-40); }
-.site-legal-toc ol { list-style:none; margin:10px 0 0; padding:0; columns:2 220px; column-gap:28px; font-size:14px; line-height:1.9; }
-.site-legal-sec { scroll-margin-top:84px; margin-top:44px; }
-.site-legal-sec h2 { margin:0; font-size:20px; font-weight:650; letter-spacing:-0.015em; }
+.site-legal-toc ol { list-style:none; margin:10px 0 0; padding:0; border-left:1px solid var(--border); }
+.site-legal-toc a { display:flex; gap:8px; margin-left:-1px; padding:5px 0 5px 14px; border-left:1px solid transparent; font-size:13.5px; line-height:1.4; color:var(--fg-55); text-decoration:none; transition:color .12s ease, border-color .12s ease; }
+.site-legal-toc a:hover { color:var(--fg); text-decoration:none; }
+/* The current section is marked by colour and the rule alone: a heavier weight is wider, and re-wrapped the line. */
+.site-legal-toc a[aria-current] { color:var(--fg); border-left-color:var(--accent); }
+.site-legal-toc-n { flex:none; min-width:17px; color:var(--fg-40); font-variant-numeric:tabular-nums; }
+.site-legal-toc a[aria-current] .site-legal-toc-n { color:var(--accent); }
+.site-legal-brief { padding:20px 22px; background:var(--surface); box-shadow:0 0 0 1px var(--border); }
+.site-legal-brief ul { list-style:none; margin:12px 0 0; padding:0; display:grid; gap:9px; }
+.site-legal-brief li { position:relative; padding-left:18px; font-size:15px; line-height:1.55; color:var(--fg); text-wrap:pretty; }
+.site-legal-brief li::before { content:""; position:absolute; left:1px; top:.62em; width:6px; height:6px; background:var(--accent); }
+.site-legal-brief p { margin:14px 0 0; font-size:13px; line-height:1.55; color:var(--fg-55); }
+.site-legal-sec { scroll-margin-top:84px; margin-top:46px; }
+.site-legal-sec h2 { margin:0; display:flex; align-items:baseline; gap:9px; font-size:20px; font-weight:650; letter-spacing:-0.015em; }
+.site-legal-n { flex:none; color:var(--fg-40); font-weight:500; font-variant-numeric:tabular-nums; }
 .site-legal-sec p, .site-legal-sec li { font-size:15px; line-height:1.7; color:var(--fg-70); text-wrap:pretty; }
 .site-legal-sec p { margin:12px 0 0; }
 .site-legal-sec ul { margin:12px 0 0; padding-left:22px; }
 .site-legal-sec li + li { margin-top:6px; }
 .site-legal-sec b { color:var(--fg); font-weight:600; }
 .site-legal-sec code { font-family:var(--code); font-size:.86em; padding:1px 5px; background:var(--hover); }
+@media (max-width:900px) {
+  .site-legal { grid-template-columns:minmax(0, 1fr); gap:28px; padding-top:32px; }
+  .site-legal-side { position:static; max-height:none; padding:18px 22px; background:var(--surface); box-shadow:0 0 0 1px var(--border); }
+  .site-legal-toc ol { border-left:0; columns:2 200px; column-gap:28px; }
+  .site-legal-toc a { margin-left:0; padding-left:0; border-left:0; break-inside:avoid; }
+}
 /* phone: the nav's logo, icons and Sign in / Back to the app fit a 360px screen. */
 @media (max-width:480px) { .site-navin { gap:12px !important; padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)) !important; } .site-navin > div:last-child { gap:8px !important; } }
 
@@ -1534,8 +1599,29 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-pricing:not(:has(input[name="site-interval"][value="year"]:checked)) .is-year { display:none; }
 .site-pricing:has(input[name="site-interval"][value="year"]:checked) .is-month { display:none; }
 .site-plans { margin-top:48px; display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:16px; }
-.site-plan { display:flex; flex-direction:column; min-width:0; border:1px solid var(--border); padding:26px 28px 28px; }
-.site-plan.is-accent { border-color:color-mix(in srgb, var(--accent) 55%, transparent); }
+/* Three cards that climb: Free is a plain card, the plan most teams buy is lit in the accent, and the plan
+   above the priced ones wears the site's banner (`.site-banner`: the hero's gradient, dots and tilted mark).
+   No border on any of them — the edge is a ring in the shadow, as on every bannered card. */
+.site-plan { position:relative; display:flex; flex-direction:column; min-width:0; padding:26px 28px 28px; background:var(--surface);
+  box-shadow:0 0 0 1px var(--border), 0 1px 2px rgba(20,22,60,.04), 0 14px 34px -22px rgba(20,22,60,.22);
+  transition:translate var(--fx-fast) var(--fx-ease), box-shadow var(--fx-fast) var(--fx-ease); }
+.site-plan:hover { translate:0 -3px; }
+.site-plan.is-accent { background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 11%, var(--surface)) 0%, var(--surface) 52%);
+  box-shadow:0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent), 0 1px 2px rgba(20,22,60,.05), 0 22px 44px -22px color-mix(in srgb, var(--accent) 55%, transparent); }
+.site-plan.is-accent .site-plan-badge { border-color:transparent; background:var(--accent); color:var(--accent-fg); font-weight:600; }
+.site-plan.is-top { box-shadow:0 1px 2px rgba(20,22,60,.08), 0 24px 48px -22px color-mix(in srgb, var(--mark, #616acb) 70%, transparent); }
+.site-plan.is-top > .site-banner-art { width:230px; aspect-ratio:1; right:-58px; top:-64px; opacity:.14; }
+.site-plan.is-top .site-plan-name { color:rgba(255,255,255,.78); }
+.site-plan.is-top .site-plan-for { color:#fff; }
+.site-plan.is-top .site-plan-tba, .site-plan.is-top .site-plan-per { color:rgba(255,255,255,.82); }
+.site-plan.is-top .site-plan-tba { font-size:20px; font-weight:600; letter-spacing:-0.01em; color:#fff; }
+.site-plan.is-top .site-plan-cta, .site-plan.is-top .site-plan-cta:hover { border-color:transparent; background:#fff; color:#333c8f; }
+.site-plan.is-top .site-plan-cta:hover { filter:brightness(.96); }
+[data-cnpy-theme="dark"] .site-plan.is-top .site-plan-cta, [data-cnpy-theme="dark"] .site-plan.is-top .site-plan-cta:hover { color:#3a4620; }
+.site-plan.is-top .site-plan-limits { border-color:rgba(255,255,255,.24); color:rgba(255,255,255,.84); }
+.site-plan.is-top .site-plan-limits b { color:#fff; }
+.site-plan.is-top .site-plan-limits li::before { background:#fff; }
+@media (prefers-reduced-motion: reduce) { .site-plan { transition:none; } .site-plan:hover { translate:none; } }
 .site-plan-head { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; min-height:24px; }
 .site-plan-name { margin:0; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); }
 .site-plan-badge { margin-left:auto; padding:2px 7px; border:1px solid var(--border); font-size:11px; font-weight:500; color:var(--fg-55); white-space:nowrap; }
@@ -1549,6 +1635,8 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-plan-cta { flex:1; }
 .site-plan-limits { list-style:none; margin:24px 0 0; padding:20px 0 0; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:9px; font-size:13.5px; line-height:1.45; color:var(--fg-70); }
 .site-plan-limits b { color:var(--fg); font-weight:600; }
+.site-plan-limits li { position:relative; padding-left:16px; }
+.site-plan-limits li::before { content:""; position:absolute; left:0; top:.52em; width:6px; height:6px; background:var(--accent); }
 @supports (grid-template-rows:subgrid) { @media (min-width:961px) {
   /* one row track per card part, shared by the three cards: prices, buttons and lists line up */
   .site-plan { display:grid; grid-template-rows:subgrid; grid-row:span 5; row-gap:0; }
@@ -1558,20 +1646,32 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-price-note b { color:var(--fg); font-weight:600; }
 .site-price-block { margin-top:88px; }
 .site-price-h { margin:0; font-size:23px; font-weight:650; letter-spacing:-0.015em; }
-.site-cmp { width:100%; margin-top:20px; border-collapse:collapse; table-layout:fixed; font-size:14px; }
-.site-cmp th, .site-cmp td { padding:14px 16px 14px 0; text-align:left; vertical-align:top; border-bottom:1px solid var(--border); font-weight:400; }
-.site-cmp thead th { padding-bottom:10px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--fg-55); }
-.site-cmp thead th:first-child { width:46%; }
-.site-cmp-label { display:block; font-weight:600; color:var(--fg); }
-.site-cmp-counts { display:block; margin-top:3px; font-size:12.5px; line-height:1.5; color:var(--fg-55); }
-.site-cmp td { color:var(--fg); font-variant-numeric:tabular-nums; }
-.site-cmp-foot { margin:14px 0 0; font-size:12.5px; line-height:1.55; color:var(--fg-55); }
+.site-plans-foot { margin:14px 0 0; font-size:12.5px; line-height:1.55; color:var(--fg-55); }
 .site-price-all { list-style:none; margin:14px 0 0; padding:0; max-width:900px; display:grid; grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap:0 40px; }
 .site-price-all li { display:flex; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); font-size:14.5px; line-height:1.55; color:var(--fg-70); }
-.site-faq { margin-top:20px; display:grid; grid-template-columns:repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap:0 56px; }
-.site-faq > div { padding:20px 0; border-top:1px solid var(--border); }
-.site-faq h3, .site-faq h4 { margin:0; font-size:14.5px; font-weight:600; }
-.site-faq p { margin:6px 0 0; max-width:60ch; font-size:13.5px; line-height:1.65; color:var(--fg-70); text-wrap:pretty; }
+/* Questions: the heading on the left, the accordion on the right (`.site-faq-wrap`), together the full
+   width of the page's other blocks. Each question is a native <details>; site-faq.ts animates the
+   answer's box (`.site-faq-a`) open and shut — CSS alone cannot animate a <details> in most browsers —
+   so the only motion here is the chevron, on the same clock (`data-open` flips when the move STARTS). */
+.site-faq-wrap { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 2fr); gap:24px 64px; align-items:start; }
+.site-faq-side { position:sticky; top:96px; }
+.site-faq-side p { margin:10px 0 0; max-width:30ch; font-size:13.5px; line-height:1.6; color:var(--fg-55); }
+.site-faq-side a { color:var(--fg); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
+.site-faq-side a:hover { text-decoration-color:currentColor; }
+@media (max-width:860px) { .site-faq-wrap { grid-template-columns:minmax(0, 1fr); } .site-faq-side { position:static; } }
+.site-faq { border-bottom:1px solid var(--border); }
+.site-faq-a { overflow:hidden; }
+.site-faq > details { border-top:1px solid var(--border); }
+.site-faq summary { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 0; cursor:pointer; list-style:none; }
+.site-faq summary::-webkit-details-marker { display:none; }
+.site-faq summary:hover h3, .site-faq summary:hover h4 { color:var(--accent); }
+.site-faq summary:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:4px; }
+.site-faq h3, .site-faq h4 { margin:0; font-size:14.5px; font-weight:600; transition:color .15s ease; }
+.site-faq-chev { flex:none; color:var(--fg-40); transition:transform .38s cubic-bezier(.4, 0, .2, 1), color .15s ease; }
+.site-faq summary:hover .site-faq-chev { color:var(--fg-70); }
+.site-faq > details[data-open="1"] .site-faq-chev { transform:rotate(180deg); }
+.site-faq p { margin:0; padding:0 48px 20px 0; max-width:76ch; font-size:13.5px; line-height:1.65; color:var(--fg-70); text-wrap:pretty; }
+@media (prefers-reduced-motion: reduce) { .site-faq-chev, .site-faq h3, .site-faq h4 { transition:none; } }
 @media (max-width:960px) { .site-plans { grid-template-columns:minmax(0, 1fr); } }
 /* tablet: one card per row, its limits beside its price instead of under it */
 @media (min-width:600px) and (max-width:960px) {
@@ -1581,12 +1681,6 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 }
 /* phone: four columns do not fit, so each limit is a block — its name, then the three plans' values */
 @media (max-width:720px) {
-  .site-cmp, .site-cmp tbody { display:block; }
-  .site-cmp thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
-  .site-cmp tbody tr { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; padding:16px 0; border-bottom:1px solid var(--border); }
-  .site-cmp tbody th, .site-cmp tbody td { display:block; padding:0; border:0; }
-  .site-cmp tbody th { grid-column:1 / -1; }
-  .site-cmp td::before { content:attr(data-plan); display:block; margin-bottom:2px; font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
 }
 
 /* ── landing motion ───────────────────────────────────────────────────────────
@@ -1599,24 +1693,29 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    settles everything up front; the media block at the end is the CSS backstop. */
 .cnpy-site { overflow-x:clip; --ease-out:cubic-bezier(0.22, 1, 0.36, 1); --ease-expo:cubic-bezier(0.16, 1, 0.3, 1); }
 
-/* reveal: the section (`site-rv`) and its staggered children (`site-st`) */
-.site-rv { opacity:0; --from:0 22px; translate:var(--from); }
-.site-rv.rv-l { --from:-36px 0; }
-.site-rv.rv-r { --from:36px 0; }
-.site-rv.rv-lift { --from:0 56px; scale:.975; }
+/* reveal: the section (`site-rv`) and its staggered children (`site-st`). Short and small: a few pixels on
+   the site's one clock (`--fx-slow` / `--fx-ease`, defined with the tour's dialog), so a section is simply
+   there by the time it is read. landing-motion.ts plays each once, a little before it enters, and settles
+   it with no motion at all while a nav jump is carrying the page past it. */
+.site-rv { opacity:0; --from:0 10px; translate:var(--from); }
+.site-rv.rv-l { --from:-12px 0; }
+.site-rv.rv-r { --from:12px 0; }
+.site-rv.rv-lift { --from:0 14px; scale:.99; }
 .site-rv.rv-static { opacity:1; translate:none; }
-.site-st { opacity:0; --from:0 12px; translate:var(--from); }
-.site-st.st-l { --from:-12px 0; }
-.site-st.st-word { display:inline-block; --from:0 .45em; }
-.site-st.st-pop { --from:0 4px; scale:.9; }
+.site-st { opacity:0; --from:0 6px; translate:var(--from); }
+.site-st.st-l { --from:-6px 0; }
+.site-st.st-word { display:inline-block; --from:0 .3em; }
+.site-st.st-pop { --from:0 3px; scale:.96; }
 .site-rv.is-play, .site-rv.is-done, .is-play .site-st, .is-done .site-st { opacity:1; translate:none; scale:none; }
 .site-rv.is-play, .is-play .site-st {
-  transition: opacity .7s var(--ease-out) var(--d, 0ms), translate 1s var(--ease-expo) var(--d, 0ms), scale 1s var(--ease-expo) var(--d, 0ms),
-              transform .3s var(--ease-out), box-shadow .3s ease;
+  transition: opacity var(--fx-slow) var(--fx-ease) var(--d, 0ms), translate var(--fx-slow) var(--fx-ease) var(--d, 0ms), scale var(--fx-slow) var(--fx-ease) var(--d, 0ms),
+              transform var(--fx-slow) var(--fx-ease);
 }
+/* a nav jump lands with the heading a line under the sticky nav (sections carry ~150px of top padding) */
+.cnpy-site section[id^="site-"] { scroll-margin-top:-58px; }
 
 /* hover: cards and mockups rise a little (transform, so it composes with the reveal's translate) */
-.site-card, .site-lift { transition:transform .3s var(--ease-out), box-shadow .3s ease; }
+.site-card, .site-lift { transition:transform var(--fx-slow) var(--fx-ease), box-shadow var(--fx-slow) var(--fx-ease); }
 .site-card:hover { transform:translateY(-3px); box-shadow:var(--lift-shadow); }
 .site-lift:hover { transform:translateY(-4px); }
 
@@ -1638,16 +1737,16 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-hl.hl-del { --hl-bg:color-mix(in srgb, var(--red) 10%, transparent); }
 .is-play .site-hl, .is-done .site-hl { color:var(--fg); }
 .is-play .site-hl::before, .is-done .site-hl::before { opacity:1; }
-.is-play .site-hl { transition:color .45s ease var(--d, 0ms); }
-.is-play .site-hl::before { transition:opacity .45s ease var(--d, 0ms); }
+.is-play .site-hl { transition:color var(--fx-slow) var(--fx-ease) var(--d, 0ms); }
+.is-play .site-hl::before { transition:opacity var(--fx-slow) var(--fx-ease) var(--d, 0ms); }
 
 /* checks draw on; progress bars fill from the left */
 .site-check path { stroke-dasharray:24; stroke-dashoffset:24; }
 .is-play .site-check path, .is-done .site-check path { stroke-dashoffset:0; }
-.is-play .site-check path { transition:stroke-dashoffset .5s var(--ease-out) var(--d, 0ms); }
+.is-play .site-check path { transition:stroke-dashoffset var(--fx-slow) var(--fx-ease) var(--d, 0ms); }
 .site-bar { transform-origin:left center; scale:0 1; }
 .is-play .site-bar, .is-done .site-bar { scale:none; }
-.is-play .site-bar { transition:scale 1.4s var(--ease-expo) var(--d, 0ms); }
+.is-play .site-bar { transition:scale .5s var(--fx-ease) var(--d, 0ms); }
 
 /* the hero's verdict: Promote draws the eye, is pressed, becomes "Promoted";
    Reject steps back, the Review badge counts down, a toast confirms */
@@ -1656,7 +1755,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-swap > :last-child { opacity:0; translate:0 6px; }
 .is-play .site-swap > :first-child, .is-done .site-swap > :first-child { opacity:0; translate:0 -6px; }
 .is-play .site-swap > :last-child, .is-done .site-swap > :last-child { opacity:1; translate:none; }
-.is-play .site-swap > * { transition:opacity .25s ease var(--d, 0ms), translate .4s var(--ease-out) var(--d, 0ms); }
+.is-play .site-swap > * { transition:opacity var(--fx-base) var(--fx-ease) var(--d, 0ms), translate var(--fx-base) var(--fx-ease) var(--d, 0ms); }
 .is-play .site-dim, .is-done .site-dim { opacity:.4; }
 .is-play .site-dim { transition:opacity .4s ease var(--d, 0ms); }
 .is-play .site-ring { animation:site-ring 1.1s var(--ease-out) var(--ring, 0ms) 2; }
@@ -1666,6 +1765,268 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-toast { opacity:0; pointer-events:none; }
 .is-play .site-toast { animation:site-toast 4.6s var(--ease-out) var(--d, 0ms) both; }
 @keyframes site-toast { 0% { opacity:0; translate:0 14px; } 8%, 86% { opacity:1; translate:none; } 100% { opacity:0; translate:0 6px; } }
+
+/* ── the banner, carried through the page ─────────────────────────────────────
+   One idea: the brand's purple banner is Trov speaking (`.site-banner`, defined with `.cnpy-orgs-banner`),
+   and the product is the card in front of it. The hero is the banner with the Review mockup standing on
+   its lower edge; "Agents propose, people decide" is the same card laid on its side; the sign-in dialog is
+   the card itself; and each tour mockup stands on a field of the banner's dots, in the page's own accent.
+   Everything here is static paint: no filter, no backdrop-filter, nothing that repaints on scroll. */
+/* On the dark page the site's banners sit a step deeper, so a slab this size does not glare; same hue. */
+/* Dark: the banner follows the theme's accent. The dark app's accent is the green mark (`--mark` #9aab65), so a
+   purple banner over it read as a second brand. Same gradient, highlight, dots and faint mark — in a deep
+   olive of that green, with the white headline at the same contrast the purple gives it (about 4:1 at the
+   lightest corner, 5.7:1 mid-slab, 8:1 at the deep end).
+   One rule for the site's banners AND the first-run cards', so they cannot drift. */
+[data-cnpy-theme="dark"] .site-banner, [data-cnpy-theme="dark"] .cnpy-orgs-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #73844a 0%, #5d6d37 48%, #485628 100%); }
+[data-cnpy-theme="dark"] .site-banner ::selection { color:#3a4620; }
+[data-cnpy-theme="dark"] .site-btn-onb, [data-cnpy-theme="dark"] .site-btn-onb:hover { color:#3a4620; }
+.site-banner > * { position:relative; z-index:1; }
+.site-banner > .site-banner-art { position:absolute; z-index:0; display:block; color:#fff; opacity:.11; transform:rotate(-8deg); pointer-events:none; }
+.site-banner-art svg { display:block; width:100%; height:100%; }
+.site-banner ::selection { background:#fff; color:#3a4399; }
+.site-banner a:focus-visible, .site-banner button:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+
+/* hero */
+.site-hero { max-width:1240px; margin:0 auto; padding:14px 24px 0; --hero-pad:clamp(22px, 5vw, 66px); }
+.site-hero-band { padding:clamp(52px, 6.4vw, 84px) var(--hero-pad) clamp(170px, 21vw, 268px); }
+.site-hero-band > .site-banner-art { width:clamp(280px, 44vw, 600px); aspect-ratio:1; right:clamp(-90px, -5vw, -40px); top:clamp(-110px, -7vw, -60px); }
+.site-hero-in { max-width:1060px; margin:0 auto; }
+.site-hero-h { margin:0; max-width:780px; font-size:clamp(36px, 5.4vw, 62px); line-height:1.06; font-weight:650; letter-spacing:-0.032em; text-wrap:balance; }
+.site-hero-lede { margin:22px 0 0; max-width:600px; font-size:17.5px; line-height:1.6; color:rgba(255,255,255,.86); text-wrap:pretty; }
+.site-hero-cta { margin-top:32px; display:flex; gap:12px; flex-wrap:wrap; }
+.site-hero-note { margin:18px 0 0; font-size:13.5px; line-height:1.55; color:rgba(255,255,255,.74); }
+.site-hero-note a { color:#fff; text-decoration:underline; text-decoration-color:rgba(255,255,255,.45); text-underline-offset:3px; }
+.site-hero-note a:hover { color:#fff; text-decoration-color:#fff; }
+.site-btn-onb { background:#fff; color:#333c8f; }
+.site-btn-onb:hover { color:#333c8f; filter:brightness(.96); }
+.site-btn-onb-line { border:1px solid rgba(255,255,255,.4); color:#fff; }
+.site-btn-onb-line:hover { color:#fff; background:rgba(255,255,255,.12); }
+/* The mockup stands on the banner's lower edge, the banner's glow carrying on under it (the first run's
+   `.cnpy-fr-bg::after`, as a plain gradient). */
+.site-hero-stage { position:relative; max-width:min(1060px, calc(100% - 2 * var(--hero-pad))); margin:calc(-1 * clamp(120px, 16vw, 200px)) auto 0; }
+.site-hero-stage::before { content:""; position:absolute; z-index:0; inset:34% -9% -9% -9%; pointer-events:none;
+  background:radial-gradient(50% 50% at 50% 50%, color-mix(in srgb, var(--mark, #616acb) 20%, transparent) 0%, transparent 72%); }
+.site-hero-mock { position:relative; z-index:1; text-align:left; border:1px solid var(--border-strong); background:var(--bg); overflow:hidden;
+  box-shadow:0 1px 2px rgba(20,22,60,.05), 0 30px 70px -28px rgba(20,22,60,.42), 0 10px 26px -14px rgba(20,22,60,.2); }
+@media (max-width:640px) {
+  .site-hero { padding:8px 16px 0; }
+  .site-hero-lede { font-size:16px; }
+  .site-hero-stage { max-width:calc(100% - 20px); }
+}
+
+/* the card on its side: banner | body */
+.site-split { display:grid; grid-template-columns:minmax(0, 1.12fr) minmax(0, 1fr); border:0; background:var(--surface); overflow:hidden;
+  box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
+.site-split-banner { padding:clamp(30px, 4.6vw, 56px) clamp(24px, 4.4vw, 52px); display:flex; flex-direction:column; justify-content:center; }
+.site-split-banner > .site-banner-art { width:clamp(220px, 26vw, 330px); aspect-ratio:1; right:-56px; top:-70px; }
+.site-split-banner h2 { margin:0; font-size:clamp(28px, 3.4vw, 38px); line-height:1.12; font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
+.site-split-banner p { margin:16px 0 0; max-width:480px; font-size:15.5px; line-height:1.65; color:rgba(255,255,255,.86); text-wrap:pretty; }
+.site-split-body { display:flex; flex-direction:column; justify-content:center; padding:clamp(26px, 4vw, 44px) clamp(22px, 4vw, 44px); }
+@media (max-width:860px) { .site-split { grid-template-columns:minmax(0, 1fr); } }
+
+/* a tour mockup on its field of dots: the banner's grid in the page's accent, fading toward the copy */
+.site-stage { position:relative; }
+.site-stage::before { content:""; position:absolute; z-index:0; inset:-30px -60px -30px 34%; pointer-events:none;
+  background-image:radial-gradient(color-mix(in srgb, var(--accent) 46%, transparent) 1px, transparent 1.2px); background-size:16px 16px;
+  -webkit-mask-image:linear-gradient(90deg, transparent 0%, #000 78%); mask-image:linear-gradient(90deg, transparent 0%, #000 78%); }
+.site-stage.is-flip::before { inset:-30px 34% -30px -60px; -webkit-mask-image:linear-gradient(270deg, transparent 0%, #000 78%); mask-image:linear-gradient(270deg, transparent 0%, #000 78%); }
+.site-stage > * { position:relative; z-index:1; background:var(--bg); }
+
+/* For agents: two cards whose content is naturally the same height. The columns are weighted (measured at
+   1440 and 1100: 603px of tools beside 576px of plugin) so the pair ends on one line with nothing to pad;
+   the few pixels left over sit above the plugin card's last button. One column under 900px. */
+.site-agents-row { margin-top:48px; display:grid; grid-template-columns:minmax(0, 1.65fr) minmax(0, 1fr); gap:16px; align-items:stretch; }
+@media (max-width:900px) { .site-agents-row { grid-template-columns:minmax(0, 1fr); } }
+
+/* ── the tour, explorable ─────────────────────────────────────────────────────
+   A tour mockup is a card that opens its feature in a large dialog (landing.ts `featureDialog`,
+   site-feature.ts). ONE clock for all of it, defined once on :root (the View Transition pseudo-elements
+   hang off <html>, so that is where they can read it): one curve that eases at both ends, and three
+   lengths — fast (leaving), base (content: the fade in, a step), slow (the card growing into the dialog,
+   the backdrop with it). Only transform and opacity move; every shadow is static. */
+:root { --fx-ease:cubic-bezier(0.4, 0, 0.2, 1); --fx-fast:.18s; --fx-base:.24s; --fx-slow:.3s; }
+.site-fxcard { cursor:pointer; transition:transform var(--fx-slow) var(--fx-ease); }
+/* the accent edge on hover fades in as its own layer (opacity), not as an animated border colour */
+.site-fxcard::after { content:""; position:absolute; inset:0; z-index:2; pointer-events:none; border:1px solid color-mix(in srgb, var(--accent) 60%, transparent); border-radius:12px; opacity:0; transition:opacity var(--fx-base) var(--fx-ease); }
+.site-fxcard:hover::after { opacity:1; }
+.site-explore { display:inline-flex; align-items:center; gap:7px; margin:16px 0 0 -10px; padding:7px 10px; font-size:13.5px; font-weight:600; color:var(--accent); }
+.site-explore:hover { background:var(--accent-soft); }
+.site-explore:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-explore svg { transition:transform var(--fx-base) var(--fx-ease); }
+.site-explore:hover svg { transform:translate(1px, -1px); }
+
+.site-fx-back { position:fixed; inset:0; z-index:70;
+  background:radial-gradient(60% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 22%, transparent) 0%, transparent 72%), rgba(14,14,22,.56); }
+.site-fx-wrap { position:fixed; inset:0; z-index:71; display:grid; place-items:center; padding:24px; pointer-events:none; }
+/* The frame: a fixed size, so a step never moves or resizes it. */
+.site-fx-panel { pointer-events:auto; position:relative; display:flex; flex-direction:column; width:min(1120px, 100%); height:min(700px, 100%); min-height:0;
+  border:1px solid var(--border-strong); background:var(--surface); overflow:hidden; view-transition-name:site-fx;
+  box-shadow:0 1px 2px rgba(20,22,60,.06), 0 40px 90px -30px rgba(10,12,40,.55); }
+.site-fx-x { position:absolute; z-index:3; top:12px; right:12px; width:34px; height:34px; display:grid; place-items:center; color:var(--fg-55); background:var(--surface); border:1px solid var(--border); }
+.site-fx-x:hover { color:var(--fg); background:var(--hover); }
+.site-fx-panel button:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-fx-main { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0, 1.5fr) minmax(280px, 1fr); grid-template-rows:auto minmax(0, 1fr); grid-template-areas:"stage titles" "stage facts"; }
+.site-fx-titles { grid-area:titles; padding:44px 64px 0 34px; }
+.site-fx-titles h2 { margin:10px 0 0; font-size:26px; line-height:1.15; font-weight:650; letter-spacing:-0.02em; text-wrap:balance; }
+.site-fx-facts { grid-area:facts; list-style:none; margin:24px 36px 0 34px; padding:22px 0 28px; overflow-y:auto; display:flex; flex-direction:column; gap:14px; border-top:1px solid var(--border); }
+.site-fx-facts li { display:flex; gap:11px; align-items:flex-start; font-size:14.5px; line-height:1.55; color:var(--fg-70); text-wrap:pretty; }
+/* The mockup, big, on the banner's dots (the tour's `.site-stage`, as the whole panel side). */
+.site-fx-stage { grid-area:stage; position:relative; min-width:0; min-height:0; display:grid; padding:24px; overflow:hidden; border-right:1px solid var(--border);
+  background:color-mix(in srgb, var(--accent) 5%, var(--bg)); }
+.site-fx-stage::before { content:""; position:absolute; inset:0; pointer-events:none;
+  background-image:radial-gradient(color-mix(in srgb, var(--accent) 40%, transparent) 1px, transparent 1.2px); background-size:16px 16px;
+  -webkit-mask-image:linear-gradient(135deg, transparent 20%, #000 100%); mask-image:linear-gradient(135deg, transparent 20%, #000 100%); }
+/* The screen, drawn at the stage's size (landing-mocks.ts): ONE box, the same for all seven, so a step
+   changes what is in it and never its size. No zoom and no scale: real type at the app's own sizes. */
+.site-fx-mock { position:relative; width:100%; height:100%; min-width:0; min-height:0; }
+.fxm { display:flex; flex-direction:column; flex:1; min-width:0; min-height:0; width:100%; border:1px solid var(--border-strong); background:var(--bg); overflow:hidden; text-align:left;
+  box-shadow:0 1px 2px rgba(20,22,60,.05), 0 18px 44px -22px rgba(20,22,60,.34); }
+.site-fx-mock > .fxm { height:100%; }
+.fxm-head { flex:none; display:flex; align-items:center; gap:10px; min-height:42px; padding:0 14px; border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; }
+.fxm-body { flex:1; min-height:0; overflow:hidden; }
+.fxm-stack { display:flex; flex-direction:column; gap:12px; height:100%; }
+.fxm-board { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:9px; padding:12px; align-items:start; }
+.fxm-lanes { --lab:160px; }
+.fxm-tiles { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; align-items:stretch; }
+/* The artifact in the Artifacts screen is somebody's OWN page in a sandboxed frame, so it wears its own
+   colours and type — fixed values, the same in both themes — and reads as a document inside Trov, never as
+   more of Trov. */
+.fxm-art { padding:18px 20px 20px; background:#101828; color:#e5e9f2; font-family:Georgia, 'Times New Roman', serif; }
+.fxm-art-eyebrow { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#7dd3c8; }
+.fxm-art-title { margin-top:6px; font-size:21px; line-height:1.15; letter-spacing:-0.01em; }
+.fxm-art-cols { margin-top:14px; display:grid; grid-template-columns:minmax(0, 1.15fr) minmax(0, 1fr); gap:16px; align-items:stretch; }
+.fxm-art-code { background:#0a0f1c; border:1px solid #243049; padding:11px 13px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:10.5px; line-height:1.75; white-space:nowrap; overflow:hidden; }
+.fxm-art-k { color:#7dd3c8; } .fxm-art-v { color:#fbbf24; } .fxm-art-dim { color:#8492ab; } .fxm-art-err { color:#fb7185; font-weight:700; }
+.fxm-art-side { display:flex; flex-direction:column; justify-content:center; gap:9px; min-width:0; }
+.fxm-art-num { display:flex; align-items:baseline; gap:7px; }
+.fxm-art-num b { font-size:26px; line-height:1; font-weight:400; }
+.fxm-art-num span { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:9.5px; color:#8492ab; }
+.fxm-art-meter { height:9px; background:#243049; overflow:hidden; }
+.fxm-art-meter > span { display:block; height:100%; background:linear-gradient(90deg, #7dd3c8 0%, #fbbf24 70%, #fb7185 100%); }
+.fxm-art-note { font-size:11.5px; line-height:1.5; font-style:italic; color:#aab4c8; }
+/* My Work is the app's bento: four tiles that fill the window as ONE rectangle (two equal rows), never four
+   boxes of their own heights with a ragged foot. */
+.fxm-mywork { display:flex; flex-direction:column; height:100%; box-sizing:border-box; }
+.fxm-mywork > .fxm-tiles { flex:1; min-height:0; grid-template-rows:repeat(2, minmax(0, 1fr)); }
+[data-cnpy-theme="dark"] .fxm { box-shadow:0 1px 2px rgba(0,0,0,.3), 0 18px 44px -20px rgba(0,0,0,.6); }
+.site-fx-foot { flex:none; display:flex; align-items:center; gap:12px; padding:12px 16px; border-top:1px solid var(--border); background:color-mix(in srgb, var(--hover) 55%, transparent); }
+.site-fx-nav { display:inline-flex; align-items:center; gap:8px; min-height:38px; padding:0 14px 0 10px; border:1px solid var(--border-strong); background:var(--surface); font-size:13.5px; font-weight:600; color:var(--fg); }
+.site-fx-nav.is-next { padding:0 10px 0 14px; }
+.site-fx-nav:hover { background:var(--hover); }
+.site-fx-pos { margin:0 auto; display:flex; flex-direction:column; align-items:center; gap:7px; font-size:12px; color:var(--fg-55); font-variant-numeric:tabular-nums; }
+.site-fx-dots { display:flex; gap:5px; }
+.site-fx-dot { width:10px; height:4px; background:var(--border-strong); }
+.site-fx-dot.is-on { background:var(--accent); }
+
+/* in: the keyframe entrance (when no View Transition grew the card); the backdrop runs on the panel's clock */
+.site-fx[data-in="css"] .site-fx-back { animation:site-fade var(--fx-slow) var(--fx-ease) both; }
+.site-fx[data-in="css"] .site-fx-panel { animation:site-fx-in var(--fx-slow) var(--fx-ease) both; }
+/* The text and the mockup are what move — never the panel, its stage or its footer. Opened: they ease in
+   just after the frame. A step: they slide in from the side moved to. */
+.site-fx-main[data-dir="0"] :is(.site-fx-titles, .site-fx-mock, .site-fx-facts) { animation:site-fx-rise var(--fx-base) var(--fx-ease) .08s both; }
+.site-fx-main[data-dir="1"] :is(.site-fx-titles, .site-fx-mock, .site-fx-facts) { --fx-from:24px; animation:site-fx-step var(--fx-base) var(--fx-ease) both; }
+.site-fx-main[data-dir="-1"] :is(.site-fx-titles, .site-fx-mock, .site-fx-facts) { --fx-from:-24px; animation:site-fx-step var(--fx-base) var(--fx-ease) both; }
+/* out (FX_EXIT_MS in site-feature.ts is --fx-fast) */
+.site-fx[data-closing] .site-fx-back { animation:site-fx-fade-out var(--fx-fast) var(--fx-ease) both; }
+.site-fx[data-closing] .site-fx-panel { animation:site-fx-out var(--fx-fast) var(--fx-ease) both; }
+/* promoted only while something moves (site-feature.ts sets and drops `data-moving`) */
+.site-fx[data-moving] :is(.site-fx-back, .site-fx-panel, .site-fx-titles, .site-fx-mock, .site-fx-facts) { will-change:transform, opacity; }
+@keyframes site-fx-in { from { opacity:0; transform:translateY(12px) scale(.98); } to { opacity:1; transform:none; } }
+@keyframes site-fx-out { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(8px) scale(.985); } }
+@keyframes site-fx-fade-out { from { opacity:1; } to { opacity:0; } }
+@keyframes site-fx-rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+@keyframes site-fx-step { from { opacity:0; transform:translateX(var(--fx-from, 0px)); } to { opacity:1; transform:none; } }
+
+/* the card growing into the dialog, and back (site-feature.ts sets `site-fx-vt` on <html> for the length of
+   ONE transition, so none of this touches the first run's own morph). The browser moves the box with a
+   transform; it clips its two faces, which keep their own size (text never stretches), and wears the
+   panel's shadow — static, so it neither pops nor repaints. The page behind cross-fades on the same clock. */
+html.site-fx-vt::view-transition-group(site-fx) { animation-duration:var(--fx-slow); animation-timing-function:var(--fx-ease); overflow:clip;
+  box-shadow:0 1px 2px rgba(20,22,60,.06), 0 40px 90px -30px rgba(10,12,40,.55); }
+html.site-fx-vt::view-transition-old(site-fx), html.site-fx-vt::view-transition-new(site-fx) { width:100%; height:100%; object-fit:none; object-position:top left; overflow:clip; animation-duration:var(--fx-base); animation-timing-function:var(--fx-ease); }
+/* the face being left clears first, so the two never read as a double image */
+html.site-fx-vt::view-transition-old(site-fx) { animation-duration:var(--fx-fast); }
+html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new(root) { animation-duration:var(--fx-slow); animation-timing-function:var(--fx-ease); }
+
+@media (max-width:860px) {
+  .site-fx-wrap { padding:16px; }
+  .site-fx-panel { height:min(100%, 100dvh - 32px); }
+  .site-fx-main { display:block; overflow-y:auto; }
+  .site-fx-titles { padding:22px 60px 0 20px; }
+  .site-fx-titles h2 { font-size:22px; }
+  .site-fx-stage { margin-top:20px; padding:20px 16px; border-right:0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+  /* stacked: the stage is as tall as the screen drawn in it (the whole column scrolls) */
+  .site-fx-mock, .site-fx-mock > .fxm, .fxm-stack { height:auto; }
+  .fxm-body { overflow:visible; }
+  .site-fx-facts { margin:0; padding:20px 20px 24px; border-top:0; overflow:visible; }
+}
+@media (max-width:640px) {
+  /* a full-height sheet (the app's phone rule for modals pins it to the bottom edge); controls under the thumb */
+  .site-fx-panel { height:100dvh; }
+  .site-fx-nav { min-height:44px; }
+  .site-fx-nav span { max-width:92px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* a phone keeps each screen's most telling pane: the secondary ones (`.fxm-wide`) are dropped, not shrunk */
+  .fxm-wide { display:none !important; }
+  .fxm-lanes { --lab:0px; }
+  /* the sprint's name moves above its bar: beside it there is no room */
+  .fxm-sprint { margin-top:22px !important; }
+  .fxm-lab { left:0 !important; right:auto !important; top:-16px !important; bottom:auto !important; font-size:10.5px !important; }
+  .fxm-board { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+  .fxm-tiles { grid-template-columns:minmax(0, 1fr); }
+  .fxm-mywork { height:auto; }
+  .fxm-art-cols { grid-template-columns:minmax(0, 1fr); }
+  .fxm-mywork > .fxm-tiles { grid-template-rows:none; }
+  .site-fx-stage { padding:16px 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .site-fx, .site-fx *, .site-fx *::before, .site-fx *::after { animation:none !important; transition:none !important; }
+  .site-fxcard, .site-fxcard::after, .site-explore svg { transition:none !important; }
+}
+
+/* the sign-in dialog: the first-run card, bannered (a root-level `data-overlay`, so the page under it is patched, not rebuilt) */
+.site-signin-back { position:fixed; inset:0; z-index:60; animation:site-fade .16s ease both;
+  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 30%, transparent) 0%, transparent 72%), rgba(14,14,26,.52); }
+.site-signin-wrap { position:fixed; inset:0; z-index:61; display:grid; place-items:center; padding:16px; pointer-events:none; overflow-y:auto; }
+.site-signin-card { pointer-events:auto; position:relative; width:min(364px, 100%); border:0; background:var(--surface); overflow:hidden;
+  box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.06), 0 30px 70px -24px rgba(10,12,40,.5); animation:cnpy-pop .18s ease both; }
+/* No banner here: the dialog opens over the hero, which IS the banner — a second one in front of it was
+   the same slab twice. A plain card: the mark, the title, the two ways in. */
+.site-signin-head { position:relative; display:flex; flex-direction:column; align-items:center; text-align:center; padding:30px 28px 0; }
+.site-signin-x { position:absolute !important; top:10px; right:10px; width:30px; height:30px; display:grid; place-items:center; color:var(--fg-40); transition:background .12s ease, color .12s ease; }
+.site-signin-x:hover { color:var(--fg); background:var(--hover); }
+/* The two ways in sit in a narrow centred column (they are buttons, not full-width bars), with the "or"
+   rule between them. On a phone the sheet is narrow already, so they take its width. */
+.site-signin-body { padding:22px 28px 26px; display:flex; flex-direction:column; align-items:center; gap:14px; }
+.site-signin-body > * { width:100%; max-width:280px; }
+.site-signin-or { display:flex; align-items:center; gap:12px; font-family:var(--label); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--fg-40); }
+.site-signin-or > span { flex:1; height:1px; background:var(--border); }
+@media (max-width:640px) { .site-signin-body > * { max-width:none; } }
+.site-signin-btn { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; box-sizing:border-box; padding:12px 16px; font-family:inherit; font-size:14px; line-height:20px; font-weight:600; transition:filter .12s ease, background .12s ease; }
+.site-signin-btn:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+/* Get started: the plan choice above the way in (landing.ts `planChoice`). */
+.site-signin-plans { display:flex; flex-direction:column; gap:10px; }
+/* The plan's line is one short line on Free and Pro alike, so picking one never changes the dialog's height
+   and nothing here is wider than the buttons under it. The way to the pricing page is in the lede. */
+.site-signin-plan-what { margin:0; font-size:12.5px; line-height:1.55; color:var(--fg-55); text-align:center; white-space:nowrap; }
+.site-signin-plan-what b { color:var(--fg); font-weight:600; }
+.site-signin-compare, .site-signin-note a { color:var(--fg-70); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); white-space:nowrap; }
+.site-signin-note { margin:0; font-size:12px; line-height:1.5; color:var(--fg-40); text-align:center; text-wrap:balance; }
+.site-nav-signin { padding:7px 10px; font-size:13.5px; font-weight:500; color:var(--fg-70); white-space:nowrap; transition:color .12s ease, background .12s ease; }
+.site-nav-signin:hover { color:var(--fg); background:var(--hover); }
+.site-nav-signin:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+/* The foot is a clearly grey strip under the white card (it was 2% black: barely there). */
+.site-signin-foot { padding:13px 28px; text-align:center; border-top:1px solid var(--border); font-size:12.5px; line-height:1.5; color:var(--fg-55); background:color-mix(in srgb, var(--fg) 6%, var(--surface)); }
+.site-signin-switch { padding:0; font:inherit; font-weight:600; color:var(--fg); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
+.site-signin-switch:hover { text-decoration-color:currentColor; }
+.site-signin-switch:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:3px; }
+@keyframes site-fade { from { opacity:0; } to { opacity:1; } }
+/* Dark: the scrims dim with the page's own warm black, not the light theme's blue-black. */
+[data-cnpy-theme="dark"] .site-signin-back { background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 18%, transparent) 0%, transparent 72%), rgba(10,9,7,.62); }
+[data-cnpy-theme="dark"] .site-fx-back { background:radial-gradient(60% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 14%, transparent) 0%, transparent 72%), rgba(10,9,7,.66); }
+[data-cnpy-theme="dark"] .site-split, [data-cnpy-theme="dark"] .cnpy-orgs-card { box-shadow:0 0 0 1px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.3), 0 18px 48px -18px rgba(0,0,0,.6); }
+[data-cnpy-theme="dark"] .site-signin-card, [data-cnpy-theme="dark"] .site-fx-panel, [data-cnpy-theme="dark"] .site-hero-mock { box-shadow:0 0 0 1px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.3), 0 34px 80px -28px rgba(0,0,0,.7); }
+@media (prefers-reduced-motion: reduce) { .site-signin-back, .site-signin-card, .site-signin-x, .site-signin-btn { animation:none !important; transition:none !important; } }
 
 /* nav: a hairline and soft shadow once the page scrolls under it */
 .site-nav { border-bottom:1px solid transparent; transition:border-color .3s ease, box-shadow .3s ease; }
@@ -1848,7 +2209,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    to play: nothing behind a first-run card moves, whatever the card in front of it does. */
 .cnpy-fr-bg, .cnpy-fr-bg *, .cnpy-fr-bg *::before, .cnpy-fr-bg *::after { animation:none !important; transition:none !important; }
 .cnpy-fr-bg::after { content:""; position:absolute; inset:0;
-  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, #616acb 20%, transparent) 0%, transparent 72%), color-mix(in srgb, var(--bg) 34%, transparent); }
+  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 20%, transparent) 0%, transparent 72%), color-mix(in srgb, var(--bg) 34%, transparent); }
 /* One step of a flow morphing into the next (transition.ts): the card keeps its name across both. */
 .cnpy-orgs-card { view-transition-name:first-run-card; }
 ::view-transition-group(first-run-card) { animation-duration:.42s; animation-timing-function:cubic-bezier(.22,.9,.24,1); }
@@ -1859,22 +2220,38 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    (a box's own shadow is painted outside its clip): the shadow travels and resizes with it.
    Keep it in step with `.cnpy-orgs-card`. (No radius here: the pseudo-element lives outside the theme root, so
    the corners block cannot scale one, and a 4px corner is not seen on a box in motion.) */
-::view-transition-group(first-run-card) { overflow:clip; box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
+::view-transition-group(first-run-card) { overflow:clip; box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
 /* The backdrop and the card stack inside their own screen, so a dialog opened over it stays on top. */
 .cnpy-orgs, .cnpy-onb { isolation:isolate; }
 .cnpy-orgs-col, .cnpy-onb > .cnpy-orgs-col { position:relative; z-index:1; }
 .cnpy-onb .cnpy-sw.compact { padding:6px 0; }
+/* After payment (billing.ts `billingDonePage`): the same card at the SAME width as the step it gives way to
+   (the organization picker). A morph between two widths crops both faces sideways while the box travels,
+   which reads as the card being squeezed; with one width only the height moves. */
+.cnpy-orgs-body.cnpy-billdone-body { display:grid; gap:16px; padding-top:22px; }
+.cnpy-billdone-acts { display:flex; flex-wrap:wrap; gap:8px; }
+/* Its actions are buttons the size of their label, not bars the width of the card. */
+.cnpy-billdone-acts > a, .cnpy-billdone-acts > button { flex:0 1 auto; width:auto !important; padding-left:20px !important; padding-right:20px !important; }
 .cnpy-onb-step { margin-left:auto; font-family:var(--label); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.78); }
 .cnpy-orgs-body.cnpy-onb-body { display:grid; gap:18px; padding-top:22px; }
 .cnpy-onb-pair { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start; }
 @media (max-width:640px) {
   .cnpy-onb-pair { grid-template-columns:minmax(0, 1fr); }
 }
-.cnpy-orgs-card { box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
+/* A card with a banner has NO border. A border is drawn outside the banner, so the card's light edge showed
+   as a pale line all the way round the purple (or, in dark, the olive) — a white frame on the box. The
+   edge is a hairline ring in the shadow instead: a faint dark line, which reads as an edge against the
+   card's light body and disappears against the banner. Same rule for the first-run cards, the sign-in
+   dialog and the "Agents propose" card. */
+.cnpy-surface.cnpy-orgs-card { border:0; }
+.cnpy-orgs-card { box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
 /* The banner is the brand's purple in both themes: it is Trov speaking, not the app's chrome. */
-.cnpy-orgs-banner { position:relative; overflow:hidden; padding:24px 28px 26px; color:#fff;
+/* `.site-banner` is the same banner on the signed-out site (landing.ts: the hero, "Agents propose, people
+   decide" and the sign-in dialog). ONE definition, so the site and the first run never drift apart. */
+.cnpy-orgs-banner { padding:24px 28px 26px; }
+.cnpy-orgs-banner, .site-banner { position:relative; overflow:hidden; color:#fff;
   background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.16) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #6c75d8 0%, #5a64cc 48%, #454fb2 100%); }
-.cnpy-orgs-banner::after { content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
+.cnpy-orgs-banner::after, .site-banner::after { content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
   background-image:radial-gradient(rgba(255,255,255,.22) 1px, transparent 1.2px); background-size:16px 16px;
   -webkit-mask-image:linear-gradient(90deg, transparent 35%, #000 100%); mask-image:linear-gradient(90deg, transparent 35%, #000 100%); }
 .cnpy-orgs-art { position:absolute; right:-34px; top:-46px; display:block; color:#fff; opacity:.13; transform:rotate(-8deg); pointer-events:none; }
@@ -1989,6 +2366,24 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* Platform › Access / Change plan (platform-access.ts): the five limits, as fields or as figures. */
 .plat-limits { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px 14px; }
 .plat-usage-grid { grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr) 48px 62px 44px 54px minmax(0,.95fr) 88px; }
+/* Platform › Support (platform-support.ts): kind · subject · who · organization · when · status. */
+.plat-support-grid { grid-template-columns:76px minmax(0,2.2fr) minmax(0,1.3fr) minmax(0,1fr) 72px 84px; }
+/* What a support report carries besides its message — the dialog's "Sent with your message" block
+   (support.ts) and the same lines on the report in Platform: a label column and the value, which
+   wraps (a user agent is one long word). */
+.cnpy-support-ctx dl { margin:0; display:grid; gap:5px; }
+.cnpy-support-ctx-r { display:grid; grid-template-columns:104px minmax(0,1fr); gap:12px; align-items:baseline; font-size:12.5px; line-height:1.5; }
+.cnpy-support-ctx-r dt { color:var(--fg-40); }
+.cnpy-support-ctx-r dd { margin:0; min-width:0; color:var(--fg-70); overflow-wrap:anywhere; }
+/* The signed-out Contact form (support.ts, anonymous): the same form in the sign-in dialog's plain card,
+   wider, scrolling inside itself on a short window. Its entrance and its reduced-motion rule are the
+   sign-in card's own (`.site-signin-back`, `.site-signin-card`). */
+.site-contact-card { width:min(480px, 100%) !important; max-height:calc(100vh - 32px); overflow-y:auto !important; padding:22px 24px 20px; box-sizing:border-box; }
+/* The honeypot: off screen for everyone — never `display:none`, which a script can test for. */
+.cnpy-support-hp { position:absolute !important; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden; }
+[data-support-dialog] a { color:var(--fg-70); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
+[data-support-dialog] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:2px; }
+@media (max-width: 520px) { .cnpy-support-ctx-r { grid-template-columns:minmax(0,1fr); gap:0; } }
 .plat-cl { display:none; font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); margin-bottom:3px; }
 .plat-urow { border-bottom:1px solid var(--border); margin-bottom:-1px; }
 .plat-chev { color:var(--fg-40); transition:transform .2s ease; }
@@ -2058,6 +2453,13 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 [data-cnpy-theme] .cnpy-treechev,
 [data-cnpy-theme] .cnpy-sk { border-radius:calc(4px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-platpage-home { border-radius:calc(6px * var(--corner-scale)) !important; }
+/* Empty layouts (skeleton.ts `emptyLayout`): the sentence's dashed card, and its one action. */
+[data-cnpy-theme] .cnpy-empty-say { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-empty-act { border-radius:calc(8px * var(--corner-scale)) !important; }
+/* The state preview's banner (preview.ts). Its dot is a status dot: a small rounded square, like the rest. */
+[data-cnpy-theme] .cnpy-preview { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-preview-b { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-preview-dot { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
 [data-cnpy-theme] .cnpy-qs-hl { border-radius:calc(3px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs-row { border-radius:calc(7px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs { border-radius:calc(12px * var(--corner-scale)) !important; }
@@ -2079,6 +2481,9 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 [data-cnpy-theme] .cnpy-tree,
 [data-cnpy-theme] .cnpy-select,
 [data-cnpy-theme] .site-navlink { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .site-legal-tabs { border-radius:calc(11px * var(--corner-scale)) !important; }
+@media (max-width:900px) { [data-cnpy-theme] .site-legal-side { border-radius:calc(12px * var(--corner-scale)) !important; } }
+[data-cnpy-theme] .site-fxcard::after { border-radius:calc(12px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-search,
 [data-cnpy-theme] .cnpy-sfbar,
 [data-cnpy-theme] .cnpy-navrow,

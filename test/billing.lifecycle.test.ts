@@ -11,7 +11,7 @@ import type { OrgPlanView, PlanRefusal } from "@shared/plans";
 import { planRefusalSentence } from "@shared/plans";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { call, one, rows, exec, SUPERADMIN } from "./helpers/orgs";
-import { FakeStripe, PRICES, PERIOD_1, PERIOD_2, bcall, deliver, event, iso } from "./helpers/billing";
+import { FakeStripe, PRICES, PERIOD_1, PERIOD_2, bcall, billingEnv, deliver, event, iso } from "./helpers/billing";
 
 let stripe: FakeStripe;
 beforeEach(() => { stripe = new FakeStripe(); vi.stubGlobal("fetch", stripe.fetch); });
@@ -238,6 +238,26 @@ describe("the owner's billing routes", () => {
     expect(c.headers.get("idempotency-key")).toMatch(/^trov-portal-/);
   });
 
+  it("Cancel plan: the portal, straight to THIS subscription's cancel page, and back to Trov when it is done; a plain portal once it has ended", async () => {
+    const { cookie, sub } = await paidOrg("maya", "maya-co", 1);
+    const r = await bcall<{ url: string }>("POST", "/api/o/maya-co/billing/portal", cookie, { cancel: true });
+    expect(r.status).toBe(200);
+    expect(Object.fromEntries(stripe.callsTo("POST", "/v1/billing_portal/sessions").at(-1)!.params)).toEqual({
+      customer: sub.customer, return_url: "http://localhost/maya-co/#org/general",
+      "flow_data[type]": "subscription_cancel", "flow_data[subscription_cancel][subscription]": sub.id,
+      "flow_data[after_completion][type]": "redirect", "flow_data[after_completion][redirect][return_url]": "http://localhost/maya-co/#org/general",
+    });
+    // Nothing moves here: the plan changes when Stripe's event lands.
+    expect(await orgRow("maya-co")).toMatchObject({ plan: "team" });
+    // Seats wins if both are asked for; and with no live subscription there is nothing to cancel.
+    await bcall("POST", "/api/o/maya-co/billing/portal", cookie, { seats: true, cancel: true });
+    expect(Object.fromEntries(stripe.callsTo("POST", "/v1/billing_portal/sessions").at(-1)!.params)["flow_data[type]"]).toBe("subscription_update");
+    sub.status = "canceled";
+    await deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub)));
+    expect((await bcall("POST", "/api/o/maya-co/billing/portal", cookie, { cancel: true })).status).toBe(200);
+    expect(Object.fromEntries(stripe.callsTo("POST", "/v1/billing_portal/sessions").at(-1)!.params)).toEqual({ customer: sub.customer, return_url: "http://localhost/maya-co/#org/general" });
+  });
+
   it("Add a seat: the portal, straight to THIS subscription's update page (where the seat count is changed); a plain portal once it has ended", async () => {
     const { cookie, sub } = await paidOrg("maya", "maya-co", 1);
     const r = await bcall<{ url: string }>("POST", "/api/o/maya-co/billing/portal", cookie, { seats: true });
@@ -317,8 +337,12 @@ describe("the owner's billing routes", () => {
     await deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub)));
     expect((await invite("maya-co", cookie, "pending@example.com")).status).toBe(201); // 3 of Free's 3 seats
 
-    const r = await bcall<{ url: string }>("POST", "/api/o/maya-co/billing/upgrade", cookie, {});
+    // With tax on, a customer Stripe already knows must be allowed to save the address and name it asks for.
+    const r = await bcall<{ url: string }>("POST", "/api/o/maya-co/billing/upgrade", cookie, {}, { env: billingEnv({ STRIPE_TAX: "on" }) });
     expect(r.status).toBe(200);
+    expect(Object.fromEntries(stripe.callsTo("POST", "/v1/checkout/sessions").at(-1)!.params)).toMatchObject({
+      "automatic_tax[enabled]": "true", "tax_id_collection[enabled]": "true", "customer_update[address]": "auto", "customer_update[name]": "auto",
+    });
     const again = stripe.lastSession();
     expect(again.id).not.toBe(session.id);
     expect(r.json.url).toBe(again.url);

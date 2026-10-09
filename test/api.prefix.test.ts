@@ -12,7 +12,7 @@ import * as api from "../web/src/api";
 const sources = import.meta.glob("../web/src/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /** Person-level and platform routes: the only paths that may go out without the org prefix. */
-const GLOBAL = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|billing)(?:[/?]|$)/;
+const GLOBAL = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|billing|support)(?:[/?]|$)/;
 const TENANT = /^\/api\/o\/acme\//;
 /** Org settings' functions take the slug as an argument (`any` → "x"): still under an org's prefix. */
 const ANY_ORG = /^\/api\/o\/[^/]+\//;
@@ -32,7 +32,7 @@ beforeEach(() => {
   api.setApiOrg("acme");
   api.setOrgLostHandler(null);
 });
-afterEach(() => { vi.unstubAllGlobals(); api.setApiOrg(null); api.setOrgLostHandler(null); });
+afterEach(() => { vi.unstubAllGlobals(); api.setApiOrg(null); api.setOrgLostHandler(null); api.setWriteBlock(null); });
 
 /** An argument that passes for anything: a string when coerced, an object with every key, callable. */
 const any: unknown = new Proxy(function () { /* callable */ }, {
@@ -42,7 +42,7 @@ const any: unknown = new Proxy(function () { /* callable */ }, {
   ownKeys: () => [],
 });
 /** Not request functions: the prefix's own controls, and the error classes. */
-const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "planLimitText", "githubInstallHref"]);
+const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "planLimitText", "githubInstallHref", "setWriteBlock", "isWriteMethod", "PreviewBlocked"]);
 /** Functions whose arguments must be real values (a Blob for a multipart body). */
 const SPECIAL: Record<string, unknown[]> = {
   uploadAvatar: [new Blob(["x"]), "a.png"],

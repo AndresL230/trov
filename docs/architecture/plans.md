@@ -22,8 +22,28 @@ means unlimited. Plan ids are stored and never renamed: **`team` is the plan use
 | `repositories` | 1 | 5 | 10 | 1 | `org_repos` rows | `addRepo` (a new repository; promoting one the org has is not an addition) |
 | `environments` | 2 | 5 | 10 | 2 | `org_environments` rows | `putEnvironment` (a new key; an edit is not an addition) |
 | `artifact_bytes` | 250 MB | 5 GB | unlimited | 250 MB | `SUM(artifact_versions.size_bytes)` — every stored version, deleted pages included | `writeVersion`, `insertPage`, `mintUploadToken`, `consumeUploadToken` (`src/tools/artifacts.ts`) — so HTTP, the upload link and the MCP artifact tools alike |
-| `agent_connections` | 5 | 10 | unlimited | 5 | PER PERSON: that person's live MCP tokens + connected apps into the org | `mintToken`, `issueAuthorization` (the OAuth consent) |
+| `agent_connections` | 5 | 10 | unlimited | 5 | PER PERSON: that person's live MCP tokens for the org + their connected apps that hold a row for it (`oauth_grant_orgs`) — see below | `mintToken`, `issueAuthorization` (the OAuth consent), `setGrantOrg` / `setGrantMode` (Settings), `admitGrantOrg` (a follow-the-repository connection's first call into the org) |
 | `ai_summaries` | 300 | 3,000 | unlimited | 300 | PER CALENDAR MONTH (UTC): summarizer calls attempted for the org | `orgSummarizers` (`src/plans/summaries.ts`) — it refuses nothing: past it an item shows its excerpt (below) |
+
+**How one connection counts when it can reach several organizations** (0051). The limit stays per organization,
+per person, and one rule covers both modes: *a connected app counts once in every organization that holds a
+row for it*, and a row is only ever written through `requirePlan` in THAT organization.
+
+- A **manual** connection holds a row for each organization its person allowed. Allowing three organizations
+  uses one slot in each of the three; consent is refused whole (402, nothing written) when any one of them is
+  full, and adding an organization later in Settings is refused there with `plan_limit`.
+- A connection that **follows the repository** holds no row when it is made. Its first call that resolves
+  into an organization takes a slot there (or the call is refused with `plan_limit`, having read and written
+  nothing); it never takes one in an organization it was not used in. Asking where it is (`get_connection`)
+  takes nothing.
+- A slot is given back when the connection is revoked (the `oauth_grants_revoked_au` trigger drops its rows),
+  when its person takes that organization out of it (manual), when it is changed to follow the repository
+  (all its rows go), or when its person leaves the organization (`removeMember`).
+
+So one connection is never a way around an organization's cap (it cannot act there without holding that
+organization's slot), and never spends a slot in an organization it does not use. What it does NOT do: a
+follow-the-repository connection's slot in an organization is not released by idleness — only by the four
+things above.
 
 - **Free** is what anyone signed in creates (below, *Free*), and what a paid org moves to when its
   subscription ends (`billing.md`).
@@ -160,7 +180,7 @@ this month") with, at the cap, "New pull requests and issues show an excerpt unt
 never "over the limit" (`overLimits` skips a monthly allowance) — so billing's "switch to a smaller plan"
 confirmation never counts it among what the org would be over; when the month's use is already at the
 smaller plan's allowance it says that, in the allowance's own sentence. The pricing page lists it on each
-card ("3,000 AI summaries per month"; an unlimited one names no period) and in the comparison table.
+card ("3,000 AI summaries per month"; an unlimited one names no period) (the side-by-side comparison table is gone: the cards say every limit once).
 Platform › Usage shows, per org and in total, attempted / succeeded / fell back for the window and the
 month's use against the cap; an organization's own Platform page has the same line. The Sync panel shows
 what a run will attempt and what is left. With **no key at all** nothing is counted or capped, and the

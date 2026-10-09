@@ -21,6 +21,7 @@
 
 import { LIMIT_KEYS, LIMITS, PLAN_IDS, PLANS, formatLimit, limitNoun, limitPhrase, type PlanDef, type PlanId } from "@shared/plans";
 import { PRICING, canPurchase, canPurchasePlan, formatPrice, hasYearly, isFreePrice, purchaseHref, type PlanPricing } from "@shared/pricing";
+import { trovMark } from "@shared/mark";
 import { esc, attr } from "./ui";
 import { SITE_CONTACT, TROV_REPO, siteFooter, siteMark } from "./site-chrome";
 
@@ -93,13 +94,19 @@ const perSeat = (def: PlanDef, price: PlanPricing): boolean => canPurchasePlan(d
 const limitValue = (def: PlanDef, price: PlanPricing, k: (typeof LIMIT_KEYS)[number], value: string): string =>
   k === "seats" && perSeat(def, price) && def.entitlements.seats !== null ? `Up to ${value}` : value;
 
-function planCard(def: PlanDef, price: PlanPricing, i: number, accent: boolean, signedIn: boolean, h: number): string {
+/** The faint tilted mark the site's banners carry (`.site-banner-art`, trov.css). */
+const BANNER_ART = `<span class="site-banner-art" aria-hidden="true">${trovMark(100, "currentColor")}</span>`;
+
+/** `top`: the plan above the ones with a price — it wears the site's banner (`.site-banner`), so the row
+ *  climbs from a plain card (Free) through the accented one (the plan most teams buy) to the banner. */
+function planCard(def: PlanDef, price: PlanPricing, i: number, accent: boolean, signedIn: boolean, h: number, top = false): string {
   const limits = LIMIT_KEYS.map((k) => {
     // The value, then what it counts: "3" + "seats", "5 GB" + "artifact storage", "3,000" + "AI summaries per month".
     const [value, what] = limitPhrase(k, def.entitlements[k]);
     return `<li><b>${esc(limitValue(def, price, k, value))}</b> ${esc(what)}</li>`;
   }).join("");
-  return `<article class="site-st site-plan${accent ? " is-accent" : ""}" style="border-radius:12px;${at(i * 110)}" aria-labelledby="site-plan-${def.id}">
+  return `<article class="site-st site-plan${accent ? " is-accent" : ""}${top ? " is-top site-banner" : ""}" style="border-radius:12px;${at(i * 110)}" aria-labelledby="site-plan-${def.id}">
+      ${top ? BANNER_ART : ""}
       <div class="site-plan-head">
         <h${h} id="site-plan-${def.id}" class="site-plan-name">${esc(def.name)}</h${h}>
         ${price.badge ? `<span class="site-plan-badge" style="border-radius:4px">${esc(price.badge)}</span>` : ""}
@@ -128,23 +135,11 @@ function intervalSwitch(): string {
   return `<div class="site-interval" role="radiogroup" aria-label="Billing interval" style="border-radius:9px">${opt("month", "Monthly")}${opt("year", "Yearly")}</div>`;
 }
 
-// ── the comparison ───────────────────────────────────────────────────────────
-// A real table. On a phone each limit becomes a block: its name, then the three plans'
-// values side by side (trov.css) — the roles keep it a table to a screen reader there too.
-function comparison(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>, h: number): string {
-  const rows = LIMIT_KEYS.map((k) => {
-    const d = LIMITS[k];
-    const cells = defs.map((def) => `<td role="cell" data-plan="${attr(def.name)}">${esc(limitValue(def, pricing[def.id], k, formatLimit(k, def.entitlements[k])))}</td>`).join("");
-    return `<tr role="row"><th role="rowheader" scope="row"><span class="site-cmp-label">${esc(d.label)}${d.per === "person" ? ", per person" : ""}${d.period ? `, per ${d.period}` : ""}</span><span class="site-cmp-counts">${esc(d.counts)}</span></th>${cells}</tr>`;
-  }).join("");
+/** Under the cards: which plans' limits are a starting point. (The cards list every limit; the
+ *  side-by-side table that used to repeat them row by row is gone.) */
+function sizedNote(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>): string {
   const sized = defs.filter((def) => !pricing[def.id].selfServe).map((def) => def.name);
-  return `<h${h} class="site-price-h">Limits, side by side</h${h}>
-    <table class="site-cmp" role="table">
-      <caption class="site-vh">What each plan allows</caption>
-      <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col"><span class="site-vh">Limit</span></th>${defs.map((def) => `<th role="columnheader" scope="col">${esc(def.name)}</th>`).join("")}</tr></thead>
-      <tbody role="rowgroup">${rows}</tbody>
-    </table>
-    ${sized.length ? `<p class="site-cmp-foot">${esc(sized.join(" and "))} limits are where an organization starts: each one can be set for the organization.</p>` : ""}`;
+  return sized.length ? `<p class="site-plans-foot">${esc(sized.join(" and "))} limits are where an organization starts: each one can be set for the organization.</p>` : "";
 }
 
 /** What no plan withholds — a plan is a table of limits, never a feature switch. */
@@ -195,8 +190,19 @@ export function pricingQuestions(all: PlanDef[], pricing: Record<PlanId, PlanPri
 }
 
 function questions(defs: PlanDef[], pricing: Record<PlanId, PlanPricing>, h: number): string {
-  return `<h${h} class="site-price-h">Questions</h${h}>
-    <div class="site-faq">${pricingQuestions(defs, pricing).map((x) => `<div><h${h + 1}>${esc(x.q)}</h${h + 1}><p>${x.a}</p></div>`).join("")}</div>`;
+  // Two columns: the heading and a way to ask something else on the left, the accordion on the right.
+  // (A single full-width column left every question hugging the left edge of a wide page.)
+  return `<div class="site-faq-wrap">
+    <div class="site-faq-side">
+      <h${h} class="site-price-h">Questions</h${h}>
+      <p>Something this doesn't answer? <a href="${attr(mailHref("A question about Trov pricing"))}">Ask us</a>.</p>
+    </div>
+    <div class="site-faq" data-keep>${pricingQuestions(defs, pricing).map((x, i) =>
+      // An accordion: each question is a native `<details>` (it works with no script); site-faq.ts takes
+      // the click over to animate the answer's box open and shut and to keep one open at a time. The
+      // first starts open. `data-keep`: which one is open is the visitor's, so a repaint leaves it alone.
+      `<details${i === 0 ? ' open data-open="1"' : ' data-open="0"'}><summary><h${h + 1}>${esc(x.q)}</h${h + 1}><svg class="site-faq-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></summary><div class="site-faq-a"><p>${x.a}</p></div></details>`).join("")}</div>
+  </div>`;
 }
 
 // ── the section ──────────────────────────────────────────────────────────────
@@ -226,10 +232,10 @@ export function pricingSection(p: PricingProps = {}): string {
       ${yearly ? intervalSwitch() : ""}
     </div>
     <div ${rv("pricing-plans", "rv-static site-plans")}>
-      ${defs.map((def, i) => planCard(def, pricing[def.id], i, def.id === accent, signedIn, level + 1)).join("")}
+      ${defs.map((def, i) => planCard(def, pricing[def.id], i, def.id === accent, signedIn, level + 1, i === defs.length - 1 && defs.length > 1 && !pricing[def.id].selfServe)).join("")}
     </div>
+    ${sizedNote(defs, pricing)}
     ${accent === null ? `<div ${rv("pricing-note")}>${notAnnounced(signedIn)}</div>` : ""}
-    <div ${rv("pricing-compare", "site-price-block")}>${comparison(defs, pricing, level + 1)}</div>
     <div ${rv("pricing-all", "site-price-block")}>${everyPlan(level + 1)}</div>
     <div ${rv("pricing-faq", "site-price-block")}>${questions(defs, pricing, level + 1)}</div>
   </section>`;

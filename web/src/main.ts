@@ -23,7 +23,7 @@ import {
   getOnboardPrefill, checkHandle, submitOnboard,
   getNotificationPrefs, putNotificationPrefs, getNotificationPolicy, putNotificationPolicy,
   getNotificationSettings, putNotificationSettings, listNotificationOutbox, testSendNotification, type PrefsWrite,
-  listOAuthGrants, revokeOAuthGrant,
+  listOAuthGrants, revokeOAuthGrant, setOAuthGrantOrg, setOAuthGrantCurrent, setOAuthGrantMode, planLimitText,
   listPersons, updateMe, unlinkIdentity, renameHandle,
   getPersonProfile, uploadAvatar, removeAvatar,
   getMyOrgs, getOrgMe, listMcpTokens, revokeMcpToken, setApiOrg, setOrgLostHandler, tenantHref,
@@ -45,7 +45,10 @@ import { blankDoc, defaultSection } from "./newdoc";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
 import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
-import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
+import { mountLandingMotion, unmountLandingMotion, noteJump } from "./landing-motion";
+import { createFeatureCtl } from "./site-feature";
+import { TOUR_KEYS } from "./landing";
+import { initFaqAccordion } from "./site-faq";
 import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
   type TicketCategory, type TicketPriority, type TicketStatus,
@@ -55,10 +58,12 @@ import { QUEUE_FILTER_CATS, type QueueFilterCat } from "./tickets";
 import { initialOnboard, markAvatarFailed, AVATAR_IMG_CLASS } from "./people";
 import { prepareAvatar } from "./avatar";
 import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX } from "./mentions";
-import { PERSON_COLORS, type PersonColor } from "@shared/rows";
+import { PERSON_COLORS, type PersonColor, type OAuthGrantSummary } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
 import { syncSkeletons } from "./skeleton";
+import { parsePreview, previewSearch, withPreview, PREVIEW_BLOCKED, type PreviewMode } from "./preview";
+import { setWriteBlock } from "./api";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { createPlatform } from "./platform-actions";
@@ -74,6 +79,8 @@ import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
+import { createSupport } from "./support-actions";
+import { RELEASES } from "./releases";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
 import { currentOrg } from "./org-settings";
@@ -94,6 +101,16 @@ if (!root) throw new Error("Trov: #app mount point missing");
 const mount = root;
 
 const state: AppState = initialState();
+
+// The state preview (web/src/preview.ts): `?preview=empty` / `?preview=loading`, read once here
+// and kept in the address bar while it is on (a reload stays in it). While it is on api.ts
+// refuses every write; the refusal is said as a toast AFTER the caller's own "couldn't save"
+// (a timeout, so this is the one that stays).
+function applyPreview(mode: PreviewMode | null): void {
+  state.preview = mode;
+  setWriteBlock(mode ? () => { setTimeout(() => flash(PREVIEW_BLOCKED, 4200), 0); } : null);
+}
+applyPreview(parsePreview(location.search));
 
 // The sidebar's "search everything" dropdown. Its node lives on <body>, outside the
 // mount, so rerender() never touches it; rerender() calls `qs.sync()` to re-anchor it.
@@ -140,12 +157,26 @@ const welcomeCtl = createWelcomeController({
   unauth: (e) => unauth(e), go: (url) => { window.location.href = url; },
 });
 
+// The support form (web/src/support-actions.ts): every `support…` act. Signed in — the header's bug
+// button, Settings › Contact support, the picker's link — what it attaches is read when the dialog
+// opens: the route on screen, the org the person is in (none on the picker or the Platform page), the
+// newest release and the browser, and nothing else. Signed out (the site's Contact) it is the same
+// dialog in its anonymous setting: the page's path, the browser, and the address they type.
+const supportCtl = createSupport({
+  state, mount, rerender: () => rerender(), unauth: (e) => unauth(e),
+  signedIn: () => state.view !== "auth",
+  context: () => (state.view === "auth"
+    ? { route: `${location.pathname}${location.hash}`, org: null, version: "", userAgent: navigator.userAgent }
+    : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: RELEASES[0]?.version ?? "", userAgent: navigator.userAgent }),
+});
+
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
 // placing the open menu against its trigger. A pick is dispatched as the dropdown's own act.
 const dropdowns = createDropdowns({ state, mount, rerender: () => rerender(), dispatch: (act, arg, value) => dispatch(act, arg, value) });
 
 // ── persisted client prefs (theme + sidebar only; not backend state) ─────────
 migrateBrowserStorage(); // canopy.* → trov.* (the rename) before the first read
+initFaqAccordion();      // the Questions accordion on the landing page (site-faq.ts): one delegated listener
 try {
   const t = localStorage.getItem("trov.theme");
   if (t === "dark" || t === "light" || t === "system") state.theme = t;
@@ -486,7 +517,10 @@ function currentRoute(): Route {
     r.promptMode = state.promptMode;
     if (state.promptMode !== "new" && state.promptSlug) r.promptSlug = state.promptSlug;
   }
-  if (state.screen === "platform") r.platTab = state.plat.tab;
+  if (state.screen === "platform") {
+    r.platTab = state.plat.tab;
+    if (state.plat.tab === "support" && state.plat.support.reportId !== null) r.platReport = state.plat.support.reportId;
+  }
   if (state.screen === "platformorg" && state.plat.orgSlug) r.platOrg = state.plat.orgSlug;
   if (state.screen === "org") r.orgTab = state.org.tab;
   // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
@@ -515,6 +549,8 @@ function applyRoute(r: Route): void {
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
   if (r.platTab) state.plat.tab = r.platTab;
+  // Platform › Support: the report in the address (`#platform/support/<id>`), or the list.
+  if (r.screen === "platform") state.plat.support.reportId = r.platTab === "support" ? r.platReport ?? null : null;
   if (r.platOrg) state.plat.orgSlug = r.platOrg;
   if (r.orgTab) state.org.tab = r.orgTab;
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
@@ -706,6 +742,13 @@ function showPicker(lost: string | null): void {
   rerender();
   window.scrollTo(0, 0);
 }
+/** One first-run card giving way to the picker (transition.ts). The picker's list is read FIRST: morphing
+ *  into a picker that is still loading lands on its short "Loading…" card, which then snaps to full height
+ *  when the list arrives — the card is squeezed and then stretched. Loaded first, it morphs once, to its
+ *  real size. (`loadMyOrgs` never rejects; on an error the picker says so itself.) */
+function morphToPicker(before?: () => void): Promise<void> {
+  return loadMyOrgs().then(() => { morphStep(() => { before?.(); showPicker(null); }); });
+}
 // A tenant request answered 404 and the membership gate confirmed it (api.ts): same place.
 setOrgLostHandler((slug) => { if (state.view === "app" && state.orgSlug === slug) showPicker(slug); });
 
@@ -722,7 +765,7 @@ function enterPlatform(hash: string): void {
   state.view = "platform";
   const r = parseHash(hash);
   applyRoute(r.screen === "platform" || r.screen === "platformorg" ? r : { ...r, screen: "platform", platTab: "orgs" });
-  if (!isPlatformPath(location.pathname)) history.replaceState(null, "", `${PLATFORM_PATH}${hashForRoute(currentRoute())}`);
+  if (!isPlatformPath(location.pathname)) history.replaceState(null, "", withPreview(`${PLATFORM_PATH}${hashForRoute(currentRoute())}`, state.preview));
   platform.load();
 }
 
@@ -753,7 +796,7 @@ function enterOrg(slug: string, hash: string): void {
   state.orgSlug = slug;
   setApiOrg(slug);
   try { localStorage.setItem(LAST_ORG_KEY, slug); } catch { /* ignore */ }
-  const want = orgHref(slug, hash);
+  const want = withPreview(orgHref(slug, hash), state.preview);
   if (`${location.pathname}${location.search}${location.hash}` !== want) history.replaceState(null, "", want);
   state.view = "app";
   // Restore the route from the URL hash (reload stays put, including
@@ -1013,6 +1056,60 @@ function loadSettingsReads(): void {
   orgCtl.loadPlan();
   void loadMyOrgs();
 }
+/** Why a change to a connection's scope was refused, in words (the route answers with a code). */
+const GRANT_SCOPE_REFUSALS: Record<string, string> = {
+  current_org: "That is the organization it is working in. Switch it to another one first.",
+  last_org: "A connection needs at least one organization. Revoke it instead.",
+  not_allowed: "Turn that organization on for this connection first.",
+  not_manual: "This connection follows the repository. Change it to Manual to choose its organizations.",
+  not_found: "That connection, or that organization, is no longer yours to change.",
+};
+/** The scope dialog's focusable controls, in order. */
+const grantScopeItems = (dlg: HTMLElement): HTMLElement[] =>
+  [...dlg.querySelectorAll<HTMLElement>("button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex='-1'])")].filter((el) => el.offsetParent !== null);
+/** Focus into the scope dialog: its first control that does something (the × is last in line). */
+function focusGrantScope(): void {
+  const dlg = mount.querySelector<HTMLElement>("#grant-scope");
+  if (!dlg) return;
+  (grantScopeItems(dlg).find((el) => el.dataset.act && el.dataset.act !== "grantScopeClose") ?? dlg).focus();
+}
+/** Close the scope dialog; focus goes back to the row's button that opened it. */
+function closeGrantScope(): void {
+  const id = state.grantScope;
+  if (id === null) return;
+  state.grantScope = null;
+  state.grantScopeNote = null;
+  rerender();
+  mount.querySelector<HTMLElement>(`[data-grant-change="${id}"]`)?.focus();
+}
+/** Settings › MCP access: one change to a connection's scope, saved at once — the list (and so the open
+ *  dialog) becomes the route's answer, and the dialog says saving / saved / why not. `org` is the
+ *  organization the change was about: a refusal is shown on its row. */
+function saveGrantScope(change: Promise<OAuthGrantSummary[]>, done: string, org?: string): void {
+  // The control that was used, to give focus back once the dialog has been redrawn around it.
+  const used = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("#grant-scope [data-act], #grant-scope [data-dd]");
+  const again = used?.dataset.dd ? `[data-dd="${used.dataset.dd}"]` : org ? `[data-grant-allow="${org}"] button` : null;
+  const refocus = (): void => {
+    const dlg = mount.querySelector<HTMLElement>("#grant-scope");
+    if (!dlg || dlg.contains(document.activeElement)) return;
+    ((again ? dlg.querySelector<HTMLElement>(again) : null) ?? grantScopeItems(dlg)[0] ?? dlg).focus();
+  };
+  state.grantScopeNote = { kind: "saving", text: "Saving\u2026" };
+  rerender();
+  change
+    .then((data) => { state.grants = { status: "ok", data }; state.grantScopeNote = { kind: "saved", text: done }; rerender(); refocus(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      // A plan refusal is the named organization's: say it as its owner is told it, when that is me.
+      const role = org ? (state.myOrgs.data?.orgs ?? state.me?.orgs ?? []).find((o) => o.slug === org)?.role ?? null : null;
+      const text = planLimitText(e, role) ?? (e instanceof ApiError ? GRANT_SCOPE_REFUSALS[e.message] : undefined) ?? "That could not be saved. Try again.";
+      state.grantScopeNote = { kind: "error", text, ...(org ? { org } : {}) };
+      rerender();
+      refocus();
+      loadGrants();
+    });
+}
+
 function loadGrantsIfNeeded(): void {
   if (state.grants.status === "idle") loadGrants();
   if (state.mcpTokens.status === "idle") loadMcpTokens();
@@ -2016,6 +2113,14 @@ function scheduleRenameCheck(): void {
 // picker needs it; every other case ignores it.
 function dispatch(act: string, arg: string | null, value: string | null, caret: number | null = null): void {
   switch (act) {
+    // The state preview's banner: switch to the other state, or close it ("" = off). The flag
+    // lives in the address bar, so it is rewritten there; nothing is loaded or sent.
+    case "previewSet": {
+      applyPreview(arg === "empty" || arg === "loading" ? arg : null);
+      history.replaceState(null, "", `${location.pathname}${previewSearch(location.search, state.preview)}${location.hash}`);
+      rerender();
+      return;
+    }
     // auth state navigation (how the screens become reachable)
     case "signIn":
       // Return-to: the hash never reaches the server, so stash it for the boot
@@ -2072,7 +2177,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         profile
           .then(() => (o.handle !== o.edit!.current ? renameHandle(o.handle) : null))
           .then(() => getMe())
-          .then((fresh) => { state.me = fresh; state.displayName = fresh.name ?? fresh.handle; morphStep(() => showPicker(null)); })
+          .then((fresh) => { state.me = fresh; state.displayName = fresh.name ?? fresh.handle; return morphToPicker(); })
           .catch((e) => {
             o.submitting = false;
             if (e instanceof ApiError && e.message === "handle_taken") o.check = "taken";
@@ -2102,7 +2207,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
             state.displayName = me.name ?? me.handle;
             state.plat.superadmin = false;
             history.replaceState(null, "", "/");
-            morphStep(() => showPicker(null));
+            return morphToPicker();
           }).catch(() => { window.location.hash = "#guide"; window.location.reload(); });
         })
         .catch((e) => {
@@ -2117,12 +2222,35 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // Landing page (signed out): the Sign in dialog, and in-page jumps. The jumps
     // scroll instead of setting location.hash — the hash is the route and the
     // sign-in return-to, and must survive a browse of the landing page.
-    case "openSignIn":
+    case "openSignIn": {
+      // `arg` says what the visitor came to do ("signup" from a Start-for-free button, or the dialog's own
+      // switch); anything else is the nav's Sign in. Switching inside the open dialog keeps focus on the switch.
+      const switching = state.signInOpen;
+      state.signInMode = arg === "signup" ? "signup" : "signin";
       state.signInOpen = true;
       rerender();
-      mount.querySelector<HTMLElement>('[role="dialog"] [data-act="signIn"]')?.focus();
+      mount.querySelector<HTMLElement>(switching ? '[role="dialog"] [data-field="signInSwitch"]' : '[role="dialog"] [data-act="signIn"]')?.focus();
       return;
+    }
+    case "signInPlan": state.signInPlan = arg === "team" ? "team" : "free"; break;
+    // After payment, "Set up your organization": on to the welcome card IN PLACE (the card morphs into
+    // it), not by loading `/?setup=…`. Anything unexpected falls back to that page load.
+    case "billingSetup": {
+      const fallback = arg && arg.startsWith("/?") ? arg : "/";
+      getMe().then((me) => {
+        state.me = me;
+        state.displayName = me.name ?? me.handle;
+        state.plat.superadmin = me.superadmin === true;
+        history.replaceState(null, "", "/");
+        return morphToPicker(() => { state.billingDone = null; });
+      }).catch(() => { location.assign(fallback); });
+      return;
+    }
     case "closeSignIn": state.signInOpen = false; break;
+    // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
+    case "openFeature": if (arg) featureCtl.open(arg); return;
+    case "closeFeature": featureCtl.close(); return;
+    case "stepFeature": featureCtl.step(arg === "prev" ? -1 : 1); return;
     // The landing's "Get started": signed in, straight to the guide; signed out, the
     // guide becomes the sign-in return-to (replaceState: no hashchange, no route) and
     // the Sign in dialog opens.
@@ -2140,6 +2268,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     case "siteJump": {
       const behavior: ScrollBehavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+      // ONE scroll per click; where it lands is the target's `scroll-margin-top` (trov.css). Sections
+      // passed on the way settle without their entrance (landing-motion.ts).
+      noteJump();
       if (arg === "top") window.scrollTo({ top: 0, behavior });
       else document.getElementById(`site-${arg}`)?.scrollIntoView({ behavior, block: "start" });
       return;
@@ -2816,7 +2947,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; loadSettingsReads(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3503,6 +3634,41 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     // Connected apps opens to every row, or folds back to the first few.
     case "mcpShowAll": state.grantsAll = !state.grantsAll; break;
+    // A connection's scope (0051): opened under its row; every change is saved as it is made, and the
+    // server answers with my connections as they now stand.
+    // It opens as a DIALOG: focus goes to its first control, and back to the row's button on close
+    // (Done, the ×, the backdrop or Escape).
+    case "grantScopeOpen": {
+      state.grantScope = Number(arg);
+      state.grantScopeNote = null;
+      state.grantRevokeArm = null;
+      if (state.myOrgs.status === "idle") void loadMyOrgs();
+      rerender();
+      focusGrantScope();
+      return;
+    }
+    case "grantScopeClose": closeGrantScope(); return;
+    case "grantMode": {
+      // arg = "<grant id>:<repo|manual>". Manual starts in the organization on screen (one of mine), and I add others after.
+      const [rawId, mode] = (arg ?? "").split(":");
+      const start = state.orgSlug ?? state.me?.orgs[0]?.slug;
+      if (mode !== "repo" && (mode !== "manual" || !start)) return;
+      saveGrantScope(setOAuthGrantMode(Number(rawId), mode, mode === "manual" ? start : undefined),
+        mode === "repo" ? "Saved. It now follows the repository." : "Saved. It now works in the organizations you turn on.");
+      return;
+    }
+    case "grantOrgToggle": {
+      // arg = "<grant id>:<org slug>:<on|off>".
+      const [rawId, slug, to] = (arg ?? "").split(":");
+      if (!slug || (to !== "on" && to !== "off")) return;
+      saveGrantScope(setOAuthGrantOrg(Number(rawId), slug, to === "on"), to === "on" ? "Saved. It may use that organization now." : "Saved. It can no longer use that organization.", slug);
+      return;
+    }
+    case "grantCurrent": {
+      if (!arg || !value) return;
+      saveGrantScope(setOAuthGrantCurrent(Number(arg), value), "Saved. It is working there now.");
+      return;
+    }
     // The by-hand setup is a modal, so the MCP tile never changes height: focus goes into
     // the dialog on open, and back to its link on close (the backdrop, the ×, or Escape).
     case "mcpSetupOpen":
@@ -3610,6 +3776,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     default:
       // Every Platform (superadmin) act goes to its controller, platform-actions.ts.
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
+      // The support form, signed in or out: its controller repaints the dialog alone (support-actions.ts).
+      if (act.startsWith("support")) { supportCtl.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
       if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
@@ -4224,11 +4392,23 @@ mount.addEventListener("keydown", (e) => {
     if (first) dispatch("promptTagAdd", first.tag, null);
   }
 });
+// The scope dialog (Settings › MCP access) keeps Tab inside itself.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || state.grantScope === null || state.dd.open) return;
+  const dlg = mount.querySelector<HTMLElement>("#grant-scope");
+  if (!dlg) return;
+  const items = grantScopeItems(dlg);
+  if (!items.length) { e.preventDefault(); dlg.focus(); return; }
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  const last = items.length - 1;
+  if (at < 0 || (e.shiftKey && at === 0) || (!e.shiftKey && at === last)) { e.preventDefault(); items[e.shiftKey ? last : 0].focus(); }
+});
 // Escape closes the expanded handoff prompt (the filter menus close in their own listener).
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || state.view !== "app") return;
   if (state.personCard) { state.personCard = null; rerender(); }
   else if (state.mcpSetup) closeMcpSetup();
+  else if (state.grantScope !== null && !state.dd.open) closeGrantScope(); // an open menu closes first, on its own
   else if (state.handoffPromptOpen) { state.handoffPromptOpen = false; rerender(); }
   else if (state.promptExpanded) { state.promptExpanded = false; rerender(); }
 });
@@ -4297,6 +4477,10 @@ mount.addEventListener("mouseover", (e) => railTip((e.target as Element | null)?
 mount.addEventListener("focusin", (e) => railTip((e.target as Element | null)?.closest?.<HTMLElement>(".cnpy-aside [data-tip]") ?? null));
 mount.addEventListener("focusout", () => railTip(null));
 mount.addEventListener("mouseleave", () => railTip(null));
+
+// The landing tour's dialog: Escape, ← / →, and Tab kept inside it.
+const featureCtl = createFeatureCtl({ mount, keys: TOUR_KEYS, get: () => state.siteFeature, set: (v) => { state.siteFeature = v; }, rerender: () => rerender() });
+document.addEventListener("keydown", (e) => featureCtl.onKey(e));
 
 // Escape closes the landing page's sign-in dialog, wherever focus is.
 document.addEventListener("keydown", (e) => {
@@ -4370,14 +4554,22 @@ if (params.get("denied") === "1") {
       // the picker — with the hash kept, so opening an org still lands on what the link was for.
       // `/platform/`: the superadmin's area, whatever orgs they are in (or none). Anyone else falls through to the picker.
       // So does a `#platform…` link opened at `/` by a superadmin with no org to open it in.
+      // `/?contact=1` (the static pages' Contact link) for someone who IS signed in: the same form, as
+      // that person, over wherever boot lands them — when it lands in place (opening an org by a page
+      // load simply drops the parameter).
+      if (params.get("contact") === "1" && location.pathname === "/") {
+        history.replaceState(null, "", `/${location.hash}`);
+        setTimeout(() => { if (state.view !== "auth" && !state.support.open) supportCtl.open("question"); }, 0);
+      }
       if (me.superadmin === true && (isPlatformPath(location.pathname) || (me.orgs.length === 0 && /^#platform(?:\/|$)/.test(hash)))) { void loadMyOrgs(); enterPlatform(hash); return; }
-      // Sent on from the waiting room (billing.ts `setupHref`): the picker — whatever orgs they are already in —
-      // with the form for the organization they just paid for open. A stale or foreign id opens their oldest grant, or nothing.
+      // Sent on from the waiting room (billing.ts `setupHref`): the picker — whatever orgs they are already
+      // in — where the organization they just paid for is one of the things to do ("You can set up an
+      // organization — Pro. Paid for just now."). Its form is NOT opened for them: it is their next step
+      // to take, on a card that says the payment went through, not a dialog thrown over it.
       const setup = params.get(SETUP_PARAM);
       if (setup !== null && location.pathname === "/") {
         history.replaceState(null, "", "/");
         showPicker(null);
-        void loadMyOrgs().then((mine) => { if (mine?.can_create) orgsCtl.act("orgsCreateOpen", setup, null); });
         return;
       }
       const land = resolveLanding({ pathSlug: orgSlugFromPath(location.pathname), orgs: me.orgs, lastUsed: last, returnOrg: backOrg });
@@ -4389,6 +4581,19 @@ if (params.get("denied") === "1") {
       // Unauthorized or any error → show login
       state.view = "auth";
       state.authStep = "login";
+      // Sent here by the billing route (`/?start=team`: a signed-out buyer who has not picked a provider —
+      // the pricing page's "Choose Pro"): Get started opens on that plan, so the two provider buttons
+      // carry on to payment. The parameter is read once and leaves the address bar.
+      if (params.get("start") === "team") {
+        state.signInOpen = true; state.signInMode = "signup"; state.signInPlan = "team";
+        history.replaceState(null, "", `/${location.hash}`);
+      }
       rerender();
+      // Sent here by Contact in the footer of a static page (pricing, terms, privacy — site-chrome.ts
+      // `CONTACT_HREF`): the Contact form opens over the landing page. Read once; it leaves the address bar.
+      if (params.get("contact") === "1") {
+        history.replaceState(null, "", `/${location.hash}`);
+        supportCtl.open("question");
+      }
     });
 }

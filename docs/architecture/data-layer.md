@@ -9,7 +9,7 @@ The flow a human operator follows — add an org, name its admin, set it up, inv
 
 | | Type | Built by | Query surface |
 |---|---|---|---|
-| Tenant data | `TenantContext { orgId, userId, role, via }` | `resolveTenant` (slug + membership), `resolveTenantById` (a credential that names its org), `resolveSoleTenant` (cut-over alias: the caller's one org), `resolveBearerTenant` (`src/data/bearer.ts`), `systemTenant(p, orgId, actor)` | `src/data/sql.ts` |
+| Tenant data | `TenantContext { orgId, userId, role, via }` | `resolveTenant` (slug + membership), `resolveTenantById` (a credential that names its org), `resolveSoleTenant` (cut-over alias: the caller's one org), `liveTenants` (a bearer connection's reach — `src/data/bearer.ts` picks one per call), `systemTenant(p, orgId, actor)` | `src/data/sql.ts` |
 | Platform data | `PlatformContext { actor }` | `platform(env, actor)` | `src/data/platform-sql.ts` |
 
 Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`, `fanOut`, plus `nowIso`, `ph`,
@@ -18,37 +18,93 @@ Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`
 
 - Every resolver is ONE statement and also reads `orgs.suspended_at`: a suspended org resolves for no one
   (`resolveTenant` / `resolveTenantById` → null; `resolveSoleTenant` → `reason: "suspended"`; bearer → `unauthorized`).
-  The bearer resolver is two reads: the credential by hash, then `resolveTenantById` for the org on its row.
+  The bearer resolver is two reads: the credential by hash, then `liveTenants` for what it can reach now.
 - `c.var.ctx` / `c.var.p` are set by `src/data/gate.ts`. `tenantGate` is mounted ONCE, on `/api/o/:slug/*` in
   `src/routes.ts`, and meters the request — a sub-app never applies it again. See "Routes and gates" below.
 - A repository never builds a context. A module that touches both kinds takes the tenant ctx and receives
   `p` as a parameter. (One exception: `createOrg` writes the new org's seed rows as `systemTenant(p, newId)`.)
 - `src/data/secrets.ts` reads its key through `kekOf(ctx)`; no other module can reach a context's `Env`.
 
-## Bearer: MCP is bound to (user, org) — Phase 5a (spec §7)
+## Bearer: which organization an MCP call acts in (spec §7; 0051_mcp_connection_orgs)
 
-- A personal token (`mcp_tokens`) and an OAuth grant (`oauth_grants`, with its `oauth_codes`) each carry the
-  `org_id` they were made for. `resolveBearerTenant` reads the credential by hash → `{ handle, orgId }` from the
-  ROW, then builds the context with `resolveTenantById(env, handle, orgId, "bearer")`: the role is the person's
-  role in that org today. No header, query or body value can name another org; no tool takes an org argument.
-- Every miss is the same `unauthorized` (`/mcp` → 401 `invalid_token`): unknown / revoked / expired credential,
-  the person no longer a member of the row's org, that org suspended or gone. There is no 409 on `/mcp` any more.
-- Rows from before org-scoping carry `org_saplinglearn` (the organizations migration's column default backfilled them), so they resolve
-  as they always did. The Phase 7 cleanup drops the default; every writer already names the org.
+A credential names a PERSON and a way of choosing among that person's organizations. `src/data/bearer.ts`
+is the ONLY place that choice is made; every organization it can come up with is read through `liveTenants`
+(`src/data/context.ts`) — the person's membership TODAY, of an org that is not suspended, with the role held
+there now. Nothing in a request can add an organization to that list: `repo` and `org` only choose within it.
+
+| Credential | Reach (`conn.orgs`) | Acts in |
+|---|---|---|
+| a pasted `trov_mcp_` / `canopy_mcp_` token (`mcp_tokens.org_id`) | the one org on its row | that org, for good |
+| an OAuth grant, mode `manual` | the orgs its person ALLOWED (`oauth_grant_orgs`) and is still a live member of | its CURRENT org (`oauth_grants.org_id`) |
+| an OAuth grant, mode `repo` ("follows the repository") | every org its person is a live member of | the org that has the call's `repo` connected |
+
+**Per request** — `resolveBearerConnection` (two reads: the credential by hash, then its reach). Nowhere to act
+at all is the one `unauthorized` (`/mcp` → 401 `invalid_token`): an unknown / revoked / expired credential; a
+token whose person left its org or whose org is suspended; a manual grant none of whose allowed orgs is live
+for its person; a `repo` grant whose person is in no org. There is no 409 on `/mcp`.
+
+**Per tool call** — `resolveCall(conn, { repo, org })`. Every org tool takes these two OPTIONAL arguments
+(`src/mcp.ts` adds them in front of the tool's own; a tool body never sees `org`). A refusal is an MCP tool
+error `{ error, code, orgs? }` and has read and written nothing; `orgs` is only ever slugs of the person's own
+organizations.
+
+- **Manual** (and a token). The current org. `org` (a slug) picks another for THIS call only — only one in
+  `conn.orgs`; anything else (unknown, someone else's, one the person is in but did not allow) is one and the
+  same `org_not_allowed`. If the current org has dropped out (membership gone, org suspended) while others
+  remain, the call is `org_unavailable`, naming what is left — it never falls through to another org. `repo`
+  is ignored.
+- **Repo.** `repo` is required (`repo_required`) and must be a GitHub `owner/name` — or what `git remote
+  get-url origin` prints; `shared/repo-ref.ts` `normalizeRepoRef` makes one spelling of it (`bad_request`
+  otherwise). Among the person's live orgs, those with an `org_repos` row for it (typed by hand OR seen
+  through the org's GitHub App installation; compared without case; not one whose `access_lost_at` is set):
+  exactly one → that org; none → `not_connected` — the SAME BYTES whether the repository is unknown, connected
+  nowhere, or connected only in an org the person is not in; several → `ambiguous_org`, listing those slugs,
+  settled by `org`, which must be one of them (else the same `not_connected`).
+- `admitCall` then runs before the tool body: a `repo` grant's FIRST call into an org takes one of the
+  person's agent-connection slots there (`admitGrantOrg`, `requirePlan` → `plan_limit`; `plans.md`).
+
+**The connection's own tools** act in no org: `get_connection` (handle, mode, the organization THIS call would
+act in with the role there, a manual connection's current org, the orgs it can reach, and `unresolved` when it
+would act nowhere — it admits nothing and reads no org's data) and `switch_org` (moves a manual connection's
+current org to another it is ALREADY allowed — `setGrantCurrent`, one guarded UPDATE; it applies to every
+session sharing the connection). Switching is navigation inside what the person granted. ADDING an org is
+not a tool.
+
+**What a person changes, signed in** (session cookie, `src/auth/routes.ts`; each is keyed by grant id AND
+person, and binds an org through `resolveTenant`, so someone else's grant, an unknown id and an org the caller
+is not in are the same 404): `POST /auth/oauth-grants/:id/orgs { org, on }` (allow / stop allowing — not the
+current org `current_org`, not the last one `last_org`), `…/current { org }` (one already allowed), `…/mode
+{ mode: "repo" } | { mode: "manual", org }`. The consent page asks the same question first (`auth-identity-people.md`).
+
+**Grants from before 0051** are `manual` with exactly one `oauth_grant_orgs` row — the org already on them
+(the migration's backfill) — so they resolve, and stop resolving, exactly as they did. Rows from before
+org-scoping carry `org_saplinglearn` (0042's column default); every writer names the org.
+
+**Standing at the token endpoint** (`GRANT_STANDING`): code exchange and refresh re-read whether the grant's
+person is still a member of ANY org it can reach (none → refused AND revoked, `member_removed`) and whether
+any of those is not suspended (none → refused, not revoked). `removeMember` drops the grant's row for that org
+in its own batch and revokes a manual grant left with no org. A revoked grant holds no row at all (the
+`oauth_grants_revoked_au` trigger), which is what keeps the plan's count honest.
+
 - Tokens: `mintToken(ctx)` / `listTokens(ctx)` / `revokeToken(ctx, id)` are TENANT statements (the caller's own
   tokens for `ctx.orgId`), served at `GET|POST /api/o/:slug/mcp-tokens`, `POST …/:id/revoke`
   (`src/auth/token-routes.ts`). `/auth/mcp-token…` is the cut-over alias for a person with exactly one org.
-- OAuth: the consent page lists the person's orgs (`listMyOrgs`; a radio group when there are several, a hidden
-  field when there is one, a "join an organization first" page when there are none). The POSTed `org` slug is
-  bound through `resolveTenant` — a live membership check — and `issueAuthorization(ctx, …)` writes the grant and
-  code as tenant statements. Code exchange and refresh re-read the grant's standing (`GRANT_STANDING`): a
-  membership that is gone refuses AND revokes the grant (`member_removed`); a suspended org refuses without
-  revoking. `GET /auth/oauth-grants` stays user-level and each row carries `org: { slug, name }`.
-- "Admin" over MCP is `hasRole(ctx, "admin")` — `update_plan`'s registration and the lane's two admin
-  exceptions (`src/tools/tickets-agent.ts`). There is no allowlist of handles anywhere.
+- `GET /auth/oauth-grants` is user-level; each row carries `mode`, `org` (a manual one's current, or null) and
+  `orgs` (allowed / used in) — only organizations the person is a member of now.
+- "Admin" over MCP is `hasRole(ctx, "admin")` in the org the call RESOLVED to — `update_plan` and the lane's two
+  admin exceptions (`src/tools/tickets-agent.ts`). `update_plan` is LISTED when the person is an admin in any
+  org the connection can reach, and is `forbidden` on a call that lands where they are not. There is no
+  allowlist of handles anywhere.
+- Usage: a tool call is metered in the org it resolved to (`meterMcpTool`); a request with no tool call, in a
+  manual connection's current org (`meterMcp`); a call that resolved nowhere, nowhere.
 - `get_repo_dashboard` reads the org's own `org_repos` / `org_environments` (`orgRepoConfig`,
   `src/tools/repo-agent.ts` — it may not import `src/integrations`, see `test/secrets.mcp.test.ts`); a bare
   `#214` resolves against the org's primary repo (`ticketLinkRepo`, `src/tools/tickets.ts`).
+
+What this does NOT protect against: an org's manually typed repository is not verified against GitHub, so an
+admin of one of a person's orgs can connect a repository name another of their orgs also uses — the result is
+`ambiguous_org` (a refusal), never a silent redirect; and where only that admin's org has it, calls from that
+repository land in that org, which the person is a member of.
 
 ## A ticket's and a handoff's two ids (spec §12 Q2)
 
@@ -85,7 +141,8 @@ The lists are derived from the live schema — every table with an `org_id` colu
 - **Global tables** (no `org_id`): `persons`, `identities`, `sessions`, `invites`, `oauth_clients`,
   `oauth_tokens`, `orgs`, `platform_admins`, `cron_cursor`, `abuse_counters` (0042_organizations), `sections`, `tags`,
   and `org_grants`, `platform_outbox_bodies` (0044_plans — a grant is about a person before any org exists;
-  its `used_org` is deliberately not named `org_id`). An org's plan is columns on `orgs` (`plans.md`).
+  its `used_org` is deliberately not named `org_id`), and `support_reports` (0049 — a person's report to the
+  operator; the org it was sent from is `from_org`, for the same reason: `support.md`). An org's plan is columns on `orgs` (`plans.md`).
 
 ## Writing a statement
 
@@ -129,11 +186,12 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 | `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture`, `pruneSyncRuns`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
 | `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`) | the cron's unit lists, the webhook's hook lookup and the GitHub App's installation → org lookup (`installationOrg`), before any org is known — ids, an environment key and a repo name |
 | `src/platform/repo.ts` `listPlatformOrgs` (`org_github_installations`) | the superadmin's org list: the GitHub account an org's installation is on — a name |
-| `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal` | credential lookup by HASH before any org is known (the row names the org), and the revoke of the one grant just found |
-| `src/auth/oauth.ts` `listGrants`, `revokeGrant` | Connected apps is user-level: a person's own grants across their orgs, keyed by person |
+| `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal`, `GRANT_STANDING` | credential lookup by HASH before any org is known (the row names the grant), its standing over the orgs it can reach, and the revoke of the one grant just found |
+| `src/auth/oauth.ts` `listGrants`, `revokeGrant`, `ownGrant`, `setGrantMode` | Connected apps is user-level: a person's own grants across their orgs, keyed by id AND person |
+| `src/auth/oauth.ts` `issueRepoAuthorization` | a grant that follows the repository is the person's and no org's: written with `org_id` '' |
 | `src/artifacts/upload.ts` `uploadTokenOrg` | upload-token lookup by hash, returning only its `org_id` |
 | `src/platform/usage.ts` (whole file); `src/platform/repo.ts` `listAudit` (`org_audit`) | the superadmin's cross-org counts and merged audit trail — no content, no secret |
-| `src/orgs/repo.ts` `removeMember` | revokes the removed person's tokens / grants for that org, in the same batch |
+| `src/orgs/repo.ts` `removeMember` | ends the removed person's credentials' reach into that org, in the same batch (tokens revoked, each grant's row for the org dropped, a grant left with no org revoked) |
 | `src/auth/persons.ts` `renamePerson` (interpolated) | the `HANDLE_COLUMNS` update — a rename must span every org |
 | `src/tools/artifacts.ts` `normalizeLinkRef` (interpolated, tenant) | `tickets WHERE number` or `sprints WHERE id` from a two-value literal, with `org_id = ?` |
 | `src/tools/progress.ts` upsert on `sprint_progress` | its PK is `sprint_id` alone; guarded by `WHERE sprint_progress.org_id = excluded.org_id` (asserted) |
@@ -209,7 +267,7 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
 | Path | Gate | Tenant |
 |---|---|---|
 | `/api/o/:slug/*` — the tenant routes, the org surface (`src/orgs`, `src/integrations`) and a member's own MCP tokens (`src/auth/token-routes.ts`) | `tenantGate` | the org the path names, if the caller is a member — else 404 `{ error: "not_found" }` (unknown slug, non-member, suspended: all alike) |
-| `/auth/*`, `/avatar/*`, `/org-logo/*`, `/api/orgs`, `/api/invites`, `/api/platform/*` | none (person-level) | none: these read and write the caller's own person, or are `requireSuperadmin`. `/auth/callback` is also where GitHub returns after the App is installed: it binds an installation only for the org and person a sealed cookie names (`github-app.md`) |
+| `/auth/*`, `/avatar/*`, `/org-logo/*`, `/api/orgs`, `/api/invites`, `/api/support` (and the PUBLIC `/api/support/public`, `support.md`), `/api/platform/*` | none (person-level) | none: these read and write the caller's own person, or are `requireSuperadmin`. `/auth/callback` is also where GitHub returns after the App is installed: it binds an installation only for the org and person a sealed cookie names (`github-app.md`) |
 | every OTHER path | `soleTenantGate` (the cut-over alias) | the caller's ONE org — 409 `{ error: "org_required" }` with none or several, 404 if it is suspended |
 
 `soleTenantGate` is the DEFAULT, so a route added without thought is tenant-gated, never open.
@@ -292,7 +350,8 @@ and `resolveSoleTenant` / `soleTenantGate` behind the old-path aliases.
 
 `test/helpers/tenant.ts`: `systemCtx(org?)`, `tenantCtx(handle, role?, { orgId, via, env })`,
 `bearerCtx(handle, role?, env?, orgId?)`, `mintTokenFor(handle, orgId?)`, `credentialOf(request)`,
-`platformCtx`, `ensureMember`, `ORG_A`, `ORG_B`. `test/isolation.mcp.test.ts` is the MCP matrix: its entries are
+`platformCtx`, `ensureMember`, `ORG_A`, `ORG_B`. `test/mcp.connection-scope.test.ts` drives the rule above end to end
+(consent → token → `POST /mcp` → Settings routes) for both modes. `test/isolation.mcp.test.ts` is the MCP matrix: its entries are
 checked against the server's own registry, so a new tool needs an entry (what to call it with from the other org). `test/helpers/org-config.ts`: an org's repo / environment rows
 (`addOrgRepo`, `setOrgEnvironments`), and the one-org call shapes of the background entry points for the
 SaplingLearn-only suites (`syncOrgConfig` copies the Env's `GITHUB_REPO` / `REPO_ENVIRONMENTS` into its rows,

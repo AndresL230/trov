@@ -19,7 +19,7 @@ import {
   orgSwitcherButton, orgMenu, orgPickerView, acceptLanding, createOrgModal, createOrgErrors, createOrgServerError, NO_GRANT_SENTENCE, inviteSentence,
   lostOrgSentence, blankCreateOrg, initialOrgsUi, type OrgsUi,
 } from "../web/src/org-picker";
-import { render, initialState, viewerIsAdmin, viewerOrg, mcpAccessSection, grantListBody, tokenListBody, type AppState } from "../web/src/render";
+import { render, initialState, viewerIsAdmin, viewerOrg, mcpAccessSection, grantListBody, grantScopeDialog, GRANT_MODE_SENTENCE, tokenListBody, type AppState } from "../web/src/render";
 import { repoView, type RepoProps } from "../web/src/repo";
 import { newHandoffView, blankHandoff } from "../web/src/handoffs";
 import { artifactsView, artifactRepoOptions, initialArtUi, initialArtCreate, ART_ROUTE_NONE, type ArtProps } from "../web/src/artifacts";
@@ -347,7 +347,7 @@ describe("the org picker / first run", () => {
     // inside it; none may play there (each step of the guided setup re-arms the entrance on the root).
     expect(rules).toContain(".cnpy-fr-bg, .cnpy-fr-bg *, .cnpy-fr-bg *::before, .cnpy-fr-bg *::after { animation:none !important; transition:none !important; }");
     // The morphing box wears the card's own shadow, so the shadow resizes with it and never pops in after.
-    const shadow = /\.cnpy-orgs-card \{ box-shadow:([^;]+); \}/.exec(rules)?.[1];
+    const shadow = /(?<!\] )\.cnpy-orgs-card \{ box-shadow:([^;]+); \}/.exec(rules)?.[1]; // the light rule, not the dark override
     expect(shadow).toBeDefined();
     expect(rules).toContain(`::view-transition-group(first-run-card) { overflow:clip; box-shadow:${shadow}; }`);
     // Patched in place while it stays this page (morph.ts): a keystroke in the dialog over it rebuilds nothing.
@@ -550,14 +550,23 @@ describe("the repository comes from the org", () => {
   const repoProps = (over: Partial<RepoProps> = {}): RepoProps => ({
     tab: "overview", range: "7d", driftOpen: null, repo: { status: "ok", data: null }, fetchedAt: null, sample: false, admin: true, poll: null, productEnv: null, persons: [], ...over,
   } as RepoProps);
-  it("Repo with no repository connected: one empty state that links to Org settings › Repositories", () => {
+  it("Repo with no repository connected: the dashboard's frame drawn empty, with the way to Org settings › Repositories and to the sample data", () => {
     const admin = repoView(repoProps({ noRepo: true }));
     expect(admin).toContain("data-repo-empty");
     expect(admin).toContain("No repository connected");
     expect(admin).toContain("Connect the repository this organization ships from");
     expect(admin).toMatch(/<button type="button" data-act="orgGo" data-arg="repos"[^>]*>Open Org settings &rsaquo; Repositories<\/button>/);
-    expect(admin).not.toContain("repo-panel");
-    expect(repoView(repoProps({ noRepo: true, admin: false }))).toContain("An admin connects one in Org settings.");
+    // The dashboard's own frame: its tab bar and the tab's sections, their content drawn empty (no skeleton, no "not connected").
+    expect(admin).toContain('role="tablist"');
+    expect(admin).toContain("repo-panel");
+    expect(admin).toContain("cnpy-empty-shapes");
+    expect(admin).not.toContain("data-skel=");
+    expect(admin).not.toContain("Source not connected");
+    expect(admin).toMatch(/<button type="button" data-act="repoSampleOn" class="cnpy-empty-act">Preview with sample data<\/button>/);
+    const member = repoView(repoProps({ noRepo: true, admin: false }));
+    expect(member).toContain("an admin connects one in Org settings.");
+    expect(member).not.toContain('data-act="orgGo"');
+    expect(member).toContain('data-act="repoSampleOn"');
   });
   it("a new handoff defaults to the org's primary repo; with none, the field says so and links to where one is connected", () => {
     expect(blankHandoff("acme/web").repo).toBe("acme/web");
@@ -618,7 +627,9 @@ describe("no copy names one organization", () => {
   });
   it("the sign-in copy states the rules: either provider creates an account", () => {
     const landing = render({ ...initialState(), view: "auth", authStep: "login", signInOpen: true });
-    expect(landing).toContain("New to Trov? Either one creates your account.");
+    expect(landing).toContain("New to Trov?");
+    expect(landing).toContain(">Create an account</button>");
+    expect(render({ ...initialState(), view: "auth", authStep: "login", signInOpen: true, signInMode: "signup" })).toContain("Get started with Trov");
     expect(landing).not.toContain("needs an invitation");
     expect(landing).not.toContain("previewNonMember");
     const google = render({ ...initialState(), view: "auth", authStep: "unverified", deniedEmail: "sam@x.io" });
@@ -654,20 +665,138 @@ describe("no copy names one organization", () => {
 
 // ── Settings › MCP access ────────────────────────────────────────────────────
 describe("Settings › MCP access — a connection is for one organization", () => {
-  const grant = (id: number, org: { slug: string; name: string }) => ({ id, client_name: "Claude Code", created_at: "2026-10-01T10:00:00.000Z", last_used_at: null, org });
+  const grant = (id: number, org: { slug: string; name: string }) => ({ id, client_name: "Claude Code", created_at: "2026-10-01T10:00:00.000Z", last_used_at: null, mode: "manual" as const, org, orgs: [org] });
   it("says so in the steps, naming the org on screen", () => {
     const html = mcpAccessSection({ grants: { status: "ok", data: [] }, grantRevokeArm: null, grantsAll: false }, "Acme Robotics");
-    expect(html).toContain("it acts as you, in one organization.");
-    expect(html).toContain("Pick the organization to connect (you&#39;re in <strong".replace("&#39;", "'"));
+    expect(html).toContain("it acts as you, in one of your organizations at a time.");
+    expect(html).toContain("Choose how the connection picks an organization (you&#39;re in <strong".replace("&#39;", "'"));
     expect(html).toContain("Acme Robotics");
-    expect(html).toContain("A connection reaches one organization: the one you pick when you allow it.");
+    expect(html).toContain("One connection covers all your organizations.");
+    expect(html).toContain("follow the repository you are working in, or the organizations you tick, one at a time");
     expect([...html.matchAll(/<li /g)]).toHaveLength(3);
   });
-  it("each connected app shows the org it is connected to", () => {
+  it("each connected app shows how it is scoped: its organization, or that it follows the repository", () => {
     const html = grantListBody({ grants: { status: "ok", data: [grant(1, { slug: "acme", name: "Acme Robotics" }), grant(2, { slug: "saplinglearn", name: "SaplingLearn" })] }, grantRevokeArm: null, orgSlug: "acme" });
     expect(html).toContain('data-grant-org="acme" title="This connection reaches Acme Robotics only"');
     expect(html).toContain('data-grant-org="saplinglearn"');
     expect(html).toContain(">SaplingLearn</span>");
+    const acme = { slug: "acme", name: "Acme Robotics" }, sap = { slug: "saplinglearn", name: "SaplingLearn" };
+    const scoped = grantListBody({
+      grants: { status: "ok", data: [
+        { ...grant(1, acme), orgs: [acme, sap] },                                  // manual, two orgs, working in Acme
+        { ...grant(2, sap), mode: "repo" as const, org: null, orgs: [] },           // follows the repository
+        { ...grant(3, sap), org: null },                                            // manual, its current org gone
+      ] }, grantRevokeArm: null, orgSlug: "acme",
+    });
+    expect(scoped).toContain('data-grant-mode="manual" data-grant-org="acme" title="This connection is working in Acme Robotics, and may use 1 more"');
+    expect(scoped).toContain(">Acme Robotics +1</span>");
+    expect(scoped).toMatch(/data-grant-mode="repo"[^>]*>Follows the repository<\/span>/);
+    expect(scoped).toMatch(/data-grant-org=""[^>]*>No organization<\/span>/);
+  });
+
+  describe("a connection's scope opens as a DIALOG, never under its row", () => {
+    const acme = { slug: "acme", name: "Acme Robotics" }, sap = { slug: "saplinglearn", name: "SaplingLearn" }, third = { slug: "third", name: "Third <Co>" };
+    const who = { handle: "andres", orgs: [acme, sap, third].map((o) => ({ ...o, role: "member" as const })) } as unknown as AppState["me"];
+    const data = [
+      { ...grant(1, acme), client_name: "Claude <Code>", orgs: [acme, sap] },      // manual, working in Acme
+      { ...grant(2, sap), mode: "repo" as const, org: null, orgs: [sap] },          // follows the repository, used in SaplingLearn
+      { ...grant(3, sap), org: null },                                              // manual, its current organization gone
+    ];
+    const grants = { status: "ok" as const, data };
+    const dialog = (grantScope: number | null, o: Partial<AppState> = {}) => grantScopeDialog({ grants, grantScope, me: who, ...o });
+
+    it("the row: its chip, and ONE obvious way in — a button that opens the dialog; nothing renders under the row", () => {
+      for (const grantScope of [null, 1]) {
+        const list = grantListBody({ grants, grantRevokeArm: null, orgSlug: "acme", ...({ grantScope } as object) });
+        expect(list).toMatch(/data-act="grantScopeOpen" data-arg="1" data-grant-change="1" aria-haspopup="dialog"[^>]*>Change organization&hellip;<\/button>/);
+        expect(list.match(/data-act="grantScopeOpen"/g)).toHaveLength(3);
+        expect(list).toContain('data-grant-org="acme"'); // the chip stays
+        for (const gone of ["data-grant-scope", "grantScopeToggle", "aria-expanded", "data-seg=", "grantOrgToggle", "grantMode", "data-dd="]) expect(list, gone).not.toContain(gone);
+      }
+      expect(dialog(null)).toBe("");
+      expect(dialog(99)).toBe(""); // a connection that is gone: no dialog
+    });
+
+    it("is a root-level overlay in the app's modal shell: titled with the app's name, a Done button, the backdrop and the × close it", () => {
+      const html = dialog(1);
+      expect(html).toMatch(/^<div data-overlay="grant-scope" class="cnpy-cmodal">/);
+      expect(html).toContain('<div data-act="grantScopeClose" class="cnpy-cmodal-back" aria-hidden="true"></div>');
+      expect(html).toMatch(/id="grant-scope" role="dialog" aria-modal="true" aria-labelledby="grant-scope-t" aria-describedby="grant-scope-d" tabindex="-1" data-grant-scope="1"/);
+      expect(html).toContain('class="cnpy-surface cnpy-cmodal-box cnpy-scroll"'); // the shell that is a bottom sheet on a phone
+      expect(html).toMatch(/id="grant-scope-t"[^>]*>Claude &lt;Code&gt; &middot; how it picks an organization<\/div>/);
+      expect(html).toMatch(/data-act="grantScopeClose" data-grant-done[^>]*>Done<\/button>/);
+      expect(html).toMatch(/data-act="grantScopeClose" aria-label="Close"/);
+      expect(html).not.toMatch(/>Save</);
+      expect(html).toContain('data-grant-status="idle"');
+      expect(html).toContain("Changes save as you make them.");
+      // …and in the page it sits at the root, with the dropdown's menu AFTER it (so above it).
+      const page = render(app({ screen: "settings", grants, grantScope: 1, dd: { open: "grant-current-1", opening: false, closing: false } }));
+      expect(page.indexOf('data-overlay="grant-scope"')).toBeGreaterThan(0);
+      expect(page.indexOf('data-overlay="dd-grant-current-1"')).toBeGreaterThan(page.indexOf('data-overlay="grant-scope"'));
+      expect(render(app({ screen: "feed", grants, grantScope: 1 }))).not.toContain('data-overlay="grant-scope"');
+    });
+
+    it("Manual: the switch with what it does, the organization it is working in (a dropdown), and a switch per organization of mine", () => {
+      const html = dialog(1);
+      expect(html).toContain('data-seg="grant-mode-1"');
+      expect(html).toContain('data-act="grantMode" data-arg="1:repo"');
+      expect(html).not.toContain('data-arg="1:manual"'); // the picked option is inert
+      expect(html).toContain(`data-grant-mode-says="manual" style="margin:0;font-size:12.5px;line-height:1.55;color:var(--fg-55)">${GRANT_MODE_SENTENCE.manual}</p>`);
+      expect(html).toContain("only you can add one");
+      expect(html).toContain('data-dd="grant-current-1"');
+      expect(html).not.toContain("<select");
+      expect([...html.matchAll(/aria-label="([^"]+): this connection may use it" data-act="grantOrgToggle" data-arg="1:([a-z]+):(on|off)" role="switch" aria-checked="(true|false)"/g)].map((m) => [m[1], m[2], m[3], m[4]]))
+        .toEqual([["Acme Robotics", "acme", "off", "true"], ["SaplingLearn", "saplinglearn", "off", "true"], ["Third &lt;Co&gt;", "third", "on", "false"]]);
+      expect(html).toContain("working here");
+      expect(html).not.toContain("data-grant-noorg");
+      expect(html).not.toContain("data-grant-follow");
+    });
+
+    it("Manual with no organization: it says the connection reads and writes nothing until one is picked", () => {
+      const html = dialog(3);
+      expect(html).toMatch(/data-grant-noorg role="alert"[^>]*>The organization it was working in is no longer available to you, so it reads and writes nothing\. Pick one\.<\/span>/);
+      expect(html).toContain('data-dd="grant-current-3"');
+    });
+
+    it("Follow the repository: what it does, my organizations, and the rule that picks one — no toggles, no dropdown", () => {
+      const html = dialog(2);
+      expect(html).toContain(`data-grant-mode-says="repo"`);
+      expect(html).toContain(GRANT_MODE_SENTENCE.repo);
+      expect(html).toContain("Anywhere else it reads and writes nothing.");
+      expect([...html.matchAll(/data-grant-reach="([a-z]+)"/g)].map((m) => m[1])).toEqual(["acme", "saplinglearn", "third"]);
+      expect(html).toContain("Each call uses the one that has the repository the agent is in connected");
+      expect(html).toContain("Used so far in SaplingLearn.");
+      expect(html).toContain('data-act="grantMode" data-arg="2:manual"');
+      for (const gone of ["grantOrgToggle", "data-dd=", "data-grant-noorg"]) expect(html, gone).not.toContain(gone);
+    });
+
+    it("every change says how it went, inside the dialog: saving (controls held), saved, and a plan refusal on that organization's row", () => {
+      const saving = dialog(1, { grantScopeNote: { kind: "saving", text: "Saving…" } });
+      expect(saving).toContain('aria-busy="true"');
+      expect(saving).toMatch(/data-grant-status="saving" role="status" aria-live="polite"[^>]*>Saving…<\/div>/);
+      expect(saving.match(/<button aria-label="[^"]+" disabled data-act="grantOrgToggle"/g)).toHaveLength(3);
+      expect(dialog(1).match(/disabled data-act="grantOrgToggle"/g)).toBeNull();
+      expect(dialog(1, { grantScopeNote: { kind: "saved", text: "Saved. It may use that organization now." } })).toMatch(/data-grant-status="saved"[^>]*color:var\(--green\)">Saved\. It may use that organization now\.<\/div>/);
+
+      const sentence = "You have reached the 5 agent connections per person the Free plan of this organization includes.";
+      const refused = dialog(1, { grantScopeNote: { kind: "error", text: sentence, org: "third" } });
+      expect(refused).toContain(`<div data-grant-refused="third" role="alert"`);
+      expect(refused.indexOf('data-grant-refused="third"')).toBeGreaterThan(refused.indexOf('data-grant-allow="third"'));
+      expect(refused.match(/data-grant-refused=/g)).toHaveLength(1); // on THAT organization's row only
+      expect(refused).toContain(sentence);
+      expect(refused).toMatch(/data-grant-status="error"[^>]*>That change was not saved\.<\/div>/);
+      expect(refused).not.toContain('aria-busy="true"');
+      // A refusal that is not one organization's (the mode, the dropdown) is said at the foot.
+      expect(dialog(1, { grantScopeNote: { kind: "error", text: "That could not be saved. Try again." } })).toMatch(/data-grant-status="error"[^>]*>That could not be saved\. Try again\.<\/div>/);
+    });
+  });
+
+  it("the tile names the account connections land under, and the empty list says where else to look", () => {
+    const me = { handle: "andres", orgs: [] } as unknown as AppState["me"];
+    const html = mcpAccessSection({ grants: { status: "ok", data: [] }, grantRevokeArm: null, grantsAll: false, me });
+    expect(html).toMatch(/<span data-mcp-account>Connections you approve as <strong[^>]*>@andres<\/strong> show up here\.<\/span>/);
+    expect(html).toContain("If you approved one and it isn&#39;t here, check which account the Allow page was signed in as.".replace("&#39;", "'"));
+    expect(mcpAccessSection({ grants: { status: "ok", data: [] }, grantRevokeArm: null, grantsAll: false })).not.toContain("data-mcp-account");
   });
   it("access tokens are the CURRENT org's and say so; revoke only — and nothing at all when there are none", () => {
     const tokens = { status: "ok" as const, data: [{ id: 4, hint: "ab12", created_at: "2026-09-01T10:00:00.000Z", last_used_at: null }] };

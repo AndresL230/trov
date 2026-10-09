@@ -41,6 +41,11 @@ GITHUB_APP_SLUG = "trov-by-trovlabs"
 # rendered bodies to a table and sends nothing. A deploy sets this from HERE: a value changed only in
 # the Cloudflare dashboard is put back by the next deploy.
 NOTIFICATIONS_MODE = "resend"
+# Where each bug report / support message (the app's bug button and Contact support, the site's Contact form) is mailed: the operator's
+# inbox. Not a secret. While it is EMPTY a report is still stored and shows
+# in Platform › Support, and no mail is sent (its mail outcome reads `skipped`). Replying to the mail
+# answers the reporter (Reply-To is their provider-verified address). docs/architecture/support.md.
+SUPPORT_NOTIFY_EMAIL = "hello@trov.dev"
 
 # Billing — Stripe (docs/architecture/billing.md › Owner checklist). The ids of the recurring PRICES the
 # owner created in the Stripe dashboard (`price_…`), not amounts: Trov never holds a price, and the amount
@@ -49,8 +54,15 @@ NOTIFICATIONS_MODE = "resend"
 # While it is empty Pro cannot be bought, and while STRIPE_SECRET_KEY /
 # STRIPE_WEBHOOK_SECRET (secrets: `wrangler secret put …`) are unset every billing route answers 503
 # `billing_unavailable` and the app is otherwise unchanged. The yearly id is optional.
-STRIPE_PRICE_TEAM = "price_1UOB9HH7KZijv6AwWF3LPpFr"
+STRIPE_PRICE_TEAM = "price_1UOOExH7KZijv6AwQIPrilmu"
 STRIPE_PRICE_TEAM_YEARLY = ""
+# Tax: "on" → every checkout asks Stripe Tax to work out the tax and takes a billing address. Stripe charges
+# tax only where the account holds a tax registration, so with none the total is the price alone. Turn it on
+# only AFTER Stripe Tax is set up in the dashboard (an origin address, a product tax category, the price's
+# tax behaviour set to exclusive): with it on and Stripe Tax not set up, Stripe refuses the checkout.
+# On since 2026-10-09: set up in Stripe TEST and LIVE mode (price exclusive, origin address, SaaS business-use
+# category on the product and as the account default, no registrations).
+STRIPE_TAX = "on"
 
 [observability]
 enabled = true
@@ -65,8 +77,10 @@ enabled = true
 PUBLIC_ORIGIN = "https://trov.dev"
 GITHUB_APP_SLUG = ""
 NOTIFICATIONS_MODE = "local"
+SUPPORT_NOTIFY_EMAIL = ""
 STRIPE_PRICE_TEAM = ""
 STRIPE_PRICE_TEAM_YEARLY = ""
+STRIPE_TAX = ""
 
 [[previews.d1_databases]]
 binding = "DB"

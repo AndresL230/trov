@@ -1,7 +1,7 @@
 ---
 name: read-plan
 description: Use when an admin wants to read the current roadmap plan and check it against what actually happened (triggers — "read the plan", "what's the roadmap state", "show me the plan against reality", "where does the roadmap stand"). Read-only — this skill never writes.
-allowed-tools: mcp__trov__get_roadmap, mcp__trov__get_events, mcp__trov__query
+allowed-tools: mcp__trov__get_roadmap, mcp__trov__get_events, mcp__trov__query, mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 
 # Read Plan ← Trov
@@ -27,6 +27,24 @@ its own `get_roadmap` call) before writing.
 
 - To write or change the plan — that's `update-plan`, and it's explicit-only.
 - For a person's own work items — that's `my-work` (`get_my_work`), not the roadmap.
+
+## Which organization — pass `repo` on every call
+
+One Trov connection covers every organization you belong to, so every Trov tool takes the repository
+you are working in. Once per session, run `git remote get-url origin` and reduce it to `owner/name`
+(`git@github.com:acme/app.git` and `https://github.com/acme/app` are both `acme/app`). Pass that as
+`repo` on EVERY Trov call this skill makes. No remote, or not a GitHub one: leave `repo` out.
+
+- A connection that **follows the repository** acts in the organization that has that repository
+  connected. `repo_required` / `not_connected` mean NOTHING was read or written: tell the person this
+  repository is not connected to any of their organizations (Trov › Org settings › Repositories) and
+  stop — never pass a different repository to get an answer. `ambiguous_org` lists the candidates:
+  ask the person which, then pass it as `org`.
+- A **manual** connection ignores `repo` and acts in its current organization. `org_unavailable` /
+  `org_not_allowed` list what it may use: ask the person, never guess, and prefer `org` on the call
+  over `switch_org` (a switch moves every session that shares the connection).
+- Not sure where you are? `get_connection` (same `repo`) answers: the organization this call would
+  act in, the connection's mode, and what it can reach.
 
 ## Procedure
 

@@ -11,18 +11,46 @@
 //     a visit to the landing page), so the landing never writes it.
 //   • The theme toggle is the app's `cycleTheme` (Light ⇄ Dark) and
 //     reads the app's theme, instead of the canvas's own light/dark store.
-//   • Sign in lives ONLY in the nav (top right); the hero keeps the canvas's CTAs.
+//   • Sign in is in the nav (top right) and is the hero's first button ("Sign up
+//     free": sign-in IS sign-up, either provider creates the account). Reopened from
+//     inside the app, that button opens the Guide instead.
 //   • Pricing (not in the canvas): the last section is web/src/pricing.ts, the same
 //     render the standalone /pricing page uses.
+//   • The banner (not in the canvas; 2026-10): the first-run card's purple banner
+//     (`.site-banner` in trov.css, one definition with `.cnpy-orgs-banner`) is carried
+//     through the page — the hero stands the Review mockup on it, "Agents propose,
+//     people decide" is the same card on its side, the sign-in dialog is the card
+//     itself, and every tour mockup stands on a field of its dots.
+//   • The page is `data-morph="landing"` and the dialog a `data-overlay`, so opening
+//     or closing Sign in patches the page in place: nothing in it is rebuilt or replays.
+//   • The tour is explorable (2026-10): each mockup is a card that opens the feature
+//     in a large dialog (`featureDialog`, a second `data-overlay`) — the same mockup
+//     drawn big, what the Guide says about it, and previous / next through all seven.
+//     site-feature.ts owns its opening, stepping, closing, keys and focus.
 //   • Motion (not in the canvas): the mockups act out the product. Elements carry
 //     `data-rv` and render hidden; landing-motion.ts plays them as they scroll in
 //     and the CSS in trov.css runs the choreography, each step timed by `--d`.
 
 import { esc } from "./ui";
+import { trovMark } from "@shared/mark";
 import { TROV_REPO, siteFooter, siteMark as mark } from "./site-chrome";
 import { pricingSection } from "./pricing";
+import { segmented } from "./segmented";
+import { PLANS, seatsPhrase } from "@shared/plans";
+import { PRICING, canPurchasePlan, formatPrice, purchaseHref } from "@shared/pricing";
+import { CONNECTION_NOTE, connectSteps } from "./mcp-connect";
+import type { FeatureState } from "./site-feature-core";
+import { AGENT_TAG, featureMock, initials, pill } from "./landing-mocks";
 
 
+// Who says what, ONCE (the 2026-10 redundancy pass — keep it that way):
+//   • open sign-up, no invitation ........ the line under the hero's buttons
+//   • agents propose, people decide ...... the authority card (the rule); Security lists every
+//                                          person-only verdict; a tour row does not restate it
+//   • whose data it is, where the source is  the pricing Questions (pricing.ts), not Security
+//   • the install commands and the three connect steps  the plugin card (mcp-connect.ts)
+//   • a feature's detail ................. its dialog (TOUR_FACTS); the row keeps one paragraph
+//
 // Reveal keys already played, for THIS render (set by landingView). A played
 // element renders settled (`is-done`), so a rerender — the theme toggle, the
 // sign-in dialog — never replays or re-hides it.
@@ -47,22 +75,17 @@ const SUN = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke=
 const MOON = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`;
 /** The accent check, drawn on (stroke) when its section plays. */
 const check = (size: number, start: number, extra = "") => `<svg class="site-check" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="flex:none;${at(start)}${extra}"><path d="M20 6 9 17l-5-5"></path></svg>`;
-const AGENT_TAG = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:9.5px;color:var(--fg-40);border:1px solid var(--border);border-radius:5px;padding:1px 5px"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="8" width="16" height="11" rx="2"></rect><path d="M12 8V4M8 13h.01M16 13h.01"></path></svg>agent</span>`;
 
 // ── shared pieces of the canvas's repeated markup ────────────────────────────
 const MONO_EYEBROW = "font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--accent)";
+const GROUP_LABEL = "font-family:var(--label);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40)";
 const H2 = "margin:0;font-size:clamp(28px, 3.4vw, 38px);font-weight:650;letter-spacing:-0.025em";
 const LEDE = "margin:14px 0 0;max-width:560px;font-size:15.5px;line-height:1.6;color:var(--fg-70);text-wrap:pretty";
 const section = (top = 150) => `max-width:1120px;margin:0 auto;padding:${top}px 24px 0`;
-const MOCK = "flex:1.3 1 400px;min-width:0;border:1px solid var(--border);border-radius:12px;box-shadow:var(--lift-shadow);overflow:hidden";
+const MOCK = "border:1px solid var(--border);border-radius:12px;box-shadow:var(--lift-shadow);overflow:hidden";
+/** The Trov mark, large, faint and tilted behind a banner's text (the first-run card's `.cnpy-orgs-art`). */
+const BANNER_ART = `<span class="site-banner-art" aria-hidden="true">${trovMark(100, "currentColor")}</span>`;
 
-/** A label-face status pill; `c` is a color var name (green / amber / blue / red). */
-function pill(text: string, c: string, size = "8.5px", pad = "1.5px 5px"): string {
-  return `<span style="font-family:var(--label);font-size:${size};font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--${c});border:1px solid color-mix(in srgb, var(--${c}) 45%, transparent);background:color-mix(in srgb, var(--${c}) 11%, transparent);border-radius:4px;padding:${pad};flex:none">${text}</span>`;
-}
-function initials(text: string, size = 26, font = "10px"): string {
-  return `<span style="width:${size}px;height:${size}px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:${font};font-weight:600;display:grid;place-items:center;flex:none">${text}</span>`;
-}
 function segTab(text: string, on: boolean, divider = false): string {
   return `<span style="padding:3px 10px;${on ? "background:var(--hover);color:var(--fg)" : "color:var(--fg-55)"}${divider ? ";border-left:1px solid var(--border)" : ""}">${text}</span>`;
 }
@@ -73,16 +96,22 @@ function heading(key: string, title: string, lede = ""): string {
     ${lede ? `<p style="${LEDE}">${lede}</p>` : ""}
   </div>`;
 }
+/** One feature of the tour: the row on the page AND the dialog it opens into. */
+interface TourItem { key: TourKey; name: string; title: string; body: string; mockStyle: string; mock: string }
+const EXPAND = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-7 7"></path><path d="M10 20H4v-6"></path><path d="M4 20l7-7"></path></svg>`;
 /** One product-tour row: copy on one side, mockup on the other (`flip` swaps them).
- *  Each half slides in from its own side; the mockup's contents then play. */
-function tourRow(key: string, eyebrow: string, title: string, body: string, mockStyle: string, mockInner: string, flip = false): string {
+ *  Each half slides in from its own side; the mockup's contents then play. The Explore button
+ *  opens the dialog; the mockup is the same action for a pointer (a card under the `hitArea`
+ *  pattern, out of the tab order and hidden from a screen reader, so the row has ONE control). */
+function tourRow(it: TourItem, flip: boolean): string {
   return `<div style="display:flex;gap:56px;align-items:center;flex-wrap:wrap${flip ? ";flex-direction:row-reverse" : ""}">
-    <div ${rv(`${key}-copy`, flip ? "rv-r" : "rv-l")} style="flex:1 1 320px;min-width:0">
-      <div style="${MONO_EYEBROW}">${eyebrow}</div>
-      <h3 style="margin:10px 0 0;font-size:23px;font-weight:650;letter-spacing:-0.015em">${title}</h3>
-      <p style="margin:12px 0 0;max-width:420px;font-size:14.5px;line-height:1.65;color:var(--fg-70);text-wrap:pretty">${body}</p>
+    <div ${rv(`${it.key}-copy`, flip ? "rv-r" : "rv-l")} style="flex:1 1 320px;min-width:0">
+      <div style="${MONO_EYEBROW}">${it.name}</div>
+      <h3 style="margin:10px 0 0;font-size:23px;font-weight:650;letter-spacing:-0.015em">${it.title}</h3>
+      <p style="margin:12px 0 0;max-width:420px;font-size:14.5px;line-height:1.65;color:var(--fg-70);text-wrap:pretty">${it.body}</p>
+      <button type="button" data-act="openFeature" data-arg="${it.key}:btn" aria-haspopup="dialog" class="site-explore" style="border-radius:8px">Explore ${it.name}${EXPAND}</button>
     </div>
-    <div ${rv(`${key}-mock`, `${flip ? "rv-l" : "rv-r"} site-lift`)} style="${mockStyle};${at(120)}">${mockInner}</div>
+    <div ${rv(`${it.key}-mock`, `${flip ? "rv-l is-flip" : "rv-r"} site-stage`)} style="flex:1.3 1 400px;min-width:0;${at(120)}"><div class="site-lift site-fxcard cnpy-hitbox" data-fx="${it.key}" style="${it.mockStyle}">${it.mock}<button type="button" data-act="openFeature" data-arg="${it.key}" class="cnpy-hit" tabindex="-1" aria-hidden="true"></button></div></div>
   </div>`;
 }
 
@@ -101,7 +130,12 @@ function nav(dark: boolean, signedIn: boolean): string {
       <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
         <a href="${TROV_REPO}" target="_blank" rel="noopener" title="GitHub" class="site-iconbtn">${GH_MARK(17)}</a>
         <button data-act="cycleTheme" title="Toggle theme" class="site-iconbtn" style="border:1px solid var(--border)">${dark ? MOON : SUN}</button>
-        <button data-act="${signedIn ? "siteBack" : "openSignIn"}" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">${signedIn ? "Back to the app" : "Sign in"}</button>
+        ${signedIn
+          ? `<button data-act="siteBack" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Back to the app</button>`
+          // Two ways in, said apart: a quiet Sign in for someone with an account, and the page's one accent
+          // button for someone without (Get started, the hero's label), which opens the dialog on its plan choice.
+          : `<button data-act="openSignIn" data-field="navSignIn" class="site-nav-signin" style="border-radius:8px">Sign in</button>
+        <button data-act="openSignIn" data-arg="signup" data-field="navStart" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Get started</button>`}
       </div>
     </div>
   </nav>`;
@@ -112,7 +146,7 @@ function nav(dark: boolean, signedIn: boolean): string {
 // lifts into place, then acts out the product — an agent's proposed lines type
 // into the diff, the Promote button draws the eye, a PERSON promotes it, and the
 // queue badge and a toast confirm it went live. It plays once and rests there.
-function hero(): string {
+function hero(signedIn: boolean): string {
   const HEADLINE = "Shared memory for your team and its coding agents.";
   const words = HEADLINE.split(" ").map((w, i) => `<span class="site-st st-word" style="${at(80 + i * 55)}">${w}</span>`).join(" ");
 
@@ -136,17 +170,26 @@ function hero(): string {
   const diffTab = (label: string, on: boolean) => `<span style="padding:3px 9px;border-radius:6px;font-size:10.5px;font-weight:500;${on ? "border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft)" : "border:1px solid var(--border);color:var(--fg-55)"}">${label}</span>`;
   const dot = `<span style="width:10px;height:10px;border-radius:50%;background:var(--border-strong);flex:none"></span>`;
 
-  return `<header id="site-top" style="max-width:1120px;margin:0 auto;padding:96px 24px 0;text-align:center">
-    <div ${rv("hero-copy", "rv-static")}>
-      <h1 style="margin:0 auto;max-width:820px;font-size:clamp(38px, 5.4vw, 62px);line-height:1.06;font-weight:650;letter-spacing:-0.032em;text-wrap:balance">${words}</h1>
-      <p class="site-st" style="margin:22px auto 0;max-width:620px;font-size:17.5px;line-height:1.6;color:var(--fg-70);text-wrap:pretty;${at(520)}">Agents load what your team already decided, record what actually shipped, and wait for a person to approve anything that becomes official.</p>
-      <div class="site-st" style="margin-top:34px;display:flex;justify-content:center;gap:12px;flex-wrap:wrap;${at(640)}">
-        <button data-act="siteGuide" class="site-btn site-btn-solid">Get started</button>
-        <a href="${TROV_REPO}" target="_blank" rel="noopener" class="site-btn site-btn-outline">${GH_MARK(15)}Read the code</a>
+  // Signed out, the first button opens Sign in (which is also sign-up: either provider creates the
+  // account, no invitation needed). Reopened from inside the app, it goes to the Guide instead.
+  const primary = signedIn
+    ? `<button data-act="siteGuide" class="site-btn site-btn-onb">Open the Guide</button>`
+    : `<button data-act="openSignIn" data-arg="signup" class="site-btn site-btn-onb">Get started</button>`;
+  return `<header id="site-top" class="site-hero">
+    <div class="site-banner site-hero-band" style="border-radius:16px">
+      ${BANNER_ART}
+      <div ${rv("hero-copy", "rv-static site-hero-in")}>
+        <h1 class="site-hero-h">${words}</h1>
+        <p class="site-st site-hero-lede" style="${at(520)}">Agents load what your team already decided, record what actually shipped, and wait for a person to approve anything that becomes official.</p>
+        <div class="site-st site-hero-cta" style="${at(640)}">
+          ${primary}
+          <a href="${TROV_REPO}" target="_blank" rel="noopener" class="site-btn site-btn-onb-line">${GH_MARK(15)}Read the code</a>
+        </div>
+        <p class="site-st site-hero-note" style="${at(740)}">Sign up with GitHub or Google. No invitation needed.</p>
       </div>
     </div>
 
-    <div ${rv("hero-mock", "rv-lift")} style="margin:72px auto 0;max-width:1060px;text-align:left;border:1px solid var(--border-strong);border-radius:13px;background:var(--bg);box-shadow:var(--lift-shadow);overflow:hidden;${at(MOCK_IN)}">
+    <div class="site-hero-stage"><div ${rv("hero-mock", "rv-lift site-hero-mock")} style="border-radius:13px;${at(MOCK_IN)}">
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border)">
         ${dot}${dot}${dot}
         <span style="margin:0 auto;font-family:var(--label);font-size:11px;color:var(--fg-40);border:1px solid var(--border);border-radius:6px;padding:3px 14px">trov.dev/acme/#review</span>
@@ -227,7 +270,7 @@ function hero(): string {
           </div>
         </div>
       </div>
-    </div>
+    </div></div>
   </header>`;
 }
 
@@ -299,7 +342,7 @@ function loop(): string {
     </div>`;
 
   return `<section id="site-how" style="${section(140)}">
-    ${heading("how-head", "Orient, work, record.", "The loop that keeps the store current: agents read before they start and write back when they finish.")}
+    ${heading("how-head", "Orient, work, record.")}
     <div style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:16px;align-items:stretch">
       ${step(0, "01 · Orient", "Before touching an existing area, the agent searches Trov and reads the relevant docs and decisions.", orient)}
       ${step(1, "02 · Work", "The agent builds on what the team decided instead of guessing.", work)}
@@ -311,22 +354,21 @@ function loop(): string {
 // ── 4 · agents propose, people decide ────────────────────────────────────────
 function authority(): string {
   return `<section style="max-width:1120px;margin:0 auto;padding:140px 24px 0">
-    <div style="display:flex;gap:56px;align-items:center;flex-wrap:wrap">
-      <div ${rv("authority-copy", "rv-l")} style="flex:1 1 380px;min-width:0">
-        <h2 style="${H2};text-wrap:balance">Agents propose, people decide.</h2>
-        <p style="margin:16px 0 0;max-width:480px;font-size:15.5px;line-height:1.65;color:var(--fg-70);text-wrap:pretty">No agent tool can approve, promote, or reject anything. Those actions only exist in the signed-in web app. Rejected proposals and old versions are kept, never deleted.</p>
+    <div ${rv("authority", "site-split")} style="border-radius:14px">
+      <div class="site-banner site-split-banner">
+        ${BANNER_ART}
+        <h2>Agents propose, people decide.</h2>
+        <p>No agent tool can approve, promote, or reject anything. Those actions only exist in the signed-in web app. Rejected proposals and old versions are kept, never deleted.</p>
       </div>
-      <div ${rv("authority-card", "rv-r")} style="flex:1 1 380px;min-width:0;${at(120)}">
-        <div class="site-lift" style="border:1px solid var(--border);border-radius:13px;padding:34px 36px;box-shadow:var(--lift-shadow)">
-          <div style="display:flex;align-items:center;gap:12px">
-            <span style="font-size:17px;font-weight:650">Deploy process</span>
-            ${pill("staged", "amber", "10px", "2px 7px")}
-          </div>
-          <div style="margin-top:8px;font-size:12.5px;color:var(--fg-55)">Waiting for a verdict since Tue · only a signed-in person sees these buttons</div>
-          <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
-            <span class="site-st" style="border:1px solid var(--border-strong);color:var(--fg-70);font-size:14.5px;font-weight:600;padding:11px 26px;border-radius:10px;${at(450)}">Reject</span>
-            <span class="site-st site-ring" style="background:var(--accent);color:var(--accent-fg);font-size:14.5px;font-weight:600;padding:11px 30px;border-radius:10px;${at(560)}--ring:1100ms">Promote</span>
-          </div>
+      <div class="site-split-body">
+        <div class="site-st" style="display:flex;align-items:center;gap:12px;${at(260)}">
+          <span style="font-size:17px;font-weight:650">Deploy process</span>
+          ${pill("staged", "amber", "10px", "2px 7px")}
+        </div>
+        <div class="site-st" style="margin-top:8px;font-size:12.5px;line-height:1.5;color:var(--fg-55);${at(340)}">Waiting for a verdict since Tuesday.</div>
+        <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
+          <span class="site-st" style="border:1px solid var(--border-strong);color:var(--fg-70);font-size:14.5px;font-weight:600;padding:11px 26px;border-radius:10px;${at(450)}">Reject</span>
+          <span class="site-st site-ring" style="background:var(--accent);color:var(--accent-fg);font-size:14.5px;font-weight:600;padding:11px 30px;border-radius:10px;${at(560)}--ring:1100ms">Promote</span>
         </div>
       </div>
     </div>
@@ -334,8 +376,59 @@ function authority(): string {
 }
 
 // ── 5 · product tour ─────────────────────────────────────────────────────────
-function tour(): string {
-  const S = 380; // mockup contents start once the mockup has slid in
+export const TOUR_KEYS = ["docs", "feed", "tickets", "roadmap", "mywork", "handoffs", "artifacts"] as const;
+export type TourKey = (typeof TOUR_KEYS)[number];
+
+/** What the dialog says about each feature: three or four statements, each one taken from Help › Guide
+ *  (render.ts `guideView`: "How it works" for Docs, the Tour's own section for the rest). Nothing here
+ *  is new copy — when the Guide changes, change this with it. */
+export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
+  docs: [
+    "The library is split into Technical and Product spaces, each grouped into sections like Architecture and Decisions.",
+    "Opening a doc expands its heading outline in the tree, and Version history keeps every earlier version.",
+    "An agent's change is a staged version. The live doc stays untouched until a person promotes it.",
+    "New doc lets you propose one yourself.",
+  ],
+  feed: [
+    "A timeline of everything that shipped, from people and agents alike.",
+    "For reading shows each entry's title and a short brief in plain words. For agents shows the full record.",
+    "Each entry links to its PR, commit, or issue and says whether an agent wrote it.",
+    "Filter by author, tag, or time.",
+  ],
+  tickets: [
+    "Anyone can file a bug, request, question, or access ask.",
+    "The Board has one column per status. Drag a card to change its status or its place in a column.",
+    "Table lists the same tickets grouped by sprint. No sprint means Backlog.",
+    "Issues in the product's GitHub repo show up as tickets. Apart from that, only a person closes a ticket: a merged PR never does.",
+  ],
+  roadmap: [
+    "Narrative reads the plan and its sprint cards, beside what's in progress now and the latest from the feed.",
+    "Timeline puts the sprints on a calendar: each bar runs from a sprint's start to its due date, and overdue ones are marked.",
+    "A sprint's progress bar counts its tickets closed out of its total.",
+    "Completing a sprint is always a person's call.",
+  ],
+  mywork: [
+    "Trov opens here.",
+    "Tickets for you: your open tickets, with their sprint and when it is due.",
+    "Needs your review: what agents staged, with Promote, Ratify and Reject right there.",
+    "It reads only what Trov has already captured, so it loads instantly.",
+  ],
+  handoffs: [
+    "A handoff is a note from one session to the next: the task, what's done, what's next, and the files that matter.",
+    "Your agent leaves one, addressed to you, a teammate, or anyone.",
+    "At the start of your next session the ones waiting are listed, and only the one you pick is claimed.",
+    "Unclaimed handoffs expire after 7 days.",
+  ],
+  artifacts: [
+    "An artifact is a page an agent or person made: an HTML design, a markdown report, an SVG or mermaid diagram, an image, a PDF, or a file.",
+    "Trov stores every version and links it to the ticket or sprint it came from.",
+    "A new artifact starts as a draft. Published shares it. Ratify is a person's sign-off on the latest version, and only a person can give it.",
+    "Compare versions diffs any two.",
+  ],
+};
+
+function tourItems(): TourItem[] {
+  const S = 160; // mockup contents start once the mockup has arrived (its own reveal is --fx-slow)
   const treeHead = (label: string, top: string) => `<div style="font-family:var(--label);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);padding:${top} 6px 6px">${label}</div>`;
   const tree = (i: number, style: string, text: string) => `<div class="site-st st-l" style="${style};${at(S + i * 70)}">${text}</div>`;
   const docs = `
@@ -392,7 +485,7 @@ function tour(): string {
         </div>
       </div>`;
 
-  const prio = (p: string, c: string) => `<span style="font-family:var(--label);font-size:8.5px;font-weight:600;text-transform:uppercase;color:var(--${c});border:1px solid ${c === "fg-55" ? "var(--border-strong)" : `color-mix(in srgb, var(--${c}) 45%, transparent)`};border-radius:4px;padding:1px 4px;flex:none">${p}</span>`;
+  const prio = (p: "High" | "Low") => `<span style="font-weight:${p === "High" ? "600;color:var(--fg)" : "500"}">${p}</span>`;
   const nobody = `<span style="width:18px;height:18px;border-radius:50%;border:1px dashed var(--border-strong);display:grid;place-items:center;font-size:8px;font-weight:600;color:var(--fg-40);flex:none">–</span>`;
   const card = (i: number, title: string, meta: string, who: string) => `<div class="site-st st-pop" style="border:1px solid var(--border);border-radius:8px;padding:8px 9px;background:var(--bg);${at(S + 250 + i * 110)}">
       <div style="font-size:11px;font-weight:600;line-height:1.35">${title}</div>
@@ -408,9 +501,9 @@ function tour(): string {
         <span style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:10.5px;font-weight:500">${segTab("Board", true)}${segTab("Table", false, true)}</span>
       </div>
       <div style="padding:14px 16px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(110px,100%),1fr));gap:10px;align-items:start">
-        ${column("Triage", "blue", [card(0, "Email digest lands twice on Mondays", `#218 · ${prio("P2", "fg-55")}`, nobody), card(3, "Onboarding checklist is stale", "↗ GitHub #230", initials("SO", 18, "7.5px"))])}
-        ${column("In progress", "accent", [card(1, "Rate limiting on the public API", `#212 · ${prio("P0", "red")}`, initials("LP", 18, "7.5px"))])}
-        ${column("Testing", "amber", [card(2, "Retry-After on 429 responses", "#213 · 3 comments", initials("MC", 18, "7.5px"))])}
+        ${column("Triage", "blue", [card(0, "Email digest lands twice on Mondays", "#218", nobody), card(3, "Onboarding checklist is stale", `#230 · ${prio("Low")}`, initials("SO", 18, "7.5px"))])}
+        ${column("In progress", "accent", [card(1, "Rate limiting on the public API", `#212 · ${prio("High")}`, initials("LP", 18, "7.5px"))])}
+        ${column("Testing", "amber", [card(2, "Retry-After on 429 responses", "#213", initials("MC", 18, "7.5px"))])}
         ${column("Done", "green", [card(4, "SSO step in the checklist", "#209", initials("SO", 18, "7.5px"))], true)}
       </div>`;
 
@@ -500,18 +593,70 @@ function tour(): string {
         ${artCard(2, bars([55, 80, 62]), "429 rates by org, last 7 days", "markdown", pill("draft", "fg-55"))}
       </div>`;
 
+  return [
+    { key: "docs", name: "Docs", title: "A library that stays reviewed", body: "Technical and Product spaces, full version history on every doc, and a heading outline for long pages.", mockStyle: MOCK, mock: docs },
+    { key: "feed", name: "Feed", title: "A timeline of what shipped", body: "Every entry leads with a short brief for people and links to the PRs, commits, and issues behind it. Agents get the full record.", mockStyle: `${MOCK};padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px`, mock: feed },
+    { key: "tickets", name: "Tickets", title: "A board the whole team files into", body: "Drag cards across Triage, In progress, Testing, and Done, or read the queue as a table by sprint. Comments with @mentions, sub-tickets, and GitHub issues mirrored in as tickets.", mockStyle: MOCK, mock: tickets },
+    { key: "roadmap", name: "Roadmap", title: "Sprints on a calendar", body: "A short narrative with its sprint cards, and a timeline that runs each sprint from start to due date, filled by its done tickets.", mockStyle: MOCK, mock: roadmap },
+    { key: "mywork", name: "My Work", title: "Your day on one page", body: "Your tickets, what's waiting on your review, your recent sessions and handoffs, and the repo at a glance.", mockStyle: `${MOCK};padding:20px 22px 22px`, mock: mywork },
+    { key: "handoffs", name: "Handoffs", title: "Pick up where the last session stopped", body: "An agent leaves a note for the next session or a teammate: what's done, what's next, and the branch. The next session offers it and claims it only when you say so.", mockStyle: MOCK, mock: handoffs },
+    { key: "artifacts", name: "Artifacts", title: "Designs and reports, versioned", body: "HTML pages, markdown reports, diagrams, images, and PDFs, linked to the ticket or sprint they came from.", mockStyle: MOCK, mock: artifacts },
+  ];
+}
+
+function tour(): string {
   return `<section id="site-tour" style="${section()}">
-    ${heading("tour-head", "One place for what the team knows.")}
+    ${heading("tour-head", "One place for what the team knows.", "Open any screen for a closer look.")}
     <div style="margin-top:64px;display:flex;flex-direction:column;gap:96px">
-      ${tourRow("docs", "Docs", "A library that stays reviewed", "Technical and Product spaces, full version history on every doc, and a heading outline for long pages.", MOCK, docs)}
-      ${tourRow("feed", "Feed", "A timeline of what shipped", "Every entry leads with a short brief for people and links to the PRs, commits, and issues behind it. Agents get the full record.", `${MOCK};padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px`, feed, true)}
-      ${tourRow("tickets", "Tickets", "A board the whole team files into", "Drag cards across Triage, In progress, Testing, and Done, or read the queue as a table by sprint. Comments with @mentions, sub-tickets, and GitHub issues mirrored in as tickets.", MOCK, tickets)}
-      ${tourRow("roadmap", "Roadmap", "Sprints on a calendar", "A short narrative with its sprint cards, and a timeline that runs each sprint from start to due date, filled by its done tickets.", MOCK, roadmap, true)}
-      ${tourRow("mywork", "My Work", "Your day on one page", "Your tickets, what's waiting on your review, your recent sessions and handoffs, and the repo at a glance.", `${MOCK};padding:20px 22px 22px`, mywork)}
-      ${tourRow("handoffs", "Handoffs", "Pick up where the last session stopped", "An agent leaves a note for the next session or a teammate: what's done, what's next, and the branch. The next session offers it and claims it only when you say so.", MOCK, handoffs, true)}
-      ${tourRow("artifacts", "Artifacts", "Designs and reports, versioned", "HTML pages, markdown reports, diagrams, images, and PDFs, linked to the ticket or sprint they came from. Agents publish them. Only a person can ratify one.", MOCK, artifacts)}
+      ${tourItems().map((it, i) => tourRow(it, i % 2 === 1)).join("\n      ")}
     </div>
   </section>`;
+}
+
+// ── a feature, opened: the tour's dialog ─────────────────────────────────────
+// The card grown large: the feature's name and promise, the screen itself drawn at the dialog's size
+// (landing-mocks.ts `featureMock` — fuller than the row's teaser, built from the real screen, inert and
+// static, so it is painted before it slides in), what the Guide says about it, and previous / next through all seven
+// without closing. ONE root-level `data-overlay`, patched in place by morph.ts; only `.site-fx-main`
+// (keyed by the feature) is replaced on a step, which is what plays the step's slide. `data-in` says how
+// it was opened (site-feature.ts): "vt" = a View Transition grew the card into it, "css" = the keyframe
+// entrance, "none" = reduced motion. It never changes while the dialog is open, so nothing replays.
+const CHEV = (d: "l" | "r") => `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d === "l" ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"}"></path></svg>`;
+function featureDialog(f: FeatureState): string {
+  const items = tourItems();
+  const i = Math.max(0, items.findIndex((it) => it.key === f.key));
+  const it = items[i];
+  const n = items.length;
+  const prev = items[(i + n - 1) % n];
+  const next = items[(i + 1) % n];
+  const fact = (text: string) => `<li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" aria-hidden="true" style="flex:none;margin-top:4px"><path d="M20 6 9 17l-5-5"></path></svg><span>${esc(text)}</span></li>`;
+  const dot = (j: number) => `<span class="site-fx-dot${j === i ? " is-on" : ""}" style="border-radius:2px"></span>`;
+  return `<div data-overlay="feature" class="site-fx" data-in="${f.mode}">
+    <div data-act="closeFeature" class="site-fx-back"></div>
+    <div class="site-fx-wrap">
+      <div role="dialog" aria-modal="true" aria-labelledby="site-fx-title" aria-describedby="site-fx-pos" class="site-fx-panel" style="border-radius:16px">
+        <button type="button" data-act="closeFeature" title="Close" aria-label="Close" class="site-fx-x" style="border-radius:8px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+        </button>
+        <div class="site-fx-main is-done" data-morph-key="${it.key}" data-dir="${f.dir}">
+          <div class="site-fx-titles">
+            <div style="${MONO_EYEBROW}">${it.name}</div>
+            <h2 id="site-fx-title">${it.title}</h2>
+          </div>
+          <div class="site-fx-stage"><div class="site-fx-mock" aria-hidden="true">${featureMock(it.key)}</div></div>
+          <ul class="site-fx-facts" aria-label="How ${it.name} works">${TOUR_FACTS[it.key].map(fact).join("")}</ul>
+        </div>
+        <div class="site-fx-foot">
+          <button type="button" data-act="stepFeature" data-arg="prev" class="site-fx-nav" style="border-radius:9px" aria-label="Previous: ${prev.name}">${CHEV("l")}<span>${prev.name}</span></button>
+          <div class="site-fx-pos">
+            <span id="site-fx-pos" aria-live="polite"><span class="site-vh">${it.name}, </span>${i + 1} of ${n}</span>
+            <span class="site-fx-dots" aria-hidden="true">${items.map((_, j) => dot(j)).join("")}</span>
+          </div>
+          <button type="button" data-act="stepFeature" data-arg="next" class="site-fx-nav is-next" style="border-radius:9px" aria-label="Next: ${next.name}"><span>${next.name}</span>${CHEV("r")}</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
 }
 
 // ── 6 · smaller features ─────────────────────────────────────────────────────
@@ -524,12 +669,12 @@ function extras(): string {
   const swatch = (bg: string, i: number) => `<span class="site-st st-pop" style="width:14px;height:14px;border-radius:50%;background:${bg};border:1px solid var(--border-strong);${at(420 + i * 80)}"></span>`;
   return `<section style="max-width:1120px;margin:0 auto;padding:130px 24px 0">
     <div ${rv("extras", "rv-static")} style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:16px">
-      ${card(0, t("Decisions"), "ADRs drafted by agents, ratified by people.")}
+      ${card(0, t("Decisions"), "Architecture decision records, in their own section of Docs.")}
       ${card(1, t("Search everything"), "One box jumps to any ticket, doc, sprint, artifact, prompt, or person. Agents also see pending proposals, labeled.")}
-      ${card(2, t("Prompt Library"), "Reusable prompts with variables. Agents stage new ones, people publish them.")}
+      ${card(2, t("Prompt Library"), "Reusable prompts with variables, and a new version on every save.")}
       ${card(3, t("Repo dashboard"), "Deploys, CI, drift, and usage from captured data. Unknown reads as unknown, never zero.")}
       ${card(4, t("Email digests"), "Daily or weekly, per section, so nobody has to poll the feed.")}
-      ${card(5,`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14.5px;font-weight:650">Light and dark</span><span style="display:flex;gap:4px;margin-left:auto">${swatch("#f6f6f7", 0)}${swatch("#1c1a16", 1)}</span></div>`, "Two themes, or follow your system.")}
+      ${card(5,`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14.5px;font-weight:650">Light and dark</span><span style="display:flex;gap:4px;margin-left:auto">${swatch("#f6f6f7", 0)}${swatch("#1c1a16", 1)}</span></div>`, "Or follow your system.")}
     </div>
   </section>`;
 }
@@ -545,7 +690,7 @@ function agents(): string {
     return `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${names.map((name) => `<span class="site-st st-pop" style="${st};${at(300 + n++ * 28)}">${name}</span>`).join("")}</div>`;
   };
   const group = (label: string, names: string[], admin = false) => `<div>
-      <div style="font-family:var(--label);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40)">${label}</div>
+      <div style="${GROUP_LABEL}">${label}</div>
       ${chips(names, admin)}
     </div>`;
   const tools = `
@@ -558,13 +703,14 @@ function agents(): string {
           ${group("Admin", ["update_plan"], true)}`;
   n = 0;
   const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "prompts", "artifacts", "read-plan", "update-plan"]);
-  const [cmd1, cmd1End] = typed("/plugin marketplace add AndresL230/trov", 700, 28);
-  const [cmd2, cmd2End] = typed("/plugin install trov@trov", cmd1End + 300, 28);
-  const prompt = `<span style="color:rgba(237,233,226,0.45)">$</span> `;
 
+  // The plugin card holds what is true about it and no more: the skills, then the SAME three steps and
+  // commands Settings and the guided setup show (mcp-connect.ts — one copy, with its Copy button).
+  // The row's columns are weighted (trov.css `.site-agents-row`) so the two cards are naturally the
+  // same height at desktop width.
   return `<section id="site-agents" style="${section()}">
     ${heading("agents-head", "For agents", "An MCP server agents connect to directly, and a Claude Code plugin that wires it up with the skills that drive the loop.")}
-    <div style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit, minmax(min(320px, 100%), 1fr));gap:16px;align-items:stretch">
+    <div class="site-agents-row">
       <div ${rv("agents-mcp")} style="border:1px solid var(--border);border-radius:13px;padding:26px 28px">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
           <span style="font-size:17px;font-weight:650">MCP server</span>
@@ -573,20 +719,18 @@ function agents(): string {
         <div style="margin-top:20px;display:flex;flex-direction:column;gap:16px">${tools}
         </div>
       </div>
-      <div ${rv("agents-plugin")} style="border:1px solid var(--border);border-radius:13px;padding:26px 28px;display:flex;flex-direction:column;${at(120)}">
+      <div ${rv("agents-plugin")} style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:13px;padding:26px 28px;${at(120)}">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
           <span style="font-size:17px;font-weight:650">Claude Code plugin</span>
-          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">10 skills, installed in two commands</span>
+          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">10 skills</span>
         </div>
         <div style="margin-top:12px">${skills}</div>
-        <div style="margin-top:auto;padding-top:22px">
-          <div style="border-radius:10px;background:var(--term);color:var(--term-fg);border:1px solid var(--border);padding:16px 18px;font-family:var(--code);font-size:12px;line-height:2;overflow-x:auto">
-            <div style="white-space:nowrap">${prompt}${cmd1}</div>
-            <div style="white-space:nowrap">${prompt}${cmd2}<span class="site-caret" style="${at(cmd2End + 150)}"></span></div>
-          </div>
-          <p style="margin:12px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55)">Wires the MCP server and loads all ten skills. Then connect by browser sign-in: run <span style="font-family:var(--label);font-size:11.5px">/mcp</span>, pick trov, and choose Authenticate.</p>
-          <button data-act="siteGuide" class="site-btn site-btn-outline" style="margin-top:16px">How Trov works, in the Guide</button>
+        <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--border)">
+          <div style="${GROUP_LABEL};margin-bottom:12px">Connect in three steps</div>
+          ${connectSteps("", "the connection shows up in Settings, under MCP access")}
+          <p style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55);text-wrap:pretty">${CONNECTION_NOTE}</p>
         </div>
+        <div style="margin-top:auto;padding-top:18px"><button data-act="siteGuide" class="site-btn site-btn-outline">How Trov works, in the Guide</button></div>
       </div>
     </div>
   </section>`;
@@ -598,43 +742,88 @@ function security(): string {
   return `<section id="site-security" style="${section()}">
     ${heading("security-head", "Security, in plain terms")}
     <div ${rv("security", "rv-static")} style="margin-top:44px;display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:14px 40px;max-width:900px">
-      ${row(0, "Sign-in with GitHub or Google, restricted to your org.")}
-      ${row(1, "Agents connect by browser sign-in; only hashes of their tokens are stored.")}
-      ${row(2, "Agents write as their person and can't claim another author.")}
-      ${row(3, "Agents can only change tickets assigned to their person.")}
-      ${row(4, "Tickets and sprints are never closed automatically.")}
-      ${row(5, "Only a person can ratify an artifact or publish a prompt.")}
-      ${row(6, "Artifact pages run in a sandbox, cut off from your session.")}
-      ${row(7, "GitHub webhooks are signature-verified.")}
+      ${row(0, "Agents connect by browser sign-in; only hashes of their tokens are stored.")}
+      ${row(1, "Agents write as their person and can't claim another author.")}
+      ${row(2, "Agents can only change tickets assigned to their person.")}
+      ${row(3, "Tickets and sprints are never closed automatically.")}
+      ${row(4, "Only a person can ratify a decision or an artifact, or publish a prompt.")}
+      ${row(5, "Artifact pages run in a sandbox, cut off from your session.")}
+      ${row(6, "GitHub webhooks are signature-verified.")}
     </div>
   </section>`;
 }
 
-// ── sign-in dialog (the old login card, now opened from the landing) ────────
-function signInDialog(): string {
-  return `<div data-act="closeSignIn" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);animation:cnpy-fade .14s ease"></div>
-  <div style="position:fixed;inset:0;z-index:61;display:grid;place-items:center;padding:16px;pointer-events:none">
-    <div role="dialog" aria-modal="true" aria-labelledby="signin-title" style="pointer-events:auto;position:relative;width:min(400px, 100%);border:1px solid var(--border-strong);border-radius:14px;padding:32px 30px 26px;background:var(--bg);box-shadow:var(--lift-shadow);animation:cnpy-pop .16s ease">
-      <button data-act="closeSignIn" title="Close" aria-label="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--fg-40)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"></path></svg>
-      </button>
-      <div style="display:flex;align-items:center;justify-content:center;gap:10px">
-        ${mark(26)}
-        <span id="signin-title" style="font-size:22px;font-weight:600;letter-spacing:-0.02em">Sign in to Trov</span>
+// ── sign-in dialog (opened from the landing) ─────────────────────────────────
+// The first-run card, bannered: banner (who is speaking), body (the two providers), foot (the one
+// thing a newcomer needs to know). ONE root-level `data-overlay`, so morph.ts adds and removes it
+// beside the page instead of rebuilding the page under it.
+const GH_24 = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.37.5 0 5.78 0 12.29c0 5.2 3.44 9.6 8.21 11.16.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.72-4.04-1.61-4.04-1.61-.55-1.38-1.34-1.75-1.34-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.81 1.3 3.49.99.11-.77.42-1.3.76-1.6-2.67-.3-5.47-1.32-5.47-5.87 0-1.3.47-2.36 1.23-3.19-.12-.3-.53-1.51.12-3.15 0 0 1.01-.32 3.3 1.22a11.5 11.5 0 0 1 6 0c2.29-1.54 3.3-1.22 3.3-1.22.65 1.64.24 2.85.12 3.15.77.83 1.23 1.89 1.23 3.19 0 4.56-2.81 5.57-5.49 5.86.43.37.81 1.1.81 2.22 0 1.6-.01 2.89-.01 3.29 0 .32.22.7.83.58A12.01 12.01 0 0 0 24 12.29C24 5.78 18.63.5 12 .5z"></path></svg>`;
+const GOOGLE_24 = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5c-.3 1.5-1.1 2.7-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.7z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.2v3.1C3.2 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.3 14.3c-.5-1.5-.5-3.1 0-4.6V6.6H1.2c-1.6 3.3-1.6 7.3 0 10.6l4.1-2.9z"/><path fill="#EA4335" d="M12 4.7c1.7 0 3.3.6 4.5 1.7l3.4-3.4C17.9 1.1 15.1 0 12 0 7.3 0 3.2 2.7 1.2 6.6l4.1 3.1c.9-2.9 3.6-5 6.7-5z"/></svg>`;
+/** Why the dialog was opened. Signing in and signing up are the SAME two buttons (a provider either finds
+ *  your account or creates it), so there is one dialog — but it says what the visitor came to do: "Start
+ *  for free" must not land on a card titled "Sign in". The foot switches between the two. */
+export type SignInMode = "signin" | "signup";
+const SIGNIN_COPY: Record<SignInMode, { title: string; lede: string; foot: string; other: SignInMode; switchTo: string }> = {
+  signin: { title: "Sign in to Trov", lede: "Welcome back. Pick the account you signed up with.", foot: "New to Trov?", other: "signup", switchTo: "Create an account" },
+  signup: { title: "Get started with Trov", lede: "Pick a plan. You can change it later.", foot: "Already have an account?", other: "signin", switchTo: "Sign in" },
+};
+
+/** Get started WITH a plan to pick: the lede carries the way to the pricing page, so the plan's own line
+ *  under the switch stays one short line on Free and Pro alike. */
+const PLAN_LEDE = `Pick a plan to start, or <a href="/pricing" class="site-signin-compare">compare them</a>.`;
+
+/** The plan a new person starts on, picked in the dialog: Free, or Pro when Pro can be bought on the site. */
+export type SignUpPlan = "free" | "team";
+
+/** Getting started is a CHOICE of plan before it is a sign-in: Free (sign up, then create a Free
+ *  organization) or Pro (the billing route: sign in there, pay on Stripe, then name the organization).
+ *  Every word and number is the pricing page's own (shared/plans.ts, shared/pricing.ts) — nothing is
+ *  typed here. With Pro not on sale there is nothing to choose, and the dialog is the two providers. */
+function planChoice(plan: SignUpPlan): string {
+  const line = (id: SignUpPlan): string => {
+    const def = PLANS[id], price = PRICING[id];
+    const amount = price.price === 0 ? "Free" : `${formatPrice(price.price ?? 0)} ${price.per}`;
+    return `<b>${esc(amount)}</b> &middot; ${esc(seatsPhrase(def.entitlements.seats))}`;
+  };
+  return `<div class="site-signin-plans" data-signin-plan="${plan}">
+      ${segmented({ id: "signin-plan", ariaLabel: "Plan", act: "signInPlan", value: plan, size: "sm", fill: true, inertOn: true, options: [{ value: "free", label: PLANS.free.name }, { value: "team", label: PLANS.team.name }] })}
+      <p class="site-signin-plan-what">${line(plan)}</p>
+    </div>`;
+}
+
+function signInDialog(mode: SignInMode = "signin", plan: SignUpPlan = "free"): string {
+  const c = SIGNIN_COPY[mode];
+  const sellPro = canPurchasePlan("team", PRICING.team);
+  const choosing = mode === "signup" && sellPro;
+  const pro = choosing && plan === "team";
+  const providers = `<button data-act="signIn" class="site-signin-btn site-btn-solid" style="border-radius:9px">${GH_24}Continue with GitHub</button>
+          <div class="site-signin-or" aria-hidden="true"><span></span>or<span></span></div>
+          <button data-act="signInGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px">${GOOGLE_24}Continue with Google</button>`;
+  // Pro: the SAME two buttons. Each is the billing route with the provider already picked (`via`), so it
+  // seals the purchase to return to and goes straight to that provider's sign-in, then on to Stripe — no
+  // second page asking "sign in with what?".
+  const proHref = (via: "github" | "google"): string => `${purchaseHref("team")}&via=${via}`;
+  const checkout = sellPro ? `<a href="${proHref("github")}" data-field="signInProGithub" class="site-signin-btn site-btn-solid" style="border-radius:9px;text-decoration:none">${GH_24}Continue with GitHub</a>
+          <div class="site-signin-or" aria-hidden="true"><span></span>or<span></span></div>
+          <a href="${proHref("google")}" data-field="signInProGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px;text-decoration:none">${GOOGLE_24}Continue with Google</a>` : "";
+  return `<div data-overlay="signin" data-signin-mode="${mode}"${choosing ? ` data-signin-plan="${plan}"` : ""}>
+    <div data-act="closeSignIn" class="site-signin-back"></div>
+    <div class="site-signin-wrap">
+      <div role="dialog" aria-modal="true" aria-labelledby="signin-title" class="site-signin-card" style="border-radius:14px">
+        <div class="site-signin-head">
+          <button data-act="closeSignIn" title="Close" aria-label="Close" class="site-signin-x" style="border-radius:8px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+          </button>
+          ${trovMark(30)}
+          <h2 id="signin-title" style="margin:14px 0 0;font-size:21px;font-weight:650;letter-spacing:-0.02em">${c.title}</h2>
+          <p style="margin:6px 0 0;max-width:270px;font-size:13.5px;line-height:1.55;color:var(--fg-55);text-wrap:balance">${choosing ? PLAN_LEDE : c.lede}</p>
+        </div>
+        <div class="site-signin-body">
+          ${choosing ? planChoice(plan) : ""}
+          ${pro ? checkout : providers}
+        </div>
+        <div class="site-signin-foot">${c.foot} <button type="button" data-act="openSignIn" data-arg="${c.other}" data-field="signInSwitch" class="site-signin-switch">${c.switchTo}</button></div>
       </div>
-      <div style="margin-top:12px;font-size:14px;color:var(--fg-70);text-align:center;line-height:1.55">Sign in to open your organization, or to create a free one for your team.</div>
-      <div style="margin-top:24px;display:flex;flex-direction:column;gap:18px">
-        <button data-act="signIn" class="cnpy-accentbtn" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px 16px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:14px;font-weight:600">
-          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.37.5 0 5.78 0 12.29c0 5.2 3.44 9.6 8.21 11.16.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.72-4.04-1.61-4.04-1.61-.55-1.38-1.34-1.75-1.34-1.75-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.23 1.84 1.23 1.07 1.83 2.81 1.3 3.49.99.11-.77.42-1.3.76-1.6-2.67-.3-5.47-1.32-5.47-5.87 0-1.3.47-2.36 1.23-3.19-.12-.3-.53-1.51.12-3.15 0 0 1.01-.32 3.3 1.22a11.5 11.5 0 0 1 6 0c2.29-1.54 3.3-1.22 3.3-1.22.65 1.64.24 2.85.12 3.15.77.83 1.23 1.89 1.23 3.19 0 4.56-2.81 5.57-5.49 5.86.43.37.81 1.1.81 2.22 0 1.6-.01 2.89-.01 3.29 0 .32.22.7.83.58A12.01 12.01 0 0 0 24 12.29C24 5.78 18.63.5 12 .5z"></path></svg>
-          Sign in with GitHub
-        </button>
-        <div style="display:flex;align-items:center;gap:12px;font-family:var(--label);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--fg-40)"><span style="flex:1;height:1px;background:var(--border)"></span>or<span style="flex:1;height:1px;background:var(--border)"></span></div>
-        <button data-act="signInGoogle" class="cnpy-outlinebtn" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:14px;font-weight:600;color:var(--fg)">
-          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5c-.3 1.5-1.1 2.7-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.7z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.2v3.1C3.2 21.3 7.3 24 12 24z"/><path fill="#FBBC05" d="M5.3 14.3c-.5-1.5-.5-3.1 0-4.6V6.6H1.2c-1.6 3.3-1.6 7.3 0 10.6l4.1-2.9z"/><path fill="#EA4335" d="M12 4.7c1.7 0 3.3.6 4.5 1.7l3.4-3.4C17.9 1.1 15.1 0 12 0 7.3 0 3.2 2.7 1.2 6.6l4.1 3.1c.9-2.9 3.6-5 6.7-5z"/></svg>
-          Continue with Google
-        </button>
-      </div>
-      <div style="text-align:center;margin-top:20px;font-size:12.5px;color:var(--fg-40);line-height:1.5">New to Trov? Either one creates your account.</div>
     </div>
   </div>`;
 }
@@ -643,17 +832,23 @@ export interface LandingProps {
   /** The resolved app theme is not Light (drives the toggle icon, like the app header's). */
   dark: boolean;
   signInOpen: boolean;
+  /** What the visitor came to do: the nav's Sign in, or a Get started button (default: sign in). */
+  signInMode?: SignInMode;
+  /** The plan picked in the dialog's Get started side (default: Free). */
+  signInPlan?: SignUpPlan;
   /** Opened from inside the app (the sidebar logo): the nav offers the way back, not Sign in. */
   signedIn?: boolean;
   /** Reveal keys that already played (landing-motion.ts records them). */
   seen: ReadonlySet<string>;
+  /** The tour feature open in its dialog (site-feature.ts), or none. */
+  feature?: FeatureState | null;
 }
 
 export function landingView(p: LandingProps): string {
   seen = p.seen;
-  return `<div class="cnpy-site">
+  return `<div class="cnpy-site" data-morph="landing">
     ${nav(p.dark, p.signedIn ?? false)}
-    ${hero()}
+    ${hero(p.signedIn ?? false)}
     ${problem()}
     ${loop()}
     ${authority()}
@@ -662,7 +857,8 @@ export function landingView(p: LandingProps): string {
     ${agents()}
     ${security()}
     ${pricingSection({ signedIn: p.signedIn ?? false, rv })}
-    ${siteFooter()}
+    ${siteFooter("dialog")}
   </div>
-  ${p.signInOpen ? signInDialog() : ""}`;
+  ${p.signInOpen ? signInDialog(p.signInMode ?? "signin", p.signInPlan ?? "free") : ""}
+  ${p.feature ? featureDialog(p.feature) : ""}`;
 }

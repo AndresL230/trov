@@ -40,7 +40,7 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
     expect(html).toContain('data-org-billing="active"');
     expect(html).toContain(`5 seats, paid per seat. Renews on ${billingDate(PERIOD)}. Billed monthly through Stripe.`);
     expect(billingDate(PERIOD)).toBe("15 January 2027");
-    expect(buttons(html)).toEqual(["Change seats|orgBillingSeats", "Manage billing|orgBillingPortal"]);
+    expect(buttons(html)).toEqual(["Change seats|orgBillingSeats", "Manage billing|orgBillingPortal", "Cancel plan|orgBillingCancel"]);
     expect(html).toContain("Card, invoices, seats and cancelling are on Stripe&#39;s pages. Trov never sees your card.");
     expect(html).not.toContain("contact Trov");
     // No accent button: the tab's one primary action is not billing's.
@@ -59,7 +59,7 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
     expect(html.match(/data-limit="/g)).toHaveLength(6);
     // Billing's line and buttons are exactly what they were without it.
     expect(html).toContain('data-org-billing="active"');
-    expect(buttons(html)).toEqual(["Change seats|orgBillingSeats", "Manage billing|orgBillingPortal"]);
+    expect(buttons(html)).toEqual(["Change seats|orgBillingSeats", "Manage billing|orgBillingPortal", "Cancel plan|orgBillingCancel"]);
     // Past due limits nothing, summaries included.
     const due = block(view("team", { status: "past_due" }));
     expect(row(due)).toMatch(/1,212 of 3,000 this month\s*$/);
@@ -285,6 +285,14 @@ describe("the waiting room — /billing/done", () => {
   it("confirming: says it takes a few seconds, with a live region and no way to 'fail'", () => {
     const html = billingDonePage(room());
     expect(html).toContain('data-billing-done="confirming"');
+    // It is a step of signing up, so it is the first-run card: banner (the title), body, foot — in front of
+    // the backdrop it is handed, and patched in place while the poll repaints.
+    expect(html).toMatch(/<div class="cnpy-orgs cnpy-billdone" data-morph="billing-done" data-billing-done="confirming">/);
+    expect(html).toMatch(/<main class="[^"]*cnpy-orgs-card[^"]*"[^>]*role="status" aria-live="polite">\s*<header class="cnpy-orgs-banner">[\s\S]*?<h1[^>]*>Confirming your payment<\/h1>\s*<\/header>\s*<div class="cnpy-orgs-body cnpy-billdone-body">/);
+    expect(html).toContain('<footer class="cnpy-orgs-foot"><span>Stripe sends the receipt. Trov never sees your card.</span></footer>');
+    const behind = billingDonePage(room(), '<div class="cnpy-fr-bg"></div>');
+    expect(behind.indexOf("cnpy-fr-bg")).toBeLessThan(behind.indexOf("cnpy-orgs-card"));
+    expect(billingDonePage(room({ phase: "ready", plan: "team", grant: 12 }))).toContain('<span class="cnpy-onb-step">Your Pro organization</span>');
     expect(html).toMatch(/<main[^>]*role="status" aria-live="polite"/);
     expect(text(html)).toContain("Confirming your payment This takes a few seconds. Keep this page open. Checking with Stripe");
     expect(html).toMatch(/<h1[^>]*>Confirming your payment<\/h1>/);
@@ -307,8 +315,9 @@ describe("the waiting room — /billing/done", () => {
 
   it("ready: sends the buyer to name their organization — a real link, the page's one accent action", () => {
     const html = billingDonePage(room({ phase: "ready", plan: "team", grant: 12 }));
-    expect(text(html)).toContain("Payment received Your Pro organization is ready to set up. Next you choose its name and its address, and it is yours.");
-    expect(html).toMatch(/<a href="\/\?setup=12" data-billing-go class="cnpy-accentbtn"[^>]*>Set up your organization<\/a>/);
+    expect(text(html)).toContain("Payment received Thank you. Your Pro organization is paid for and ready to set up: next you choose its name and its handle, and it is yours.");
+    // A button that goes on in place (main.ts `billingSetup`); the page it would otherwise load is its argument.
+    expect(html).toMatch(/<button type="button" data-act="billingSetup" data-arg="\/\?setup=12" data-field="billingSetup" data-billing-go class="cnpy-accentbtn"[^>]*>Set up your organization<\/button>/);
     expect(html.match(/cnpy-accentbtn/g)).toHaveLength(1);
     expect(setupHref(12)).toBe("/?setup=12");
   });
@@ -356,7 +365,7 @@ describe("the waiting room — /billing/done", () => {
     expect(s.phase).toBe("received");
   });
 
-  it("the poll: waits through pending answers and blips, turns 'slow', and goes to set-up the moment the grant exists", async () => {
+  it("the poll: waits through pending answers and blips, turns 'slow', and STOPS on the confirmation when the grant exists — it does not jump on", async () => {
     const answers: (BillingStatusResponse | Error)[] = [{ state: "pending", paid: false }, new TypeError("network"), Object.assign(new Error("503"), { status: 503 }), { state: "pending", paid: true }, { state: "ready", plan: "team", grant: 5 }];
     let ui: BillingDoneUi = room();
     let clock = 0;
@@ -367,7 +376,7 @@ describe("the waiting room — /billing/done", () => {
       ask: async () => { const a = answers.shift()!; if (a instanceof Error) throw a; return a; },
       go: (href) => went.push(href), now: () => clock, wait: async (ms) => { clock += ms * 4; },
     });
-    expect(went).toEqual(["/?setup=5"]);
+    expect(went).toEqual([]); // the card is the confirmation: its button is how the buyer goes on
     expect(ui).toMatchObject({ phase: "ready", grant: 5, plan: "team" });
     expect(seen).toEqual(["confirming", "confirming", "confirming", "received+slow", "ready+slow"]);
     expect(BILLING_POLL.slowMs).toBeGreaterThanOrEqual(15_000);

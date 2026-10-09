@@ -6,6 +6,8 @@
 //   ACCESS        — platform-access.ts: who has been GRANTED an organization of their own (the
 //                   one way anyone but a superadmin creates one), and an org's plan.
 //   USAGE         — platform-usage.ts.
+//   SUPPORT       — platform-support.ts: the bug reports and messages people send (app and site), with a
+//                   count of the open ones on the tab; one report at `#platform/support/<id>`.
 //   ADMINS        — the superadmins (grant / remove).
 //   AUDIT         — recent administration entries, filterable by org.
 // The area exists only for a superadmin (`PlatState.superadmin`, read from GET /api/orgs);
@@ -27,16 +29,18 @@ import { segmented } from "./segmented";
 import { confirmModal } from "./confirm";
 import { usageView, orgUsageBlock, type UsageWindow } from "./platform-usage";
 import { tabLead, leadFlag, dangerLink } from "./org-ui";
-import { skRows, skKey } from "./skeleton";
+import { emptyLayout, skRows, skRowsShape, skKey } from "./skeleton";
 // Plans and grants (shared/plans.ts): the Access tab, an org's Plan section, their dialogs.
 import { PLANS, type PlanId } from "@shared/plans";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
 import { accessTab, accessDialogs, initialAccess, orgPlanSection, planDropdown, planSourceWord, seatsCell, type AccessState } from "./platform-access";
+// Support reports (shared/support-core.ts): the Support tab and its count.
+import { supportTab, supportTabBadge, supportKindDropdown, initialSupportTab, type SupportTabState } from "./platform-support";
 
 // ── state ────────────────────────────────────────────────────────────────────
-export type PlatTab = "orgs" | "access" | "usage" | "admins" | "audit";
-export const PLAT_TABS: readonly PlatTab[] = ["orgs", "access", "usage", "admins", "audit"];
-const TAB_LABEL: Record<PlatTab, string> = { orgs: "Organizations", access: "Access", usage: "Usage", admins: "Admins", audit: "Audit" };
+export type PlatTab = "orgs" | "access" | "usage" | "support" | "admins" | "audit";
+export const PLAT_TABS: readonly PlatTab[] = ["orgs", "access", "usage", "support", "admins", "audit"];
+const TAB_LABEL: Record<PlatTab, string> = { orgs: "Organizations", access: "Access", usage: "Usage", support: "Support", admins: "Admins", audit: "Audit" };
 
 export interface PlatSlice<T> { status: "idle" | "loading" | "ok" | "error"; data: T }
 
@@ -95,6 +99,8 @@ export interface PlatState {
   revokeError: string | null;
   /** Platform › Access and "Change plan" (platform-access.ts). */
   access: AccessState;
+  /** Platform › Support (platform-support.ts): the reports, the filters, the one on screen. */
+  support: SupportTabState;
 }
 
 export function initialPlat(): PlatState {
@@ -111,6 +117,7 @@ export function initialPlat(): PlatState {
     grantDraft: "", grantBusy: false, grantError: null,
     revokeArm: null, revokeBusy: false, revokeError: null,
     access: initialAccess(),
+    support: initialSupportTab(),
   };
 }
 
@@ -210,8 +217,10 @@ function goBtn(label: string, on: boolean, act: string, extra = ""): string {
  *  it, and a quiet aside (markup: a phrase, or a small action) at the right. */
 const sectionHead = (title: string, aside = "", first = false, count: number | null = null): string =>
   `<div class="cnpy-sechead${first ? " is-first" : ""}"><h2 style="${LABEL};margin:0">${esc(title)}</h2>${count === null ? "" : `<span class="cnpy-badge" data-n="${count}">${count}</span>`}${aside ? `<span class="cnpy-sechead-a">${aside}</span>` : ""}</div>`;
-const emptyCard = (title: string, sub: string): string =>
-  `<div style="border:1px dashed var(--border-strong);border-radius:11px;padding:22px 24px;text-align:center"><div style="font-size:13.5px;font-weight:600;color:var(--fg-70)">${esc(title)}</div><div style="font-size:12.5px;color:var(--fg-40);margin-top:4px;line-height:1.5">${esc(sub)}</div></div>`;
+/** A list with nothing in it: its heading and one sentence, then the rows it will hold, drawn
+ *  empty (skeleton.ts `emptyLayout`). The action that adds the first one is the tab's lead button. */
+const emptyCard = (title: string, sub: string, avatar = 0): string =>
+  emptyLayout(`plat-${skKey(title)}`, { title, text: sub, sayStyle: "margin-bottom:4px", shapes: skRowsShape(2, { avatar: avatar || undefined, trail: 72 }) });
 /** A tab's rows while its read is out (skeleton.ts); "Loading <what>…" stays for a screen reader. */
 const loadingLine = (what: string, rows = 4, avatar = 0): string =>
   skRows(`plat-${skKey(what)}`, `Loading ${esc(what)}…`, rows, { avatar: avatar || undefined, trail: 72 });
@@ -428,20 +437,22 @@ function gateNotice(p: Pick<PlatState, "superadmin">): string {
   return `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">This page isn't available to your account.</div>`;
 }
 
-export function platformTabBar(tab: PlatTab): string {
-  return tabBar({ id: "plat-tab", ariaLabel: "Platform sections", act: "platTab", value: tab, tabs: PLAT_TABS.map((t) => ({ value: t, label: TAB_LABEL[t] })) });
+/** `openReports` = how many support reports are open (null = not read yet): the Support tab's count. */
+export function platformTabBar(tab: PlatTab, openReports: number | null = null): string {
+  return tabBar({ id: "plat-tab", ariaLabel: "Platform sections", act: "platTab", value: tab, tabs: PLAT_TABS.map((t) => ({ value: t, label: TAB_LABEL[t], ...(t === "support" ? { trail: supportTabBadge(openReports) } : {}) })) });
 }
 
-export function platformView(p: PlatState, me: string | null = null): string {
+export function platformView(p: PlatState, me: string | null = null, dd: DropdownUi = initialDropdownUi()): string {
   const gate = gateNotice(p);
   if (gate) return gate;
   const body = p.tab === "usage" ? usageView({ status: p.usage.status, usage: p.usage.data, days: p.usageDays, open: p.usageOpen })
     : p.tab === "admins" ? adminsTab(p, me)
     : p.tab === "access" ? accessTab(p.access)
+    : p.tab === "support" ? supportTab(p.support, dd)
     : p.tab === "audit" ? auditTab(p)
     : orgsTab(p);
   return `<div class="plat" data-screen-label="Platform" style="${FRAME}">
-    ${platformTabBar(p.tab)}
+    ${platformTabBar(p.tab, p.support.open)}
     <div${tabPanelAttrs("plat-tab", p.tab)} style="padding-top:18px">${body}</div>
   </div>`;
 }
@@ -465,7 +476,7 @@ export const isPlatformPath = (pathname: string): boolean => pathname === "/plat
  * shell — the mark, the title and crumb, the way back, sign out; no org navigation — so a superadmin
  * who belongs to no organization still reaches them. Linked from the org picker and the switcher's menu.
  */
-export function platformPage(p: PlatState, screen: string, me: string | null): string {
+export function platformPage(p: PlatState, screen: string, me: string | null, dd: DropdownUi = initialDropdownUi()): string {
   const child = screen === "platformorg";
   const title = child
     ? `<h1 class="cnpy-platpage-t"><button type="button" data-act="platGo" style="font:inherit;letter-spacing:inherit;padding:0;color:var(--fg-55);cursor:pointer">Platform</button></h1><span aria-hidden="true" style="color:var(--fg-40);font-size:13px">›</span><span style="font-size:13px;font-weight:500;color:var(--fg-70);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(platformCrumb(p))}</span>`
@@ -484,7 +495,7 @@ export function platformPage(p: PlatState, screen: string, me: string | null): s
         <button type="button" data-act="signOut" class="cnpy-outlinebtn" style="${OUTLINE};height:34px">Sign out</button>
       </div>
     </header>
-    <main id="cnpy-main">${child ? platformOrgView(p) : platformView(p, me)}</main>
+    <main id="cnpy-main">${child ? platformOrgView(p) : platformView(p, me, dd)}</main>
   </div>`;
 }
 
@@ -569,5 +580,7 @@ export function platformDialogs(p: PlatState, screen: string, dd: DropdownUi = i
     });
   }
   if (screen === "platform" && p.add) return addOrgModal(p.add, dd) + (p.add.done ? "" : dropdownMenu([planDropdown("plat-add-plan", "platAddPlan", p.add.plan, p.add.busy)], dd));
+  // Platform › Support: the kind filter's menu (its trigger is in the tab's lead line).
+  if (screen === "platform" && p.tab === "support" && p.support.reportId === null) return dropdownMenu([supportKindDropdown(p.support.kind)], dd);
   return "";
 }

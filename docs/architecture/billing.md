@@ -26,6 +26,7 @@ stores ids, a status and a seat count.
 | `STRIPE_WEBHOOK_SECRET` | secret | billing is OFF (a key alone could take a payment nobody hears about) |
 | `STRIPE_PRICE_TEAM` | var (`wrangler.toml`), the monthly Price id of ONE SEAT of Pro (a licensed, per-unit recurring price) | Pro cannot be bought monthly |
 | `STRIPE_PRICE_TEAM_YEARLY` | var, optional, the yearly per-seat Price id | Pro is not offered yearly |
+| `STRIPE_TAX` | var; `on` → a checkout sends `automatic_tax[enabled]`, `tax_id_collection[enabled]` and, for a customer Stripe already knows, `customer_update[address|name]=auto` | no tax lines; checkout asks for no address |
 | `STRIPE_TEST_API_BASE` | local / test only | — honoured only for a loopback `http://` origin and never with a live key (`src/platform/loopback.ts` — the rule Sync's `LOCAL_UPSTREAM` follows too; both are described in `.dev.vars.example`) |
 
 `STRIPE_PRICE_PERSONAL` / `STRIPE_PRICE_PERSONAL_YEARLY` are gone with Personal: a Personal price is not read.
@@ -44,6 +45,11 @@ are disabled with a sentence — and nothing else in the app changes (Free orgs 
 live mode is whichever key is set (`sk_test_…` / `sk_live_…`); an event from the other mode is acknowledged
 and ignored.
 
+**Trying it locally with no Stripe account:** `node scripts/dev/stripe-standin.mjs` is a stand-in for Stripe on
+`http://127.0.0.1:8842` — the API calls `src/billing/` makes, a plain checkout page, a plain portal (change
+seats, cancel, resume, end now) and the signed webhooks each would send. Point `STRIPE_TEST_API_BASE` at it
+with `STRIPE_SECRET_KEY=sk_test_local_standin` and `STRIPE_WEBHOOK_SECRET=whsec_local_standin` in `.dev.vars`.
+
 ## Seats: what is paid for is what is allowed
 
 Pro is sold per seat. A seat is a member or a pending invitation (`plans.md` › Seats).
@@ -58,6 +64,10 @@ Pro is sold per seat. A seat is a member or a pending invitation (`plans.md` ›
   (`linkPaidOrgStmt`), so an event that lands while the form is open is not lost.
 - **The mirror keeps it too** (`billing_subscriptions.quantity`, 0047), so a write made without a Stripe
   event — the superadmin's Follow subscription — puts the paid seats back.
+- **Cancel plan** (the owner's third button on a live subscription): `POST …/billing/portal { cancel: true }` →
+  `flow_data.type = subscription_cancel`, with the same `after_completion` redirect as the seat change, so the
+  person comes BACK to Org settings. (Cancelling inside the plain portal ends on Stripe's page.) Nothing moves
+  in Trov until `customer.subscription.updated` lands with `cancel_at_period_end`.
 - **At the cap**, an invitation is the 402 `plan_limit` with `next: "add_seat"` (`plans.md` › One refusal).
   The Members tab shows its owner **Add a seat**, which opens the Customer Portal straight at the
   subscription's update page (`POST …/billing/portal { seats: true }` → `flow_data.type =
@@ -70,7 +80,10 @@ Pro is sold per seat. A seat is a member or a pending invitation (`plans.md` ›
 
 1. **Start** — `GET /billing/start?plan=team[&interval=month|year]`, a plain link.
    Signed out → a sealed 10-minute `return_to` cookie holding that exact path (an allowlisted shape built from
-   `PURCHASABLE_PLANS`, never a visitor's URL) and a sign-in page; the sign-in tail (`takeOAuthPending` →
+   `PURCHASABLE_PLANS`, never a visitor's URL), then: with `&via=github|google` (the app's Get started dialog,
+   where the provider was already picked) straight on to that provider's sign-in; with none, a redirect to the
+   app's landing page, which opens that dialog on this plan (`billingAskHref`, `/?start=team`). There is no
+   separate billing sign-in page; the sign-in tail (`takeOAuthPending` →
    `takeReturnTo`) comes back here, through onboarding too. The page says it plainly: *signing in with either
    GitHub or Google creates the account.*
    Signed in → one unit of the `checkout` limit (10 / person / day), a `billing_checkouts` row binding a
@@ -85,7 +98,8 @@ Pro is sold per seat. A seat is a member or a pending invitation (`plans.md` ›
    `grantOrganization(env, platform(env, "billing"), { to: { handle }, plan, overrides: { seats }, external_ref:
    <subscription id> })` — the SAME grant a superadmin gives by hand, carrying the seats paid for. `to` is the
    person on Trov's own checkout row, never a field of the payload and never whoever presents the session id.
-4. **Wait** — `/billing/done` is only a waiting room. It polls `GET /api/billing/status?session_id=…`
+4. **Wait** — `/billing/done` is only a waiting room, drawn as the first-run card over the app's backdrop
+   (`billingDonePage`; `docs/architecture/web-ui.md` › first-run flow): it is the step before naming the org. It polls `GET /api/billing/status?session_id=…`
    every 2 s; after 20 s it says *payment received, your organization will be ready shortly*; it rests
    after 2 minutes with "Check again". It never says a payment failed. If the webhook is late, the status
    route itself retrieves the session from Stripe (at most once per 5 s per session) and runs the SAME
@@ -261,9 +275,20 @@ Stripe: `test/helpers/billing.ts` is an in-memory stand-in.
    `sk_live_…` and a live endpoint's `whsec_…`, and repeat steps 6–7 in live mode (portal settings are per
    mode).
 
+**Tax (`STRIPE_TAX`).** Trov computes no tax: with the var `on`, Stripe Tax works it out at checkout, and the
+subscription keeps `automatic_tax`, so renewals and seat changes are taxed by the same rule. Stripe charges
+tax only where the account holds a registration (Tax › Registrations); with none, every invoice is the price
+alone, and adding a registration later needs no code change. Before turning it on, in Stripe: activate Tax
+and give it an origin address, set the product's tax category (Software as a service — business use), and
+make sure the Price's tax behaviour is **exclusive** (it cannot be changed once set). With the var on and
+Stripe Tax not set up, Stripe refuses the session and the buyer gets the "couldn't start checkout" answer.
+A subscription created while it was off stays untaxed until `automatic_tax` is enabled on it in Stripe.
+
 **Yours to decide:** a yearly price or not; a free trial or not (a trial needs
 `subscription_data[trial_period_days]` in `startCheckout` — one line — and reads as `active` here); tax
-(Stripe Tax on or off; on needs `automatic_tax[enabled]=true` and an address at checkout); promotion codes;
-the refund policy (refunds are made in the Stripe dashboard — Trov has no refund code); Terms / Privacy
-wording for paid plans (`web/src/legal.ts`); and whether the numbers in `shared/plans.ts` are the ones you
+(Stripe Tax on or off: the `STRIPE_TAX` var, above); promotion codes;
+the refund policy (refunds are made in the Stripe dashboard — Trov has no refund code; Terms section 3 in
+`web/src/legal.ts` currently says no refund for a period already started, except where the law requires or
+for a mistake — change the text if you decide otherwise, and the same for its 30 days' notice of a price
+change); and whether the numbers in `shared/plans.ts` are the ones you
 want to sell.

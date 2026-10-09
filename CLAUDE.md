@@ -67,13 +67,15 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
    (plan, tickets, sprints, handoffs, prompts, artifacts, people) and computed writes (progress, summaries,
    repo metrics/snapshots, the GitHub issue mirror) are direct "promote-class" writers in `src/tools/`.
 2. **Agents stage; humans confirm.** Promote / reject / ratify / triage assign & discard, artifact ratify,
-   prompt publish, every delete — session-cookie routes, NEVER MCP tools.
+   prompt publish, every delete, which orgs a connection may use — session-cookie routes, NEVER MCP tools.
 3. **The author is always the authenticated principal**, passed in by the caller; client-supplied authors
    are ignored. An MCP write is recorded as the token's person (no separate provenance).
 4. **Every tenant statement binds `ctx.orgId`.** D1 is reached only through a context, inside `src/data/`
    (`sql.ts` for tenant data, `platform-sql.ts` for the global tables); a static test enforces it
-   (`test/data-layer.static.test.ts`). A bearer is bound to ONE org. A ticket's / handoff's `id` on every
-   surface is its per-org NUMBER, never the row id.
+   (`test/data-layer.static.test.ts`). A bearer call acts in ONE org, chosen only among its person's LIVE
+   memberships and only in `src/data/bearer.ts`: a token's org, a manual connection's current org, or the
+   org that has the call's `repo` connected (else nothing is read or written). A ticket's / handoff's `id`
+   on every surface is its per-org NUMBER, never the row id.
 5. **Nothing infers a resolution.** `done`/`declined` tickets and `done` sprints are set by a person, never
    by a merge, issue close, webhook or cron — except a ticket MIRRORED from a GitHub issue follows its own
    issue's close/reopen.
@@ -151,5 +153,6 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |
 | Stripe, checkout, `src/billing/` | `billing.md` |
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |
+| the bug-report / support form, `support_reports`, Platform › Support | `support.md` |
 | secrets, vars, bindings, `REPO_ENVIRONMENTS` | `env.md` |
 | where a file or migration lives | `layout.md` |

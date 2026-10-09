@@ -53,7 +53,9 @@ would apply an unreviewed branch's migration to production. Build command for bo
 
 Vars (`[vars]` in `wrangler.toml`): `PUBLIC_ORIGIN` (absolute origin for links inside email),
 `NOTIFICATIONS_MODE` (`resend` in production since 2026-10-07; `local` writes bodies to a table and sends nothing — a deploy sets it from `wrangler.toml`, so a dashboard-only change is undone by the next deploy), `GITHUB_APP_SLUG` (the App's URL name; empty = not
-configured), and two LEGACY ones nothing reads any more (`0042_organizations` copied them
+configured), `SUPPORT_NOTIFY_EMAIL` (where each bug report / support message is mailed — the operator's inbox;
+not a secret; empty or absent = the report is stored and shown in Platform › Support but NOT mailed, its mail
+outcome `skipped`; also in `[previews.vars]`, empty — `support.md`), and two LEGACY ones nothing reads any more (`0042_organizations` copied them
 into SaplingLearn's `org_repos` / `org_environments` rows; Phase 7 deletes them): `GITHUB_REPO` and
 `REPO_ENVIRONMENTS` — a JSON list in the shape `repoEnvironments()` (`src/repo/config.ts`) parses: per environment
 `key`, `label`, `note`, `branch`, `railwayEnv` (the GitHub deployment environment name), `worker` +

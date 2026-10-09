@@ -12,11 +12,21 @@ anything decorative behind a form visibly "reloads" per letter. Focus and caret 
 itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
-`data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: Org settings,
+`data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
 Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, and the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`). Inside a morphed page, a part that must be REPLACED when it becomes a different
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
 animations off in the affected region — that hides one symptom and leaves the rebuild.
+
+**A dialog that opens over ANY screen repaints itself alone.** Most screens are not `data-morph`ed, so a dialog
+whose host page can be any of them cannot rely on the page's opt-in: a `rerender()` per keystroke would rebuild
+whatever is behind it. The support dialog (`web/src/support.ts`: the header's bug button, Settings › Contact support, the site's Contact) is the
+pattern: opening and closing are a `rerender()`; everything inside the open dialog goes through
+`support-actions.ts` `repaint()`, which renders the dialog again and `morph()`s the live `data-overlay` element
+in place — the page is not touched (check: `document.querySelector("main")` is the same element before and after
+typing). It needs a STABLE structure while the form is up (an error or counter that comes and goes is always
+emitted and shown by attribute; a different body, like the sent state, is a `data-morph-key`), and state stays
+the one source of truth, so a rerender caused by anything else paints the same dialog. Details: `support.md`.
 
 **First-run flow** (`people.ts` `onboardView` → `org-picker.ts` `orgPickerView` → `welcome.ts` `welcomeView`):
 one card (`.cnpy-orgs-card`: banner, body, foot) in front of `firstRunBackdrop()` (`render.ts`: the real app
@@ -43,6 +53,109 @@ it. That is the cause of "the screen behind refreshes on every step", not a rebu
 subtree: true })` on the backdrop after a step change; it must be 0. From the picker, an org just created or joined is entered IN PLACE (`enterNew` in `main.ts`) when the
 page has held no other org's data; opening an org from anywhere else stays a page load.
 
+## The signed-out site — one banner, carried through the page (`web/src/landing.ts`)
+
+The landing page has ONE idea: the first-run card's purple banner is Trov speaking, and the product is the
+card in front of it. `.site-banner` is defined WITH `.cnpy-orgs-banner` in `trov.css` (one rule: the gradient,
+the radial highlight, the dot grid `::after`), so the site and the first run cannot drift; `.site-banner-art`
+is the mark, large, faint and tilted behind the text. It appears exactly twice, at two scales:
+
+| Where | How |
+|---|---|
+| Hero (`.site-hero-band`) | the banner as an inset panel; the Review mockup (`.site-hero-mock`) stands on its lower edge, inset by the same `--hero-pad` as the headline so their left edges align |
+| "Agents propose, people decide" (`.site-split`) | the card on its side: banner left, body right; stacked under 860px |
+
+The sign-in dialog (`.site-signin-card`) has NO banner: it opens over the hero, which is the banner, and a
+second slab in front of the first read as the same thing twice. It is a plain card — the mark, the title, the
+two providers as a narrow centred pair with an "or" rule between them, a foot. A bannered card has no border
+(a border sits outside the banner and showed as a pale frame round it); its edge is a ring in the shadow.
+
+Everywhere else the page stays quiet. The one echo is `.site-stage`: each tour mockup stands on a field of the
+banner's dots in the page's own accent (purple on light, green on dark), mirrored on a flipped row. Do not add
+a fourth banner or a second texture (the tour's dialog has none: its stage is the same dot field); a new section is plain unless it replaces one of the three.
+
+- **Both themes.** The banner is the brand's purple on light AND dark (it is not the app's chrome); on dark it
+  sits one step deeper so a slab that size does not glare. Text on it is white, buttons on it are
+  `.site-btn-onb` (white) and `.site-btn-onb-line`.
+- **No blur.** Everything above is static paint (gradients, masks, shadows): no `filter` and no
+  `backdrop-filter` beyond the nav's own, so nothing repaints while the page scrolls. The hero's glow and the
+  dialog's scrim are plain radial gradients.
+- **A rerender replays nothing.** The page is `data-morph="landing"` and the dialog a root-level
+  `data-overlay="signin"`: opening or closing Sign in patches the page in place. Check with
+  `document.querySelector(".cnpy-site").getAnimations({ subtree: true })` before and after: no new entry.
+  Keep the page's structure the same in every state (signed in or out changes attributes and text only).
+- **Reduced motion:** the page is covered by `.cnpy-site *`; the two dialogs sit outside it, so each has its
+  own rule (`.site-signin-*`, `.site-fx *`).
+- **Motion** has ONE clock, on `:root`: `--fx-ease` (`cubic-bezier(0.4, 0, 0.2, 1)`, eases at both ends),
+  `--fx-fast` .18s (leaving), `--fx-base` .24s (content, a step), `--fx-slow` .3s (a reveal, the card growing
+  into its dialog, the backdrop). Anything new on the site reads these; do not write a literal duration or a
+  second curve. The banner, the dots and the mark do not move.
+- **Reveals** (`rv()` / `data-rv`, `landing-motion.ts`) are short and small: 6 to 14px over `--fx-slow`, played
+  once (the observer unobserves), 6% of the viewport before the element enters. While a nav jump is carrying
+  the page (`noteJump()` until just after `scrollend`), what comes into view is settled with no motion
+  (`revealClass`), so a jump never ends on a section that is still sliding.
+- **Nav jumps** (`siteJump`) are one `scrollIntoView` per click, instant under reduced motion; where one lands
+  is the target's `scroll-margin-top` (`section[id^="site-"]`, -58px: the heading about 32px under the sticky
+  nav). Nothing else moves the scroll position: both dialogs take and return focus with `preventScroll`.
+- **Copy that is fact:** anyone can sign up with GitHub or Google, no invitation; the help page is the
+  **Guide**; prices are never restated outside `shared/pricing.ts` (link `/pricing`).
+- **Each thing is said once** (the table at the top of `landing.ts`): open sign-up under the hero's buttons;
+  the propose / decide rule on the authority card, with every person-only verdict listed in Security; whose
+  data it is and where the source is in the pricing Questions; the install commands and connect steps in the
+  plugin card (from `mcp-connect.ts`, never retyped); a feature's detail in its dialog. A new sentence that
+  repeats one of these is a link or nothing.
+- Radii are inline (`border-radius:16px` on the band, `14px` on the cards) so the corners block scales them by
+  value. Tests: `test/render.landing.test.ts`, `test/render.site-feature.test.ts`.
+
+### The tour, explorable (`featureDialog` in `landing.ts`, `web/src/site-feature.ts`)
+
+Each tour row's mockup opens its feature in a large dialog: name and promise, the screen itself drawn at the
+dialog's size (`featureMock` in `web/src/landing-mocks.ts`; the row keeps its small teaser), three or four
+statements from Help › Guide
+(`TOUR_FACTS` — change them with the Guide; a test pins a phrase of each to `guideView`), and Previous / Next
+through all seven (wrapping), with the position as text and dots.
+
+- **State and paint.** `state.siteFeature` (`{ key, dir, mode }`) like `signInOpen`; the dialog is a root-level
+  `data-overlay="feature"`, so `paint()` patches it and never rebuilds the page behind. Only `.site-fx-main`
+  (`data-morph-key` = the feature) is replaced on a step. The panel has a FIXED size, so a step never moves or
+  resizes the frame, the stage or the footer (measured: identical boxes across every step).
+- **Opening and closing** (`fxMode`): `vt` — a View Transition; the card and the panel carry
+  `view-transition-name:site-fx` on either side of one repaint (the name is on the card only for that repaint),
+  the moving box clips its two faces and wears the panel's static shadow, and every rule is scoped to
+  `html.site-fx-vt` so the first run's morph keeps its own timings. `css` — no View Transitions, or a hidden
+  tab: a keyframe entrance (`data-in="css"`) and exit (`data-closing`, `FX_EXIT_MS`). `none` — reduced motion:
+  instant. Closing shrinks into the card of the feature on screen when that card is in view, else it uses the
+  keyframe exit. `data-in` never changes while the dialog is open, so no rerender replays the entrance.
+- **A step** slides the titles, the mockup and the facts in from the side moved to (`data-dir`); it is CSS
+  in every mode. `data-moving` (set and dropped by `site-feature.ts`) is the only place `will-change` is used.
+- **Keys and focus.** Esc and the backdrop close; ← / → step; Tab cycles Close → Previous → Next; focus goes
+  to Close on open and back to the row's Explore button on close. A row has ONE labelled control (Explore);
+  the mockup is the same action for a pointer (`cnpy-hit`, `tabindex="-1"`, `aria-hidden`), so there is no
+  button inside a button and no duplicate tab stop. The window's scroll is locked while it is open, with the
+  scrollbar's width handed back as padding so the page does not shift.
+- **Phone:** the app's modal sheet at full height; Previous / Next are 44px, at the bottom edge.
+- **The dialog's mockups** (`landing-mocks.ts`) are drawn from the real screens, and that is their contract:
+  a mock shows NOTHING the product does not have. The file's header names the renderer each one copies
+  (`docsView`, `feedView`, `boardCard` / `tableView`, `timelineView`, the My Work tiles, `handoffsView` /
+  `handoffDetail`, the artifact viewer); ticket and artifact statuses are imported from `shared/`, and
+  `test/render.site-feature.test.ts` asserts every other label still stands in the module that renders it —
+  so renaming a label in the app fails the test until the mock follows. They are inert (`aria-hidden`, no
+  button, link or `data-act`), use theme tokens only (dark shows the dark app), and are never zoomed or
+  scaled: real type at the app's sizes. Layout is `.fxm*` in `trov.css`: ONE box (`.site-fx-mock`, the
+  stage's size, the same for all seven, so a step never changes the frame); stacked under 860px it is as
+  tall as its content; under 640px the secondary panes (`.fxm-wide`) are dropped, not shrunk. Sample data
+  is one fictional team across the page (Maya Chen, Leo Park, Sam Ortiz; tickets #205–#230; PR #142;
+  ADR-0012; `acme/api`). When a real screen changes, change its mock and the page's teaser with it.
+
+### For agents
+
+Two cards whose content is naturally the same height at desktop width (`.site-agents-row`, 1.65fr / 1fr,
+measured at 1440 and 1100); one column under 900px. The plugin card holds the skills, then `connectSteps()` and
+`CONNECTION_NOTE` from `mcp-connect.ts`. (Settings › MCP access changes a connection in a dialog —
+`grantScopeDialog` in `render.ts`, a root `data-overlay` in the `.cnpy-cmodal` shell, never a panel under the
+row: `auth-identity-people.md`.) If a card's content shrinks, re-weight the columns or let the card be
+smaller: never pad one out.
+
 ## Sidebar & motion — the `<aside>` outlives rerenders
 
 `rerender()` swaps the app wholesale, which is fatal for a transition: a width, a rotating chevron or an
@@ -59,6 +172,14 @@ Roadmap, Tickets, Unplaced and Repo are plain rows (Tickets' switch sits in its 
 and Repo's tabs head their page body), and a stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
+
+**Report a bug is the app header's icon button**, beside the theme toggle and its twin (`bugBtn` in
+`render.ts` `appHeader`: the same `cnpy-iconbtn`, 32px, 40px at phone width with the rest of the cluster),
+on every screen the header shows on. **Contact support is a tile of personal Settings** (`helpSection`,
+`.cnpy-set-help`: a slim tile on a row of its own after Email notifications, before Session in DOM order so
+Sign out stays last when it folds). Neither is in the sidebar, whose Help section is Guide and What's new;
+the rail's rows and its short-window steps are unchanged. Both carry `data-support-trigger`, so focus
+returns to them when the dialog closes (`support.md`).
 
 **Widths.** The rail is **228px** expanded and 64px collapsed (`.cnpy-aside` in `trov.css`; the phone drawer has
 its own, `min(292px, 100vw - 48px)`). 228 was measured, not chosen by eye (2026-10-08, was 244): the row that
@@ -164,8 +285,9 @@ will be — so nothing moves when the read lands. The rules:
   `reviewView`) rather than being replaced by a stand-in page.
 - **One region per read.** Where a screen has several reads (My Work's tiles, the Feed's and Roadmap's aside
   boxes, Repo's sections, Org settings' lists), each region has its own skeleton and fills on its own.
-- **Only for "not loaded yet".** Loaded-and-empty keeps its empty state, a failed read keeps its error, and a
-  refetch keeps the content already on screen (Search keeps its results while a new query is out).
+- **Only for "not loaded yet".** Loaded-and-empty is an EMPTY LAYOUT (below), a failed read keeps its error, and a
+  refetch keeps the content already on screen (Search keeps its results while a new query is out). A view that
+  takes only a slice's `data` cannot tell the two apart — pass it the status (`outboxLoading`, `loading`).
 - **Motion** (trov.css `.cnpy-skel`): the bars stay invisible for the first 150 ms (`SKEL_DELAY_MS` — a fast read
   never shows a skeleton), then fade in and pulse. `syncSkeletons(mount, scope)` runs after every paint: it keeps
   each region's clock by `key` and hands it to the fresh DOM as a negative delay (`--skel-t`, as `--enter-t` does
@@ -178,6 +300,79 @@ will be — so nothing moves when the read lands. The rules:
 - Left as text on purpose: the Sync panel's "Checking the last sync…" (a popover's status line), the quick-search
   dropdown's "Searching…" (it has its own pause rule), and the artifact attach dialog's "Loading tickets…".
 - Tests: `test/render.skeleton.test.ts`.
+
+## Empty layouts — the screen's own shape, drawn empty (`emptyLayout` in `web/src/skeleton.ts`)
+
+A screen that has LOADED and holds nothing never collapses to one centred line: it keeps its real chrome
+(header controls, toolbar, columns, tile grid, tab bar, section headings) and draws its content's shape
+empty, so a brand-new organization can see what the screen is for. The rules:
+
+- **Skeleton vs empty layout — which one.** A read that is OUT is a skeleton (`skeleton()`: `aria-busy`,
+  `data-skel`). A read that ANSWERED with nothing is an empty layout (`emptyLayout()`: `data-empty`, no
+  `aria-busy`). A filter or search that hides everything is neither: it says "nothing matches" (the queue's
+  `queueNarrowed`; the Feed's author / tag; the Prompt Library's and Artifacts' "No … match"). A failed read
+  keeps its error. Never paint an empty layout before the read lands (see "Only for not loaded yet" above).
+- **ONE helper.** `emptyLayout(key, { text, action, shapes })`, with `emptySay` / `emptyShapes` for a screen
+  whose sentence and shapes sit in different containers (the board's columns, Review's two panes). Never
+  hand-roll a dashed "nothing here" card in a screen module. Org settings' `orgEmpty` and Platform's
+  `emptyCard` are thin wrappers over it.
+- **One sentence, one action, per region.** `text` says what appears here and how it gets there, in the
+  Guide's words where the Guide says it (`guideView` in `render.ts`); the sentences are exported constants
+  beside their screen (`QUEUE_EMPTY`, `FEED_EMPTY`, `ROADMAP_EMPTY`, `MW_EMPTY`, `HANDOFFS_EMPTY`,
+  `PROMPTS_EMPTY`, `ARTIFACTS_EMPTY`, `REVIEW_EMPTY`, `UNPLACED_EMPTY`, `REPO_EMPTY`, `TIMELINE_EMPTY`).
+  It claims only what the read proved: "Tickets show here…", never "your team has no tickets" under an
+  Open / Closed switch. `action` is the one act that makes the first item, offered exactly as the screen's
+  own button is (New sprint, Submit a ticket, New doc, New artifact, New handoff, New prompt); a screen an
+  agent writes (the Feed) offers `CONNECT_AGENT` (the guided setup's agent step); Review and Unplaced offer
+  nothing — empty is their normal state. A region is one read: My Work has four, the Feed three. The one
+  exception to "one action" is the Repo dashboard, which keeps Preview with sample data for everyone and
+  adds Open Org settings › Repositories for an admin (`actionHtml`).
+- **Shapes are the skeleton's builders.** Each screen has ONE shape builder (`tableShapes`,
+  `boardCardShapes`, `feedCardShape`, `sprintCardShape`, `timelineShapes`, `handoffRowsShape`,
+  `promptCardShape`, `libraryCardShape`, `reviewCardShape`, `unplacedShapes`, `skRowsShape`, …) used by its
+  loading skeleton AND its empty layout, so the two have the same columns and row heights and cannot drift.
+- **Never data (CLAUDE.md invariant 7).** A shape is a box: no name, title, number, date, avatar, control or
+  status colour. Inside `.cnpy-empty-shapes` (`aria-hidden`, `pointer-events:none`) trov.css draws `.cnpy-sk`
+  hollow (a 1px `--border-strong` outline, no fill) and `.cnpy-surface` as a dashed outline with no fill or
+  shadow; nothing animates. A skeleton is a FILLED bar that pulses. That difference — hollow and still vs
+  filled and moving, plus a sentence — is how a person tells empty from loading at a glance, in either theme
+  and under reduced motion. `test/render.empty.test.ts` walks every screen's shapes and fails on any text,
+  control or colour token in them.
+- **Radii**: `.cnpy-empty-say` and `.cnpy-empty-act` have their lines in the corners block.
+- Left as they were: the My Work library strip's three cells (two real lines each), the Roadmap's "No sprint
+  in progress.", Search's "No results for that query." (a query's answer), the Timeline's "No sprint has a
+  due date yet" card, and a board column with nothing in it while other columns hold tickets ("Nothing here",
+  the drop target).
+
+### The state preview — `?preview=empty` / `?preview=loading` (`web/src/preview.ts`)
+
+An owner of a busy organization never meets either state, so any app address takes a query flag:
+`/<org>/?preview=empty#tickets`, `/<org>/?preview=loading#feed`, and the same on `/platform/`. Every screen
+then paints its empty layout or its loading skeleton, whatever the organization holds.
+
+- **A projection at render time.** `shownState(s)` (`render.ts`) maps the real state through `previewState`
+  — every `{ status, data }` slice becomes "still out" or "answered with nothing", found by its shape in
+  `initialState()` — and `render()` paints that. The real state is never written, the reads keep running
+  underneath, and closing the banner paints the real screen at once. Anything main.ts renders directly must
+  go through `shownState` too (`docReaderHtml` does). A NEW slice is covered automatically if it is a
+  `{ status, data }` on `AppState`, `OrgUi`, `PlatState` or `ArtUi.list`; one whose empty value is not its
+  initial value (a DTO that is `null` until read, like `mywork` or `feedStats`) needs a line in `previewState`.
+- **Who is looking stays real**: the person, their organizations and role, the org's name, plan and
+  settings — a new organization has those too, and they decide which actions show. In `empty` the org has
+  one member (the viewer) and no repository; a page that opens ONE existing thing (a ticket, a sprint, a
+  handoff, a prompt, an artifact) keeps the real item, because nothing can be opened in an empty
+  organization. In `loading` those pages show their skeleton too.
+- **It never sends a write.** `applyPreview` (`main.ts`, the only place the flag is set) calls api.ts
+  `setWriteBlock`: while it is on, `call` — the one sender — throws `PreviewBlocked` for every request that
+  is not a GET or HEAD before `fetch` runs, and a toast says "This is a preview: nothing is changed."
+- **It cannot be mistaken for data.** `.cnpy-preview` (the amber banner at the app's lower right, a
+  root-level sibling of the toast, never in the header) stays up on every screen: which state, "nothing is
+  changed, and what you see is not your data", a switch to the other state, and Close (which removes the
+  flag from the address bar). The flag is kept in the address bar across navigation (`withPreview` in
+  `enterOrg` / `enterPlatform`) and is dropped by a page load to another organization.
+- The Repo dashboard's own "Preview with sample data" still works under it.
+- Tests: `test/render.empty.test.ts` (no string of the organization's data on any screen in either mode,
+  the state object untouched, writes refused before `fetch`).
 
 ## Corners — tighter than the design file
 

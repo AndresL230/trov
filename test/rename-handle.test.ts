@@ -118,6 +118,8 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   const grant = await run(env.DB, `INSERT INTO oauth_grants (person, client_id, client_name, created_at) VALUES (?, 'rename-client', 'C', ?)`, handle, nowIso());
   await run(env.DB, `INSERT INTO oauth_codes (code_hash, client_id, person, grant_id, redirect_uri, code_challenge, created_at, expires_at) VALUES (?, 'rename-client', ?, ?, 'http://localhost/cb', 'x', ?, ?)`,
     `rename-code-${handle}`, handle, grant.meta.last_row_id, nowIso(), nowIso());
+  // oauth_grant_orgs.person (0051): the org that connection may use.
+  await run(env.DB, `INSERT INTO oauth_grant_orgs (grant_id, org_id, person, added_at) VALUES (?, 'org_saplinglearn', ?, ?)`, grant.meta.last_row_id, handle, nowIso());
   // Multitenancy (0042_organizations): every org table that stores a handle — direct inserts; their writers land in
   // later phases. One org the person created, their membership, an invite they sent and answered, an
   // attribution they made, and the integration rows they last touched.
@@ -151,6 +153,9 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `INSERT INTO billing_subscriptions (subscription_id, customer_id, person, plan, stripe_status, created_at, updated_at) VALUES ('sub_rename', 'cus_rename', ?, 'team', 'active', ?, ?)`, handle, nowIso(), nowIso());
   // 0046_sync_runs: a Sync GitHub run the person started.
   await run(env.DB, `INSERT INTO sync_runs (org_id, repo, started_by, started_at, updated_at, ended_at, status) VALUES (?, 'o/r', ?, ?, ?, ?, 'ok')`, org, handle, nowIso(), nowIso(), nowIso());
+  // 0049_support_reports: a report the person sent, and one they resolved (the real writers take the
+  // principal from the session: test/support.routes.test.ts renames through them).
+  await run(env.DB, `INSERT INTO support_reports (kind, subject, message, reporter, status, resolved_by, resolved_at, created_at) VALUES ('bug', 's', 'm', ?, 'resolved', ?, ?, ?)`, handle, handle, nowIso(), nowIso());
 }
 
 describe("renamePerson", () => {

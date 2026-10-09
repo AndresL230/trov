@@ -20,7 +20,15 @@ export function siteMark(size: number): string {
 // Shared with the legal pages (web/src/legal.ts) and the pricing page (web/src/pricing.ts).
 // Pricing, Terms and Privacy are PATHS (/pricing, /terms, /privacy — static pages,
 // readable signed out), never hash routes.
-export function siteFooter(): string {
+//
+// `contact`: the landing page opens the Contact form in place (`"dialog"` — the support dialog, signed
+// out or in); the static pages (pricing, terms, privacy) have no app behind them, so their link goes to
+// `/?contact=1`, which opens it on the landing page (main.ts reads the parameter once).
+export const CONTACT_HREF = "/?contact=1";
+export function siteFooter(contact: "dialog" | "link" = "link"): string {
+  const link = contact === "dialog"
+    ? `<button type="button" data-act="supportOpen" data-arg="question" data-support-trigger="question" data-field="supportOpen:question" aria-haspopup="dialog" style="padding:0;font:inherit;color:inherit;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--border-strong);cursor:pointer">Contact</button>`
+    : `<a href="${CONTACT_HREF}">Contact</a>`;
   return `<footer style="margin-top:150px;border-top:1px solid var(--border)">
     <div style="max-width:1120px;margin:0 auto;padding:44px 24px 56px;display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:9px">
@@ -29,7 +37,7 @@ export function siteFooter(): string {
       </div>
       <div style="margin-left:auto;display:flex;flex-direction:column;gap:6px;text-align:right;font-size:13px;color:var(--fg-55)">
         <span>A shared working memory for teams and their coding agents.</span>
-        <span><a href="/pricing">Pricing</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="${TROV_REPO}" target="_blank" rel="noopener">GitHub</a> · Licensed under AGPL-3.0</span>
+        <span>${link} · <a href="/pricing">Pricing</a> · <a href="/terms">Terms</a> · <a href="/privacy">Privacy</a> · <a href="${TROV_REPO}" target="_blank" rel="noopener">GitHub</a> · Licensed under AGPL-3.0</span>
         <span>© 2026 TrovLabs, Inc.</span>
       </div>
     </div>

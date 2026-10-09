@@ -332,6 +332,9 @@ const PLATFORM: Record<string, string> = {
   "POST /auth/mcp-tokens/:id/revoke": "cut-over alias: the caller's own token for their one org — someone else's id, or their own for another org, is 404",
   "GET /auth/oauth-grants": "the caller's own grants",
   "POST /auth/oauth-grants/:id/revoke": "the caller's own grants (someone else's id is 404)",
+  "POST /auth/oauth-grants/:id/orgs": "the caller's own grant, and an org bound through a live membership check — someone else's id or an org they are not in is 404",
+  "POST /auth/oauth-grants/:id/current": "the caller's own grant, switched only to an org it is already allowed and they are a member of (else 404 / 409)",
+  "POST /auth/oauth-grants/:id/mode": "the caller's own grant: follow the repository, or manual in one org they are a member of (else 404)",
   "GET /.well-known/oauth-protected-resource": "public OAuth metadata",
   "GET /.well-known/oauth-protected-resource/mcp": "public OAuth metadata",
   "GET /.well-known/oauth-authorization-server": "public OAuth metadata",
@@ -342,6 +345,7 @@ const PLATFORM: Record<string, string> = {
   "POST /oauth/revoke": "public: token revocation by the token itself",
   "GET /oauth/authorize": "reads the session itself; consent names the org (Phase 5a)",
   "POST /oauth/authorize": "reads the session itself",
+  "POST /oauth/switch-account": "the consent page's Not you? Sign out: ends the caller's OWN session (the consent CSRF value is required) and returns to the same authorize request",
   "GET /api/orgs": "the caller's own memberships and pending invites",
   "GET /api/orgs/slug-check": "is an organization handle (slug) free — orgs are global; no org's content, capped per person",
   "POST /api/orgs": "creates an org the caller owns (cap 3 per person)",
@@ -360,6 +364,12 @@ const PLATFORM: Record<string, string> = {
   "POST /api/platform/grants": "requireSuperadmin", "POST /api/platform/grants/:id/revoke": "requireSuperadmin",
   "GET /api/platform/admins": "requireSuperadmin", "POST /api/platform/admins": "requireSuperadmin", "DELETE /api/platform/admins/:handle": "requireSuperadmin",
   "GET /api/platform/audit": "requireSuperadmin", "GET /api/platform/usage": "requireSuperadmin",
+  // Support reports (0049_support_reports, src/platform/support-routes.ts): a GLOBAL table. Sending one is person-level;
+  // reading them is the superadmin's, and a row holds what its reporter typed plus a slug and a route — nothing of an org's.
+  "POST /api/support": "the caller's own report to the platform's operator: the reporter is the session's person, the org is kept only if they are a member of it, rate-limited per person (test/support.routes.test.ts)",
+  "POST /api/support/public": "public: the site's Contact form — no session; stores a report with no reporter and the typed (unverified) address, mails only the operator, bounded per client address and by a global daily cap; with a session cookie it is the signed-in path and the principal wins (test/support.routes.test.ts)",
+  "GET /api/platform/support": "requireSuperadmin", "GET /api/platform/support/:id": "requireSuperadmin",
+  "POST /api/platform/support/:id/resolve": "requireSuperadmin", "POST /api/platform/support/:id/reopen": "requireSuperadmin",
   // Billing (0045_billing, src/billing/routes.ts) — person-level: a purchase is made before the buyer has any org.
   "GET /billing/start": "public: reads the session itself — signed out, a sign-in page; signed in, a Stripe Checkout Session bound to the CALLER (their handle on the row, their own verified e-mail), rate-limited per person; touches no org",
   "GET /api/billing/config": "public: which plans can be bought (config only) and, signed in, the caller's OWN paid orgs (owner memberships)",

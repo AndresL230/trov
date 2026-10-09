@@ -15,6 +15,8 @@ export const RESET_STATEMENTS = [
   "DELETE FROM billing_subscriptions",
   "DELETE FROM billing_events",
   "DELETE FROM platform_outbox_bodies",
+  // Support reports (0049_support_reports): a global table — no FK in or out.
+  "DELETE FROM support_reports",
   "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL",
   "DELETE FROM abuse_counters",
   // Sync GitHub runs (0046_sync_runs) reference orgs.
@@ -97,6 +99,7 @@ export const RESET_STATEMENTS = [
   "UPDATE notification_settings SET send_hour = 8, timezone = 'America/New_York', from_address = 'Trov <hello@trov.dev>' WHERE org_id = 'org_saplinglearn'",
   "DELETE FROM oauth_tokens",
   "DELETE FROM oauth_codes",
+  "DELETE FROM oauth_grant_orgs",
   "DELETE FROM oauth_grants",
   "DELETE FROM oauth_clients",
   "DELETE FROM sessions",

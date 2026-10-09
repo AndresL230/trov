@@ -19,6 +19,7 @@ import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import worker from "../src/index";
+import MIGRATION_0051 from "../migrations/0051_mcp_connection_orgs.sql?raw";
 import { app } from "../src/routes";
 import type { Env } from "../src/env";
 import type { TenantContext } from "../src/data/context";
@@ -261,6 +262,10 @@ const MATRIX: Record<string, Entry> = {
   search_prompts: () => [read(), read({ q: "canary" }), read({ tags: ["api"] })],
   get_prompt: (o) => [refused({ slug: o.prompt, vars: { name: "x" } }), { args: { slug: SHARED_PROMPT }, expect: "own", sees: true }],
   save_prompt: (o) => [{ args: { slug: o.prompt, title: "t", body: "a prompt of the same slug, in my own org" }, expect: "own" }],
+  // The connection's own tools (0051): a token is bound to ONE org — it can be told where it is, and
+  // can neither be asked about nor moved to the other one.
+  get_connection: (o) => [{ args: {}, expect: "inert" }, { args: { org: SLUG[o.org] }, expect: "inert" }, { args: { repo: `canary-${o.tag.toLowerCase()}/${canary(o.tag, "repo")}` }, expect: "inert" }],
+  switch_org: (o) => [refused({ org: SLUG[o.org] })],
 };
 
 /** Run the whole matrix as `ctx` (bound to `mine.org`) against `theirs`. `owner` = the fixture's own
@@ -357,13 +362,32 @@ describe("one person, two orgs, one token each", () => {
       const res = await worker.fetch(new Request("https://trov.test/mcp", {
         method: "POST",
         headers: { authorization: `Bearer ${FX[org].token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_tickets", arguments: { seg: "all", org: SLUG[other(org)], org_id: other(org) } } }),
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_tickets", arguments: { seg: "all", org_id: other(org), repo: `canary-${TAG[other(org)].toLowerCase()}/x` } } }),
       }) as Parameters<typeof worker.fetch>[0], e, exec);
       const text = await res.text();
       await waitOnExecutionContext(exec);
       expect(res.status).toBe(200);
       expect(text).toMatch(leak(TAG[org]));
       expect(text).not.toMatch(leak(TAG[other(org)]));
+    }
+  });
+
+  it("a token that NAMES the other org (`org`) is refused, not answered from its own: nothing from either org comes back", async () => {
+    for (const org of [ORG_A, ORG_B] as const) {
+      const before = { mine: await digest(org), theirs: await digest(other(org)) };
+      const exec = createExecutionContext();
+      const res = await worker.fetch(new Request("https://trov.test/mcp", {
+        method: "POST",
+        headers: { authorization: `Bearer ${FX[org].token}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "list_tickets", arguments: { seg: "all", org: SLUG[other(org)] } } }),
+      }) as Parameters<typeof worker.fetch>[0], e, exec);
+      const text = await res.text();
+      await waitOnExecutionContext(exec);
+      expect(res.status).toBe(200);
+      expect(text).toContain("org_not_allowed");
+      expect(text).not.toMatch(leak(TAG[org]));
+      expect(text).not.toMatch(leak(TAG[other(org)]));
+      expect({ mine: await digest(org), theirs: await digest(other(org)) }).toEqual(before);
     }
   });
 });
@@ -383,6 +407,12 @@ const mcpStatus = async (raw: string): Promise<[number, string | null]> => {
 };
 
 const REDIRECT = "http://localhost:4444/callback";
+/** 0051's backfill statement, cut out of the migration itself (the one between its two marker comments). */
+const MIGRATION_0051_BACKFILL = (() => {
+  const m = /INSERT OR IGNORE INTO oauth_grant_orgs[\s\S]*?;/.exec(MIGRATION_0051);
+  if (!m) throw new Error("0051's backfill statement was not found");
+  return m[0].replace(/;$/, "");
+})();
 const form = (o: Record<string, string>) => ({ method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(o).toString() });
 
 /** A registered client and the authorize query string for it. */
@@ -489,6 +519,11 @@ describe("membership lifecycle over a bearer", () => {
     // The same for a pre-multitenancy OAuth grant: the column default is its org.
     const c = await registerClient(platformCtx(), { client_name: "Old client", redirect_uris: [REDIRECT] }, Date.now());
     const g = await env.DB.prepare(`INSERT INTO oauth_grants (person, client_id, client_name, created_at) VALUES ('meilin', ?, 'Old client', '2026-09-01T00:00:00.000Z')`).bind(c.client_id).run();
+    // …and 0051's backfill (its own statement, run again here over a row written the old way) gives that
+    // grant exactly ONE organization: the one already on it. Nothing wider.
+    await env.DB.prepare(MIGRATION_0051_BACKFILL).run();
+    expect((await env.DB.prepare(`SELECT org_id, person FROM oauth_grant_orgs WHERE grant_id = ?`).bind(g.meta.last_row_id).all()).results).toEqual([{ org_id: ORG_A, person: "meilin" }]);
+    expect(await env.DB.prepare(`SELECT mode, org_id FROM oauth_grants WHERE id = ?`).bind(g.meta.last_row_id).first()).toEqual({ mode: "manual", org_id: ORG_A });
     const oat = "canopy_oat_issued-before-multitenancy-0123456789";
     await env.DB.prepare(`INSERT INTO oauth_tokens (token_hash, grant_id, kind, created_at, expires_at) VALUES (?, ?, 'access', ?, ?)`)
       .bind(await sha256Hex(oat), g.meta.last_row_id, new Date().toISOString(), new Date(Date.now() + ACCESS_TTL_MS).toISOString()).run();
@@ -619,9 +654,12 @@ describe("OAuth consent — the org picker", () => {
     const cookie = await cookieFor("bob", { member: false });
     const { qs } = await registered();
     const html = await (await consentPageFor(qs, cookie)).text();
-    expect(html).toContain("@bob</strong> in <strong>Acme</strong>");
+    expect(html).toContain(`<span class="who-label">Signed in as</span><span class="who-name">@bob</span>`);
+    expect(html).toContain("Works in <strong>Acme</strong>");
     expect(html).toContain(`<input type="hidden" name="org" value="acme">`);
-    expect(html).not.toContain(`type="radio"`);
+    expect(html).toContain(`<input type="hidden" name="current" value="acme">`);
+    expect(html).not.toContain(`type="checkbox"`); // one organization: nothing to tick
+    expect(html).toContain(`<input type="radio" name="mode" value="manual" form="consent" checked>`); // …and manual is the default
     expect((await postConsent(qs, cookie, { org: "acme" })).status).toBe(302);
     // A form that names no org at all (the page before this change) still works for a one-org person.
     expect((await postConsent((await registered()).qs, cookie, {})).status).toBe(302);
@@ -629,12 +667,13 @@ describe("OAuth consent — the org picker", () => {
     expect(orgs).toEqual([ORG_B, ORG_B]);
   });
 
-  it("several orgs: a radio per org, none preselected, Allow requires one; suspended orgs are not offered", async () => {
+  it("several orgs: a tick per org and where it starts; a form that names none is refused; suspended orgs are not offered", async () => {
     const cookie = await cookieFor("dana", { member: false });
     const { qs } = await registered();
     const html = await (await consentPageFor(qs, cookie)).text();
-    expect([...html.matchAll(/<input type="radio" name="org" value="([^"]+)" form="consent" required>/g)].map((m) => m[1])).toEqual(["acme", "saplinglearn"]);
-    expect(html).not.toMatch(/<input[^>]*\schecked/);
+    expect([...html.matchAll(/<input type="checkbox" name="org" value="([^"]+)" form="consent" checked>/g)].map((m) => m[1])).toEqual(["acme", "saplinglearn"]); // few orgs: all ticked
+    expect([...html.matchAll(/<input type="radio" name="current" value="([^"]+)" form="consent"( checked)?>/g)].map((m) => [m[1], !!m[2]])).toEqual([["acme", true], ["saplinglearn", false]]);
+    expect(html).toContain(`<input type="radio" name="mode" value="repo" form="consent" checked>`); // several orgs: follow the repository is the default
     expect(html).not.toContain(`type="hidden" name="org"`);
     expect(html).toContain("SaplingLearn");
     expect(html).toContain("Acme");
@@ -667,7 +706,8 @@ describe("OAuth consent — the org picker", () => {
     const cookie = await cookieFor("dana", { member: false });
     const { grants } = (await (await app.request("/auth/oauth-grants", { headers: { cookie } }, env)).json()) as { grants: { id: number; client_name: string; org: { slug: string; name: string } }[] };
     expect(grants.map((g) => g.org)).toEqual([{ slug: "acme", name: "Acme" }, { slug: "saplinglearn", name: "SaplingLearn" }]); // newest first
-    expect(Object.keys(grants[0]).sort()).toEqual(["client_name", "created_at", "id", "last_used_at", "org"]);
+    expect(Object.keys(grants[0]).sort()).toEqual(["client_name", "created_at", "id", "last_used_at", "mode", "org", "orgs"]);
+    expect(grants.map((g) => [(g as unknown as { mode: string }).mode, (g as unknown as { orgs: unknown }).orgs])).toEqual([["manual", [{ slug: "acme", name: "Acme" }]], ["manual", [{ slug: "saplinglearn", name: "SaplingLearn" }]]]);
     // Revoking is user-level: it works from /auth for either org, and ends that org's connection only.
     const a = grants.find((g) => g.org.slug === "saplinglearn")!;
     expect((await app.request(`/auth/oauth-grants/${a.id}/revoke`, { method: "POST", headers: { cookie } }, env)).status).toBe(200);

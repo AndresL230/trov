@@ -12,7 +12,7 @@ import type { TicketPriority } from "@shared/tickets";
 import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
 import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
-import { roadmapTimeline } from "./timeline";
+import { roadmapTimeline, timelineShapes } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, personLink, personAvatarLink, handleTag, handleLink, swatches, type OnboardState } from "./people";
 import { personCardModal } from "./profile";
@@ -28,12 +28,13 @@ import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-m
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { releasesScreen, findRelease, type ReleasePage } from "./releases";
+import { supportDialog, initialSupport, type SupportDraft } from "./support";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
-import { skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
+import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
 import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
 import type { IdentityProps } from "./identity";
@@ -43,7 +44,7 @@ import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal,
 import { newDocView, blankDoc, type NewDocDraft } from "./newdoc";
 import type { HandoffView, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
-import { emailNotificationsSection, unsubscribeView, type NotifAdminProps } from "./notifications";
+import { emailNotificationsSection, unsubscribeView, switchBtn, type NotifAdminProps } from "./notifications";
 import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
 import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
 import { repoView, repoControls, repoCrumb, type RepoProps, type RepoPollState } from "./repo";
@@ -55,7 +56,7 @@ import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
 import { platformView, platformOrgView, platformDialogs, platformHeaderControls, platformCrumb, platformPage, initialPlat, type PlatState } from "./platform";
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
-import { initialDropdownUi, type DropdownUi } from "./dropdown";
+import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { orgSettingsView, orgOverlays, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
 import { settingsPlanTile, settingsLimitsTile, settingsOrgsTile } from "./settings-plan";
 import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
@@ -63,9 +64,10 @@ import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 import { orgSwitcherButton, orgMenu, orgPickerView, createOrgModal, initialOrgsUi, type OrgsUi } from "./org-picker";
 import { billingDonePage, type BillingDoneUi } from "./billing";
 import { isOrgAdmin } from "./org-context";
-import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpEndpoint, mcpStrong, ONE_ORG_NOTE } from "./mcp-connect";
+import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpEndpoint, mcpStrong, CONNECTION_NOTE } from "./mcp-connect";
 import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
+import { previewBanner, previewState, type PreviewMode } from "./preview";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -113,6 +115,12 @@ export interface AppState {
   authStep: "login" | "verifying" | "nonmember" | "unverified" | "onboard";
   /** The landing page's sign-in dialog (authStep "login" only). */
   signInOpen: boolean;
+  /** Which button opened it (landing.ts `SignInMode`): the dialog's title and foot follow. */
+  signInMode: "signin" | "signup";
+  /** The plan picked in the dialog's Get started side. */
+  signInPlan: "free" | "team";
+  /** The landing tour's feature open in its dialog (web/src/site-feature.ts), or none. */
+  siteFeature: import("./site-feature-core").FeatureState | null;
   /** Landing reveal keys that already played (landing-motion.ts records them). */
   landingSeen: Set<string>;
   /** Where "Back to the app" on the #site landing returns to (the route the logo was clicked from). */
@@ -127,6 +135,8 @@ export interface AppState {
   orgMe: Loadable<OrgMeResponse | null>;
   /** The switcher's menu, the picker and the create-organization dialog (org-picker.ts). */
   orgsUi: OrgsUi;
+  /** Help › Report a bug / Contact support: the dialog and its draft (support.ts). */
+  support: SupportDraft;
   /** The guided first-run setup (welcome.ts): its step, and the by-hand disclosure. */
   welcome: WelcomeUi;
   /** `/billing/done`: the waiting room a buyer lands in after Stripe Checkout (billing.ts). null everywhere else. */
@@ -227,6 +237,10 @@ export interface AppState {
   grants: Loadable<OAuthGrantSummary[]>;
   /** The connection whose Revoke was clicked once — the second click is the one that revokes. */
   grantRevokeArm: number | null;
+  /** Settings › MCP access: the connection whose scope (mode, organizations) is open in the dialog. */
+  grantScope: number | null;
+  /** How the dialog's last change went (saving / saved / refused). */
+  grantScopeNote: GrantScopeNote | null;
   /** Connected apps opened past its first MCP_LIST_CAP rows by "Show all". */
   grantsAll: boolean;
   /** Settings › MCP access: MY personal access tokens for the org on screen (older setups; revoke only). */
@@ -401,6 +415,9 @@ export interface AppState {
   myOrgs: Loadable<MyOrgsResponse | null>;
   /** Org settings' own state. It never holds a secret's value (org-actions.ts). */
   org: OrgUi;
+  /** The state preview (`?preview=empty` / `?preview=loading`, web/src/preview.ts): every screen
+   *  paints its empty layout or its loading skeleton instead of its data. null = off. */
+  preview: PreviewMode | null;
 }
 
 /** Project the app state onto the Sync GitHub control and panel (sync.ts never sees AppState). */
@@ -410,7 +427,7 @@ export function syncPropsOf(s: AppState, now: number = Date.now()): SyncProps {
 
 export function initialState(): AppState {
   return {
-    view: "auth", authStep: "login", signInOpen: false, landingSeen: new Set(), siteReturn: null,
+    view: "auth", authStep: "login", signInOpen: false, signInMode: "signin", signInPlan: "free", siteFeature: null, landingSeen: new Set(), siteReturn: null,
     deniedEmail: null,
     onboard: initialOnboard(),
     persons: { status: "idle", data: [] },
@@ -418,6 +435,7 @@ export function initialState(): AppState {
     orgSlug: null,
     orgMe: { status: "idle", data: null },
     orgsUi: initialOrgsUi(),
+    support: initialSupport(),
     welcome: initialWelcomeUi(),
     billingDone: null,
     screen: "mywork",
@@ -465,6 +483,8 @@ export function initialState(): AppState {
     displayName: "",
     grants: { status: "idle", data: [] },
     grantRevokeArm: null,
+    grantScope: null,
+    grantScopeNote: null,
     mcpSetup: false,
     grantsAll: false,
     mcpTokens: { status: "idle", data: [] },
@@ -529,6 +549,7 @@ export function initialState(): AppState {
     avatarMenu: false,
     myOrgs: { status: "idle", data: null },
     org: initialOrgUi(),
+    preview: null,
   };
 }
 
@@ -666,7 +687,7 @@ function notice(text: string): string {
 // ── auth states ──────────────────────────────────────────────────────────────
 function authView(s: AppState): string {
   // Signed out → the landing page; its Sign in opens the provider dialog.
-  if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, seen: s.landingSeen });
+  if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, signInMode: s.signInMode, signInPlan: s.signInPlan, seen: s.landingSeen, feature: s.siteFeature });
   // Onboarding is a form: `data-morph` patches it in place per keystroke (morph.ts `paint`) instead of
   // rebuilding the card and the backdrop behind it. The other auth cards have nothing to type in.
   return `<div class="cnpy-authwrap"${s.authStep === "onboard" ? ' data-morph="onboard"' : ""} style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
@@ -846,6 +867,12 @@ function header(s: AppState): string {
         ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`
         : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"></path></svg>`}
     </button>`;
+  // Report a bug: the theme toggle's twin, beside it on every screen the header shows on. It opens the
+  // support dialog on Bug (support.ts) over the screen on show; at phone width it takes the header's
+  // 40px icon-button size with the rest (`.cnpy-hdr-r > .cnpy-iconbtn`).
+  const bugBtn = `<button data-act="supportOpen" data-arg="bug" data-support-trigger="bug" title="Report a bug" aria-label="Report a bug" aria-haspopup="dialog" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="7" width="8" height="12" rx="4"></rect><path d="M12 12v7"></path><path d="M9.5 7.5a2.5 2.5 0 0 1 5 0"></path><path d="M4 13h4M16 13h4M5 7l3.2 2.6M19 7l-3.2 2.6M5 20l3.2-2.8M19 20l-3.2-2.8"></path></svg>
+    </button>`;
 
   // Breadcrumb (the design's titleBtnSt / crumbSt): on a CHILD screen the title
   // becomes a back button to its parent and a "›" crumb names the child.
@@ -882,7 +909,7 @@ function header(s: AppState): string {
       ${art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedViewSwitch}${themeBtn}
+      ${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedViewSwitch}${bugBtn}${themeBtn}
     </div>
   </header>`;
 }
@@ -890,25 +917,37 @@ function header(s: AppState): string {
 // ── feed ─────────────────────────────────────────────────────────────────────
 /** The Feed page: the entries (`inner`) beside the sticky aside — This week + Waiting on
  *  review — in the Roadmap Narrative's two columns (ui.ts `asideColumns`). */
-function wrapFeed(s: AppState, inner: string): string {
+function wrapFeed(s: AppState, inner: string, history = true): string {
   return asideColumns(`${inner}
-    <div style="text-align:center;padding:18px 0;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">&mdash; start of recorded history &mdash;</div>`, feedAside(s));
+    ${history ? `<div style="text-align:center;padding:18px 0;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">&mdash; start of recorded history &mdash;</div>` : ""}`, feedAside(s));
 }
 
 /** An aside box's rows while its read is out: a title line and a meta line per row,
  *  in the box's own row padding (so the rows land where the bars were). */
+const asideRowShapes = (n: number): string =>
+  skList(n, (i) => `<div style="padding:9px 18px;border-top:1px solid var(--border)">${skLine(skW(i), 13, 1.45)}<div style="margin-top:3px">${skLine(skW(i + 1, ["44%", "52%", "38%"]), 12, 1.5)}</div></div>`);
 function asideRowsSkeleton(key: string, label: string, n: number): string {
-  return skeleton(key, label, skList(n, (i) => `<div style="padding:9px 18px;border-top:1px solid var(--border)">${skLine(skW(i), 13, 1.45)}<div style="margin-top:3px">${skLine(skW(i + 1, ["44%", "52%", "38%"]), 12, 1.5)}</div></div>`));
+  return skeleton(key, label, asideRowShapes(n));
+}
+/** An aside box that has loaded and holds nothing: its sentence where the first row goes, then
+ *  the rows it will have, drawn empty (skeleton.ts `emptyLayout`). `shapes` are the box's own rows. */
+function asideEmpty(key: string, text: string, shapes: string): string {
+  return emptyLayout(key, { text, plain: true, shapes, sayStyle: "padding:12px 18px 14px;border-top:1px solid var(--border)" });
 }
 
-/** The Feed's cards while its first read is out: avatar, title, a two-line brief, the byline. */
-function feedSkeleton(): string {
-  const card = (i: number) => skCard(`<div style="display:flex;align-items:flex-start;gap:12px">
+/** One Feed card as a shape — avatar, title, a two-line brief, the byline — for the loading
+ *  skeleton and the empty layout. */
+const feedCardShape = (i: number): string => skCard(`<div style="display:flex;align-items:flex-start;gap:12px">
       ${skBox(30, 30, "margin-top:1px")}
       <div style="flex:1;min-width:0">${skLine(skW(i), 14, 1.5)}<div style="margin-top:5px">${skLines(["100%", skW(i + 1, ["64%", "82%", "46%"])], 13.5, 1.6)}</div><div style="margin-top:12px">${skLine(170, 12, 1.5)}</div></div>
     </div>`, "padding:16px 18px;margin-bottom:12px");
-  return skeleton("feed", "Loading feed&hellip;", skList(5, card));
+/** The Feed's cards while its first read is out. */
+function feedSkeleton(): string {
+  return skeleton("feed", "Loading feed&hellip;", skList(5, feedCardShape));
 }
+/** The Feed's empty sentence: nothing is made here by hand — an entry lands when an agent records a
+ *  session (the Guide: "a timeline of everything that shipped, from people and agents alike"). */
+export const FEED_EMPTY = "Nothing has been recorded yet. This is the timeline of everything that ships: an entry lands when your agent records a session.";
 
 function feedAside(s: AppState): string {
   return `${feedWeekBox(s)}${feedReviewBox(s)}`;
@@ -941,14 +980,17 @@ function feedWeekBox(s: AppState): string {
   const head = asideHead("This week", hasWeek ? { act: "setRange", arg: "7d", label: "Everything this week" } : undefined);
   const sub = `<div style="font-size:12.5px;color:var(--fg-40);padding:0 18px 10px;margin-top:-4px">Whole team, last 7 days</div>`;
   const wrap = (body: string) => `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Feed · This week">${head}${sub}${body}</section>`;
+  // The seven day bars as shapes — the loading skeleton's and the empty layout's.
+  const weekBars = `<div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;padding:0 18px 14px">${skList(7, () => `<span style="display:flex;flex-direction:column;align-items:center;gap:5px">${skBox("100%", 36)}${skBar(8, 10)}</span>`)}</div>`;
   if (!d) {
     if (st.status === "error") return wrap(asideNote("Couldn't load this week's numbers."));
     // The figure, the seven day bars and one chip group — the box's own blocks.
     return wrap(skeleton("feed-week", "Loading&hellip;", `<div style="display:flex;align-items:center;gap:8px;padding:0 18px 12px">${skBox(34, 24)}${skBar(120, 9)}</div>
-      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;padding:0 18px 14px">${skList(7, () => `<span style="display:flex;flex-direction:column;align-items:center;gap:5px">${skBox("100%", 36)}${skBar(8, 10)}</span>`)}</div>
+      ${weekBars}
       <div style="padding:10px 18px 12px;border-top:1px solid var(--border)">${skBar(60, 8, "margin:4px 0 11px")}<div style="display:flex;gap:6px">${skBox(74, 24)}${skBox(58, 24)}${skBox(86, 24)}</div></div>`));
   }
-  if (d.total === 0) return wrap(asideNote("Nothing recorded in the last 7 days."));
+  // A true zero for the whole window: the seven day bars, drawn empty.
+  if (d.total === 0) return wrap(asideEmpty("feed-week", "Nothing recorded in the last 7 days.", `<div style="padding-top:2px">${weekBars}</div>`));
 
   const max = Math.max(...d.days.map((x) => x.count));
   const bars = d.days.map((x, i) => {
@@ -999,7 +1041,7 @@ function feedReviewBox(s: AppState): string {
   const wrap = (body: string) => `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Feed · Waiting on review">${head}${body}</section>`;
   if (load === "error") return wrap(asideNote("Couldn't load the review queue."));
   if (load === "pending") return wrap(asideRowsSkeleton("feed-review", "Loading&hellip;", 2));
-  if (items.length === 0) return wrap(asideNote("Nothing waiting on review."));
+  if (items.length === 0) return wrap(asideEmpty("feed-review", "Nothing waiting on review.", asideRowShapes(2)));
 
   const proposals = items.filter((i) => i.kind === "proposal").length;
   const decisions = items.length - proposals;
@@ -1116,6 +1158,11 @@ function feedView(s: AppState): string {
     </div>`;
   }).join("");
 
+  // The feed answered with nothing and no filter is narrowing it: the cards, drawn empty.
+  // (Author and tag are server-side filters, the time range a client-side one.)
+  if (s.feed.status === "ok" && s.feed.data.length === 0 && s.feedAuthor === "all" && s.feedTag === "all") {
+    return wrapFeed(s, emptyLayout("feed", { text: FEED_EMPTY, action: CONNECT_AGENT, sayStyle: "margin-bottom:12px", shapes: skList(3, feedCardShape) }), false);
+  }
   const empty = s.feed.status === "ok" && feedRows(s).length === 0 ? notice("No entries match this filter.") : "";
   return wrapFeed(s, `<div class="cnpy-stagger">${cards}</div>${empty}`);
 }
@@ -1163,13 +1210,23 @@ function docTreeRow(s: AppState, doc: DocRow): string {
   return page + outlineHtml;
 }
 
+/** One section group of the Docs tree as shapes (a section label, then page rows in the tree's
+ *  own row box) — the tree's loading skeleton and its empty layout. */
+function docTreeGroupShape(g: number, rows: number): string {
+  const row = (i: number) => `<div class="cnpy-tree"><span class="cnpy-treechev is-empty"></span>${skLine(skW(i, ["64%", "82%", "52%", "74%", "58%"]), 13, 1.5, "flex:1")}</div>`;
+  return `<div style="margin-bottom:16px"><div class="cnpy-treesec">${skLine(g ? 96 : 72, 10.5, 1.5)}</div><div style="display:flex;flex-direction:column;gap:1px">${skList(rows, (i) => row(i + g))}</div></div>`;
+}
+/** The Docs reader's empty sentence for a space with no doc: how one gets there (newdoc.ts says the
+ *  same of New doc: it "lands in Review as a staged proposal, the same as an agent's"). */
+export const docsEmptyText = (space: string): string =>
+  `No ${spaceLabel(space)} docs yet. A doc appears here once its proposal is promoted in Review: one your agent staged, or your own from New doc.`;
+
 function docsView(s: AppState): string {
   // ── tree (left pane) ────────────────────────────────────────────────────────
   let treeHtml: string;
   if (slicePending(s.docsList)) {
     // Two section groups of page rows, in the tree's own row box.
-    const row = (i: number) => `<div class="cnpy-tree"><span class="cnpy-treechev is-empty"></span>${skLine(skW(i, ["64%", "82%", "52%", "74%", "58%"]), 13, 1.5, "flex:1")}</div>`;
-    treeHtml = skeleton("docs-tree", "Loading…", skList(2, (g) => `<div style="margin-bottom:16px"><div class="cnpy-treesec">${skLine(g ? 96 : 72, 10.5, 1.5)}</div><div style="display:flex;flex-direction:column;gap:1px">${skList(g ? 3 : 5, (i) => row(i + g))}</div></div>`));
+    treeHtml = skeleton("docs-tree", "Loading…", skList(2, (g) => docTreeGroupShape(g, g ? 3 : 5)));
   } else if (s.docsList.status === "error") {
     treeHtml = notice("Couldn't load docs.");
   } else {
@@ -1177,7 +1234,8 @@ function docsView(s: AppState): string {
     // Sections are static labels; each page expands to its own headings.
     const spaceDocs = s.docsList.data.filter((d) => d.space === s.docSpace);
     if (spaceDocs.length === 0) {
-      treeHtml = notice(`No ${spaceLabel(s.docSpace)} docs yet.`);
+      // The space has no doc: one section group of page rows, drawn empty (the reader says the rest).
+      treeHtml = emptyLayout("docs-tree", { text: `No ${spaceLabel(s.docSpace)} docs yet.`, plain: true, sayStyle: "padding:2px 8px 14px", shapes: docTreeGroupShape(0, 4) });
     } else {
       const grouped = new Map<string, DocRow[]>();
       for (const doc of spaceDocs) {
@@ -1209,20 +1267,25 @@ function docsView(s: AppState): string {
 
 /** The doc page while its read is out: the breadcrumb, title and byline rule, then
  *  prose — in the reader's own page frame. */
-function docReaderSkeleton(): string {
-  return skeleton("doc", "Loading…", `<div style="margin-bottom:11px">${skLine(150, 11, 1.5)}</div>
+const DOC_PAGE_FRAME = "max-width:1080px;margin:0 auto;padding:34px 52px 120px";
+/** A doc page as shapes: the breadcrumb, title and byline rule, then prose. */
+function docPageShapes(paras: number): string {
+  return `<div style="margin-bottom:11px">${skLine(150, 11, 1.5)}</div>
     ${skLine("48%", 29, 1.16)}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:15px;padding-bottom:17px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:9px">${skBox(24, 24)}${skBar(190, 9)}</div>${skBox(96, 30)}
     </div>
-    <div style="margin-top:28px">${skLine("34%", 20, 1.4)}<div style="margin-top:12px">${skProse(3)}</div></div>`,
-    "max-width:1080px;margin:0 auto;padding:34px 52px 120px");
+    <div style="margin-top:28px">${skLine("34%", 20, 1.4)}<div style="margin-top:12px">${skProse(paras)}</div></div>`;
+}
+function docReaderSkeleton(): string {
+  return skeleton("doc", "Loading…", docPageShapes(3), DOC_PAGE_FRAME);
 }
 
 /** The reader pane's inner HTML. Extracted so main.ts can load a doc into the
  *  pane in place (updating only #cnpy-reader) without rerendering the tree —
  *  a tree rerender swaps in fresh outline elements and kills their transition. */
-export function docReaderHtml(s: AppState): string {
+export function docReaderHtml(real: AppState): string {
+  const s = shownState(real);
   const dd = s.docDetail;
 
   // The list's first read being out counts too: its landing opens the first doc, so
@@ -1231,6 +1294,9 @@ export function docReaderHtml(s: AppState): string {
     return docReaderSkeleton();
   } else if (dd.status === "error") {
     return notice("Couldn't load this doc.");
+  } else if (dd.data === null && s.docSlug === null && s.docsList.status === "ok" && !s.docsList.data.some((d) => d.space === s.docSpace)) {
+    // The space has no doc to open: the doc page, drawn empty, with the way to the first one.
+    return emptyLayout("doc", { text: docsEmptyText(s.docSpace), action: { label: "New doc", act: "newDoc" }, style: DOC_PAGE_FRAME, sayStyle: "margin-bottom:30px", shapes: docPageShapes(2) });
   } else if (dd.data === null) {
     return notice(s.docSlug === null ? "Select a doc from the tree." : "Doc not found.");
   } else if (dd.status === "ok" && dd.data !== null) {
@@ -1328,8 +1394,25 @@ function roadmapEnriched(sprints: SprintView[], confirmedSprints: Record<string,
  * Upcoming / Done (§C.6). Every card is `sprintCard` from ./sprints — the ONE
  * place a sprint is painted, so the card and the Sprint screen can never drift.
  */
+/** One sprint card as a shape (its title and badge, two lines about it, the progress bar) —
+ *  the Roadmap's loading skeleton and its empty layout. */
+const sprintCardShape = (i: number): string => skCard(`<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">${skLine(skW(i, ["46%", "58%", "38%"]), 15, 1.4)}${skBox(64, 20)}</div>
+      <div style="margin-top:6px">${skLines(["92%", skW(i, ["54%", "70%"])], 13, 1.55)}</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:11px">${skBar("100%", 5, "flex:1")}${skBar(46, 8)}</div>`, "padding:16px 18px;margin-bottom:10px");
+/** The Roadmap's empty sentences (the Guide › Roadmap and sprints). */
+export const ROADMAP_EMPTY = {
+  sprints: "No sprints yet. A sprint gathers tickets toward a due date; its card here shows its lead, its due date and how many of its tickets are closed.",
+  narrative: "No plan narrative yet. An admin writes it with the update-plan skill, and it reads here above the sprints.",
+} as const;
+
 function roadmapSprintGroups(s: AppState): string {
   const sprints = s.roadmap.data.sprints;
+  // No sprint at all: the group a new sprint lands in (Upcoming — it is created unscheduled and
+  // inactive), its heading in a neutral tone, and its cards drawn empty.
+  if (sprints.length === 0) {
+    return `<div style="display:flex;align-items:center;gap:9px;margin:28px 0 12px"><span style="font-size:11px;font-weight:600;font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40)">Sprints</span><div style="flex:1;height:1px;background:var(--border)"></div></div>${
+      emptyLayout("roadmap-sprints", { text: ROADMAP_EMPTY.sprints, action: { label: "New sprint", act: "nsToggle" }, sayStyle: "margin-bottom:10px", shapes: skList(2, sprintCardShape) })}`;
+  }
   const isDone = (sp: SprintView) => sp.status === "done" || !!s.confirmedSprints[String(sp.id)];
 
   const inProgress = sprints.filter((sp) => !isDone(sp) && sp.active);
@@ -1389,14 +1472,11 @@ function roadmapTimelineTab(s: AppState): string {
 function roadmapSkeleton(s: AppState): string {
   const label = "Loading roadmap&hellip;";
   if (s.roadmapTab !== "narrative") {
-    const row = (i: number) => `<div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:16px;align-items:center;height:44px;padding:0 18px${i ? ";border-top:1px solid var(--border)" : ""}">${skBar(skW(i, [120, 150, 96, 136]), 10)}<span style="display:block;padding-left:${[6, 22, 38, 14, 46, 30][i % 6]}%">${skBox(skW(i, ["34%", "26%", "42%", "30%"]), 16)}</span></div>`;
     return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
-    ${roadmapTabBar(s)}<div${tabPanelAttrs("roadmap-tab", s.roadmapTab)} style="padding-top:20px">${roadmapNewSprint(s)}${skeleton("roadmap-timeline", label, skCard(`<div style="height:38px;border-bottom:1px solid var(--border)"></div>${skList(6, row)}`, "overflow:hidden"))}</div>
+    ${roadmapTabBar(s)}<div${tabPanelAttrs("roadmap-tab", s.roadmapTab)} style="padding-top:20px">${roadmapNewSprint(s)}${skeleton("roadmap-timeline", label, timelineShapes(6))}</div>
   </div>`;
   }
-  const sprint = (i: number) => skCard(`<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">${skLine(skW(i, ["46%", "58%", "38%"]), 15, 1.4)}${skBox(64, 20)}</div>
-      <div style="margin-top:6px">${skLines(["92%", skW(i, ["54%", "70%"])], 13, 1.55)}</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:11px">${skBar("100%", 5, "flex:1")}${skBar(46, 8)}</div>`, "padding:16px 18px;margin-bottom:10px");
+  const sprint = sprintCardShape;
   const main = `${roadmapNewSprint(s)}${skeleton("roadmap", label, `${skCard(`${skLine(104, 12, 1.5)}<div style="margin-top:8px">${skLines(["100%", "94%", "62%"], 14.5, 1.7)}</div>`, `${RM_CARD};padding:18px 20px`)}
       <div style="display:flex;align-items:center;gap:9px;margin:28px 0 12px">${skBox(7, 7)}${skLine(84, 11, 1.5)}</div>${skList(2, sprint)}
       <div style="display:flex;align-items:center;gap:9px;margin:28px 0 12px">${skBox(7, 7)}${skLine(70, 11, 1.5)}</div>${skList(2, (i) => sprint(i + 2))}`)}`;
@@ -1426,7 +1506,7 @@ function roadmapView(s: AppState): string {
 export function planNarrativeBlock(narrative: string, markdownFn: (body: string) => string): string {
   const body = narrative.trim()
     ? `<div class="cnpy-md">${markdownFn(narrative)}</div>`
-    : `<div style="border:1px dashed var(--border-strong);border-radius:10px;padding:16px 18px;color:var(--fg-55);font-size:13.5px;line-height:1.6">No plan narrative yet — write one with the update-plan skill</div>`;
+    : emptyLayout("roadmap-narrative", { text: ROADMAP_EMPTY.narrative, plain: true, sayStyle: "margin-bottom:10px", shapes: skLines(["100%", "94%", "62%"], 14.5, 1.7) });
   return `<section${surface(`${RM_CARD};padding:18px 20px`, { cls: "cnpy-rise" })}>
     <div style="font-size:12px;font-weight:500;color:var(--fg-40);margin:0 0 8px">What's happening</div>
     ${body}
@@ -1514,6 +1594,8 @@ function roadmapAside(s: AppState): string {
 /** The Narrative aside's second box, "Recent happenings" (the live feed, with GitHub chips).
  *  Its OWN unfiltered read (s.roadmapFeed), so a Feed-screen author/tag filter never narrows
  *  it, and a failed read says so instead of "no activity". */
+const happeningShapes = (n: number): string =>
+  skList(n, (i) => `<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:9px 18px;border-top:1px solid var(--border)">${skLine(26, 12, 1.6)}<span style="display:block;min-width:0">${skLines(["100%", skW(i, ["58%", "74%", "40%", "66%"])], 13, 1.5)}</span></div>`);
 function roadmapHappenings(s: AppState): string {
   const feed = s.roadmapFeed;
   const entries = feed.data.slice(0, HAPPENINGS_LIMIT);
@@ -1535,8 +1617,8 @@ function roadmapHappenings(s: AppState): string {
     ${asideHead("Recent happenings", { act: "goFeed", label: "Feed" })}
     ${feed.status === "error" ? asideNote("Couldn't load recent activity.")
       : entries.length > 0 ? rows
-      : feed.status === "ok" ? asideNote("No recent activity yet.")
-      : skeleton("roadmap-happenings", "Loading&hellip;", skList(HAPPENINGS_LIMIT, (i) => `<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:9px 18px;border-top:1px solid var(--border)">${skLine(26, 12, 1.6)}<span style="display:block;min-width:0">${skLines(["100%", skW(i, ["58%", "74%", "40%", "66%"])], 13, 1.5)}</span></div>`))}
+      : feed.status === "ok" ? asideEmpty("roadmap-happenings", "No recent activity yet.", happeningShapes(2))
+      : skeleton("roadmap-happenings", "Loading&hellip;", happeningShapes(HAPPENINGS_LIMIT))}
   </section>`;
   return happenings;
 }
@@ -1963,6 +2045,21 @@ export function accountSection(s: AppState): string {
   </section>`;
 }
 
+/** Settings › Help: Contact support — the way to write to the people who run Trov (support.ts opens on
+ *  Question). A slim tile on a row of its own; its button is the dialog's opener, so focus returns to it. */
+export function helpSection(): string {
+  return `<section class="cnpy-tile cnpy-surface cnpy-set-help">
+    <div style="${SECTION_LABEL}">Help</div>
+    <div class="cnpy-set-who">
+      <div style="flex:1 1 260px;min-width:0">
+        <div style="font-size:13.5px;font-weight:500;line-height:1.35">Contact support</div>
+        <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:3px">A question about your account, your organization or how Trov works, or feedback for us. We read every message and reply by email. To report something broken, use the bug button at the top right of any screen.</div>
+      </div>
+      <button data-act="supportOpen" data-arg="question" data-support-trigger="question" data-field="supportOpen:question" aria-haspopup="dialog" class="cnpy-ghostbtn" style="flex:none;display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:600;color:var(--fg)">Contact support</button>
+    </div>
+  </section>`;
+}
+
 /** Settings › Session: who is signed in on this browser, and SIGN OUT — a labelled button with its
  *  icon, in a tile of its own at the top right of the page (last on a phone), never a quiet link.
  *  Pure over AppState — exported for the pure render test. */
@@ -1990,6 +2087,108 @@ export { PLUGIN_INSTALL, browserConnectCommand };
 /** How many Connected apps rows Settings › MCP access shows before its "Show all N". */
 export const MCP_LIST_CAP = 3;
 
+/** MY organizations, for a connection's organization toggles: the fresh list when it is loaded, else sign-in's. */
+const myOrgsOf = (s: Partial<Pick<AppState, "myOrgs" | "me">>): readonly MyOrg[] => s.myOrgs?.data?.orgs ?? s.me?.orgs ?? [];
+
+/** How a connection is scoped, as the chip beside its name: "Follows the repository", or a manual
+ *  one's current organization (and how many more it may use). */
+export function grantScopeChip(gr: OAuthGrantSummary, orgSlug: string | null): string {
+  const chip = "flex:none;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:500;line-height:17px;padding:0 7px;border-radius:5px;border:1px solid var(--border)";
+  if (gr.mode === "repo") {
+    return `<span data-grant-mode="repo" title="It works in whichever of your organizations has the repository the agent is in connected" style="${chip};color:var(--fg-55)">Follows the repository</span>`;
+  }
+  if (!gr.org) {
+    return `<span data-grant-mode="manual" data-grant-org="" title="Its current organization is no longer available to you: pick another" style="${chip};color:var(--red)">No organization</span>`;
+  }
+  const more = gr.orgs.length - 1;
+  return `<span data-grant-mode="manual" data-grant-org="${attr(gr.org.slug)}" title="${attr(more > 0 ? `This connection is working in ${gr.org.name}, and may use ${more} more` : `This connection reaches ${gr.org.name} only`)}" style="${chip};color:${gr.org.slug === orgSlug ? "var(--fg-70)" : "var(--fg-55)"}">${esc(gr.org.name)}${more > 0 ? ` +${more}` : ""}</span>`;
+}
+
+/** The "works in" dropdown of the connection being changed (its menu is a root overlay). */
+export function grantCurrentDropdown(gr: OAuthGrantSummary): DropdownProps {
+  return {
+    id: `grant-current-${gr.id}`, act: "grantCurrent", arg: String(gr.id), value: gr.org?.slug ?? "", size: "sm",
+    ariaLabel: "Working in", options: gr.orgs.map((o) => ({ value: o.slug, label: o.name, hint: o.slug })),
+  };
+}
+/** Settings' dropdowns: the one in the open scope dialog, when its connection is a manual one. */
+export function grantDropdowns(s: Pick<AppState, "grants" | "grantScope">): DropdownProps[] {
+  const gr = s.grants.data.find((x) => x.id === s.grantScope);
+  return gr && gr.mode === "manual" ? [grantCurrentDropdown(gr)] : [];
+}
+
+/** What the dialog says under its switch: what the chosen mode does, in one sentence. */
+export const GRANT_MODE_SENTENCE: Record<OAuthGrantSummary["mode"], string> = {
+  repo: "It works in whichever of your organizations has the repository the agent is in connected. Anywhere else it reads and writes nothing.",
+  manual: "It works in the organizations you turn on, one at a time. The agent can switch among them on its own; only you can add one.",
+};
+
+/** How the last change in the dialog went: saving, saved, or refused — `org` pins a refusal to that
+ *  organization's row (a plan limit is that organization's), otherwise it is said at the foot. */
+export interface GrantScopeNote { kind: "saving" | "saved" | "error"; text: string; org?: string }
+
+/**
+ * Settings › MCP access: ONE connection's scope, as a dialog (a root-level `data-overlay` in the
+ * confirmation modal's shell — a centered card, a bottom sheet at phone width) opened by the row's
+ * "Change organization…". It holds the mode switch with what the chosen mode does; for Manual, the
+ * organization it is working in (a dropdown, whose menu is its own overlay above this one) and a switch
+ * per organization of mine; for Follow the repository, my organizations and the rule that picks one.
+ * Every change saves as it is made — there is no Save — and `note` says how the last one went, here.
+ * "" when no connection is open (or the open one is gone). Exported for the pure render test.
+ */
+export function grantScopeDialog(s: Pick<AppState, "grants" | "grantScope"> & Partial<Pick<AppState, "grantScopeNote" | "myOrgs" | "me" | "dd">>): string {
+  const gr = s.grants.data.find((x) => x.id === s.grantScope);
+  if (!gr) return "";
+  const mine = myOrgsOf(s);
+  const dd = s.dd ?? initialDropdownUi();
+  const n = s.grantScopeNote ?? null;
+  const busy = n?.kind === "saving";
+  const small = "font-size:12.5px;line-height:1.55;color:var(--fg-55)";
+  const label = "font-size:12.5px;font-weight:600;color:var(--fg-70)";
+  const mode = segmented({
+    id: `grant-mode-${gr.id}`, ariaLabel: "How this connection picks an organization", value: gr.mode, act: "grantMode", size: "sm", inertOn: true, fill: true,
+    options: [{ value: "repo", label: "Follow the repository", arg: `${gr.id}:repo` }, { value: "manual", label: "Manual", arg: `${gr.id}:manual` }],
+  });
+  const body = gr.mode === "repo"
+    ? `<div data-grant-follow style="display:flex;flex-direction:column;gap:6px">
+         <span style="${label}">Your organizations</span>
+         ${mine.length
+           ? `<ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px">${mine.map((o) => `<li data-grant-reach="${attr(o.slug)}" style="font-size:13px;color:var(--fg);overflow-wrap:anywhere">${esc(o.name)}</li>`).join("")}</ul>`
+           : `<span style="${small}">You are not in an organization yet.</span>`}
+         <span style="${small}">Each call uses the one that has the repository the agent is in connected (Org settings &rsaquo; Repositories).${gr.orgs.length ? ` Used so far in ${gr.orgs.map((o) => esc(o.name)).join(", ")}.` : ""}</span>
+       </div>`
+    : `<div style="display:flex;flex-direction:column;gap:6px">
+         <span id="grant-current-l-${gr.id}" style="${label}">Working in</span>
+         ${gr.orgs.length ? dropdown({ ...grantCurrentDropdown(gr), fill: true, disabled: busy }, dd) : ""}
+         ${gr.org ? "" : `<span data-grant-noorg role="alert" style="font-size:12.5px;line-height:1.5;color:var(--red)">The organization it was working in is no longer available to you, so it reads and writes nothing. Pick one.</span>`}
+       </div>
+       <div style="display:flex;flex-direction:column;gap:8px">
+         <span style="${label}">It may use</span>
+         ${mine.map((o) => {
+           const on = gr.orgs.some((x) => x.slug === o.slug);
+           const refused = n?.kind === "error" && n.org === o.slug ? `<div data-grant-refused="${attr(o.slug)}" role="alert" style="margin:2px 0 0 46px;font-size:12px;line-height:1.5;color:var(--red)">${esc(n.text)}</div>` : "";
+           return `<div data-grant-allow="${attr(o.slug)}"><div style="display:flex;align-items:center;gap:10px;min-width:0">${switchBtn("grantOrgToggle", `${gr.id}:${o.slug}:${on ? "off" : "on"}`, on).replace("<button ", `<button aria-label="${attr(`${o.name}: this connection may use it`)}"${busy ? " disabled" : ""} `)}<span style="min-width:0;font-size:13px;color:var(--fg);overflow-wrap:anywhere">${esc(o.name)}</span>${gr.org?.slug === o.slug ? `<span style="flex:none;font-size:11px;color:var(--fg-40)">working here</span>` : ""}</div>${refused}</div>`;
+         }).join("")}
+       </div>`;
+  const tone = n?.kind === "error" ? "var(--red)" : n?.kind === "saved" ? "var(--green)" : "var(--fg-55)";
+  const status = `<div data-grant-status="${n?.kind ?? "idle"}" role="status" aria-live="polite" style="flex:1;min-width:0;font-size:12.5px;line-height:1.5;color:${tone}">${n && !(n.kind === "error" && n.org) ? esc(n.text) : n?.kind === "error" ? "That change was not saved." : "Changes save as you make them."}</div>`;
+  const close = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
+  return `<div data-overlay="grant-scope" class="cnpy-cmodal">
+    <div data-act="grantScopeClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
+    <div class="cnpy-cmodal-wrap">
+      <div id="grant-scope" role="dialog" aria-modal="true" aria-labelledby="grant-scope-t" aria-describedby="grant-scope-d" tabindex="-1" data-grant-scope="${gr.id}"${busy ? ` aria-busy="true"` : ""} class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(460px, 100%);max-height:calc(100vh - 32px);overflow-y:auto">
+        <button type="button" data-act="grantScopeClose" aria-label="Close" title="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${close}</button>
+        <div id="grant-scope-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em;overflow-wrap:anywhere">${esc(gr.client_name)} &middot; how it picks an organization</div>
+        <div style="display:flex;flex-direction:column;gap:16px;margin-top:14px">
+          <div style="display:flex;flex-direction:column;gap:8px">${mode}<p id="grant-scope-d" data-grant-mode-says="${gr.mode}" style="margin:0;${small}">${GRANT_MODE_SENTENCE[gr.mode]}</p></div>
+          ${body}
+        </div>
+        <div class="cnpy-cmodal-btns" style="display:flex;align-items:center;gap:12px;margin-top:18px">${status}<button type="button" data-act="grantScopeClose" data-grant-done class="cnpy-confirm-go" style="flex:none;padding:8px 18px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13px;font-weight:600">Done</button></div>
+      </div>
+    </div>
+  </div>`;
+}
+
 /** Settings › MCP access › Connected apps: a heading with its count, then one hairline row
  *  per OAuth connection — the app's self-reported name, when it connected and was last
  *  used, and a two-click Revoke — the first MCP_LIST_CAP until "Show all"; or one quiet
@@ -2008,7 +2207,7 @@ export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & P
   if (!n) {
     const note = g.status === "error" ? `Couldn't load connected apps${g.error ? ` &mdash; ${esc(g.error)}` : ""}.`
       : g.status !== "ok" ? "Loading connected apps&hellip;"
-      : "No apps connected yet. Once you approve Claude Code in the browser, it shows up here with the organization it is connected to.";
+      : "No apps connected yet. Once you approve Claude Code in the browser, it shows up here with how it picks an organization. If you approved one and it isn't here, check which account the Allow page was signed in as.";
     return wrap(`<div style="padding:10px 0;border-top:1px solid var(--border);font-size:12.5px;line-height:1.5;color:var(--fg-40)">${note}</div>`);
   }
   const btn = "flex:none;padding:4px 10px;border-radius:6px;font-size:12px";
@@ -2018,13 +2217,16 @@ export function grantListBody(s: Pick<AppState, "grants" | "grantRevokeArm"> & P
     const actions = armed
       ? `<button data-act="revokeGrant" data-arg="${gr.id}" class="cnpy-revoke" style="${btn};font-weight:600;color:var(--red);border:1px solid var(--red)">Disconnect</button>
          <button data-act="revokeGrantCancel" class="cnpy-ghostbtn" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Keep</button>`
-      : `<button data-act="revokeGrantArm" data-arg="${gr.id}" class="cnpy-revoke" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Revoke</button>`;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">
-      <div style="flex:1;min-width:0;line-height:1.35">
-        <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-size:13px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(gr.client_name)}</span>${gr.org ? `<span data-grant-org="${attr(gr.org.slug)}" title="This connection reaches ${attr(gr.org.name)} only" style="flex:none;max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:500;line-height:17px;padding:0 7px;border-radius:5px;border:1px solid var(--border);color:${gr.org.slug === s.orgSlug ? "var(--fg-70)" : "var(--fg-55)"}">${esc(gr.org.name)}</span>` : ""}</span>
+      : `<button data-act="grantScopeOpen" data-arg="${gr.id}" data-grant-change="${gr.id}" aria-haspopup="dialog" class="cnpy-ghostbtn" style="${btn};color:var(--fg-70);border:1px solid var(--border-strong)">Change organization&hellip;</button>
+         <button data-act="revokeGrantArm" data-arg="${gr.id}" class="cnpy-revoke" style="${btn};color:var(--fg-55);border:1px solid var(--border)">Revoke</button>`;
+    return `<div data-grant="${gr.id}" style="padding:8px 0;border-top:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <div style="flex:1 1 180px;min-width:0;line-height:1.35">
+        <span style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-size:13px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(gr.client_name)}</span>${grantScopeChip(gr, s.orgSlug ?? null)}</span>
         <span style="display:block;font-size:11.5px;color:var(--fg-40)">${armed ? "The app is signed out the moment you disconnect it." : `Connected ${esc(relTime(gr.created_at))} &middot; ${gr.last_used_at ? `last used ${esc(relTime(gr.last_used_at))}` : "never used"}`}</span>
       </div>
       ${actions}
+      </div>
     </div>`;
   }).join("");
   const more = n > MCP_LIST_CAP
@@ -2070,17 +2272,17 @@ export function tokenListBody(s: Pick<AppState, "mcpTokens" | "tokenRevokeArm">,
  * `/mcp` → Authenticate, approve in the browser); Connected apps, where that sign-in lands.
  * Pure over AppState — exported for the pure render test.
  */
-export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll"> & Partial<Pick<AppState, "mcpTokens" | "tokenRevokeArm" | "orgSlug">>, orgName = ""): string {
+export function mcpAccessSection(s: Pick<AppState, "grants" | "grantRevokeArm" | "grantsAll"> & Partial<Pick<AppState, "mcpTokens" | "tokenRevokeArm" | "orgSlug" | "grantScope" | "myOrgs" | "me" | "dd">>, orgName = ""): string {
   return `<section class="cnpy-tile cnpy-surface cnpy-set-mcp">
     <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;column-gap:12px;row-gap:2px;margin-bottom:14px">
       <div style="${SECTION_LABEL};margin-bottom:0">MCP access</div>
       <button data-act="mcpSetupOpen" data-mcp-setup-trigger aria-haspopup="dialog" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--fg-55)">Set it up without the plugin &rarr;</button>
     </div>
-    <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you, in one organization.</div>
+    <div style="font-size:13px;line-height:1.5;color:var(--fg-55)">Sign Claude Code in with your browser; it acts as you, in one of your organizations at a time.${s.me?.handle ? ` <span data-mcp-account>Connections you approve as <strong style="font-weight:600;color:var(--fg-70)">@${esc(s.me.handle)}</strong> show up here.</span>` : ""}</div>
     <div class="cnpy-mcp-body">
       <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
       ${connectSteps(orgName)}
-      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">${ONE_ORG_NOTE}</div>
+      <div data-mcp-one-org style="font-size:12px;line-height:1.55;color:var(--fg-40);min-width:0">${CONNECTION_NOTE}</div>
       </div>
       <div style="min-width:0">
       ${grantListBody(s)}
@@ -2104,7 +2306,7 @@ export function mcpSetupModal(url: string = mcpEndpoint()): string {
         <div id="mcp-setup-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em">Set it up without the plugin</div>
         <p id="mcp-setup-d" style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">Add the Trov server to Claude Code by hand &mdash; skip this if you installed the plugin, or you'll have two Trov servers.</p>
         ${copyBox(browserConnectCommand(url), "copyBrowserConnect", "Copy the command")}
-        <p style="margin:12px 0 0;font-size:13px;line-height:1.55;color:var(--fg-70)">Then run ${mcpCode("/mcp")}, choose ${mcpStrong("trov")}, then ${mcpStrong("Authenticate")}. In the browser, pick the organization to connect and click ${mcpStrong("Allow")}. A connection reaches that one organization.</p>
+        <p style="margin:12px 0 0;font-size:13px;line-height:1.55;color:var(--fg-70)">Then run ${mcpCode("/mcp")}, choose ${mcpStrong("trov")}, then ${mcpStrong("Authenticate")}. In the browser, choose how the connection picks an organization and click ${mcpStrong("Allow")}. A connection reaches that one organization.</p>
       </div>
     </div>
   </div>`;
@@ -2164,6 +2366,8 @@ function settingsView(s: AppState): string {
       emailEditing: s.emailEditing,
       emailDraft: s.emailDraft,
     })}
+
+    ${helpSection()}
 
     ${sessionSection(s)}
 
@@ -2267,25 +2471,23 @@ function myWorkView(s: AppState): string {
     || (ticketsKnown && reviewLoad === "ok" && handoffLoad === "ok" ? "nothing is waiting on you" : "");
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
-  // The design's composition: Tickets (only when you have some) and Needs your
-  // review lead at 7/5; Your sessions and Repo follow; the library closes. A CLEAR
-  // review queue (loaded, empty) is always shown — never dropped — but steps out of
-  // the lead pair to sit beside Repo: Tickets 7 | Sessions 5 (or Sessions alone), then
-  // Repo 7 | Needs your review 5.
-  const hasTickets = dLoad !== "ok" || degraded || tickets.length > 0;
+  // The design's composition: Tickets and Needs your review lead at 7/5; Your sessions and
+  // Repo follow; the library closes. EVERY tile is always shown — one with nothing in it
+  // draws its rows empty (mywork.ts `tileEmpty`), so a new organization sees the whole
+  // screen, and a tile never appears or leaves when a count crosses zero. A CLEAR review
+  // queue (loaded, empty) steps out of the lead pair to sit beside Repo:
+  // Tickets 7 | Sessions 5, then Repo 7 | Needs your review 5.
   const reviewClear = reviewLoad === "ok" && reviewItems.length === 0;
   const strips = ["library"];
-  const order = reviewClear
-    ? [hasTickets ? "tickets" : "", "sessions", "repo", "review"].filter(Boolean)
-    : [hasTickets ? "tickets" : "", "review", "sessions", "repo"].filter(Boolean);
+  const order = reviewClear ? ["tickets", "sessions", "repo", "review"] : ["tickets", "review", "sessions", "repo"];
   const span = reviewClear
-    ? { ...(hasTickets ? { tickets: 7, sessions: 5 } : { sessions: 12 }), repo: 7, review: 5, library: 12 }
+    ? { tickets: 7, sessions: 5, repo: 7, review: 5, library: 12 }
     : mwSpans(order, strips);
   const tile: Record<string, () => string> = {
     tickets: () => ticketsTile({ load: dLoad, rows: tickets, total: ticketsTotal, expanded: s.mwExpanded.tickets }, degraded, span.tickets, dueOf),
     review: () => reviewTile(reviewItems, reviewLoad, span.review),
     sessions: () => sessionsTile(sessions, feedLoad, waiting, span.sessions),
-    repo: () => repoTile(s.repo.data, mwLoad(s.repo.status, !!s.repo.data), s.mwRepoTab, span.repo),
+    repo: () => repoTile(s.repo.data, mwLoad(s.repo.status, !!s.repo.data), s.mwRepoTab, span.repo, { noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, admin: viewerIsAdmin(s) }),
     library: () => libraryStrip(library, span.library),
   };
 
@@ -2470,6 +2672,7 @@ function orgProps(s: AppState): OrgSettingsProps {
   } : null;
   const notif: NotifAdminProps | null = admin ? {
     policy: s.notifPolicy.data, settings: s.notifSettings.data, outbox: s.notifOutbox.data,
+    outboxLoading: slicePending(s.notifOutbox),
     outboxExpanded: s.outboxExpanded, fromDraft: s.fromDraft, fromError: s.fromError,
   } : null;
   return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org, identity, notif, dd: s.dd };
@@ -2551,10 +2754,18 @@ function toastBlock(msg: string, elapsed: number, ms: number, action: ToastActio
   </div>`;
 }
 
-export function render(s: AppState): string {
+/** The state a paint draws: the real one, or — while a preview is on, inside an organization or
+ *  the Platform area — its projection (preview.ts). Every renderer main.ts calls directly goes
+ *  through this too (`docReaderHtml`), so no path paints real data under the preview's banner. */
+export function shownState(s: AppState): AppState {
+  return s.preview && (s.view === "app" || s.view === "platform") ? previewState(s, s.preview, initialState()) : s;
+}
+
+export function render(real: AppState): string {
+  const s = shownState(real);
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.billingDone ? billingDonePage(s.billingDone) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+    ${s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null, s.dd) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
@@ -2563,11 +2774,15 @@ export function render(s: AppState): string {
     ${s.view === "app" || s.view === "platform" ? platformDialogs(s.plat, s.screen, s.dd) : ""}
     ${s.view === "app" ? orgMenu({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], current: s.orgSlug, status: s.myOrgs.status, ui: s.orgsUi, superadmin: s.plat.superadmin === true, logins: identityCount(s) }) : ""}
     ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
+    ${supportDialog(s.support)}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
+    ${s.view === "app" && s.screen === "settings" ? grantScopeDialog(s) : ""}
+    ${s.view === "app" && s.screen === "settings" && s.dd.open ? dropdownMenu(grantDropdowns(s), s.dd) : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}
+    ${real.preview && s !== real ? previewBanner(real.preview) : ""}
   </div>`;
 }

@@ -5,7 +5,7 @@ import { STRIPE_WEBHOOK_PATH, handleStripeWebhook } from "./billing/webhook";
 import { pruneEvents } from "./billing/store";
 import { BILLING_DONE_PATH } from "@shared/billing";
 import { APP_WEBHOOK_PATH, handleGithubAppWebhook } from "./github-app/webhook";
-import { resolveBearerTenant } from "./data/bearer";
+import { resolveBearerConnection } from "./data/bearer";
 import { meterMcp, pruneUsage } from "./data/meter";
 import { pruneSyncRuns } from "./platform/sweeps";
 import { platform } from "./data/context";
@@ -39,15 +39,17 @@ export default {
       // Bearer class: a pasted `trov_mcp_` (or legacy `canopy_mcp_`) token or an OAuth access token. The 401
       // points MCP clients at the OAuth metadata (RFC 9728) so Claude Code / claude.ai
       // can sign the person in; `error="invalid_token"` when a token was presented.
-      // The token is bound to (person, org) — the org on its row / grant, never one from the request — and
-      // resolves only through a live membership of it (src/data/bearer.ts); anything else is this 401.
-      const bearer = await resolveBearerTenant(env, request);
+      // A connection reaches only organizations its person is a live member of, and WHICH one a call acts
+      // in is decided per call (src/data/bearer.ts) — a token's one org, a manual connection's current
+      // one, or the one that has the call's repository connected. Nowhere to act at all is this 401.
+      const bearer = await resolveBearerConnection(env, request);
       if (!bearer.ok) {
         const presented = /^Bearer\s+\S/i.test(request.headers.get("authorization") ?? "");
         return mcpUnauthorized(oauthOrigin(request.url), presented);
       }
-      ctx.waitUntil(meterMcp(env, bearer.ctx, request)); // usage: one `mcp_request` + one `mcp_tool:<name>` per tool call
-      return handleMcp(request, env, ctx, bearer.ctx);
+      // usage: a tool call is counted in the org it resolves to (src/mcp.ts); a request with none, here.
+      ctx.waitUntil(meterMcp(env, bearer.conn.current?.ctx ?? null, request));
+      return handleMcp(request, env, ctx, bearer.conn);
     }
     // Stripe's deliveries (docs/architecture/billing.md): the `Stripe-Signature` over the raw body is the
     // auth, against STRIPE_WEBHOOK_SECRET; a bad one is a bare 401 and writes nothing (src/billing/webhook.ts).

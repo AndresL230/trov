@@ -167,7 +167,10 @@ function billingPart(v: OrgPlanView, role: OrgRole, b: OrgBillingUi): BillingPar
   const manage = bill.customer ? btn("Manage billing", "orgBillingPortal") : "";
   const actions = !owner ? ""
     : !bill.subscribed ? bill.upgrade_to.map((to) => btn(`Upgrade to ${PLANS[to].name}`, "orgBillingUpgrade", to)).join("") + manage
-    : (bill.seats !== null && !cancelling && !bill.pinned ? btn("Change seats", "orgBillingSeats") : "") + manage;
+    : (bill.seats !== null && !cancelling && !bill.pinned ? btn("Change seats", "orgBillingSeats") : "") + manage
+      // Cancelling has its own way in: Stripe's cancel page, which returns here when it is done (the
+      // plain portal's cancel leaves the person on Stripe's confirmation page).
+      + (!cancelling && !bill.pinned ? btn("Cancel plan", "orgBillingCancel") : "");
   const foot = !owner ? (bill.subscribed || bill.ended ? "An owner of this organization manages its plan and billing." : `An owner of this organization can upgrade it to ${pro}.`)
     : !bill.available ? "Billing is not available right now, so these are off. Your plan is unchanged."
     : bill.subscribed ? "Card, invoices, seats and cancelling are on Stripe's pages. Trov never sees your card."

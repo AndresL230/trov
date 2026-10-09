@@ -25,10 +25,13 @@ const USE: Record<TenantLimit, (ctx: TenantContext) => Promise<number>> = {
   environments: (ctx) => count(ctx, `SELECT COUNT(*) AS n FROM org_environments WHERE org_id = ?`, ctx.orgId),
   // Every stored version of every page, deleted pages included (their bytes are still held).
   artifact_bytes: (ctx) => count(ctx, `SELECT COALESCE(SUM(size_bytes), 0) AS n FROM artifact_versions WHERE org_id = ?`, ctx.orgId),
-  // PER PERSON: the caller's own live MCP tokens and connected apps INTO this org.
+  // PER PERSON: the caller's own live MCP tokens for this org, and their connected apps that hold a
+  // row for it (0051 `oauth_grant_orgs`): a manual connection ALLOWED to use this org — once in each org
+  // it is allowed — and a connection that follows the repository once it has been USED here. A revoked
+  // connection holds no row (the `oauth_grants_revoked_au` trigger).
   agent_connections: (ctx) => count(ctx,
     `SELECT (SELECT COUNT(*) FROM mcp_tokens WHERE org_id = ?1 AND person = ?2 COLLATE NOCASE AND revoked = 0)
-          + (SELECT COUNT(*) FROM oauth_grants WHERE org_id = ?1 AND person = ?2 COLLATE NOCASE AND revoked_at IS NULL) AS n`, ctx.orgId, ctx.userId),
+          + (SELECT COUNT(*) FROM oauth_grant_orgs WHERE org_id = ?1 AND person = ?2 COLLATE NOCASE) AS n`, ctx.orgId, ctx.userId),
   // PER CALENDAR MONTH (UTC): summarizer calls ATTEMPTED since the 1st, by the webhook and by Sync.
   ai_summaries: (ctx) => summariesUsed(ctx),
 };

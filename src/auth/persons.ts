@@ -255,7 +255,7 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["handoffs", "sender"], ["handoffs", "recipient"], ["handoffs", "claimed_by"],
   ["prompts", "author"], ["prompts", "deleted_by"], ["prompt_versions", "author"],
   // MCP OAuth (0029): a rename carries a person's connections and in-flight codes.
-  ["oauth_grants", "person"], ["oauth_codes", "person"],
+  ["oauth_grants", "person"], ["oauth_codes", "person"], ["oauth_grant_orgs", "person"],
   // Multitenancy (0042_organizations): a handle is ONE person across every org, so a rename spans them all.
   ["memberships", "user_id"], ["memberships", "created_by"], ["orgs", "created_by"],
   ["org_invites", "invited_by"], ["org_invites", "responded_by"],
@@ -277,6 +277,8 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["org_github_installations", "connected_by"],
   // Sync GitHub runs (0046_sync_runs): who started one.
   ["sync_runs", "started_by"],
+  // Support reports (0049_support_reports): who sent one, and the superadmin who resolved it.
+  ["support_reports", "reporter"], ["support_reports", "resolved_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };
