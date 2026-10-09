@@ -1674,7 +1674,14 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    the card itself; and each tour mockup stands on a field of the banner's dots, in the page's own accent.
    Everything here is static paint: no filter, no backdrop-filter, nothing that repaints on scroll. */
 /* On the dark page the site's banners sit a step deeper, so a slab this size does not glare; same hue. */
-[data-cnpy-theme="dark"] .site-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.13) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #626bcd 0%, #4f59ba 48%, #3b449e 100%); }
+/* Dark: the banner follows the theme's accent. The dark app's accent is the green mark (`--mark` #9aab65), so a
+   purple banner over it read as a second brand. Same gradient, highlight, dots and faint mark — in a deep
+   olive of that green, with the white headline at the same contrast the purple gives it (about 4:1 at the
+   lightest corner, 5.7:1 mid-slab, 8:1 at the deep end).
+   One rule for the site's banners AND the first-run cards', so they cannot drift. */
+[data-cnpy-theme="dark"] .site-banner, [data-cnpy-theme="dark"] .cnpy-orgs-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #73844a 0%, #5d6d37 48%, #485628 100%); }
+[data-cnpy-theme="dark"] .site-banner ::selection { color:#3a4620; }
+[data-cnpy-theme="dark"] .site-btn-onb, [data-cnpy-theme="dark"] .site-btn-onb:hover { color:#3a4620; }
 .site-banner > * { position:relative; z-index:1; }
 .site-banner > .site-banner-art { position:absolute; z-index:0; display:block; color:#fff; opacity:.11; transform:rotate(-8deg); pointer-events:none; }
 .site-banner-art svg { display:block; width:100%; height:100%; }
@@ -1700,7 +1707,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    `.cnpy-fr-bg::after`, as a plain gradient). */
 .site-hero-stage { position:relative; max-width:min(1060px, calc(100% - 2 * var(--hero-pad))); margin:calc(-1 * clamp(120px, 16vw, 200px)) auto 0; }
 .site-hero-stage::before { content:""; position:absolute; z-index:0; inset:34% -9% -9% -9%; pointer-events:none;
-  background:radial-gradient(50% 50% at 50% 50%, color-mix(in srgb, #616acb 20%, transparent) 0%, transparent 72%); }
+  background:radial-gradient(50% 50% at 50% 50%, color-mix(in srgb, var(--mark, #616acb) 20%, transparent) 0%, transparent 72%); }
 .site-hero-mock { position:relative; z-index:1; text-align:left; border:1px solid var(--border-strong); background:var(--bg); overflow:hidden;
   box-shadow:0 1px 2px rgba(20,22,60,.05), 0 30px 70px -28px rgba(20,22,60,.42), 0 10px 26px -14px rgba(20,22,60,.2); }
 @media (max-width:640px) {
@@ -1729,7 +1736,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 
 /* the sign-in dialog: the first-run card, bannered (a root-level `data-overlay`, so the page under it is patched, not rebuilt) */
 .site-signin-back { position:fixed; inset:0; z-index:60; animation:site-fade .16s ease both;
-  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, #616acb 30%, transparent) 0%, transparent 72%), rgba(14,14,26,.52); }
+  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 30%, transparent) 0%, transparent 72%), rgba(14,14,26,.52); }
 .site-signin-wrap { position:fixed; inset:0; z-index:61; display:grid; place-items:center; padding:16px; pointer-events:none; overflow-y:auto; }
 .site-signin-card { pointer-events:auto; position:relative; width:min(448px, 100%); border:1px solid var(--border-strong); background:var(--surface); overflow:hidden;
   box-shadow:0 1px 2px rgba(20,22,60,.06), 0 30px 70px -24px rgba(10,12,40,.5); animation:cnpy-pop .18s ease both; }
@@ -1925,7 +1932,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    to play: nothing behind a first-run card moves, whatever the card in front of it does. */
 .cnpy-fr-bg, .cnpy-fr-bg *, .cnpy-fr-bg *::before, .cnpy-fr-bg *::after { animation:none !important; transition:none !important; }
 .cnpy-fr-bg::after { content:""; position:absolute; inset:0;
-  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, #616acb 20%, transparent) 0%, transparent 72%), color-mix(in srgb, var(--bg) 34%, transparent); }
+  background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 20%, transparent) 0%, transparent 72%), color-mix(in srgb, var(--bg) 34%, transparent); }
 /* One step of a flow morphing into the next (transition.ts): the card keeps its name across both. */
 .cnpy-orgs-card { view-transition-name:first-run-card; }
 ::view-transition-group(first-run-card) { animation-duration:.42s; animation-timing-function:cubic-bezier(.22,.9,.24,1); }

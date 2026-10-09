@@ -57,6 +57,11 @@ describe("landing — the banner carried through the page", () => {
   it("is ONE definition with the first-run card's banner", () => {
     expect(rules).toMatch(/\.cnpy-orgs-banner, \.site-banner \{[^}]*linear-gradient\(135deg, #6c75d8 0%, #5a64cc 48%, #454fb2 100%\)/);
     expect(rules).toMatch(/\.cnpy-orgs-banner::after, \.site-banner::after \{[^}]*background-size:16px 16px/);
+    // Dark: the banner follows the theme's accent (the green mark), on the site AND the first-run cards — one rule.
+    expect(rules).toMatch(/\[data-cnpy-theme="dark"\] \.site-banner, \[data-cnpy-theme="dark"\] \.cnpy-orgs-banner \{[^}]*linear-gradient\(135deg, #73844a 0%, #5d6d37 48%, #485628 100%\)/);
+    // …and the glows behind the cards take the mark's colour from the theme, not a fixed purple.
+    expect(rules).not.toMatch(/color-mix\(in srgb, #616acb /);
+    expect(rules.match(/color-mix\(in srgb, var\(--mark, #616acb\) /g)?.length).toBeGreaterThanOrEqual(3);
   });
 
   it("every tour mockup stands on a dot field, flipped with its row", () => {

@@ -90,6 +90,7 @@ export const RELEASES: Release[] = [
         "`test/render.landing.test.ts`: open sign-up wording, the Guide (never Get Started), the three banners, `data-morph` / `data-overlay`, and both reduced-motion rules (#129)",
       ],
       changed: [
+        "Dark theme: the banner is a deep olive of the dark accent (the green mark), not purple, on the landing page and the first-run cards alike (one rule); the glows behind the cards take `--mark` from the theme (#129)",
         "The landing is `data-morph=\"landing\"` and the sign-in dialog one root-level `data-overlay=\"signin\"`, so `paint()` patches the page in place when the dialog opens or closes instead of rebuilding it (#129)",
         "Hero: left-aligned on the banner; the first button is Sign up free (`openSignIn`) signed out and Open the Guide (`siteGuide`) when reopened from the app; a line under it states open sign-up and links `/pricing` (#129)",
         "Sign-in dialog: bannered card with a foot; the GitHub button is the neutral solid button and both read Continue with …; on a phone it stays the app's bottom sheet (#129)",
