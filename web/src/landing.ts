@@ -795,9 +795,14 @@ function signInDialog(mode: SignInMode = "signin", plan: SignUpPlan = "free"): s
   const providers = `<button data-act="signIn" class="site-signin-btn site-btn-solid" style="border-radius:9px">${GH_24}Continue with GitHub</button>
           <div class="site-signin-or" aria-hidden="true"><span></span>or<span></span></div>
           <button data-act="signInGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px">${GOOGLE_24}Continue with Google</button>`;
-  // Pro: one way on — the billing route, which signs the person in and takes them to Stripe.
-  const checkout = sellPro ? `<a href="${purchaseHref("team")}" data-field="signInPro" class="site-signin-btn site-btn-accent" style="border-radius:9px;text-decoration:none">Continue with ${esc(PLANS.team.name)}</a>
-          <p class="site-signin-note">You sign in on the next page, then pay on Stripe. Seats can be changed at any time.</p>` : "";
+  // Pro: the SAME two buttons. Each is the billing route with the provider already picked (`via`), so it
+  // seals the purchase to return to and goes straight to that provider's sign-in, then on to Stripe — no
+  // second page asking "sign in with what?".
+  const proHref = (via: "github" | "google"): string => `${purchaseHref("team")}&via=${via}`;
+  const checkout = sellPro ? `<a href="${proHref("github")}" data-field="signInProGithub" class="site-signin-btn site-btn-solid" style="border-radius:9px;text-decoration:none">${GH_24}Continue with GitHub</a>
+          <div class="site-signin-or" aria-hidden="true"><span></span>or<span></span></div>
+          <a href="${proHref("google")}" data-field="signInProGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px;text-decoration:none">${GOOGLE_24}Continue with Google</a>
+          <p class="site-signin-note">After you sign in, you pay on Stripe. Seats can be changed at any time.</p>` : "";
   return `<div data-overlay="signin" data-signin-mode="${mode}"${choosing ? ` data-signin-plan="${plan}"` : ""}>
     <div data-act="closeSignIn" class="site-signin-back"></div>
     <div class="site-signin-wrap">

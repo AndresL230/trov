@@ -94,8 +94,12 @@ describe("landing — the banner carried through the page", () => {
     expect(signup).toMatch(/<p class="site-signin-plan-what"><b>Free<\/b> &middot; up to 3 people\. <a href="\/pricing">Compare plans<\/a><\/p>/);
     const pro = landingView({ dark: false, signInOpen: true, signInMode: "signup", signInPlan: "team", seen: new Set() });
     expect(pro).toMatch(/<p class="site-signin-plan-what"><b>\$10 per seat \/ month<\/b> &middot; up to 50 people\./);
-    expect(pro).toMatch(/<a href="\/billing\/start\?plan=team" data-field="signInPro"[^>]*>Continue with Pro<\/a>/);
-    expect(pro).not.toContain("Continue with GitHub"); // Pro signs in on the billing route's own page
+    // Pro is the same two buttons: each is the billing route with the provider already picked, so signing in
+    // carries straight on to payment.
+    expect(pro).toMatch(/<a href="\/billing\/start\?plan=team&via=github" data-field="signInProGithub"[^>]*>[\s\S]*?Continue with GitHub<\/a>/);
+    expect(pro).toMatch(/<a href="\/billing\/start\?plan=team&via=google" data-field="signInProGoogle"[^>]*>[\s\S]*?Continue with Google<\/a>/);
+    expect(pro).not.toContain("Continue with Pro");
+    expect(pro).not.toContain('data-act="signIn"'); // not the plain sign-in: that would lose the purchase
     expect(html).not.toContain("site-signin-plans");   // signing in: nothing to choose
     expect(signup).not.toContain(">Sign in to Trov<");
     expect(signup).toMatch(/Already have an account\? <button type="button" data-act="openSignIn" data-arg="signin"[^>]*>Sign in<\/button>/);
