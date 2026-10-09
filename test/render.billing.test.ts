@@ -285,6 +285,14 @@ describe("the waiting room — /billing/done", () => {
   it("confirming: says it takes a few seconds, with a live region and no way to 'fail'", () => {
     const html = billingDonePage(room());
     expect(html).toContain('data-billing-done="confirming"');
+    // It is a step of signing up, so it is the first-run card: banner (the title), body, foot — in front of
+    // the backdrop it is handed, and patched in place while the poll repaints.
+    expect(html).toMatch(/<div class="cnpy-orgs cnpy-billdone" data-morph="billing-done" data-billing-done="confirming">/);
+    expect(html).toMatch(/<main class="[^"]*cnpy-orgs-card[^"]*"[^>]*role="status" aria-live="polite">\s*<header class="cnpy-orgs-banner">[\s\S]*?<h1[^>]*>Confirming your payment<\/h1>\s*<\/header>\s*<div class="cnpy-orgs-body cnpy-billdone-body">/);
+    expect(html).toContain('<footer class="cnpy-orgs-foot"><span>Stripe sends the receipt. Trov never sees your card.</span></footer>');
+    const behind = billingDonePage(room(), '<div class="cnpy-fr-bg"></div>');
+    expect(behind.indexOf("cnpy-fr-bg")).toBeLessThan(behind.indexOf("cnpy-orgs-card"));
+    expect(billingDonePage(room({ phase: "ready", plan: "team", grant: 12 }))).toContain('<span class="cnpy-onb-step">Your Pro organization</span>');
     expect(html).toMatch(/<main[^>]*role="status" aria-live="polite"/);
     expect(text(html)).toContain("Confirming your payment This takes a few seconds. Keep this page open. Checking with Stripe");
     expect(html).toMatch(/<h1[^>]*>Confirming your payment<\/h1>/);

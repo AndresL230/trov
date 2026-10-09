@@ -45,18 +45,13 @@ export const SETUP_PARAM = "setup";
 const doneHref = (sessionId: string): string => `/billing/done?session_id=${encodeURIComponent(sessionId)}`;
 
 const SPINNER = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" aria-hidden="true" style="animation:cnpy-spin .8s linear infinite"><path d="M12 3a9 9 0 1 0 9 9" stroke-linecap="round"></path></svg>`;
-const CHECK = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>`;
-const DASH = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"></path></svg>`;
-const seal = (icon: string, tone: "accent" | "quiet"): string =>
-  `<div aria-hidden="true" style="width:52px;height:52px;border-radius:50%;display:grid;place-items:center;border:1px solid ${tone === "accent" ? "transparent" : "var(--border-strong)"};background:${tone === "accent" ? "var(--accent-soft)" : "transparent"};color:${tone === "accent" ? "var(--accent)" : "var(--fg-55)"}">${icon}</div>`;
-
 const BTN = "display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;padding:11px 16px;border-radius:9px;font-size:13.5px;text-decoration:none";
 const accentLink = (href: string, text: string): string =>
   `<a href="${attr(href)}" data-billing-go class="cnpy-accentbtn" style="${BTN};background:var(--accent);color:var(--accent-fg);font-weight:600">${esc(text)}</a>`;
 const quietLink = (href: string, text: string): string =>
   `<a href="${attr(href)}" class="cnpy-outlinebtn" style="${BTN};border:1px solid var(--border-strong);color:var(--fg);font-weight:500">${esc(text)}</a>`;
 
-interface Copy { icon: string; title: string; body: string; actions: string }
+interface Copy { title: string; body: string; actions: string }
 
 function copyOf(s: BillingDoneUi): Copy {
   const again = s.sessionId ? quietLink(doneHref(s.sessionId), "Check again") : "";
@@ -65,44 +60,44 @@ function copyOf(s: BillingDoneUi): Copy {
     case "ready": {
       const plan = s.plan ? `${PLANS[s.plan].name} ` : "";
       return {
-        icon: seal(CHECK, "accent"), title: "Payment received",
+        title: "Payment received",
         body: `Your ${esc(plan)}organization is ready to set up. Next you choose its name and its address, and it is yours.`,
         actions: accentLink(setupHref(s.grant ?? 0), "Set up your organization"),
       };
     }
     case "done":
       return {
-        icon: seal(CHECK, "accent"), title: "Your organization is ready",
+        title: "Your organization is ready",
         body: s.org ? `<strong style="color:var(--fg);font-weight:600">${esc(s.org.name)}</strong> is on its plan.` : "It is on its plan.",
         actions: s.org ? accentLink(`/${encodeURIComponent(s.org.slug)}/`, `Open ${s.org.name}`) : home,
       };
     case "unpaid":
       return {
-        icon: seal(DASH, "quiet"), title: "This checkout was not completed",
+        title: "This checkout was not completed",
         body: "Stripe did not take a payment for it, so nothing was charged. You can start again from the plans.",
         actions: accentLink(PRICING_PATH, "See the plans") + home,
       };
     case "ended":
       return {
-        icon: seal(DASH, "quiet"), title: "This subscription was cancelled",
+        title: "This subscription was cancelled",
         body: "It was cancelled before an organization was set up on it, so there is nothing to set up. Stripe has the receipt and any refund.",
         actions: accentLink(PRICING_PATH, "See the plans") + home,
       };
     case "missing":
       return {
-        icon: seal(DASH, "quiet"), title: "Nothing to confirm here",
+        title: "Nothing to confirm here",
         body: "This is the page Stripe returns you to after a payment, and this link is not for a payment of yours. If you paid, your organization is waiting on your organizations page.",
         actions: accentLink("/", "Go to your organizations"),
       };
     case "signedout":
       return {
-        icon: seal(DASH, "quiet"), title: "Sign in to finish",
+        title: "Sign in to finish",
         body: "Your payment is safe. Sign in with the account you paid with, and your organization will be waiting for you to set up.",
         actions: accentLink("/", "Sign in"),
       };
     case "received":
       return {
-        icon: seal(CHECK, "accent"), title: "Payment received",
+        title: "Payment received",
         body: s.stopped
           ? "Your organization will be ready shortly. It is taking longer than usual, and you do not need to wait here: it will be on your organizations page when it is ready."
           : "Getting your organization ready. This takes a few seconds.",
@@ -113,31 +108,42 @@ function copyOf(s: BillingDoneUi): Copy {
       // Stripe only sends a buyer here after it has taken the payment.
       return s.slow || s.stopped
         ? {
-            icon: seal(CHECK, "accent"), title: "Payment received",
+            title: "Payment received",
             body: "Your organization will be ready shortly. Stripe is taking longer than usual to confirm it with Trov, and you do not need to wait here: it will be on your organizations page when it is ready.",
             actions: s.stopped ? again + home : home,
           }
-        : { icon: "", title: "Confirming your payment", body: "This takes a few seconds. Keep this page open.", actions: "" };
+        : { title: "Confirming your payment", body: "This takes a few seconds. Keep this page open.", actions: "" };
   }
 }
 
-/** The waiting room. `aria-live` on the card, so a screen reader hears each change of state once. */
-export function billingDonePage(s: BillingDoneUi): string {
+/**
+ * The page Stripe returns the buyer to. It is a STEP of signing up — the one before naming the
+ * organization — so it is the first-run card (people.ts, org-picker.ts, welcome.ts): the banner with what
+ * is happening, the body with what to do, a foot, in front of the same backdrop (`backdrop`, from
+ * render.ts `firstRunBackdrop`). `data-morph`: the poll repaints every two seconds, and the card and what
+ * is behind it must not be rebuilt each time. `aria-live` on the card, so a screen reader hears each
+ * change of state once.
+ */
+export function billingDonePage(s: BillingDoneUi, backdrop = ""): string {
   const c = copyOf(s);
   const waiting = !s.stopped && (s.phase === "confirming" || s.phase === "received");
-  return `<div class="cnpy-authwrap" data-billing-done="${s.phase}" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 16px">
-    <div style="width:400px;max-width:100%">
-      <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:20px">${trovMark(24)}<span style="font-size:20px;font-weight:600;letter-spacing:-0.02em">Trov</span></div>
-      <main${surface("padding:34px 30px;display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center", { cls: "cnpy-authcard" })} role="status" aria-live="polite">
-        ${c.icon}
-        <div style="min-width:0;max-width:100%">
-          <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-0.01em;line-height:1.3">${esc(c.title)}</h1>
-          <p style="margin:8px 0 0;font-size:13.5px;line-height:1.55;color:var(--fg-55);overflow-wrap:anywhere">${c.body}</p>
+  const plan = s.plan ? PLANS[s.plan].name : null;
+  return `<div class="cnpy-orgs cnpy-billdone" data-morph="billing-done" data-billing-done="${s.phase}">
+    ${backdrop}
+    <div class="cnpy-orgs-col">
+      <main${surface("overflow:hidden", { cls: "cnpy-orgs-card" })} role="status" aria-live="polite">
+        <header class="cnpy-orgs-banner">
+          <span class="cnpy-orgs-art" aria-hidden="true">${trovMark(230, "currentColor")}</span>
+          <div style="position:relative;display:flex;align-items:center;gap:9px">${trovMark(20, "currentColor")}<span style="font-size:15px;font-weight:600;letter-spacing:-0.01em">Trov</span><span class="cnpy-onb-step">${esc(plan ? `Your ${plan} organization` : "Payment")}</span></div>
+          <h1 style="position:relative;margin:20px 0 0;font-size:26px;font-weight:600;letter-spacing:-0.02em;line-height:1.2">${esc(c.title)}</h1>
+        </header>
+        <div class="cnpy-orgs-body cnpy-billdone-body">
+          <p style="margin:0;font-size:14px;line-height:1.6;color:var(--fg-70);overflow-wrap:anywhere">${c.body}</p>
+          ${waiting ? `<div style="display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--fg-55)">${SPINNER}<span>${s.phase === "received" || s.slow ? "Still working on it" : "Checking with Stripe"}</span></div>` : ""}
+          ${c.actions ? `<div class="cnpy-billdone-acts">${c.actions}</div>` : ""}
         </div>
-        ${waiting ? `<div style="display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--fg-55)">${SPINNER}<span>${s.phase === "received" || s.slow ? "Still working on it" : "Checking with Stripe"}</span></div>` : ""}
-        ${c.actions ? `<div style="display:flex;flex-direction:column;gap:8px;width:100%">${c.actions}</div>` : ""}
+        <footer class="cnpy-orgs-foot"><span>Stripe sends the receipt. Trov never sees your card.</span></footer>
       </main>
-      <p style="margin:16px 0 0;text-align:center;font-size:12px;line-height:1.5;color:var(--fg-40)">Stripe sends the receipt. Trov never sees your card.</p>
     </div>
   </div>`;
 }

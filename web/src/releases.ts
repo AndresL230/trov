@@ -112,6 +112,7 @@ export const RELEASES: Release[] = [
         "Org settings › General › Plan shows \"Free until <date>, a gift from Trov. After that this organization moves to Free; nothing is deleted.\" (`OrgPlanView.gift_until`), as the amber note in its last 7 days; the owner gets \"Keep Pro by paying\" where billing is set up (#123)",
       ],
       changed: [
+        "The page Stripe returns a buyer to (`/billing/done`, `billingDonePage`) is the first-run card: the banner with what is happening, the body with what to do, a foot, in front of the app's backdrop — a step before naming the organization, no longer a small card on a blank page. It is `data-morph`, so the two-second poll patches it in place (#PRNUM)",
         "Personal Settings is a twelve-column bento whose tiles are as tall as what they hold: Profile | Account | Session over Appearance, then Plan | Limits, Organizations, MCP access, Email. Profile and Account no longer stretch to the MCP tile's height (they were 55px and 30px taller than their content at 1440px); Account is the sign-in methods only, and says why the last one can't be unlinked; Appearance drops its hint line (it is the System card's tooltip) (#126)",
         "Personal Settings is patched in place (`data-morph=\"settings\"`): typing in the name, handle or digest-address field no longer rebuilds the page (#126)",
         "Opening Settings reads the org's plan alone (`orgCtl.loadPlan`, act `orgPlanReload`) and re-reads `GET /api/orgs`, not Org settings' other slices (#126)",
