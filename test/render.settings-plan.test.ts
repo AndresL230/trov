@@ -67,7 +67,7 @@ describe("Settings › Plan — whose plan, which plan, and what I can do about 
     const v = paid();
     const html = plan(v);
     expect(html).toContain('data-set-billing="active"');
-    expect(buttons(html)).toEqual(["orgBillingSeats:Change seats", "orgBillingPortal:Manage billing"]);
+    expect(buttons(html)).toEqual(["orgBillingSeats:Change seats", "orgBillingPortal:Manage billing", "orgBillingCancel:Cancel plan"]);
     expect(html).toMatch(/data-plan-price[^>]*>\$10 per seat \/ month</);
     expect(html).toContain("6 seats, paid per seat. Renews on 8 November 2026. Billed monthly through Stripe.");
     expect(html).not.toContain("data-plan-upsell");

@@ -44,6 +44,11 @@ are disabled with a sentence — and nothing else in the app changes (Free orgs 
 live mode is whichever key is set (`sk_test_…` / `sk_live_…`); an event from the other mode is acknowledged
 and ignored.
 
+**Trying it locally with no Stripe account:** `node scripts/dev/stripe-standin.mjs` is a stand-in for Stripe on
+`http://127.0.0.1:8842` — the API calls `src/billing/` makes, a plain checkout page, a plain portal (change
+seats, cancel, resume, end now) and the signed webhooks each would send. Point `STRIPE_TEST_API_BASE` at it
+with `STRIPE_SECRET_KEY=sk_test_local_standin` and `STRIPE_WEBHOOK_SECRET=whsec_local_standin` in `.dev.vars`.
+
 ## Seats: what is paid for is what is allowed
 
 Pro is sold per seat. A seat is a member or a pending invitation (`plans.md` › Seats).
@@ -58,6 +63,10 @@ Pro is sold per seat. A seat is a member or a pending invitation (`plans.md` ›
   (`linkPaidOrgStmt`), so an event that lands while the form is open is not lost.
 - **The mirror keeps it too** (`billing_subscriptions.quantity`, 0047), so a write made without a Stripe
   event — the superadmin's Follow subscription — puts the paid seats back.
+- **Cancel plan** (the owner's third button on a live subscription): `POST …/billing/portal { cancel: true }` →
+  `flow_data.type = subscription_cancel`, with the same `after_completion` redirect as the seat change, so the
+  person comes BACK to Org settings. (Cancelling inside the plain portal ends on Stripe's page.) Nothing moves
+  in Trov until `customer.subscription.updated` lands with `cancel_at_period_end`.
 - **At the cap**, an invitation is the 402 `plan_limit` with `next: "add_seat"` (`plans.md` › One refusal).
   The Members tab shows its owner **Add a seat**, which opens the Customer Portal straight at the
   subscription's update page (`POST …/billing/portal { seats: true }` → `flow_data.type =
@@ -70,7 +79,10 @@ Pro is sold per seat. A seat is a member or a pending invitation (`plans.md` ›
 
 1. **Start** — `GET /billing/start?plan=team[&interval=month|year]`, a plain link.
    Signed out → a sealed 10-minute `return_to` cookie holding that exact path (an allowlisted shape built from
-   `PURCHASABLE_PLANS`, never a visitor's URL) and a sign-in page; the sign-in tail (`takeOAuthPending` →
+   `PURCHASABLE_PLANS`, never a visitor's URL), then: with `&via=github|google` (the app's Get started dialog,
+   where the provider was already picked) straight on to that provider's sign-in; with none, a redirect to the
+   app's landing page, which opens that dialog on this plan (`billingAskHref`, `/?start=team`). There is no
+   separate billing sign-in page; the sign-in tail (`takeOAuthPending` →
    `takeReturnTo`) comes back here, through onboarding too. The page says it plainly: *signing in with either
    GitHub or Google creates the account.*
    Signed in → one unit of the `checkout` limit (10 / person / day), a `billing_checkouts` row binding a

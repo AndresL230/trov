@@ -30,6 +30,9 @@ TROV_KEK=replace-with-openssl-rand-base64-32
 # STRIPE_TEST_API_BASE — Stripe's API, for every billing call (src/billing/config.ts,
 # docs/architecture/billing.md › Configuration). Needs the two Stripe secrets set to TEST values.
 # STRIPE_TEST_API_BASE=http://127.0.0.1:8842
+# To walk the paid flows with no Stripe account: run `node scripts/dev/stripe-standin.mjs` (it listens on
+# that port, serves a stand-in checkout and portal, and delivers signed webhooks) and set
+# STRIPE_SECRET_KEY=sk_test_local_standin and STRIPE_WEBHOOK_SECRET=whsec_local_standin beside it.
 #
 # Summaries are off without a key (docs/architecture/plans.md › AI summaries). With LOCAL_UPSTREAM set,
 # any non-empty value turns them on against the stand-in.

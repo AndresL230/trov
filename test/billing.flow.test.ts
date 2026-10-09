@@ -190,13 +190,25 @@ describe("billing not configured", () => {
 });
 
 describe("signed out: sign in, then carry on to payment", () => {
-  it("shows the sign-in page, remembers the purchase in a sealed cookie, and the sign-in callback returns to it", async () => {
+  it("with `via`, a signed-out buyer goes straight to the provider they already picked — the same sealed return, no second sign-in page", async () => {
+    for (const [via, to] of [["github", "/auth/login"], ["google", "/auth/google/login"]] as const) {
+      const start = await bcall("GET", `/billing/start?plan=team&via=${via}`, "");
+      expect([start.status, start.headers.get("location")]).toEqual([302, to]);
+      const setCookie = start.headers.get("set-cookie") ?? "";
+      expect(setCookie).toMatch(new RegExp(`^${RETURN_TO_COOKIE}=[^;]+; Max-Age=600; Path=/; HttpOnly; Secure; SameSite=Lax`));
+      // (What the cookie returns to is the allowlisted purchase path, sealed by `setReturnTo` — the test
+      // below follows it through the sign-in callback; `via` is never part of it.)
+    }
+    // Anything else is "no provider picked": the app's Get started dialog asks.
+    const other = await bcall("GET", "/billing/start?plan=team&via=facebook", "");
+    expect([other.status, other.headers.get("location")]).toEqual([302, "/?start=team"]);
+    expect(stripe.calls).toEqual([]);
+  });
+
+  it("sends a signed-out buyer to the app's Get started dialog, remembers the purchase in a sealed cookie, and the sign-in callback returns to it", async () => {
     const start = await bcall("GET", "/billing/start?plan=team&interval=year", "");
-    expect(start.status).toBe(200);
-    expect(start.text).toContain("Sign in to continue");
-    expect(start.text).toContain('href="/auth/login"');
-    // Honest about Google: it does not create an account.
-    expect(start.text).toContain("Signing in with either one creates your account.");
+    // No page of its own any more: the app's Get started dialog asks, opened on this plan and interval.
+    expect([start.status, start.headers.get("location")]).toEqual([302, "/?start=team&interval=year"]);
     expect(stripe.calls).toEqual([]);
     const setCookie = start.headers.get("set-cookie") ?? "";
     expect(setCookie).toMatch(new RegExp(`^${RETURN_TO_COOKIE}=[^;]+; Max-Age=600; Path=/; HttpOnly; Secure; SameSite=Lax`));

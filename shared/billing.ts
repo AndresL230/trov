@@ -32,6 +32,16 @@ export const isBillingInterval = (v: unknown): v is BillingInterval => typeof v 
 export const BILLING_START_PATH = "/billing/start";
 export const billingStartHref = (plan: PurchasablePlan, interval: BillingInterval = "month"): string =>
   `${BILLING_START_PATH}?plan=${plan}${interval === "month" ? "" : `&interval=${interval}`}`;
+/** The purchase link with the sign-in provider already picked: the billing route seals the return and goes
+ *  straight on to that provider (src/billing/routes.ts) — what the Get started dialog's Pro buttons use. */
+export const billingViaHref = (plan: PurchasablePlan, via: "github" | "google", interval: BillingInterval = "month"): string =>
+  `${billingStartHref(plan, interval)}&via=${via}`;
+/** Where a signed-out buyer with NO provider picked is sent: the app's landing page, which opens its Get
+ *  started dialog on this plan (`START_PARAM`; web/src/main.ts). */
+export const START_PARAM = "start";
+export const START_INTERVAL_PARAM = "interval";
+export const billingAskHref = (plan: PurchasablePlan, interval: BillingInterval = "month"): string =>
+  `/?${START_PARAM}=${plan}${interval === "month" ? "" : `&${START_INTERVAL_PARAM}=${interval}`}`;
 /** Where Stripe sends the buyer back: the waiting room (`?session_id=…`). */
 export const BILLING_DONE_PATH = "/billing/done";
 /** Where a person who backs out of checkout lands, and where "see the plans" points: the public pricing

@@ -40,7 +40,7 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
     expect(html).toContain('data-org-billing="active"');
     expect(html).toContain(`5 seats, paid per seat. Renews on ${billingDate(PERIOD)}. Billed monthly through Stripe.`);
     expect(billingDate(PERIOD)).toBe("15 January 2027");
-    expect(buttons(html)).toEqual(["Change seats|orgBillingSeats", "Manage billing|orgBillingPortal"]);
+    expect(buttons(html)).toEqual(["Change seats|orgBillingSeats", "Manage billing|orgBillingPortal", "Cancel plan|orgBillingCancel"]);
     expect(html).toContain("Card, invoices, seats and cancelling are on Stripe&#39;s pages. Trov never sees your card.");
     expect(html).not.toContain("contact Trov");
     // No accent button: the tab's one primary action is not billing's.
@@ -59,7 +59,7 @@ describe("Org settings › General — the Plan block of an org that pays, or ca
     expect(html.match(/data-limit="/g)).toHaveLength(6);
     // Billing's line and buttons are exactly what they were without it.
     expect(html).toContain('data-org-billing="active"');
-    expect(buttons(html)).toEqual(["Change seats|orgBillingSeats", "Manage billing|orgBillingPortal"]);
+    expect(buttons(html)).toEqual(["Change seats|orgBillingSeats", "Manage billing|orgBillingPortal", "Cancel plan|orgBillingCancel"]);
     // Past due limits nothing, summaries included.
     const due = block(view("team", { status: "past_due" }));
     expect(row(due)).toMatch(/1,212 of 3,000 this month\s*$/);

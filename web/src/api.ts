@@ -360,6 +360,8 @@ export function getOrgPlan(slug: string): Promise<OrgPlanView> { return orgSend(
 export function openBillingPortal(slug: string): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/portal"), {}); }
 /** "Add a seat" / "Change seats": the portal, straight to the subscription's seat count (owner only). */
 export function openBillingSeats(slug: string): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/portal"), { seats: true }); }
+/** "Cancel plan": Stripe's cancel page for this org's subscription, returning to Trov when it is done. */
+export function openBillingCancel(slug: string): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/portal"), { cancel: true }); }
 /** "Upgrade to Pro": a Free org starts a subscription — a Stripe Checkout for the SAME org (owner only). */
 export function upgradeBilling(slug: string, plan: PurchasablePlan): Promise<{ url: string }> { return orgSend("POST", orgPath(slug, "/billing/upgrade"), { plan }); }
 /** The waiting room's poll: a checkout THIS person started (a 404 for anyone else's). */

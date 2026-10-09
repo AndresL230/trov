@@ -238,6 +238,26 @@ describe("the owner's billing routes", () => {
     expect(c.headers.get("idempotency-key")).toMatch(/^trov-portal-/);
   });
 
+  it("Cancel plan: the portal, straight to THIS subscription's cancel page, and back to Trov when it is done; a plain portal once it has ended", async () => {
+    const { cookie, sub } = await paidOrg("maya", "maya-co", 1);
+    const r = await bcall<{ url: string }>("POST", "/api/o/maya-co/billing/portal", cookie, { cancel: true });
+    expect(r.status).toBe(200);
+    expect(Object.fromEntries(stripe.callsTo("POST", "/v1/billing_portal/sessions").at(-1)!.params)).toEqual({
+      customer: sub.customer, return_url: "http://localhost/maya-co/#org/general",
+      "flow_data[type]": "subscription_cancel", "flow_data[subscription_cancel][subscription]": sub.id,
+      "flow_data[after_completion][type]": "redirect", "flow_data[after_completion][redirect][return_url]": "http://localhost/maya-co/#org/general",
+    });
+    // Nothing moves here: the plan changes when Stripe's event lands.
+    expect(await orgRow("maya-co")).toMatchObject({ plan: "team" });
+    // Seats wins if both are asked for; and with no live subscription there is nothing to cancel.
+    await bcall("POST", "/api/o/maya-co/billing/portal", cookie, { seats: true, cancel: true });
+    expect(Object.fromEntries(stripe.callsTo("POST", "/v1/billing_portal/sessions").at(-1)!.params)["flow_data[type]"]).toBe("subscription_update");
+    sub.status = "canceled";
+    await deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub)));
+    expect((await bcall("POST", "/api/o/maya-co/billing/portal", cookie, { cancel: true })).status).toBe(200);
+    expect(Object.fromEntries(stripe.callsTo("POST", "/v1/billing_portal/sessions").at(-1)!.params)).toEqual({ customer: sub.customer, return_url: "http://localhost/maya-co/#org/general" });
+  });
+
   it("Add a seat: the portal, straight to THIS subscription's update page (where the seat count is changed); a plain portal once it has ended", async () => {
     const { cookie, sub } = await paidOrg("maya", "maya-co", 1);
     const r = await bcall<{ url: string }>("POST", "/api/o/maya-co/billing/portal", cookie, { seats: true });

@@ -36,7 +36,7 @@ import { seatCounts } from "../plans/state";
 import { FREE_PLAN, PLANS, UPGRADE_PLAN, type PlanId } from "@shared/plans";
 import {
   BILLING_CONTACT, BILLING_DONE_PATH, BILLING_UNAVAILABLE, BILLING_UNAVAILABLE_MESSAGE, PRICING_PATH,
-  billingStartHref, isBillingInterval, isPurchasablePlan, orgBillingHref,
+  billingAskHref, billingStartHref, isBillingInterval, isPurchasablePlan, orgBillingHref,
   type BillingConfigResponse, type BillingInterval, type BillingStatusResponse, type PurchasablePlan,
 } from "@shared/billing";
 import { billingConfig, billingOffers, intervalsOf, priceFor, type BillingConfig } from "./config";
@@ -46,7 +46,7 @@ import {
   type CheckoutRow,
 } from "./store";
 import { fulfilCheckout, readCheckoutSession, sessionPaid } from "./sync";
-import { billingSignInPage, enterprisePage, rateLimitedPage, stripeFailedPage, superadminPage, unavailablePage } from "./pages";
+import { enterprisePage, rateLimitedPage, stripeFailedPage, superadminPage, unavailablePage } from "./pages";
 
 /** The waiting room may make Trov look at Stripe for one session at most this often. */
 const STATUS_LOOK_MS = 5_000;
@@ -138,7 +138,16 @@ billingApp.get("/billing/start", async (c) => {
   const me = await caller(c);
   if (!me) {
     await setReturnTo(c, billingStartHref(plan, interval));
-    return page(c, billingSignInPage(plan), 200);
+    // `via` (the app's Get started dialog, where the provider was already picked): straight on to that
+    // provider's sign-in, with the same sealed return — not a second page asking the same question. The
+    // return path is still the allowlisted one built above; `via` is never part of it.
+    const via = c.req.query("via");
+    if (via === "github") return c.redirect("/auth/login", 302);
+    if (via === "google") return c.redirect("/auth/google/login", 302);
+    // No provider picked yet (the pricing page's "Choose Pro", a pasted link): the app's own Get started
+    // dialog asks, opened on this plan (`billingAskHref`; web/src/main.ts reads it). There is no separate
+    // "sign in to continue" page any more — it was a second screen asking what the dialog already asks.
+    return c.redirect(billingAskHref(plan, interval), 302);
   }
   if (await isSuperadmin(c.var.p, me.handle)) return page(c, superadminPage(), 403);
   try {
@@ -232,18 +241,24 @@ async function billedOrg(c: Context<AppEnv>): Promise<{ refused: Response } | { 
 // "Manage billing": card, invoices, seats, cancel — Stripe's own pages, for THIS org's customer.
 // `{ seats: true }` ("Add a seat", at the seat cap): straight to the subscription's update page, where the
 // seat count is changed (the portal must allow quantity updates — billing.md › Owner checklist); a plain
-// portal when there is no live subscription to update.
+// portal when there is no live subscription to update. `{ cancel: true }` ("Cancel plan"): the cancel page.
 orgBillingApp.post("/billing/portal", async (c) => {
   const g = await billedOrg(c);
   if ("refused" in g) return g.refused;
-  const seats = (await body(c)).seats === true && g.plan.status !== "canceled" && g.plan.plan !== FREE_PLAN && !!g.plan.subscription_id;
+  const b = await body(c);
+  const live = g.plan.status !== "canceled" && g.plan.plan !== FREE_PLAN && !!g.plan.subscription_id;
+  const seats = b.seats === true && live;
+  // `{ cancel: true }` ("Cancel plan"): straight to the subscription's cancel page, and — like the seat
+  // change — BACK to Trov when it is done. The plain portal's own cancel ends on Stripe's confirmation
+  // page with only a back link, so a person who cancelled there was left on Stripe.
+  const cancel = !seats && b.cancel === true && live;
+  const flow = seats ? { type: "subscription_update", subscription_update: { subscription: g.plan.subscription_id } }
+    : cancel ? { type: "subscription_cancel", subscription_cancel: { subscription: g.plan.subscription_id } }
+    : null;
   try {
     const session = await stripeCall<{ url?: unknown }>(g.cfg, "POST", "/v1/billing_portal/sessions", {
       customer: g.customer, return_url: g.returnUrl,
-      ...(seats ? { flow_data: {
-        type: "subscription_update", subscription_update: { subscription: g.plan.subscription_id },
-        after_completion: { type: "redirect", redirect: { return_url: g.returnUrl } },
-      } } : {}),
+      ...(flow ? { flow_data: { ...flow, after_completion: { type: "redirect", redirect: { return_url: g.returnUrl } } } } : {}),
     }, { idempotencyKey: portalKey() });
     if (!redirectable(g.cfg, session.url)) throw new StripeError("shape", 200, null, "stripe POST /v1/billing_portal/sessions: no url");
     return c.json({ url: session.url });
