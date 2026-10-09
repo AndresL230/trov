@@ -45,7 +45,9 @@ import { blankDoc, defaultSection } from "./newdoc";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
 import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
-import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
+import { mountLandingMotion, unmountLandingMotion, noteJump } from "./landing-motion";
+import { createFeatureCtl } from "./site-feature";
+import { TOUR_KEYS } from "./landing";
 import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
   type TicketCategory, type TicketPriority, type TicketStatus,
@@ -2117,12 +2119,22 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // Landing page (signed out): the Sign in dialog, and in-page jumps. The jumps
     // scroll instead of setting location.hash — the hash is the route and the
     // sign-in return-to, and must survive a browse of the landing page.
-    case "openSignIn":
+    case "openSignIn": {
+      // `arg` says what the visitor came to do ("signup" from a Start-for-free button, or the dialog's own
+      // switch); anything else is the nav's Sign in. Switching inside the open dialog keeps focus on the switch.
+      const switching = state.signInOpen;
+      state.signInMode = arg === "signup" ? "signup" : "signin";
       state.signInOpen = true;
       rerender();
-      mount.querySelector<HTMLElement>('[role="dialog"] [data-act="signIn"]')?.focus();
+      mount.querySelector<HTMLElement>(switching ? '[role="dialog"] [data-field="signInSwitch"]' : '[role="dialog"] [data-act="signIn"]')?.focus();
       return;
+    }
+    case "signInPlan": state.signInPlan = arg === "team" ? "team" : "free"; break;
     case "closeSignIn": state.signInOpen = false; break;
+    // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
+    case "openFeature": if (arg) featureCtl.open(arg); return;
+    case "closeFeature": featureCtl.close(); return;
+    case "stepFeature": featureCtl.step(arg === "prev" ? -1 : 1); return;
     // The landing's "Get started": signed in, straight to the guide; signed out, the
     // guide becomes the sign-in return-to (replaceState: no hashchange, no route) and
     // the Sign in dialog opens.
@@ -2140,6 +2152,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     case "siteJump": {
       const behavior: ScrollBehavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+      // ONE scroll per click; where it lands is the target's `scroll-margin-top` (trov.css). Sections
+      // passed on the way settle without their entrance (landing-motion.ts).
+      noteJump();
       if (arg === "top") window.scrollTo({ top: 0, behavior });
       else document.getElementById(`site-${arg}`)?.scrollIntoView({ behavior, block: "start" });
       return;
@@ -4298,6 +4313,10 @@ mount.addEventListener("focusin", (e) => railTip((e.target as Element | null)?.c
 mount.addEventListener("focusout", () => railTip(null));
 mount.addEventListener("mouseleave", () => railTip(null));
 
+// The landing tour's dialog: Escape, ← / →, and Tab kept inside it.
+const featureCtl = createFeatureCtl({ mount, keys: TOUR_KEYS, get: () => state.siteFeature, set: (v) => { state.siteFeature = v; }, rerender: () => rerender() });
+document.addEventListener("keydown", (e) => featureCtl.onKey(e));
+
 // Escape closes the landing page's sign-in dialog, wherever focus is.
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || !state.signInOpen || state.view !== "auth") return;
@@ -4389,6 +4408,13 @@ if (params.get("denied") === "1") {
       // Unauthorized or any error → show login
       state.view = "auth";
       state.authStep = "login";
+      // Sent here by the billing route (`/?start=team`: a signed-out buyer who has not picked a provider —
+      // the pricing page's "Choose Pro"): Get started opens on that plan, so the two provider buttons
+      // carry on to payment. The parameter is read once and leaves the address bar.
+      if (params.get("start") === "team") {
+        state.signInOpen = true; state.signInMode = "signup"; state.signInPlan = "team";
+        history.replaceState(null, "", `/${location.hash}`);
+      }
       rerender();
     });
 }

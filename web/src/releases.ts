@@ -70,6 +70,53 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // The signed-out landing page, revamped around the first-run card's banner (#129).
+  {
+    version: "0.25",
+    date: "2026-10-09",
+    title: "A new front page",
+    headline: "The page you see before signing in now opens on Trov's purple banner, with the product standing in front of it.",
+    highlights: [
+      "The front page opens on a banner in Trov's purple, the same one that greets you when you set up an account, with a live picture of the Review screen standing on it. \"Agents propose, people decide\" is a card of its own, in the same banner.",
+      "Signing in opens a clearer card: Continue with GitHub or Continue with Google, and a line that says either one creates your account. No invitation is needed.",
+      "The front page says once, under its first button, that anyone can sign up with GitHub or Google. Every other statement on the page is made once too, in the place it belongs.",
+      "Every screen in the tour opens for a closer look: the screen itself drawn at full size the way it looks in Trov, what the Guide says about it, and Previous and Next to move through all seven. The arrow keys work, and Esc closes it.",
+      "The Claude Code plugin card now shows the two install commands with a Copy button, and the three steps to connect.",
+      "Moving through the front page is calmer: sections arrive with a short, small fade, and a link in the top bar scrolls once and stops with the heading just under the bar.",
+    ],
+    patches: {
+      added: [
+        "`.site-banner` (`web/src/trov.css`): the first-run card's banner as ONE definition with `.cnpy-orgs-banner` (gradient, dot grid, the faint tilted mark as `.site-banner-art`), used by the landing's hero, the authority card (`.site-split`) and the sign-in dialog; a step deeper on the dark theme (#129)",
+        "`.site-stage`: every tour mockup stands on a field of the banner's dots in the page accent, mirrored on flipped rows. Static paint only: no `filter`, no `backdrop-filter` (#129)",
+        "`test/render.landing.test.ts`: open sign-up wording, the Guide (never Get Started), the three banners, `data-morph` / `data-overlay`, and both reduced-motion rules (#129)",
+        "The tour is explorable: `featureDialog` in `web/src/landing.ts` (a root-level `data-overlay=\"feature\"`, `role=\"dialog\"` `aria-modal`) drawn from `state.siteFeature`, and `web/src/site-feature.ts` for opening, stepping, closing, Esc / arrow keys, the Tab trap, focus return and the scroll lock. Acts `openFeature` / `stepFeature` / `closeFeature`. Each tour row has ONE labelled control (Explore); the mockup is the same action for a pointer (#129)",
+        "The card grows into the dialog through a View Transition (`view-transition-name:site-fx`, rules scoped to `html.site-fx-vt` so the first run's morph is untouched); without View Transitions or in a hidden tab it plays a keyframe entrance and exit instead (`data-in`, `data-closing`); under reduced motion it is instant (`fxMode`) (#129)",
+        "`web/src/landing-mocks.ts` (`featureMock`): the dialog draws each of the seven screens at its own size from the real renderer — Docs (tree, outline, the STAGED banner, Version history), Feed (For reading / For agents, briefs, PR / commit / issue chips, This week, Waiting on review), Tickets (the five-status board over the table grouped by sprint), Roadmap \u203a Timeline (legend, summary strip, lanes, Ready and Overdue), My Work (the four tiles), Handoffs (the two sections and \"Where it stands\"), Artifacts (version menu, Draft / Published / Ratified, Linked work). Inert (`aria-hidden`, nothing focusable), theme tokens only, no zoom; ticket and artifact statuses come from `shared/`; a test pins every other label to the module that renders it (#129)",
+        "`TOUR_FACTS`: three or four statements per feature, each taken from Help \u203a Guide; `test/render.site-feature.test.ts` pins a phrase of every one to `guideView` (#129)",
+        "One motion clock on `:root`: `--fx-ease` (`cubic-bezier(0.4, 0, 0.2, 1)`), `--fx-fast` .18s, `--fx-base` .24s, `--fx-slow` .3s. The dialog, the tour cards, the scroll reveals and the mockups' checks, bars and swaps all read it; only transform and opacity move in the dialog, and `will-change` is set only while it moves (`data-moving`) (#129)",
+      ],
+      changed: [
+        "Sign in and Get started open ONE dialog that says which the visitor came for (`SignInMode`, `state.signInMode`), with a switch in its foot between the two. Get started (the nav's accent button and the hero's) opens on a choice of plan (`planChoice`, `state.signInPlan`): Free, then the two providers; or Pro, then the same two providers as links to the billing route with the provider picked (`&via=`), so signing in carries on to payment — shown only while Pro can be bought, with every word and number from `shared/plans.ts` / `shared/pricing.ts`. The nav's Sign in is a quiet button beside it (#129)",
+        "Sign-in dialog: a plain card with the mark, the title and the two providers (the neutral solid GitHub button, both reading Continue with …) as a narrow centred pair with an \"or\" rule between them — no banner of its own, since it opens over the hero's. Bannered cards (the first run's, the \"Agents propose\" card) have no border, so no pale frame shows round the banner; their edge is a ring in the shadow (#129)",
+        "Dark theme: the banner is a deep olive of the dark accent (the green mark), not purple, on the landing page and the first-run cards alike (one rule); the glows behind the cards take `--mark` from the theme (#129)",
+        "The landing is `data-morph=\"landing\"` and the sign-in dialog one root-level `data-overlay=\"signin\"`, so `paint()` patches the page in place when the dialog opens or closes instead of rebuilding it (#129)",
+        "Hero: left-aligned on the banner; the first button is Start for free (`openSignIn`) signed out and Open the Guide (`siteGuide`) when reopened from the app; a line under it states open sign-up and links `/pricing` (#129)",
+        "Security's first line now reads \"Anyone can sign up with GitHub or Google. An organization's content is open only to its members.\" (was \"restricted to your org\") (#129)",
+        "Reveal keys: `authority-copy` / `authority-card` are one `authority`; a tour mockup's reveal is its stage (`<key>-mock`) (#129)",
+        "For agents: the plugin card shows `connectSteps()` and `ONE_ORG_NOTE` from `web/src/mcp-connect.ts` (the commands are no longer retyped in `landing.ts`); the row is two weighted columns (`.site-agents-row`, 1.65fr / 1fr) whose cards are the same natural height (#129)",
+        "Scroll reveals travel 6 to 14px (were 12 to 56) over `--fx-slow`, start 6% of the viewport before the element enters, and are settled with no motion while a nav jump is in flight (`noteJump`, `revealClass` in `web/src/landing-motion.ts`); tour mockups start their contents at 160 ms (was 380) (#129)",
+        "Nav jumps land the section heading about 32px under the sticky nav (`scroll-margin-top:-58px` on `section[id^=site-]`) (#129)",
+        "Redundancy pass on the landing copy: open sign-up is said once (under the hero buttons); the sign-up clause left Security and the dialog foot; Security's person-only line now covers decisions, artifacts and prompts, and the same claim left the Artifacts row, the Decisions card and the Prompt Library card; the loop's lede, the authority card's second sentence, the plugin card's \"installed in two commands\" and the hero's pricing link and Free-plan claim are gone; the hero button is Start for free, the plan card's own label (#129)",
+        "The tour's small Tickets mockup uses the board card's real parts (`#id \u00b7 High|Low`): the invented `P0` / `P2` chips and comment count are gone. Docs' fourth dialog fact is now \"New doc lets you propose one yourself.\" (the labels new / edit / rewrite live on Review, not Docs) (#129)",
+        "Dark theme: the sign-in and feature scrims dim with the page's warm black, and the dialog and hero-mockup shadows are neutral (were blue-black) (#129)",
+      ],
+      fixed: [
+        "Opening the sign-in dialog rebuilt the whole landing page, restarting the terminal carets and cutting any reveal in flight (#129)",
+      ],
+      removed: [],
+    },
+    prs: [129],
+  },
   // The guided first-run setup: a new owner, admin or member is walked through it instead of landing on a checklist or an empty feed (#121).
   {
     version: "0.24",

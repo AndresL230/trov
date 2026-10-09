@@ -113,6 +113,12 @@ export interface AppState {
   authStep: "login" | "verifying" | "nonmember" | "unverified" | "onboard";
   /** The landing page's sign-in dialog (authStep "login" only). */
   signInOpen: boolean;
+  /** Which button opened it (landing.ts `SignInMode`): the dialog's title and foot follow. */
+  signInMode: "signin" | "signup";
+  /** The plan picked in the dialog's Get started side. */
+  signInPlan: "free" | "team";
+  /** The landing tour's feature open in its dialog (web/src/site-feature.ts), or none. */
+  siteFeature: import("./site-feature-core").FeatureState | null;
   /** Landing reveal keys that already played (landing-motion.ts records them). */
   landingSeen: Set<string>;
   /** Where "Back to the app" on the #site landing returns to (the route the logo was clicked from). */
@@ -410,7 +416,7 @@ export function syncPropsOf(s: AppState, now: number = Date.now()): SyncProps {
 
 export function initialState(): AppState {
   return {
-    view: "auth", authStep: "login", signInOpen: false, landingSeen: new Set(), siteReturn: null,
+    view: "auth", authStep: "login", signInOpen: false, signInMode: "signin", signInPlan: "free", siteFeature: null, landingSeen: new Set(), siteReturn: null,
     deniedEmail: null,
     onboard: initialOnboard(),
     persons: { status: "idle", data: [] },
@@ -666,7 +672,7 @@ function notice(text: string): string {
 // ── auth states ──────────────────────────────────────────────────────────────
 function authView(s: AppState): string {
   // Signed out → the landing page; its Sign in opens the provider dialog.
-  if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, seen: s.landingSeen });
+  if (s.authStep === "login") return landingView({ dark: resolved(s) !== "light", signInOpen: s.signInOpen, signInMode: s.signInMode, signInPlan: s.signInPlan, seen: s.landingSeen, feature: s.siteFeature });
   // Onboarding is a form: `data-morph` patches it in place per keystroke (morph.ts `paint`) instead of
   // rebuilding the card and the backdrop behind it. The other auth cards have nothing to type in.
   return `<div class="cnpy-authwrap"${s.authStep === "onboard" ? ' data-morph="onboard"' : ""} style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
@@ -2554,7 +2560,7 @@ function toastBlock(msg: string, elapsed: number, ms: number, action: ToastActio
 export function render(s: AppState): string {
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.billingDone ? billingDonePage(s.billingDone) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+    ${s.billingDone ? billingDonePage(s.billingDone) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
