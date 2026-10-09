@@ -70,6 +70,32 @@ body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;back
 .org input{flex:none;margin:0;accent-color:var(--accent)}
 .org-name{min-width:0;font-weight:600;overflow-wrap:anywhere}
 .org-slug{margin-left:auto;flex:none;font-family:var(--label);font-size:12px;color:var(--fg-55)}
+.who{margin-top:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--accent);border-radius:4px;background:var(--accent-soft)}
+.who-text{flex:1 1 180px;min-width:0;display:flex;flex-direction:column;gap:2px}
+.who-label{font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-55)}
+.who-name{font-size:15px;font-weight:600;overflow-wrap:anywhere}
+.who-handle{font-weight:500;color:var(--fg-70)}
+.who-sub{font-size:12px;color:var(--fg-55)}
+.who-form{flex:none;margin:0}
+.who-out{font:inherit;font-size:12.5px;font-weight:600;color:var(--accent);background:transparent;border:0;padding:4px 0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.who-out:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.org.mode{align-items:flex-start}
+.org.mode input{margin-top:3px}
+.mode-text{min-width:0;display:flex;flex-direction:column;gap:3px}
+.mode-sub{font-size:12.5px;font-weight:400;line-height:1.5;color:var(--fg-55)}
+.mode-sub strong{font-weight:600;color:var(--fg-70)}
+.rec{margin-left:8px;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);background:var(--accent-soft);border-radius:2.4px;padding:1px 6px;vertical-align:1px}
+.orgs.pick{margin-top:14px}
+.card:has(input[name=mode][value=repo]:checked) .orgs.pick{display:none}
+.orgs.pick .org{cursor:default;gap:12px}
+.org-tick{flex:1;min-width:0;display:flex;align-items:center;gap:10px;cursor:pointer}
+.org-start{flex:none;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-55);cursor:pointer}
+.org:has(.org-tick input:not(:checked)) .org-start{display:none}
+.orgs.pick .org:has(.org-tick input:not(:checked)){border-color:var(--border);background:transparent}
+.orgs{margin-top:20px}
+.orgs .label{margin:0 0 2px}
+@media (max-width:440px){.orgs.pick .org-slug{display:none}}
+.pick-note{margin:2px 0 0;font-size:12px;line-height:1.5;color:var(--fg-55)}
 .row{display:flex;gap:10px;margin-top:24px}
 .row .btn{flex:1}
 .err{margin-top:20px;padding:12px 14px;border-radius:4px;background:var(--red-soft);border:1px solid var(--border);color:var(--red);font-size:13.5px;line-height:1.55;overflow-wrap:anywhere}`;
@@ -105,49 +131,95 @@ export function signInPage(clientName: string): string {
     + `<div class="foot">After you sign in, Trov asks you to confirm before anything is connected.</div>`);
 }
 
-/** Signed in, but a member of no organization: a connection is made INTO one (§7.1), so there is
- *  nothing to approve yet. No form — the person joins or creates an org in the app and starts again. */
+/** Signed in, but a member of no organization: a connection acts inside the person's organizations, so
+ *  there is nothing to approve yet. No form — the person joins or creates an org in the app and starts again. */
 export function noOrgPage(clientName: string, handle: string): string {
   return shell("Join an organization first", head("Join an organization first")
-    + `<p class="lede"><strong>${esc(clientName)}</strong> connects to one organization's workspace, and <strong>@${esc(handle)}</strong> isn't a member of one yet.</p>`
+    + `<p class="lede"><strong>${esc(clientName)}</strong> works inside your organizations, and <strong>@${esc(handle)}</strong> isn't a member of one yet.</p>`
     + `<div class="stack"><a class="btn primary" href="/">Open Trov</a></div>`
     + `<div class="foot">Create an organization or accept an invite there, then start the connection again from the app.</div>`);
 }
 
+/** How many organizations a person can have and still get them ALL ticked on the consent page. */
+export const CONSENT_TICK_ALL_MAX = 4;
+
+export interface ConsentChoice { mode: "manual" | "repo"; orgs: string[]; current: string }
+
+/** What the page preselects: follow the repository for a person in several organizations (one
+ *  connection then works in each of their repositories), manual for a person in one; every organization
+ *  ticked when there are few, only the first when there are many; starting in the first. */
+export function defaultConsentChoice(orgs: { slug: string }[]): ConsentChoice {
+  return {
+    mode: orgs.length > 1 ? "repo" : "manual",
+    orgs: (orgs.length <= CONSENT_TICK_ALL_MAX ? orgs : orgs.slice(0, 1)).map((o) => o.slug),
+    current: orgs[0]?.slug ?? "",
+  };
+}
+
 /**
  * The consent page. `orgs` are the signed-in person's organizations (never empty — `noOrgPage` is that
- * case): with ONE the page is the plain Allow / Deny it always was, the org named in the lede and sent
- * as a hidden field; with several, a radio group asks which one the connection is for — none
- * preselected, required to Allow (Deny skips the check). The radios sit above the permissions and
- * belong to the form below through `form="consent"`. The posted slug is only a request: the server
- * binds the grant to it through a live membership check.
+ * case). It asks ONE question the old page did not: how the connection chooses among them (0051).
+ *
+ *   Follow the repository — it works in whichever of the person's organizations has the repository the
+ *     agent is in connected, and reads and writes nothing anywhere else. Nothing more to pick.
+ *   Manual — it works in the organizations the person TICKS, one at a time, starting in the one marked
+ *     "starts here". With one organization there is nothing to tick: it is named and sent hidden.
+ *
+ * No script runs on this page (its CSP allows none): the organization list is shown or hidden by which
+ * mode radio is checked (`:has`), and every control belongs to the form below through `form="consent"`.
+ * What is posted is only a REQUEST — the server binds each organization through a live membership check.
+ * `choice` is what to preselect (the defaults, or what the person sent when the page comes back with `error`).
  */
 export function consentPage(p: {
-  clientName: string; redirectHost: string; handle: string; orgs: { slug: string; name: string }[];
-  hidden: Record<string, string>; csrf: string;
+  clientName: string; redirectHost: string; handle: string; name?: string | null; orgs: { slug: string; name: string }[];
+  hidden: Record<string, string>; csrf: string; choice?: ConsentChoice; error?: string;
 }): string {
   const one = p.orgs.length === 1 ? p.orgs[0] : null;
-  const inputs = Object.entries({ ...p.hidden, csrf: p.csrf, ...(one ? { org: one.slug } : {}) })
+  const choice = p.choice ?? defaultConsentChoice(p.orgs);
+  const inputs = Object.entries({ ...p.hidden, csrf: p.csrf, ...(one ? { org: one.slug, current: one.slug } : {}) })
     .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("");
-  const picker = one ? "" : `<fieldset class="orgs"><legend class="label">Connect it to</legend>`
-    + p.orgs.map((o) => `<label class="org"><input type="radio" name="org" value="${esc(o.slug)}" form="consent" required>`
-      + `<span class="org-name">${esc(o.name)}</span><span class="org-slug">${esc(o.slug)}</span></label>`).join("")
+  const modeRow = (value: "repo" | "manual", title: string, sub: string, badge = "") =>
+    `<label class="org mode"><input type="radio" name="mode" value="${value}" form="consent"${choice.mode === value ? " checked" : ""}>`
+    + `<span class="mode-text"><span class="org-name">${title}${badge}</span><span class="mode-sub">${sub}</span></span></label>`;
+  const modes = `<fieldset class="orgs"><legend class="label">How it picks an organization</legend>`
+    + modeRow("repo", "Follow the repository",
+      "Works in whichever of your organizations has the repository you are in connected; anywhere else it reads and writes nothing.",
+      one ? "" : `<span class="rec">Recommended</span>`)
+    + modeRow("manual", "Manual",
+      one ? `Works in <strong>${esc(one.name)}</strong>. If you join another organization, you add it in Settings.`
+        : "Works in the organizations you tick, one at a time. You, or the agent, switch between them.")
+    + `</fieldset>`;
+  const picker = one ? "" : `<fieldset class="orgs pick"><legend class="label">It may use</legend>`
+    + p.orgs.map((o) => `<div class="org"><label class="org-tick"><input type="checkbox" name="org" value="${esc(o.slug)}" form="consent"${choice.orgs.includes(o.slug) ? " checked" : ""}>`
+      + `<span class="org-name">${esc(o.name)}</span><span class="org-slug">${esc(o.slug)}</span></label>`
+      + `<label class="org-start"><input type="radio" name="current" value="${esc(o.slug)}" form="consent"${choice.current === o.slug ? " checked" : ""}>starts here</label></div>`).join("")
+    + `<p class="pick-note">Tick at least one. You can add or remove organizations later in Settings › MCP access.</p>`
     + `</fieldset>`;
   return shell("Connect an app", head("Connect an app")
-    + `<p class="lede sm">It will act as <strong>@${esc(p.handle)}</strong>${one ? ` in <strong>${esc(one.name)}</strong>` : ""}</p>`
+    // WHO is approving, first and plainly: the browser an app opens may be signed in to another
+    // account than the one the person expects, and the connection then lands under that one. "Not
+    // you?" is a form of its own (a POST: signing out is never a link) that signs this browser out and
+    // comes back to the same request, which then asks for a sign-in.
+    + `<div class="who"><div class="who-text"><span class="who-label">Signed in as</span>`
+    + `<span class="who-name">${p.name && p.name.trim() && p.name.trim().toLowerCase() !== p.handle.toLowerCase() ? `${esc(p.name.trim())} <span class="who-handle">(@${esc(p.handle)})</span>` : `@${esc(p.handle)}`}</span>`
+    + `<span class="who-sub">The app will act as this account.</span></div>`
+    + `<form method="post" action="/oauth/switch-account" class="who-form">${Object.entries({ ...p.hidden, csrf: p.csrf }).map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("")}`
+    + `<button class="who-out" type="submit">Not you? Sign out</button></form></div>`
     + `<div class="app"><div class="app-ic">${APP}</div><div style="min-width:0">`
     + `<div class="app-name">${esc(p.clientName)}</div>`
     + `<div class="app-sub">Returns you to <span class="host">${esc(p.redirectHost)}</span></div>`
     + `</div></div>`
+    + (p.error ? `<div class="err" role="alert">${esc(p.error)}</div>` : "")
+    + modes
     + picker
     + `<div class="label">It can</div>`
     + `<ul class="perms">`
-    + `<li>${CHECK}<span>Read what you can read in ${one ? "that organization" : "the organization you choose"}: docs, decisions, the roadmap, tickets and your work</span></li>`
+    + `<li>${CHECK}<span>Read what you can read in the organization it is working in: docs, decisions, the roadmap, tickets and your work</span></li>`
     + `<li>${CHECK}<span>Write as you through MCP: file and update tickets, stage docs and decisions</span></li>`
     + `<li>${CHECK}<span>If you're an admin there, edit the plan and sprints</span></li>`
     + `</ul>`
     + `<form id="consent" method="post" action="/oauth/authorize">${inputs}<div class="row">`
     + `<button class="btn" type="submit" name="decision" value="deny" formnovalidate>Deny</button>`
     + `<button class="btn primary" type="submit" name="decision" value="allow">Allow</button></div></form>`
-    + `<div class="foot">The app's name is supplied by the app. You can disconnect it any time in Settings › MCP access.</div>`);
+    + `<div class="foot">The app's name is supplied by the app. You can change this or disconnect it any time in Settings › MCP access.</div>`);
 }

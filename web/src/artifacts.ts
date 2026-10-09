@@ -29,7 +29,7 @@ import { segmented } from "./segmented";
 import { confirmModal } from "./confirm";
 import { renderMarkdown, sanitizeSvg } from "./markdown";
 import { collapsedLineDiff } from "./diff";
-import { skeleton, skBar, skBox, skLine, skLines, skList, skW, skCard } from "./skeleton";
+import { emptyLayout, skeleton, skBar, skBox, skLine, skLines, skList, skW, skCard } from "./skeleton";
 import type { PersonColor } from "@shared/rows";
 import {
   ARTIFACT_KINDS, ARTIFACT_AREAS, ARTIFACT_STATUSES, ARTIFACT_TEXT_EXT, ARTIFACT_SUMMARY_MAX,
@@ -455,15 +455,18 @@ function thumb(a: ArtifactSummaryDTO): string {
   return `<div style="position:absolute;inset:0;display:grid;place-items:center;color:var(--fg-40)"><span style="display:flex;flex-direction:column;align-items:center;gap:8px">${I.kind(a.kind, 30)}<span style="${CHIP}color:var(--fg-55);border:1px solid var(--border)">${a.kind.toUpperCase()} · ${esc(fmtKB(a.size_bytes))}</span></span></div>`;
 }
 
-/** The library while its first read is out: the toolbar's row, then cards on the
- *  library's own grid — a 160px preview over a title and the byline. */
-function librarySkeleton(): string {
-  const card = (i: number) => skCard(`<div style="height:160px;border-bottom:1px solid var(--border);background:var(--bg);flex:none"></div>
+/** The library's card grid — the real cards', the loading skeleton's and the empty layout's. */
+const LIB_GRID = "display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:14px;margin-top:18px";
+/** One library card as a shape: a 160px preview over a title and the byline. */
+const libraryCardShape = (i: number): string => skCard(`<div style="height:160px;border-bottom:1px solid var(--border);background:var(--bg);flex:none"></div>
       <div style="display:flex;flex-direction:column;gap:12px;padding:14px 16px;flex:1">${skLine(skW(i), 15, 1.35)}<div style="display:flex;align-items:center;gap:8px;margin-top:auto">${skBox(20, 20)}${skBar(84, 9)}${skBox(52, 18)}${skBar(40, 9, "margin-left:auto")}</div></div>`,
     "padding:0;display:flex;flex-direction:column;overflow:hidden");
-  return skeleton("artifacts", "Loading artifacts&hellip;", `<div style="display:flex;align-items:center;gap:8px;margin:0 0 4px">${skBox("min(420px,60%)", 34)}${skBox(84, 34)}${skBar(96, 8, "margin-left:auto")}</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:14px;margin-top:18px">${skList(6, card)}</div>`, SHELL);
+/** The library's cards while its first read is out — under the REAL toolbar (libraryView). */
+function librarySkeleton(): string {
+  return skeleton("artifacts", "Loading artifacts&hellip;", `<div style="${LIB_GRID}">${skList(6, libraryCardShape)}</div>`);
 }
+/** The library's empty sentence: what an artifact is, and the two ways one gets here (the Guide › Artifacts). */
+export const ARTIFACTS_EMPTY = "No artifacts yet. An artifact is a page an agent or person made: a design, a report, a diagram, an image, a PDF or a file. Agents upload them over MCP, or add one yourself.";
 
 /** One artifact's page while its read is out: the title row and its controls, the
  *  preview frame, then the details tiles. */
@@ -479,8 +482,10 @@ function viewerSkeleton(): string {
 function libraryView(p: ArtProps): string {
   const ui = p.ui;
   if (ui.list.status === "error" && !ui.list.data) return notice("Couldn't load artifacts.", true);
-  if (!ui.list.data) return librarySkeleton();
-  const all = ui.list.data;
+  // The first read is out: the toolbar is real (search, Filter), the grid is a skeleton, and
+  // nothing is counted ("0 shown" would be a guess).
+  const loading = !ui.list.data;
+  const all = ui.list.data ?? [];
   const rows = libraryRows(p);
   const groups = libraryGroups(p, all);
   const active = ART_FILTER_KEYS.filter((k) => ui.f[k] !== "all").length;
@@ -507,7 +512,7 @@ function libraryView(p: ArtProps): string {
       search: { act: "artQ", field: "artQ", value: ui.q, placeholder: "Search by title, area, kind or ticket", clearAct: "artClearQ" },
       menu,
     })}
-    <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap;margin-left:auto;flex:none">${rows.length} shown · ${all.length} total</span>
+    <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap;margin-left:auto;flex:none">${loading ? "" : `${rows.length} shown · ${all.length} total`}</span>
   </div>`;
 
   const card = (a: ArtifactSummaryDTO, i: number): string => {
@@ -531,21 +536,22 @@ function libraryView(p: ArtProps): string {
     </div>`;
   };
 
-  const empty = rows.length === 0 ? `<div style="display:flex;justify-content:center;padding:56px 0">
+  // A search or filter that matches nothing says so; a library with nothing in it is the empty layout below.
+  const empty = rows.length === 0 && all.length > 0 ? `<div style="display:flex;justify-content:center;padding:56px 0">
     <div style="border:1px dashed var(--border-strong);border-radius:13px;padding:36px 44px;text-align:center;max-width:380px">
-      ${all.length === 0
-        ? `<div style="font-size:15px;font-weight:600;color:var(--fg-70)">No artifacts yet.</div>
-           <div style="font-size:12.5px;color:var(--fg-40);margin-top:6px">Agents upload them over MCP, or add one yourself.</div>
-           <button data-act="artNew" class="cnpy-outlinebtn" style="margin-top:16px;${OUTLINE_BTN};padding:6px 14px">New artifact</button>`
-        : `<div style="font-size:15px;font-weight:600;color:var(--fg-70)">No artifacts match these filters.</div>
-           <div style="font-size:12.5px;color:var(--fg-40);margin-top:6px">${ui.q.trim() ? `Nothing matches “${esc(ui.q.trim())}” with the current filters.` : "Try another area or status, or clear the filters."}</div>
-           <button data-act="artFilterClear" class="cnpy-outlinebtn" style="margin-top:16px;${OUTLINE_BTN};padding:6px 14px">Clear filters</button>`}
+      <div style="font-size:15px;font-weight:600;color:var(--fg-70)">No artifacts match these filters.</div>
+      <div style="font-size:12.5px;color:var(--fg-40);margin-top:6px">${ui.q.trim() ? `Nothing matches “${esc(ui.q.trim())}” with the current filters.` : "Try another area or status, or clear the filters."}</div>
+      <button data-act="artFilterClear" class="cnpy-outlinebtn" style="margin-top:16px;${OUTLINE_BTN};padding:6px 14px">Clear filters</button>
     </div>
   </div>` : "";
+  const grid = loading ? librarySkeleton()
+    // Nothing in the library: its card grid, drawn empty — the sentence and New artifact in the first cell.
+    : all.length === 0 ? emptyLayout("artifacts", { text: ARTIFACTS_EMPTY, action: { label: "New artifact", act: "artNew" }, style: LIB_GRID, contents: true, shapes: skList(5, libraryCardShape) })
+    : `<div class="cnpy-stagger" style="${LIB_GRID}">${rows.map(card).join("")}</div>`;
 
   return `<div data-screen-label="Library" style="${SHELL}">
     ${toolbar}
-    <div class="cnpy-stagger" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:14px;margin-top:18px">${rows.map(card).join("")}</div>
+    ${grid}
     ${empty}
   </div>`;
 }

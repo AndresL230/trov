@@ -124,7 +124,7 @@ skippable, with Back, a step indicator and *Skip setup*.
   quick search.
 - **Every step's state is derived, never stored and never guessed** — from the reads Org settings already
   makes (repositories, the GitHub App's connection, members, invitations, the plan) and from the person's
-  own agent connections (`GET /auth/oauth-grants` filtered to this organization, plus their MCP tokens for
+  own agent connections (`GET /auth/oauth-grants` — the ones that may use this organization or follow the repository — plus their MCP tokens for
   it: the two reads Settings › MCP access makes). A read that is out, or failed, is *not known yet*: the
   indicator keeps the step's number, and the closing step says so rather than "done" or "skipped". Nothing
   on the page calls GitHub; the repository list is Org settings' own read.
@@ -227,9 +227,12 @@ when the limit turns over [`abuse-limits.md`].
 | Delete another person's prompt or artifact; rename the organization | | ✓ | ✓ |
 | Make or unmake an owner; rotate the organization's encryption key | | | ✓ |
 
-The last owner can neither leave nor be demoted. Removing a member revokes their tokens and connected apps
-for that organization at once; what they wrote stays. An agent acts as the person whose token it holds, in
-the one organization that token was made for, and may only write to tickets assigned to that person
+The last owner can neither leave nor be demoted. Removing a member ends their agents' reach into that
+organization at once — their tokens for it are revoked, and every connected app of theirs stops being able to
+act there (one that could act nowhere else is revoked) — and what they wrote stays. An agent acts as the
+person whose connection it holds, in ONE of that person's organizations per call (`data-layer.md` § Bearer:
+the connection's current organization, or the one that has the repository it is working in connected), and
+may only write to tickets assigned to that person
 [`src/tools/tickets-agent.ts`].
 
 Tickets and handoffs are numbered **per organization**: a new organization's first ticket is `#1`. That

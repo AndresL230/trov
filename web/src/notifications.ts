@@ -20,7 +20,8 @@ const trackStyle = (on: boolean): string =>
   `width:36px;height:21px;border-radius:999px;border:1px solid ${on ? "var(--accent)" : "var(--border-strong)"};background:${on ? "var(--accent)" : "transparent"};position:relative;flex:none;padding:0;transition:all .15s ease;display:inline-block`;
 const knobStyle = (on: boolean): string =>
   `position:absolute;top:2px;left:${on ? "17px" : "2px"};width:15px;height:15px;border-radius:50%;background:${on ? "var(--accent-fg)" : "var(--fg-40)"};transition:left .15s ease,background .15s ease;display:block`;
-const switchBtn = (act: string, arg: string | null, on: boolean): string =>
+/** THE on/off switch (a `role="switch"` button): Settings' notification toggles and a connection's organizations. */
+export const switchBtn = (act: string, arg: string | null, on: boolean): string =>
   `<button data-act="${act}"${arg ? ` data-arg="${attr(arg)}"` : ""} role="switch" aria-checked="${on ? "true" : "false"}" style="${trackStyle(on)}"><span style="${knobStyle(on)}"></span></button>`;
 
 const INPUT = `height:40px;padding:0 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-size:13.5px;${LABEL};outline:none`;
@@ -168,6 +169,8 @@ export interface NotifAdminProps {
   policy: PolicyKindView[];
   settings: NotificationSettingsRow | null;
   outbox: NotificationOutboxRow[];
+  /** The outbox's first read is still out: its rows are a skeleton, never "No sends yet" (and no count). */
+  outboxLoading?: boolean;
   outboxExpanded: string | null;
   /** Live text of the sender-NAME input while being edited; null = show the stored name. */
   fromDraft: string | null;
@@ -296,7 +299,8 @@ export function notificationsAdminSections(p: NotifAdminProps): string {
     ? `<div${surface("overflow:hidden")}><div class="cnpy-hscroll"><div><div style="${OUTBOX_GRID};padding-top:11px;padding-bottom:8px;border-bottom:1px solid var(--border);${O_LABEL};font-size:10px">
         <div>User</div><div>Cadence</div><div>Window</div><div>Status</div><div style="text-align:right">At</div>
       </div>` + p.outbox.map((o) => outboxRow(o, p.outboxExpanded === o.idempotency_key)).join("") + `</div></div></div>`
-    : orgEmpty("No sends yet", "Runs appear here after the first scheduled window.");
+    : p.outboxLoading ? skRows("notif-outbox", "Loading the outbox…", 3, { trail: 90 })
+    : orgEmpty("No sends yet", "Runs appear here after the first scheduled window.", "", 2);
 
   return `${lead}
     ${orgHead("Digests", "Turning one off removes it from everyone's Settings", null)}
@@ -305,6 +309,6 @@ export function notificationsAdminSections(p: NotifAdminProps): string {
     ${schedule}
     ${orgHead("Preview and test")}
     ${tryIt}
-    ${orgHead("Outbox", "Newest first", p.outbox.length)}
+    ${orgHead("Outbox", "Newest first", p.outboxLoading && !p.outbox.length ? null : p.outbox.length)}
     ${outbox}`;
 }

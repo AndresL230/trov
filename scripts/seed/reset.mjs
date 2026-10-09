@@ -99,6 +99,7 @@ export const RESET_STATEMENTS = [
   "UPDATE notification_settings SET send_hour = 8, timezone = 'America/New_York', from_address = 'Trov <hello@trov.dev>' WHERE org_id = 'org_saplinglearn'",
   "DELETE FROM oauth_tokens",
   "DELETE FROM oauth_codes",
+  "DELETE FROM oauth_grant_orgs",
   "DELETE FROM oauth_grants",
   "DELETE FROM oauth_clients",
   "DELETE FROM sessions",

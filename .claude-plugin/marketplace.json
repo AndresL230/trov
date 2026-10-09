@@ -9,7 +9,7 @@
     {
       "name": "trov",
       "source": "./plugins/trov",
-      "description": "Skills: trov, load-context, record-session (orient→work→record), my-work, tickets, read-plan + update-plan (admin), handoff, prompts, artifacts — plus the auto-wired Trov MCP server. Connects by browser sign-in: run /mcp and choose Authenticate.",
+      "description": "Skills: trov, load-context, record-session (orient→work→record), my-work, tickets, read-plan + update-plan (admin), handoff, prompts, artifacts — plus the auto-wired Trov MCP server. One connection covers every organization you belong to (it follows the repository you are in, or the organizations you pick). Connects by browser sign-in: run /mcp and choose Authenticate.",
       "keywords": ["trov", "context", "mcp", "team-memory", "tickets", "handoffs", "prompts", "artifacts"]
     }
   ]

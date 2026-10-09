@@ -117,8 +117,25 @@ function probeOrg(): void {
     .finally(() => { probing = false; });
 }
 
+// The state preview (web/src/preview.ts) never sends a write: while it is on, every request that
+// is not a GET is refused HERE — before it leaves the browser — and the app is told, so it can say
+// why nothing happened. `call` is the one sender, so there is no way round it.
+let writeBlock: (() => void) | null = null;
+/** main.ts: refuse every non-GET request while a preview is on (`fn` is told of each refusal); null lifts it. */
+export function setWriteBlock(fn: (() => void) | null): void { writeBlock = fn; }
+/** Whether `method` is one the preview refuses: everything but a read. */
+export const isWriteMethod = (method: string | undefined): boolean => {
+  const m = (method ?? "GET").toUpperCase();
+  return m !== "GET" && m !== "HEAD";
+};
+/** A write refused because a preview is on. */
+export class PreviewBlocked extends Error {
+  constructor() { super("preview"); this.name = "PreviewBlocked"; }
+}
+
 /** THE sender: prefixes the path, carries the session cookie, turns a 401 into `Unauthorized`. */
 async function call(path: string, init: RequestInit = {}): Promise<Response> {
+  if (writeBlock && isWriteMethod(init.method)) { writeBlock(); throw new PreviewBlocked(); }
   const url = apiUrl(path);
   const res = await fetch(url, { credentials: "same-origin", ...init, headers: { accept: "application/json", ...(init.headers as Record<string, string> | undefined) } });
   if (res.status === 401) throw new Unauthorized();
@@ -826,6 +843,15 @@ export async function listOAuthGrants(): Promise<OAuthGrantSummary[]> {
 export function revokeOAuthGrant(id: number): Promise<{ ok: true }> {
   return postJson<{ ok: true }>(`/auth/oauth-grants/${id}/revoke`);
 }
+// Settings › MCP access: what one of MY connections can reach. Each answers with my connections as they now stand.
+const grantScope = async (id: number, what: "orgs" | "current" | "mode", body: unknown): Promise<OAuthGrantSummary[]> =>
+  (await postJson<{ ok: true; grants: OAuthGrantSummary[] }>(`/auth/oauth-grants/${id}/${what}`, body)).grants;
+/** Let a manual connection use an organization of mine, or stop it. */
+export const setOAuthGrantOrg = (id: number, org: string, on: boolean) => grantScope(id, "orgs", { org, on });
+/** Switch a manual connection's current organization (one it may already use). */
+export const setOAuthGrantCurrent = (id: number, org: string) => grantScope(id, "current", { org });
+/** Make a connection follow the repository, or manual starting in `org`. */
+export const setOAuthGrantMode = (id: number, mode: "repo" | "manual", org?: string) => grantScope(id, "mode", { mode, org });
 
 // Re-export the row types the UI renders, so screens import shapes from one place.
 export type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow };

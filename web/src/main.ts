@@ -23,7 +23,7 @@ import {
   getOnboardPrefill, checkHandle, submitOnboard,
   getNotificationPrefs, putNotificationPrefs, getNotificationPolicy, putNotificationPolicy,
   getNotificationSettings, putNotificationSettings, listNotificationOutbox, testSendNotification, type PrefsWrite,
-  listOAuthGrants, revokeOAuthGrant,
+  listOAuthGrants, revokeOAuthGrant, setOAuthGrantOrg, setOAuthGrantCurrent, setOAuthGrantMode, planLimitText,
   listPersons, updateMe, unlinkIdentity, renameHandle,
   getPersonProfile, uploadAvatar, removeAvatar,
   getMyOrgs, getOrgMe, listMcpTokens, revokeMcpToken, setApiOrg, setOrgLostHandler, tenantHref,
@@ -58,10 +58,12 @@ import { QUEUE_FILTER_CATS, type QueueFilterCat } from "./tickets";
 import { initialOnboard, markAvatarFailed, AVATAR_IMG_CLASS } from "./people";
 import { prepareAvatar } from "./avatar";
 import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX } from "./mentions";
-import { PERSON_COLORS, type PersonColor } from "@shared/rows";
+import { PERSON_COLORS, type PersonColor, type OAuthGrantSummary } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
 import { syncSkeletons } from "./skeleton";
+import { parsePreview, previewSearch, withPreview, PREVIEW_BLOCKED, type PreviewMode } from "./preview";
+import { setWriteBlock } from "./api";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { createPlatform } from "./platform-actions";
@@ -101,6 +103,16 @@ if (!root) throw new Error("Trov: #app mount point missing");
 const mount = root;
 
 const state: AppState = initialState();
+
+// The state preview (web/src/preview.ts): `?preview=empty` / `?preview=loading`, read once here
+// and kept in the address bar while it is on (a reload stays in it). While it is on api.ts
+// refuses every write; the refusal is said as a toast AFTER the caller's own "couldn't save"
+// (a timeout, so this is the one that stays).
+function applyPreview(mode: PreviewMode | null): void {
+  state.preview = mode;
+  setWriteBlock(mode ? () => { setTimeout(() => flash(PREVIEW_BLOCKED, 4200), 0); } : null);
+}
+applyPreview(parsePreview(location.search));
 
 // The sidebar's "search everything" dropdown. Its node lives on <body>, outside the
 // mount, so rerender() never touches it; rerender() calls `qs.sync()` to re-anchor it.
@@ -755,7 +767,7 @@ function enterPlatform(hash: string): void {
   state.view = "platform";
   const r = parseHash(hash);
   applyRoute(r.screen === "platform" || r.screen === "platformorg" ? r : { ...r, screen: "platform", platTab: "orgs" });
-  if (!isPlatformPath(location.pathname)) history.replaceState(null, "", `${PLATFORM_PATH}${hashForRoute(currentRoute())}`);
+  if (!isPlatformPath(location.pathname)) history.replaceState(null, "", withPreview(`${PLATFORM_PATH}${hashForRoute(currentRoute())}`, state.preview));
   platform.load();
 }
 
@@ -786,7 +798,7 @@ function enterOrg(slug: string, hash: string): void {
   state.orgSlug = slug;
   setApiOrg(slug);
   try { localStorage.setItem(LAST_ORG_KEY, slug); } catch { /* ignore */ }
-  const want = orgHref(slug, hash);
+  const want = withPreview(orgHref(slug, hash), state.preview);
   if (`${location.pathname}${location.search}${location.hash}` !== want) history.replaceState(null, "", want);
   state.view = "app";
   // Restore the route from the URL hash (reload stays put, including
@@ -1046,6 +1058,60 @@ function loadSettingsReads(): void {
   orgCtl.loadPlan();
   void loadMyOrgs();
 }
+/** Why a change to a connection's scope was refused, in words (the route answers with a code). */
+const GRANT_SCOPE_REFUSALS: Record<string, string> = {
+  current_org: "That is the organization it is working in. Switch it to another one first.",
+  last_org: "A connection needs at least one organization. Revoke it instead.",
+  not_allowed: "Turn that organization on for this connection first.",
+  not_manual: "This connection follows the repository. Change it to Manual to choose its organizations.",
+  not_found: "That connection, or that organization, is no longer yours to change.",
+};
+/** The scope dialog's focusable controls, in order. */
+const grantScopeItems = (dlg: HTMLElement): HTMLElement[] =>
+  [...dlg.querySelectorAll<HTMLElement>("button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex='-1'])")].filter((el) => el.offsetParent !== null);
+/** Focus into the scope dialog: its first control that does something (the × is last in line). */
+function focusGrantScope(): void {
+  const dlg = mount.querySelector<HTMLElement>("#grant-scope");
+  if (!dlg) return;
+  (grantScopeItems(dlg).find((el) => el.dataset.act && el.dataset.act !== "grantScopeClose") ?? dlg).focus();
+}
+/** Close the scope dialog; focus goes back to the row's button that opened it. */
+function closeGrantScope(): void {
+  const id = state.grantScope;
+  if (id === null) return;
+  state.grantScope = null;
+  state.grantScopeNote = null;
+  rerender();
+  mount.querySelector<HTMLElement>(`[data-grant-change="${id}"]`)?.focus();
+}
+/** Settings › MCP access: one change to a connection's scope, saved at once — the list (and so the open
+ *  dialog) becomes the route's answer, and the dialog says saving / saved / why not. `org` is the
+ *  organization the change was about: a refusal is shown on its row. */
+function saveGrantScope(change: Promise<OAuthGrantSummary[]>, done: string, org?: string): void {
+  // The control that was used, to give focus back once the dialog has been redrawn around it.
+  const used = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>("#grant-scope [data-act], #grant-scope [data-dd]");
+  const again = used?.dataset.dd ? `[data-dd="${used.dataset.dd}"]` : org ? `[data-grant-allow="${org}"] button` : null;
+  const refocus = (): void => {
+    const dlg = mount.querySelector<HTMLElement>("#grant-scope");
+    if (!dlg || dlg.contains(document.activeElement)) return;
+    ((again ? dlg.querySelector<HTMLElement>(again) : null) ?? grantScopeItems(dlg)[0] ?? dlg).focus();
+  };
+  state.grantScopeNote = { kind: "saving", text: "Saving\u2026" };
+  rerender();
+  change
+    .then((data) => { state.grants = { status: "ok", data }; state.grantScopeNote = { kind: "saved", text: done }; rerender(); refocus(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      // A plan refusal is the named organization's: say it as its owner is told it, when that is me.
+      const role = org ? (state.myOrgs.data?.orgs ?? state.me?.orgs ?? []).find((o) => o.slug === org)?.role ?? null : null;
+      const text = planLimitText(e, role) ?? (e instanceof ApiError ? GRANT_SCOPE_REFUSALS[e.message] : undefined) ?? "That could not be saved. Try again.";
+      state.grantScopeNote = { kind: "error", text, ...(org ? { org } : {}) };
+      rerender();
+      refocus();
+      loadGrants();
+    });
+}
+
 function loadGrantsIfNeeded(): void {
   if (state.grants.status === "idle") loadGrants();
   if (state.mcpTokens.status === "idle") loadMcpTokens();
@@ -2049,6 +2115,14 @@ function scheduleRenameCheck(): void {
 // picker needs it; every other case ignores it.
 function dispatch(act: string, arg: string | null, value: string | null, caret: number | null = null): void {
   switch (act) {
+    // The state preview's banner: switch to the other state, or close it ("" = off). The flag
+    // lives in the address bar, so it is rewritten there; nothing is loaded or sent.
+    case "previewSet": {
+      applyPreview(arg === "empty" || arg === "loading" ? arg : null);
+      history.replaceState(null, "", `${location.pathname}${previewSearch(location.search, state.preview)}${location.hash}`);
+      rerender();
+      return;
+    }
     // auth state navigation (how the screens become reachable)
     case "signIn":
       // Return-to: the hash never reaches the server, so stash it for the boot
@@ -2877,7 +2951,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; loadSettingsReads(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3564,6 +3638,41 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     // Connected apps opens to every row, or folds back to the first few.
     case "mcpShowAll": state.grantsAll = !state.grantsAll; break;
+    // A connection's scope (0051): opened under its row; every change is saved as it is made, and the
+    // server answers with my connections as they now stand.
+    // It opens as a DIALOG: focus goes to its first control, and back to the row's button on close
+    // (Done, the ×, the backdrop or Escape).
+    case "grantScopeOpen": {
+      state.grantScope = Number(arg);
+      state.grantScopeNote = null;
+      state.grantRevokeArm = null;
+      if (state.myOrgs.status === "idle") void loadMyOrgs();
+      rerender();
+      focusGrantScope();
+      return;
+    }
+    case "grantScopeClose": closeGrantScope(); return;
+    case "grantMode": {
+      // arg = "<grant id>:<repo|manual>". Manual starts in the organization on screen (one of mine), and I add others after.
+      const [rawId, mode] = (arg ?? "").split(":");
+      const start = state.orgSlug ?? state.me?.orgs[0]?.slug;
+      if (mode !== "repo" && (mode !== "manual" || !start)) return;
+      saveGrantScope(setOAuthGrantMode(Number(rawId), mode, mode === "manual" ? start : undefined),
+        mode === "repo" ? "Saved. It now follows the repository." : "Saved. It now works in the organizations you turn on.");
+      return;
+    }
+    case "grantOrgToggle": {
+      // arg = "<grant id>:<org slug>:<on|off>".
+      const [rawId, slug, to] = (arg ?? "").split(":");
+      if (!slug || (to !== "on" && to !== "off")) return;
+      saveGrantScope(setOAuthGrantOrg(Number(rawId), slug, to === "on"), to === "on" ? "Saved. It may use that organization now." : "Saved. It can no longer use that organization.", slug);
+      return;
+    }
+    case "grantCurrent": {
+      if (!arg || !value) return;
+      saveGrantScope(setOAuthGrantCurrent(Number(arg), value), "Saved. It is working there now.");
+      return;
+    }
     // The by-hand setup is a modal, so the MCP tile never changes height: focus goes into
     // the dialog on open, and back to its link on close (the backdrop, the ×, or Escape).
     case "mcpSetupOpen":
@@ -4287,11 +4396,23 @@ mount.addEventListener("keydown", (e) => {
     if (first) dispatch("promptTagAdd", first.tag, null);
   }
 });
+// The scope dialog (Settings › MCP access) keeps Tab inside itself.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Tab" || state.grantScope === null || state.dd.open) return;
+  const dlg = mount.querySelector<HTMLElement>("#grant-scope");
+  if (!dlg) return;
+  const items = grantScopeItems(dlg);
+  if (!items.length) { e.preventDefault(); dlg.focus(); return; }
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  const last = items.length - 1;
+  if (at < 0 || (e.shiftKey && at === 0) || (!e.shiftKey && at === last)) { e.preventDefault(); items[e.shiftKey ? last : 0].focus(); }
+});
 // Escape closes the expanded handoff prompt (the filter menus close in their own listener).
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape" || state.view !== "app") return;
   if (state.personCard) { state.personCard = null; rerender(); }
   else if (state.mcpSetup) closeMcpSetup();
+  else if (state.grantScope !== null && !state.dd.open) closeGrantScope(); // an open menu closes first, on its own
   else if (state.handoffPromptOpen) { state.handoffPromptOpen = false; rerender(); }
   else if (state.promptExpanded) { state.promptExpanded = false; rerender(); }
 });

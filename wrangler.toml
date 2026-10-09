@@ -42,10 +42,10 @@ GITHUB_APP_SLUG = "trov-by-trovlabs"
 # the Cloudflare dashboard is put back by the next deploy.
 NOTIFICATIONS_MODE = "resend"
 # Where each bug report / support message (the app's bug button and Contact support, the site's Contact form) is mailed: the operator's
-# inbox. Not a secret. EMPTY until the owner fills it in: while it is, a report is still stored and shows
+# inbox. Not a secret. While it is EMPTY a report is still stored and shows
 # in Platform › Support, and no mail is sent (its mail outcome reads `skipped`). Replying to the mail
 # answers the reporter (Reply-To is their provider-verified address). docs/architecture/support.md.
-SUPPORT_NOTIFY_EMAIL = ""
+SUPPORT_NOTIFY_EMAIL = "hello@trov.dev"
 
 # Billing — Stripe (docs/architecture/billing.md › Owner checklist). The ids of the recurring PRICES the
 # owner created in the Stripe dashboard (`price_…`), not amounts: Trov never holds a price, and the amount
@@ -54,14 +54,14 @@ SUPPORT_NOTIFY_EMAIL = ""
 # While it is empty Pro cannot be bought, and while STRIPE_SECRET_KEY /
 # STRIPE_WEBHOOK_SECRET (secrets: `wrangler secret put …`) are unset every billing route answers 503
 # `billing_unavailable` and the app is otherwise unchanged. The yearly id is optional.
-STRIPE_PRICE_TEAM = "price_1UOB9HH7KZijv6AwWF3LPpFr"
+STRIPE_PRICE_TEAM = "price_1UOOExH7KZijv6AwQIPrilmu"
 STRIPE_PRICE_TEAM_YEARLY = ""
 # Tax: "on" → every checkout asks Stripe Tax to work out the tax and takes a billing address. Stripe charges
 # tax only where the account holds a tax registration, so with none the total is the price alone. Turn it on
 # only AFTER Stripe Tax is set up in the dashboard (an origin address, a product tax category, the price's
 # tax behaviour set to exclusive): with it on and Stripe Tax not set up, Stripe refuses the checkout.
-# On since 2026-10-09: set up in Stripe TEST mode (price exclusive, origin address, SaaS business-use category,
-# no registrations). LIVE mode needs the same three before the live keys go in.
+# On since 2026-10-09: set up in Stripe TEST and LIVE mode (price exclusive, origin address, SaaS business-use
+# category on the product and as the account default, no registrations).
 STRIPE_TAX = "on"
 # Embedded checkout: Stripe's PUBLISHABLE key (`pk_test_…` / `pk_live_…` — public by design, it is sent to
 # the buyer's browser; never the secret key). Set → a purchase is paid inside Trov's own page

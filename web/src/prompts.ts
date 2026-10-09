@@ -17,7 +17,7 @@ import { primaryStyle } from "./handoffs";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
 import { segmented } from "./segmented";
 import { dangerTrigger, confirmModal } from "./confirm";
-import { skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
+import { emptyLayout, skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
 
 const personOf = (persons: PersonSummary[], h: string): PersonSummary | null =>
   persons.find((p) => p.handle.toLowerCase() === h.toLowerCase()) ?? null;
@@ -112,15 +112,20 @@ function promptCard(x: PromptSummary, persons: PersonSummary[]): string {
 
 /** The library while its first read is out: cards on the library's own grid, each in
  *  the prompt card's box (title + badge, slug, excerpt, tags, the byline rule). */
-function promptLibrarySkeleton(): string {
-  const card = (i: number) => `<div class="cnpy-surface" style="display:flex;flex-direction:column;min-width:0;padding:16px 18px">
+/** The library's empty sentence (the Guide › Prompt Library). */
+export const PROMPTS_EMPTY = "No prompts yet. The team's reusable prompts live here, each with a slug, tags, and {{variables}} for the parts that change.";
+/** One prompt card as a shape — the library's loading skeleton and its empty layout. */
+function promptCardShape(i: number): string {
+  return `<div class="cnpy-surface" style="display:flex;flex-direction:column;min-width:0;padding:16px 18px">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">${skLine(skW(i), 14, 1.5)}${skBox(58, 18)}</div>
     <div style="margin-top:3px">${skLine("34%", 11, 1.5)}</div>
     <div style="margin-top:9px">${skLine("92%", 12.5, 1.5)}</div>
     <div style="display:flex;gap:6px;margin-top:12px">${skBox(54, 20)}${skBox(70, 20)}</div>
     <div style="display:flex;align-items:center;gap:7px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border)">${skBox(18, 18)}${skBar(74, 9)}${skBar(40, 9, "margin-left:auto")}</div>
   </div>`;
-  return skeleton("prompts", "Loading prompts…", `<div class="cnpy-mw-grid is-3">${skList(6, card)}</div>`);
+}
+function promptLibrarySkeleton(): string {
+  return skeleton("prompts", "Loading prompts…", `<div class="cnpy-mw-grid is-3">${skList(6, promptCardShape)}</div>`);
 }
 
 export function promptLibraryView(p: PromptLibraryProps): string {
@@ -132,6 +137,8 @@ export function promptLibraryView(p: PromptLibraryProps): string {
   let body: string;
   if (loading) body = promptLibrarySkeleton();
   else if (p.status === "error" && p.prompts.length === 0) body = notice("Couldn't load the prompt library.");
+  // The library itself is empty (not a search or a tag hiding it): the card grid, drawn empty.
+  else if (p.prompts.length === 0) body = emptyLayout("prompts", { text: PROMPTS_EMPTY, action: { label: "New prompt", act: "newPrompt" }, cls: "cnpy-mw-grid is-3", contents: true, shapes: skList(5, promptCardShape) });
   else if (shown.length === 0) body = `<div style="display:flex;justify-content:center;padding:48px 0">
       <div style="border:1px dashed var(--border-strong);border-radius:13px;padding:36px 44px;text-align:center;max-width:380px">
         <div style="font-size:15px;font-weight:600;color:var(--fg-70)">No prompts match</div>

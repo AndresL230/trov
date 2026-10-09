@@ -32,7 +32,7 @@ beforeEach(() => {
   api.setApiOrg("acme");
   api.setOrgLostHandler(null);
 });
-afterEach(() => { vi.unstubAllGlobals(); api.setApiOrg(null); api.setOrgLostHandler(null); });
+afterEach(() => { vi.unstubAllGlobals(); api.setApiOrg(null); api.setOrgLostHandler(null); api.setWriteBlock(null); });
 
 /** An argument that passes for anything: a string when coerced, an object with every key, callable. */
 const any: unknown = new Proxy(function () { /* callable */ }, {
@@ -42,7 +42,7 @@ const any: unknown = new Proxy(function () { /* callable */ }, {
   ownKeys: () => [],
 });
 /** Not request functions: the prefix's own controls, and the error classes. */
-const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "planLimitText", "githubInstallHref"]);
+const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "planLimitText", "githubInstallHref", "setWriteBlock", "isWriteMethod", "PreviewBlocked"]);
 /** Functions whose arguments must be real values (a Blob for a multipart body). */
 const SPECIAL: Record<string, unknown[]> = {
   uploadAvatar: [new Blob(["x"]), "a.png"],

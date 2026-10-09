@@ -1,7 +1,7 @@
 ---
 name: load-context
 description: Orient against Trov (the team's working memory) BEFORE working an existing area. Fire when you start work on a named/existing subsystem, pick up an issue that references an area, or when the person says things like "the X system", "how we do Y", "our approach to Z", "where is the … code/doc" — and ALWAYS before proposing a doc change. Do NOT fire on trivial one-off questions, on a brand-new area with no prior context, or just to chat. Read-only apart from claiming the one handoff the person picks.
-allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__get_my_work, mcp__trov__list_tickets, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__list_handoffs, mcp__trov__get_handoff, mcp__trov__claim_handoff, mcp__trov__get_ticket, mcp__trov__artifact_list, mcp__trov__artifact_get, Bash(git branch:*)
+allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__get_my_work, mcp__trov__list_tickets, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__list_handoffs, mcp__trov__get_handoff, mcp__trov__claim_handoff, mcp__trov__get_ticket, mcp__trov__artifact_list, mcp__trov__artifact_get, Bash(git branch:*), mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 
 # Load Context ← Trov
@@ -32,8 +32,32 @@ its `references/querying.md` for the full `query` parameter set (filtering by `s
 - A genuinely **brand-new** area with no prior Trov context to load.
 - As a write path — it is not one.
 
+## Which organization — pass `repo` on every call
+
+One Trov connection covers every organization you belong to, so every Trov tool takes the repository
+you are working in. Once per session, run `git remote get-url origin` and reduce it to `owner/name`
+(`git@github.com:acme/app.git` and `https://github.com/acme/app` are both `acme/app`). Pass that as
+`repo` on EVERY Trov call this skill makes. No remote, or not a GitHub one: leave `repo` out.
+
+- A connection that **follows the repository** acts in the organization that has that repository
+  connected. `repo_required` / `not_connected` mean NOTHING was read or written: tell the person this
+  repository is not connected to any of their organizations (Trov › Org settings › Repositories) and
+  stop — never pass a different repository to get an answer. `ambiguous_org` lists the candidates:
+  ask the person which, then pass it as `org`.
+- A **manual** connection ignores `repo` and acts in its current organization. `org_unavailable` /
+  `org_not_allowed` list what it may use: ask the person, never guess, and prefer `org` on the call
+  over `switch_org` (a switch moves every session that shares the connection).
+- Not sure where you are? `get_connection` (same `repo`) answers: the organization this call would
+  act in, the connection's mode, and what it can reach.
+
 ## Procedure
 
+0. **Say where you are — first, every session.** Work out `repo` (above), call
+   `mcp__trov__get_connection` with it, and tell the person in one line which organization this session
+   is in ("Trov: SaplingLearn, as @you — following the repository" / "…— manual, also allowed: acme").
+   If `organization` is null, say what `unresolved.message` says and STOP: nothing below can read
+   anything, and a write would go nowhere. Never continue in an organization the person did not expect
+   without telling them.
 1. **Query focused.** Call `mcp__trov__query` with a tight `q` (the subsystem / concept), narrowing
    with `types` (`doc` / `decision` / `feed` / `sprint` / `artifact`) and `section` when you can. Keep it
    specific — a focused query returns better-assembled bodies than a broad one.
@@ -49,7 +73,7 @@ its `references/querying.md` for the full `query` parameter set (filtering by `s
    Never present `staged_pending` / `unpromoted` / `draft` content as established fact.
 4. **If you're about to write a doc,** note the doc's `current_version` from the query/`get_doc`
    result — that's the **base** the `record-session` writer should declare for its proposal.
-5. **At session start, also call `mcp__trov__get_my_work`** (no args) so orientation includes the
+5. **At session start, also call `mcp__trov__get_my_work`** (no args but `repo`) so orientation includes the
    person's own open work — recent shipped activity and their to-do — alongside the area context from
    steps 1–3. This is still read-only: report it, don't act on it unprompted.
 6. **When the area has an open queue or a live sprint,** add `mcp__trov__list_tickets` (e.g.
@@ -79,7 +103,7 @@ its `references/querying.md` for the full `query` parameter set (filtering by `s
    goes for a `null` figure *inside* an `ok` section (`usage[].requests`, a `product` value,
    `contributors[].reviews`, `ciFailures.rate`, a delta): unknown, never zero — `usage[].seen` says
    whether that source has ever reported.
-9. **At session start, check for handoffs.** Call `mcp__trov__list_handoffs` (no args — handoffs
+9. **At session start, check for handoffs.** Call `mcp__trov__list_handoffs` (no args but `repo` — handoffs
    left for you plus those left for `anyone`, pending only). If any are pending, tell the person:
    **"You have N handoffs: #12 <task> from <sender>, #9 <task> from <sender>"** and ask which to claim.
    `mcp__trov__get_handoff <id>` shows one in full without claiming it.
@@ -98,5 +122,7 @@ its `references/querying.md` for the full `query` parameter set (filtering by `s
 - **Read-only — with one exception.** This skill never proposes, stages, promotes, or ratifies
   anything. The one write it may make is `claim_handoff`, and only for the handoff the person picked.
 - **Never auto-claim a handoff.** List them, ask, claim only on the person's answer.
+- **State the organization before the context.** What you read is one organization's memory; a person
+  in two organizations must be able to see which one answered.
 - **Authority is load-bearing.** Anything not `live` is not-yet-settled — flag that when you rely on it.
 - Orient first, then work. The point is to build on the team's memory, not to re-derive it.

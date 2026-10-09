@@ -50,7 +50,7 @@ describe("Get Started guide — Connect your agent", () => {
 });
 
 describe("grantListBody", () => {
-  const grant = { id: 7, client_name: "Claude <Code>", created_at: "2026-09-20T00:00:00.000Z", last_used_at: null, org: { slug: "saplinglearn", name: "SaplingLearn" } };
+  const grant = { id: 7, client_name: "Claude <Code>", created_at: "2026-09-20T00:00:00.000Z", last_used_at: null, mode: "manual" as const, org: { slug: "saplinglearn", name: "SaplingLearn" }, orgs: [{ slug: "saplinglearn", name: "SaplingLearn" }] };
   it("empty, loading and error states", () => {
     expect(grantListBody({ grants: { status: "ok", data: [] }, grantRevokeArm: null })).toContain("No apps connected");
     expect(grantListBody({ grants: { status: "loading", data: [] }, grantRevokeArm: null })).toContain("Loading");
@@ -100,8 +100,8 @@ describe("Settings › MCP access — the browser sign-in, then Connected apps",
       at("Sign Claude Code in with your browser"),
       at("Install the Trov plugin"),
       at("/mcp"),
-      at("Pick the organization to connect"),
-      at("A connection reaches one organization"),
+      at("Choose how the connection picks an organization"),
+      at("One connection covers all your organizations"),
       at('data-list="grants"'),
     ];
     expect(order).toEqual([...order].sort((a, b) => a - b));
