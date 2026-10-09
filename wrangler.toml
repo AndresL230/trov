@@ -54,7 +54,7 @@ SUPPORT_NOTIFY_EMAIL = "hello@trov.dev"
 # While it is empty Pro cannot be bought, and while STRIPE_SECRET_KEY /
 # STRIPE_WEBHOOK_SECRET (secrets: `wrangler secret put …`) are unset every billing route answers 503
 # `billing_unavailable` and the app is otherwise unchanged. The yearly id is optional.
-STRIPE_PRICE_TEAM = "price_1UOB9HH7KZijv6AwWF3LPpFr"
+STRIPE_PRICE_TEAM = "price_1UOOExH7KZijv6AwQIPrilmu"
 STRIPE_PRICE_TEAM_YEARLY = ""
 # Tax: "on" → every checkout asks Stripe Tax to work out the tax and takes a billing address. Stripe charges
 # tax only where the account holds a tax registration, so with none the total is the price alone. Turn it on
