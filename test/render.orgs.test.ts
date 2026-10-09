@@ -326,6 +326,9 @@ describe("the org picker / first run", () => {
     expect(render({ ...initialState(), view: "orgs", me: me([{ slug: "acme", name: "Acme", role: "member", logo_url: null }]) })).not.toContain('data-act="onbBack"');
     // Behind the card: the app itself, inert and hidden from assistive tech.
     expect(html).toMatch(/<div class="cnpy-fr-bg" aria-hidden="true" inert><div class="cnpy-shell"/);
+    // The backdrop is the app's own markup, so a screen's entrance, skeleton and hover rules all match
+    // inside it; none may play there (each step of the guided setup re-arms the entrance on the root).
+    expect(rules).toContain(".cnpy-fr-bg, .cnpy-fr-bg *, .cnpy-fr-bg *::before, .cnpy-fr-bg *::after { animation:none !important; transition:none !important; }");
     // Patched in place while it stays this page (morph.ts): a keystroke in the dialog over it rebuilds nothing.
     expect(html).toMatch(/<div class="cnpy-orgs" data-morph="orgs"/);
     // The window is the card's frame, so a first run does not scroll the page.

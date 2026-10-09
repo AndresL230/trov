@@ -1766,9 +1766,12 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-fr-bg > .cnpy-shell { filter:blur(2.5px); }
 /* The very first card (how you'll appear) is the one with a form to fill in: the app sits further back. */
 .cnpy-onb .cnpy-fr-bg > .cnpy-shell { filter:blur(6px); }
-/* Its skeletons are a still picture of the app, not reads in flight (skeleton.ts skips them): shown at
-   once, no fade, no pulse. */
-.cnpy-fr-bg .cnpy-skel-in { animation:none; }
+/* The backdrop is a still picture of the app. It is rendered from the same markup as a real screen, so
+   every rule that animates a screen would match inside it: the page ENTRANCE (`[data-enter] #cnpy-main > *`,
+   `.cnpy-rise`, `.cnpy-stagger`, the header's h1 — set on the root each time the route changes, and each step
+   of the guided setup is a route), the skeleton fade and pulse, and hover transitions. None of them is its
+   to play: nothing behind a first-run card moves, whatever the card in front of it does. */
+.cnpy-fr-bg, .cnpy-fr-bg *, .cnpy-fr-bg *::before, .cnpy-fr-bg *::after { animation:none !important; transition:none !important; }
 .cnpy-fr-bg::after { content:""; position:absolute; inset:0;
   background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, #616acb 20%, transparent) 0%, transparent 72%), color-mix(in srgb, var(--bg) 34%, transparent); }
 /* One step of a flow morphing into the next (transition.ts): the card keeps its name across both. */

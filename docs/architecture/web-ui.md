@@ -32,7 +32,11 @@ signed in. The welcome e-mail links the guided setup, not the Guide. A new rule 
 connecting goes in ONE of these and is linked from the others.
 
 The backdrop's skeletons are a picture, not reads in flight: `syncSkeletons` skips anything inside an `inert`
-region. From the picker, an org just created or joined is entered IN PLACE (`enterNew` in `main.ts`) when the
+region. Because it is the app's own markup, every rule that animates a screen matches inside it —
+above all the page entrance (`markEnter` sets `[data-enter]` on the root whenever the route changes, and each
+step of the guided setup is a route) — so `.cnpy-fr-bg` turns animation and transition off for everything in
+it. That is the cause of "the screen behind refreshes on every step", not a rebuild: check `getAnimations({
+subtree: true })` on the backdrop after a step change; it must be 0. From the picker, an org just created or joined is entered IN PLACE (`enterNew` in `main.ts`) when the
 page has held no other org's data; opening an org from anywhere else stays a page load.
 
 ## Sidebar & motion — the `<aside>` outlives rerenders
