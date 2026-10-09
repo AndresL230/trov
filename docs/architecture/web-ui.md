@@ -12,7 +12,7 @@ anything decorative behind a form visibly "reloads" per letter. Focus and caret 
 itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
-`data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: Org settings,
+`data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`), Org settings,
 Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, and the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`). Inside a morphed page, a part that must be REPLACED when it becomes a different
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
@@ -42,6 +42,40 @@ step of the guided setup is a route) — so `.cnpy-fr-bg` turns animation and tr
 it. That is the cause of "the screen behind refreshes on every step", not a rebuild: check `getAnimations({
 subtree: true })` on the backdrop after a step change; it must be 0. From the picker, an org just created or joined is entered IN PLACE (`enterNew` in `main.ts`) when the
 page has held no other org's data; opening an org from anywhere else stays a page load.
+
+## The signed-out site — one banner, carried through the page (`web/src/landing.ts`)
+
+The landing page has ONE idea: the first-run card's purple banner is Trov speaking, and the product is the
+card in front of it. `.site-banner` is defined WITH `.cnpy-orgs-banner` in `trov.css` (one rule: the gradient,
+the radial highlight, the dot grid `::after`), so the site and the first run cannot drift; `.site-banner-art`
+is the mark, large, faint and tilted behind the text. It appears exactly three times, at three scales:
+
+| Where | How |
+|---|---|
+| Hero (`.site-hero-band`) | the banner as an inset panel; the Review mockup (`.site-hero-mock`) stands on its lower edge, inset by the same `--hero-pad` as the headline so their left edges align |
+| "Agents propose, people decide" (`.site-split`) | the card on its side: banner left, body right; stacked under 860px |
+| Sign-in dialog (`.site-signin-card`) | the card itself: banner, body (the two providers), foot |
+
+Everywhere else the page stays quiet. The one echo is `.site-stage`: each tour mockup stands on a field of the
+banner's dots in the page's own accent (purple on light, green on dark), mirrored on a flipped row. Do not add
+a fourth banner or a second texture; a new section is plain unless it replaces one of the three.
+
+- **Both themes.** The banner is the brand's purple on light AND dark (it is not the app's chrome); on dark it
+  sits one step deeper so a slab that size does not glare. Text on it is white, buttons on it are
+  `.site-btn-onb` (white) and `.site-btn-onb-line`.
+- **No blur.** Everything above is static paint (gradients, masks, shadows): no `filter` and no
+  `backdrop-filter` beyond the nav's own, so nothing repaints while the page scrolls. The hero's glow and the
+  dialog's scrim are plain radial gradients.
+- **A rerender replays nothing.** The page is `data-morph="landing"` and the dialog a root-level
+  `data-overlay="signin"`: opening or closing Sign in patches the page in place. Check with
+  `document.querySelector(".cnpy-site").getAnimations({ subtree: true })` before and after: no new entry.
+  Keep the page's structure the same in every state (signed in or out changes attributes and text only).
+- **Motion** is the existing reveal machinery (`rv()` / `data-rv`, `landing-motion.ts`); the banner, the dots
+  and the mark do not move. The dialog sits outside `.cnpy-site`, so it has its own reduced-motion rule.
+- **Copy that is fact:** anyone can sign up with GitHub or Google, no invitation; the help page is the
+  **Guide**; prices are never restated outside `shared/pricing.ts` (link `/pricing`).
+- Radii are inline (`border-radius:16px` on the band, `14px` on the cards) so the corners block scales them by
+  value. Tests: `test/render.landing.test.ts`.
 
 ## Sidebar & motion — the `<aside>` outlives rerenders
 

@@ -11,7 +11,9 @@
 //     a visit to the landing page), so the landing never writes it.
 //   • The theme toggle is the app's `cycleTheme` (Light ⇄ Dark) and
 //     reads the app's theme, instead of the canvas's own light/dark store.
-//   • Sign in lives ONLY in the nav (top right); the hero keeps the canvas's CTAs.
+//   • Sign in is in the nav (top right) and is the hero's first button ("Sign up
+//     free": sign-in IS sign-up, either provider creates the account). Reopened from
+//     inside the app, that button opens the Guide instead.
 //   • Pricing (not in the canvas): the last section is web/src/pricing.ts, the same
 //     render the standalone /pricing page uses.
 //   • The banner (not in the canvas; 2026-10): the first-run card's purple banner

@@ -70,6 +70,39 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // The signed-out landing page, revamped around the first-run card's banner (#129).
+  {
+    version: "0.25",
+    date: "2026-10-09",
+    title: "A new front page",
+    headline: "The page you see before signing in now opens on Trov's purple banner, with the product standing in front of it.",
+    highlights: [
+      "The front page opens on a banner in Trov's purple, the same one that greets you when you set up an account, with a live picture of the Review screen standing on it.",
+      "\"Agents propose, people decide\" is now a card of its own: the rule on the banner, and beside it the proposal waiting for a person's verdict.",
+      "Signing in opens a clearer card: Continue with GitHub or Continue with Google, and a line that says either one creates your account. No invitation is needed.",
+      "The front page says plainly that anyone can sign up, that the Free plan stays free, and where the pricing is.",
+      "Opening or closing the sign-in card no longer restarts anything on the page behind it.",
+    ],
+    patches: {
+      added: [
+        "`.site-banner` (`web/src/trov.css`): the first-run card's banner as ONE definition with `.cnpy-orgs-banner` (gradient, dot grid, the faint tilted mark as `.site-banner-art`), used by the landing's hero, the authority card (`.site-split`) and the sign-in dialog; a step deeper on the dark theme (#129)",
+        "`.site-stage`: every tour mockup stands on a field of the banner's dots in the page accent, mirrored on flipped rows. Static paint only: no `filter`, no `backdrop-filter` (#129)",
+        "`test/render.landing.test.ts`: open sign-up wording, the Guide (never Get Started), the three banners, `data-morph` / `data-overlay`, and both reduced-motion rules (#129)",
+      ],
+      changed: [
+        "The landing is `data-morph=\"landing\"` and the sign-in dialog one root-level `data-overlay=\"signin\"`, so `paint()` patches the page in place when the dialog opens or closes instead of rebuilding it (#129)",
+        "Hero: left-aligned on the banner; the first button is Sign up free (`openSignIn`) signed out and Open the Guide (`siteGuide`) when reopened from the app; a line under it states open sign-up and links `/pricing` (#129)",
+        "Sign-in dialog: bannered card with a foot; the GitHub button is the neutral solid button and both read Continue with …; on a phone it stays the app's bottom sheet (#129)",
+        "Security's first line now reads \"Anyone can sign up with GitHub or Google. An organization's content is open only to its members.\" (was \"restricted to your org\") (#129)",
+        "Reveal keys: `authority-copy` / `authority-card` are one `authority`; a tour mockup's reveal is its stage (`<key>-mock`) (#129)",
+      ],
+      fixed: [
+        "Opening the sign-in dialog rebuilt the whole landing page, restarting the terminal carets and cutting any reveal in flight (#129)",
+      ],
+      removed: [],
+    },
+    prs: [129],
+  },
   // The guided first-run setup: a new owner, admin or member is walked through it instead of landing on a checklist or an empty feed (#121).
   {
     version: "0.24",

@@ -1682,8 +1682,8 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-banner a:focus-visible, .site-banner button:focus-visible { outline:2px solid #fff; outline-offset:2px; }
 
 /* hero */
-.site-hero { max-width:1240px; margin:0 auto; padding:14px 24px 0; }
-.site-hero-band { padding:clamp(52px, 6.4vw, 84px) clamp(22px, 5vw, 66px) clamp(170px, 21vw, 268px); }
+.site-hero { max-width:1240px; margin:0 auto; padding:14px 24px 0; --hero-pad:clamp(22px, 5vw, 66px); }
+.site-hero-band { padding:clamp(52px, 6.4vw, 84px) var(--hero-pad) clamp(170px, 21vw, 268px); }
 .site-hero-band > .site-banner-art { width:clamp(280px, 44vw, 600px); aspect-ratio:1; right:clamp(-90px, -5vw, -40px); top:clamp(-110px, -7vw, -60px); }
 .site-hero-in { max-width:1060px; margin:0 auto; }
 .site-hero-h { margin:0; max-width:780px; font-size:clamp(36px, 5.4vw, 62px); line-height:1.06; font-weight:650; letter-spacing:-0.032em; text-wrap:balance; }
@@ -1698,7 +1698,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-btn-onb-line:hover { color:#fff; background:rgba(255,255,255,.12); }
 /* The mockup stands on the banner's lower edge, the banner's glow carrying on under it (the first run's
    `.cnpy-fr-bg::after`, as a plain gradient). */
-.site-hero-stage { position:relative; max-width:1060px; margin:calc(-1 * clamp(120px, 16vw, 200px)) auto 0; }
+.site-hero-stage { position:relative; max-width:min(1060px, calc(100% - 2 * var(--hero-pad))); margin:calc(-1 * clamp(120px, 16vw, 200px)) auto 0; }
 .site-hero-stage::before { content:""; position:absolute; z-index:0; inset:34% -9% -9% -9%; pointer-events:none;
   background:radial-gradient(50% 50% at 50% 50%, color-mix(in srgb, #616acb 20%, transparent) 0%, transparent 72%); }
 .site-hero-mock { position:relative; z-index:1; text-align:left; border:1px solid var(--border-strong); background:var(--bg); overflow:hidden;
@@ -1706,7 +1706,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 @media (max-width:640px) {
   .site-hero { padding:8px 16px 0; }
   .site-hero-lede { font-size:16px; }
-  .site-hero-stage { margin-left:8px; margin-right:8px; }
+  .site-hero-stage { max-width:calc(100% - 20px); }
 }
 
 /* the card on its side: banner | body */
