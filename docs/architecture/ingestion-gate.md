@@ -9,8 +9,9 @@
 per-type **gate** functions in `src/consumer.ts` (`ingestFeedEntry` / `ingestDocProposal` /
 `ingestAdrDraft` / `ingestEvent` / `ingestRepoEvent`). The ingestion entry points are thin
 adapters over these: `/ingest` and the MCP `record_session` batch tool (both via `consume`), the
-per-entry MCP write tools (`append_feed`, `propose_doc_update`), and the `/webhook/github` branch, which
-calls `ingestEvent` (into `events`, for My Work) AND, independently, `ingestRepoEvent` (into `repo_events`,
+per-entry MCP write tools (`append_feed`, `propose_doc_update`), and the GitHub webhooks (`/webhook/github/:hookId`,
+the App's `/webhook/github/app` and the legacy `/webhook/github` — all through `captureDelivery`), which
+call `ingestEvent` (into `events`, for My Work) AND, independently, `ingestRepoEvent` (into `repo_events`,
 for the Repo dashboard — see below) off the SAME verified delivery. The gate **reconciles**, not just routes:
 
 - **Replay ledger** (`processed_items`, keyed by `session.id + item_index`): a re-POST of the same
@@ -39,8 +40,9 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   NOT the `events` table: `ingestEvent` raises an `identity_tasks` row per unmapped `subject_login`, which is
   wrong for bots and high-volume CI telemetry (pushes, checks, runs). `ingestRepoEvent` carries no
   vocab/confidence and does no identity intake or summarization; it is reached only from the HMAC-verified
-  webhook and from `reconcileRepo` (`src/repo/github.ts`, service-token GitHub reads — run by an admin's Sync
-  GitHub and by the repo cron, never on the render path) — never through `/ingest` or `record_session`.
+  webhook and from `reconcileRepo` (`src/repo/github.ts`, GitHub reads with the ORG's credential from
+  `resolveGithubCredential` — run by an admin's Sync GitHub and Poll now and by the repo cron, never on the
+  render path) — never through `/ingest` or `record_session`.
   `src/webhook.ts`'s `WORK_EVENT_NAMES` (`pull_request` / `issues`) and `REPO_EVENT_NAMES` (`pull_request` /
   `push` / `pull_request_review` / `deployment_status` / `check_run` / `workflow_run` / `status`)
   independently gate which deliveries feed which capture; a repo-capture failure is caught and logged, never
@@ -66,7 +68,9 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
   copies it into the live doc and bumps `current_version` (non-destructive; prior versions remain).
   Reject (soft): `POST /doc/:slug/reject` flips a staged version to `status='rejected'`; the row
   and body remain (non-destructive). Idempotent.
-- ADRs: `stage_adr` stages a `draft`; `POST /adr/:id/ratify` flips it to `ratified`.
+- ADRs: an ADR draft arrives in a batch — `adr_drafts` of MCP `record_session` or of `POST /ingest` — and
+  the gate's `ingestAdrDraft` stages it as a `draft` through the writer `stage_adr` (`src/tools/writes.ts`;
+  a function, NOT an MCP tool — there is no per-entry ADR tool). `POST /adr/:id/ratify` flips it to `ratified`.
   Reject (soft): `POST /adr/:id/reject` flips a draft to `status='rejected'`; the row remains.
 - Sprints: **nothing about a sprint is ever staged.** 0025 dropped `milestone_proposals` and with it
   the whole agent-proposed-roadmap surface — the gate fn, the contract schema, the promote/reject
