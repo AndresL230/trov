@@ -1599,24 +1599,29 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    settles everything up front; the media block at the end is the CSS backstop. */
 .cnpy-site { overflow-x:clip; --ease-out:cubic-bezier(0.22, 1, 0.36, 1); --ease-expo:cubic-bezier(0.16, 1, 0.3, 1); }
 
-/* reveal: the section (`site-rv`) and its staggered children (`site-st`) */
-.site-rv { opacity:0; --from:0 22px; translate:var(--from); }
-.site-rv.rv-l { --from:-36px 0; }
-.site-rv.rv-r { --from:36px 0; }
-.site-rv.rv-lift { --from:0 56px; scale:.975; }
+/* reveal: the section (`site-rv`) and its staggered children (`site-st`). Short and small: a few pixels on
+   the site's one clock (`--fx-slow` / `--fx-ease`, defined with the tour's dialog), so a section is simply
+   there by the time it is read. landing-motion.ts plays each once, a little before it enters, and settles
+   it with no motion at all while a nav jump is carrying the page past it. */
+.site-rv { opacity:0; --from:0 10px; translate:var(--from); }
+.site-rv.rv-l { --from:-12px 0; }
+.site-rv.rv-r { --from:12px 0; }
+.site-rv.rv-lift { --from:0 14px; scale:.99; }
 .site-rv.rv-static { opacity:1; translate:none; }
-.site-st { opacity:0; --from:0 12px; translate:var(--from); }
-.site-st.st-l { --from:-12px 0; }
-.site-st.st-word { display:inline-block; --from:0 .45em; }
-.site-st.st-pop { --from:0 4px; scale:.9; }
+.site-st { opacity:0; --from:0 6px; translate:var(--from); }
+.site-st.st-l { --from:-6px 0; }
+.site-st.st-word { display:inline-block; --from:0 .3em; }
+.site-st.st-pop { --from:0 3px; scale:.96; }
 .site-rv.is-play, .site-rv.is-done, .is-play .site-st, .is-done .site-st { opacity:1; translate:none; scale:none; }
 .site-rv.is-play, .is-play .site-st {
-  transition: opacity .7s var(--ease-out) var(--d, 0ms), translate 1s var(--ease-expo) var(--d, 0ms), scale 1s var(--ease-expo) var(--d, 0ms),
-              transform .3s var(--ease-out), box-shadow .3s ease;
+  transition: opacity var(--fx-slow) var(--fx-ease) var(--d, 0ms), translate var(--fx-slow) var(--fx-ease) var(--d, 0ms), scale var(--fx-slow) var(--fx-ease) var(--d, 0ms),
+              transform var(--fx-slow) var(--fx-ease);
 }
+/* a nav jump lands with the heading a line under the sticky nav (sections carry ~150px of top padding) */
+.cnpy-site section[id^="site-"] { scroll-margin-top:-58px; }
 
 /* hover: cards and mockups rise a little (transform, so it composes with the reveal's translate) */
-.site-card, .site-lift { transition:transform .3s var(--ease-out), box-shadow .3s ease; }
+.site-card, .site-lift { transition:transform var(--fx-slow) var(--fx-ease), box-shadow var(--fx-slow) var(--fx-ease); }
 .site-card:hover { transform:translateY(-3px); box-shadow:var(--lift-shadow); }
 .site-lift:hover { transform:translateY(-4px); }
 
@@ -1638,16 +1643,16 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-hl.hl-del { --hl-bg:color-mix(in srgb, var(--red) 10%, transparent); }
 .is-play .site-hl, .is-done .site-hl { color:var(--fg); }
 .is-play .site-hl::before, .is-done .site-hl::before { opacity:1; }
-.is-play .site-hl { transition:color .45s ease var(--d, 0ms); }
-.is-play .site-hl::before { transition:opacity .45s ease var(--d, 0ms); }
+.is-play .site-hl { transition:color var(--fx-slow) var(--fx-ease) var(--d, 0ms); }
+.is-play .site-hl::before { transition:opacity var(--fx-slow) var(--fx-ease) var(--d, 0ms); }
 
 /* checks draw on; progress bars fill from the left */
 .site-check path { stroke-dasharray:24; stroke-dashoffset:24; }
 .is-play .site-check path, .is-done .site-check path { stroke-dashoffset:0; }
-.is-play .site-check path { transition:stroke-dashoffset .5s var(--ease-out) var(--d, 0ms); }
+.is-play .site-check path { transition:stroke-dashoffset var(--fx-slow) var(--fx-ease) var(--d, 0ms); }
 .site-bar { transform-origin:left center; scale:0 1; }
 .is-play .site-bar, .is-done .site-bar { scale:none; }
-.is-play .site-bar { transition:scale 1.4s var(--ease-expo) var(--d, 0ms); }
+.is-play .site-bar { transition:scale .5s var(--fx-ease) var(--d, 0ms); }
 
 /* the hero's verdict: Promote draws the eye, is pressed, becomes "Promoted";
    Reject steps back, the Review badge counts down, a toast confirms */
@@ -1656,7 +1661,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-swap > :last-child { opacity:0; translate:0 6px; }
 .is-play .site-swap > :first-child, .is-done .site-swap > :first-child { opacity:0; translate:0 -6px; }
 .is-play .site-swap > :last-child, .is-done .site-swap > :last-child { opacity:1; translate:none; }
-.is-play .site-swap > * { transition:opacity .25s ease var(--d, 0ms), translate .4s var(--ease-out) var(--d, 0ms); }
+.is-play .site-swap > * { transition:opacity var(--fx-base) var(--fx-ease) var(--d, 0ms), translate var(--fx-base) var(--fx-ease) var(--d, 0ms); }
 .is-play .site-dim, .is-done .site-dim { opacity:.4; }
 .is-play .site-dim { transition:opacity .4s ease var(--d, 0ms); }
 .is-play .site-ring { animation:site-ring 1.1s var(--ease-out) var(--ring, 0ms) 2; }
@@ -1734,6 +1739,111 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-stage.is-flip::before { inset:-30px 34% -30px -60px; -webkit-mask-image:linear-gradient(270deg, transparent 0%, #000 78%); mask-image:linear-gradient(270deg, transparent 0%, #000 78%); }
 .site-stage > * { position:relative; z-index:1; background:var(--bg); }
 
+/* For agents: two cards whose content is naturally the same height. The columns are weighted (measured at
+   1440 and 1100: 603px of tools beside 576px of plugin) so the pair ends on one line with nothing to pad;
+   the few pixels left over sit above the plugin card's last button. One column under 900px. */
+.site-agents-row { margin-top:48px; display:grid; grid-template-columns:minmax(0, 1.65fr) minmax(0, 1fr); gap:16px; align-items:stretch; }
+@media (max-width:900px) { .site-agents-row { grid-template-columns:minmax(0, 1fr); } }
+
+/* ── the tour, explorable ─────────────────────────────────────────────────────
+   A tour mockup is a card that opens its feature in a large dialog (landing.ts `featureDialog`,
+   site-feature.ts). ONE clock for all of it, defined once on :root (the View Transition pseudo-elements
+   hang off <html>, so that is where they can read it): one curve that eases at both ends, and three
+   lengths — fast (leaving), base (content: the fade in, a step), slow (the card growing into the dialog,
+   the backdrop with it). Only transform and opacity move; every shadow is static. */
+:root { --fx-ease:cubic-bezier(0.4, 0, 0.2, 1); --fx-fast:.18s; --fx-base:.24s; --fx-slow:.3s; }
+.site-fxcard { cursor:pointer; transition:transform var(--fx-slow) var(--fx-ease); }
+/* the accent edge on hover fades in as its own layer (opacity), not as an animated border colour */
+.site-fxcard::after { content:""; position:absolute; inset:0; z-index:2; pointer-events:none; border:1px solid color-mix(in srgb, var(--accent) 60%, transparent); border-radius:12px; opacity:0; transition:opacity var(--fx-base) var(--fx-ease); }
+.site-fxcard:hover::after { opacity:1; }
+.site-explore { display:inline-flex; align-items:center; gap:7px; margin:16px 0 0 -10px; padding:7px 10px; font-size:13.5px; font-weight:600; color:var(--accent); }
+.site-explore:hover { background:var(--accent-soft); }
+.site-explore:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-explore svg { transition:transform var(--fx-base) var(--fx-ease); }
+.site-explore:hover svg { transform:translate(1px, -1px); }
+
+.site-fx-back { position:fixed; inset:0; z-index:70;
+  background:radial-gradient(60% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 22%, transparent) 0%, transparent 72%), rgba(14,14,22,.56); }
+.site-fx-wrap { position:fixed; inset:0; z-index:71; display:grid; place-items:center; padding:24px; pointer-events:none; }
+/* The frame: a fixed size, so a step never moves or resizes it. */
+.site-fx-panel { pointer-events:auto; position:relative; display:flex; flex-direction:column; width:min(1120px, 100%); height:min(700px, 100%); min-height:0;
+  border:1px solid var(--border-strong); background:var(--surface); overflow:hidden; view-transition-name:site-fx;
+  box-shadow:0 1px 2px rgba(20,22,60,.06), 0 40px 90px -30px rgba(10,12,40,.55); }
+.site-fx-x { position:absolute; z-index:3; top:12px; right:12px; width:34px; height:34px; display:grid; place-items:center; color:var(--fg-55); background:var(--surface); border:1px solid var(--border); }
+.site-fx-x:hover { color:var(--fg); background:var(--hover); }
+.site-fx-panel button:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+.site-fx-main { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0, 1.5fr) minmax(280px, 1fr); grid-template-rows:auto minmax(0, 1fr); grid-template-areas:"stage titles" "stage facts"; }
+.site-fx-titles { grid-area:titles; padding:44px 64px 0 34px; }
+.site-fx-titles h2 { margin:10px 0 0; font-size:26px; line-height:1.15; font-weight:650; letter-spacing:-0.02em; text-wrap:balance; }
+.site-fx-facts { grid-area:facts; list-style:none; margin:24px 36px 0 34px; padding:22px 0 28px; overflow-y:auto; display:flex; flex-direction:column; gap:14px; border-top:1px solid var(--border); }
+.site-fx-facts li { display:flex; gap:11px; align-items:flex-start; font-size:14.5px; line-height:1.55; color:var(--fg-70); text-wrap:pretty; }
+/* The mockup, big, on the banner's dots (the tour's `.site-stage`, as the whole panel side). */
+.site-fx-stage { grid-area:stage; position:relative; min-width:0; min-height:0; display:grid; place-items:center; padding:28px; overflow:hidden; border-right:1px solid var(--border);
+  background:color-mix(in srgb, var(--accent) 5%, var(--bg)); }
+.site-fx-stage::before { content:""; position:absolute; inset:0; pointer-events:none;
+  background-image:radial-gradient(color-mix(in srgb, var(--accent) 40%, transparent) 1px, transparent 1.2px); background-size:16px 16px;
+  -webkit-mask-image:linear-gradient(135deg, transparent 20%, #000 100%); mask-image:linear-gradient(135deg, transparent 20%, #000 100%); }
+.site-fx-mock { position:relative; width:100%; zoom:1.15; background:var(--bg); }
+.site-fx-foot { flex:none; display:flex; align-items:center; gap:12px; padding:12px 16px; border-top:1px solid var(--border); background:color-mix(in srgb, var(--hover) 55%, transparent); }
+.site-fx-nav { display:inline-flex; align-items:center; gap:8px; min-height:38px; padding:0 14px 0 10px; border:1px solid var(--border-strong); background:var(--surface); font-size:13.5px; font-weight:600; color:var(--fg); }
+.site-fx-nav.is-next { padding:0 10px 0 14px; }
+.site-fx-nav:hover { background:var(--hover); }
+.site-fx-pos { margin:0 auto; display:flex; flex-direction:column; align-items:center; gap:7px; font-size:12px; color:var(--fg-55); font-variant-numeric:tabular-nums; }
+.site-fx-dots { display:flex; gap:5px; }
+.site-fx-dot { width:10px; height:4px; background:var(--border-strong); }
+.site-fx-dot.is-on { background:var(--accent); }
+
+/* in: the keyframe entrance (when no View Transition grew the card); the backdrop runs on the panel's clock */
+.site-fx[data-in="css"] .site-fx-back { animation:site-fade var(--fx-slow) var(--fx-ease) both; }
+.site-fx[data-in="css"] .site-fx-panel { animation:site-fx-in var(--fx-slow) var(--fx-ease) both; }
+/* The text and the mockup are what move — never the panel, its stage or its footer. Opened: they ease in
+   just after the frame. A step: they slide in from the side moved to. */
+.site-fx-main[data-dir="0"] :is(.site-fx-titles, .site-fx-mock, .site-fx-facts) { animation:site-fx-rise var(--fx-base) var(--fx-ease) .08s both; }
+.site-fx-main[data-dir="1"] :is(.site-fx-titles, .site-fx-mock, .site-fx-facts) { --fx-from:24px; animation:site-fx-step var(--fx-base) var(--fx-ease) both; }
+.site-fx-main[data-dir="-1"] :is(.site-fx-titles, .site-fx-mock, .site-fx-facts) { --fx-from:-24px; animation:site-fx-step var(--fx-base) var(--fx-ease) both; }
+/* out (FX_EXIT_MS in site-feature.ts is --fx-fast) */
+.site-fx[data-closing] .site-fx-back { animation:site-fx-fade-out var(--fx-fast) var(--fx-ease) both; }
+.site-fx[data-closing] .site-fx-panel { animation:site-fx-out var(--fx-fast) var(--fx-ease) both; }
+/* promoted only while something moves (site-feature.ts sets and drops `data-moving`) */
+.site-fx[data-moving] :is(.site-fx-back, .site-fx-panel, .site-fx-titles, .site-fx-mock, .site-fx-facts) { will-change:transform, opacity; }
+@keyframes site-fx-in { from { opacity:0; transform:translateY(12px) scale(.98); } to { opacity:1; transform:none; } }
+@keyframes site-fx-out { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(8px) scale(.985); } }
+@keyframes site-fx-fade-out { from { opacity:1; } to { opacity:0; } }
+@keyframes site-fx-rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+@keyframes site-fx-step { from { opacity:0; transform:translateX(var(--fx-from, 0px)); } to { opacity:1; transform:none; } }
+
+/* the card growing into the dialog, and back (site-feature.ts sets `site-fx-vt` on <html> for the length of
+   ONE transition, so none of this touches the first run's own morph). The browser moves the box with a
+   transform; it clips its two faces, which keep their own size (text never stretches), and wears the
+   panel's shadow — static, so it neither pops nor repaints. The page behind cross-fades on the same clock. */
+html.site-fx-vt::view-transition-group(site-fx) { animation-duration:var(--fx-slow); animation-timing-function:var(--fx-ease); overflow:clip;
+  box-shadow:0 1px 2px rgba(20,22,60,.06), 0 40px 90px -30px rgba(10,12,40,.55); }
+html.site-fx-vt::view-transition-old(site-fx), html.site-fx-vt::view-transition-new(site-fx) { width:100%; height:100%; object-fit:none; object-position:top left; overflow:clip; animation-duration:var(--fx-base); animation-timing-function:var(--fx-ease); }
+/* the face being left clears first, so the two never read as a double image */
+html.site-fx-vt::view-transition-old(site-fx) { animation-duration:var(--fx-fast); }
+html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new(root) { animation-duration:var(--fx-slow); animation-timing-function:var(--fx-ease); }
+
+@media (max-width:860px) {
+  .site-fx-wrap { padding:16px; }
+  .site-fx-panel { height:min(100%, 100dvh - 32px); }
+  .site-fx-main { display:block; overflow-y:auto; }
+  .site-fx-titles { padding:22px 60px 0 20px; }
+  .site-fx-titles h2 { font-size:22px; }
+  .site-fx-stage { margin-top:20px; padding:20px 16px; border-right:0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); }
+  .site-fx-mock { zoom:1; }
+  .site-fx-facts { margin:0; padding:20px 20px 24px; border-top:0; overflow:visible; }
+}
+@media (max-width:640px) {
+  /* a full-height sheet (the app's phone rule for modals pins it to the bottom edge); controls under the thumb */
+  .site-fx-panel { height:100dvh; }
+  .site-fx-nav { min-height:44px; }
+  .site-fx-nav span { max-width:92px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .site-fx, .site-fx *, .site-fx *::before, .site-fx *::after { animation:none !important; transition:none !important; }
+  .site-fxcard, .site-fxcard::after, .site-explore svg { transition:none !important; }
+}
+
 /* the sign-in dialog: the first-run card, bannered (a root-level `data-overlay`, so the page under it is patched, not rebuilt) */
 .site-signin-back { position:fixed; inset:0; z-index:60; animation:site-fade .16s ease both;
   background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 30%, transparent) 0%, transparent 72%), rgba(14,14,26,.52); }
@@ -1749,6 +1859,10 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-signin-btn:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
 .site-signin-foot { padding:13px 28px; border-top:1px solid var(--border); font-size:12.5px; line-height:1.5; color:var(--fg-55); background:color-mix(in srgb, var(--hover) 55%, transparent); }
 @keyframes site-fade { from { opacity:0; } to { opacity:1; } }
+/* Dark: the scrims dim with the page's own warm black, not the light theme's blue-black. */
+[data-cnpy-theme="dark"] .site-signin-back { background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 18%, transparent) 0%, transparent 72%), rgba(10,9,7,.62); }
+[data-cnpy-theme="dark"] .site-fx-back { background:radial-gradient(60% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 14%, transparent) 0%, transparent 72%), rgba(10,9,7,.66); }
+[data-cnpy-theme="dark"] .site-signin-card, [data-cnpy-theme="dark"] .site-fx-panel, [data-cnpy-theme="dark"] .site-hero-mock { box-shadow:0 1px 2px rgba(0,0,0,.3), 0 34px 80px -28px rgba(0,0,0,.7); }
 @media (prefers-reduced-motion: reduce) { .site-signin-back, .site-signin-card, .site-signin-x, .site-signin-btn { animation:none !important; transition:none !important; } }
 
 /* nav: a hairline and soft shadow once the page scrolls under it */
@@ -2166,6 +2280,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 [data-cnpy-theme] .cnpy-tree,
 [data-cnpy-theme] .cnpy-select,
 [data-cnpy-theme] .site-navlink { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .site-fxcard::after { border-radius:calc(12px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-search,
 [data-cnpy-theme] .cnpy-sfbar,
 [data-cnpy-theme] .cnpy-navrow,

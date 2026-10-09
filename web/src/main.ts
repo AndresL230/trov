@@ -45,7 +45,9 @@ import { blankDoc, defaultSection } from "./newdoc";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
 import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
-import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
+import { mountLandingMotion, unmountLandingMotion, noteJump } from "./landing-motion";
+import { createFeatureCtl } from "./site-feature";
+import { TOUR_KEYS } from "./landing";
 import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
   type TicketCategory, type TicketPriority, type TicketStatus,
@@ -2123,6 +2125,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       mount.querySelector<HTMLElement>('[role="dialog"] [data-act="signIn"]')?.focus();
       return;
     case "closeSignIn": state.signInOpen = false; break;
+    // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
+    case "openFeature": if (arg) featureCtl.open(arg); return;
+    case "closeFeature": featureCtl.close(); return;
+    case "stepFeature": featureCtl.step(arg === "prev" ? -1 : 1); return;
     // The landing's "Get started": signed in, straight to the guide; signed out, the
     // guide becomes the sign-in return-to (replaceState: no hashchange, no route) and
     // the Sign in dialog opens.
@@ -2140,6 +2146,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     case "siteJump": {
       const behavior: ScrollBehavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+      // ONE scroll per click; where it lands is the target's `scroll-margin-top` (trov.css). Sections
+      // passed on the way settle without their entrance (landing-motion.ts).
+      noteJump();
       if (arg === "top") window.scrollTo({ top: 0, behavior });
       else document.getElementById(`site-${arg}`)?.scrollIntoView({ behavior, block: "start" });
       return;
@@ -4297,6 +4306,10 @@ mount.addEventListener("mouseover", (e) => railTip((e.target as Element | null)?
 mount.addEventListener("focusin", (e) => railTip((e.target as Element | null)?.closest?.<HTMLElement>(".cnpy-aside [data-tip]") ?? null));
 mount.addEventListener("focusout", () => railTip(null));
 mount.addEventListener("mouseleave", () => railTip(null));
+
+// The landing tour's dialog: Escape, ← / →, and Tab kept inside it.
+const featureCtl = createFeatureCtl({ mount, keys: TOUR_KEYS, get: () => state.siteFeature, set: (v) => { state.siteFeature = v; }, rerender: () => rerender() });
+document.addEventListener("keydown", (e) => featureCtl.onKey(e));
 
 // Escape closes the landing page's sign-in dialog, wherever focus is.
 document.addEventListener("keydown", (e) => {

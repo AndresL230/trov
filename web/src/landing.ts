@@ -23,6 +23,10 @@
 //     itself, and every tour mockup stands on a field of its dots.
 //   • The page is `data-morph="landing"` and the dialog a `data-overlay`, so opening
 //     or closing Sign in patches the page in place: nothing in it is rebuilt or replays.
+//   • The tour is explorable (2026-10): each mockup is a card that opens the feature
+//     in a large dialog (`featureDialog`, a second `data-overlay`) — the same mockup
+//     drawn big, what the Guide says about it, and previous / next through all seven.
+//     site-feature.ts owns its opening, stepping, closing, keys and focus.
 //   • Motion (not in the canvas): the mockups act out the product. Elements carry
 //     `data-rv` and render hidden; landing-motion.ts plays them as they scroll in
 //     and the CSS in trov.css runs the choreography, each step timed by `--d`.
@@ -31,8 +35,18 @@ import { esc } from "./ui";
 import { trovMark } from "@shared/mark";
 import { TROV_REPO, siteFooter, siteMark as mark } from "./site-chrome";
 import { pricingSection } from "./pricing";
+import { ONE_ORG_NOTE, connectSteps } from "./mcp-connect";
+import type { FeatureState } from "./site-feature-core";
 
 
+// Who says what, ONCE (the 2026-10 redundancy pass — keep it that way):
+//   • open sign-up, no invitation ........ the line under the hero's buttons
+//   • agents propose, people decide ...... the authority card (the rule); Security lists every
+//                                          person-only verdict; a tour row does not restate it
+//   • whose data it is, where the source is  the pricing Questions (pricing.ts), not Security
+//   • the install commands and the three connect steps  the plugin card (mcp-connect.ts)
+//   • a feature's detail ................. its dialog (TOUR_FACTS); the row keeps one paragraph
+//
 // Reveal keys already played, for THIS render (set by landingView). A played
 // element renders settled (`is-done`), so a rerender — the theme toggle, the
 // sign-in dialog — never replays or re-hides it.
@@ -61,6 +75,7 @@ const AGENT_TAG = `<span style="display:inline-flex;align-items:center;gap:4px;f
 
 // ── shared pieces of the canvas's repeated markup ────────────────────────────
 const MONO_EYEBROW = "font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--accent)";
+const GROUP_LABEL = "font-family:var(--label);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40)";
 const H2 = "margin:0;font-size:clamp(28px, 3.4vw, 38px);font-weight:650;letter-spacing:-0.025em";
 const LEDE = "margin:14px 0 0;max-width:560px;font-size:15.5px;line-height:1.6;color:var(--fg-70);text-wrap:pretty";
 const section = (top = 150) => `max-width:1120px;margin:0 auto;padding:${top}px 24px 0`;
@@ -85,16 +100,22 @@ function heading(key: string, title: string, lede = ""): string {
     ${lede ? `<p style="${LEDE}">${lede}</p>` : ""}
   </div>`;
 }
+/** One feature of the tour: the row on the page AND the dialog it opens into. */
+interface TourItem { key: TourKey; name: string; title: string; body: string; mockStyle: string; mock: string }
+const EXPAND = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"></path><path d="M20 4l-7 7"></path><path d="M10 20H4v-6"></path><path d="M4 20l7-7"></path></svg>`;
 /** One product-tour row: copy on one side, mockup on the other (`flip` swaps them).
- *  Each half slides in from its own side; the mockup's contents then play. */
-function tourRow(key: string, eyebrow: string, title: string, body: string, mockStyle: string, mockInner: string, flip = false): string {
+ *  Each half slides in from its own side; the mockup's contents then play. The Explore button
+ *  opens the dialog; the mockup is the same action for a pointer (a card under the `hitArea`
+ *  pattern, out of the tab order and hidden from a screen reader, so the row has ONE control). */
+function tourRow(it: TourItem, flip: boolean): string {
   return `<div style="display:flex;gap:56px;align-items:center;flex-wrap:wrap${flip ? ";flex-direction:row-reverse" : ""}">
-    <div ${rv(`${key}-copy`, flip ? "rv-r" : "rv-l")} style="flex:1 1 320px;min-width:0">
-      <div style="${MONO_EYEBROW}">${eyebrow}</div>
-      <h3 style="margin:10px 0 0;font-size:23px;font-weight:650;letter-spacing:-0.015em">${title}</h3>
-      <p style="margin:12px 0 0;max-width:420px;font-size:14.5px;line-height:1.65;color:var(--fg-70);text-wrap:pretty">${body}</p>
+    <div ${rv(`${it.key}-copy`, flip ? "rv-r" : "rv-l")} style="flex:1 1 320px;min-width:0">
+      <div style="${MONO_EYEBROW}">${it.name}</div>
+      <h3 style="margin:10px 0 0;font-size:23px;font-weight:650;letter-spacing:-0.015em">${it.title}</h3>
+      <p style="margin:12px 0 0;max-width:420px;font-size:14.5px;line-height:1.65;color:var(--fg-70);text-wrap:pretty">${it.body}</p>
+      <button type="button" data-act="openFeature" data-arg="${it.key}:btn" aria-haspopup="dialog" class="site-explore" style="border-radius:8px">Explore ${it.name}${EXPAND}</button>
     </div>
-    <div ${rv(`${key}-mock`, `${flip ? "rv-l is-flip" : "rv-r"} site-stage`)} style="flex:1.3 1 400px;min-width:0;${at(120)}"><div class="site-lift" style="${mockStyle}">${mockInner}</div></div>
+    <div ${rv(`${it.key}-mock`, `${flip ? "rv-l is-flip" : "rv-r"} site-stage`)} style="flex:1.3 1 400px;min-width:0;${at(120)}"><div class="site-lift site-fxcard cnpy-hitbox" data-fx="${it.key}" style="${it.mockStyle}">${it.mock}<button type="button" data-act="openFeature" data-arg="${it.key}" class="cnpy-hit" tabindex="-1" aria-hidden="true"></button></div></div>
   </div>`;
 }
 
@@ -151,8 +172,8 @@ function hero(signedIn: boolean): string {
   // Signed out, the first button opens Sign in (which is also sign-up: either provider creates the
   // account, no invitation needed). Reopened from inside the app, it goes to the Guide instead.
   const primary = signedIn
-    ? `<button data-act="siteGuide" class="site-btn site-btn-onb" style="border-radius:9px">Open the Guide</button>`
-    : `<button data-act="openSignIn" class="site-btn site-btn-onb" style="border-radius:9px">Sign up free</button>`;
+    ? `<button data-act="siteGuide" class="site-btn site-btn-onb">Open the Guide</button>`
+    : `<button data-act="openSignIn" class="site-btn site-btn-onb">Start for free</button>`;
   return `<header id="site-top" class="site-hero">
     <div class="site-banner site-hero-band" style="border-radius:16px">
       ${BANNER_ART}
@@ -161,9 +182,9 @@ function hero(signedIn: boolean): string {
         <p class="site-st site-hero-lede" style="${at(520)}">Agents load what your team already decided, record what actually shipped, and wait for a person to approve anything that becomes official.</p>
         <div class="site-st site-hero-cta" style="${at(640)}">
           ${primary}
-          <a href="${TROV_REPO}" target="_blank" rel="noopener" class="site-btn site-btn-onb-line" style="border-radius:9px">${GH_MARK(15)}Read the code</a>
+          <a href="${TROV_REPO}" target="_blank" rel="noopener" class="site-btn site-btn-onb-line">${GH_MARK(15)}Read the code</a>
         </div>
-        <p class="site-st site-hero-note" style="${at(740)}">Sign up with GitHub or Google. No invitation needed, and the Free plan stays free. <a href="/pricing">See pricing</a></p>
+        <p class="site-st site-hero-note" style="${at(740)}">Sign up with GitHub or Google. No invitation needed.</p>
       </div>
     </div>
 
@@ -320,7 +341,7 @@ function loop(): string {
     </div>`;
 
   return `<section id="site-how" style="${section(140)}">
-    ${heading("how-head", "Orient, work, record.", "The loop that keeps the store current: agents read before they start and write back when they finish.")}
+    ${heading("how-head", "Orient, work, record.")}
     <div style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:16px;align-items:stretch">
       ${step(0, "01 · Orient", "Before touching an existing area, the agent searches Trov and reads the relevant docs and decisions.", orient)}
       ${step(1, "02 · Work", "The agent builds on what the team decided instead of guessing.", work)}
@@ -343,7 +364,7 @@ function authority(): string {
           <span style="font-size:17px;font-weight:650">Deploy process</span>
           ${pill("staged", "amber", "10px", "2px 7px")}
         </div>
-        <div class="site-st" style="margin-top:8px;font-size:12.5px;line-height:1.5;color:var(--fg-55);${at(340)}">Waiting for a verdict since Tuesday. Only a signed-in person sees these buttons.</div>
+        <div class="site-st" style="margin-top:8px;font-size:12.5px;line-height:1.5;color:var(--fg-55);${at(340)}">Waiting for a verdict since Tuesday.</div>
         <div style="margin-top:24px;display:flex;gap:12px;flex-wrap:wrap">
           <span class="site-st" style="border:1px solid var(--border-strong);color:var(--fg-70);font-size:14.5px;font-weight:600;padding:11px 26px;border-radius:10px;${at(450)}">Reject</span>
           <span class="site-st site-ring" style="background:var(--accent);color:var(--accent-fg);font-size:14.5px;font-weight:600;padding:11px 30px;border-radius:10px;${at(560)}--ring:1100ms">Promote</span>
@@ -354,8 +375,59 @@ function authority(): string {
 }
 
 // ── 5 · product tour ─────────────────────────────────────────────────────────
-function tour(): string {
-  const S = 380; // mockup contents start once the mockup has slid in
+export const TOUR_KEYS = ["docs", "feed", "tickets", "roadmap", "mywork", "handoffs", "artifacts"] as const;
+export type TourKey = (typeof TOUR_KEYS)[number];
+
+/** What the dialog says about each feature: three or four statements, each one taken from Help › Guide
+ *  (render.ts `guideView`: "How it works" for Docs, the Tour's own section for the rest). Nothing here
+ *  is new copy — when the Guide changes, change this with it. */
+export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
+  docs: [
+    "The library is split into Technical and Product spaces, each grouped into sections like Architecture and Decisions.",
+    "Opening a doc expands its heading outline in the tree, and Version history keeps every earlier version.",
+    "An agent's change is a staged version. The live doc stays untouched until a person promotes it.",
+    "Each proposal is labelled new, edit, or rewrite, and an edit written against an out-of-date version is flagged.",
+  ],
+  feed: [
+    "A timeline of everything that shipped, from people and agents alike.",
+    "For reading shows each entry's title and a short brief in plain words. For agents shows the full record.",
+    "Each entry links to its PR, commit, or issue and says whether an agent wrote it.",
+    "Filter by author, tag, or time.",
+  ],
+  tickets: [
+    "Anyone can file a bug, request, question, or access ask.",
+    "The Board has one column per status. Drag a card to change its status or its place in a column.",
+    "Table lists the same tickets grouped by sprint. No sprint means Backlog.",
+    "Issues in the product's GitHub repo show up as tickets. Apart from that, only a person closes a ticket: a merged PR never does.",
+  ],
+  roadmap: [
+    "Narrative reads the plan and its sprint cards, beside what's in progress now and the latest from the feed.",
+    "Timeline puts the sprints on a calendar: each bar runs from a sprint's start to its due date, and overdue ones are marked.",
+    "A sprint's progress bar counts its tickets closed out of its total.",
+    "Completing a sprint is always a person's call.",
+  ],
+  mywork: [
+    "Trov opens here.",
+    "Tickets for you: your open tickets, with their sprint and when it is due.",
+    "Needs your review: what agents staged, with Promote, Ratify and Reject right there.",
+    "It reads only what Trov has already captured, so it loads instantly.",
+  ],
+  handoffs: [
+    "A handoff is a note from one session to the next: the task, what's done, what's next, and the files that matter.",
+    "Your agent leaves one, addressed to you, a teammate, or anyone.",
+    "At the start of your next session the ones waiting are listed, and only the one you pick is claimed.",
+    "Unclaimed handoffs expire after 7 days.",
+  ],
+  artifacts: [
+    "An artifact is a page an agent or person made: an HTML design, a markdown report, an SVG or mermaid diagram, an image, a PDF, or a file.",
+    "Trov stores every version and links it to the ticket or sprint it came from.",
+    "A new artifact starts as a draft. Published shares it. Ratify is a person's sign-off on the latest version, and only a person can give it.",
+    "Compare versions diffs any two.",
+  ],
+};
+
+function tourItems(): TourItem[] {
+  const S = 160; // mockup contents start once the mockup has arrived (its own reveal is --fx-slow)
   const treeHead = (label: string, top: string) => `<div style="font-family:var(--label);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);padding:${top} 6px 6px">${label}</div>`;
   const tree = (i: number, style: string, text: string) => `<div class="site-st st-l" style="${style};${at(S + i * 70)}">${text}</div>`;
   const docs = `
@@ -520,18 +592,69 @@ function tour(): string {
         ${artCard(2, bars([55, 80, 62]), "429 rates by org, last 7 days", "markdown", pill("draft", "fg-55"))}
       </div>`;
 
+  return [
+    { key: "docs", name: "Docs", title: "A library that stays reviewed", body: "Technical and Product spaces, full version history on every doc, and a heading outline for long pages.", mockStyle: MOCK, mock: docs },
+    { key: "feed", name: "Feed", title: "A timeline of what shipped", body: "Every entry leads with a short brief for people and links to the PRs, commits, and issues behind it. Agents get the full record.", mockStyle: `${MOCK};padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px`, mock: feed },
+    { key: "tickets", name: "Tickets", title: "A board the whole team files into", body: "Drag cards across Triage, In progress, Testing, and Done, or read the queue as a table by sprint. Comments with @mentions, sub-tickets, and GitHub issues mirrored in as tickets.", mockStyle: MOCK, mock: tickets },
+    { key: "roadmap", name: "Roadmap", title: "Sprints on a calendar", body: "A short narrative with its sprint cards, and a timeline that runs each sprint from start to due date, filled by its done tickets.", mockStyle: MOCK, mock: roadmap },
+    { key: "mywork", name: "My Work", title: "Your day on one page", body: "Your tickets, what's waiting on your review, your recent sessions and handoffs, and the repo at a glance.", mockStyle: `${MOCK};padding:20px 22px 22px`, mock: mywork },
+    { key: "handoffs", name: "Handoffs", title: "Pick up where the last session stopped", body: "An agent leaves a note for the next session or a teammate: what's done, what's next, and the branch. The next session offers it and claims it only when you say so.", mockStyle: MOCK, mock: handoffs },
+    { key: "artifacts", name: "Artifacts", title: "Designs and reports, versioned", body: "HTML pages, markdown reports, diagrams, images, and PDFs, linked to the ticket or sprint they came from.", mockStyle: MOCK, mock: artifacts },
+  ];
+}
+
+function tour(): string {
   return `<section id="site-tour" style="${section()}">
-    ${heading("tour-head", "One place for what the team knows.")}
+    ${heading("tour-head", "One place for what the team knows.", "Open any screen for a closer look.")}
     <div style="margin-top:64px;display:flex;flex-direction:column;gap:96px">
-      ${tourRow("docs", "Docs", "A library that stays reviewed", "Technical and Product spaces, full version history on every doc, and a heading outline for long pages.", MOCK, docs)}
-      ${tourRow("feed", "Feed", "A timeline of what shipped", "Every entry leads with a short brief for people and links to the PRs, commits, and issues behind it. Agents get the full record.", `${MOCK};padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px`, feed, true)}
-      ${tourRow("tickets", "Tickets", "A board the whole team files into", "Drag cards across Triage, In progress, Testing, and Done, or read the queue as a table by sprint. Comments with @mentions, sub-tickets, and GitHub issues mirrored in as tickets.", MOCK, tickets)}
-      ${tourRow("roadmap", "Roadmap", "Sprints on a calendar", "A short narrative with its sprint cards, and a timeline that runs each sprint from start to due date, filled by its done tickets.", MOCK, roadmap, true)}
-      ${tourRow("mywork", "My Work", "Your day on one page", "Your tickets, what's waiting on your review, your recent sessions and handoffs, and the repo at a glance.", `${MOCK};padding:20px 22px 22px`, mywork)}
-      ${tourRow("handoffs", "Handoffs", "Pick up where the last session stopped", "An agent leaves a note for the next session or a teammate: what's done, what's next, and the branch. The next session offers it and claims it only when you say so.", MOCK, handoffs, true)}
-      ${tourRow("artifacts", "Artifacts", "Designs and reports, versioned", "HTML pages, markdown reports, diagrams, images, and PDFs, linked to the ticket or sprint they came from. Agents publish them. Only a person can ratify one.", MOCK, artifacts)}
+      ${tourItems().map((it, i) => tourRow(it, i % 2 === 1)).join("\n      ")}
     </div>
   </section>`;
+}
+
+// ── a feature, opened: the tour's dialog ─────────────────────────────────────
+// The card grown large: the feature's name and promise, the SAME mockup drawn big (settled — `is-done`
+// — so nothing in it has to play), what the Guide says about it, and previous / next through all seven
+// without closing. ONE root-level `data-overlay`, patched in place by morph.ts; only `.site-fx-main`
+// (keyed by the feature) is replaced on a step, which is what plays the step's slide. `data-in` says how
+// it was opened (site-feature.ts): "vt" = a View Transition grew the card into it, "css" = the keyframe
+// entrance, "none" = reduced motion. It never changes while the dialog is open, so nothing replays.
+const CHEV = (d: "l" | "r") => `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d === "l" ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"}"></path></svg>`;
+function featureDialog(f: FeatureState): string {
+  const items = tourItems();
+  const i = Math.max(0, items.findIndex((it) => it.key === f.key));
+  const it = items[i];
+  const n = items.length;
+  const prev = items[(i + n - 1) % n];
+  const next = items[(i + 1) % n];
+  const fact = (text: string) => `<li><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" aria-hidden="true" style="flex:none;margin-top:4px"><path d="M20 6 9 17l-5-5"></path></svg><span>${esc(text)}</span></li>`;
+  const dot = (j: number) => `<span class="site-fx-dot${j === i ? " is-on" : ""}" style="border-radius:2px"></span>`;
+  return `<div data-overlay="feature" class="site-fx" data-in="${f.mode}">
+    <div data-act="closeFeature" class="site-fx-back"></div>
+    <div class="site-fx-wrap">
+      <div role="dialog" aria-modal="true" aria-labelledby="site-fx-title" aria-describedby="site-fx-pos" class="site-fx-panel" style="border-radius:16px">
+        <button type="button" data-act="closeFeature" title="Close" aria-label="Close" class="site-fx-x" style="border-radius:8px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+        </button>
+        <div class="site-fx-main is-done" data-morph-key="${it.key}" data-dir="${f.dir}">
+          <div class="site-fx-titles">
+            <div style="${MONO_EYEBROW}">${it.name}</div>
+            <h2 id="site-fx-title">${it.title}</h2>
+          </div>
+          <div class="site-fx-stage"><div class="site-fx-mock" style="${it.mockStyle}">${it.mock}</div></div>
+          <ul class="site-fx-facts" aria-label="How ${it.name} works">${TOUR_FACTS[it.key].map(fact).join("")}</ul>
+        </div>
+        <div class="site-fx-foot">
+          <button type="button" data-act="stepFeature" data-arg="prev" class="site-fx-nav" style="border-radius:9px" aria-label="Previous: ${prev.name}">${CHEV("l")}<span>${prev.name}</span></button>
+          <div class="site-fx-pos">
+            <span id="site-fx-pos" aria-live="polite"><span class="site-vh">${it.name}, </span>${i + 1} of ${n}</span>
+            <span class="site-fx-dots" aria-hidden="true">${items.map((_, j) => dot(j)).join("")}</span>
+          </div>
+          <button type="button" data-act="stepFeature" data-arg="next" class="site-fx-nav is-next" style="border-radius:9px" aria-label="Next: ${next.name}"><span>${next.name}</span>${CHEV("r")}</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
 }
 
 // ── 6 · smaller features ─────────────────────────────────────────────────────
@@ -544,12 +667,12 @@ function extras(): string {
   const swatch = (bg: string, i: number) => `<span class="site-st st-pop" style="width:14px;height:14px;border-radius:50%;background:${bg};border:1px solid var(--border-strong);${at(420 + i * 80)}"></span>`;
   return `<section style="max-width:1120px;margin:0 auto;padding:130px 24px 0">
     <div ${rv("extras", "rv-static")} style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:16px">
-      ${card(0, t("Decisions"), "ADRs drafted by agents, ratified by people.")}
+      ${card(0, t("Decisions"), "Architecture decision records, in their own section of Docs.")}
       ${card(1, t("Search everything"), "One box jumps to any ticket, doc, sprint, artifact, prompt, or person. Agents also see pending proposals, labeled.")}
-      ${card(2, t("Prompt Library"), "Reusable prompts with variables. Agents stage new ones, people publish them.")}
+      ${card(2, t("Prompt Library"), "Reusable prompts with variables, and a new version on every save.")}
       ${card(3, t("Repo dashboard"), "Deploys, CI, drift, and usage from captured data. Unknown reads as unknown, never zero.")}
       ${card(4, t("Email digests"), "Daily or weekly, per section, so nobody has to poll the feed.")}
-      ${card(5,`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14.5px;font-weight:650">Light and dark</span><span style="display:flex;gap:4px;margin-left:auto">${swatch("#f6f6f7", 0)}${swatch("#1c1a16", 1)}</span></div>`, "Two themes, or follow your system.")}
+      ${card(5,`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14.5px;font-weight:650">Light and dark</span><span style="display:flex;gap:4px;margin-left:auto">${swatch("#f6f6f7", 0)}${swatch("#1c1a16", 1)}</span></div>`, "Or follow your system.")}
     </div>
   </section>`;
 }
@@ -565,7 +688,7 @@ function agents(): string {
     return `<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">${names.map((name) => `<span class="site-st st-pop" style="${st};${at(300 + n++ * 28)}">${name}</span>`).join("")}</div>`;
   };
   const group = (label: string, names: string[], admin = false) => `<div>
-      <div style="font-family:var(--label);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40)">${label}</div>
+      <div style="${GROUP_LABEL}">${label}</div>
       ${chips(names, admin)}
     </div>`;
   const tools = `
@@ -578,13 +701,14 @@ function agents(): string {
           ${group("Admin", ["update_plan"], true)}`;
   n = 0;
   const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "prompts", "artifacts", "read-plan", "update-plan"]);
-  const [cmd1, cmd1End] = typed("/plugin marketplace add AndresL230/trov", 700, 28);
-  const [cmd2, cmd2End] = typed("/plugin install trov@trov", cmd1End + 300, 28);
-  const prompt = `<span style="color:rgba(237,233,226,0.45)">$</span> `;
 
+  // The plugin card holds what is true about it and no more: the skills, then the SAME three steps and
+  // commands Settings and the guided setup show (mcp-connect.ts — one copy, with its Copy button).
+  // The row's columns are weighted (trov.css `.site-agents-row`) so the two cards are naturally the
+  // same height at desktop width.
   return `<section id="site-agents" style="${section()}">
     ${heading("agents-head", "For agents", "An MCP server agents connect to directly, and a Claude Code plugin that wires it up with the skills that drive the loop.")}
-    <div style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit, minmax(min(320px, 100%), 1fr));gap:16px;align-items:stretch">
+    <div class="site-agents-row">
       <div ${rv("agents-mcp")} style="border:1px solid var(--border);border-radius:13px;padding:26px 28px">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
           <span style="font-size:17px;font-weight:650">MCP server</span>
@@ -593,20 +717,18 @@ function agents(): string {
         <div style="margin-top:20px;display:flex;flex-direction:column;gap:16px">${tools}
         </div>
       </div>
-      <div ${rv("agents-plugin")} style="border:1px solid var(--border);border-radius:13px;padding:26px 28px;display:flex;flex-direction:column;${at(120)}">
+      <div ${rv("agents-plugin")} style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:13px;padding:26px 28px;${at(120)}">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
           <span style="font-size:17px;font-weight:650">Claude Code plugin</span>
-          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">10 skills, installed in two commands</span>
+          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">10 skills</span>
         </div>
         <div style="margin-top:12px">${skills}</div>
-        <div style="margin-top:auto;padding-top:22px">
-          <div style="border-radius:10px;background:var(--term);color:var(--term-fg);border:1px solid var(--border);padding:16px 18px;font-family:var(--code);font-size:12px;line-height:2;overflow-x:auto">
-            <div style="white-space:nowrap">${prompt}${cmd1}</div>
-            <div style="white-space:nowrap">${prompt}${cmd2}<span class="site-caret" style="${at(cmd2End + 150)}"></span></div>
-          </div>
-          <p style="margin:12px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55)">Wires the MCP server and loads all ten skills. Then connect by browser sign-in: run <span style="font-family:var(--label);font-size:11.5px">/mcp</span>, pick trov, and choose Authenticate.</p>
-          <button data-act="siteGuide" class="site-btn site-btn-outline" style="margin-top:16px">How Trov works, in the Guide</button>
+        <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--border)">
+          <div style="${GROUP_LABEL};margin-bottom:12px">Connect in three steps</div>
+          ${connectSteps("", "the connection shows up in Settings, under MCP access")}
+          <p style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:var(--fg-55);text-wrap:pretty">${ONE_ORG_NOTE}</p>
         </div>
+        <div style="margin-top:auto;padding-top:18px"><button data-act="siteGuide" class="site-btn site-btn-outline">How Trov works, in the Guide</button></div>
       </div>
     </div>
   </section>`;
@@ -618,14 +740,13 @@ function security(): string {
   return `<section id="site-security" style="${section()}">
     ${heading("security-head", "Security, in plain terms")}
     <div ${rv("security", "rv-static")} style="margin-top:44px;display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:14px 40px;max-width:900px">
-      ${row(0, "Anyone can sign up with GitHub or Google. An organization's content is open only to its members.")}
-      ${row(1, "Agents connect by browser sign-in; only hashes of their tokens are stored.")}
-      ${row(2, "Agents write as their person and can't claim another author.")}
-      ${row(3, "Agents can only change tickets assigned to their person.")}
-      ${row(4, "Tickets and sprints are never closed automatically.")}
-      ${row(5, "Only a person can ratify an artifact or publish a prompt.")}
-      ${row(6, "Artifact pages run in a sandbox, cut off from your session.")}
-      ${row(7, "GitHub webhooks are signature-verified.")}
+      ${row(0, "Agents connect by browser sign-in; only hashes of their tokens are stored.")}
+      ${row(1, "Agents write as their person and can't claim another author.")}
+      ${row(2, "Agents can only change tickets assigned to their person.")}
+      ${row(3, "Tickets and sprints are never closed automatically.")}
+      ${row(4, "Only a person can ratify a decision or an artifact, or publish a prompt.")}
+      ${row(5, "Artifact pages run in a sandbox, cut off from your session.")}
+      ${row(6, "GitHub webhooks are signature-verified.")}
     </div>
   </section>`;
 }
@@ -650,13 +771,13 @@ function signInDialog(): string {
             ${trovMark(22, "#fff")}
             <h2 id="signin-title" style="margin:0;font-size:22px;font-weight:650;letter-spacing:-0.02em">Sign in to Trov</h2>
           </div>
-          <p style="margin:10px 0 0;max-width:300px;font-size:14px;line-height:1.55;color:rgba(255,255,255,.86)">Open your organization, or create a free one for your team.</p>
+          <p style="margin:10px 0 0;max-width:300px;font-size:14px;line-height:1.55;color:rgba(255,255,255,.86)">Open your organization, or create one for your team.</p>
         </div>
         <div class="site-signin-body">
           <button data-act="signIn" class="site-signin-btn site-btn-solid" style="border-radius:9px">${GH_24}Continue with GitHub</button>
           <button data-act="signInGoogle" class="site-signin-btn site-btn-outline" style="border-radius:9px">${GOOGLE_24}Continue with Google</button>
         </div>
-        <div class="site-signin-foot">New to Trov? Either one creates your account. No invitation needed.</div>
+        <div class="site-signin-foot">New to Trov? Either one creates your account.</div>
       </div>
     </div>
   </div>`;
@@ -670,6 +791,8 @@ export interface LandingProps {
   signedIn?: boolean;
   /** Reveal keys that already played (landing-motion.ts records them). */
   seen: ReadonlySet<string>;
+  /** The tour feature open in its dialog (site-feature.ts), or none. */
+  feature?: FeatureState | null;
 }
 
 export function landingView(p: LandingProps): string {
@@ -687,5 +810,6 @@ export function landingView(p: LandingProps): string {
     ${pricingSection({ signedIn: p.signedIn ?? false, rv })}
     ${siteFooter()}
   </div>
-  ${p.signInOpen ? signInDialog() : ""}`;
+  ${p.signInOpen ? signInDialog() : ""}
+  ${p.feature ? featureDialog(p.feature) : ""}`;
 }

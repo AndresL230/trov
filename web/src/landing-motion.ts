@@ -9,6 +9,24 @@ import { mountPricing } from "./pricing-dom";
 
 let observer: IntersectionObserver | null = null;
 
+// A nav jump (`siteJump`) smooth-scrolls the page past whole sections. Reveals that fire on the way
+// would all be animating at once and the target would still be sliding in when the scroll stops, which
+// reads as the page overshooting. So while a jump is in flight, what comes into view is settled with
+// no motion. The flight ends just after `scrollend`, or after JUMP_MS where that event does not exist.
+const JUMP_MS = 1200;
+const JUMP_GRACE_MS = 150;
+let jumpUntil = 0;
+/** main.ts calls this just before a nav jump scrolls the page. */
+export function noteJump(now: number = performance.now()): void {
+  jumpUntil = now + JUMP_MS;
+  // The observer reports the last position a frame AFTER the scroll ends, so the flight outlives it a little.
+  if (typeof window !== "undefined") window.addEventListener("scrollend", () => { jumpUntil = performance.now() + JUMP_GRACE_MS; }, { once: true });
+}
+/** Is a nav jump carrying the page right now? (exported for the test) */
+export const jumping = (now: number = performance.now()): boolean => now < jumpUntil;
+/** How a reveal that just came into view is shown: played, or settled when the page is being carried. */
+export const revealClass = (inFlight: boolean): "is-play" | "is-done" => (inFlight ? "is-done" : "is-play");
+
 /** Run after every landing render (the innerHTML swap made fresh elements). */
 export function mountLandingMotion(root: ParentNode, seen: Set<string>): void {
   unmountLandingMotion();
@@ -26,9 +44,10 @@ export function mountLandingMotion(root: ParentNode, seen: Set<string>): void {
       const el = e.target as HTMLElement;
       obs.unobserve(el);
       seen.add(el.dataset.rv ?? "");
-      el.classList.add("is-play");
+      el.classList.add(revealClass(jumping()));
     }
-  }, { rootMargin: "0px 0px -8% 0px", threshold: 0.12 });
+    // Played ONCE (unobserved above), a little before the element enters, so it is in place when read.
+  }, { rootMargin: "0px 0px 6% 0px", threshold: 0 });
   for (const el of pending) observer.observe(el);
 }
 
@@ -49,7 +68,7 @@ function syncNav(instant = false): void {
   if (instant) { void nav.offsetHeight; nav.style.transition = ""; }
 }
 let navQueued = false;
-window.addEventListener("scroll", () => {
+if (typeof window !== "undefined") window.addEventListener("scroll", () => {
   if (navQueued) return;
   navQueued = true;
   requestAnimationFrame(() => { navQueued = false; syncNav(); });

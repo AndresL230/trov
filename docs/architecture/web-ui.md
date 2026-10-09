@@ -12,7 +12,7 @@ anything decorative behind a form visibly "reloads" per letter. Focus and caret 
 itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
-`data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`), Org settings,
+`data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
 Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, and the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`). Inside a morphed page, a part that must be REPLACED when it becomes a different
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
@@ -58,7 +58,7 @@ is the mark, large, faint and tilted behind the text. It appears exactly three t
 
 Everywhere else the page stays quiet. The one echo is `.site-stage`: each tour mockup stands on a field of the
 banner's dots in the page's own accent (purple on light, green on dark), mirrored on a flipped row. Do not add
-a fourth banner or a second texture; a new section is plain unless it replaces one of the three.
+a fourth banner or a second texture (the tour's dialog has none: its stage is the same dot field); a new section is plain unless it replaces one of the three.
 
 - **Both themes.** The banner is the brand's purple on light AND dark (it is not the app's chrome); on dark it
   sits one step deeper so a slab that size does not glare. Text on it is white, buttons on it are
@@ -70,12 +70,62 @@ a fourth banner or a second texture; a new section is plain unless it replaces o
   `data-overlay="signin"`: opening or closing Sign in patches the page in place. Check with
   `document.querySelector(".cnpy-site").getAnimations({ subtree: true })` before and after: no new entry.
   Keep the page's structure the same in every state (signed in or out changes attributes and text only).
-- **Motion** is the existing reveal machinery (`rv()` / `data-rv`, `landing-motion.ts`); the banner, the dots
-  and the mark do not move. The dialog sits outside `.cnpy-site`, so it has its own reduced-motion rule.
+- **Reduced motion:** the page is covered by `.cnpy-site *`; the two dialogs sit outside it, so each has its
+  own rule (`.site-signin-*`, `.site-fx *`).
+- **Motion** has ONE clock, on `:root`: `--fx-ease` (`cubic-bezier(0.4, 0, 0.2, 1)`, eases at both ends),
+  `--fx-fast` .18s (leaving), `--fx-base` .24s (content, a step), `--fx-slow` .3s (a reveal, the card growing
+  into its dialog, the backdrop). Anything new on the site reads these; do not write a literal duration or a
+  second curve. The banner, the dots and the mark do not move.
+- **Reveals** (`rv()` / `data-rv`, `landing-motion.ts`) are short and small: 6 to 14px over `--fx-slow`, played
+  once (the observer unobserves), 6% of the viewport before the element enters. While a nav jump is carrying
+  the page (`noteJump()` until just after `scrollend`), what comes into view is settled with no motion
+  (`revealClass`), so a jump never ends on a section that is still sliding.
+- **Nav jumps** (`siteJump`) are one `scrollIntoView` per click, instant under reduced motion; where one lands
+  is the target's `scroll-margin-top` (`section[id^="site-"]`, -58px: the heading about 32px under the sticky
+  nav). Nothing else moves the scroll position: both dialogs take and return focus with `preventScroll`.
 - **Copy that is fact:** anyone can sign up with GitHub or Google, no invitation; the help page is the
   **Guide**; prices are never restated outside `shared/pricing.ts` (link `/pricing`).
+- **Each thing is said once** (the table at the top of `landing.ts`): open sign-up under the hero's buttons;
+  the propose / decide rule on the authority card, with every person-only verdict listed in Security; whose
+  data it is and where the source is in the pricing Questions; the install commands and connect steps in the
+  plugin card (from `mcp-connect.ts`, never retyped); a feature's detail in its dialog. A new sentence that
+  repeats one of these is a link or nothing.
 - Radii are inline (`border-radius:16px` on the band, `14px` on the cards) so the corners block scales them by
-  value. Tests: `test/render.landing.test.ts`.
+  value. Tests: `test/render.landing.test.ts`, `test/render.site-feature.test.ts`.
+
+### The tour, explorable (`featureDialog` in `landing.ts`, `web/src/site-feature.ts`)
+
+Each tour row's mockup opens its feature in a large dialog: name and promise, the SAME mockup markup drawn big
+(`tourItems()` feeds the row and the dialog; no image), three or four statements from Help › Guide
+(`TOUR_FACTS` — change them with the Guide; a test pins a phrase of each to `guideView`), and Previous / Next
+through all seven (wrapping), with the position as text and dots.
+
+- **State and paint.** `state.siteFeature` (`{ key, dir, mode }`) like `signInOpen`; the dialog is a root-level
+  `data-overlay="feature"`, so `paint()` patches it and never rebuilds the page behind. Only `.site-fx-main`
+  (`data-morph-key` = the feature) is replaced on a step. The panel has a FIXED size, so a step never moves or
+  resizes the frame, the stage or the footer (measured: identical boxes across every step).
+- **Opening and closing** (`fxMode`): `vt` — a View Transition; the card and the panel carry
+  `view-transition-name:site-fx` on either side of one repaint (the name is on the card only for that repaint),
+  the moving box clips its two faces and wears the panel's static shadow, and every rule is scoped to
+  `html.site-fx-vt` so the first run's morph keeps its own timings. `css` — no View Transitions, or a hidden
+  tab: a keyframe entrance (`data-in="css"`) and exit (`data-closing`, `FX_EXIT_MS`). `none` — reduced motion:
+  instant. Closing shrinks into the card of the feature on screen when that card is in view, else it uses the
+  keyframe exit. `data-in` never changes while the dialog is open, so no rerender replays the entrance.
+- **A step** slides the titles, the mockup and the facts in from the side moved to (`data-dir`); it is CSS
+  in every mode. `data-moving` (set and dropped by `site-feature.ts`) is the only place `will-change` is used.
+- **Keys and focus.** Esc and the backdrop close; ← / → step; Tab cycles Close → Previous → Next; focus goes
+  to Close on open and back to the row's Explore button on close. A row has ONE labelled control (Explore);
+  the mockup is the same action for a pointer (`cnpy-hit`, `tabindex="-1"`, `aria-hidden`), so there is no
+  button inside a button and no duplicate tab stop. The window's scroll is locked while it is open, with the
+  scrollbar's width handed back as padding so the page does not shift.
+- **Phone:** the app's modal sheet at full height; Previous / Next are 44px, at the bottom edge.
+
+### For agents
+
+Two cards whose content is naturally the same height at desktop width (`.site-agents-row`, 1.65fr / 1fr,
+measured at 1440 and 1100); one column under 900px. The plugin card holds the skills, then `connectSteps()` and
+`ONE_ORG_NOTE` from `mcp-connect.ts`. If a card's content shrinks, re-weight the columns or let the card be
+smaller: never pad one out.
 
 ## Sidebar & motion — the `<aside>` outlives rerenders
 

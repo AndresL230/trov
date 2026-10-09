@@ -6,17 +6,21 @@ import { describe, it, expect } from "vitest";
 import { landingView } from "../web/src/landing";
 import { initialState, render } from "../web/src/render";
 import css from "../web/src/trov.css?raw";
+import motionSrc from "../web/src/landing-motion.ts?raw";
+import mainSrc from "../web/src/main.ts?raw";
+import featureSrc from "../web/src/site-feature.ts?raw";
+import { jumping, noteJump, revealClass } from "../web/src/landing-motion";
 
 const out = (signInOpen = false, signedIn = false, seen: string[] = []) =>
   landingView({ dark: false, signInOpen, signedIn, seen: new Set(seen) });
 const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
 
 describe("landing — the facts it states", () => {
-  it("sign-up is open: GitHub or Google, no invitation, wherever sign-in is mentioned", () => {
+  it("sign-up is open: GitHub or Google, no invitation — said once, and nothing on the page contradicts it", () => {
     const html = out(true);
-    expect(html).toContain("Sign up with GitHub or Google. No invitation needed");
-    expect(html).toContain("Anyone can sign up with GitHub or Google.");
-    expect(html).toContain("New to Trov? Either one creates your account. No invitation needed.");
+    expect(html).toContain("Sign up with GitHub or Google. No invitation needed.</p>");
+    expect(html.match(/No invitation needed/g)?.length).toBe(1);
+    expect(html).toContain("New to Trov? Either one creates your account.</div>");
     for (const gone of ["restricted to your org", "needs an invitation", "invite-only", "by invitation"]) expect(html).not.toContain(gone);
   });
 
@@ -26,14 +30,34 @@ describe("landing — the facts it states", () => {
       expect(html).toContain("How Trov works, in the Guide");
     }
     // Signed out, the hero's first button opens Sign in; reopened from the app, it opens the Guide.
-    expect(out()).toContain('<button data-act="openSignIn" class="site-btn site-btn-onb" style="border-radius:9px">Sign up free</button>');
-    expect(out(false, true)).toContain('<button data-act="siteGuide" class="site-btn site-btn-onb" style="border-radius:9px">Open the Guide</button>');
+    expect(out()).toContain('<button data-act="openSignIn" class="site-btn site-btn-onb">Start for free</button>');
+    expect(out(false, true)).toContain('<button data-act="siteGuide" class="site-btn site-btn-onb">Open the Guide</button>');
   });
 
-  it("links pricing as a path and restates no price in the hero", () => {
-    const hero = out().slice(out().indexOf('id="site-top"'), out().indexOf("</header>"));
-    expect(hero).toContain('<a href="/pricing">See pricing</a>');
-    expect(hero).not.toMatch(/\$\d/);
+  it("links the pricing page as a path, and restates no price outside the pricing section", () => {
+    const html = out();
+    expect(html).toContain('<a href="/pricing">Pricing</a>');
+    expect(html.slice(0, html.indexOf('id="site-pricing"'))).not.toMatch(/\$\d/);
+  });
+
+  it("says each thing once: the page above the plans is not repeated under them", () => {
+    const html = out(true);
+    // Who may confirm what: the rule on the authority card, the list of person-only verdicts in Security.
+    expect(html.match(/Only a person can ratify/g)?.length).toBe(1);
+    expect(html).toContain("Only a person can ratify a decision or an artifact, or publish a prompt.");
+    expect(html.match(/only exist in the signed-in web app/g)?.length).toBe(1);
+    expect(html).not.toContain("Only a signed-in person sees these buttons");
+    // Whose data it is: the pricing Questions answer it, so Security does not.
+    expect(html.match(/only its members and the agents they connect can read it/g)?.length).toBe(1);
+    const security = html.slice(html.indexOf('id="site-security"'), html.indexOf('id="site-pricing"'));
+    expect(security).not.toMatch(/its members|sign up|Sign-in with/i);
+    expect(security.match(/class="site-check"/g)?.length).toBe(7);
+    // No section restates its own heading, and no card its own title.
+    expect(html).not.toContain("The loop that keeps the store current");
+    expect(html).not.toContain("Two themes, or follow your system");
+    expect(html).not.toContain("installed in two commands");
+    // The install commands: once, in the plugin card.
+    expect(html.match(/\/plugin marketplace add/g)?.length).toBe(1);
   });
 
   it("keeps every section and its jump target", () => {
@@ -103,6 +127,40 @@ describe("landing — a rerender replays nothing", () => {
     expect(html).toMatch(/<button data-act="signIn" [^>]*>.*Continue with GitHub<\/button>/s);
     expect(html).toMatch(/<button data-act="signInGoogle" [^>]*>.*Continue with Google<\/button>/s);
     expect(html).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<button/);
+  });
+});
+
+describe("landing — moving through the page", () => {
+  it("a reveal is short and small, on the site's one clock", () => {
+    expect(rules).toContain(".site-rv { opacity:0; --from:0 10px; translate:var(--from); }");
+    expect(rules).toContain(".site-rv.rv-l { --from:-12px 0; }");
+    expect(rules).toContain(".site-rv.rv-lift { --from:0 14px; scale:.99; }");
+    expect(rules).toContain(".site-st { opacity:0; --from:0 6px; translate:var(--from); }");
+    expect(rules).toMatch(/\.site-rv\.is-play, \.is-play \.site-st \{\s*transition: opacity var\(--fx-slow\) var\(--fx-ease\) var\(--d, 0ms\), translate var\(--fx-slow\) var\(--fx-ease\) var\(--d, 0ms\), scale var\(--fx-slow\) var\(--fx-ease\) var\(--d, 0ms\),/);
+    // No reveal travels further than 14px.
+    for (const m of rules.matchAll(/\.site-(?:rv|st)[.\w-]* \{[^}]*--from:([^;]+);/g)) for (const px of m[1].matchAll(/(-?\d+)px/g)) expect(Math.abs(Number(px[1])), m[0]).toBeLessThanOrEqual(14);
+  });
+  it("is played once, a little before it enters, and settled with no motion while a nav jump carries the page", () => {
+    expect(motionSrc).toContain('{ rootMargin: "0px 0px 6% 0px", threshold: 0 }');
+    expect(motionSrc).toContain("obs.unobserve(el);");
+    expect(revealClass(false)).toBe("is-play");
+    expect(revealClass(true)).toBe("is-done");
+    noteJump(1000);
+    expect(jumping(1000)).toBe(true);
+    expect(jumping(2199)).toBe(true);
+    expect(jumping(2200)).toBe(false);
+  });
+  it("a nav jump is ONE scroll that lands its heading under the sticky nav, instant under reduced motion", () => {
+    expect(rules).toContain('.cnpy-site section[id^="site-"] { scroll-margin-top:-58px; }');
+    const jump = mainSrc.slice(mainSrc.indexOf('case "siteJump"'), mainSrc.indexOf('case "backToLogin"'));
+    expect(jump).toContain('matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"');
+    expect(jump).toContain("noteJump();");
+    expect(jump.match(/scrollTo\(|scrollIntoView\(/g)?.length).toBe(2); // top, or one target: never both
+    expect(rules).not.toMatch(/scroll-behavior\s*:\s*smooth/);
+  });
+  it("nothing else moves the page: the dialogs take focus without scrolling", () => {
+    expect(featureSrc.match(/\.focus\(/g)?.length).toBe(featureSrc.match(/\.focus\(\{ preventScroll: true \}\)|to\.focus\(\)/g)?.length);
+    expect(featureSrc).not.toMatch(/scrollTo|scrollIntoView/);
   });
 });
 
