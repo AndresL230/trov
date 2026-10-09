@@ -1129,7 +1129,25 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .cnpy-org-step { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:11px 0; }
 .cnpy-org-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr)); gap:16px 18px; }
 .cnpy-org-addbar { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; max-width:640px; }
-.cnpy-org-invite { display:flex; align-items:center; gap:8px; flex-wrap:wrap; max-width:820px; }
+/* The invite bar spans its surface: the address field takes the room, the role and the button sit at the
+   right edge. (It was capped at 820px, which left it stranded on the left of a wide page.) */
+.cnpy-org-invite { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.cnpy-org-invite > #org-invite { flex:3 1 240px !important; }
+/* Members as a table: one grid for the head and every row, so each fact has its column. */
+.cnpy-mem-row { display:grid; grid-template-columns:minmax(0,2.1fr) minmax(0,1.5fr) minmax(0,1.9fr) 104px 128px 62px; align-items:center; gap:0 16px; padding:10px 16px; }
+.cnpy-mem-row.is-ro { grid-template-columns:minmax(0,2.1fr) minmax(0,1.5fr) minmax(0,1.9fr) 104px 128px; }
+.cnpy-mem-head { padding-top:9px; padding-bottom:8px; border-bottom:1px solid var(--border); font-family:var(--label); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-40); }
+.cnpy-mem-handle, .cnpy-mem-title, .cnpy-mem-joined { min-width:0; font-size:12.5px; color:var(--fg-55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-mem-head > span { font-size:10px; color:var(--fg-40); }
+.cnpy-mem-title[data-empty], .cnpy-mem-joined { color:var(--fg-40); }
+.cnpy-mem-joined { font-variant-numeric:tabular-nums; }
+.cnpy-mem-role { display:flex; align-items:center; gap:7px; min-width:0; }
+.cnpy-mem-act { display:flex; justify-content:flex-end; }
+@media (max-width:980px) {
+  .cnpy-mem-row { grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) minmax(0,1.6fr) 128px 62px; }
+  .cnpy-mem-row.is-ro { grid-template-columns:minmax(0,2fr) minmax(0,1.4fr) minmax(0,1.6fr) 128px; }
+  .cnpy-mem-joined { display:none; }
+}
 .cnpy-org-editor { padding:4px 16px 16px; }
 .cnpy-org-code { display:block; margin:3px 0; font-family:var(--code); font-size:11.5px; color:var(--fg-70); overflow-wrap:anywhere; }
 .cnpy-org-off { cursor:default; opacity:.6; }
@@ -1149,6 +1167,15 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
   /* A checklist step's button drops under its text, in line with it. */
   .cnpy-org-step > button { flex:1 1 100%; margin-left:30px; }
   .cnpy-org-addbar > button, .cnpy-org-invite > button, .cnpy-org-invite > .cnpy-seg, .cnpy-org-invite > .cnpy-dd { flex:1 1 100%; }
+  /* Phone: a member is two lines — who and their role, then handle and title — and the head goes. */
+  .cnpy-mem-head { display:none; }
+  .cnpy-mem-row, .cnpy-mem-row.is-ro { grid-template-columns:minmax(0,1fr) auto auto; gap:4px 10px; }
+  .cnpy-mem-who { grid-column:1; }
+  .cnpy-mem-role { grid-column:2; grid-row:1; }
+  .cnpy-mem-act { grid-column:3; grid-row:1; }
+  .cnpy-mem-handle { grid-column:1 / -1; grid-row:2; padding-left:40px; }
+  .cnpy-mem-title { grid-column:1 / -1; grid-row:3; padding-left:40px; }
+  .cnpy-mem-title[data-empty] { display:none; }
 }
 /* The queue group header's "Open sprint →". */
 .cnpy-grouplink { transition:color .12s ease, background .12s ease; border-radius:6px; }
