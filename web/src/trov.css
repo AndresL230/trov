@@ -1971,7 +1971,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .fxm-lanes { --lab:0px; }
   /* the sprint's name moves above its bar: beside it there is no room */
   .fxm-sprint { margin-top:22px !important; }
-  .fxm-lab { left:0 !important; right:auto !important; top:-16px !important; bottom:auto !important; font-size:10.5px !important; }
+  .fxm-lab { left:0 !important; right:auto !important; top:-16px !important; bottom:auto !important; font-size:11px !important; }
   .fxm-board { grid-template-columns:repeat(3, minmax(0, 1fr)); }
   .fxm-tiles { grid-template-columns:minmax(0, 1fr); }
   .fxm-mywork { height:auto; }
@@ -2420,6 +2420,266 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .plat-hide-sm { display:none; }
 }
 @media (prefers-reduced-motion: reduce) { .plat-row, .plat-chev, .plat-busy { transition:none; } }
+
+/* ── the site on a phone ──────────────────────────────────────────────────────
+   Everything the signed-out site (landing.ts, pricing.ts, legal.ts, their dialogs) changes for a narrow
+   or touch screen, in ONE place. Nothing here applies at 961px and up: every rule sits behind a width
+   query (900px: the nav's menu and the legal contents; 640px: the phone layout) or `(hover:none)`, and
+   the three things declared outside one only HIDE what a wide screen never shows (the menu button, the
+   hero's phone tabs, the contents disclosure). docs/architecture/web-ui.md › "The site on a phone".
+
+   Three ideas:
+   • the bar is one row — mark, name, the accent button, Menu — and the menu holds the rest;
+   • a dialog is a SHEET along the bottom edge (the app's rule for every modal, above), lifted clear of the
+     on-screen keyboard by `--site-kb` (site-viewport.ts), with 44px controls and the safe area under it;
+   • a mockup is never a shrunken desktop window: a phone gets the screen's most telling pane, drawn in one
+     column, and no type in it renders under 11px. */
+.site-iconbtn.site-menubtn, .site-hero-tabs-ph, .site-legal-tocb, .site-foot-lic { display:none; }
+
+/* the menu (landing.ts `menuSheet`, site-menu.ts): a card under its button on a tablet, a sheet on a phone */
+.site-menu-back { position:fixed; inset:0; z-index:64; touch-action:none; background:rgba(14,14,26,.5); animation:site-fade var(--fx-slow) var(--fx-ease) both; }
+[data-cnpy-theme="dark"] .site-menu-back { background:rgba(10,9,7,.62); }
+.site-menu-wrap { position:fixed; inset:0; z-index:65; display:grid; place-items:start end; padding:68px 16px 16px; pointer-events:none; }
+.site-menu-sheet { pointer-events:auto; box-sizing:border-box; width:min(348px, 100%); max-height:100%; overflow-y:auto; overscroll-behavior:contain; padding:8px 12px 16px; background:var(--surface);
+  box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.06), 0 30px 70px -24px rgba(10,12,40,.5); transform-origin:top right; animation:site-menu-in var(--fx-base) var(--fx-ease) both; }
+[data-cnpy-theme="dark"] .site-menu-sheet { box-shadow:0 0 0 1px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.3), 0 34px 80px -28px rgba(0,0,0,.7); }
+.site-menu-head { display:flex; align-items:center; justify-content:space-between; padding:2px 0 2px 12px; }
+.site-menu-t { font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--fg-40); }
+.site-menu-x { display:grid; place-items:center; width:44px; height:44px; color:var(--fg-55); }
+.site-menu-links { display:flex; flex-direction:column; }
+.site-menu-link { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:52px; padding:0 12px; font-size:18px; font-weight:600; letter-spacing:-0.012em; color:var(--fg); text-align:left; }
+.site-menu-link svg { flex:none; color:var(--fg-40); }
+.site-menu-tools { margin-top:8px; padding-top:8px; border-top:1px solid var(--border); display:flex; flex-direction:column; }
+.site-menu-tool { display:flex; align-items:center; justify-content:space-between; gap:12px; box-sizing:border-box; width:100%; min-height:48px; padding:0 12px; font-size:15px; font-weight:500; color:var(--fg-70); text-decoration:none; text-align:left; }
+.site-menu-val { display:inline-flex; align-items:center; gap:8px; font-size:14px; font-weight:400; color:var(--fg-55); }
+.site-menu-ways { margin-top:12px; padding:0 4px; display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:10px; }
+.site-menu-ways > .site-btn { justify-content:center; min-height:48px; padding:0 12px; font-size:15px; }
+.site-menu-ways > :only-child { grid-column:1 / -1; }
+.site-menu-x:hover, .site-menu-link:hover, .site-menu-tool:hover, .site-menu-link:active, .site-menu-tool:active { background:var(--hover); color:var(--fg); text-decoration:none; }
+.site-menu-sheet :is(button, a):focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:-2px; }
+.site-menu[data-closing] .site-menu-back { animation:site-fx-fade-out var(--fx-fast) var(--fx-ease) both; }
+.site-menu[data-closing] .site-menu-sheet { animation:site-menu-out var(--fx-fast) var(--fx-ease) both; }
+@keyframes site-menu-in { from { opacity:0; transform:translateY(-6px) scale(.98); } to { opacity:1; transform:none; } }
+@keyframes site-menu-out { from { opacity:1; transform:none; } to { opacity:0; transform:translateY(-4px) scale(.985); } }
+@keyframes site-sheet-up { from { transform:translateY(100%); } to { transform:none; } }
+@keyframes site-sheet-down { from { transform:none; } to { transform:translateY(100%); } }
+@media (min-width:901px) { .site-menu { display:none; } }
+@media (prefers-reduced-motion: reduce) { .site-menu, .site-menu * { animation:none !important; transition:none !important; } }
+
+@media (max-width:900px) {
+  /* the bar: what does not fit goes to the menu; what stays is finger-sized */
+  .site-nav-x { display:none; }
+  .site-iconbtn.site-menubtn { display:grid; }
+  .site-nav .site-iconbtn { width:44px; height:44px; }
+  .site-nav .cnpy-accentbtn { display:inline-flex; align-items:center; box-sizing:border-box; min-height:44px; }
+  .site-nav-home, .site-navin > a:first-child { min-height:44px; }
+  .site-navin { gap:12px !important; }
+  .site-nav-r { gap:8px !important; }
+
+  /* the legal contents: 11 to 13 links, folded behind their own heading (legal-page.ts opens and closes it) */
+  .site-legal-side { padding:0 18px; }
+  .site-legal-toc > .site-legal-toc-h { display:none; }
+  .site-legal-tocb { display:flex; align-items:center; gap:10px; width:100%; min-height:52px; padding:0; color:var(--fg); text-align:left; }
+  .site-legal-tocb-n { margin-left:auto; font-size:13px; color:var(--fg-55); }
+  .site-legal-tocb svg { flex:none; color:var(--fg-40); transition:transform var(--fx-slow) var(--fx-ease); }
+  .site-legal-toc[data-open="1"] .site-legal-tocb svg { transform:rotate(180deg); }
+  .site-legal-tocb:focus-visible { outline:2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset:2px; }
+  .site-legal-tocw { display:grid; grid-template-rows:0fr; transition:grid-template-rows var(--fx-slow) var(--fx-ease); }
+  .site-legal-toc[data-open="1"] .site-legal-tocw { grid-template-rows:1fr; }
+  .site-legal-toc .site-legal-tocw > ol { min-height:0; margin:0; overflow:hidden; visibility:hidden; transition:visibility 0s linear var(--fx-slow); }
+  .site-legal-toc[data-open="1"] .site-legal-tocw > ol { visibility:visible; transition-delay:0s; padding-bottom:12px; }
+  .site-legal-toc[data-instant] .site-legal-tocw, .site-legal-toc[data-instant] .site-legal-tocw > ol, .site-legal-toc[data-instant] .site-legal-tocb svg { transition:none; }
+}
+
+/* a finger has no hover: nothing stays lifted after a tap, and a press answers instead */
+@media (hover:none) {
+  .site-card:hover { transform:none; box-shadow:none; }
+  .site-lift:hover { transform:none; }
+  .site-plan:hover { translate:none; }
+  .site-fxcard:hover::after { opacity:0; }
+  .site-fxcard:active { transform:scale(.985); }
+  .site-fxcard:active::after { opacity:1; }
+  .site-explore:hover { background:transparent; }
+  .site-explore:active, .site-fx-nav:active { background:var(--accent-soft); }
+  .site-explore:hover svg { transform:none; }
+}
+
+@media (max-width:640px) {
+  .site-hide-ph { display:none !important; }
+
+  /* the menu is a sheet here (the app's rule for every modal pins it to the bottom edge): it rises and sinks */
+  .site-menu-sheet { animation:site-sheet-up var(--fx-slow) var(--fx-ease) both; }
+  .site-menu[data-closing] .site-menu-sheet { animation:site-sheet-down var(--fx-fast) var(--fx-ease) both; }
+
+  /* rhythm: a phone's gutter, and sections a thumb-scroll apart rather than a screen apart */
+  .site-sec { padding:84px 20px 0 !important; }
+  .site-pricing { padding:84px 20px 0; }
+  .site-pricing.is-page { padding-top:36px; }
+  /* a jump lands with the heading 16px under the 60px bar (sections carry 84px of top padding) */
+  .cnpy-site section[id^="site-"] { scroll-margin-top:-8px; }
+  .site-lede, .site-price-lede { font-size:16px !important; line-height:1.6 !important; }
+  .site-card { padding:20px !important; }
+  :where(.cnpy-site) .site-btn { box-sizing:border-box; min-height:44px; }
+  .site-how-grid { margin-top:32px !important; gap:12px !important; }
+  .site-agents-row { margin-top:32px; gap:12px; }
+  .site-agent-card { padding:22px 18px !important; }
+
+  /* hero: the banner is composed for a tall narrow canvas — the copy in a clear field up top, the dots and
+     the tilted mark gathered at the foot, where the product stands on it */
+  .site-hero { padding:4px 12px 0; --hero-pad:20px; }
+  .site-hero-band { padding:38px var(--hero-pad) 156px; }
+  .site-hero-band::after { -webkit-mask-image:linear-gradient(180deg, transparent 42%, #000 100%); mask-image:linear-gradient(180deg, transparent 42%, #000 100%); }
+  .site-hero-band > .site-banner-art { width:330px; right:-118px; top:auto; bottom:-64px; opacity:.1; }
+  .site-hero-h { font-size:clamp(32px, 9.4vw, 40px); line-height:1.07; }
+  .site-hero-lede { margin-top:16px; font-size:16.5px; line-height:1.55; }
+  .site-hero-cta { margin-top:26px; display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:10px; }
+  .site-hero-cta > .site-btn { justify-content:center; box-sizing:border-box; min-height:50px; padding:0 14px; font-size:15px; }
+  .site-hero-note { margin-top:14px; font-size:13px; }
+  .site-hero-stage { max-width:calc(100% - 16px); margin-top:-124px; }
+
+  /* the hero's Review screen, as a phone holds it: one unified diff (the twin lines of the left pane are
+     dropped, the removed line sits above the added ones), the verdict as two buttons under it */
+  .site-hero-win { height:auto !important; }
+  .site-hero-pad { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; padding:16px 14px 16px !important; }
+  .site-hero-pad > * { flex:1 1 100%; min-width:0; }
+  .site-hero-trow { display:contents !important; }
+  .site-hero-trow > :first-child { font-size:20px !important; }
+  .site-hero-verdict { order:9; flex:1 1 100%; display:grid !important; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:10px !important; margin:14px 0 0 !important; }
+  .site-hero-verdict > * { box-sizing:border-box; padding:12px 10px !important; font-size:14px !important; text-align:center; }
+  .site-hero-meta { flex-wrap:wrap; margin-top:8px !important; gap:4px 6px !important; font-size:12px !important; }
+  .site-hero-tabs { display:none !important; }
+  .site-hero-tabs-ph { display:flex; gap:6px; margin-left:auto; }
+  .site-hero-tabs-ph > :last-child { display:none; }
+  .site-hero-diff { display:flex !important; flex-direction:column; padding:8px 0 10px; font-size:12px !important; line-height:1.65 !important; }
+  .site-hero-cur, .site-hero-new, .site-hero-lines { display:contents; }
+  .site-hero-ph, .site-hero-twin { display:none; }
+  .site-hero-cur .site-hl { order:2; }
+  .site-hero-new .site-hl { order:3; }
+  .site-hero-mock .site-toast { left:10px !important; right:10px !important; top:8px !important; bottom:auto !important; }
+
+  /* the type floor: nothing a mockup SAYS renders under 11px (its sizes are inline, hence the value keys —
+     the corners block's own idiom), and the avatars that hold initials grow with them */
+  :is(.site-hero-mock, .site-stage, .site-how-grid, .site-split-body, .site-agent-card, .site-contact-card, .site-fx-mock) :is([style*="font-size:7.5px"], [style*="font-size:8px"], [style*="font-size:8.5px"], [style*="font-size:9px"], [style*="font-size:9.5px"], [style*="font-size:10px"], [style*="font-size:10.5px"]) { font-size:11px !important; }
+  :is(.site-stage, .site-fx-mock) [style*="width:18px;height:18px"] { width:22px !important; height:22px !important; }
+  :is(.site-stage, .site-fx-mock) [style*="width:20px;height:20px"] { width:24px !important; height:24px !important; }
+  .fxm-art-eyebrow, .fxm-art-code, .fxm-art-num span { font-size:11px; }
+
+  /* tour: copy, then its mockup, on one beat; the dots run edge to edge behind the mockup */
+  .site-tour-list { margin-top:44px !important; gap:64px !important; }
+  .site-tour-row { gap:22px !important; }
+  .site-tour-row > * { flex-basis:100% !important; }
+  .site-tour-body { max-width:none !important; font-size:15.5px !important; }
+  .site-stage::before, .site-stage.is-flip::before { inset:-22px -20px -22px -20px; -webkit-mask-image:linear-gradient(180deg, transparent 0%, #000 70%); mask-image:linear-gradient(180deg, transparent 0%, #000 70%); }
+  .site-explore { margin:16px 0 0; min-height:44px; padding:0 16px; font-size:14.5px; border:1px solid color-mix(in srgb, var(--accent) 38%, transparent); }
+  .site-tk-board { grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) !important; }
+  .site-art-grid { grid-template-columns:minmax(0, 1fr) !important; }
+
+  /* an install command keeps to its own line (it scrolls inside its box if a screen is narrower than it),
+     and Copy is a labelled, thumb-sized button under it instead of a 26px icon in the corner
+     (mcp-connect.ts `copyBox`, restyled here for the site only) */
+  .cnpy-site :has(> .cnpy-copybtn) { padding:11px 12px 10px !important; }
+  .cnpy-site :has(> .cnpy-copybtn) > pre { white-space:pre !important; overflow-wrap:normal !important; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none; line-height:1.75 !important; }
+  .cnpy-site .cnpy-copybtn { position:static !important; display:flex !important; align-items:center; justify-content:center; gap:8px; box-sizing:border-box; width:100% !important; height:44px !important; margin-top:10px; font-size:13.5px; font-weight:600; color:var(--fg-70) !important; }
+  .cnpy-site .cnpy-copybtn::after { content:"Copy"; }
+  @media (max-width:380px) { .cnpy-site :has(> .cnpy-copybtn) > pre { font-size:11px !important; } }
+
+  /* the tour's dialog: a full-height sheet. The mockup under its title, the facts under that, Previous and
+     Next along the bottom edge; a swipe steps it (site-feature.ts), and a vertical pan stays the browser's */
+  /* on the scroller too: a touch's action is settled between the element and its nearest scroll container */
+  .site-fx-panel, .site-fx-main { touch-action:pan-y; }
+  [data-cnpy-theme] .site-fx-panel[role="dialog"][aria-modal="true"] { border-bottom-width:0 !important; }
+  .site-fx-x { top:8px; right:8px; width:44px; height:44px; }
+  .site-fx-main { overscroll-behavior:contain; }
+  .site-fx-titles { padding:20px 64px 0 20px; }
+  .site-fx-stage { margin-top:16px; padding:14px 10px; }
+  .site-fx-facts { padding:18px 20px 22px; gap:13px; }
+  .site-fx-facts li { font-size:15px; }
+  .site-fx-foot { gap:8px; padding:10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  .site-fx-nav { flex:1 1 0; max-width:132px; min-height:48px; justify-content:center; padding:0 8px !important; font-size:14px; }
+  .site-fx-nav span { max-width:none; }
+  .site-fx-pos { flex:none; }
+  .fxm-board { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  /* rows a phone re-lays: a handoff's title on its own line over who / state / when; the staged banner's
+     link under its sentence; the timeline's four counts as four even columns */
+  .fxm-hrow { grid-template-columns:auto auto minmax(0, 1fr) !important; gap:6px 10px !important; }
+  .fxm-hrow > :first-child { grid-column:1 / -1; }
+  .fxm-hrow > :first-child > :nth-child(2) { white-space:normal !important; }
+  .fxm-staged { flex-wrap:wrap; }
+  .fxm-staged > :nth-child(2) { flex:1 1 0 !important; }
+  .fxm-staged > :last-child { flex:1 1 100%; }
+  .fxm-stats { flex:1 1 100%; display:grid !important; grid-template-columns:repeat(4, auto); justify-content:space-between; gap:8px !important; white-space:nowrap; }
+  .fxm-board > :nth-child(n+3) { display:none !important; }
+
+  /* sign-in / Get started and Contact: sheets that rise from the bottom edge and stop where the keyboard begins */
+  .site-signin-back { touch-action:none; }
+  [data-cnpy-theme] .site-signin-wrap:has(> [role="dialog"][aria-modal="true"]) { padding-bottom:var(--site-kb, 0px) !important; }
+  [data-cnpy-theme] .site-signin-card[role="dialog"][aria-modal="true"] { max-height:calc(100dvh - 20px - env(safe-area-inset-top) - var(--site-kb, 0px)) !important; }
+  .site-signin-card { overscroll-behavior:contain; animation:site-sheet-up var(--fx-slow) var(--fx-ease) both; }
+  .site-signin-x { top:6px; right:6px; width:44px; height:44px; }
+  .site-signin-head { padding:30px 24px 0; }
+  .site-signin-body { padding:20px 20px 22px; }
+  .site-signin-btn { box-sizing:border-box; min-height:50px; font-size:15px; }
+  .site-signin-plans .cnpy-seg-btn, .site-contact-card .cnpy-seg-btn { min-height:44px; font-size:14px; }
+  .site-signin-plan-what { font-size:13.5px; }
+  .site-signin-or { font-size:11px; }
+  .site-signin-compare { display:inline-block; margin:-12px -2px; padding:12px 2px; }
+  .site-signin-foot { padding:4px 20px; font-size:14px; }
+  .site-signin-switch { display:inline-block; padding:12px 4px; }
+  /* the scroll padding is the sticky button row: a field scrolled into view stops above it */
+  .site-contact-card { padding:22px 20px 0; scroll-padding-bottom:88px; }
+  .site-contact-card .cnpy-input:not(textarea) { height:46px !important; }
+  /* Send stays in reach while the form scrolls above the keyboard */
+  .site-contact-card .cnpy-cmodal-btns { position:sticky; bottom:0; z-index:1; margin:18px -20px 0 !important; padding:12px 20px 14px; background:var(--surface); border-top:1px solid var(--border); }
+  .site-contact-card .cnpy-cmodal-btns > button { height:48px !important; font-size:14.5px !important; }
+
+  /* pricing: three cards in a readable stack, each keeping its character; one column of questions */
+  .site-price-top { gap:20px; }
+  .site-interval { display:flex; width:100%; box-sizing:border-box; }
+  .site-interval label { flex:1 1 0; padding:11px 14px; font-size:14px; text-align:center; }
+  .site-plans { margin-top:28px; gap:14px; }
+  .site-plan { padding:22px 20px 24px; }
+  .site-plan-cta { box-sizing:border-box; min-height:48px; font-size:15px; }
+  .site-plan-limits { margin-top:22px; padding-top:18px; gap:11px; font-size:14.5px; }
+  .site-plans-foot { font-size:13px; }
+  .site-price-block { margin-top:64px; }
+  .site-price-all li { font-size:15px; }
+  .site-faq-wrap { gap:8px; }
+  .site-faq-side p { max-width:none; font-size:14.5px; }
+  .site-faq-side a { display:inline-block; margin:-12px -2px; padding:12px 2px; }
+  .site-faq summary { min-height:56px; box-sizing:border-box; padding:14px 0; }
+  .site-faq h3, .site-faq h4 { font-size:15.5px; line-height:1.4; }
+  .site-faq p { padding:0 0 18px; font-size:15px; }
+
+  /* terms and privacy: a reading page */
+  .site-legal-band { padding:28px var(--hero-pad) 32px; }
+  .site-legal-band > .site-banner-art { width:240px; right:-84px; top:auto; bottom:-70px; opacity:.1; }
+  .site-legal-tabs { display:flex; }
+  .site-legal-tab { flex:1 1 0; padding:12px 10px; font-size:14px; line-height:20px; text-align:center; }
+  .site-legal-h { margin-top:22px; font-size:clamp(30px, 8.6vw, 36px); }
+  .site-legal-lede { margin-top:14px; font-size:16px; line-height:1.6; }
+  .site-legal { padding:20px 20px 0; gap:20px; }
+  .site-legal-toc ol { columns:auto; }
+  .site-legal-toc a { align-items:center; min-height:44px; padding:0; font-size:15px; }
+  .site-legal-brief { padding:18px; }
+  .site-legal-brief li { font-size:15.5px; }
+  .site-legal-brief p { font-size:13.5px; }
+  .site-legal-sec { margin-top:40px; scroll-margin-top:76px; }
+  .site-legal-sec h2 { line-height:1.3; }
+  .site-legal-sec p, .site-legal-sec li { font-size:16px; line-height:1.72; }
+
+  /* footer: stacked and left-aligned, its links a two-column list of 44px rows */
+  .site-foot { margin-top:96px !important; }
+  .site-foot-in { flex-direction:column; gap:14px !important; padding:36px 20px calc(36px + env(safe-area-inset-bottom)) !important; }
+  .site-foot-r { box-sizing:border-box; width:100%; margin-left:0 !important; gap:12px !important; text-align:left !important; font-size:14px !important; line-height:1.5; }
+  /* font-size:0 drops the line's bare text (its separators, the licence); each link restores its own */
+  .site-foot-links { display:flex; flex-wrap:wrap; padding:6px 0; border-top:1px solid var(--border); border-bottom:1px solid var(--border); font-size:0; }
+  .site-foot-links > a, .site-foot-links > button { flex:0 0 50%; box-sizing:border-box; display:flex; align-items:center; min-height:44px; font-size:15px !important; color:var(--fg) !important; text-decoration:none !important; text-align:left; }
+  .site-foot-lic { display:inline; }
+  .site-foot-r > :last-child { font-size:13px; }
+}
+@media (max-width:480px) {
+  .site-hero-cta { grid-template-columns:minmax(0, 1fr); }
+}
 
 /* ── corners: tightened ──────────────────────────────────────────────────────
    Trov's corners are TIGHTER than the design file's: every radius is shrunk by one

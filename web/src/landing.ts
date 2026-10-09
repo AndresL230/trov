@@ -82,6 +82,8 @@ const GROUP_LABEL = "font-family:var(--label);font-size:10px;font-weight:600;tex
 const H2 = "margin:0;font-size:clamp(28px, 3.4vw, 38px);font-weight:650;letter-spacing:-0.025em";
 const LEDE = "margin:14px 0 0;max-width:560px;font-size:15.5px;line-height:1.6;color:var(--fg-70);text-wrap:pretty";
 const section = (top = 150) => `max-width:1120px;margin:0 auto;padding:${top}px 24px 0`;
+/** Every section of the page: a phone retunes its top padding and gutter by this class (trov.css). */
+const SEC = `class="site-sec"`;
 const MOCK = "border:1px solid var(--border);border-radius:12px;box-shadow:var(--lift-shadow);overflow:hidden";
 /** The Trov mark, large, faint and tilted behind a banner's text (the first-run card's `.cnpy-orgs-art`). */
 const BANNER_ART = `<span class="site-banner-art" aria-hidden="true">${trovMark(100, "currentColor")}</span>`;
@@ -93,7 +95,7 @@ function segTab(text: string, on: boolean, divider = false): string {
 function heading(key: string, title: string, lede = ""): string {
   return `<div ${rv(key)}>
     <h2 style="${H2}">${title}</h2>
-    ${lede ? `<p style="${LEDE}">${lede}</p>` : ""}
+    ${lede ? `<p class="site-lede" style="${LEDE}">${lede}</p>` : ""}
   </div>`;
 }
 /** One feature of the tour: the row on the page AND the dialog it opens into. */
@@ -104,11 +106,11 @@ const EXPAND = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stro
  *  opens the dialog; the mockup is the same action for a pointer (a card under the `hitArea`
  *  pattern, out of the tab order and hidden from a screen reader, so the row has ONE control). */
 function tourRow(it: TourItem, flip: boolean): string {
-  return `<div style="display:flex;gap:56px;align-items:center;flex-wrap:wrap${flip ? ";flex-direction:row-reverse" : ""}">
+  return `<div class="site-tour-row" style="display:flex;gap:56px;align-items:center;flex-wrap:wrap${flip ? ";flex-direction:row-reverse" : ""}">
     <div ${rv(`${it.key}-copy`, flip ? "rv-r" : "rv-l")} style="flex:1 1 320px;min-width:0">
       <div style="${MONO_EYEBROW}">${it.name}</div>
       <h3 style="margin:10px 0 0;font-size:23px;font-weight:650;letter-spacing:-0.015em">${it.title}</h3>
-      <p style="margin:12px 0 0;max-width:420px;font-size:14.5px;line-height:1.65;color:var(--fg-70);text-wrap:pretty">${it.body}</p>
+      <p class="site-tour-body" style="margin:12px 0 0;max-width:420px;font-size:14.5px;line-height:1.65;color:var(--fg-70);text-wrap:pretty">${it.body}</p>
       <button type="button" data-act="openFeature" data-arg="${it.key}:btn" aria-haspopup="dialog" class="site-explore" style="border-radius:8px">Explore ${it.name}${EXPAND}</button>
     </div>
     <div ${rv(`${it.key}-mock`, `${flip ? "rv-l is-flip" : "rv-r"} site-stage`)} style="flex:1.3 1 400px;min-width:0;${at(120)}"><div class="site-lift site-fxcard cnpy-hitbox" data-fx="${it.key}" style="${it.mockStyle}">${it.mock}<button type="button" data-act="openFeature" data-arg="${it.key}" class="cnpy-hit" tabindex="-1" aria-hidden="true"></button></div></div>
@@ -116,29 +118,71 @@ function tourRow(it: TourItem, flip: boolean): string {
 }
 
 // ── nav ──────────────────────────────────────────────────────────────────────
-function nav(dark: boolean, signedIn: boolean): string {
-  const link = (arg: string, label: string) => `<button data-act="siteJump" data-arg="${arg}" class="site-navlink">${label}</button>`;
+const SECTIONS: readonly (readonly [string, string])[] = [["how", "How it works"], ["tour", "Tour"], ["agents", "For agents"], ["security", "Security"], ["pricing", "Pricing"]];
+const MENU = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>`;
+const CLOSE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>`;
+const GO = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg>`;
+
+// Under 900px the section links, GitHub, the theme toggle and Sign in leave the bar (`.site-nav-x`) and the
+// menu button takes their place: the bar is one row — mark, name, the accent button, Menu. The button is
+// always emitted (the nav's structure never changes); trov.css shows it under 900px only.
+function nav(dark: boolean, signedIn: boolean, menuOpen = false): string {
+  const link = ([arg, label]: readonly [string, string]) => `<button data-act="siteJump" data-arg="${arg}" class="site-navlink">${label}</button>`;
   return `<nav class="site-nav" style="position:sticky;top:0;z-index:50;background:color-mix(in srgb, var(--bg) 86%, transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
     <div class="site-navin" style="max-width:1120px;margin:0 auto;padding:0 24px;height:60px;display:flex;align-items:center;gap:28px">
-      <button data-act="siteJump" data-arg="top" style="display:flex;align-items:center;gap:9px;padding:0;color:var(--fg)">
+      <button data-act="siteJump" data-arg="top" class="site-nav-home" style="display:flex;align-items:center;gap:9px;padding:0;color:var(--fg)">
         ${mark(20)}
         <span style="font-size:16.5px;font-weight:650;letter-spacing:-0.01em">Trov</span>
       </button>
       <div class="site-hide-sm" style="display:flex;gap:4px;margin-left:8px">
-        ${link("how", "How it works")}${link("tour", "Tour")}${link("agents", "For agents")}${link("security", "Security")}${link("pricing", "Pricing")}
+        ${SECTIONS.map(link).join("")}
       </div>
-      <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
-        <a href="${TROV_REPO}" target="_blank" rel="noopener" title="GitHub" class="site-iconbtn">${GH_MARK(17)}</a>
-        <button data-act="cycleTheme" title="Toggle theme" class="site-iconbtn" style="border:1px solid var(--border)">${dark ? MOON : SUN}</button>
+      <div class="site-nav-r" style="margin-left:auto;display:flex;align-items:center;gap:10px">
+        <a href="${TROV_REPO}" target="_blank" rel="noopener" title="GitHub" class="site-iconbtn site-nav-x">${GH_MARK(17)}</a>
+        <button data-act="cycleTheme" title="Toggle theme" class="site-iconbtn site-nav-x" style="border:1px solid var(--border)">${dark ? MOON : SUN}</button>
         ${signedIn
-          ? `<button data-act="siteBack" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Back to the app</button>`
+          ? `<button data-act="siteBack" class="cnpy-accentbtn site-nav-cta" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Back to the app</button>`
           // Two ways in, said apart: a quiet Sign in for someone with an account, and the page's one accent
           // button for someone without (Get started, the hero's label), which opens the dialog on its plan choice.
-          : `<button data-act="openSignIn" data-field="navSignIn" class="site-nav-signin" style="border-radius:8px">Sign in</button>
-        <button data-act="openSignIn" data-arg="signup" data-field="navStart" class="cnpy-accentbtn" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Get started</button>`}
+          : `<button data-act="openSignIn" data-field="navSignIn" class="site-nav-signin site-nav-x" style="border-radius:8px">Sign in</button>
+        <button data-act="openSignIn" data-arg="signup" data-field="navStart" class="cnpy-accentbtn site-nav-cta" style="padding:7px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600;white-space:nowrap">Get started</button>`}
+        <button type="button" data-act="openSiteMenu" data-field="siteMenuBtn" aria-haspopup="dialog" aria-expanded="${menuOpen}" aria-controls="site-menu" aria-label="Menu" class="site-iconbtn site-menubtn" style="border:1px solid var(--border)">${MENU}</button>
       </div>
     </div>
   </nav>`;
+}
+
+// ── the menu (under 900px) ───────────────────────────────────────────────────
+// What the bar dropped, as a sheet: the five sections, the theme, GitHub, and the two ways in. ONE
+// root-level `data-overlay`, so opening it, toggling the theme inside it and closing it patch the page in
+// place (morph.ts) — nothing behind is rebuilt, and no reveal replays. site-menu.ts owns its focus, its
+// keys (Esc, the Tab trap), the scroll lock and its exit; a section link closes it, then scrolls ONCE.
+// A phone gets a bottom sheet (the app's rule for every modal); a tablet a card under the button.
+function menuSheet(dark: boolean, signedIn: boolean): string {
+  const jump = ([arg, label]: readonly [string, string]) => `<button type="button" data-act="siteJump" data-arg="${arg}" class="site-menu-link" style="border-radius:10px"><span>${label}</span>${GO}</button>`;
+  const ways = signedIn
+    ? `<button type="button" data-act="siteBack" class="site-btn site-btn-accent">Back to the app</button>`
+    : `<button type="button" data-act="openSignIn" data-field="menuSignIn" class="site-btn site-btn-outline">Sign in</button>
+          <button type="button" data-act="openSignIn" data-arg="signup" data-field="menuStart" class="site-btn site-btn-accent">Get started</button>`;
+  return `<div data-overlay="sitemenu" class="site-menu">
+    <div data-act="closeSiteMenu" class="site-menu-back"></div>
+    <div class="site-menu-wrap">
+      <div id="site-menu" role="dialog" aria-modal="true" aria-labelledby="site-menu-t" class="site-menu-sheet" style="border-radius:16px">
+        <div class="site-menu-head">
+          <span id="site-menu-t" class="site-menu-t">Menu</span>
+          <button type="button" data-act="closeSiteMenu" aria-label="Close menu" class="site-menu-x" style="border-radius:8px">${CLOSE}</button>
+        </div>
+        <nav aria-label="Sections" class="site-menu-links">${SECTIONS.map(jump).join("")}</nav>
+        <div class="site-menu-tools">
+          <button type="button" data-act="cycleTheme" data-field="menuTheme" class="site-menu-tool" style="border-radius:10px"><span>Theme</span><span class="site-menu-val">${dark ? "Dark" : "Light"}${dark ? MOON : SUN}</span></button>
+          <a href="${TROV_REPO}" target="_blank" rel="noopener" class="site-menu-tool" style="border-radius:10px"><span>Source on GitHub</span><span class="site-menu-val">${GH_MARK(16)}</span></a>
+        </div>
+        <div class="site-menu-ways">
+          ${ways}
+        </div>
+      </div>
+    </div>
+  </div>`;
 }
 
 // ── 1 · hero (with the Review screen mockup) ─────────────────────────────────
@@ -164,9 +208,10 @@ function hero(signedIn: boolean): string {
     `<div style="display:flex;align-items:center;gap:9px;padding:6.5px 8px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--fg-55)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none">${svg}</svg>${label}</div>`;
   const sideHead = (label: string, top: string) =>
     `<div style="font-family:var(--label);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);padding:${top} 8px 5px">${label}</div>`;
-  const line = (text: string) => `<div style="padding:1px 12px">${text}</div>`;
+  // `twin`: the same line stands in the other pane too. A phone shows ONE unified column (trov.css), so it drops the twin.
+  const line = (text: string, twin = false) => `<div${twin ? ` class="site-hero-twin"` : ""} style="padding:1px 12px">${text}</div>`;
   const hl = (inner: string, kind: "add" | "del", start: number) => `<div class="site-hl hl-${kind}" style="padding:1px 12px;${at(start)}"><span>${inner}</span></div>`;
-  const paneHead = (label: string) => `<div style="padding:7px 12px;border-bottom:1px solid var(--border);font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">${label}</div>`;
+  const paneHead = (label: string) => `<div class="site-hero-ph" style="padding:7px 12px;border-bottom:1px solid var(--border);font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">${label}</div>`;
   const diffTab = (label: string, on: boolean) => `<span style="padding:3px 9px;border-radius:6px;font-size:10.5px;font-weight:500;${on ? "border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft)" : "border:1px solid var(--border);color:var(--fg-55)"}">${label}</span>`;
   const dot = `<span style="width:10px;height:10px;border-radius:50%;background:var(--border-strong);flex:none"></span>`;
 
@@ -195,7 +240,7 @@ function hero(signedIn: boolean): string {
         <span style="margin:0 auto;font-family:var(--label);font-size:11px;color:var(--fg-40);border:1px solid var(--border);border-radius:6px;padding:3px 14px">trov.dev/acme/#review</span>
         <span style="width:44px"></span>
       </div>
-      <div style="display:flex;height:568px;overflow:hidden">
+      <div class="site-hero-win" style="display:flex;height:568px;overflow:hidden">
         <div class="site-hide-sm" style="width:212px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--border);padding:14px 12px 12px">
           <div style="display:flex;align-items:center;gap:8px;padding:2px 8px 14px">
             ${mark(17)}
@@ -231,33 +276,34 @@ function hero(signedIn: boolean): string {
         </div>
         <div style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
           <div style="display:flex;align-items:center;padding:13px 22px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Review</div>
-          <div style="padding:22px 26px;overflow:hidden">
-            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div class="site-hero-pad" style="padding:22px 26px;overflow:hidden">
+            <div class="site-hero-trow" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
               <span style="font-size:21px;font-weight:650;letter-spacing:-0.015em">Deploy process</span>
               ${pill("edit", "blue", "9px", "2px 6px")}
               ${pill("low confidence", "amber", "9px", "2px 6px")}
-              <span style="margin-left:auto;display:flex;gap:8px">
+              <span class="site-hero-verdict" style="margin-left:auto;display:flex;gap:8px">
                 <span class="site-dim" style="border:1px solid var(--border-strong);color:var(--fg-70);font-size:12px;font-weight:600;padding:6px 14px;border-radius:8px;${at(DONE)}">Reject</span>
                 <span class="site-ring site-press site-swap" style="background:var(--accent);color:var(--accent-fg);font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;--ring:${RING}ms;--press:${PRESS}ms;${at(DONE)}"><span>Promote</span><span>Promoted ✓</span></span>
               </span>
             </div>
-            <div style="margin-top:7px;display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--fg-55)">
+            <div class="site-hero-meta" style="margin-top:7px;display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--fg-55)">
               Proposal · <span style="font-family:var(--label);font-size:10.5px;letter-spacing:.03em">TECHNICAL / OPERATIONS</span> · Maya Chen ${AGENT_TAG} · 2h ago
             </div>
             <div style="margin-top:20px;display:flex;align-items:center;gap:10px">
               <span style="font-family:var(--label);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-40)">What changed</span>
-              <span style="margin-left:auto;display:flex;gap:6px">${diffTab("Unified", false)}${diffTab("Side by side", true)}${diffTab("Rendered", false)}</span>
+              <span class="site-hero-tabs" style="margin-left:auto;display:flex;gap:6px">${diffTab("Unified", false)}${diffTab("Side by side", true)}${diffTab("Rendered", false)}</span>
+              <span class="site-hero-tabs-ph" aria-hidden="true">${diffTab("Unified", true)}${diffTab("Side by side", false)}${diffTab("Rendered", false)}</span>
             </div>
-            <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:10px;overflow:hidden;font-family:var(--label);font-size:11px;line-height:1.7">
-              <div style="border-right:1px solid var(--border)">
+            <div class="site-hero-diff" style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:10px;overflow:hidden;font-family:var(--label);font-size:11px;line-height:1.7">
+              <div class="site-hero-cur" style="border-right:1px solid var(--border)">
                 ${paneHead("Current · v4")}
-                <div style="padding:10px 0 14px;color:var(--fg-70)">
-                  ${line("## Deploy process")}${line("&nbsp;")}${line("Merges to main deploy automatically.")}${line("1. Open a PR and get one review.")}${line("2. CI runs typecheck and tests.")}${hl("- 3. Deploy from your laptop.", "del", DEL)}
+                <div class="site-hero-lines" style="padding:10px 0 14px;color:var(--fg-70)">
+                  ${line("## Deploy process", true)}${line("&nbsp;", true)}${line("Merges to main deploy automatically.", true)}${line("1. Open a PR and get one review.", true)}${line("2. CI runs typecheck and tests.", true)}${hl("- 3. Deploy from your laptop.", "del", DEL)}
                 </div>
               </div>
-              <div>
+              <div class="site-hero-new">
                 ${paneHead("Proposed")}
-                <div style="padding:10px 0 14px;color:var(--fg-70)">
+                <div class="site-hero-lines" style="padding:10px 0 14px;color:var(--fg-70)">
                   ${line("## Deploy process")}${line("&nbsp;")}${line("Merges to main deploy automatically.")}${line("1. Open a PR and get one review.")}${line("2. CI runs typecheck and tests.")}${hl(add1, "add", DEL + 300)}${hl(add2, "add", add1End + 130)}
                 </div>
               </div>
@@ -280,7 +326,7 @@ function problem(): string {
       <div style="font-size:16px;font-weight:650;letter-spacing:-0.01em">${title}</div>
       <p style="margin:10px 0 0;font-size:14px;line-height:1.6;color:var(--fg-70);text-wrap:pretty">${body}</p>
     </div>`;
-  return `<section style="max-width:1120px;margin:0 auto;padding:130px 24px 0">
+  return `<section ${SEC} style="max-width:1120px;margin:0 auto;padding:130px 24px 0">
     <div ${rv("problem", "rv-static")} style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:16px">
       ${card(0, "Agents start every session cold.", "They re-derive conventions and guess at decisions the team already made.")}
       ${card(1, "Wikis rot.", "Writing back is a chore nobody does after the work ships.")}
@@ -341,9 +387,9 @@ function loop(): string {
       </div>
     </div>`;
 
-  return `<section id="site-how" style="${section(140)}">
+  return `<section id="site-how" ${SEC} style="${section(140)}">
     ${heading("how-head", "Orient, work, record.")}
-    <div style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:16px;align-items:stretch">
+    <div class="site-how-grid" style="margin-top:48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:16px;align-items:stretch">
       ${step(0, "01 · Orient", "Before touching an existing area, the agent searches Trov and reads the relevant docs and decisions.", orient)}
       ${step(1, "02 · Work", "The agent builds on what the team decided instead of guessing.", work)}
       ${step(2, "03 · Record", "On request, the agent reads what actually shipped from git and GitHub and sends one batch of updates.", record)}
@@ -353,7 +399,7 @@ function loop(): string {
 
 // ── 4 · agents propose, people decide ────────────────────────────────────────
 function authority(): string {
-  return `<section style="max-width:1120px;margin:0 auto;padding:140px 24px 0">
+  return `<section ${SEC} style="max-width:1120px;margin:0 auto;padding:140px 24px 0">
     <div ${rv("authority", "site-split")} style="border-radius:14px">
       <div class="site-banner site-split-banner">
         ${BANNER_ART}
@@ -491,7 +537,8 @@ function tourItems(): TourItem[] {
       <div style="font-size:11px;font-weight:600;line-height:1.35">${title}</div>
       <div style="margin-top:7px;display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--fg-40)">${meta}<span style="margin-left:auto;display:flex">${who}</span></div>
     </div>`;
-  const column = (name: string, color: string, cards: string[], hideSm = false) => `<div${hideSm ? ` class="site-hide-sm"` : ""} style="min-width:0;display:flex;flex-direction:column;gap:7px">
+  // `hide`: the column a tablet drops ("sm", under 900px) and the one a phone drops as well ("ph", under 640px).
+  const column = (name: string, color: string, cards: string[], hide: "" | "sm" | "ph" = "") => `<div${hide ? ` class="site-hide-${hide}"` : ""} style="min-width:0;display:flex;flex-direction:column;gap:7px">
       <div style="display:flex;align-items:center;padding-bottom:6px;border-bottom:1px solid var(--border);font-family:var(--label);font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--${color})">${name}<span style="margin-left:auto;color:var(--fg-40)">${cards.length}</span></div>
       ${cards.join("")}
     </div>`;
@@ -500,11 +547,11 @@ function tourItems(): TourItem[] {
         <span style="font-size:12px;font-weight:600">Tickets</span>
         <span style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:10.5px;font-weight:500">${segTab("Board", true)}${segTab("Table", false, true)}</span>
       </div>
-      <div style="padding:14px 16px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(110px,100%),1fr));gap:10px;align-items:start">
+      <div class="site-tk-board" style="padding:14px 16px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(110px,100%),1fr));gap:10px;align-items:start">
         ${column("Triage", "blue", [card(0, "Email digest lands twice on Mondays", "#218", nobody), card(3, "Onboarding checklist is stale", `#230 · ${prio("Low")}`, initials("SO", 18, "7.5px"))])}
         ${column("In progress", "accent", [card(1, "Rate limiting on the public API", `#212 · ${prio("High")}`, initials("LP", 18, "7.5px"))])}
-        ${column("Testing", "amber", [card(2, "Retry-After on 429 responses", "#213", initials("MC", 18, "7.5px"))])}
-        ${column("Done", "green", [card(4, "SSO step in the checklist", "#209", initials("SO", 18, "7.5px"))], true)}
+        ${column("Testing", "amber", [card(2, "Retry-After on 429 responses", "#213", initials("MC", 18, "7.5px"))], "ph")}
+        ${column("Done", "green", [card(4, "SSO step in the checklist", "#209", initials("SO", 18, "7.5px"))], "sm")}
       </div>`;
 
   const lane = (i: number, label: string, left: number, width: number, pct: number, color: string, count: string) => `<div class="site-st st-l" style="position:relative;height:30px;${at(S + i * 150)}">
@@ -587,7 +634,7 @@ function tourItems(): TourItem[] {
         <span style="font-size:12px;font-weight:600">Artifacts</span>
         <span style="margin-left:auto;font-family:var(--label);font-size:10px;color:var(--fg-40)">ticket #212 · 3 pages</span>
       </div>
-      <div style="padding:14px 16px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px">
+      <div class="site-art-grid" style="padding:14px 16px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px">
         ${artCard(0, bars([70, 45, 88, 30]), "Rate limit headers: design", "html", `<span class="site-swap" style="${at(S + 1300)}">${pill("published", "blue")}${pill("ratified", "green")}</span>`)}
         ${artCard(1, flow, "Digest pipeline", "svg", pill("published", "blue"))}
         ${artCard(2, bars([55, 80, 62]), "429 rates by org, last 7 days", "markdown", pill("draft", "fg-55"))}
@@ -605,9 +652,9 @@ function tourItems(): TourItem[] {
 }
 
 function tour(): string {
-  return `<section id="site-tour" style="${section()}">
+  return `<section id="site-tour" ${SEC} style="${section()}">
     ${heading("tour-head", "One place for what the team knows.", "Open any screen for a closer look.")}
-    <div style="margin-top:64px;display:flex;flex-direction:column;gap:96px">
+    <div class="site-tour-list" style="margin-top:64px;display:flex;flex-direction:column;gap:96px">
       ${tourItems().map((it, i) => tourRow(it, i % 2 === 1)).join("\n      ")}
     </div>
   </section>`;
@@ -667,7 +714,7 @@ function extras(): string {
     </div>`;
   const t = (text: string) => `<div style="font-size:14.5px;font-weight:650">${text}</div>`;
   const swatch = (bg: string, i: number) => `<span class="site-st st-pop" style="width:14px;height:14px;border-radius:50%;background:${bg};border:1px solid var(--border-strong);${at(420 + i * 80)}"></span>`;
-  return `<section style="max-width:1120px;margin:0 auto;padding:130px 24px 0">
+  return `<section ${SEC} style="max-width:1120px;margin:0 auto;padding:130px 24px 0">
     <div ${rv("extras", "rv-static")} style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:16px">
       ${card(0, t("Decisions"), "Architecture decision records, in their own section of Docs.")}
       ${card(1, t("Search everything"), "One box jumps to any ticket, doc, sprint, artifact, prompt, or person. Agents also see pending proposals, labeled.")}
@@ -708,10 +755,10 @@ function agents(): string {
   // commands Settings and the guided setup show (mcp-connect.ts — one copy, with its Copy button).
   // The row's columns are weighted (trov.css `.site-agents-row`) so the two cards are naturally the
   // same height at desktop width.
-  return `<section id="site-agents" style="${section()}">
+  return `<section id="site-agents" ${SEC} style="${section()}">
     ${heading("agents-head", "For agents", "An MCP server agents connect to directly, and a Claude Code plugin that wires it up with the skills that drive the loop.")}
     <div class="site-agents-row">
-      <div ${rv("agents-mcp")} style="border:1px solid var(--border);border-radius:13px;padding:26px 28px">
+      <div ${rv("agents-mcp", "site-agent-card")} style="border:1px solid var(--border);border-radius:13px;padding:26px 28px">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
           <span style="font-size:17px;font-weight:650">MCP server</span>
           <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">39 tools, plus 1 admin-only</span>
@@ -719,7 +766,7 @@ function agents(): string {
         <div style="margin-top:20px;display:flex;flex-direction:column;gap:16px">${tools}
         </div>
       </div>
-      <div ${rv("agents-plugin")} style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:13px;padding:26px 28px;${at(120)}">
+      <div ${rv("agents-plugin", "site-agent-card")} style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:13px;padding:26px 28px;${at(120)}">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
           <span style="font-size:17px;font-weight:650">Claude Code plugin</span>
           <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">10 skills</span>
@@ -739,7 +786,7 @@ function agents(): string {
 // ── 8 · security ─────────────────────────────────────────────────────────────
 function security(): string {
   const row = (i: number, text: string) => `<div style="display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)">${check(15, 200 + i * 130, "margin-top:3px;")}<span class="site-st st-l" style="font-size:14.5px;line-height:1.55;color:var(--fg-70);${at(260 + i * 130)}">${text}</span></div>`;
-  return `<section id="site-security" style="${section()}">
+  return `<section id="site-security" ${SEC} style="${section()}">
     ${heading("security-head", "Security, in plain terms")}
     <div ${rv("security", "rv-static")} style="margin-top:44px;display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:14px 40px;max-width:900px">
       ${row(0, "Agents connect by browser sign-in; only hashes of their tokens are stored.")}
@@ -842,12 +889,14 @@ export interface LandingProps {
   seen: ReadonlySet<string>;
   /** The tour feature open in its dialog (site-feature.ts), or none. */
   feature?: FeatureState | null;
+  /** The menu the nav offers under 900px (site-menu.ts) is open. */
+  menuOpen?: boolean;
 }
 
 export function landingView(p: LandingProps): string {
   seen = p.seen;
   return `<div class="cnpy-site" data-morph="landing">
-    ${nav(p.dark, p.signedIn ?? false)}
+    ${nav(p.dark, p.signedIn ?? false, p.menuOpen ?? false)}
     ${hero(p.signedIn ?? false)}
     ${problem()}
     ${loop()}
@@ -860,5 +909,6 @@ export function landingView(p: LandingProps): string {
     ${siteFooter("dialog")}
   </div>
   ${p.signInOpen ? signInDialog(p.signInMode ?? "signin", p.signInPlan ?? "free") : ""}
-  ${p.feature ? featureDialog(p.feature) : ""}`;
+  ${p.feature ? featureDialog(p.feature) : ""}
+  ${p.menuOpen ? menuSheet(p.dark, p.signedIn ?? false) : ""}`;
 }
