@@ -31,6 +31,10 @@ accounts, connecting an agent, troubleshooting. It has no numbered "Step 1 / 2 /
 signed in. The welcome e-mail links the guided setup, not the Guide. A new rule about signing in or
 connecting goes in ONE of these and is linked from the others.
 
+Inside an organization (the guided setup) the backdrop is the REAL My Work of the org on screen
+(`firstRunBackdrop(s)`), read while the person is in the setup (`loadHome`); leaving the setup for My Work is a
+`morphStep` with the page entrance skipped once (`skipEnterOnce`), so "Open Trov" removes the card and nothing
+else moves or loads. Before there is an organization it is the app with nothing read (all skeletons).
 The backdrop's skeletons are a picture, not reads in flight: `syncSkeletons` skips anything inside an `inert`
 region. Because it is the app's own markup, every rule that animates a screen matches inside it —
 above all the page entrance (`markEnter` sets `[data-enter]` on the root whenever the route changes, and each

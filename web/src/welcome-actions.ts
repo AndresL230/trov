@@ -53,6 +53,9 @@ export interface WelcomeHost {
   rerender(): void;
   /** Org settings' reads for the org on screen (org-actions.ts `load`). */
   loadOrg(): void;
+  /** My Work's reads, if they have not been made: it is what stands behind the card and what "Open Trov"
+   *  reveals, so it is read while the person is still in the setup. */
+  loadHome(): void;
   /** Settings › MCP access's two reads, if they have not been made (main.ts `loadGrantsIfNeeded`). */
   loadConnections(): void;
   /** Both of them again, whatever they hold (after a failure). */
@@ -141,6 +144,7 @@ export function createWelcomeController(h: WelcomeHost): WelcomeController {
   function enter(): void {
     h.loadOrg();
     h.loadConnections();
+    h.loadHome();
   }
 
   function act(name: string, arg: string | null): void {

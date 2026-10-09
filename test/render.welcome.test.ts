@@ -530,3 +530,16 @@ describe("the sign-up flow's own count — top right of each card", () => {
     expect(render(app(false))).not.toContain('data-flow-step="3"');
   });
 });
+
+describe("what stands behind the guided setup's card", () => {
+  it("is the REAL My Work of the org on screen — its sidebar, its name — so Open Trov only removes the card", () => {
+    const app: AppState = { ...initialState(), view: "app", screen: "welcome", orgSlug: "acme", me: { handle: "ines", name: "Ines Vidal", avatar_url: null, color: "fern", identities: [{ provider: "github", label: "ines" }], orgs: [{ slug: "acme", name: "Acme Robotics", role: "owner", logo_url: null }] } as AppState["me"] };
+    const html = render(app);
+    const bg = html.slice(html.indexOf('class="cnpy-fr-bg"'), html.indexOf('class="cnpy-orgs-col'));
+    expect(bg).toContain('aria-hidden="true" inert');
+    expect(bg).toContain('<span class="cnpy-lbl cnpy-orgsw-n">Acme Robotics</span>');   // this org's switcher, not a placeholder
+    expect(bg).toContain("Ines");                                                         // My Work greets the person
+    // Leaving the setup for My Work skips the page entrance: the screen was in view the whole time.
+    expect(src("welcome-actions.ts")).toContain("h.loadHome();");
+  });
+});

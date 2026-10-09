@@ -135,7 +135,7 @@ const orgsCtl = createOrgsController({
 // The guided first-run setup (web/src/welcome-actions.ts): every `welcome…` act, the agent step's
 // re-check, and the note that brings a return from GitHub back to it.
 const welcomeCtl = createWelcomeController({
-  state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadConnections: () => loadGrantsIfNeeded(),
+  state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadHome: () => loadMyWorkIfNeeded(), loadConnections: () => loadGrantsIfNeeded(),
   reloadConnections: () => { loadGrants(); loadMcpTokens(); }, listGrants: () => listOAuthGrants(),
   unauth: (e) => unauth(e), go: (url) => { window.location.href = url; },
 });
@@ -197,6 +197,9 @@ const ENTER_MS = 900;
 let enterKey = "";
 let enterAt = 0;
 let enterTimer: ReturnType<typeof setTimeout> | null = null;
+/** The next page is one the person was already looking at (My Work behind the guided setup's card):
+ *  it does not enter. Consumed by the next `markEnter`. */
+let skipEnterOnce = false;
 
 function markEnter(): void {
   const root = mount.firstElementChild as HTMLElement | null;
@@ -212,6 +215,7 @@ function markEnter(): void {
   // staggered entrance. A read that lands inside the entrance simply joins it (`--enter-t`).
   const key = `${pageKey(currentRoute())}|${state.repoSample ? "s" : ""}`;
   const now = performance.now();
+  if (skipEnterOnce) { skipEnterOnce = false; enterKey = key; enterAt = now - ENTER_MS; }
   if (key !== enterKey) { enterKey = key; enterAt = now; }
   const elapsed = now - enterAt;
   if (elapsed >= ENTER_MS) return;
@@ -2168,7 +2172,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
 
     // primary navigation
-    case "goMyWork": state.screen = "mywork"; loadMyWorkIfNeeded(); return;
+    case "goMyWork":
+      // Out of the guided setup: My Work is already what stands behind the card (read while the person
+      // was in the setup), so the card simply goes — a morph, and no page entrance replayed over a
+      // screen that was in view the whole time.
+      if (state.view === "app" && state.screen === "welcome") {
+        loadMyWorkIfNeeded();
+        morphStep(() => { state.screen = "mywork"; skipEnterOnce = true; rerender(); });
+        return;
+      }
+      state.screen = "mywork"; loadMyWorkIfNeeded(); return;
     case "mwRepoTab":
       if (!(MW_REPO_TABS as readonly string[]).includes(arg ?? "") || arg === state.mwRepoTab) return;
       state.mwRepoTab = arg as MwRepoTab;

@@ -2425,7 +2425,7 @@ function screenBody(s: AppState): string {
 /** Project the app state onto the guided setup's props (welcome.ts): Org settings' reads, and MY
  *  agent connections — the two reads Settings › MCP access makes. */
 export function welcomeProps(s: AppState): WelcomeProps {
-  return { org: currentOrg(s), step: s.welcome.step, me: s.me, ui: s.org, grants: s.grants, tokens: s.mcpTokens, wel: s.welcome, dd: s.dd, backdrop: firstRunBackdrop() };
+  return { org: currentOrg(s), step: s.welcome.step, me: s.me, ui: s.org, grants: s.grants, tokens: s.mcpTokens, wel: s.welcome, dd: s.dd, backdrop: firstRunBackdrop(s) };
 }
 
 /** Project the app state onto Org settings' props. The current org is `currentOrg` — one place. */
@@ -2496,9 +2496,14 @@ function appView(s: AppState): string {
  *  My Work — in the state it is in before anything has loaded, so every region is its own skeleton.
  *  It is what the person is about to enter, held still: `inert`, hidden from assistive tech, and
  *  softened by `.cnpy-fr-bg`. Nothing in it is theirs yet, so nothing in it is data. */
-function firstRunBackdrop(): string {
-  const ghost: AppState = { ...initialState(), view: "app", screen: "mywork" };
-  return `<div class="cnpy-fr-bg" aria-hidden="true" inert>${appView(ghost)}</div>`;
+function firstRunBackdrop(s?: AppState): string {
+  // Inside an organization (the guided setup) it is the REAL My Work — this person's sidebar, org and
+  // data, read while they are in the setup — so "Open Trov" removes the card and changes nothing else.
+  // Before there is an organization (onboarding, the picker) there is nothing of theirs to show.
+  const behind: AppState = s && s.view === "app" && s.orgSlug
+    ? { ...s, screen: "mywork", personCard: null, drawer: false }
+    : { ...initialState(), view: "app", screen: "mywork" };
+  return `<div class="cnpy-fr-bg" aria-hidden="true" inert>${appView(behind)}</div>`;
 }
 
 // The toast pops in, then fades out over its last 400ms. Both delays are offset by the time
