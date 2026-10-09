@@ -83,7 +83,7 @@ export function setApiOrg(slug: string | null): void { apiOrg = slug; }
 export const apiOrgSlug = (): string | null => apiOrg;
 
 /** Person-level and platform routes: not an org's, so never prefixed (docs/architecture/data-layer.md › Routes and gates). */
-const GLOBAL_PATH = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|billing|o)(?:[/?]|$)/;
+const GLOBAL_PATH = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|billing|support|o)(?:[/?]|$)/;
 export const isGlobalPath = (path: string): boolean => GLOBAL_PATH.test(path);
 
 /** The URL a route is requested at: a tenant route under the current org, anything else as written.
@@ -859,6 +859,15 @@ export async function listOAuthGrants(): Promise<OAuthGrantSummary[]> {
 export function revokeOAuthGrant(id: number): Promise<{ ok: true }> {
   return postJson<{ ok: true }>(`/auth/oauth-grants/${id}/revoke`);
 }
+// Settings › MCP access: what one of MY connections can reach. Each answers with my connections as they now stand.
+const grantScope = async (id: number, what: "orgs" | "current" | "mode", body: unknown): Promise<OAuthGrantSummary[]> =>
+  (await postJson<{ ok: true; grants: OAuthGrantSummary[] }>(`/auth/oauth-grants/${id}/${what}`, body)).grants;
+/** Let a manual connection use an organization of mine, or stop it. */
+export const setOAuthGrantOrg = (id: number, org: string, on: boolean) => grantScope(id, "orgs", { org, on });
+/** Switch a manual connection's current organization (one it may already use). */
+export const setOAuthGrantCurrent = (id: number, org: string) => grantScope(id, "current", { org });
+/** Make a connection follow the repository, or manual starting in `org`. */
+export const setOAuthGrantMode = (id: number, mode: "repo" | "manual", org?: string) => grantScope(id, "mode", { mode, org });
 
 // Re-export the row types the UI renders, so screens import shapes from one place.
 export type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow };
@@ -1001,4 +1010,34 @@ export function listPlatformAudit(org = "", limit = 100): Promise<PlatformAuditR
 }
 export function getPlatformUsage(days: number): Promise<PlatformUsageResponse> {
   return getJson<PlatformUsageResponse>(`/api/platform/usage?days=${days}`);
+}
+
+// ── support reports (0049_support_reports; docs/architecture/support.md) ─────
+// Sending one is a PERSON's (`/api/support`, never an org's route — it works with no org at all);
+// reading them is the superadmin's (`/api/platform/support…`, 404 for anyone else).
+import type { SupportPublicBody, SupportPublicResponse, SupportSubmitBody, SupportSubmitResponse, SupportReport, SupportListResponse, SupportStatusFilter, SupportKindFilter } from "@shared/support-core";
+
+/** A 429 carries `retry_after` (`rateLimitText`); any other refusal keeps the person's text in the dialog. */
+export function submitSupport(body: SupportSubmitBody): Promise<SupportSubmitResponse> {
+  return postJson<SupportSubmitResponse>("/api/support", body);
+}
+/** The site's Contact form, signed out (`POST /api/support/public`). A refusal carries its code as the
+ *  error's message: `rate_limited` (this address's day is spent), `support_closed` (the day's cap on
+ *  signed-out reports: write to the contact address instead), `too_fast`. Never a 401. */
+export function submitSupportPublic(body: SupportPublicBody): Promise<SupportPublicResponse> {
+  return postJson<SupportPublicResponse>("/api/support/public", body);
+}
+export function listPlatformSupport(q: { status?: SupportStatusFilter; kind?: SupportKindFilter; before?: number | null } = {}): Promise<SupportListResponse> {
+  const p = new URLSearchParams();
+  if (q.status) p.set("status", q.status);
+  if (q.kind) p.set("kind", q.kind);
+  if (q.before) p.set("before", String(q.before));
+  const qs = p.toString();
+  return getJson<SupportListResponse>(`/api/platform/support${qs ? `?${qs}` : ""}`);
+}
+export function getPlatformSupportReport(id: number): Promise<SupportReport> {
+  return getJson<{ report: SupportReport }>(`/api/platform/support/${id}`).then((r) => r.report);
+}
+export function setPlatformSupportStatus(id: number, status: "open" | "resolved"): Promise<SupportReport> {
+  return postJson<{ ok: true; report: SupportReport }>(`/api/platform/support/${id}/${status === "resolved" ? "resolve" : "reopen"}`).then((r) => r.report);
 }

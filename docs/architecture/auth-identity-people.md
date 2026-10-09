@@ -18,10 +18,13 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   `POST /auth/onboard` with handle + color). Link mode (`?link=1` with a session) attaches a second provider in
   Settings; the last identity can't be unlinked.
 - **Bearer token** (agents, `/mcp`): either a pasted per-person `canopy_mcp_` token (stored hashed) or an
-  OAuth access token (`canopy_oat_`) obtained through Trov's own OAuth server — both resolve to the same
-  (person, org) in `resolveBearerTenant` (`src/data/bearer.ts`), so OAuth is how a bearer is OBTAINED, not a
-  fourth class. **A bearer is bound to ONE org** — the org on its token row / OAuth grant, never a request
-  value — through a live membership check: removed member, suspended org → 401 (`docs/architecture/data-layer.md`).
+  OAuth access token (`canopy_oat_`) obtained through Trov's own OAuth server — both resolve to a
+  connection in `resolveBearerConnection` (`src/data/bearer.ts`), so OAuth is how a bearer is OBTAINED, not a
+  fourth class. **Each call acts in ONE org, chosen only among the person's live memberships**: a token's one
+  org; a `manual` connection's current org (of the set its person allowed); or, for a connection that
+  `follows the repository`, the org that has the call's `repo` connected — else nothing is read or written.
+  Removed member, suspended org → that org drops out at once; nowhere left → 401 (the full rule:
+  `docs/architecture/data-layer.md` § Bearer).
   **The Settings UI is OAuth-only** (the owner's call, 2026-09-27): nothing in the SPA mints, lists or revokes a
   `canopy_mcp_` token any more — the Get connection command modal, the token list and their web client calls are
   gone. The token routes REMAIN, so a token already in use keeps working: `POST /auth/mcp-token` still mints,
@@ -39,6 +42,13 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   click Allow in the browser; then **Connected apps** (the OAuth grants — below the steps, or beside them once
   the tile is ≥ 620px, the `cnpy-mcp` container — with a count, its own empty state, a two-click Revoke per row
   and its first `MCP_LIST_CAP` (3) rows until "Show all N"; no fixed height, no inner scroller).
+  Each row carries a chip saying how it is scoped (`grantScopeChip`: "Follows the repository", or a manual
+  one's current org and "+N" more) and a **Change** button that opens its scope under the row
+  (`grantScopeEditor`, one open at a time — `state.grantScope`): the mode as a `segmented()` (Follow the
+  repository / Manual) and, for Manual, a `dropdown()` for the org it is working in and a `role="switch"` per
+  organization of the person's (`switchBtn`). Every change saves at once through `POST
+  /auth/oauth-grants/:id/{mode,orgs,current}` and the list becomes the route's answer; a refusal (`current_org`,
+  `last_org`, a plan limit) is a toast in words.
   The Settings screen is ONE bento grid with even edges (`.cnpy-set`, three columns): Profile | Account | MCP
   access (spanning rows 1–2 of a slightly wider third column), Appearance under the first two, Email
   notifications at full width. Every tile STRETCHES to its grid area, so tiles in a row share a top and a bottom
@@ -53,13 +63,22 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
 - **MCP OAuth** (`src/auth/oauth.ts` core, `oauth-routes.ts` HTTP, `oauth-pages.ts` pages; spec
   `docs/superpowers/specs/2026-09-24-mcp-oauth-design.md`; migration `0029_oauth`): RFC 9728/8414 metadata,
   RFC 7591 registration (public clients, loopback redirects match on any port), authorization code + S256
-  PKCE, a server-rendered consent page shown on EVERY authorization (CSRF = HMAC over session + request),
+  PKCE, a server-rendered consent page shown on EVERY authorization (CSRF = HMAC over session + request).
+  **The consent page asks how the connection picks an organization** (0051; `consentPage`, no script — the
+  org list shows and hides on which mode radio is checked): *Follow the repository* (recommended and
+  preselected when the person has several orgs: "works in whichever of your organizations has the repository
+  you are in connected; anywhere else it reads and writes nothing") or *Manual* (a tick per organization — all
+  ticked up to `CONSENT_TICK_ALL_MAX`, at least one required — and which one it "starts here"; with one org it
+  is named and sent hidden). The POST binds every ticked slug through `resolveTenant`; one it cannot bind
+  refuses the whole consent, and a missing tick or start re-renders the page with the reason. A form with no
+  `mode` (the page from before 0051) is a manual connection to its one `org`. `issueAuthorization` /
+  `issueRepoAuthorization` write the grant;
   access 1 h; refresh tokens rotate with a 60 s reuse interval — a reuse past that window revokes the
   whole grant — and a rotated refresh token is kept until its OWN expiry (90 days idle), so a late reuse
   is still caught. Sign-in from
   an authorize link survives GitHub/Google and onboarding via the sealed `oauth_pending` cookie. Settings ›
-  MCP access lists connections (`GET /auth/oauth-grants`, `POST /auth/oauth-grants/:id/revoke` —
-  cookie-only, never MCP). `pruneOAuth` rides the repo cron's `:30` tick and deletes spent or expired
+  MCP access lists connections (`GET /auth/oauth-grants`, `POST /auth/oauth-grants/:id/revoke`) and
+  changes what one can reach (`POST /auth/oauth-grants/:id/orgs|current|mode`) — cookie-only, never MCP. `pruneOAuth` rides the repo cron's `:30` tick and deletes spent or expired
   codes, access tokens a day past expiry, refresh tokens past expiry, and client registrations that never
   got a grant after 90 days (`UNGRANTED_CLIENT_TTL_MS` — long enough that a person who abandons authorize
   still finds their registration on a retry days later) — grants themselves are never

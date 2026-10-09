@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import { landingView, TOUR_KEYS, TOUR_FACTS, type TourKey } from "../web/src/landing";
 import { initialState, render } from "../web/src/render";
 import { fxMode, stepKey, trapIndex, FX_EXIT_MS, FX_MOVE_MS, type FeatureState } from "../web/src/site-feature";
-import { PLUGIN_INSTALL, ONE_ORG_NOTE } from "../web/src/mcp-connect";
+import { PLUGIN_INSTALL, CONNECTION_NOTE } from "../web/src/mcp-connect";
 import { MOCK_KEYS, featureMock, mockText } from "../web/src/landing-mocks";
 import { TICKET_STATUSES, TICKET_STATUS_LABEL } from "../shared/tickets-core";
 import { ARTIFACT_STATUSES } from "../shared/artifacts-core";
@@ -289,7 +289,7 @@ describe("For agents — the plugin card", () => {
     expect(card).toContain('data-act="copyPluginInstall"');
     expect(card).toContain('<ol aria-label="Connect Claude Code"');
     expect(card).toContain("Authenticate");
-    expect(card).toContain(ONE_ORG_NOTE);
+    expect(card).toContain(CONNECTION_NOTE);
     expect(card).toContain("How Trov works, in the Guide");
   });
   it("retypes none of it: landing.ts holds no copy of the commands", () => {

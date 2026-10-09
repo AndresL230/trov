@@ -2,7 +2,7 @@
 name: handoff
 description: Use when a person explicitly asks to leave a handoff for the next session or another teammate (triggers — "leave a handoff", "hand this off", "I'm switching to someone else", "we're running out of context, write it up for the next session"). Explicit invocation only — must never auto-fire at a natural stopping point.
 disable-model-invocation: true
-allowed-tools: Bash(git remote get-url:*), Bash(git branch:*), Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(uuidgen:*), mcp__trov__send_handoff, mcp__trov__list_handoffs
+allowed-tools: Bash(git remote get-url:*), Bash(git branch:*), Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(uuidgen:*), mcp__trov__send_handoff, mcp__trov__list_handoffs, mcp__trov__get_connection
 ---
 
 # Handoff → Trov
@@ -31,6 +31,24 @@ session start and claims one only when the person picks it.
 - **Never more than one per session.** If a handoff was already sent this session, report its `#N`
   instead of sending another.
 
+## Which organization — pass `repo` on every call
+
+One Trov connection covers every organization you belong to, so every Trov tool takes the repository
+you are working in. Once per session, run `git remote get-url origin` and reduce it to `owner/name`
+(`git@github.com:acme/app.git` and `https://github.com/acme/app` are both `acme/app`). Pass that as
+`repo` on EVERY Trov call this skill makes. No remote, or not a GitHub one: leave `repo` out.
+
+- A connection that **follows the repository** acts in the organization that has that repository
+  connected. `repo_required` / `not_connected` mean NOTHING was read or written: tell the person this
+  repository is not connected to any of their organizations (Trov › Org settings › Repositories) and
+  stop — never pass a different repository to get an answer. `ambiguous_org` lists the candidates:
+  ask the person which, then pass it as `org`.
+- A **manual** connection ignores `repo` and acts in its current organization. `org_unavailable` /
+  `org_not_allowed` list what it may use: ask the person, never guess, and prefer `org` on the call
+  over `switch_org` (a switch moves every session that shares the connection).
+- Not sure where you are? `get_connection` (same `repo`) answers: the organization this call would
+  act in, the connection's mode, and what it can reach.
+
 ## Procedure
 
 ### 1. Fill the context from git, not from memory
@@ -40,7 +58,7 @@ comes from something you can observe:
 
 | Field | Source |
 |-------|--------|
-| `repo` | `git remote get-url origin` → `owner/name` (strip the host and `.git`) |
+| `repo` | `git remote get-url origin` → `owner/name` (strip the host and `.git`) — the same value you pass as the call's own `repo` argument |
 | `branch` | `git branch --show-current` |
 | `files` | `git diff --name-only main...HEAD` **plus** uncommitted changes (`git status --porcelain`), deduped |
 | `task` | one line: what this session was in the middle of |

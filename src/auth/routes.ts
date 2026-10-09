@@ -17,9 +17,10 @@ import { run } from "../data/platform-sql";
 import { completeSignIn, linkSignIn, sealOnboard, openOnboard, ONBOARD_COOKIE, ONBOARD_TTL_S, type ProviderProfile, type ForkResult } from "./onboard";
 import { mailOrigin, welcomeFirstJoin } from "../orgs/mail";
 import { takeOAuthPending } from "./oauth-routes";
-import { listGrants, revokeGrant } from "./oauth";
+import { listGrants, revokeGrant, setGrantOrg, setGrantCurrent, setGrantMode, requireOwnGrant, GrantScopeError, type GrantScopeCode } from "./oauth";
+import { PlanLimitError, PLAN_LIMIT_STATUS } from "../plans/state";
 import { platformContext } from "../data/gate";
-import { hasRole, isSuperadmin, resolveSoleTenant } from "../data/context";
+import { hasRole, isSuperadmin, resolveSoleTenant, resolveTenant } from "../data/context";
 import { consumeLegacyInvite } from "../data/legacy";
 import { listMyOrgs, listMyInvites } from "../orgs/repo";
 import { rateLimited } from "../platform/limits";
@@ -296,6 +297,55 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id) || !(await revokeGrant(c.var.p, c.get("principal").handle, id, Date.now()))) return c.json({ error: "not_found" }, 404);
     return c.json({ ok: true });
+  });
+
+  // Settings › MCP access: change what one of the caller's OWN connections can reach (0051). These are
+  // a PERSON's acts — session cookie only, never an MCP tool: which organizations a manual connection
+  // may use, which one it acts in, and whether it is manual or follows the repository. An organization
+  // is named by slug and bound through `resolveTenant` (a live membership check), so someone else's
+  // grant id, an unknown id, an org the caller is not in and a suspended one are all the same 404.
+  // Every answer carries the caller's connections as they now stand.
+  const GRANT_SCOPE_STATUS: Record<GrantScopeCode, 404 | 409> = { not_found: 404, not_allowed: 409, not_manual: 409, current_org: 409, last_org: 409 };
+  const GRANT_SCOPE_MESSAGE: Record<GrantScopeCode, string> = {
+    not_found: "not_found",
+    not_allowed: "This connection is not allowed to use that organization. Turn it on first.",
+    not_manual: "This connection follows the repository. Change it to manual to choose its organizations.",
+    current_org: "That is the organization this connection is working in. Switch it to another one first.",
+    last_org: "A connection needs at least one organization. Disconnect it instead.",
+  };
+  const grantScope = (path: string, act: (a: { handle: string; id: number; body: Record<string, unknown>; c: Context<AppEnv> }) => Promise<void>) =>
+    authApp.post(path, async (c) => {
+      const handle = c.get("principal").handle;
+      const id = Number(c.req.param("id"));
+      const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!Number.isInteger(id) || !body || typeof body !== "object") return c.json({ error: "bad_request" }, 400);
+      try {
+        await act({ handle, id, body, c });
+      } catch (e) {
+        if (e instanceof GrantScopeError) return c.json({ error: e.code, message: GRANT_SCOPE_MESSAGE[e.code] }, GRANT_SCOPE_STATUS[e.code]);
+        if (e instanceof PlanLimitError) return c.json(e.refusal, PLAN_LIMIT_STATUS);
+        throw e;
+      }
+      return c.json({ ok: true, grants: await listGrants(c.var.p, handle) });
+    });
+  /** The caller's LIVE membership of the org a body names — or the 404 every miss shares. */
+  const memberOrg = async (c: Context<AppEnv>, handle: string, slug: unknown) => {
+    const ctx = typeof slug === "string" && slug ? await resolveTenant(c.env, handle, slug) : null;
+    if (!ctx) throw new GrantScopeError("not_found");
+    return ctx;
+  };
+  grantScope("/oauth-grants/:id/orgs", async ({ handle, id, body, c }) => {
+    if (typeof body.on !== "boolean") throw new GrantScopeError("not_found");
+    await setGrantOrg(c.var.p, await memberOrg(c, handle, body.org), id, body.on);
+  });
+  grantScope("/oauth-grants/:id/current", async ({ handle, id, body, c }) => {
+    await requireOwnGrant(c.var.p, handle, id);
+    await setGrantCurrent(await memberOrg(c, handle, body.org), id);
+  });
+  grantScope("/oauth-grants/:id/mode", async ({ handle, id, body, c }) => {
+    if (body.mode === "repo") return setGrantMode(c.var.p, handle, id, { mode: "repo" });
+    if (body.mode !== "manual") throw new GrantScopeError("not_found");
+    await setGrantMode(c.var.p, handle, id, { mode: "manual", ctx: await memberOrg(c, handle, body.org) });
   });
   return authApp;
 }

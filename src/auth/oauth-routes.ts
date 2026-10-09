@@ -2,6 +2,7 @@
 // are public JSON endpoints with open CORS (no cookies are read); authorize is the
 // one route that reads the session, to show the consent page. Never a 500.
 import { PlanLimitError, PLAN_LIMIT_STATUS } from "../plans/state";
+import { requirePlan } from "../plans/gate";
 import { Hono, type Context } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
 import type { AppEnv } from "./principal";
@@ -9,11 +10,11 @@ import { takeReturnTo } from "./return-to";
 import {
   OAuthError, oauthOrigin, protectedResourceMetadata, authorizationServerMetadata,
   validateRegistration, registerClient, exchangeAuthorizationCode, refreshAccessToken, revokeOAuthToken,
-  AUTHORIZE_KEYS, canonicalAuthorizeQuery, checkAuthorizeRequest, issueAuthorization, type AuthorizeCheck,
+  AUTHORIZE_KEYS, canonicalAuthorizeQuery, checkAuthorizeRequest, issueAuthorization, issueRepoAuthorization, type AuthorizeCheck,
 } from "./oauth";
 import { readSessionCookie, getSessionUser } from "./session";
 import { hmacSeal, hmacUnseal, b64uEncode, b64uDecode } from "./crypto";
-import { errorPage, signInPage, consentPage, noOrgPage } from "./oauth-pages";
+import { errorPage, signInPage, consentPage, noOrgPage, defaultConsentChoice, type ConsentChoice } from "./oauth-pages";
 import { platformContext } from "../data/gate";
 import { resolveSoleTenant, resolveTenant, type TenantContext } from "../data/context";
 import { listMyOrgs } from "../orgs/repo";
@@ -205,6 +206,23 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
     return page(c, errorPage("Trov couldn't finish this right now. Try again from the app."), 503);
   };
 
+  /** The consent page for a validated request — fresh (GET), or sent back with what the person chose
+   *  and why it could not be granted (POST). */
+  const consent = async (
+    c: Context<AppEnv>, check: Extract<AuthorizeCheck, { ok: true }>, s: { id: string; handle: string }, q: URLSearchParams,
+    orgs: { slug: string; name: string }[], status: 200 | 400, again?: { choice: ConsentChoice; error: string },
+  ) => {
+    const hidden: Record<string, string> = {};
+    for (const k of AUTHORIZE_KEYS) { const v = q.get(k); if (v) hidden[k] = v; }
+    const target = new URL(check.params.redirect_uri);
+    return page(c, consentPage({
+      clientName: check.client.client_name, redirectHost: target.hostname, handle: s.handle,
+      orgs: orgs.map((o) => ({ slug: o.slug, name: o.name })),
+      hidden, csrf: await consentCsrf(c.env.COOKIE_SECRET, s.id, q),
+      choice: again?.choice, error: again?.error,
+    }), status, target.origin);
+  };
+
   o.get("/oauth/authorize", async (c) => {
     try {
       const q = new URL(c.req.url).searchParams;
@@ -215,19 +233,12 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
         await setOAuthPending(c, q, now());
         return page(c, signInPage(check.client.client_name), 200);
       }
-      // A connection is made INTO one org (§7.1): the page offers the person's orgs — a choice when
-      // there are several, nothing extra to do when there is one — and with none there is nothing
-      // to connect to. Suspended orgs are not listed (`listMyOrgs`).
+      // A connection acts inside the person's orgs (0051): the page asks how it picks one — follow the
+      // repository, or manual with the orgs they tick — and with no org there is nothing to connect
+      // to. Suspended orgs are not listed (`listMyOrgs`).
       const orgs = await listMyOrgs(c.var.p, s.handle);
       if (orgs.length === 0) return page(c, noOrgPage(check.client.client_name, s.handle), 409);
-      const hidden: Record<string, string> = {};
-      for (const k of AUTHORIZE_KEYS) { const v = q.get(k); if (v) hidden[k] = v; }
-      const target = new URL(check.params.redirect_uri);
-      return page(c, consentPage({
-        clientName: check.client.client_name, redirectHost: target.hostname, handle: s.handle,
-        orgs: orgs.map((o) => ({ slug: o.slug, name: o.name })),
-        hidden, csrf: await consentCsrf(c.env.COOKIE_SECRET, s.id, q),
-      }), 200, target.origin);
+      return consent(c, check, s, q, orgs, 200);
     } catch (e) {
       return unavailable(c, e);
     }
@@ -235,7 +246,7 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
 
   o.post("/oauth/authorize", async (c) => {
     try {
-      const body = await c.req.parseBody();
+      const body = await c.req.parseBody({ all: true });
       const q = new URLSearchParams();
       for (const k of AUTHORIZE_KEYS) { const v = body[k]; if (typeof v === "string" && v) q.set(k, v); }
       const check = await checkAuthorizeRequest(c.var.p, q, oauthOrigin(c.req.url));
@@ -246,26 +257,74 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
         return page(c, errorPage("This approval form expired or didn't come from your session. Start the connection again from the app."), 403);
       }
       if (body.decision !== "allow") return c.redirect(back(check.params.redirect_uri, check.params.state, { error: "access_denied" }), 302);
-      // The connection is granted FOR one org (§7.1): the `org` the form carries (a slug — the picker's
-      // radio, or the hidden field when the person has one org). It is only a REQUEST: the grant is
-      // bound to it through `resolveTenant`, the live-membership check every `/api/o/:slug` route makes,
-      // so a slug the person is not a member of — forged, unknown, or a suspended org (§5.4) — is
-      // refused in the same words and nothing is written.
-      const slug = typeof body.org === "string" ? body.org.trim() : "";
+      // HOW the connection picks an organization is the form's `mode` (0051); a form without one — an
+      // older page still open, a client that posts the bare fields — is a manual connection.
+      if (body.mode === "repo") {
+        // It follows the repository: no organization is bound now. Each call resolves, among the orgs
+        // the person is a member of THEN, to the one with the call's repository connected.
+        const mine = await listMyOrgs(c.var.p, s.handle);
+        if (mine.length === 0) return page(c, noOrgPage(check.client.client_name, s.handle), 409);
+        const { code } = await issueRepoAuthorization(c.var.p, s.handle, { client: check.client, params: check.params, nowMs: now() });
+        return c.redirect(back(check.params.redirect_uri, check.params.state, { code }), 302);
+      }
+      // MANUAL: the organizations ticked (`org`, once per organization — or the single hidden field when
+      // the person has one) and the one it starts in (`current`). Each is only a REQUEST: it is bound
+      // through `resolveTenant`, the live-membership check every `/api/o/:slug` route makes, so a slug
+      // the person is not a member of — forged, unknown, or a suspended org (§5.4) — is refused in the
+      // same words and nothing is written.
+      const posted = (Array.isArray(body.org) ? body.org : [body.org]).filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean);
+      const slugs = [...new Set(posted)];
+      const startIn = typeof body.current === "string" ? body.current.trim() : "";
       let tenant: TenantContext | null;
-      if (slug) {
-        tenant = await resolveTenant(c.env, s.handle, slug);
-        if (!tenant) return page(c, errorPage("You aren't a member of that organization, so this app can't be connected to it. Start the connection again from the app."), 403);
+      const others: TenantContext[] = [];
+      if (slugs.length > 0) {
+        const bound: { slug: string; ctx: TenantContext }[] = [];
+        for (const slug of slugs) {
+          const ctx = await resolveTenant(c.env, s.handle, slug);
+          if (!ctx) return page(c, errorPage("You aren't a member of that organization, so this app can't be connected to it. Start the connection again from the app."), 403);
+          bound.push({ slug, ctx });
+        }
+        // Which one it starts in: the one marked, when it is ticked; the only one, when there is one.
+        const start = bound.length === 1 ? bound[0] : bound.find((b) => b.slug === startIn);
+        if (!start) {
+          const mine = await listMyOrgs(c.var.p, s.handle);
+          return consent(c, check, s, q, mine, 400, {
+            choice: { mode: "manual", orgs: slugs, current: slugs[0] },
+            error: "Choose which of the organizations you ticked this connection starts in.",
+          });
+        }
+        tenant = start.ctx;
+        for (const b of bound) if (b !== start) others.push(b.ctx);
+        // Several organizations: the connection takes a slot in EACH (plans.md), so say WHICH one is
+        // full. (`issueAuthorization` asks again; this only names the organization.)
+        if (bound.length > 1) {
+          for (const b of bound) {
+            try {
+              await requirePlan(b.ctx, "agent_connections");
+            } catch (e) {
+              if (!(e instanceof PlanLimitError)) throw e;
+              return page(c, errorPage(`In ${b.slug}: ${e.refusal.message} Untick it, or remove a connection you no longer use there in Settings › MCP access, then start the connection again from the app.`), PLAN_LIMIT_STATUS);
+            }
+          }
+        }
       } else {
-        // No org named: fine for a person with exactly one (it is theirs), refused otherwise.
+        // No org named: fine for a person with exactly one (it is theirs); with several, the page comes
+        // back asking for at least one — unless nothing about the choice was sent at all.
         const sole = await resolveSoleTenant(c.env, s.handle, "session");
         if (!sole.ok && sole.reason === "org_required") {
+          if (body.mode === "manual") {
+            const mine = await listMyOrgs(c.var.p, s.handle);
+            return consent(c, check, s, q, mine, 400, {
+              choice: { ...defaultConsentChoice(mine), mode: "manual", orgs: [] },
+              error: "Tick at least one organization for this connection to use.",
+            });
+          }
           return page(c, errorPage("Choose which organization to connect this app to. Start the connection again from the app."), 400);
         }
         if (!sole.ok) return page(c, noOrgPage(check.client.client_name, s.handle), 409);
         tenant = sole.ctx;
       }
-      const { code } = await issueAuthorization(tenant, { client: check.client, params: check.params, nowMs: now() });
+      const { code } = await issueAuthorization(tenant, { client: check.client, params: check.params, nowMs: now(), orgs: others });
       return c.redirect(back(check.params.redirect_uri, check.params.state, { code }), 302);
     } catch (e) {
       // The org's plan caps a person's agent connections (0044_plans): say so, and where to free one.

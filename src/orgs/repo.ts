@@ -349,8 +349,15 @@ export async function removeMember(p: PlatformContext, ctx: TenantContext, handl
     stmt(p, `DELETE FROM memberships WHERE org_id = ?1 AND user_id = ?2 COLLATE NOCASE
               AND (role <> 'owner' OR (SELECT COUNT(*) FROM memberships WHERE org_id = ?1 AND role = 'owner') > 1)`, ctx.orgId, cur.user_id),
     stmt(p, `UPDATE mcp_tokens SET revoked = 1 WHERE org_id = ?1 AND person = ?2 COLLATE NOCASE AND revoked = 0 AND ${gone}`, ctx.orgId, cur.user_id),
+    // A connection stops reaching this org at once (0051): its row for the org goes, and a MANUAL
+    // connection left with no organization at all is revoked — as every connection into the org was
+    // when a connection had one. One that can still use another org lives on there (if this was its
+    // current org, its calls are refused until it is switched); one that follows the repository holds
+    // no org and simply stops resolving here.
+    stmt(p, `DELETE FROM oauth_grant_orgs WHERE org_id = ?1 AND person = ?2 COLLATE NOCASE AND ${gone}`, ctx.orgId, cur.user_id),
     stmt(p, `UPDATE oauth_grants SET revoked_at = ?3, revoked_reason = 'member_removed'
-              WHERE org_id = ?1 AND person = ?2 COLLATE NOCASE AND revoked_at IS NULL AND ${gone}`, ctx.orgId, cur.user_id, at),
+              WHERE person = ?2 COLLATE NOCASE AND mode = 'manual' AND revoked_at IS NULL AND ${gone}
+                AND NOT EXISTS (SELECT 1 FROM oauth_grant_orgs a WHERE a.grant_id = oauth_grants.id)`, ctx.orgId, cur.user_id, at),
     stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) SELECT ?1, ?4, ?5, ?2, '{}', ?3 WHERE ${gone}`,
       ctx.orgId, cur.user_id, at, p.actor, (self ? "member.leave" : "member.remove") satisfies OrgAuditAction),
   ]);

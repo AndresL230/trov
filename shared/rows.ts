@@ -181,14 +181,21 @@ export interface McpTokenSummary {
   last_used_at: string | null;
 }
 
-/** Settings › Connected apps: one OAuth connection (a grant). Never a token. A connection is made
- *  into ONE org (the consent page's choice, §7.1); `org` names it. */
+/** Settings › Connected apps: one OAuth connection (a grant). Never a token. A connection is the
+ *  PERSON's, and `mode` says how it chooses among their organizations (0051):
+ *    manual — it may use `orgs` and acts in `org`, its current one (null when that one is no longer
+ *             an organization the person can reach — it then acts nowhere until switched);
+ *    repo   — it follows the repository the agent is in; `org` is null and `orgs` are the
+ *             organizations it has been used in so far.
+ *  Only organizations the person is a member of now are ever named. */
 export interface OAuthGrantSummary {
   id: number;
   client_name: string;
   created_at: string;
   last_used_at: string | null;
-  org: { slug: string; name: string };
+  mode: "manual" | "repo";
+  org: { slug: string; name: string } | null;
+  orgs: { slug: string; name: string }[];
 }
 
 // The replay ledger (0009). One row per (session_id, item_index) the worker has

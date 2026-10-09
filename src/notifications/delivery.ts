@@ -10,6 +10,9 @@ export interface OutboundMessage {
   html: string;
   text: string;
   unsubscribeUrl?: string; // the https List-Unsubscribe target (also in the footer); absent for transactional mail (no unsubscribe headers)
+  /** Where a reply goes instead of the platform's From — a bare address. Only the support notice sets it
+   *  (the reporter's provider-verified address, so the operator's reply answers them). */
+  replyTo?: string;
 }
 
 export interface Delivery {

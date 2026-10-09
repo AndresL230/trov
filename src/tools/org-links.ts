@@ -17,6 +17,11 @@ export function orgSlugOf(ctx: TenantContext): Promise<string | null> {
   return hit;
 }
 
+/** The slug and name of `ctx`'s org — how a result names the organization it came from. */
+export async function orgIdentityOf(ctx: TenantContext): Promise<{ slug: string; name: string } | null> {
+  return first<{ slug: string; name: string }>(ctx, `SELECT slug, name FROM orgs WHERE id = ?`, ctx.orgId).catch(() => null);
+}
+
 /** `<origin>/<slug>` — what a hash route (`/#tickets/12`) is appended to. With no slug (an org that is
  *  gone, a read that failed) it is the bare origin, whose `/` still routes a signed-in person somewhere. */
 export const appBase = (origin: string, slug: string | null | undefined): string =>

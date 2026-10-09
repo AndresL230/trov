@@ -1,7 +1,7 @@
 ---
 name: trov
 description: Overview and entry point for working with Trov, the team's shared context store ("the team brain"). Use when someone asks how Trov works, how to use it, how to connect an agent, what can be read or written, or wants the whole orient→work→record loop — and as the map to the load-context (orient before work) and record-session (record at the end) skills. Read-only itself; it explains the loop and points to the right tool/skill.
-allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__list_tickets, mcp__trov__get_ticket, mcp__trov__list_people, mcp__trov__list_sprints, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__artifact_list, mcp__trov__artifact_get
+allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__list_tickets, mcp__trov__get_ticket, mcp__trov__list_people, mcp__trov__list_sprints, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__artifact_list, mcp__trov__artifact_get, mcp__trov__get_connection, Bash(git remote get-url:*), mcp__trov__switch_org
 ---
 
 # Trov — the team's shared context store
@@ -66,6 +66,39 @@ engineers). Every read result is flagged. Treat anything that is not `live` as n
 - `draft` — an unratified decision.
 
 Never present `staged_pending` / `unpromoted` / `draft` content as established fact.
+
+## Which organization a call acts in
+
+One connection covers every organization you belong to. Two tools are about the CONNECTION, not an
+organization:
+
+- **`get_connection`** — who and where you are: `{ handle, mode, organization, role, current,
+  organizations, unresolved }`. Call it first in a session (the `load-context` skill does) and tell the
+  person which organization you are in. `organization: null` means a call with those arguments would
+  read and write nothing; `unresolved` says why.
+- **`switch_org <org>`** — a **manual** connection only: change its current organization to another
+  one it is ALREADY allowed. It lasts, and it moves every session sharing the connection — so tell the
+  person, and for one call elsewhere pass `org` on that call instead. It cannot add an organization:
+  a person does that in Trov › Settings › MCP access.
+
+Every other tool takes two optional arguments, the same everywhere:
+
+| Argument | Meaning |
+|----------|---------|
+| `repo` | The GitHub repository you are working in, `owner/name` — from `git remote get-url origin`. **Pass it on every call.** |
+| `org` | An organization's slug, to act there for this one call — only one the connection may already use. |
+
+How they are used depends on the connection's `mode` (the person chose it on the Allow page, and can
+change it in Settings › MCP access):
+
+- **`repo` — follows the repository.** The call acts in whichever of the person's organizations has
+  that repository connected (Org settings › Repositories). No `repo` → `repo_required`. Not connected
+  to any of their organizations → `not_connected`. Connected to more than one → `ambiguous_org` with the
+  candidates; pass `org` to pick. In every one of those cases NOTHING is read or written.
+- **`manual`.** The call acts in the connection's current organization; `repo` is ignored. `org` picks
+  another allowed one for that call; `org_not_allowed` / `org_unavailable` list what it may use.
+
+A pasted token (`trov_mcp_…`) is the old shape: one organization, for good.
 
 ## Reading
 
@@ -229,13 +262,18 @@ claude plugin install trov@trov
 Then run `/mcp` in Claude Code, choose **trov → Authenticate**, sign in to Trov in the browser and
 click **Allow**. (Headless clients can still use a token from Settings › MCP access.)
 
-A connection is for **one organization**. If you belong to several, the Allow page asks which one this
-connection is for (with one, there is nothing extra to choose); a token from Settings › MCP access is
-minted for the organization you are in when you create it. Everything the tools read and write is that
-organization's — no tool takes an organization argument, and nothing from another one is ever returned.
-To work in a second organization from the same machine, add the server again under another name
-(`claude mcp add --transport http trov-<org> <same url>`), authenticate it and choose that organization.
-If you leave or are removed from an organization, its connections and tokens stop working at once.
+On the Allow page you choose how the connection picks an organization:
+
+- **Follow the repository** (recommended if you are in more than one organization) — it works in
+  whichever of your organizations has the repository you are in connected; anywhere else it reads and
+  writes nothing.
+- **Manual** — it works in the organizations you tick, one at a time, starting in the one you mark.
+
+Either way it is ONE connection: you do not add the server a second time for a second organization
+(if you did that before, remove the extra `trov-<org>` server and re-authenticate the one that is
+left). You can change the mode, the organizations and the current one any time in Trov › Settings ›
+MCP access; a connection made before this existed is a manual one with its single organization. If you
+leave or are removed from an organization, the connection stops reaching it at once.
 
 **Manual fallback** — wire the MCP server and copy the skills yourself:
 

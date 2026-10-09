@@ -131,7 +131,7 @@ describe("MCP get_repo_dashboard — registration", () => {
     expect(names).not.toContain("update_plan"); // beatrix really is non-admin
     expect(names).toContain("get_repo_dashboard");
     const tool = tools.find((t) => t.name === "get_repo_dashboard")!;
-    expect(Object.keys(tool.inputSchema.properties ?? {}).sort()).toEqual(["include_trends", "range", "tab"]);
+    expect(Object.keys(tool.inputSchema.properties ?? {}).sort()).toEqual(["include_trends", "org", "range", "repo", "tab"]); // its three, and the two every tool takes to say WHICH org (0051)
     expect(tool.inputSchema.required ?? []).toEqual([]);
     expect(tool.description).toMatch(/not_connected/);
     // …and the FIELD-level rule: a null inside an `ok` section is unknown too.

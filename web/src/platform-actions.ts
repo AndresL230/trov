@@ -16,6 +16,7 @@ import {
 import { USAGE_WINDOWS, type UsageWindow } from "./platform-usage";
 import { isPlanId } from "@shared/plans";
 import { createAccess } from "./platform-access-actions";
+import { createSupportTab } from "./platform-support-actions";
 
 export interface PlatformHost {
   /** The live state (main.ts's single object). */
@@ -56,6 +57,9 @@ export function createPlatform(h: PlatformHost) {
       h.rerender();
     },
   });
+
+  // Platform › Support (platform-support-actions.ts): the reports people send from the app and the site.
+  const support = createSupportTab({ state: h.state, mount: h.mount, rerender: h.rerender, flash: h.flash, unauth: h.unauth });
 
   // Every read here is a REFRESH once its slice holds an answer: what is on screen stays (status
   // "ok", the same rows) and the fresh answer replaces it when it lands. Only a first read — or
@@ -114,6 +118,7 @@ export function createPlatform(h: PlatformHost) {
       else if (p.tab === "usage") loadUsage(true);
       else if (p.tab === "admins") loadAdmins();
       else if (p.tab === "access") access.load();
+      else if (p.tab === "support") support.load();
       else if (p.tab === "audit") { loadAudit(true); if (p.orgs.status === "idle") loadOrgs(); }
       else loadOrgs();
       // The other tabs' first read rides along with the page's (as Org settings does: entering
@@ -124,6 +129,8 @@ export function createPlatform(h: PlatformHost) {
         if (p.admins.status === "idle") loadAdmins();
         if (p.audit.status === "idle") loadAudit();
         if (p.access.grants.status === "idle") access.load();
+        // …and Support's, which also carries the count of open reports the tab bar shows on every tab.
+        if (p.support.list.status === "idle") support.loadList();
       }
     }
     h.rerender();
@@ -142,6 +149,7 @@ export function createPlatform(h: PlatformHost) {
     const p = s();
     h.state.screen = "platform";
     p.tab = tab; p.orgSlug = null;
+    p.support.reportId = null; p.support.actionError = null; // a tab opens on its list, never on the report last read
     p.suspendArm = null; p.revokeArm = null;
     p.access.revokeArm = null; p.access.plan = null; p.access.gift = null; p.access.giftEnd = null;
     load();
@@ -274,6 +282,7 @@ export function createPlatform(h: PlatformHost) {
     const p = s();
     if (p.superadmin !== true) return;
     if (access.act(name, arg, value)) return;
+    if (support.act(name, arg, value)) return;
     switch (name) {
       case "platGo": go("orgs"); return;
       case "platTab": if ((PLAT_TABS as readonly string[]).includes(arg ?? "")) go(arg as PlatTab); return;

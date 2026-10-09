@@ -1,7 +1,7 @@
 ---
 name: artifacts
 description: Use when work involves a Trov artifact — someone names or links one ("the checkout design", "the threat-model PDF", a #artifacts/<slug> link), a ticket you are working has artifacts linked, the person wants a design page / spec / diagram / image from Trov in the repo or running locally, or asks to publish or update one (triggers — "pull the design", "open that artifact", "spin up the mockup", "put this in Trov as an artifact", "upload the diagram"). Finding, pulling and linking are safe; creating or versioning one happens only when the person asks.
-allowed-tools: mcp__trov__artifact_list, mcp__trov__artifact_get, mcp__trov__upload_asset, mcp__trov__artifact_update, mcp__trov__query, mcp__trov__get_ticket, Bash(curl -fsSL:*), Bash(curl -X PUT:*), Bash(shasum -a 256:*), Bash(sha256sum:*), Bash(wc -c:*), Bash(mkdir -p .trov/:*), Bash(git check-ignore:*), Bash(python3 -m http.server:*)
+allowed-tools: mcp__trov__artifact_list, mcp__trov__artifact_get, mcp__trov__upload_asset, mcp__trov__artifact_update, mcp__trov__query, mcp__trov__get_ticket, Bash(curl -fsSL:*), Bash(curl -X PUT:*), Bash(shasum -a 256:*), Bash(sha256sum:*), Bash(wc -c:*), Bash(mkdir -p .trov/:*), Bash(git check-ignore:*), Bash(python3 -m http.server:*), mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 
 # Artifacts ↔ Trov
@@ -34,6 +34,24 @@ Part of the **`trov`** skill set.
 - A file nobody on the team needs to see — keep it in the repo.
 - To "ratify" anything. **Ratifying is a person's act on the web; no tool does it.** Never describe a
   `published` artifact as agreed.
+
+## Which organization — pass `repo` on every call
+
+One Trov connection covers every organization you belong to, so every Trov tool takes the repository
+you are working in. Once per session, run `git remote get-url origin` and reduce it to `owner/name`
+(`git@github.com:acme/app.git` and `https://github.com/acme/app` are both `acme/app`). Pass that as
+`repo` on EVERY Trov call this skill makes. No remote, or not a GitHub one: leave `repo` out.
+
+- A connection that **follows the repository** acts in the organization that has that repository
+  connected. `repo_required` / `not_connected` mean NOTHING was read or written: tell the person this
+  repository is not connected to any of their organizations (Trov › Org settings › Repositories) and
+  stop — never pass a different repository to get an answer. `ambiguous_org` lists the candidates:
+  ask the person which, then pass it as `org`.
+- A **manual** connection ignores `repo` and acts in its current organization. `org_unavailable` /
+  `org_not_allowed` list what it may use: ask the person, never guess, and prefer `org` on the call
+  over `switch_org` (a switch moves every session that shares the connection).
+- Not sure where you are? `get_connection` (same `repo`) answers: the organization this call would
+  act in, the connection's mode, and what it can reach.
 
 ## Procedure
 
@@ -128,6 +146,10 @@ you hold. Whoever can see a page can version it; `private` pages are their autho
   `visibility` `org` (default for team work) or `private`. Link it to its ticket / sprint / PR with
   `links` at create time, or at session end through `record-session`'s `artifact_links`.
 - Report the `url`, the version, and any `warnings` (a warning, never a rejection).
+
+> `upload_asset` already has a `repo` argument — the page's own repository. It is the SAME value: on a
+> connection that follows the repository it both files the page under that repository and decides which
+> organization the page is created in.
 
 ## Hard rules
 

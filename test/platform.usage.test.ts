@@ -5,7 +5,7 @@ import worker from "../src/index";
 import { cookieFor } from "./helpers/persons";
 import { ensureMember, platformCtx, systemCtx, ORG_A, ORG_B } from "./helpers/tenant";
 import { call, one, rows, exec, SUPERADMIN } from "./helpers/orgs";
-import { meter, meterMcp, pruneUsage } from "../src/data/meter";
+import { meter, meterMcp, meterMcpTool, pruneUsage } from "../src/data/meter";
 import { platformUsage, usageDays } from "../src/platform/usage";
 import { sha256Hex } from "../src/auth/crypto";
 import type { OrgUsage, PlatformUsageResponse } from "@shared/orgs";
@@ -104,7 +104,7 @@ describe("metering", () => {
     expect(await usageRows()).toEqual([]);
   });
 
-  it("meterMcp counts the request and each tool call by name, and leaves the body for the handler", async () => {
+  it("meterMcp counts a request that calls no tool; a tool call is counted where it resolved (meterMcpTool); the body is left for the handler", async () => {
     const mk = (body: unknown) => new Request("https://trov.test/mcp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const ctx = systemCtx(ORG_B);
     const call1 = mk({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_feed", arguments: {} } });
@@ -118,7 +118,11 @@ describe("metering", () => {
     await meterMcp(e, ctx, mk({ jsonrpc: "2.0", id: 5, method: "tools/list" }));
     await meterMcp(e, ctx, new Request("https://trov.test/mcp", { method: "POST", body: "not json" }));
     await meterMcp(e, ctx, new Request("https://trov.test/mcp", { method: "GET" }));
-    expect((await usageRows()).map((r) => [r.metric, r.count])).toEqual([["mcp_request", 5], ["mcp_tool:get_feed", 2], ["mcp_tool:list_docs", 1]]);
+    // Only the three with no tool call were counted here — a tool call's org is not known until it resolves.
+    expect((await usageRows()).map((r) => [r.metric, r.count])).toEqual([["mcp_request", 3]]);
+    await meterMcp(e, null, mk({ jsonrpc: "2.0", id: 6, method: "tools/list" })); // a connection with no org of its own: counted nowhere
+    for (const tool of ["get_feed", "get_feed", "list_docs", "x".repeat(200)]) await meterMcpTool(e, ctx, tool); // the last is not a tool name: not a metric
+    expect((await usageRows()).map((r) => [r.metric, r.count])).toEqual([["mcp_request", 6], ["mcp_tool:get_feed", 2], ["mcp_tool:list_docs", 1]]);
   });
 
   it("the Worker meters a real /mcp tool call against the token's org and person", async () => {

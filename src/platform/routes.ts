@@ -22,6 +22,7 @@ import { rateLimited } from "./limits";
 import type { AdminAssignment, PlatformOrgDetail, PlatformOrgRow } from "@shared/orgs";
 import type { PlatformContext } from "../data/platform-sql";
 import { platformBillingBySlug } from "../billing/store";
+import { registerSupportRoutes } from "./support-routes";
 
 export const platformApp = new Hono<AppEnv>();
 
@@ -117,6 +118,9 @@ platformApp.post("/orgs/:slug/unsuspend", suspend(false));
 
 // ── plans and grants (0044_plans): /orgs/:slug/plan, /grants… — src/plans/routes.ts ──
 registerPlanRoutes(platformApp, (slug, p) => platformRows(p, slug).then((rows) => rows[0] ?? null));
+
+// ── support reports (0049_support_reports): /support… — ./support-routes.ts ──
+registerSupportRoutes(platformApp);
 
 // ── superadmins ──────────────────────────────────────────────────────────────
 platformApp.get("/admins", async (c) => c.json({ admins: await listAdmins(c.var.p) }));

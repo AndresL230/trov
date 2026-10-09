@@ -57,6 +57,7 @@ export function resendDelivery(opts: { apiKey: string; from: string; fetchImpl?:
           subject: msg.subject,
           html: msg.html,
           text: msg.text,
+          ...(msg.replyTo ? { reply_to: oneLine(msg.replyTo) } : {}),
           ...(headers ? { headers } : {}),
         }),
       });

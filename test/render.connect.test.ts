@@ -50,7 +50,7 @@ describe("Get Started guide — Connect your agent", () => {
 });
 
 describe("grantListBody", () => {
-  const grant = { id: 7, client_name: "Claude <Code>", created_at: "2026-09-20T00:00:00.000Z", last_used_at: null, org: { slug: "saplinglearn", name: "SaplingLearn" } };
+  const grant = { id: 7, client_name: "Claude <Code>", created_at: "2026-09-20T00:00:00.000Z", last_used_at: null, mode: "manual" as const, org: { slug: "saplinglearn", name: "SaplingLearn" }, orgs: [{ slug: "saplinglearn", name: "SaplingLearn" }] };
   it("empty, loading and error states", () => {
     expect(grantListBody({ grants: { status: "ok", data: [] }, grantRevokeArm: null })).toContain("No apps connected");
     expect(grantListBody({ grants: { status: "loading", data: [] }, grantRevokeArm: null })).toContain("Loading");
@@ -100,8 +100,8 @@ describe("Settings › MCP access — the browser sign-in, then Connected apps",
       at("Sign Claude Code in with your browser"),
       at("Install the Trov plugin"),
       at("/mcp"),
-      at("Pick the organization to connect"),
-      at("A connection reaches one organization"),
+      at("Choose how the connection picks an organization"),
+      at("One connection covers all your organizations"),
       at('data-list="grants"'),
     ];
     expect(order).toEqual([...order].sort((a, b) => a - b));
@@ -183,9 +183,9 @@ describe("Settings › MCP access — the modal opens at the app root and never 
 describe("Settings bento — one twelve-column grid, each tile about as tall as what it holds", () => {
   const settings = () => render({ ...initialState(), view: "app" as const, screen: "settings" as const, me: ME });
   const rule = (sel: string) => css.match(new RegExp(`\\n${sel.replace(/[.]/g, "\\.")} \\{[^}]*\\}`))?.[0] ?? "";
-  const TILES = ["cnpy-set-profile", "cnpy-set-account", "cnpy-set-plan", "cnpy-set-limits", "cnpy-set-orgs-tile", "cnpy-set-mcp", "cnpy-set-appear", "cnpy-set-email", "cnpy-set-session"];
+  const TILES = ["cnpy-set-profile", "cnpy-set-account", "cnpy-set-plan", "cnpy-set-limits", "cnpy-set-orgs-tile", "cnpy-set-mcp", "cnpy-set-appear", "cnpy-set-email", "cnpy-set-help", "cnpy-set-session"];
 
-  it("the nine tiles are direct children of ONE grid, in the folded order — who I am, the plan, the rest, Sign out last", () => {
+  it("the ten tiles are direct children of ONE grid, in the folded order — who I am, the plan, the rest, Sign out last", () => {
     const html = settings();
     const grid = html.slice(html.indexOf('<div class="cnpy-set">'));
     const at = (needle: string) => {
@@ -209,7 +209,7 @@ describe("Settings bento — one twelve-column grid, each tile about as tall as 
     expect(rule(".cnpy-set-appear")).toContain("grid-column:9 / -1; grid-row:2;");
     expect(rule(".cnpy-set-plan")).toContain("grid-column:1 / span 5; grid-row:3;");
     expect(rule(".cnpy-set-limits")).toContain("grid-column:6 / -1; grid-row:3;");
-    for (const full of [".cnpy-set-orgs-tile", ".cnpy-set-mcp", ".cnpy-set-email"]) expect(rule(full), full).toContain("grid-column:1 / -1;");
+    for (const full of [".cnpy-set-orgs-tile", ".cnpy-set-mcp", ".cnpy-set-email", ".cnpy-set-help"]) expect(rule(full), full).toContain("grid-column:1 / -1;");
     // Stretch stays the default (every edge lines up); what keeps a tile from looking stretched is
     // that its row partners hold as much as it does — never aligning tiles to their start.
     expect(css).not.toMatch(/\.cnpy-set[\w-]* \{[^}]*align-(items|self):(start|flex-start)/);

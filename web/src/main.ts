@@ -23,7 +23,7 @@ import {
   getOnboardPrefill, checkHandle, submitOnboard,
   getNotificationPrefs, putNotificationPrefs, getNotificationPolicy, putNotificationPolicy,
   getNotificationSettings, putNotificationSettings, listNotificationOutbox, testSendNotification, type PrefsWrite,
-  listOAuthGrants, revokeOAuthGrant,
+  listOAuthGrants, revokeOAuthGrant, setOAuthGrantOrg, setOAuthGrantCurrent, setOAuthGrantMode, planLimitText,
   listPersons, updateMe, unlinkIdentity, renameHandle,
   getPersonProfile, uploadAvatar, removeAvatar,
   getMyOrgs, getOrgMe, listMcpTokens, revokeMcpToken, setApiOrg, setOrgLostHandler, tenantHref,
@@ -58,7 +58,7 @@ import { QUEUE_FILTER_CATS, type QueueFilterCat } from "./tickets";
 import { initialOnboard, markAvatarFailed, AVATAR_IMG_CLASS } from "./people";
 import { prepareAvatar } from "./avatar";
 import { mentionTokenAt, mentionCandidates, applyMention, caretLine, COMMENT_BOX } from "./mentions";
-import { PERSON_COLORS, type PersonColor } from "@shared/rows";
+import { PERSON_COLORS, type PersonColor, type OAuthGrantSummary } from "@shared/rows";
 import { captureScroll, restoreScroll } from "./scroll";
 import { paint } from "./morph";
 import { syncSkeletons } from "./skeleton";
@@ -77,6 +77,8 @@ import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
+import { createSupport } from "./support-actions";
+import { RELEASES } from "./releases";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
 import { currentOrg, roleAtLeast } from "./org-settings";
@@ -142,6 +144,19 @@ const welcomeCtl = createWelcomeController({
   state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadHome: () => loadMyWorkIfNeeded(), loadConnections: () => loadGrantsIfNeeded(),
   reloadConnections: () => { loadGrants(); loadMcpTokens(); }, listGrants: () => listOAuthGrants(),
   unauth: (e) => unauth(e), go: (url) => { window.location.href = url; },
+});
+
+// The support form (web/src/support-actions.ts): every `support…` act. Signed in — the header's bug
+// button, Settings › Contact support, the picker's link — what it attaches is read when the dialog
+// opens: the route on screen, the org the person is in (none on the picker or the Platform page), the
+// newest release and the browser, and nothing else. Signed out (the site's Contact) it is the same
+// dialog in its anonymous setting: the page's path, the browser, and the address they type.
+const supportCtl = createSupport({
+  state, mount, rerender: () => rerender(), unauth: (e) => unauth(e),
+  signedIn: () => state.view !== "auth",
+  context: () => (state.view === "auth"
+    ? { route: `${location.pathname}${location.hash}`, org: null, version: "", userAgent: navigator.userAgent }
+    : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: RELEASES[0]?.version ?? "", userAgent: navigator.userAgent }),
 });
 
 // The dropdowns (web/src/dropdown.ts): opening, closing (with its exit), the keyboard, and
@@ -491,7 +506,10 @@ function currentRoute(): Route {
     r.promptMode = state.promptMode;
     if (state.promptMode !== "new" && state.promptSlug) r.promptSlug = state.promptSlug;
   }
-  if (state.screen === "platform") r.platTab = state.plat.tab;
+  if (state.screen === "platform") {
+    r.platTab = state.plat.tab;
+    if (state.plat.tab === "support" && state.plat.support.reportId !== null) r.platReport = state.plat.support.reportId;
+  }
   if (state.screen === "platformorg" && state.plat.orgSlug) r.platOrg = state.plat.orgSlug;
   if (state.screen === "org") r.orgTab = state.org.tab;
   // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
@@ -520,6 +538,8 @@ function applyRoute(r: Route): void {
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
   if (r.platTab) state.plat.tab = r.platTab;
+  // Platform › Support: the report in the address (`#platform/support/<id>`), or the list.
+  if (r.screen === "platform") state.plat.support.reportId = r.platTab === "support" ? r.platReport ?? null : null;
   if (r.platOrg) state.plat.orgSlug = r.platOrg;
   if (r.orgTab) state.org.tab = r.orgTab;
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
@@ -1041,6 +1061,25 @@ function loadSettingsReads(): void {
   orgCtl.loadPlan();
   void loadMyOrgs();
 }
+/** Why a change to a connection's scope was refused, in words (the route answers with a code). */
+const GRANT_SCOPE_REFUSALS: Record<string, string> = {
+  current_org: "That is the organization it is working in. Switch it to another one first.",
+  last_org: "A connection needs at least one organization. Revoke it instead.",
+  not_allowed: "Turn that organization on for this connection first.",
+  not_manual: "This connection follows the repository. Change it to Manual to choose its organizations.",
+  not_found: "That connection, or that organization, is no longer yours to change.",
+};
+/** Settings › MCP access: one change to a connection's scope — the list on screen becomes the answer. */
+function saveGrantScope(change: Promise<OAuthGrantSummary[]>, done: string): void {
+  change
+    .then((data) => { state.grants = { status: "ok", data }; flash(done); rerender(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      flash(planLimitText(e, null) ?? (e instanceof ApiError ? GRANT_SCOPE_REFUSALS[e.message] : undefined) ?? "Could not change the connection", 4200);
+      loadGrants();
+    });
+}
+
 function loadGrantsIfNeeded(): void {
   if (state.grants.status === "idle") loadGrants();
   if (state.mcpTokens.status === "idle") loadMcpTokens();
@@ -3538,7 +3577,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         });
       return;
     }
-    case "revokeGrantArm": state.grantRevokeArm = Number(arg); break;
+    case "revokeGrantArm": state.grantRevokeArm = Number(arg); state.grantScope = null; break;
     case "revokeGrantCancel": state.grantRevokeArm = null; break;
     case "revokeGrant": {
       const id = Number(arg);
@@ -3557,6 +3596,36 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     // Connected apps opens to every row, or folds back to the first few.
     case "mcpShowAll": state.grantsAll = !state.grantsAll; break;
+    // A connection's scope (0051): opened under its row; every change is saved as it is made, and the
+    // server answers with my connections as they now stand.
+    case "grantScopeToggle": {
+      const id = Number(arg);
+      state.grantScope = state.grantScope === id ? null : id;
+      state.grantRevokeArm = null;
+      if (state.grantScope !== null && state.myOrgs.status === "idle") loadMyOrgs();
+      break;
+    }
+    case "grantMode": {
+      // arg = "<grant id>:<repo|manual>". Manual starts in the organization on screen (one of mine), and I add others after.
+      const [rawId, mode] = (arg ?? "").split(":");
+      const start = state.orgSlug ?? state.me?.orgs[0]?.slug;
+      if (mode !== "repo" && (mode !== "manual" || !start)) return;
+      saveGrantScope(setOAuthGrantMode(Number(rawId), mode, mode === "manual" ? start : undefined),
+        mode === "repo" ? "It now follows the repository" : "It now works in the organizations you allow");
+      return;
+    }
+    case "grantOrgToggle": {
+      // arg = "<grant id>:<org slug>:<on|off>".
+      const [rawId, slug, to] = (arg ?? "").split(":");
+      if (!slug || (to !== "on" && to !== "off")) return;
+      saveGrantScope(setOAuthGrantOrg(Number(rawId), slug, to === "on"), to === "on" ? "It may use that organization now" : "It can no longer use that organization");
+      return;
+    }
+    case "grantCurrent": {
+      if (!arg || !value) return;
+      saveGrantScope(setOAuthGrantCurrent(Number(arg), value), "Switched");
+      return;
+    }
     // The by-hand setup is a modal, so the MCP tile never changes height: focus goes into
     // the dialog on open, and back to its link on close (the backdrop, the ×, or Escape).
     case "mcpSetupOpen":
@@ -3664,6 +3733,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     default:
       // Every Platform (superadmin) act goes to its controller, platform-actions.ts.
       if (act.startsWith("plat")) { platform.act(act, arg, value); return; }
+      // The support form, signed in or out: its controller repaints the dialog alone (support-actions.ts).
+      if (act.startsWith("support")) { supportCtl.act(act, arg, value); return; }
       // Every Org settings act goes to its controller (org-actions.ts), which rerenders itself.
       // `orgs…` (the switcher, the picker, the create dialog) before `org…` (Org settings).
       if (act.startsWith("welcome")) { welcomeCtl.act(act, arg); return; }
@@ -4428,6 +4499,13 @@ if (params.get("denied") === "1") {
       // the picker — with the hash kept, so opening an org still lands on what the link was for.
       // `/platform/`: the superadmin's area, whatever orgs they are in (or none). Anyone else falls through to the picker.
       // So does a `#platform…` link opened at `/` by a superadmin with no org to open it in.
+      // `/?contact=1` (the static pages' Contact link) for someone who IS signed in: the same form, as
+      // that person, over wherever boot lands them — when it lands in place (opening an org by a page
+      // load simply drops the parameter).
+      if (params.get("contact") === "1" && location.pathname === "/") {
+        history.replaceState(null, "", `/${location.hash}`);
+        setTimeout(() => { if (state.view !== "auth" && !state.support.open) supportCtl.open("question"); }, 0);
+      }
       if (me.superadmin === true && (isPlatformPath(location.pathname) || (me.orgs.length === 0 && /^#platform(?:\/|$)/.test(hash)))) { void loadMyOrgs(); enterPlatform(hash); return; }
       // Sent on from the waiting room (billing.ts `setupHref`): the picker — whatever orgs they are already
       // in — where the organization they just paid for is one of the things to do ("You can set up an
@@ -4456,5 +4534,11 @@ if (params.get("denied") === "1") {
         history.replaceState(null, "", `/${location.hash}`);
       }
       rerender();
+      // Sent here by Contact in the footer of a static page (pricing, terms, privacy — site-chrome.ts
+      // `CONTACT_HREF`): the Contact form opens over the landing page. Read once; it leaves the address bar.
+      if (params.get("contact") === "1") {
+        history.replaceState(null, "", `/${location.hash}`);
+        supportCtl.open("question");
+      }
     });
 }

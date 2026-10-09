@@ -307,7 +307,7 @@ const draft = (o: Partial<PlanDraft> = {}): PlanDraft => ({ slug: "acme", name: 
 
 describe("Platform › Access — the grants", () => {
   it("is a tab of Platform, beside Organizations", () => {
-    expect(PLAT_TABS).toEqual(["orgs", "access", "usage", "admins", "audit"]);
+    expect(PLAT_TABS).toEqual(["orgs", "access", "usage", "support", "admins", "audit"]);
     const p: PlatState = { ...initialPlat(), superadmin: true, tab: "access", access: access({ grants: { status: "ok", data: [pg()] } }) };
     const html = platformView(p, "andres");
     expect(html).toMatch(/>Access<\/[a-z]+>/);

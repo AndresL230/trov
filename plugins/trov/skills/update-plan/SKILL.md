@@ -2,7 +2,7 @@
 name: update-plan
 description: Use when an admin explicitly asks to update, rewrite, or change the roadmap plan — narrative or sprints, including marking a sprint done (triggers — "update the plan", "rewrite the roadmap narrative", "add a sprint", "mark this sprint done"). Explicit invocation only — must never auto-fire.
 disable-model-invocation: true
-allowed-tools: mcp__trov__get_roadmap, mcp__trov__update_plan
+allowed-tools: mcp__trov__get_roadmap, mcp__trov__update_plan, mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 
 # Update Plan → Trov
@@ -31,6 +31,24 @@ skill does so itself, in step 1) so you never write blind.
   that's `read-plan`'s job. Only an explicit ask reaches this skill.
 - Never infer `status: 'done'` from issue/PR activity — `done` is only ever admin-said-so, here or via
   the web Confirm-done button. Nothing else agent- or worker-reachable can set it.
+
+## Which organization — pass `repo` on every call
+
+One Trov connection covers every organization you belong to, so every Trov tool takes the repository
+you are working in. Once per session, run `git remote get-url origin` and reduce it to `owner/name`
+(`git@github.com:acme/app.git` and `https://github.com/acme/app` are both `acme/app`). Pass that as
+`repo` on EVERY Trov call this skill makes. No remote, or not a GitHub one: leave `repo` out.
+
+- A connection that **follows the repository** acts in the organization that has that repository
+  connected. `repo_required` / `not_connected` mean NOTHING was read or written: tell the person this
+  repository is not connected to any of their organizations (Trov › Org settings › Repositories) and
+  stop — never pass a different repository to get an answer. `ambiguous_org` lists the candidates:
+  ask the person which, then pass it as `org`.
+- A **manual** connection ignores `repo` and acts in its current organization. `org_unavailable` /
+  `org_not_allowed` list what it may use: ask the person, never guess, and prefer `org` on the call
+  over `switch_org` (a switch moves every session that shares the connection).
+- Not sure where you are? `get_connection` (same `repo`) answers: the organization this call would
+  act in, the connection's mode, and what it can reach.
 
 ## Procedure
 
@@ -125,10 +143,11 @@ The sprint vocabulary (the DTO's words, not the column names):
 
 ## Hard rules (invariants)
 
-- **Server-gated to the organization's admins.** `update_plan` is only registered when the connection's
-  person is an **admin or owner of the organization the connection is for** (their role there today —
-  set in Org settings › Members) — any other bearer doesn't have the tool at all (absent from
-  `tools/list`, tool-not-found if called).
+- **Server-gated to the organization's admins.** `update_plan` writes only when the connection's person is
+  an **admin or owner of the organization the call acts in** (their role there today — set in Org
+  settings › Members). A person who is an admin nowhere the connection reaches doesn't have the tool at
+  all (absent from `tools/list`); an admin of one organization calling it in another gets `forbidden`,
+  and nothing is written.
   This skill's own instructions are a second layer, not the enforcement boundary.
 - **Explicit only.** Never fire without a direct admin ask.
 - **Read before write, every time** — step 1 is not optional, even for a small edit.

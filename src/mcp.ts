@@ -3,8 +3,10 @@ import { createMcpHandler } from "agents/mcp";
 import { z } from "zod";
 import type { Env } from "./env";
 import type { Principal } from "./auth/principal";
-import { hasRole, type TenantContext } from "./data/context";
-import { appBase, orgSlugOf } from "./tools/org-links";
+import { hasRole, type OrgTenant, type TenantContext } from "./data/context";
+import { admitCall, pinnedConnection, resolveCall, switchOrg, type BearerConnection, type ScopeRefusal } from "./data/bearer";
+import { meterMcpTool } from "./data/meter";
+import { appBase, orgIdentityOf } from "./tools/org-links";
 import { get_doc, list_docs, get_feed, query, list_tickets, get_ticket, list_sprints, get_sprint } from "./tools/reads";
 import {
   TicketSeg, TicketAssigneeFilter, TicketCategory,
@@ -75,17 +77,13 @@ async function runTool(fn: () => Promise<unknown>) {
 }
 
 /**
- * Build a fully-registered Trov MCP server bound to one (user, org) — the bearer TenantContext
- * (src/data/bearer.ts); the principal is its `userId`. Exported so tests
- * can drive the REAL registered tools (e.g. over an in-memory transport) rather
- * than re-implementing the tool bodies — the same closures production runs.
- *
- * A fresh McpServer per request is required (SDK 1.26+ guards against reuse), so
- * this must NOT be hoisted to global scope.
+ * Every ORG tool, registered on `server` bound to one (user, org) — a bearer TenantContext; the
+ * principal is its `userId`. Nothing in here chooses an organization: `ctx` is the one the call
+ * already resolved to (`buildConnectionMcpServer`, below), so a tool body can only ever read and write
+ * that org — exactly as when a connection had one org for good.
  */
-export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?: string; orgSlug?: string | null } = {}): McpServer {
+function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts: { origin?: string; orgSlug?: string | null } = {}): void {
   const principal: Principal = { handle: ctx.userId };
-  const server = new McpServer({ name: "trov", version: "1.0.0" });
   // Absolute links in artifact results: PUBLIC_ORIGIN, else the /mcp request's origin.
   // COOKIE_SECRET is only the ROOT of the download-URL key (derived with a purpose label).
   const artifactCtx = {
@@ -662,13 +660,141 @@ export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?
       async (input) => runTool(() => write_plan(ctx, input as PlanWrite, principal.handle))
     );
   }
+}
+
+// ── The connection: which organization each call acts in (0051) ──────────────
+//
+// A connection can reach several of its person's organizations (src/data/bearer.ts): a MANUAL one acts
+// in its current organization, one that FOLLOWS THE REPOSITORY in the organization that has the call's
+// `repo` connected. So the server a request gets is built for the CONNECTION, and every org tool is
+// registered once, in front, with two extra optional arguments — `repo` and `org` — and a handler that
+//   1. asks `resolveCall` which organization this call acts in (or refuses, having touched nothing),
+//   2. builds that organization's own tools (`registerOrgTools`, bound to its TenantContext), and
+//   3. runs the same-named one.
+// A tool body never sees `org`, and sees `repo` only where it is its own argument (upload_asset).
+
+type ToolOutput = { content: { type: "text"; text: string }[]; isError?: true };
+type ToolHandler = (args: Record<string, unknown>, extra: unknown) => Promise<ToolOutput>;
+interface ToolDef { description: string; shape: Record<string, z.ZodTypeAny>; handler: ToolHandler }
+
+/** The org tools for one context, as a map — `registerOrgTools` run against a recorder. */
+function orgTools(env: Env, ctx: TenantContext, opts: { origin?: string; orgSlug?: string | null }): Map<string, ToolDef> {
+  const tools = new Map<string, ToolDef>();
+  const recorder = {
+    tool: (name: string, description: string, shape: Record<string, z.ZodTypeAny>, handler: ToolHandler) => { tools.set(name, { description, shape, handler }); },
+  };
+  registerOrgTools(recorder as unknown as McpServer, env, ctx, opts);
+  return tools;
+}
+
+const REPO_ARG = z.string().optional().describe(
+  "The GitHub repository you are working in, as owner/name (from `git remote get-url origin`). A connection that follows the repository acts in the organization that has it connected, and reads and writes nothing without it; any other connection ignores it.");
+const ORG_ARG = z.string().optional().describe(
+  "An organization's slug, to act there for THIS call only — one this connection is allowed to use (see get_connection). Omit it to act in the connection's organization.");
+
+const scopeError = (r: ScopeRefusal): ToolOutput => ({
+  content: [{ type: "text", text: JSON.stringify({ error: r.message, code: r.code, ...(r.orgs ? { orgs: r.orgs } : {}) }) }],
+  isError: true,
+});
+
+/** How a result names an organization. A pinned context knows only its id until asked. */
+async function orgLabel(o: OrgTenant): Promise<{ slug: string; name: string }> {
+  if (o.slug && o.name) return { slug: o.slug, name: o.name };
+  const id = await orgIdentityOf(o.ctx);
+  return { slug: id?.slug ?? o.slug, name: id?.name ?? o.name };
+}
+
+export interface McpServerOpts {
+  origin?: string;
+  /** Where a tool call's usage is counted — the org it resolved to. Absent (a test): nothing is metered. */
+  exec?: Pick<ExecutionContext, "waitUntil">;
+}
+
+/**
+ * Build the Trov MCP server for one bearer connection. A fresh McpServer per request is required (SDK
+ * 1.26+ guards against reuse), so this must NOT be hoisted to global scope.
+ *
+ * The tool LIST is the same whichever organization a call lands in, with one exception: `update_plan`
+ * is listed when the person is an admin in ANY organization the connection can reach, and refused
+ * (`forbidden`) on a call that resolves to one where they are not.
+ */
+export function buildConnectionMcpServer(env: Env, conn: BearerConnection, opts: McpServerOpts = {}): McpServer {
+  const server = new McpServer({ name: "trov", version: "1.0.0" });
+  const toolsFor = (o: OrgTenant) => orgTools(env, o.ctx, { origin: opts.origin, orgSlug: o.slug || undefined });
+  const template = conn.orgs.find((o) => hasRole(o.ctx, "admin")) ?? conn.current ?? conn.orgs[0];
+
+  for (const [name, def] of toolsFor(template)) {
+    const ownRepo = "repo" in def.shape; // upload_asset: `repo` is also the page's own field
+    const shape = { ...def.shape, ...(ownRepo ? {} : { repo: REPO_ARG }), org: ORG_ARG };
+    server.tool(name, def.description, shape, async (args: Record<string, unknown>, extra: unknown) => {
+      const target = await resolveCall(conn, args);
+      if (!target.ok) return scopeError(target);
+      try {
+        await admitCall(conn, target.org);
+      } catch (err) {
+        if (err instanceof PlanLimitError) return { content: [{ type: "text" as const, text: JSON.stringify({ error: err.message, code: err.code }) }], isError: true as const };
+        throw err;
+      }
+      const tool = toolsFor(target.org).get(name);
+      if (!tool) return { content: [{ type: "text" as const, text: JSON.stringify({ error: `${name} is for an organization's admins, and you are not one in "${target.org.slug}". Nothing was read or written.`, code: "forbidden" }) }], isError: true as const };
+      opts.exec?.waitUntil(meterMcpTool(env, target.org.ctx, name));
+      const { org: _org, repo, ...rest } = args;
+      // Where `repo` is the tool's own argument, a connection that follows the repository hands it the
+      // spelling it resolved (owner/name) — the page is filed under the repository it was made in.
+      // (A doc image takes no page fields, so there `repo` was only ever the scope.)
+      const keepRepo = ownRepo && repo !== undefined && rest.destination !== "doc";
+      return tool.handler(keepRepo ? { ...rest, repo: target.repo ?? repo } : rest, extra);
+    });
+  }
+
+  // ── The connection's own tools: they act in no organization ───────────────────
+  const reach = async () => Promise.all(conn.orgs.map(async (o) => ({ ...(await orgLabel(o)), role: o.ctx.role })));
+
+  server.tool(
+    "get_connection",
+    "Who and WHERE this connection is — call it first in a session and tell the person which organization you are in. Returns { handle, mode, organization, role, current, organizations, unresolved }. `mode` is \"manual\" (the connection acts in its `current` organization; `organizations` are the ones it is allowed to use — switch with switch_org, or pass `org` on one call) or \"repo\" (it follows the repository: every call passes `repo`, and acts in the organization that has that repository connected; `organizations` are the ones it could reach). `organization` ({ slug, name }) is where a call with THESE arguments would act, with your `role` there — pass the same `repo` / `org` you will pass to the other tools. `organization: null` means such a call would read and write NOTHING; `unresolved` ({ code, message }) says why and what to do. Read-only: it touches no organization's data and changes nothing.",
+    { repo: REPO_ARG, org: ORG_ARG },
+    async (args: { repo?: string; org?: string }) => runTool(async () => {
+      const target = await resolveCall(conn, args);
+      return {
+        handle: conn.handle,
+        mode: conn.mode,
+        connection: conn.kind === "token" ? "token" : "app",
+        organization: target.ok ? await orgLabel(target.org) : null,
+        role: target.ok ? target.org.ctx.role : null,
+        current: conn.mode === "manual" && conn.current ? (await orgLabel(conn.current)).slug : null,
+        organizations: await reach(),
+        ...(target.ok ? {} : { unresolved: { code: target.code, message: target.message } }),
+      };
+    }),
+  );
+
+  server.tool(
+    "switch_org",
+    "Change the organization a MANUAL connection acts in — its current organization — to another one it is ALREADY allowed to use (`organizations` from get_connection). It lasts until switched again and applies to EVERY session using this connection, so tell the person, and for a single call in another organization pass `org` on that call instead. It cannot add an organization: a person does that, signed in, in Trov › Settings › MCP access. A connection that follows the repository has nothing to switch (pass `repo`), and one bound to a single organization cannot. Returns { current: { slug, name }, organizations }.",
+    { org: z.string().describe("The slug of the organization to switch to — one of `organizations` from get_connection.") },
+    async ({ org }: { org: string }) => {
+      const r = await switchOrg(conn, org);
+      if (!r.ok) return scopeError(r);
+      return asText({ current: await orgLabel(r.org), organizations: await reach() });
+    },
+  );
 
   return server;
 }
 
-export async function handleMcp(request: Request, env: Env, exec: ExecutionContext, ctx: TenantContext): Promise<Response> {
-  // The org's slug, for the links tool results carry (`<origin>/<slug>/#…`): the org on the token's own row.
-  const server = buildTrovMcpServer(env, ctx, { origin: new URL(request.url).origin, orgSlug: await orgSlugOf(ctx) });
+/**
+ * The server for ONE (user, org) — a bearer TenantContext pinned as a connection that can act nowhere
+ * else, exactly as a pasted token's. Exported so tests can drive the REAL registered tools (e.g. over
+ * an in-memory transport) rather than re-implementing the tool bodies — the same closures production runs.
+ */
+export function buildTrovMcpServer(env: Env, ctx: TenantContext, opts: { origin?: string; orgSlug?: string | null } = {}): McpServer {
+  return buildConnectionMcpServer(env, pinnedConnection(env, ctx, { slug: opts.orgSlug }), { origin: opts.origin });
+}
+
+export async function handleMcp(request: Request, env: Env, exec: ExecutionContext, conn: BearerConnection): Promise<Response> {
+  // Links in a tool result (`<origin>/<slug>/#…`) carry the slug of the org THAT call resolved to.
+  const server = buildConnectionMcpServer(env, conn, { origin: new URL(request.url).origin, exec });
   // createMcpHandler wraps @modelcontextprotocol/sdk over Streamable HTTP, stateless (no McpAgent/DO).
   const handler = createMcpHandler(server, { route: "/mcp" });
   return handler(request, env, exec);

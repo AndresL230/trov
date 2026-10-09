@@ -382,7 +382,7 @@ export function orgPickerView(p: OrgPickerProps): string {
           ${orgsBlock}${invitesBlock}${state}${createBlock}${platformBlock}
         </div>
         <footer class="cnpy-orgs-foot">
-          <span style="min-width:0;overflow-wrap:anywhere">Signed in as <span style="font-weight:500;color:var(--fg-70)">@${esc(p.me?.handle ?? "")}</span></span>
+          <span style="min-width:0;overflow-wrap:anywhere">Signed in as <span style="font-weight:500;color:var(--fg-70)">@${esc(p.me?.handle ?? "")}</span> <span aria-hidden="true" style="color:var(--fg-40)">&middot;</span> <button type="button" data-act="supportOpen" data-arg="question" data-support-trigger="question" data-field="supportOpen:question" aria-haspopup="dialog" class="cnpy-mutelink" style="padding:0;font:inherit;font-weight:500;color:var(--fg-55);text-decoration:underline;text-underline-offset:2px">Contact support</button></span>
           <span style="display:flex;gap:8px;flex:none">${orgs.length === 0 && p.me ? quietBtn("Back", "onbBack", { label: "Back: change how you appear" }) : ""}${quietBtn("Sign out", "signOut")}</span>
         </footer>
       </div>

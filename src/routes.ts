@@ -50,6 +50,7 @@ import { platformContext, soleTenantGate, tenantGate } from "./data/gate";
 import { orgsApp, myInvitesApp, orgTenantApp, cookieOnly } from "./orgs/routes";
 import { hasRole } from "./data/context";
 import { platformApp } from "./platform/routes";
+import { supportApp } from "./platform/support-routes";
 import { billingApp, orgBillingApp } from "./billing/routes";
 import { PlanFeatureError, PlanLimitError, PLAN_LIMIT_STATUS } from "./plans/state";
 import { listLegacyInvites, getLegacyInvite, createLegacyInvite, revokeLegacyInvite, pendingInviteId, LegacyInviteError } from "./orgs/legacy-invites";
@@ -179,6 +180,8 @@ app.route("/api/platform", platformApp);
 // redirect URI is fixed — the org rides in the sealed `state`, and the callback checks the person's admin
 // membership of it itself (src/data/gate.ts lets `/hosting/*` past the one-org alias).
 app.route("/hosting", hostingCallbackApp);
+// A bug report / support message (0049_support_reports): any signed-in person, with or without an org.
+app.route("/api/support", supportApp);
 // Billing (docs/architecture/billing.md): the purchase link, what the pricing page asks, the waiting room's poll.
 app.route("/", billingApp);
 

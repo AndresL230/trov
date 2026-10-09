@@ -5,12 +5,17 @@
 // and every clock read is a `nowMs` parameter so tests control time. Raw codes
 // and tokens are returned once and stored only as SHA-256 hashes.
 //
-// A connection (grant) is made FOR one org (§7.1): `issueAuthorization` writes the org of the
-// TenantContext it is handed onto the grant and its code, and nothing later changes it — a code, an
-// access token and a refresh token all reach their org through the grant row.
+// A connection (grant) has a MODE (0051, docs/architecture/data-layer.md § Bearer):
+//   manual — it may use a SET of the person's organizations (`oauth_grant_orgs`) and acts in ONE at a
+//            time, its current organization (`oauth_grants.org_id`). The set is changed only by the
+//            person, signed in (consent, Settings); the current one also by the `switch_org` tool.
+//   repo   — it follows the repository each call names; `org_id` is '' and its `oauth_grant_orgs`
+//            rows are the organizations it has been used in.
+// A code, an access token and a refresh token all get their reach through the grant row; which org a
+// request acts in is decided per call, in src/data/bearer.ts, behind a live membership check.
 import { requirePlan } from "../plans/gate";
 import { type PlatformContext, all, first, run, stmt, batch } from "../data/platform-sql";
-import { type TenantContext, run as tenantRun } from "../data/sql";
+import { type TenantContext, first as tenantFirst, run as tenantRun } from "../data/sql";
 import { randomToken, sha256Hex, pkceChallenge } from "./crypto";
 import type { OAuthGrantSummary } from "@shared/rows";
 
@@ -201,18 +206,34 @@ export async function checkAuthorizeRequest(p: PlatformContext, q: URLSearchPara
   return { ok: true, client, params: { client_id: client.client_id, redirect_uri: redirect, code_challenge: challenge, state, resource } };
 }
 
-/** Consent given: the grant (the connection Settings lists) exists from here; the
- *  code is single-use, lives 60 s, and carries the grant id. The connection is `ctx.userId`'s INTO
- *  `ctx.orgId` (§7.1) — the membership the consent POST just resolved, never a request value — and
- *  the grant and its code both record it. A connected app is one of the person's AGENT CONNECTIONS
- *  into the org (0044_plans): at the plan's cap this throws `PlanLimitError` and nothing is written. */
+export type GrantMode = "manual" | "repo";
+/** What a `repo` grant carries in `org_id`: it belongs to no organization. Never an org's id, so a
+ *  reader that takes it for one (a Worker from before 0051) finds no membership and refuses. */
+export const NO_ORG = "";
+
+/** Does `ctx`'s org already hold a row for this grant (it is allowed there / has been used there)? */
+const holdsGrant = async (ctx: TenantContext, grantId: number): Promise<boolean> =>
+  (await tenantFirst<{ ok: number }>(ctx, `SELECT 1 AS ok FROM oauth_grant_orgs WHERE org_id = ? AND grant_id = ?`, ctx.orgId, grantId)) !== null;
+/** Write that row, as `ctx`'s org. */
+const holdGrant = (ctx: TenantContext, grantId: number, nowMs: number) =>
+  tenantRun(ctx, `INSERT OR IGNORE INTO oauth_grant_orgs (org_id, grant_id, person, added_at) VALUES (?, ?, ?, ?)`, ctx.orgId, grantId, ctx.userId, iso(nowMs));
+
+/** Consent given to a MANUAL connection: the grant (the connection Settings lists) exists from here;
+ *  the code is single-use, lives 60 s, and carries the grant id. `ctx` is the organization it STARTS
+ *  in (its current one) and `a.orgs` the others it may use — every one a membership the consent POST
+ *  just resolved, never a request value; with none it is a connection to `ctx`'s org alone, as every
+ *  connection was before 0051. A connected app is one of the person's AGENT CONNECTIONS in EACH of
+ *  those organizations (0044_plans): at any one's cap this throws `PlanLimitError` and nothing is written. */
 export async function issueAuthorization(
-  ctx: TenantContext, a: { client: RegisteredClient; params: AuthorizeParams; nowMs: number },
+  ctx: TenantContext, a: { client: RegisteredClient; params: AuthorizeParams; nowMs: number; orgs?: TenantContext[] },
 ): Promise<{ code: string; grantId: number }> {
-  await requirePlan(ctx, "agent_connections");
-  const g = await tenantRun(ctx, `INSERT INTO oauth_grants (org_id, person, client_id, client_name, created_at) VALUES (?, ?, ?, ?, ?)`,
+  const allowed = [ctx, ...(a.orgs ?? [])].filter((o, i, list) => list.findIndex((x) => x.orgId === o.orgId) === i);
+  if (allowed.some((o) => o.userId.toLowerCase() !== ctx.userId.toLowerCase())) throw new Error("issueAuthorization: every organization must be the same person's");
+  for (const o of allowed) await requirePlan(o, "agent_connections");
+  const g = await tenantRun(ctx, `INSERT INTO oauth_grants (org_id, person, client_id, client_name, created_at, mode) VALUES (?, ?, ?, ?, ?, 'manual')`,
     ctx.orgId, ctx.userId, a.client.client_id, a.client.client_name, iso(a.nowMs));
   const grantId = Number(g.meta.last_row_id);
+  for (const o of allowed) await holdGrant(o, grantId, a.nowMs);
   const code = randomToken(32);
   await tenantRun(ctx,
     `INSERT INTO oauth_codes (org_id, code_hash, client_id, person, grant_id, redirect_uri, code_challenge, resource, created_at, expires_at)
@@ -220,6 +241,34 @@ export async function issueAuthorization(
     ctx.orgId, await sha256Hex(code), a.client.client_id, ctx.userId, grantId, a.params.redirect_uri, a.params.code_challenge,
     a.params.resource, iso(a.nowMs), iso(a.nowMs + CODE_TTL_MS));
   return { code, grantId };
+}
+
+/** Consent given to a connection that FOLLOWS THE REPOSITORY: the grant is the person's and no
+ *  organization's (`org_id` = NO_ORG), so it is written on the platform surface. It takes no agent-
+ *  connection slot here — it takes one in an organization the first time a call resolves there
+ *  (`admitGrantOrg`), which is where the plan can refuse it. */
+export async function issueRepoAuthorization(
+  p: PlatformContext, handle: string, a: { client: RegisteredClient; params: AuthorizeParams; nowMs: number },
+): Promise<{ code: string; grantId: number }> {
+  const g = await run(p, `INSERT INTO oauth_grants (org_id, person, client_id, client_name, created_at, mode) VALUES (?, ?, ?, ?, ?, 'repo')`,
+    NO_ORG, handle, a.client.client_id, a.client.client_name, iso(a.nowMs));
+  const grantId = Number(g.meta.last_row_id);
+  const code = randomToken(32);
+  await run(p,
+    `INSERT INTO oauth_codes (org_id, code_hash, client_id, person, grant_id, redirect_uri, code_challenge, resource, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    NO_ORG, await sha256Hex(code), a.client.client_id, handle, grantId, a.params.redirect_uri, a.params.code_challenge,
+    a.params.resource, iso(a.nowMs), iso(a.nowMs + CODE_TTL_MS));
+  return { code, grantId };
+}
+
+/** A `repo` grant's first call into `ctx`'s org (src/data/bearer.ts): it takes one of the person's
+ *  agent-connection slots there, or the plan refuses (`PlanLimitError`) and nothing is written. A no-op
+ *  once the row exists — that organization has already admitted this connection. */
+export async function admitGrantOrg(ctx: TenantContext, grantId: number, nowMs: number = Date.now()): Promise<void> {
+  if (await holdsGrant(ctx, grantId)) return;
+  await requirePlan(ctx, "agent_connections");
+  await holdGrant(ctx, grantId, nowMs);
 }
 
 // ── Tokens ──────────────────────────────────────────────────────────────────
@@ -240,23 +289,33 @@ async function mintPair(p: PlatformContext, grantId: number, nowMs: number): Pro
   return { access_token: access, token_type: "Bearer", expires_in: ACCESS_TTL_MS / 1000, refresh_token: refresh, scope: OAUTH_SCOPE };
 }
 
-// A grant's standing, read in the statement that finds it: is its person STILL a member of the
-// grant's org (`member`), and is that org suspended (0042_organizations)? Both are live facts, not the grant's own.
-const GRANT_STANDING = `g.org_id, g.revoked_at,
-  EXISTS (SELECT 1 FROM memberships m WHERE m.org_id = g.org_id AND m.user_id = g.person COLLATE NOCASE) AS member,
-  (SELECT o.suspended_at FROM orgs o WHERE o.id = g.org_id) AS suspended_at`;
-interface GrantStanding { org_id: string; revoked_at: string | null; member: number; suspended_at: string | null }
+// A grant's standing, read in the statement that finds it — live facts, not the grant's own. Over the
+// organizations it can reach: a manual grant's are the ones its person allowed (`oauth_grant_orgs`), a
+// `repo` grant's are every organization its person is in. `member` = the person is STILL a member of at
+// least one of them; `reachable` = at least one of those is not suspended (0042_organizations).
+const GRANT_STANDING = `g.org_id, g.mode, g.revoked_at,
+  CASE g.mode WHEN 'repo'
+    THEN EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = g.person COLLATE NOCASE)
+    ELSE EXISTS (SELECT 1 FROM oauth_grant_orgs a JOIN memberships m ON m.org_id = a.org_id AND m.user_id = g.person COLLATE NOCASE WHERE a.grant_id = g.id)
+  END AS member,
+  CASE g.mode WHEN 'repo'
+    THEN EXISTS (SELECT 1 FROM memberships m JOIN orgs o ON o.id = m.org_id WHERE m.user_id = g.person COLLATE NOCASE AND o.suspended_at IS NULL)
+    ELSE EXISTS (SELECT 1 FROM oauth_grant_orgs a JOIN memberships m ON m.org_id = a.org_id AND m.user_id = g.person COLLATE NOCASE
+                   JOIN orgs o ON o.id = a.org_id WHERE a.grant_id = g.id AND o.suspended_at IS NULL)
+  END AS reachable`;
+interface GrantStanding { org_id: string; mode: GrantMode; revoked_at: string | null; member: number; reachable: number }
 
-/** Why a grant may not mint tokens right now, or null. A grant whose person has left its org is
- *  REVOKED here — `removeMember` already does that in its own batch; this covers every other way a
- *  membership can go. A suspended org refuses without revoking: a suspension can be lifted. */
+/** Why a grant may not mint tokens right now, or null. A grant whose person is no longer a member of
+ *  ANY organization it can reach is REVOKED here — `removeMember` already does that in its own batch;
+ *  this covers every other way a membership can go. When the only ones left are suspended it refuses
+ *  without revoking: a suspension can be lifted. */
 async function grantRefusal(p: PlatformContext, grantId: number, g: GrantStanding | null, nowMs: number): Promise<string | null> {
   if (!g || g.revoked_at !== null) return "this connection was revoked";
   if (!g.member) {
     await run(p, `UPDATE oauth_grants SET revoked_at = ?, revoked_reason = 'member_removed' WHERE id = ? AND revoked_at IS NULL`, iso(nowMs), grantId);
     return "you are no longer a member of the organization this connection was made for";
   }
-  if (g.suspended_at !== null) return "the organization this connection was made for is not available";
+  if (!g.reachable) return "the organization this connection was made for is not available";
   return null;
 }
 
@@ -282,13 +341,14 @@ export async function exchangeAuthorizationCode(
   return mintPair(p, row.grant_id, nowMs);
 }
 
-/** A `trov_oat_` (or legacy `canopy_oat_`) bearer → the (person, org) of its grant, while unexpired and its
- *  grant unrevoked. ONE read; `last_used_at` is written at most once a minute so MCP traffic isn't a write
+/** A `trov_oat_` (or legacy `canopy_oat_`) bearer → its grant: the person, the mode, and `orgId` — a
+ *  manual grant's CURRENT organization, NO_ORG for a `repo` grant — while unexpired and its grant
+ *  unrevoked. ONE read; `last_used_at` is written at most once a minute so MCP traffic isn't a write
  *  per call. The caller still checks the LIVE membership (src/data/bearer.ts). */
-export async function resolveOAuthAccessToken(p: PlatformContext, raw: string, nowMs: number): Promise<{ handle: string; orgId: string } | null> {
+export async function resolveOAuthAccessToken(p: PlatformContext, raw: string, nowMs: number): Promise<{ handle: string; orgId: string; mode: GrantMode; grantId: number } | null> {
   if (!isAccessToken(raw)) return null;
-  const row = await first<{ grant_id: number; person: string; org_id: string; last_used_at: string | null }>(p,
-    `SELECT g.id AS grant_id, g.person, g.org_id, g.last_used_at FROM oauth_tokens t JOIN oauth_grants g ON g.id = t.grant_id
+  const row = await first<{ grant_id: number; person: string; org_id: string; mode: GrantMode; last_used_at: string | null }>(p,
+    `SELECT g.id AS grant_id, g.person, g.org_id, g.mode, g.last_used_at FROM oauth_tokens t JOIN oauth_grants g ON g.id = t.grant_id
      WHERE t.token_hash = ? AND t.kind = 'access' AND t.expires_at > ? AND g.revoked_at IS NULL`,
     await sha256Hex(raw), iso(nowMs));
   if (!row) return null;
@@ -301,7 +361,7 @@ export async function resolveOAuthAccessToken(p: PlatformContext, raw: string, n
       console.error("oauth last_used_at: " + (e instanceof Error ? e.message : String(e)));
     }
   }
-  return { handle: row.person, orgId: row.org_id };
+  return { handle: row.person, orgId: row.org_id, mode: row.mode === "repo" ? "repo" : "manual", grantId: row.grant_id };
 }
 
 /**
@@ -312,9 +372,10 @@ export async function resolveOAuthAccessToken(p: PlatformContext, raw: string, n
  * Claude Code sessions share one credential); later than that is treated as theft
  * and revokes the whole grant.
  *
- * The pair is for the grant's org and no other (fixed at consent). The membership is re-checked
- * BEFORE the rotation: a person who has left that org gets `invalid_grant` and the grant is revoked;
- * a suspended org refuses too, without spending the token.
+ * The pair is for the grant and reaches only what the grant reaches. Its standing is re-checked BEFORE
+ * the rotation: a person who is no longer a member of any organization it can reach gets
+ * `invalid_grant` and the grant is revoked; when all that is left is suspended it refuses too, without
+ * spending the token.
  */
 export async function refreshAccessToken(p: PlatformContext, r: { refresh_token: string; client_id: string | null }, nowMs: number): Promise<TokenResponse> {
   const hash = await sha256Hex(r.refresh_token);
@@ -349,13 +410,107 @@ export async function revokeOAuthToken(p: PlatformContext, raw: string, nowMs: n
   }
 }
 
-/** Settings › Connected apps: the caller's live connections, newest first. USER-level — it spans every
- *  org the person connected an app to, and each row names its org. */
+/** Settings › Connected apps: the caller's live connections, newest first. USER-level — a connection
+ *  is the person's, and each row says how it is scoped: its mode, the organizations it can use (manual)
+ *  or has been used in (repo), and a manual one's current organization. Only organizations the person
+ *  is a member of NOW and that are not suspended are named — what the connection can actually reach. */
 export async function listGrants(p: PlatformContext, handle: string): Promise<OAuthGrantSummary[]> {
-  const rows = await all<{ id: number; client_name: string; created_at: string; last_used_at: string | null; slug: string; name: string }>(p,
-    `SELECT g.id, g.client_name, g.created_at, g.last_used_at, o.slug, o.name FROM oauth_grants g JOIN orgs o ON o.id = g.org_id
+  const rows = await all<{ id: number; client_name: string; created_at: string; last_used_at: string | null; mode: GrantMode; org_id: string }>(p,
+    `SELECT g.id, g.client_name, g.created_at, g.last_used_at, g.mode, g.org_id FROM oauth_grants g
      WHERE g.person = ? COLLATE NOCASE AND g.revoked_at IS NULL ORDER BY g.created_at DESC, g.id DESC`, handle);
-  return rows.map((r) => ({ id: r.id, client_name: r.client_name, created_at: r.created_at, last_used_at: r.last_used_at, org: { slug: r.slug, name: r.name } }));
+  const orgs = await all<{ grant_id: number; org_id: string; slug: string; name: string }>(p,
+    `SELECT a.grant_id, a.org_id, o.slug, o.name FROM oauth_grant_orgs a JOIN oauth_grants g ON g.id = a.grant_id
+       JOIN orgs o ON o.id = a.org_id JOIN memberships m ON m.org_id = a.org_id AND m.user_id = g.person COLLATE NOCASE
+      WHERE g.person = ? COLLATE NOCASE AND g.revoked_at IS NULL AND o.suspended_at IS NULL ORDER BY o.name COLLATE NOCASE ASC`, handle);
+  return rows.map((r) => {
+    const mine = orgs.filter((o) => o.grant_id === r.id);
+    const mode: GrantMode = r.mode === "repo" ? "repo" : "manual";
+    const current = mode === "manual" ? mine.find((o) => o.org_id === r.org_id) : undefined;
+    return {
+      id: r.id, client_name: r.client_name, created_at: r.created_at, last_used_at: r.last_used_at, mode,
+      org: current ? { slug: current.slug, name: current.name } : null,
+      orgs: mine.map((o) => ({ slug: o.slug, name: o.name })),
+    };
+  });
+}
+
+// ── Changing a connection's reach: a PERSON's act (session-cookie routes in ./routes.ts), never MCP ──
+// Each is keyed by the grant's id AND its person, so someone else's id is the same miss as an unknown
+// one. An organization is always handed in as a TenantContext — the live membership its caller resolved.
+
+export type GrantScopeCode = "not_found" | "not_manual" | "current_org" | "last_org" | "not_allowed";
+export class GrantScopeError extends Error {
+  constructor(readonly code: GrantScopeCode) { super(code); }
+}
+
+/** One of `handle`'s own live grants (with how many organizations hold a row for it), or null. */
+async function ownGrant(p: PlatformContext, handle: string, id: number): Promise<{ id: number; mode: GrantMode; org_id: string; orgs: number } | null> {
+  const row = await first<{ id: number; mode: GrantMode; org_id: string; orgs: number }>(p,
+    `SELECT g.id, g.mode, g.org_id, (SELECT COUNT(*) FROM oauth_grant_orgs a WHERE a.grant_id = g.id) AS orgs
+       FROM oauth_grants g WHERE g.id = ? AND g.person = ? COLLATE NOCASE AND g.revoked_at IS NULL`, id, handle);
+  return row ? { ...row, mode: row.mode === "repo" ? "repo" : "manual" } : null;
+}
+
+/** Is `id` one of `handle`'s own live grants? Else `not_found` — the same for someone else's and for none. */
+export async function requireOwnGrant(p: PlatformContext, handle: string, id: number): Promise<void> {
+  if (!(await ownGrant(p, handle, id))) throw new GrantScopeError("not_found");
+}
+
+/** Add `ctx`'s org to (or take it out of) the set a MANUAL connection may use. Adding takes one of the
+ *  person's agent-connection slots there (`PlanLimitError` at the cap; nothing written). Taking out the
+ *  current organization is refused (`current_org` — switch first), as is the last one (`last_org` —
+ *  disconnect instead): a manual connection always has somewhere to act. */
+export async function setGrantOrg(p: PlatformContext, ctx: TenantContext, id: number, on: boolean, nowMs: number = Date.now()): Promise<void> {
+  const g = await ownGrant(p, ctx.userId, id);
+  if (!g) throw new GrantScopeError("not_found");
+  if (g.mode !== "manual") throw new GrantScopeError("not_manual");
+  const held = await holdsGrant(ctx, id);
+  if (on) {
+    if (held) return;
+    await requirePlan(ctx, "agent_connections");
+    await holdGrant(ctx, id, nowMs);
+    return;
+  }
+  if (!held) return;
+  if (g.org_id === ctx.orgId) throw new GrantScopeError("current_org");
+  if (g.orgs <= 1) throw new GrantScopeError("last_org");
+  await tenantRun(ctx, `DELETE FROM oauth_grant_orgs WHERE org_id = ? AND grant_id = ?`, ctx.orgId, id);
+}
+
+/** Make `ctx`'s org a MANUAL connection's current organization — only one already in its allowed set
+ *  (one statement, so the check and the write cannot part). Called by the Settings route and by the
+ *  `switch_org` tool: it moves the connection inside what its person granted, and grants nothing. */
+export async function setGrantCurrent(ctx: TenantContext, id: number): Promise<void> {
+  const res = await tenantRun(ctx,
+    `UPDATE oauth_grants SET org_id = ?1 WHERE id = ?2 AND person = ?3 COLLATE NOCASE AND mode = 'manual' AND revoked_at IS NULL
+        AND EXISTS (SELECT 1 FROM oauth_grant_orgs a WHERE a.grant_id = oauth_grants.id AND a.org_id = ?1)`, ctx.orgId, id, ctx.userId);
+  if (res.meta.changes === 0) throw new GrantScopeError("not_allowed");
+}
+
+/** Change a connection between the two modes. To `repo`: it stops being any organization's — its
+ *  allowed set is dropped (the slots it held are freed; it takes one again where it is next used). To
+ *  `manual`: it is bound to `to.ctx`'s org alone, current and only allowed one (a slot there, unless it
+ *  already holds one); the person adds others afterwards. */
+export async function setGrantMode(
+  p: PlatformContext, handle: string, id: number, to: { mode: "repo" } | { mode: "manual"; ctx: TenantContext }, nowMs: number = Date.now(),
+): Promise<void> {
+  const g = await ownGrant(p, handle, id);
+  if (!g) throw new GrantScopeError("not_found");
+  if (to.mode === "repo") {
+    await batch(p, [
+      stmt(p, `UPDATE oauth_grants SET mode = 'repo', org_id = ? WHERE id = ? AND person = ? COLLATE NOCASE AND revoked_at IS NULL`, NO_ORG, id, handle),
+      stmt(p, `DELETE FROM oauth_grant_orgs WHERE grant_id = ? AND person = ? COLLATE NOCASE`, id, handle),
+    ]);
+    return;
+  }
+  const ctx = to.ctx;
+  if (ctx.userId.toLowerCase() !== handle.toLowerCase()) throw new GrantScopeError("not_found");
+  if (!(await holdsGrant(ctx, id))) await requirePlan(ctx, "agent_connections");
+  await batch(p, [
+    stmt(p, `DELETE FROM oauth_grant_orgs WHERE grant_id = ? AND org_id <> ?`, id, ctx.orgId),
+    stmt(p, `INSERT OR IGNORE INTO oauth_grant_orgs (org_id, grant_id, person, added_at) VALUES (?, ?, ?, ?)`, ctx.orgId, id, handle, iso(nowMs)),
+    stmt(p, `UPDATE oauth_grants SET mode = 'manual', org_id = ? WHERE id = ? AND person = ? COLLATE NOCASE AND revoked_at IS NULL`, ctx.orgId, id, handle),
+  ]);
 }
 
 /** Revoke one of the caller's OWN grants, whichever org it is into (user-level, like the list). False

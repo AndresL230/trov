@@ -20,6 +20,16 @@ it. Inside a morphed page, a part that must be REPLACED when it becomes a differ
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
 animations off in the affected region — that hides one symptom and leaves the rebuild.
 
+**A dialog that opens over ANY screen repaints itself alone.** Most screens are not `data-morph`ed, so a dialog
+whose host page can be any of them cannot rely on the page's opt-in: a `rerender()` per keystroke would rebuild
+whatever is behind it. The support dialog (`web/src/support.ts`: the header's bug button, Settings › Contact support, the site's Contact) is the
+pattern: opening and closing are a `rerender()`; everything inside the open dialog goes through
+`support-actions.ts` `repaint()`, which renders the dialog again and `morph()`s the live `data-overlay` element
+in place — the page is not touched (check: `document.querySelector("main")` is the same element before and after
+typing). It needs a STABLE structure while the form is up (an error or counter that comes and goes is always
+emitted and shown by attribute; a different body, like the sent state, is a `data-morph-key`), and state stays
+the one source of truth, so a rerender caused by anything else paints the same dialog. Details: `support.md`.
+
 **First-run flow** (`people.ts` `onboardView` → `org-picker.ts` `orgPickerView` → `welcome.ts` `welcomeView`):
 one card (`.cnpy-orgs-card`: banner, body, foot) in front of `firstRunBackdrop()` (`render.ts`: the real app
 shell rendered from `initialState()`, so every region is its own skeleton; `inert`, `aria-hidden`). A step
@@ -143,7 +153,7 @@ through all seven (wrapping), with the position as text and dots.
 
 Two cards whose content is naturally the same height at desktop width (`.site-agents-row`, 1.65fr / 1fr,
 measured at 1440 and 1100); one column under 900px. The plugin card holds the skills, then `connectSteps()` and
-`ONE_ORG_NOTE` from `mcp-connect.ts`. If a card's content shrinks, re-weight the columns or let the card be
+`CONNECTION_NOTE` from `mcp-connect.ts`. If a card's content shrinks, re-weight the columns or let the card be
 smaller: never pad one out.
 
 ## Sidebar & motion — the `<aside>` outlives rerenders
@@ -162,6 +172,14 @@ Roadmap, Tickets, Unplaced and Repo are plain rows (Tickets' switch sits in its 
 and Repo's tabs head their page body), and a stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
+
+**Report a bug is the app header's icon button**, beside the theme toggle and its twin (`bugBtn` in
+`render.ts` `appHeader`: the same `cnpy-iconbtn`, 32px, 40px at phone width with the rest of the cluster),
+on every screen the header shows on. **Contact support is a tile of personal Settings** (`helpSection`,
+`.cnpy-set-help`: a slim tile on a row of its own after Email notifications, before Session in DOM order so
+Sign out stays last when it folds). Neither is in the sidebar, whose Help section is Guide and What's new;
+the rail's rows and its short-window steps are unchanged. Both carry `data-support-trigger`, so focus
+returns to them when the dialog closes (`support.md`).
 
 **Widths.** The rail is **228px** expanded and 64px collapsed (`.cnpy-aside` in `trov.css`; the phone drawer has
 its own, `min(292px, 100vw - 48px)`). 228 was measured, not chosen by eye (2026-10-08, was 244): the row that

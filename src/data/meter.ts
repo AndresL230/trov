@@ -45,17 +45,31 @@ function toolCalls(body: unknown): string[] {
   return out;
 }
 
-/** One /mcp request: `mcp_request`, plus `mcp_tool:<name>` per tool call in its body — read from a
- *  CLONE taken before the first await, so the handler still owns the original. Never rejects. */
-export async function meterMcp(env: Env, ctx: TenantContext, request: Request): Promise<void> {
+/** One /mcp request that calls NO tool (initialize, tools/list, a notification): `mcp_request`, in the
+ *  connection's own organization — `ctx`, or nothing when it has none (a connection that follows the
+ *  repository acts in an organization only per call). A request that DOES call a tool is counted by
+ *  `meterMcpTool`, in the organization each call resolved to. The body is read from a CLONE taken
+ *  before the first await, so the handler still owns the original. Never rejects. */
+export async function meterMcp(env: Env, ctx: TenantContext | null, request: Request): Promise<void> {
   let copy: Request | null = null;
   try {
     copy = request.method === "POST" ? request.clone() : null;
     const tools = copy ? toolCalls(await copy.json().catch(() => null)) : [];
+    if (tools.length || !ctx) return;
+    await meter(platform(env, ctx.userId), ctx.orgId, ctx.userId, METRIC_MCP_REQUEST);
+  } catch {
+    // never the request's problem
+  }
+}
+
+/** One MCP tool call, counted in the organization it RESOLVED to (src/mcp.ts): `mcp_request` and
+ *  `mcp_tool:<name>`. A call that resolved to no organization is counted nowhere. Never rejects. */
+export async function meterMcpTool(env: Env, ctx: TenantContext, tool: string): Promise<void> {
+  try {
+    if (!/^[A-Za-z0-9_.-]{1,64}$/.test(tool)) return;
     const p = platform(env, ctx.userId);
     const at = nowIso();
-    await batch(p, [METRIC_MCP_REQUEST, ...tools.map((t) => METRIC_MCP_TOOL_PREFIX + t)]
-      .map((metric) => stmt(p, UPSERT, ctx.orgId, at.slice(0, 10), metric, ctx.userId, at)));
+    await batch(p, [METRIC_MCP_REQUEST, METRIC_MCP_TOOL_PREFIX + tool].map((metric) => stmt(p, UPSERT, ctx.orgId, at.slice(0, 10), metric, ctx.userId, at)));
   } catch {
     // never the request's problem
   }
