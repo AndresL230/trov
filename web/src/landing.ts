@@ -762,7 +762,7 @@ function signInDialog(): string {
           </button>
           ${trovMark(30)}
           <h2 id="signin-title" style="margin:14px 0 0;font-size:21px;font-weight:650;letter-spacing:-0.02em">Sign in to Trov</h2>
-          <p style="margin:6px 0 0;font-size:13.5px;line-height:1.55;color:var(--fg-55)">Open your organization, or create one for your team.</p>
+          <p style="margin:6px 0 0;max-width:260px;font-size:13.5px;line-height:1.55;color:var(--fg-55);text-wrap:balance">Open your organization, or create one for your team.</p>
         </div>
         <div class="site-signin-body">
           <button data-act="signIn" class="site-signin-btn site-btn-solid" style="border-radius:9px">${GH_24}Continue with GitHub</button>
