@@ -109,7 +109,7 @@ export const RELEASES: Release[] = [
         "Org settings › General › Plan shows \"Free until <date>, a gift from Trov. After that this organization moves to Free; nothing is deleted.\" (`OrgPlanView.gift_until`), as the amber note in its last 7 days; the owner gets \"Keep Pro by paying\" where billing is set up (#123)",
       ],
       changed: [
-        "Org settings › Members: the members are a table (`.cnpy-mem-row`: member, handle, title, joined, role, Edit), one grid for the head and every row; the invite bar spans its surface instead of stopping at 820px; the email invite's help line no longer says a Google account must be invited first (#PRNUM)",
+        "Org settings › Members: the members are a table (`.cnpy-mem-row`: member, handle, title, joined, role, Edit), one grid for the head and every row; the invite bar spans its surface instead of stopping at 820px; the email invite's help line no longer says a Google account must be invited first (#128)",
         "Help › Get Started is now Help › Guide, titled How Trov works: a reference, not a second onboarding. The numbered Sign in / Connect your agent / Learn the skills steps are gone; the skills come first, then how review works and the tour, then Accounts and organizations and Connecting a coding agent as reference sections. Its sign-in facts match open Google sign-up (#124)",
         "The guided setup closes with Your first session (three lines: start as usual, work, say record this session) and a link to the Guide, in place of the four Where things live cards, which repeated the sidebar (#124)",
         "The welcome e-mail opens the guided setup (`/<org>/#welcome`), where a new person now begins, not the Guide (#124)",
@@ -135,7 +135,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [121, 122, 123, 124],
+    prs: [121, 122, 123, 124, 128],
   },
   // Free and per-seat Pro: self-serve Free organizations, Team renamed Pro and sold per seat, a downgrade to Free (#117).
   {
