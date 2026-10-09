@@ -1722,8 +1722,8 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 }
 
 /* the card on its side: banner | body */
-.site-split { display:grid; grid-template-columns:minmax(0, 1.12fr) minmax(0, 1fr); border:1px solid var(--border); background:var(--surface); overflow:hidden;
-  box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
+.site-split { display:grid; grid-template-columns:minmax(0, 1.12fr) minmax(0, 1fr); border:0; background:var(--surface); overflow:hidden;
+  box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
 .site-split-banner { padding:clamp(30px, 4.6vw, 56px) clamp(24px, 4.4vw, 52px); display:flex; flex-direction:column; justify-content:center; }
 .site-split-banner > .site-banner-art { width:clamp(220px, 26vw, 330px); aspect-ratio:1; right:-56px; top:-70px; }
 .site-split-banner h2 { margin:0; font-size:clamp(28px, 3.4vw, 38px); line-height:1.12; font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
@@ -1871,8 +1871,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .site-signin-back { position:fixed; inset:0; z-index:60; animation:site-fade .16s ease both;
   background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 30%, transparent) 0%, transparent 72%), rgba(14,14,26,.52); }
 .site-signin-wrap { position:fixed; inset:0; z-index:61; display:grid; place-items:center; padding:16px; pointer-events:none; overflow-y:auto; }
-.site-signin-card { pointer-events:auto; position:relative; width:min(448px, 100%); border:1px solid var(--border-strong); background:var(--surface); overflow:hidden;
-  box-shadow:0 1px 2px rgba(20,22,60,.06), 0 30px 70px -24px rgba(10,12,40,.5); animation:cnpy-pop .18s ease both; }
+.site-signin-card { pointer-events:auto; position:relative; width:min(448px, 100%); border:0; background:var(--surface); overflow:hidden;
+  box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.06), 0 30px 70px -24px rgba(10,12,40,.5); animation:cnpy-pop .18s ease both; }
 .site-signin-banner { padding:26px 28px 26px; }
 .site-signin-banner > .site-banner-art { width:190px; aspect-ratio:1; right:-34px; top:-46px; }
 .site-signin-x { position:absolute !important; top:10px; right:10px; width:30px; height:30px; display:grid; place-items:center; color:rgba(255,255,255,.8); transition:background .12s ease, color .12s ease; }
@@ -1891,7 +1891,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 /* Dark: the scrims dim with the page's own warm black, not the light theme's blue-black. */
 [data-cnpy-theme="dark"] .site-signin-back { background:radial-gradient(55% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 18%, transparent) 0%, transparent 72%), rgba(10,9,7,.62); }
 [data-cnpy-theme="dark"] .site-fx-back { background:radial-gradient(60% 60% at 50% 46%, color-mix(in srgb, var(--mark, #616acb) 14%, transparent) 0%, transparent 72%), rgba(10,9,7,.66); }
-[data-cnpy-theme="dark"] .site-signin-card, [data-cnpy-theme="dark"] .site-fx-panel, [data-cnpy-theme="dark"] .site-hero-mock { box-shadow:0 1px 2px rgba(0,0,0,.3), 0 34px 80px -28px rgba(0,0,0,.7); }
+[data-cnpy-theme="dark"] .site-split, [data-cnpy-theme="dark"] .cnpy-orgs-card { box-shadow:0 0 0 1px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.3), 0 18px 48px -18px rgba(0,0,0,.6); }
+[data-cnpy-theme="dark"] .site-signin-card, [data-cnpy-theme="dark"] .site-fx-panel, [data-cnpy-theme="dark"] .site-hero-mock { box-shadow:0 0 0 1px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.3), 0 34px 80px -28px rgba(0,0,0,.7); }
 @media (prefers-reduced-motion: reduce) { .site-signin-back, .site-signin-card, .site-signin-x, .site-signin-btn { animation:none !important; transition:none !important; } }
 
 /* nav: a hairline and soft shadow once the page scrolls under it */
@@ -2086,7 +2087,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
    (a box's own shadow is painted outside its clip): the shadow travels and resizes with it.
    Keep it in step with `.cnpy-orgs-card`. (No radius here: the pseudo-element lives outside the theme root, so
    the corners block cannot scale one, and a 4px corner is not seen on a box in motion.) */
-::view-transition-group(first-run-card) { overflow:clip; box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
+::view-transition-group(first-run-card) { overflow:clip; box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
 /* The backdrop and the card stack inside their own screen, so a dialog opened over it stays on top. */
 .cnpy-orgs, .cnpy-onb { isolation:isolate; }
 .cnpy-orgs-col, .cnpy-onb > .cnpy-orgs-col { position:relative; z-index:1; }
@@ -2097,7 +2098,13 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 @media (max-width:640px) {
   .cnpy-onb-pair { grid-template-columns:minmax(0, 1fr); }
 }
-.cnpy-orgs-card { box-shadow:0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
+/* A card with a banner has NO border. A border is drawn outside the banner, so the card's light edge showed
+   as a pale line all the way round the purple (or, in dark, the olive) — a white frame on the box. The
+   edge is a hairline ring in the shadow instead: a faint dark line, which reads as an edge against the
+   card's light body and disappears against the banner. Same rule for the first-run cards, the sign-in
+   dialog and the "Agents propose" card. */
+.cnpy-surface.cnpy-orgs-card { border:0; }
+.cnpy-orgs-card { box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
 /* The banner is the brand's purple in both themes: it is Trov speaking, not the app's chrome. */
 /* `.site-banner` is the same banner on the signed-out site (landing.ts: the hero, "Agents propose, people
    decide" and the sign-in dialog). ONE definition, so the site and the first run never drift apart. */

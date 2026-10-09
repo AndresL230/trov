@@ -129,6 +129,10 @@ describe("landing — a rerender replays nothing", () => {
     // The two buttons are a narrow centred pair with the "or" rule between them (not full-width bars).
     expect(html).toMatch(/Continue with GitHub<\/button>\s*<div class="site-signin-or" aria-hidden="true"><span><\/span>or<span><\/span><\/div>\s*<button data-act="signInGoogle"/);
     expect(rules).toContain(".site-signin-body > * { width:100%; max-width:280px; }");
+    // A bannered card has no border (it showed as a pale frame round the banner): its edge is a ring in the shadow.
+    expect(rules).toMatch(/\.site-signin-card \{[^}]*border:0;[^}]*box-shadow:0 0 0 1px rgba\(20,22,60,\.07\),/);
+    expect(rules).toMatch(/\.site-split \{[^}]*border:0;/);
+    expect(rules).toContain(".cnpy-surface.cnpy-orgs-card { border:0; }");
     expect(html).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<button/);
   });
 });
