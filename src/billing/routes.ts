@@ -138,6 +138,12 @@ billingApp.get("/billing/start", async (c) => {
   const me = await caller(c);
   if (!me) {
     await setReturnTo(c, billingStartHref(plan, interval));
+    // `via` (the app's Get started dialog, where the provider was already picked): straight on to that
+    // provider's sign-in, with the same sealed return — not a second page asking the same question. The
+    // return path is still the allowlisted one built above; `via` is never part of it.
+    const via = c.req.query("via");
+    if (via === "github") return c.redirect("/auth/login", 302);
+    if (via === "google") return c.redirect("/auth/google/login", 302);
     return page(c, billingSignInPage(plan), 200);
   }
   if (await isSuperadmin(c.var.p, me.handle)) return page(c, superadminPage(), 403);

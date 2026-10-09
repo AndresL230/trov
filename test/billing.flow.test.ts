@@ -190,6 +190,22 @@ describe("billing not configured", () => {
 });
 
 describe("signed out: sign in, then carry on to payment", () => {
+  it("with `via`, a signed-out buyer goes straight to the provider they already picked — the same sealed return, no second sign-in page", async () => {
+    for (const [via, to] of [["github", "/auth/login"], ["google", "/auth/google/login"]] as const) {
+      const start = await bcall("GET", `/billing/start?plan=team&via=${via}`, "");
+      expect([start.status, start.headers.get("location")]).toEqual([302, to]);
+      const setCookie = start.headers.get("set-cookie") ?? "";
+      expect(setCookie).toMatch(new RegExp(`^${RETURN_TO_COOKIE}=[^;]+; Max-Age=600; Path=/; HttpOnly; Secure; SameSite=Lax`));
+      // (What the cookie returns to is the allowlisted purchase path, sealed by `setReturnTo` — the test
+      // below follows it through the sign-in callback; `via` is never part of it.)
+    }
+    // Anything else falls back to the page that asks.
+    const other = await bcall("GET", "/billing/start?plan=team&via=facebook", "");
+    expect(other.status).toBe(200);
+    expect(other.text).toContain("Sign in to continue");
+    expect(stripe.calls).toEqual([]);
+  });
+
   it("shows the sign-in page, remembers the purchase in a sealed cookie, and the sign-in callback returns to it", async () => {
     const start = await bcall("GET", "/billing/start?plan=team&interval=year", "");
     expect(start.status).toBe(200);
