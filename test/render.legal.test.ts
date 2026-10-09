@@ -24,7 +24,7 @@ describe("legal pages", () => {
         expect(html).toContain(`Last updated ${legalDate(doc.updated)}`);
         for (const s of doc.sections) {
           expect(html).toContain(`<section id="${s.id}" class="site-legal-sec">`);
-          expect(html).toContain(`<a href="#${s.id}" data-legal-toc="${s.id}">`);
+          expect(html).toContain(`<a href="#${s.id}" data-legal-toc="${s.id}"><span class="site-legal-toc-n">`);
         }
       });
 
@@ -72,7 +72,7 @@ describe("legal pages", () => {
     expect(html).toContain('<span class="site-legal-tab" aria-current="page" style="border-radius:8px">Terms of Service</span>');
     expect(html).toContain('<a href="/privacy" class="site-legal-tab" style="border-radius:8px">Privacy Policy</a>');
     for (const b of TERMS.brief) expect(html).toContain(`<li>${b}</li>`);
-    expect(html).toContain('<span class="site-legal-n" style="border-radius:7px">3</span>Plans, payment and cancellation</h2>');
+    expect(html).toContain('<span class="site-legal-n">3.</span>Plans, payment and cancellation</h2>');
   });
 
   it("dates read in fixed English", () => {

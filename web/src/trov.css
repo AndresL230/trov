@@ -1510,17 +1510,20 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-legal-text { max-width:700px; }
 .site-legal-toc-h { font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--fg-40); }
 .site-legal-toc ol { list-style:none; margin:10px 0 0; padding:0; border-left:1px solid var(--border); }
-.site-legal-toc a { display:block; margin-left:-1px; padding:5px 0 5px 14px; border-left:1px solid transparent; font-size:13.5px; line-height:1.4; color:var(--fg-55); text-decoration:none; transition:color .12s ease, border-color .12s ease; }
+.site-legal-toc a { display:flex; gap:8px; margin-left:-1px; padding:5px 0 5px 14px; border-left:1px solid transparent; font-size:13.5px; line-height:1.4; color:var(--fg-55); text-decoration:none; transition:color .12s ease, border-color .12s ease; }
 .site-legal-toc a:hover { color:var(--fg); text-decoration:none; }
-.site-legal-toc a[aria-current] { color:var(--fg); font-weight:600; border-left-color:var(--accent); }
+/* The current section is marked by colour and the rule alone: a heavier weight is wider, and re-wrapped the line. */
+.site-legal-toc a[aria-current] { color:var(--fg); border-left-color:var(--accent); }
+.site-legal-toc-n { flex:none; min-width:17px; color:var(--fg-40); font-variant-numeric:tabular-nums; }
+.site-legal-toc a[aria-current] .site-legal-toc-n { color:var(--accent); }
 .site-legal-brief { padding:20px 22px; background:var(--surface); box-shadow:0 0 0 1px var(--border); }
 .site-legal-brief ul { list-style:none; margin:12px 0 0; padding:0; display:grid; gap:9px; }
 .site-legal-brief li { position:relative; padding-left:18px; font-size:15px; line-height:1.55; color:var(--fg); text-wrap:pretty; }
 .site-legal-brief li::before { content:""; position:absolute; left:1px; top:.62em; width:6px; height:6px; background:var(--accent); }
 .site-legal-brief p { margin:14px 0 0; font-size:13px; line-height:1.55; color:var(--fg-55); }
 .site-legal-sec { scroll-margin-top:84px; margin-top:46px; }
-.site-legal-sec h2 { margin:0; display:flex; align-items:baseline; gap:12px; font-size:20px; font-weight:650; letter-spacing:-0.015em; }
-.site-legal-n { flex:none; min-width:26px; padding:2px 0; text-align:center; font-family:var(--label); font-size:12.5px; font-weight:600; letter-spacing:.02em; color:var(--accent); background:color-mix(in srgb, var(--accent) 12%, transparent); transform:translateY(-2px); }
+.site-legal-sec h2 { margin:0; display:flex; align-items:baseline; gap:9px; font-size:20px; font-weight:650; letter-spacing:-0.015em; }
+.site-legal-n { flex:none; color:var(--fg-40); font-weight:500; font-variant-numeric:tabular-nums; }
 .site-legal-sec p, .site-legal-sec li { font-size:15px; line-height:1.7; color:var(--fg-70); text-wrap:pretty; }
 .site-legal-sec p { margin:12px 0 0; }
 .site-legal-sec ul { margin:12px 0 0; padding-left:22px; }
@@ -1531,7 +1534,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
   .site-legal { grid-template-columns:minmax(0, 1fr); gap:28px; padding-top:32px; }
   .site-legal-side { position:static; max-height:none; padding:18px 22px; background:var(--surface); box-shadow:0 0 0 1px var(--border); }
   .site-legal-toc ol { border-left:0; columns:2 200px; column-gap:28px; }
-  .site-legal-toc a { margin-left:0; padding-left:0; border-left:0; }
+  .site-legal-toc a { margin-left:0; padding-left:0; border-left:0; break-inside:avoid; }
 }
 /* phone: the nav's logo, icons and Sign in / Back to the app fit a 360px screen. */
 @media (max-width:480px) { .site-navin { gap:12px !important; padding:0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)) !important; } .site-navin > div:last-child { gap:8px !important; } }

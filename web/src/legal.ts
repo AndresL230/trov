@@ -330,11 +330,14 @@ function numbered(title: string): { n: string; text: string } {
  *  beside the text and follow the reader (web/src/legal-page.ts marks the section in view). */
 export function legalView(doc: LegalDoc, dark: boolean): string {
   const other = doc.kind === "terms" ? PRIVACY : TERMS;
-  const toc = doc.sections.map((s) => `<li><a href="#${s.id}" data-legal-toc="${s.id}">${esc(s.title)}</a></li>`).join("");
+  const toc = doc.sections.map((s) => {
+    const t = numbered(s.title);
+    return `<li><a href="#${s.id}" data-legal-toc="${s.id}">${t.n ? `<span class="site-legal-toc-n">${t.n}</span>` : ""}<span>${esc(t.text)}</span></a></li>`;
+  }).join("");
   const sections = doc.sections
     .map((s) => {
       const t = numbered(s.title);
-      return `<section id="${s.id}" class="site-legal-sec"><h2>${t.n ? `<span class="site-legal-n" style="border-radius:7px">${t.n}</span>` : ""}${esc(t.text)}</h2>${s.body.join("")}</section>`;
+      return `<section id="${s.id}" class="site-legal-sec"><h2>${t.n ? `<span class="site-legal-n">${t.n}.</span>` : ""}${esc(t.text)}</h2>${s.body.join("")}</section>`;
     })
     .join("");
   const tab = (d: LegalDoc): string => d.kind === doc.kind

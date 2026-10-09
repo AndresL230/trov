@@ -64,6 +64,16 @@ if (mount && doc) {
   };
   window.addEventListener("scroll", () => { if (!queued) { queued = true; requestAnimationFrame(spy); } }, { passive: true });
   spy();
+  // A contents link glides to its section (and keeps the address shareable); with reduced motion it jumps.
+  mount.addEventListener("click", (e) => {
+    const a = (e.target as Element).closest<HTMLElement>("[data-legal-toc]");
+    const sec = a ? document.getElementById(a.dataset.legalToc ?? "") : null;
+    if (!a || !sec) return;
+    e.preventDefault();
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    sec.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+    history.replaceState(null, "", `#${sec.id}`);
+  });
   // A deep link to a section (/privacy#cookies) lands on it once the page has rendered.
   if (location.hash.length > 1) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
 }
