@@ -624,7 +624,7 @@ describe("Settings: a connection's organizations, current organization and mode 
 // ── the consent page ─────────────────────────────────────────────────────────
 
 describe("the consent page — how the connection picks an organization", () => {
-  const base = { clientName: "Claude Code", redirectHost: "localhost", handle: "dana", hidden: { client_id: "c" }, csrf: "x" };
+  const base: Parameters<typeof consentPage>[0] = { clientName: "Claude Code", redirectHost: "localhost", handle: "dana", hidden: { client_id: "c" }, csrf: "x", orgs: [] };
   const three = [{ slug: "acme", name: "Acme" }, { slug: "saplinglearn", name: "SaplingLearn" }, { slug: "third", name: "Third" }];
 
   it("several orgs: both choices in plain words, follow the repository recommended and preselected, every org ticked", () => {
@@ -686,6 +686,51 @@ describe("the consent page — how the connection picks an organization", () => 
     // One ticked org needs no start; a deny writes nothing.
     const p = await connect("dana", [["mode", "manual"], ["org", "saplinglearn"]]);
     expect(await one(`SELECT org_id FROM oauth_grants WHERE id = ?`, p.grantId)).toEqual({ org_id: ORG_A });
+  });
+
+  it("says WHO is signed in, above the choice — name and handle — with a Not you? Sign out that is a POST of its own", () => {
+    const html = consentPage({ ...base, name: "Dana <Scully>", orgs: three, hidden: { client_id: "c", state: "s" }, csrf: "tok" });
+    expect(html).toContain(`<span class="who-label">Signed in as</span><span class="who-name">Dana &lt;Scully&gt; <span class="who-handle">(@dana)</span></span>`);
+    expect(html.indexOf('class="who"')).toBeLessThan(html.indexOf("How it picks an organization"));
+    expect(html).toMatch(/<form method="post" action="\/oauth\/switch-account" class="who-form"><input type="hidden" name="client_id" value="c"><input type="hidden" name="state" value="s"><input type="hidden" name="csrf" value="tok"><button class="who-out" type="submit">Not you\? Sign out<\/button><\/form>/);
+    expect(html).not.toContain("It will act as"); // one account line, not two
+    expect(html).not.toMatch(/<a[^>]*sign ?out/i); // signing out is never a link
+    // No name, or a name that is just the handle: the handle alone.
+    for (const name of [undefined, null, "", "dana"]) expect(consentPage({ ...base, name, orgs: three })).toContain(`<span class="who-name">@dana</span>`);
+  });
+
+  it("Not you? Sign out: ends this browser's session and returns to the SAME request, which then asks for a sign-in; it needs the page's own CSRF value", async () => {
+    await env.DB.prepare(`UPDATE persons SET name = 'Dana Scully' WHERE handle = 'dana'`).run();
+    const cookie = await cookieFor("dana", { member: false });
+    const { qs } = await registered();
+    const page = await (await consentGet(qs, cookie)).text();
+    expect(page).toContain(`Dana Scully <span class="who-handle">(@dana)</span>`);
+    const post = (csrf: string, c: string | null = cookie) => {
+      const body = new URLSearchParams(qs); body.set("csrf", csrf);
+      return app.request("/oauth/switch-account", { method: "POST", headers: { ...(c ? { cookie: c } : {}), "content-type": "application/x-www-form-urlencoded" }, body: body.toString() }, env);
+    };
+    // Forged, or with no session: nothing happens to anyone's session.
+    expect((await post("forged")).status).toBe(403);
+    expect((await post(csrfOf(page), null)).status).toBe(403);
+    expect((await consentGet(qs, cookie)).status).toBe(200);
+    expect(await n(`SELECT COUNT(*) AS n FROM sessions`)).toBe(1);
+
+    const out = await post(csrfOf(page));
+    expect(out.status).toBe(303);
+    expect(out.headers.get("location")).toBe(`/oauth/authorize?${qs}`);
+    expect(out.headers.get("set-cookie")).toMatch(/session=;/);
+    expect(await n(`SELECT COUNT(*) AS n FROM sessions`)).toBe(0);
+    const again = await consentGet(qs, cookie); // the old cookie no longer names a session
+    const html = await again.text();
+    expect(html).toContain("Sign in to Trov");
+    expect(html).not.toContain("Signed in as");
+    expect(again.headers.get("set-cookie")).toContain("oauth_pending="); // the request is remembered across the sign-in
+    expect(await n(`SELECT COUNT(*) AS n FROM oauth_grants`)).toBe(0);
+    // A bad request is refused before any session is touched.
+    const other = await cookieFor("bob", { member: false });
+    const bad = await app.request("/oauth/switch-account", { method: "POST", headers: { cookie: other, "content-type": "application/x-www-form-urlencoded" }, body: "client_id=nope" }, env);
+    expect(bad.status).toBe(400);
+    expect(await n(`SELECT COUNT(*) AS n FROM sessions`)).toBe(1);
   });
 
   it("POST: a person in no organization cannot make a connection of either kind", async () => {

@@ -43,12 +43,21 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   the tile is ≥ 620px, the `cnpy-mcp` container — with a count, its own empty state, a two-click Revoke per row
   and its first `MCP_LIST_CAP` (3) rows until "Show all N"; no fixed height, no inner scroller).
   Each row carries a chip saying how it is scoped (`grantScopeChip`: "Follows the repository", or a manual
-  one's current org and "+N" more) and a **Change** button that opens its scope under the row
-  (`grantScopeEditor`, one open at a time — `state.grantScope`): the mode as a `segmented()` (Follow the
-  repository / Manual) and, for Manual, a `dropdown()` for the org it is working in and a `role="switch"` per
-  organization of the person's (`switchBtn`). Every change saves at once through `POST
-  /auth/oauth-grants/:id/{mode,orgs,current}` and the list becomes the route's answer; a refusal (`current_org`,
-  `last_org`, a plan limit) is a toast in words.
+  one's current org and "+N" more) and a **Change organization…** button — the ONE way in — that opens the
+  connection's scope as a DIALOG (`grantScopeDialog`, `state.grantScope`; nothing renders under the row). It
+  is a root-level `data-overlay="grant-scope"` in the confirmation modal's shell (`.cnpy-cmodal`: a centered
+  card, a bottom sheet on a phone), titled "<app> · how it picks an organization". It holds the mode as a
+  `segmented()` (Follow the repository / Manual) with one sentence saying what the chosen mode does
+  (`GRANT_MODE_SENTENCE`); for Manual, "Working in" as a `dropdown()` (its menu is its own overlay, rendered
+  after the dialog and so above it) and a `role="switch"` per organization of the person's (`switchBtn`); for
+  Follow, the person's organizations and the rule that picks one; and a Done button. Done, the ×, the backdrop
+  and Escape close it (Escape closes an open menu first); focus goes to the first control on open, stays inside
+  (Tab is trapped) and returns to the row's button on close. There is no Save: every change saves at once
+  through `POST /auth/oauth-grants/:id/{mode,orgs,current}`, the list becomes the route's answer, and
+  `state.grantScopeNote` says saving / saved / refused INSIDE the dialog — a refusal about one organization
+  (a plan limit, `current_org`, `last_org`) on that organization's row.
+  The tile's intro names the account ("Connections you approve as @handle show up here."), and the empty list
+  says to check which account the Allow page was signed in as.
   The Settings screen is ONE bento grid with even edges (`.cnpy-set`, three columns): Profile | Account | MCP
   access (spanning rows 1–2 of a slightly wider third column), Appearance under the first two, Email
   notifications at full width. Every tile STRETCHES to its grid area, so tiles in a row share a top and a bottom
@@ -69,7 +78,10 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   preselected when the person has several orgs: "works in whichever of your organizations has the repository
   you are in connected; anywhere else it reads and writes nothing") or *Manual* (a tick per organization — all
   ticked up to `CONSENT_TICK_ALL_MAX`, at least one required — and which one it "starts here"; with one org it
-  is named and sent hidden). The POST binds every ticked slug through `resolveTenant`; one it cannot bind
+  is named and sent hidden). Above the choice the page says WHO is approving — "Signed in as <name>
+  (@handle)", the one account line — with **Not you? Sign out**: a form of its own that POSTs the request and
+  the page's CSRF value to `/oauth/switch-account`, which ends that browser's session and 303s back to the same
+  authorize URL (now the sign-in page; the request rides the `oauth_pending` cookie as on a first visit). The POST binds every ticked slug through `resolveTenant`; one it cannot bind
   refuses the whole consent, and a missing tick or start re-renders the page with the reason. A form with no
   `mode` (the page from before 0051) is a manual connection to its one `org`. `issueAuthorization` /
   `issueRepoAuthorization` write the grant;
