@@ -70,11 +70,8 @@ export const TROV_REPO_URL = "https://github.com/AndresL230/trov";
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // The signed-out site on a phone. Not merged yet: this entry is cut into the next `0.N` by the PR
-  // that merges it (the header says how).
-  // TODO(PR-NUMBER): once the pull request has a number, replace every `(#PR)` below with `(#<number>)`
-  // and uncomment the `prs` line with that number in place of PR. Until then `(#PR)` is not a citation
-  // (test/releases.test.ts reads `(#<digits>)` only), so the tests pass as written.
+  // The signed-out site on a phone. Not merged yet (#139): the merging PR cuts this entry as the header says
+  // (`version` to the next 0.N, `date` to the merge day, drop `unreleased`).
   {
     version: "Unreleased",
     date: "2026-10-09",
@@ -91,33 +88,33 @@ export const RELEASES: Release[] = [
     ],
     patches: {
       added: [
-        "The site's menu under 900px: `menuSheet` in `web/src/landing.ts`, a root-level `data-overlay=\"sitemenu\"` (`role=\"dialog\"` `aria-modal`) drawn from `state.siteMenu`, with the five `siteJump` links, `cycleTheme`, the GitHub link and both `openSignIn` buttons (Back to the app when reopened from inside it). The nav always carries its button (`openSiteMenu`, `aria-expanded`, `aria-controls`); GitHub, the theme toggle and Sign in carry `site-nav-x` and leave the bar under 900px (#PR)",
-        "`web/src/site-menu.ts` (`createMenuCtl`): the scroll lock (undone at once on close, so a section link scrolls the page while the sheet leaves), focus to the first link and back to the button, Esc, the Tab trap (`trapIndex`), an exit on `--fx-fast` (`data-closing`, `MENU_EXIT_MS`), none under reduced motion, and a close when the window grows past 900px. Acts `openSiteMenu` / `closeSiteMenu`; `siteJump`, `openSignIn` and `siteBack` close it first (#PR)",
-        "One block in `web/src/trov.css`, \"the site on a phone\", holds every rule the signed-out site changes for a narrow or touch screen. All of it is behind `max-width:900px`, `max-width:640px`, `max-width:480px` or `(hover:none)`; the only rules outside a query hide what a wide screen never shows, or style the menu, which `min-width:901px` hides (#PR)",
-        "A swipe steps the tour's dialog on a phone: `swipeStep` in `web/src/site-feature-core.ts` (at least 56px, twice as far across as down, under 700ms) and `onPointerDown` / `onPointerUp` / `onPointerCancel` in `web/src/site-feature.ts`, touch and pen only. The panel and its scroller are `touch-action:pan-y`, so a vertical scroll stays the browser's and cancels the gesture (#PR)",
-        "`web/src/site-viewport.ts` (`initSiteViewport`, `coveredBottom`): `--site-kb` on `<html>` is the height of the window the on-screen keyboard covers, read from `visualViewport`. Under 640px the sign-in and Contact sheets are lifted by it and lose it from their `max-height`, and the focused field is scrolled into view inside the sheet (#PR)",
-        "The legal contents disclosure: `legalView(doc, dark, tocOpen)` emits a `data-legal-tocb` button (`aria-expanded`, `aria-controls`) and a `.site-legal-tocw` wrapper round the list; under 900px the box is folded (`grid-template-rows:0fr`, the list `visibility:hidden`) until `web/src/legal-page.ts` opens it, it survives the theme toggle, and a contents link folds it at once before scrolling (#PR)",
-        "`test/render.site-mobile.test.ts`: the menu's markup, state and acts, that every rule of the phone block is behind a width or hover query, the hero's unified-diff hooks, the 11px type floor covering every smaller size the mockups use, the sheet rules, `swipeStep`, `coveredBottom`, the Copy button, the footer and the legal disclosure (#PR)",
-        "`docs/architecture/web-ui.md`: a section \"The site on a phone\" (the menu overlay, the sheet pattern, the mockup rule) (#PR)",
+        "The site's menu under 900px: `menuSheet` in `web/src/landing.ts`, a root-level `data-overlay=\"sitemenu\"` (`role=\"dialog\"` `aria-modal`) drawn from `state.siteMenu`, with the five `siteJump` links, `cycleTheme`, the GitHub link and both `openSignIn` buttons (Back to the app when reopened from inside it). The nav always carries its button (`openSiteMenu`, `aria-expanded`, `aria-controls`); GitHub, the theme toggle and Sign in carry `site-nav-x` and leave the bar under 900px (#139)",
+        "`web/src/site-menu.ts` (`createMenuCtl`): the scroll lock (undone at once on close, so a section link scrolls the page while the sheet leaves), focus to the first link and back to the button, Esc, the Tab trap (`trapIndex`), an exit on `--fx-fast` (`data-closing`, `MENU_EXIT_MS`), none under reduced motion, and a close when the window grows past 900px. Acts `openSiteMenu` / `closeSiteMenu`; `siteJump`, `openSignIn` and `siteBack` close it first (#139)",
+        "One block in `web/src/trov.css`, \"the site on a phone\", holds every rule the signed-out site changes for a narrow or touch screen. All of it is behind `max-width:900px`, `max-width:640px`, `max-width:480px` or `(hover:none)`; the only rules outside a query hide what a wide screen never shows, or style the menu, which `min-width:901px` hides (#139)",
+        "A swipe steps the tour's dialog on a phone: `swipeStep` in `web/src/site-feature-core.ts` (at least 56px, twice as far across as down, under 700ms) and `onPointerDown` / `onPointerUp` / `onPointerCancel` in `web/src/site-feature.ts`, touch and pen only. The panel and its scroller are `touch-action:pan-y`, so a vertical scroll stays the browser's and cancels the gesture (#139)",
+        "`web/src/site-viewport.ts` (`initSiteViewport`, `coveredBottom`): `--site-kb` on `<html>` is the height of the window the on-screen keyboard covers, read from `visualViewport`. Under 640px the sign-in and Contact sheets are lifted by it and lose it from their `max-height`, and the focused field is scrolled into view inside the sheet (#139)",
+        "The legal contents disclosure: `legalView(doc, dark, tocOpen)` emits a `data-legal-tocb` button (`aria-expanded`, `aria-controls`) and a `.site-legal-tocw` wrapper round the list; under 900px the box is folded (`grid-template-rows:0fr`, the list `visibility:hidden`) until `web/src/legal-page.ts` opens it, it survives the theme toggle, and a contents link folds it at once before scrolling (#139)",
+        "`test/render.site-mobile.test.ts`: the menu's markup, state and acts, that every rule of the phone block is behind a width or hover query, the hero's unified-diff hooks, the 11px type floor covering every smaller size the mockups use, the sheet rules, `swipeStep`, `coveredBottom`, the Copy button, the footer and the legal disclosure (#139)",
+        "`docs/architecture/web-ui.md`: a section \"The site on a phone\" (the menu overlay, the sheet pattern, the mockup rule) (#139)",
       ],
       changed: [
-        "The hero under 640px: the headline at `clamp(32px, 9.4vw, 40px)`, the two buttons 50px tall (stacked under 480px), the banner's dots masked toward its foot and its tilted mark placed bottom right. The Review mockup drops its fixed 568px height and shows ONE unified diff: the left pane's twin lines (`site-hero-twin`) and both pane heads are hidden, the removed line is ordered above the added ones, the verdict is two buttons under the diff and the toast sits at the top of the window (#PR)",
-        "No text in a mockup renders under 11px under 640px: one rule keyed on the inline sizes (`[style*=\"font-size:9px\"]` and the six others in use) inside the hero mockup, the tour's teasers, the how-it-works cards, the agents cards, the Contact form and the dialog's screens; the 18px and 20px avatars that hold initials grow to 22px and 24px (#PR)",
-        "Tour rows under 640px stack copy then mockup with a 22px gap and 64px between rows; Explore is a bordered 44px button; the Tickets teaser keeps two columns (`site-hide-ph` drops Testing), the Artifacts teaser is one column, and the dots run edge to edge behind each mockup (#PR)",
-        "The tour's dialog under 640px: a 44px close button, 48px Previous and Next with `env(safe-area-inset-bottom)` under them, the board at two columns, and three rows re-laid (`fxm-hrow`: a handoff's title over who, state and when; `fxm-staged`; `fxm-stats`) (#PR)",
-        "Sign in / Get started under 640px: the card slides up (`site-sheet-up` on `--fx-slow`), the plan switch is 44px, the providers 50px, the close button 44px. Contact: 46px fields, a 44px kind switch, and Cancel / Send in a sticky row at the foot of the sheet (`scroll-padding-bottom` keeps a focused field above it) (#PR)",
-        "Pricing under 640px: a full-width interval switch, 48px plan buttons, 14.5px limits, 15px answers, 56px question rows. Sections carry `site-sec` and take 84px of top padding and a 20px gutter; a nav jump lands the heading 16px under the bar (`scroll-margin-top:-8px`) (#PR)",
-        "The plugin card under 640px: each install command stays on its line and scrolls inside its box, and Copy is a labelled 44px button under them (`mcp-connect.ts` `copyBox`, restyled for `.cnpy-site` only; Settings and the guided setup are unchanged) (#PR)",
-        "Terms and Privacy under 640px: 16px text at line-height 1.72, the document switch as two 44px halves, contents links as 44px rows. The footer stacks left-aligned with its links as 44px rows in two columns and the licence after the copyright (`site-foot-lic`, a span only a phone shows) (#PR)",
-        "On a touch screen (`hover:none`) cards and mockups no longer stay lifted after a tap, and a tour mockup answers a press with its accent edge (#PR)",
+        "The hero under 640px: the headline at `clamp(32px, 9.4vw, 40px)`, the two buttons 50px tall (stacked under 480px), the banner's dots masked toward its foot and its tilted mark placed bottom right. The Review mockup drops its fixed 568px height and shows ONE unified diff: the left pane's twin lines (`site-hero-twin`) and both pane heads are hidden, the removed line is ordered above the added ones, the verdict is two buttons under the diff and the toast sits at the top of the window (#139)",
+        "No text in a mockup renders under 11px under 640px: one rule keyed on the inline sizes (`[style*=\"font-size:9px\"]` and the six others in use) inside the hero mockup, the tour's teasers, the how-it-works cards, the agents cards, the Contact form and the dialog's screens; the 18px and 20px avatars that hold initials grow to 22px and 24px (#139)",
+        "Tour rows under 640px stack copy then mockup with a 22px gap and 64px between rows; Explore is a bordered 44px button; the Tickets teaser keeps two columns (`site-hide-ph` drops Testing), the Artifacts teaser is one column, and the dots run edge to edge behind each mockup (#139)",
+        "The tour's dialog under 640px: a 44px close button, 48px Previous and Next with `env(safe-area-inset-bottom)` under them, the board at two columns, and three rows re-laid (`fxm-hrow`: a handoff's title over who, state and when; `fxm-staged`; `fxm-stats`) (#139)",
+        "Sign in / Get started under 640px: the card slides up (`site-sheet-up` on `--fx-slow`), the plan switch is 44px, the providers 50px, the close button 44px. Contact: 46px fields, a 44px kind switch, and Cancel / Send in a sticky row at the foot of the sheet (`scroll-padding-bottom` keeps a focused field above it) (#139)",
+        "Pricing under 640px: a full-width interval switch, 48px plan buttons, 14.5px limits, 15px answers, 56px question rows. Sections carry `site-sec` and take 84px of top padding and a 20px gutter; a nav jump lands the heading 16px under the bar (`scroll-margin-top:-8px`) (#139)",
+        "The plugin card under 640px: each install command stays on its line and scrolls inside its box, and Copy is a labelled 44px button under them (`mcp-connect.ts` `copyBox`, restyled for `.cnpy-site` only; Settings and the guided setup are unchanged) (#139)",
+        "Terms and Privacy under 640px: 16px text at line-height 1.72, the document switch as two 44px halves, contents links as 44px rows. The footer stacks left-aligned with its links as 44px rows in two columns and the licence after the copyright (`site-foot-lic`, a span only a phone shows) (#139)",
+        "On a touch screen (`hover:none`) cards and mockups no longer stay lifted after a tap, and a tour mockup answers a press with its accent edge (#139)",
       ],
       fixed: [
-        "The hero's Review mockup was cut off at the bottom on a phone: its two diff panes wrapped to a few words a line inside a window fixed at 568px (#PR)",
-        "The tour dialog's Tickets board overflowed its cards on a phone (an avatar outside its card), and a handoff's title was cut to a few letters (#PR)",
+        "The hero's Review mockup was cut off at the bottom on a phone: its two diff panes wrapped to a few words a line inside a window fixed at 568px (#139)",
+        "The tour dialog's Tickets board overflowed its cards on a phone (an avatar outside its card), and a handoff's title was cut to a few letters (#139)",
       ],
       removed: [],
     },
-    // prs: [PR],
+    prs: [139],
   },
   // The signed-out landing page, revamped around the first-run card's banner (#134).
   {
