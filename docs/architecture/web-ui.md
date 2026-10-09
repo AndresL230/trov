@@ -18,6 +18,16 @@ the guided setup `welcome`). Inside a morphed page, a part that must be REPLACED
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
 animations off in the affected region — that hides one symptom and leaves the rebuild.
 
+**A dialog that opens over ANY screen repaints itself alone.** Most screens are not `data-morph`ed, so a dialog
+whose host page can be any of them cannot rely on the page's opt-in: a `rerender()` per keystroke would rebuild
+whatever is behind it. The support dialog (`web/src/support.ts`, Help › Report a bug / Contact support) is the
+pattern: opening and closing are a `rerender()`; everything inside the open dialog goes through
+`support-actions.ts` `repaint()`, which renders the dialog again and `morph()`s the live `data-overlay` element
+in place — the page is not touched (check: `document.querySelector("main")` is the same element before and after
+typing). It needs a STABLE structure while the form is up (an error or counter that comes and goes is always
+emitted and shown by attribute; a different body, like the sent state, is a `data-morph-key`), and state stays
+the one source of truth, so a rerender caused by anything else paints the same dialog. Details: `support.md`.
+
 **First-run flow** (`people.ts` `onboardView` → `org-picker.ts` `orgPickerView` → `welcome.ts` `welcomeView`):
 one card (`.cnpy-orgs-card`: banner, body, foot) in front of `firstRunBackdrop()` (`render.ts`: the real app
 shell rendered from `initialState()`, so every region is its own skeleton; `inert`, `aria-hidden`). A step
@@ -160,6 +170,14 @@ Roadmap, Tickets, Unplaced and Repo are plain rows (Tickets' switch sits in its 
 and Repo's tabs head their page body), and a stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
+
+**Help's last two rows are ACTIONS, not screens**: Report a bug and Contact support (`action()` in
+`sidebar.ts`) open the support dialog over the screen on show. They are emitted in every state with a nav
+row's own structure (the hidden badge and dot included), are never `is-active`, and carry
+`data-support-trigger` so focus returns to them. **Rail height** is measured, like its width: with 15 rows the
+rail needs 994px of window at full size, 849px in the `max-height: 990px` step and 774px in the `850px` step
+(2026-10-09; measure with transitions off — the rows' padding animates, so a reading taken right after a step
+is stale). From 1000px down the tagline steps aside to cover the gap. Adding a row means measuring again.
 
 **Widths.** The rail is **228px** expanded and 64px collapsed (`.cnpy-aside` in `trov.css`; the phone drawer has
 its own, `min(292px, 100vw - 48px)`). 228 was measured, not chosen by eye (2026-10-08, was 244): the row that

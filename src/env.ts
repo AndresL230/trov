@@ -27,6 +27,7 @@ export interface Env {
   PUBLIC_ORIGIN?: string; // absolute origin for links in email (deep links, unsubscribe); absent → relative links
   NOTIFICATIONS_MODE?: "local" | "resend"; // delivery gate; absent → local (bodies to the dev table, Resend never called)
   RESEND_API_KEY?: string; // Resend API key; required only when NOTIFICATIONS_MODE = "resend"
+  SUPPORT_NOTIFY_EMAIL?: string; // VAR (wrangler.toml) — where each bug report / support message is mailed (the operator's inbox). Empty or absent → the report is stored and NOT mailed (mail outcome `skipped`)
   REPO_ENVIRONMENTS?: string; // LEGACY: read by nothing — environments are `org_environments` rows (0042_organizations copied this one); Phase 7 deletes it
   // The five below are LEGACY too: SaplingLearn's fallback credentials (`resolveCredential`), each read only until its
   // admin stores that integration on Org settings › Integrations, and never for another org. What each one is:

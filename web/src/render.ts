@@ -28,6 +28,7 @@ import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-m
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { releasesScreen, findRelease, type ReleasePage } from "./releases";
+import { supportDialog, initialSupport, type SupportDraft } from "./support";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
@@ -133,6 +134,8 @@ export interface AppState {
   orgMe: Loadable<OrgMeResponse | null>;
   /** The switcher's menu, the picker and the create-organization dialog (org-picker.ts). */
   orgsUi: OrgsUi;
+  /** Help › Report a bug / Contact support: the dialog and its draft (support.ts). */
+  support: SupportDraft;
   /** The guided first-run setup (welcome.ts): its step, and the by-hand disclosure. */
   welcome: WelcomeUi;
   /** `/billing/done`: the waiting room a buyer lands in after Stripe Checkout (billing.ts). null everywhere else. */
@@ -424,6 +427,7 @@ export function initialState(): AppState {
     orgSlug: null,
     orgMe: { status: "idle", data: null },
     orgsUi: initialOrgsUi(),
+    support: initialSupport(),
     welcome: initialWelcomeUi(),
     billingDone: null,
     screen: "mywork",
@@ -2560,7 +2564,7 @@ function toastBlock(msg: string, elapsed: number, ms: number, action: ToastActio
 export function render(s: AppState): string {
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    ${s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
+    ${s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null, s.dd) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
@@ -2569,6 +2573,7 @@ export function render(s: AppState): string {
     ${s.view === "app" || s.view === "platform" ? platformDialogs(s.plat, s.screen, s.dd) : ""}
     ${s.view === "app" ? orgMenu({ orgs: s.myOrgs.data, mine: s.me?.orgs ?? [], current: s.orgSlug, status: s.myOrgs.status, ui: s.orgsUi, superadmin: s.plat.superadmin === true, logins: identityCount(s) }) : ""}
     ${s.view !== "auth" && s.orgsUi.create ? createOrgModal(s.orgsUi.create) : ""}
+    ${s.view !== "auth" ? supportDialog(s.support) : ""}
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}

@@ -12,7 +12,7 @@ import * as api from "../web/src/api";
 const sources = import.meta.glob("../web/src/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 
 /** Person-level and platform routes: the only paths that may go out without the org prefix. */
-const GLOBAL = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|billing)(?:[/?]|$)/;
+const GLOBAL = /^\/(?:auth|avatar|org-logo)\/|^\/api\/(?:orgs|invites|platform|billing|support)(?:[/?]|$)/;
 const TENANT = /^\/api\/o\/acme\//;
 /** Org settings' functions take the slug as an argument (`any` → "x"): still under an org's prefix. */
 const ANY_ORG = /^\/api\/o\/[^/]+\//;

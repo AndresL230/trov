@@ -360,6 +360,11 @@ const PLATFORM: Record<string, string> = {
   "POST /api/platform/grants": "requireSuperadmin", "POST /api/platform/grants/:id/revoke": "requireSuperadmin",
   "GET /api/platform/admins": "requireSuperadmin", "POST /api/platform/admins": "requireSuperadmin", "DELETE /api/platform/admins/:handle": "requireSuperadmin",
   "GET /api/platform/audit": "requireSuperadmin", "GET /api/platform/usage": "requireSuperadmin",
+  // Support reports (0049_support_reports, src/platform/support-routes.ts): a GLOBAL table. Sending one is person-level;
+  // reading them is the superadmin's, and a row holds what its reporter typed plus a slug and a route — nothing of an org's.
+  "POST /api/support": "the caller's own report to the platform's operator: the reporter is the session's person, the org is kept only if they are a member of it, rate-limited per person (test/support.routes.test.ts)",
+  "GET /api/platform/support": "requireSuperadmin", "GET /api/platform/support/:id": "requireSuperadmin",
+  "POST /api/platform/support/:id/resolve": "requireSuperadmin", "POST /api/platform/support/:id/reopen": "requireSuperadmin",
   // Billing (0045_billing, src/billing/routes.ts) — person-level: a purchase is made before the buyer has any org.
   "GET /billing/start": "public: reads the session itself — signed out, a sign-in page; signed in, a Stripe Checkout Session bound to the CALLER (their handle on the row, their own verified e-mail), rate-limited per person; touches no org",
   "GET /api/billing/config": "public: which plans can be bought (config only) and, signed in, the caller's OWN paid orgs (owner memberships)",

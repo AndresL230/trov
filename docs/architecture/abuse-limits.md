@@ -18,6 +18,7 @@ racing requests cannot both take the last unit. D1 only: no Durable Object, no Q
 | `avatar_upload` | 20 / person / UTC day | `POST …/people/me/avatar`, before the body is read |
 | `org_logo_upload` | 20 / person / UTC day | `POST /api/o/:slug/logo` (admin+), before the body is read — across every org the person administers |
 | `checkout` | 10 / person / UTC day | a Stripe Checkout Session started: `GET /billing/start` and `POST /api/o/:slug/billing/upgrade` (`billing.md`). A refusal creates nothing at Stripe and charges nothing |
+| `support` | 10 / person / UTC day | `POST /api/support` — a bug report or support message (`support.md`): one stored row and one mail to the operator's fixed address. Taken after validation, so a refused body spends nothing. The recipient is never the caller's choice, so it cannot be aimed at a third party |
 | `handle_check` | 60 / caller / UTC hour | `GET /api/orgs/slug-check` (is an organization's handle free; the signed-in person) and `GET /auth/handle-check` — the signed-in person, or `onboard:<provider>:<subject>` while onboarding (a fresh onboard cookie does not reset it) |
 
 - A refusal is **429** `{ "error": "rate_limited", "retry_after": <seconds> }` with a `Retry-After` header, and
@@ -40,7 +41,7 @@ in the route after its validation and role gate, a row in this table.
 One Resend account and one verified domain send every org's mail, and any org admin can edit
 `notification_settings.from_address`. So:
 
-- **`deliveryFor` is the only way mail leaves the Worker** (digest, retry, test send, invite, welcome), and it
+- **`deliveryFor` is the only way an ORG's mail leaves the Worker** (digest, retry, test send, invite, welcome; the platform's own — the grant notice and the support notice — leave through `platformDeliveryFor`, whose From is the platform's whole), and it
   builds the From header itself: `platformFrom(stored value)` = `<name> <hello@trov.dev>`. Whatever address
   the stored value carries is dropped.
 - **The name** (`senderNameProblem`): 1–64 characters of ASCII letters, digits, space and `. & ' + _ -`. No

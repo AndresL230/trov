@@ -41,6 +41,11 @@ GITHUB_APP_SLUG = "trov-by-trovlabs"
 # rendered bodies to a table and sends nothing. A deploy sets this from HERE: a value changed only in
 # the Cloudflare dashboard is put back by the next deploy.
 NOTIFICATIONS_MODE = "resend"
+# Where each bug report / support message (Help › Report a bug, Contact support) is mailed: the operator's
+# inbox. Not a secret. EMPTY until the owner fills it in: while it is, a report is still stored and shows
+# in Platform › Support, and no mail is sent (its mail outcome reads `skipped`). Replying to the mail
+# answers the reporter (Reply-To is their provider-verified address). docs/architecture/support.md.
+SUPPORT_NOTIFY_EMAIL = ""
 
 # Billing — Stripe (docs/architecture/billing.md › Owner checklist). The ids of the recurring PRICES the
 # owner created in the Stripe dashboard (`price_…`), not amounts: Trov never holds a price, and the amount
@@ -72,6 +77,7 @@ enabled = true
 PUBLIC_ORIGIN = "https://trov.dev"
 GITHUB_APP_SLUG = ""
 NOTIFICATIONS_MODE = "local"
+SUPPORT_NOTIFY_EMAIL = ""
 STRIPE_PRICE_TEAM = ""
 STRIPE_PRICE_TEAM_YEARLY = ""
 STRIPE_TAX = ""
