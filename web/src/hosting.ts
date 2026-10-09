@@ -22,12 +22,13 @@
 
 import { esc, attr, relTime, surface } from "./ui";
 import {
-  O_LABEL, O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, failedNote, loadingNote,
+  O_LABEL, O_FIELD, O_HELP, O_ERR, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgBanner, failedNote,
   tabLead, leadFlag, openRow, chip, textField, type OrgSlice,
 } from "./org-ui";
 import { segmented } from "./segmented";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { howToHtml, type TestState } from "./integrations";
+import { emptyLayout, skBox, skCard, skLine, skRowsShape, skeleton } from "./skeleton";
 import type { MyOrg } from "@shared/orgs";
 import type { OrgUi } from "./org-settings";
 import {
@@ -408,6 +409,22 @@ function partRow(x: TabCtx, env: HostingEnvironmentDTO, part: EnvironmentPartDTO
   });
 }
 
+// ── shapes: ONE builder for the tab's loading skeleton and its empty layouts (web-ui.md › Empty layouts) ──
+
+/** A part's row as a shape: a name over its host, and the row's one action. Never data: boxes only. */
+export const partRowsShape = (n = 2): string => skRowsShape(n, { trail: 52, pad: "12px 16px" });
+/** One environment's tile as a shape: its head (a name, the Add part button), then its part rows. */
+export const envTileShape = (rows = 2): string =>
+  skCard(`<div class="cnpy-hx-envhead">${skLine(96, 13.5, 1.4)}<span style="margin-left:auto">${skBox(72, 30)}</span></div>${partRowsShape(rows)}`, "padding:0;overflow:hidden;min-width:0");
+/** The Environments region: tiles side by side, on the grid the real tiles use. */
+export const envTilesShape = (tiles = 2): string => `<div class="cnpy-hx-envs">${Array.from({ length: tiles }, () => envTileShape()).join("")}</div>`;
+/** The whole tab while its one read is out: a lead line, the environment tiles, the provider rows. */
+const hostingTabShape = (): string =>
+  `${skLine("62%", 13, 1.55, "margin-bottom:24px")}${skLine(110, 10.5, 1.9, "margin-bottom:9px")}${envTilesShape()}${skLine(90, 10.5, 1.9, "margin:30px 0 9px")}${skCard(skRowsShape(4, { trail: 110, pad: "12px 16px" }), "padding:0;overflow:hidden")}`;
+/** What each empty region says (exported: the tests and the Guide read the same words). */
+export const HOSTING_ENVS_EMPTY = "Each environment gets a tile here, with the parts it runs: the web app, the API, a worker. Add the places your app runs first, such as staging and production.";
+export const HOSTING_PARTS_EMPTY = "No parts yet. Add the web app, API or worker this environment runs.";
+
 /** One environment: a tile holding its parts as rows. */
 function envTile(x: TabCtx, env: HostingEnvironmentDTO): string {
   const full = env.parts.length >= MAX_PARTS_PER_ENVIRONMENT;
@@ -420,7 +437,9 @@ function envTile(x: TabCtx, env: HostingEnvironmentDTO): string {
       <span style="margin-left:auto">${quietBtn("Add part", "orgHxPartNew", { arg: env.key, field: `orgHxPartNew:${env.key}`, disabled: full, title: full ? `An environment has at most ${MAX_PARTS_PER_ENVIRONMENT} parts` : undefined, label: `Add a part to ${env.label}` })}</span>
     </div>
     ${n ? `<ul style="${LIST}">${env.parts.map((p) => partRow(x, env, p)).join("")}</ul>`
-      : `<p data-hx-noparts style="margin:0;padding:18px 16px 20px;font-size:12.5px;line-height:1.55;color:var(--fg-40)">No parts yet. Add the web app, API or worker this environment runs.</p>`}
+      // Loaded, and this environment holds nothing: its rows drawn empty, under the one sentence (the tile's
+      // own Add part button, above, is the action).
+      : `<div data-hx-noparts>${emptyLayout(`org-hosting-parts-${env.key}`, { text: HOSTING_PARTS_EMPTY, plain: true, sayStyle: "padding:14px 16px 2px", shapes: partRowsShape(2) })}</div>`}
   </section>`;
 }
 
@@ -603,9 +622,9 @@ export function hostingTab(org: MyOrg, ui: OrgUi): string {
   const d = hostingData(h);
   if (!d) {
     // The read is out, or failed: the notice still says what the return was, and the way to the sample is kept.
-    const note = h.sample ? loadingNote("the sample", { rows: 4 })
+    const note = h.sample ? skeleton("org-hosting-sample", "Loading the sample&hellip;", hostingTabShape())
       : h.setup.status === "error" ? failedNote("hosting", "orgHxReload")
-      : loadingNote("hosting", { rows: 4, trail: 96 });
+      : skeleton("org-hosting", "Loading hosting&hellip;", hostingTabShape());
     return `${hostingNotice(h.notice, null, org.name)}${note}${h.setup.status === "error" && !h.sample ? sampleFoot() : ""}`;
   }
   const x: TabCtx = { d, ui, h };
@@ -619,7 +638,10 @@ export function hostingTab(org: MyOrg, ui: OrgUi): string {
   const lead = hostingLead(d, next ? stepButton(next, d, accentBtn, "lead") : "");
 
   const envs = d.environments.length === 0
-    ? orgEmpty("No environments yet", "Add the places your app runs, such as staging and production. Each one then gets its parts here.", quietBtn("Open Environments", "orgTab", { arg: "environments", field: "orgHxEnvs" }))
+    ? emptyLayout("org-hosting-envs", {
+      title: "No environments yet", text: HOSTING_ENVS_EMPTY, cls: "cnpy-org-empty", sayStyle: "margin-bottom:14px",
+      actionHtml: quietBtn("Open Environments", "orgTab", { arg: "environments", field: "orgHxEnvs" }), shapes: envTilesShape(),
+    })
     : `<div class="cnpy-hx-envs">${d.environments.map((e) => envTile(x, e)).join("")}</div>`;
 
   const available = d.providers.filter((p) => p.status === "available");

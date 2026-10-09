@@ -52,6 +52,7 @@
 //           in the past (or far future) is not squashed to make room for it.
 
 import type { SprintView } from "@shared/sprints";
+import { emptyLayout, skBar, skBox, skCard, skList, skW } from "./skeleton";
 import { isoDayKey, localDayKey, sprintDueState } from "@shared/sprints-core";
 import type { PersonSummary } from "./api";
 import { esc, attr, surface } from "./ui";
@@ -439,6 +440,15 @@ function unscheduledList(items: SprintView[], confirmed: Record<string, boolean>
   </div>`;
 }
 
+/** The graph as shapes: the axis band, then `n` rows (a sprint's name, its bar somewhere along the
+ *  calendar) — ONE builder for the Timeline's loading skeleton (render.ts) and its empty layout. */
+export function timelineShapes(n: number): string {
+  const row = (i: number) => `<div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:16px;align-items:center;height:44px;padding:0 18px${i ? ";border-top:1px solid var(--border)" : ""}">${skBar(skW(i, [120, 150, 96, 136]), 10)}<span style="display:block;padding-left:${[6, 22, 38, 14, 46, 30][i % 6]}%">${skBox(skW(i, ["34%", "26%", "42%", "30%"]), 16)}</span></div>`;
+  return skCard(`<div style="height:38px;border-bottom:1px solid var(--border)"></div>${skList(n, row)}`, "overflow:hidden");
+}
+/** The Timeline's empty sentence (no sprint exists). The header above it already says what a bar is. */
+export const TIMELINE_EMPTY = "No sprints yet. Each one is drawn here as a bar once it has a due date.";
+
 /** Roadmap › Timeline: the header, the summary strip and the Gantt graph of the plan's sprints. */
 export function roadmapTimeline(p: TimelineProps): string {
   const placed = p.sprints
@@ -459,7 +469,7 @@ export function roadmapTimeline(p: TimelineProps): string {
 
   let graph: string;
   if (p.sprints.length === 0) {
-    graph = `<div style="font-size:13px;color:var(--fg-40)">No sprints yet.</div>`;
+    graph = emptyLayout("roadmap-timeline", { text: TIMELINE_EMPTY, action: { label: "New sprint", act: "nsToggle" }, sayStyle: "margin-bottom:12px", shapes: timelineShapes(4) });
   } else if (placed.length === 0) {
     graph = `<div style="border:1px dashed var(--border-strong);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--fg-55)">No sprint has a due date yet, so there is nothing to place on the calendar.</div>`;
   } else {

@@ -11,12 +11,15 @@ import { orgSettingsView, orgOverlays, orgTabBar, initialOrgUi, orgTabsFor, effe
 import {
   hostingNoticeCopy, hostingTab, partEditorModal, connectModal, tokenModal, partDraftProblems, fieldOptions, unavailableLines, connectionStatus, lostOnProvider,
   shownDetections, tokenWord, sentOnlyTo, connectionsFor, hostingTodo, tokenFormOk, initialHostingUi, HOSTING_SAMPLE_KEYS,
+  HOSTING_ENVS_EMPTY, HOSTING_PARTS_EMPTY, envTilesShape, partRowsShape,
   type HostingUi, type PartDraft, type TokenForm,
 } from "../web/src/hosting";
 import { hostingErrorText } from "../web/src/hosting-actions";
 import { OrgApiError } from "../web/src/api";
 import { HOSTING_SAMPLES, HOSTING_SAMPLE_MIXED, HOSTING_SAMPLE_PROVIDERS } from "../web/src/hosting-sample";
 import { parseHash, hashForRoute } from "../web/src/hash";
+import { render, initialState, type AppState } from "../web/src/render";
+import { previewState } from "../web/src/preview";
 import { HOSTING_CONNECT_OUTCOMES, type HostingProviderDTO, type HostingProviderId, type HostingSetupDTO } from "@shared/hosting";
 import type { MyOrg, OrgRole } from "@shared/orgs";
 
@@ -84,11 +87,79 @@ describe("Hosting is an admin's tab of Org settings", () => {
   });
 });
 
+describe("empty layouts and the state preview (web-ui.md › Empty layouts)", () => {
+  const picture = (shape: string) => {
+    expect(shape.replace(/<[^>]*>/g, "").trim(), "text inside a shape").toBe("");
+    expect(shape).not.toMatch(/<(button|a|input|svg)\b|data-act|var\(--(green|red|amber|blue|accent)\)/);
+  };
+
+  it("no environment: the Environments region is an empty layout — one sentence, one action, the tiles drawn empty", () => {
+    const html = tab(HOSTING_SAMPLES.fresh);
+    expect(html).toContain('data-empty="org-hosting-envs"');
+    expect(html).toContain(HOSTING_ENVS_EMPTY);
+    expect(html).toContain(`<div class="cnpy-empty-shapes" aria-hidden="true">${envTilesShape()}</div>`);
+    expect(html).toMatch(/class="cnpy-empty-acts"><button[^>]*data-act="orgTab" data-arg="environments"[^>]*>Open Environments</);
+    picture(envTilesShape());
+  });
+
+  it("an environment with no part: its rows drawn empty under one sentence, inside the tile (its Add part button is the action)", () => {
+    const html = tab(HOSTING_SAMPLES.no_parts);
+    for (const env of ["staging", "production"]) expect(html).toContain(`data-empty="org-hosting-parts-${env}"`);
+    expect(html).toContain(`<p class="cnpy-empty-text">${HOSTING_PARTS_EMPTY}</p>`);
+    expect(html).toContain(`<div class="cnpy-empty-shapes" aria-hidden="true">${partRowsShape(2)}</div>`);
+    expect(html).toContain('class="cnpy-empty-say is-plain"');
+    picture(partRowsShape(2));
+    // An environment that HAS parts draws them, not a layout.
+    expect(tab(HOSTING_SAMPLE_MIXED)).not.toContain("data-empty=");
+  });
+
+  it("the loading skeleton is built from the SAME shapes, so the two cannot drift — and it is a skeleton, not an empty layout", () => {
+    const loading = tab(null);
+    expect(loading).toMatch(/data-skel="org-hosting"/);
+    expect(loading).toContain('aria-busy="true"');
+    expect(loading).toContain(envTilesShape());
+    expect(loading).not.toContain("data-empty=");
+    expect(loading).not.toContain("cnpy-empty-shapes");
+  });
+
+  it("?preview=empty paints the tab as a new organization's, ?preview=loading as still out — whatever the organization holds, and without touching its state", () => {
+    const base: AppState = {
+      ...initialState(), view: "app", screen: "org", orgSlug: "acme",
+      me: { handle: "andres", name: "Andres", avatar_url: null, color: "stone", identities: [], superadmin: false, pending_invites: 0, orgs: [{ slug: "acme", name: "Acme Robotics", role: "owner" }] } as never,
+      orgMe: { status: "ok", data: { org: { slug: "acme", name: "Acme Robotics" }, role: "owner", title: null, responsibilities: null, repos: { primary: null, all: [] } } as never },
+      myOrgs: { status: "ok", data: { orgs: [{ slug: "acme", name: "Acme Robotics", role: "owner" }], invites: [] } as never },
+      org: uiFor(structuredClone(HOSTING_SAMPLE_MIXED), { part: draft(), notice: { outcome: "connected", provider: "vercel" } }),
+    };
+    const before = JSON.stringify(base.org.hosting);
+    const real = render(base);
+    expect(real).toContain('data-org-part="staging/web"');
+
+    const empty = render({ ...base, preview: "empty" });
+    expect(empty).toContain('data-empty="org-hosting-envs"');
+    for (const mine of ["acme-web", "Web app", "Docs site", "data-org-part=", "data-org-hosting-notice", "org-hx-part", "srv-cn2k8h7c3k9s73a1b2c3", "Q2xk"]) expect(empty, mine).not.toContain(mine);
+    // The catalogue is Trov's, not the organization's: it is still there to read.
+    expect(empty).toContain('data-org-hosting-conn="vercel:" data-state="not_connected"');
+    const loading = render({ ...base, preview: "loading" });
+    expect(loading).toContain('data-skel="org-hosting"');
+    for (const mine of ["acme-web", "data-org-part=", "data-empty=\"org-hosting"]) expect(loading, mine).not.toContain(mine);
+    expect(JSON.stringify(base.org.hosting)).toBe(before);
+
+    // Its own "Preview with sample data" keeps working under the preview, labelled as sample data.
+    const sampled = previewState({ ...base, org: uiFor(null, { sample: "mixed", sampleData: HOSTING_SAMPLE_MIXED }) }, "empty", initialState());
+    expect(sampled.org.hosting.sample).toBe("mixed");
+    expect(render({ ...sampled })).toContain('data-org-hosting-sample="mixed"');
+    // Nothing loaded yet and no catalogue to show: still an answered, empty read — never a crash.
+    const cold = previewState({ ...base, org: uiFor(null) }, "empty", initialState());
+    expect(cold.org.hosting.setup).toMatchObject({ status: "ok", data: { providers: [], environments: [], connections: [] } });
+    expect(render(cold)).toContain('data-empty="org-hosting-envs"');
+  });
+});
+
 describe("the tab, state by state (the sample payloads)", () => {
   it("a new org with no environment: the lead's one accent action goes to Environments, and nothing else is offered", () => {
     const html = tab(HOSTING_SAMPLES.fresh);
     expect(html).toContain("No environment yet.");
-    expect(html).toContain("No environments yet");
+    expect(html).toContain(">No environments yet<");
     expect(html).toMatch(/class="cnpy-accentbtn"[^>]*>Add an environment</);
     expect((html.match(/class="cnpy-accentbtn"/g) ?? []).length).toBe(1);
     expect(html).toMatch(/data-act="orgTab" data-arg="environments"/);

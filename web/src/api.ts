@@ -117,8 +117,25 @@ function probeOrg(): void {
     .finally(() => { probing = false; });
 }
 
+// The state preview (web/src/preview.ts) never sends a write: while it is on, every request that
+// is not a GET is refused HERE — before it leaves the browser — and the app is told, so it can say
+// why nothing happened. `call` is the one sender, so there is no way round it.
+let writeBlock: (() => void) | null = null;
+/** main.ts: refuse every non-GET request while a preview is on (`fn` is told of each refusal); null lifts it. */
+export function setWriteBlock(fn: (() => void) | null): void { writeBlock = fn; }
+/** Whether `method` is one the preview refuses: everything but a read. */
+export const isWriteMethod = (method: string | undefined): boolean => {
+  const m = (method ?? "GET").toUpperCase();
+  return m !== "GET" && m !== "HEAD";
+};
+/** A write refused because a preview is on. */
+export class PreviewBlocked extends Error {
+  constructor() { super("preview"); this.name = "PreviewBlocked"; }
+}
+
 /** THE sender: prefixes the path, carries the session cookie, turns a 401 into `Unauthorized`. */
 async function call(path: string, init: RequestInit = {}): Promise<Response> {
+  if (writeBlock && isWriteMethod(init.method)) { writeBlock(); throw new PreviewBlocked(); }
   const url = apiUrl(path);
   const res = await fetch(url, { credentials: "same-origin", ...init, headers: { accept: "application/json", ...(init.headers as Record<string, string> | undefined) } });
   if (res.status === 401) throw new Unauthorized();

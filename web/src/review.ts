@@ -7,11 +7,11 @@
 // Interactions dispatch via data-act / data-arg handled in main.ts. No fetching,
 // no inline data.
 
-import { esc, attr, statusBadge, selectChip, dashedCard, MONO_LABEL, surface, SURFACE } from "./ui";
+import { esc, attr, statusBadge, selectChip, MONO_LABEL, surface, SURFACE } from "./ui";
 import { tenantHref } from "./api";
 import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
-import { skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
+import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
 
 // ── prop shapes (loose for now — reshaped at wire time) ──────────────────────
 export type ReviewKind = "proposal" | "decision";
@@ -109,8 +109,13 @@ function agentLink(it: ReviewItem, chipSize: number): string {
   return personLink(person, it.agent, chipSize, { html: handleTag(p, it.agent) }, "", 6);
 }
 
-export function reviewListEmpty(): string {
-  return dashedCard("All clear", "Nothing is waiting for review.");
+/** Review's empty sentence: what the queue holds and what a person does with it (the Guide ›
+ *  Review). Nothing here is made by hand, and a clear queue is a normal state, so no action. */
+export const REVIEW_EMPTY = "Nothing is waiting for review. A doc change or a decision an agent stages shows here, to promote, ratify or reject.";
+/** The list pane with nothing in it: the sentence, then the queue's cards drawn empty. `all` =
+ *  no filter is on; under the Proposals / Decisions filter the other kind may still be waiting. */
+export function reviewListEmpty(all = true): string {
+  return emptyLayout("review-list", { text: all ? REVIEW_EMPTY : "Nothing of this kind is waiting for review.", sayStyle: "margin:4px 0 10px", shapes: all ? skList(2, reviewCardShape) : "" });
 }
 
 // ── detail pane pieces ───────────────────────────────────────────────────────
@@ -316,30 +321,35 @@ export function reviewDetail(it: ReviewItem, diffView: DiffViewMode): string {
 }
 
 /** The list pane while the queue's first read is out: cards in the review card's box. */
-function reviewListSkeleton(): string {
-  const card = (i: number) => `<div class="cnpy-titem ${SURFACE}">
+/** One queue card as a shape — the list pane's loading skeleton and its empty layout. */
+function reviewCardShape(i: number): string {
+  return `<div class="cnpy-titem ${SURFACE}">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">${skLine(skW(i), 14, 1.5)}${skBox(48, 18)}</div>
     <div style="margin-top:5px">${skLines(["96%", skW(i + 1, ["54%", "70%"])], 12.5, 1.5)}</div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:10px">${skBox(18, 18)}${skLine(150, 11.5, 1.5)}</div>
   </div>`;
-  return skeleton("review-list", "Loading review queue&hellip;", skList(4, card));
+}
+function reviewListSkeleton(): string {
+  return skeleton("review-list", "Loading review queue&hellip;", skList(4, reviewCardShape));
 }
 
-/** The detail pane while the queue's first read is out: the title, byline and verdict
- *  buttons' row, then the record's card. */
-function reviewDetailSkeleton(): string {
-  return skeleton("review-detail", "Loading review queue&hellip;", `<div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
+const DETAIL_FRAME = "max-width:920px;padding:24px 32px 100px";
+/** The detail pane as shapes: the title, byline and verdict buttons' row, then the record's card. */
+function reviewDetailShapes(paras: number): string {
+  return `<div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
       <div style="min-width:0;flex:1">${skLine("62%", 22, 1.3)}<div style="margin-top:8px">${skLine(220, 12, 1.5)}</div></div>
       <div style="display:flex;align-items:center;gap:10px;flex:none;padding-top:2px">${skBox(70, 32)}${skBox(86, 32)}</div>
     </div>
-    <div${surface("padding:24px 28px 26px;margin-top:22px")}>${skBar(120, 8)}<div style="margin-top:18px">${skProse(3)}</div></div>`,
-    "max-width:920px;padding:24px 32px 100px");
+    <div${surface("padding:24px 28px 26px;margin-top:22px")}>${skBar(120, 8)}<div style="margin-top:18px">${skProse(paras)}</div></div>`;
+}
+function reviewDetailSkeleton(): string {
+  return skeleton("review-detail", "Loading review queue&hellip;", reviewDetailShapes(3), DETAIL_FRAME);
 }
 
+/** The detail pane with nothing picked because nothing is waiting: the record's page, drawn empty.
+ *  A picture only — the list pane beside it carries the sentence. */
 export function reviewQueueClear(): string {
-  return `<div style="height:100%;display:flex;align-items:center;justify-content:center;padding:40px">
-    ${dashedCard("Queue is clear", "Everything an agent produced has been reviewed. New proposals will appear here as sessions finish.", true)}
-  </div>`;
+  return emptyShapes(reviewDetailShapes(2), { style: DETAIL_FRAME });
 }
 
 // ── composed surface ─────────────────────────────────────────────────────────
@@ -353,7 +363,7 @@ export function reviewView(p: ReviewProps): string {
   const list = p.loading ? reviewListSkeleton()
     : visible.length > 0
     ? visible.map((it) => reviewCard(it, sel !== null && it.id === sel.id)).join("")
-    : reviewListEmpty();
+    : reviewListEmpty(p.filter === "all");
 
   // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or —
   // once an item is picked by hand — its detail, with a back button to the list.

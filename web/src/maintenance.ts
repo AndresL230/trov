@@ -16,7 +16,7 @@
 import { esc, attr, primaryBtn, surface } from "./ui";
 import { personChip, personLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
-import { skeleton, skBar, skBox, skLine, skLines, skList, skW } from "./skeleton";
+import { emptyLayout, skeleton, skBar, skBox, skLine, skLines, skList, skW } from "./skeleton";
 
 // ── prop shapes ──────────────────────────────────────────────────────────────
 export interface UnplacedItem {
@@ -72,10 +72,6 @@ function pickChip(label: string, on: boolean, act: string, arg: string, mono = f
 }
 
 /** A dashed, centred empty-state card (the normal state of this queue). */
-export function maintEmpty(title: string, sub: string): string {
-  return `<div style="display:flex;justify-content:center;padding:56px 0"><div style="border:1px dashed var(--border-strong);border-radius:13px;padding:36px 44px;text-align:center;max-width:380px"><div style="font-size:15px;font-weight:600;color:var(--fg-70)">${esc(title)}</div><div style="font-size:12.5px;color:var(--fg-40);margin-top:6px">${esc(sub)}</div></div></div>`;
-}
-
 const person = (people: Person[], id: string | null | undefined): Person | null =>
   id ? people.find((p) => p.id.toLowerCase() === id.toLowerCase()) ?? null : null;
 /** A Person as the chip helpers take it — null (plain, initials) without a color. */
@@ -116,7 +112,7 @@ export function selectedUnplacedId(items: { id: string }[], assignOpen: string |
 }
 
 function unplacedTab(p: MaintenanceProps): string {
-  if (p.unplaced.length === 0) return maintEmpty("All clear", "Everything an agent produced found its place on its own.");
+  if (p.unplaced.length === 0) return emptyLayout("unplaced", { text: UNPLACED_EMPTY, sayStyle: "margin-bottom:12px", shapes: unplacedShapes(2) });
   const idx = Math.max(0, p.unplaced.findIndex((u) => u.id === p.assignOpen));
   const sel = p.unplaced[idx];
   const list = p.unplaced.map((u) => {
@@ -170,19 +166,26 @@ export const UNPLACED_INTRO = "Things an agent produced but couldn't place. Read
 /** The Unplaced screen while its queue's first read is out: the page frame and intro are
  *  real; the two-pane card holds a skeleton (never "All clear" before it is known). */
 export function maintenanceSkeleton(): string {
-  const row = (i: number) => `<div style="padding:13px 16px;border-bottom:1px solid var(--border)">${skLines(["94%", skW(i, ["58%", "40%", "72%"])], 13, 1.5)}<div style="display:flex;align-items:center;gap:6px;margin-top:7px">${skBox(16, 16)}${skLine(130, 11.5, 1.5)}</div></div>`;
   return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
     <div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">${esc(UNPLACED_INTRO)}</div>
-    ${skeleton("unplaced", "Loading the queue&hellip;", `<div${surface("display:flex;flex-wrap:wrap;overflow:hidden;min-height:440px")}>
-      <div style="flex:1 1 260px;min-width:0;max-width:100%;box-shadow:1px 0 0 var(--border)">${skList(4, row)}</div>
+    ${skeleton("unplaced", "Loading the queue&hellip;", unplacedShapes(4))}
+  </div>`;
+}
+/** The two-pane card as shapes (`n` queue rows beside the item on screen) — the queue's loading
+ *  skeleton and its empty layout. */
+function unplacedShapes(n: number): string {
+  const row = (i: number) => `<div style="padding:13px 16px;border-bottom:1px solid var(--border)">${skLines(["94%", skW(i, ["58%", "40%", "72%"])], 13, 1.5)}<div style="display:flex;align-items:center;gap:6px;margin-top:7px">${skBox(16, 16)}${skLine(130, 11.5, 1.5)}</div></div>`;
+  return `<div${surface("display:flex;flex-wrap:wrap;overflow:hidden;min-height:440px")}>
+      <div style="flex:1 1 260px;min-width:0;max-width:100%;box-shadow:1px 0 0 var(--border)">${skList(n, row)}</div>
       <div style="flex:2 1 380px;min-width:0;padding:24px 28px;box-shadow:0 -1px 0 var(--border)">
         <div style="display:flex;align-items:center;gap:8px">${skBox(74, 18)}${skBox(18, 18)}${skBar(110, 9)}</div>
         <div style="margin-top:16px">${skLines(["92%", "66%"], 18, 1.5)}</div>
         <div style="margin-top:10px">${skLines(["100%", "88%", "52%"], 13.5, 1.6)}</div>
       </div>
-    </div>`)}
-  </div>`;
+    </div>`;
 }
+/** Unplaced's empty sentence: empty is this queue's normal state (the Guide › Review says so). */
+export const UNPLACED_EMPTY = "Nothing is unplaced, which is this queue's normal state. Anything an agent couldn't confidently place waits here to be routed or discarded.";
 
 export function maintenanceView(p: MaintenanceProps, hint = ""): string {
   return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">

@@ -271,15 +271,17 @@ describe("render() — My Work screen", () => {
     expect(html).not.toContain("Recent happenings");
   });
 
-  it("drops Tickets when there are none; a clear review queue reads clear beside Repo", () => {
+  it("keeps Tickets when there are none (drawn empty); a clear review queue reads clear beside Repo", () => {
     const s = stateWithDashboard(dash());
     const html = render({ ...s, proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } });
     const labels = [...html.matchAll(/data-screen-label="My Work · ([^"]+)"/g)].map((m) => m[1]);
-    // Clear: Sessions alone, then Repo 7 | Needs your review 5 — the clear tile beside Repo.
-    expect(labels).toEqual(["Your sessions", "Repo monitor", "Needs your review", "Your library"]);
+    // Every tile is always there: Tickets 7 | Sessions 5, then Repo 7 | Needs your review 5 — the clear tile beside Repo.
+    expect(labels).toEqual(["Tickets for you", "Your sessions", "Repo monitor", "Needs your review", "Your library"]);
     expect(html).toContain("Nothing waiting on your review");
+    expect(html).toContain('data-empty="mw-tickets"');
+    expect(html).toContain("No tickets are assigned to you.");
     const spanOf = (k: string) => html.match(new RegExp(`--span:(\\d+)[^"]*"[^>]*data-mw="${k}"`))?.[1];
-    expect([spanOf("sessions"), spanOf("repo"), spanOf("review"), spanOf("library")]).toEqual(["12", "7", "5", "12"]);
+    expect([spanOf("tickets"), spanOf("sessions"), spanOf("repo"), spanOf("review"), spanOf("library")]).toEqual(["7", "5", "7", "5", "12"]);
     // …and with tickets: Tickets 7 | Sessions 5, then Repo 7 | review 5.
     const withT = render({ ...stateWithDashboard(dash({ tickets: [makeTicket()] })), proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } });
     const lbl = [...withT.matchAll(/data-screen-label="My Work · ([^"]+)"/g)].map((m) => m[1]);

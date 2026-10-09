@@ -75,7 +75,7 @@ export const ORG_AUDIT_ACTIONS = [
   "repo.add", "repo.remove", "repo.primary", "environment.set", "environment.delete", "environment.reorder",
   // The GitHub App's installation (0043_github_app, src/github-app/store.ts).
   "github.connect", "github.disconnect", "github.uninstall", "github.suspend", "github.unsuspend", "github.repos", "github.permissions",
-  // Org settings › Hosting (0050_hosting_providers, src/hosting/).
+  // Org settings › Hosting (0052_hosting_providers, src/hosting/).
   "part.set", "part.delete", "hosting.connect", "hosting.disconnect", "hosting.revoked",
   "platform.org_limit", "platform.admin.grant", "platform.admin.revoke",
   // Plans and grants (0044_plans, src/plans): an org's plan / limits / status changed; a grant made, revoked, used.

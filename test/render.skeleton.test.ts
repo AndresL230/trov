@@ -134,8 +134,12 @@ describe("Feed — loading", () => {
   });
   it("loaded-and-empty is the empty state, a failure is the error — never a skeleton", () => {
     const empty = body(render(app("feed", { feed: { status: "ok", data: [] }, feedStats: { status: "ok", data: null as never }, proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } })));
-    expect(empty).toContain("No entries match this filter.");
+    // No filter is on: the feed's cards drawn empty. A filter that hides everything says so instead.
+    expect(empty).toContain('data-empty="feed"');
     expect(empty).not.toContain('data-skel="feed"');
+    const filtered = body(render(app("feed", { feedTag: "bugfix", feed: { status: "ok", data: [] }, feedStats: { status: "ok", data: null as never }, proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } })));
+    expect(filtered).toContain("No entries match this filter.");
+    expect(filtered).not.toContain('data-empty="feed"');
     const failed = body(render(app("feed", { feed: { status: "error", data: [] } })));
     expect(failed).toContain("Couldn't load the feed.");
     expect(failed).not.toContain('data-skel="feed"');
@@ -155,7 +159,13 @@ describe("Docs — loading", () => {
   it("no docs is the empty state; nothing picked is the prompt to pick", () => {
     const html = body(render(app("docs", { docsList: { status: "ok", data: [] } })));
     expect(keys(html)).toEqual([]);
-    expect(html).toContain("Select a doc from the tree.");
+    // No doc in the space: the tree and the doc page are drawn empty.
+    expect(html).toContain('data-empty="docs-tree"');
+    expect(html).toContain('data-empty="doc"');
+    expect(html).not.toContain("Select a doc from the tree.");
+    // Docs exist in the space, none is picked: the prompt to pick.
+    const doc = { slug: "a", title: "A", space: "technical", section: "Overview", body: "", current_version: 1, updated_at: "2026-01-01T00:00:00Z", updated_by: "alice" };
+    expect(body(render(app("docs", { docsList: { status: "ok", data: [doc as never] }, docDetail: { status: "ok", data: null } })))).toContain("Select a doc from the tree.");
   });
 });
 
@@ -198,8 +208,13 @@ describe("Tickets — loading", () => {
   it("a loaded, empty queue is the empty state", () => {
     const board = body(render(app("tickets", { tickets: { status: "ok", data: [] } })));
     expect(keys(board)).toEqual([]);
-    expect(board).toContain("Nothing here");
-    expect(body(render(app("tickets", { qView: "table", tickets: { status: "ok", data: [] } })))).toContain("Nothing in this view.");
+    // No filter is on: the board's columns and the table's rows are drawn empty…
+    expect(board).toContain('data-empty="tickets-board"');
+    expect(board).not.toContain("Nothing here");
+    expect(body(render(app("tickets", { qView: "table", tickets: { status: "ok", data: [] } })))).toContain('data-empty="tickets-table"');
+    // …and a filter that hides everything says so instead.
+    expect(body(render(app("tickets", { qPrio: "high", tickets: { status: "ok", data: [] } })))).toContain("Nothing here");
+    expect(body(render(app("tickets", { qView: "table", qQ: "zzz", tickets: { status: "ok", data: [] } })))).toContain("Nothing in this view.");
   });
   it("a ticket and a sprint each open on their own page's grid", () => {
     const ticket = body(render(app("ticketdetail", { ticketDetail: { status: "loading", data: null } })));
@@ -218,16 +233,17 @@ describe("Review, Unplaced, Search — loading", () => {
     const html = body(render(app("review", { proposals: { status: "loading", data: [] }, draftAdrs: { status: "loading", data: [] } })));
     expect(keys(html)).toEqual(["review-list", "review-detail"]);
     expect(html).toContain(">Review</h1>");
-    expect(html).not.toContain("Queue is clear");
+    expect(html).not.toContain("Nothing is waiting for review.");
+    expect(html).not.toContain("data-empty=");
     const clear = body(render(app("review", { proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } })));
     expect(keys(clear)).toEqual([]);
-    expect(clear).toContain("Queue is clear");
+    expect(clear).toContain("Nothing is waiting for review.");
   });
   it("Unplaced keeps its intro; the card is a skeleton until the queue is known", () => {
     const html = body(render(app("maintenance", { needsTriage: { status: "loading", data: [] } })));
     expect(keys(html)).toEqual(["unplaced"]);
-    expect(html).not.toContain("All clear");
-    expect(body(render(app("maintenance", { needsTriage: { status: "ok", data: [] } })))).toContain("All clear");
+    expect(html).not.toContain("data-empty=");
+    expect(body(render(app("maintenance", { needsTriage: { status: "ok", data: [] } })))).toContain('data-empty="unplaced"');
   });
   it("Search shows a skeleton only with nothing on screen — a re-query keeps the results it has", () => {
     const first = body(render(app("search", { searchResults: { ...initialState().searchResults, status: "loading" } })));

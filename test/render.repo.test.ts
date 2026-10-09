@@ -88,7 +88,7 @@ describe("repoView — section states", () => {
     expect(ci).toContain("posts a canopy/coverage commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.");
     expect(ci).toContain("posts a canopy/bundle-kb commit status on a push to the default environment branch; it is read from a status webhook event, the 6-hourly GitHub reconcile, or Poll now.");
     expect(usage).toContain("Both need an environment in Org settings › Environments and their credential in Org settings › Integrations.");
-    expect(usage).toContain("No hosting provider is connected. An admin adds your environments' parts in Org settings &rsaquo; Hosting.");
+    expect(usage).toContain("No hosting provider is connected. An admin sets up each environment&#39;s parts in Org settings › Hosting; their deploys, traffic and resources then show here.");
     // No Worker variable or secret is named any more: an org's admin cannot set one.
     for (const html of [overview, code, ci, usage, planning]) {
       for (const name of ["REPO_ENVIRONMENTS", "GITHUB_SERVICE_TOKEN", "CF_ANALYTICS", "RAILWAY_TOKEN", "SAPLING_METRICS_TOKEN", "GITHUB_REPO"]) expect(html, name).not.toContain(name);

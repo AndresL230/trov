@@ -18,6 +18,7 @@
 import type { RepoRange, RepoTone } from "@shared/repo";
 import type { DeployState, HostingMetric, HostingProviderId, ProviderDeployDTO, ProviderResources, ProviderTrafficRange, RepoProviderPart } from "@shared/hosting";
 import { esc, attr, statusBadge } from "./ui";
+import { emptyLayout, emptyShapes, skBar, skBox, skLine, skeleton } from "./skeleton";
 
 /** What the section borrows from repo.ts (passed in, so the two modules do not import each other). */
 export interface RepoHostingTools {
@@ -250,9 +251,39 @@ export function hostingParts(parts: RepoProviderPart[], t: RepoHostingTools): st
     </section>`).join("")}</div></div>`;
 }
 
-/** Nothing is set up: a quiet line, with the way there for an admin. Never a failure. */
+// ── shapes: ONE builder for the section's loading skeleton and its empty layouts (web-ui.md › Empty layouts) ──
+
+/** One part's card as a shape: its head, the last-deploy line, the dot strip, a row of figures. Boxes only. */
+const partShape = (): string => `<div class="repo-hpart">
+    <div style="display:flex;align-items:center;gap:9px">${skBox(8, 8)}${skLine(120, 14, 1.4)}${skLine(84, 12, 1.4)}</div>
+    <div style="margin-top:10px">${skLine("70%", 12.5, 1.5)}</div>
+    <div style="display:flex;gap:7px;margin-top:9px">${Array.from({ length: 6 }, () => skBox(11, 11)).join("")}</div>
+    <div class="repo-hfigs" style="margin-top:14px">${Array.from({ length: 4 }, () => `<div style="min-width:0">${skBar(54, 17)}${skBar(64, 10, "margin-top:8px")}</div>`).join("")}</div>
+  </div>`;
+/** The section's shape: environments side by side on the lattice the real parts use, two parts in each. */
+export function hostingShapes(envs = 2, parts = 2): string {
+  return `<div class="repo-cells" style="border-top:1px solid var(--border)"><div style="grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${Array.from({ length: envs }, () =>
+    `<div class="repo-henv">${skLine(88, 15, 1.4)}${Array.from({ length: parts }, partShape).join("")}</div>`).join("")}</div></div>`;
+}
+/** The section while the dashboard's read is out. */
+export const hostingSkeleton = (key: string): string => skeleton(key, "Loading hosting&hellip;", hostingShapes());
+/** The organization has no repository at all (the dashboard's `blank` phase): the section's shape, drawn empty —
+ *  the dashboard's own empty layout, above, carries the sentence. */
+export const hostingBlank = (): string => emptyShapes(hostingShapes());
+
+/** What the section says while it holds nothing (exported: tests read the same words). */
+export const HOSTING_NOT_CONNECTED = "No hosting provider is connected. Each part of each environment shows here once it is set up in Org settings \u203a Hosting: its deploys, and the traffic or resources its host reports.";
+export const HOSTING_NOT_CONNECTED_MEMBER = "No hosting provider is connected. An admin sets up each environment's parts in Org settings \u203a Hosting; their deploys, traffic and resources then show here.";
+export const HOSTING_EMPTY = "Parts are set up, but no provider has reported yet. The hourly poll fills this in, or an admin can press Poll now.";
+
+/** Nothing is set up: the section's shape drawn empty under one sentence, with the way there for an admin. Never a failure. */
 export function hostingNotConnected(admin: boolean): string {
-  return `<div data-hosting="not_connected" style="padding:14px 20px 18px;font-size:12.5px;line-height:1.55;color:var(--fg-55)">No hosting provider is connected. ${admin
-    ? `Add your environments' parts in <button type="button" data-act="orgGo" data-arg="hosting" class="cnpy-mutelink" style="padding:0;font:inherit;color:var(--fg-70);text-decoration:underline;text-underline-offset:2px;cursor:pointer">Org settings &rsaquo; Hosting</button>.`
-    : "An admin adds your environments' parts in Org settings &rsaquo; Hosting."}</div>`;
+  return `<div data-hosting="not_connected">${emptyLayout("repo-hosting", {
+    text: admin ? HOSTING_NOT_CONNECTED : HOSTING_NOT_CONNECTED_MEMBER, sayStyle: "margin:0 20px 16px",
+    action: admin ? { label: "Open Org settings \u203a Hosting", act: "orgGo", arg: "hosting" } : null, shapes: hostingShapes(),
+  })}</div>`;
+}
+/** Parts exist, and no provider has reported for any of them yet. */
+export function hostingEmpty(): string {
+  return `<div data-hosting="empty">${emptyLayout("repo-hosting", { text: HOSTING_EMPTY, sayStyle: "margin:0 20px 16px", shapes: hostingShapes() })}</div>`;
 }

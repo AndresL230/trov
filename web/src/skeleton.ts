@@ -20,7 +20,11 @@
 //
 // Everything above `syncSkeletons` is pure string building (render tests run
 // without a DOM).
-import { surface } from "./ui";
+//
+// EMPTY LAYOUTS live here too (`emptyLayout`, below the composites): a screen that
+// HAS loaded and holds nothing draws its own shape empty — the same builders, hollow
+// and still — with one sentence and one action. Loading and empty never look alike.
+import { attr, esc, surface } from "./ui";
 
 const px = (v: number | string): string => (typeof v === "number" ? `${v}px` : v);
 const sty = (extra: string): string => (extra ? `;${extra}` : "");
@@ -95,13 +99,17 @@ export const skKey = (text: string): string => text.toLowerCase().replace(/[^a-z
 /** A settings-style list while its read is out: `n` hairline-separated rows (an optional
  *  avatar, a name over a detail line, an optional trailing control). */
 export function skRows(key: string, label: string, n = 3, o: { avatar?: number; trail?: number; pad?: string } = {}): string {
-  return skeleton(key, label, skList(n, (i) => skRow({
+  return skeleton(key, label, skRowsShape(n, o));
+}
+/** The same rows as bare shapes — a settings list's loading skeleton (`skRows`) and its empty layout. */
+export function skRowsShape(n = 3, o: { avatar?: number; trail?: number; pad?: string } = {}): string {
+  return skList(n, (i) => skRow({
     lead: o.avatar ? skBox(o.avatar, o.avatar) : "",
     body: `${skLine(skW(i, ["38%", "52%", "30%", "46%"]), 13.5, 1.4)}${skLine(skW(i + 1, ["58%", "44%", "66%"]), 12, 1.5)}`,
     trail: o.trail ? skBox(o.trail, 28) : "",
     align: "center",
     style: `padding:${o.pad ?? "12px 0"}${i ? ";border-top:1px solid var(--border)" : ""}`,
-  })));
+  }));
 }
 
 /** A settings form while its read is out: `n` fields, each a label over an input's box. */
@@ -135,6 +143,85 @@ export function skDetail(o: { rail?: number; paras?: number; actions?: number } 
   if (!o.rail) return `${head}${body}`;
   const prop = (i: number) => `<div style="display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center;height:30px">${skBar(48, 8)}${skBar(skW(i, [96, 64, 120, 80]), 10)}</div>`;
   return `${head}<div style="display:grid;grid-template-columns:minmax(0,1fr) ${o.rail}px;gap:28px;align-items:start"><div style="min-width:0">${body}</div><div style="margin-top:24px">${skBar(70, 8, "margin-bottom:12px")}${skList(5, prop)}</div></div>`;
+}
+
+// ── empty layouts: the screen's own shape, drawn empty ───────────────────────
+// A screen that has LOADED and holds nothing never collapses to one centred line:
+// it keeps its real chrome (header controls, columns, tile grid, section headings)
+// and draws its content's shape EMPTY, so a new organization can see what the
+// screen will look like. One helper, for every screen:
+//
+//   emptyLayout(key, { text, action, shapes })
+//
+//   • `text` — the ONE sentence: what appears here and how it gets there (the
+//     Guide's wording wherever the Guide says it). Plain text, escaped here.
+//   • `action` — the ONE action that makes the first item, or null when the viewer
+//     may not (roles and plan limits decide it exactly as the header's own button
+//     does) or when nothing here is made by hand (agent-written screens point to
+//     connecting an agent).
+//   • `shapes` — the SAME builders the loading skeleton uses (`skLine`, `skBox`,
+//     `skCard`, a screen's own row), so the empty layout has the screen's columns
+//     and row heights. Inside `.cnpy-empty-shapes` trov.css draws them hollow and
+//     still: a hairline outline where a skeleton has a filled, pulsing bar, and a
+//     dashed outline where it has a card. `aria-hidden`: a picture, never data.
+//
+// Never guess on read (CLAUDE.md invariant 7): a shape is a box. No name, title,
+// number, date, avatar or status colour is ever drawn in one.
+
+/** The one action of an empty layout — dispatched like any `data-act`. */
+export interface EmptyAction { label: string; act: string; arg?: string }
+
+export interface EmptyOpts {
+  /** The one sentence. Plain text (escaped here). */
+  text: string;
+  /** A short heading over the sentence, where the screen had one ("No repository connected"). Plain text. */
+  title?: string;
+  /** The one action, or null / absent when there is none for this viewer. */
+  action?: EmptyAction | null;
+  /** The one action as TRUSTED markup, for a screen whose buttons are built by its own helper
+   *  (Org settings' `ghostBtn`) or that offers a second way in (the Repo dashboard's sample data). */
+  actionHtml?: string;
+  /** A class for the wrapper (a responsive grid defined in trov.css). */
+  cls?: string;
+  /** Placeholder shapes, built from the skeleton primitives. */
+  shapes?: string;
+  /** Inside a surface that is already a card (a My Work tile, an aside box, a settings
+   *  panel): the sentence without its own dashed outline. */
+  plain?: boolean;
+  /** The wrapper's own layout (a grid, a padding). */
+  style?: string;
+  /** The sentence's own box (a grid cell's span, a margin). */
+  sayStyle?: string;
+  /** The shapes' own layout; `contents: true` makes their wrapper `display:contents`, so the
+   *  sentence and the shapes are cells of ONE grid (a card grid, a board). */
+  shapesStyle?: string;
+  contents?: boolean;
+}
+
+/** The action of a screen nothing is made on by hand (the Feed): its content is written by an
+ *  agent, so the way to the first item is connecting one — the guided setup's agent step. */
+export const CONNECT_AGENT: EmptyAction = { label: "Connect an agent", act: "welcomeOpen", arg: "agent" };
+
+/** The sentence and its action — the first slot of an empty layout. */
+export function emptySay(text: string, action: EmptyAction | null = null, o: { plain?: boolean; style?: string; title?: string; actionHtml?: string } = {}): string {
+  const btn = action
+    ? `<button type="button" data-act="${attr(action.act)}"${action.arg !== undefined ? ` data-arg="${attr(action.arg)}"` : ""} class="cnpy-empty-act">${esc(action.label)}</button>`
+    : o.actionHtml ? `<div class="cnpy-empty-acts">${o.actionHtml}</div>` : "";
+  const words = `${o.title ? `<p class="cnpy-empty-title">${esc(o.title)}</p>` : ""}<p class="cnpy-empty-text">${esc(text)}</p>`;
+  return `<div class="cnpy-empty-say${o.plain ? " is-plain" : ""}"${o.style ? ` style="${o.style}"` : ""}>${o.title ? `<div class="cnpy-empty-words">${words}</div>` : words}${btn}</div>`;
+}
+
+/** Placeholder shapes for the slots after the first: hollow, still, hidden from assistive tech. */
+export function emptyShapes(inner: string, o: { style?: string; contents?: boolean } = {}): string {
+  return `<div class="cnpy-empty-shapes${o.contents ? " is-contents" : ""}" aria-hidden="true"${o.style ? ` style="${o.style}"` : ""}>${inner}</div>`;
+}
+
+/**
+ * A region that has loaded and holds nothing: the sentence (and action) in the first
+ * slot, the screen's shape after it. `key` names the region, as a skeleton's does.
+ */
+export function emptyLayout(key: string, o: EmptyOpts): string {
+  return `<div class="cnpy-empty${o.cls ? ` ${o.cls}` : ""}" data-empty="${attr(key)}"${o.style ? ` style="${o.style}"` : ""}>${emptySay(o.text, o.action ?? null, { plain: o.plain, style: o.sayStyle, title: o.title, actionHtml: o.actionHtml })}${o.shapes ? emptyShapes(o.shapes, { style: o.shapesStyle, contents: o.contents }) : ""}</div>`;
 }
 
 // ── after-paint: keep the clock, fade the landing ────────────────────────────

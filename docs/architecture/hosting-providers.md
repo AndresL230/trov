@@ -1,6 +1,6 @@
 # Hosting providers
 
-One interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0050_hosting_providers`).
+One interface for every host (#97–#102; `shared/hosting.ts`, `src/hosting/`, `0052_hosting_providers`).
 
 The Repo dashboard was built around one stack (a Cloudflare Worker frontend, a Railway backend). It now reads any
 host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free — the SPA imports its vocabularies):
@@ -79,7 +79,7 @@ cookie itself and ALWAYS redirects — never JSON, never a 500: nobody signed in
 `/<slug>/?hosting=<outcome>&provider=<id>#org/hosting` (`/?hosting=<outcome>` when the intent cannot be read), the outcome one of `HOSTING_CONNECT_OUTCOMES` (`shared/hosting.ts`) — never provider text.
 It binds only for that browser's intent, that provider, the same person, still an admin (re-checked live), after the
 code exchange through `hostFetch`; an installation ANOTHER org holds is `taken` (a platform read,
-`connectionsForExternalId` in `src/platform/jobs.ts`, and 0050's partial unique index on the active
+`connectionsForExternalId` in `src/platform/jobs.ts`, and 0052's partial unique index on the active
 `(provider, external_id)` at the write — the row, the credential and the config are ONE batch, so a lost race stores
 nothing). **A DIFFERENT live install / OAuth grant is REPLACED** — the GitHub App's rule since #110
 (`github-app.md` step 6): `bindConnection(…, replaced)` overwrites the row in the same batch and audits the end
@@ -182,7 +182,21 @@ a time, Escape closes, Tab stays inside, focus returns to the control that opene
 Disconnect and Remove go through the shared `confirmModal` (`OrgConfirm` `hosting` / `part`; `orgConfirmCopy`).
 After Disconnect the toast says what is left to do upstream (`upstream`: `failed` / `none`).
 
-"Preview with sample data" (the tab's footer) loads `web/src/hosting-sample.ts` by dynamic import — never in the
+**Skeleton, empty layouts and the state preview** (`web-ui.md` › Empty layouts). ONE set of shape builders per
+screen is behind both its loading skeleton and its empty layouts, so the two cannot drift: the tab's
+`envTilesShape` / `partRowsShape` (`hosting.ts`), the dashboard section's `hostingShapes` (`repo-hosting.ts`). The
+tab's read being out is `skeleton("org-hosting", …)`; no environment is `emptyLayout("org-hosting-envs", …)` — one
+sentence (`HOSTING_ENVS_EMPTY`), Open Environments, the tiles drawn empty; an environment with no part is a plain
+layout inside its tile (`HOSTING_PARTS_EMPTY`; the tile's Add part is the action). On the dashboard,
+`not_connected` and `empty` are `emptyLayout("repo-hosting", …)` (`HOSTING_NOT_CONNECTED`, with Open Org settings ›
+Hosting for an admin; `HOSTING_EMPTY`), and with no repository at all the section is `emptyShapes` under the
+dashboard's own sentence. `?preview=empty|loading` covers both: the tab's read lives one level down
+(`state.org.hosting.setup`), so `previewState` (`web/src/preview.ts`) projects it by hand — loading: still out;
+empty: answered for a new organization, with Trov's provider catalogue kept and no environment, connection or
+suggestion. Its dialogs and return notice are not drawn under a preview, and no write is sent (api.ts refuses it).
+
+"Preview with sample data" (the tab's footer) — still the way to see a FULL screen, and it keeps working under the
+state preview — loads `web/src/hosting-sample.ts` by dynamic import — never in the
 main bundle — and shows any of its five states (mid-setup, no parts, new org, removed, locked) with a switch; while
 it is on NOTHING is sent (a save, a connect, a test and a disconnect each answer from the sample and say so). The
 sample's provider catalogue is pinned to the registry by `test/hosting.sample.test.ts`.
@@ -199,8 +213,8 @@ errors, following the range switch (`repo-swap`) — or resources for a service 
 whose missing hours are GAPS, `gapPath`). **A figure the payload does not carry is "—" with one of three calm
 reasons, never 0** (`absentHint`): "not available from <provider>: <its reason>" (`unavailable[]`), "no recent
 reading" (`seen`), "not connected"; a web part whose provider reads no usage at all (`traffic: null`) is ONE line
-with the reason instead of an empty grid. `not_connected` is a quiet line with the way to Org settings › Hosting
-for an admin (the footer keeps "Preview with sample data"); `empty` says the parts are waiting. Links out are https
+with the reason instead of an empty grid. `not_connected` and `empty` are empty layouts (below; the footer keeps
+"Preview with sample data"). Links out are https
 only. Render tests: `test/render.hosting.test.ts`, `test/render.repo-hosting.test.ts`.
 
 ## The repo cron's `:40` tick

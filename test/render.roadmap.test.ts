@@ -104,12 +104,13 @@ describe("planNarrativeBlock", () => {
     expect(html).toContain('class="cnpy-md"');
   });
 
-  it("empty narrative → dashed-card hint, no markdown wrapper", () => {
+  it("empty narrative → its sentence and its lines drawn empty, no markdown wrapper", () => {
     const html = planNarrativeBlock("", mockMd);
-    expect(html).toContain("No plan narrative yet — write one with the update-plan skill");
+    expect(html).toContain("No plan narrative yet. An admin writes it with the update-plan skill");
+    expect(html).toContain('data-empty="roadmap-narrative"');
     expect(html).not.toContain("mock-md");
     expect(html).not.toContain("cnpy-md");
-    expect(html).toContain("dashed");
+    expect(html).toContain("cnpy-empty-shapes");
   });
 
   it("whitespace-only narrative also falls back to the hint", () => {
@@ -186,7 +187,7 @@ describe("render() — Roadmap narrative tab", () => {
 
   it("empty narrative → the update-plan hint in the narrative tab", () => {
     const html = render(stateWithPlan(makePlanView({ narrative: "" }), "narrative"));
-    expect(html).toContain("No plan narrative yet — write one with the update-plan skill");
+    expect(html).toContain("No plan narrative yet. An admin writes it with the update-plan skill");
     // (the Now box's sprint description is markdown too — only the narrative's wrapper is absent)
     expect(html).not.toContain('<div class="cnpy-md"><div class="mock-live-md">');
   });

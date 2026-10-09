@@ -12,7 +12,7 @@ import type { TicketPriority } from "@shared/tickets";
 import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, ticketPill, priorityChip, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
 import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
 import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
-import { roadmapTimeline } from "./timeline";
+import { roadmapTimeline, timelineShapes } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, personLink, personAvatarLink, handleTag, handleLink, swatches, type OnboardState } from "./people";
 import { personCardModal } from "./profile";
@@ -34,7 +34,7 @@ import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
-import { skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
+import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode } from "./review";
 import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
 import type { IdentityProps } from "./identity";
@@ -67,6 +67,7 @@ import { isOrgAdmin } from "./org-context";
 import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, mcpEndpoint, mcpStrong, CONNECTION_NOTE } from "./mcp-connect";
 import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
+import { previewBanner, previewState, type PreviewMode } from "./preview";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -412,6 +413,9 @@ export interface AppState {
   myOrgs: Loadable<MyOrgsResponse | null>;
   /** Org settings' own state. It never holds a secret's value (org-actions.ts). */
   org: OrgUi;
+  /** The state preview (`?preview=empty` / `?preview=loading`, web/src/preview.ts): every screen
+   *  paints its empty layout or its loading skeleton instead of its data. null = off. */
+  preview: PreviewMode | null;
 }
 
 /** Project the app state onto the Sync GitHub control and panel (sync.ts never sees AppState). */
@@ -542,6 +546,7 @@ export function initialState(): AppState {
     avatarMenu: false,
     myOrgs: { status: "idle", data: null },
     org: initialOrgUi(),
+    preview: null,
   };
 }
 
@@ -909,25 +914,37 @@ function header(s: AppState): string {
 // ── feed ─────────────────────────────────────────────────────────────────────
 /** The Feed page: the entries (`inner`) beside the sticky aside — This week + Waiting on
  *  review — in the Roadmap Narrative's two columns (ui.ts `asideColumns`). */
-function wrapFeed(s: AppState, inner: string): string {
+function wrapFeed(s: AppState, inner: string, history = true): string {
   return asideColumns(`${inner}
-    <div style="text-align:center;padding:18px 0;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">&mdash; start of recorded history &mdash;</div>`, feedAside(s));
+    ${history ? `<div style="text-align:center;padding:18px 0;font-size:11.5px;color:var(--fg-40);font-family:var(--label)">&mdash; start of recorded history &mdash;</div>` : ""}`, feedAside(s));
 }
 
 /** An aside box's rows while its read is out: a title line and a meta line per row,
  *  in the box's own row padding (so the rows land where the bars were). */
+const asideRowShapes = (n: number): string =>
+  skList(n, (i) => `<div style="padding:9px 18px;border-top:1px solid var(--border)">${skLine(skW(i), 13, 1.45)}<div style="margin-top:3px">${skLine(skW(i + 1, ["44%", "52%", "38%"]), 12, 1.5)}</div></div>`);
 function asideRowsSkeleton(key: string, label: string, n: number): string {
-  return skeleton(key, label, skList(n, (i) => `<div style="padding:9px 18px;border-top:1px solid var(--border)">${skLine(skW(i), 13, 1.45)}<div style="margin-top:3px">${skLine(skW(i + 1, ["44%", "52%", "38%"]), 12, 1.5)}</div></div>`));
+  return skeleton(key, label, asideRowShapes(n));
+}
+/** An aside box that has loaded and holds nothing: its sentence where the first row goes, then
+ *  the rows it will have, drawn empty (skeleton.ts `emptyLayout`). `shapes` are the box's own rows. */
+function asideEmpty(key: string, text: string, shapes: string): string {
+  return emptyLayout(key, { text, plain: true, shapes, sayStyle: "padding:12px 18px 14px;border-top:1px solid var(--border)" });
 }
 
-/** The Feed's cards while its first read is out: avatar, title, a two-line brief, the byline. */
-function feedSkeleton(): string {
-  const card = (i: number) => skCard(`<div style="display:flex;align-items:flex-start;gap:12px">
+/** One Feed card as a shape — avatar, title, a two-line brief, the byline — for the loading
+ *  skeleton and the empty layout. */
+const feedCardShape = (i: number): string => skCard(`<div style="display:flex;align-items:flex-start;gap:12px">
       ${skBox(30, 30, "margin-top:1px")}
       <div style="flex:1;min-width:0">${skLine(skW(i), 14, 1.5)}<div style="margin-top:5px">${skLines(["100%", skW(i + 1, ["64%", "82%", "46%"])], 13.5, 1.6)}</div><div style="margin-top:12px">${skLine(170, 12, 1.5)}</div></div>
     </div>`, "padding:16px 18px;margin-bottom:12px");
-  return skeleton("feed", "Loading feed&hellip;", skList(5, card));
+/** The Feed's cards while its first read is out. */
+function feedSkeleton(): string {
+  return skeleton("feed", "Loading feed&hellip;", skList(5, feedCardShape));
 }
+/** The Feed's empty sentence: nothing is made here by hand — an entry lands when an agent records a
+ *  session (the Guide: "a timeline of everything that shipped, from people and agents alike"). */
+export const FEED_EMPTY = "Nothing has been recorded yet. This is the timeline of everything that ships: an entry lands when your agent records a session.";
 
 function feedAside(s: AppState): string {
   return `${feedWeekBox(s)}${feedReviewBox(s)}`;
@@ -960,14 +977,17 @@ function feedWeekBox(s: AppState): string {
   const head = asideHead("This week", hasWeek ? { act: "setRange", arg: "7d", label: "Everything this week" } : undefined);
   const sub = `<div style="font-size:12.5px;color:var(--fg-40);padding:0 18px 10px;margin-top:-4px">Whole team, last 7 days</div>`;
   const wrap = (body: string) => `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Feed · This week">${head}${sub}${body}</section>`;
+  // The seven day bars as shapes — the loading skeleton's and the empty layout's.
+  const weekBars = `<div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;padding:0 18px 14px">${skList(7, () => `<span style="display:flex;flex-direction:column;align-items:center;gap:5px">${skBox("100%", 36)}${skBar(8, 10)}</span>`)}</div>`;
   if (!d) {
     if (st.status === "error") return wrap(asideNote("Couldn't load this week's numbers."));
     // The figure, the seven day bars and one chip group — the box's own blocks.
     return wrap(skeleton("feed-week", "Loading&hellip;", `<div style="display:flex;align-items:center;gap:8px;padding:0 18px 12px">${skBox(34, 24)}${skBar(120, 9)}</div>
-      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;padding:0 18px 14px">${skList(7, () => `<span style="display:flex;flex-direction:column;align-items:center;gap:5px">${skBox("100%", 36)}${skBar(8, 10)}</span>`)}</div>
+      ${weekBars}
       <div style="padding:10px 18px 12px;border-top:1px solid var(--border)">${skBar(60, 8, "margin:4px 0 11px")}<div style="display:flex;gap:6px">${skBox(74, 24)}${skBox(58, 24)}${skBox(86, 24)}</div></div>`));
   }
-  if (d.total === 0) return wrap(asideNote("Nothing recorded in the last 7 days."));
+  // A true zero for the whole window: the seven day bars, drawn empty.
+  if (d.total === 0) return wrap(asideEmpty("feed-week", "Nothing recorded in the last 7 days.", `<div style="padding-top:2px">${weekBars}</div>`));
 
   const max = Math.max(...d.days.map((x) => x.count));
   const bars = d.days.map((x, i) => {
@@ -1018,7 +1038,7 @@ function feedReviewBox(s: AppState): string {
   const wrap = (body: string) => `<section${surface(`${RM_CARD};overflow:hidden`, { cls: "cnpy-rise" })} data-screen-label="Feed · Waiting on review">${head}${body}</section>`;
   if (load === "error") return wrap(asideNote("Couldn't load the review queue."));
   if (load === "pending") return wrap(asideRowsSkeleton("feed-review", "Loading&hellip;", 2));
-  if (items.length === 0) return wrap(asideNote("Nothing waiting on review."));
+  if (items.length === 0) return wrap(asideEmpty("feed-review", "Nothing waiting on review.", asideRowShapes(2)));
 
   const proposals = items.filter((i) => i.kind === "proposal").length;
   const decisions = items.length - proposals;
@@ -1135,6 +1155,11 @@ function feedView(s: AppState): string {
     </div>`;
   }).join("");
 
+  // The feed answered with nothing and no filter is narrowing it: the cards, drawn empty.
+  // (Author and tag are server-side filters, the time range a client-side one.)
+  if (s.feed.status === "ok" && s.feed.data.length === 0 && s.feedAuthor === "all" && s.feedTag === "all") {
+    return wrapFeed(s, emptyLayout("feed", { text: FEED_EMPTY, action: CONNECT_AGENT, sayStyle: "margin-bottom:12px", shapes: skList(3, feedCardShape) }), false);
+  }
   const empty = s.feed.status === "ok" && feedRows(s).length === 0 ? notice("No entries match this filter.") : "";
   return wrapFeed(s, `<div class="cnpy-stagger">${cards}</div>${empty}`);
 }
@@ -1182,13 +1207,23 @@ function docTreeRow(s: AppState, doc: DocRow): string {
   return page + outlineHtml;
 }
 
+/** One section group of the Docs tree as shapes (a section label, then page rows in the tree's
+ *  own row box) — the tree's loading skeleton and its empty layout. */
+function docTreeGroupShape(g: number, rows: number): string {
+  const row = (i: number) => `<div class="cnpy-tree"><span class="cnpy-treechev is-empty"></span>${skLine(skW(i, ["64%", "82%", "52%", "74%", "58%"]), 13, 1.5, "flex:1")}</div>`;
+  return `<div style="margin-bottom:16px"><div class="cnpy-treesec">${skLine(g ? 96 : 72, 10.5, 1.5)}</div><div style="display:flex;flex-direction:column;gap:1px">${skList(rows, (i) => row(i + g))}</div></div>`;
+}
+/** The Docs reader's empty sentence for a space with no doc: how one gets there (newdoc.ts says the
+ *  same of New doc: it "lands in Review as a staged proposal, the same as an agent's"). */
+export const docsEmptyText = (space: string): string =>
+  `No ${spaceLabel(space)} docs yet. A doc appears here once its proposal is promoted in Review: one your agent staged, or your own from New doc.`;
+
 function docsView(s: AppState): string {
   // ── tree (left pane) ────────────────────────────────────────────────────────
   let treeHtml: string;
   if (slicePending(s.docsList)) {
     // Two section groups of page rows, in the tree's own row box.
-    const row = (i: number) => `<div class="cnpy-tree"><span class="cnpy-treechev is-empty"></span>${skLine(skW(i, ["64%", "82%", "52%", "74%", "58%"]), 13, 1.5, "flex:1")}</div>`;
-    treeHtml = skeleton("docs-tree", "Loading…", skList(2, (g) => `<div style="margin-bottom:16px"><div class="cnpy-treesec">${skLine(g ? 96 : 72, 10.5, 1.5)}</div><div style="display:flex;flex-direction:column;gap:1px">${skList(g ? 3 : 5, (i) => row(i + g))}</div></div>`));
+    treeHtml = skeleton("docs-tree", "Loading…", skList(2, (g) => docTreeGroupShape(g, g ? 3 : 5)));
   } else if (s.docsList.status === "error") {
     treeHtml = notice("Couldn't load docs.");
   } else {
@@ -1196,7 +1231,8 @@ function docsView(s: AppState): string {
     // Sections are static labels; each page expands to its own headings.
     const spaceDocs = s.docsList.data.filter((d) => d.space === s.docSpace);
     if (spaceDocs.length === 0) {
-      treeHtml = notice(`No ${spaceLabel(s.docSpace)} docs yet.`);
+      // The space has no doc: one section group of page rows, drawn empty (the reader says the rest).
+      treeHtml = emptyLayout("docs-tree", { text: `No ${spaceLabel(s.docSpace)} docs yet.`, plain: true, sayStyle: "padding:2px 8px 14px", shapes: docTreeGroupShape(0, 4) });
     } else {
       const grouped = new Map<string, DocRow[]>();
       for (const doc of spaceDocs) {
@@ -1228,20 +1264,25 @@ function docsView(s: AppState): string {
 
 /** The doc page while its read is out: the breadcrumb, title and byline rule, then
  *  prose — in the reader's own page frame. */
-function docReaderSkeleton(): string {
-  return skeleton("doc", "Loading…", `<div style="margin-bottom:11px">${skLine(150, 11, 1.5)}</div>
+const DOC_PAGE_FRAME = "max-width:1080px;margin:0 auto;padding:34px 52px 120px";
+/** A doc page as shapes: the breadcrumb, title and byline rule, then prose. */
+function docPageShapes(paras: number): string {
+  return `<div style="margin-bottom:11px">${skLine(150, 11, 1.5)}</div>
     ${skLine("48%", 29, 1.16)}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:15px;padding-bottom:17px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:9px">${skBox(24, 24)}${skBar(190, 9)}</div>${skBox(96, 30)}
     </div>
-    <div style="margin-top:28px">${skLine("34%", 20, 1.4)}<div style="margin-top:12px">${skProse(3)}</div></div>`,
-    "max-width:1080px;margin:0 auto;padding:34px 52px 120px");
+    <div style="margin-top:28px">${skLine("34%", 20, 1.4)}<div style="margin-top:12px">${skProse(paras)}</div></div>`;
+}
+function docReaderSkeleton(): string {
+  return skeleton("doc", "Loading…", docPageShapes(3), DOC_PAGE_FRAME);
 }
 
 /** The reader pane's inner HTML. Extracted so main.ts can load a doc into the
  *  pane in place (updating only #cnpy-reader) without rerendering the tree —
  *  a tree rerender swaps in fresh outline elements and kills their transition. */
-export function docReaderHtml(s: AppState): string {
+export function docReaderHtml(real: AppState): string {
+  const s = shownState(real);
   const dd = s.docDetail;
 
   // The list's first read being out counts too: its landing opens the first doc, so
@@ -1250,6 +1291,9 @@ export function docReaderHtml(s: AppState): string {
     return docReaderSkeleton();
   } else if (dd.status === "error") {
     return notice("Couldn't load this doc.");
+  } else if (dd.data === null && s.docSlug === null && s.docsList.status === "ok" && !s.docsList.data.some((d) => d.space === s.docSpace)) {
+    // The space has no doc to open: the doc page, drawn empty, with the way to the first one.
+    return emptyLayout("doc", { text: docsEmptyText(s.docSpace), action: { label: "New doc", act: "newDoc" }, style: DOC_PAGE_FRAME, sayStyle: "margin-bottom:30px", shapes: docPageShapes(2) });
   } else if (dd.data === null) {
     return notice(s.docSlug === null ? "Select a doc from the tree." : "Doc not found.");
   } else if (dd.status === "ok" && dd.data !== null) {
@@ -1347,8 +1391,25 @@ function roadmapEnriched(sprints: SprintView[], confirmedSprints: Record<string,
  * Upcoming / Done (§C.6). Every card is `sprintCard` from ./sprints — the ONE
  * place a sprint is painted, so the card and the Sprint screen can never drift.
  */
+/** One sprint card as a shape (its title and badge, two lines about it, the progress bar) —
+ *  the Roadmap's loading skeleton and its empty layout. */
+const sprintCardShape = (i: number): string => skCard(`<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">${skLine(skW(i, ["46%", "58%", "38%"]), 15, 1.4)}${skBox(64, 20)}</div>
+      <div style="margin-top:6px">${skLines(["92%", skW(i, ["54%", "70%"])], 13, 1.55)}</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:11px">${skBar("100%", 5, "flex:1")}${skBar(46, 8)}</div>`, "padding:16px 18px;margin-bottom:10px");
+/** The Roadmap's empty sentences (the Guide › Roadmap and sprints). */
+export const ROADMAP_EMPTY = {
+  sprints: "No sprints yet. A sprint gathers tickets toward a due date; its card here shows its lead, its due date and how many of its tickets are closed.",
+  narrative: "No plan narrative yet. An admin writes it with the update-plan skill, and it reads here above the sprints.",
+} as const;
+
 function roadmapSprintGroups(s: AppState): string {
   const sprints = s.roadmap.data.sprints;
+  // No sprint at all: the group a new sprint lands in (Upcoming — it is created unscheduled and
+  // inactive), its heading in a neutral tone, and its cards drawn empty.
+  if (sprints.length === 0) {
+    return `<div style="display:flex;align-items:center;gap:9px;margin:28px 0 12px"><span style="font-size:11px;font-weight:600;font-family:var(--label);text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40)">Sprints</span><div style="flex:1;height:1px;background:var(--border)"></div></div>${
+      emptyLayout("roadmap-sprints", { text: ROADMAP_EMPTY.sprints, action: { label: "New sprint", act: "nsToggle" }, sayStyle: "margin-bottom:10px", shapes: skList(2, sprintCardShape) })}`;
+  }
   const isDone = (sp: SprintView) => sp.status === "done" || !!s.confirmedSprints[String(sp.id)];
 
   const inProgress = sprints.filter((sp) => !isDone(sp) && sp.active);
@@ -1408,14 +1469,11 @@ function roadmapTimelineTab(s: AppState): string {
 function roadmapSkeleton(s: AppState): string {
   const label = "Loading roadmap&hellip;";
   if (s.roadmapTab !== "narrative") {
-    const row = (i: number) => `<div style="display:grid;grid-template-columns:200px minmax(0,1fr);gap:16px;align-items:center;height:44px;padding:0 18px${i ? ";border-top:1px solid var(--border)" : ""}">${skBar(skW(i, [120, 150, 96, 136]), 10)}<span style="display:block;padding-left:${[6, 22, 38, 14, 46, 30][i % 6]}%">${skBox(skW(i, ["34%", "26%", "42%", "30%"]), 16)}</span></div>`;
     return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
-    ${roadmapTabBar(s)}<div${tabPanelAttrs("roadmap-tab", s.roadmapTab)} style="padding-top:20px">${roadmapNewSprint(s)}${skeleton("roadmap-timeline", label, skCard(`<div style="height:38px;border-bottom:1px solid var(--border)"></div>${skList(6, row)}`, "overflow:hidden"))}</div>
+    ${roadmapTabBar(s)}<div${tabPanelAttrs("roadmap-tab", s.roadmapTab)} style="padding-top:20px">${roadmapNewSprint(s)}${skeleton("roadmap-timeline", label, timelineShapes(6))}</div>
   </div>`;
   }
-  const sprint = (i: number) => skCard(`<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">${skLine(skW(i, ["46%", "58%", "38%"]), 15, 1.4)}${skBox(64, 20)}</div>
-      <div style="margin-top:6px">${skLines(["92%", skW(i, ["54%", "70%"])], 13, 1.55)}</div>
-      <div style="display:flex;align-items:center;gap:10px;margin-top:11px">${skBar("100%", 5, "flex:1")}${skBar(46, 8)}</div>`, "padding:16px 18px;margin-bottom:10px");
+  const sprint = sprintCardShape;
   const main = `${roadmapNewSprint(s)}${skeleton("roadmap", label, `${skCard(`${skLine(104, 12, 1.5)}<div style="margin-top:8px">${skLines(["100%", "94%", "62%"], 14.5, 1.7)}</div>`, `${RM_CARD};padding:18px 20px`)}
       <div style="display:flex;align-items:center;gap:9px;margin:28px 0 12px">${skBox(7, 7)}${skLine(84, 11, 1.5)}</div>${skList(2, sprint)}
       <div style="display:flex;align-items:center;gap:9px;margin:28px 0 12px">${skBox(7, 7)}${skLine(70, 11, 1.5)}</div>${skList(2, (i) => sprint(i + 2))}`)}`;
@@ -1445,7 +1503,7 @@ function roadmapView(s: AppState): string {
 export function planNarrativeBlock(narrative: string, markdownFn: (body: string) => string): string {
   const body = narrative.trim()
     ? `<div class="cnpy-md">${markdownFn(narrative)}</div>`
-    : `<div style="border:1px dashed var(--border-strong);border-radius:10px;padding:16px 18px;color:var(--fg-55);font-size:13.5px;line-height:1.6">No plan narrative yet — write one with the update-plan skill</div>`;
+    : emptyLayout("roadmap-narrative", { text: ROADMAP_EMPTY.narrative, plain: true, sayStyle: "margin-bottom:10px", shapes: skLines(["100%", "94%", "62%"], 14.5, 1.7) });
   return `<section${surface(`${RM_CARD};padding:18px 20px`, { cls: "cnpy-rise" })}>
     <div style="font-size:12px;font-weight:500;color:var(--fg-40);margin:0 0 8px">What's happening</div>
     ${body}
@@ -1533,6 +1591,8 @@ function roadmapAside(s: AppState): string {
 /** The Narrative aside's second box, "Recent happenings" (the live feed, with GitHub chips).
  *  Its OWN unfiltered read (s.roadmapFeed), so a Feed-screen author/tag filter never narrows
  *  it, and a failed read says so instead of "no activity". */
+const happeningShapes = (n: number): string =>
+  skList(n, (i) => `<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:9px 18px;border-top:1px solid var(--border)">${skLine(26, 12, 1.6)}<span style="display:block;min-width:0">${skLines(["100%", skW(i, ["58%", "74%", "40%", "66%"])], 13, 1.5)}</span></div>`);
 function roadmapHappenings(s: AppState): string {
   const feed = s.roadmapFeed;
   const entries = feed.data.slice(0, HAPPENINGS_LIMIT);
@@ -1554,8 +1614,8 @@ function roadmapHappenings(s: AppState): string {
     ${asideHead("Recent happenings", { act: "goFeed", label: "Feed" })}
     ${feed.status === "error" ? asideNote("Couldn't load recent activity.")
       : entries.length > 0 ? rows
-      : feed.status === "ok" ? asideNote("No recent activity yet.")
-      : skeleton("roadmap-happenings", "Loading&hellip;", skList(HAPPENINGS_LIMIT, (i) => `<div style="display:grid;grid-template-columns:44px minmax(0,1fr);gap:10px;padding:9px 18px;border-top:1px solid var(--border)">${skLine(26, 12, 1.6)}<span style="display:block;min-width:0">${skLines(["100%", skW(i, ["58%", "74%", "40%", "66%"])], 13, 1.5)}</span></div>`))}
+      : feed.status === "ok" ? asideEmpty("roadmap-happenings", "No recent activity yet.", happeningShapes(2))
+      : skeleton("roadmap-happenings", "Loading&hellip;", happeningShapes(HAPPENINGS_LIMIT))}
   </section>`;
   return happenings;
 }
@@ -2361,25 +2421,23 @@ function myWorkView(s: AppState): string {
     || (ticketsKnown && reviewLoad === "ok" && handoffLoad === "ok" ? "nothing is waiting on you" : "");
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
-  // The design's composition: Tickets (only when you have some) and Needs your
-  // review lead at 7/5; Your sessions and Repo follow; the library closes. A CLEAR
-  // review queue (loaded, empty) is always shown — never dropped — but steps out of
-  // the lead pair to sit beside Repo: Tickets 7 | Sessions 5 (or Sessions alone), then
-  // Repo 7 | Needs your review 5.
-  const hasTickets = dLoad !== "ok" || degraded || tickets.length > 0;
+  // The design's composition: Tickets and Needs your review lead at 7/5; Your sessions and
+  // Repo follow; the library closes. EVERY tile is always shown — one with nothing in it
+  // draws its rows empty (mywork.ts `tileEmpty`), so a new organization sees the whole
+  // screen, and a tile never appears or leaves when a count crosses zero. A CLEAR review
+  // queue (loaded, empty) steps out of the lead pair to sit beside Repo:
+  // Tickets 7 | Sessions 5, then Repo 7 | Needs your review 5.
   const reviewClear = reviewLoad === "ok" && reviewItems.length === 0;
   const strips = ["library"];
-  const order = reviewClear
-    ? [hasTickets ? "tickets" : "", "sessions", "repo", "review"].filter(Boolean)
-    : [hasTickets ? "tickets" : "", "review", "sessions", "repo"].filter(Boolean);
+  const order = reviewClear ? ["tickets", "sessions", "repo", "review"] : ["tickets", "review", "sessions", "repo"];
   const span = reviewClear
-    ? { ...(hasTickets ? { tickets: 7, sessions: 5 } : { sessions: 12 }), repo: 7, review: 5, library: 12 }
+    ? { tickets: 7, sessions: 5, repo: 7, review: 5, library: 12 }
     : mwSpans(order, strips);
   const tile: Record<string, () => string> = {
     tickets: () => ticketsTile({ load: dLoad, rows: tickets, total: ticketsTotal, expanded: s.mwExpanded.tickets }, degraded, span.tickets, dueOf),
     review: () => reviewTile(reviewItems, reviewLoad, span.review),
     sessions: () => sessionsTile(sessions, feedLoad, waiting, span.sessions),
-    repo: () => repoTile(s.repo.data, mwLoad(s.repo.status, !!s.repo.data), s.mwRepoTab, span.repo),
+    repo: () => repoTile(s.repo.data, mwLoad(s.repo.status, !!s.repo.data), s.mwRepoTab, span.repo, { noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, admin: viewerIsAdmin(s) }),
     library: () => libraryStrip(library, span.library),
   };
 
@@ -2564,6 +2622,7 @@ function orgProps(s: AppState): OrgSettingsProps {
   } : null;
   const notif: NotifAdminProps | null = admin ? {
     policy: s.notifPolicy.data, settings: s.notifSettings.data, outbox: s.notifOutbox.data,
+    outboxLoading: slicePending(s.notifOutbox),
     outboxExpanded: s.outboxExpanded, fromDraft: s.fromDraft, fromError: s.fromError,
   } : null;
   return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org, identity, notif, dd: s.dd };
@@ -2645,7 +2704,15 @@ function toastBlock(msg: string, elapsed: number, ms: number, action: ToastActio
   </div>`;
 }
 
-export function render(s: AppState): string {
+/** The state a paint draws: the real one, or — while a preview is on, inside an organization or
+ *  the Platform area — its projection (preview.ts). Every renderer main.ts calls directly goes
+ *  through this too (`docReaderHtml`), so no path paints real data under the preview's banner. */
+export function shownState(s: AppState): AppState {
+  return s.preview && (s.view === "app" || s.view === "platform") ? previewState(s, s.preview, initialState()) : s;
+}
+
+export function render(real: AppState): string {
+  const s = shownState(real);
   const themeAttr = resolved(s);
   return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
     ${s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null, s.dd) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : s.screen === "unsubscribe" ? unsubscribeView({ email: s.notifPrefs.data?.email ?? s.me?.handle ?? null, pending: s.unsub.pending, error: s.unsub.error }) : appView(s)}
@@ -2665,5 +2732,6 @@ export function render(s: AppState): string {
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}
+    ${real.preview && s !== real ? previewBanner(real.preview) : ""}
   </div>`;
 }

@@ -7,7 +7,8 @@ import { describe, it, expect } from "vitest";
 import css from "../web/src/trov.css?raw";
 import { repoView, type RepoProps } from "../web/src/repo";
 import { repoSample } from "../web/src/repo-sample";
-import { absentHint, compactNumber, duration, errorRateTone, formatBytes, formatMemory, gapPath } from "../web/src/repo-hosting";
+import { HOSTING_EMPTY, HOSTING_NOT_CONNECTED, HOSTING_NOT_CONNECTED_MEMBER, absentHint, compactNumber, duration, errorRateTone, formatBytes, formatMemory, gapPath, hostingShapes } from "../web/src/repo-hosting";
+import { esc } from "../web/src/ui";
 import type { RepoDashboard, RepoRange } from "@shared/repo";
 import type { ProviderDeployDTO, RepoProviderPart } from "@shared/hosting";
 
@@ -49,15 +50,34 @@ describe("Usage › Hosting — the section", () => {
     expect(html.slice(html.indexOf("data-usage-hosting"))).not.toContain("<table");
   });
 
-  it("not connected is one quiet line — with the way to Org settings › Hosting for an admin — and empty says the parts are waiting", () => {
+  it("not connected and empty are EMPTY LAYOUTS: one sentence, the way to Org settings › Hosting for an admin, and the section's own shape", () => {
     const nc = (admin: boolean) => repoView(props({ admin, repo: { status: "ok", data: { ...sample(), providers: { status: "not_connected" } } } }));
+    const section = (html: string) => html.slice(html.indexOf("data-usage-hosting"), html.indexOf("</article>", html.indexOf("data-usage-hosting")) > -1 ? undefined : html.length);
     expect(nc(false)).toContain('data-hosting="not_connected"');
-    expect(nc(false)).toContain("No hosting provider is connected. An admin adds your environments' parts in Org settings &rsaquo; Hosting.");
+    expect(nc(false)).toContain('data-empty="repo-hosting"');
+    expect(nc(false)).toContain(esc(HOSTING_NOT_CONNECTED_MEMBER));
     expect(nc(false)).not.toContain('data-arg="hosting"');
-    expect(nc(true)).toMatch(/Add your environments' parts in <button type="button" data-act="orgGo" data-arg="hosting"/);
+    expect(nc(true)).toContain(esc(HOSTING_NOT_CONNECTED));
+    expect(nc(true)).toMatch(/<button type="button" data-act="orgGo" data-arg="hosting" class="cnpy-empty-act">Open Org settings › Hosting<\/button>/);
     expect(nc(true)).not.toContain("Source not connected");
+    expect((section(nc(true)).match(/class="cnpy-empty-act"/g) ?? []).length).toBe(1);   // one action
     const empty = repoView(props({ repo: { status: "ok", data: { ...sample(), providers: { status: "empty" } } } }));
-    expect(empty).toContain("Parts are set up, but no provider has reported yet.");
+    expect(empty).toContain('data-hosting="empty"');
+    expect(empty).toContain(esc(HOSTING_EMPTY));
+    // The shape under the sentence is the loading skeleton's own builder: the two cannot drift.
+    for (const html of [nc(true), nc(false), empty]) expect(html).toContain(`<div class="cnpy-empty-shapes" aria-hidden="true">${hostingShapes()}</div>`);
+    const loading = repoView(props({ repo: { status: "loading", data: null } }));
+    expect(loading).toContain(hostingShapes());
+    expect(loading).toMatch(/data-skel="repo-\d+"[^>]*aria-busy="true"|aria-busy="true"[^>]*data-skel="repo-\d+"/);
+    expect(loading).not.toContain("data-empty=\"repo-hosting\"");
+    // A shape is a picture: no text, no control, no link, no status colour.
+    const shape = hostingShapes();
+    expect(shape.replace(/<[^>]*>/g, "").trim()).toBe("");
+    expect(shape).not.toMatch(/<(button|a|input|svg)\b|data-act|var\(--(green|red|amber|blue|accent)\)/);
+    // No repository at all: the dashboard's own empty layout says so, and this section is drawn empty under it.
+    const blank = repoView(props({ noRepo: true, repo: { status: "ok", data: sample() } }));
+    expect(blank.slice(blank.indexOf("data-usage-hosting"))).toContain(`<div class="cnpy-empty-shapes" aria-hidden="true">${hostingShapes()}</div>`);
+    expect(blank).not.toContain('data-hosting="ok"');
     // A payload from before the section existed has no key at all: the same quiet line, never a crash.
     const old = { ...sample() } as Partial<RepoDashboard>;
     delete old.providers;

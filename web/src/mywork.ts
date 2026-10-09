@@ -14,7 +14,7 @@ import { TICKET_STATUS_LABEL } from "@shared/tickets-core";
 import type { HandoffView } from "@shared/handoffs";
 import type { ReviewHead } from "./triage-map";
 import { segmented } from "./segmented";
-import { skeleton, skBar, skBox, skLine, skList, skW } from "./skeleton";
+import { emptyLayout, skeleton, skBar, skBox, skLine, skList, skW, type EmptyAction } from "./skeleton";
 import { esc, attr, relTime, surface } from "./ui";
 
 export type MwRepoTab = "prs" | "ci" | "deploys";
@@ -67,13 +67,23 @@ const tileNote = (text: string): string => `<div style="padding:12px 16px 14px;b
 /** A tile's rows while its read is out: `n` rows in the tile's own row box (a lead
  *  label, a title line over a meta line, a trailing stamp) — so the rows that land sit
  *  where the bars were. `key` names the tile. */
-function tileSkeleton(key: string, n: number, o: { lead?: number; trail?: number; pad?: string; top?: number } = {}): string {
+interface TileRowShape { lead?: number; trail?: number; pad?: string; top?: number }
+/** The tile's rows as shapes — ONE builder for the loading skeleton and the empty layout. */
+function tileRows(n: number, o: TileRowShape = {}): string {
   const row = (i: number) => `<div style="display:flex;align-items:flex-start;gap:12px;padding:${o.pad ?? "10px 16px"};border-top:1px solid var(--border)">
       ${o.lead ? skBar(o.lead, 9, "margin-top:6px") : ""}
       <span class="cnpy-skcol">${skLine(skW(i), 14, 1.4)}<span style="display:block;margin-top:3px">${skLine(skW(i + 1, ["42%", "34%", "50%"]), 12.5, 1.5)}</span></span>
       ${o.trail ? skBar(o.trail, 9, "margin-top:6px") : ""}
     </div>`;
-  return skeleton(`mw-${key}`, "Loading&hellip;", skList(n, row), o.top ? `padding-top:${o.top}px` : "");
+  return skList(n, row);
+}
+function tileSkeleton(key: string, n: number, o: TileRowShape = {}): string {
+  return skeleton(`mw-${key}`, "Loading&hellip;", tileRows(n, o), o.top ? `padding-top:${o.top}px` : "");
+}
+/** A tile that has loaded and holds nothing: its one sentence (and action) where the first
+ *  row goes, then the rows it will have, drawn empty (skeleton.ts `emptyLayout`). */
+function tileEmpty(key: string, text: string, action: EmptyAction | null, n: number, o: TileRowShape = {}): string {
+  return emptyLayout(`mw-${key}`, { text, action, plain: true, shapes: tileRows(n, o), sayStyle: "padding:12px 16px 14px;border-top:1px solid var(--border)", style: o.top ? `padding-top:${o.top}px` : "" });
 }
 const tile = (area: string, span: number, label: string, inner: string, extra = ""): string =>
   `<section${surface(`${TILE};--span:${span}${extra}`, { cls: "mw-tile cnpy-rise" })} data-mw="${area}" data-screen-label="My Work · ${attr(label)}">${inner}</section>`;
@@ -132,6 +142,15 @@ function capped<T>(sl: MwListSlice<T>, area: string, row: (x: T) => string, beyo
   return `<div style="display:flex;flex-direction:column;flex:1">${shown.map(row).join("")}${foot}</div>`;
 }
 
+/** My Work's empty sentences — each says what the tile shows (the Guide's own words for it,
+ *  render.ts `guideView` › My Work) and how the first thing gets there. */
+export const MW_EMPTY = {
+  tickets: "No tickets are assigned to you. Your open tickets show here, with their sprint and when it is due.",
+  review: "Nothing waiting on your review. Doc changes and decisions agents stage show up here to promote or ratify.",
+  sessions: "Nothing recorded yet. Run record-session at the end of a session and it lands here.",
+  repo: "No repository is connected. Pull requests, CI and deploys show here at a glance once one is.",
+} as const;
+
 export function ticketsTile(sl: MwListSlice<MyWorkTicket>, degraded: boolean, span: number, dueOf: (t: MyWorkTicket) => MwDue | null = () => null): string {
   const total = Math.max(sl.total ?? 0, sl.rows.length);
   const soon = sl.rows.filter((t) => dueOf(t)?.soon).length;
@@ -141,7 +160,7 @@ export function ticketsTile(sl: MwListSlice<MyWorkTicket>, degraded: boolean, sp
     : "";
   const body = degraded ? tileNote("Couldn't load your assigned tickets right now.")
     : sl.load === "pending" ? tileSkeleton("tickets", MW_ROWS, { lead: 32 })
-    : sl.rows.length === 0 ? tileNote("No tickets assigned to you. The queue has what's waiting.")
+    : sl.rows.length === 0 ? tileEmpty("tickets", MW_EMPTY.tickets, { label: "Submit a ticket", act: "newTicket" }, 2, { lead: 32 })
     : capped(sl, "tickets", (t) => mwTicketRow(t, dueOf(t)), { act: "mwAllTickets", label: (n) => `${n} more in the queue` });
   return tile("tickets", span, "Tickets for you", `${tileHead("Tickets for you", { act: "goTickets", label: "Queue" })}${sub}${body}`);
 }
@@ -153,11 +172,8 @@ export function reviewTile(items: ReviewHead[], load: MwLoad, span: number): str
   if (load === "pending") return tile("review", span, "Needs your review", `${head}${tileSkeleton("review", 2, { trail: 96, top: 12 })}`);
   if (load !== "ok") return tile("review", span, "Needs your review", `${head}${tileNote("Couldn't load the review queue.")}`);
   if (items.length === 0) {
-    // Clear: the tile keeps its place (and its header) and says so in its body.
-    return tile("review", span, "Needs your review", `${head}<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:22px 16px 26px;margin-top:12px;border-top:1px solid var(--border);text-align:center">
-      <span style="width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--green);background:color-mix(in srgb,var(--green) 14%,transparent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"></path></svg></span>
-      <span style="display:flex;flex-direction:column;gap:3px"><span style="font-size:14px;font-weight:500">Nothing waiting on your review</span><span style="font-size:12.5px;color:var(--fg-40);text-wrap:pretty">Doc changes and decisions agents stage show up here to promote or ratify.</span></span>
-    </div>`);
+    // Clear: the tile keeps its place (and its header) and draws its rows empty.
+    return tile("review", span, "Needs your review", `${head}${tileEmpty("review", MW_EMPTY.review, null, 2, { trail: 96, top: 12 })}`);
   }
   const staged = items.filter((i) => i.kind === "proposal").length;
   const decide = items.length - staged;
@@ -204,7 +220,7 @@ export function sessionsTile(sessions: MwSession[], feedLoad: MwLoad, handoffs: 
     </button>`).join("");
   const body = feedLoad === "pending" && sessions.length === 0 ? tileSkeleton("sessions", 2, { trail: 40 })
     : feedLoad === "error" && sessions.length === 0 ? tileNote("Couldn't load your recent sessions.")
-    : sessions.length === 0 ? tileNote("Nothing recorded yet. Run record-session at the end of a session and it lands here.")
+    : sessions.length === 0 ? tileEmpty("sessions", MW_EMPTY.sessions, null, 2, { trail: 40 })
     : rows;
   const pills = handoffs.slice(0, 1).map((h) => `<button data-act="openHandoff" data-arg="${h.id}" class="mw-handoff" style="display:flex;align-items:flex-start;gap:8px;min-width:0;width:100%;text-align:left;padding:7px 10px;border-radius:7px;background:color-mix(in srgb,var(--blue) 6%,transparent);border:1px solid color-mix(in srgb,var(--blue) 25%,transparent)">
       ${dot("var(--blue)", ";margin-top:6px")}
@@ -271,7 +287,7 @@ function repoPanel(d: RepoDashboard, tab: MwRepoTab): RepoPanel {
   };
 }
 
-export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTab, span: number): string {
+export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTab, span: number, o: { noRepo?: boolean; admin?: boolean } = {}): string {
   // Sample data (the Repo screen's "Preview with sample data", session-only)
   // replaces `state.repo` wholesale — there is no live payload left to show
   // instead — so it stays on the tile, but never unlabelled.
@@ -282,9 +298,15 @@ export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTa
     id: "mw-repo", ariaLabel: "Repo view", value: tab, act: "mwRepoTab", size: "xs", inertOn: true,
     options: [{ value: "prs", label: "PRs" }, { value: "ci", label: "CI" }, { value: "deploys", label: "Deploys" }],
   })}</div>`;
+  // Three rows (a dot, a title, a stamp) — the panel's own boxes, for the skeleton and the empty layout.
+  const row = (i: number) => `<div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 16px;border-top:1px solid var(--border)">${skBox(7, 7)}${skLine(skW(i), 14, 1.45)}${skBar(34, 9)}</div>`;
+  // The organization has no repository (`GET /me` said so — read, not guessed): nothing to monitor yet.
+  // Only an admin can connect one, so only an admin is offered the way there.
+  if (o.noRepo && !repo?.sample) {
+    return tile("repo", span, "Repo monitor", `${head}${tabs}${emptyLayout("mw-repo", { text: MW_EMPTY.repo, action: o.admin ? { label: "Connect a repository", act: "orgGo", arg: "repos" } : null, plain: true, shapes: skList(3, row), sayStyle: "padding:10px 16px 14px;border-top:1px solid var(--border)" })}`);
+  }
   if (!repo && load !== "error") {
-    // The summary line, then three rows (a dot, a title, a stamp) — the panel's own boxes.
-    const row = (i: number) => `<div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 16px;border-top:1px solid var(--border)">${skBox(7, 7)}${skLine(skW(i), 14, 1.45)}${skBar(34, 9)}</div>`;
+    // The summary line, then the three rows.
     return tile("repo", span, "Repo monitor", `${head}${tabs}${skeleton("mw-repo", "Loading&hellip;", `<div style="padding:10px 16px;border-top:1px solid var(--border)">${skLine("46%", 13.5, 1.5)}</div>${skList(3, row)}`)}`);
   }
   if (!repo) return tile("repo", span, "Repo monitor", `${head}${tabs}${tileNote("Couldn't load the Repo dashboard.")}`);

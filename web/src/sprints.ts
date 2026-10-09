@@ -25,7 +25,7 @@ import { personChip, personLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { segmented } from "./segmented";
 import { ticketPill, priorityChip, age, avatarStack, tagChip } from "./tickets";
-import { skeleton, skBar, skBox, skLine, skLines, skList, skW } from "./skeleton";
+import { emptyLayout, skeleton, skBar, skBox, skLine, skLines, skList, skW } from "./skeleton";
 
 // ── atoms ────────────────────────────────────────────────────────────────────
 
@@ -407,8 +407,13 @@ function deleteBlock(sp: SprintDetail, armed: boolean): string {
 
 /** The sprint page while its read is out: title, progress bar, the ticket grid and
  *  the rail, on the sprint page's own grid. */
+/** One ticket card of the sprint page as a shape — the loading skeleton's and the empty layout's. */
+const sprintTicketShape = (i: number): string => `<div${surface("padding:12px 13px")}>${skLines([skW(i), "44%"], 13.5, 1.45)}<div style="display:flex;align-items:center;gap:6px;margin-top:10px">${skBar(52, 8)}<span style="margin-left:auto;display:flex">${skBox(18, 18)}</span></div></div>`;
+/** A sprint with no tickets: what goes here, and where they come from. */
+export const SPRINT_TICKETS_EMPTY = "No tickets in this sprint yet. Move some in from the queue's sprint picker.";
+
 export function sprintSkeleton(): string {
-  const card = (i: number) => `<div${surface("padding:12px 13px")}>${skLines([skW(i), "44%"], 13.5, 1.45)}<div style="display:flex;align-items:center;gap:6px;margin-top:10px">${skBar(52, 8)}<span style="margin-left:auto;display:flex">${skBox(18, 18)}</span></div></div>`;
+  const card = sprintTicketShape;
   const prop = (w: number) => `<div style="${PROP_ROW}">${skBar(44, 8)}${skBar(w, 10)}</div>`;
   return skeleton("sprint", "Loading the sprint&hellip;", `<div class="cnpy-sprint-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:28px">
       <div style="min-width:0">
@@ -432,7 +437,8 @@ export function sprintScreen(p: SprintScreenProps): string {
 
   const tickets = sp.tickets.length > 0
     ? `<div class="cnpy-stagger" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:10px;margin-top:14px">${sp.tickets.map((t) => sprintTicketCard(t, p.persons)).join("")}</div>`
-    : `<div style="border:1px dashed var(--border-strong);border-radius:11px;padding:20px;text-align:center;font-size:12.5px;color:var(--fg-40);margin-top:12px">No tickets in this sprint yet — move some from the queue's sprint picker.</div>`;
+    : emptyLayout("sprint-tickets", { text: SPRINT_TICKETS_EMPTY, action: { label: "Open the queue", act: "goTickets" }, contents: true,
+        style: "display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:10px;margin-top:14px", shapes: skList(2, sprintTicketShape) });
 
   const members = sp.members.length > 0
     ? `<div style="display:flex;flex-direction:column;gap:6px">${sp.members.map((h) =>

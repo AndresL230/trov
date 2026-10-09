@@ -29,7 +29,7 @@ import { mentionCandidates, mentionPickerTop, COMMENT_BOX } from "./mentions";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
 import { dangerTrigger, confirmModal } from "./confirm";
-import { skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
+import { skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse, emptyLayout, emptyShapes } from "./skeleton";
 
 // ── shared atoms ─────────────────────────────────────────────────────────────
 
@@ -394,14 +394,29 @@ function groupHeader(g: QueueGroup): string {
   </div>`;
 }
 
-/** The table while the queue's first read is out: one sprint group's header and rows,
- *  on the table's own column template. */
-function tableSkeleton(): string {
+/** The queue's empty sentence: what the screen holds and how the first ticket gets there
+ *  (the Guide's words — render.ts `guideView` › Tickets). It claims nothing about what
+ *  exists elsewhere: the Open / Closed switch may be hiding tickets from this view. */
+export const QUEUE_EMPTY = "Tickets show here. Anyone can file a bug, request, question, or access ask with Submit a ticket.";
+const QUEUE_EMPTY_ACTION = { label: "Submit a ticket", act: "newTicket" } as const;
+/** A filter, a search or a person is narrowing the queue: an empty result is then "nothing
+ *  matches", never the empty layout. The Open / Closed / All switch is not one of these. */
+export function queueNarrowed(p: QueueProps): boolean {
+  return !!(p.q ?? "").trim() || (p.priority ?? "all") !== "all" || (p.sprint ?? "all") !== "all" || !!(p.person ?? "")
+    || p.assignee !== "anyone" || p.category !== "all";
+}
+
+/** One sprint group's header and `n` rows as shapes, on the table's own column template —
+ *  ONE builder for the table's loading skeleton and its empty layout. */
+function tableShapes(n: number): string {
   const row = (i: number) => `<div class="cnpy-trow" style="display:grid;grid-template-columns:${TABLE_COLS};gap:12px;align-items:center;padding:11px 20px">
     ${skLine(skW(i), 13.5, 1.5)}${skLine("70%", 12.5, 1.6)}${skLine("60%", 12.5, 1.6)}${skLine("50%", 12.5, 1.6)}${skLine("64%", 12.5, 1.6)}${skLine("72%", 12.5, 1.6)}${skLine("60%", 11.5, 1.6, "justify-content:flex-end")}
   </div>`;
-  return skeleton("tickets-table", "Loading the queue&hellip;",
-    `<div class="cnpy-tgrp" style="display:flex;align-items:center;gap:9px;padding:18px 20px 6px">${skBox(7, 7)}${skLine(140, 10.5, 1.5)}</div>${skList(8, row)}`);
+  return `<div class="cnpy-tgrp" style="display:flex;align-items:center;gap:9px;padding:18px 20px 6px">${skBox(7, 7)}${skLine(140, 10.5, 1.5)}</div>${skList(n, row)}`;
+}
+/** The table while the queue's first read is out. */
+function tableSkeleton(): string {
+  return skeleton("tickets-table", "Loading the queue&hellip;", tableShapes(8));
 }
 
 function tableView(p: QueueProps): string {
@@ -414,7 +429,10 @@ function tableView(p: QueueProps): string {
     .join("");
   const empty = p.loading ? tableSkeleton()
     : p.tickets.length === 0
-    ? `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">Nothing in this view.</div>`
+    ? (queueNarrowed(p)
+      ? `<div style="text-align:center;padding:60px;color:var(--fg-40);font-size:13px">Nothing in this view.</div>`
+      // No filter is on and the queue answered with nothing: the table's own rows, drawn empty.
+      : emptyLayout("tickets-table", { text: QUEUE_EMPTY, action: QUEUE_EMPTY_ACTION, plain: true, sayStyle: "padding:18px 20px 6px", shapes: tableShapes(5) }))
     : "";
   // The table is ONE surface with 20px sides; rows carry no dividers (a hairline
   // separates sprint groups), and a row's hover fill runs to the surface's edges
@@ -461,23 +479,34 @@ function sourceMark(t: TicketListItem): string {
 
 /** A board column while the queue's first read is out: cards in the real card's box
  *  (a title of one or two lines, then the #number · assignee row). */
-function boardColumnSkeleton(st: TicketStatus): string {
-  const n = st === "submitted" ? 3 : st === "in_progress" ? 2 : 1;
+/** `n` board cards as shapes, in the real card's box (a title of one or two lines, then the
+ *  #number · assignee row) — ONE builder for a column's loading skeleton and its empty layout. */
+function boardCardShapes(n: number): string {
   const card = (i: number) => `<div class="${SURFACE}" style="padding:11px 12px;margin-bottom:8px">
     ${skLines(i % 2 ? [skW(i)] : ["94%", skW(i + 1, ["48%", "62%"])], 13.5, 1.4)}
     <div style="display:flex;align-items:center;gap:6px;margin-top:9px;min-height:18px">${skBar(30, 8)}<span style="margin-left:auto;display:flex">${skBox(18, 18)}</span></div>
   </div>`;
-  return skeleton(`tickets-col-${st}`, "Loading the queue&hellip;", skList(n, card));
+  return skList(n, card);
+}
+function boardColumnSkeleton(st: TicketStatus): string {
+  const n = st === "submitted" ? 3 : st === "in_progress" ? 2 : 1;
+  return skeleton(`tickets-col-${st}`, "Loading the queue&hellip;", boardCardShapes(n));
 }
 
 function boardView(p: QueueProps, rows: TicketListItem[]): string {
   const statuses = SEG_STATUSES[p.seg];
-  const cols = statuses.map((st) => {
+  // No filter is on and the queue answered with nothing: every column keeps its heading and
+  // draws its cards empty — the sentence and Submit a ticket in the first one.
+  const blank = !p.loading && rows.length === 0 && !queueNarrowed(p);
+  const cols = statuses.map((st, ci) => {
     // A column is in its saved board order (`boardOrder`, tickets-core — the order
     // `move_ticket` places into), not the table's newest-first.
     const cards = rows.filter((t) => t.status === st).sort(boardOrder);
     const headColor = st === "in_progress" ? "color:var(--accent)" : st === "submitted" ? "color:var(--blue)" : st === "testing" ? "color:var(--amber)" : "color:var(--fg-40)";
     const empty = p.loading ? ""
+      : blank ? (ci === 0
+        ? emptyLayout("tickets-board", { text: QUEUE_EMPTY, action: QUEUE_EMPTY_ACTION, sayStyle: "margin-bottom:8px", shapes: boardCardShapes(1) })
+        : emptyShapes(boardCardShapes(ci === 1 ? 2 : 1)))
       : cards.length === 0
       ? `<div class="cnpy-tdrop-empty" style="border:1px dashed var(--border);border-radius:10px;padding:16px;text-align:center;font-size:12px;color:var(--fg-40)">Nothing here</div>`
       : "";
