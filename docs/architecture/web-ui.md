@@ -374,6 +374,47 @@ then paints its empty layout or its loading skeleton, whatever the organization 
 - Tests: `test/render.empty.test.ts` (no string of the organization's data on any screen in either mode,
   the state object untouched, writes refused before `fetch`).
 
+## The site on a phone
+
+The signed-out site (`landing.ts`, `pricing.ts`, `legal.ts`, the sign-in and Contact dialogs) has ONE block
+in `trov.css`, "the site on a phone", just before the corners block (so it is after every rule it overrides).
+**Nothing in it applies at 961px and up**: every rule is behind `max-width:900px` (the nav's menu, the legal
+contents), `max-width:640px` (the phone layout), `max-width:480px` or `(hover:none)`. The only rules outside a
+query hide what a wide screen never shows, or style the menu, which `min-width:901px` hides. A new phone rule
+goes in that block; a template gets a class hook, never a second copy of its markup.
+`test/render.site-mobile.test.ts` fails on an unguarded rule.
+
+- **The menu.** Under 900px the bar is one row: mark, name, the accent button, Menu. GitHub, the theme toggle
+  and Sign in carry `site-nav-x` and leave it; the menu button is ALWAYS emitted (a stable nav) and shown by
+  CSS. The menu is `menuSheet` in `landing.ts`: a root-level `data-overlay="sitemenu"` drawn from
+  `state.siteMenu`, so opening it, toggling the theme in it and closing it patch the page (`data-morph`) and
+  no reveal replays. `web/src/site-menu.ts` owns the scroll lock, focus (first link on open, the button on
+  close), Esc, the Tab trap and the exit (`data-closing`, `MENU_EXIT_MS` = `--fx-fast`). A section link closes
+  it first, unlocking the scroll at once, then scrolls ONCE; sections carry 84px of top padding on a phone and
+  `scroll-margin-top:-8px`, so the heading lands 16px under the 60px bar. A tablet gets a card under the
+  button, a phone the sheet below.
+- **The sheet pattern.** The app's rule already turns every modal into a sheet under 640px (a full-screen
+  wrapper whose child is `[role="dialog"][aria-modal="true"]`: bottom edge, full width, the safe area as a
+  transparent bottom border, `100dvh`). The site adds: controls of 44px and up, a slide up on the site's clock
+  (`site-sheet-up`, `--fx-slow`), and `--site-kb`, the height the on-screen keyboard covers
+  (`web/src/site-viewport.ts`, from `visualViewport`), which lifts the sign-in and Contact sheets and comes off
+  their `max-height`. Contact keeps Cancel / Send in a sticky row, with `scroll-padding-bottom` so a focused
+  field stops above it. The tour's dialog is the full height; its panel AND its scroller are
+  `touch-action:pan-y`, and a sideways swipe steps it (`swipeStep` in `site-feature-core.ts`), touch and pen
+  only. A touch's action is settled between the element and its nearest scroll container, so `pan-y` on the
+  panel alone does nothing.
+- **The mockup rule.** A mockup on a phone is never a shrunken desktop window. It shows the screen's most
+  telling pane in one column (`site-hide-sm` under 900px, `site-hide-ph` and `.fxm-wide` under 640px drop the
+  rest), and **no text in it renders under 11px**: one rule in the block keys on the inline sizes
+  (`[style*="font-size:9px"]`, the corners block's idiom) inside every mockup scope. A new mockup size under
+  11px needs its key there, and the test names the size that is missing. The hero's Review mockup becomes one
+  unified diff by CSS alone: `site-hero-twin` marks the left pane's lines that the right pane repeats.
+- **Touch.** Hover lifts are off under `(hover:none)` and a press answers instead. A hover-only `title` is
+  never the only label: in the menu the theme and GitHub rows are labelled.
+- **Checking it.** Phone widths are measured in a real phone-sized viewport (Playwright with `isMobile`, or an
+  iframe), at 360, 390 and 430, light and dark, with screenshots that are looked at. The wide layout is proved
+  by rects and computed styles at 1440, 1100 and 961, not by eye.
+
 ## Corners — tighter than the design file
 
 Every radius renders at `--corner-scale` (`.4`) of its authored value: ONE block at the end of

@@ -27,6 +27,10 @@
 //     in a large dialog (`featureDialog`, a second `data-overlay`) — the same mockup
 //     drawn big, what the Guide says about it, and previous / next through all seven.
 //     site-feature.ts owns its opening, stepping, closing, keys and focus.
+//   • A phone (2026-10): under 900px the nav is one row and the rest is the menu (`menuSheet`, a third
+//     `data-overlay`; site-menu.ts). Under 640px the page is re-laid by ONE block in trov.css ("the site on
+//     a phone") through the class hooks this file emits (`site-sec`, `site-tour-row`, `site-hero-*`,
+//     `site-hide-ph`, …): never a second copy of the markup. docs/architecture/web-ui.md has the rules.
 //   • Motion (not in the canvas): the mockups act out the product. Elements carry
 //     `data-rv` and render hidden; landing-motion.ts plays them as they scroll in
 //     and the CSS in trov.css runs the choreography, each step timed by `--d`.
