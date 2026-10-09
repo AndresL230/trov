@@ -90,7 +90,7 @@ export const RELEASES: Release[] = [
     ],
     ops: [
       "Apply migration `0049_support_reports` (additive: one new global table, `support_reports`, and two indexes; rollback by hand in its header). Then set `SUPPORT_NOTIFY_EMAIL` in `wrangler.toml` `[vars]` to the inbox that should receive bug reports and support messages, including those from the public Contact form (at most 50 signed-out reports a day). It ships EMPTY: until it is set, reports are stored and shown in Platform \u203a Support and no mail is sent (the report's mail outcome reads `skipped`). Mail goes out only when `NOTIFICATIONS_MODE = \"resend\"`.",
-      "`STRIPE_TAX = \"on\"` in `wrangler.toml` `[vars]`: checkout asks Stripe Tax for the tax. Stripe TEST mode is set up for it (the Pro price is tax-exclusive, an origin address, the SaaS business-use category, no registrations). BEFORE the live keys go in, do the same three in LIVE mode, or Stripe refuses every live checkout. No migration.",
+      "`STRIPE_TAX = \"on\"` in `wrangler.toml` `[vars]`: checkout asks Stripe Tax for the tax. Stripe is set up for it in TEST and LIVE mode (each Pro price is tax-exclusive, an origin address, the SaaS business-use category, no registrations), so no tax is charged until a registration is added in Stripe.",
     ],
     patches: {
       added: [
