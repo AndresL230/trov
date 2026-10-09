@@ -2,7 +2,7 @@
 name: record-session
 description: Use when a person explicitly asks to wrap up, record, log, or capture the current Claude Code session into Trov (triggers — "record this session", "session-end", "log this to Trov", "save what we did"). Explicit invocation only — must never auto-fire at a natural stopping point.
 disable-model-invocation: true
-allowed-tools: Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(uuidgen:*), mcp__trov__query, mcp__trov__get_doc, mcp__trov__record_session, mcp__trov__upload_asset, Bash(shasum -a 256:*), Bash(sha256sum:*), Bash(wc -c:*), Bash(curl -X PUT:*)
+allowed-tools: Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(uuidgen:*), mcp__trov__query, mcp__trov__get_doc, mcp__trov__record_session, mcp__trov__upload_asset, Bash(shasum -a 256:*), Bash(sha256sum:*), Bash(wc -c:*), Bash(curl -X PUT:*), mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 
 # Record Session → Trov
@@ -32,6 +32,24 @@ umbrella, and `load-context` is the reader that orients before work.
   reach at all; `complete_sprint` IS an MCP tool — and still not yours, because a sprint
   is finished when a person says so, never because a session wrapped up. Same for resolving a ticket:
   recording work is not closing the request that asked for it.
+
+## Which organization — pass `repo` on every call
+
+One Trov connection covers every organization you belong to, so every Trov tool takes the repository
+you are working in. Once per session, run `git remote get-url origin` and reduce it to `owner/name`
+(`git@github.com:acme/app.git` and `https://github.com/acme/app` are both `acme/app`). Pass that as
+`repo` on EVERY Trov call this skill makes. No remote, or not a GitHub one: leave `repo` out.
+
+- A connection that **follows the repository** acts in the organization that has that repository
+  connected. `repo_required` / `not_connected` mean NOTHING was read or written: tell the person this
+  repository is not connected to any of their organizations (Trov › Org settings › Repositories) and
+  stop — never pass a different repository to get an answer. `ambiguous_org` lists the candidates:
+  ask the person which, then pass it as `org`.
+- A **manual** connection ignores `repo` and acts in its current organization. `org_unavailable` /
+  `org_not_allowed` list what it may use: ask the person, never guess, and prefer `org` on the call
+  over `switch_org` (a switch moves every session that shares the connection).
+- Not sure where you are? `get_connection` (same `repo`) answers: the organization this call would
+  act in, the connection's mode, and what it can reach.
 
 ## Procedure
 
@@ -209,6 +227,7 @@ body's first line; it names internals and says nothing about who was hurt before
 ## Install (one-time, per teammate)
 
 The skill ships in the repo at `.claude/skills/record-session/` and is **auto-discovered**. Configure
-the `trov` MCP server with your **personal** bearer — it carries the read tools (`query`/`get_doc`)
-and the session-end writer (`record_session`) over the same channel. See the repo README,
+the `trov` MCP server by signing in (`/mcp` → trov → Authenticate) — it carries the read tools
+(`query`/`get_doc`) and the session-end writer (`record_session`) over the same channel, and the batch is
+recorded in the organization the call's `repo` resolves to (say which one when you report the outcome). See the repo README,
 "Trov MCP setup".
