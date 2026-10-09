@@ -461,9 +461,10 @@ describe("admin = admin or owner of the org on screen", () => {
     for (const gone of ["testSend", "sched-hour", "policyToggle", "outboxToggle"]) expect(memberMail, gone).not.toContain(gone);
     expect(memberMail).toMatch(/id="org-tab-repos" class="cnpy-tab is-on"/);
   });
-  it("Settings › Account says the role held in the org on screen", () => {
+  it("Settings › Session says the role held in the org on screen (how many orgs is the Organizations tile's to say)", () => {
     const html = render(two("admin", { screen: "settings" }));
-    expect(html).toContain("Admin of Acme Robotics · in 2 organizations");
+    expect(html).toContain("Admin of Acme Robotics");
+    expect(html).not.toContain("in 2 organizations");
     expect(render(app({ screen: "settings" }))).toContain("Member of Acme Robotics");
   });
 });

@@ -539,7 +539,7 @@ function loadForScreen(screen: Screen): void {
     case "mywork": loadMyWorkIfNeeded(); break;
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
-    case "settings": loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); break;
+    case "settings": loadSettingsReads(); break;
     case "unsubscribe": runUnsubscribe(); break;
     // Platform has one home, `/platform/` (the org menu links there): an old in-app `#platform…` link goes to it.
     case "platform": case "platformorg":
@@ -1004,6 +1004,14 @@ function loadGrants(): void {
       state.grants = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerender();
     });
+}
+/** Everything personal Settings reads: my connections, my digest preferences, the plan of the org on
+ *  screen (its Plan and Limits tiles) and my organizations again (each one's plan and my role in it). */
+function loadSettingsReads(): void {
+  loadGrantsIfNeeded();
+  loadNotifPrefsIfNeeded();
+  orgCtl.loadPlan();
+  void loadMyOrgs();
 }
 function loadGrantsIfNeeded(): void {
   if (state.grants.status === "idle") loadGrants();
@@ -2808,7 +2816,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       loadNeedsTriageIfNeeded();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.unsub.preview = false; state.grantRevokeArm = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3408,7 +3416,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "previewUnsub": state.unsub = { pending: false, error: null, preview: true }; state.screen = "unsubscribe"; break;
-    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadGrantsIfNeeded(); loadNotifPrefsIfNeeded(); return;
+    case "unsubGoSettings": state.screen = "settings"; state.unsub = { pending: false, error: null, preview: false }; loadSettingsReads(); return;
 
     // ── Org settings › Notifications (admin) ─────────────────────────────────
     case "policyToggle": {
