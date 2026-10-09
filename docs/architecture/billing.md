@@ -85,7 +85,8 @@ Pro is sold per seat. A seat is a member or a pending invitation (`plans.md` ›
    `grantOrganization(env, platform(env, "billing"), { to: { handle }, plan, overrides: { seats }, external_ref:
    <subscription id> })` — the SAME grant a superadmin gives by hand, carrying the seats paid for. `to` is the
    person on Trov's own checkout row, never a field of the payload and never whoever presents the session id.
-4. **Wait** — `/billing/done` is only a waiting room. It polls `GET /api/billing/status?session_id=…`
+4. **Wait** — `/billing/done` is only a waiting room, drawn as the first-run card over the app's backdrop
+   (`billingDonePage`; `docs/architecture/web-ui.md` › first-run flow): it is the step before naming the org. It polls `GET /api/billing/status?session_id=…`
    every 2 s; after 20 s it says *payment received, your organization will be ready shortly*; it rests
    after 2 minutes with "Check again". It never says a payment failed. If the webhook is late, the status
    route itself retrieves the session from Stripe (at most once per 5 s per session) and runs the SAME

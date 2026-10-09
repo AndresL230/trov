@@ -2112,6 +2112,11 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-orgs, .cnpy-onb { isolation:isolate; }
 .cnpy-orgs-col, .cnpy-onb > .cnpy-orgs-col { position:relative; z-index:1; }
 .cnpy-onb .cnpy-sw.compact { padding:6px 0; }
+/* After payment (billing.ts `billingDonePage`): the same card, narrower — it holds a sentence and a button. */
+.cnpy-billdone > .cnpy-orgs-col { max-width:520px; }
+.cnpy-orgs-body.cnpy-billdone-body { display:grid; gap:16px; padding-top:22px; }
+.cnpy-billdone-acts { display:flex; flex-wrap:wrap; gap:8px; }
+.cnpy-billdone-acts > a { flex:1 1 200px; width:auto !important; }
 .cnpy-onb-step { margin-left:auto; font-family:var(--label); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.78); }
 .cnpy-orgs-body.cnpy-onb-body { display:grid; gap:18px; padding-top:22px; }
 .cnpy-onb-pair { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; align-items:start; }
