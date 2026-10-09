@@ -52,11 +52,9 @@ whole. Nothing else stores the number: `<main>` is the flex remainder, the colla
 placed from the rail's left edge, and the quick-search dropdown is anchored to the search box. Before narrowing
 it again, shorten that row or re-measure.
 
-**The org switcher hugs its content.** `.cnpy-orgsw-b` is `width:fit-content; max-width:100%` and its name
-`flex:0 1 auto`: the button is as wide as its tile, name, count and chevron, left-aligned with the nav rows;
-a longer name widens it up to the rail's inner width and then truncates with an ellipsis. The collapsed rail
-sets no width for it: the same `max-width` folds it to the tile as the rail narrows, so the fold rides the
-rail's own transition. Its menu stays anchored to the rail's left edge (the button's left edge), not its width.
+**The org switcher fills the rail's row** whatever the organization is called (`.cnpy-orgsw-b` `width:100%`;
+the owner ruled out sizing it to the name) and its name truncates. **The menu it opens is narrow**: `.cnpy-orgmenu`
+is 248px, anchored to the rail's left edge; at phone width it spans the screen.
 
 **A pick-one with no room for a switch is `dropdown()`** (`web/src/dropdown.ts`), never a native `<select>`:
 the trigger where the control sits, its menu a root-level overlay (`dropdownMenu`, the same props) that opens

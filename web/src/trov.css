@@ -1744,17 +1744,17 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
    a short name gives a short button, a longer one grows it up to the slot's width, and past that the
    name truncates. `max-width:100%` is also what folds it to the tile in the collapsed rail (its content
    is always wider than the 44px slot), so the fold rides the rail's own width transition. */
-.cnpy-orgsw-b { display:flex; align-items:center; gap:9px; width:fit-content; max-width:100%; min-width:0; height:38px; box-sizing:border-box; padding:0 9px 0 6.5px; border:1px solid var(--border); background:var(--surface); color:var(--fg); text-align:left; overflow:hidden; transition:background .15s ease, border-color .15s ease, padding var(--side-t) var(--side-e); }
+.cnpy-orgsw-b { display:flex; align-items:center; gap:9px; width:100%; min-width:0; height:38px; box-sizing:border-box; padding:0 9px 0 6.5px; border:1px solid var(--border); background:var(--surface); color:var(--fg); text-align:left; overflow:hidden; transition:background .15s ease, border-color .15s ease, padding var(--side-t) var(--side-e); }
 .cnpy-orgsw-b:hover, .cnpy-orgsw-b.is-open, .cnpy-orgslot.is-active .cnpy-orgsw-b { border-color:var(--border-strong); }
 [data-cnpy-theme="dark"] .cnpy-orgsw-b:hover, [data-cnpy-theme="dark"] .cnpy-orgsw-b.is-open { background:var(--hover); }
-.cnpy-orgsw-n { flex:0 1 auto; min-width:0; font-family:'Geist',system-ui,sans-serif; font-size:13px; font-weight:600; letter-spacing:-0.005em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-orgsw-n { flex:1; min-width:0; font-family:'Geist',system-ui,sans-serif; font-size:13px; font-weight:600; letter-spacing:-0.005em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .cnpy-orgsw-b .cnpy-dot { display:none; }
 [data-collapsed="1"] .cnpy-orgsw-b { padding:0 0 0 9px; border-color:transparent; background:transparent; }
 [data-collapsed="1"] .cnpy-orgsw-b:hover, [data-collapsed="1"] .cnpy-orgsw-b.is-open { background:var(--hover); }
 .cnpy-orgtile { display:inline-grid; place-items:center; flex:none; box-sizing:border-box; background:var(--hover); border:1px solid var(--border-strong); color:var(--fg-70); font-family:'Geist',system-ui,sans-serif; font-weight:600; line-height:1; }
 .cnpy-orgmenu-layer { position:fixed; inset:0; z-index:95; }
 .cnpy-orgmenu-back { position:absolute; inset:0; }
-.cnpy-orgmenu { position:absolute; top:calc(100px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); width:316px; max-width:calc(100vw - 20px); max-height:calc(100dvh - 116px); overflow-y:auto; box-sizing:border-box; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
+.cnpy-orgmenu { position:absolute; top:calc(100px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); width:248px; max-width:calc(100vw - 20px); max-height:calc(100dvh - 116px); overflow-y:auto; box-sizing:border-box; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
 [data-collapsed="1"] .cnpy-orgmenu { top:56px; left:70px; max-height:calc(100dvh - 72px); }
 .cnpy-orgmenu .cnpy-menurow:focus-visible, .cnpy-orgmenu button:focus-visible, .cnpy-orgs a:focus-visible, .cnpy-orgs button:focus-visible, [data-orgs-create] button:focus-visible { outline:2px solid color-mix(in srgb,var(--accent) 70%,transparent); outline-offset:-2px; }
 [data-orgs-create] .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
