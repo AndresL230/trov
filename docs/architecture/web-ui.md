@@ -13,7 +13,7 @@ itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: Org settings,
-Platform, the Artifacts screens, and the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, and the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`). Inside a morphed page, a part that must be REPLACED when it becomes a different
 thing (a tab's panel, a wizard's step) names itself with `data-morph-key`. Do not fix a flicker by turning
 animations off in the affected region — that hides one symptom and leaves the rebuild.
@@ -101,6 +101,35 @@ on a keystroke, and never because a read landed: see Loading skeletons below). `
 mid-entrance joins the animation where the old DOM left off. Hooks: `.cnpy-rise` + `--i`, `.cnpy-stagger`
 (lists), `.repo-bar` / `.repo-fill` / `.repo-spark`, `data-count` (count-up). In-place changes use the
 one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
+
+## Personal Settings — a bento whose tiles are as tall as what they hold
+
+`#settings` (`settingsView` in `render.ts`, the Plan / Limits / Organizations tiles in `settings-plan.ts`) is
+ONE grid of twelve columns (`.cnpy-set`, a container: its folds follow the page's own width, not the
+viewport's). The grid still stretches — every edge lines up — so what keeps a tile from looking stretched is
+**which tiles share a row: ones whose content is naturally the same height**. A tall tile never spans rows
+beside short ones (the old MCP tile did, and Profile and Account were padded out to it).
+
+| Row | Tiles (columns) |
+|---|---|
+| 1–2 | Profile (4) · Account: sign-in methods (4) · Session (4) over Appearance (4) |
+| 3 | Plan (5) · Limits (7) — both grow with what the plan has to say |
+| 4 | Organizations (12): a card per org, as many across as fit |
+| 5 | MCP access (12): the steps beside Connected apps |
+| 6 | Email notifications (12) |
+
+- Each tile is placed by NAME (`.cnpy-set-profile`, `-account`, `-session`, `-appear`, `-plan`, `-limits`,
+  `-orgs-tile`, `-mcp`, `-email`); DOM order is the folded order — Profile, Account, Plan, Limits,
+  Organizations, MCP access, Appearance, Email, Session. Below 1000px of page: Profile | Account, every other
+  tile full width; below 760px one column, **Sign out last**.
+- **Sign out** is the Session tile's: a labelled button with its icon, at the top right of the page. It is the
+  only `signOut` on the screen, and never a quiet link.
+- Adding a tile: give it a row partner of the same natural height, or its own row. Measure (`align-self:start`
+  on a tile gives its natural height) at ~1440 and ~1100 before choosing; a field in a wide tile takes a
+  `max-width` (`.cnpy-set-name`).
+- A limit's meter (`.cnpy-meter`) is a 4px bar with no radius, no animation and no transition, described once
+  by its `role="meter"`; the page is `data-morph="settings"`, so typing in a field patches it in place.
+- Tests: `test/render.connect.test.ts` (the grid, Session, sign-in methods), `test/render.settings-plan.test.ts`.
 
 ## Full pages without the sidebar
 

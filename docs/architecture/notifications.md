@@ -54,3 +54,12 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   color does not appear in email yet. When a chip is added there, take the color from `persons.color`
   via the light hex set documented in §7 of the identity design doc.
 - Tests assert on outbox/bodies rows, never mocks (`test/notifications.*.test.ts`, `test/render.notifications.test.ts`).
+
+## The banner
+
+`emailBanner` (`assemble.ts`) is the one banner of every mail, in the shape of the app's first-run card: brand top
+left, an optional label top right (`eyebrow`), the mail's headline (`title`) and a quiet line (`lede`; a digest's
+"Daily digest · date") reversed out of the accent band. Over the solid `background-color` sits a
+`background-image` gradient, and at the right a large faint mark built from `rgba()` table cells — a client
+without gradients keeps the solid band, one without `rgba` paints no faint mark. On-band ink stays literal
+(`BAND`), never a THEME token, so the dark swap cannot sink it into the purple.
